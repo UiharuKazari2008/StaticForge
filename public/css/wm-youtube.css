@@ -521,9 +521,11 @@
     box-sizing: border-box;
     transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
     pointer-events: none;
-    will-change: transform;
 }
-.wm-youtube .yt-tabs.is-drag .yt-slider { transition: none; }
+/* the slider's own layer only while a finger drags it (its slide between tabs is a transition, which
+   promotes it for its 0.22 s) (#890) */
+/* perf: allow only while the tab bar is dragged (.is-drag, wmYouTube.js) */
+.wm-youtube .yt-tabs.is-drag .yt-slider { transition: none; will-change: transform; }
 
 .wm-youtube .yt-slider i {
     display: block;
@@ -630,6 +632,7 @@
     border: calc(2 * var(--u)) solid rgba(255, 255, 255, 0.18);
     border-top-color: var(--yt-accent);
     box-sizing: border-box;
+    /* perf: allow busy indicator: shown only while YouTube connects or waits for Google (.yt-wait); transform */
     animation: yt-spin 0.9s linear infinite;
 }
 @keyframes yt-spin { to { transform: rotate(360deg); } }
@@ -669,7 +672,12 @@
 .yt-today .yt-td-arrow:active { opacity: 1; background: var(--wm-highlight); }
 .yt-today .yt-td-arrow[disabled] { visibility: hidden; }
 
-.yt-today .yt-td-slide { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: calc(6 * var(--wm-px)); will-change: transform; }
+.yt-today .yt-td-slide { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: calc(6 * var(--wm-px)); }
+/* on its own layer only while a finger drags it: wmYouTube.js writes its inline translateX on each
+   pointermove and clears it on release; the return and step slides are transitions / animations, which
+   promote it while they run. At rest on Today it has no layer (#890) */
+/* perf: allow only while a finger drags the slide (its inline translateX exists only then) */
+.yt-today .yt-td-slide[style*="translateX"] { will-change: transform; }
 .yt-today .yt-td-slide.is-back { transition: transform 0.16s ease-out; }
 .yt-today .yt-td-slide.is-in-r { animation: yt-in-r 0.2s ease-out; }
 .yt-today .yt-td-slide.is-in-l { animation: yt-in-l 0.2s ease-out; }

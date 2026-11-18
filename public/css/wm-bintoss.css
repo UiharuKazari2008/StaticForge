@@ -269,6 +269,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-bintoss .wbt-checks .wm-check {
 
 .wm-bintoss .wbt-clock.is-low {
     border-color: rgba(255, 110, 90, 0.8);
+    /* perf: allow game state: the round's clock blinks only while it runs low (.is-low), during play */
     animation: wbt-low 1s steps(2, jump-none) infinite;
 }
 

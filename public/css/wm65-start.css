@@ -35,14 +35,14 @@ html.ui-mobile[data-wm-version="6.5"] .wm-s65-view {
     -webkit-touch-callout: none;
 }
 
-/* the scrolled layer: only its transform changes while a finger pans or the grid coasts */
+/* the scrolled layer: only its transform changes while a finger pans or the grid coasts (its translate3d,
+ * wmStart65.js place(), keeps it on a layer of its own) */
 html.ui-mobile[data-wm-version="6.5"] .wm-s65-list {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
     height: calc(var(--half, 0) * 41.5 * var(--wm-px));
-    will-change: transform;
 }
 
 /* a 480 px screen: columns at 0 / 144 / 288, cells 192 wide. Kept as shares of the width (30 %
@@ -160,6 +160,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-s65-cell.is-lifted {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-s65-cell.is-lifted,
 html.ui-mobile[data-wm-version="6.5"] .wm-s65-glow.is-lifted {
+    /* perf: allow only while an icon is lifted and dragged (.is-lifted) */
     will-change: translate;
 }
 
@@ -217,6 +218,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-s65-cell.is-lifted {
     z-index: 2;
     scale: none;
     transition: none;
+    /* perf: allow only while an icon is lifted and dragged (.is-lifted) */
     will-change: translate;
 }
 

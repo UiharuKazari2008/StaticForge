@@ -458,9 +458,11 @@
 /* no known percentage: three blocks run across (WM's marquee bar) */
 .wsk .wsk-progress.is-marquee .wsk-progress-fill {
     width: calc(20 * var(--wm-px));
+    /* perf: allow busy indicator: only while the work has no known percentage (.is-marquee) */
     animation: wsk-marquee 1.6s steps(24) infinite;
 }
 
+/* perf: allow left keeps the stepped blocks on whole pixels as the device draws them; a transform would land them between pixels (soft edges) */
 @keyframes wsk-marquee {
     from { left: calc(-20 * var(--wm-px)); }
     to { left: 100%; }

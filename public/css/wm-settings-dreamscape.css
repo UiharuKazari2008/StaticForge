@@ -92,9 +92,11 @@ html.ui-mobile .wm-ds-progress > span {
 /* no percentage: five blocks walk across, as WM's busy bars do */
 html.ui-mobile .wm-ds-progress.is-marquee > span {
     width: calc(45 * var(--wm-px));
+    /* perf: allow busy indicator: only while indexing runs with no percentage (.is-marquee, wmSettingsDreamscape.js) */
     animation: wm-ds-marquee 2s steps(18) infinite;
 }
 
+/* perf: allow left keeps the stepped blocks on whole pixels as the device draws them; a transform would land them between pixels (soft edges) */
 @keyframes wm-ds-marquee {
     from { left: calc(-45 * var(--wm-px)); }
     to { left: calc(162 * var(--wm-px)); }

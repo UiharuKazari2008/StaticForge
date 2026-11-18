@@ -100,6 +100,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-lock65-path > i {
     background: image-set(url('/static_images/wm65/ls-arrows-l@2x.png') 2x, url('/static_images/wm65/ls-arrows-l@4x.png') 4x) 0 0 / 100% 100% no-repeat;
     /* at rest: the last loop frame, all three chevrons (the cpr's static SlidePath picture) */
     transform: translateX(-96%);
+    /* perf: allow the chevron strip's frames are steps of its transform (entry, loop); its layer keeps the resting frame where the animation leaves it, without a re-raster at a new offset; only while the lock screen shows */
     will-change: transform;
 }
 
@@ -115,6 +116,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slide.is-entry .wm-lock65-path 
 /* at rest: the four loop frames at 4 a second, twice (cpr FramesPerSecond 4, LoopCount 2), then
  * still for about 6 s (emulator: 5.6, 6.0 and 6.9 s between runs) */
 html.ui-mobile[data-wm-version="6.5"] .wm-lock65-slide.is-idle .wm-lock65-path > i {
+    /* perf: allow device behaviour (Yukimi: copy the device): the lock screen's chevrons at rest, only while the lock screen shows (.is-idle); transform steps (Yukimi to decide: an endless loop while the locked screen is on) */
     animation: wm-lock65-loop 8s step-end 6s infinite;
 }
 
@@ -148,7 +150,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-lock65-handle {
     width: calc(60 * var(--wm-px));
     height: calc(40 * var(--wm-px));
     transform: translate3d(0, 0, 0);
-    will-change: transform;
     touch-action: none;
     cursor: pointer;
 }
@@ -458,6 +459,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-apath > i {
     background: image-set(url('/static_images/wm65/v651-ls-arrows-lrg@2x.png') 2x, url('/static_images/wm65/v651-ls-arrows-lrg@4x.png') 4x) 0 0 / 100% 100% no-repeat;
     /* at rest: the last loop frame, all three chevrons */
     transform: translateX(-96%);
+    /* perf: allow the chevron strip's frames are steps of its transform; its layer keeps the resting frame where the entry leaves it; only while the 6.5.1 alarm page shows */
     will-change: transform;
 }
 
@@ -479,7 +481,6 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-ahandle {
     width: calc(100 * var(--wm-px));
     height: calc(44 * var(--wm-px));
     transform: translate3d(0, 0, 0);
-    will-change: transform;
     touch-action: none;
     cursor: pointer;
 }
