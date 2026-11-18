@@ -3615,16 +3615,16 @@
         const dpr = window.devicePixelRatio || 1;
         const px = rootPx();
         const want = 16 * px * dpr; // the icon's size in device px
-        // under 24 device px a whole 2x icon (32 px) would be up to twice its slot (a mouse-driven
-        // window at one device px a unit: 16 px wanted, 32 drawn, the icons overflowing the bar):
-        // the 1x art's own size where that is within a sixth, else the plain unit
         // never over the slot (Yukimi, Nov 17: the icons always looked oversized): the largest whole
-        // multiple that fits the 16-unit slot, rounded down - a round up drew them up to 1.5x the WM
-        // icon, eating the bar's 5-unit padding above and below. Where rounding down would lose over a
-        // quarter of the size (one step on a small screen), the slot's own size instead.
-        const steps = Math.floor(want / 32);
-        let unit = steps >= 1 && (steps * 32) / want >= 0.75 ? `${(2 * steps) / dpr}px` : '';
-        if (want < 24) unit = Math.abs(want - 16) / want < 1 / 6 && 16 <= want ? `${1 / dpr}px` : '';
+        // multiple of the art that fits the 16-unit slot inside the bar's padding - rounded down, as a
+        // round up drew them up to 1.5x the cell. Always a whole multiple (a fractional size blurs the
+        // 1-bit glyphs): one that is over by less than a device pixel still counts as fitting (A53:
+        // 63 px slot, 64 px icons), the padding gives up that part of a pixel instead of the art.
+        // Under one 2x icon (32 px; a mouse-driven window at one device px a unit) the 1x art at its
+        // own size (16 px), and under that the plain unit.
+        let unit = '';
+        if (want + 1 >= 32) unit = `${(2 * Math.floor((want + 1) / 32)) / dpr}px`;
+        else if (want + 1 >= 16) unit = `${1 / dpr}px`;
         if (root.style.getPropertyValue('--wm-icon-unit') !== unit) {
             if (unit) root.style.setProperty('--wm-icon-unit', unit); else root.style.removeProperty('--wm-icon-unit');
         }
