@@ -56,6 +56,14 @@ function mount(app, authMiddleware, globalResources) {
         res.json({ success: true, device: Object.assign(testDevices.list().find((d) => d.id === dev.id), linkOf(dev.id)) });
     });
 
+    // before '/:id', which would take 'notices' for a device id (the harness's clear never cleared, Nov 18)
+    app.delete('/api/test-devices/notices', auth, admin, (req, res) => {
+        const ids = inbox().list('test').map((n) => n.id);
+        let n = 0;
+        for (const id of ids) if (inbox().clear('test', id, 'test-harness')) n += 1;
+        res.json({ success: true, cleared: n });
+    });
+
     app.delete('/api/test-devices/:id', auth, admin, (req, res) => {
         res.json({ success: testDevices.unmark(req.params.id) });
     });
@@ -81,12 +89,6 @@ function mount(app, authMiddleware, globalResources) {
         res.json({ success: inbox().clear('test', String(req.params.nid || ''), 'test-harness') });
     });
 
-    app.delete('/api/test-devices/notices', auth, admin, (req, res) => {
-        const ids = inbox().list('test').map((n) => n.id);
-        let n = 0;
-        for (const id of ids) if (inbox().clear('test', id, 'test-harness')) n += 1;
-        res.json({ success: true, cleared: n });
-    });
 
     app.post('/api/test-devices/:id/catch-up', auth, admin, (req, res) => {
         const id = String(req.params.id || '').toLowerCase();
