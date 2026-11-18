@@ -531,13 +531,8 @@
     // ActiveSync Received Items (#803): something arrived while the phone was locked or away (the
     // the ROM's own sync arrows, shellres.192.dll 4685: scripts/extract-wm-activesync-status-icon.py)
     // Nightshade Network (#895): only while the service is unreachable or restarting (scripts/generate-nightshade-icons.js)
-    // the program icons from the status atlas (scripts/build-wm-status-atlas.py EXTRA, #907): each glyph at the
-    // bar's one height, as wide as its shape needs (Yukimi, Nov 17: "too small and unevenly sized"), so the
-    // app draws them from the atlas too. The Director and Update keep their pictures (their animations swap it).
-    const STATUS_APP_ATLAS = { mail: 'app-mail', sms: 'app-sms', chat: 'app-messenger', prints: 'app-prints', wxalert: 'app-weather-alert', rain: 'app-rain-alarm', traffic: 'app-traffic', lapis: 'app-lapis', carkey: 'app-traffic', continuity: 'app-continuity', received: 'app-activesync', nightshade: 'app-nightshade' };
+    // a program's status icon: its own picture (the status atlas holds the system icons)
     function setStatusAppArt(el, role) {
-        const a = STATUS_APP_ATLAS[role];
-        if (a) { el.style.backgroundImage = ''; el.dataset.icon = a; return; }
         delete el.dataset.icon;
         el.style.backgroundImage = artImageSet(STATUS_APP_ICONS[role]);
     }
@@ -3619,21 +3614,21 @@
      * Tray icons pixel for pixel (#735): 16 x --wm-px at a 2.25 density is 54 device px, a 1.69x
      * stretch of the 32 px art that made some art pixels 2 device px and others 1 (uneven strokes),
      * at fractional device positions. --wm-icon-unit is a whole multiple of the 2x art (Fold7: 2x,
-     * 64 device px) within an eighth of the 16-unit slot, and snapStatusIcons nudges each icon onto the
-     * device pixel grid.
+     * 64 device px) where it fits the 16-unit slot, and snapStatusIcons nudges each icon onto the device
+     * pixel grid.
      */
     function syncIconUnit() {
         const dpr = window.devicePixelRatio || 1;
         const px = rootPx();
         const want = 16 * px * dpr; // the icon's size in device px
-        // The 16-unit slot at a whole multiple of the art (sharp 1-bit strokes): the nearest one when it
-        // is within an eighth of the slot (Fold cover: 62.8 px slot, 64 px icons; A53 63 -> 64), else the
-        // slot's own size. Never the step below: rounding down halved them on the Fold (Yukimi, Nov 17:
-        // "microscopic"). Under one 2x icon (a mouse-driven window) the same with the 1x art.
-        const near = (art) => { const n = Math.max(1, Math.round(want / art)); return Math.abs(n * art - want) / want <= 1 / 8 ? n : 0; };
+        // a maximum size (Yukimi, Nov 17: the icons were about to overflow the bar): never over the 16-unit slot by
+        // more than a device pixel - a whole multiple of the art where one fits within 7/8 of the slot (sharp
+        // 1-bit strokes: A53 63 px -> 64), else the slot's own size (Fold cover 56, unfolded 84); the bar's padding
+        // above and below stays (wm-shell.css .wm-status), and a taller bar centres them, never enlarges them
+        const fits = (art) => { const n = Math.floor((want + 1) / art); return n >= 1 && n * art >= want * 7 / 8 ? n : 0; };
         let unit = '';
-        if (want >= 28) { const n = near(32); if (n) unit = `${(2 * n) / dpr}px`; }
-        else { const n = near(16); if (n) unit = `${n / dpr}px`; }
+        if (want >= 28) { const n = fits(32); if (n) unit = `${(2 * n) / dpr}px`; }
+        else { const n = fits(16); if (n) unit = `${n / dpr}px`; }
         if (root.style.getPropertyValue('--wm-icon-unit') !== unit) {
             if (unit) root.style.setProperty('--wm-icon-unit', unit); else root.style.removeProperty('--wm-icon-unit');
         }
