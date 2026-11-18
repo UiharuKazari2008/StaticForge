@@ -434,6 +434,7 @@
     function clockRun() {
         if (clock.timer || game.state !== 'playing') return;
         clock.last = performance.now();
+        // perf: allow the game's clock while it is played on screen: stopped when the game ends, on hide and away (clockSeen: hidden, screen off, behind an Android program)
         clock.timer = setInterval(clockTick, 250);
     }
 

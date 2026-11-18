@@ -450,6 +450,7 @@
     function startClock() {
         if (clock || !G || G.type !== 'timed' || G.over || !G.started || view !== 'main' || G.paused || !page || page.hidden) return;
         lastTick = performance.now();
+        // perf: allow the timed game's clock while it is played on screen: stopped on pause, hide, and away (onSeen: hidden, screen off, behind an Android program)
         clock = setInterval(() => {
             if (!G || G.paused || anim && anim.kind === 'none') return;
             const now = performance.now();

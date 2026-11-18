@@ -1123,6 +1123,7 @@
                 wait();
                 return;
             }
+            // perf: allow one call, two frames after the tap (once its answer is painted), not repeated: tells the app the bar tap is done
             const doneSoon = () => requestAnimationFrame(() => requestAnimationFrame(() => { try { if (window.AndroidBars && window.AndroidBars.tapDone) window.AndroidBars.tapDone(); } catch (_) { /* older app */ } }));
             if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); doneSoon(); return; }
             if (role === 'shown') { doneSoon(); return; }
@@ -5057,6 +5058,7 @@
             // the version's own wheel (6.1 at 6.1's size, 6.5's four dots), as the busy cursor
             waitStrip(loadingLayer.querySelector('.wm-loading-wait'));
             clearInterval(loadingTimer);
+            // perf: allow only while the Please Wait box is up (cleared when it closes): lets go of the status toasts it waits on
             loadingTimer = setInterval(() => {
                 for (const t of [...loadingToasts]) {
                     if (!t.isConnected || t.classList.contains('removing')) { loadingToasts.delete(t); statusToasts.delete(t); continue; }
@@ -5594,6 +5596,7 @@
             let left = 4;
             const toastId = fresh.id;
             shellHold('note-repeat', true);
+            // perf: allow a notification's repeat sound (Sounds: Repeat), at most 4 times while it stays up: a notification driver, kept awake on purpose (shellHold)
             noteRepeat = setInterval(() => {
                 const n = noteOf(toastId);
                 if (!n || left-- <= 0 || noteShown !== toastId) { clearInterval(noteRepeat); noteRepeat = null; shellHold('note-repeat', false); return; }
@@ -11512,6 +11515,7 @@
         } else {
             setBoot('splash');
         }
+        // perf: allow the boot screen's steps, only while the boot screen shows (cleared when the boot ends)
         bootTimer = setInterval(bootTick, 200);
     }
 
@@ -12146,6 +12150,7 @@
         closeBubble: () => closeBubble(),
         // tests: run the startup sequence again (splash, installer, Today) on a live page
         _test: {
+            // perf: allow a test's boot screen run again, only while it shows (cleared when the boot ends)
             restartBoot() { clearInterval(bootTimer); installKind = null; bootStart = Date.now(); setBoot('splash'); bootTimer = setInterval(bootTick, 200); },
             // the workspace switch cover without a switch: up for id, lifted as after a completed one
             switchCover(id, ms) { showSwitchCover(id); setTimeout(() => { void settleSwitchCover(id); }, ms || 1500); }

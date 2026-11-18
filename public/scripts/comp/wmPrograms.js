@@ -618,6 +618,7 @@
                     e.stopPropagation();
                     step();
                     stop();
+                    // perf: allow the press-and-hold repeat, only while a finger holds the button (stop on pointerup / cancel / leave)
                     if (v65) wait = setTimeout(() => { rep = setInterval(step, 170); }, 575);
                 });
                 ['pointerup', 'pointercancel', 'pointerleave'].forEach((n) => b.addEventListener(n, stop));
@@ -1975,6 +1976,7 @@
                 const sync = () => {
                     if (!el.isConnected) { clearInterval(timer); timer = 0; evs.forEach(([t, e]) => t.removeEventListener(e, sync)); return; }
                     const on = seenEl();
+                    // perf: allow a clock while it shows: the seconds tick only while the panel is on screen (sync clears it otherwise)
                     if (on && !timer) { draw(); timer = setInterval(() => { if (seenEl()) draw(); else sync(); }, 1000); }
                     else if (!on && timer) { clearInterval(timer); timer = 0; }
                 };
@@ -2904,6 +2906,7 @@
             const blinkSync = () => {
                 const on = !!lcd && blinkSeen();
                 if (on && !blink) {
+                    // perf: allow the LCD's blinking figures (the device's look) while its value box is open and seen (blinkSync stops it hidden, screen off, behind)
                     blink = setInterval(() => {
                         if (Date.now() - changedAt < 900) lcd.classList.remove('is-blink');
                         else lcd.classList.toggle('is-blink');

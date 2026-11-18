@@ -196,6 +196,7 @@
         };
         let timer = 0;
         const evs = [[window, 'melatonscreen'], [document, 'visibilitychange'], [document, 'wmBehind'], [document, 'wmAppChange']];
+        // perf: allow a live readout's tick, only while its element is on screen (sync clears it otherwise)
         const run = () => { timer = setInterval(() => { if (seen()) paint(); else sync(); }, ms); };
         function sync() {
             if (!el.isConnected) { clearInterval(timer); timer = 0; evs.forEach(([t, e]) => t.removeEventListener(e, sync)); return; }

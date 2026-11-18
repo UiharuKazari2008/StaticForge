@@ -625,6 +625,7 @@
     function wake() {
         if (!seen()) return;
         if (!stars.timer) starsFrame();
+        // perf: allow the planets' slideshows (the program's look), only while it is on screen (slideTick stops itself unseen)
         if (!slideTimer) slideTimer = setInterval(slideTick, 500);
     }
 
@@ -662,6 +663,7 @@
                 starsStart();
                 musicStart();
                 clearInterval(slideTimer);
+                // perf: allow the planets' slideshows (the program's look), only while it is on screen (slideTick stops itself unseen)
                 slideTimer = setInterval(slideTick, 500);
                 // the ring comes in from the stars
                 setTimeout(() => { if (page) page.classList.remove('is-opening'); }, 30);

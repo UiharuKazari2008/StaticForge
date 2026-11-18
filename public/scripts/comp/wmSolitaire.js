@@ -307,6 +307,7 @@
 
     function startTimer() {
         if (timer || !st || !st.started || st.won || !visible()) return;
+        // perf: allow the game's clock while it is played on screen: stopped on hide and away (onSeen: hidden, screen off, behind an Android program)
         timer = setInterval(() => {
             if (!st || !visible()) return;
             st.seconds++;
