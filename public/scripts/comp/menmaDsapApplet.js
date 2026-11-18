@@ -353,7 +353,13 @@ const menmaDsapDriver = {
         dsapRoot.addEventListener('click', this._state._onClick);
         this._wireContextMenus(host);
         this._load();
-        this._state._timer = setInterval(() => this._load({ quiet: true }), MENMA_POLL_MS);
+        // read again only while this page can be seen: not on a hidden page, a phone's screen off, a
+        // background tab or a minimised window (#890; the server has no push for it yet)
+        this._state._timer = setInterval(() => {
+            if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+            if (!dsapRoot.isConnected || (typeof dsapRoot.checkVisibility === 'function' && !dsapRoot.checkVisibility())) return;
+            this._load({ quiet: true });
+        }, MENMA_POLL_MS);
     },
 
     refresh(host) {

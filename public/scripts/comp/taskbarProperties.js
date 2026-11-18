@@ -1048,7 +1048,13 @@
                 const d = spin.dataset.action === 'cs-up' ? 1 : -1;
                 step(d);
                 stopRepeat();
-                repeat = setTimeout(() => { repeat = setInterval(() => step(d), 60); }, 400);
+                // the auto-repeat of a held arrow ends when the page is not seen (no pointerup comes then, #890)
+                repeat = setTimeout(() => {
+                    repeat = setInterval(() => {
+                        if (document.hidden || document.documentElement.dataset.screenOff !== undefined) { stopRepeat(); return; }
+                        step(d);
+                    }, 60);
+                }, 400);
             });
             spin.addEventListener('pointerup', stopRepeat);
             spin.addEventListener('pointerleave', stopRepeat);

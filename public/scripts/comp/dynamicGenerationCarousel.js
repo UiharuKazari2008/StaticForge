@@ -525,6 +525,11 @@ function showCarouselItem(index) {
 
 function advanceCarousel() {
     if (carouselPaused || carouselData.length <= 1) return;
+    // turns only while it can be seen: not on a hidden page, a phone with its screen off, or a closed
+    // panel; it goes on from the same card when it shows again (#890)
+    if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+    if (!dynamicCarousel || !dynamicCarousel.isConnected) return;
+    if (typeof dynamicCarousel.checkVisibility === 'function' && !dynamicCarousel.checkVisibility()) return;
 
     // Move to next index
     carouselCurrentIndex = (carouselCurrentIndex + 1) % carouselData.length;

@@ -1908,15 +1908,14 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
 
     const checkDivergence = () => {
         if (!isStudio) return;
+        // looked at only while the page is seen (its 500 ms check, #890); the button is written only when it changes
+        if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
         const currentStudioId = getImageId(window.currentManualPreviewImage);
         const currentWorkingId = getImageId(workingImage);
         const useImgBtn = document.getElementById('enhanceUseStudioImageBtn');
         if (!useImgBtn) return;
-        if (currentStudioId && currentWorkingId && currentStudioId !== currentWorkingId) {
-            useImgBtn.classList.remove('hidden');
-        } else {
-            useImgBtn.classList.add('hidden');
-        }
+        const hide = !(currentStudioId && currentWorkingId && currentStudioId !== currentWorkingId);
+        if (useImgBtn.classList.contains('hidden') !== hide) useImgBtn.classList.toggle('hidden', hide);
     };
 
     const updateWorkingImage = (newImage) => {

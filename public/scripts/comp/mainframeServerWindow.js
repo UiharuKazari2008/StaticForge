@@ -241,6 +241,8 @@
         }
 
         function tick() {
+            // the blocks fall only while the page is seen; hidden or a phone's screen off, they wait (#890)
+            if (typeof document !== 'undefined' && (document.hidden || (document.documentElement && document.documentElement.dataset.screenOff !== undefined))) return;
             phaseTick++;
             if (phase === 'fall') {
                 const p = pieces[index];

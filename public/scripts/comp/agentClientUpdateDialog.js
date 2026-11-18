@@ -380,6 +380,7 @@
 
     function startTick() {
         clearTick();
+        // perf: allow the mandatory restart countdown: lives only while its dialog counts (at most 300 s, cleared at 0 or Cancel), and its zero applies the update, which a hidden desktop tab must do too (a phone holds it until seen)
         tickTimer = setInterval(() => {
             if (phase !== 'counting') {
                 clearTick();

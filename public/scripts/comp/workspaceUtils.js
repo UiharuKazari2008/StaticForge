@@ -1453,6 +1453,9 @@ async function startAutomaticBackgroundSystem() {
     // BlurHash into a picture each time just to find it unchanged (#849). It now looks when the
     // gallery says it changed, with one look a minute as the net, and decodes only a new hash.
     automaticBackgroundInterval = setInterval(async () => {
+        // the net looks only while the page is seen (a change while away arms updateAutomaticBackground's
+        // look at the next show, #890)
+        if (document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined) return;
         await updateAutomaticBackground();
     }, 60000);
     if (!automaticBackgroundListening) {
@@ -1479,6 +1482,11 @@ function isGalleryReady() {
 function setupBackgroundRetry() {
     const started = Date.now();
     const retryInterval = setInterval(() => {
+        // nothing is drawn for a page out of sight; galleryUpdated still sets it when the load ends (#890)
+        if (document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined) {
+            if (Date.now() - started >= 30000) clearInterval(retryInterval);
+            return;
+        }
         if (isGalleryReady()) {
             clearInterval(retryInterval);
             updateAutomaticBackground();
@@ -1696,6 +1704,7 @@ function waitForGallery() {
         }
         
         // Check every 100ms if gallery is ready
+        // perf: allow at most 10 s after a workspace switch, reading a local array (no request); it ends itself
         const checkInterval = setInterval(() => {
             if (isGalleryReady()) {
                 clearInterval(checkInterval);

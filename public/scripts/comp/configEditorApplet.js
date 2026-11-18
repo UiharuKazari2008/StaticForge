@@ -267,8 +267,20 @@ async function configEditorMessageBox(text, title, kind, buttons, owner) {
     return new Promise((resolve) => {
         let result = buttons === 'yesno' ? 'no' : 'ok';
         const ids = set.map((_, i) => (i ? 7 : 1));
-        V.openDialog({
+        // resolved when the box is gone: its close (every button, Esc, the X), or its window closed
+        // from outside (no 100 ms watch, #890)
+        let settled = false;
+        const onLife = (e) => { if (e && e.detail && e.detail.id === 'configEditorMessageBox' && e.detail.type === 'closed') done(); };
+        const done = () => {
+            if (settled) return;
+            settled = true;
+            document.removeEventListener('staticforge:modal-lifecycle', onLife);
+            resolve(result);
+        };
+        document.addEventListener('staticforge:modal-lifecycle', onLife);
+        const opened = V.openDialog({
             id: 'configEditorMessageBox', tpl, owner, bareCaption: true,
+            close: () => done(),
             buttons: { 7: (ctx) => { result = 'no'; ctx.close(); } },
             init: (ctx) => {
                 const c = ctx.content;
@@ -294,11 +306,8 @@ async function configEditorMessageBox(text, title, kind, buttons, owner) {
             ok: () => { result = buttons === 'yesno' ? 'yes' : 'ok'; return true; },
             cancel: () => { if (buttons !== 'yesno') result = 'ok'; }
         });
-        // resolve once the box is gone
-        const watch = setInterval(() => {
-            const m = document.getElementById('configEditorMessageBox');
-            if (!m || m.classList.contains('hidden') || !m.isConnected) { clearInterval(watch); resolve(result); }
-        }, 100);
+        // no box opened (no template): nothing to wait for
+        if (!opened) done();
     });
 }
 

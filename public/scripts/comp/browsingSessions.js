@@ -203,7 +203,15 @@
         // its interval stops while out of sight too (no wake a minute for nothing, #890), and starts again
         // with the page back
         const syncPoll = () => {
-            if (!asleep()) { if (!pollTimer) pollTimer = setInterval(() => { if (asleep()) syncPoll(); else report(false); }, POLL_MS); }
+            if (!asleep()) {
+                if (!pollTimer) {
+                    pollTimer = setInterval(() => {
+                        // asleep(), spelt out
+                        if (root.document.visibilityState !== 'visible' || root.document.documentElement.dataset.screenOff !== undefined) syncPoll();
+                        else report(false);
+                    }, POLL_MS);
+                }
+            }
             else if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
         };
         syncPoll();

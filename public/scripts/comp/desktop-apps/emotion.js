@@ -150,8 +150,8 @@ async function emotionResumeJob() {
 // While a job runs, follow the server copy too: it survives socket drops (the original request
 // promise does not) and carries the preview filmstrip. The server pushes it (emotion_job_update,
 // modules/imageAnimation.js pushEmotionJob) to every socket of this session; it is read once
-// more on a reconnect (an update missed while down) and once a minute as a safety net, never
-// polled every 1.5 s (Yukimi, Nov 13).
+// more on a reconnect (an update missed while down) and when the page is seen again, never
+// polled (Yukimi, Nov 13; the once-a-minute safety net went in #890).
 function emotionStartResumePoll(requestId) {
     emotionStopResumePoll();
     const client = window.wsClient;
@@ -168,12 +168,14 @@ function emotionStartResumePoll(requestId) {
         apply(await emotionFetchCurrentJob());
     };
     const onPush = (message) => apply(message && message.data);
+    const onSeen = () => { if (!document.hidden && document.documentElement.dataset.screenOff === undefined) void check(); };
     if (client && typeof client.on === 'function') {
         client.on('emotion_job_update', onPush);
         client.on('connected', check);
     }
-    desktopEmotion.resumeFollow = { client, onPush, check };
-    desktopEmotion.resumePollTimer = setInterval(check, 60000);
+    document.addEventListener('visibilitychange', onSeen);
+    window.addEventListener('melatonscreen', onSeen);
+    desktopEmotion.resumeFollow = { client, onPush, check, onSeen };
 }
 
 function emotionStopResumePoll() {
@@ -183,6 +185,10 @@ function emotionStopResumePoll() {
     if (f && f.client && typeof f.client.off === 'function') {
         f.client.off('emotion_job_update', f.onPush);
         f.client.off('connected', f.check);
+    }
+    if (f && f.onSeen) {
+        document.removeEventListener('visibilitychange', f.onSeen);
+        window.removeEventListener('melatonscreen', f.onSeen);
     }
     desktopEmotion.resumeFollow = null;
 }

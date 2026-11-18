@@ -1183,7 +1183,11 @@ class PlanetSwitcher {
     // ---------- slideshow ----------
 
     startSlides() {
-        this.slideTimer = setInterval(() => this.tickSlides(), 240);
+        // the planets' pictures change only while the page is seen (hidden, a phone's screen off: none, #890)
+        this.slideTimer = setInterval(() => {
+            if (document.hidden || (document.documentElement && document.documentElement.dataset.screenOff !== undefined)) return;
+            this.tickSlides();
+        }, 240);
     }
 
     tickSlides() {

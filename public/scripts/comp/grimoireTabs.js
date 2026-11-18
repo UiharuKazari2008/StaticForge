@@ -57,13 +57,74 @@
             first.first = true;
             this.tabs = [first];
             this.active = first;
-            // tab suspension (#628): a background tab unused this long gives its remote page up
-            this.suspendTimer = setInterval(() => {
-                // the window is gone: stop looking
-                if (host.modal && !host.modal.isConnected) { clearInterval(this.suspendTimer); return; }
-                this.suspendIdle().catch(() => {});
-            }, SUSPEND_CHECK_MS);
-            if (this.suspendTimer && typeof this.suspendTimer.unref === 'function') this.suspendTimer.unref();
+            // tab suspension (#628): a background tab unused this long gives its remote page up. A look a
+            // minute while the page is seen; while it is not seen nothing ticks, one timer waits for the
+            // first tab that comes due (no tab is used while nobody sees the page, #890)
+            this.suspendTimer = null;
+            this.suspendWake = null;
+            this.syncSuspend = () => this.syncSuspendTimer();
+            const d = root.document;
+            if (d && typeof d.addEventListener === 'function') d.addEventListener('visibilitychange', this.syncSuspend);
+            if (typeof root.addEventListener === 'function') root.addEventListener('melatonscreen', this.syncSuspend);
+            this.syncSuspendTimer();
+        }
+
+        syncSuspendTimer() {
+            const host = this.host;
+            clearTimeout(this.suspendWake);
+            this.suspendWake = null;
+            // the window is gone: stop looking
+            if (host.modal && !host.modal.isConnected) { this.stopSuspendTimer(); return; }
+            const d = root.document;
+            const html = d && d.documentElement;
+            const seen = !d || (!d.hidden && !(html && html.dataset && html.dataset.screenOff !== undefined));
+            if (seen) {
+                if (this.suspendTimer) return;
+                this.suspendTimer = setInterval(() => {
+                    if (host.modal && !host.modal.isConnected) { this.stopSuspendTimer(); return; }
+                    const doc2 = root.document;
+                    if (doc2 && (doc2.hidden || (doc2.documentElement && doc2.documentElement.dataset && doc2.documentElement.dataset.screenOff !== undefined))) { this.syncSuspendTimer(); return; }
+                    this.suspendIdle().catch(() => {});
+                }, SUSPEND_CHECK_MS);
+                if (this.suspendTimer && typeof this.suspendTimer.unref === 'function') this.suspendTimer.unref();
+                return;
+            }
+            clearInterval(this.suspendTimer);
+            this.suspendTimer = null;
+            const wait = this.nextSuspendDelay();
+            if (wait == null) return;
+            this.suspendWake = setTimeout(() => {
+                this.suspendWake = null;
+                this.suspendIdle().catch(() => 0).then(() => this.syncSuspendTimer());
+            }, wait);
+            if (this.suspendWake && typeof this.suspendWake.unref === 'function') this.suspendWake.unref();
+        }
+
+        stopSuspendTimer() {
+            clearInterval(this.suspendTimer);
+            this.suspendTimer = null;
+            clearTimeout(this.suspendWake);
+            this.suspendWake = null;
+            const d = root.document;
+            if (d && typeof d.removeEventListener === 'function') d.removeEventListener('visibilitychange', this.syncSuspend);
+            if (typeof root.removeEventListener === 'function') root.removeEventListener('melatonscreen', this.syncSuspend);
+        }
+
+        /** ms until the first background tab suspendIdle() would give up comes due, or null (none). */
+        nextSuspendDelay(now = Date.now()) {
+            const after = GrimoireTabs.suspendAfterMs();
+            if (!after) return null;
+            let next = Infinity;
+            for (const tab of this.tabs) {
+                if (tab === this.active || !tab.state) continue;
+                const live = [tab.state, tab.state.rightPane].some((shell) => shell && shell._grimoireRemoteSessionId
+                    && !(typeof root.grimoireIsAudioShell === 'function' && root.grimoireIsAudioShell(shell)));
+                if (!live) continue;
+                const due = (tab.lastActive || now) + after;
+                // due already and still here: suspendIdle would not take it now either
+                if (due > now && due < next) next = due;
+            }
+            return Number.isFinite(next) ? next - now + 50 : null;
         }
 
         /** Tell a shell's Alchemy viewer whether its tab shows (services/grimoire-browser viewer.html 'visibility'). */

@@ -4775,6 +4775,7 @@ document.addEventListener('contextMenuAction', async (event) => {
                                 }
                                 
                                 // Wait for gallery to load
+                                // perf: allow at most 5 s after the user opened an image shortcut, reading a local array (no request); it ends itself
                                 const checkInterval = setInterval(() => {
                                     if (typeof allImages !== 'undefined' && Array.isArray(allImages) && allImages.length > 0) {
                                         clearInterval(checkInterval);

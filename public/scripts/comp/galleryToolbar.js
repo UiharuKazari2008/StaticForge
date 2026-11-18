@@ -424,6 +424,8 @@ function startGalleryMoveCrossFade(selectedImages) {
     galleryMoveCrossFadeIndex = 0;
     
     galleryMoveCrossFadeInterval = setInterval(() => {
+        // the dialog's backdrop changes only while it can be seen (#890)
+        if (document.hidden || document.documentElement.dataset.screenOff !== undefined || !backgroundImage.isConnected) return;
         const currentImage = selectedImages[galleryMoveCrossFadeIndex];
         
         if (currentImage) {

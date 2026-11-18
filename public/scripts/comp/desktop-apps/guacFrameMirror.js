@@ -187,7 +187,26 @@
         }
     }
 
+    // the last frame of each connection that went up (a hash of its JPEG): an unchanged screen is not sent again
+    const sentPreview = new Map();
+
+    function previewKey(buf) {
+        // FNV-1a over the encoded bytes and their length: equal frames encode to equal bytes
+        const bytes = new Uint8Array(buf);
+        let h = 0x811c9dc5;
+        for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193); }
+        return `${bytes.length}:${(h >>> 0).toString(16)}`;
+    }
+
+    function pageSeen() {
+        if (document.hidden) return false;
+        try { return parent.document.documentElement.dataset.screenOff === undefined; } catch (_) { return true; }
+    }
+
+    // A session's last frame, for its preview (taskbar, reconnect): taken only while the page is seen (a
+    // hidden page or a phone's screen off: nothing is drawn, read or sent), and sent only when it changed (#890)
     function capturePreview() {
+        if (document.hidden || !pageSeen()) return;
         if (quickConnectRoute()) return;
         const scope = clientScope();
         const managed = scope && scope.focusedClient;
@@ -206,8 +225,11 @@
         canvas.width = Math.max(1, Math.round(flat.width * scale));
         canvas.height = Math.max(1, Math.round(flat.height * scale));
         canvas.getContext('2d').drawImage(flat, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((blob) => {
+        canvas.toBlob(async (blob) => {
             if (!blob) return;
+            let key = '';
+            try { key = previewKey(await blob.arrayBuffer()); } catch (_) { key = ''; }
+            if (key && sentPreview.get(id) === key) return;
             fetch('/api/desktop-guac/preview/' + encodeURIComponent(id), {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -215,6 +237,7 @@
                 body: blob
             }).then((response) => {
                 if (!response.ok) return;
+                if (key) sentPreview.set(id, key);
                 // noteDesktopGuacPreview: public/scripts/comp/desktop-apps/guacRemote.js
                 if (parent.noteDesktopGuacPreview) parent.noteDesktopGuacPreview(id);
             }).catch(() => {});
@@ -301,5 +324,6 @@
         }
     };
 
+    // perf: allow uploads a frame only when it changed and only while the page is seen (capturePreview); it asks the server nothing
     setInterval(capturePreview, 8000);
 })();
