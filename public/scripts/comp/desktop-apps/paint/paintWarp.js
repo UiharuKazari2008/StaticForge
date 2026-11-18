@@ -572,7 +572,8 @@
             if (st.tool !== 'warp') {
                 const pr = root.paintBrush ? root.paintBrush.pressureOf(ev) : 1;
                 dab(last, 0, 0, pr);
-                timer = setInterval(() => { if (last) dab(last, 0, 0, pr); }, 40);
+                // held only while the button is down; a page that is not seen (hidden mid-stroke) adds nothing (#890)
+                timer = setInterval(() => { if (last && !document.hidden && document.documentElement.dataset.screenOff === undefined) dab(last, 0, 0, pr); }, 40);
             }
         });
         ring.addEventListener('pointermove', (ev) => {

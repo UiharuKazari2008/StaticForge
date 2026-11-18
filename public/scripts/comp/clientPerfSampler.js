@@ -394,9 +394,9 @@ function startClientPerfSampler() {
 
     startClientPerfFrameWindow();
     clientPerfState.intervalId = setInterval(() => {
-        // Melaton Mobile: nothing is measured or sent while the page is out of sight or the screen is
-        // off (going out of sight sent that minute already); the desktop samples as before
-        if (phone.is() && phone.asleep()) return;
+        // nothing is measured or sent while the page is out of sight or a phone's screen is off (going
+        // out of sight sent that minute already); a hidden desktop tab too (#890: it measured no frames)
+        if (document.visibilityState === 'hidden' || document.documentElement.dataset.screenOff !== undefined) return;
         startClientPerfFrameWindow();
         clientPerfState.intervalFlushTimer = setTimeout(() => {
             clientPerfState.intervalFlushTimer = null;

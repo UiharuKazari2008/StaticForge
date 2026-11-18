@@ -687,6 +687,8 @@
                 let pct = 0;
                 const bar = body.querySelector('[data-vdt-id="321"] .vdt-progress-fill');
                 const tick = setInterval(() => {
+                    // the search waits while nobody sees it (hidden, screen off), and goes on when seen (#890)
+                    if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
                     pct += 12;
                     if (bar) bar.style.setProperty('--vdt-progress', `${Math.min(100, pct)}%`);
                     if (pct >= 100) { clearInterval(tick); at = 3; show(); }

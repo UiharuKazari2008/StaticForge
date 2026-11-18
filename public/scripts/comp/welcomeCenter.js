@@ -514,6 +514,8 @@
     function startupCheck() {
         let tries = 0;
         const timer = setInterval(() => {
+            // looks only while the page is seen: it opens a window for someone to see (#890)
+            if (doc && (doc.hidden || doc.documentElement.dataset.screenOff !== undefined)) return;
             tries += 1;
             const state = typeof root.getClientDesktopState === 'function' ? root.getClientDesktopState() : null;
             if (state !== 'desktop' && tries < 240) return;

@@ -105,7 +105,11 @@
                 const buf = new Uint8Array(512);
                 const band = c.content.querySelector('.sr-band');
                 timer = setInterval(() => {
-                    band.querySelector('.sr-time').textContent = fmt(Date.now() - t0);
+                    // the time and the meter draw only while the page is seen; the recording goes on (#890)
+                    if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+                    const timeEl = band.querySelector('.sr-time');
+                    const time = fmt(Date.now() - t0);
+                    if (timeEl.textContent !== time) timeEl.textContent = time;
                     let level = 0;
                     if (analyser) {
                         analyser.getByteTimeDomainData(buf);
@@ -113,7 +117,9 @@
                         for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
                         level = Math.min(1, Math.sqrt(sum / buf.length) * 3);
                     }
-                    band.querySelector('.sr-level').style.width = `${Math.round(level * 100)}%`;
+                    const levelEl = band.querySelector('.sr-level');
+                    const width = `${Math.round(level * 100)}%`;
+                    if (levelEl.style.width !== width) levelEl.style.width = width;
                 }, 100);
                 paint(c);
             };

@@ -246,6 +246,7 @@
             clearTimeout(id) { r.timeouts.delete(id); root.clearTimeout(id); },
             setInterval(cb, ms, ...rest) {
                 if (!live()) return 0;
+                // perf: allow the segment runtime's forwarder: it runs the app's own interval (whose callback is checked where the app writes it) and keeps its id so an unload clears it
                 const id = root.setInterval(cb, ms, ...rest);
                 r.intervals.add(id);
                 return id;

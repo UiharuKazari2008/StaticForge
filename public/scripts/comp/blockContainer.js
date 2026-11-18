@@ -404,6 +404,8 @@ class BlockContainer {
             
             const fadeTimer = setInterval(() => {
                 currentStep++;
+                // nobody sees it (hidden, screen off): its last step at once, so what waits on it goes on (#890)
+                if (document.hidden || document.documentElement.dataset.screenOff !== undefined) currentStep = steps;
                 const progress = currentStep / steps;
                 
                 this.blocks.forEach(block => {
@@ -662,7 +664,8 @@ class BlockContainer {
     // Start random opacity adjustments
     startRandomOpacityAdjustments() {
         this.animationInterval = setInterval(() => {
-            if (!this.isActive) return;
+            // not seen (hidden, screen off): no blocks change (#890)
+            if (!this.isActive || document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
             
             // Randomly select 5-10 blocks to adjust opacity
             const numBlocks = 5 + Math.floor(Math.random() * 6);

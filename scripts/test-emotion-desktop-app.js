@@ -105,13 +105,15 @@ function main() {
 
     // 8. Progress comes from the server's per-step image_animation_progress (filtered by this
     // job's requestId), never from the null-progress keep-alive pings that used to snap the bar
-    // to 0, and it only moves forward. The only interval is the emotion_current_job resume poll.
+    // to 0, and it only moves forward. No interval: the emotion_current_job resume read follows
+    // pushes, a reconnect and the page seen again (its minute safety net went in #890).
     assert.match(emotionJs, /ws\.on\('image_animation_progress', onProgress\)/);
     assert.match(emotionJs, /message\.requestId !== requestId/);
     assert.doesNotMatch(emotionJs, /request_keep_alive', onKeepAlive/);
     assert.match(emotionJs, /Math\.max\(desktopEmotion\.progress,/);
     assert.match(emotionJs, /if \(!Number\.isFinite\(raw\)\) return;/);
-    assert.equal((emotionJs.match(/setInterval\(/g) || []).length, 1);
+    assert.equal((emotionJs.match(/setInterval\(/g) || []).length, 0);
+    assert.match(emotionJs, /document\.addEventListener\('visibilitychange', onSeen\)/);
     assert.match(emotionJs, /sendMessage\('emotion_current_job'/);
     assert.match(emotionJs, /function emotionResumeJob\(\)/);
     assert.match(emotionJs, /filmstrip\.src = 'data:image\/jpeg;base64,'/);

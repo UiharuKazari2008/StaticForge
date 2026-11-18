@@ -3010,6 +3010,8 @@
             if (!this.beginStroke(false)) return;
             this.last = p;
             const spray = () => {
+                // held only while the button is down; a page that is not seen (hidden mid-stroke) sprays nothing (#890)
+                if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
                 const s = this.brushSize();
                 const ctx = this.sctx;
                 if (!ctx) return;

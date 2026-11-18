@@ -908,6 +908,7 @@
     function stateHold(reason, on) {
         if (on === stateHolds.has(reason)) return;
         if (on) stateHolds.add(reason); else stateHolds.delete(reason);
+        // perf: allow lives only while a state hold (media heard, a drive) keeps the page awake on purpose, and finds that hold's end so the page can sleep again
         if (stateHolds.size && !stateRecheck) stateRecheck = setInterval(recheckStateHolds, 30000);
         else if (!stateHolds.size && stateRecheck) { clearInterval(stateRecheck); stateRecheck = 0; }
         sendHolds();
