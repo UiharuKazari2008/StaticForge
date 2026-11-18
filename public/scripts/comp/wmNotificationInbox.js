@@ -176,7 +176,8 @@
      * posts any notice a page in front does not confirm within seconds (#908: a frozen page never swallows a notice).
      */
     // notices only the server raises (no page app shows its own live note for them): the inbox shows them itself
-    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key']);
+    // test: the test lane's notices (modules/testDevices.js, the emulator harness) have no page producer either
+    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test']);
 
     let iconPrefsSent = '';
     function sendIconPrefs() {
