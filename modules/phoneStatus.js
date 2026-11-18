@@ -12,8 +12,10 @@
  *   as_event status.snapshot { full: bool, fields: { <field>: value } }   (only what changed; all of it after a hello)
  *
  * Fields (household; the inbox ones per user 'admin'):
- *   mail      { unread, fresh }   unread: the household mailbox's inbox + IMAP inboxes; fresh: new-mail notices waiting
- *   sms       { unread, fresh }   unread: Text Messaging's unread (connected accounts); fresh: text notices waiting
+ *   mail      { unread, fresh, new }  unread: the household mailbox's inbox + IMAP inboxes; fresh: new-mail notices
+ *                                 waiting; new: unread mail since Messaging's mail was last opened (messageNew.js)
+ *   sms       { unread, fresh, new }  unread: Text Messaging's unread (connected accounts); fresh: text notices waiting;
+ *                                 new: a conversation with a text since Text Messaging was last opened, still unread
  *   chat      { fresh }           Messenger replies waiting
  *   director  { running, unseen } a turn running; a finished turn's notice waiting
  *   prints    { phone }           prints a phone asked for, queued or running
@@ -61,11 +63,14 @@ function bind(globalResources) {
         const q = typeof gr.getGenerationJobQueue === 'function' ? gr.getGenerationJobQueue() : null;
         if (q && typeof q.onChange === 'function') q.onChange(() => touch('prints'));
     } catch (_e) { /* no queue */ }
+    try { require('./messageNew').start(); } catch (e) { console.warn(`[phone-status] message new: ${e.message}`); }
     return module.exports;
 }
 
 /** Something an icon reads changed: the snapshot is rebuilt within a second and the changes go to the phones. */
-function touch(_reason) {
+function touch(reason) {
+    // mail or texts changed: "new since last opened" is worked out again (it touches back with 'new' when it changes)
+    if (reason === 'mail' || reason === 'dovecote' || reason === 'sms') { try { require('./messageNew').soon(); } catch (_e) { /* best effort */ } }
     if (!gr) return;
     if (running) { again = true; return; }
     if (timer) return;
@@ -157,9 +162,10 @@ function traffic() {
 /** The household's snapshot now (received items are per phone, added when sending). */
 async function build() {
     const ib = inboxCounts();
+    const fresh = safe(() => require('./messageNew').state(), { mail: false, sms: false });
     return {
-        mail: { unread: mailUnread(), fresh: ib.mailFresh },
-        sms: { unread: await smsUnread(), fresh: ib.smsFresh },
+        mail: { unread: mailUnread(), fresh: ib.mailFresh, new: fresh.mail },
+        sms: { unread: await smsUnread(), fresh: ib.smsFresh, new: fresh.sms },
         chat: { fresh: ib.chatFresh },
         director: { running: directorRunning, unseen: ib.directorUnseen },
         prints: { phone: phonePrints() },

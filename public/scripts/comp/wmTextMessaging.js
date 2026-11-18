@@ -1612,6 +1612,8 @@
             show() {
                 wire();
                 showLayer();
+                // opened: the title bar's text envelope is no longer "new" (#907, the server keeps it)
+                if (sh && typeof sh.messagesSeen === 'function') sh.messagesSeen('sms');
                 // what pushes changed while it was away, at once (a read follows only when one may be missing)
                 if (listStale && (view() === 'list' || isDual())) renderList();
                 if (view() === 'list' && (listDirty || !loaded || Date.now() - listReadAt > LIST_STALE_MS)) refresh({ quiet: loaded });
