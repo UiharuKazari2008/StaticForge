@@ -651,7 +651,11 @@ function hello(globalResources, wsServer, clientInfo, data) {
     try { require('./deviceAdb').noteOnline(globalResources, server, id); } catch (err) { console.warn('[activeSync] adb detect:', err.message); }
     scheduleUpdated(globalResources, server);
     // server modules that want a phone the moment it connects (Messaging's Android app accounts catch up, #885)
-    if (kind === 'device') for (const fn of helloTaps) { try { fn({ id, speaker: as.speaker, session: as.session, name: as.name }); } catch (_) { /* the tap's own fault */ } }
+    // test: a test device (modules/testDevices.js, the Android emulator): its session is remembered so its page is fenced
+    // from the household's notices before its own hello, and taps that take a phone's data into the household skip it
+    const test = kind === 'device' && isTestDevice(id);
+    if (test) { try { require('./testDevices').noteHello({ id, sessionId: clientInfo.sessionId }); } catch (_) { /* no fence module */ } }
+    if (kind === 'device') for (const fn of helloTaps) { try { fn({ id, speaker: as.speaker, session: as.session, name: as.name, sessionId: clientInfo.sessionId || null, test }); } catch (_) { /* the tap's own fault */ } }
     const peers = list(globalResources, server);
     // the page has this list now: the broadcast its hello sets off is not sent back to it unless it
     // differs in what the page reads (scheduleUpdated)
@@ -995,6 +999,8 @@ async function deliverQueue(globalResources, wsServer, deviceId) {
 
 const deviceEventTaps = [];
 const helloTaps = [];
+/** A test device (modules/testDevices.js): partnered for tests, fenced from the household's notices. */
+function isTestDevice(id) { try { return require('./testDevices').isTestDevice(id); } catch (_) { return false; } }
 /** fn({ id, speaker, session, name }) after a device's socket said as_hello (before its reply is sent). */
 function onDeviceHello(fn) { if (typeof fn === 'function') helloTaps.push(fn); }
 /** fn(eventName, detail, device) for every event a partnered device sends (after its permission check). */
@@ -1014,8 +1020,12 @@ function event(globalResources, wsServer, clientInfo, data) {
         const need = OP_GROUP[opGroupName(name)];
         if (need && !sess.permissions.includes(need)) return 0;
     }
+    // a test device's Android notifications are its own (the emulator's test posts): not taken into the household's
+    // Messaging accounts or Melaton Videos, not mirrored on computers; only its delivery confirmations are heard
+    const test = me.kind === 'device' && isTestDevice(me.id);
+    if (test && name !== 'inbox.posted' && /^notify\./.test(name)) return 0;
     // server modules that take a device's news themselves (Melaton Videos imports notify.posted, #861)
-    if (me.kind === 'device') for (const tap of deviceEventTaps) { try { tap(name, src.detail == null ? null : src.detail, me); } catch (_) { /* the tap's own fault */ } }
+    if (me.kind === 'device') for (const tap of deviceEventTaps) { if (test && name !== 'inbox.posted') continue; try { tap(name, src.detail == null ? null : src.detail, me); } catch (_) { /* the tap's own fault */ } }
     // news for the server only: a notice's delivery confirmation (notificationInbox, #908) goes to no computer
     if (me.kind === 'device' && name === 'inbox.posted') return 0;
     const msg = { type: 'as_event', data: { from: fromOf(clientInfo), event: name, detail: src.detail == null ? null : src.detail }, timestamp: new Date().toISOString() };
@@ -1275,6 +1285,8 @@ function sendInboxNotice(globalResources, wsServer, notice, opts = {}) {
     for (const id of ids) {
         // one phone only: its link said hello again and catches up (notificationInbox.catchUpPhone, #889)
         if (opts.deviceId && id !== opts.deviceId) continue;
+        // the test lane (modules/testDevices.js): test notices to test devices only, the household's never to them
+        if ((notice.user === 'test') !== isTestDevice(id)) continue;
         const live = liveSockets(server, 'device', id);
         if (!live.some((x) => x.info.as.session === 'partner')) continue;
         const service = live.find((x) => x.info.as.speaker === 'service');
@@ -1300,6 +1312,8 @@ function sendInboxCleared(globalResources, wsServer, notice) {
     let sent = 0;
     const ids = new Set(liveSockets(server, 'device').map((x) => x.info.as.id));
     for (const devId of ids) {
+        // the same lanes as the notices themselves (a test id cleared on a test device only, and the other way round)
+        if ((notice.user === 'test') !== isTestDevice(devId)) continue;
         const live = liveSockets(server, 'device', devId);
         if (!live.some((x) => x.info.as.session === 'partner')) continue;
         const service = live.find((x) => x.info.as.speaker === 'service');
