@@ -91,7 +91,11 @@ function directorStatus(status) {
 const safe = (fn, fallback) => { try { return fn(); } catch (_e) { return fallback; } };
 
 function inboxCounts(user = 'admin') {
-    const rows = safe(() => require('./notificationInbox').list(user), []).filter((n) => WAITING.has(n.state));
+    // waiting: not seen yet, or seen (put away with Hide) within the last day - an old notice already looked at is
+    // nothing to show, and the "..." never stands for nothing (Yukimi, Nov 18: Nov 15's fuel reminders kept it up)
+    const dayAgo = Date.now() - 24 * 3600 * 1000;
+    const rows = safe(() => require('./notificationInbox').list(user), []).filter((n) => WAITING.has(n.state)
+        && (n.state === 'new' || (Number(n.updatedAt) || Number(n.createdAt) || 0) >= dayAgo));
     const has = (p) => rows.filter((n) => n.id.startsWith(p)).length;
     const mine = (n) => /^(mail|dmail|sms|chat|director):/.test(n.id);
     return {
