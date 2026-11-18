@@ -1381,7 +1381,7 @@
                 const note = ws.appNote({
                     title: n.title,
                     html: esc(n.text || ''),
-                    icon: 'app-lapis',
+                    icon: 'status-car-alert',
                     event: 'lapis-run-left',
                     softKeys: () => ({ left: isAdmin() ? { label: 'Stop', action: () => { note.close(); runNote = null; doStop(); } } : { label: 'View', action: () => { note.close(); runNote = null; open('start'); } }, right: { label: 'Dismiss', action: () => { note.close(); runNote = null; } } })
                 });
@@ -1405,7 +1405,7 @@
             note = ws.appNote({
                 title: n.title,
                 html: esc(n.text || ''),
-                icon: 'app-lapis',
+                icon: 'status-car-alert',
                 // left unlocked and an issue found sound in classes of their own (#848)
                 event: n.kind === 'unlocked' ? 'lapis-unlocked' : n.kind === 'health' ? 'lapis-issue' : 'notification',
                 softKeys: () => ({ left: wantsLock ? { label: 'Lock', action: lock } : { label: 'View', action: view }, right: { label: 'Dismiss', action: () => { if (note) note.close(); } } })

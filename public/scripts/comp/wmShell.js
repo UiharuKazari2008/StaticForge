@@ -82,7 +82,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["status-nightshade", "set-nightshade", "set-location", "app-doubles", "app-doubles-lg", "app-bintoss", "app-bintoss-lg", "app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "app-lapis", "app-lapis-lg", "app-youtube", "app-youtube-lg", "status-lapis", "status-carkey", "app-wallet", "app-wallet-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-battery-low", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "volume-notify", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["status-nightshade", "set-nightshade", "set-location", "app-doubles", "app-doubles-lg", "app-bintoss", "app-bintoss-lg", "app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "app-lapis", "app-lapis-lg", "app-youtube", "app-youtube-lg", "status-lapis", "status-carkey", "status-car-alert", "app-wallet", "app-wallet-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-battery-low", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "volume-notify", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => WM_SET.test(name) ? `${name}.png 1x, ${name}@2x.png 2x, ${name}@4x.png 4x` : String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -534,7 +534,14 @@
     // a program's status icon: its own picture at its drawn size (the status atlas holds the system icons)
     function setStatusAppArt(el, role) {
         delete el.dataset.icon;
-        el.style.backgroundImage = artImageSet(STATUS_APP_ICONS[role]);
+        // the registration's glyph (status-order.js); an unregistered role draws nothing (HARD rule, Nov 18)
+        const g = statusGlyph(role);
+        el.style.backgroundImage = g ? artImageSet(g) : 'none';
+    }
+    function statusGlyph(role) {
+        const tbl = statusTable();
+        if (tbl && tbl.glyph) return tbl.glyph(role);
+        return STATUS_APP_ICONS[role] || null;
     }
     // the status icon table (public/scripts/tasks/status-order.js, loaded just before this file; #907), held from here:
     // the page's task runtime may put a new window.CafeTasks in place later
@@ -6027,9 +6034,12 @@
     const NOTE_KIND_ICON = { error: 'status-error', warning: 'status-warning', reminder: 'status-reminder' };
     function noteIcon(n) {
         if (isUpdateNote(n)) return artImageSet('status-update');
-        // an app's own notification (appNote) may bring its own glyph
+        // registered glyphs only (HARD rule status-icons-registered-only, Nov 18): an app's notice may name a glyph the
+        // registration carries (status-order.js glyphs); a picture of its own (Lapis' colour app icon) never draws
         const own = n && appNotes.get(n.id);
-        if (own && own.icon) return /^(url|image-set)\(/.test(own.icon) ? own.icon : artImageSet(own.icon);
+        const tbl = statusTable();
+        if (own && own.icon && tbl && tbl.isGlyph && tbl.isGlyph(own.icon)) return artImageSet(own.icon);
+        if (tbl && tbl.noteKind) { const kind = tbl.noteKind(n); if (kind !== 'notify') return artImageSet(tbl.glyph(kind)); }
         return artImageSet((n && NOTE_KIND_ICON[n.type]) || 'status-notify-many');
     }
 
@@ -6107,7 +6117,8 @@
             };
             for (const n of notesForBubbleIcon()) add(noteIcon(n), noteTitle(n), () => showNote(n.id));
             for (const r of statusFolded) {
-                add(artImageSet(STATUS_APP_ICONS[r]), STATUS_APP_LABEL[r], () => {
+                if (!statusGlyph(r)) continue;
+                add(artImageSet(statusGlyph(r)), STATUS_APP_LABEL[r], () => {
                     noteTrayOpen = false;
                     renderNotes();
                     // as its own icon would: mail / text / Messenger open their waiting notification
@@ -8727,6 +8738,7 @@
      * WM message box; resolves with the chosen button's value. buttons: [{ text, value }].
      * icon: 'error' | 'warning' | 'info' | 'question' | null.
      */
+    let msgBoxCancel = null;
     function messageBox({ title = 'Melaton Mobile', text = '', icon = null, buttons = [{ text: 'ok', value: true }], cancelValue = false, input = null, modal = false, titleAction = null, onOpen = null } = {}) {
         // an ok-only box that does not answer something the user just did (it came on its own, later)
         // is a WM notification instead; one that answers a tap stays a message box (WM's rule)
@@ -8761,6 +8773,7 @@
                 });
             }
             const done = (value) => {
+                if (msgBoxCancel === cancelNow) msgBoxCancel = null;
                 if (field) value = value ? (field.type === 'password' ? field.value : field.value.trim()) : null;
                 layer.hidden = true;
                 layer.innerHTML = '';
@@ -8771,6 +8784,9 @@
             const onKey = (e) => {
                 if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(cancelValue); }
             };
+            // Home answers it with its cancel value (goHome)
+            const cancelNow = () => done(cancelValue);
+            msgBoxCancel = cancelNow;
             document.addEventListener('keydown', onKey, true);
             if (okOnly) {
                 layer.querySelector('.wm-title-action').addEventListener('click', () => done(buttons[0].value));
@@ -11724,7 +11740,9 @@
      * Home pressed while Melaton Mobile is the phone's launcher (DSApp sends window event
      * 'melatonhome'): menus, bubbles, the task switcher and the picture view close, Today comes up
      * on the clock with every item back at its home position (scroll, sideways pages); apps keep
-     * running, as WM's Home does. A message box that waits for an answer stays.
+     * running, as WM's Home does. Nothing outranks Home (Yukimi, Nov 18 2026, HARD rule home-closes-everything):
+     * message boxes are cancelled, the desktop's dialogs too, an open notification goes back into its icon (still
+     * waiting; the ones not popped yet stay in the icon as well), the tray and every bubble close.
      */
     function goHome() {
         // the device lock screen stays over everything (unlocking lands on Today anyway)
@@ -11733,6 +11751,18 @@
         try { closeTaskSwitcher(true); } catch (_) { /* not open */ }
         try { closeBubble(); } catch (_) { /* none */ }
         if (viewerActive) closeViewer();
+        try { if (msgBoxCancel) msgBoxCancel(); } catch (_) { /* gone */ }
+        try {
+            const dlg = document.getElementById('confirmationDialog');
+            if (dlg && !dlg.classList.contains('hidden') && dlg.getClientRects().length) {
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            }
+        } catch (_) { /* none */ }
+        try {
+            for (const n of notes) n.ids.forEach((id) => noteSeen.add(seenKey(id, n)));
+            noteTrayOpen = false;
+            hideNote();
+        } catch (_) { /* no notices */ }
         // Home while Today is on screen: 6.5's list runs back to the clock; from a program Today comes
         // back with its entrance (wmTitanium.js, #800)
         // (the press itself blinks the page hidden for a moment: wmTitanium tells that from a return)
@@ -12506,7 +12536,7 @@
             endAll: () => taskSwitcherEndAll()
         },
         /** A status glyph's CSS image (a status role's own, or an art name such as 'status-reminder'): melatonBars' tray kit. */
-        statusArt: (name) => artImageSet(STATUS_APP_ICONS[name] || name),
+        statusArt: (name) => artImageSet(statusGlyph(name) || name),
         /**
          * A soft key's menu laid out once for the app to copy (melatonBars notifyKit: the WM notification box's Menu,
          * drawn by the app with the page asleep): opened quietly over the given soft key; returns { el, close }.

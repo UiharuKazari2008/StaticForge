@@ -403,7 +403,7 @@
     const NOTE_MENU = ['View', 'Hide', '-', 'Snooze 5 minutes', 'Snooze 15 minutes', 'Snooze 1 hour', 'Snooze 1 day'];
     // the tray's glyph for each kind of notice (the app picks the kind from the notice's id)
     const TRAY_KINDS = { notification: 'status-notify-many', reminder: 'status-reminder', warning: 'status-warning', error: 'status-error',
-        lapis: 'lapis', traffic: 'traffic', wxalert: 'wxalert', rain: 'rain', prints: 'prints', update: 'update' };
+        lapis: 'caralert', traffic: 'traffic', wxalert: 'wxalert', rain: 'rain', prints: 'prints', update: 'update' };
     function notifyKit(dpr) {
         const sh = window.wmShell;
         const shell = document.getElementById('wmShell');

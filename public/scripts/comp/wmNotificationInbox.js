@@ -87,14 +87,14 @@
     }
 
     const ICON_BY_CLASS = {
-        mail: 'status-mail', sms: 'status-sms', chat: 'status-messenger', director: 'app-director', print: 'app-studio', 'print-error': 'app-studio',
+        mail: 'status-mail', sms: 'status-sms', chat: 'status-messenger', director: 'status-director', print: 'status-prints', 'print-error': 'status-prints',
         'weather-alert': 'status-weather-alert', 'weather-severe': 'status-weather-alert', 'rain-alarm': 'status-rain-alarm'
     };
+    // the title bar glyph: the registration's (status-order.js, HARD rule status-icons-registered-only), never an app's picture
     function iconFor(notice) {
-        const app = notice.data && notice.data.app;
-        if (app === 'traffic') return 'app-traffic';
-        if (app === 'lapis') return 'app-lapis';
-        return ICON_BY_CLASS[notice.cls] || 'app-programs';
+        const tbl = window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder;
+        if (tbl && tbl.noteGlyph) return tbl.noteGlyph(notice);
+        return ICON_BY_CLASS[notice.cls] || 'status-notify-many';
     }
 
     // ---- reminders (#876) ----------------------------------------------------------------------
