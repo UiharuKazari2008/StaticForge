@@ -10,6 +10,10 @@ These are hard requirements for Claude Code and every subagent / workflow agent 
 speed, convenience, a brief's wording and "too minor to matter" judgments. Work that breaks one is not
 done, whatever else it achieves.
 
+0. **Installed clients start with zero server waits** (Yukimi, Nov 18 2026, TOP RULE): the Dreamscape app (phone, cover,
+   DeX window) goes straight to the desktop or Today by its own rules with not one request to the server awaited;
+   server checks, authentication, sessions and updates happen inside the running app afterwards -
+   `installed-boot-zero-wait`. A slow or flaky network must look like a fast start.
 0. **Nothing on the phone depends on a WebView page** (Yukimi, Nov 17 2026, extremely hard rule): background
    services, status bar handlers, notification drivers and alerts run in the app through CaféReady as portable
    task code shipped with the app, and the app uses their output whenever CaféReady is online -
@@ -28,6 +32,7 @@ done, whatever else it achieves.
 3. **Behaviour and look:** `ui-standard`, `no-native-browser-ui`, `fix-ui-issues-you-find`, notifications
    and status indicators never silenced to save power.
 
+@.cursor/rules/installed-boot-zero-wait.mdc
 @.cursor/rules/cafeready-background.mdc
 @.cursor/rules/agent-busy-lock.mdc
 @.cursor/rules/keyboard-characters.mdc
