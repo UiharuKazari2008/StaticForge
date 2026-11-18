@@ -689,7 +689,7 @@ img.wm-strip {
 }
 
 /* ---- status atlas (scripts/build-wm-status-atlas.py: generated, do not edit) ---- */
-/* 72 icons, one image per density (512 x 192 px at 2x); the per-icon art stays as the source */
+/* 83 icons, one image per density (512 x 192 px at 2x); the per-icon art stays as the source */
 .wm-status-icon[data-icon] { background-image: image-set(url('/static_images/wm61/status-atlas.png') 1x, url('/static_images/wm61/status-atlas@2x.png') 2x, url('/static_images/wm61/status-atlas@4x.png') 4x); background-size: calc(256 * var(--wm-icon-unit, var(--wm-px))) calc(96 * var(--wm-icon-unit, var(--wm-px))); background-repeat: no-repeat; }
 html:not(.wm-art-1x)[data-wm-icon-art="2"] .wm-status-icon[data-icon] { background-image: url('/static_images/wm61/status-atlas@2x.png'); }
 html:not(.wm-art-1x)[data-wm-icon-art="4"] .wm-status-icon[data-icon] { background-image: url('/static_images/wm61/status-atlas@4x.png'); }
@@ -766,6 +766,17 @@ html:not(.wm-art-1x)[data-wm-icon-art="8"] .wm-status-icon[data-icon] { backgrou
 .wm-status-icon[data-icon="data-nr-avail"] { background-position: calc(-220 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
 .wm-status-icon[data-icon="data-nr-a-avail"] { background-position: calc(-236 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
 .wm-status-icon[data-icon="data-uw-avail"] { background-position: calc(0 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="app-mail"] { background-position: calc(-20 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(23 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="app-sms"] { background-position: calc(-43 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="app-messenger"] { background-position: calc(-63 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="app-prints"] { background-position: calc(-79 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(23 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="app-weather-alert"] { background-position: calc(-102 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(23 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="app-rain-alarm"] { background-position: calc(-125 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(18 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="app-traffic"] { background-position: calc(-143 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="app-lapis"] { background-position: calc(-163 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(17 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="app-continuity"] { background-position: calc(-180 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(21 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="app-activesync"] { background-position: calc(-201 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(21 * var(--wm-icon-unit, var(--wm-px))); }
+.wm-status-icon[data-icon="app-nightshade"] { background-position: calc(-222 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(21 * var(--wm-icon-unit, var(--wm-px))); }
 /* ---- end of status atlas ---- */
 /* device status (#709): battery, signal, roaming, data type and Wi-Fi from the Android app or the
  * browser. ROM art; signal bars, H+, LTE (4G) and 5G are Melaton-drawn in the same style. */

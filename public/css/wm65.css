@@ -211,8 +211,8 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"] .wm-titlebar:has(> .w
  * never had) are Melaton-drawn in the ROM's style: the G / E / 3G / H icons' rounded box with the
  * letters cut out. 2x is the ROM frame; the 1x art serves only a 1x scale. */
 /* ---- status atlas (scripts/build-wm-status-atlas.py: generated, do not edit) ---- */
-/* 73 icons, one image per density (512 x 160 px at 2x); the per-icon art stays as the source */
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon] { background-image: image-set(url('/static_images/wm65/status-atlas@2x.png') 2x, url('/static_images/wm65/status-atlas@4x.png') 4x); background-size: calc(256 * var(--wm-icon-unit, var(--wm-px))) calc(80 * var(--wm-icon-unit, var(--wm-px))); background-repeat: no-repeat; }
+/* 84 icons, one image per density (512 x 192 px at 2x); the per-icon art stays as the source */
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon] { background-image: image-set(url('/static_images/wm65/status-atlas@2x.png') 2x, url('/static_images/wm65/status-atlas@4x.png') 4x); background-size: calc(256 * var(--wm-icon-unit, var(--wm-px))) calc(96 * var(--wm-icon-unit, var(--wm-px))); background-repeat: no-repeat; }
 html:not(.wm-art-1x)[data-wm-icon-art="2"].ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon] { background-image: url('/static_images/wm65/status-atlas@2x.png'); }
 html:not(.wm-art-1x)[data-wm-icon-art="4"].ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon] { background-image: url('/static_images/wm65/status-atlas@4x.png'); }
 html:not(.wm-art-1x)[data-wm-icon-art="8"].ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon] { background-image: url('/static_images/wm65/status-atlas@8x.png'); }
@@ -290,6 +290,17 @@ html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-5g-plus-av
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-avail"] { background-position: calc(-192 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); }
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-nr-a-avail"] { background-position: calc(-208 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-uw-avail"] { background-position: calc(-228 * var(--wm-icon-unit, var(--wm-px))) calc(-64 * var(--wm-icon-unit, var(--wm-px))); width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="app-mail"] { background-position: calc(0 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(23 * var(--wm-icon-unit, var(--wm-px))); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="app-sms"] { background-position: calc(-23 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(19 * var(--wm-icon-unit, var(--wm-px))); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="app-messenger"] { background-position: calc(-42 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="app-prints"] { background-position: calc(-58 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(23 * var(--wm-icon-unit, var(--wm-px))); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="app-weather-alert"] { background-position: calc(-81 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(23 * var(--wm-icon-unit, var(--wm-px))); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="app-rain-alarm"] { background-position: calc(-104 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(18 * var(--wm-icon-unit, var(--wm-px))); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="app-traffic"] { background-position: calc(-122 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(20 * var(--wm-icon-unit, var(--wm-px))); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="app-lapis"] { background-position: calc(-142 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(17 * var(--wm-icon-unit, var(--wm-px))); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="app-continuity"] { background-position: calc(-159 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(21 * var(--wm-icon-unit, var(--wm-px))); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="app-activesync"] { background-position: calc(-180 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(21 * var(--wm-icon-unit, var(--wm-px))); }
+html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="app-nightshade"] { background-position: calc(-201 * var(--wm-icon-unit, var(--wm-px))) calc(-80 * var(--wm-icon-unit, var(--wm-px))); width: calc(21 * var(--wm-icon-unit, var(--wm-px))); }
 /* ---- end of status atlas ---- */
 
 /* Settings > Connections > Cellular types (#771) */

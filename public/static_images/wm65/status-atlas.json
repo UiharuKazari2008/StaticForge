@@ -1,7 +1,7 @@
 {
  "size2x": [
   512,
-  160
+  192
  ],
  "icons": {
   "bluetooth": {
@@ -513,6 +513,83 @@
    "x": 456,
    "y": 128,
    "w": 40,
+   "h": 32
+  },
+  "app-mail": {
+   "file": "status-mail",
+   "x": 0,
+   "y": 160,
+   "w": 46,
+   "h": 32
+  },
+  "app-sms": {
+   "file": "status-sms",
+   "x": 46,
+   "y": 160,
+   "w": 38,
+   "h": 32
+  },
+  "app-messenger": {
+   "file": "status-messenger",
+   "x": 84,
+   "y": 160,
+   "w": 32,
+   "h": 32
+  },
+  "app-prints": {
+   "file": "status-prints",
+   "x": 116,
+   "y": 160,
+   "w": 46,
+   "h": 32
+  },
+  "app-weather-alert": {
+   "file": "status-weather-alert",
+   "x": 162,
+   "y": 160,
+   "w": 46,
+   "h": 32
+  },
+  "app-rain-alarm": {
+   "file": "status-rain-alarm",
+   "x": 208,
+   "y": 160,
+   "w": 36,
+   "h": 32
+  },
+  "app-traffic": {
+   "file": "status-traffic",
+   "x": 244,
+   "y": 160,
+   "w": 40,
+   "h": 32
+  },
+  "app-lapis": {
+   "file": "status-lapis",
+   "x": 284,
+   "y": 160,
+   "w": 34,
+   "h": 32
+  },
+  "app-continuity": {
+   "file": "status-continuity",
+   "x": 318,
+   "y": 160,
+   "w": 42,
+   "h": 32
+  },
+  "app-activesync": {
+   "file": "status-activesync",
+   "x": 360,
+   "y": 160,
+   "w": 42,
+   "h": 32
+  },
+  "app-nightshade": {
+   "file": "status-nightshade",
+   "x": 402,
+   "y": 160,
+   "w": 42,
    "h": 32
   }
  }

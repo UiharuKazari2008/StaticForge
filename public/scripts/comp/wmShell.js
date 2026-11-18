@@ -531,8 +531,13 @@
     // ActiveSync Received Items (#803): something arrived while the phone was locked or away (the
     // the ROM's own sync arrows, shellres.192.dll 4685: scripts/extract-wm-activesync-status-icon.py)
     // Nightshade Network (#895): only while the service is unreachable or restarting (scripts/generate-nightshade-icons.js)
-    // a program's status icon: its own picture (the status atlas holds the system icons)
+    // a program's status icon from the status atlas (app-*: one optical height, 15 units, as wide as its shape -
+    // scripts/build-wm-status-atlas.py APP_ICONS; Yukimi, Nov 17), so the app draws it from the atlas too. The
+    // Director and Update keep their pictures (their animations swap them).
+    const STATUS_APP_ATLAS = { mail: 'app-mail', sms: 'app-sms', chat: 'app-messenger', prints: 'app-prints', wxalert: 'app-weather-alert', rain: 'app-rain-alarm', traffic: 'app-traffic', lapis: 'app-lapis', carkey: 'app-traffic', continuity: 'app-continuity', received: 'app-activesync', nightshade: 'app-nightshade' };
     function setStatusAppArt(el, role) {
+        const a = STATUS_APP_ATLAS[role];
+        if (a) { el.style.backgroundImage = ''; el.dataset.icon = a; return; }
         delete el.dataset.icon;
         el.style.backgroundImage = artImageSet(STATUS_APP_ICONS[role]);
     }
