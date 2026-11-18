@@ -677,13 +677,31 @@
         return picture ? url : null;
     }
 
+    /**
+     * A gallery picture's thumbnail at the size it shows (#890 W9): the server's fit preview
+     * (/previews/<stem>@fit.webp, fit inside 320 px, the same picture as Pictures & Videos' cells) when
+     * the list names the full print (/images/<file>, 1-2 MB each), the full print only when the server
+     * cannot make one (the img's data-fallback). A server that sends previewUrl as a preview is used as is.
+     */
+    function thumbOf(i) {
+        const url = previewOf(i);
+        if (!url || isPhoneItem(i) || !(i.targetKind === 'image' || i.targetKind === 'scrap')) return { src: url, fallback: '' };
+        const m = /^\/images\/([^?#]+)$/.exec(url);
+        if (!m) return { src: url, fallback: '' };
+        let file = m[1];
+        try { file = decodeURIComponent(file); } catch (_) { /* as it is */ }
+        const stem = file.split('/').pop().replace(/\.(png|jpe?g|webp)$/i, '');
+        return stem ? { src: `/previews/${encodeURIComponent(`${stem}@fit.webp`)}`, fallback: url } : { src: url, fallback: '' };
+    }
+
     /** Thumbnails: a Pictures & Videos cell with the picture fitted, or the icon, and the name. */
     function tileHtml(i) {
         const icon = iconOf(i);
         const sel = selected.has(i.id);
-        const pic = previewOf(i);
+        const t = thumbOf(i);
+        const pic = t.src;
         const thumb = pic
-            ? `<img class="fe-thumb" src="${esc(pic)}" alt="" loading="lazy" decoding="async" draggable="false">`
+            ? `<img class="fe-thumb" src="${esc(pic)}"${t.fallback ? ` data-fallback="${esc(t.fallback)}"` : ''} alt="" loading="lazy" decoding="async" draggable="false">`
             : `<img class="fe-thumb-icon" src="${ART}${icon}@2x.png" srcset="${ART}${icon}@2x.png 1x${ws.art && ws.art.srcset && /@4x/.test(ws.art.srcset(icon)) ? `, ${ART}${icon}@4x.png 2x` : ''}" alt="" draggable="false">`;
         return `<div class="fe-row fe-tile${sel ? ' is-selected' : ''}${clipboard && clipboard.op === 'cut' && clipboard.ids.has(i.id) ? ' is-cut' : ''}" role="option" aria-selected="${sel}" data-id="${esc(i.id)}">`
             + `<span class="fe-tile-thumb">${thumb}</span>`
@@ -1298,6 +1316,7 @@
                 })
             });
         }
+        // perf: allow exists only while a received transfer runs (cleared when it ends); rxPaint draws nothing with the screen off or the page hidden, and its progress note is a status indicator
         t.timer = setInterval(() => rxPaint(t), 250);
         void rxRun(t);
     }
@@ -2078,6 +2097,11 @@
             <div class="fe-scroll"><div class="fe-list" role="listbox" aria-label="Files"></div><p class="fe-empty" hidden></p></div>`;
         const scroll = p.querySelector('.fe-scroll');
         onListPointer(scroll);
+        // a picture with no fit preview (the server could not make one): the full print (thumbOf)
+        scroll.addEventListener('error', (e) => {
+            const img = e.target;
+            if (img && img.tagName === 'IMG' && img.dataset.fallback) { const f = img.dataset.fallback; delete img.dataset.fallback; img.src = f; }
+        }, true);
         scroll.addEventListener('scroll', () => {
             if (scroll.scrollTop + scroll.clientHeight > scroll.scrollHeight - 200) loadMore();
         }, { passive: true });
