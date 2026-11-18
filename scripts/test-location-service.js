@@ -39,7 +39,8 @@ loc._test.setFetch(async () => { calls += 1; return { ok: true, json: async () =
     let r = await loc.resolve('3000 crain hwy waldorf');
     assert.strictEqual(r.length, 1);
     assert.strictEqual(r[0].specificity, 'exact');
-    assert.strictEqual(r[0].label, '3000 Crain Hwy, Waldorf, MD 20601');
+    assert.strictEqual(r[0].label, '3000 Crain Hwy, Waldorf, MD');
+    assert.strictEqual(r[0].address, '3000 Crain Hwy, Waldorf, MD 20601, USA');
     // cut down to the finest asked: city, no street, a rounded point
     r = await loc.resolve('3000 crain hwy waldorf', { max: 'city' });
     assert.strictEqual(r[0].specificity, 'city');

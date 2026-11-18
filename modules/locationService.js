@@ -164,7 +164,8 @@ function componentsOf(r) {
 function labelAt(spec, comp, address) {
     const st = comp.stateCode || comp.state || '';
     const join = (...xs) => xs.filter(Boolean).join(', ');
-    if (spec === 'exact') return address || join([comp.number, comp.street].filter(Boolean).join(' '), comp.city, st);
+    // exact: the street line and town (the full formatted address shows under it)
+    if (spec === 'exact') return (comp.street ? join([comp.number, comp.street].filter(Boolean).join(' '), comp.city, st) : '') || address;
     if (spec === 'approximate') return join(comp.street || comp.neighborhood || comp.postal, comp.city, st) || address;
     if (spec === 'city') return join(comp.city || comp.county, st) || address;
     if (spec === 'county') return join(comp.county || comp.city, st) || address;
@@ -295,7 +296,17 @@ function cleanPlace(p) {
 /** Where a place came from before it was set here (Traffic's commute, Weather's places). */
 function legacyPlace(id) {
     const t = (config('traffic', {}) || {})[id];
-    if (t && Number.isFinite(Number(t.lat))) return cleanPlace({ label: t.address || (id === 'home' ? 'Home' : 'Work'), address: t.address || '', lat: t.lat, lon: t.lon, specificity: t.address ? 'exact' : 'approximate' });
+    if (t && Number.isFinite(Number(t.lat))) {
+        // a point with no address: named by the street it is on (the reverse lookup, cached; looked up once)
+        let label = t.address || '';
+        if (!label) {
+            const g = REVERSE_GRID.approximate;
+            const hit = geoCache()[`v:approximate:${Math.round(Number(t.lat) / g)},${Math.round(Number(t.lon) / g)}`];
+            if (hit && hit.value && hit.value.label) label = hit.value.label;
+            else legacyLookup(id, null, Number(t.lat), Number(t.lon));
+        }
+        return cleanPlace({ label: label || (id === 'home' ? 'Home' : 'Work'), address: t.address || '', lat: t.lat, lon: t.lon, specificity: t.address ? 'exact' : 'approximate' });
+    }
     // Traffic keeps some places as a typed address only: its lookup, from the cache, or looked up once and pushed
     if (t && t.address) {
         const q = String(t.address).trim().replace(/\s+/g, ' ').slice(0, 200);
@@ -310,10 +321,11 @@ function legacyPlace(id) {
 }
 
 const legacyAsked = new Set();
-function legacyLookup(id, q) {
-    if (legacyAsked.has(q) || !gr) return;
-    legacyAsked.add(q);
-    resolve(q, { limit: 1 }).then((list) => {
+function legacyLookup(id, q, lat, lon) {
+    const key = q || `${lat},${lon}`;
+    if (legacyAsked.has(key) || !gr) return;
+    legacyAsked.add(key);
+    (q ? resolve(q, { limit: 1 }) : reverse(lat, lon, { specificity: 'approximate' }).then((p) => (p ? [p] : []))).then((list) => {
         if (!list.length) return;
         const saved = ((config('location', {}) || {}).places || {})[id];
         if (cleanPlace(saved)) return;

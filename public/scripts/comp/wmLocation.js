@@ -240,7 +240,7 @@
         page.innerHTML = `<div class="wm-form wlp wm-pg-scroll">
             <div class="wm-form-hdr">${esc(d.opts.title || 'Location')}</div>
             <p class="wlp-prompt">${esc(d.opts.prompt || 'Enter a place the way you would say it.')}</p>
-            <div class="wlp-search">${edit}<button type="button" class="wlp-go">Find</button></div>
+            <div class="wlp-search">${edit}<button type="button" class="wm-button wlp-go">Find</button></div>
             <p class="wlp-want">${esc(`Needed: ${specRange(d.opts)}`)}</p>
             ${d.busy ? '<p class="wlp-status">Looking it up...</p>' : d.error ? `<p class="wlp-status is-error">${esc(d.error)}</p>` : ''}
             <div class="wlp-list" role="listbox" aria-label="Places">${d.results.map((p, i) => `<button type="button" class="wlp-row${i === d.sel ? ' is-selected' : ''}" role="option" aria-selected="${i === d.sel}" data-i="${i}">

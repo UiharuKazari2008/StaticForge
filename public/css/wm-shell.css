@@ -4438,7 +4438,6 @@ html.ui-mobile #wmShell > .wm-titlebar { touch-action: none; }
 
 /* the common location lookup (wmLocation.pick, #907): a WM form - the box and Find, what detail the program needs,
  * the places found as a list (the chosen one highlighted; a second tap or OK takes it) */
-#wmShell .wlp { padding: calc(6 * var(--wm-px)); }
 #wmShell .wlp-prompt, #wmShell .wlp-want, #wmShell .wlp-status { margin: calc(4 * var(--wm-px)) 0; }
 #wmShell .wlp-want { color: #555; }
 #wmShell .wlp-status.is-error { color: #c00000; }
