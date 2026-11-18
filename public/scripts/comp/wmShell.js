@@ -6331,7 +6331,12 @@
         // under the title bar, the tail's tip at the icon; kept on screen
         const sr = shell.getBoundingClientRect();
         const bar = shell.querySelector('.wm-titlebar').getBoundingClientRect();
-        const ar = (anchor || shell.querySelector('[data-role="volume"]')).getBoundingClientRect();
+        // the icon it opens from; a speaker icon stepped aside or hidden has no box (its rect sits at 0: the popup
+        // opened at the screen's left, away from the native bar's speaker - Yukimi, Nov 17), so then the battery
+        // beside it, else the status icons' right end
+        const boxed = (n) => n && n.getClientRects().length && !n.hidden && !n.classList.contains('wm-shed') ? n : null;
+        const ar = (boxed(anchor) || boxed(shell.querySelector('[data-role="volume"]')) || boxed(shell.querySelector('[data-role="battery"]'))
+            || shell.querySelector('.wm-titlebar .wm-status')).getBoundingClientRect();
         const px = parseFloat(getComputedStyle(el).getPropertyValue('--wm-px')) || 1;
         const tip = ar.left + ar.width / 2 - sr.left;
         const w = el.offsetWidth;
