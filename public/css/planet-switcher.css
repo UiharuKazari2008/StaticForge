@@ -163,6 +163,7 @@ body.planet-switcher-active #galleryWindow * {
     width: 0;
     height: 0;
     margin-top: -7vh;
+    /* perf: allow design motion: the ring's slow drift, only while the Planet Switcher is open (planetSwitcher.js builds it on open and removes it at teardown); transform only */
     animation: planetSwitcherSway 38s ease-in-out infinite;
 }
 
@@ -193,20 +194,22 @@ body.planet-switcher-active #galleryWindow * {
     margin-top: calc(var(--sun-size) / -2);
     z-index: 100;
     pointer-events: none;
+    /* perf: allow only while the Planet Switcher is open (planetSwitcher.js builds it on open and removes it at teardown): the sun swells and fades on a selection */
     will-change: transform, opacity;
 }
 
+/* each part runs its own spin / breath animation, which already puts it on a layer */
 .planet-switcher-sun > * {
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    will-change: transform;
 }
 
 /* Soft edges are baked into the gradients: no filter, no blend mode, transform-only animation */
 .planet-switcher-sun-corona {
     inset: -45%;
     background: radial-gradient(circle, hsl(40 100% 72% / 0.5) 0%, hsl(330 90% 60% / 0.22) 28%, hsl(205 90% 60% / 0.1) 50%, transparent 68%);
+    /* perf: allow design motion: the sun, only while the Planet Switcher is open (planetSwitcher.js builds it on open and removes it at teardown); transform / scale only */
     animation: planetSwitcherSunBreath 12s ease-in-out infinite;
 }
 
@@ -216,24 +219,28 @@ body.planet-switcher-active #galleryWindow * {
 
 .planet-switcher-sun-plasma.p1 {
     background: radial-gradient(ellipse 60% 46% at 42% 44%, hsl(190 100% 70% / 0.95), hsl(190 100% 60% / 0.35) 55%, transparent 74%);
+    /* perf: allow design motion: the sun, only while the Planet Switcher is open (planetSwitcher.js builds it on open and removes it at teardown); transform / scale only */
     animation: planetSwitcherSunSpin 26s linear infinite;
 }
 
 .planet-switcher-sun-plasma.p2 {
     inset: 4%;
     background: radial-gradient(ellipse 52% 62% at 58% 54%, hsl(315 100% 72% / 0.92), hsl(300 90% 60% / 0.32) 55%, transparent 74%);
+    /* perf: allow design motion: the sun, only while the Planet Switcher is open (planetSwitcher.js builds it on open and removes it at teardown); transform / scale only */
     animation: planetSwitcherSunSpin 38s linear infinite reverse, planetSwitcherSunBreath 11s ease-in-out infinite reverse;
 }
 
 .planet-switcher-sun-plasma.p3 {
     inset: 8%;
     background: radial-gradient(ellipse 48% 50% at 50% 62%, hsl(45 100% 74% / 0.95), hsl(25 100% 60% / 0.35) 52%, transparent 72%);
+    /* perf: allow design motion: the sun, only while the Planet Switcher is open (planetSwitcher.js builds it on open and removes it at teardown); transform / scale only */
     animation: planetSwitcherSunSpin 50s linear infinite, planetSwitcherSunBreath 13s ease-in-out infinite;
 }
 
 .planet-switcher-sun-core {
     inset: 30%;
     background: radial-gradient(circle, #fff 0%, hsl(46 100% 84%) 30%, hsl(28 100% 62% / 0.85) 60%, transparent 85%);
+    /* perf: allow design motion: the sun, only while the Planet Switcher is open (planetSwitcher.js builds it on open and removes it at teardown); transform / scale only */
     animation: planetSwitcherSunBreath 5s ease-in-out infinite;
 }
 
@@ -261,6 +268,7 @@ body.planet-switcher-active #galleryWindow * {
     margin-left: calc(max(var(--planet-size), 220px) / -2);
     margin-top: calc(var(--planet-size) / -2);
     cursor: var(--c-pointer);
+    /* perf: allow only while the Planet Switcher is open (planetSwitcher.js builds it on open and removes it at teardown): each planet is moved and faded every frame the ring turns */
     will-change: transform, opacity;
     transform-origin: 50% calc(var(--planet-size) / 2);
     -webkit-tap-highlight-color: transparent;
@@ -277,6 +285,7 @@ body.planet-switcher-active #galleryWindow * {
     align-items: center;
     gap: 12px;
     width: 100%;
+    /* perf: allow only while the Planet Switcher is open (planetSwitcher.js builds it on open and removes it at teardown): carries the planet's wobble (an endless WAAPI animation) */
     will-change: transform;
 }
 
@@ -288,6 +297,7 @@ body.planet-switcher-active #galleryWindow * {
     align-items: center;
     gap: 4px;
     transform-origin: 50% calc(var(--planet-size) / 2);
+    /* perf: allow only while the Planet Switcher is open (planetSwitcher.js builds it on open and removes it at teardown): the depth scale changes every frame the ring turns */
     will-change: transform;
 }
 
@@ -313,13 +323,13 @@ body.planet-switcher-active #galleryWindow * {
     transition: opacity 0.3s ease;
 }
 
+/* moved with translate3d (planetSwitcher.js applyRing), which already gives it a layer */
 .planet-switcher-labels {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 12px;
     width: 100%;
-    will-change: transform;
 }
 
 .planet-switcher-bubble {
@@ -357,7 +367,8 @@ body.planet-switcher-active #galleryWindow * {
 /* Selected while the ring settles: strong glow pulse */
 .planet-switcher.is-selecting .planet-switcher-planet.is-selected .planet-switcher-bubble {
     transform: translateZ(0) scale(1);
-    animation: planetSwitcherPulse 1.6s ease-in-out infinite;
+    /* (#890) its animation named planetSwitcherPulse, which no @keyframes defines: it never ran, so the
+       declaration is gone; the look is unchanged */
 }
 
 .planet-switcher.is-zooming .planet-switcher-planet.is-selected .planet-switcher-bubble {
@@ -524,6 +535,7 @@ body.planet-switcher-active #galleryWindow * {
 .planet-switcher-progress.marquee .planet-switcher-progress-fill {
     width: 34%;
     transition: none;
+    /* perf: allow busy indicator: only while the workspace load has no percentage (.marquee); transform only */
     animation: planetSwitcherMarquee 1.4s ease-in-out infinite;
 }
 

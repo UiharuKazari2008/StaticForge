@@ -1,25 +1,24 @@
 /* Desktop shell: taskbar, start menu, wallpaper, icons, gallery window */
+/* will-change only for the time a button moves or is hovered; paint-only properties (colours, shadows,
+   sizes) left out, a hint on them makes no layer (#890) */
 .taskbar-window-item.entering,
 .taskbar-window-item.leaving {
-    will-change: min-width, max-width, width, padding, opacity, transform;
+    /* perf: allow only while a taskbar button slides in or out */
+    will-change: opacity, transform;
 }
 
 .taskbar-window-item.entering .taskbar-window-item-content,
 .taskbar-window-item.leaving .taskbar-window-item-content {
+    /* perf: allow only while a taskbar button slides in or out */
     will-change: opacity, transform;
 }
-.taskbar-window-item:hover:not(:disabled) {
-    will-change: background-color, border-color, box-shadow;
-}
 .taskbar-start-button:not(.orb):hover:not(:disabled) {
-    will-change: background-color, border-color, box-shadow, transform;
+    /* perf: allow only while the Start button is hovered (desktop pointer) */
+    will-change: transform;
 }
 .taskbar-tray-icon:hover:not(:disabled) {
-    will-change: background-color, opacity;
-}
-
-.taskbar-group-menu-item:hover:not(:disabled) {
-    will-change: background-color, border-color, box-shadow;
+    /* perf: allow only while a tray icon is hovered (desktop pointer) */
+    will-change: opacity;
 }
 /* Gallery Window - Desktop Mode Styles */
 /* Default: Maximized/full view - gallery is static, not a modal */
@@ -1180,6 +1179,7 @@ body.desktop-mode.use-app-image-icons .modal-window-title-main:has(.icon-image) 
 }
 
 .image-generation-indicator.active i {
+    /* perf: allow status indicator: pulses only while a print is generating (.active); opacity + transform */
     animation: pulse-generation 1.5s ease-in-out infinite;
 }
 
@@ -1202,6 +1202,7 @@ body.desktop-mode.use-app-image-icons .modal-window-title-main:has(.icon-image) 
 }
 
 .replication-tray-indicator.active i {
+    /* perf: allow status indicator: pulses only while a replication runs (.active); opacity + transform */
     animation: pulse-generation 1.5s ease-in-out infinite;
 }
 
@@ -1380,6 +1381,7 @@ body.desktop-mode.use-app-image-icons .modal-window-title-main:has(.icon-image) 
 }
 
 .dev-warnings-tray-icon.has-warnings {
+    /* perf: allow status indicator: pulses while the keyboard registry has warnings (developer tray icon, desktop only); opacity + transform */
     animation: pulse-ping-warning 2s ease-in-out infinite;
 }
 
@@ -2085,7 +2087,6 @@ html[data-glass="basic"] #startMenu.start-menu {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.55s ease;
-    will-change: opacity;
 }
 
 .client-shutdown-overlay.show {
@@ -2900,9 +2901,11 @@ body.desktop-marquee-active {
 /* Reference drop to manual modal */
 .modal.reference-drop-target {
     box-shadow: 0 0 0 3px var(--accent-primary);
+    /* perf: allow drop-target highlight: only while a reference is dragged over Studio (explorerApplet.js / desktopShortcuts.js remove the class on leave and drop) */
     animation: pulse-drop-target 1s ease-in-out infinite;
 }
 
+/* perf: allow the ring grows on the window itself: a .modal's ::before / ::after carry its frame and glass, so there is no free layer to pre-draw it on; it runs only during a drag-over */
 @keyframes pulse-drop-target {
 
     0%,
