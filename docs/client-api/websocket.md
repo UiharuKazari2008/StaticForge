@@ -197,8 +197,18 @@ workspace). See [ws/gallery.md](./ws/gallery.md).
 **Who gets a broadcast** (`socketWantsBroadcast`): the app's background link (ActiveSync speaker `service`) none; a light
 socket only what it subscribed to; desktop-only types (Server Manager, MMC, DSAP replication, the print queue, the
 Novel window, SideShow device lists ...) never go to a Melaton Mobile page; phone-only types (`lapis_updated`,
-`lapis_notice`, `traffic_updated`) never go to a desktop page (a desktop tab or a DeX window). `vfs_updated` reaches a phone
-page batched every 10 s. A sleeping page's status pushes are held: [ws/statusHub.md](./ws/statusHub.md#client_dormant-fire-and-forget).
+`lapis_notice`, `traffic_updated`, `traffic_report`, `traffic_settings_changed`, `inbox_updated`) never go to a desktop page
+(a desktop tab or a DeX window). Every broadcast type is in exactly one of `DESKTOP_ONLY_TYPES` / `PHONE_ONLY_TYPES` /
+`BROADCAST_ALL` (`modules/websocket.js`; `scripts/check-perf-rules.js` fails an unclassified one). Some per-account events
+narrow further by subtype at their source: `tm_event` `sync` / `syncprogress` and `ma_event` `progress` reach desktop pages
+only ([ws/textMessaging.md](./ws/textMessaging.md#events), [ws/mailAccounts.md](./ws/mailAccounts.md#events)).
+`vfs_updated` reaches a phone page batched every 10 s. A sleeping page's status pushes are held or dropped:
+[ws/statusHub.md](./ws/statusHub.md#client_dormant-fire-and-forget).
+
+**During a restart** the port answers before the WebSocket server attaches (it waits for asset compilation, ~45 s): a
+socket dial meanwhile gets `503 Service Unavailable` with `Retry-After: 5` (`modules/earlyHttpServer.js`, #890 round 5),
+not the page redirect it got before (OkHttp followed `302 /launch` and downloaded the logon page on every dial). Clients
+retry a failed dial as before.
 
 **Continuity and the Miniport** (`modules/ws/virtualSocket.js`). A page that has no socket of its own (a hybrid phone's DeX
 window; both pages over the app's Melaton Miniport, `?miniport=1`) is a sub-client of a carrier socket:

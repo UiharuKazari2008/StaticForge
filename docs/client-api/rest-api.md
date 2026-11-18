@@ -676,7 +676,7 @@ Made on first request from `images/` and kept (remade when the source is newer):
 | Name | What |
 |---|---|
 | `<file stem>@studio.webp` | the gallery file as an optimised WebP at its own size (Studio, #648) |
-| `<file stem>@fit.webp` | at most 320 px on its long side, its own proportions (Melaton Mobile's Pictures & Videos, #788); a grid's request waits at most 1.5 s, then 404 while the encode carries on |
+| `<file stem>@fit.webp` | at most 320 px on its long side, its own proportions (Melaton Mobile's Pictures & Videos, #788); a grid's request waits at most 1.5 s, then 404 while the encode carries on. With `?wait=1` (a phone's file list thumbnails, `vfs_list_directory`'s `previewUrl`, #890 round 5 W9) the request waits for its encode (two run at a time), and a picture no preview can be made of is answered with the picture itself (`no-store`) |
 | `<file stem>@ll.webp` | the gallery PNG as a **lossless** WebP: the same pixels, alpha kept, about a third smaller (the screen saver, #890 P14). The request waits for the encode (one at a time). 404 when there is no `<stem>.png`, or for a 16-bit PNG or one with an embedded colour profile (it could not be copied exactly): load the PNG instead |
 
 **404:** `{ "success": false, "error": "Preview not found" }`
@@ -1641,8 +1641,10 @@ Runtime assets may be transparently served from `.cache/runtime-assets/` at norm
 304). A request whose query contains `sha`
 (`?sha=<hash>`) is `public, max-age=31536000, immutable`. Unversioned URLs stay
 on the default. `/sw.js` has its own route: `no-cache` with its ETag and Last-Modified (#890), so the browser's update
-check (`updateViaCache: 'none'`) for an unchanged worker is a 304; the workbox modules it imports (`/dist/workbox/*.js`,
-no version in their path) are on the default. `dev_admin` sessions (`GET /agent`) receive `private, max-age=120`
+check for an unchanged worker is a 304. The workbox modules it imports (`/dist/workbox/*.js`) are
+`public, max-age=86400` with their ETag (#890 round 5 W8): registered with `updateViaCache: 'imports'` (the default),
+an update check takes them from the HTTP cache instead of revalidating all six; a workbox upgrade changes `sw.js`'s own
+bytes. `dev_admin` sessions (`GET /agent`) receive `private, max-age=120`
 on unversioned static CSS/JS/image responses so the `/agent` preload can populate
 the browser HTTP cache before `/app?agent=1` runs. The `/app` HTML document itself
 stays no-store when `?agent=1`.

@@ -30,4 +30,10 @@ Every packet is **admin only**; others get `{ success: false, code: 'INSUFFICIEN
 
 ## Events
 
-`ma_event` (admins): `{ event: 'new'|'flags'|'removed'|'folders'|'account'|'sync', accountId, folder, uids?, message?, notify? }`.
+`ma_event` (admins): `{ event: 'new'|'flags'|'removed'|'folders'|'account'|'sync'|'progress', accountId, folder, uids?, message?, notify?, changed?, progress? }`.
+
+Who gets which (#890 round 5, W6):
+
+- `progress` (at most every 2 s while a sync runs) goes to desktop pages only (CardSpace and Messaging Bridge read it).
+- `sync` at the end of each sync (every 10 min) carries `changed`: true when the worker reported changes (the same ones that went as `folders`) or the sync's error line came or went. Desktop pages get every one; phone pages only `changed: true`, so a phone re-reads `ma_accounts` only on a real change.
+- A sleeping phone page waits for everything but `new` as the newest per event and account (`DORMANT_HOLD`).
