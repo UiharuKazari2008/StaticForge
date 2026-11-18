@@ -1,14 +1,14 @@
 {
  "note": "Counts may only go down. See docs/design/ui-standard.md and scripts/check-ui-standard.js.",
  "totals": {
-  "colour-literal": 12751,
+  "colour-literal": 12741,
   "font-literal": 597,
   "theme-negative": 2548,
-  "own-control": 717,
+  "own-control": 714,
   "inline-style": 667,
   "theme-art-path": 169,
   "hand-built-window": 103,
-  "toast": 1063,
+  "toast": 1061,
   "own-menubar": 70,
   "colour-in-script": 1497,
   "native-scrollbar": 39,
@@ -193,7 +193,7 @@
    "colour-literal": 2
   },
   "public/css/cache-browser.css": {
-   "colour-literal": 136,
+   "colour-literal": 134,
    "theme-negative": 3,
    "own-control": 4
   },
@@ -370,7 +370,7 @@
    "own-control": 2
   },
   "public/css/gallery-move.css": {
-   "colour-literal": 97,
+   "colour-literal": 93,
    "font-literal": 2,
    "theme-negative": 20,
    "own-control": 4
@@ -465,7 +465,7 @@
    "own-control": 4
   },
   "public/css/manual-modal-preview-tools.css": {
-   "colour-literal": 60,
+   "colour-literal": 58,
    "theme-negative": 12,
    "own-control": 6
   },
@@ -657,7 +657,7 @@
    "own-control": 1
   },
   "public/css/vibe-manager.css": {
-   "colour-literal": 55,
+   "colour-literal": 53,
    "own-control": 4
   },
   "public/css/virtual-keyboard.css": {
@@ -852,7 +852,7 @@
   },
   "public/css/wm-dreamstudio.css": {
    "colour-literal": 42,
-   "own-control": 5
+   "own-control": 2
   },
   "public/css/wm-dsap.css": {
    "native-scrollbar": 1,
@@ -1338,7 +1338,7 @@
    "toast": 6
   },
   "public/scripts/comp/dynamicGenerationOverrides.js": {
-   "toast": 12
+   "toast": 10
   },
   "public/scripts/comp/emphasisGroupsToolManager.js": {
    "inline-style": 2,
