@@ -6275,6 +6275,12 @@
 
     function noteIconTap() {
         closeMenus(true);
+        // read the notifications again first: a list left from a notice already gone kept the bubble up with nothing
+        // behind it ("Notification: Dreamscape", the tap showing nothing - Fold7, Nov 18); now the icon goes instead
+        const shownBefore = noteShown;
+        refreshNotes();
+        // the read brought an unseen one up: that is the tap's answer
+        if (noteShown && noteShown !== shownBefore) return;
         // the speech bubble's own notifications (update notices are the update icon's)
         const mine = notesForBubbleIcon();
         const bub = shell.querySelector('.wm-bubble');
