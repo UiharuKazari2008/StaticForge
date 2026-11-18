@@ -416,7 +416,25 @@ async function main() {
         assert.deepStrictEqual(merge(ws5.forecastReply(w2), heldBody), ws5.forecastReply(ws5.forecastWire(m5)));
         assert.strictEqual(await watch.tick(), 0, 'nothing new while asleep');
         a.asleep = false;
+        watch.delivered(a, ['home']); // websocket.js setDormant(ws, false) handed the held copy over
         assert.strictEqual(await watch.tick(), 0, 'awake: its have moved on with the held copy');
+        // woke, got the held copy (m5), slept again before any tick: a part that went back to its old value
+        // (daily back to m4's) is sent, not listed as same against the pre-sleep base
+        a.asleep = true;
+        a.asleep = false; watch.delivered(a, []); a.asleep = true;
+        current = m4;
+        assert.strictEqual(await watch.tick(), 1);
+        const back = a.sent.pop().data;
+        assert.ok(back.daily && !(back.same || []).includes('daily'), 'daily is sent: the page holds m5\'s');
+        { const { key: _k2, available: _a2, ...backBody } = back;
+          assert.deepStrictEqual(merge(ws5.forecastReply(ws5.forecastWire(m5)), backBody), ws5.forecastReply(ws5.forecastWire(m4))); }
+        a.asleep = false;
+        // a held copy that never went out (no delivered call): the next delta is against what it still holds
+        current = m2;
+        assert.strictEqual(await watch.tick(), 1);
+        const again = a.sent.pop().data;
+        { const { key: _k3, available: _a3, ...againBody } = again;
+          assert.deepStrictEqual(merge(ws5.forecastReply(ws5.forecastWire(m5)), againBody), ws5.forecastReply(ws5.forecastWire(m2))); }
         a.emit('close');
         assert.ok(!watch._test.watchers.has(a), 'a closed socket stops watching');
         const b = socket('b');
@@ -437,9 +455,14 @@ async function main() {
         srv.sendToClient(ph, { type: 'weather_delta', data: { key: 'work', n: 1 } });
         srv.sendToClient(ph, { type: 'weather_delta', data: { key: 'home', n: 2 } });
         assert.strictEqual(ph.sent.length, 0);
+        const realDelivered = watch.delivered;
+        let deliveredKeys = null;
+        watch.delivered = (ws, keys) => { if (ws === ph) deliveredKeys = keys; };
         srv.setDormant(ph, false);
+        watch.delivered = realDelivered;
         console.log = log;
         assert.deepStrictEqual(types(ph).map((m) => [m.data.key, m.data.n]), [['work', 1], ['home', 2]]);
+        assert.deepStrictEqual(deliveredKeys, ['work', 'home'], 'waking tells weatherWatch which held copies went out');
     }
 
     // ------------------------------------------------------------ W1: the packets (291-weatherHandler)
