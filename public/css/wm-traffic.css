@@ -162,41 +162,126 @@
     box-shadow: 0 0 calc(8 * var(--u)) #4bd62a, inset 0 calc(-2 * var(--u)) calc(3 * var(--u)) rgba(0, 0, 0, 0.35);
 }
 
+/* ---- the LCD (#907): a reflective seven-segment glass. Lit figures (DSEG7) cast a faint shadow on the
+ * reflector behind them, the unlit segments show through (wm-seg ghosts); words that never change are
+ * printed on the glass in flat ink; HRS / MIN and AM / PM are marks that light. A wide screen adds a
+ * printed column of counts. */
+.wm-traffic .trf-scroll { container-type: inline-size; }
+
 .wm-traffic .trf-lcd {
+    --ink: #141d12;
+    --print: rgba(22, 34, 20, 0.6);
     flex: 1 1 auto;
     min-width: 0;
-    padding: calc(3 * var(--u)) calc(7 * var(--u)) calc(4 * var(--u));
-    border-radius: calc(4 * var(--u));
-    background: linear-gradient(to bottom, #b8d9a0, #93c07a);
-    border: 1px solid #1e2a17;
-    box-shadow: inset 0 calc(2 * var(--u)) calc(4 * var(--u)) rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.12);
-    color: #142010;
+    display: flex;
+    align-items: stretch;
+    gap: calc(8 * var(--u));
+    padding: calc(4 * var(--u)) calc(8 * var(--u)) calc(5 * var(--u));
+    border-radius: calc(3 * var(--u));
+    background:
+        linear-gradient(160deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0.06) 34%, rgba(255, 255, 255, 0) 35%),
+        linear-gradient(to bottom, #b9c6a4, #a3b38e);
+    border: 1px solid #0b1009;
+    box-shadow:
+        inset 0 0 0 calc(1 * var(--u)) rgba(255, 255, 255, 0.18),
+        inset 0 calc(3 * var(--u)) calc(5 * var(--u)) rgba(0, 0, 0, 0.42),
+        0 1px 0 rgba(255, 255, 255, 0.12);
+    color: var(--ink);
+}
+
+.wm-traffic .trf-lcd .wm-seg {
+    color: var(--ink);
+    font-weight: normal;
+    font-style: normal;
+    /* the segment's shadow on the reflector, down and right */
+    text-shadow: calc(1 * var(--u)) calc(1.5 * var(--u)) 0 rgba(20, 30, 16, 0.2);
+}
+
+.wm-traffic .trf-lcd .wm-seg[data-ghost]::before { opacity: 0.1; text-shadow: none; }
+
+.wm-traffic .trf-lcd-print {
+    font: bold calc(7.5 * var(--u)) / 1 'Segoe UI', Tahoma, sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--print);
+    white-space: nowrap;
+}
+
+.wm-traffic .trf-lcd-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: calc(2 * var(--u));
 }
 
 .wm-traffic .trf-lcd-num {
     display: flex;
-    align-items: baseline;
-    gap: calc(3 * var(--u));
+    align-items: flex-end;
+    gap: calc(5 * var(--u));
 }
 
-.wm-traffic .trf-min {
-    font: bold calc(34 * var(--u)) / 1 'Segoe UI', Tahoma, sans-serif;
-    letter-spacing: calc(-1 * var(--u));
-    text-shadow: calc(1 * var(--u)) calc(1 * var(--u)) 0 rgba(20, 32, 16, 0.18);
+.wm-traffic .trf-min { font-size: calc(30 * var(--u)); line-height: 1; }
+
+.wm-traffic .trf-lcd-anns {
+    display: flex;
+    flex-direction: column;
+    gap: calc(2 * var(--u));
+    padding-bottom: calc(1 * var(--u));
 }
 
-.wm-traffic .trf-min-unit {
-    font: bold calc(12 * var(--u)) / 1 'Segoe UI', Tahoma, sans-serif;
+.wm-traffic .trf-lcd-anns.is-row { flex-direction: row; gap: calc(3 * var(--u)); padding: 0; }
+
+/* a mark: unlit it is a faint shape, lit it is ink with the segments' shadow */
+.wm-traffic .trf-ann {
+    font: bold calc(8 * var(--u)) / 1 'Segoe UI', Tahoma, sans-serif;
+    font-style: normal;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    opacity: 0.1;
 }
+
+.wm-traffic .trf-ann.is-on { opacity: 1; text-shadow: calc(1 * var(--u)) calc(1 * var(--u)) 0 rgba(20, 30, 16, 0.2); }
+.wm-traffic .trf-lcd:not(.has-period) .trf-ampm { display: none; }
 
 .wm-traffic .trf-lcd-sub {
-    margin-top: calc(1 * var(--u));
-    font-size: calc(10 * var(--u));
-    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--u));
+    padding-top: calc(3 * var(--u));
+    border-top: 1px solid var(--print);
+    min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    min-height: calc(12 * var(--u));
 }
+
+.wm-traffic .trf-arrive, .wm-traffic .trf-togo { font-size: calc(11 * var(--u)); line-height: 1; }
+
+.wm-traffic .trf-lcd-togo { display: none; align-items: center; gap: calc(4 * var(--u)); margin-left: auto; }
+.wm-traffic .trf-lcd.is-driving .trf-lcd-togo { display: flex; }
+
+/* wide: the counts in a printed column beside the time */
+.wm-traffic .trf-lcd-side { display: none; }
+
+@container (min-width: 520px) {
+    .wm-traffic .trf-lcd-side {
+        flex: 0 0 auto;
+        display: grid;
+        grid-template-columns: repeat(2, auto);
+        align-content: center;
+        gap: calc(4 * var(--u)) calc(10 * var(--u));
+        padding-left: calc(8 * var(--u));
+        border-left: 1px solid var(--print);
+    }
+}
+
+.wm-traffic .trf-lcd-cell {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(6 * var(--u));
+}
+
+.wm-traffic .trf-lcd-cell .wm-seg { font-size: calc(13 * var(--u)); line-height: 1; }
 
 .wm-traffic .trf-dash.is-checking .trf-lcd { animation: trf-lcd-pulse 1.2s ease-in-out infinite; }
 
