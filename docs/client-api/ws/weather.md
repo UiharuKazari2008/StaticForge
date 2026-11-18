@@ -87,7 +87,9 @@ Forecasts come through `getForecast`'s cache: Home and Work share the alert moni
 (the same cache key; a monitor pass pushes at once), any other watched place is read again when its
 cache entry expires (Apple's expiry, 2 to 15 minutes) and only while watched. One server timer (60 s)
 runs while anyone watches. A sleeping page that still watches gets its delta computed against what it
-had before it slept, held newest-only per `key` until it wakes.
+had before it slept, held newest-only per `key` until it wakes. When the held copy goes out on waking,
+the server counts it as what the page holds, so the next delta (even one made after the page sleeps
+again) is relative to that copy.
 
 ## Forecast model
 

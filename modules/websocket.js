@@ -1034,9 +1034,15 @@ class WebSocketServer {
         if (on) return;
         if (!held) return;
         this._dormantHeld.delete(ws);
-        for (const m of held.values()) {
+        const weatherKeys = [];
+        for (const [k, m] of held) {
             if (ws.readyState !== WebSocket.OPEN) break;
             try { ws.send(typeof m === 'string' ? m : JSON.stringify(m)); } catch (_) { break; }
+            if (k.startsWith('weather_delta|wx:')) weatherKeys.push(k.slice('weather_delta|wx:'.length));
+        }
+        // the held forecast copies it now holds become its base for the next delta (weatherWatch.js)
+        if (weatherKeys.length) {
+            try { require('./weatherWatch').delivered(ws, weatherKeys); } catch (_) { /* not loaded */ }
         }
     }
 

@@ -21,7 +21,8 @@
  *
  * A sleeping page (client_dormant) that still watches: its delta is computed against what it had before it
  * slept and held newest-only per place (websocket.js DORMANT_HOLD weather_delta), so the copy it gets on
- * waking is complete; its have moves on once it is awake again.
+ * waking is complete; its have moves on the moment that copy goes out (setDormant -> delivered), so a page
+ * that sleeps again before the next tick gets its next delta against what it really holds.
  */
 
 const weatherService = require('./weatherService');
@@ -92,8 +93,9 @@ function pushEntry(ws, entry, forecast) {
     const wire = weatherService.forecastWire(forecast);
     if (!wire) return false;
     const asleep = typeof server.isDormantSocket === 'function' && server.isDormantSocket(ws);
-    // awake again: the delta held while it slept was handed over on waking (websocket.js setDormant)
-    if (!asleep && entry.pending) { entry.have = entry.pending; entry.pending = null; }
+    // awake again: a held copy that went out on waking already moved have (delivered); one still pending was
+    // never handed over (dropped from a full hold), so the page still holds have
+    if (!asleep && entry.pending) entry.pending = null;
     const base = entry.have;
     const holds = asleep ? (entry.pending || base) : base;
     if (!weatherService.wireDiffers(wire, holds)) return false;
@@ -107,6 +109,16 @@ function pushEntry(ws, entry, forecast) {
     if (asleep) entry.pending = wire.hashes;
     else entry.have = wire.hashes;
     return true;
+}
+
+/** websocket.js setDormant(ws, false): the held weather_delta copies for these keys reached the page. */
+function delivered(ws, keys) {
+    const places = watchers.get(ws);
+    if (!places || !Array.isArray(keys)) return;
+    for (const key of keys) {
+        const entry = places.get(key);
+        if (entry && entry.pending) { entry.have = entry.pending; entry.pending = null; }
+    }
 }
 
 async function forecastFor(entry) {
@@ -155,6 +167,7 @@ module.exports = {
     bind,
     watch,
     unwatch,
+    delivered,
     tick,
     _test: { watchers, refreshSocket, reset: () => { watchers.clear(); if (timer) { clearInterval(timer); timer = null; } running = false; server = null; } }
 };
