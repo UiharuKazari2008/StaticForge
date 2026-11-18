@@ -324,6 +324,6 @@
         }
     };
 
-    // perf: allow uploads a frame only when it changed and only while the page is seen (capturePreview); it asks the server nothing
+    // perf: allow the session preview (taskbar, reconnect) has no change event to follow here: while the page is seen it flattens and JPEG-encodes the remote display every 8 s to compare, and POSTs the frame only when it changed; a hidden page or a screen that is off does nothing
     setInterval(capturePreview, 8000);
 })();
