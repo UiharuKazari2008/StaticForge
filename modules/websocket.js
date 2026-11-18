@@ -492,7 +492,8 @@ class WebSocketServer {
             // A light client (?light=1, #890): the Android app's widgets and screen saver (DSApp
             // DreamscapeClient). Signed in as usual, but none of a page's boot pushes, and of the
             // broadcasts only the types it subscribed to (gallery_subscribe); replies as always.
-            if (!ws.virtual && requestQuery(req, 'light') === '1') {
+            // A light Miniport sub-client (sub_open light, #908): the app's CaféReady task host, the same.
+            if ((!ws.virtual && requestQuery(req, 'light') === '1') || (ws.virtual && ws.light)) {
                 clientInfo.light = true;
                 clientInfo.lightSubs = new Set();
             }

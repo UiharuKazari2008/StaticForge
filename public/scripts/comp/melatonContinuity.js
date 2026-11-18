@@ -962,6 +962,8 @@
         let dv = null;
         try { dv = T && typeof T.driving === 'function' ? T.driving() : null; } catch (_) { dv = null; }
         if (!dv || dv.direction !== 'home') return false;
+        // the app's CaféReady drive-alerts task warns with the page asleep (#908): nothing to keep the page awake for
+        try { const Tk = root.AndroidTasks; if (Tk && typeof Tk.owns === 'function' && Tk.owns('drive-alerts')) return false; } catch (_) { /* the page alerts */ }
         const W = root.AndroidDriveWatch;
         try {
             const st = W && typeof W.status === 'function' ? JSON.parse(W.status() || 'null') : null;
