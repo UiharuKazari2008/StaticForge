@@ -104,6 +104,25 @@
         // decides the rest
         if (!s.fields || !s.fields.mail) roles = { continuity: roles.continuity, nightshade: roles.nightshade };
         const out = { roles, link: s.native.link !== false };
+        // the page asleep: the bar fitted the page's way (CafeTasks.lib.statusFit, the page's fitStatusNow rules), from
+        // the geometry and widths the app sends (layout); without it the app places the icons itself
+        const fitLib = C.lib.statusFit;
+        if (fitLib && typeof fitLib.fit === 'function' && s.layout && s.layout.geo && s.fields && s.fields.mail) {
+            const L = s.layout;
+            const g = L.geo;
+            const floor = g.titleX + g.titleMin;
+            const foldless = new Set(['prints', 'director', 'update', 'continuity', 'notify']);
+            const icons = (L.order || []).filter((r) => roles[r]).map((role) => ({ role, w: (L.widths || {})[role] || g.icon, foldable: !foldless.has(role) }))
+                .concat((L.native || []).map((role) => ({ role, w: (L.widths || {})[role] || g.icon, foldable: false, native: true })));
+            try {
+                out.fit = fitLib.fit({
+                    icons,
+                    roomRight: g.holeR != null ? g.iconsRight - g.holeR : g.iconsRight - floor,
+                    roomLeft: g.holeX != null ? Math.max(0, g.holeX - floor) : 0,
+                    gap: g.gap, notify: !!roles.notify, prefs: L.prefs || {}, screen: g
+                });
+            } catch (e) { ctx.log(`statusFit: ${e && e.message}`); }
+        }
         const sig = JSON.stringify(out);
         if (sig !== s.outSig) {
             s.outSig = sig;
@@ -131,6 +150,8 @@
                 refresh(ctx);
             },
             native(ctx, d) { Object.assign(ctx.state.native, d || {}); refresh(ctx); },
+            // the bar's geometry and each role's width (NativeBar), for the fit
+            layout(ctx, d) { ctx.state.layout = d || null; refresh(ctx); },
             wake: refresh,
             timer(ctx) { ctx.state.timerAt = 0; refresh(ctx); }
         }
