@@ -291,7 +291,16 @@
         if (typeof window === 'undefined' || typeof document === 'undefined' || typeof navigator === 'undefined') return;
         if (!navigator.serviceWorker || typeof location === 'undefined' || location.pathname !== '/app') return;
         let last = null;
+        // a page that is not seen (hidden, screen off, behind an Android program) tells the worker
+        // nothing: its pass (a list check, then downloads) waits until the page is seen again (#890)
+        let held = false;
+        const asleep = () => {
+            const html = document.documentElement;
+            return document.hidden || (html && html.dataset && (html.dataset.screenOff !== undefined || html.dataset.wmBehind !== undefined));
+        };
         const send = (status) => {
+            if (asleep()) { held = true; return; }
+            held = false;
             let network = connectionNetwork();
             if (network === 'unknown') {
                 let st = status;
@@ -318,6 +327,14 @@
             window.addEventListener('online', () => send(null));
             // app-scope: allow page-lifetime boot hints for the worker (launch code, not an app segment)
             navigator.serviceWorker.addEventListener('controllerchange', () => { last = null; send(null); });
+            // a hint held while the page slept goes when it is seen again
+            const wake = () => { if (held && !asleep()) send(null); };
+            // app-scope: allow page-lifetime boot hints for the worker (launch code, not an app segment)
+            document.addEventListener('visibilitychange', wake);
+            // app-scope: allow page-lifetime boot hints for the worker (launch code, not an app segment)
+            window.addEventListener('melatonscreen', wake);
+            // app-scope: allow page-lifetime boot hints for the worker (launch code, not an app segment)
+            document.addEventListener('wmBehind', wake);
         }, PREFETCH_HINT_DELAY_MS);
     }
     try { startPrefetchHints(); } catch (_) { /* no worker: on demand only */ }

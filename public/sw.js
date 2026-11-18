@@ -3152,7 +3152,9 @@ function writePhoneOptionalRecord(internal, record) {
  */
 async function phoneOptionalList(internal) {
   const kept = await readPhoneOptionalRecord(internal);
-  const headers = { 'X-Service-Worker-Version': '2.0', 'X-Requested-With': 'ServiceWorker', 'X-Melaton-Packages': 'none' };
+  // X-Melaton-Subset (#890): a server that knows it answers only the 'wifi' rows, with a digest over
+  // those rows, so a code update leaves it a 304; one that does not ignores it and sends the core list
+  const headers = { 'X-Service-Worker-Version': '2.0', 'X-Requested-With': 'ServiceWorker', 'X-Melaton-Packages': 'none', 'X-Melaton-Subset': 'phone-wifi' };
   if (kept) headers['X-Manifest-Hash'] = kept.hash;
   const response = await fetch('/', { method: 'OPTIONS', cache: 'no-store', headers });
   if (response.status === 304 && kept) return { record: kept, fresh: false };
@@ -3163,9 +3165,22 @@ async function phoneOptionalList(internal) {
   const rows = files
     .filter((file) => file && file.url && file.hash && isPhoneWifiPath(pathOfUrl(file.url)))
     .map((file) => ({ url: String(file.url), hash: String(file.hash) }));
-  const record = { hash, rows, complete: false, checkedAt: 0 };
+  // the core digest moves with every code update: when the 'wifi' rows themselves are the kept ones,
+  // the kept pass result stands (no 1,480-row cache walk after each update), under the new digest
+  const same = !!kept && sameOptionalRows(kept.rows, rows);
+  const record = same
+    ? { hash, rows, complete: kept.complete === true, checkedAt: Number(kept.checkedAt) || 0 }
+    : { hash, rows, complete: false, checkedAt: 0 };
   if (hash) await writePhoneOptionalRecord(internal, record);
-  return { record, fresh: true };
+  return { record, fresh: !same };
+}
+
+function sameOptionalRows(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  const byUrl = new Map();
+  for (const row of a) if (row && row.url) byUrl.set(String(row.url), String(row.hash));
+  if (byUrl.size !== b.length) return false;
+  return b.every((row) => byUrl.get(row.url) === row.hash);
 }
 
 async function phonePrefetchPass() {
