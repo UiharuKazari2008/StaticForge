@@ -649,6 +649,7 @@
                 }
             };
             sw.addEventListener('message', onMessage);
+            // perf: allow lives only while the installer's own download runs (finish clears it); it reads a timestamp to catch a stalled download, which the unattended installer must catch with the screen off too
             const stallTimer = env.setInterval(() => {
                 if (env.now() - lastProgress >= config.stallMs) finish({ ok: false, stalled: true });
             }, 1000);
