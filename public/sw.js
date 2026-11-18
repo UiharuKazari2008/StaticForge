@@ -1522,9 +1522,35 @@ function perfRoute(handler) {
   };
 }
 
+// TOP RULE (Yukimi, Nov 18 2026): the installed app (Android's WebView: "; wv)" in its user agent) starts with not
+// one request in the way - its kept boot pages answer at once, and the server is asked behind them only to keep the
+// copy fresh for the next start. A flaky network (slow, not down) held the phone on a blank screen until the
+// browser's own timeout. Browsers are unchanged (the network first, the kept copy when it fails).
+const isAppWebView = (request) => / wv\)/.test((request && request.headers && request.headers.get('user-agent')) || '') || / wv\)/.test(self.navigator && self.navigator.userAgent || '');
+async function keptFirst(event, key, refresh) {
+  try {
+    const cache = await caches.open(LAUNCH_SHELL_CACHE);
+    const kept = await cache.match(key);
+    if (kept) {
+      // the fresh copy for the next start, never waited for
+      const fresh = refresh().catch(() => null);
+      if (event && typeof event.waitUntil === 'function') event.waitUntil(fresh);
+      return kept;
+    }
+  } catch (_err) { /* nothing kept: the network below */ }
+  return null;
+}
+
 workbox.routing.registerRoute(
   ({ url, request }) => request.mode === 'navigate' && url.origin === self.location.origin && url.pathname === '/launch',
-  async ({ request }) => {
+  async ({ request, event }) => {
+    if (isAppWebView(request)) {
+      const kept = await keptFirst(event, LAUNCH_SHELL_KEY, async () => {
+        const r = await fetch(request.url, { credentials: 'same-origin', cache: 'no-store' });
+        if (r && r.ok && r.headers.get('x-melaton-shell') === 'launch') await (await caches.open(LAUNCH_SHELL_CACHE)).put(LAUNCH_SHELL_KEY, r.clone());
+      });
+      if (kept) return kept;
+    }
     let response = null;
     try {
       // a navigate-mode Request takes no init (TypeError), so as the browser asked
@@ -1556,7 +1582,14 @@ workbox.routing.registerRoute(
 workbox.routing.registerRoute(
   ({ url, request }) => request.mode === 'navigate' && url.origin === self.location.origin
     && (url.pathname === '/' || url.pathname === '/app' || url.pathname === '/index.html'),
-  async ({ request }) => {
+  async ({ request, event }) => {
+    if (isAppWebView(request) && new URL(request.url).pathname === '/app') {
+      const kept = await keptFirst(event, APP_SHELL_KEY, async () => {
+        const r = await fetch(request.url, { credentials: 'same-origin', cache: 'no-store' });
+        if (r && r.status === 200 && r.headers.get('x-melaton-shell') === 'app') await (await caches.open(LAUNCH_SHELL_CACHE)).put(APP_SHELL_KEY, r.clone());
+      });
+      if (kept) return kept;
+    }
     let response = null;
     try {
       response = await fetch(request);

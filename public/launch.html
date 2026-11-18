@@ -1196,7 +1196,9 @@
          * phone never hangs on this card (Yukimi, Nov 13: it will be Android's launcher).
          */
         async function phoneCanStartOffline() {
-            if (!document.documentElement.classList.contains('phone-launch')) return false;
+            // the Dreamscape app (phone, cover, DeX window) or an installed window, not only the phone's shell
+            const inApp = !!(window.AndroidDevice || window.AndroidCaption || window.AndroidNotification);
+            if (!document.documentElement.classList.contains('phone-launch') && !inApp) return false;
             try {
                 if (!localStorage.getItem('melatonManifestHash')) return false;
                 if (!window.caches) return false;
@@ -1408,6 +1410,16 @@
             if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
                 return;
             }
+            // (before the splash's minimum time too: nothing to show it for)
+            // TOP RULE (Yukimi, Nov 18 2026): an installed client starts with not one request to the server - straight to
+            // the desktop or Today from its own copy, by its own rules. The server's readiness, the session and the version
+            // are checked by the running app afterwards; network trouble never holds the phone on this card
+            if (await phoneCanStartOffline()) {
+                try { sessionStorage.setItem('dreamscapeLaunchHandoff', '1'); } catch (e) { /* ignore */ }
+                const go = () => window.location.replace('/app');
+                if (window.melatonSelfTest) window.melatonSelfTest.gate(go); else go();
+                return;
+            }
             if (dreamscapeLaunchSplashHoldUntilMs > 0) {
                 var splashRem = dreamscapeLaunchSplashHoldUntilMs - Date.now();
                 if (splashRem > 0) {
@@ -1424,6 +1436,7 @@
             validationInProgress = true;
 
             hideError();
+
 
             // Step 1: Check online status
             if (!await checkOnlineStatus()) {

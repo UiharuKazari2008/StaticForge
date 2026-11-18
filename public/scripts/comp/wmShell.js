@@ -11930,6 +11930,15 @@
         try { offlineStart = Date.now() - (Number(sessionStorage.getItem('melatonOfflineStart')) || 0) < 120000; } catch (_) { /* storage off */ }
         // a failed sign-in (connected, not authenticated) does not hold the phone either (#899): Today, with
         // the Nightshade glyph saying "Sign-in required"
+        // TOP RULE (Yukimi, Nov 18 2026): the installed app never waits on the server here - Today after the splash's own
+        // minimum, the connection and the start-up steps carrying on behind it (a flaky network held the splash up to 25 s)
+        let installed = false;
+        try { installed = !!localStorage.getItem('melatonManifestHash') && !!(window.AndroidDevice || window.AndroidCaption || window.AndroidNotification); } catch (_) { /* storage off */ }
+        if (installed && !ready && elapsed >= BOOT_MIN_SPLASH_MS) {
+            try { sessionStorage.removeItem('melatonOfflineStart'); } catch (_) { /* storage off */ }
+            finishBoot();
+            return;
+        }
         const unreachable = !ready && ws && ((ws.connectionPhase === 'auth')
             || (!(typeof ws.isConnected === 'function' && ws.isConnected())
                 && (offlineStart || ws.connectionPhase === 'failed' || (ws.reconnectAttempts || 0) >= 2)));
