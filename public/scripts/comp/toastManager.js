@@ -1963,16 +1963,20 @@ function updateGlassToastComplete(toastId, options = {}) {
  * startVibeEncodingProgress(toastId);
  */
 function startVibeEncodingProgress(toastId) {
-    let progress = 0;
+    // 5% a tick from the time gone by: drawn only while the page is seen, where it would be when it
+    // shows again, and ended at 100% seen or not (#890)
+    const started = Date.now();
     const interval = setInterval(() => {
-        progress += 5; // Add 5% every 500ms
-        updateGlassToastProgress(toastId, progress);
+        const progress = Math.min(100, Math.floor((Date.now() - started) / 250) * 5);
+        if (progress >= 100 || (!document.hidden && document.documentElement.dataset.screenOff === undefined)) {
+            updateGlassToastProgress(toastId, progress);
+        }
 
         if (progress >= 100) {
             clearInterval(interval);
             vibeEncodingProgressIntervals.delete(toastId);
         }
-    }, 250); // Every 500ms
+    }, 250); // Every 250ms
 
     vibeEncodingProgressIntervals.set(toastId, interval);
     return interval;

@@ -1230,15 +1230,16 @@ class SpellbookModalManager {
             // Show progress toast
             toastId = showGlassToast('info', 'Generating Image', 'Generating image...', true, false, '<i class="nai-sparkles"></i>');
 
-            // Start progress animation (1% per second)
-            let progress = 0;
+            // Start progress animation (1% per second), from the time gone by: drawn only while the page
+            // is seen, and where it would be when it shows again (#890)
+            const progressStarted = Date.now();
             if (this.spellbookProgressInterval) {
                 clearInterval(this.spellbookProgressInterval);
                 this.spellbookProgressInterval = null;
             }
             this.spellbookProgressInterval = setInterval(() => {
-                progress += 1;
-                updateGlassToastProgress(toastId, progress);
+                if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+                updateGlassToastProgress(toastId, Math.round((Date.now() - progressStarted) / 1000));
             }, 1000);
 
             // Generate image using WebSocket with streaming enabled
@@ -1736,11 +1737,12 @@ class SpellbookModalManager {
             // Show progress toast
             toastId = showGlassToast('info', 'Upscaling Image', 'Upscaling image...', true, false, '<i class="nai-upscale"></i>');
 
-            // Start progress animation (1% per second)
-            let progress = 0;
+            // Start progress animation (1% per second), from the time gone by: drawn only while the page
+            // is seen, and where it would be when it shows again (#890)
+            const progressStarted = Date.now();
             progressInterval = setInterval(() => {
-                progress += 1;
-                updateGlassToastProgress(toastId, progress);
+                if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+                updateGlassToastProgress(toastId, Math.round((Date.now() - progressStarted) / 1000));
             }, 1000);
 
             // Prepare upscaling parameters
