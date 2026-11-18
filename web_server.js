@@ -4605,6 +4605,9 @@ async function handleAdminUnixSocketMessage(message, socket) {
     // WebSocket Server
     await globalResources.logger.bootStep('WebSocket Server', async () => {
         updateServerStage('websocket_init');
+        // the boot's 503 for socket dials (earlyHttpServer.js) goes before the real listeners attach: the
+        // site gate and Guacamole below call every listener they find
+        if (typeof server.releaseEarlyUpgrade === 'function') server.releaseEarlyUpgrade();
         const { wsServer } = globalResources.initializeWebSocketServer();
         attachSiteGateWebUpgrade(server, globalResources, sessionStore, sessionSecret);
         attachGuacWebUpgrade(server, sessionMiddleware);

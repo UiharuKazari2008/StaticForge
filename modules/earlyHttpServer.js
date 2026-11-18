@@ -18,6 +18,18 @@ const path = require('path');
 const RETRY_MS = 250;
 const MAX_ATTEMPTS = 40;
 
+// Until the WebSocket server attaches (its boot step runs after Runtime Asset Compilation, ~45 s into a
+// restart), an upgrade request finds no 'upgrade' listener and Node hands it to Express: GET / answered
+// 302 /launch, OkHttp followed it, and every phone dial during a restart downloaded launch.html (77 KB,
+// #890 round 5). Now a bare 503 with Retry-After; every client retries a failed dial already (the
+// Miniport treats it like the 200 it got before: dropped). releaseEarlyUpgrade() takes it away in the
+// WebSocket Server step, before the site gate and Guacamole wrap the listeners they find.
+const EARLY_UPGRADE_REPLY = 'HTTP/1.1 503 Service Unavailable\r\nRetry-After: 5\r\nContent-Length: 0\r\nConnection: close\r\n\r\n';
+
+function earlyUpgrade(_req, socket) {
+    try { socket.end(EARLY_UPGRADE_REPLY); } catch (_) { /* gone */ }
+}
+
 function readConfiguredPort(root) {
     try {
         const config = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'));
@@ -35,6 +47,8 @@ function bindEarly(root) {
         res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '1' });
         res.end(JSON.stringify({ success: false, error: 'Server starting', isReady: false, stage: 'loading_modules' }));
     });
+    server.on('upgrade', earlyUpgrade);
+    server.releaseEarlyUpgrade = () => { server.removeListener('upgrade', earlyUpgrade); };
     const port = readConfiguredPort(root);
     server.earlyPort = port;
     if (!port) {
@@ -62,4 +76,4 @@ function bindEarly(root) {
     return server;
 }
 
-module.exports = { bindEarly, readConfiguredPort };
+module.exports = { bindEarly, readConfiguredPort, EARLY_UPGRADE_REPLY };
