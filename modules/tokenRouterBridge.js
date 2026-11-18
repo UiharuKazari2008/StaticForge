@@ -998,7 +998,8 @@ async function withRateLimitBackoff(send, options) {
     }
 }
 
-function readBody(req) {
+// The body as a Buffer: parsed in the request worker (openRequest), not here.
+function readRaw(req) {
     return new Promise((resolve, reject) => {
         const chunks = [];
         let size = 0;
@@ -1011,13 +1012,7 @@ function readBody(req) {
             }
             chunks.push(buf);
         });
-        req.on('end', () => {
-            try {
-                resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
-            } catch (_) {
-                reject(Object.assign(new Error('Body is not JSON'), { status: 400 }));
-            }
-        });
+        req.on('end', () => resolve(Buffer.concat(chunks)));
         req.on('error', reject);
     });
 }
@@ -1067,20 +1062,22 @@ function resolveUpstream(run) {
     return { id: 'tokenrouter', baseUrl: baseUrl(), key, label: 'TokenRouter', gated: true };
 }
 
-async function callUpstream(body, run, signal, stream) {
+// prepared: a request from openRequest/inlineRequest, or a plain Messages body.
+async function callUpstream(prepared, run, signal, stream) {
     const upstream = resolveUpstream(run);
     if (upstream.error) return upstream.error;
-    const model = run.model || body.model;
+    const source = prepared && typeof prepared.build === 'function' ? prepared : inlineRequest(prepared);
+    const model = run.model || source.meta.model;
     const learnKey = upstream.id === 'tokenrouter' ? model : `${upstream.id}\0${model}`;
     const learned = learnedRelaxers.get(learnKey) || new Set();
     const flags = {};
     learned.forEach((name) => { flags[name] = true; });
     for (let attempt = 0; attempt <= RELAXERS.length; attempt++) {
-        const { request } = toOpenAIRequest(body, { ...flags, model, effort: run.effort, stream });
+        const built = await source.build({ ...flags, model, effort: run.effort, stream });
         const send = () => fetch(upstream.chatUrl || `${upstream.baseUrl}/v1/chat/completions`, {
             method: 'POST',
             headers: { 'content-type': 'application/json', authorization: `Bearer ${upstream.key}` },
-            body: JSON.stringify(request),
+            body: built.bytes,
             signal
         });
         const res = upstream.gated
@@ -1095,7 +1092,7 @@ async function callUpstream(body, run, signal, stream) {
         if (res.ok) return res;
         const text = await res.text().catch(() => '');
         if (res.status !== 400 && res.status !== 422) return { status: res.status, text, label: upstream.label };
-        const relaxer = RELAXERS.find((item) => !flags[item.key] && item.test.test(text) && relaxerApplies(item.key, request));
+        const relaxer = RELAXERS.find((item) => !flags[item.key] && item.test.test(text) && built.applies[item.key]);
         if (!relaxer) return { status: res.status, text, label: upstream.label };
         flags[relaxer.key] = true;
         learned.add(relaxer.key);
@@ -1111,6 +1108,145 @@ function relaxerApplies(key, request) {
     if (key === 'noReasoningContent') return request.messages.some((m) => m.reasoning_content);
     if (key === 'noImages') return request.messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === 'image_url'));
     return false;
+}
+
+// One upstream request shape as bytes, plus which relaxers it leaves room for. Runs in the
+// request worker (tokenRouterBridgeWorker.js) or, without one, here.
+function buildRequestBytes(body, opts) {
+    const { request } = toOpenAIRequest(body, opts);
+    const applies = {};
+    RELAXERS.forEach((item) => { applies[item.key] = relaxerApplies(item.key, request); });
+    return { bytes: Buffer.from(JSON.stringify(request)), applies };
+}
+
+// What the main thread keeps of a request: tool names and schemas (toolNames, StreamTranslator)
+// and the block types of the last two messages (captureOpen). The messages themselves, with
+// every picture of the session as base64, stay with the worker.
+function bodyMeta(body) {
+    const tools = (Array.isArray(body.tools) ? body.tools : []).map((tool) => (tool && tool.name
+        ? { name: tool.name, input_schema: tool.input_schema }
+        : null)).filter(Boolean);
+    const messages = (Array.isArray(body.messages) ? body.messages : []).slice(-2).map((m) => ({
+        role: m && m.role,
+        content: m && Array.isArray(m.content)
+            ? m.content.map((b) => ({ type: b && b.type, name: b && b.type === 'tool_use' ? b.name : undefined }))
+            : ''
+    }));
+    return { model: body.model, stream: body.stream === true, tools, messages };
+}
+
+// A request the bridge can build upstream shapes from: { meta, build(opts), drop() }.
+function inlineRequest(body) {
+    return {
+        meta: bodyMeta(body),
+        build: async (opts) => buildRequestBytes(body, opts),
+        drop: () => {}
+    };
+}
+
+// ---- request worker ----
+// A Director step re-sends the whole session, every picture included as base64 (6-13 MB once
+// a chat has looked at a few dozen prints). Parsing that, converting it and serializing it
+// again held the event loop 150-400 ms per model step during a turn. A worker thread does
+// all three now; the main thread hands it the raw bytes and gets the request bytes back,
+// both transferred, not copied. Without a worker (it failed to start) the work runs here.
+const WORKER_FILE = path.join(__dirname, 'tokenRouterBridgeWorker.js');
+let requestWorker = null;
+let requestWorkerBroken = false;
+let workerSeq = 0;
+const workerWaiting = new Map();
+
+function transferable(buf) {
+    if (buf.byteOffset === 0 && buf.byteLength === buf.buffer.byteLength) return buf.buffer;
+    // a pooled small Buffer shares its ArrayBuffer: transferring it would detach the pool
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+}
+
+function failWorkerWaiting(error) {
+    workerWaiting.forEach(({ reject }) => reject(error));
+    workerWaiting.clear();
+}
+
+function bridgeWorker() {
+    if (requestWorker || requestWorkerBroken) return requestWorker;
+    try {
+        const { Worker } = require('worker_threads');
+        const w = new Worker(WORKER_FILE);
+        w.unref();
+        w.on('message', (msg) => {
+            const wait = workerWaiting.get(msg && msg.rid);
+            if (!wait) return;
+            workerWaiting.delete(msg.rid);
+            if (msg.ok) wait.resolve(msg);
+            else wait.reject(Object.assign(new Error(msg.error || 'request worker failed'), msg.status ? { status: msg.status } : {}));
+        });
+        const gone = (error) => {
+            if (requestWorker === w) requestWorker = null;
+            failWorkerWaiting(error instanceof Error ? error : new Error(`request worker exited (${error})`));
+        };
+        w.on('error', (error) => {
+            console.error(`TokenRouter bridge request worker: ${error.message}`);
+            gone(error);
+        });
+        w.on('exit', gone);
+        requestWorker = w;
+    } catch (error) {
+        console.error(`TokenRouter bridge request worker unavailable, converting inline: ${error.message}`);
+        requestWorkerBroken = true;
+        requestWorker = null;
+    }
+    return requestWorker;
+}
+
+function workerCall(w, msg, transfer) {
+    return new Promise((resolve, reject) => {
+        const rid = ++workerSeq;
+        workerWaiting.set(rid, { resolve, reject });
+        try {
+            w.postMessage({ ...msg, rid }, transfer || []);
+        } catch (error) {
+            workerWaiting.delete(rid);
+            reject(error);
+        }
+    });
+}
+
+function parseRaw(raw) {
+    try {
+        return JSON.parse(raw.toString('utf8') || '{}');
+    } catch (_) {
+        throw Object.assign(new Error('Body is not JSON'), { status: 400 });
+    }
+}
+
+// raw: the request body as a Buffer (transferred to the worker: do not use it afterwards).
+async function openRequest(raw) {
+    const w = bridgeWorker();
+    if (!w) return inlineRequest(parseRaw(raw));
+    const id = ++workerSeq;
+    const ab = transferable(raw);
+    const opened = await workerCall(w, { op: 'parse', id, raw: ab }, [ab]);
+    let dropped = false;
+    return {
+        meta: opened.meta,
+        build: async (opts) => {
+            const out = await workerCall(w, { op: 'build', id, opts });
+            return { bytes: new Uint8Array(out.bytes), applies: out.applies };
+        },
+        drop: () => {
+            if (dropped) return;
+            dropped = true;
+            try { w.postMessage({ op: 'drop', id }); } catch (_) { /* worker gone, body with it */ }
+        }
+    };
+}
+
+async function countTokens(raw) {
+    const w = bridgeWorker();
+    if (!w) return estimateTokens(parseRaw(raw));
+    const ab = transferable(raw);
+    const out = await workerCall(w, { op: 'tokens', raw: ab }, [ab]);
+    return out.tokens;
 }
 
 // Temporary tool-call capture (#735 Director tool substitution): on while the flag file exists.
@@ -1195,7 +1331,16 @@ async function relayStream(upstream, res, translator, abort, capture) {
 }
 
 async function handleMessages(req, res) {
-    const body = await readBody(req);
+    const prepared = await openRequest(await readRaw(req));
+    try {
+        await relayMessages(req, res, prepared);
+    } finally {
+        prepared.drop();
+    }
+}
+
+async function relayMessages(req, res, prepared) {
+    const body = prepared.meta;
     const effort = String(req.headers['x-dreamscape-effort'] || '').trim().toLowerCase();
     // x-dreamscape-lane: interactive (Director), normal (Rentan); see modules/tokenRouterGate.js.
     const lane = String(req.headers['x-dreamscape-lane'] || '').trim().toLowerCase();
@@ -1210,7 +1355,7 @@ async function handleMessages(req, res) {
     const abort = new AbortController();
     res.on('close', () => { if (!res.writableEnded) abort.abort(); });
     const stream = body.stream === true;
-    const upstream = await callUpstream(body, run, abort.signal, stream);
+    const upstream = await callUpstream(prepared, run, abort.signal, stream);
     if (!upstream.ok) {
         sendError(res, upstream.status === 402 ? 403 : upstream.status, upstreamMessage(upstream.text, upstream.status, upstream.label));
         return;
@@ -1233,7 +1378,7 @@ async function handle(req, res, secret) {
         if (req.method === 'POST' && url === '/v1/messages') {
             await handleMessages(req, res);
         } else if (req.method === 'POST' && url === '/v1/messages/count_tokens') {
-            sendJson(res, 200, { input_tokens: estimateTokens(await readBody(req)) });
+            sendJson(res, 200, { input_tokens: await countTokens(await readRaw(req)) });
         } else if (req.method === 'GET' && url === '/v1/models') {
             const families = (catalogCache.families || []);
             sendJson(res, 200, { data: families.map((item) => ({ type: 'model', id: item.id, display_name: item.name })), has_more: false });
@@ -1462,6 +1607,8 @@ module.exports = {
     closeBridge,
     wallet,
     chatCompletion,
+    // tokenRouterBridgeWorker.js
+    _worker: { buildRequestBytes, bodyMeta, estimateTokens },
     _test: {
         catalogFromPricing,
         prettyModelName,
@@ -1480,6 +1627,8 @@ module.exports = {
         rateLimitWaitMs,
         withRateLimitBackoff,
         callUpstream,
+        openRequest,
+        countTokens,
         resetCatalog: () => { catalogCache = { at: 0, families: null }; learnedRelaxers.clear(); },
         resetWallet: () => { walletCache = { at: 0, key: '', value: null }; }
     }

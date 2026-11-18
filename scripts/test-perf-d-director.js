@@ -347,10 +347,13 @@ async function testWrenDraftSaves() {
     const count = chat.messages.length;
     const rows = [{ type: 'assistant', text: 'thinking about it' }];
     const draftId = 'perf-draft-0001';
+    await sleep(800); // the load's own flush (split-format migration) settles first
+    const indexBefore = fs.readFileSync(paths.indexPath, 'utf8');
     await d.saveDirectorTrace(paths, bigId, rows, 'partial', draftId, null, true);
     assert.strictEqual(d.peekIndex(paths.indexPath).chats.find((item) => item.id === bigId).messages.length, count + 1, 'draft is in memory at once');
     await sleep(800);
     assert.ok(!fs.readFileSync(messagesFile, 'utf8').includes(draftId), 'a draft-only change waits for DRAFT_FLUSH_MS');
+    assert.strictEqual(fs.readFileSync(paths.indexPath, 'utf8'), indexBefore, 'a draft that only bumps updated_at leaves index.json alone');
     const onDiskIndex = JSON.parse(fs.readFileSync(paths.indexPath, 'utf8'));
     assert.ok(onDiskIndex.chats.every((item) => !item.messages), 'index.json keeps the split format');
     await d.saveDirectorTrace(paths, bigId, rows.concat([{ type: 'assistant', text: 'done' }]), 'final answer', draftId, null);
@@ -365,6 +368,8 @@ async function testWrenDraftSaves() {
     await d.saveDirectorTrace(paths, bigId, rows, 'late partial', lateId, null, true);
     await sleep(d.DRAFT_FLUSH_MS + 900);
     assert.ok(fs.readFileSync(messagesFile, 'utf8').includes(lateId), 'a lone draft lands after DRAFT_FLUSH_MS');
+    const lateChat = JSON.parse(fs.readFileSync(paths.indexPath, 'utf8')).chats.find((item) => item.id === bigId);
+    assert.strictEqual(lateChat.updated_at, d.peekIndex(paths.indexPath).chats.find((item) => item.id === bigId).updated_at, 'index.json takes the draft updated_at with it');
 
     // Exit flush writes a pending draft.
     const childScript = `
