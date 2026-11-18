@@ -208,7 +208,8 @@
         const app = adopter(notice);
         if (app) {
             let taken = false;
-            try { taken = app.inboxAdopt(notice) !== false; } catch (_) { taken = false; }
+            // live: no page app raised it (a snoozed text back at its time): its app's note sounds, also in the Android app
+            try { taken = app.inboxAdopt(notice, { live: !!opts.live }) !== false; } catch (_) { taken = false; }
             if (taken) {
                 shownNotes.set(notice.id, { close() { try { if (typeof app.inboxDrop === 'function') app.inboxDrop(notice); } catch (_) { /* gone */ } } });
                 pageShown(notice.id);
@@ -262,7 +263,7 @@
         setTimeout(() => {
             if (document.hidden || shownNotes.has(notice.id)) return;
             if (toastTitled(notice.title) || toastSeq() > before) { producerShown.add(notice.id); pageShown(notice.id); ack(notice.id, 'seen'); return; }
-            show(notice);
+            show(notice, { live: true });
         }, PRODUCER_MS);
     }
 
@@ -344,6 +345,20 @@
         /** An app's notice was used (View / Reply). */
         acted: (id) => { if (!id) return; shownNotes.delete(id); ack(String(id), 'acted'); },
         shown: () => [...shownNotes.keys()],
+        /**
+         * Snooze from an app's own grouped note (Text Messages, Dreamscape Messenger: 6.5.1's reminder rows on every
+         * notification, Nov 18): each notice goes now and the server's reminder scheduler publishes it again, sounding,
+         * in `minutes` (reminder_snooze; the page holds no timer, the phone's app posts it when the page is asleep).
+         */
+        snooze: (ids, minutes) => {
+            const c = client();
+            if (!c) return false;
+            for (const id of new Set([].concat(ids || []).map(String).filter(Boolean))) {
+                shownNotes.delete(id);
+                try { c.sendMessage('reminder_snooze', { id, minutes }, false); } catch (_) { /* offline: it stays as the server holds it */ }
+            }
+            return true;
+        },
         /**
          * The notices still waiting on the server (new, or put away with Hide; not mail / texts / Messenger / Director,
          * which have icons of their own) shown again as notifications: the title bar's notification icon stands for them

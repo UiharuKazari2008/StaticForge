@@ -796,14 +796,14 @@
     const freshKey = (id) => { for (const k of fresh.keys()) if (String(k) === String(id)) return k; return null; };
     /** A missed reply from the inbox (wmNotificationInbox catch-up): into the note, as if it came now. */
     let chatAdoptTimer = null;
-    function adoptChat(n) {
+    function adoptChat(n, o) {
         const d = (n && n.data) || {};
         if (d.chatId == null || !d.said) return false;
         const k = freshKey(d.chatId);
         if (k != null) fresh.delete(k);
         fresh.set(k != null ? k : d.chatId, { said: d.said, at: Number(n.createdAt) || Date.now(), who: d.from || '' });
         clearTimeout(chatAdoptTimer);
-        chatAdoptTimer = setTimeout(() => { showSmsNote({ silent: inAndroidApp() }); if (typeof sh.refreshStatus === 'function') sh.refreshStatus(); }, 0);
+        chatAdoptTimer = setTimeout(() => { showSmsNote({ silent: !(o && o.live) && inAndroidApp() }); if (typeof sh.refreshStatus === 'function') sh.refreshStatus(); }, 0);
         return true;
     }
     const whoOf = (id, x) => (sessionById(id) ? personaOf(sessionById(id)) : ((x && x.who) || personaOf(null)));
@@ -839,13 +839,25 @@
             icon,
             event: 'chat',
             silent: !!(o && o.silent),
-            softKeys: () => ({
-                left: { label: 'Dismiss', action: () => { [...fresh.keys()].forEach((k) => inboxClear(`chat:${k}`)); closeSmsNote(); } },
-                right: { label: 'Menu', menu: () => [
-                    { label: n === 1 ? 'Reply' : 'View', action: open },
-                    { label: 'Hide', action: () => { if (smsNote) smsNote.hide(); } }
-                ] }
-            })
+            // 6.5.1's reminder keys on every notification (Nov 18: "text messages also miss the snooze buttons"): Dismiss |
+            // Menu, the Menu with View, Hide and the Snooze times - the server brings the replies back then, sounding
+            softKeys: () => {
+                const later = (label, minutes) => ({ label, action: () => {
+                    const ni = window.wmNotificationInbox;
+                    if (!ni || typeof ni.snooze !== 'function' || !ni.snooze([...fresh.keys()].map((k) => `chat:${k}`), minutes)) return;
+                    fresh.clear(); closeSmsNote();
+                    if (typeof sh.refreshStatus === 'function') sh.refreshStatus();
+                } });
+                return {
+                    left: { label: 'Dismiss', icon: 'dismiss', action: () => { [...fresh.keys()].forEach((k) => inboxClear(`chat:${k}`)); closeSmsNote(); } },
+                    right: { label: 'Menu', icon: 'menu', menu: () => [
+                        { label: n === 1 ? 'Reply' : 'View', action: open },
+                        { label: 'Hide', action: () => { if (smsNote) smsNote.hide(); } },
+                        '-',
+                        later('Snooze 5 minutes', 5), later('Snooze 15 minutes', 15), later('Snooze 1 hour', 60), later('Snooze 1 day', 1440)
+                    ] }
+                };
+            }
         });
         if (!note) return;
         smsNote = note;
@@ -1863,7 +1875,7 @@
 
     /** A missed text from the inbox (wmNotificationInbox catch-up): into the note, as if it came now. */
     let tmAdoptTimer = null;
-    function adoptSms(n) {
+    function adoptSms(n, o) {
         const d = (n && n.data) || {};
         if (!d.accountId || !d.chatGuid) return false;
         // the conversation's newest line: one entry per conversation from the inbox
@@ -1872,7 +1884,8 @@
             if (tmFresh.length > 50) tmFresh.shift();
         }
         clearTimeout(tmAdoptTimer);
-        tmAdoptTimer = setTimeout(() => tmShowNote({ silent: inAndroidApp() }), 0);
+        // live (a snoozed text back, no page app raised it): it sounds; caught up on resume: the app already sounded it
+        tmAdoptTimer = setTimeout(() => tmShowNote({ silent: !(o && o.live) && inAndroidApp() }), 0);
         return true;
     }
 
@@ -1987,13 +2000,24 @@
             icon: 'status-sms',
             event: 'sms',
             silent: !!(o && o.silent),
-            softKeys: () => ({
-                left: { label: 'Dismiss', action: () => tmCloseNote(true) },
-                right: { label: 'Menu', menu: () => [
-                    { label: tmFresh.length === 1 ? 'Reply' : 'View', action: tmOpenFresh },
-                    { label: 'Hide', action: () => { if (tmNote) tmNote.hide(); } }
-                ] }
-            })
+            // 6.5.1's reminder keys on every notification (Nov 18: "text messages also miss the snooze buttons"): Dismiss |
+            // Menu, the Menu with View, Hide and the Snooze times - the server brings the texts back then, sounding
+            softKeys: () => {
+                const later = (label, minutes) => ({ label, action: () => {
+                    const ni = window.wmNotificationInbox;
+                    if (!ni || typeof ni.snooze !== 'function' || !ni.snooze(tmFresh.map((f) => `sms:${f.accountId}:${f.chatGuid}`), minutes)) return;
+                    tmFresh.length = 0; tmCloseNote(false);
+                } });
+                return {
+                    left: { label: 'Dismiss', icon: 'dismiss', action: () => tmCloseNote(true) },
+                    right: { label: 'Menu', icon: 'menu', menu: () => [
+                        { label: tmFresh.length === 1 ? 'Reply' : 'View', action: tmOpenFresh },
+                        { label: 'Hide', action: () => { if (tmNote) tmNote.hide(); } },
+                        '-',
+                        later('Snooze 5 minutes', 5), later('Snooze 15 minutes', 15), later('Snooze 1 hour', 60), later('Snooze 1 day', 1440)
+                    ] }
+                };
+            }
         });
         if (!note) return;
         tmNote = note;
@@ -2101,10 +2125,10 @@
      */
     window.wmChatApp = {
         // the server's copies of texts and Messenger replies (#876): a missed one joins its note
-        inboxAdopt(n) {
+        inboxAdopt(n, o) {
             const kind = n && n.data && n.data.kind;
-            if (kind === 'sms') return adoptSms(n);
-            if (kind === 'chat') return adoptChat(n);
+            if (kind === 'sms') return adoptSms(n, o);
+            if (kind === 'chat') return adoptChat(n, o);
             return false;
         },
         inboxDrop,
