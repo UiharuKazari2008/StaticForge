@@ -7,15 +7,18 @@ const reminders = require('../../reminderScheduler');
 // service can post them as Android notifications while the WebView is paused. admin / dev_admin only;
 // each userType has its own queue.
 //
-//   inbox_list   { since?, includeCleared? }   -> { notices } (newest first, not expired)
+//   inbox_list   { since?, includeCleared? }   -> { notices, total } (newest first, not expired); since (ms):
+//                only the rows created or changed at or after it, cleared ones included (#890 round 5, W2)
 //   inbox_ack    { id, state: 'seen'|'acted'|'cleared', device? }   -> { ok }
 //   inbox_prefs  { quiet: [class...] }   -> { ok, quiet } (the phone's Display message off classes)
 //   reminder_snooze  { id, minutes? | at? }   -> { ok, at } (a 'reminder' notice comes back then, #876)
 //   reminder_dismiss { id }   -> { ok } (dismissed in the desktop Calendar: never fires, notice cleared)
 //   reminder_status  {}   -> { started, next, snoozed, lastScanAt, lastError } (the scheduler's queue)
 //
-// Broadcast to the same userType's clients:
+// Broadcast to the same userType's phone pages (websocket.js PHONE_ONLY_TYPES):
 //   inbox_updated  { reason: 'new'|'ack', notice? | id, state?, device? }
+//   an ack only for 'acted' / 'cleared' (a 'seen' changes nothing a page shows); an ack skips a sleeping
+//   page, which lists with since when it wakes (#890 round 5, W7)
 
 const canUse = (info) => !!(info && /^(admin|dev_admin)$/.test(String(info.userType || '')));
 
@@ -48,7 +51,8 @@ function registerPackets(handlersCtx) {
     };
     reg('inbox_list', (ctx) => {
         const m = ctx.message;
-        reply(handlersCtx, ctx.ws, m, { notices: inbox.list(inbox.userOf(ctx.clientInfo), { since: m.since || 0, includeCleared: !!m.includeCleared }) });
+        const user = inbox.userOf(ctx.clientInfo);
+        reply(handlersCtx, ctx.ws, m, { notices: inbox.list(user, { since: Number(m.since) || 0, includeCleared: !!m.includeCleared }), total: inbox.count(user) });
     });
     reg('inbox_ack', (ctx) => {
         const m = ctx.message;

@@ -67,6 +67,33 @@ inbox.bind(gr);
     now += 25 * 60 * 60 * 1000;
     assert.ok(!inbox.pendingForPhones('admin').some((n) => n.id === 'traffic:commute'), 'catch-up: not older than 24 h');
 
+    // #890 round 5 W2: inbox_list since returns the rows created or changed at or after it (cleared ones
+    // included, so the page closes its copy); total is the full list's size. W7: a 'seen' ack is no news
+    // to any page (no broadcast); acted / cleared still go
+    inbox._test.reset();
+    now += 60000;
+    const n1 = inbox.publish({ app: 'messaging', id: 'sms:b:1', cls: 'sms', title: 'A', text: 'one' });
+    now += 1000;
+    const n2 = inbox.publish({ app: 'messaging', id: 'sms:b:2', cls: 'sms', title: 'B', text: 'two' });
+    const mark = now;
+    assert.deepStrictEqual(inbox.list('admin', { since: mark }).map((n) => n.id), ['sms:b:2'], 'since: the newest row at the mark');
+    now += 1000;
+    sent.length = 0;
+    inbox.ack('admin', n1.id, 'seen');
+    assert.strictEqual(sent.length, 0, 'a seen ack broadcasts nothing');
+    assert.strictEqual(inbox.list('admin', { since: mark + 1 }).map((n) => n.id).join(','), n1.id, 'a state change counts as changed');
+    const mark2 = now;
+    now += 1000;
+    inbox.ack('admin', n2.id, 'cleared', 'fold');
+    assert.strictEqual(sent.length, 1, 'cleared goes');
+    assert.strictEqual(sent[0].m.data.reason, 'ack');
+    assert.strictEqual(sent[0].m.data.state, 'cleared');
+    const since = inbox.list('admin', { since: mark2 + 1 });
+    assert.deepStrictEqual(since.map((n) => [n.id, n.state]), [['sms:b:2', 'cleared']], 'a cleared row comes with since');
+    assert.ok(!inbox.list('admin').some((n) => n.id === 'sms:b:2'), 'without since: unchanged (cleared hidden)');
+    assert.strictEqual(inbox.count('admin'), 1, 'total: the notices a full list holds');
+    assert.strictEqual(inbox.list('admin', { since: now + 1 }).length, 0, 'nothing newer: empty');
+
     inbox._test.reset();
     console.log('notification inbox: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });
