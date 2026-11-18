@@ -284,13 +284,23 @@ function buildGalleryJumpIndexEntries(minTimeMs, maxGroupImages) {
 }
 
 /** "Oct 13, 3:30 PM" (no year this year), the time only for the second end of a same-day span. */
+// One formatter per shape, made once: toLocaleString / toLocaleTimeString build a new one on each
+// call (through app.html's locale shim), two or three per group on every regeneration - about
+// 40-90 ms of each print's arrival on a desktop with the jump index open (Modernia, Nov 18 2026).
+// Intl.DateTimeFormat is the same shimmed constructor, so the text is the same.
+const galleryJumpIndexFormatters = {};
+function galleryJumpIndexFormatter(key, opts) {
+    return galleryJumpIndexFormatters[key] || (galleryJumpIndexFormatters[key] = new Intl.DateTimeFormat([], opts));
+}
+
 function formatGalleryJumpIndexTime(ms, { timeOnly = false } = {}) {
     if (!Number.isFinite(ms)) return '';
     const date = new Date(ms);
-    if (timeOnly) return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    const opts = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
-    if (date.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
-    return date.toLocaleString([], opts);
+    if (timeOnly) return galleryJumpIndexFormatter('time', { hour: 'numeric', minute: '2-digit' }).format(date);
+    if (date.getFullYear() !== new Date().getFullYear()) {
+        return galleryJumpIndexFormatter('year', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', year: 'numeric' }).format(date);
+    }
+    return galleryJumpIndexFormatter('day', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date);
 }
 
 /** A tile's caption: the time of the image it shows (the group's first in gallery order). */
