@@ -3407,13 +3407,10 @@
         // agree. Never hides what this page knows is waiting; the link icon stays this page's own
         if (taskRoles) {
             for (const [role, on] of Object.entries(taskRoles)) {
-                if (!on || role === 'nightshade' || BARS_NATIVE_ROLES.has(role) || (role === 'notify' && notifyQuietUntilTask)) continue;
+                // the notification icon is paintNotifyIcon's alone (it reads the task's word too): two writers made it blink
+                if (!on || role === 'nightshade' || role === 'notify' || BARS_NATIVE_ROLES.has(role)) continue;
                 const el = shell.querySelector(`[data-role="${role}"]`);
-                if (el && el.hidden) {
-                    hide(el, false);
-                    // the notification icon shown for the server's waiting notices: its own glyph and words, not a gone notice's
-                    if (role === 'notify') { el.dataset.icon = 'notify-many'; el.style.backgroundImage = ''; el.setAttribute('aria-label', 'Notifications waiting'); }
-                }
+                if (el && el.hidden) hide(el, false);
             }
         }
         paintBezelLed();
@@ -3633,6 +3630,7 @@
             if (!d || d.name !== 'status-bar') return;
             taskRoles = (d.output && d.output.roles) || null;
             notifyQuietUntilTask = false;
+            try { paintNotifyIcon(); } catch (_) { /* before the shell */ }
             statusDirty();
         }, { signal: appScopeSignal });
     })();
@@ -6048,7 +6046,11 @@
         const icon = shell.querySelector('[data-role="notify"]');
         // update notices stand on the update icon, not here
         const notes = notesForBubbleIcon();
-        const count = notes.length + statusFolded.length;
+        // notices waiting on the server (the app's status task) that this page holds none of: one more reason to show it,
+        // decided here only - the status refresh used to show it and this paint hide it, so it blinked (Nov 18)
+        let serverWaiting = false;
+        try { serverWaiting = !notes.length && !!(taskRoles && taskRoles.notify) && !notifyQuietUntilTask; } catch (_) { serverWaiting = false; }
+        const count = notes.length + statusFolded.length + (serverWaiting ? 1 : 0);
         icon.hidden = !count;
         // the most serious pending kind shows, also with several waiting
         const worst = notes.find((n) => n.type === 'error') || notes.find((n) => n.type === 'warning');
@@ -6064,9 +6066,13 @@
             delete icon.dataset.icon;
             icon.style.backgroundImage = noteIcon(notes[0]);
             icon.setAttribute('aria-label', `Notification: ${noteTitle(notes[0])}`);
-        } else if (count) {
+        } else if (statusFolded.length) {
             setStatusAppArt(icon, statusFolded[0]);
             icon.setAttribute('aria-label', STATUS_APP_LABEL[statusFolded[0]]);
+        } else if (serverWaiting) {
+            icon.dataset.icon = 'notify-many';
+            icon.style.backgroundImage = '';
+            icon.setAttribute('aria-label', 'Notifications waiting');
         }
     }
 
@@ -6374,7 +6380,7 @@
             if (taskRoles && taskRoles.notify && window.wmNotificationInbox && typeof window.wmNotificationInbox.showWaiting === 'function') {
                 // none waiting after all (the status task's word older than a Dismiss): the icon goes and stays gone
                 // until the task says otherwise again (Fold7 emulator: it came back and its tap opened nothing)
-                void window.wmNotificationInbox.showWaiting().then((n) => { if (!n) { notifyQuietUntilTask = true; statusDirty(); } });
+                void window.wmNotificationInbox.showWaiting().then((n) => { if (!n) { notifyQuietUntilTask = true; paintNotifyIcon(); statusDirty(); } });
                 return;
             }
             const up = shell.querySelector('.wm-status-icon[data-role="update"]');
