@@ -1,5 +1,5 @@
 {
   "api": 1,
-  "files": ["runtime.js", "drive-alerts.js"],
-  "tasks": [{ "name": "drive-alerts", "api": 1 }]
+  "files": ["runtime.js", "drive-alerts.js", "status-bar.js"],
+  "tasks": [{ "name": "drive-alerts", "api": 1 }, { "name": "status-bar", "api": 1 }]
 }
