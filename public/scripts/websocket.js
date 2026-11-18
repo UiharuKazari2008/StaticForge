@@ -579,6 +579,7 @@ class BannerManager {
             'youtube_live_stop': 'Stop Stream',
             'youtube_kick_add': 'Add Kick Channel',
             'youtube_kick_remove': 'Remove Kick Channel',
+            'youtube_kick_notify': 'Go-live Notification',
             'youtube_apps_save': 'Apps in the Feed',
             'youtube_notice_remove': 'Remove Feed Item',
             'youtube_later': 'Watch Later',

@@ -76,6 +76,8 @@
         const app = d.app || notice.app;
         if (app === 'lapis' && window.wmLapis) { window.wmLapis.open(d.open || undefined); return; }
         if (app === 'traffic' && window.wmTraffic) { window.wmTraffic.open(d.open || undefined); return; }
+        // Melaton Videos: a channel went live (data.open = 'kick:<channel>'): the program, on that stream
+        if (app === 'youtube' && window.wmYouTube) { window.wmYouTube.open(d.open || undefined); return; }
         if (app === 'weather' && window.wmWeather && typeof window.wmWeather.open === 'function') { window.wmWeather.open(); return; }
         if (window.wmShell && app) { try { window.wmShell.open(app); return; } catch (_) { /* no such app */ } }
     }

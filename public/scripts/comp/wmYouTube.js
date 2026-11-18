@@ -61,6 +61,13 @@
         channels: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.6l1.9 4 4.4.6-3.2 3 .8 4.4L8 11.5l-3.9 2.1.8-4.4-3.2-3 4.4-.6z"/></svg>',
         star: '<svg viewBox="0 0 20 20"><path d="M10 2l2.4 5 5.5.7-4 3.8 1 5.5-4.9-2.7L5.1 17l1-5.5-4-3.8L7.6 7z"/></svg>',
         later: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="6" cy="6" r="4.6"/><path d="M6 3.4V6l1.9 1.2"/></svg>',
+        pause: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3.5" y="2.5" width="3.2" height="11" rx="0.6"/><rect x="9.3" y="2.5" width="3.2" height="11" rx="0.6"/></svg>',
+        play: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.3v11.4L13.4 8z"/></svg>',
+        sound: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.2h2.4L8 3.2v9.6L4.4 9.8H2z" fill="currentColor"/><path d="M10.4 5.6a3.4 3.4 0 0 1 0 4.8M12.3 3.8a6 6 0 0 1 0 8.4"/></svg>',
+        mute: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6.2h2.4L8 3.2v9.6L4.4 9.8H2z" fill="currentColor"/><path d="M10.6 6l3.6 4M14.2 6l-3.6 4"/></svg>',
+        stop: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3.2" y="3.2" width="9.6" height="9.6" rx="1"/></svg>',
+        out: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2.5h4.5V7M13.3 2.7L7.5 8.5M11.5 9.5v3.3a.7.7 0 0 1-.7.7H3.2a.7.7 0 0 1-.7-.7V5.2a.7.7 0 0 1 .7-.7h3.3"/></svg>',
+        full: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>',
         bell: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.8a4 4 0 0 0-4 4v2.6L2.6 11h10.8L12 8.4V5.8a4 4 0 0 0-4-4z"/><path d="M6.5 13.2a1.6 1.6 0 0 0 3 0" stroke-linecap="round"/></svg>',
         clock: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.4V8l2.6 1.6"/></svg>',
         left: '<svg viewBox="0 0 7 11"><path d="M6 0.5L1 5.5l5 5z" fill="currentColor"/></svg>',
@@ -249,6 +256,7 @@
             if (signedIn() && shown) ensureTab();
         }
         if (todayList().length <= todayAt) todayAt = 0;
+        if (player && shown) plSide();
         changed();
     }
     async function syncHub() {
@@ -612,7 +620,8 @@
         const offered = apps.concat((so.seenApps || []).filter((a) => !chosen.has(a.package)));
         const kickRows = kick.map((c) => `<div class="yt-row is-chan is-plain" data-yt-kick="${esc(c.slug)}">
             <img class="yt-av" src="${esc(c.thumb || '')}" alt="" loading="lazy" decoding="async" draggable="false">
-            <span class="yt-tx"><span class="yt-t">${c.live ? '<i class="yt-new is-livetag">LIVE</i>' : ''}${esc(c.name)}</span><span class="yt-s">kick.com/${esc(c.slug)}</span></span>
+            <span class="yt-tx"><span class="yt-t">${c.live ? '<i class="yt-new is-livetag">LIVE</i>' : ''}${esc(c.name)}</span><span class="yt-s">${c.notify ? 'Tells you when it goes live' : `kick.com/${esc(c.slug)}`}</span></span>
+            <button type="button" class="yt-bell${c.notify ? ' is-on' : ''}" data-yt-kick-notify="${esc(c.slug)}" aria-pressed="${!!c.notify}" aria-label="${c.notify ? 'Stop telling me when ' + esc(c.name) + ' goes live' : 'Tell me when ' + esc(c.name) + ' goes live'}">${I.bell}</button>
             <button type="button" class="yt-x" data-yt-kick-remove="${esc(c.slug)}" aria-label="Remove ${esc(c.name)}">&times;</button>
         </div>`).join('');
         const appRows = offered.map((a) => `<div class="yt-row is-chan is-plain" role="button" tabindex="0" data-yt-app="${esc(a.package)}" data-yt-label="${esc(a.label)}">
@@ -636,6 +645,18 @@
             if (d.channels) { hub.sources = Object.assign({}, hub.sources, { kick: d.channels.map((c) => Object.assign({ live: d.channel && c.slug === d.channel.slug && d.live }, c)) }); changed(); }
         } catch (e) {
             box(failText(e, 'The Kick channel could not be added'));
+        }
+    }
+    /** The bell on a Kick channel: the server tells this phone the moment the channel goes live (a notification). */
+    async function notifyKick(slug) {
+        if (!isAdmin()) { box('Only the administrator can change the channels.', 'info'); return; }
+        const c = ((hub.sources && hub.sources.kick) || []).find((x) => x.slug === slug);
+        if (!c) return;
+        try {
+            const d = await ask('youtube_kick_notify', { slug, on: !c.notify });
+            if (d.channels) { hub.sources = Object.assign({}, hub.sources, { kick: d.channels }); changed(); }
+        } catch (e) {
+            box(failText(e, 'The setting could not be saved'));
         }
     }
     async function removeKick(slug) {
@@ -729,10 +750,21 @@
                     ${TABS.map((t) => `<div class="yt-pane" data-pane="${t.id}" hidden>${t.id === 'search' ? `<form class="yt-search" action="#" autocomplete="off"><label class="yt-field">${I.search}<input class="yt-q" type="search" enterkeyhint="search" placeholder="Search YouTube" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="120"><button type="button" class="yt-clear" aria-label="Clear" hidden>&times;</button></label><button type="submit" class="yt-btn is-go">Search</button></form>` : ''}<div class="yt-list${t.id === 'channels' ? '' : ' is-videos'}"></div></div>`).join('')}
                     <div class="yt-layer" hidden><div class="yt-chan"></div><div class="yt-list is-videos"></div></div>
                     <div class="yt-player" hidden>
-                        <video class="yt-video" playsinline preload="none" disablepictureinpicture disableremoteplayback></video>
-                        <div class="yt-pl-top"><i class="yt-new is-livetag">LIVE</i><span class="yt-pl-title"></span><span class="yt-pl-mode"></span></div>
-                        <div class="yt-pl-status" hidden><i></i><span></span></div>
-                        <button type="button" class="yt-pl-key" data-pl="toggle" aria-label="Pause" hidden></button>
+                        <div class="yt-stage">
+                            <video class="yt-video" playsinline preload="none" disablepictureinpicture disableremoteplayback></video>
+                            <div class="yt-pl-top"><i class="yt-new is-livetag">LIVE</i><span class="yt-pl-up"></span><span class="yt-pl-title"></span><span class="yt-pl-mode"></span></div>
+                            <div class="yt-pl-status" hidden><i></i><span></span></div>
+                            <button type="button" class="yt-pl-key is-play" data-pl="toggle" aria-label="Play" hidden></button>
+                            <div class="yt-hud" hidden>
+                                <button type="button" class="yt-hud-key" data-pl="toggle" aria-label="Pause">${I.pause}</button>
+                                <button type="button" class="yt-hud-key" data-pl="mute" aria-label="Sound off">${I.sound}</button>
+                                <button type="button" class="yt-hud-key" data-pl="stop" aria-label="Stop">${I.stop}</button>
+                                <span class="yt-hud-gap"></span>
+                                <button type="button" class="yt-hud-key" data-pl="kick" aria-label="Watch in Kick's app">${I.out}</button>
+                                <button type="button" class="yt-hud-key" data-pl="full" aria-label="Full screen">${I.full}</button>
+                            </div>
+                        </div>
+                        <div class="yt-side"><div class="yt-side-title"></div><div class="yt-side-sub"></div><div class="yt-side-sub yt-side-up"></div></div>
                     </div>
                     <div class="yt-sign" hidden></div>
                 </div>
@@ -742,6 +774,7 @@
         els = {
             root: q('.yt-root'), me: q('.yt-me'), title: q('.yt-title'), note: q('.yt-note'), panes: q('.yt-panes'),
             player: q('.yt-player'), video: q('.yt-video'), plTitle: q('.yt-pl-title'), plMode: q('.yt-pl-mode'), plStatus: q('.yt-pl-status'), plKey: q('.yt-pl-key'),
+            plUp: q('.yt-pl-up'), hud: q('.yt-hud'), sideTitle: q('.yt-side-title'), sideSub: q('.yt-side-sub'), sideUp: q('.yt-side-up'),
             tabs: q('.yt-tabs'), slider: q('.yt-slider'), sign: q('.yt-sign'), layer: q('.yt-layer'), chan: q('.yt-chan'), layerList: q('.yt-layer .yt-list'),
             form: q('.yt-search'), q: q('.yt-q'), clear: q('.yt-clear'), lists: {}, paneEls: {}
         };
@@ -888,7 +921,7 @@
             els.layer.hidden = true;
         }
         renderHead();
-        if (ws) { ws.setTitle(TITLE); ws.refreshSoftKeys(); ws.refreshTitleAction(); }
+        if (ws) { ws.setTitle(player ? player.channel : TITLE); ws.refreshSoftKeys(); ws.refreshTitleAction(); }
     }
 
     function renderLayer() {
@@ -932,6 +965,8 @@
         if (act && !act.disabled) { doAct(act.dataset.act); return; }
         const rec = e.target.closest('[data-recent]');
         if (rec) { runSearch(rec.dataset.recent); return; }
+        const kn = e.target.closest('[data-yt-kick-notify]');
+        if (kn) { notifyKick(kn.dataset.ytKickNotify); return; }
         const kx = e.target.closest('[data-yt-kick-remove]');
         if (kx) { removeKick(kx.dataset.ytKickRemove); return; }
         const app = e.target.closest('[data-yt-app]');
@@ -1142,7 +1177,7 @@
     function plNeedsTap() {
         if (!player) return;
         plStatus('', false);
-        plKey(true);
+        plHud(true);
     }
 
     /** The stream stopped arriving: ask the server what became of it, then start again or say it ended. */
@@ -1186,6 +1221,8 @@
             plHead();
             plHold(true);
             plTell();
+            plSide();
+            plClock(true);
             refreshKeys();
             if (shown) await plAttach(); else p.suspended = true;
         } catch (e) {
@@ -1196,14 +1233,20 @@
         }
     }
 
+    let pendingWatch = null; // a stream asked for before the program's page existed (a tap on Today)
     function watchLive(v) {
         if (!isAdmin()) { box('Only the administrator can watch a stream through the server.', 'info'); return; }
         const slug = String(v.id || '').replace(/^kick:/, '');
-        if (!slug || !els) return;
-        if (ws && ws.currentApp && ws.currentApp() !== APP_ID) ws.open(APP_ID);
-        player = { slug, title: `${v.channel || slug}: ${v.title || ''}`, kickUrl: v.url || `https://kick.com/${slug}`, mode: liveMode(), modes: (player && player.modes) || [], id: '', url: '', hls: null, state: 'starting', tries: 0 };
+        if (!slug) return;
+        if (ws && ws.currentApp && ws.currentApp() !== APP_ID) { pendingWatch = v; ws.open(APP_ID); if (pendingWatch !== v) return; pendingWatch = null; }
+        // the program's page is made on its first open: the stream starts once it is there (show())
+        if (!els) { pendingWatch = v; return; }
+        if (player && player.slug === slug && player.state !== 'ended' && player.state !== 'error') return;
+        if (player) stopPlayer();
+        player = { slug, channel: v.channel || slug, streamTitle: v.title || '', title: `${v.channel || slug}: ${v.title || ''}`, startedAt: v.at || 0, kickUrl: v.url || `https://kick.com/${slug}`, mode: liveMode(), modes: (player && player.modes) || [], id: '', url: '', hls: null, state: 'starting', tries: 0 };
         els.player.hidden = false;
         plChrome();
+        plSide();
         syncPlayer();
         plStart(player.mode);
     }
@@ -1214,6 +1257,8 @@
         if (!p) return false;
         clearTimeout(p.retry);
         clearTimeout(p.keyTimer);
+        clearInterval(p.clock);
+        if (page) page.classList.remove('is-full');
         plDetach();
         plHold(false);
         if (p.id) ask('youtube_live_stop', { id: p.id }, 8000).catch(() => {});
@@ -1221,7 +1266,7 @@
         plTell();
         const nv = nativePlayer();
         if (nv) { try { nv.stop(); } catch (_) { /* gone */ } }
-        if (els) { els.player.hidden = true; plChrome(); plStatus('', false); plKey(false); }
+        if (els) { els.player.hidden = true; els.hud.hidden = true; els.plKey.hidden = true; plChrome(); plStatus('', false); }
         syncPlayer();
         return true;
     }
@@ -1230,16 +1275,74 @@
     function plSuspend(off) {
         const p = player;
         if (!p || p.state !== 'live') return;
-        if (off && !p.suspended) { p.suspended = true; clearTimeout(p.retry); plDetach(); plHold(false); } else if (!off && p.suspended) { p.suspended = false; plHold(true); plLost(); }
+        if (off && !p.suspended) { p.suspended = true; clearTimeout(p.retry); plClock(false); plDetach(); plHold(false); } else if (!off && p.suspended) { p.suspended = false; plHold(true); plClock(true); plLost(); }
     }
 
-    function plKey(show) {
-        if (!els) return;
+    /** "4 h 27 min" since the stream began (its start time comes with the live item). */
+    function upText() {
+        const p = player;
+        if (!p || !p.startedAt) return '';
+        const min = Math.max(0, Math.floor((Date.now() - p.startedAt) / 60000));
+        return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`;
+    }
+    const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+
+    /** What is beside (under) the picture when there is room: the stream's title, who and how many, how long. */
+    function plSide() {
+        const p = player;
+        if (!els || !p) return;
+        const now = liveNow().find((x) => x.id === `kick:${p.slug}`) || (hub.live && hub.live.items || []).find((x) => x.id === `kick:${p.slug}`);
+        if (now) { if (now.title) p.streamTitle = now.title; if (now.at) p.startedAt = now.at; p.viewers = now.viewers; p.note = now.note; }
+        const up = upText();
+        setText(els.sideTitle, p.streamTitle || p.channel);
+        setText(els.sideSub, [p.channel, p.viewers ? `${people(p.viewers)} watching` : '', p.note || ''].filter(Boolean).join(' · '));
+        setText(els.sideUp, [up ? `Live for ${up}` : '', modeLabel(p.mode)].filter(Boolean).join(' · '));
+        setText(els.plUp, up);
+    }
+
+    /** The minute tick of "live for": only while the player is on screen. */
+    function plClock(on) {
+        const p = player;
+        if (!p) return;
+        clearInterval(p.clock);
+        p.clock = null;
+        if (on && shown && p.state === 'live') p.clock = setInterval(plSide, 60000); // perf: allow a clock while it shows (stopped with the player and when it is not in front)
+    }
+
+    /** The keys over the picture (pause, sound, stop, Kick's app, full screen): a tap shows them, they go by themselves. */
+    function plHud(show) {
+        if (!els || !player) return;
         const paused = els.video.paused;
-        els.plKey.hidden = !show;
-        els.plKey.classList.toggle('is-play', paused);
-        els.plKey.setAttribute('aria-label', paused ? 'Play' : 'Pause');
-        if (player) { clearTimeout(player.keyTimer); if (show && !paused) player.keyTimer = setTimeout(() => { if (els) els.plKey.hidden = true; }, 2500); }
+        const live = player.state === 'live';
+        clearTimeout(player.keyTimer);
+        if (els.hud.hidden === show) els.hud.hidden = !show;
+        // the big key in the middle only while paused (or when the browser wants a touch before it plays)
+        const big = live && paused;
+        if (els.plKey.hidden === big) els.plKey.hidden = !big;
+        const t = els.hud.querySelector('[data-pl="toggle"]');
+        const tHtml = paused ? I.play : I.pause;
+        if (t.dataset.g !== (paused ? 'play' : 'pause')) { t.dataset.g = paused ? 'play' : 'pause'; t.innerHTML = tHtml; t.setAttribute('aria-label', paused ? 'Play' : 'Pause'); }
+        const m = els.hud.querySelector('[data-pl="mute"]');
+        const muted = !!els.video.muted;
+        if (m.dataset.g !== (muted ? 'mute' : 'sound')) { m.dataset.g = muted ? 'mute' : 'sound'; m.innerHTML = muted ? I.mute : I.sound; m.setAttribute('aria-label', muted ? 'Sound on' : 'Sound off'); }
+        if (show) { plSide(); if (!paused) player.keyTimer = setTimeout(() => { if (els && player) els.hud.hidden = true; }, 4000); }
+    }
+    const plKey = (show) => plHud(show);
+
+    /** Full screen: the picture over the whole display, bars and all. auto: it was the turn to landscape that asked. */
+    function plFull(on, auto) {
+        if (!page || !player) return;
+        player.full = !!on;
+        player.fullAuto = !!on && !!auto;
+        page.classList.toggle('is-full', !!on);
+    }
+    // a phone-sized screen turned on its side (the Fold's cover screen, a phone): the picture takes all of it
+    function plTurned() {
+        const p = player;
+        if (!p || Math.min(window.innerWidth, window.innerHeight) >= 560) return;
+        const land = window.innerWidth > window.innerHeight;
+        if (land && !p.full) plFull(true, true);
+        else if (!land && p.fullAuto) plFull(false);
     }
 
     function plToggle() {
@@ -1255,11 +1358,21 @@
     function wirePlayer() {
         const v = els.video;
         els.player.addEventListener('click', (e) => {
-            if (e.target.closest('[data-pl="toggle"]')) { plToggle(); return; }
-            plKey(els.plKey.hidden);
+            const k = e.target.closest('[data-pl]');
+            if (!k) { if (e.target.closest('.yt-stage')) plHud(els.hud.hidden); return; }
+            const p = player;
+            if (!p) return;
+            const act = k.dataset.pl;
+            if (act === 'toggle') plToggle();
+            else if (act === 'mute') { els.video.muted = !els.video.muted; plHud(true); }
+            else if (act === 'stop') stopPlayer();
+            else if (act === 'kick') { const u = p.kickUrl; stopPlayer(); openUrl(u, true, KICK_PACKAGE); }
+            else if (act === 'full') { plFull(!p.full); plHud(true); }
         });
-        v.addEventListener('playing', () => { if (player && player.state === 'live') { player.tries = 0; plStatus('', false); } plKey(!els.plKey.hidden); });
-        v.addEventListener('pause', () => plKey(true));
+        try { if (window.screen && screen.orientation) screen.orientation.addEventListener('change', plTurned, { signal: appScopeSignal }); } catch (_) { /* no orientation API */ }
+        window.addEventListener('resize', plTurned, { signal: appScopeSignal });
+        v.addEventListener('playing', () => { if (player && player.state === 'live') { player.tries = 0; plStatus('', false); } plHud(!els.hud.hidden); });
+        v.addEventListener('pause', () => plHud(true));
         v.addEventListener('waiting', () => { if (player && player.state === 'live') plStatus('Buffering...', true); });
         v.addEventListener('error', () => { if (player && !player.hls && player.state === 'live') plLost(); });
         // news from the app's native player: it took the stream (another Android app came up), its floating
@@ -1286,7 +1399,7 @@
 
     const refreshKeys = () => { if (ws) { ws.refreshSoftKeys(); ws.refreshTitleAction(); } };
     function syncPlayer() {
-        if (ws) { ws.setTitle(player ? 'Live' : TITLE); ws.syncHistory(); refreshKeys(); }
+        if (ws) { ws.setTitle(player ? player.channel : TITLE); ws.syncHistory(); refreshKeys(); }
     }
 
     /**
@@ -1321,8 +1434,7 @@
         return {
             left: { label: 'Quality', disabled: p.state === 'starting', menu: qualityMenu },
             right: { label: 'Menu', menu: () => [
-                { label: els.video.paused ? 'Play' : 'Pause', disabled: !live, action: plToggle },
-                { label: 'Sound Off', checked: !!els.video.muted, action: () => { els.video.muted = !els.video.muted; } },
+                { label: 'Full Screen', checked: !!p.full, action: () => plFull(!p.full) },
                 { label: 'Try Again', disabled: p.state === 'starting', action: () => plStart(p.mode) },
                 '-',
                 { label: 'Watch in Kick\'s App', action: () => { const u = p.kickUrl; stopPlayer(); openUrl(u, true, KICK_PACKAGE); } },
@@ -1373,6 +1485,12 @@
     // ---------------------------------------------------------------- app
 
     function open(to) {
+        // 'kick:<channel>' (a go-live notification): that stream, when the channel is live
+        if (/^kick:/.test(String(to || ''))) {
+            const v = (hub.live && hub.live.items || []).find((x) => x.id === to) || (data.subs.videos || []).find((x) => x.id === to);
+            if (v) { watchLive(v); return; }
+            to = 'subs';
+        }
         if (ws) ws.open(APP_ID);
         if (to && TABS.some((t) => t.id === to) && els) setTab(to);
     }
@@ -1399,7 +1517,8 @@
             // new uploads the server found while the program was away: taken now, quietly, as a push would
             const t = data.subs;
             if (t.feedStale && signedIn() && t.videos && !t.loading) { t.feedStale = false; loadTab('subs', false, true); }
-            if (player) { syncPlayer(); plTakeBack(); plSuspend(false); }
+            if (pendingWatch) { const v = pendingWatch; pendingWatch = null; watchLive(v); }
+            if (player) { syncPlayer(); plTakeBack(); plSuspend(false); plClock(true); }
         },
         hide() {
             shown = false;
