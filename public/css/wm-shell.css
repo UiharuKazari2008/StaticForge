@@ -2492,15 +2492,19 @@ html.ui-mobile body > #galleryWindow {
 /* Splash: full screen over the bars, as the device's boot logo. WM 6.1's is a green field
  * lighter toward the lower right with three white swirl arcs and the logo at the top left;
  * here it takes the workspace colour and the Melaton emblem. */
-/* a CaféReady phone's logo in the splash's bottom right corner, as the desktop's boot and the OEM splash carry it
-   (Yukimi, Nov 18 2026; wmShell buildBootLayers) */
+/* a CaféReady phone's badge (wm-programs.css .wm-cafe-badge, its dark background) in the splash's bottom right
+   corner, as the desktop's boot and the OEM splash carry it (Yukimi, Nov 18 2026; wmShell buildBootLayers) */
 .wm-splash .wm-splash-cafe {
     position: absolute;
-    right: calc(var(--wm-safe-right, 0px) + 12 * var(--wm-px));
-    bottom: calc(var(--wm-safe-bottom, 0px) + 12 * var(--wm-px));
-    width: min(30%, 220px);
+    right: calc(var(--wm-safe-right, 0px) + 10 * var(--wm-px));
+    bottom: calc(var(--wm-safe-bottom, 0px) + 10 * var(--wm-px));
+    margin: 0;
     z-index: 2;
     pointer-events: none;
+}
+
+.wm-splash .wm-splash-cafe[hidden] {
+    display: none;
 }
 
 .wm-splash {
@@ -2541,7 +2545,9 @@ html.ui-mobile[data-wm-boot="splash"] .wm-splash {
     /* one ROM pixel (480 across): the picture is drawn in the ROM's own coordinates, top aligned at
        the screen's width; on a taller screen the box runs on to the bottom and the CSS draws what
        the ROM's 640 rows did not have (the gradients carry on, the rings continue) */
-    --u: calc(100cqw / 480);
+    /* a screen wider than the ROM's 3:4 (the Fold unfolded): the picture is fitted to the height and left aligned
+       instead of filling the width (Yukimi, Nov 18 2026); its field and rings carry on to the right */
+    --u: min(calc(100cqw / 480), calc(100cqh / 640));
     position: absolute;
     left: 0;
     top: 0;
