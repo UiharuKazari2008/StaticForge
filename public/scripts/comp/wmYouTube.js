@@ -877,8 +877,8 @@
         const html = out ? signHtml() : '';
         if (els.sign.dataset.html !== html) { els.sign.dataset.html = html; els.sign.innerHTML = html; }
         els.sign.hidden = !out;
-        els.tabs.hidden = out;
-        els.root.querySelector('.yt-head').hidden = out;
+        els.tabs.hidden = out || !!player;
+        els.root.querySelector('.yt-head').hidden = out || !!player;
         TABS.forEach((t) => { els.paneEls[t.id].hidden = out || t.id !== tab; });
         if (!out) {
             renderPane(tab);
@@ -1013,13 +1013,37 @@
     // A Kick stream is played here, not in Kick's app: the server pulls it and hands the phone a steady, lighter
     // stream (HLS pieces under /api/videos/live/<id>/). The picture is a plain <video> with the program's own
     // keys (no browser controls); hls.js (public/dist/hlsjs, loaded when the player first opens) does the
-    // fetching and rides out a weak connection. Playing stops loading when the program is not in front; with
-    // the screen off only Audio First keeps going.
+    // fetching and rides out a weak connection. When the program or the app is left, the Dreamscape app's native
+    // player carries the stream on (a floating window over Today and other apps, or sound alone); without the
+    // app (a plain browser) loading stops until the program is in front again. With the screen off only Audio
+    // First keeps going.
 
     const LS_MODE = 'wmVideosLiveMode';
     const HLS_SRC = '/dist/hlsjs/hls.light.min.js';
     let player = null; // { slug, title, channel, url, mode, modes, id, hls, state, held, lock, tries, keyTimer }
     let hlsLoading = null;
+
+    // The Dreamscape app's native player (DSApp videos/VideoPlayback.kt): when this program or the app is left,
+    // the stream carries on there as a floating window or as sound, so it never depends on this page running.
+    const nativePlayer = () => (window.AndroidVideos && typeof window.AndroidVideos.watching === 'function' ? window.AndroidVideos : null);
+    /** Tells the app what the page's player shows (or that it shows nothing): it takes over when the app is left. */
+    function plTell() {
+        const nv = nativePlayer();
+        if (!nv) return;
+        const p = player;
+        try {
+            nv.watching(p && p.state === 'live' && p.url ? JSON.stringify({ url: new URL(p.url, location.origin).toString(), title: p.title, subtitle: modeLabel(p.mode), audioOnly: p.mode === 'audio' }) : '');
+        } catch (_) { /* an older app build */ }
+    }
+    /** The native player gives the stream back to the page (Videos is in front again). */
+    function plTakeBack() {
+        const p = player;
+        const nv = nativePlayer();
+        if (!p || !nv) return;
+        let active = false;
+        try { active = nv.isActive() === true; } catch (_) { active = false; }
+        if (p.handed || active) { p.handed = false; try { nv.stop(); } catch (_) { /* gone */ } }
+    }
 
     const liveMode = () => { try { return localStorage.getItem(LS_MODE) || '480'; } catch (_) { return '480'; } };
     const modeLabel = (id) => { const m = ((player && player.modes) || []).find((x) => x.id === id); return m ? m.label : ''; };
@@ -1089,7 +1113,7 @@
             const hls = new Hls({ lowLatencyMode: false, liveSyncDurationCount: 5, liveMaxLatencyDurationCount: 13, maxBufferLength: 30, maxMaxBufferLength: 48, backBufferLength: 8,
                 manifestLoadingMaxRetry: 8, levelLoadingMaxRetry: 10, fragLoadingMaxRetry: 10, fragLoadingRetryDelay: 800, levelLoadingRetryDelay: 800 });
             p.hls = hls;
-            hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => { plKey(true); }); });
+            hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(plNeedsTap); });
             hls.on(Hls.Events.ERROR, (_e, d) => {
                 if (!d || !d.fatal || player !== p) return;
                 if (d.type === Hls.ErrorTypes.MEDIA_ERROR && p.tries < 6) { p.tries++; hls.recoverMediaError(); return; }
@@ -1099,10 +1123,26 @@
             hls.attachMedia(video);
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = p.url;
-            video.play().catch(() => { plKey(true); });
+            video.play().catch(plNeedsTap);
         } else {
             plStatus('This phone\'s browser cannot play the stream.', false);
         }
+    }
+
+    /** The browser will not start playing by itself (no touch came with it): the play key, and nothing that looks busy. */
+    /** While a stream is watched the header and the tab strip step aside: the picture has the whole page. */
+    function plChrome() {
+        if (!els) return;
+        const off = !signedIn() || !!player;
+        if (els.tabs.hidden !== off) els.tabs.hidden = off;
+        const head = els.root.querySelector('.yt-head');
+        if (head.hidden !== off) head.hidden = off;
+    }
+
+    function plNeedsTap() {
+        if (!player) return;
+        plStatus('', false);
+        plKey(true);
     }
 
     /** The stream stopped arriving: ask the server what became of it, then start again or say it ended. */
@@ -1114,7 +1154,7 @@
         let st = null;
         try { st = p.id ? await ask('youtube_live_state', { id: p.id }, 10000) : null; } catch (_) { st = null; }
         if (player !== p) return;
-        if (st && st.state === 'ended') { p.state = 'ended'; plStatus('The stream has ended.', false); plHold(false); refreshKeys(); return; }
+        if (st && st.state === 'ended') { p.state = 'ended'; plStatus('The stream has ended.', false); plHold(false); plTell(); refreshKeys(); return; }
         if (st && (st.state === 'live' || st.state === 'restarting') && p.tries < 30) {
             p.tries++;
             p.retry = setTimeout(() => { if (player === p && p.state === 'live' && shown) plAttach(); }, st.state === 'live' ? 1500 : 5000); // perf: allow one reconnect after a lost stream, not a poll
@@ -1145,6 +1185,7 @@
             p.state = 'live';
             plHead();
             plHold(true);
+            plTell();
             refreshKeys();
             if (shown) await plAttach(); else p.suspended = true;
         } catch (e) {
@@ -1162,6 +1203,7 @@
         if (ws && ws.currentApp && ws.currentApp() !== APP_ID) ws.open(APP_ID);
         player = { slug, title: `${v.channel || slug}: ${v.title || ''}`, kickUrl: v.url || `https://kick.com/${slug}`, mode: liveMode(), modes: (player && player.modes) || [], id: '', url: '', hls: null, state: 'starting', tries: 0 };
         els.player.hidden = false;
+        plChrome();
         syncPlayer();
         plStart(player.mode);
     }
@@ -1176,7 +1218,10 @@
         plHold(false);
         if (p.id) ask('youtube_live_stop', { id: p.id }, 8000).catch(() => {});
         player = null;
-        if (els) { els.player.hidden = true; plStatus('', false); plKey(false); }
+        plTell();
+        const nv = nativePlayer();
+        if (nv) { try { nv.stop(); } catch (_) { /* gone */ } }
+        if (els) { els.player.hidden = true; plChrome(); plStatus('', false); plKey(false); }
         syncPlayer();
         return true;
     }
@@ -1217,8 +1262,26 @@
         v.addEventListener('pause', () => plKey(true));
         v.addEventListener('waiting', () => { if (player && player.state === 'live') plStatus('Buffering...', true); });
         v.addEventListener('error', () => { if (player && !player.hls && player.state === 'live') plLost(); });
+        // news from the app's native player: it took the stream (another Android app came up), its floating
+        // window was tapped (back to this program), or it stopped (closed there, the stream ended or was lost)
+        window.addEventListener('dreamscape:videos', (e) => {
+            const p = player;
+            const st = e && e.detail && e.detail.state;
+            if (!p || !st) return;
+            if (st === 'handed') { p.handed = true; plSuspend(true); }
+            else if (st === 'open') { if (ws) ws.open(APP_ID); }
+            else if (p.handed) { p.handed = false; if (st === 'ended') { plStatus('The stream has ended.', false); p.state = 'ended'; plTell(); refreshKeys(); } else stopPlayer(); }
+        }, { signal: appScopeSignal });
+        // back in the app with this program still in front (the app had handed the stream over when it was left)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden || !shown || !player) return;
+            const nv = nativePlayer();
+            let active = false;
+            try { active = !!nv && nv.isActive() === true; } catch (_) { active = false; }
+            if (player.handed || active) { plTakeBack(); plSuspend(false); }
+        }, { signal: appScopeSignal });
         // the screen going off stops a picture mode's fetching; Audio First plays on
-        window.addEventListener('melatonscreen', () => { if (player && player.mode !== 'audio') plSuspend(document.documentElement.dataset.screenOff !== undefined); }, { signal: appScopeSignal });
+        window.addEventListener('melatonscreen', () => { if (player && player.mode !== 'audio' && !player.handed) plSuspend(document.documentElement.dataset.screenOff !== undefined); }, { signal: appScopeSignal });
     }
 
     const refreshKeys = () => { if (ws) { ws.refreshSoftKeys(); ws.refreshTitleAction(); } };
@@ -1226,11 +1289,30 @@
         if (ws) { ws.setTitle(player ? 'Live' : TITLE); ws.syncHistory(); refreshKeys(); }
     }
 
+    /**
+     * The Quality list, kept short (Yukimi: the full list was too large): 1080p and 720p open their frame rates,
+     * 480p and 360p are there directly, More holds the rest, Audio First closes it. Each row says its data rate.
+     */
     function qualityMenu() {
         const p = player;
         if (!p) return [];
-        const list = p.modes.length ? p.modes : [{ id: p.mode, label: p.mode, note: '' }];
-        return list.map((m) => ({ label: m.note ? `${m.label} (${m.note})` : m.label, radio: m.id === p.mode, action: () => { if (player === p && m.id !== p.mode) plStart(m.id); } }));
+        const list = p.modes.length ? p.modes : [{ id: p.mode, label: p.mode, short: p.mode, group: '', kbit: 0 }];
+        const rate = (m) => (m.kbit ? ` (${m.kbit >= 1000 ? `${(m.kbit / 1000).toFixed(1)} Mbit` : `${m.kbit} kbit`})` : '');
+        const row = (m) => ({ label: `${m.short || m.label}${rate(m)}`, radio: m.id === p.mode, action: () => { if (player === p && m.id !== p.mode) plStart(m.id); } });
+        const out = [];
+        const done = new Set();
+        list.forEach((m) => {
+            if (!m.group) { out.push(m.id === 'audio' ? { tail: row(m) } : row(m)); return; }
+            if (done.has(m.group)) return;
+            done.add(m.group);
+            const inside = list.filter((x) => x.group === m.group);
+            out.push({ label: m.group, checked: inside.some((x) => x.id === p.mode) ? true : undefined, submenu: inside.map(row) });
+        });
+        // the sub-lists first (largest picture down), then the direct rows, More, and Audio First last
+        const more = out.filter((x) => x.label === 'More');
+        const tails = out.filter((x) => x.tail).map((x) => x.tail);
+        const rest = out.filter((x) => !x.tail && x.label !== 'More');
+        return rest.concat(more, tails.length ? ['-'] : [], tails);
     }
 
     function playerKeys() {
@@ -1317,9 +1399,17 @@
             // new uploads the server found while the program was away: taken now, quietly, as a push would
             const t = data.subs;
             if (t.feedStale && signedIn() && t.videos && !t.loading) { t.feedStale = false; loadTab('subs', false, true); }
-            if (player) { syncPlayer(); plSuspend(false); }
+            if (player) { syncPlayer(); plTakeBack(); plSuspend(false); }
         },
-        hide() { shown = false; if (els) els.q.blur(); plSuspend(true); void syncHub(); },
+        hide() {
+            shown = false;
+            if (els) els.q.blur();
+            // the program is left with a stream playing: the app's native player carries it on (a floating window, or sound)
+            const nv = nativePlayer();
+            if (player && player.state === 'live' && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } }
+            plSuspend(true);
+            void syncHub();
+        },
         historyDepth: () => (player ? 1 : 0) + (layer ? 1 : 0),
         onBack: () => (player ? stopPlayer() : popLayer()),
         titleKind: () => (player || layer ? 'ok' : 'close'),
