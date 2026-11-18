@@ -10,4 +10,13 @@ if ! node "$root/scripts/check-perf-rules.js" --staged; then
     echo "pre-commit: blocked by scripts/check-perf-rules.js (rules: .cursor/rules/phone-power-*.mdc)." >&2
     exit 1
 fi
+# CaféReady tasks (#908, rule cafeready-background): the Android app runs its own bundled copy. A change here reaches
+# phones only after `node scripts/sync-cafe-tasks.js --dsapp <DSApp tree>`, a DSApp commit and an app build.
+if git diff --cached --name-only | grep -q '^public/scripts/tasks/'; then
+    if [ -n "$DSAPP_TREE" ] && [ -d "$DSAPP_TREE" ]; then
+        node "$root/scripts/sync-cafe-tasks.js" --dsapp "$DSAPP_TREE" --check >&2 || echo "pre-commit: the app's CaféReady tasks differ; sync them into DSApp (not blocking)." >&2
+    else
+        echo "pre-commit: CaféReady task files changed - sync them into DSApp (scripts/sync-cafe-tasks.js --dsapp <tree>) and build the app; set DSAPP_TREE to check here." >&2
+    fi
+fi
 exit 0
