@@ -63,7 +63,7 @@
     // from the top left while it runs up into the clock (the lift-without-speed move, BACK_MS), then
     // the clock panel grows in as after any move. ENTER_ROWS: how far below its place the list starts.
     const ENTER_MS = 550;       // the entrance's run up into the clock (and its scale-in, wm-titanium.css)
-    const ENTER_ZOOM_MS = 450;  // ... then the clock panel grows and fades in (wm-ti-zoom-enter), larger than a move's
+    const ENTER_ZOOM_MS = 400;  // ... then the clock panel grows out of its name (wm-ti-zoom-enter), larger than a move's
     let enterLockUntil = 0;     // touches and keys are held off until the entrance and its panel grow are over (#800)
     const entryLocked = () => performance.now() < enterLockUntil;
     const ENTER_RECENT_MS = 1500; // a Home press this soon after the page came back belongs to that return
@@ -2052,13 +2052,11 @@
         const keep = tw;
         tw = t; // tweenYs reads the move from tw
         const frames = panels.map(() => []);
-        const ysAt = [];
         try {
             for (let k = 0; k <= ENTRY_SAMPLES; k++) {
                 const x = (k / ENTRY_SAMPLES) * (k / ENTRY_SAMPLES);
                 t.x = x;
                 const ys = tweenYs(top, t.ease ? t.ease(x) : x);
-                ysAt.push(ys);
                 ys.forEach((y, i) => frames[i].push({ offset: x, transform: `translate3d(0, ${(y * u).toFixed(2)}px, 0)` }));
             }
         } finally { t.x = 0; tw = keep; }
@@ -2069,15 +2067,8 @@
                 const el = rowEl.get(pn.id);
                 if (el) list.push(make(el, frames[i], { duration: back, easing: 'linear', fill: 'both' }));
             });
-            // the arriving item's label fades out under the glass over the run's last FADE_MS (as placeTween's fade):
-            // from where it stands then (dimmed under the glass) to nothing, linearly
-            const bEl = panels[t.b] && rowEl.get(panels[t.b].id);
-            if (bEl && back > FADE_MS) {
-                const k = Math.max(0, Math.min(ENTRY_SAMPLES, Math.round(Math.sqrt(1 - FADE_MS / back) * ENTRY_SAMPLES)));
-                const yb = ysAt[k][t.b];
-                const under = yb + ROW / 2 > top && yb + ROW / 2 < top + BAND;
-                list.push(make(bEl, [{ opacity: under ? 0.55 : 1 }, { opacity: 0 }], { duration: FADE_MS, delay: back - FADE_MS, easing: 'linear', fill: 'forwards' }));
-            }
+            // (the arriving item's name stays up to the end: the panel grows out of it as the list settles, and it
+            // fades under the panel then - wm-ti-name-out; it faded over the run's last FADE_MS and left the band empty)
         } catch (err) {
             for (const a of list) { try { a.cancel(); } catch (_) { /* gone */ } }
             console.warn('[wmTitanium] compositor entrance', err);
@@ -2153,7 +2144,8 @@
         else { const k = Math.pow(Math.min(1, t / (tw.back || BACK_MS)), 1.3); p = k * k * (3 - 2 * k); } // 13 %, 65 %, 100 % of the way at 103, 206, 310 ms
         if (t >= tw.end || p >= 1) { arrive(); return; }
         tw.p = p;
-        placeTween(p, Math.min(1, (tw.end - t) / FADE_MS));
+        // (the entrance and a Home press keep the arriving name up: the panel grows out of it as the list settles)
+        placeTween(p, tw.entry || homeArrival ? 1 : Math.min(1, (tw.end - t) / FADE_MS));
         settle = requestAnimationFrame(tweenStep);
     }
 
@@ -2232,10 +2224,12 @@
         pos = b;
         place();
         drawExpanded();
-        if (entering || homeArrival) catchLight();
-        haptic('land');
+        const lit = entering || homeArrival;
         lastUnder = -1;
         zoomIn(open, entering);
+        // the sheen and the motor after the frame that starts the panel's grow (the vibrate is a synchronous call into
+        // the app, ~20 ms on the A53, and the sheen an animation to set up): the grow is not held for them
+        requestAnimationFrame(() => setTimeout(() => { if (lit) catchLight(); haptic('land'); }, 0));
     }
 
     /** A tap on an item while the list runs: it ends on the next item to reach the band. */
