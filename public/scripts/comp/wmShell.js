@@ -4238,6 +4238,11 @@
         const lib = window.CafeTasks && window.CafeTasks.lib;
         const fitLib = (lib && lib.statusFit) || STATUS_FIT;
         if (!fitLib || typeof fitLib.fit !== 'function' || !statusTable()) return false;
+        // nothing the fit reads changed since the last one (a return from an Android program, a refresh that moved
+        // nothing): the bar is already right - no measure at all (the A53 ran three fits on every wake)
+        const key = statusFitKey(bar);
+        if (key === statusFitDone) return true;
+        statusFitDone = key;
         applyCornerInset(bar);
         const el = (r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
         const status = bar.querySelector('.wm-status');
@@ -4295,7 +4300,9 @@
         statusFolded = (r.folded || []).slice();
         if (r.reserveUsed) bar.classList.add('wm-status-full');
         paintNotifyIcon();
-        if (hole) applyCameraHole(bar);
+        // the split left of the camera only when an icon has to cross it (the measure already put the gap in)
+        if (hole && (r.left || []).length) applyCameraHole(bar);
+        else if (hole) { /* all right of the camera */ }
         else if (!(parseFloat(root.style.getPropertyValue('--camera-hole-width')) || 0) && !statusFolded.length && !(r.shed || []).length && !r.reserveUsed && !unfoldedScreen()) {
             // the kept room for notifications (#811), where there is room for it: one check
             const used = apps.length + (el('notify').hidden ? 0 : 1);
@@ -4308,6 +4315,29 @@
             }
         }
         return true;
+    }
+    // what the fit reads, without a layout: each icon's role, shown or not and its glyph (the battery charging, a
+    // strip), the X / ok, the screen's width and turn, the camera and bezel, the Settings that steer the fit and
+    // whether notices are waiting. The fit's own writes (wm-shed, the group icon, the kept room) are not in it
+    let statusFitDone = '';
+    function statusFitKey(bar) {
+        const parts = [];
+        bar.querySelectorAll('.wm-status-icon').forEach((i) => {
+            const r = i.dataset.role;
+            if (r === 'notify') return;
+            parts.push(`${r}:${i.hidden ? 0 : 1}:${i.dataset.icon || ''}:${i.style.getPropertyValue('--n') || ''}`);
+        });
+        const act = bar.querySelector('.wm-title-action');
+        const rs = root.style;
+        let ls = '';
+        try { ls = ['wmStatusSoundIcon', 'wmStatusPowerIcon', 'wmStatusNoCross', 'wmStatusSlots', 'wmCameraExtendBar'].map((k) => localStorage.getItem(k) || '').join(','); } catch (_) { /* storage off */ }
+        const angle = window.screen && screen.orientation ? screen.orientation.angle : 0;
+        // (barsStage lays the bars out for the app's screen: the shell's own width and the staged density)
+        return [parts.join(' '), act ? `${act.hidden ? 0 : 1}${act.dataset.kind || ''}` : '-', window.innerWidth, window.innerHeight, angle, shell.style.width, iconDensity,
+            root.style.getPropertyValue('--wm-icon-unit'), root.dataset.wmIconArt || '', bar.classList.contains('is-start-open') ? 1 : 0,
+            rs.getPropertyValue('--camera-hole-left'), rs.getPropertyValue('--camera-hole-width'), rs.getPropertyValue('--camera-hole-top'), rs.getPropertyValue('--wm-px'),
+            root.dataset.wmCamera || '', root.dataset.wmBezelEdge || '', root.dataset.wmVersion || '', root.dataset.wmBars || '', root.dataset.wmFont || '',
+            ls, notesForBubbleIcon().length ? 1 : 0, cameraIgnoredNow() ? 1 : 0, unfoldedScreen() ? 1 : 0, bar.querySelector('.wm-title') && bar.querySelector('.wm-title').hidden ? 1 : 0].join('|');
     }
     // the shared fit, held from load like the table (the page's task runtime may replace window.CafeTasks later)
     const STATUS_FIT = (window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusFit) || null;
