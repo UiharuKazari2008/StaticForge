@@ -400,6 +400,54 @@
     }
 
     const camKey = (t) => t.id || `${t.lat},${t.lon}`;
+    /** What the drive warns of (#907): the cameras and the police (OSM zones, Waze's live reports), along the route. */
+    /** "2 cameras ahead" / "1 police ahead" for what lies past the car, or ''. */
+    const aheadText = (list, at, noun, same) => { const n = Array.isArray(list) ? list.filter((t) => t.at > at).length : 0; return n ? `${n} ${noun}${n > 1 && !same ? 's' : ''} ahead` : ''; };
+    const warnings = (r) => (r ? (r.traps || []).concat(r.police || []).sort((a, b) => a.at - b.at) : []);
+
+    // ---------------------------------------------------------------- police while driving (#907)
+    //
+    // Driving a commute, the page watches that commute's police feed (statusHub traffic_police_<dir>,
+    // server-push-not-polling): one subscribe when the drive starts, one unsubscribe when it ends; the
+    // server reads OSM / Waze on its own timer and pushes only what changed. Not while the car is parked
+    // with the phone in it (DSApp drive state parked_in_car / idle / stopped).
+    let policeFeed = '';
+    function policeWanted() {
+        if (!loaded || !canUse() || !configured()) return '';
+        const dv = driving();
+        if (!dv) return '';
+        let st = '';
+        try { const H = window.AndroidHome; const d = H && typeof H.getDriveState === 'function' ? JSON.parse(H.getDriveState() || 'null') : null; st = (d && d.state) || ''; } catch (_) { st = ''; }
+        if (/^(idle|stopped|parked_in_car)$/.test(st)) return '';
+        return `traffic_police_${dv.direction}`;
+    }
+    function syncPoliceWatch() {
+        const want = policeWanted();
+        if (want === policeFeed) return;
+        const c = window.wsClient;
+        if (!c || typeof c.sendMessage !== 'function') return;
+        const old = policeFeed;
+        policeFeed = want;
+        if (old) void Promise.resolve(c.sendMessage('status_unsubscribe', { feed: old }, false)).catch(() => {});
+        if (want) {
+            void Promise.resolve(c.sendMessage('status_subscribe', { feed: want }, false)).then((res) => {
+                const d = (res && (res.data || res)) || {};
+                if (d.items && policeFeed === want) mergePolice(want, d.items, null, true);
+            }).catch(() => { if (policeFeed === want) policeFeed = ''; });
+        }
+    }
+    /** The feed's items into the report: all of them (the subscribe answer), or what changed (a push). */
+    function mergePolice(feed, changedItems, removed, whole) {
+        const dir = String(feed || '').replace('traffic_police_', '');
+        const r = latest[dir];
+        if (!r) return;
+        const byId = new Map(whole ? [] : (r.police || []).map((p) => [p.id, p]));
+        Object.entries(changedItems || {}).forEach(([id, p]) => byId.set(id, p));
+        (removed || []).forEach((id) => byId.delete(id));
+        r.police = [...byId.values()].sort((a, b) => a.at - b.at);
+        changed();
+        watchCameras();
+    }
     const camDrive = { key: '', alerted: new Set() };
     let camWatchId = null;
     let camFixAt = 0;
@@ -407,13 +455,14 @@
     function watchCameras() {
         const dv = driving();
         const r = latest.home;
+        syncPoliceWatch();
         if (!dv || dv.direction !== 'home' || !r || !r.traps) { stopCamWatch(); return; }
         const key = `home:${dv.leaveAt}`;
         if (camDrive.key !== key) { camDrive.key = key; camDrive.alerted.clear(); }
         nativeAlerted(key).forEach((id) => camDrive.alerted.add(id));
         // the app's own watch has this drive: it alerts (locked or not), the page only keeps count (#810)
         const native = nativeDrive.active && nativeDrive.key === key;
-        const ahead = camerasAhead(r.traps, dv.at, dv.totalM).filter((c) => !camDrive.alerted.has(camKey(c.trap)));
+        const ahead = camerasAhead(warnings(r), dv.at, dv.totalM).filter((c) => !camDrive.alerted.has(camKey(c.trap)));
         ahead.filter((c) => c.aheadM <= CAM_ALERT_M).forEach((c) => { camDrive.alerted.add(camKey(c.trap)); if (!native) cameraNote(c.trap, c.aheadM); });
         if (ahead.some((c) => c.aheadM > CAM_ALERT_M)) startCamWatch(); else stopCamWatch();
     }
@@ -459,7 +508,7 @@
             key,
             until: win.until,
             line: p.line,
-            cameras: r.traps.map((t) => ({ id: camKey(t), alongM: Math.round(t.at * total), title: `${t.label || 'Speed camera'} ahead`, street: t.street || '', maxspeed: t.maxspeed || '', count: t.count || 1 })),
+            cameras: warnings(r).map((t) => ({ id: camKey(t), alongM: Math.round(t.at * total), title: `${t.label || 'Speed camera'} ahead`, street: t.street || '', maxspeed: t.maxspeed || '', count: t.count || 1 })),
             home: c.home, work: c.work,
             radiusM: Math.round(((settings && settings.radiusKm) || 1.5) * 1000),
             alerted: camDrive.key === key ? [...camDrive.alerted] : [],
@@ -652,6 +701,8 @@
         // the phone on the route, seen from above, heading right (Home is the strip's right end)
         car: '<svg viewBox="0 0 28 16"><defs><linearGradient id="trfCarBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6a4d"/><stop offset=".45" stop-color="#d8240c"/><stop offset="1" stop-color="#7c1004"/></linearGradient><linearGradient id="trfCarGlass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfe6ff"/><stop offset="1" stop-color="#2b4a6e"/></linearGradient></defs><rect x="3" y="1" width="4" height="2.4" rx=".8" fill="#111"/><rect x="18" y="1" width="4" height="2.4" rx=".8" fill="#111"/><rect x="3" y="12.6" width="4" height="2.4" rx=".8" fill="#111"/><rect x="18" y="12.6" width="4" height="2.4" rx=".8" fill="#111"/><path d="M2.5 4.2Q2.5 2.4 4.6 2.4H21.5Q26.8 2.6 26.8 8T21.5 13.6H4.6Q2.5 13.6 2.5 11.8z" fill="url(#trfCarBody)" stroke="#3a0700" stroke-width=".8"/><path d="M16.6 4.2h2.6q2 .6 2 3.8t-2 3.8h-2.6q.9-1.4.9-3.8t-.9-3.8z" fill="url(#trfCarGlass)" stroke="#16263a" stroke-width=".5"/><path d="M6.2 4.6h2q-.6 1.4-.6 3.4t.6 3.4h-2q-.7-1.3-.7-3.4t.7-3.4z" fill="url(#trfCarGlass)" stroke="#16263a" stroke-width=".5"/><rect x="9.4" y="4.4" width="6.6" height="7.2" rx="1.2" fill="#c41d08" stroke="#5c0b00" stroke-width=".5"/><path d="M9.8 5h5.8" stroke="#ffb3a3" stroke-width=".7" stroke-linecap="round" opacity=".8"/><rect x="25" y="4" width="1.4" height="2.2" rx=".5" fill="#fff6c8"/><rect x="25" y="9.8" width="1.4" height="2.2" rx=".5" fill="#fff6c8"/><rect x="2.4" y="4.2" width="1" height="2" fill="#ff2a10"/><rect x="2.4" y="9.8" width="1" height="2" fill="#ff2a10"/></svg>',
         trap: '<svg viewBox="0 0 20 20"><rect x="2" y="5" width="12" height="9" rx="1.5" fill="#3a4048" stroke="#111" stroke-width=".8"/><rect x="14" y="7" width="4" height="5" rx="1" fill="#22262b" stroke="#111" stroke-width=".8"/><circle cx="7" cy="9.5" r="3" fill="#0d1a2b" stroke="#8fb6e6" stroke-width="1"/><circle cx="6.2" cy="8.7" r=".9" fill="#cfe4ff"/><rect x="11" y="6.3" width="2" height="1.4" fill="#e8341c"/><path d="M8 14v4M5 18h6" stroke="#555" stroke-width="1.6"/></svg>',
+        // police (#907): a patrol car's light bar, red and blue
+        police: '<svg viewBox="0 0 20 20"><rect x="2" y="10" width="16" height="6" rx="2" fill="#2b3038" stroke="#111" stroke-width=".8"/><path d="M4 10 Q4 5 10 5 Q16 5 16 10Z" fill="#e8ecf1" stroke="#111" stroke-width=".8"/><rect x="5" y="3" width="4.5" height="3" rx="1" fill="#e2261b" stroke="#600" stroke-width=".6"/><rect x="10.5" y="3" width="4.5" height="3" rx="1" fill="#1f5fe0" stroke="#002a80" stroke-width=".6"/><circle cx="6" cy="16" r="1.8" fill="#111"/><circle cx="14" cy="16" r="1.8" fill="#111"/></svg>',
         lane: '<svg viewBox="0 0 20 20"><rect x="2" y="2" width="16" height="16" fill="#3b4148"/><path d="M7 2v16M13 2v16" stroke="#fff" stroke-width="1" stroke-dasharray="2 2"/><path d="M14.2 6l3 3-3 3M17 9h-5" fill="none" stroke="#ffc21a" stroke-width="1.8"/><path d="M4 5l4 9M8 5l-4 9" stroke="#e8341c" stroke-width="1.8"/></svg>',
         accident: '<svg viewBox="0 0 20 20"><path d="M10 1l2.2 4.6 5-1.4-2.4 4.4 4.2 2.8-5 .7.3 5.1L10 14.3 5.7 17.2l.3-5.1-5-.7 4.2-2.8L2.8 4.2l5 1.4z" fill="#e03018" stroke="#5c0d02" stroke-width=".8"/><path d="M10 6l1 3h-2zM9 10.5h2v1.8H9z" fill="#fff"/></svg>',
         hazard: '<svg viewBox="0 0 20 20"><path d="M10 1.8l8.6 15.4H1.4z" fill="#ffc21a" stroke="#6b4a00" stroke-width="1" stroke-linejoin="round"/><path d="M9 6.5h2l-.4 6h-1.2zM9 13.8h2v2H9z" fill="#1a1a1a"/></svg>',
@@ -774,6 +825,7 @@
         els.segs.innerHTML = segsHtml(p.segments);
         const pins = [].concat(
             (r.traps || []).map((t) => ({ at: t.at, kind: 'trap' })),
+            (r.police || []).map((t) => ({ at: t.at, kind: 'police' })),
             (r.alerts || []).map((a) => ({ at: a.at, kind: a.kind })),
             (r.jams || []).filter((j) => j.major).map((j) => ({ at: j.at, kind: 'jam' }))
         );
@@ -848,7 +900,7 @@
     function rowsHtml(r) {
         const n = (a) => (r && Array.isArray(a) ? a.length : 0);
         const row = (open, ico, label, count, extra = '') => `<button type="button" class="trf-row${count === '?' ? ' is-unknown' : count ? ' has-items' : ''}" data-open="${open}">${icon(ico)}<span class="trf-row-label">${esc(label)}</span>${extra}<span class="trf-row-count">${count == null ? '' : esc(count)}</span><span class="trf-row-arrow"></span></button>`;
-        const trapCount = r ? (r.camerasChecked ? n(r.traps) : '?') : null;
+        const trapCount = r ? (r.camerasChecked ? n(r.traps) + n(r.police) : '?') : null;
         return row('traps', 'trap', 'Speed Traps on route', trapCount)
             + row('alerts', 'hazard', 'Alerts', r ? (r.incidentsChecked ? n(r.alerts) : '?') : null)
             + row('slow', 'slow', 'Slowdowns', r ? n(r.slowdowns) + n((r.jams || []).filter((j) => !r.slowdowns.length || j.major)) : null)
@@ -913,8 +965,8 @@
         els.layerHdr.textContent = hdr;
         if (top === 'settings') { renderSettings(); return; }
         if (top === 'routes') els.layerBody.innerHTML = routesHtml(r);
-        else if (top === 'traps') els.layerBody.innerHTML = listHtml((r && r.traps) || [], r && !r.camerasChecked ? 'The speed camera list could not be loaded for this report. Tap Refresh.' : 'No speed or red light cameras are mapped on your route.', 'trap')
-            + '<div class="trf-note">Fixed speed and red light cameras mapped on OpenStreetMap. Mobile speed traps are not listed.</div>';
+        else if (top === 'traps') els.layerBody.innerHTML = listHtml(warnings(r), r && !r.camerasChecked ? 'The speed camera list could not be loaded for this report. Tap Refresh.' : 'No cameras or police zones are known on your route.', 'trap')
+            + `<div class="trf-note">Fixed speed and red light cameras and police enforcement zones mapped on OpenStreetMap${provs && provs.waze && provs.waze.configured ? ', and police reported on Waze while you drive' : ''}.</div>`;
         else if (top === 'alerts') els.layerBody.innerHTML = listHtml((r && r.alerts) || [], r && !r.incidentsChecked ? incidentsMissing() : 'No accidents, closures or roadworks reported on your route.');
         else if (top === 'slow') els.layerBody.innerHTML = slowHtml(r);
         else if (top === 'advisor') els.layerBody.innerHTML = advisorHtml(d);
@@ -1073,7 +1125,7 @@
         if (it) {
             const [kind, i] = it.dataset.item.split(':');
             const r = latest[direction()];
-            const list = kind === 'trap' ? r.traps : r.alerts;
+            const list = kind === 'trap' ? warnings(r) : r.alerts;
             const row = list && list[Number(i)];
             if (!row) return;
             itemView = { label: row.label, row };
@@ -1291,6 +1343,10 @@
         c.on('traffic_updated', (pk) => { const d = data(pk); if (d.direction && d.report) { latest[d.direction] = d.report; changed(); if (d.direction === 'home') armNativeWatch(); } });
         c.on('traffic_report', onReport);
         c.on('traffic_settings_changed', (pk) => { const d = data(pk); if (d.settings) { settings = d.settings; changed(); } });
+        // the police feed's changes while driving (#907); a reconnect subscribes again on the next check
+        c.on('traffic_police', (pk) => { const d = (pk && (pk.feed ? pk : pk.data)) || {}; if (d.feed && d.feed === policeFeed) mergePolice(d.feed, d.changed, d.removed, false); }, { signal: appScopeSignal });
+        c.on('connected', () => { policeFeed = ''; syncPoliceWatch(); }, { signal: appScopeSignal });
+        window.addEventListener('androiddrive', syncPoliceWatch, { signal: appScopeSignal });
         // Settings > Location changed Home / Work (#907): an open settings page shows the new places
         document.addEventListener('wmLocationPlaces', () => { if (layers[layers.length - 1] === 'settings' && els.layerBody) renderSettings(); }, { signal: appScopeSignal });
         c.on('connected', () => load());
@@ -1417,7 +1473,7 @@
         const dv = driving();
         if (dv && dv.direction === d) {
             // on the way: what is left from here, from the report already on the phone
-            return { title: `${label}: ${minText(dv.leftSec)} left`, sub: [`Arrive ${clock(dv.arriveAt)}`, `${miles(dv.toGoM)} to go`, r.traps && r.traps.filter((t) => t.at > dv.at).length ? `${r.traps.filter((t) => t.at > dv.at).length} camera${r.traps.filter((t) => t.at > dv.at).length > 1 ? 's' : ''} ahead` : ''].filter(Boolean).join(', '), level: r.level };
+            return { title: `${label}: ${minText(dv.leftSec)} left`, sub: [`Arrive ${clock(dv.arriveAt)}`, `${miles(dv.toGoM)} to go`, aheadText(r.traps, dv.at, 'camera'), aheadText(r.police, dv.at, 'police', true)].filter(Boolean).join(', '), level: r.level };
         }
         const delay = r.delaySec >= 60 ? ` (+${mins(r.delaySec)})` : '';
         const bits = [];
@@ -1428,6 +1484,7 @@
         else if (advice[d] && advice[d].wait) bits.push(`Wait ${advice[d].wait.offsetMin} min`);
         else if (p.summary) bits.push(`via ${p.summary}`);
         if (r.traps && r.traps.length) bits.push(`${r.traps.length} camera${r.traps.length > 1 ? 's' : ''}`);
+        if (r.police && r.police.length) bits.push(`${r.police.length} police`);
         const old = Date.now() - Date.parse(r.at) > 30 * 60 * 1000;
         if (old) bits.push(`at ${clock(r.at)}`);
         return { title: `${label}: ${minText(p.durationSec)}${delay}`, sub: bits.join(', '), level: old ? 'none' : r.level };

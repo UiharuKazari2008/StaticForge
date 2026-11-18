@@ -197,6 +197,32 @@ class ApiKeyManager {
                     ]
                 }
             },
+            // Waze (Melaton Traffic, #907): live police reports on the commute while the phone drives it
+            // (OpenWeb Ninja's Waze API). Counted per month; no status probe (it would spend a call).
+            waze: {
+                label: 'Waze',
+                description: 'Live police reports on the Melaton Traffic commute while you drive it (OpenWeb Ninja Waze API)',
+                icon: 'fas fa-car',
+                requiresRestart: false,
+                keyLabel: 'API key',
+                fields: [
+                    { field: 'host', label: 'Host', placeholder: 'waze.p.rapidapi.com (or api.openwebninja.com)', pattern: '^[a-z0-9.-]{0,80}$', optional: true }
+                ],
+                howTo: {
+                    title: 'How to get a Waze key',
+                    steps: [
+                        'Waze has no public API of its own; Melaton Traffic uses OpenWeb Ninja\'s Waze API, sold on RapidAPI and directly.',
+                        'Through RapidAPI: sign in at rapidapi.com, search for "Waze" and open the one by OpenWeb Ninja. On its Pricing tab subscribe to the free Basic plan (100 requests a month).',
+                        'On the API\'s Endpoints tab, copy the X-RapidAPI-Key value from the code sample, paste it in API key below and leave Host blank.',
+                        'Directly instead: create an account at openwebninja.com, open the Waze API, pick the free plan and copy your API key from the dashboard. Paste it below and set Host to api.openwebninja.com.',
+                        'Melaton Traffic asks Waze only while the phone drives the commute, at most every 25 minutes and 4 times a day, and stops at 90 requests a month, inside the free plan.'
+                    ],
+                    links: [
+                        ['RapidAPI', 'https://rapidapi.com/'],
+                        ['OpenWeb Ninja Waze API', 'https://www.openwebninja.com/api/waze']
+                    ]
+                }
+            },
             // Yozora #781: Claude accounts for the Director's Claude engine (Wren, Xi, Rentan). The key is
             // a `claude setup-token` OAuth token; syncClaudeTokenFile() keeps the selected one in
             // xiLaunch.MANAGED_CLAUDE_TOKEN_FILE, which every Claude CLI launch reads first.
