@@ -5,9 +5,18 @@ const trafficService = require('../../trafficService');
 // through modules/trafficService.js (Google Routes + Waze, monthly budgets, the leave-time scheduler).
 // Home, Work and the route are the household admin's commute: admin (and dev_admin test tabs) only.
 //
-//   traffic_get            {}                          { settings, latest: { work, home }, providers }
+//   traffic_get            { have? }                   { settings, latest: { work, home }, providers, hash }; have
+//                                                      (#890 round 5, W4): the hash of the last reply, or
+//                                                      '<work report hash>|<home report hash>', or { work, home }
+//                                                      report hashes - unchanged: { same: true, settings,
+//                                                      providers, hash } without latest
 //   traffic_check          { direction, force?, origin? }  a fresh report for 'work' or 'home'; origin { lat, lon }
-//                                                      (home only) = To Home from the phone's position
+//                                                      (home only) = To Home from the phone's position. The asker
+//                                                      gets it here only, not again as traffic_updated
+//
+// Every report on the wire (trafficService.wireReport): preferredIndex (number), preferred only when it is
+// not routes[0] (read report.preferred || report.routes[report.preferredIndex || 0]), no line on the routes
+// other than the preferred one, hash (the stored report's sha1).
 //   traffic_advise         { direction, force? }       the leave advisor (Google only)
 //   traffic_settings_save  { settings }                admins; merged into config `traffic`
 //   traffic_where          {}                          { lat, lon, source, accuracyKm }: the phone's place by
@@ -56,10 +65,25 @@ function guard(handlersCtx, ws, message, clientInfo, admin) {
     return false;
 }
 
+/** The have of a traffic_get as '<work hash>|<home hash>' (null: none sent). */
+function haveKey(have) {
+    if (typeof have === 'string') return have;
+    if (have && typeof have === 'object') return `${typeof have.work === 'string' ? have.work : ''}|${typeof have.home === 'string' ? have.home : ''}`;
+    return null;
+}
+
 async function handleGet(handlersCtx, ws, message, clientInfo) {
     if (!guard(handlersCtx, ws, message, clientInfo)) return;
     try {
-        reply(handlersCtx, ws, message, { settings: trafficService.getSettings(), latest: trafficService.getLatest(), providers: trafficService.providers() });
+        const { latest, hash } = trafficService.latestWire();
+        const base = { settings: trafficService.getSettings(), providers: trafficService.providers(), hash };
+        // the page holds both reports already (a reconnect): nothing to send again
+        const have = haveKey(message.have);
+        if (have !== null && have === hash) {
+            reply(handlersCtx, ws, message, Object.assign({ same: true }, base));
+            return;
+        }
+        reply(handlersCtx, ws, message, Object.assign({ latest }, base));
     } catch (error) {
         fail(handlersCtx, ws, message, error, 'Traffic could not be loaded');
     }
@@ -68,8 +92,8 @@ async function handleGet(handlersCtx, ws, message, clientInfo) {
 async function handleCheck(handlersCtx, ws, message, clientInfo) {
     if (!guard(handlersCtx, ws, message, clientInfo)) return;
     try {
-        const report = await trafficService.check(message.direction, { force: !!message.force, origin: message.origin || null });
-        reply(handlersCtx, ws, message, { report, providers: trafficService.providers() });
+        const report = await trafficService.check(message.direction, { force: !!message.force, origin: message.origin || null, requester: clientInfo || null });
+        reply(handlersCtx, ws, message, { report: trafficService.wireReport(report), providers: trafficService.providers() });
     } catch (error) {
         fail(handlersCtx, ws, message, error, 'Traffic could not be checked');
     }
