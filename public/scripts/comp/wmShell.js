@@ -536,6 +536,10 @@
         delete el.dataset.icon;
         el.style.backgroundImage = artImageSet(STATUS_APP_ICONS[role]);
     }
+    // the status icon table (public/scripts/tasks/status-order.js, loaded just before this file; #907), held from here:
+    // the page's task runtime may put a new window.CafeTasks in place later
+    const STATUS_TABLE = (window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder) || null;
+    const statusTable = () => STATUS_TABLE || (window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder) || null;
     const STATUS_APP_ROLES = ['mail', 'sms', 'chat', 'prints', 'director', 'update', 'wxalert', 'rain', 'traffic', 'lapis', 'carkey', 'continuity', 'received', 'nightshade'];
     // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again);
     // status-director-clap-strip holds them in that order (scripts/build-wm-sprite-strips.sh)
@@ -3655,7 +3659,7 @@
         // Settings > Screen > Status Icons: when the volume / battery show (#907); the native bar follows them asleep (#908)
         if (typeof ab.statusPrefs === 'function') {
             // nativeOrder: the table's left-to-right order (status-order.js) for the roles the app draws itself (#907)
-            const tbl = window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder;
+            const tbl = statusTable();
             const pj = JSON.stringify({ sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon'), noCross: statusIconPref('wmStatusNoCross') === '1',
                 nativeOrder: tbl ? tbl.display.filter((r) => BARS_NATIVE_ROLES.has(r) || r === 'volume' || r === 'bluetooth') : undefined });
             if (pj !== barsPrefsSent) { barsPrefsSent = pj; try { ab.statusPrefs(pj); } catch (_) { /* older app */ } }
@@ -4255,7 +4259,7 @@
         // what may fold, and in which order (the table: public/scripts/tasks/status-order.js, Yukimi, Nov 17 2026):
         // the icons that do not outrank the volume / battery first, least wanted first, then the short-lived ones;
         // an icon the table does not list never folds. Without the table: the oldest first, ongoing work last
-        const tbl = window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder;
+        const tbl = statusTable();
         let foldSeq;
         let nonDisplacing = 0;
         if (tbl) {
@@ -4342,7 +4346,7 @@
      * (always hidden) icons sit with it. Without the table the template's order stands.
      */
     function applyStatusOrder() {
-        const tbl = window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder;
+        const tbl = statusTable();
         const status = shell && shell.querySelector('.wm-titlebar .wm-status');
         if (!tbl || !status) return;
         const at = (r) => { const i = tbl.display.indexOf(r === 'traffic' || r === 'lapis' ? 'carkey' : r); return i < 0 ? tbl.display.length : i; };
