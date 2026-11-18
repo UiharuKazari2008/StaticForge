@@ -4156,10 +4156,15 @@
         gap.style.width = `${hole.width + 2 * pad}px`;
         status.style.marginLeft = 'auto';
         // the measured fit (fitStatusMeasured) only needs the camera's box in the bar; it splits the icons after.
-        // The title's width from an earlier split goes: the split is laid out again only when an icon crosses, so a
-        // fit with every icon right of the camera kept the inner screen's 452 px title after a fold and the cover's
-        // icons ran off its right edge (Fold7, Nov 18)
-        if (opts && opts.measureOnly) { title.style.flex = ''; return { x: hole.left - pad - br.left, w: hole.width + 2 * pad }; }
+        // The title is sized for this screen's camera here too (the icons are all back right of it, so nothing is left
+        // of the gap): the split is laid out again only when an icon crosses, so a fit with every icon right of the
+        // camera kept the inner screen's 452 px title after a fold and the cover's icons ran off its right edge; a
+        // title with no width set left the gap element wherever the title's text ended, and the app's kit takes the
+        // camera's place from that element - its "..." was drawn on the cover's camera (Fold7, Nov 18)
+        if (opts && opts.measureOnly) {
+            title.style.flex = `0 0 ${Math.max(0, hole.left - pad - tl)}px`;
+            return { x: hole.left - pad - br.left, w: hole.width + 2 * pad };
+        }
         // what does not fit right of the camera moves left of it, keeping the order (first icons first).
         // The room ends where the X / ok and the bar's right padding begin: measured to the bar's edge it
         // took the X's 33 px for icons, so on Start (Fold7 inner screen, Nov 15) five icons "fitted" and
