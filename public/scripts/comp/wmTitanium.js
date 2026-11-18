@@ -98,7 +98,7 @@
     let skSel = 0;       // the panel whose right soft key is up (it changes after the panel has grown in)
     let menuAt = 0;      // when a tap-and-hold last brought a panel's menu up
     const rowEl = new Map(); // panel id -> its condensed row
-    let rowsGen = 0; // bumped as the rows are rebuilt (a prepared entrance holds the old elements)
+    let rowsGen = 0; // bumped as rows are added or removed (a prepared entrance holds the old elements)
     let panelsKey = '';
     let homeDone = false;
 
@@ -1029,9 +1029,11 @@
     function drawRows() {
         const list = host.querySelector('.wm-ti-list');
         const have = new Map([...list.children].map((el) => [el.dataset.id, el]));
+        let rebuilt = false;
         panels.forEach((p) => {
             let el = have.get(p.id);
             if (!el) {
+                rebuilt = true;
                 el = document.createElement('div');
                 el.className = 'wm-ti-row';
                 el.dataset.id = p.id;
@@ -1047,9 +1049,10 @@
             const ci = p.countIcon || '';
             if ((c.dataset.icon || '') !== ci) { if (ci) c.dataset.icon = ci; else delete c.dataset.icon; }
         });
+        if (have.size) rebuilt = true;
         have.forEach((el) => el.remove());
         rowEl.clear();
-        rowsGen++;
+        if (rebuilt) rowsGen++;
         for (const el of list.children) rowEl.set(el.dataset.id, el);
     }
 
