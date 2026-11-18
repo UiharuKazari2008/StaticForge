@@ -444,6 +444,31 @@ async function testQuietCheckSendsDigest(src) {
             assert.deepStrictEqual(w.mgr.updated.files, stored);
             assert.strictEqual(w.mgr.updated.noToast, false);
         } finally { w.restore(); }
+        // no older copies: a spread sample of the cache (as at boot); a miss walks the stored list
+        const prevSample = global.sampleManifestFiles;
+        const prevCount = global.BOOT_CACHE_SAMPLE;
+        global.sampleManifestFiles = (files) => files;
+        global.BOOT_CACHE_SAMPLE = 200;
+        try {
+            for (const gone of [[], [stored[1]]]) {
+                w = make(304);
+                try {
+                    let sampled = null;
+                    Object.assign(w.mgr, {
+                        _filesNewerThanLoaded() { return []; },
+                        async getFilesNeedingUpdate(files) { sampled = files; return gone; },
+                        _filesCountingTowardInstaller(files) { return files; }
+                    });
+                    await w.mgr.checkStaticFileUpdates(true);
+                    assert.deepStrictEqual(sampled, stored, 'the cache is sampled on a quiet 304');
+                    if (gone.length) assert.deepStrictEqual(w.mgr.updated, { files: stored, noToast: true }, 'a missing row walks the stored list quietly');
+                    else assert.strictEqual(w.mgr.updated, null, 'nothing missing: no walk');
+                } finally { w.restore(); }
+            }
+        } finally {
+            global.sampleManifestFiles = prevSample;
+            global.BOOT_CACHE_SAMPLE = prevCount;
+        }
         // a changed manifest: the list, as before
         w = make(200);
         try {
