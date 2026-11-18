@@ -1345,7 +1345,7 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] #wmShell.has-wall65 >
  * carries the orange on below. Melaton's emblem and name stand for the flag and wordmark. */
 html.ui-mobile[data-wm-version="6.5"] .wm-splash.wm-splash65 {
     background: #ce3408;
-    container-type: inline-size;
+    container-type: size;
     font-family: 'Segoe UI', var(--wm-font);
 }
 
@@ -1353,7 +1353,10 @@ html.ui-mobile[data-wm-version="6.5"] .wm-splash65-art {
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
+    /* fitted to the height and left aligned on a screen wider than 3:4 (the Fold unfolded; Yukimi, Nov 18 2026);
+       its parts are laid out in its own width (cqw), the splash's orange carries on to its right */
+    width: min(100%, calc(100cqh * 480 / 640));
+    container-type: inline-size;
     aspect-ratio: 480 / 640;
     /* the emulator's splash in CSS (Yukimi, Nov 11 2026): one radial glow measured on the 6.5
        cold boot (centre 120,108 of 480 x 640, radii 312 x 337, stops sampled along it), RMSE 0.011
