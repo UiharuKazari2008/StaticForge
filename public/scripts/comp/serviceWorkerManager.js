@@ -1885,88 +1885,45 @@ class ServiceWorkerManager {
                 return;
             }
 
-            console.log('⏳ Service Worker not immediately ready, starting wait logic...');
-            let checkInterval;
-
-            const checkReady = () => {
-                // Check multiple readiness indicators
-                const isActive = this.swRegistration.active;
-                const isWaiting = this.swRegistration.waiting;
-                const isInstalling = this.swRegistration.installing;
-                const hasController = navigator.serviceWorker.controller;
-
-                console.log('🔍 Service Worker state check:', {
-                    active: !!isActive,
-                    waiting: !!isWaiting,
-                    installing: !!isInstalling,
-                    controller: !!hasController,
-                    activeState: isActive?.state || 'none'
-                });
-
-                // Service worker is ready if it's active OR if we have a controller (page is controlled)
-                // Also check if active service worker state is 'activated'
-                const isActivated = isActive?.state === 'activated';
-                const isReady = isActive || hasController || isActivated;
-
-                console.log('🔍 Ready evaluation:', {
-                    isActive: !!isActive,
-                    hasController: !!hasController,
-                    isActivated: isActivated,
-                    isReady: isReady,
-                    condition: 'isActive || hasController || isActivated'
-                });
-
-                if (isReady) {
-                    // Clear any existing timeout and interval
-                    if (this.swReadyTimeout) {
-                        clearTimeout(this.swReadyTimeout);
-                        this.swReadyTimeout = null;
-                    }
-                    if (checkInterval) {
-                        clearInterval(checkInterval);
-                    }
-                    resolve({ timedOut: false });
-                    return; // Make sure we don't continue
-                }
-                console.log('⏳ Service Worker not ready yet, continuing to wait...');
-                // Continue waiting if not ready yet
-            };
-
-            // Listen for controllerchange event (when service worker becomes active)
-            const controllerChangeHandler = () => {
-                console.log('🎯 Service Worker controller changed - service worker is now active');
-                navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
-
-                // Clear timeout and interval
+            console.log('Service Worker not immediately ready, waiting for it to activate...');
+            // Events, not a 200 ms check (#890): the registration's worker activating (ready, or a
+            // statechange of the one installing / waiting), the page getting a controller, or the bound.
+            let settled = false;
+            let controllerChangeHandler = null;
+            const done = (timedOut) => {
+                if (settled) return;
+                settled = true;
                 if (this.swReadyTimeout) {
                     clearTimeout(this.swReadyTimeout);
                     this.swReadyTimeout = null;
                 }
-                if (checkInterval) {
-                    clearInterval(checkInterval);
-                }
-
-                resolve({ timedOut: false });
+                navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
+                resolve({ timedOut });
             };
 
+            // Listen for controllerchange event (when service worker becomes active)
+            controllerChangeHandler = () => {
+                console.log('Service Worker controller changed - service worker is now active');
+                done(false);
+            };
             navigator.serviceWorker.addEventListener('controllerchange', controllerChangeHandler);
 
-            // Start periodic checking as fallback
-            checkInterval = setInterval(checkReady, 200); // Check every 200ms instead of 100ms
-
-            // Initial check
-            checkReady();
+            const ready = navigator.serviceWorker.ready;
+            if (ready && typeof ready.then === 'function') ready.then(() => done(false), () => {});
+            const reg = this.swRegistration;
+            [reg.installing, reg.waiting].forEach((worker) => {
+                if (!worker || typeof worker.addEventListener !== 'function') return;
+                worker.addEventListener('statechange', () => {
+                    if (worker.state === 'activated' || reg.active) done(false);
+                });
+            });
 
             // Bounded wait — continue from network so "Loading offline cache…" cannot stick
             const timeoutMs = Number(this._swReadyTimeoutMs) > 0 ? this._swReadyTimeoutMs : 8000;
 
             this.swReadyTimeout = setTimeout(() => {
                 console.warn('Service Worker ready timeout — continuing from network');
-                if (checkInterval) {
-                    clearInterval(checkInterval);
-                }
-                navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
-                resolve({ timedOut: true });
+                done(true);
             }, timeoutMs);
         });
     }
@@ -3741,6 +3698,9 @@ class ServiceWorkerManager {
             clearInterval(this.stateCheckInterval);
         }
         
+        // Lives only while an update downloads (stopped when it ends). It asks the worker (no request)
+        // and finds a stalled or lost download, which is recovered seen or not; the progress it draws
+        // waits while the page is not seen (#890)
         this.stateCheckInterval = setInterval(async () => {
             if (!this.isUpdating) {
                 this.stopPeriodicStateCheck();
@@ -3754,9 +3714,10 @@ class ServiceWorkerManager {
                     const progress = swState.total > 0 
                         ? Math.round((swState.completed / swState.total) * 100) 
                         : 0;
+                    const seen = !document.hidden && document.documentElement.dataset.screenOff === undefined;
                     
                     // Only update if different from current progress
-                    if (progress !== this.updateProgress) {
+                    if (progress !== this.updateProgress && seen) {
                         console.log(`Periodic state check: updating progress from ${this.updateProgress}% to ${progress}%`);
                         this.updateProgress = progress;
                         this.updateProgressToast(progress);
@@ -3797,11 +3758,8 @@ class ServiceWorkerManager {
         
         // Initialize last heartbeat time
         this.lastHeartbeatTime = Date.now();
-        
-        // Check for missed heartbeats every 5 seconds
-        this.heartbeatCheckInterval = setInterval(() => {
-            this.checkHeartbeatStatus();
-        }, 5000);
+        // No 5 s timer (#890): it only logged a missed heartbeat; getServiceWorkerHeartbeatStatus works
+        // the gap out when the tray asks (checkHeartbeatStatus logs it on demand)
     }
 
     stopHeartbeatTracking() {
@@ -3847,7 +3805,8 @@ class ServiceWorkerManager {
         const phone = window.uiShell === 'mobile';
         const due = () => !document.hidden && !(phone && (!this.isUpdating || document.documentElement.dataset.screenOff !== undefined));
         this.healthCheckInterval = setInterval(() => {
-            if (!due()) return;
+            // due(): never on a hidden page (document.hidden); a phone only while an update runs, screen on
+            if (document.hidden || !due()) return;
             this._runMeasuredHealthCheckPing();
         }, SW_HEALTH_PING_MS);
         // a window shown again asks at once (#890): a hidden window does not ping, and its last answer may
