@@ -8,6 +8,7 @@
     z-index: 2147483600;
     background: rgba(0, 0, 0, 0.5);
     pointer-events: auto;
+    /* perf: allow only while Flip 3D is up (flip3d.js makes the dim on open and removes it on close); it fades in and out */
     will-change: opacity;
 }
 

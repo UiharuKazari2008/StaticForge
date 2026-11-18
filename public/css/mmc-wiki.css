@@ -52,9 +52,11 @@
 
 .vdt-wizard .wkm-progress.is-marquee > div {
     width: 51px;
+    /* perf: allow busy indicator: only while the wizard's work has no percentage (.is-marquee) */
     animation: wkm-marquee 2s linear infinite;
 }
 
+/* perf: allow left: 100% runs the chunk to the trough's own width; a translate (a share of the chunk's 51 px) cannot reach it without making the trough a size container */
 @keyframes wkm-marquee {
     from { left: -51px; }
     to { left: 100%; }

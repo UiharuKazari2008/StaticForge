@@ -711,6 +711,7 @@ html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-content.jz-dialog
     /* CreateCaret's block inverts what is under it */
     background: #fff;
     mix-blend-mode: difference;
+    /* perf: allow a text caret: shown (display) only while the edit has its window's focus (rule below); visibility steps */
     animation: jz-caret-blink 1.06s steps(1) infinite;
 }
 

@@ -182,6 +182,7 @@ body.desktop-mode:not(.windows-classic-theme) #aboutMelatoninModal .modal-window
     border-radius: 2px;
     pointer-events: none;
     background: none;
+    /* perf: allow design (Vista default button): the About box's OK glow while the box is open (Yukimi to decide: it runs while the box waits) */
     animation: vista-default-pulse 1s ease infinite alternate;
 }
 

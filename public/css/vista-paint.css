@@ -322,6 +322,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 .mp-client .mp-ants .mp-ants-b {
     stroke: #000;
     stroke-dasharray: 4 4;
+    /* perf: allow selection marquee: the marching ants exist only while Paint has a selection (paintApp.js draws their paths); Yukimi to decide: it runs while a selection sits idle */
     animation: mp-ants 0.6s linear infinite;
 }
 

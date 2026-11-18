@@ -317,6 +317,7 @@
 
 [data-dsap] .sec-key-dot-checking {
     background: #4a90d9;
+    /* perf: allow status: the key's dot pulses only while it is being checked (-checking) */
     animation: sec-key-dot-pulse 0.9s ease-in-out infinite alternate;
 }
 

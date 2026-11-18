@@ -186,6 +186,7 @@ body.desktop-mode .taskbar-quick-launch-btn.taskbar-quick-launch-ghost {
     background: rgba(0, 0, 0, 0.1);
     border-radius: 2px;
     pointer-events: none;
+    /* perf: allow the ghost exists only during a Quick Launch drag (taskbarSettings.js makes it on the drag and removes it at the drop), moved every pointermove */
     will-change: transform;
 }
 
@@ -552,6 +553,7 @@ body.desktop-mode:not(.windows-classic-theme) .tray-overflow-btn.is-open {
     pointer-events: none;
 }
 #nightshadeTrayIcon.is-problem > .nightshade-tray-alert { display: block; }
+/* perf: allow status indicator: blinks only while Nightshade connects (.is-connecting); opacity steps */
 #nightshadeTrayIcon.is-connecting > img { animation: nightshadeTrayConnecting 1.2s steps(1, end) infinite; }
 @keyframes nightshadeTrayConnecting {
     0% { opacity: 1; }

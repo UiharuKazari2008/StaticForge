@@ -222,6 +222,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
 /* While a connection is being made the rule scrolls right as a loop, 5 px every 31.25 ms (a 30 ms
    timer on Vista's 15.625 ms tick; recorded on the VM, 160 px/s), and snaps back to rest after */
 .rdc-client.rdc-connecting .rdc-banner-line {
+    /* perf: allow busy indicator: the banner rule scrolls only while a connection is being made (.rdc-connecting), as recorded on the VM */
     animation: rdc-banner-marquee 2531.25ms steps(81, end) infinite;
 }
 

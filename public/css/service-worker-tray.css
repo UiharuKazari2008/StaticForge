@@ -10,6 +10,7 @@
 .service-worker-tray-icon.sw-update-downloading {
     color: var(--text-secondary);
     opacity: 0.85;
+    /* perf: allow status indicator: pulses only while updates download (.sw-update-downloading) */
     animation: pulse-credits 1.2s ease-in-out infinite;
 }
 

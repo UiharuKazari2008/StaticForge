@@ -821,6 +821,7 @@ body:not(.windows-classic-theme) #directorWindow {
 .modal-window-title-toolbar .toolbar-input-segment:disabled:hover,
 .modal-window-title-toolbar > [class^="btn-"]:disabled:hover,
 .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment):has(> .toolbar-input-segment:disabled:hover):not(:has(> .toolbar-input-segment:hover:not(:disabled))) {
+    /* perf: allow a reset to auto (no layer): a disabled toolbar button gets no hover hint */
     will-change: auto;
 }
 
@@ -922,7 +923,8 @@ body:not(.windows-classic-theme) #directorWindow {
 ),
 .modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment):has(> .toolbar-input-segment:hover:not(:disabled)),
 .modal.toolbar-visible .modal-window-title-toolbar > .wiki-address-bar:hover:not(.nav-loading):not(.edit-active) {
-    will-change: background-color, border-color, box-shadow, color, filter;
+    /* perf: allow only while a toolbar control is hovered (or a segment is active); the colour and shadow hints made no layer and are gone */
+    will-change: filter;
 }
 
 .modal-window-title-toolbar [class^="btn-"]:not(:hover):not(:focus-visible):not(:disabled),
@@ -931,6 +933,7 @@ body:not(.windows-classic-theme) #directorWindow {
 .modal-window-title-toolbar .gallery-toggle-btn:not(:hover):not(:focus-visible):not(:disabled),
 .modal-window-title-toolbar .wiki-address-bar:not(:hover),
 .modal-window-title-toolbar .button-group:not(:has(.toolbar-input-segment:hover:not(:disabled))):not(:has(input.toolbar-input-segment:focus)) {
+    /* perf: allow a reset to auto (no layer): it keeps the open-menu hints of custom-dropdown.css off toolbar buttons at rest */
     will-change: auto;
 }
 

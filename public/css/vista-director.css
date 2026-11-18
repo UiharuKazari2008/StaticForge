@@ -378,6 +378,7 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-cha
 }
 
 body.desktop-mode:not(.windows-classic-theme) .modal.active-window #directorSessionChat .director-chat-input #directorSendBtn:not(:disabled):not(:hover)::after {
+    /* perf: allow design (Vista default button): Send glows while the Director window is the active one, Send is enabled and not hovered; opacity on the compositor (Yukimi to decide: it runs while the window waits) */
     animation: director-send-pulse 2.016s ease-in-out infinite;
 }
 

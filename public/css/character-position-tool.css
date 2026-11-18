@@ -158,6 +158,7 @@
     background: #7eff7e;
     border: 1px solid #00cd00;
     box-shadow: 0 0 15px 2px #00ff22;
+    /* perf: allow status lamp: blinks only while returned positions wait to be used (data-state="returned"); brightness filter on the compositor */
     animation: indicator-blink 1s infinite;
 }
 
