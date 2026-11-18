@@ -1593,7 +1593,8 @@
             // no clock in it: a running start's minutes left come from its own tick (onTick), not the shell's minute
             ws.registerTodayItem({ id: 'lapis', label: 'Lapis Remote', icon: 'app-lapis', after: 'traffic', wantsMinute: false, render: todayRender, titanium: todayTitanium });
         }
-        if (!wire()) { let n = 0; const t = setInterval(() => { if (wire() || ++n > 120) clearInterval(t); }, 1000); }
+        // websocket.js (window.wsClient) loads with the page, before this file; should it not have, every script has run by 'load'
+        if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });
     }
 
     window.wmLapis = {

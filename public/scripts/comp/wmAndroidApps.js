@@ -1619,10 +1619,8 @@
         setTimeout(applyDefaults, 2500);
         phoneData.start();
         loadStore();
-        if (!wireJobPush()) {
-            let n = 0;
-            const t = setInterval(() => { if (wireJobPush() || ++n > 120) clearInterval(t); }, 1000);
-        }
+        // websocket.js (window.wsClient) loads with the page, before this file; should it not have, every script has run by 'load'
+        if (!wireJobPush()) window.addEventListener('load', () => { wireJobPush(); }, { once: true, signal: appScopeSignal });
         if (job.id) poll(true);
         // a batch running: seen again (screen on, the page shown) asks at once instead of on the minute.
         // A batch waiting for review (its poll chain ended) is not asked again on every wake: the page's

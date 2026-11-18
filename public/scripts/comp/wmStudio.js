@@ -2507,10 +2507,8 @@
         if (NEXT) {
             watchWindows();
             wrapOpenModal();
-            if (!patchContextMenu()) {
-                const t = setInterval(() => { if (patchContextMenu()) clearInterval(t); }, 1000);
-                setTimeout(() => clearInterval(t), 60000);
-            }
+            // contextMenu.js loads with the page, before this file; should it not have, every script has run by 'load'
+            if (!patchContextMenu()) window.addEventListener('load', () => { patchContextMenu(); }, { once: true, signal: appScopeSignal });
             return;
         }
         ws.registerApp({
@@ -2587,10 +2585,8 @@
             new MutationObserver(() => { if (!root.hasAttribute('data-wm-viewer')) refreshTitle(); })
                 .observe(root, { attributes: true, attributeFilter: ['data-wm-viewer'] });
         }
-        if (!patchContextMenu()) {
-            const t = setInterval(() => { if (patchContextMenu()) clearInterval(t); }, 1000);
-            setTimeout(() => clearInterval(t), 60000);
-        }
+        // contextMenu.js loads with the page, before this file; should it not have, every script has run by 'load'
+        if (!patchContextMenu()) window.addEventListener('load', () => { patchContextMenu(); }, { once: true, signal: appScopeSignal });
     }
 
     // shared with wmHost.js (desktop apps hosted as WM apps): the same menu and drop-down proxies

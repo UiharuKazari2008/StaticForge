@@ -898,7 +898,10 @@
             return true;
         };
         if (!first()) {
-            const t = setInterval(() => { if (first()) clearInterval(t); }, 3000);
+            // the link not up yet: the first read when it comes up (no 3 s poll for it)
+            let done = false;
+            const c = window.wsClient;
+            if (c && typeof c.on === 'function') c.on('connected', () => { if (!done) done = first(); }, { signal: appScopeSignal });
         }
         // over the Melaton Miniport (#815) it keeps the wallet current for every window: no poll here,
         // a read when it says the wallet changed (answered from its copy, also with the screen off)
