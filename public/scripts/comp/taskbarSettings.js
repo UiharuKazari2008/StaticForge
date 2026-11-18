@@ -894,6 +894,9 @@
     const THUMB_LIVE_MS = 500;
     let thumbLiveTimer = 0;
     let thumbHeld = null;
+    // when the window under the preview was last copied (THUMB_RECOPY_MS between copies)
+    let thumbCopiedFor = null;
+    let thumbCopiedAt = 0;
     // a preview left up as the window went out of sight: it follows its window again when shown (#890)
     let thumbResume = null;
 
@@ -961,8 +964,15 @@
                 thumbHeld = modal;
             }
             let pic = wc.cached(modal);
-            if (!pic || !wc.fresh(modal)) {
+            // a changed window is copied again at most every THUMB_RECOPY_MS; between copies a live one
+            // only has its canvases drawn in again. The live rate copied the whole window every 500 ms:
+            // the Director (a WebGL mascot, changing all through a turn) cost 300-650 ms of main thread
+            // per copy while its preview was up (Modernia, Nov 18 2026)
+            const recent = pic && thumbCopiedFor === modal && performance.now() - thumbCopiedAt < THUMB_RECOPY_MS;
+            if (!pic || (!wc.fresh(modal) && !recent)) {
                 pic = await wc.capture(modal);
+                thumbCopiedFor = modal;
+                thumbCopiedAt = performance.now();
                 if (thumbFor !== item) return;
                 if (pic) setThumbBody(item, thumbStill(wc, pic));
             } else if (pic.overlays.length) setThumbBody(item, thumbStill(wc, pic));
