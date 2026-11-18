@@ -464,10 +464,12 @@ async function checkC(out) {
     const mine = (s) => !s.hidden && (String(s.label).includes(title) || /^\d+ notifications/.test(String(s.label)));
     const shown = await pollNotify(c, (s) => mine(s) || s.box, 15000);
     let s0 = shown.s;
-    if (s0 && s0.box && !mine(s0)) {
+    if (s0 && s0.box) {
         if (out) emu('shot', path.join(out, 'c-box.png'));
-        // dismiss the box the way a user does (its left soft key), then the icon must hold the notice
-        await c.evaluate("(() => { const k = document.querySelector('#wmShell .wm-softkey[data-side=\"left\"]'); if (k) k.click(); })()");
+        // put the box away the way a user does (Back: Hide, the notice stays waiting; Dismiss would clear it), then
+        // the icon must hold the notice
+        await c.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })), 1");
+        await sleep(800);
         s0 = (await pollNotify(c, mine, 8000)).s;
     }
     report('c', 'icon shown with a waiting notice', !!(s0 && mine(s0)), s0 ? `label="${s0.label}" (box shown first: ${!!(shown.s && shown.s.box)}, ${shown.ms} ms)` : '');
@@ -526,9 +528,43 @@ async function checkD(out) {
     emu('home');
 }
 
+/**
+ * e: Home outranks everything (HARD rule home-closes-everything, Nov 18): a notice's box over another program and
+ * the page's own box on Today both go on Home; the notice stays waiting (the icon holds it).
+ */
+async function checkE(out) {
+    await clearLane();
+    emu('start-app');
+    await sleep(2000);
+    emu('other');
+    await sleep(2500);
+    const popupUp = () => /MelatonPopup/.test(dev("dumpsys window windows | grep -E 'Window\\{.*MelatonPopup' | head -1"));
+    const title = `fold7 test e ${new Date().toISOString().slice(11, 19)}`;
+    const n = await api('POST', '/api/test-devices/notice', { mode: 'push', id: noticeId(), title, text: 'Home check' });
+    if (!n.success) { report('e', 'test notice sent', false, JSON.stringify(n).slice(0, 160)); return; }
+    let up = false;
+    const t0 = Date.now();
+    while (!up && Date.now() - t0 < 12000) { up = popupUp(); if (!up) await sleep(500); }
+    if (out && up) emu('shot', path.join(out, 'e-box-before-home.png'));
+    report('e', 'notice box up over another program', up, up ? `${Date.now() - t0} ms` : 'no MelatonPopup window in 12 s');
+    emu('home');
+    await sleep(1500);
+    const still = popupUp();
+    if (out) emu('shot', path.join(out, 'e-after-home.png'));
+    report('e', 'Home closes the native box', up ? !still : null, still ? 'MelatonPopup still up 1.5 s after Home' : 'gone');
+    const c = await cdp();
+    try {
+        await waitToday(c, 15000, true);
+        const s = (await pollNotify(c, (x) => !x.box, 4000)).s;
+        report('e', 'no box on the page after Home', !!(s && !s.box), s ? `box=${s.box} tray=${s.tray} bubble=${s.bubble}` : 'no status');
+        report('e', 'the notice waits in its icon', !!(s && !s.hidden), s ? `icon hidden=${s.hidden} label="${s.label}"` : '');
+    } finally { c.close(); }
+    await clearLane();
+}
+
 async function runChecks() {
     const args = process.argv.slice(3);
-    const only = (args.includes('--only') ? args[args.indexOf('--only') + 1] : 'a,b,c,d').split(',');
+    const only = (args.includes('--only') ? args[args.indexOf('--only') + 1] : 'a,b,c,d,e').split(',');
     const out = args.includes('--out') ? args[args.indexOf('--out') + 1] : path.join(os.homedir(), '.cache', 'fold7-test', new Date().toISOString().replace(/[:.]/g, '-'));
     fs.mkdirSync(out, { recursive: true });
     console.log(`fold7-test run ${new Date().toISOString()} (shots in ${out})`);
@@ -537,6 +573,7 @@ async function runChecks() {
     if (only.includes('b')) await checkB(out);
     if (only.includes('c')) await checkC(out);
     if (only.includes('d')) await checkD(out);
+    if (only.includes('e')) await checkE(out);
     emu('net', 'on');
     fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify(results, null, 1));
     const fails = results.filter((r) => r.pass === false).length;
