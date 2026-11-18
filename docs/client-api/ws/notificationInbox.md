@@ -16,6 +16,11 @@ A durable store of the notices producers raise, so a phone that was not connecte
 | `reminder_snooze` | `{ id, minutes? \| at? }` -> `{ ok, at }`. A `rem:` notice is cleared now and published again with the same id at `at` (or in `minutes`, default 5). Destructive. |
 | `reminder_dismiss` | `{ id }` -> `{ ok, cleared }`. A reminder dismissed in the desktop Calendar: marked fired (never fires later) and its notice cleared. Destructive. |
 | `reminder_status` | `{}` -> `{ started, lastScanAt, lastError, next[], snoozed[] }`: the reminder scheduler's queue. |
+| `phone_status_prefs` | `{ mailAll?, smsAll? }` -> `{ ok }`. Messaging > Tools > Options "status icon for any unread mail / text" (#908), kept on the server for the phones' status icons (`modules/phoneStatus.js`, sent to the app as `as_event status.snapshot`). The page sends them on connect and when they change. |
+
+## Delivery to the phones (#908)
+
+Every notice sent to a phone's background link (`as_event inbox.notice`) is a delivery row until the app confirms it (`as_event inbox.posted { id, how }`: posted, shown by a page in front that said so through `AndroidInbox.shown`, or already showing). Unconfirmed, it is sent again after 15 s, 45 s, 2 min and 5 min, and on every hello of that phone. The rows outlive a server restart. A notice already seen, acted on or cleared anywhere is not sent again, and a phone's hello does not re-send what that phone confirmed. A new text's notice (`sms:`) carries its conversation (`data.title, sender, address, isGroup, date, account, guid`) and is the text's only path to the app, which renders it as a MessagingStyle conversation. Server-raised kinds: `dmail:` (household mailbox), `question:` (Director questions), `emotion:`, `system:` (warning / error notices), `api-key:`.
 
 A notice: `{ id, app, cls, title, text, actions[], data, createdAt, expiresAt, state, actedBy }`. `cls` is the wmShell notification class (sound and icon); `data.open` names the app layer / direction to open; `state` is `new` -> `seen` -> `acted`, or `cleared`.
 

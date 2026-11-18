@@ -1224,6 +1224,7 @@ function pushState() {
     const state = getState();
     const key = pushKey(state);
     if (key === lastPushKey) return state;
+    try { require('./phoneStatus').touch('lapis'); } catch (_) { /* best effort (#908) */ }
     lastPushKey = key;
     broadcast({ type: 'lapis_updated', data: { state } });
     return state;

@@ -1532,6 +1532,11 @@
             const s2 = sh();
             if (s2 && typeof s2.refreshStatus === 'function') s2.refreshStatus();
         }
+        // the phones' status icons are worked out on the server too (#908): it keeps the same two choices
+        if (d.all !== was.all || d.smsAll !== was.smsAll) {
+            const c = window.wsClient;
+            if (c && typeof c.sendMessage === 'function') void Promise.resolve(c.sendMessage('phone_status_prefs', { mailAll: !!d.all, smsAll: !!d.smsAll }, false)).catch(() => {});
+        }
         const put = (k, v, old) => { if (v !== old && lsPut(MSG[k], v)) keys.push(MSG[k]); };
         put('picker', d.picker ? '1' : '0', was.picker ? '1' : '0');
         put('replyBody', d.replyBody ? '1' : '0', was.replyBody ? '1' : '0');

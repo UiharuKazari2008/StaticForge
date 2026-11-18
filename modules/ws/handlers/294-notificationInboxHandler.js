@@ -38,6 +38,8 @@ function registerPackets(handlersCtx) {
         const queue = gr && typeof gr.getGenerationJobQueue === 'function' ? gr.getGenerationJobQueue() : require('../../generationJobQueue').getSharedGenerationJobQueue();
         require('../../notificationInboxSources').bindPrintQueue(queue);
     } catch (e) { console.warn(`[294-notificationInboxHandler] print queue: ${e.message}`); }
+    // the phones' status icons, worked out here and sent over their background links (#908)
+    try { require('../../phoneStatus').bind(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] phone status: ${e.message}`); }
     // the household mailbox's deliveries raise their own notices (#908)
     try { require('../../notificationInboxSources').bindDovecote(); } catch (e) { console.warn(`[294-notificationInboxHandler] dovecote: ${e.message}`); }
     // calendar appointment and task reminders fire from the server (#876)
@@ -67,6 +69,15 @@ function registerPackets(handlersCtx) {
         const m = ctx.message;
         const quiet = inbox.setQuiet(inbox.userOf(ctx.clientInfo), Array.isArray(m.quiet) ? m.quiet : []);
         reply(handlersCtx, ctx.ws, m, { ok: !!quiet, quiet: quiet || [] });
+    });
+    // Messaging > Tools > Options "status icon for any unread mail / text" (#908): kept here so the phones' status icons
+    // (phoneStatus, worked out on the server, drawn by the app with the page asleep) follow it
+    reg('phone_status_prefs', (ctx) => {
+        const m = ctx.message;
+        const user = inbox.userOf(ctx.clientInfo);
+        if (typeof m.mailAll === 'boolean') inbox.setPref(user, 'icon.mailAll', m.mailAll ? '1' : '0');
+        if (typeof m.smsAll === 'boolean') inbox.setPref(user, 'icon.smsAll', m.smsAll ? '1' : '0');
+        reply(handlersCtx, ctx.ws, m, { ok: true });
     });
     reg('reminder_snooze', (ctx) => {
         const m = ctx.message;

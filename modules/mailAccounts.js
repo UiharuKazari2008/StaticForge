@@ -80,6 +80,7 @@ const isPhonePage = (info) => !!(info && info.phone && info.phone.shell === 'mob
  * phone shows (every 10 min each phone re-read ma_accounts for nothing). The desktop keeps every one.
  */
 function broadcast(payload, opts = {}) {
+    try { require('./phoneStatus').touch('mail'); } catch (_) { /* best effort (#908) */ }
     let server = null;
     try { server = resources().getWebSocketServer && resources().getWebSocketServer(); } catch (_) { server = null; }
     if (server && typeof server.broadcast === 'function') {

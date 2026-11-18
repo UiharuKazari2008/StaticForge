@@ -373,6 +373,7 @@ async function handleUnsubscribeNewMail(handlersCtx, ws, message, clientInfo) {
 function bindMailboxPush(handlersCtx) {
     // setMailboxChangedListener: modules/dovecoteMail.js — WS and MCP writes share this
     dovecoteMail.setMailboxChangedListener((owners) => {
+        try { require('../../phoneStatus').touch('dovecote'); } catch (_) { /* best effort (#908) */ }
         const gr = handlersCtx && handlersCtx.globalResources;
         const wsServer = gr && gr.getWebSocketServer ? gr.getWebSocketServer() : null;
         if (!wsServer || typeof wsServer.broadcast !== 'function') return;
