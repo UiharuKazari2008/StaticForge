@@ -1178,18 +1178,6 @@
             return (await checkServerReadiness()) !== null;
         }
 
-        async function checkServerAccessibility() {
-            try {
-                const response = await fetch('/static_images/icon-32x32.png', {
-                    method: 'HEAD',
-                    cache: 'no-cache'
-                });
-                return response.ok;
-            } catch (error) {
-                return false;
-            }
-        }
-
         /**
          * Melaton Mobile, installed (the update engine's synced manifest) with the app page kept by
          * the service worker (sw.js APP_SHELL_KEY): it starts without the server, to Today, so the
@@ -1449,13 +1437,8 @@
                 return;
             }
 
-            // Step 3: Check server accessibility (server is ready)
-            if (!await checkServerAccessibility()) {
-                validationInProgress = false;
-                if (await startOfflineIfInstalled('not accessible')) return;
-                showError('Unable to connect to server', true); // Show rescue button
-                return;
-            }
+            // Step 3 was a HEAD of an icon here: the JSON answer from /status above already proves the
+            // server is reachable, so it was one more serial round trip on every start (#890)
 
             // Step 4: Check session validity and version compatibility
             let sessionResult = await checkSessionValidity();
