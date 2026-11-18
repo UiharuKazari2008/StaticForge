@@ -242,7 +242,52 @@
 }
 
 .wm-traffic .trf-ann.is-on { opacity: 1; text-shadow: calc(1 * var(--u)) calc(1 * var(--u)) 0 rgba(20, 30, 16, 0.2); }
-.wm-traffic .trf-lcd:not(.has-period) .trf-ampm { display: none; }
+.wm-traffic .trf-lcd:not(.has-period) .trf-ann.is-period { display: none; }
+
+/* the legends as mark pairs (TRAVEL TIME / ARRIVE over the figures, ARRIVE / LEFT beside the small ones):
+ * both always there, the one that applies lit (#907: driving swaps them, the arrival becomes the big figures) */
+.wm-traffic .trf-lcd-caps { display: flex; gap: calc(6 * var(--u)); }
+.wm-traffic .trf-lcd-caps .trf-ann { font-size: calc(7.5 * var(--u)); letter-spacing: 0.08em; }
+.wm-traffic .trf-lcd-caps.is-row { flex-direction: column; gap: calc(1 * var(--u)); }
+.wm-traffic .trf-lcd-caps.is-row .trf-ann { font-size: calc(6.5 * var(--u)); }
+.wm-traffic .trf-lcd-anns.is-grid { display: grid; grid-template-columns: auto auto; gap: calc(2 * var(--u)) calc(4 * var(--u)); }
+.wm-traffic .trf-lcd:not(.has-period) .trf-lcd-anns.is-grid { grid-template-columns: auto; }
+.wm-traffic .trf-lcd-sub .trf-lcd-anns.is-row .trf-ann { font-size: calc(6.5 * var(--u)); }
+
+/* the side column: the Drive LED over the delay badge */
+.wm-traffic .trf-dash-side {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: calc(5 * var(--u));
+}
+
+/* a panel LED: a dark dome when off, a green glow while the phone drives the commute */
+.wm-traffic .trf-led {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--u));
+    color: #8c96a1;
+    font: bold calc(7.5 * var(--u)) / 1 'Segoe UI', Tahoma, sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.wm-traffic .trf-led i {
+    width: calc(8 * var(--u));
+    height: calc(8 * var(--u));
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #3b4a36, #16200f 70%);
+    border: 1px solid #000;
+    box-shadow: inset 0 calc(-1 * var(--u)) calc(2 * var(--u)) rgba(0, 0, 0, 0.6);
+}
+
+.wm-traffic .trf-led.is-on { color: #d7f5c8; }
+.wm-traffic .trf-led.is-on i {
+    background: radial-gradient(circle at 40% 35%, #f0ffe6, #58e83a 45%, #1f8c12);
+    box-shadow: 0 0 calc(6 * var(--u)) #4bd62a, inset 0 calc(-1 * var(--u)) calc(2 * var(--u)) rgba(0, 0, 0, 0.3);
+}
 
 .wm-traffic .trf-lcd-sub {
     display: flex;

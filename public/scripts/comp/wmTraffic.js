@@ -769,10 +769,10 @@
                         <div class="trf-signal" aria-hidden="true"><i class="is-red"></i><i class="is-amber"></i><i class="is-green"></i></div>
                         <div class="trf-lcd">
                             <div class="trf-lcd-main">
-                                <span class="trf-lcd-print trf-lcd-cap">Travel time</span>
-                                <div class="trf-lcd-num"><b class="trf-min wm-seg">--</b><span class="trf-lcd-anns"><i class="trf-ann" data-u="h">HRS</i><i class="trf-ann" data-u="m">MIN</i></span></div>
+                                <span class="trf-lcd-caps"><i class="trf-ann" data-m="travel">TRAVEL TIME</i><i class="trf-ann" data-m="arrive">ARRIVE</i></span>
+                                <div class="trf-lcd-num"><b class="trf-min wm-seg">--</b><span class="trf-lcd-anns is-grid"><i class="trf-ann" data-b="h">HRS</i><i class="trf-ann is-period" data-b="AM">AM</i><i class="trf-ann" data-b="m">MIN</i><i class="trf-ann is-period" data-b="PM">PM</i></span></div>
                                 <div class="trf-lcd-sub">
-                                    <span class="trf-lcd-print">Arrive</span><b class="trf-arrive wm-seg"></b><span class="trf-lcd-anns is-row trf-ampm"><i class="trf-ann" data-p="AM">AM</i><i class="trf-ann" data-p="PM">PM</i></span>
+                                    <span class="trf-lcd-caps is-row"><i class="trf-ann" data-m="arrive">ARRIVE</i><i class="trf-ann" data-m="left">LEFT</i></span><b class="trf-arrive wm-seg"></b><span class="trf-lcd-anns is-row"><i class="trf-ann is-period" data-s="AM">AM</i><i class="trf-ann is-period" data-s="PM">PM</i><i class="trf-ann" data-s="h">HRS</i><i class="trf-ann" data-s="m">MIN</i></span>
                                     <span class="trf-lcd-togo"><span class="trf-lcd-print">To go</span><b class="trf-togo wm-seg"></b><span class="trf-lcd-print">mi</span></span>
                                 </div>
                             </div>
@@ -783,7 +783,10 @@
                                 <div class="trf-lcd-cell" data-c="slow"><span class="trf-lcd-print">Slow</span><b class="wm-seg"></b></div>
                             </div>
                         </div>
-                        <div class="trf-delay"></div>
+                        <div class="trf-dash-side">
+                            <div class="trf-led" aria-hidden="true"><i></i><span>Drive</span></div>
+                            <div class="trf-delay"></div>
+                        </div>
                     </div>
                     <div class="trf-status"></div>
                     <div class="trf-road"><div class="trf-road-bed"><div class="trf-road-segs"></div><div class="trf-road-line"></div><div class="trf-road-pins"></div></div><div class="trf-road-ends"><span class="trf-road-a"></span><span class="trf-road-via"></span><span class="trf-road-b"></span></div></div>
@@ -796,7 +799,7 @@
         const q = (s) => page.querySelector(s);
         els = {
             root: q('.trf-root'), seg: q('.trf-seg'), ends: q('.trf-ends'), scroll: q('.trf-scroll'), dash: q('.trf-dash'),
-            signal: q('.trf-signal'), lcd: q('.trf-lcd'), min: q('.trf-min'), arrive: q('.trf-arrive'), togo: q('.trf-togo'), delay: q('.trf-delay'), status: q('.trf-status'),
+            signal: q('.trf-signal'), lcd: q('.trf-lcd'), led: q('.trf-led'), min: q('.trf-min'), arrive: q('.trf-arrive'), togo: q('.trf-togo'), delay: q('.trf-delay'), status: q('.trf-status'),
             road: q('.trf-road'), segs: q('.trf-road-segs'), pins: q('.trf-road-pins'), roadA: q('.trf-road-a'), roadB: q('.trf-road-b'), via: q('.trf-road-via'),
             advice: q('.trf-advice'), rows: q('.trf-rows'), foot: q('.trf-foot'),
             layer: q('.trf-layer'), layerHdr: q('.trf-layer-hdr'), layerBody: q('.trf-layer-body')
@@ -898,16 +901,30 @@
     /** The LCD (#907): travel time in minutes or h:mm (HRS / MIN lit), the arrival with AM / PM lit, miles to
      *  go while driving it, and on a wide screen the counts beside them. null: figures dark but for dashes. */
     function lcdShow(v) {
-        const sec = v ? v.sec : null;
-        seg(els.min, mins(sec));
-        const hrs = sec != null && Math.round(sec / 60) >= 60;
-        els.lcd.querySelectorAll('[data-u]').forEach((a) => a.classList.toggle('is-on', sec != null && (a.dataset.u === 'h') === hrs));
-        const c = clockParts(v ? v.arriveAt : NaN);
-        seg(els.arrive, c.hm || '--:--');
-        els.lcd.classList.toggle('has-period', CLOCK_12H);
-        els.lcd.querySelectorAll('[data-p]').forEach((a) => a.classList.toggle('is-on', a.dataset.p === c.period));
         const driving = !!(v && v.toGoM != null);
+        const sec = v ? v.sec : null;
+        const hrs = sec != null && Math.round(sec / 60) >= 60;
+        const c = clockParts(v ? v.arriveAt : NaN);
+        // the marks light, the print never changes (a real LCD): not driving, the travel time big and the
+        // arrival under it; driving it (#907, Yukimi: arrival primary), the arrival big and the time left under it
+        els.lcd.classList.toggle('has-period', CLOCK_12H);
         els.lcd.classList.toggle('is-driving', driving);
+        if (els.led) els.led.classList.toggle('is-on', driving);
+        if (driving) {
+            seg(els.min, c.hm || '--:--');
+            seg(els.arrive, mins(sec));
+            els.lcd.querySelectorAll('.trf-lcd-caps:not(.is-row) [data-m]').forEach((a) => a.classList.toggle('is-on', a.dataset.m === 'arrive'));
+            els.lcd.querySelectorAll('.trf-lcd-caps.is-row [data-m]').forEach((a) => a.classList.toggle('is-on', a.dataset.m === 'left'));
+            els.lcd.querySelectorAll('[data-b]').forEach((a) => a.classList.toggle('is-on', !!c.period && a.dataset.b === c.period));
+            els.lcd.querySelectorAll('[data-s]').forEach((a) => a.classList.toggle('is-on', sec != null && (a.dataset.s === 'h' ? hrs : a.dataset.s === 'm' ? !hrs : false)));
+        } else {
+            seg(els.min, mins(sec));
+            seg(els.arrive, c.hm || '--:--');
+            els.lcd.querySelectorAll('.trf-lcd-caps:not(.is-row) [data-m]').forEach((a) => a.classList.toggle('is-on', a.dataset.m === 'travel'));
+            els.lcd.querySelectorAll('.trf-lcd-caps.is-row [data-m]').forEach((a) => a.classList.toggle('is-on', a.dataset.m === 'arrive'));
+            els.lcd.querySelectorAll('[data-b]').forEach((a) => a.classList.toggle('is-on', sec != null && (a.dataset.b === 'h' ? hrs : a.dataset.b === 'm' ? !hrs : false)));
+            els.lcd.querySelectorAll('[data-s]').forEach((a) => a.classList.toggle('is-on', !!c.period && a.dataset.s === c.period));
+        }
         seg(els.togo, driving ? (v.toGoM / 1609.344).toFixed(v.toGoM < 16093 ? 1 : 0) : '');
         const counts = (v && v.counts) || {};
         els.lcd.querySelectorAll('.trf-lcd-cell').forEach((cell) => {
