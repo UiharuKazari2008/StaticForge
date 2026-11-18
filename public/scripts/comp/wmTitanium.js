@@ -1555,7 +1555,9 @@
         primedAt = Date.now();
         // nothing went over Melaton after all (a permission prompt pauses the app too): Today shows again
         const at = primedAt;
-        setTimeout(() => { if (!focusWait && primedAt === at && document.visibilityState === 'visible' && root.dataset.screenOff === undefined) unprime(); }, 2500);
+        // (only while the page never went behind: once it did, the return plays the entrance from this pose - the timer
+        // firing as the page woke after 2.5 s away put the whole list back a second before the entrance ran, A53)
+        setTimeout(() => { if (!focusWait && primedAt === at && !(hiddenAt >= at) && document.visibilityState === 'visible' && root.dataset.screenOff === undefined) unprime(); }, 2500);
         return true;
     }
     let primedAt = 0;
