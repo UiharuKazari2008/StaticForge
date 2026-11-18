@@ -98,6 +98,8 @@
     let skSel = 0;       // the panel whose right soft key is up (it changes after the panel has grown in)
     let menuAt = 0;      // when a tap-and-hold last brought a panel's menu up
     const rowEl = new Map(); // panel id -> its condensed row
+    let stayedAt = 0; // the app said no program came in front while Melaton was behind ('melatonreturn', below)
+    function stayedBehind() { return Date.now() - stayedAt < 3000; }
     let rowsGen = 0; // bumped as rows are added or removed (a prepared entrance holds the old elements)
     let panelsKey = '';
     let homeDone = false;
@@ -2667,7 +2669,7 @@
         // the return, timed from hiddenAt; read as Today staying, it put the whole list up before the entrance, A53)
         const hiddenNow = document.visibilityState !== 'visible' || hiddenAt > shownAt;
         const span = hiddenNow ? Date.now() - hiddenAt : (Date.now() - shownAt < ENTER_RECENT_MS ? hiddenSpan : 0);
-        if (span > AWAY_MS) {
+        if (span > AWAY_MS && !stayedBehind()) {
             // the entrance waits for the window's focus as the return's own does (whenFocused)
             if (!hiddenNow && !host.classList.contains('is-entering') && !focusWait) whenFocused(() => requestAnimationFrame(entrance));
             return;
@@ -2769,6 +2771,20 @@
     // when Today comes back: the page from the background (an Android app, the recents list), or Today
     // from another program
     let homeArrival = false; // the move under way was started by Home: its panel grows and fades in
+    // The app's word on the way back (DSApp 'melatonreturn' { stayed }, sent as the window resumes): no program came in
+    // front while Melaton was behind - Recents opened and closed again, or left with Home or Melaton's own card. Nothing
+    // was gone to, so nothing comes back: Today stays as it was, with no entrance (Yukimi, Nov 18: "if i was already at
+    // the today screen and i opened recent apps view it should skip the animation as we did not go anywhere"; it showed
+    // the whole list, then hid it and played the entrance). Either order with the page's visibilitychange: the word
+    // arriving second calls off the entrance still waiting for the focus. Without the word (an older app, the bar
+    // service off) the return plays as before
+    window.addEventListener('melatonreturn', (e) => {
+        if (!(e && e.detail && e.detail.stayed)) { stayedAt = 0; return; }
+        stayedAt = Date.now();
+        if (!host || root.dataset.wmApp !== 'today' || document.visibilityState !== 'visible') return;
+        if (focusWait) focusWait.cancel();
+        if (!host.classList.contains('is-entering')) unprime();
+    }, { signal: appScopeSignal });
     let shownAt = 0;
     let hiddenAt = 0;
     let hiddenSpan = 0;
@@ -2779,7 +2795,7 @@
         shownAt = Date.now();
         hiddenSpan = hiddenAt ? shownAt - hiddenAt : 0;
         // back from another app (not the blink of a Home press on Today)
-        if (root.dataset.wmApp === 'today' && hiddenSpan > AWAY_MS) {
+        if (root.dataset.wmApp === 'today' && hiddenSpan > AWAY_MS && !stayedBehind()) {
             // a frame now, with no visible change: the app keeps its return picture up until the page draws a frame
             // (its visual-state callback), and sends the focus the entrance waits for after that - a still page
             // drew nothing and the two waited on each other to the app's 2.5 s cap (A53 trace, #907)
