@@ -1563,6 +1563,7 @@ function server() {
 const adminClient = (info) => !!(info && info.authenticated !== false && /^(admin|dev_admin)$/.test(String(info.userType || '')));
 
 function broadcast(message, filter = null) {
+    try { require('./phoneStatus').touch('traffic'); } catch (_) { /* best effort (#908) */ }
     try {
         const srv = server();
         if (srv && typeof srv.broadcast === 'function') srv.broadcast(Object.assign({ timestamp: new Date().toISOString() }, message), filter ? (info) => adminClient(info) && filter(info) : adminClient);

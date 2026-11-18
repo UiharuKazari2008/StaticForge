@@ -1471,6 +1471,7 @@ async function pollPlaces() {
         else if (monitor.byPlace[id]) { delete monitor.byPlace[id]; delete monitor.rain[id]; changes.alerts = true; changes.rain = true; }
     }
     monitor.checkedAt = new Date().toISOString();
+    if (changes.alerts || changes.rain) { try { require('./phoneStatus').touch('weather'); } catch (_) { /* best effort (#908) */ } }
     if (changes.alerts) broadcast({ type: 'weather_alerts_changed', data: getActiveAlerts() });
     if (changes.rain) broadcast({ type: 'weather_rain_status', data: getRainStatus() });
     // pages watching Home / Work hear a changed forecast from this read now, not at their next minute

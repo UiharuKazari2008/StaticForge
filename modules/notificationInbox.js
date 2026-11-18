@@ -194,6 +194,8 @@ function publish(notice = {}) {
     }
     const out = Object.assign(rowOut(row), { alert });
     broadcast(user, { type: 'inbox_updated', data: { reason: 'new', notice: out } });
+    // the phones' status icons read the waiting notices (phoneStatus, #908)
+    try { require('./phoneStatus').touch('inbox'); } catch (_e) { /* best effort */ }
     // the phones' background links too (#876 D): a phone whose page is not running posts it natively
     if (!quiet) {
         const sentTo = [];
@@ -260,6 +262,7 @@ function ack(user, id, state, device) {
         // (wmNotificationInbox.js onUpdated) acts on cleared / acted alone (#890 round 5). Pages that were
         // asleep for an ack list what changed when they wake (inbox_list since; websocket.js DORMANT_HOLD).
         if (next !== 'seen') broadcast(u, { type: 'inbox_updated', data: { reason: 'ack', id: String(id || ''), state: next, device: device || null } });
+        if (next !== 'seen') { try { require('./phoneStatus').touch('inbox'); } catch (_e) { /* best effort (#908) */ } }
         // done with (dismissed, read or used anywhere): the phones take down their Android copy
         if (rank[next] >= 2 && rank[cur.state] < 2) phonesCleared(u, String(id || ''));
         return true;
@@ -324,6 +327,20 @@ function quietClasses(user) {
 }
 
 /** The phone page reports the classes it shows without a message; they are stored seen and never posted. */
+/** A plain per-user preference (phoneStatus: Messaging's icon choices, #908). */
+function getPref(user, key) {
+    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    try { const r = database().prepare('SELECT value FROM prefs WHERE user = ? AND key = ?').get(u, String(key)); return r ? r.value : ''; } catch (_e) { return ''; }
+}
+function setPref(user, key, value) {
+    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    try {
+        database().prepare('INSERT INTO prefs (user, key, value) VALUES (?, ?, ?) ON CONFLICT (user, key) DO UPDATE SET value = excluded.value').run(u, String(key), String(value));
+    } catch (e) { console.warn(`[notify-inbox] pref failed: ${e.message}`); return false; }
+    try { require('./phoneStatus').touch('prefs'); } catch (_e) { /* best effort */ }
+    return true;
+}
+
 function setQuiet(user, classes) {
     const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
     const list = [...new Set((Array.isArray(classes) ? classes : []).map((c) => String(c || '').trim()).filter((c) => /^[a-z0-9-]{1,40}$/.test(c)))].slice(0, 80);
@@ -544,6 +561,8 @@ module.exports = {
     pendingForPhones,
     catchUpPhone,
     confirmed,
+    getPref,
+    setPref,
     openDeliveries,
     _test: {
         resendDue,

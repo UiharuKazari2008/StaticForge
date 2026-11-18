@@ -3307,6 +3307,8 @@ function broadcastDirectorStatus(gr) {
         });
         // Director: Turn finished also reaches a phone whose page is not running (#876)
         try { require('./notificationInboxSources').onDirectorStatus(status); } catch (_) { /* best effort */ }
+        // the phones' Director icon (phoneStatus, #908)
+        try { require('./phoneStatus').directorStatus(status); } catch (_) { /* best effort */ }
     }).catch(() => { /* status is best effort */ });
 }
 

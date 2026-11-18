@@ -167,6 +167,18 @@
     // notices only the server raises (no page app shows its own live note for them): the inbox shows them itself
     const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key']);
 
+    let iconPrefsSent = '';
+    function sendIconPrefs() {
+        const c = window.wsClient;
+        if (!canUse() || !c || typeof c.sendMessage !== 'function') return;
+        let mailAll = false; let smsAll = false;
+        try { mailAll = localStorage.getItem('wmMailIconAll') === '1'; smsAll = localStorage.getItem('wmSmsIconAll') === '1'; } catch (_) { /* defaults */ }
+        const key = `${mailAll}|${smsAll}`;
+        if (key === iconPrefsSent) return;
+        iconPrefsSent = key;
+        void Promise.resolve(c.sendMessage('phone_status_prefs', { mailAll, smsAll }, false)).catch(() => { iconPrefsSent = ''; });
+    }
+
     function pageShown(id) {
         try { const A = window.AndroidInbox; if (A && typeof A.shown === 'function') A.shown(String(id)); } catch (_) { /* no app */ }
     }
@@ -255,6 +267,9 @@
         if (wired || !c || typeof c.on !== 'function') return !!wired;
         wired = true;
         c.on('inbox_updated', onUpdated, { signal: appScopeSignal });
+        // Messaging's "icon for any unread" choices, for the status icons the server works out (#908): once per link
+        c.on('connected', sendIconPrefs, { signal: appScopeSignal });
+        sendIconPrefs();
         c.on('connected', () => catchUp(), { signal: appScopeSignal });
         catchUp();
         return true;

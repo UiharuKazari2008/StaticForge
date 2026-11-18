@@ -906,6 +906,7 @@ function noteReceived(globalResources, server, deviceId, op, args, fromName) {
         .run(deviceId, r.kind, op, r.title, JSON.stringify(r.detail), clampString(fromName || '', 64), Date.now());
     d.prepare('DELETE FROM as_received WHERE device_id = ? AND id NOT IN (SELECT id FROM as_received WHERE device_id = ? ORDER BY id DESC LIMIT ?)').run(deviceId, deviceId, RECEIVED_MAX);
     notifyDevice(server, deviceId, 'received.changed', { unseen: receivedUnseen(globalResources, deviceId) });
+    try { require('./phoneStatus').touch('received'); } catch (_) { /* best effort (#908) */ }
 }
 
 function receivedUnseen(globalResources, deviceId) {
@@ -929,6 +930,7 @@ function updateReceived(globalResources, wsServer, deviceId, action, id) {
     else if (action === 'clear') d.prepare('DELETE FROM as_received WHERE device_id = ?').run(deviceId);
     else throw fail('BAD_ACTION', 'action is seen, remove or clear');
     notifyDevice(wsServerOf(globalResources, wsServer), deviceId, 'received.changed', { unseen: receivedUnseen(globalResources, deviceId) });
+    try { require('./phoneStatus').touch('received'); } catch (_) { /* best effort (#908) */ }
     return { success: true };
 }
 
