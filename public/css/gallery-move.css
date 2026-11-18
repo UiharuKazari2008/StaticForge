@@ -344,23 +344,8 @@
     font-size: 0.9rem;
 }
 
-.infinite-scroll-loading .spinner {
-    width: 24px;
-    height: 24px;
-    border: 2px solid var(--glass-border-2);
-    border-top: 2px solid var(--primary-color);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-.infinite-scroll-loading .spinner {
-    width: 30px;
-    height: 30px;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-top: 3px solid #fff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
+/* (#890) the two spinning .infinite-scroll-loading .spinner rules are gone: the container holds the azuspin
+   picture (app.html), no .spinner, so they never applied */
 
 /* Responsive adjustments for infinite scroll loading */
 @media (max-width: 767px) {
@@ -493,15 +478,7 @@ body:not(.windows-classic-theme) #cacheManagerModal {
     background: hsl(0 0% 0% / 45%);
 }
 
-.cache-manager-loading .spinner {
-    width: 30px;
-    height: 30px;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-top: 3px solid #fff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 16px;
-}
+/* (#890) the spinning .cache-manager-loading .spinner rule is gone: the container holds the azuspin picture, no .spinner element */
 
 .cache-manager-loading p {
     margin: 0;
@@ -1052,6 +1029,7 @@ body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item 
             rgb(165 90 255 / 72%),
             rgb(255 64 185 / 66%),
             rgb(255 40 40 / 66%)) 0% 0% / 50% 100%;
+    /* perf: allow busy indicator: the rainbow runs only on a button while its print generates (.generating-effect); transform only */
     animation: rainbowShift 25s linear infinite;
 }
 
@@ -1117,11 +1095,6 @@ body:not(.windows-classic-theme) #manualModal :where(.btn-secondary, .btn-primar
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
-    will-change: opacity;
-}
-
-.popover:not(.show) {
-    will-change: auto;
 }
 
 .popover-content {

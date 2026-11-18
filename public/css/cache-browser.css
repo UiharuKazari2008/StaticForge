@@ -491,14 +491,7 @@ img.loading {
     margin-bottom: var(--spacing-lg);
 }
 
-.cache-browser-loading .spinner {
-    width: 30px;
-    height: 30px;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-top: 3px solid #fff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
+/* (#890) the spinning .cache-browser-loading .spinner rule is gone: the container holds the workin picture, no .spinner element */
 
 /* Image Bias Adjustment Modal Styles */
 .image-bias-adjustment-content {
@@ -759,7 +752,7 @@ img.loading {
 
 body:not(.windows-classic-theme) [role=progressbar].animate>div:before,
 body:not(.windows-classic-theme) [role=progressbar].marquee:before {
-    -webkit-animation: progressbar 3s linear infinite;
+    /* perf: allow busy indicator: the sheen runs only on an animated or marquee progress bar; transform */
     animation: progressbar 3s linear infinite;
     background: linear-gradient(90deg, transparent, #ffffff80, transparent 40%);
     content: "";
@@ -1485,20 +1478,12 @@ body:not(.windows-classic-theme) [role=progressbar].marquee:before {
     color: var(--error-color);
 }
 
-.search-spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--accent-color-alpha);
-    border-top: 2px solid var(--accent-color);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
 /* Gallery Highlight Effect */
 .gallery-item.highlighted {
     animation: highlight-pulse 2s ease-in-out;
 }
 
+/* perf: allow a one-shot 2 s pulse when a tile is jumped to (.highlighted), not a loop; it interpolates the shadow's offset, blur and colour together, which an opacity cross-fade of two pre-drawn shadows does not match */
 @keyframes highlight-pulse {
 
     0%,
