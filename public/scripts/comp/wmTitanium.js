@@ -1525,7 +1525,8 @@
     let blurPlacedKey = '';
     function blurPlace() {
         if (!blurClip || blurClip.hidden || !wallEl) return;
-        const key = `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio}|${focusTop()}|${wallEl.style.cssText.length}`;
+        // (hostHeight / unit are kept numbers: window.innerWidth itself forced the layout here, 71 ms)
+        const key = `${hostHeight()}@${unit()}|${focusTop()}|${wallEl.style.cssText.length}`;
         if (key === blurPlacedKey && blurInner.style.width) return;
         blurPlacedKey = key;
         const w = wallEl.getBoundingClientRect();
