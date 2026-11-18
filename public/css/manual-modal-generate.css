@@ -122,6 +122,7 @@
             rgb(165 90 255 / 72%),
             rgb(255 64 185 / 66%),
             rgb(255 40 40 / 66%)) 0% 0% / 50% 100%;
+    /* perf: allow busy indicator: the rainbow runs only on a button while its print generates (.generating-effect); transform only */
     animation: rainbowShift 25s linear infinite;
 }
 
@@ -187,11 +188,6 @@ body:not(.windows-classic-theme) #manualModal :where(.btn-secondary, .btn-primar
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
-    will-change: opacity;
-}
-
-.popover:not(.show) {
-    will-change: auto;
 }
 
 .popover-content {
@@ -550,6 +546,7 @@ html.has-desktop-mode {
     height: 4px;
     background: #fff;
     border-radius: 50%;
+    /* perf: allow busy indicator (design): the preview's stars show only while a print generates (#previewStars is .hidden otherwise, manualModalManager.js) */
     animation: previewTwinkle 4s infinite;
 }
 
@@ -793,6 +790,7 @@ html.has-desktop-mode {
     width: 10px;
     height: 300px;
     background: rgba(255, 255, 255, 0.8);
+    /* perf: allow busy indicator (design): the rising lines show only while a print generates (their layers are .hidden otherwise) */
     animation: previewRiseUp 1.5s linear infinite;
     opacity: 0;
     visibility: hidden;
@@ -803,6 +801,7 @@ html.has-desktop-mode {
     width: 5px;
     height: 175px;
     box-shadow: 0 0 15px var(--active-tab-border, rgba(100, 150, 255, 0.8));
+    /* perf: allow busy indicator (design): only while a print generates (the layer is .hidden otherwise) */
     animation: previewRiseUp 4s linear infinite;
 }
 

@@ -96,6 +96,7 @@
     border-radius: 1px;
     background: #2e8b2e;
     opacity: 0.2;
+    /* perf: allow busy indicator: the dots run only in the Connecting to ... dialog (#connectionDialModal); opacity steps */
     animation: vpn-dial-dot 1.2s steps(1, end) infinite;
 }
 
@@ -256,6 +257,7 @@
     border: 2px solid #9fbfe0;
     border-top-color: #2c6db5;
     border-radius: 50%;
+    /* perf: allow busy indicator: only while the domain connect form works (#domainConnectModal.busy); transform */
     animation: vpn-spin 0.8s linear infinite;
 }
 
@@ -693,6 +695,7 @@
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-map-link--busy .cpl-map-line {
     border-top: 3px dashed #5aa55a;
+    /* perf: allow status: a network map link flashes only while traffic is busy on it (--busy) */
     animation: cpl-map-busy 1s linear infinite;
 }
 
@@ -1383,6 +1386,7 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-key-dot-checking {
     background: #4a90d9;
+    /* perf: allow status: the key's dot pulses only while it is being checked (-checking) */
     animation: sec-key-dot-pulse 0.9s ease-in-out infinite alternate;
 }
 

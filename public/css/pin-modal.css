@@ -40,14 +40,12 @@
 .pin-dot.error {
     border-color: #dc3545;
     animation: shake 0.5s ease-in-out;
-    will-change: transform;
 }
 
 .pin-dot.success {
     border-color: #28a745;
     background-color: rgba(40, 167, 69, 0.2);
     animation: success-pulse 0.6s ease-in-out;
-    will-change: transform;
 }
 
 @keyframes shake {
@@ -114,7 +112,6 @@
 
 @supports (-webkit-touch-callout: none) or (hover: hover) {
     .pin-button:hover {
-        will-change: background-color, border-color, box-shadow, color;
         color: #6a6a6a;
         background-color: rgb(255 255 255 / 68%);
         box-shadow: 0 0 20px rgb(255 255 255 / 66%);
@@ -161,7 +158,6 @@
     .pin-dot.success {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
-        will-change: auto;
     }
 }
 

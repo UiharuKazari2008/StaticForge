@@ -244,6 +244,7 @@
     border: 4px solid var(--bg-quaternary);
     border-top: 4px solid var(--primary-color);
     border-radius: 50%;
+    /* perf: allow busy indicator: a .spinner is put in only while something works (imageBias.js "Testing..."); transform */
     animation: spin 1s linear infinite;
     margin: 0 auto;
 }
@@ -618,6 +619,7 @@ textarea {
     /* Lime green */
     margin-left: var(--spacing-sm);
     font-size: 0.9rem;
+    /* perf: allow design: the Variety+ mark in the image info dialog pulses while the dialog shows it (a fact, not an activity: Yukimi to decide); opacity + transform */
     animation: splotch-pulse 2s ease-in-out infinite;
 }
 
@@ -1005,6 +1007,7 @@ textarea {
 }
 
 .tag-wiki-preview-text.is-scrolling {
+    /* perf: allow a wiki preview too long for its row scrolls only while its suggestion is shown and selected (.is-scrolling); transform */
     animation: tag-wiki-preview-marquee var(--tag-wiki-preview-duration, 12s) linear infinite;
 }
 
@@ -1381,6 +1384,7 @@ textarea {
 }
 
 .search-service-icon.status-searching {
+    /* perf: allow busy indicator: pulses only while a search service is searching (.status-searching); opacity + transform */
     animation: pulse 1.5s infinite;
 }
 

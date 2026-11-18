@@ -1,7 +1,4 @@
 /* Desktop boot modals — pre-startup, Windows startup splash */
-#desktopPreStartupModal .desktop-prestartup-progress > div {
-    will-change: background-position;
-}
 /* Vertical place is placeWindowsLogonDialog (modalUtils.js): top at one third of
    the leftover screen, the classic logon position. Horizontal center stays the modal's. */
 #desktopPreStartupModal {
@@ -75,6 +72,7 @@
     background-size: 200% 100%;
     background-repeat: repeat;
     background-position-x: 100%;
+    /* perf: allow busy indicator: the logon dialog's bar, which websocket.js pauses (.paused) while nothing is in flight (password form, failure) */
     animation: desktop-prestartup-marquee 3s linear infinite!important;
     animation-play-state: running!important;
     animation-timing-function: linear;
@@ -312,6 +310,7 @@ body.vista-logon #desktopPreStartupStatus::before {
     margin: 0 10px 0 -5px;
     vertical-align: top;
     background: url('/static_images/vista-logon/wait-20.png') 0 0 / 20px 360px no-repeat;
+    /* perf: allow busy indicator: the Welcome screen's wait ring beside the logon status, frames of its sprite */
     animation: vista-logon-wait 1s steps(18) infinite;
 }
 
@@ -983,6 +982,7 @@ body.windows-classic-theme [role=progressbar].marquee::before {
     height: 100%;
     background: var(--Hilight);
     opacity: 1;
+    /* perf: allow busy indicator: only on a marquee progress bar (.marquee, work with no percentage); transform steps */
     animation: classic-progress-marquee 1.6s steps(24) infinite;
 }
 
@@ -1011,6 +1011,7 @@ body.windows-classic-theme .win7 [role=progressbar].marquee::before {
     background: var(--Hilight);
     background-image: none;
     opacity: 1;
+    /* perf: allow busy indicator: only on a marquee progress bar (.marquee); transform steps */
     animation: classic-progress-marquee 1.6s steps(24) infinite;
 }
 
