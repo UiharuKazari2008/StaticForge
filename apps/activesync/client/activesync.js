@@ -208,9 +208,12 @@
                     sections: [{ type: 'list', initfn: (s) => { s.items = [{ text: `About ${NAME}`, action: 'about' }]; } }]
                 });
             }
-            // the Connecting picture steps about every 290 ms on the VM (rec5: 6877, 7171, 7464 ... ms)
-            const tick = setInterval(() => this.tick(), 290);
-            this.app.signal.addEventListener('abort', () => clearInterval(tick));
+            // the Connecting picture steps about every 290 ms on the VM (rec5: 6877, 7171, 7464 ... ms):
+            // its timer runs only while the status says Connecting and the page is seen (#890)
+            this.tickTimer = null;
+            doc.addEventListener('visibilitychange', () => this.syncTick(), sig);
+            root.addEventListener('melatonscreen', () => this.syncTick(), sig);
+            this.app.signal.addEventListener('abort', () => { clearInterval(this.tickTimer); this.tickTimer = null; });
             q('.asdc-close').addEventListener('click', () => this.app.exit(), sig);
             doc.addEventListener('staticforge:modal-lifecycle', (e) => {
                 if (e && e.detail && e.detail.id === m.id && e.detail.type === 'closed') this.app.exit();
@@ -464,6 +467,7 @@
             this.paintDevice(dev, connected);
             this.status = this.busy ? 'connecting' : connected ? 'connected' : 'notconnected';
             this.paintStatus();
+            this.syncTick();
 
             const body = this.el('.asdc-body');
             let html;
@@ -490,31 +494,53 @@
             const img = this.el('.asdc-status img');
             const text = this.el('.asdc-status span');
             // this handheld in continuity: being connected to itself is not news (#798)
-            this.el('.asdc-status').hidden = isContinuityDevice(this.device());
-            this.el('.asdc-status').dataset.status = this.status;
+            const box = this.el('.asdc-status');
+            const hide = isContinuityDevice(this.device());
+            if (box.hidden !== hide) box.hidden = hide;
+            if (box.dataset.status !== this.status) box.dataset.status = this.status;
             const dev = this.device();
             // the lock screen is up on the phone (the app's service, #827): imageres' Aero padlock
             const locked = this.status === 'connected' && !!(dev && dev.status && dev.status.locked === true);
-            this.el('.asdc-status').classList.toggle('is-locked', locked);
+            if (box.classList.contains('is-locked') !== locked) box.classList.toggle('is-locked', locked);
             // WMDC's status area (UpdateDeviceStatusArea): under the device status, a partnership's sync line
             const sync = this.el('.asdc-sync');
             const syncText = this.status === 'connected' && dev && dev.partner && !isContinuityDevice(dev) ? lastSyncLine(dev.lastSync) : '';
             if (sync.textContent !== syncText) sync.textContent = syncText;
-            sync.hidden = !syncText;
+            if (sync.hidden !== !syncText) sync.hidden = !syncText;
+            let src;
+            let label;
             if (this.status === 'connecting') {
-                img.src = `${A}/status-connecting-${(this.frame % 8) + 1}.png`;
-                text.textContent = 'Connecting';
+                src = `${A}/status-connecting-${(this.frame % 8) + 1}.png`;
+                label = 'Connecting';
             } else if (locked) {
-                img.src = '/static_images/activesync/status-locked.png';
-                text.textContent = 'Connected (Locked)';
+                src = '/static_images/activesync/status-locked.png';
+                label = 'Connected (Locked)';
             } else {
-                img.src = `${A}/status-${this.status}.png`;
-                text.textContent = this.status === 'connected' ? 'Connected' : 'Not Connected';
+                src = `${A}/status-${this.status}.png`;
+                label = this.status === 'connected' ? 'Connected' : 'Not Connected';
+            }
+            // written only when it changes (the same src again still restyles)
+            if (img.getAttribute('src') !== src) img.src = src;
+            if (text.textContent !== label) text.textContent = label;
+        }
+
+        /** The Connecting frames' timer: on while Connecting shows on a page that is seen, off otherwise. */
+        syncTick() {
+            const want = this.status === 'connecting' && !this.app.signal.aborted
+                && !doc.hidden && doc.documentElement.dataset.screenOff === undefined;
+            if (want && !this.tickTimer) {
+                this.tickTimer = setInterval(() => {
+                    if (doc.hidden || doc.documentElement.dataset.screenOff !== undefined) { this.syncTick(); return; }
+                    this.tick();
+                }, 290);
+            } else if (!want && this.tickTimer) {
+                clearInterval(this.tickTimer);
+                this.tickTimer = null;
             }
         }
 
         tick() {
-            if (this.status !== 'connecting') return;
+            if (this.status !== 'connecting') { this.syncTick(); return; }
             this.frame += 1;
             this.paintStatus();
         }
