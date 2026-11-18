@@ -216,6 +216,7 @@
 
     // The status feed: on while Today's item or this program is on screen (rule server-push-not-polling).
     let hubOn = false;
+    let hubSig = ''; // the last snapshot applied, while no push has changed the hub since
     let todayPlaced = false;
     const screenOn = () => !document.hidden && document.documentElement.dataset.screenOff === undefined;
     function wantHub() {
@@ -227,10 +228,14 @@
         if (!items || typeof items !== 'object') return;
         const was = signedIn();
         ['account', 'favourites', 'latest', 'live', 'sources', 'settings'].forEach((k) => { if (items[k] !== undefined && items[k] !== null) hub[k] = items[k]; });
-        // the server finished a look for new uploads: take the Subscriptions list it now holds (no call to YouTube)
+        // the server finished a look for new uploads: take the Subscriptions list it now holds (no call to
+        // YouTube) while the program shows it; otherwise when it shows again (#890: the 150-row list was
+        // read on every bump while only Today was on screen)
         if (items.feed && typeof items.feed.at === 'number') {
             const t = data.subs;
-            if (signedIn() && t.videos && !t.loading && items.feed.at > (t.feedAt || 0)) loadTab('subs', false, true);
+            if (signedIn() && t.videos && !t.loading && items.feed.at > (t.feedAt || 0)) {
+                if (shown && screenOn()) loadTab('subs', false, true); else t.feedStale = true;
+            }
         }
         loaded = true;
         if (was !== signedIn()) {
@@ -255,6 +260,12 @@
             let items = r && (r.items || (r.data && r.data.items));
             // a server that answers the subscription without its snapshot: read what it holds once
             if (!items) { const d = await ask('youtube_get', {}, 15000); items = d && d.state; }
+            // the same snapshot as last time and no push since (back on Today): nothing to apply or draw
+            // again (#890: Today's item was rebuilt and its picture decoded again on every return)
+            let sig = '';
+            try { sig = JSON.stringify(items); } catch (_) { sig = ''; }
+            if (sig && sig === hubSig && loaded) return;
+            hubSig = sig;
             applyHub(items);
         } catch (_) {
             if (want) hubOn = false;
@@ -264,7 +275,7 @@
         const c = window.wsClient;
         if (wired || !c || typeof c.on !== 'function') return !!wired;
         wired = true;
-        c.on('youtube_status', (msg) => { if (hubOn && msg) applyHub(msg.changed || (msg.data && msg.data.changed)); }, { signal: appScopeSignal });
+        c.on('youtube_status', (msg) => { if (hubOn && msg) { hubSig = ''; applyHub(msg.changed || (msg.data && msg.data.changed)); } }, { signal: appScopeSignal });
         // the server forgets a dropped socket's subscriptions: subscribe again
         c.on('connected', () => { hubOn = false; void syncHub(); }, { signal: appScopeSignal });
         document.addEventListener('wmAppChange', () => { void syncHub(); }, { signal: appScopeSignal });
@@ -1051,6 +1062,9 @@
             const sync = syncHub();
             if (!loaded) ws.busy(sync, { delay: 250, timeout: 20000 }).catch(() => {});
             ensureTab();
+            // new uploads the server found while the program was away: taken now, quietly, as a push would
+            const t = data.subs;
+            if (t.feedStale && signedIn() && t.videos && !t.loading) { t.feedStale = false; loadTab('subs', false, true); }
         },
         hide() { shown = false; if (els) els.q.blur(); void syncHub(); },
         historyDepth: () => (layer ? 1 : 0),
@@ -1202,8 +1216,8 @@
         if (typeof ws.registerTodayItem === 'function') {
             ws.registerTodayItem({ id: 'youtube', label: 'Videos', icon: 'app-youtube', after: 'lapis', render: todayRender, titanium: todayTitanium });
         }
-        // the socket may come up after the shell: wire once it exists (a local wait, no server call)
-        if (!wire()) { let n = 0; const t = setInterval(() => { if (wire() || ++n > 120) clearInterval(t); }, 1000); }
+        // websocket.js (window.wsClient) loads before this file; should it not have, every script has run by 'load'
+        if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });
     }
 
     window.wmYouTube = {
