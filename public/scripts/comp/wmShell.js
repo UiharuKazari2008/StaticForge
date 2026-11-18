@@ -1043,8 +1043,29 @@
         }
         // the phone's lock screen with Transparent Statusbar at keyguard: the icons on the lock screen's own picture
         if (o.transparent) { bar.style.background = 'transparent'; bar.style.borderBottomColor = 'transparent'; }
+        // laid out for the bar's own screen (#907: DSApp passes its width and density when this WebView was made at
+        // another density): the shell at that screen's CSS width, the camera hole (given in this window's CSS px)
+        // moved to that density's, the icons sized for it; put back after
+        const target = Number(o.density) > 0 && Number(o.widthPx) > 0 ? { density: Number(o.density), widthPx: Number(o.widthPx) } : null;
+        const HOLE = ['--camera-hole-left', '--camera-hole-top', '--camera-hole-width', '--camera-hole-height'];
+        const holeBefore = HOLE.map((n) => root.style.getPropertyValue(n));
+        const shellBefore = shell.style.cssText;
+        if (target) {
+            const k = (window.devicePixelRatio || 1) / target.density;
+            HOLE.forEach((n, i) => { const v = parseFloat(holeBefore[i]); if (Number.isFinite(v)) root.style.setProperty(n, `${v * k}px`); });
+            shell.style.setProperty('width', `${target.widthPx / target.density}px`, 'important');
+            shell.style.setProperty('max-width', 'none', 'important');
+            shell.style.setProperty('right', 'auto', 'important');
+            iconDensity = target.density;
+        }
         syncIconUnit(); fitStatusNow(); snapStatusIcons();
         return () => {
+            if (target) {
+                iconDensity = 0;
+                HOLE.forEach((n, i) => { if (holeBefore[i]) root.style.setProperty(n, holeBefore[i]); else root.style.removeProperty(n); });
+                shell.style.cssText = shellBefore;
+                syncIconUnit();
+            }
             if (tray) tray.remove();
             bar.classList.toggle('is-start-open', before.startOpen);
             // the bars as the shell itself has them now (its title, keys and corner), not the text
@@ -3617,8 +3638,10 @@
      * 64 device px) where it fits the 16-unit slot, and snapStatusIcons nudges each icon onto the device
      * pixel grid.
      */
+    // a Melaton Bars kit made for another screen's density (barsStage o.density): the icons sized for it
+    let iconDensity = 0;
     function syncIconUnit() {
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = iconDensity || window.devicePixelRatio || 1;
         const px = rootPx();
         const want = 16 * px * dpr; // the icon's size in device px
         // a maximum size (Yukimi, Nov 17: the icons were about to overflow the bar): never over the 16-unit slot by
