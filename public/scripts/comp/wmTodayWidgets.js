@@ -2289,7 +2289,9 @@
             if (!drawn) repaintItems(['server'].concat(PERSONAS.some((p) => director.stale[p]) ? DIRECTOR_ITEMS : []));
         };
         document.addEventListener('wmAppChange', (e) => { if (e.detail && e.detail.id === 'today') shown(true); }, { signal: appScopeSignal });
-        document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake && sh.current === 'today') shown(false); }, { signal: appScopeSignal });
+        // (after the return's entrance: its repaints restyled the shell in every frame of the rise, wmAfterEntrance)
+        const afterEntrance = (fn) => (typeof window.wmAfterEntrance === 'function' ? window.wmAfterEntrance(fn) : fn());
+        document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake && sh.current === 'today') afterEntrance(() => shown(false)); }, { signal: appScopeSignal });
         // the link back, or the service's own state moved (restarting, connected): the server item reads again
         window.addEventListener('nightshade:state', () => serverWanted(), { signal: appScopeSignal });
         // While Today shows the weather (the item, or 6.5's clock, which carries it) the Weather app's place
@@ -2301,7 +2303,7 @@
             try { W.view('today', todayOnScreen() && (!isOff('weather') || sh.version === '6.5')); } catch (_) { /* not loaded */ }
         };
         document.addEventListener('wmAppChange', weatherView, { signal: appScopeSignal });
-        document.addEventListener('wmawake', weatherView, { signal: appScopeSignal });
+        document.addEventListener('wmawake', () => afterEntrance(weatherView), { signal: appScopeSignal });
         // a server without the push: the Weather app refreshes data older than 15 min only when asked
         // (wmWeather.current(); its own poll runs only while its program shows), so Today asks on the shell's
         // minute while it shows the weather, as the minute's full draw did (#890). 6.5's clock asks too
