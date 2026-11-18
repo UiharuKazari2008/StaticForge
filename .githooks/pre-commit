@@ -10,6 +10,12 @@ if ! node "$root/scripts/check-perf-rules.js" --staged; then
     echo "pre-commit: blocked by scripts/check-perf-rules.js (rules: .cursor/rules/phone-power-*.mdc)." >&2
     exit 1
 fi
+# Status icon registration (Yukimi, Nov 18 2026, HARD rule status-icons-registered-only): every icon has its glyph,
+# popup and tap as portable code before anything is committed
+if [ -f "$root/scripts/check-status-registry.js" ] && ! node "$root/scripts/check-status-registry.js" >&2; then
+    echo "pre-commit: blocked by scripts/check-status-registry.js (an icon without its glyph / popup / tap)." >&2
+    exit 1
+fi
 # CaféReady tasks (#908, rule cafeready-background): the Android app runs its own bundled copy. A change here reaches
 # phones only after `node scripts/sync-cafe-tasks.js --dsapp <DSApp tree>`, a DSApp commit and an app build.
 if git diff --cached --name-only | grep -q '^public/scripts/tasks/'; then

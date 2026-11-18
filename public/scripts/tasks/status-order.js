@@ -38,6 +38,13 @@
         batterylow: 'status-battery-low'
     };
     const glyphNames = new Set(Object.values(glyphs));
+    // the phone's own icons: WM's ROM glyph families in the status atlas (each state its own glyph)
+    const systemGlyphs = {
+        bluetooth: 'status-bluetooth', data: 'status-data-*', cell: 'status-data-*', roaming: 'status-roaming',
+        signal: 'status-signal-*', volume: 'status-volume|status-vibrate|status-volume-off', battery: 'status-battery-*'
+    };
+    // what a tap does: its popup (status-popups.js), drawn by the app or the page; "..." opens the tray of what waits
+    const taps = { notify: 'tray' };
     const NOTE_CLS = { mail: 'mail', sms: 'sms', chat: 'chat', print: 'prints', 'print-error': 'prints', director: 'director',
         'weather-alert': 'wxalert', 'weather-severe': 'wxalert', 'rain-alarm': 'rain', reminder: 'reminder' };
 
@@ -81,6 +88,19 @@
         /** A glyph name the registration carries. */
         isGlyph: (name) => glyphNames.has(name),
         noteKind,
-        noteGlyph: (n) => glyphs[noteKind(n)]
+        noteGlyph: (n) => glyphs[noteKind(n)],
+        systemGlyphs,
+        /** What a tap on the role does: 'tray' (the "..." group) or 'popup'. */
+        tap: (r) => taps[r] || 'popup',
+        /**
+         * The registration of a role: { glyph, popup, tap } when complete, else null - an incomplete role never shows
+         * (scripts/check-status-registry.js fails the commit for one in the display table).
+         */
+        registration(r) {
+            const glyph = glyphs[r] || systemGlyphs[r] || null;
+            const pl = C.lib.statusPopups;
+            const popup = !!(pl && pl.has(r));
+            return glyph && popup ? { glyph, popup, tap: taps[r] || 'popup' } : null;
+        }
     };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

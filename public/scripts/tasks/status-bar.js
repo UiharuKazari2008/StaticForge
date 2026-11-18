@@ -9,7 +9,9 @@
  *                                           (Continuity), the link to Dreamscape, the drive state
  *   wake {}                                 the screen came on (time-driven states are worked out again)
  *   timer {}                                the next edge of a commute's leave window or a remote start's end
- * Output: { roles: { <role>: true | false }, link, at }: false = hidden; a role the task does not name is the page's.
+ *   sys { battery, bluetooth, cell, wifi, airplane, ringer }   the phone's readings, sent as one of its icons' popups opens
+ * Output: { roles: { <role>: true | false }, link, at, fit, popups: { <role>: popup } }: false = hidden; a role the task
+ * does not name is the page's. popups: every registered icon's popup (status-popups.js), drawn by the app on a tap.
  *
  * The rules are the page's (public/scripts/comp/wmShell.js refreshStatus), on server inputs:
  *   mail      Messaging's "any unread" on: unread mail; else new mail notices waiting
@@ -126,6 +128,15 @@
         // decides the rest
         if (!s.fields || !s.fields.mail) roles = { continuity: roles.continuity, nightshade: roles.nightshade };
         const out = { roles, link: s.native.link !== false };
+        // every registered icon's popup, ready for a tap (status-popups.js; HARD rule status-icons-registered-only):
+        // the app draws it at once, never opening Melaton for it
+        const pl = C.lib.statusPopups;
+        if (pl) {
+            const nat = Object.assign({}, s.native, { sys: s.sys || null });
+            const popups = {};
+            pl.roles.forEach((r) => { const p = pl.build(r, s.fields || {}, nat, now); if (p) popups[r] = p; });
+            out.popups = popups;
+        }
         // the page asleep: the bar fitted the page's way (CafeTasks.lib.statusFit, the page's fitStatusNow rules), from
         // the geometry and widths the app sends (layout); without it the app places the icons itself
         const fitLib = C.lib.statusFit;
@@ -187,6 +198,9 @@
                 refresh(ctx);
             },
             native(ctx, d) { Object.assign(ctx.state.native, d || {}); refresh(ctx); },
+            // the phone's own readings for its icons' popups (battery, Bluetooth, cell, Wi-Fi, flight mode, ringer),
+            // sent by the app as one of those popups opens - never on a schedule
+            sys(ctx, d) { ctx.state.sys = d || null; refresh(ctx); },
             // the bar's geometry and each role's width (NativeBar), for the fit
             layout(ctx, d) { ctx.state.layout = d || null; refresh(ctx); },
             wake: refresh,

@@ -152,8 +152,15 @@ function weather() {
     if (!w) return { alerts: 0, rain: false };
     const places = safe(() => w.getActiveAlerts().places, {}) || {};
     const alerts = ['home', 'work'].reduce((s, id) => s + ((places[id] && places[id].alerts && places[id].alerts.length) || 0), 0);
-    const rain = Object.values(safe(() => w.getRainStatus().places, {}) || {}).some((p) => p && p.rainAlarm && (p.wet || p.startsInMin != null));
-    return { alerts, rain };
+    const rainPlaces = safe(() => w.getRainStatus().places, {}) || {};
+    const rain = Object.values(rainPlaces).some((p) => p && p.rainAlarm && (p.wet || p.startsInMin != null));
+    // the lines the status popups show (the app draws them with the page asleep, status-popups.js): each alert's
+    // title at its place, the rain now / due at each place with the alarm on
+    const name = (id) => (id === 'work' ? 'Work' : 'Home');
+    const alertLines = ['home', 'work'].flatMap((id) => ((places[id] && places[id].alerts) || []).map((a) => `${a.title || 'Weather alert'} (${name(id)})`)).slice(0, 4);
+    const rainLines = Object.entries(rainPlaces).filter(([, p]) => p && p.rainAlarm && (p.wet || p.startsInMin != null))
+        .map(([id, p]) => (p.wet ? `${p.kind || 'Rain'} now at ${name(id)}.` : `${p.kind || 'Rain'} at ${name(id)} in about ${Math.max(1, Math.round(p.startsInMin))} min.`));
+    return { alerts, rain, alertLines, rainLines };
 }
 
 function lapis() {
