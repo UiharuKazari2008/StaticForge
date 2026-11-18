@@ -163,6 +163,34 @@
         try { hwCache = { at: Date.now(), info: JSON.parse(b.getInfo() || 'null') }; } catch (_) { hwCache = { at: Date.now(), info: null }; }
         return hwCache.info;
     }
+    // The device's fixed facts (maker, model, market name, Android release) for the name and the hello: read once and
+    // kept, never through getInfo on every report - that synchronous bridge call took ~1 s as the app resumed and held
+    // the return to Today on the A53 (Nov 18). Kept in storage across loads; read fresh once a page life when idle.
+    const HW_DEVICE_KEY = 'activeSyncHwDevice';
+    let hwDevice;
+    function refreshHwDevice() {
+        const hw = hardware();
+        if (hw && hw.device && typeof hw.device === 'object') {
+            hwDevice = hw.device;
+            try { root.localStorage.setItem(HW_DEVICE_KEY, JSON.stringify(hw.device)); } catch (_) { /* storage off */ }
+        }
+        return hwDevice || null;
+    }
+    function deviceHw() {
+        if (hwDevice !== undefined) return hwDevice;
+        if (hwCache.info && hwCache.info.device) return (hwDevice = hwCache.info.device);
+        if (!root.AndroidHardware) return null;
+        let kept = null;
+        try { kept = JSON.parse(root.localStorage.getItem(HW_DEVICE_KEY) || 'null'); } catch (_) { kept = null; }
+        if (kept && typeof kept === 'object') {
+            hwDevice = kept;
+            const later = typeof root.requestIdleCallback === 'function' ? (fn) => root.requestIdleCallback(fn, { timeout: 30000 }) : (fn) => setTimeout(fn, 10000);
+            later(refreshHwDevice);
+            return hwDevice;
+        }
+        hwDevice = null;
+        return refreshHwDevice();
+    }
 
     /*
      * Device ID (#829): Settings > System > About > Device ID on the phone. The owner's name and
@@ -176,8 +204,7 @@
     function lsRead(k) { try { return root.localStorage.getItem(k) || ''; } catch (_) { return ''; } }
     function lsWrite(k, v) { try { if (v) root.localStorage.setItem(k, v); else root.localStorage.removeItem(k); } catch (_) { /* storage off */ } }
     function friendlyModel() {
-        const hw = hardware();
-        const dev = hw && hw.device ? hw.device : null;
+        const dev = deviceHw();
         if (dev && dev.marketName) return String(dev.marketName);
         const model = (dev && dev.model) || deviceFacts().model;
         const art = root.activeSyncDeviceArt;
@@ -213,8 +240,7 @@
         const ua = String((root.navigator && root.navigator.userAgent) || '');
         const m = /Android ([\d.]+);\s*([^;)]+?)(?:\s+Build\/[^;)]*)?[;)]/.exec(ua);
         const app = /\b(Dreamscape|DSApp)\/([\w.]+)/.exec(ua);
-        const hw = hwCache.info || (root.AndroidHardware ? hardware() : null);
-        const dev = hw && hw.device ? hw.device : null;
+        const dev = deviceHw();
         return {
             os: dev && dev.androidRelease ? `Android ${dev.androidRelease}` : m ? `Android ${m[1]}` : 'Android',
             // Chrome's reduced user agent says "K" for the model: the app's report knows it
