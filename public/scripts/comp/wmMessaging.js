@@ -122,10 +122,20 @@
     let page = null;
     let mailboxes = []; // [{ owner, label, unread, spamUnread, address }]
     let acct = 'mail'; // the account on screen: 'mail' | 'imap' | 'dir'
+    // #890: what a show reads again. Pushes keep the mailboxes, the IMAP and text accounts and their counts
+    // current; the list on screen is read again only when it may have changed while away
+    const SHOW_READ_MS = 60 * 1000;
+    const LIST_STALE_MS = 5 * 60 * 1000;
+    let listDirty = true;
+    let listShownKey = '';
+    let listReadAt = 0;
+    let mailboxesDirty = true;
+    let smsReadAt = 0;
     let imapId = null; // the IMAP account of an 'imap' account (its folder is the mail server's path)
     let dirP = 'wren'; // the Director persona of a 'dir' account
     let owner = null; // the mailbox on screen ('mail'): the person's, or an agent's (Other Mailboxes)
     let folder = 'inbox';
+    const listKeyNow = () => `${acct}|${owner}|${imapId}|${dirP}|${folder}`; // which list is on screen (#890)
     let mail = [];
     let nextCursor = null;
     let hasMore = false;
@@ -365,9 +375,10 @@
     /** Text Messaging accounts and Dreamscape Messenger's unread counts for the picker. */
     function refreshTm() {
         wireTm();
-        loadChatUserName();
-        const t = tmApi();
-        loadTmAccounts(false).then(() => { tmRepaint(); if (t && typeof t.summary === 'function') t.summary().then((list) => { if (Array.isArray(list)) tmAccts = list; tmRepaint(); }, () => {}); });
+        if (Date.now() - chatNameAt > SHOW_READ_MS) loadChatUserName();
+        // the client's accounts (dropped on 'account' / 'settings' and on a new link) and its pushed unread
+        // counts: no tm_summary per show, which also listed each account's chats on the server (#890)
+        loadTmAccounts(false).then(tmRepaint);
     }
 
     // ---- IMAP e-mail accounts (#789): read through window.mailAccounts at call time (a test tab
@@ -456,6 +467,8 @@
                 Promise.all(ids.map(loadImapFolders)).then(imapRepaint);
             }, 400);
         }
+        // the list of another program's time: read when Messaging shows again (show: listDirty)
+        if (isImap() && d.accountId === imapId && (!d.folder || d.folder === folder) && !isCurrent()) listDirty = true;
         if (page && isImap() && d.accountId === imapId && (!d.folder || d.folder === folder) && isCurrent()) {
             // the screen off (or behind an Android program): read once it is seen again (tmWake)
             if (!pageSeen()) { imapListDue = true; return; }
@@ -521,7 +534,8 @@
     }
     function refreshImap() {
         wireImap();
-        loadImapAccounts(true).then(imapRepaint);
+        // the client's copy: mailAccountsClient drops it on 'account' and on a new link (#890: not forced per show)
+        loadImapAccounts(false).then(imapRepaint);
     }
 
     // ---- New E-mail Message (outres 33323 / 33324): mail the server announces with notify, until it
@@ -658,13 +672,15 @@
     // Dreamscape Messenger's subline: your name from the persona settings (Control Panel > Chat, the
     // phone's Dreamscape Messenger options), read each time the picker loads
     let chatUserName = '';
+    let chatNameAt = 0;
     function loadChatUserName() {
         const ws = window.wsClient;
         if (!ws || typeof ws.getPersonaSettings !== 'function') return;
+        chatNameAt = Date.now();
         Promise.resolve(ws.getPersonaSettings()).then((r) => {
             const name = String((r && ((r.settings && r.settings.user_name) || (r.data && r.data.settings && r.data.settings.user_name))) || '').trim();
             if (name !== chatUserName) { chatUserName = name; tmRepaint(); }
-        }, () => { /* keeps the last name */ });
+        }, () => { chatNameAt = 0; /* keeps the last name */ });
     }
 
     /**
@@ -789,9 +805,10 @@
 
     async function loadMailboxes() {
         try {
+            mailboxesDirty = false;
             const r = await send('dovecote_list_mailboxes', {});
             mailboxes = (r && (r.mailboxes || (r.data && r.data.mailboxes))) || [];
-        } catch (_) { /* the picker keeps what it had */ }
+        } catch (_) { mailboxesDirty = true; /* the picker keeps what it had */ }
         if (!owner || (owner !== human() && !mailboxes.some((b) => b.owner === owner))) owner = human();
         if (top() === 'accounts') renderAccounts();
         if (tree) renderTree();
@@ -2531,12 +2548,14 @@
     // the signature of Dovecote Express's Mail Options (userGlobalSettings.mail), shared with the desktop;
     // Options > Accounts > Signatures... sets it here
     let mailSig = null;
+    let mailSigAt = 0;
     async function loadSignature() {
+        mailSigAt = Date.now();
         try {
             const c = window.wsClient;
             const data = c && typeof c.getUserGlobalSettings === 'function' ? await c.getUserGlobalSettings() : null;
             mailSig = (data && data.settings && data.settings.mail) || null;
-        } catch (_) { mailSig = null; }
+        } catch (_) { mailSig = null; mailSigAt = 0; }
         return mailSig;
     }
 
@@ -3376,8 +3395,8 @@
         if (!page || !isMail()) return;
         const owners = data && Array.isArray(data.owners) ? data.owners : null;
         if (owners && owner && !owners.includes(owner)) return;
-        // hidden: show() reloads the list anyway (loadFolder keep), so skip background round trips
-        if (!isCurrent()) return;
+        // hidden: the list is read when it shows again (show: listDirty), not by background round trips
+        if (!isCurrent()) { listDirty = true; return; }
         // several pushes in a row (a batch mark) reload the list once
         clearTimeout(pushTimer);
         pushTimer = setTimeout(() => {
@@ -3516,8 +3535,9 @@
             setTimeout(untilBound, 3000);
         };
         setTimeout(untilBound, 3000);
-        if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', rewire);
-        document.addEventListener('wmAppChange', rewire);
+        // a new link: the mailboxes and the list on screen may have missed pushes (read on the next show)
+        if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', () => { listDirty = true; mailboxesDirty = true; rewire(); }, { signal: appScopeSignal });
+        document.addEventListener('wmAppChange', rewire, { signal: appScopeSignal });
         ws.registerApp({
             id: APP_ID,
             title: 'Messaging',
@@ -3527,8 +3547,9 @@
             mount,
             show() {
                 if (!owner) owner = human();
-                // the signature for new messages (Options > Accounts > Signatures..., the desktop's Mail Options)
-                loadSignature();
+                // the signature for new messages (Options > Accounts > Signatures..., the desktop's Mail Options):
+                // read again when the last read is over a minute old (#890: 7 KB of settings on every show)
+                if (Date.now() - mailSigAt > SHOW_READ_MS) loadSignature();
                 // the app starting: "Select an Account" first (Options > Accounts, on as shipped)
                 if (freshOpen && !skipPicker && optOn(OPT.picker)) {
                     layers = ['accounts'];
@@ -3538,13 +3559,23 @@
                 freshOpen = false;
                 skipPicker = false;
                 showLayer();
-                loadMailboxes();
+                // the mailboxes come with dovecote_mailbox_updated: read on the first show and after a new link
+                if (mailboxesDirty) loadMailboxes();
                 probeXi();
-                refreshSms();
+                // Messenger's count follows Chat's pushes; its chat list read at most once a minute from here
+                if (Date.now() - smsReadAt > SHOW_READ_MS) { smsReadAt = Date.now(); refreshSms(); }
                 refreshTm();
                 refreshImap();
-                // behind the picker the list loads without the wait cursor (nothing waits on it yet)
-                loadFolder({ keep: pickerRoot || (isList() ? mail.length : (dirLists[dirP] || []).length) > 0 });
+                // the list read again only when it may have changed while away (a push skipped while hidden,
+                // a new link), it is another list than the one read, or that read is old; a Director list
+                // always (#890: the whole list on every switch back). Behind the picker without the wait cursor
+                const key = listKeyNow();
+                if (!(isMail() || isImap()) || listDirty || key !== listShownKey || Date.now() - listReadAt > LIST_STALE_MS) {
+                    listDirty = false;
+                    listShownKey = key;
+                    listReadAt = Date.now();
+                    loadFolder({ keep: pickerRoot || (isList() ? mail.length : (dirLists[dirP] || []).length) > 0 }).then((ok) => { if (!ok) listDirty = true; }, () => { listDirty = true; });
+                }
             },
             hide() {
                 clearTimeout(pushTimer);
