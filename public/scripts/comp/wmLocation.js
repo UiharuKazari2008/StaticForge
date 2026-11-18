@@ -171,7 +171,8 @@
 
     /** Whether a watcher may have fixes now: the page seen; urgent ones on a phone that reports driving only while it drives. */
     function wanted(w) {
-        if (!seen()) return false;
+        // hidden: the caller gates it itself (Traffic's camera watch runs with the screen off in the way-home window)
+        if (!seen() && !w.hidden) return false;
         if (!w.urgent) return true;
         const d = driveState();
         return d === 'unknown' || d === 'driving' || d === 'maybe';
@@ -202,7 +203,7 @@
     /** Fixes as they come: see the header. */
     function watch(opts = {}, cb) {
         if (typeof cb !== 'function') return () => {};
-        const w = { precision: spec(opts.precision, 'approximate'), intervalMs: Math.max(1000, Number(opts.intervalMs) || 30000), urgent: !!opts.urgent, cb, last: 0, purpose: opts.purpose };
+        const w = { precision: spec(opts.precision, 'approximate'), intervalMs: Math.max(1000, Number(opts.intervalMs) || 30000), urgent: !!opts.urgent, hidden: !!opts.hidden, cb, last: 0, purpose: opts.purpose };
         watchers.add(w);
         note(opts.purpose, w.precision, 'watch');
         syncWatch();
@@ -214,12 +215,25 @@
 
     // ------------------------------------------------------------------ Home / Work and lookups
 
+    /** Home / Work for the app's drive detection (AndroidHome.setDrivePlaces, #890): geofences it keeps (they act
+     *  only with background location, Yukimi's call), sent when the places load or change. */
+    let drivePlacesSent = '';
+    function sendDrivePlaces(p) {
+        const H = window.AndroidHome;
+        if (!H || typeof H.setDrivePlaces !== 'function' || !p) return;
+        const list = ['home', 'work'].filter((id) => p[id] && Number.isFinite(Number(p[id].lat))).map((id) => ({ id, lat: Number(p[id].lat), lon: Number(p[id].lon), radiusM: 300 }));
+        const json = JSON.stringify(list);
+        if (json === drivePlacesSent) return;
+        drivePlacesSent = json;
+        try { H.setDrivePlaces(json); } catch (_) { /* older app */ }
+    }
+
     let placesCache = { home: null, work: null };
     let placesLoaded = null;
     function loadPlaces() {
         placesLoaded = ask('location_places_get', {}).then((d) => {
             placesCache = (d && d.places) || placesCache;
-            try { document.dispatchEvent(new CustomEvent('wmLocationPlaces', { detail: placesCache })); } catch (_) { /* old browser */ }
+            sendDrivePlaces(placesCache); try { document.dispatchEvent(new CustomEvent('wmLocationPlaces', { detail: placesCache })); } catch (_) { /* old browser */ }
             return placesCache;
         }).catch(() => { placesLoaded = null; return placesCache; });
         return placesLoaded;
@@ -229,7 +243,7 @@
     async function savePlaces(next) {
         const d = await ask('location_places_save', next || {}, 20000);
         placesCache = (d && d.places) || placesCache;
-        try { document.dispatchEvent(new CustomEvent('wmLocationPlaces', { detail: placesCache })); } catch (_) { /* old browser */ }
+        sendDrivePlaces(placesCache); try { document.dispatchEvent(new CustomEvent('wmLocationPlaces', { detail: placesCache })); } catch (_) { /* old browser */ }
         return placesCache;
     }
     (function wire(tries) {
@@ -239,7 +253,7 @@
         c.on('message', (m) => {
             if (!m || m.type !== 'location_places_changed') return;
             placesCache = (m.data && m.data.places) || placesCache;
-            try { document.dispatchEvent(new CustomEvent('wmLocationPlaces', { detail: placesCache })); } catch (_) { /* old browser */ }
+            sendDrivePlaces(placesCache); try { document.dispatchEvent(new CustomEvent('wmLocationPlaces', { detail: placesCache })); } catch (_) { /* old browser */ }
         });
     })(0);
 
@@ -376,6 +390,8 @@
         reverse,
         canPick, pick,
         driveState,
+        /** Whether programs may use the phone's own position (permission not refused, External GPS allows it). */
+        deviceAllowed: () => deviceAllowed(),
         recent: () => asks.slice(),
         last: () => (fix ? Object.assign({}, fix) : null)
     };

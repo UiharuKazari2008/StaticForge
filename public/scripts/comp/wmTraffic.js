@@ -299,18 +299,20 @@
                 else geoBusy = false;
             }).catch(() => { geoBusy = false; });
         };
-        // Settings > System > External GPS can keep programs off the phone's GPS (#805)
-        if (!inApp() || geoDenied || !navigator.geolocation || (window.wmGps && !window.wmGps.allowed())) { byIp(); return; }
-        navigator.geolocation.getCurrentPosition((pos) => {
-            found({ lat: pos.coords.latitude, lon: pos.coords.longitude, accuracyKm: Math.min(5, (pos.coords.accuracy || 0) / 1000), source: 'device' });
-        }, (err) => {
-            // refused (no permission, or an app build without the WebView location hand-off): the IP from now on
-            if (err && err.code === 1) geoDenied = true;
-            // a timeout or no fix (indoors, a stopped page) keeps the phone's last own position: the IP
-            // answer is the server's configured place for a phone on the home network, not where it is (#890)
-            if (err && err.code !== 1 && here && here.source === 'device') { geoBusy = false; return; }
+        // the phone's own position from the location service (#907: one shared fix for every program; it keeps to
+        // Settings > System > External GPS, #805, and remembers a refused permission). In the drive window an exact,
+        // urgent fix (also with the screen off when this is called then, #890), else the network's.
+        const L = window.wmLocation;
+        if (!inApp() || !L || (typeof L.deviceAllowed === 'function' && !L.deviceAllowed())) { if (L && typeof L.deviceAllowed === 'function' && !L.deviceAllowed()) geoDenied = true; byIp(); return; }
+        const drive = !!driveWindow();
+        L.get({ precision: drive ? 'exact' : 'approximate', maxAgeMs: drive ? 30000 : GEO_EVERY_MS, urgent: drive, deviceOnly: true, timeoutMs: 20000, purpose: 'Traffic' }).then((f) => {
+            if (f) { found({ lat: f.lat, lon: f.lon, accuracyKm: Math.min(5, (f.accuracyM || 0) / 1000), source: 'device' }); return; }
+            if (typeof L.deviceAllowed === 'function' && !L.deviceAllowed()) geoDenied = true;
+            // no fix (indoors, a stopped page) keeps the phone's last own position: the IP answer is the server's
+            // configured place for a phone on the home network, not where it is (#890)
+            if (!geoDenied && here && here.source === 'device') { geoBusy = false; return; }
             byIp();
-        }, { enableHighAccuracy: !!driveWindow(), maximumAge: driveWindow() ? 30000 : GEO_EVERY_MS, timeout: 20000 });
+        }).catch(() => { geoBusy = false; });
     }
 
     // ---------------------------------------------------------------- driving the commute (Yukimi, Nov 13)
@@ -576,20 +578,24 @@
         else { nativeDrive.active = false; console.warn(`[traffic] the app's drive watch is off: ${(res && res.error) || 'no answer'}`); }
     }
 
+    // the live watch through the location service (#907): urgent (the GPS radio), and only while the app's drive
+    // state says driving (or it has none) - parked in the car or idle, no GPS (#890 drive state); hidden: this
+    // file gates it (the way-home window, the screen off included)
     function startCamWatch() {
-        if (camWatchId != null || !inApp() || geoDenied || !navigator.geolocation || (window.wmGps && !window.wmGps.allowed())) return;
-        camWatchId = navigator.geolocation.watchPosition((pos) => {
-            here = { at: Date.now(), lat: pos.coords.latitude, lon: pos.coords.longitude, accuracyKm: Math.min(5, (pos.coords.accuracy || 0) / 1000), source: 'device' };
+        const L = window.wmLocation;
+        if (camWatchId != null || !inApp() || geoDenied || !L || (typeof L.deviceAllowed === 'function' && !L.deviceAllowed())) return;
+        camWatchId = L.watch({ precision: 'exact', intervalMs: 1000, urgent: true, hidden: true, purpose: 'Traffic cameras' }, (f) => {
+            here = { at: Date.now(), lat: f.lat, lon: f.lon, accuracyKm: Math.min(5, (f.accuracyM || 0) / 1000), source: 'device' };
             geoAt = Date.now();
             watchCameras();
             // the car on the strip and the time left: every 10 s is plenty
             if (Date.now() - camFixAt > 10000) { camFixAt = Date.now(); changed(); }
-        }, () => { /* the minute reads carry on */ }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
+        });
     }
 
     function stopCamWatch() {
         if (camWatchId == null) return;
-        try { navigator.geolocation.clearWatch(camWatchId); } catch (_) { /* gone */ }
+        try { camWatchId(); } catch (_) { /* gone */ }
         camWatchId = null;
     }
 
