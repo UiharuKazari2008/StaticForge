@@ -54,6 +54,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -554,6 +555,10 @@
         W.chromeBase = W.idx;
         const frame = document.createElement('iframe');
         W.frame = frame;
+        // a new viewer starts captured: told again once it has loaded, should its page not be seen
+        const fw = W;
+        fw.captureHidden = false;
+        frame.addEventListener('load', () => { if (fw.frame === frame) { fw.captureHidden = undefined; syncCapture(); } });
         frame.className = 'wmb-frame';
         frame.title = 'Web page';
         frame.setAttribute('referrerpolicy', 'no-referrer');
@@ -653,9 +658,27 @@
      *  after a while; it came back: the timer stops (a page let go reopens from its address). */
     function syncPageShown() {
         syncAudio();
+        syncCapture();
         if (!visible) return;
         if (pageAway()) { if (W.session && !W.idleTimer) scheduleIdleClose(); }
         else if (W.idleTimer) { clearTimeout(W.idleTimer); W.idleTimer = 0; }
+    }
+
+    /**
+     * Alchemy captures a page (its screencast) only while that page is seen: IE in front, its window the
+     * one on screen, not the start page, Favorites or History, the screen on and the page not behind an
+     * Android program (#890: IE told the viewer only on a switch between its own windows, so a page with
+     * animation streamed frames for the minute after hide and all night with the screen off). The viewer
+     * keeps its last frame and a resume sends a fresh one, so nothing looks different.
+     */
+    function syncCapture() {
+        const awakeNow = ws && typeof ws.awake === 'function' ? ws.awake() : !document.hidden;
+        wins.forEach((w) => inWin(w, () => {
+            const hidden = !(awakeNow && !pageAway());
+            if (!w.frame || !w.frame.contentWindow || w.captureHidden === hidden) return;
+            w.captureHidden = hidden;
+            w.frame.contentWindow.postMessage({ type: 'grimoire-browser-visibility', hidden }, location.origin);
+        }));
     }
 
     function syncAudio() {
@@ -4013,8 +4036,7 @@
         W = w;
         w.shownAt = Date.now();
         // only the window on screen is captured (#756)
-        if (old.frame && old.frame.contentWindow) old.frame.contentWindow.postMessage({ type: 'grimoire-browser-visibility', hidden: true }, location.origin);
-        if (w.frame && w.frame.contentWindow) w.frame.contentWindow.postMessage({ type: 'grimoire-browser-visibility', hidden: false }, location.origin);
+        syncCapture();
         if (w.memoryLimit) { const m = w.memoryLimit; w.memoryLimit = null; setTimeout(() => inWin(w, () => askMemoryLimit(m)), 0); }
         if (!page) return true;
         // the window left behind falls silent; its page and applet are let go after WINDOW_IDLE_MS
@@ -4217,6 +4239,8 @@
             // pagehide no longer closes the pages (#756): the registry keeps them for the idle time
             // (Internet Options > Sessions), so the desktop can take them from Other Devices
             document.addEventListener('visibilitychange', () => wins.forEach((w) => inWin(w, syncAudio)));
+            // the screen off or on, behind an Android program or back: the capture follows (syncCapture)
+            document.addEventListener('wmawake', () => syncCapture(), { signal: appScopeSignal });
         }
         render();
     }
@@ -4249,11 +4273,13 @@
                 wins.forEach((w) => { if (w !== cur) inWin(w, () => { syncPageShown(); armDsapIdle(); }); });
                 if (sub) renderSub();
                 syncAudio();
+                syncCapture();
                 // Restore Session, the first time IE shows after the phone starts (#756)
                 maybeRestore();
             },
             hide() {
                 visible = false;
+                syncCapture();
                 ws.closeMenus();
                 chrome65();
                 if (document.activeElement === els.ime) els.ime.blur();
