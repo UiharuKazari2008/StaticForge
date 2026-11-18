@@ -3407,7 +3407,7 @@
         // agree. Never hides what this page knows is waiting; the link icon stays this page's own
         if (taskRoles) {
             for (const [role, on] of Object.entries(taskRoles)) {
-                if (!on || role === 'nightshade' || BARS_NATIVE_ROLES.has(role)) continue;
+                if (!on || role === 'nightshade' || BARS_NATIVE_ROLES.has(role) || (role === 'notify' && notifyQuietUntilTask)) continue;
                 const el = shell.querySelector(`[data-role="${role}"]`);
                 if (el && el.hidden) {
                     hide(el, false);
@@ -3619,6 +3619,8 @@
     let barsPrefsSent = '';
     // the status-bar task's roles (window.AndroidTasks, #908): read once, then from its cafetasks event
     let taskRoles = null;
+    // the server had nothing waiting when the "..." was tapped: the task's notify ignored until its next word
+    let notifyQuietUntilTask = false;
     (function watchTaskRoles() {
         try {
             const T = window.AndroidTasks;
@@ -3630,6 +3632,7 @@
             const d = e && e.detail;
             if (!d || d.name !== 'status-bar') return;
             taskRoles = (d.output && d.output.roles) || null;
+            notifyQuietUntilTask = false;
             statusDirty();
         }, { signal: appScopeSignal });
     })();
@@ -4212,6 +4215,23 @@
             const off = (hole.left - pad) - gap.getBoundingClientRect().left;
             if (Math.abs(off) > 0.5) title.style.flex = `0 0 ${Math.max(0, basis + off)}px`;
         };
+        // an icon left of the camera that shows or goes after this layout (the "..." coming up after a notice) widens the
+        // group and pushed the gap one icon right, the next icon onto the lens (Fold7 emulator, Nov 18): the gap is put back
+        // on the camera whenever that group changes size
+        if (typeof ResizeObserver === 'function' && !left._wmCameraWatch) {
+            left._wmCameraWatch = new ResizeObserver(() => {
+                const g = bar.querySelector('.wm-cutout-gap');
+                const st = document.documentElement.style;
+                const hl = parseFloat(st.getPropertyValue('--camera-hole-left')) || 0;
+                if (!g || !hl || !title.style.flex) return;
+                const p3 = 3 * (rootPx());
+                const off = (hl - p3) - g.getBoundingClientRect().left;
+                if (Math.abs(off) <= 0.5) return;
+                const cur = parseFloat(title.style.flex.split(' ')[2]) || 0;
+                title.style.flex = `0 0 ${Math.max(0, cur + off)}px`;
+            });
+            left._wmCameraWatch.observe(left);
+        }
         if (opts && opts.measureOnly) {
             onCamera(hole.left - pad - tl);
             return { x: hole.left - pad - br.left, w: hole.width + 2 * pad };
@@ -6352,7 +6372,9 @@
             // the icon stands for notices waiting on the server (the app's status task) that this page holds none of:
             // they come up as notifications now (Nov 18: the tap opened nothing and the icon never went)
             if (taskRoles && taskRoles.notify && window.wmNotificationInbox && typeof window.wmNotificationInbox.showWaiting === 'function') {
-                void window.wmNotificationInbox.showWaiting();
+                // none waiting after all (the status task's word older than a Dismiss): the icon goes and stays gone
+                // until the task says otherwise again (Fold7 emulator: it came back and its tap opened nothing)
+                void window.wmNotificationInbox.showWaiting().then((n) => { if (!n) { notifyQuietUntilTask = true; statusDirty(); } });
                 return;
             }
             const up = shell.querySelector('.wm-status-icon[data-role="update"]');
