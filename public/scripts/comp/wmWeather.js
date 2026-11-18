@@ -601,7 +601,7 @@
     function followPhone() {
         if (selectedId && !['home', 'work', 'here'].includes(selectedId)) return;
         const want = hereInside() || (here && here.name ? 'here' : null);
-        if (want && want !== selectedId) select(want);
+        if (want && want !== selectedId) select(want, 0, { auto: true });
     }
 
     async function resolveHere() {
@@ -1282,7 +1282,8 @@
         select(list[(at + dir + list.length) % list.length].id, dir);
     }
 
-    function select(id, dir = 0) {
+    /** opts.auto: Weather moved itself (it follows the phone): loaded quietly, no busy cursor and no error box. */
+    function select(id, dir = 0, opts = {}) {
         selectedId = id;
         save(LS.selected, id);
         flipped = new Set();
@@ -1301,7 +1302,9 @@
             // switching is a tap: the cursor shows if it takes a moment, and a failure answers it
             const hadData = !!dataOf(p);
             const work = update(p).then(() => { changed(); render(); });
-            if (hadData) work.catch(() => {});
+            // a switch nobody tapped answers nobody: a failed load there raised "could not be loaded" over Today
+            // while driving away from Home on a patchy connection (Nov 18)
+            if (hadData || opts.auto) work.catch(() => {});
             else ws.busy(work, { delay: 250, timeout: 20000 }).catch(() => ws.messageBox({ title: 'Weather', icon: 'error', text: `The weather for ${p.name} could not be loaded. Check the data connection, then try again.` }));
         }
     }
