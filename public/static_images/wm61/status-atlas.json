@@ -1,7 +1,7 @@
 {
  "size2x": [
   512,
-  160
+  224
  ],
  "icons": {
   "bluetooth": {
@@ -15,496 +15,573 @@
    "file": "status-data-off",
    "x": 32,
    "y": 0,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-on": {
    "file": "status-data-on",
-   "x": 64,
+   "x": 68,
    "y": 0,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "volume": {
    "file": "status-volume",
-   "x": 96,
+   "x": 104,
    "y": 0,
-   "w": 32,
+   "w": 44,
    "h": 32
   },
   "volume-off": {
    "file": "status-volume-off",
-   "x": 128,
+   "x": 148,
    "y": 0,
-   "w": 32,
+   "w": 44,
    "h": 32
   },
   "vibrate": {
    "file": "status-vibrate",
-   "x": 160,
+   "x": 192,
    "y": 0,
-   "w": 32,
+   "w": 40,
    "h": 32
   },
   "notify-many": {
    "file": "status-notify-many",
-   "x": 192,
+   "x": 232,
    "y": 0,
    "w": 32,
    "h": 32
   },
   "signal-1": {
    "file": "status-signal-1",
-   "x": 224,
+   "x": 264,
    "y": 0,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "signal-2": {
    "file": "status-signal-2",
-   "x": 256,
+   "x": 300,
    "y": 0,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "signal-3": {
    "file": "status-signal-3",
-   "x": 288,
+   "x": 336,
    "y": 0,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "signal-4": {
    "file": "status-signal-4",
-   "x": 320,
+   "x": 372,
    "y": 0,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "signal-none": {
    "file": "status-signal-none",
-   "x": 352,
+   "x": 408,
    "y": 0,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "signal-off": {
    "file": "status-signal-off",
-   "x": 384,
+   "x": 444,
    "y": 0,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "signal-alert": {
    "file": "status-signal-alert",
-   "x": 416,
-   "y": 0,
-   "w": 32,
+   "x": 0,
+   "y": 32,
+   "w": 36,
    "h": 32
   },
   "roaming": {
    "file": "status-roaming",
-   "x": 448,
-   "y": 0,
+   "x": 36,
+   "y": 32,
    "w": 32,
    "h": 32
   },
   "wifi-available": {
    "file": "status-wifi-available",
-   "x": 480,
-   "y": 0,
-   "w": 32,
+   "x": 68,
+   "y": 32,
+   "w": 36,
    "h": 32
   },
   "wifi-connected": {
    "file": "status-wifi-connected",
-   "x": 0,
+   "x": 104,
    "y": 32,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "battery-full": {
    "file": "status-battery-full",
-   "x": 32,
+   "x": 140,
    "y": 32,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "battery-3": {
    "file": "status-battery-3",
-   "x": 64,
+   "x": 176,
    "y": 32,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "battery-2": {
    "file": "status-battery-2",
-   "x": 96,
+   "x": 212,
    "y": 32,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "battery-1": {
    "file": "status-battery-1",
-   "x": 128,
+   "x": 248,
    "y": 32,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "battery-empty": {
    "file": "status-battery-empty",
-   "x": 160,
+   "x": 284,
    "y": 32,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "battery-charging": {
    "file": "status-battery-charging",
-   "x": 192,
+   "x": 320,
    "y": 32,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "battery-unknown": {
    "file": "status-battery-unknown",
-   "x": 224,
+   "x": 356,
    "y": 32,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-g": {
    "file": "status-data-g",
-   "x": 256,
+   "x": 392,
    "y": 32,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-g-active": {
    "file": "status-data-g-active",
-   "x": 288,
+   "x": 428,
    "y": 32,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-e": {
    "file": "status-data-e",
-   "x": 320,
+   "x": 464,
    "y": 32,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-e-active": {
    "file": "status-data-e-active",
-   "x": 352,
-   "y": 32,
-   "w": 32,
+   "x": 0,
+   "y": 64,
+   "w": 36,
    "h": 32
   },
   "data-3g": {
    "file": "status-data-3g",
-   "x": 384,
-   "y": 32,
-   "w": 32,
+   "x": 36,
+   "y": 64,
+   "w": 36,
    "h": 32
   },
   "data-3g-active": {
    "file": "status-data-3g-active",
-   "x": 416,
-   "y": 32,
-   "w": 32,
+   "x": 72,
+   "y": 64,
+   "w": 36,
    "h": 32
   },
   "data-h": {
    "file": "status-data-h",
-   "x": 448,
-   "y": 32,
-   "w": 32,
+   "x": 108,
+   "y": 64,
+   "w": 36,
    "h": 32
   },
   "data-h-active": {
    "file": "status-data-h-active",
-   "x": 480,
-   "y": 32,
-   "w": 32,
+   "x": 144,
+   "y": 64,
+   "w": 36,
    "h": 32
   },
   "data-h-plus": {
    "file": "status-data-h-plus",
-   "x": 0,
+   "x": 180,
    "y": 64,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-h-plus-active": {
    "file": "status-data-h-plus-active",
-   "x": 32,
+   "x": 216,
    "y": 64,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-4g": {
    "file": "status-data-4g",
-   "x": 64,
+   "x": 252,
    "y": 64,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-4g-active": {
    "file": "status-data-4g-active",
-   "x": 96,
+   "x": 288,
    "y": 64,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-4g-plus": {
    "file": "status-data-4g-plus",
-   "x": 128,
+   "x": 324,
    "y": 64,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-4g-plus-active": {
    "file": "status-data-4g-plus-active",
-   "x": 160,
+   "x": 360,
    "y": 64,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-nr": {
    "file": "status-data-nr",
-   "x": 192,
+   "x": 396,
    "y": 64,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-nr-active": {
    "file": "status-data-nr-active",
-   "x": 224,
+   "x": 432,
    "y": 64,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-nr-a": {
    "file": "status-data-nr-a",
-   "x": 256,
+   "x": 468,
    "y": 64,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-nr-a-active": {
    "file": "status-data-nr-a-active",
-   "x": 288,
-   "y": 64,
-   "w": 32,
+   "x": 0,
+   "y": 96,
+   "w": 36,
    "h": 32
   },
   "data-uw": {
    "file": "status-data-uw",
-   "x": 320,
-   "y": 64,
-   "w": 40,
+   "x": 36,
+   "y": 96,
+   "w": 44,
    "h": 32
   },
   "data-uw-active": {
    "file": "status-data-uw-active",
-   "x": 360,
-   "y": 64,
-   "w": 40,
+   "x": 80,
+   "y": 96,
+   "w": 44,
    "h": 32
   },
   "data-lte": {
    "file": "status-data-lte",
-   "x": 400,
-   "y": 64,
-   "w": 32,
+   "x": 124,
+   "y": 96,
+   "w": 36,
    "h": 32
   },
   "data-lte-active": {
    "file": "status-data-lte-active",
-   "x": 432,
-   "y": 64,
-   "w": 32,
+   "x": 160,
+   "y": 96,
+   "w": 36,
    "h": 32
   },
   "data-lte-avail": {
    "file": "status-data-lte-avail",
-   "x": 464,
-   "y": 64,
-   "w": 32,
+   "x": 196,
+   "y": 96,
+   "w": 36,
    "h": 32
   },
   "data-lte-plus": {
    "file": "status-data-lte-plus",
-   "x": 0,
+   "x": 232,
    "y": 96,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-lte-plus-active": {
    "file": "status-data-lte-plus-active",
-   "x": 32,
+   "x": 268,
    "y": 96,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-lte-plus-avail": {
    "file": "status-data-lte-plus-avail",
-   "x": 64,
+   "x": 304,
    "y": 96,
-   "w": 40,
+   "w": 44,
    "h": 32
   },
   "data-5g-uw": {
    "file": "status-data-5g-uw",
-   "x": 104,
+   "x": 348,
    "y": 96,
-   "w": 46,
+   "w": 50,
    "h": 32
   },
   "data-5g-uw-active": {
    "file": "status-data-5g-uw-active",
-   "x": 150,
+   "x": 398,
    "y": 96,
-   "w": 46,
+   "w": 50,
    "h": 32
   },
   "data-5g-uw-avail": {
    "file": "status-data-5g-uw-avail",
-   "x": 196,
+   "x": 448,
    "y": 96,
-   "w": 40,
+   "w": 44,
    "h": 32
   },
   "data-nr-uw": {
    "file": "status-data-nr-uw",
-   "x": 236,
-   "y": 96,
-   "w": 46,
+   "x": 0,
+   "y": 128,
+   "w": 50,
    "h": 32
   },
   "data-nr-uw-active": {
    "file": "status-data-nr-uw-active",
-   "x": 282,
-   "y": 96,
-   "w": 46,
+   "x": 50,
+   "y": 128,
+   "w": 50,
    "h": 32
   },
   "data-nr-uw-avail": {
    "file": "status-data-nr-uw-avail",
-   "x": 328,
-   "y": 96,
-   "w": 40,
+   "x": 100,
+   "y": 128,
+   "w": 44,
    "h": 32
   },
   "data-5g": {
    "file": "status-data-5g",
-   "x": 368,
-   "y": 96,
-   "w": 32,
+   "x": 144,
+   "y": 128,
+   "w": 36,
    "h": 32
   },
   "data-5g-active": {
    "file": "status-data-5g-active",
-   "x": 400,
-   "y": 96,
-   "w": 32,
+   "x": 180,
+   "y": 128,
+   "w": 36,
    "h": 32
   },
   "data-5g-plus": {
    "file": "status-data-5g-plus",
-   "x": 432,
-   "y": 96,
-   "w": 32,
+   "x": 216,
+   "y": 128,
+   "w": 36,
    "h": 32
   },
   "data-5g-plus-active": {
    "file": "status-data-5g-plus-active",
-   "x": 464,
-   "y": 96,
-   "w": 32,
+   "x": 252,
+   "y": 128,
+   "w": 36,
    "h": 32
   },
   "data-g-avail": {
    "file": "status-data-g-avail",
-   "x": 0,
+   "x": 288,
    "y": 128,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-e-avail": {
    "file": "status-data-e-avail",
-   "x": 32,
+   "x": 324,
    "y": 128,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-3g-avail": {
    "file": "status-data-3g-avail",
-   "x": 64,
+   "x": 360,
    "y": 128,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-h-avail": {
    "file": "status-data-h-avail",
-   "x": 96,
+   "x": 396,
    "y": 128,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-h-plus-avail": {
    "file": "status-data-h-plus-avail",
-   "x": 128,
+   "x": 432,
    "y": 128,
-   "w": 40,
+   "w": 44,
    "h": 32
   },
   "data-4g-avail": {
    "file": "status-data-4g-avail",
-   "x": 168,
+   "x": 476,
    "y": 128,
-   "w": 32,
+   "w": 36,
    "h": 32
   },
   "data-4g-plus-avail": {
    "file": "status-data-4g-plus-avail",
-   "x": 200,
-   "y": 128,
-   "w": 40,
+   "x": 0,
+   "y": 160,
+   "w": 44,
    "h": 32
   },
   "data-5g-avail": {
    "file": "status-data-5g-avail",
-   "x": 240,
-   "y": 128,
-   "w": 32,
+   "x": 44,
+   "y": 160,
+   "w": 36,
    "h": 32
   },
   "data-5g-plus-avail": {
    "file": "status-data-5g-plus-avail",
-   "x": 272,
-   "y": 128,
-   "w": 40,
+   "x": 80,
+   "y": 160,
+   "w": 44,
    "h": 32
   },
   "data-nr-avail": {
    "file": "status-data-nr-avail",
-   "x": 312,
-   "y": 128,
-   "w": 32,
+   "x": 124,
+   "y": 160,
+   "w": 36,
    "h": 32
   },
   "data-nr-a-avail": {
    "file": "status-data-nr-a-avail",
-   "x": 344,
-   "y": 128,
-   "w": 40,
+   "x": 160,
+   "y": 160,
+   "w": 44,
    "h": 32
   },
   "data-uw-avail": {
    "file": "status-data-uw-avail",
-   "x": 384,
-   "y": 128,
+   "x": 204,
+   "y": 160,
+   "w": 44,
+   "h": 32
+  },
+  "app-mail": {
+   "file": "status-mail",
+   "x": 248,
+   "y": 160,
+   "w": 44,
+   "h": 32
+  },
+  "app-sms": {
+   "file": "status-sms",
+   "x": 292,
+   "y": 160,
+   "w": 36,
+   "h": 32
+  },
+  "app-messenger": {
+   "file": "status-messenger",
+   "x": 328,
+   "y": 160,
+   "w": 32,
+   "h": 32
+  },
+  "app-prints": {
+   "file": "status-prints",
+   "x": 360,
+   "y": 160,
+   "w": 44,
+   "h": 32
+  },
+  "app-weather-alert": {
+   "file": "status-weather-alert",
+   "x": 404,
+   "y": 160,
+   "w": 44,
+   "h": 32
+  },
+  "app-rain-alarm": {
+   "file": "status-rain-alarm",
+   "x": 448,
+   "y": 160,
+   "w": 34,
+   "h": 32
+  },
+  "app-traffic": {
+   "file": "status-traffic",
+   "x": 0,
+   "y": 192,
+   "w": 38,
+   "h": 32
+  },
+  "app-lapis": {
+   "file": "status-lapis",
+   "x": 38,
+   "y": 192,
+   "w": 32,
+   "h": 32
+  },
+  "app-continuity": {
+   "file": "status-continuity",
+   "x": 70,
+   "y": 192,
+   "w": 40,
+   "h": 32
+  },
+  "app-activesync": {
+   "file": "status-activesync",
+   "x": 110,
+   "y": 192,
+   "w": 42,
+   "h": 32
+  },
+  "app-nightshade": {
+   "file": "status-nightshade",
+   "x": 152,
+   "y": 192,
    "w": 40,
    "h": 32
   }
