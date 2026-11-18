@@ -50,6 +50,10 @@ function registerPackets(handlersCtx) {
                 handlersCtx.sendError(ctx.ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', ctx.message.requestId);
                 return;
             }
+            // the Android app's background link sends its fields in data (ActiveSyncLink.request: a reminder's Snooze /
+            // Dismiss from its notification, #908); pages send them on the packet
+            const m = ctx.message;
+            if (m && m.data && typeof m.data === 'object' && !Array.isArray(m.data)) ctx = Object.assign({}, ctx, { message: Object.assign({}, m.data, m) });
             await fn(ctx);
         }, { owner: 'notification-inbox', ...meta });
     };
