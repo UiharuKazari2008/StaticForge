@@ -2424,9 +2424,15 @@
         if (!(host && !host.hidden && panels.length)) { homeDone = false; return; } // drawn later: the first draw takes the clock again
         // the press that brought Dreamscape back from an Android app: that return's entrance plays
         // (now, or when the page shows: the visibility handler)
-        const hiddenNow = document.visibilityState !== 'visible';
+        // (the page can read visible before its visibilitychange has been handled - hiddenAt later than shownAt: still
+        // the return, timed from hiddenAt; read as Today staying, it put the whole list up before the entrance, A53)
+        const hiddenNow = document.visibilityState !== 'visible' || hiddenAt > shownAt;
         const span = hiddenNow ? Date.now() - hiddenAt : (Date.now() - shownAt < ENTER_RECENT_MS ? hiddenSpan : 0);
-        if (span > AWAY_MS) { if (!hiddenNow && !host.classList.contains('is-entering')) entrance(); return; }
+        if (span > AWAY_MS) {
+            // the entrance waits for the window's focus as the return's own does (whenFocused)
+            if (!hiddenNow && !host.classList.contains('is-entering') && !focusWait) whenFocused(() => requestAnimationFrame(entrance));
+            return;
+        }
         // Today is on screen and stays: a press of Home here also paused the app for a moment (Android
         // calls prime() as it goes behind), which hid the list until a 2.5 s fallback - or for good when
         // the page was not visible yet at that moment (Yukimi, Nov 15: Home on the home screen hides
