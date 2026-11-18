@@ -291,16 +291,15 @@
         if (typeof window === 'undefined' || typeof document === 'undefined' || typeof navigator === 'undefined') return;
         if (!navigator.serviceWorker || typeof location === 'undefined' || location.pathname !== '/app') return;
         let last = null;
-        // a page that is not seen (hidden, screen off, behind an Android program) tells the worker
-        // nothing: its pass (a list check, then downloads) waits until the page is seen again (#890)
+        // a page that is not seen (hidden, screen off, behind an Android program) does not tell the worker
+        // 'unmetered': its pass (a list check, then downloads) waits until the page is seen again; a
+        // 'metered' hint still goes at once so a running pass stops when Wi-Fi drops (#890)
         let held = false;
         const asleep = () => {
             const html = document.documentElement;
             return document.hidden || (html && html.dataset && (html.dataset.screenOff !== undefined || html.dataset.wmBehind !== undefined));
         };
         const send = (status) => {
-            if (asleep()) { held = true; return; }
-            held = false;
             let network = connectionNetwork();
             if (network === 'unknown') {
                 let st = status;
@@ -308,6 +307,9 @@
                 if (st == null && bridge && typeof bridge.getState === 'function') { try { st = bridge.getState(); } catch (_) { st = null; } }
                 network = statusNetwork(st);
             }
+            // only a hint that would start work waits; 'metered' (which stops a running pass) goes at once
+            if (network === 'unmetered' && asleep()) { held = true; return; }
+            held = false;
             if (network === last) return;
             const worker = navigator.serviceWorker.controller;
             if (!worker) return;
