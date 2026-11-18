@@ -303,7 +303,9 @@
         const charsRegular = {};
         void list; void keep; void t;
         // kv: the kit's make (2: the degree sign and more symbols; the app asks again for an older one)
-        out({ kv: 4, sig: kitSignature(), widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr), lists: barLists(dpr) });
+        // font: the face the page draws the bars in, 'tahoma' or 'segoe' (Settings > Screen > Text Size: the app loads
+        // segoeui / segoeuib.ttf instead of tahoma / tahomabd.ttf)
+        out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr), lists: barLists(dpr) });
     }
 
     /*
@@ -320,7 +322,7 @@
         const root = document.documentElement;
         const cs = getComputedStyle(root);
         // (the first part: the lists' make - a new one makes every app ask for its kit again)
-        return ['m7', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m7', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), Math.round(window.innerWidth)].join('|');
     }
 

@@ -62,6 +62,13 @@ html.ui-mobile {
     background: #000;
 }
 
+/* Settings > Screen > Text Size > "Use Segoe UI as the system font" (Yukimi, Nov 17): every program,
+   the bars and Start draw in Segoe UI (vista-fonts.css) instead of the ROM's Tahoma (wmPrograms.js
+   applySystemFont; the Android app's native bars follow through the bar kit, melatonBars.js) */
+html.ui-mobile[data-wm-font="segoe"] {
+    --wm-font: 'Segoe UI', Tahoma, Verdana, sans-serif;
+}
+
 /* 6.1's system font: Tahoma 8 pt at the device's 192 dpi = 21 px of the VGA screen = 10.5 units
    (measured on title bars, soft keys, list rows, menus, tabs, form labels, Today rows: string
    widths fit Tahoma 21 px, not 24). Message boxes are 9 pt = 12 units and say so themselves. */

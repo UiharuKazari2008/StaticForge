@@ -50,6 +50,11 @@
         todayParallaxLevel: 'wmTodayParallaxLevel',
         // ... and the other effects, { name: false } for each one switched off (all on by default)
         todayFx: 'wmTodayFx',
+        // ... Today > Text: the labels' weight and the glass item's, 'bold' / 'regular' / 'semilight' / 'light' (wmTitanium.js)
+        todayRowWeight: 'wmTodayRowWeight',
+        todayBandWeight: 'wmTodayBandWeight',
+        // Screen > Text Size: 'segoe' draws the whole phone in Segoe UI instead of Tahoma (wm-shell.css)
+        systemFont: 'wmSystemFont',
         startMenu: 'wmStartMenu',
         startSource: 'wmStartSource',
         startText: 'wmStartText',
@@ -141,6 +146,16 @@
     function currentScale() {
         const v = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
         return SCALES.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a), SCALES[0]);
+    }
+
+    // Today > Text's weights: [value, label]; the face each draws with, [weight, Segoe UI] (wm-titanium.css)
+    const TEXT_WEIGHTS = [['bold', 'Bold'], ['regular', 'Regular'], ['semilight', 'Semilight'], ['light', 'Light']];
+    const TEXT_WEIGHT_FACE = { bold: [700, false], regular: [400, false], semilight: [350, true], light: [300, true] };
+
+    // Screen > Text Size: Segoe UI as the phone's system font (Yukimi, Nov 17)
+    function applySystemFont() {
+        if (lsGet(K.systemFont) === 'segoe') root.dataset.wmFont = 'segoe';
+        else delete root.dataset.wmFont;
     }
 
     function titleBarStyle() {
@@ -301,6 +316,7 @@
         });
     })();
     applyTitleBar();
+    applySystemFont();
     applyCamera();
     applySoftkeyExtend();
 
@@ -1403,13 +1419,15 @@
             // 6.5.1 (#850): Windows Mobile 6.5.3 names this applet Home (window title and Start item)
             id: 'today', tab: 'personal', label: runningRelease() === '6.5.1' ? 'Home' : 'Today', icon: 'set-today',
             // 6.5's home screen has an Effects tab (Yukimi, Nov 15)
-            tabs: runningVersion() === '6.5' ? [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items'], ['effects', 'Effects'], ['superbar', 'Super Bar']] : [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
+            tabs: runningVersion() === '6.5' ? [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items'], ['effects', 'Effects'], ['text', 'Text'], ['superbar', 'Super Bar']] : [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
             init: () => ({
                 useDesktop: todayUsesDesktop(), source: sh && sh.todayWallSource ? sh.todayWallSource() : (todayUsesDesktop() ? 'workspace' : 'selected'), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null, timeout: todayTimeout(),
                 // rotation of Today (Yukimi, Nov 13: it applies to the Today screen only, so it lives here)
                 parallax: lsGet(K.todayParallax) === '1',
                 parallaxLevel: Math.max(1, Math.min(10, Math.round(Number(lsGet(K.todayParallaxLevel)) || 4))),
                 fx: (() => { try { const v = JSON.parse(lsGet(K.todayFx) || 'null'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } })(),
+                rowWeight: TEXT_WEIGHTS.some(([v]) => v === lsGet(K.todayRowWeight)) ? lsGet(K.todayRowWeight) : '',
+                bandWeight: TEXT_WEIGHTS.some(([v]) => v === lsGet(K.todayBandWeight)) ? lsGet(K.todayBandWeight) : '',
                 // Super Bar: the phone's notifications, and apps / channels hidden from it (wmTitanium.js keeps the known ones)
                 sbn: (() => { try { const v = JSON.parse(lsGet('wmSuperBarNotes') || 'null'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } })(),
                 screen: screenInfo(), rotate: homeRotateAllowed(screenInfo()), rotateCover: lsGet(K.homeRotateCover) === '1', rotateMain: lsGet(K.homeRotateMain) !== '0'
@@ -1489,6 +1507,28 @@
                     el.querySelector('input[name="sbPhone"]').addEventListener('change', (e) => { if (e.target.checked) delete c.phone; else c.phone = false; api.rerender(); });
                     el.querySelectorAll('input[name="sb-app"]').forEach((i) => i.addEventListener('change', () => { if (i.checked) delete c.apps[i.value]; else c.apps[i.value] = false; api.rerender(); }));
                     el.querySelectorAll('input[name="sb-ch"]').forEach((i) => i.addEventListener('change', () => { if (i.checked) delete c.channels[i.value]; else c.channels[i.value] = false; }));
+                    return;
+                }
+                if (tab === 'text') {
+                    // the weight of the list's labels and of the item in the glass (Yukimi, Nov 17); the
+                    // ROM draws the labels regular and the item's first line bold
+                    const list = (def) => TEXT_WEIGHTS.map(([v, l]) => [v, v === def ? `${l} (default)` : l]);
+                    const rows = [['row', 'List items:', 'regular'], ['band', 'Selected item:', 'bold']];
+                    el.innerHTML = `<p>Select how heavy the text on the Today screen is.</p>
+                        ${rows.map(([k, l, def]) => { const ch = list(def); const cur = d[`${k}Weight`] || def; return `<div class="wm-form-row is-wide"><span class="wm-form-label">${l}</span>${ui.comboHtml(`w-${k}`, (ch.find(([v]) => v === cur) || ch[0])[1])}</div>`; }).join('')}
+                        <div class="wm-form-gap"></div>
+                        <div class="wm-form-sub">Example:</div>
+                        <p class="wm-ti-sample" data-f="row">Calendar</p>
+                        <p class="wm-ti-sample" data-f="band">Text Messages</p>
+                        <p class="wm-form-note">Semilight and Light are Segoe UI's: Tahoma has no lighter weight.</p>`;
+                    const sample = () => rows.forEach(([k, , def]) => {
+                        const [w, segoe] = TEXT_WEIGHT_FACE[d[`${k}Weight`] || def];
+                        const s2 = el.querySelector(`[data-f="${k}"]`);
+                        s2.style.fontWeight = String(w);
+                        s2.style.fontFamily = segoe ? "'Segoe UI', var(--wm-font)" : '';
+                    });
+                    rows.forEach(([k, , def]) => ui.bindCombo(el.querySelector(`.wm-combo[data-act="w-${k}"]`), list(def), d[`${k}Weight`] || def, (v) => { d[`${k}Weight`] = v === def ? '' : v; sample(); }));
+                    sample();
                     return;
                 }
                 if (tab === 'effects') {
@@ -1670,9 +1710,11 @@
                 lsSet(K.todayParallax, d.parallax ? '1' : null);
                 lsSet(K.todayParallaxLevel, d.parallaxLevel === 4 ? null : d.parallaxLevel);
                 lsSet(K.todayFx, Object.keys(d.fx || {}).length ? JSON.stringify(d.fx) : null);
+                lsSet(K.todayRowWeight, d.rowWeight || null);
+                lsSet(K.todayBandWeight, d.bandWeight || null);
                 if (d.sbn && Object.keys(d.sbn).length) lsSet('wmSuperBarNotes', JSON.stringify(d.sbn));
                 applyTitleBar();
-                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY, K.todayParallax, K.todayParallaxLevel, K.todayFx, 'wmSuperBarNotes'];
+                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY, K.todayParallax, K.todayParallaxLevel, K.todayFx, K.todayRowWeight, K.todayBandWeight, 'wmSuperBarNotes'];
                 // Rotation (a foldable's per-screen choices, or the one for a phone)
                 const rot = d.screen && d.screen.foldable
                     ? [[K.homeRotateCover, d.rotateCover ? '1' : null], [K.homeRotateMain, d.rotateMain ? null : '0']]
@@ -1987,7 +2029,7 @@
             tabs: [['textsize', 'Text Size'], ['bezel', 'Bezel']].concat(window.AndroidBars ? [['bars', 'Android']] : []),
             init: () => ({
                 barsState: barsState(),
-                scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
+                scale: currentScale(), segoe: lsGet(K.systemFont) === 'segoe', camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
                 extend: lsGet(K.cameraExtend) === '1',
                 softExtend: lsGet(K.softkeyExtend) === '1',
                 noCross: lsGet(K.statusNoCross) === '1',
@@ -2109,7 +2151,10 @@
                         <div class="wm-slider-thumb"></div>
                     </div>
                     <div class="wm-form-sub">Example:</div>
-                    <p data-f="example">I'll get back to you.</p>`;
+                    <p data-f="example">I'll get back to you.</p>
+                    <div class="wm-form-gap"></div>
+                    ${check('wmSystemFont', 'Use Segoe UI as the system font', d.segoe)}
+                    <p class="wm-form-note">Programs, the title and soft key bars and Start draw in Segoe UI instead of Tahoma.</p>`;
                 const slider = el.querySelector('.wm-slider');
                 const thumb = el.querySelector('.wm-slider-thumb');
                 const example = el.querySelector('[data-f="example"]');
@@ -2122,6 +2167,9 @@
                     example.style.fontSize = `${10.5 * d.scale}px`;
                     example.style.lineHeight = `${13 * d.scale}px`;
                 };
+                const font = () => { example.style.fontFamily = d.segoe ? "'Segoe UI', Tahoma, Verdana, sans-serif" : 'Tahoma, Verdana, sans-serif'; };
+                el.querySelector('input[name="wmSystemFont"]').addEventListener('change', (e) => { d.segoe = e.target.checked; font(); });
+                font();
                 const fromX = (x) => {
                     const r = slider.getBoundingClientRect();
                     return Math.round(((x - r.left) / Math.max(1, r.width)) * (n - 1));
@@ -2188,6 +2236,11 @@
                     lsSet(K.camera, d.camera === 'bezel' ? 'bezel' : null);
                     applyCamera();
                     keys.push(K.camera);
+                }
+                if (d.segoe !== (lsGet(K.systemFont) === 'segoe')) {
+                    lsSet(K.systemFont, d.segoe ? 'segoe' : null);
+                    applySystemFont();
+                    keys.push(K.systemFont);
                 }
                 if (d.scale === currentScale() && storedScale() !== null) return keys;
                 const sk = scaleKey();
