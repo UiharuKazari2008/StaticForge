@@ -176,6 +176,13 @@ const MODULE_DEFS = {
             'exchange_clear_mailbox_notify_forward'
         ]
     },
+    messaging_bridge: {
+        id: 'messaging_bridge',
+        scope: 'sfapp_messaging_bridge',
+        label: 'Messaging Bridge',
+        description: 'Yukimi\'s own external mail (IMAP accounts, iCloud included), mail rules, and text messages (iMessage via BlueBubbles, RCS, Android). Granted only to the Tsubame (mailroom) key; identity-gated to Tsubame and Yukimi. universal does not include it.',
+        tools: require('./messagingBridgeMcp').TOOLS.map((t) => t.name)
+    },
     report_issue: {
         id: 'report_issue',
         scope: 'sfapp_report_issue',

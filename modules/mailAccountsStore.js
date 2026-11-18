@@ -7,6 +7,7 @@
  *   messages  (account, folder, uid) envelope, flags, snippet, bodies (text / html), attachment list
  *   messages_fts  subject, sender, recipients, body
  *   state     (account, key) value
+ *   rules     (id) mail rules (modules/mailAccountsRules.js): account ('*' = every account), match, actions
  */
 'use strict';
 
@@ -43,6 +44,10 @@ function open(cacheDir) {
         CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(subject, sender, recipients, body,
             account UNINDEXED, folder UNINDEXED, uid UNINDEXED, tokenize = 'unicode61 remove_diacritics 2');
         CREATE TABLE IF NOT EXISTS state (account TEXT NOT NULL, key TEXT NOT NULL, value TEXT, PRIMARY KEY (account, key));
+        CREATE TABLE IF NOT EXISTS rules (
+            id TEXT PRIMARY KEY, account TEXT NOT NULL DEFAULT '*', name TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1,
+            position INTEGER NOT NULL DEFAULT 0, match TEXT NOT NULL DEFAULT '{}', actions TEXT NOT NULL DEFAULT '{}',
+            created INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL DEFAULT 0, hits INTEGER NOT NULL DEFAULT 0, last_hit INTEGER);
     `);
     return db;
 }
@@ -176,6 +181,40 @@ function listMessages(account, folder, { limit = 50, before = null, unseenOnly =
     return d().prepare(sql).all(...args);
 }
 
+/** Rows above a UID, oldest first (mail rules: what arrived since they last ran). */
+function messagesAfterUid(account, folder, uid, limit = 500) {
+    return d().prepare(`SELECT ${LIST_COLS} FROM messages WHERE account = ? AND folder = ? AND uid > ? ORDER BY uid ASC LIMIT ?`)
+        .all(account, folder, Number(uid) || 0, Math.max(1, Math.min(Number(limit) || 500, 5000)));
+}
+
+// ---- mail rules (modules/mailAccountsRules.js) ----
+
+function listRules() {
+    return d().prepare('SELECT * FROM rules ORDER BY position ASC, created ASC').all();
+}
+
+function getRule(id) {
+    return d().prepare('SELECT * FROM rules WHERE id = ?').get(String(id || '')) || null;
+}
+
+function putRule(r) {
+    d().prepare(`INSERT INTO rules (id, account, name, enabled, position, match, actions, created, updated, hits, last_hit)
+        VALUES (@id, @account, @name, @enabled, @position, @match, @actions, @created, @updated, @hits, @last_hit)
+        ON CONFLICT(id) DO UPDATE SET account = excluded.account, name = excluded.name, enabled = excluded.enabled,
+        position = excluded.position, match = excluded.match, actions = excluded.actions, updated = excluded.updated`)
+        .run({ id: r.id, account: r.account || '*', name: r.name || '', enabled: r.enabled === false ? 0 : 1, position: Number(r.position) || 0,
+            match: JSON.stringify(r.match || {}), actions: JSON.stringify(r.actions || {}), created: r.created || Date.now(), updated: Date.now(),
+            hits: Number(r.hits) || 0, last_hit: r.lastHit || null });
+}
+
+function deleteRule(id) {
+    return d().prepare('DELETE FROM rules WHERE id = ?').run(String(id || '')).changes;
+}
+
+function countRuleHits(id, n) {
+    d().prepare('UPDATE rules SET hits = hits + ?, last_hit = ? WHERE id = ?').run(Number(n) || 0, Date.now(), id);
+}
+
 function getMessage(account, folder, uid) {
     return d().prepare('SELECT * FROM messages WHERE account = ? AND folder = ? AND uid = ?').get(account, folder, uid) || null;
 }
@@ -231,5 +270,6 @@ function _close() { statsKept.clear(); if (db) { db.close(); db = null; } }
 
 module.exports = {
     open, getState, setState, putFolder, listFolders, getFolder, setFolderSynced, recount, removeFolder, clearFolder,
-    putMessages, setFlags, uids, flagMap, deleteMessages, listMessages, getMessage, maxUid, search, stats, forgetAccount, sizeOnDisk, _close
+    putMessages, setFlags, uids, flagMap, deleteMessages, listMessages, getMessage, maxUid,
+    messagesAfterUid, listRules, getRule, putRule, deleteRule, countRuleHits, search, stats, forgetAccount, sizeOnDisk, _close
 };

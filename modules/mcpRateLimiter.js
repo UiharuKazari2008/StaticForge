@@ -217,7 +217,33 @@ const TOOL_RATE_GROUPS = {
     exchange_toggles: 'write',
     exchange_status: 'free',
     exchange_resync_recipients: 'write',
-    exchange_spam: 'mail'
+    exchange_spam: 'mail',
+    // Messaging Bridge (modules/messagingBridgeMcp.js)
+    bridge_mail_accounts: 'mail',
+    bridge_mail_folders: 'mail',
+    bridge_mail_messages: 'mail',
+    bridge_mail_message: 'mail',
+    bridge_mail_search: 'mail',
+    bridge_mail_sync_status: 'mail',
+    bridge_mail_list_rules: 'mail',
+    bridge_text_accounts: 'mail',
+    bridge_text_chats: 'mail',
+    bridge_text_chat: 'mail',
+    bridge_text_messages: 'mail',
+    bridge_text_search: 'mail',
+    bridge_mail_flags: 'write',
+    bridge_mail_move: 'write',
+    bridge_mail_delete: 'write',
+    bridge_mail_send: 'write',
+    bridge_mail_save_draft: 'write',
+    bridge_mail_resync: 'write',
+    bridge_mail_save_rule: 'write',
+    bridge_mail_delete_rule: 'write',
+    bridge_mail_run_rules: 'write',
+    bridge_text_mark_read: 'write',
+    bridge_text_mark_unread: 'write',
+    bridge_text_send: 'write',
+    bridge_text_delete_chat: 'write'
 };
 
 const rateGroupHits = new Map();

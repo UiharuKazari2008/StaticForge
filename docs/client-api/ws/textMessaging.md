@@ -58,3 +58,7 @@ Who gets which (#890 round 5, W5):
 - `sync` (a reconcile pass) and `syncprogress` (`{ running, done, total }` every 2 s through a catch-up) go to desktop pages only (Messaging Bridge reads them; a DeX window is a desktop page).
 - `account` at the end of a catch-up (BlueBubbles every 30 min and on reconnect, an RCS sync) goes to desktop pages always and to phone pages only when what they list changed: the account's status / error or its conversations (`textMessagingStore.fingerprint`: the newest 100 chat rows and the newest message). An `account` from a status change, a save or a delete goes to everyone.
 - A sleeping phone page or DeX window (client_dormant): texts, edits, reactions, reads, `chat`, `pairing` and `signin_lost` go at once; `typing` is dropped (an "is typing..." on waking would be stale); `account`, `resync`, `settings`, `sync`, `syncprogress` wait as the newest per account, `reload` as the newest per conversation.
+
+## MCP (Messaging Bridge)
+
+The Tsubame (mailroom) key reaches these conversations through the Messaging Bridge MCP module (`sfapp_messaging_bridge`, `modules/messagingBridgeMcp.js`): `bridge_text_accounts`, `bridge_text_chats`, `bridge_text_chat`, `bridge_text_messages`, `bridge_text_search`, `bridge_text_mark_read`, `bridge_text_mark_unread`, `bridge_text_send` (`confirm: true`), `bridge_text_delete_chat` (`confirm: true`). They call the same `textMessaging.js` functions as the packets above; the packets stay admin-only. See [mcp-connector.md](../mcp-connector.md#messaging-bridge-module-sfapp_messaging_bridge).

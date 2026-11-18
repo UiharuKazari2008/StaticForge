@@ -3581,6 +3581,9 @@ const TOOL_DEFS = [
 
 const { TOOLS: EXCHANGE_MCP_TOOLS } = require('./mailExchangeMcp');
 EXCHANGE_MCP_TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
+// Messaging Bridge (sfapp_messaging_bridge): Yukimi's own IMAP mail, mail rules and texts, for Tsubame (modules/messagingBridgeMcp.js)
+const messagingBridgeMcp = require('./messagingBridgeMcp');
+messagingBridgeMcp.TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
 
 const MEMORY_TOOL_ALIASES = {
     saveKnowledgeMemory: 'save_memory',
@@ -7253,6 +7256,8 @@ function readGalleryImage(globalResources, filename) {
 }
 
 function toolAllowedForScopes(scopes, tool) {
+    // Messaging Bridge: the key must name sfapp_messaging_bridge itself; 'universal' does not reach Yukimi's own mail and texts
+    if (tool.role === messagingBridgeMcp.ROLE) return messagingBridgeMcp.scopesHaveBridge(scopes);
     if (tool.name === 'resolve_lookback') {
         return agentHasNamedScope(scopes, 'gallery')
             || agentHasNamedScope(scopes, 'notes')
@@ -7321,7 +7326,9 @@ const ADVANCED_CORE_HINTS = [
     { test: (q) => /session_state|session snapshot|what.?s on (screen|studio)/i.test(q), names: ['get_session_state'] },
     { test: (q) => /run_client_js|inspect_elements|update_client|restart_client|client browser|client js|html inspect|reattach/i.test(q), names: ['run_client_js', 'inspect_elements', 'update_client', 'restart_client'] },
     { test: (q) => /device_screenshot|device_shell|device_packages|installed apps|package|adb shell|screenshot|phone screen|device screen|\badb\b|cover screen|inner screen|\bdex\b/i.test(q), names: ['device_screenshot', 'device_shell', 'device_packages'] },
-    { test: (q) => /alchemy|owned tab|browser.?control|discord channel|channel.?history/i.test(q), names: ['alchemy_browser', 'read_discord_channel_history'] }
+    { test: (q) => /alchemy|owned tab|browser.?control|discord channel|channel.?history/i.test(q), names: ['alchemy_browser', 'read_discord_channel_history'] },
+    // only keys that name sfapp_messaging_bridge pass toolAllowedForScopes for these
+    { test: (q) => /icloud|imessage|\bsms\b|\btexts?\b|messaging bridge|\bbridge\b|imap|mail rules?|bluebubbles|\brcs\b/i.test(q), names: messagingBridgeMcp.TOOLS.map((t) => t.name) }
 ];
 
 function guessModelFromQuery(query) {
@@ -7371,6 +7378,9 @@ function listToolsForScopes(scopes, globalResources, options) {
             if (tool.role === 'alchemy') {
                 return alchemyOwnedTab.isAlchemyBrowserOwner(owner)
                     || alchemyOwnedTab.isAlchemyBrowserOwner(options && options.actor);
+            }
+            if (tool.role === messagingBridgeMcp.ROLE) {
+                return messagingBridgeMcp.isBridgeOwner(owner) || messagingBridgeMcp.isBridgeOwner(options && options.actor);
             }
             return false;
         })
@@ -10376,6 +10386,10 @@ async function callTool(globalResources, req, name, args) {
 
     if (require('./mailExchangeMcp').isExchangeTool(name)) {
         return require('./mailExchangeMcp').handleExchangeTool(req, name, input);
+    }
+
+    if (messagingBridgeMcp.isBridgeTool(name)) {
+        return messagingBridgeMcp.handleBridgeTool(req, name, input);
     }
 
     const err = new Error(`Unknown tool: ${name}`);
