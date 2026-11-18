@@ -23,7 +23,7 @@
  *   lapis     { until }           a remote start's end (epoch ms), 0 = none running
  *   traffic   { days, leaveHome, leaveWork, leadMin, timeZone, delayWork, delayHome, reportAt }  (the task works the
  *             leave windows out on the phone's clock; the server has no timer for them)
- *   notices   { waiting }         other notices waiting (the notification glyph)
+ *   notices   { waiting }         other notices waiting, new or put away with Hide (seen) (the notification glyph)
  *   prefs     { mailAll, smsAll } Messaging's "icon for any unread" choices (the page's, kept on the server)
  *   received  { unseen }          ActiveSync received items not seen yet (per phone)
  *
@@ -97,7 +97,9 @@ function inboxCounts() {
         smsFresh: has('sms:'),
         chatFresh: has('chat:'),
         directorUnseen: rows.some((n) => /^director:.*:turn$/.test(n.id)),
-        notices: rows.filter((n) => !mine(n) && n.state === 'new').length
+        // waiting = not yet dismissed: a notice put away with Hide (seen) stays pending in the "..." group, as on
+        // Windows Mobile and on the page, until Dismiss / acting on it clears it (#907)
+        notices: rows.filter((n) => !mine(n)).length
     };
 }
 
