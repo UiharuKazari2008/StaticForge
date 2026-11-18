@@ -345,21 +345,35 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-exp {
     visibility: hidden;
 }
 
-/* ... and then the clock panel grows in from nothing while it fades in (the move's 80 % grow, 150 ms,
- * did not read after the run) */
+/* ... and then the clock panel grows out of the item's name the moment the list settles (Yukimi, Nov 18: "when it
+ * settles its immediately starting to grow out from that items name"): from about the name's size at the name's
+ * place (its left end, the band's middle), fast at first and opaque within its first 40 %, while the name fades
+ * out under it. It grew from nothing at the band's middle on an ease-in-out curve: nothing showed for ~100 ms */
 @keyframes wm-ti-zoom-enter {
-    from { transform: scale(0); opacity: 0; }
+    from { transform: scale(0.35); opacity: 0; }
+    40% { opacity: 1; }
     to { transform: scale(1); opacity: 1; }
 }
 
+@keyframes wm-ti-name-out {
+    from { opacity: 0.55; }
+    to { opacity: 0; }
+}
+
 html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-exp {
-    transform-origin: 50% 50%;
-    animation: wm-ti-zoom-enter 0.45s cubic-bezier(0.4, 0, 0.2, 1) both;
+    transform-origin: calc(10 * var(--u)) 50%;
+    animation: wm-ti-zoom-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-row.is-sel {
+    visibility: visible;
+    animation: wm-ti-name-out 0.15s linear both;
 }
 
 @media (prefers-reduced-motion: reduce) {
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-list { animation: none; }
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-exp { animation: none; }
+    html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-row.is-sel { visibility: hidden; animation: none; }
 }
 
 /* ---- Settings > Today > Effects (wmTitanium.js; html[data-wm-ti-fx] lists the ones on) ---- */
