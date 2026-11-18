@@ -497,42 +497,64 @@
     // is in (traffic_nearby, asked once per area it drives into - not on a timer), warned of within a mile
     // ahead of the car (its heading, or getting closer when the fix has none), once per drive.
     const offRoute = { key: '', box: null, items: [], asking: false, failedAt: 0, last: new Map(), alerted: new Set() };
-    const bearing = (a, b) => {
-        const r = Math.PI / 180;
-        const y = Math.sin((b.lon - a.lon) * r) * Math.cos(b.lat * r);
-        const x = Math.cos(a.lat * r) * Math.sin(b.lat * r) - Math.sin(a.lat * r) * Math.cos(b.lat * r) * Math.cos((b.lon - a.lon) * r);
-        return (Math.atan2(y, x) / r + 360) % 360;
+    // ---- pure parts (inputs in, results out; no DOM, socket or page state): the CaféReady drive-alerts task
+    // (#908, rule cafeready-background) takes them as they are
+    const OffRoute = {
+        bearing(a, b) {
+            const r = Math.PI / 180;
+            const y = Math.sin((b.lon - a.lon) * r) * Math.cos(b.lat * r);
+            const x = Math.cos(a.lat * r) * Math.sin(b.lat * r) - Math.sin(a.lat * r) * Math.cos(b.lat * r) * Math.cos((b.lon - a.lon) * r);
+            return (Math.atan2(y, x) / r + 360) % 360;
+        },
+        distM(a, b) {
+            const r = (d) => (d * Math.PI) / 180;
+            const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lon - a.lon) / 2) ** 2;
+            return 12742000 * Math.asin(Math.min(1, Math.sqrt(h)));
+        },
+        /** Whether the fix needs the next area's list: none yet, or within marginDeg (~3 km) of the area's edge. */
+        needsArea(fix, box, marginDeg = 0.03) {
+            return !box || fix.lat < box.s + marginDeg || fix.lat > box.n - marginDeg || fix.lon < box.w + marginDeg || fix.lon > box.e - marginDeg;
+        },
+        /**
+         * The items to warn of now: within alertM and ahead of the car (its heading within 60 degrees when moving
+         * faster than 2 m/s, else getting closer than at the last fix). fix { lat, lon, heading?, speed? };
+         * items [{ id, lat, lon, line?: [[lat, lon]] }]; alerted: Set of ids warned this drive; last: Map id ->
+         * metres at the last fix (read only). -> { alerts: [{ item, distM }], last: Map (the new distances) }.
+         */
+        ahead(fix, items, alerted, last, alertM) {
+            const heading = Number.isFinite(fix.heading) && (fix.speed || 0) > 2 ? fix.heading : null;
+            const next = new Map();
+            const alerts = [];
+            (items || []).forEach((t) => {
+                const id = t.id || `${t.lat},${t.lon}`;
+                if (alerted.has(id)) return;
+                const pts = Array.isArray(t.line) && t.line.length ? t.line.map(([lat, lon]) => ({ lat, lon })) : [t];
+                let near = null; let dM = Infinity;
+                pts.forEach((p) => { const d = OffRoute.distM(fix, p); if (d < dM) { dM = d; near = p; } });
+                const before = last.get(id);
+                if (dM <= alertM * 2) next.set(id, dM);
+                if (dM > alertM) return;
+                const isAhead = heading != null ? Math.abs(((OffRoute.bearing(fix, near) - heading + 540) % 360) - 180) <= 60 : (before != null && dM < before - 20);
+                if (isAhead) alerts.push({ item: t, distM: dM });
+            });
+            return { alerts, last: next };
+        }
     };
+    /** The page's side: ask for the area when needed, then warn (the pure parts above decide). */
     function warnOffRoute() {
         if (!here || here.source !== 'device') return;
         const key = `off:${nativeDriveSince || ''}`;
         if (offRoute.key !== key) { offRoute.key = key; offRoute.alerted.clear(); offRoute.last.clear(); }
-        const b = offRoute.box;
-        const m = 0.03; // ~3 km before the area's edge the next area is asked for
-        if (!b || here.lat < b.s + m || here.lat > b.n - m || here.lon < b.w + m || here.lon > b.e - m) {
-            if (!offRoute.asking && Date.now() - offRoute.failedAt > 60000) {
-                offRoute.asking = true;
-                ask('traffic_nearby', { lat: here.lat, lon: here.lon }, 20000).then((d) => {
-                    if (d && d.box) { offRoute.box = d.box; offRoute.items = (d.cameras || []).concat(d.police || []); }
-                }).catch(() => { offRoute.failedAt = Date.now(); }).finally(() => { offRoute.asking = false; });
-            }
-            if (!b) return;
+        if (OffRoute.needsArea(here, offRoute.box) && !offRoute.asking && Date.now() - offRoute.failedAt > 60000) {
+            offRoute.asking = true;
+            ask('traffic_nearby', { lat: here.lat, lon: here.lon }, 20000).then((d) => {
+                if (d && d.box) { offRoute.box = d.box; offRoute.items = (d.cameras || []).concat(d.police || []); }
+            }).catch(() => { offRoute.failedAt = Date.now(); }).finally(() => { offRoute.asking = false; });
         }
-        const heading = Number.isFinite(here.heading) && (here.speed || 0) > 2 ? here.heading : null;
-        offRoute.items.forEach((t) => {
-            const id = camKey(t);
-            if (offRoute.alerted.has(id)) return;
-            const pts = Array.isArray(t.line) && t.line.length ? t.line.map(([lat, lon]) => ({ lat, lon })) : [t];
-            let near = null; let dM = Infinity;
-            pts.forEach((p) => { const d = distKm(here, p) * 1000; if (d < dM) { dM = d; near = p; } });
-            const before = offRoute.last.get(id);
-            if (dM <= CAM_ALERT_M * 2) offRoute.last.set(id, dM); else offRoute.last.delete(id);
-            if (dM > CAM_ALERT_M) return;
-            const ahead = heading != null ? Math.abs(((bearing(here, near) - heading + 540) % 360) - 180) <= 60 : (before != null && dM < before - 20);
-            if (!ahead) return;
-            offRoute.alerted.add(id);
-            cameraNote(t, dM);
-        });
+        if (!offRoute.box) return;
+        const r = OffRoute.ahead(here, offRoute.items, offRoute.alerted, offRoute.last, CAM_ALERT_M);
+        offRoute.last = r.last;
+        r.alerts.forEach(({ item, distM }) => { offRoute.alerted.add(camKey(item)); cameraNote(item, distM); });
     }
 
     const camDrive = { key: '', alerted: new Set() };
