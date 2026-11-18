@@ -98,6 +98,7 @@
     let skSel = 0;       // the panel whose right soft key is up (it changes after the panel has grown in)
     let menuAt = 0;      // when a tap-and-hold last brought a panel's menu up
     const rowEl = new Map(); // panel id -> its condensed row
+    let rowsGen = 0; // bumped as the rows are rebuilt (a prepared entrance holds the old elements)
     let panelsKey = '';
     let homeDone = false;
 
@@ -1048,6 +1049,7 @@
         });
         have.forEach((el) => el.remove());
         rowEl.clear();
+        rowsGen++;
         for (const el of list.children) rowEl.set(el.dataset.id, el);
     }
 
@@ -1560,6 +1562,8 @@
         if (!host || host.hidden || root.dataset.wmApp !== 'today') return false;
         host.classList.add('is-primed');
         primedAt = Date.now();
+        // the next entrance's animations, built once the primed frame is drawn (or as the page wakes, if it paused first)
+        requestAnimationFrame(() => setTimeout(prepareEntry, 60));
         // nothing went over Melaton after all (a permission prompt pauses the app too): Today shows again
         const at = primedAt;
         // (only while the page never went behind: once it did, the return plays the entrance from this pose - the timer
@@ -1572,6 +1576,7 @@
         if (!host) return;
         host.classList.remove('is-primed');
         primedAt = 0;
+        if (!host.classList.contains('is-entering')) dropPrepared();
         // no entrance after all: what waited for it runs now
         if (!host.classList.contains('is-entering')) flushAfterEntrance();
     }
@@ -2010,41 +2015,83 @@
         entryAnims = null;
         for (const a of list) { try { a.cancel(); } catch (_) { /* gone */ } }
     }
-    function startEntryAnims() {
+    // The animations are built ahead (prepareEntry): creating them was the setup frame's biggest cost (A53: 34 ms of
+    // element.animate in a 180 ms first frame). Built idle - an animation not yet played changes nothing on screen - as
+    // Today is readied for the way back (after its primed frame), or as the page wakes while it waits for the focus;
+    // the entrance plays them if they were built for the same rows, screen and start, else builds them then.
+    let entryPrepared = null;
+    function entryKeyOf(at, e0, top, u) {
+        return `${rowsGen}|${panels.map((p) => p.id).join(',')}|${at}|${e0}|${top}|${u}|${hostHeight()}|${fx.stagger ? 1 : 0}${fx.overshoot ? 1 : 0}`;
+    }
+    function dropPrepared() {
+        if (!entryPrepared) return;
+        for (const a of entryPrepared.anims) { try { a.cancel(); } catch (_) { /* gone */ } }
+        entryPrepared = null;
+    }
+    /** Unplayed animations for an entrance tween t (a tw-shaped object). */
+    function buildEntryAnims(t) {
         const top = focusTop();
         const u = unit();
-        const back = tw.back || BACK_MS;
+        const back = t.back || BACK_MS;
+        const keep = tw;
+        tw = t; // tweenYs reads the move from tw
         const frames = panels.map(() => []);
         const ysAt = [];
-        for (let k = 0; k <= ENTRY_SAMPLES; k++) {
-            const x = (k / ENTRY_SAMPLES) * (k / ENTRY_SAMPLES);
-            tw.x = x;
-            const ys = tweenYs(top, tw.ease ? tw.ease(x) : x);
-            ysAt.push(ys);
-            ys.forEach((y, i) => frames[i].push({ offset: x, transform: `translate3d(0, ${(y * u).toFixed(2)}px, 0)` }));
-        }
-        tw.x = 0;
+        try {
+            for (let k = 0; k <= ENTRY_SAMPLES; k++) {
+                const x = (k / ENTRY_SAMPLES) * (k / ENTRY_SAMPLES);
+                t.x = x;
+                const ys = tweenYs(top, t.ease ? t.ease(x) : x);
+                ysAt.push(ys);
+                ys.forEach((y, i) => frames[i].push({ offset: x, transform: `translate3d(0, ${(y * u).toFixed(2)}px, 0)` }));
+            }
+        } finally { t.x = 0; tw = keep; }
         const list = [];
+        const make = (el, kf, opts) => new Animation(new KeyframeEffect(el, kf, opts), document.timeline);
         try {
             panels.forEach((pn, i) => {
                 const el = rowEl.get(pn.id);
-                if (el) list.push(el.animate(frames[i], { duration: back, easing: 'linear', fill: 'both' }));
+                if (el) list.push(make(el, frames[i], { duration: back, easing: 'linear', fill: 'both' }));
             });
             // the arriving item's label fades out under the glass over the run's last FADE_MS (as placeTween's fade):
             // from where it stands then (dimmed under the glass) to nothing, linearly
-            const bEl = panels[tw.b] && rowEl.get(panels[tw.b].id);
+            const bEl = panels[t.b] && rowEl.get(panels[t.b].id);
             if (bEl && back > FADE_MS) {
                 const k = Math.max(0, Math.min(ENTRY_SAMPLES, Math.round(Math.sqrt(1 - FADE_MS / back) * ENTRY_SAMPLES)));
-                const yb = ysAt[k][tw.b];
+                const yb = ysAt[k][t.b];
                 const under = yb + ROW / 2 > top && yb + ROW / 2 < top + BAND;
-                list.push(bEl.animate([{ opacity: under ? 0.55 : 1 }, { opacity: 0 }], { duration: FADE_MS, delay: back - FADE_MS, easing: 'linear', fill: 'forwards' }));
+                list.push(make(bEl, [{ opacity: under ? 0.55 : 1 }, { opacity: 0 }], { duration: FADE_MS, delay: back - FADE_MS, easing: 'linear', fill: 'forwards' }));
             }
         } catch (err) {
             for (const a of list) { try { a.cancel(); } catch (_) { /* gone */ } }
             console.warn('[wmTitanium] compositor entrance', err);
-            return false;
+            return null;
         }
-        entryAnims = list;
+        return { key: entryKeyOf(t.a, t.e0, top, u), anims: list };
+    }
+    /** Build the next entrance's animations now (idle), from where entrance() will start it. */
+    function prepareEntry() {
+        if (!host || host.hidden || !panels.length || root.dataset.wmApp !== 'today' || !compositorEntry()) return;
+        if (!host.classList.contains('is-primed')) return;
+        const at = Math.max(0, panels.findIndex((p) => p.clock));
+        const u = unit();
+        const ft = focusTop();
+        const screenUnits = (hostHeight() || window.innerHeight) / u;
+        const below = screenUnits - (ft - ROW * at) + ROW;
+        const e0 = (at - below / ROW - at) * ROW;
+        if (entryPrepared && entryPrepared.key === entryKeyOf(at, e0, ft, u)) return;
+        dropPrepared();
+        entryPrepared = buildEntryAnims({ a: at, b: at, n: 0, e0, D: 0, x: 0, ease: enterEase, back: ENTER_MS,
+            entry: { spread: fx.stagger ? 14 : 0, bump: fx.overshoot ? 10 : 0 } });
+    }
+    function startEntryAnims() {
+        const key = entryKeyOf(tw.a, tw.e0, focusTop(), unit());
+        let built = entryPrepared && entryPrepared.key === key ? entryPrepared : null;
+        if (!built) { dropPrepared(); built = buildEntryAnims(tw); }
+        entryPrepared = null;
+        if (!built) return false;
+        for (const a of built.anims) { try { a.play(); } catch (_) { /* gone */ } }
+        entryAnims = built.anims;
         return true;
     }
     /** The compositor's entrance, followed on the page: tw.p, the picture's parallax and the glass's row (no row writes). */
@@ -2668,6 +2715,8 @@
             // drew nothing and the two waited on each other to the app's 2.5 s cap (A53 trace, #907)
             if (host) requestAnimationFrame(() => { host.style.opacity = '0.999'; requestAnimationFrame(() => { host.style.opacity = ''; }); });
             whenFocused(() => requestAnimationFrame(entrance));
+            // the entrance's animations, if the page paused before the primed frame's build ran (built idle, unplayed)
+            if (host && host.classList.contains('is-primed') && !entryPrepared) setTimeout(prepareEntry, 0);
         }
         else if (host) { unprime(); host.classList.remove('is-exiting'); }
     });
