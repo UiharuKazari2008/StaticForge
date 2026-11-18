@@ -643,8 +643,8 @@
         href="/css/desktop-boot.css">
     <link rel="stylesheet"
         href="/css/melaton-network.css">
-    <link rel="stylesheet"
-        href="/css/wallet-tray.css">
+    <!-- desktop only: the phone never draws it (Nov 18 phone memory pass) -->
+    <template data-shell="desktop"><link rel="stylesheet" href="/css/wallet-tray.css"></template><script>writeShellTags()</script>
     <link rel="stylesheet"
         href="/css/requestBodyReplacements.css">
     <link rel="stylesheet"
@@ -669,8 +669,8 @@
         href="/css/emphasis-manager.css">
     <link rel="stylesheet"
         href="/css/windows-classic-theme.css">
-    <link rel="stylesheet"
-        href="/css/service-worker-tray.css">
+    <!-- desktop only: the phone never draws it (Nov 18 phone memory pass) -->
+    <template data-shell="desktop"><link rel="stylesheet" href="/css/service-worker-tray.css"></template><script>writeShellTags()</script>
     <link rel="stylesheet"
         href="/css/gallery-loading.css">
     <link rel="stylesheet"
@@ -689,7 +689,8 @@
     <link rel="stylesheet" href="/css/desktop-apps/desktopAppWindows.css">
     <link rel="stylesheet" href="/css/desktop-apps/dovecote.css">
     <!-- Terminal: global .hidden — must stay last in the stylesheet stack -->
-    <link rel="stylesheet" href="/css/desktop-cursors.css">
+    <!-- desktop only: the phone never draws it (Nov 18 phone memory pass) -->
+    <template data-shell="desktop"><link rel="stylesheet" href="/css/desktop-cursors.css"></template><script>writeShellTags()</script>
     <link rel="stylesheet" href="/css/melaton-accessibility.css">
     <link rel="stylesheet" href="/css/aero-glass.css">
     <link rel="stylesheet" href="/css/vista-glass-controls.css">
@@ -697,19 +698,23 @@
     <link rel="stylesheet" href="/css/vista-menus.css">
     <link rel="stylesheet" href="/css/prompt-tool-windows.css">
     <link rel="stylesheet" href="/css/vista-explorer.css">
-    <link rel="stylesheet" href="/css/vista-file-dialog.css">
-    <link rel="stylesheet" href="/css/vista-photo-gallery.css">
+    <!-- desktop only: the phone never draws it (Nov 18 phone memory pass) -->
+    <template data-shell="desktop"><link rel="stylesheet" href="/css/vista-file-dialog.css"></template><script>writeShellTags()</script>
+    <!-- desktop only: the phone never draws it (Nov 18 phone memory pass) -->
+    <template data-shell="desktop"><link rel="stylesheet" href="/css/vista-photo-gallery.css"></template><script>writeShellTags()</script>
     <link rel="stylesheet" href="/css/desktop-icon-view.css">
     <link rel="stylesheet" href="/css/vista-scrollbars.css">
     <link rel="stylesheet" href="/css/vista-dialogs.css">
     <link rel="stylesheet" href="/css/vista-wer-dialog.css">
-    <link rel="stylesheet" href="/css/vista-sidebar.css">
+    <!-- desktop only: the phone never draws it (Nov 18 phone memory pass) -->
+    <template data-shell="desktop"><link rel="stylesheet" href="/css/vista-sidebar.css"></template><script>writeShellTags()</script>
     <link rel="stylesheet" href="/css/vista-visual-index.css">
     <link rel="stylesheet" href="/css/vista-import-wizard.css">
     <!-- Vista art for Font Awesome glyphs in context menus and command bars -->
     <link rel="stylesheet" href="/css/vista-fa-icons.css">
     <!-- Taskbar: Start orb, buttons, Quick Launch, chevron, clock (taskbarSettings.js, taskbarClock.js) -->
-    <link rel="stylesheet" href="/css/vista-taskbar.css">
+    <!-- desktop only: the phone never draws it (Nov 18 phone memory pass) -->
+    <template data-shell="desktop"><link rel="stylesheet" href="/css/vista-taskbar.css"></template><script>writeShellTags()</script>
     <!-- Nightshade Network Client (#895): the service's connection manager, opened from its tray icon -->
     <link rel="stylesheet" href="/css/nightshade-client.css">
     <link rel="stylesheet" href="/css/system-font.css">
