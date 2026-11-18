@@ -236,7 +236,7 @@
         // back in front: after the return's entrance (its hub repaint restyled the shell mid-rise, wmAfterEntrance)
         document.addEventListener('visibilitychange', () => {
             const run = () => { void syncHub(); };
-            if (document.visibilityState === 'visible' && typeof window.wmAfterEntrance === 'function') window.wmAfterEntrance(run); else run();
+            if (document.visibilityState === 'visible' && window.wmTitanium && typeof window.wmTitanium.afterEntrance === 'function') window.wmTitanium.afterEntrance(run); else run();
         }, { signal: appScopeSignal });
         window.addEventListener('melatonscreen', () => { void syncHub(); }, { signal: appScopeSignal });
     }
