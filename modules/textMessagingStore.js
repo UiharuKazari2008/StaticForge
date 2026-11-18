@@ -250,10 +250,26 @@ function stats(account) {
     };
 }
 
+/**
+ * What a phone shows of an account's conversations, as one value (#890 round 5, W5): the newest `limit`
+ * chats (each one's stored row: title, last message, read state) and the newest message. A catch-up that
+ * stored nothing new leaves it as it was, so the account event that makes every phone re-read its lists
+ * goes only when it changed. Read straight from the database (the sync worker writes it from its own
+ * process, so the in-process counts may be behind).
+ */
+function fingerprint(account, limit = 100) {
+    const h = require('crypto').createHash('sha1');
+    const rows = d().prepare('SELECT guid, last_date, raw FROM chats WHERE account = ? ORDER BY last_date DESC, guid LIMIT ?').all(account, limit);
+    for (const r of rows) h.update(`${r.guid}\u0001${r.last_date}\u0001${r.raw}\u0002`);
+    const m = d().prepare('SELECT guid, date FROM messages WHERE account = ? ORDER BY date DESC LIMIT 1').get(account);
+    if (m) h.update(`${m.guid}\u0001${m.date}`);
+    return h.digest('hex');
+}
+
 function _close() { countKept.clear(); if (db) { db.close(); db = null; } }
 
 module.exports = {
-    open, getState, setState, putChats, listChats, getChat, touchChat, markChatSynced, deleteChat, chatCount,
+    open, getState, setState, putChats, listChats, getChat, touchChat, markChatSynced, deleteChat, chatCount, fingerprint,
     putMessages, listMessages, messageCount, newestDate, search, forgetAccount, stats, guidsBetween, deleteMessages,
     getMessages, newestOf, chatGuids, chatSyncRows, sizeOnDisk, _close
 };

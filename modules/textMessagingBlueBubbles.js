@@ -242,6 +242,13 @@ class BlueBubblesProvider {
         this.retryMs = Math.min(this.retryMs * 2, RECONNECT_MAX_MS);
     }
 
+    /** The account as a phone shows it: its status and its conversations (textMessagingStore.fingerprint). */
+    visibleKey() {
+        let chats = '';
+        try { chats = this.store && typeof this.store.fingerprint === 'function' ? this.store.fingerprint(this.id) : ''; } catch (_) { chats = `err:${Date.now()}`; }
+        return `${this.status || ''}|${this.error || ''}|${chats}`;
+    }
+
     setStatus(status, error) {
         const changed = status !== this.status || error !== this.error;
         this.status = status;
@@ -405,6 +412,9 @@ class BlueBubblesProvider {
             return;
         }
         this.syncChild = child;
+        // what a phone shows of this account before the catch-up (#890 round 5, W5): its end tells the
+        // phones only when that changed
+        const before = this.visibleKey();
         child.on('message', (m) => {
             if (!m) return;
             if (m.progress !== undefined) {
@@ -419,7 +429,11 @@ class BlueBubblesProvider {
             if (this.syncChild === child) this.syncChild = null;
             this.syncing = false;
             this.syncProgress = null;
-            this.hooks.emit && this.hooks.emit('account', { accountId: this.id });
+            // the desktop (Messaging Bridge, CardSpace) always hears that the catch-up ended; a phone only when
+            // its conversations or the account's status changed (every 30 min it re-read its accounts and
+            // chats for nothing, and was woken for it)
+            const phones = this.visibleKey() !== before;
+            this.hooks.emit && this.hooks.emit('account', { accountId: this.id, phones });
         });
         child.send({ cmd: 'sync', account: { id: this.id, url: this.url, password: this.password, settings: this.settings }, cacheDir: this.storeDir || null });
     }
