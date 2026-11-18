@@ -102,6 +102,8 @@
                 root.wsClient.on('connected', this.onConnected);
             }
             doc.addEventListener('visibilitychange', this.onVisible);
+            // a phone's screen off is not document.hidden: it pauses the view too (#890)
+            root.addEventListener('melatonscreen', this.onVisible);
             this.schedule();
         }
 
@@ -249,11 +251,17 @@
             this.timer = null;
             const ms = SPEEDS[this.speed];
             const ws = root.wsClient;
-            const want = !!(ms && this.admin && ws && !doc.hidden && ws.isConnected && ws.isConnected());
+            const seen = !doc.hidden && doc.documentElement.dataset.screenOff === undefined;
+            const want = !!(ms && this.admin && ws && seen && ws.isConnected && ws.isConnected());
             if (!want) {
                 this.unsubscribe();
-                // Melaton's own view (not an administrator): redrawn here, nothing is asked of the server
-                if (ms && !this.admin && !doc.hidden) this.timer = setInterval(() => this.apply(null), ms);
+                // Melaton's own view (not an administrator): redrawn here while seen, nothing is asked of the server
+                if (ms && !this.admin && seen) {
+                    this.timer = setInterval(() => {
+                        if (doc.hidden || doc.documentElement.dataset.screenOff !== undefined) { this.schedule(); return; }
+                        this.apply(null);
+                    }, ms);
+                }
                 return;
             }
             const key = `${ms}:${this.tab === 2}`;
@@ -780,6 +788,7 @@
                 root.wsClient.off('connected', this.onConnected);
             }
             doc.removeEventListener('visibilitychange', this.onVisible);
+            root.removeEventListener('melatonscreen', this.onVisible);
             if (this.resizer) this.resizer.disconnect();
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;

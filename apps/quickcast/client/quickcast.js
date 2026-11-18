@@ -404,6 +404,7 @@
             const wsc = root.wsClient;
             let subFor = null;     // the cabinet the server feeds us for, null = not subscribed
             let retryT = null;
+            let subscribedOnce = false;
             const subscribe = async () => {
                 clearTimeout(retryT);
                 if (sig.aborted || doc.hidden) return;
@@ -412,7 +413,13 @@
                 try {
                     const st = await this.send('quickcast_subscribe', { cabinet: cab });
                     if (sig.aborted) return;
-                    if (st && !st.error) { this.st = st; this.render(); }
+                    if (st && !st.error) {
+                        this.st = st;
+                        this.render();
+                        // taken again after a gap: the controls may have moved meanwhile (the first read is ctl's)
+                        if (subscribedOnce) void ctl();
+                        subscribedOnce = true;
+                    }
                 } catch (_) {
                     subFor = null;
                     retryT = setTimeout(subscribe, RESUBSCRIBE_MS);
@@ -513,11 +520,11 @@
                 void shot();
             };
             this.modal.querySelectorAll('.qc-pvk').forEach((b) => b.addEventListener('click', () => this.setPvRate(b.dataset.pv)));
-            // the controls follow OBS change pushes (onStatus); this once a minute is only a safety net
+            // the controls follow OBS change pushes (onStatus) and are read again when the feed is taken
+            // again (a reconnect, the page seen again): no once-a-minute safety net on top (#890)
             const ctl = async () => {
                 if (sig.aborted) return;
                 if (this.cabinet && !doc.hidden && !this.ctlBusy) await this.loadControls(false);
-                setTimeout(ctl, 60000);
             };
             void subscribe();
             this.setPvRate(this.pvRate);
@@ -531,13 +538,36 @@
                 requestAnimationFrame(frame);
             };
             requestAnimationFrame(frame);
-            const tick = setInterval(() => {
-                this.el('.qc-st-time').textContent = clock(Date.now());
-                setSegs(this.el('.qc-tod'), clock(Date.now()));
+            // the clocks and the monitor's age tick only while the page is seen; seen again, they are set
+            // at once; each is written only when its text moved (#890)
+            const drawTick = () => {
+                const t = clock(Date.now());
+                const stTime = this.el('.qc-st-time');
+                if (stTime.textContent !== t) stTime.textContent = t;
+                setSegs(this.el('.qc-tod'), t);
                 const age = this.previewAt ? Math.round((Date.now() - this.previewAt) / 100) / 10 : null;
-                this.el('.qc-mon-age').textContent = this.pvRate === 'rt' && this.rtFor ? 'REALTIME' : this.pvRate === 'off' ? 'PREVIEW HELD' : this.previewFor && age != null ? `${clock(this.previewAt)}  (${age.toFixed(1)} s)` : '';
-            }, 250);
-            sig.addEventListener('abort', () => clearInterval(tick));
+                const ageText = this.pvRate === 'rt' && this.rtFor ? 'REALTIME' : this.pvRate === 'off' ? 'PREVIEW HELD' : this.previewFor && age != null ? `${clock(this.previewAt)}  (${age.toFixed(1)} s)` : '';
+                const ageEl = this.el('.qc-mon-age');
+                if (ageEl.textContent !== ageText) ageEl.textContent = ageText;
+            };
+            let tick = null;
+            const syncTick = (resume) => {
+                const seen = !doc.hidden && doc.documentElement.dataset.screenOff === undefined && !sig.aborted;
+                if (seen && !tick) {
+                    if (resume) drawTick();
+                    tick = setInterval(() => {
+                        if (doc.hidden || doc.documentElement.dataset.screenOff !== undefined) { syncTick(false); return; }
+                        drawTick();
+                    }, 250);
+                } else if (!seen && tick) {
+                    clearInterval(tick);
+                    tick = null;
+                }
+            };
+            syncTick(false);
+            doc.addEventListener('visibilitychange', () => syncTick(true), { signal: sig });
+            root.addEventListener('melatonscreen', () => syncTick(true), { signal: sig });
+            sig.addEventListener('abort', () => { clearInterval(tick); tick = null; });
         }
 
         // ---------------------------------------------------------------- render

@@ -79,6 +79,9 @@
             doc.body.appendChild(m);
             this.modal = m;
             m.querySelector('.srec-close').addEventListener('click', () => void this.close());
+            // the meter's timer follows the page being seen (syncMeter)
+            doc.addEventListener('visibilitychange', () => this.syncMeter(), { signal: app.signal });
+            root.addEventListener('melatonscreen', () => this.syncMeter(), { signal: app.signal });
             m.querySelector('.srec-rec').addEventListener('click', () => void (this.state === 'recording' ? this.stop() : this.record()));
             m.querySelector('.srec-help').addEventListener('click', () => this.help());
             // the split button lights up as one (toolbar TBSTYLE_DROPDOWN)
@@ -120,11 +123,17 @@
         sync() {
             const b = this.modal.querySelector('.srec-rec');
             const rec = this.state === 'recording';
-            b.classList.toggle('is-stop', rec);
+            // written only when it changes: the meter's tick calls this 12 times a second (#890)
+            if (b.classList.contains('is-stop') !== rec) b.classList.toggle('is-stop', rec);
             // SoundRecorder.exe.mui strings 114 / 115 / 120 (&Start, &Stop, Re&sume) and their tooltips 102 / 103 / 121
-            this.modal.querySelector('.srec-label').innerHTML = rec ? '<u>S</u>top Recording' : this.state === 'paused' ? 'Re<u>s</u>ume Recording' : '<u>S</u>tart Recording';
-            b.title = rec ? 'Stop Recording (Alt+S)' : this.state === 'paused' ? 'Resume Recording (Alt+S)' : 'Start Recording (Alt+S)';
-            this.modal.querySelector('.srec-time').textContent = clock(this.elapsed + (rec ? performance.now() - this.t0 : 0));
+            const label = rec ? '<u>S</u>top Recording' : this.state === 'paused' ? 'Re<u>s</u>ume Recording' : '<u>S</u>tart Recording';
+            const labelEl = this.modal.querySelector('.srec-label');
+            if (labelEl.dataset.srecLabel !== label) { labelEl.innerHTML = label; labelEl.dataset.srecLabel = label; }
+            const title = rec ? 'Stop Recording (Alt+S)' : this.state === 'paused' ? 'Resume Recording (Alt+S)' : 'Start Recording (Alt+S)';
+            if (b.title !== title) b.title = title;
+            const time = clock(this.elapsed + (rec ? performance.now() - this.t0 : 0));
+            const timeEl = this.modal.querySelector('.srec-time');
+            if (timeEl.textContent !== time) timeEl.textContent = time;
         }
 
         async openMic() {
@@ -162,18 +171,39 @@
             this.state = 'recording';
             this.t0 = performance.now();
             this.sync();
+            clearInterval(this.timer);
+            this.timer = null;
+            this.syncMeter();
+        }
+
+        /**
+         * The time and the volume meter: drawn every 80 ms while recording on a page that is seen. The
+         * recording itself goes on unseen (the audio callback); seen again, both catch up at once (#890).
+         */
+        syncMeter() {
+            const want = this.state === 'recording' && !!this.analyser
+                && !doc.hidden && doc.documentElement.dataset.screenOff === undefined;
+            if (!want) {
+                if (this.timer) { clearInterval(this.timer); this.timer = null; }
+                return;
+            }
+            if (this.timer) return;
             const fill = this.modal.querySelector('.srec-meter-fill');
             const data = new Float32Array(this.analyser.fftSize);
-            clearInterval(this.timer);
-            this.timer = setInterval(() => {
+            const draw = () => {
                 this.sync();
                 this.analyser.getFloatTimeDomainData(data);
                 let peak = 0;
                 for (let i = 0; i < data.length; i += 1) peak = Math.max(peak, Math.abs(data[i]));
                 // the meter is a progress bar; a log-ish scale
                 const pct = Math.min(100, Math.round(Math.sqrt(peak) * 100));
-                fill.style.width = `${pct}%`;
-                fill.classList.toggle('is-on', pct > 0);
+                const width = `${pct}%`;
+                if (fill.style.width !== width) fill.style.width = width;
+                if (fill.classList.contains('is-on') !== (pct > 0)) fill.classList.toggle('is-on', pct > 0);
+            };
+            this.timer = setInterval(() => {
+                if (doc.hidden || doc.documentElement.dataset.screenOff !== undefined) { this.syncMeter(); return; }
+                draw();
             }, 80);
         }
 
@@ -182,6 +212,7 @@
             this.elapsed += performance.now() - this.t0;
             this.state = 'paused';
             clearInterval(this.timer);
+            this.timer = null;
             this.modal.querySelector('.srec-meter-fill').classList.remove('is-on');
             this.sync();
             const saved = await this.save();

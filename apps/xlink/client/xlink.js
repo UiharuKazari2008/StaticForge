@@ -231,9 +231,26 @@
                     sections: [{ type: 'list', initfn: (s) => { s.items = this.menu(t.dataset.xlMenu); } }]
                 });
             });
-            const tick = setInterval(() => this.tick(), 1000);
-            this.app.signal.addEventListener('abort', () => clearInterval(tick));
-            this.tick();
+            // the clock and the auto poll countdown run only while the page is seen: no cabinet is polled
+            // for a console nobody sees; seen again, the clock is set at once and the countdown goes on (#890)
+            let tick = null;
+            const syncTick = () => {
+                const seen = !doc.hidden && doc.documentElement.dataset.screenOff === undefined && !this.app.signal.aborted;
+                if (seen && !tick) {
+                    this.tick();
+                    tick = setInterval(() => {
+                        if (doc.hidden || doc.documentElement.dataset.screenOff !== undefined) { syncTick(); return; }
+                        this.tick();
+                    }, 1000);
+                } else if (!seen && tick) {
+                    clearInterval(tick);
+                    tick = null;
+                }
+            };
+            syncTick();
+            doc.addEventListener('visibilitychange', syncTick, sig);
+            root.addEventListener('melatonscreen', syncTick, sig);
+            this.app.signal.addEventListener('abort', () => { clearInterval(tick); tick = null; });
             m.querySelector('.xl-close').addEventListener('click', () => this.app.exit(), sig);
             doc.addEventListener('staticforge:modal-lifecycle', (e) => {
                 if (e && e.detail && e.detail.id === m.id && e.detail.type === 'closed') this.app.exit();
@@ -664,12 +681,13 @@
 
         tick() {
             const now = clock(Date.now());
-            this.el('.xl-st-clock').textContent = now;
-            this.el('.xl-tc-v').textContent = now;
+            const set = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+            set(this.el('.xl-st-clock'), now);
+            set(this.el('.xl-tc-v'), now);
             const p = this.el('.xl-st-poll');
-            if (!this.autoPoll) { p.textContent = 'Auto poll: OFF'; return; }
+            if (!this.autoPoll) { set(p, 'Auto poll: OFF'); return; }
             if (!this.busy && !this.dialogOpen) this.countdown--;
-            p.textContent = `Next poll: ${pad(Math.max(0, this.countdown))}s`;
+            set(p, `Next poll: ${pad(Math.max(0, this.countdown))}s`);
             if (this.countdown <= 0) { this.countdown = POLL_S; void this.refresh(true); }
         }
 

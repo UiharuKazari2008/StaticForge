@@ -135,8 +135,26 @@
             doc.addEventListener('staticforge:modal-lifecycle', (e) => {
                 if (e && e.detail && e.detail.id === m.id && e.detail.type === 'closed') this.app.exit();
             }, sig);
-            const tick = setInterval(() => { this.el('.pp-st-time').textContent = clock(Date.now()); }, 1000);
-            this.app.signal.addEventListener('abort', () => clearInterval(tick));
+            // the status bar clock ticks only while the page is seen; seen again, it is set at once (#890)
+            let tick = null;
+            const drawClock = () => { const el = this.el('.pp-st-time'); const t = clock(Date.now()); if (el && el.textContent !== t) el.textContent = t; };
+            const syncClock = (resume) => {
+                const seen = !doc.hidden && doc.documentElement.dataset.screenOff === undefined && !this.app.signal.aborted;
+                if (seen && !tick) {
+                    if (resume) drawClock();
+                    tick = setInterval(() => {
+                        if (doc.hidden || doc.documentElement.dataset.screenOff !== undefined) { syncClock(false); return; }
+                        drawClock();
+                    }, 1000);
+                } else if (!seen && tick) {
+                    clearInterval(tick);
+                    tick = null;
+                }
+            };
+            syncClock(false);
+            doc.addEventListener('visibilitychange', () => syncClock(true), sig);
+            root.addEventListener('melatonscreen', () => syncClock(true), sig);
+            this.app.signal.addEventListener('abort', () => { clearInterval(tick); tick = null; });
             // before openModal: an id-less window restores the shared 'unknown' geometry
             m.id = 'melatonPayPassModal';
             this.registerKeys();

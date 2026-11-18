@@ -9,6 +9,7 @@ const DESKTOP_POMODORO_BREAK_MS = 5 * 60 * 1000;
 const desktopAlarm = {
     modal: null,
     ticker: null,
+    fireTimer: null,
     deadline: 0,
     armedAt: 0,
     armed: false,
@@ -28,6 +29,7 @@ const desktopAlarm = {
 const desktopPomodoro = {
     modal: null,
     ticker: null,
+    fireTimer: null,
     deadline: 0,
     remainingMs: DESKTOP_POMODORO_FOCUS_MS,
     phase: 'focus',
@@ -40,6 +42,23 @@ const desktopPomodoro = {
     startBtn: null,
     pauseBtn: null
 };
+
+// The deadlines (the alarm ringing, a pomodoro phase ending) fire from their own one-shot timers,
+// seen or not: they are notifications. The 250 ms countdown redraws run only while the page is seen
+// (hidden, or a phone's screen off, stops them) and catch up at once when it is seen again (#890).
+(function desktopUtilityFollowSight() {
+    const signal = (typeof melatonApps !== 'undefined' && typeof melatonApps.packageSignal === 'function' && melatonApps.packageSignal()) || undefined;
+    const onChange = () => {
+        if (desktopAlarm.armed) desktopAlarmEnsureTicker();
+        if (desktopPomodoro.running) desktopPomodoroEnsureTicker();
+        if (!document.hidden && document.documentElement.dataset.screenOff === undefined) {
+            if (desktopAlarm.armed) desktopAlarmOnTick();
+            if (desktopPomodoro.running) desktopPomodoroOnTick();
+        }
+    };
+    document.addEventListener('visibilitychange', onChange, { signal });
+    window.addEventListener('melatonscreen', onChange, { signal });
+})();
 
 function desktopUtilityPad2(n) {
     return (n < 10 ? '0' : '') + n;
@@ -290,14 +309,29 @@ function desktopAlarmRender() {
 }
 
 function desktopAlarmStopTicker() {
+    clearTimeout(desktopAlarm.fireTimer);
+    desktopAlarm.fireTimer = null;
     if (!desktopAlarm.ticker) return;
     clearInterval(desktopAlarm.ticker);
     desktopAlarm.ticker = null;
 }
 
 function desktopAlarmEnsureTicker() {
-    if (desktopAlarm.ticker) return;
-    desktopAlarm.ticker = setInterval(desktopAlarmOnTick, 250);
+    if (desktopAlarm.armed && !desktopAlarm.fireTimer) {
+        desktopAlarm.fireTimer = setTimeout(() => {
+            desktopAlarm.fireTimer = null;
+            if (!desktopAlarm.armed) return;
+            // a clock that moved: wait out the rest
+            if (desktopAlarm.deadline - Date.now() > 0) { desktopAlarmEnsureTicker(); return; }
+            desktopAlarmFire();
+        }, Math.max(0, desktopAlarm.deadline - Date.now()));
+    }
+    const seen = !document.hidden && document.documentElement.dataset.screenOff === undefined;
+    if (desktopAlarm.ticker) {
+        if (!seen) { clearInterval(desktopAlarm.ticker); desktopAlarm.ticker = null; }
+        return;
+    }
+    if (seen) desktopAlarm.ticker = setInterval(desktopAlarmOnTick, 250);
 }
 
 function desktopAlarmFire() {
@@ -312,6 +346,7 @@ function desktopAlarmFire() {
 }
 
 function desktopAlarmOnTick() {
+    if (document.hidden || document.documentElement.dataset.screenOff !== undefined) { desktopAlarmEnsureTicker(); return; }
     if (!desktopAlarm.armed) return;
     if (desktopAlarm.deadline - Date.now() <= 0) {
         desktopAlarmFire();
@@ -328,6 +363,8 @@ function desktopAlarmStart() {
     desktopAlarm.armedMinutes = clock.minutes;
     desktopAlarm.armedAt = Date.now();
     desktopAlarm.deadline = desktopAlarmNextDeadline(clock.hours, clock.minutes);
+    clearTimeout(desktopAlarm.fireTimer);
+    desktopAlarm.fireTimer = null;
     desktopAlarmEnsureTicker();
     desktopAlarmRender();
 }
@@ -546,14 +583,28 @@ function desktopPomodoroRender(ms) {
 }
 
 function desktopPomodoroStopTicker() {
+    clearTimeout(desktopPomodoro.fireTimer);
+    desktopPomodoro.fireTimer = null;
     if (!desktopPomodoro.ticker) return;
     clearInterval(desktopPomodoro.ticker);
     desktopPomodoro.ticker = null;
 }
 
 function desktopPomodoroEnsureTicker() {
-    if (desktopPomodoro.ticker) return;
-    desktopPomodoro.ticker = setInterval(desktopPomodoroOnTick, 250);
+    if (desktopPomodoro.running && !desktopPomodoro.fireTimer) {
+        desktopPomodoro.fireTimer = setTimeout(() => {
+            desktopPomodoro.fireTimer = null;
+            if (!desktopPomodoro.running) return;
+            if (desktopPomodoro.deadline - Date.now() > 0) { desktopPomodoroEnsureTicker(); return; }
+            desktopPomodoroAdvance();
+        }, Math.max(0, desktopPomodoro.deadline - Date.now()));
+    }
+    const seen = !document.hidden && document.documentElement.dataset.screenOff === undefined;
+    if (desktopPomodoro.ticker) {
+        if (!seen) { clearInterval(desktopPomodoro.ticker); desktopPomodoro.ticker = null; }
+        return;
+    }
+    if (seen) desktopPomodoro.ticker = setInterval(desktopPomodoroOnTick, 250);
 }
 
 function desktopPomodoroAdvance() {
@@ -563,6 +614,10 @@ function desktopPomodoroAdvance() {
     desktopPomodoro.remainingMs = finishedFocus ? DESKTOP_POMODORO_BREAK_MS : DESKTOP_POMODORO_FOCUS_MS;
     desktopPomodoro.deadline = Date.now() + desktopPomodoro.remainingMs;
     desktopPomodoro.running = true;
+    // the next phase's end
+    clearTimeout(desktopPomodoro.fireTimer);
+    desktopPomodoro.fireTimer = null;
+    desktopPomodoroEnsureTicker();
     desktopPomodoroRender(desktopPomodoro.remainingMs);
     desktopPomodoroSyncControls();
     desktopUtilityNotify(
@@ -574,6 +629,7 @@ function desktopPomodoroAdvance() {
 }
 
 function desktopPomodoroOnTick() {
+    if (document.hidden || document.documentElement.dataset.screenOff !== undefined) { desktopPomodoroEnsureTicker(); return; }
     if (!desktopPomodoro.running) return;
     const remain = desktopPomodoro.deadline - Date.now();
     if (remain <= 0) {

@@ -351,7 +351,47 @@
             this.search = '';
             this.build();
             void this.load();
-            this.tick = setInterval(() => { this.checkReminders(); this.refreshSubscriptions(false); }, 30000);
+            // While the page is seen a 30 s tick checks reminders and reads subscribed calendars whose
+            // interval is up (its render also moves the now line). While it is not seen nothing ticks:
+            // reminders are notifications, so one timer waits for the next one (#890).
+            this.tick = null;
+            this.reminderWake = null;
+            this.syncTicks();
+            const sig = { signal: this.app.signal };
+            doc.addEventListener('visibilitychange', () => this.syncTicks(), sig);
+            root.addEventListener('melatonscreen', () => this.syncTicks(), sig);
+        }
+
+        syncTicks() {
+            const seen = !doc.hidden && doc.documentElement.dataset.screenOff === undefined && !this.app.signal.aborted;
+            clearTimeout(this.reminderWake);
+            this.reminderWake = null;
+            if (seen) {
+                if (!this.tick) {
+                    this.tick = setInterval(() => {
+                        if (doc.hidden || doc.documentElement.dataset.screenOff !== undefined) { this.syncTicks(); return; }
+                        this.checkReminders();
+                        this.refreshSubscriptions(false);
+                    }, 30000);
+                    // seen again: caught up at once (load() does the first round itself)
+                    if (this.loaded) { this.checkReminders(); this.refreshSubscriptions(false); }
+                }
+                if (this.reminderOpen && !this.reminderTick) {
+                    this.drawReminders();
+                    this.reminderTick = setInterval(() => {
+                        if (doc.hidden || doc.documentElement.dataset.screenOff !== undefined) { this.syncTicks(); return; }
+                        this.drawReminders();
+                    }, 30000);
+                }
+                return;
+            }
+            clearInterval(this.tick);
+            this.tick = null;
+            clearInterval(this.reminderTick);
+            this.reminderTick = null;
+            if (this.app.signal.aborted || !this.loaded) return;
+            const wait = this.nextReminderDelay();
+            if (wait != null) this.reminderWake = setTimeout(() => { this.reminderWake = null; this.checkReminders(); this.syncTicks(); }, wait);
         }
 
         // ---- loading and saving ----------------------------------------------------------
@@ -394,8 +434,11 @@
             this.calendars.forEach((c) => { c.visible = !hidden.includes(c.name); });
             this.status('');
             this.render();
+            this.loaded = true;
             this.checkReminders();
             this.refreshSubscriptions(true);
+            // loaded while not seen: the next reminder's timer
+            if (!this.tick) this.syncTicks();
         }
 
         adopt(parsed, file) {
@@ -1570,6 +1613,30 @@
             if (due.length) this.showReminders(due);
         }
 
+        /** ms until the next reminder checkReminders() would show (capped, so the window moves on), or null. */
+        nextReminderDelay() {
+            const now = Date.now();
+            let next = Infinity;
+            const consider = (at, key) => {
+                if (!at || this.fired.has(key)) return;
+                const snooze = this.snoozed && this.snoozed.get(key);
+                const when = Math.max(at, snooze || 0);
+                if (when > now && when < next) next = when;
+            };
+            this.calendars.forEach((cal) => {
+                if (!cal.visible) return;
+                cal.tasks.forEach((t) => { if (!t.completed) consider(t.reminderAt && t.reminderAt.getTime(), `task|${t.uid}`); });
+                cal.events.forEach((ev) => {
+                    if (ev.reminderAt) { consider(ev.reminderAt.getTime(), `${ev.uid}|at`); return; }
+                    if (ev.reminder === null || ev.reminder === undefined) return;
+                    occurrences(ev, new Date(now - 6 * 3600000), new Date(now + 8 * DAY)).forEach((o) => {
+                        consider(o.start.getTime() - ev.reminder * 60000, `${ev.uid}|${o.start.getTime()}`);
+                    });
+                });
+            });
+            return Math.min(Number.isFinite(next) ? next - now + 50 : Infinity, 6 * 3600000);
+        }
+
         /**
          * The reminder window: WinCal's template 3000 as the VM shows it. "1 Reminder" / "n Reminders"
          * with the bell (group 116), the picked item's subject, start and location over a Subject /
@@ -1633,12 +1700,14 @@
                     });
                     this.drawReminders();
                     clearInterval(this.reminderTick);
-                    this.reminderTick = setInterval(() => this.drawReminders(), 30000);
+                    this.reminderTick = null;
+                    // its Due in column moves every 30 s while the page is seen (syncTicks)
+                    this.syncTicks();
                     // the list has the focus at open (its selection is blue, Snooze the default)
                     setTimeout(() => { try { lv.focus(); } catch (_) { /* gone */ } }, 0);
                 },
-                cancel: () => { this.reminderOpen = false; clearInterval(this.reminderTick); },
-                close: () => { this.reminderOpen = false; clearInterval(this.reminderTick); }
+                cancel: () => { this.reminderOpen = false; clearInterval(this.reminderTick); this.reminderTick = null; },
+                close: () => { this.reminderOpen = false; clearInterval(this.reminderTick); this.reminderTick = null; }
             });
         }
 
@@ -1657,7 +1726,10 @@
                 const [v, unit] = m < 60 ? [m, 'minute'] : m < 1440 ? [Math.round(m / 60), 'hour'] : m < 10080 ? [Math.round(m / 1440), 'day'] : [Math.round(m / 10080), 'week'];
                 return `${v} ${unit}${v === 1 ? '' : 's'}${mins < 0 ? ' overdue' : ''}`;
             };
-            lv.querySelector('.vdt-lv-body').innerHTML = this.reminderList.map((x) => `<div class="vdt-lv-row${this.reminderSel.has(x.key) ? ' is-selected' : ''}" data-k="${esc(x.key)}"><span style="width:302px"><img src="/static_images/vista-dlg/wincal-${x.o.task ? 117 : 124}-16.png" alt="">${esc(x.o.ev.summary || (x.o.task ? 'New Task' : 'New Appointment'))}</span><span style="width:100px">${esc(dueIn(x.o))}</span></div>`).join('');
+            const rows = this.reminderList.map((x) => `<div class="vdt-lv-row${this.reminderSel.has(x.key) ? ' is-selected' : ''}" data-k="${esc(x.key)}"><span style="width:302px"><img src="/static_images/vista-dlg/wincal-${x.o.task ? 117 : 124}-16.png" alt="">${esc(x.o.ev.summary || (x.o.task ? 'New Task' : 'New Appointment'))}</span><span style="width:100px">${esc(dueIn(x.o))}</span></div>`).join('');
+            // the list is written only when it changed (the 30 s Due in tick mostly finds it the same)
+            const body = lv.querySelector('.vdt-lv-body');
+            if (this.reminderRowsEl !== body || this.reminderRowsSrc !== rows) { body.innerHTML = rows; this.reminderRowsEl = body; this.reminderRowsSrc = rows; }
             const sel = this.reminderList.filter((x) => this.reminderSel.has(x.key));
             const one = sel.length === 1 ? sel[0] : null;
             ctx.show(3001, !!one);
@@ -1993,6 +2065,8 @@
 
         destroy() {
             clearInterval(this.tick);
+            clearTimeout(this.reminderWake);
+            clearInterval(this.reminderTick);
             this.saveTimers.forEach((t) => clearTimeout(t));
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;
