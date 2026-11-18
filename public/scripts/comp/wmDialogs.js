@@ -33,6 +33,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -592,10 +593,8 @@
         wrapOpenModal();
         wrapCreditCost();
         wrapExpansion();
-        if (!patchContextMenu()) {
-            const t = setInterval(() => { if (patchContextMenu()) clearInterval(t); }, 1000);
-            setTimeout(() => clearInterval(t), 60000);
-        }
+        // contextMenu.js loads with the page, before this file; should it not have, every script has run by 'load'
+        if (!patchContextMenu()) window.addEventListener('load', () => { patchContextMenu(); }, { once: true, signal: appScopeSignal });
         // the shell puts the app title back when the picture view closes: the form keeps the dialog's
         if (typeof MutationObserver === 'function') {
             new MutationObserver(() => { if (!root.hasAttribute('data-wm-viewer')) paint(); })

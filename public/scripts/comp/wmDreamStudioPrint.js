@@ -88,10 +88,8 @@
         return true;
     }
 
-    if (!syncPins()) {
-        let tries = 0;
-        const t = setInterval(() => { tries += 1; if (syncPins() || tries > 40) clearInterval(t); }, 500);
-    }
+    // the shell not up yet: pinned once it is (wmShellReady), not a 500 ms poll for it
+    if (!syncPins()) document.addEventListener('wmShellReady', () => { syncPins(); }, { once: true, signal: appScopeSignal });
 
     if (!window.wmDreamStudio || typeof window.wmDreamStudio.extend !== 'function') return;
 

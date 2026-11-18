@@ -109,6 +109,7 @@
         if (!go()) {
             ws.open('browser');
             let tries = 0;
+            // perf: allow a search the user started waits at most 5 s for Internet Explorer's script to load, and stops once it opens
             const wait = setInterval(() => { tries += 1; if (go() || tries > 50) clearInterval(wait); }, 100);
         }
         if (field) { field.value = ''; suggestions = []; selected = -1; render(); }

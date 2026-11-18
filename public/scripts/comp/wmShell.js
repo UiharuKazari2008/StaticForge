@@ -5980,6 +5980,7 @@
             mo.observe(t, { attributes: true, attributeFilter: ['class'] });
         } else if (t) {
             // (no MutationObserver: the old poll)
+            // perf: allow only in a browser without MutationObserver (never the phones' WebView), and only until the wait ends
             const poll = setInterval(() => { check(); if (done) clearInterval(poll); }, 400);
         }
         if (ms != null) timer = setTimeout(end, ms);
@@ -8233,9 +8234,8 @@
             c.wmBusyWrapped = true;
             return true;
         };
-        if (!wrapWs()) {
-            const t = setInterval(() => { if (wrapWs()) clearInterval(t); }, 1000);
-        }
+        // websocket.js (window.wsClient) loads with the page, before this file; should it not have, every script has run by 'load'
+        if (!wrapWs()) window.addEventListener('load', () => { wrapWs(); }, { once: true, signal: appScopeSignal });
         const f = window.fetch;
         if (typeof f === 'function' && !f.wmBusyWrapped) {
             const wrapped = function (input) {
@@ -8417,6 +8417,7 @@
             refreshToday();
         });
         // first load: once the workspaces are known
+        // perf: allow a boot wait for the workspace list (from the server, no event of its own at boot): stops when it is there, at most 2 minutes
         const first = setInterval(() => { if (loadTodayPrefs(false)) { clearInterval(first); refreshToday(); } }, 500);
         setTimeout(() => clearInterval(first), 120000);
     }
@@ -8965,6 +8966,7 @@
             if (go()) return;
             open('browser');
             let tries = 0;
+            // perf: allow a tap on Today's search waits at most 5 s for Internet Explorer's script to load, and stops once it opens
             const wait = setInterval(() => { tries += 1; if (go() || tries > 50) clearInterval(wait); }, 100);
         };
         if (how === 'bing') { ie('https://www.bing.com/'); return true; }
@@ -11632,7 +11634,8 @@
         watchSystemSounds();
         watchRequestBusy();
         routeAlert();
-        if (!wrapWorkspaceSwitch()) { const t = setInterval(() => { if (wrapWorkspaceSwitch()) clearInterval(t); }, 1000); setTimeout(() => clearInterval(t), 60000); }
+        // workspaceUtils.js (setActiveWorkspace) loads with the page, before this file; should it not have, every script has run by 'load'
+        if (!wrapWorkspaceSwitch()) window.addEventListener('load', () => { wrapWorkspaceSwitch(); }, { once: true, signal: appScopeSignal });
         startBoot();
         refreshStatus();
         watchStatusSignals();
