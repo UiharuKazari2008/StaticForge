@@ -395,20 +395,37 @@
      * Driving the commute now: { direction, leftSec, arriveAt, toGoM, at } from the phone's last position on
      * the last report's route, or null (not in the window, no device position, off the route).
      */
+    /** The app's drive state (DSApp AndroidHome.getDriveState, #890 / #907): 'driving', 'maybe', ... or '' without it. */
+    function nativeDriveState() {
+        try { const H = window.AndroidHome; const d = H && typeof H.getDriveState === 'function' ? JSON.parse(H.getDriveState() || 'null') : null; return (d && d.state) || ''; } catch (_) { return ''; }
+    }
+    // when the app last said a drive started: a drive outside the commute windows is keyed by it
+    let nativeDriveSince = 0;
+    const nativeDriving = () => nativeDriveState() === 'driving';
+
     function driving() {
         const win = driveWindow();
-        if (!win || !here || here.source !== 'device' || Date.now() - here.at > 5 * 60 * 1000) return null;
+        // the app says the phone is in a moving car (Yukimi, Nov 17 2026: the drive light stayed dark on a real
+        // drive): a commute route the car is on counts at any time, either direction
+        const native = nativeDriving();
+        if (!win && !native) return null;
+        if (!here || here.source !== 'device' || Date.now() - here.at > 5 * 60 * 1000) return null;
         // still at Home or already at Work (inside the radius): not on the way
         if (placeNow()) return null;
-        const r = latest[win.direction];
-        const p = r && r.preferred;
-        if (!p || !Array.isArray(p.line) || p.line.length < 2 || p.durationSec == null) return null;
-        const loc = onLine(p.line, here);
-        if (loc.distM > ON_ROUTE_M || !loc.totalM) return null;
-        const f = Math.max(0, Math.min(1, loc.alongM / loc.totalM));
-        if (f > 0.995) return null; // arrived
-        const leftSec = Math.round(p.durationSec * timeShare(p, f, 1));
-        return { direction: win.direction, leaveAt: win.leaveAt, leftSec, arriveAt: Date.now() + leftSec * 1000, toGoM: (p.distanceM || loc.totalM) * (1 - f), at: f, totalM: p.distanceM || loc.totalM };
+        const dirs = win ? [win.direction].concat(native ? [win.direction === 'home' ? 'work' : 'home'] : []) : ['home', 'work'];
+        for (const dir of dirs) {
+            const r = latest[dir];
+            const p = r && r.preferred;
+            if (!p || !Array.isArray(p.line) || p.line.length < 2 || p.durationSec == null) continue;
+            const loc = onLine(p.line, here);
+            if (loc.distM > ON_ROUTE_M || !loc.totalM) continue;
+            const f = Math.max(0, Math.min(1, loc.alongM / loc.totalM));
+            if (f > 0.995) continue; // arrived
+            const leftSec = Math.round(p.durationSec * timeShare(p, f, 1));
+            const leaveAt = win && win.direction === dir ? win.leaveAt : (nativeDriveSince || Date.now());
+            return { direction: dir, leaveAt, leftSec, arriveAt: Date.now() + leftSec * 1000, toGoM: (p.distanceM || loc.totalM) * (1 - f), at: f, totalM: p.distanceM || loc.totalM };
+        }
+        return null;
     }
 
     // ---------------------------------------------------------------- cameras on the way home (Yukimi, #809)
@@ -480,10 +497,12 @@
 
     function watchCameras() {
         const dv = driving();
-        const r = latest.home;
+        const r = dv ? latest[dv.direction] : null;
         syncPoliceWatch();
-        if (!dv || dv.direction !== 'home' || !r || !r.traps) { stopCamWatch(); return; }
-        const key = `home:${dv.leaveAt}`;
+        // a drive the app sees but no commute route has (yet): the live position finds out where the car is
+        if (!dv && nativeDriving()) { startCamWatch(); return; }
+        if (!dv || !r || !r.traps) { stopCamWatch(); return; }
+        const key = `${dv.direction}:${dv.leaveAt}`;
         if (camDrive.key !== key) { camDrive.key = key; camDrive.alerted.clear(); }
         nativeAlerted(key).forEach((id) => camDrive.alerted.add(id));
         // the app's own watch has this drive: it alerts (locked or not), the page only keeps count (#810)
@@ -536,12 +555,13 @@
 
     /** The plan the app watches: the way home's route, its cameras in metres along it, Home / Work, the window's end. */
     function drivePlan(win) {
-        const r = latest.home;
+        const dir = win.direction || 'home';
+        const r = latest[dir];
         const p = r && r.preferred;
         if (!p || !Array.isArray(p.line) || p.line.length < 2 || !Array.isArray(r.traps)) return null;
         const total = onLine(p.line, { lat: p.line[0][0], lon: p.line[0][1] }).totalM;
         const c = placeCoords();
-        const key = `home:${win.leaveAt}`;
+        const key = `${dir}:${win.leaveAt}`;
         return {
             key,
             until: win.until,
@@ -559,8 +579,13 @@
     function armNativeWatch() {
         const b = nativeBridge();
         if (!b || !canUse() || !loaded || !configured() || document.hidden) return;
-        const win = driveWindow();
-        if (!win || win.direction !== 'home' || !win.until) return;
+        let win = driveWindow();
+        if (!win || win.direction !== 'home' || !win.until) {
+            // the app's drive state: the commute route the car is on, for the next two hours (#890)
+            const dv = nativeDriving() ? driving() : null;
+            if (!dv) return;
+            win = { direction: dv.direction, leaveAt: dv.leaveAt, until: Date.now() + 2 * 3600 * 1000 };
+        }
         const plan = drivePlan(win);
         if (!plan) return;
         const sig = `${plan.key}|${plan.reportAt}`;
@@ -915,7 +940,8 @@
         // arrival under it; driving it (#907, Yukimi: arrival primary), the arrival big and the time left under it
         els.lcd.classList.toggle('has-period', CLOCK_12H);
         els.lcd.classList.toggle('is-driving', driving);
-        if (els.led) els.led.classList.toggle('is-on', driving);
+        // the drive light: driving a commute, or the app's drive state says driving (off a commute route too, #890)
+        if (els.led) els.led.classList.toggle('is-on', driving || nativeDriving());
         if (driving) {
             seg(els.min, c.hm || '--:--');
             seg(els.arrive, mins(sec));
@@ -1407,6 +1433,17 @@
         c.on('traffic_police', (pk) => { const d = (pk && (pk.feed ? pk : pk.data)) || {}; if (d.feed && d.feed === policeFeed) mergePolice(d.feed, d.changed, d.removed, false); }, { signal: appScopeSignal });
         c.on('connected', () => { policeFeed = ''; syncPoliceWatch(); }, { signal: appScopeSignal });
         window.addEventListener('androiddrive', syncPoliceWatch, { signal: appScopeSignal });
+        // the app's drive state changed (#890): when a drive started keys it; the drive light, the live position, the
+        // camera watch (the page's and the app's) follow at once
+        window.addEventListener('androiddrive', (e) => {
+            const st = e && e.detail && e.detail.state;
+            if (st === 'driving' && !nativeDriveSince) nativeDriveSince = Date.now();
+            if (st && st !== 'driving' && st !== 'maybe') nativeDriveSince = 0;
+            if (st === 'driving') readPosition(true);
+            armNativeWatch();
+            watchCameras();
+            changed();
+        }, { signal: appScopeSignal });
         // Settings > Location changed Home / Work (#907): an open settings page shows the new places
         document.addEventListener('wmLocationPlaces', () => { if (layers[layers.length - 1] === 'settings' && els.layerBody) renderSettings(); }, { signal: appScopeSignal });
         load();
@@ -1700,6 +1737,7 @@
         // itself (a notification driver), so it reads before driving() can be true. Otherwise a running
         // page with the screen off asks nothing; a paused one gets no position anyway (#890)
         const dw = driveWindow();
+        if (!dw && nativeDriving() && !driving()) readPosition(true);
         if (dw) {
             const homeUnwatched = dw.direction === 'home' && !(nativeDrive.active && nativeDrive.key === `home:${dw.leaveAt}`);
             if (seenNow() || homeUnwatched) readPosition();
