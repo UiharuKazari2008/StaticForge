@@ -663,6 +663,26 @@
             try { start.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
             start.click();
         });
+        // the title bar pulled down: Android's notifications, pulled further its quick settings (Yukimi, Nov 17,
+        // #906: Android's own pull-down is locked while Melaton Bars run, in Melaton too); the tap that started
+        // it does nothing else. 6.5.1's bars open their own status drawer instead.
+        (() => {
+            const bar = shell.querySelector('.wm-titlebar');
+            let y0 = null; let stage = 0; let pid = null;
+            const unit = () => parseFloat(getComputedStyle(shell).getPropertyValue('--wm-px')) || 1;
+            bar.addEventListener('pointerdown', (e) => { if (BARS651 || !window.AndroidBars || typeof window.AndroidBars.openTray !== 'function') return; y0 = e.clientY; stage = 0; pid = e.pointerId; }, true);
+            bar.addEventListener('pointermove', (e) => {
+                if (y0 == null || e.pointerId !== pid) return;
+                const dy = e.clientY - y0;
+                if (dy > 40 * unit() && stage === 0) { stage = 1; try { window.AndroidBars.openTray(false); } catch (_) { /* older app */ } }
+                else if (dy > 220 * unit() && stage === 1) { stage = 2; try { window.AndroidBars.openTray(true); } catch (_) { /* older app */ } }
+            }, true);
+            const end = () => { y0 = null; pid = null; };
+            bar.addEventListener('pointerup', end, true);
+            bar.addEventListener('pointercancel', end, true);
+            // the click that follows a pull is not a tap on Start or an icon
+            bar.addEventListener('click', (e) => { if (stage > 0) { stage = 0; e.stopPropagation(); e.preventDefault(); } }, true);
+        })();
         cornerEl().addEventListener('click', (e) => pressTitleAction(e.currentTarget.dataset.kind));
         shell.querySelectorAll('.wm-softkey').forEach((btn) => {
             btn.addEventListener('click', (e) => {
@@ -4376,6 +4396,34 @@
      * or shows something else.
      */
     let batteryBubbleTimer = null;
+    // the power graph's samples (mW, + charging / - using): one per read while the Power bubble is open, the last
+    // minute or so (48 bars as Settings > Power); a new opening starts afresh
+    const BAT_BARS = 48;
+    let batHist = [];
+    function noteBatteryPower(mw, opened) {
+        if (opened) batHist = [];
+        batHist.push(mw);
+        if (batHist.length > BAT_BARS) batHist.splice(0, batHist.length - BAT_BARS);
+    }
+    function batteryGraphHtml() {
+        if (!batHist.length) return '';
+        const last = batHist[batHist.length - 1];
+        const peak = batHist.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+        // a round number of watts at the scale's ends, so the bars keep still between small changes
+        const top = [1, 2, 3, 5, 10, 15, 20, 30, 45, 60, 100, 150].map((w) => w * 1000).find((w) => w >= peak) || Math.ceil(peak / 50000) * 50000;
+        const off = BAT_BARS - batHist.length;
+        let bars = '';
+        for (let i = 0; i < BAT_BARS; i++) {
+            const v = i >= off ? batHist[i - off] : null;
+            const cls = v == null || v === 0 ? '' : v > 0 ? 'is-in' : 'is-out';
+            bars += `<i${cls ? ` class="${cls}" style="--h:${Math.max(2, Math.round(Math.abs(v) / top * 50))}%"` : ''}></i>`;
+        }
+        const now = last > 0 ? `Charging, ${batteryWatts(last)}` : last < 0 ? `Using ${batteryWatts(last)}` : '0 mW';
+        return `<div class="wm-bub-pgraph-head"><span>Power use:</span><span>${escapeHtml(now)}</span></div>
+            <div class="wm-bub-pgraph-wrap"><div class="wm-bub-pgraph-scale"><span>+${top / 1000} W</span><span>0</span><span>\u2212${top / 1000} W</span></div>
+            <div class="wm-bub-pgraph" role="img" aria-label="Battery power over the last minute"><div class="wm-bub-pgraph-bars">${bars}</div></div></div>`;
+    }
+
     function watchBatteryBubble(anchor) {
         // asleep (the screen off too: a bridge read and a redraw every 2 s for nobody, #890) it stops; the
         // wake's status pass draws the open bubble and starts it again
@@ -4385,7 +4433,7 @@
             if (!el || el.hidden || el.dataset.role !== 'battery' || !awake()) { clearInterval(batteryBubbleTimer); batteryBubbleTimer = null; return; }
             readBattery();
             statusBubble('battery', anchor, true);
-        }, 2000);
+        }, 1500);
     }
 
     /** What the title bar shows for the phone: { cell, wifi, active, link, signal, battery }. */
@@ -6406,7 +6454,10 @@
                 if (b.saver) more.push('Battery saver is on.');
                 // data-live: the app's copy fills these from Android's battery while this page sleeps behind a
                 // program (melaton-bars-native-layouts: message handling); the bar's 18 blocks of 9 units
-                lines.push({ html: `<div data-live="bat-level">Main battery: ${b.level}%</div><div class="wm-ds-progress wm-bat-bar" role="progressbar" aria-label="Main battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${b.level}"><span data-live="bat-bar" data-full="162" style="--wm-ds-blocks:${Math.round(b.level / 100 * 18)}"></span></div>${more.map((t, i) => `<div data-live="bat-more-${i}">${escapeHtml(t)}</div>`).join('')}` });
+                // the bar as Settings > Power draws it (one full-width meter, not WM's block bar; Yukimi, Nov 17,
+                // #906), then the power graph of the last minute while this bubble is open, as Settings' too
+                if (b.powerMw != null) noteBatteryPower(b.powerMw, !update);
+                lines.push({ html: `<div data-live="bat-level">Main battery: ${b.level}%</div><div class="wm-bub-meter" role="progressbar" aria-label="Main battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${b.level}"><div style="width:${b.level}%"></div></div>${more.map((t, i) => `<div data-live="bat-more-${i}">${escapeHtml(t)}</div>`).join('')}${batteryGraphHtml()}` });
             }
             const powerSettings = () => { const st = window.wmSettings; if (!(st && typeof st.open === 'function' && st.open('power', 'battery')) && apps.has('settings')) open('settings'); };
             bubble({ title: 'Power', role, anchor, sections: lines, footLinks: [{ label: 'Settings', action: powerSettings }], buttons: [{ text: 'Hide' }] });
