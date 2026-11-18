@@ -122,10 +122,13 @@ html.ui-mobile #directorMascotLab { top: auto; bottom: 46px; left: 4px; right: 4
     function drawOverlay() {
         const m = mascot();
         if (!overlay || !m || !m.el || !m.el.canvas || !m.manifest) return;
+        // nothing drawn while it cannot be seen (the page hidden, the screen off); written only what moved (#890)
+        if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
         const canvas = m.el.canvas;
         if (overlay.parentNode !== canvas.parentNode) canvas.parentNode.appendChild(overlay);
-        overlay.style.transform = canvas.style.transform;
-        overlay.style.width = canvas.style.width; overlay.style.height = canvas.style.height;
+        if (overlay.style.transform !== canvas.style.transform) overlay.style.transform = canvas.style.transform;
+        if (overlay.style.width !== canvas.style.width) overlay.style.width = canvas.style.width;
+        if (overlay.style.height !== canvas.style.height) overlay.style.height = canvas.style.height;
         const k = m._k || 1;
         const def = m.stageDef() || {};
         const ring = (cls, cx, cy, rx, ry) => `<i class="${cls}" style="left:${(cx - rx) * k}px;top:${(cy - ry) * k}px;width:${rx * 2 * k}px;height:${ry * 2 * k}px"></i>`;
@@ -147,6 +150,7 @@ html.ui-mobile #directorMascotLab { top: auto; bottom: 46px; left: 4px; right: 4
         overlay = document.createElement('div');
         overlay.className = 'dml-overlay';
         drawOverlay();
+        // perf: allow the lab's hit-area overlay, only while the developer has it switched on; drawOverlay skips unseen and writes the rings only when they change
         overlayTimer = setInterval(drawOverlay, 400);
     }
 
