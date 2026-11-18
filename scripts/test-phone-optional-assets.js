@@ -266,10 +266,14 @@ function prefetchWorld(opts) {
 }
 
 // the page's hint, from the page
-function hintWorld({ mobile, pathname, type, bridge }) {
+function hintWorld({ mobile, pathname, type, bridge, asleep }) {
     const posts = [];
     const timers = [];
     const listeners = {};
+    const doc = {
+        cookie: '', hidden: false, documentElement: { dataset: asleep ? { screenOff: '' } : {} },
+        addEventListener: (ev, fn) => { listeners['doc:' + ev] = fn; }
+    };
     const conn = type === undefined ? undefined : { type, addEventListener: (ev, fn) => { listeners['conn:' + ev] = fn; } };
     const extra = {
         location: { protocol: 'https:', pathname },
@@ -277,12 +281,13 @@ function hintWorld({ mobile, pathname, type, bridge }) {
             connection: conn,
             serviceWorker: { controller: { postMessage: (m) => posts.push(m) }, addEventListener: (ev, fn) => { listeners['sw:' + ev] = fn; } }
         },
+        document: doc,
         setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
         addEventListener: (ev, fn) => { listeners['win:' + ev] = fn; },
         AndroidDeviceStatus: bridge ? { getState: () => JSON.stringify(bridge.state) } : undefined
     };
     const w2 = pageWorld(mobile ? { mobile: true, handheld: mobile !== 'narrow-desktop', version: 'wm61', tier: 1, pinned: [] } : { mobile: false, version: 'wm61', tier: 1, pinned: [] }, extra);
-    return { posts, timers, listeners, conn, w: w2 };
+    return { posts, timers, listeners, conn, doc, w: w2 };
 }
 
 (async () => {
@@ -315,6 +320,18 @@ function hintWorld({ mobile, pathname, type, bridge }) {
     w = prefetchWorld({ server: changed, digest: 'L2', internal: w.internal, cached: { [PHOTO]: have } });
     await w.api.runPhonePrefetch();
     assert.ok(w.calls.includes(`GET ${PHOTO} low`), 'a file whose hash changed is fetched again');
+
+    // a code update moves the core digest, the 'wifi' rows stay: the complete pass stands (no cache
+    // walk, nothing fetched) and the record takes the new digest (#890)
+    w = prefetchWorld({ server: changed, digest: 'L3', internal: w.internal, cached: {} });
+    await w.api.runPhonePrefetch();
+    assert.deepStrictEqual(w.calls, ['OPTIONS none L2'], 'same rows under a new digest: no pass');
+    const moved = JSON.parse(w.internal.get('/internal/sw-phone-optional-v1').b);
+    assert.strictEqual(moved.hash, 'L3', 'kept under the new digest');
+    assert.strictEqual(moved.complete, true, 'still complete');
+    w = prefetchWorld({ server: changed, digest: 'L3', internal: w.internal, cached: {} });
+    await w.api.runPhonePrefetch();
+    assert.deepStrictEqual(w.calls, ['OPTIONS none L3'], 'and the next check is a 304');
 
     // on cellular: nothing at all
     w = prefetchWorld({ server, digest: 'L1', type: 'cellular' });
@@ -382,6 +399,26 @@ function hintWorld({ mobile, pathname, type, bridge }) {
     assert.strictEqual(h.posts.length, 2, 'a status event with the same link sends nothing');
     h.listeners['win:androiddevicestatus']({ detail: { active: 'vpn', wifi: { connected: true } } });
     assert.deepStrictEqual(plain(h.posts[2]), { type: 'PHONE_PREFETCH', network: 'unmetered' }, 'a VPN on Wi-Fi');
+
+    // a page that is not seen holds its hint until it is seen again (#890): the screen off at the end of
+    // the boot, a change while off, then the screen on; behind an Android program the same
+    h = hintWorld({ mobile: true, pathname: '/app', type: 'wifi', asleep: true });
+    h.timers[0].fn();
+    assert.strictEqual(h.posts.length, 0, 'asleep at the end of the boot: nothing');
+    h.listeners['conn:change']();
+    assert.strictEqual(h.posts.length, 0, 'nor on a change while asleep');
+    delete h.doc.documentElement.dataset.screenOff;
+    h.listeners['win:melatonscreen']({ detail: { on: true } });
+    assert.deepStrictEqual(plain(h.posts), [{ type: 'PHONE_PREFETCH', network: 'unmetered' }], 'the held hint goes once the screen is on');
+    h.listeners['doc:visibilitychange']();
+    assert.strictEqual(h.posts.length, 1, 'nothing held, nothing sent');
+    h.doc.documentElement.dataset.wmBehind = '';
+    h.conn.type = 'cellular';
+    h.listeners['conn:change']();
+    assert.strictEqual(h.posts.length, 1, 'behind a program: held');
+    delete h.doc.documentElement.dataset.wmBehind;
+    h.listeners['doc:wmBehind']();
+    assert.deepStrictEqual(plain(h.posts[1]), { type: 'PHONE_PREFETCH', network: 'metered' }, 'sent when the page is in front again');
 
     // a desktop, or a phone's /launch: never
     h = hintWorld({ mobile: false, pathname: '/app', type: 'wifi' });
