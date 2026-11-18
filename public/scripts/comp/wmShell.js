@@ -3608,7 +3608,8 @@
      * Tray icons pixel for pixel (#735): 16 x --wm-px at a 2.25 density is 54 device px, a 1.69x
      * stretch of the 32 px art that made some art pixels 2 device px and others 1 (uneven strokes),
      * at fractional device positions. --wm-icon-unit is a whole multiple of the 2x art (Fold7: 2x,
-     * 64 device px) and snapStatusIcons nudges each icon onto the device pixel grid.
+     * 64 device px), never larger than the slot (16 x --wm-px), and snapStatusIcons nudges each icon
+     * onto the device pixel grid.
      */
     function syncIconUnit() {
         const dpr = window.devicePixelRatio || 1;
@@ -3617,8 +3618,13 @@
         // under 24 device px a whole 2x icon (32 px) would be up to twice its slot (a mouse-driven
         // window at one device px a unit: 16 px wanted, 32 drawn, the icons overflowing the bar):
         // the 1x art's own size where that is within a sixth, else the plain unit
-        let unit = `${(2 * Math.max(1, Math.round(want / 32))) / dpr}px`;
-        if (want < 24) unit = Math.abs(want - 16) / want < 1 / 6 ? `${1 / dpr}px` : '';
+        // never over the slot (Yukimi, Nov 17: the icons always looked oversized): the largest whole
+        // multiple that fits the 16-unit slot, rounded down - a round up drew them up to 1.5x the WM
+        // icon, eating the bar's 5-unit padding above and below. Where rounding down would lose over a
+        // quarter of the size (one step on a small screen), the slot's own size instead.
+        const steps = Math.floor(want / 32);
+        let unit = steps >= 1 && (steps * 32) / want >= 0.75 ? `${(2 * steps) / dpr}px` : '';
+        if (want < 24) unit = Math.abs(want - 16) / want < 1 / 6 && 16 <= want ? `${1 / dpr}px` : '';
         if (root.style.getPropertyValue('--wm-icon-unit') !== unit) {
             if (unit) root.style.setProperty('--wm-icon-unit', unit); else root.style.removeProperty('--wm-icon-unit');
         }
