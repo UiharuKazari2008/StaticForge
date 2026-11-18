@@ -4086,7 +4086,7 @@
         saveBezelCache({ edge, top: band, left, right, logo, model });
     }
 
-    function applyCameraHole(bar) {
+    function applyCameraHole(bar, opts) {
         syncBezel();
         const title = bar.querySelector('.wm-title');
         const status = bar.querySelector('.wm-status');
@@ -4155,6 +4155,8 @@
         }
         gap.style.width = `${hole.width + 2 * pad}px`;
         status.style.marginLeft = 'auto';
+        // the measured fit (fitStatusMeasured) only needs the camera's box in the bar; it splits the icons after
+        if (opts && opts.measureOnly) return { x: hole.left - pad - br.left, w: hole.width + 2 * pad };
         // what does not fit right of the camera moves left of it, keeping the order (first icons first).
         // The room ends where the X / ok and the bar's right padding begin: measured to the bar's edge it
         // took the X's 33 px for icons, so on Start (Fold7 inner screen, Nov 15) five icons "fitted" and
@@ -4224,8 +4226,95 @@
         try { const i = JSON.parse(D.getScreenInfo() || 'null'); return !!(i && i.foldable && i.screen === 'main'); } catch (_) { return false; }
     }
 
+    /**
+     * The status fit measured once (#907, Yukimi Nov 18 "go ahead"): the old fit stepped - each icon that stepped
+     * aside or folded laid the page out again (up to ten forced layouts, 350-500 ms on the A53 while Today's
+     * entrance ran after a return). Here every icon is measured once with all of them out, the shared rules
+     * (CafeTasks.lib.statusFit with the status-order.js table, the same the app's native bar uses) decide, and the
+     * result is written in one go; the camera split runs once after. false when the shared rules are not loaded
+     * (fitStatusNow then steps as before).
+     */
+    function fitStatusMeasured(bar) {
+        const lib = window.CafeTasks && window.CafeTasks.lib;
+        const fitLib = (lib && lib.statusFit) || STATUS_FIT;
+        if (!fitLib || typeof fitLib.fit !== 'function' || !statusTable()) return false;
+        applyCornerInset(bar);
+        const el = (r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
+        const status = bar.querySelector('.wm-status');
+        // everything out, the kept room off, the X / ok's place kept: the measure is of the full row
+        ['roaming', 'volume', 'battery', ...STATUS_APP_ROLES].forEach((r) => { const i = el(r); if (i) i.classList.remove('wm-shed'); });
+        bar.classList.remove('wm-status-full');
+        statusFolded = [];
+        paintNotifyIcon();
+        const reserve = shell.querySelector('.wm-status-reserve');
+        reserve.hidden = true;
+        const apps = STATUS_APP_ROLES.filter((r) => !el(r).hidden);
+        const now = Date.now();
+        apps.forEach((r) => { if (!statusSeenAt.has(r)) statusSeenAt.set(r, now); });
+        STATUS_APP_ROLES.forEach((r) => { if (el(r).hidden) statusSeenAt.delete(r); });
+        // the camera's gap in place (and the icons back right of it), its box in bar px; null without one in the bar
+        const hole = applyCameraHole(bar, { measureOnly: true }) || null;
+        // ---- the one measure
+        const br = bar.getBoundingClientRect();
+        const order = status._wmOrder || Array.from(status.querySelectorAll('.wm-status-icon'));
+        const icons = [];
+        let unitW = 0;
+        for (const i of order) {
+            if (i.hidden || i.dataset.role === 'notify' || !i.getClientRects().length) continue;
+            const w = i.getBoundingClientRect().width;
+            if (!unitW) unitW = w;
+            icons.push({ role: i.dataset.role, w, charging: i.dataset.role === 'battery' && i.dataset.icon === 'battery-charging' });
+        }
+        const scs = getComputedStyle(status);
+        const gap = parseFloat(scs.columnGap) || parseFloat(scs.gap) || 0;
+        const padNow = parseFloat(scs.paddingRight) || 0;
+        const iconsRight = status.getBoundingClientRect().right - br.left - padNow;
+        const title = bar.querySelector('.wm-title');
+        const titleX = title.getBoundingClientRect().left - br.left;
+        const titleMin = parseFloat(getComputedStyle(title).minWidth) || 0;
+        // the X / ok's kept place (no X / ok on this bar): what wm-status-full gives back (a style read, no layout)
+        const act = bar.querySelector('.wm-title-action');
+        let xReserve = 0;
+        if (!act || act.hidden) {
+            bar.classList.add('wm-status-full');
+            xReserve = Math.max(0, padNow - (parseFloat(getComputedStyle(status).paddingRight) || 0));
+            bar.classList.remove('wm-status-full');
+        }
+        let noCross = false;
+        try { noCross = localStorage.getItem('wmStatusNoCross') === '1'; } catch (_) { /* storage off */ }
+        const r = fitLib.fit({
+            icons,
+            notify: { w: unitW || 16 * rootPx(), notes: notesForBubbleIcon().length > 0 },
+            bar: { width: br.width, iconsRight, gap, titleX, titleMin, hole, xReserve },
+            prefs: { sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon') },
+            screen: { unfolded: unfoldedScreen(), noCross }
+        });
+        // ---- written in one go
+        (r.shed || []).forEach((role) => { const i = el(role); if (i) i.classList.add('wm-shed'); });
+        (r.folded || []).forEach((role) => { const i = el(role); if (i) i.classList.add('wm-shed'); });
+        statusFolded = (r.folded || []).slice();
+        if (r.reserveUsed) bar.classList.add('wm-status-full');
+        paintNotifyIcon();
+        if (hole) applyCameraHole(bar);
+        else if (!(parseFloat(root.style.getPropertyValue('--camera-hole-width')) || 0) && !statusFolded.length && !(r.shed || []).length && !r.reserveUsed && !unfoldedScreen()) {
+            // the kept room for notifications (#811), where there is room for it: one check
+            const used = apps.length + (el('notify').hidden ? 0 : 1);
+            const free = Math.max(0, statusSlots() - used);
+            if (free) {
+                reserve.hidden = false;
+                reserve.style.setProperty('--slots', String(free));
+                const fits = () => { let right = br.left; for (const c of bar.children) { if (!c.getClientRects().length) continue; right = Math.max(right, c.getBoundingClientRect().right); } return right <= bar.getBoundingClientRect().right + 1; };
+                if (!fits()) reserve.hidden = true;
+            }
+        }
+        return true;
+    }
+    // the shared fit, held from load like the table (the page's task runtime may replace window.CafeTasks later)
+    const STATUS_FIT = (window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusFit) || null;
+
     function fitStatusNow() {
         if (!shell) return;
+        if (fitStatusMeasured(shell.querySelector('.wm-titlebar'))) return;
         const bar = shell.querySelector('.wm-titlebar');
         applyCornerInset(bar);
         const el = (r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
