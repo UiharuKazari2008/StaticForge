@@ -141,6 +141,9 @@ function handle(carrier, message, connect) {
         if (old) { old._fromCarrier = true; old.close(1001, 'reopened'); subs.delete(sub); }
         if (subs.size >= MAX_SUBS) return true;
         const vws = new VirtualSocket(carrier, sub);
+        // a light sub-client (#908: the app's CaféReady task host, sub 'tasks'): signed in as the carrier, no
+        // page boot pushes, and of the broadcasts only the types it subscribed to (light_subscribe)
+        if (message.light) vws.light = true;
         subs.set(sub, vws);
         vws.once('close', () => { if (subs.get(sub) === vws) subs.delete(sub); });
         connect(vws, carrier._dsReq || { headers: {}, url: '/' });

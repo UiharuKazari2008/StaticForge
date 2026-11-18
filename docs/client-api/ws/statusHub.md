@@ -35,6 +35,15 @@ A subscriber also leaves on socket close or a failed send.
 `{ type: <feed pushType>, feed, changed: { key: value }, removed: [key], timestamp }` — sent only when
 an item differs from the last value sent; nothing while nothing changes.
 
+## `light_subscribe`
+
+`{ type: "light_subscribe", types: [type] }` -> `light_subscribe_response { types }`
+
+Only for a light socket: `?light=1` (the app's widgets and screen saver), or a light Miniport sub-client
+(`sub_open { light: 1 }`, the app's CaféReady task host, sub `tasks`, #908). Sets the broadcast types it
+hears (at most 64, lower-case names). Every other broadcast skips it. Replies to its own requests and statusHub
+feeds (`status_subscribe`) reach it as usual. Any other socket gets `NOT_LIGHT`.
+
 ## `client_boot_note` (fire-and-forget)
 
 `{ type: "client_boot_note", shell, entry: { desktopMs, nav, note: { reason, hidden, screenOff, from } | null } }`

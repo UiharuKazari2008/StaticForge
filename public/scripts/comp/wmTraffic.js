@@ -42,6 +42,16 @@
     const HOME_AFTER_MIN = 150; // the way home: the car stays this long past Leave Work (30 min + 2 h, Yukimi #809)
     const CAM_WATCH_M = 5 * 1609.344; // driving home: a camera this close ahead on the route puts the position on a live watch
     const CAM_ALERT_M = 1609.344; // ... and this close it is a notification with an alert sound, once per camera per drive
+    // the drive warnings' pure parts are the CaféReady task's (public/scripts/tasks/drive-alerts.js, #908): one source
+    // for the page and the app, which runs the task itself with the page asleep (rule cafeready-background)
+    const DriveLib = window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.drive;
+    // the app runs the drive-alerts task (DSApp CafeTasks): the page warns of nothing and watches no position, it only
+    // shows; read once (a synchronous bridge), again when the page shows and on a drive change
+    let appOwnsAlerts = false;
+    function readAppOwns() {
+        try { const T = window.AndroidTasks; appOwnsAlerts = !!(T && typeof T.owns === 'function' && T.owns('drive-alerts')); } catch (_) { appOwnsAlerts = false; }
+        return appOwnsAlerts;
+    }
     const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const LAYER_TITLES = { routes: 'Routes', traps: 'Speed Traps', alerts: 'Alerts', slow: 'Slowdowns', advisor: 'Leave Advisor', settings: 'Traffic Settings', item: 'Details' };
 
@@ -357,26 +367,8 @@
         return null;
     }
 
-    /** Where a point lies on a [[lat, lon], ...] line: { distM, alongM, totalM }. */
-    function onLine(line, p) {
-        const R = 6371008.8;
-        const rad = (d) => (d * Math.PI) / 180;
-        const kx = Math.cos(rad(p.lat)) * R * Math.PI / 180;
-        const ky = R * Math.PI / 180;
-        let cum = 0;
-        let best = { distM: Infinity, alongM: 0 };
-        for (let i = 0; i < line.length - 1; i++) {
-            const ax = (line[i][1] - p.lon) * kx; const ay = (line[i][0] - p.lat) * ky;
-            const bx = (line[i + 1][1] - p.lon) * kx; const by = (line[i + 1][0] - p.lat) * ky;
-            const dx = bx - ax; const dy = by - ay;
-            const len = Math.sqrt(dx * dx + dy * dy);
-            const t = len > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (len * len))) : 0;
-            const d = Math.hypot(ax + t * dx, ay + t * dy);
-            if (d < best.distM) best = { distM: d, alongM: cum + t * len };
-            cum += len;
-        }
-        return Object.assign(best, { totalM: cum });
-    }
+    /** Where a point lies on a [[lat, lon], ...] line: { distM, alongM, totalM } (the task's, #908). */
+    const onLine = (line, p) => DriveLib.onLine(line, p);
 
     /** The share of a route's drive time between fractions a and b, slow / jammed stretches weighted. */
     function timeShare(route, a, b) {
@@ -435,12 +427,7 @@
     // server), and at 1 mi each camera is a WM notification with the Warnings sound, once per drive.
 
     /** [{ trap, aheadM }] for cameras ahead within CAM_WATCH_M, nearest first; f = the phone's fraction along, totalM the route length. */
-    function camerasAhead(traps, f, totalM) {
-        if (!Array.isArray(traps) || !(totalM > 0)) return [];
-        return traps.map((t) => ({ trap: t, aheadM: (t.at - f) * totalM }))
-            .filter((c) => Number.isFinite(c.aheadM) && c.aheadM > 0 && c.aheadM <= CAM_WATCH_M)
-            .sort((a, b) => a.aheadM - b.aheadM);
-    }
+    const camerasAhead = (traps, f, totalM) => DriveLib.camerasAhead(traps, f, totalM, CAM_WATCH_M);
 
     const camKey = (t) => t.id || `${t.lat},${t.lon}`;
     /** What the drive warns of (#907): the cameras and the police (OSM zones, Waze's live reports), along the route. */
@@ -499,47 +486,7 @@
     const offRoute = { key: '', box: null, items: [], asking: false, failedAt: 0, last: new Map(), alerted: new Set() };
     // ---- pure parts (inputs in, results out; no DOM, socket or page state): the CaféReady drive-alerts task
     // (#908, rule cafeready-background) takes them as they are
-    const OffRoute = {
-        bearing(a, b) {
-            const r = Math.PI / 180;
-            const y = Math.sin((b.lon - a.lon) * r) * Math.cos(b.lat * r);
-            const x = Math.cos(a.lat * r) * Math.sin(b.lat * r) - Math.sin(a.lat * r) * Math.cos(b.lat * r) * Math.cos((b.lon - a.lon) * r);
-            return (Math.atan2(y, x) / r + 360) % 360;
-        },
-        distM(a, b) {
-            const r = (d) => (d * Math.PI) / 180;
-            const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lon - a.lon) / 2) ** 2;
-            return 12742000 * Math.asin(Math.min(1, Math.sqrt(h)));
-        },
-        /** Whether the fix needs the next area's list: none yet, or within marginDeg (~3 km) of the area's edge. */
-        needsArea(fix, box, marginDeg = 0.03) {
-            return !box || fix.lat < box.s + marginDeg || fix.lat > box.n - marginDeg || fix.lon < box.w + marginDeg || fix.lon > box.e - marginDeg;
-        },
-        /**
-         * The items to warn of now: within alertM and ahead of the car (its heading within 60 degrees when moving
-         * faster than 2 m/s, else getting closer than at the last fix). fix { lat, lon, heading?, speed? };
-         * items [{ id, lat, lon, line?: [[lat, lon]] }]; alerted: Set of ids warned this drive; last: Map id ->
-         * metres at the last fix (read only). -> { alerts: [{ item, distM }], last: Map (the new distances) }.
-         */
-        ahead(fix, items, alerted, last, alertM) {
-            const heading = Number.isFinite(fix.heading) && (fix.speed || 0) > 2 ? fix.heading : null;
-            const next = new Map();
-            const alerts = [];
-            (items || []).forEach((t) => {
-                const id = t.id || `${t.lat},${t.lon}`;
-                if (alerted.has(id)) return;
-                const pts = Array.isArray(t.line) && t.line.length ? t.line.map(([lat, lon]) => ({ lat, lon })) : [t];
-                let near = null; let dM = Infinity;
-                pts.forEach((p) => { const d = OffRoute.distM(fix, p); if (d < dM) { dM = d; near = p; } });
-                const before = last.get(id);
-                if (dM <= alertM * 2) next.set(id, dM);
-                if (dM > alertM) return;
-                const isAhead = heading != null ? Math.abs(((OffRoute.bearing(fix, near) - heading + 540) % 360) - 180) <= 60 : (before != null && dM < before - 20);
-                if (isAhead) alerts.push({ item: t, distM: dM });
-            });
-            return { alerts, last: next };
-        }
-    };
+    const OffRoute = DriveLib;
     /** The page's side: ask for the area when needed, then warn (the pure parts above decide). */
     function warnOffRoute() {
         if (!here || here.source !== 'device') return;
@@ -562,6 +509,8 @@
     let camFixAt = 0;
 
     function watchCameras() {
+        // the app warns (its drive-alerts task, from its own drive state and positions): the page only shows the drive
+        if (appOwnsAlerts) { stopCamWatch(); syncPoliceWatch(); return; }
         const dv = driving();
         const r = dv ? latest[dv.direction] : null;
         syncPoliceWatch();
@@ -643,6 +592,7 @@
 
     /** In the way-home window: hand the app the plan once per drive and report (it ends itself at Home or the window's end). */
     function armNativeWatch() {
+        if (appOwnsAlerts) return;
         const b = nativeBridge();
         if (!b || !canUse() || !loaded || !configured() || document.hidden) return;
         let win = driveWindow();
@@ -697,8 +647,7 @@
      * Speed camera, TrafficCamera.wav) with the camera glyph.
      */
     function cameraNote(t, aheadM) {
-        const title = `${t.label || 'Speed camera'} ahead`;
-        const text = `${miles(aheadM)} ahead${t.street ? ` on ${t.street}` : ''}.${t.maxspeed ? ` Limit ${t.maxspeed}.` : ''}${t.count > 1 ? ` ${t.count} cameras.` : ''}`;
+        const { title, text } = DriveLib.alertText(t, aheadM);
         const D = window.AndroidDriveWatch;
         if (document.visibilityState !== 'visible' && D && typeof D.alert === 'function') {
             let posted = false;
@@ -1506,6 +1455,7 @@
             if (st === 'driving' && !nativeDriveSince) nativeDriveSince = Date.now();
             if (st && st !== 'driving' && st !== 'maybe') nativeDriveSince = 0;
             if (st === 'driving') readPosition(true);
+            readAppOwns();
             armNativeWatch();
             watchCameras();
             changed();
@@ -1821,6 +1771,7 @@
         // watch tried again now that the app is in front
         const back = () => {
             if (!seenNow()) return;
+            readAppOwns();
             minuteTick();
             if (renderStale && shown && seenNow(page)) render();
         };
@@ -1832,6 +1783,8 @@
     function register() {
         ws = window.wmShell;
         if (!ws) return;
+        readAppOwns();
+        if (!DriveLib) console.warn('[traffic] the drive-alerts task files did not load: no camera warnings on the page');
         // the app's drive watch: what it alerted while the page was paused (#810)
         window.addEventListener('dreamscape:drivewatch', (e) => { nativeStatus(e.detail); nativeKnown = true; }, { signal: appScopeSignal });
         // pushes may have been skipped while the page was frozen or asleep: read once again after it
