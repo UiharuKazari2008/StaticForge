@@ -1530,7 +1530,10 @@
      * starts. The Android app calls it as Melaton goes behind another program (before the WebView is
      * paused); the screen going off does too. The next entrance, or Today being shown, clears it.
      */
-    function prime() {
+    function prime(opts) {
+        // a program started from the Start menu: Start closes as the program comes up, as on Windows Mobile, so the
+        // way back is Today's entrance, not a moment of the Start menu first (Yukimi, Nov 18)
+        if (!(opts && opts.screenOff) && root.dataset.wmApp === 'start' && sh && typeof sh.back === 'function') { try { sh.back({ app: true }); } catch (_) { /* stays */ } }
         if (!host || host.hidden || root.dataset.wmApp !== 'today') return false;
         host.classList.add('is-primed');
         primedAt = Date.now();
@@ -2474,7 +2477,8 @@
     let lastApp = root.dataset.wmApp || '';
     new MutationObserver(() => {
         const now = root.dataset.wmApp || '';
-        if (now === 'today' && lastApp && lastApp !== 'today') requestAnimationFrame(entrance);
+        // (not for a Today readied for the way back: prime() closing Start under a program; it plays on the return)
+        if (now === 'today' && lastApp && lastApp !== 'today') requestAnimationFrame(() => { if (!host || !host.classList.contains('is-primed')) entrance(); });
         if (now !== 'today' && host) host.classList.remove('is-exiting');
         // another program came up: the Super Bar is put away at once (Today comes back without it)
         if (now !== 'today' && superOpen) closeSuper(true);
@@ -2488,7 +2492,7 @@
         // the screen going off on Today readies the entrance for the unlock; on, it plays (the lock
         // screen, when there is one, comes first and the entrance runs as Today shows)
         const on = !!(e && e.detail && e.detail.on);
-        if (!on) prime();
+        if (!on) prime({ screenOff: true });
         else if (host && host.classList.contains('is-primed')) requestAnimationFrame(() => { if (root.dataset.wmApp === 'today' && document.visibilityState === 'visible') entrance(); else unprime(); });
     });
     // a readied Today that comes back on screen with no entrance on its way is never left without its
