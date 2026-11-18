@@ -50,4 +50,13 @@ a = send('native', { carKey: false });
 a = send('push', { type: 'status.snapshot', data: { full: false, fields: { traffic: { days: [now.getDay()], leaveWork: hh(now), leaveHome: '' } } } });
 assert.strictEqual(out(a).roles.carkey, true);
 assert.ok(a.some((x) => x.op === 'timer' && x.ms > 0), 'a timer for the window\'s end');
+// the page asleep: with the shared fit (CafeTasks.lib.statusFit) and the app's layout, the output carries the fit
+let seen = null;
+g.CafeTasks.lib.statusFit = { fit: (input) => { seen = input; return { right: input.icons.map((i) => i.role), left: [], folded: [] }; } };
+a = send('layout', { geo: { iconsRight: 1000, titleX: 100, titleMin: 200, gap: 4, icon: 54, holeX: 500, holeR: 560 }, widths: { sms: 54 }, native: ['battery'], order: ['mail', 'sms', 'director'] });
+const fit = out(a).fit;
+assert.ok(fit && fit.right.includes('sms') && fit.right.includes('battery'), 'the fit is in the output');
+assert.strictEqual(seen.roomRight, 440);
+assert.strictEqual(seen.roomLeft, 200);
+assert.ok(seen.icons.find((i) => i.role === 'battery').foldable === false);
 console.log('test-cafe-status-bar: ok');
