@@ -7620,19 +7620,25 @@ class WebSocketClient {
 
             // Handle timer-based progress for certain phases
             if (data.phase === 'starting' && !progressState.timer) {
-                // Start timer for 0-15% progress (1% per second)
+                // Start timer for 0-15% progress (1% per second), from the time gone by: drawn only while
+                // the page is seen, and where it would be when it shows again (#890)
                 progressState.progress = 0;
+                const startingAt = Date.now();
                 progressState.timer = setInterval(() => {
-                    progressState.progress = Math.min(progressState.progress + 1, 15);
+                    progressState.progress = Math.min(Math.round((Date.now() - startingAt) / 1000), 15);
+                    if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
                     if ((!galleryRerollActive || isRerollProgress) && typeof updateGlassToastProgress === 'function' && progressToastId) {
                         updateGlassToastProgress(progressToastId, progressState.progress);
                     }
                 }, 1000);
             } else if (data.phase === 'upscaling' && !progressState.timer) {
-                // Start timer for 76-95% progress (1% per second)
+                // Start timer for 76-95% progress (1% per second), from the time gone by: drawn only while
+                // the page is seen (#890)
                 progressState.progress = 76;
+                const upscalingAt = Date.now();
                 progressState.timer = setInterval(() => {
-                    progressState.progress = Math.min(progressState.progress + 1, 95);
+                    progressState.progress = Math.min(76 + Math.round((Date.now() - upscalingAt) / 1000), 95);
+                    if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
                     if ((!galleryRerollActive || isRerollProgress) && typeof updateGlassToastProgress === 'function' && progressToastId) {
                         updateGlassToastProgress(progressToastId, progressState.progress);
                     }
@@ -7659,12 +7665,16 @@ class WebSocketClient {
                     ? getGenerationStatusMessage(data)
                     : 'Processing...';
                 if ((data.phase === 'stage_delay' || data.phase === 'queued') && data.delayMs && !progressState.delayTimer) {
-                    let remainingSeconds = Math.ceil(data.delayMs / 1000);
+                    const delaySeconds = Math.ceil(data.delayMs / 1000);
+                    const delayAt = Date.now();
                     const delayLabel = data.phase === 'queued' ? 'Queued' : 'Stage delay';
                     progressState.delayTimer = setInterval(() => {
-                        remainingSeconds--;
+                        // counted from the time gone by; written only while the page is seen (#890)
+                        const remainingSeconds = delaySeconds - Math.round((Date.now() - delayAt) / 1000);
                         if (remainingSeconds > 0) {
-                            updateGlassToastMessage(progressToastId, `${delayLabel}: ${remainingSeconds}s remaining`);
+                            if (!document.hidden && document.documentElement.dataset.screenOff === undefined) {
+                                updateGlassToastMessage(progressToastId, `${delayLabel}: ${remainingSeconds}s remaining`);
+                            }
                         } else {
                             clearInterval(progressState.delayTimer);
                             progressState.delayTimer = null;
@@ -8946,6 +8956,7 @@ class WebSocketClient {
         }
 
         // Start periodic pings
+        // perf: allow the link's own heartbeat: off on a sleeping phone (_onPhoneSleepChange), never over the Miniport or a DeX window's shared link; a desktop keeps it while hidden so a dead link is found and its notifications keep arriving
         this.heartbeatInterval = setInterval(() => {
             if (this.isConnected()) {
                 // Send ping and measure RTT (don't wait for response)
@@ -9001,9 +9012,19 @@ class WebSocketClient {
         // a phone out of sight or with its screen off does not count idle time (#890): it starts again
         // when the page comes back (_onPhoneSleepChange)
         if (this._phoneAsleep()) return;
-        this.inactivityCheckInterval = setInterval(() => {
-            this._checkInactivity();
-        }, 30000); // Check every 30 seconds
+        // One timer for when the idle time would run out, re-armed from the last activity then, instead
+        // of a check every 30 seconds for the life of the page (#890). It holds the same id field (other
+        // code clears it with clearInterval, which clears a timeout too). An inactivity disconnect stops
+        // it; the reconnect on the person's return starts it again (_onUserActivity).
+        const arm = () => {
+            const left = WebSocketClient.TIMEOUT_INACTIVITY - (Date.now() - this.lastUserActivity);
+            this.inactivityCheckInterval = setTimeout(() => {
+                this.inactivityCheckInterval = null;
+                this._checkInactivity();
+                if (!this.disconnectedDueToInactivity && !this._phoneAsleep() && !this.inactivityCheckInterval) arm();
+            }, Math.max(30000, left));
+        };
+        arm();
     }
 
     /** Melaton Mobile out of sight: the page hidden, or the phone's screen off (html[data-screen-off], melatonscreen). */
@@ -9057,6 +9078,8 @@ class WebSocketClient {
             if (!this.isConnected() && !this.isConnecting && !this.connectionLock) {
                 this.connect();
             }
+            // the idle timer stopped at the disconnect: from now again
+            if (this._inactivityListenersAttached && !this.inactivityCheckInterval) this._startInactivityCheck();
             return;
         }
 

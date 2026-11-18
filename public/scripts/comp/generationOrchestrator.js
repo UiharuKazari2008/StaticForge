@@ -236,11 +236,12 @@ async function generateImage(event = null) {
             progressToastId = showGlassToast('info', 'Generating Image', 'Generating image...', true, false, '<i class="nai-sparkles"></i>');
         }
 
-        // Start progress animation (1% per second)
-        let progress = 0;
+        // Start progress animation (1% per second), from the time gone by: drawn only while the page is
+        // seen, and where it would be when it shows again (#890)
+        const progressStarted = Date.now();
         progressInterval = setInterval(() => {
-            progress += 1;
-            updateGlassToastProgress(progressToastId, progress);
+            if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+            updateGlassToastProgress(progressToastId, Math.round((Date.now() - progressStarted) / 1000));
         }, 1000);
     } else {
         // Use existing modal loading overlay when in modal

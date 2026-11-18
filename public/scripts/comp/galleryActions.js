@@ -252,11 +252,12 @@ async function upscaleImage(image, event = null) {
             progressToastId = showGlassToast('info', 'Upscaling Image', 'Upscaling image...', true, false, '<i class="nai-upscale"></i>');
         }
 
-        // Start progress animation (1% per second)
-        let progress = 0;
+        // Start progress animation (1% per second), from the time gone by: drawn only while the page is
+        // seen, and where it would be when it shows again (#890)
+        const progressStarted = Date.now();
         progressInterval = setInterval(() => {
-            progress += 1;
-            updateGlassToastProgress(progressToastId, progress);
+            if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+            updateGlassToastProgress(progressToastId, Math.round((Date.now() - progressStarted) / 1000));
         }, 1000);
     }
     if (isInModal) {
