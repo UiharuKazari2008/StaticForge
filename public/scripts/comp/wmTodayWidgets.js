@@ -2279,7 +2279,7 @@
             if (!sh) return;
             const ids = ['date'].concat(isOff('weather') ? [] : ['weather']);
             if (typeof sh.refreshTodayItem === 'function') sh.refreshTodayItem(ids);
-        });
+        }, { signal: appScopeSignal });
         // Today shown, or the screen coming on with it: what is read "on show" (#890) is read now - the server's
         // state and load, and the Director sessions older than SESSIONS_MS
         const shown = (drawn) => {
@@ -2292,15 +2292,28 @@
         document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake && sh.current === 'today') shown(false); }, { signal: appScopeSignal });
         // the link back, or the service's own state moved (restarting, connected): the server item reads again
         window.addEventListener('nightshade:state', () => serverWanted(), { signal: appScopeSignal });
-        // the Weather app refreshes data older than 15 min only when asked (wmWeather.current(); its own poll
-        // runs only while its program shows): Today asks on the shell's minute while it shows the weather, as
-        // the minute's full draw did (#890). 6.5's clock asks too (buildPanels); current() asks at most once a
-        // minute, and what lands comes back as wmWeatherChange above
+        // While Today shows the weather (the item, or 6.5's clock, which carries it) the Weather app's place
+        // is watched: the server pushes its changes (wmWeather.view, #890 W1). Off when Today goes, the screen
+        // goes off or the page goes behind an Android program
+        const weatherView = () => {
+            const W = window.wmWeather;
+            if (!W || typeof W.view !== 'function') return;
+            try { W.view('today', todayOnScreen() && (!isOff('weather') || sh.version === '6.5')); } catch (_) { /* not loaded */ }
+        };
+        document.addEventListener('wmAppChange', weatherView, { signal: appScopeSignal });
+        document.addEventListener('wmawake', weatherView, { signal: appScopeSignal });
+        // a server without the push: the Weather app refreshes data older than 15 min only when asked
+        // (wmWeather.current(); its own poll runs only while its program shows), so Today asks on the shell's
+        // minute while it shows the weather, as the minute's full draw did (#890). 6.5's clock asks too
+        // (buildPanels); current() asks at most once a minute and not for a watched place, and what lands
+        // comes back as wmWeatherChange above
         document.addEventListener('wmminute', () => {
+            weatherView(); // (also follows the item switched on or off in Settings)
             if (!todayOnScreen() || isOff('weather')) return;
             const W = window.wmWeather;
             if (W && typeof W.current === 'function') { try { W.current(); } catch (_) { /* not loaded */ } }
         }, { signal: appScopeSignal });
+        weatherView();
         // order: Tasks, Calendar, Accounts (wmAccounts.js, after 'calendar'), Director, Studio,
         // Daily usage, Weather, Notes, Remote Desktop, Server status. defaultOn: false = off until
         // switched on in Settings > Today > Items (when the shell honours it)
