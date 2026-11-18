@@ -1565,7 +1565,32 @@
         if (!host) return;
         host.classList.remove('is-primed');
         primedAt = 0;
+        // no entrance after all: what waited for it runs now
+        if (!host.classList.contains('is-entering')) flushAfterEntrance();
     }
+
+    // ---- the work a wake brings (Today's widgets, hubs, a sync) waits for the return's entrance (Yukimi, Nov 18: the return
+    // home instant, with its animation): run while the list rose, each one restyled the whole shell in the entrance's frames
+    // (A53 trace: 9-37 ms style recalcs a frame, the 550 ms run took 1.1 s). Queued while Today is readied for a return or
+    // its entrance runs, run as the clock panel has grown in; at once otherwise; never held more than AFTER_MAX_MS
+    const AFTER_MAX_MS = 2500;
+    const afterQueue = [];
+    let afterTimer = 0;
+    function entrancePending() {
+        return !!host && !host.hidden && root.dataset.wmApp === 'today' && (host.classList.contains('is-primed') || host.classList.contains('is-entering') || host.classList.contains('is-zoom-enter'));
+    }
+    function flushAfterEntrance() {
+        clearTimeout(afterTimer);
+        afterTimer = 0;
+        const q = afterQueue.splice(0);
+        for (const fn of q) { try { fn(); } catch (err) { console.warn('[wmTitanium] after entrance', err); } }
+    }
+    window.wmAfterEntrance = (fn) => {
+        if (typeof fn !== 'function') return;
+        if (!entrancePending()) { fn(); return; }
+        afterQueue.push(fn);
+        if (!afterTimer) afterTimer = setTimeout(flushAfterEntrance, AFTER_MAX_MS);
+    };
 
     /** The glass catches the light as the list lands. */
     function catchLight() {
@@ -2107,7 +2132,10 @@
         host.classList.add(entering ? 'is-zoom-enter' : 'is-zoom');
         zoomTimer = setTimeout(() => {
             zoomTimer = 0;
+            const wasEnter = host.classList.contains('is-zoom-enter');
             host.classList.remove('is-zoom', 'is-zoom-enter');
+            // the entrance is over: the wake's work runs now (wmAfterEntrance), after this frame's own writes
+            if (wasEnter) requestAnimationFrame(() => flushAfterEntrance());
             skSel = sel;
             sh.refreshSoftKeys();
             if (open) openSelected();

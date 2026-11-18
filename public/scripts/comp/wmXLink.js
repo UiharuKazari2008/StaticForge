@@ -233,7 +233,11 @@
             ws.on('connected', () => { hubOn = false; void syncHub(); }, { signal: appScopeSignal });
         }
         document.addEventListener('wmAppChange', () => { void syncHub(); }, { signal: appScopeSignal });
-        document.addEventListener('visibilitychange', () => { void syncHub(); }, { signal: appScopeSignal });
+        // back in front: after the return's entrance (its hub repaint restyled the shell mid-rise, wmAfterEntrance)
+        document.addEventListener('visibilitychange', () => {
+            const run = () => { void syncHub(); };
+            if (document.visibilityState === 'visible' && typeof window.wmAfterEntrance === 'function') window.wmAfterEntrance(run); else run();
+        }, { signal: appScopeSignal });
         window.addEventListener('melatonscreen', () => { void syncHub(); }, { signal: appScopeSignal });
     }
 
