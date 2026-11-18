@@ -304,6 +304,13 @@ class ServiceWorkerManager {
         this._bootOrchestrating = false;
         this._loginBootOrchestrating = false;
         this._bootCompleteResolvers = [];
+        // featureLoader's ?sha= map (hashForStaticPath, #890)
+        this._staticHashByPath = null;
+        this._staticHashBuild = null;
+        this._staticHashGen = 0;
+        this._staticHashSeq = 0;
+        this._staticHashLive = new Map();
+        this._staticHashSnapshotStale = false;
         this._loginBootCompleteResolvers = [];
         this._pendingCacheUpdateQueue = [];
         this._swMessageListenerAttached = false;
@@ -843,22 +850,83 @@ class ServiceWorkerManager {
         throw new Error('Server did not become ready in time');
     }
 
-    // REVIEW (#533): full fetch; the conditional (X-Manifest-Hash) path answers [] on 304.
+    /**
+     * The manifest hash of a static file, for featureLoader's ?sha= URLs. One map per page, built
+     * once (#890): concurrent callers share the build (the after-paint batch asked 5 at once, and
+     * each fetched the whole ~1.3 MB list), and the build reads the stored list under the synced
+     * digest (the one the boot check proves or replaces) before it asks the server for the list.
+     * Live updates patch it with their { url, hash } rows instead of dropping it.
+     */
     async hashForStaticPath(pathname) {
         const path = normalizeStaticFilePath(pathname);
         if (!this._staticHashByPath) {
-            const manifest = await this._fetchManifest({ full: true });
-            const map = new Map();
-            if (Array.isArray(manifest)) {
-                for (let i = 0; i < manifest.length; i++) {
-                    const file = manifest[i];
-                    if (!file || !file.url || !file.hash) continue;
-                    map.set(normalizeStaticFilePath(file.url), file.hash);
-                }
+            if (!this._staticHashBuild) {
+                const gen = this._staticHashGen;
+                this._staticHashBuild = this._buildStaticHashMap().then((map) => {
+                    // dropped again while it was built (a live update without hashes): the next call rebuilds
+                    if (gen === this._staticHashGen) this._staticHashByPath = map;
+                    return map;
+                }).finally(() => { this._staticHashBuild = null; });
             }
-            this._staticHashByPath = map;
+            const built = await this._staticHashBuild;
+            return (this._staticHashByPath || built).get(path) || null;
         }
         return this._staticHashByPath.get(path) || null;
+    }
+
+    async _buildStaticHashMap() {
+        const fromSeq = this._staticHashSeq;
+        let rows = null;
+        let fromSnapshot = false;
+        // agent tabs clear their caches at start: they ask the server, as before
+        if (!this.agentSession && !this._staticHashSnapshotStale) {
+            try { rows = await this._readManifestSnapshot(); } catch (_) { rows = null; }
+            fromSnapshot = Array.isArray(rows) && rows.length > 0;
+        }
+        if (!fromSnapshot) {
+            // the conditional (X-Manifest-Hash) path answers [] on 304: this needs the list itself
+            rows = (await this._fetchManifestResult({ full: true })).rows;
+        }
+        const map = new Map();
+        if (Array.isArray(rows)) {
+            for (let i = 0; i < rows.length; i++) {
+                const file = rows[i];
+                if (!file || !file.url || !file.hash) continue;
+                map.set(normalizeStaticFilePath(file.url), file.hash);
+            }
+        }
+        // live updates since this page loaded (the stored list predates all of them; a server list
+        // fetched before one landed predates that one)
+        this._staticHashLive.forEach((entry, key) => {
+            if (fromSnapshot || entry.seq > fromSeq) map.set(key, entry.hash);
+        });
+        return map;
+    }
+
+    /**
+     * A live update landed in the cache: its rows patch the hash map. A row without a hash (or no
+     * rows) drops the map and the stored list as a source, so the next lookup asks the server.
+     */
+    _noteStaticHashUpdate(files) {
+        const list = Array.isArray(files) ? files : [];
+        let complete = list.length > 0;
+        for (const f of list) {
+            const url = typeof f === 'string' ? f : (f && f.url);
+            const hash = f && typeof f === 'object' ? f.hash : null;
+            if (!url) continue;
+            if (!hash) { complete = false; continue; }
+            const key = normalizeStaticFilePath(url);
+            this._staticHashSeq += 1;
+            this._staticHashLive.set(key, { hash, seq: this._staticHashSeq });
+            if (this._staticHashByPath) this._staticHashByPath.set(key, hash);
+        }
+        if (!complete) this._dropStaticHashMap(true);
+    }
+
+    _dropStaticHashMap(serverOnly) {
+        this._staticHashByPath = null;
+        this._staticHashGen += 1;
+        if (serverOnly) this._staticHashSnapshotStale = true;
     }
 
     /**
@@ -982,12 +1050,15 @@ class ServiceWorkerManager {
         }
     }
 
-    async _fetchManifest(options) {
+    /**
+     * The file list without touching the shared boot fields (#890): { rows, outcome: 'unchanged' |
+     * 'compiling' | 'failed' | 'list', hash (only for a 304 or an answered list), ok, error }.
+     * Not full: sends the synced digest, so an unchanged manifest is a bodyless 304.
+     */
+    async _fetchManifestResult(options) {
         const full = !!(options && options.full === true);
-        if (!full) this._fetchedManifestHash = '';
-        this._manifestOutcome = 'failed';
+        const known = full ? '' : this._readSyncedManifestHash();
         try {
-            const known = full ? '' : this._readSyncedManifestHash();
             const headers = {
                 'X-Service-Worker-Version': '2.0',
                 'X-Requested-With': 'ServiceWorker'
@@ -1003,28 +1074,34 @@ class ServiceWorkerManager {
             this._noteBroadcastHash(response);
             if (response.status === 304) {
                 // Same digest. The cache still has to be checked against the stored file list.
-                this._manifestOutcome = 'unchanged';
-                this._fetchedManifestHash = known;
-                return [];
+                return { rows: [], outcome: 'unchanged', hash: known, ok: true };
             }
             if (response.status === 503) {
                 // Runtime compile has not published a manifest yet. Not an empty cache.
-                this._manifestOutcome = 'compiling';
-                return [];
+                return { rows: [], outcome: 'compiling', ok: false };
             }
             if (!response.ok) {
-                this._manifestOutcome = 'failed';
-                return [];
+                return { rows: [], outcome: 'failed', ok: false };
             }
-            this._fetchedManifestHash = (response.headers && response.headers.get && response.headers.get('X-Manifest-Hash')) || '';
+            const hash = (response.headers && response.headers.get && response.headers.get('X-Manifest-Hash')) || '';
             const manifest = await response.json();
-            this._manifestOutcome = Array.isArray(manifest) && manifest.length ? 'list' : 'failed';
-            return Array.isArray(manifest) ? manifest : [];
+            const rows = Array.isArray(manifest) ? manifest : [];
+            return { rows, outcome: rows.length ? 'list' : 'failed', hash, ok: true };
         } catch (error) {
             console.warn('Manifest fetch failed or timed out:', error);
-            this._manifestOutcome = 'failed';
-            return [];
+            return { rows: [], outcome: 'failed', ok: false, error };
         }
+    }
+
+    // The boot loop reads _manifestOutcome / _fetchedManifestHash after each call.
+    async _fetchManifest(options) {
+        const full = !!(options && options.full === true);
+        if (!full) this._fetchedManifestHash = '';
+        this._manifestOutcome = 'failed';
+        const result = await this._fetchManifestResult(options);
+        this._manifestOutcome = result.outcome;
+        if (typeof result.hash === 'string') this._fetchedManifestHash = result.hash;
+        return result.rows;
     }
 
     _flushPendingCacheUpdates() {
@@ -2009,20 +2086,17 @@ class ServiceWorkerManager {
                 return; // Don't start a new check
             }
             
-            // Make the actual request
-            const response = await fetch('/', {
-                method: 'OPTIONS',
-                headers: {
-                    'X-Service-Worker-Version': '2.0',
-                    'X-Requested-With': 'ServiceWorker'
-                }
-            });
-            this._noteBroadcastHash(response);
-
-            if (response.ok) {
-                const files = await response.json();
+            // Make the actual request. It sends the digest this cache was last found in sync with
+            // (#890): unchanged, the server answers a bodyless 304 instead of the whole list (~1.3 MB
+            // JSON) that every boot's quiet check downloaded seconds after the boot check's own 304.
+            const result = await this._fetchManifestResult();
+            if (result.error) throw result.error;
+            if (result.outcome === 'unchanged') {
                 this._recordUpdateCheck();
-                await this.updateStaticCache(files, noToast);
+                await this._staticFilesUnchanged(noToast, swState);
+            } else if (result.ok) {
+                this._recordUpdateCheck();
+                await this.updateStaticCache(result.rows, noToast);
             }
         } catch (error) {
             console.error('Failed to check static file updates:', error);
@@ -2032,6 +2106,52 @@ class ServiceWorkerManager {
         }
     }
     
+    /**
+     * The server's file list is the stored one (a 304 on the synced digest). A check someone asked
+     * for runs on the stored list as before (its toasts, the cache walk). A quiet check only looks
+     * for files this page runs older copies of (#815: the background updater filled the cache while
+     * the window was paused); the boot check samples the cache and the daily pass walks all of it.
+     */
+    async _staticFilesUnchanged(noToast, swState) {
+        let stored = null;
+        try { stored = await this._readManifestSnapshot(); } catch (_) { stored = null; }
+        if (!Array.isArray(stored) || !stored.length) {
+            // no stored list to compare with: take the list itself
+            const full = await this._fetchManifestResult({ full: true });
+            if (full.error) throw full.error;
+            if (full.ok) await this.updateStaticCache(full.rows, noToast);
+            return;
+        }
+        // asked for, no worker, or a download running (its progress, stall and service pack checks)
+        if (!noToast || !this.swRegistration || !this.swRegistration.active
+            || this.isUpdating || (swState && swState.isDownloading)) {
+            await this.updateStaticCache(stored, noToast);
+            return;
+        }
+        let files = stored;
+        if (window.melatonPackages && typeof window.melatonPackages.filterRows === 'function') {
+            files = window.melatonPackages.filterRows(files);
+            if (!files.length) return;
+        }
+        const loadedStale = this.pendingUpdateFuse ? [] : this._filesNewerThanLoaded(files);
+        if (loadedStale.length) {
+            this.servicePack = null;
+            if (this.checkingToastId && typeof removeGlassToast === 'function') {
+                removeGlassToast(this.checkingToastId);
+                this.checkingToastId = null;
+            }
+            console.log(`${loadedStale.length} file(s) already updated in the cache; this page runs older copies`);
+            this._processStaticCacheComplete({ files: loadedStale, updatedFiles: loadedStale, completed: loadedStale.length, total: loadedStale.length, silent: noToast });
+            return;
+        }
+        this.servicePack = null;
+        if (this.checkingToastId && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.checkingToastId);
+            this.checkingToastId = null;
+        }
+        console.log('No application updates found');
+    }
+
     async checkDownloadState() {
         if (!this.swRegistration || !this.swRegistration.active) {
             return null;
@@ -2611,7 +2731,7 @@ class ServiceWorkerManager {
     async applySegmentUpdate(files, options = {}) {
         const used = this.filesUsedByPage(files);
         const { features } = this.splitHotFeatureFiles(used);
-        this._staticHashByPath = null;
+        this._noteStaticHashUpdate(files);
         await this.applyStaticCacheUpdate(files, { silent: true, fromPhone: options.fromPhone });
         const results = {};
         // a feature swapped as another's dependent (featureLoader cascades) is not swapped twice
@@ -2807,7 +2927,7 @@ class ServiceWorkerManager {
         console.log('Static cache update classified:', updateKind, updatedFiles);
         // nothing this page runs changed (#872): the new copies are in the cache for the next load
         if (updateKind === 'unused') {
-            this._staticHashByPath = null;
+            this._noteStaticHashUpdate(updatedFiles);
             updatedFiles.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this.pendingUpdateUrls.delete(u); });
             this.applyStaticCacheUpdate(updatedFiles, { silent: true });
             return;
@@ -5124,6 +5244,8 @@ class ServiceWorkerManager {
                     // Proven against the real file list. The next boot may send the digest.
                     await this._writeManifestSnapshot(manifest, this._fetchedManifestHash);
                     this._writeSyncedManifestHash(this._fetchedManifestHash);
+                    // a ?sha= map built from the list stored before this check is rebuilt from this one
+                    this._dropStaticHashMap(false);
                     break;
                 }
 

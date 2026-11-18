@@ -103,6 +103,7 @@ function loadSwMethods() {
         'ensureBootComplete',
         '_resolveBootComplete',
         '_fetchManifest',
+        '_fetchManifestResult',
         'waitForServiceWorkerReady',
         '_wireServiceWorkerRegistration',
         '_attachLateServiceWorkerRegistration',
@@ -319,6 +320,142 @@ function testNoFatalRegisterDiscard(src) {
     assert.ok(src.includes('location.replace(\'/launch\')'), 'large /app updates reboot to /launch');
 }
 
+// featureLoader's ?sha= map (#890): one build for concurrent callers, from the stored list under the
+// synced digest when there is one, patched by live updates
+function loadStaticHashMethods(src) {
+    const proto = {};
+    for (const name of ['hashForStaticPath', '_buildStaticHashMap', '_noteStaticHashUpdate', '_dropStaticHashMap',
+        '_fetchManifestResult', 'checkStaticFileUpdates', '_staticFilesUnchanged']) {
+        bindMethod(proto, src, name);
+    }
+    const top = extractClassMethod(src.replace('\nfunction normalizeStaticFilePath(', '\n    normalizeStaticFilePath('), 'normalizeStaticFilePath');
+    global.PLAIN_STATIC_PATH = new Function(`return ${/^const PLAIN_STATIC_PATH = ([^;]+);/m.exec(src)[1]}`)();
+    global.normalizeStaticFilePath = new Function(`return function ${top}`)();
+    return proto;
+}
+
+function hashManager(proto, opts = {}) {
+    const fetches = [];
+    const mgr = Object.assign(Object.create(proto), {
+        agentSession: false,
+        _staticHashByPath: null, _staticHashBuild: null, _staticHashGen: 0, _staticHashSeq: 0,
+        _staticHashLive: new Map(), _staticHashSnapshotStale: false,
+        snapshotReads: 0,
+        async _readManifestSnapshot() { this.snapshotReads += 1; await delay(5); return opts.snapshot || null; },
+        _readSyncedManifestHash() { return opts.synced || ''; },
+        _noteBroadcastHash() {}
+    });
+    const prevFetch = global.fetch;
+    global.fetch = async (url, init) => {
+        fetches.push(init && init.headers ? Object.assign({}, init.headers) : {});
+        await delay(5);
+        if (opts.status === 304 && init.headers['X-Manifest-Hash']) return { status: 304, ok: false, headers: { get: () => '' } };
+        return { status: 200, ok: true, headers: { get: () => 'D2' }, json: async () => (opts.server || []).map((r) => Object.assign({}, r)) };
+    };
+    return { mgr, fetches, restore: () => { global.fetch = prevFetch; } };
+}
+
+async function testStaticHashMapShared(src) {
+    const proto = loadStaticHashMethods(src);
+    const rows = [{ url: '/scripts/a.js', hash: 'a1' }, { url: '/css/b.css', hash: 'b1' }, { url: '/scripts/c.js', hash: 'c1' }];
+
+    // the after-paint batch: 5 lookups at once, a stored list: no request at all
+    let w = hashManager(proto, { snapshot: rows, server: rows });
+    try {
+        const got = await Promise.all(['/scripts/a.js', '/css/b.css', '/scripts/c.js', '/scripts/a.js?x=1', '/none.js'].map((p2) => w.mgr.hashForStaticPath(p2)));
+        assert.deepStrictEqual(got, ['a1', 'b1', 'c1', 'a1', null]);
+        assert.strictEqual(w.fetches.length, 0, 'the stored list answers: no manifest download');
+        assert.strictEqual(w.mgr.snapshotReads, 1, 'one build for all five');
+        // a live update patches it: no request, the new hash
+        w.mgr._noteStaticHashUpdate([{ url: '/scripts/a.js', hash: 'a2' }]);
+        assert.strictEqual(await w.mgr.hashForStaticPath('/scripts/a.js'), 'a2');
+        assert.strictEqual(w.fetches.length, 0);
+        // a row without its hash: the next lookup asks the server once (not the stored list again)
+        w.mgr._noteStaticHashUpdate(['/scripts/c.js']);
+        assert.strictEqual(await w.mgr.hashForStaticPath('/css/b.css'), 'b1');
+        assert.strictEqual(w.fetches.length, 1, 'one full list after an update without hashes');
+        assert.strictEqual(w.fetches[0]['X-Manifest-Hash'], undefined, 'the list itself, not a 304');
+        assert.strictEqual(await w.mgr.hashForStaticPath('/scripts/a.js'), 'a1', 'a server list fetched after the update is newer than its row');
+    } finally { w.restore(); }
+
+    // no stored list (a fresh install): one request for all five, as before for one
+    w = hashManager(proto, { snapshot: null, server: rows });
+    try {
+        await Promise.all(['/scripts/a.js', '/css/b.css', '/scripts/c.js', '/scripts/a.js', '/css/b.css'].map((p2) => w.mgr.hashForStaticPath(p2)));
+        assert.strictEqual(w.fetches.length, 1, 'concurrent lookups share one download');
+    } finally { w.restore(); }
+
+    // a live update that landed before the first lookup is not lost under the stored list
+    w = hashManager(proto, { snapshot: rows, server: rows });
+    try {
+        w.mgr._noteStaticHashUpdate([{ url: '/css/b.css', hash: 'b9' }]);
+        assert.strictEqual(await w.mgr.hashForStaticPath('/css/b.css'), 'b9');
+        // the boot check stored a new list: the map is rebuilt from it
+        w.mgr._dropStaticHashMap(false);
+        assert.strictEqual(await w.mgr.hashForStaticPath('/scripts/c.js'), 'c1');
+        assert.strictEqual(w.mgr.snapshotReads, 2);
+    } finally { w.restore(); }
+
+    // agent tabs (caches cleared at start) ask the server
+    w = hashManager(proto, { snapshot: rows, server: rows });
+    try {
+        w.mgr.agentSession = true;
+        await w.mgr.hashForStaticPath('/scripts/a.js');
+        assert.strictEqual(w.fetches.length, 1);
+    } finally { w.restore(); }
+}
+
+// the quiet check after every boot sends the synced digest (#890): a 304 records the check, looks for
+// files the page runs older copies of, and downloads no list
+async function testQuietCheckSendsDigest(src) {
+    const proto = loadStaticHashMethods(src);
+    const stored = [{ url: '/scripts/a.js', hash: 'a2' }, { url: '/css/b.css', hash: 'b1' }];
+    const prevWindow = global.window;
+    global.window = { isLoginPage: false };
+    const make = (status) => {
+        const w = hashManager(proto, { snapshot: stored, synced: 'D1', status, server: stored });
+        Object.assign(w.mgr, {
+            bootComplete: true, _bootOrchestrating: false, swRegistration: { active: {} }, isUpdating: false, pendingUpdateFuse: 0,
+            recorded: 0, updated: null, completed: null,
+            _isContinuityDexWindow() { return false; },
+            _isBeforeDesktop() { return false; },
+            async checkDownloadState() { return { isDownloading: false }; },
+            _recordUpdateCheck() { this.recorded += 1; },
+            async updateStaticCache(files, noToast) { this.updated = { files, noToast }; },
+            _filesNewerThanLoaded(files) { return files.filter((f) => f.url === '/scripts/a.js'); },
+            _processStaticCacheComplete(data) { this.completed = data; }
+        });
+        return w;
+    };
+    try {
+        let w = make(304);
+        try {
+            await w.mgr.checkStaticFileUpdates(true);
+            assert.strictEqual(w.fetches.length, 1);
+            assert.strictEqual(w.fetches[0]['X-Manifest-Hash'], 'D1', 'the synced digest goes with it');
+            assert.strictEqual(w.mgr.recorded, 1, 'Most recent check still moves');
+            assert.strictEqual(w.mgr.updated, null, 'no list walk on a 304');
+            assert.deepStrictEqual(w.mgr.completed.files.map((f) => f.url), ['/scripts/a.js'], 'an older copy this page runs is still found (#815)');
+        } finally { w.restore(); }
+        // asked for: the stored list goes through the usual path (its toasts)
+        w = make(304);
+        try {
+            await w.mgr.checkStaticFileUpdates(false);
+            assert.deepStrictEqual(w.mgr.updated.files, stored);
+            assert.strictEqual(w.mgr.updated.noToast, false);
+        } finally { w.restore(); }
+        // a changed manifest: the list, as before
+        w = make(200);
+        try {
+            await w.mgr.checkStaticFileUpdates(true);
+            assert.strictEqual(w.mgr.recorded, 1);
+            assert.deepStrictEqual(w.mgr.updated.files, stored);
+        } finally { w.restore(); }
+    } finally {
+        global.window = prevWindow;
+    }
+}
+
 function main() {
     let proto;
     try {
@@ -341,6 +478,8 @@ function main() {
         .then(() => testReadyTimeoutReturnsTimedOut(proto))
         .then(() => testLateRegisterStillWires(proto))
         .then(() => testWarmAfterSwActiveRunsOnce(proto))
+        .then(() => testStaticHashMapShared(proto._src))
+        .then(() => testQuietCheckSendsDigest(proto._src))
         .then(() => {
             console.log('test-offline-cache-boot: ok');
         });
