@@ -412,13 +412,25 @@ function hintWorld({ mobile, pathname, type, bridge, asleep }) {
     assert.deepStrictEqual(plain(h.posts), [{ type: 'PHONE_PREFETCH', network: 'unmetered' }], 'the held hint goes once the screen is on');
     h.listeners['doc:visibilitychange']();
     assert.strictEqual(h.posts.length, 1, 'nothing held, nothing sent');
+    // Wi-Fi to cellular while behind a program: 'metered' stops a running pass, so it goes at once
     h.doc.documentElement.dataset.wmBehind = '';
     h.conn.type = 'cellular';
     h.listeners['conn:change']();
-    assert.strictEqual(h.posts.length, 1, 'behind a program: held');
+    assert.deepStrictEqual(plain(h.posts[1]), { type: 'PHONE_PREFETCH', network: 'metered' }, 'metered is never held');
+    // back on Wi-Fi while behind: held (it would start work)
+    h.conn.type = 'wifi';
+    h.listeners['conn:change']();
+    assert.strictEqual(h.posts.length, 2, 'behind a program: unmetered held');
     delete h.doc.documentElement.dataset.wmBehind;
     h.listeners['doc:wmBehind']();
-    assert.deepStrictEqual(plain(h.posts[1]), { type: 'PHONE_PREFETCH', network: 'metered' }, 'sent when the page is in front again');
+    assert.deepStrictEqual(plain(h.posts[2]), { type: 'PHONE_PREFETCH', network: 'unmetered' }, 'sent when the page is in front again');
+    // hidden, the app status says cellular (connection type unknown): sent at once too
+    h = hintWorld({ mobile: true, pathname: '/app', type: '', bridge: { state: { active: 'wifi' } } });
+    h.timers[0].fn();
+    assert.deepStrictEqual(plain(h.posts), [{ type: 'PHONE_PREFETCH', network: 'unmetered' }]);
+    h.doc.hidden = true;
+    h.listeners['win:androiddevicestatus']({ detail: { active: 'cellular' } });
+    assert.deepStrictEqual(plain(h.posts[1]), { type: 'PHONE_PREFETCH', network: 'metered' }, 'hidden: metered goes at once');
 
     // a desktop, or a phone's /launch: never
     h = hintWorld({ mobile: false, pathname: '/app', type: 'wifi' });
