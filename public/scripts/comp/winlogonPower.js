@@ -512,6 +512,11 @@ async function runWinlogonPower(kind, options) {
         await lingerWinlogonPowerBlack(work, cutShutdownCover(),
             kind === 'server' ? Infinity : WINLOGON_POWER_BLACK_MAX_MS);
         if (kind === 'shutdown' || kind === 'logoff') forgetDirectorReopen();
+        // a hook once this computer has shut down (Continuity, Yukimi Nov 18 2026: the DeX window shuts down first,
+        // then the phone restarts and both start together): awaited, at most 3 s
+        if (typeof opts.beforeNavigate === 'function') {
+            try { await Promise.race([Promise.resolve().then(opts.beforeNavigate), winlogonDelay(3000)]); } catch (_) { /* restart anyway */ }
+        }
         // restartClientNavigate: public/scripts/comp/modalUtils.js (desktop: /launch)
         restartClientNavigate();
         return true;
