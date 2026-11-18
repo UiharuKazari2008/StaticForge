@@ -856,6 +856,8 @@ class DirectorMascotGL {
 class DirectorMascot {
     // options.isHosted(): true while she should show (the Director window, not Studio's inline panel).
     constructor(options = {}) {
+        // its page listeners end with the app that made her (app-scope, #872/#890)
+        this._scopeSignal = (typeof window !== 'undefined' && window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
         this.isHosted = typeof options.isHosted === 'function' ? options.isHosted : () => true;
         // options.onLogShown(): her log came into view (the director paints a live turn it held meanwhile)
         this.onLogShown = typeof options.onLogShown === 'function' ? options.onLogShown : null;
@@ -1067,13 +1069,26 @@ class DirectorMascot {
     // second and the blinks, as before. Not shown: one tick in fifteen seconds (the old timed stage
     // rules still count while she works unseen) and no blink timer. applyView calls this on each
     // change; director.js ticks her at once when the phone brings the Director to the front.
+    //
+    // Out of sight (the page hidden, the screen off, behind an Android program) there is no tick at all
+    // (#890: tick() returned at once, but its 15 s timer still woke the page all night); the wake ticks
+    // her once and starts it again.
     retime() {
         const shown = !!this._shown;
-        const every = shown ? DIRECTOR_MASCOT_TICK_MS : DIRECTOR_MASCOT_TICK_MS * 15;
+        const every = this.outOfSight() ? 0 : (shown ? DIRECTOR_MASCOT_TICK_MS : DIRECTOR_MASCOT_TICK_MS * 15);
         if (this._tickEvery !== every) {
             clearInterval(this._tick);
+            this._tick = null;
             this._tickEvery = every;
-            this._tick = setInterval(() => this.tick(), every);
+            // perf: allow only while she is in sight (none while the page is hidden, the screen off or behind an Android program; the wake below restarts it): 1 s while shown, 15 s for the timed stage rules while the Director shows without her
+            if (every) this._tick = setInterval(() => this.tick(), every);
+        }
+        if (!this._wakeHook && typeof document !== 'undefined') {
+            this._wakeHook = () => { const was = this._tickEvery; this.retime(); if (!was && this._tickEvery) this.tick(); };
+            const opt = { signal: this._scopeSignal };
+            document.addEventListener('visibilitychange', this._wakeHook, opt);
+            window.addEventListener('melatonscreen', this._wakeHook, opt);
+            document.addEventListener('wmBehind', this._wakeHook, opt);
         }
         if (shown && !this._blinkTimer) this.scheduleBlink();
         if (!shown && this._blinkTimer) { clearTimeout(this._blinkTimer); this._blinkTimer = null; }
