@@ -40,12 +40,14 @@
 .qc-link { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 10px; border: 1px solid var(--qc-line); border-radius: 3px; background: var(--qc-bg0); box-shadow: var(--qc-well); font: bold 10px Arial, Tahoma, sans-serif; letter-spacing: 1px; }
 .qc-lamp { width: 9px; height: 9px; border-radius: 50%; background: #5a1414; box-shadow: inset 0 1px 1px rgba(0, 0, 0, .6); }
 .qc-is-online .qc-lamp { background: var(--qc-green); box-shadow: 0 0 6px var(--qc-green); }
+/* perf: allow status lamp: blinks only while OBS is launching (.qc-is-launching); opacity steps */
 .qc-is-launching .qc-lamp { background: var(--qc-amber); box-shadow: 0 0 6px var(--qc-amber); animation: qc-blink 1s steps(2) infinite; }
 .qc-tally { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 132px; height: 42px; border: 1px solid var(--qc-line); border-radius: 3px; background: linear-gradient(#2a1214, #1a0b0c); box-shadow: var(--qc-well); }
 .qc-tally-text { color: #6b3034; font: 900 15px/1 'Arial Black', Arial, sans-serif; letter-spacing: 2px; }
 .qc-tc { margin-top: 3px; color: #6b3034; font: bold 12px 'Lucida Console', 'Courier New', monospace; }
 .qc-is-live .qc-tally { background: linear-gradient(#ff3b3f, #b80f14); box-shadow: 0 0 14px rgba(232, 38, 43, .7), inset 0 1px 0 rgba(255, 255, 255, .35); }
 .qc-is-live .qc-tally-text, .qc-is-live .qc-tc { color: #fff; text-shadow: 0 1px 1px rgba(0, 0, 0, .5); }
+/* perf: allow status: the tally blinks only while the stream reconnects (.qc-is-reconnecting); opacity steps */
 .qc-is-reconnecting .qc-tally { animation: qc-blink 1s steps(2) infinite; }
 @keyframes qc-blink { 50% { opacity: .3; } }
 
@@ -82,6 +84,7 @@
 .qc-mon-age:empty { display: none; }
 .qc-mon-busy { position: absolute; left: 0; right: 0; bottom: 0; display: none; align-items: center; gap: 8px; height: 30px; padding: 0 10px; background: rgba(10, 10, 12, .85); border-top: 1px solid var(--qc-amber); color: var(--qc-amber); font: bold 11px Tahoma, sans-serif; }
 .qc-is-busy .qc-mon-busy { display: flex; }
+/* perf: allow busy indicator: the spinner shows only while the monitor is busy (.qc-is-busy); transform */
 .qc-spin { width: 12px; height: 12px; border: 2px solid rgba(240, 166, 55, .3); border-top-color: var(--qc-amber); border-radius: 50%; animation: qc-spin .8s linear infinite; }
 @keyframes qc-spin { to { transform: rotate(360deg); } }
 
@@ -99,8 +102,11 @@
 .qc-dcols .qc-drow-h { padding: 0; background: #0b0c0e; }
 .qc-dc.is-empty { background: #0d0e10; }
 /* timing / clock faults flash like a mixer's sync alarm */
+/* perf: allow alarm: a unit's timing / clock fault flashes only while the fault lasts (is-blink, quickcast.js) */
 .qc-dc.is-blink em i { animation: qc-dblink 0.8s steps(1, end) infinite; }
+/* perf: allow alarm: the fault's label flashes with it, only while the fault lasts; opacity steps */
 .qc-dc.is-blink b { animation: qc-dblink-t 0.8s steps(1, end) infinite; }
+/* perf: allow a hard on / off flash (steps(1)): the lamp's glow is a box-shadow outside its box, which an overlay layer cannot switch off; only during a fault */
 @keyframes qc-dblink { 50% { background: #3a3f45; box-shadow: none; } }
 @keyframes qc-dblink-t { 50% { opacity: 0.35; } }
 .qc-dc { display: flex; flex-direction: column; justify-content: center; flex: 1; min-width: 0; padding: 2px 6px; background: var(--qc-bg0); cursor: default; }
@@ -341,8 +347,10 @@
 .qc-window .qc-root .qc-bk:disabled { background: rgba(var(--k), .05); background-color: #141517; color: rgba(var(--k), .28); box-shadow: inset 0 0 0 1px rgba(var(--k), .06), 0 1px 2px rgba(0, 0, 0, .7); }
 .qc-window .qc-root .qc-bk.is-on:disabled { background: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, .08)), rgb(var(--k)); color: #fff; }
 /* GO LIVE armed: a slow, dull red breathing, never fully lit until on air */
+/* perf: allow status: GO LIVE blinks while it is ready and not on air (quickcast.js: !live && enabled), the console's design (Yukimi to decide: it blinks whenever the console sits ready) */
 .qc-window .qc-root .qc-go.is-armed { animation: qc-armed 1.2s steps(1, end) infinite; }
 /* armed: a hard on / off blink of the lamp at half brightness, like a switcher key waiting to be taken */
+/* perf: allow a hard on / off blink (steps(1)) that swaps the key's face, label colour and glow; two pre-drawn layers would also have to draw the label (Yukimi to decide) */
 @keyframes qc-armed {
     0% { background: rgb(150, 30, 33); color: #ffd6d6; box-shadow: inset 0 0 6px rgba(255, 120, 120, .35), 0 1px 2px rgba(0, 0, 0, .7); }
     50% { background: #17181b; color: rgba(255, 190, 190, .55); box-shadow: inset 0 0 0 1px rgba(232, 46, 50, .18), 0 1px 2px rgba(0, 0, 0, .7); }
@@ -454,6 +462,7 @@
 .qc-status .qc-chk { gap: 5px; padding: 0 7px; border-right: 1px solid var(--qc-line); font: bold 9px Arial, sans-serif; letter-spacing: 1px; }
 .qc-status .qc-chk i { width: 8px; height: 8px; border-radius: 1px; }
 .qc-status .qc-chk.is-off i { background: #2a2c30; box-shadow: inset 0 1px 1px #000; }
+/* perf: allow alarm: a failed check blinks only while it fails (.is-bad); opacity steps */
 .qc-status .qc-chk.is-bad i { animation: qc-blink 1s steps(1, end) infinite; }
 .qc-status .qc-st-obs { max-width: 26%; }
 
@@ -474,14 +483,17 @@
 .qc-sb-c > i { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: #6f7782; }
 .qc-sb-c > s.qc-sb-off { background: #49d46a; }
 .qc-sb-c > s.qc-sb-off.is-warn { background: #ffb020; }
+/* perf: allow alarm: the offset marker blinks only while it is out of range (.is-bad); opacity steps */
 .qc-sb-c > s.qc-sb-off.is-bad { background: #ff3b30; animation: qc-blink 0.8s steps(1, end) infinite; }
 .qc-sr-tag { text-align: center; font: bold 8px Arial, sans-serif; letter-spacing: 1px; color: #4a5058; border: 1px solid #2e3237; }
 .qc-sr-tag.is-on { color: #1a1000; background: #ffb020; border-color: #ffb020; }
 .qc-sr-tag.is-ok { color: #9fe3b0; }
+/* perf: allow alarm: the tag blinks only while it reports a fault (.is-bad); opacity steps */
 .qc-sr-tag.is-bad { color: #fff; background: #c41e1e; border-color: #c41e1e; animation: qc-blink 0.8s steps(1, end) infinite; }
 .qc-sb-h { font: bold 8px Arial, sans-serif; letter-spacing: 1.5px; }
 
 /* latched unit fault: CHECK ALARMS */
+/* perf: allow alarm: the CHECK ALARMS strip shows (not [hidden]) only while a unit fault is latched; .is-over stops it */
 .qc-fault { display: flex; align-items: center; gap: 12px; height: 26px; padding: 0 10px; background: #b80f14; color: #fff; animation: qc-fault 0.8s steps(1, end) infinite; }
 .qc-fault[hidden] { display: none; }
 .qc-fault b { font: 900 12px 'Arial Black', Arial, sans-serif; letter-spacing: 2px; white-space: nowrap; }
@@ -537,6 +549,7 @@
 .qc-led.is-green i { background: #3bff6e; box-shadow: 0 0 6px #3bff6e, 0 0 0 1px #000; }
 .qc-led.is-red i { background: #ff2a2a; box-shadow: 0 0 6px #ff2a2a, 0 0 0 1px #000; }
 .qc-led.is-amber i { background: #ffb020; box-shadow: 0 0 6px #ffb020, 0 0 0 1px #000; }
+/* perf: allow alarm: a front-panel LED blinks only for a fault, a hung unit or a reconnect (quickcast.js); opacity steps */
 .qc-led.is-blink i { animation: qc-blink 0.8s steps(1, end) infinite; }
 /* recessed RESET push button (pen press on hardware) */
 .qc-window .qc-root .qc-fp-reset { width: 54px; height: 24px; border: 1px solid #000; border-radius: 12px; background: #101113; box-shadow: inset 0 2px 4px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.07); color: #c9cdd2; font: bold 8px Arial, sans-serif; letter-spacing: 1px; cursor: pointer; }
@@ -591,6 +604,7 @@ canvas.qc-fp-dm { display: block; width: 360px; height: 81px; padding: 4px 6px; 
 .qc-window .qc-root .qc-bk:disabled { background: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(0, 0, 0, .15)), #3a3d42; color: rgba(255, 255, 255, .32); text-shadow: none; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08), inset 0 -3px 0 rgba(0, 0, 0, .3), 0 2px 0 #08090a, 0 3px 4px rgba(0, 0, 0, .6); }
 .qc-window .qc-root .qc-bk.is-on:disabled { background: linear-gradient(180deg, rgba(255, 255, 255, .5) 0%, rgba(255, 255, 255, .12) 40%, rgba(0, 0, 0, .08) 100%), rgb(var(--k)); color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .5), inset 0 -3px 0 rgba(0, 0, 0, .2), 0 2px 0 #08090a, 0 0 14px rgba(var(--k), .7); }
 /* the armed LIVE key keeps its hard on / off blink on the new caps */
+/* perf: allow a hard on / off blink (steps(1)) that swaps the key's face, label colour and glow; two pre-drawn layers would also have to draw the label (Yukimi to decide) */
 @keyframes qc-armed {
     0% { background: linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,.1) 40%, rgba(0,0,0,.08)), rgb(200, 34, 38); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.45), 0 2px 0 #08090a, 0 0 12px rgba(232,46,50,.6); }
     50% { background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(0,0,0,.15)), #3a3d42; color: rgba(255,170,170,.55); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08), 0 2px 0 #08090a; }
