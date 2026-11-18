@@ -470,6 +470,12 @@ Desktop dest broadcasts `desktop_shortcut_added`. Other dests broadcast `vfs_upd
 
 **Success response:** `vfs_list_directory_response`
 
+Each item carries `previewUrl` (`vfsManager.buildItemPreviewUrl`), a thumbnail: never open it as the file. For a
+gallery picture (`previewImageFilename`) a Melaton Mobile page gets its fit preview,
+`/previews/<stem>@fit.webp?wait=1` (at most 320 px, made on first request; #890 round 5 W9); desktop pages get
+`/images/<file>` (Explorer swaps in the gallery's own preview). Open the picture itself (`/images/<file>`,
+`vfs_download_file`) only when it is viewed.
+
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `vfs_move_items`

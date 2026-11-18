@@ -11,7 +11,7 @@ A durable store of the notices producers raise, so a phone that was not connecte
 
 | Request | Body -> reply |
 |---|---|
-| `inbox_list` | `{ since?, includeCleared? }` -> `{ notices }` (newest first, not expired; cleared ones left out unless asked) |
+| `inbox_list` | `{ since?, includeCleared? }` -> `{ notices, total }` (newest first, not expired; cleared ones left out unless asked). `since` (ms, #890 round 5 W2): only the rows created or changed (`createdAt` or `updatedAt` at or after it), cleared ones included so the page closes its copy; send the newest `createdAt` / `updatedAt` the page holds and merge by `id`. Expired and pruned rows are not listed: the page drops a notice past its `expiresAt` itself. `total`: how many notices a full list holds (not cleared, not expired). Without `since`: unchanged. |
 | `inbox_ack` | `{ id, state: 'seen'|'acted'|'cleared', device? }` -> `{ ok }`. State never steps back. Destructive. |
 | `inbox_prefs` | `{ quiet: [cls...] }` -> `{ ok, quiet }`. The phone's Settings > Sounds & Notifications classes with Display message off (#876). A notice of a quiet class is stored as `seen` (kept for the title bar's state), never popped on resume and never sent to the phones' background links. Stored per user type; the default is none. |
 | `reminder_snooze` | `{ id, minutes? \| at? }` -> `{ ok, at }`. A `rem:` notice is cleared now and published again with the same id at `at` (or in `minutes`, default 5). Destructive. |
@@ -20,9 +20,10 @@ A durable store of the notices producers raise, so a phone that was not connecte
 
 A notice: `{ id, app, cls, title, text, actions[], data, createdAt, expiresAt, state, actedBy }`. `cls` is the wmShell notification class (sound and icon); `data.open` names the app layer / direction to open; `state` is `new` -> `seen` -> `acted`, or `cleared`.
 
-## Broadcast (same user type's clients)
+## Broadcast (same user type's phone pages)
 
-- `inbox_updated` `{ reason: 'new', notice }` when a notice is published, or `{ reason: 'ack', id, state, device }` when its state changes (so a notice cleared or acted on one device clears on the others).
+- `inbox_updated` `{ reason: 'new', notice }` when a notice is published, or `{ reason: 'ack', id, state, device }` when its state moves to `acted` or `cleared` (so a notice cleared or acted on one device clears on the others). A move to `seen` is not broadcast (no page acts on it; #890 round 5).
+- Phone pages only (`modules/websocket.js` PHONE_ONLY_TYPES: the only reader, `wmNotificationInbox.js`, loads in the mobile shell). A sleeping page (client_dormant) gets `reason: 'new'` at once (reminders and missed notices wake it) but no `reason: 'ack'`: it catches up with `inbox_list { since }` when it wakes (W7).
 
 ## Reminders (Yozora #876)
 

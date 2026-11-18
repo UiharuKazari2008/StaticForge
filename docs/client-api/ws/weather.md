@@ -23,7 +23,9 @@ US alerts come from the National Weather Service when Apple's alerts are not in 
 
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
-| `weather_forecast` | `weather_forecast_response` | signed in | `{ lat, lon, lang? }` -> the forecast model (below) plus `available: true`. `{ here: true }` (admins) uses the Sidebar's place (client IP, then the configured home) and adds `here: { name, region, country, lat, lon }`. |
+| `weather_forecast` | `weather_forecast_response` | signed in | `{ lat, lon, lang?, have? }` -> the forecast model (below) plus `available: true` and `hashes`; with `have`, only what changed (see [Deltas](#deltas-890-round-5-w1)). `{ here: true }` (admins) uses the Sidebar's place (client IP, then the configured home) and adds `here: { name, region, country, lat, lon }`. |
+| `weather_watch` | `weather_watch_response` | signed in | `{ places: [{ key, lat, lon, have? }] }` (up to 12; replaces the socket's last set) -> `{ ok, keys }`. Sent while a weather view is on screen; the server then pushes `weather_delta` (see [Watching](#watching-890-round-5-w1-stage-2)). |
+| `weather_unwatch` | `weather_unwatch_response` | signed in | `{}` -> `{ ok }`: no weather view on screen. A closed socket stops watching by itself. |
 | `weather_geocode` | `weather_geocode_response` | signed in | `{ name, count? }` -> `{ results: [{ name, region, country, countryCode, lat, lon }] }` (Open-Meteo geocoding, cached 7 days). |
 | `weather_radar` | `weather_radar_response` | signed in | `{}` -> `{ frames: [{ time, id, nowcast }], maxZoom: 7, radarTile, baseTile, styles, attribution }`. Tiles: `GET /weather/tile/radar/<id>/<z>/<x>/<y>.png` (RainViewer, z ≤ 7, cached 30 min) and `GET /weather/tile/base/<style>/<z>/<x>/<y>.png` (Esri basemaps `dark`, `light`, `streets`, `labels`, `dark-labels`; z ≤ 16, cached 7 days). Both need the session cookie. |
 | `weather_alert` | `weather_alert_response` | signed in | `{ id, lang? }` -> `{ id, title, area, severity, source, text, detailsUrl }`, the full text of an Apple Weather alert. |
@@ -43,8 +45,49 @@ Errors carry the service's code: `BAD_COORDINATES`, `RATE_LIMITED`, `BUDGET_EXCE
 | `weather_rain_alarm` | Rain due at Home / Work within its `rainLeadMin` while dry, rain alarm on; once per spell (a spell ends after 20 min dry) | `{ place, startsInMin, endsInMin, peakMmh, kind, summary }` |
 | `weather_rain_status` | Rain began, ended or its start moved at Home / Work | same as `weather_rain_status` |
 | `weather_places_changed` | Home / Work saved | `{ places }` |
+| `weather_delta` | To a `weather_watch` socket only: at watch time when its `have` is behind, then when a watched place's forecast part changes | `{ key, available: true, ...the weather_forecast reply against the socket's have }` |
+
+Audiences (`modules/websocket.js`): all of these go to desktop and phone pages (the desktop's Weather
+window runs `wmWeather.js` too). A sleeping phone page or DeX window gets `weather_rain_status`,
+`weather_alerts_changed`, `weather_places_changed` and `weather_delta` (per `key`) as the newest copy when
+it wakes; `weather_alert_issued` and `weather_rain_alarm` are notifications and always go at once.
 
 Apple replies are cached until their own `metadata.expireTime` (2 to 15 minutes); hourly covers 240 h (10 days).
+
+## Deltas (#890 round 5, W1)
+
+Every `weather_forecast` reply carries `hashes: { current, minutely, daily, alerts, hourly: { 'YYYY-MM-DD':
+h } }`: each `h` is the sha1 hex of `JSON.stringify(part)` as sent (`null` for a missing part); hourly
+rows are grouped by their local date, and `hashes.hourly` lists the days in order.
+
+- Without `have`: the whole model as before (`hourly` an array) plus `hashes`.
+- With `have` (the hashes the page holds, the same shape): every scalar field (`provider`, `tz`,
+  `offset`, `fetchedAt`, `expiresAt`, `attribution`, `stale`, `alertsSource`, `here`, ...) and `hashes`
+  always; `current` / `minutely` / `daily` / `alerts` only when their hash differs (absent and not in
+  `same`: the page deletes it); `hourly: { day: rows }` only for the days that differ; `same: ['daily',
+  'hourly:2026-11-17', ...]` names the unchanged ones. The page builds `hourly` from `hashes.hourly`'s days
+  in order (its own rows for a `same` day), so a day it holds that is no longer listed goes. The merged
+  model is identical to a full reply.
+
+Fields no page reads are left out of `weather_forecast` and `weather_delta` (`WIRE_DROP` in
+`modules/weatherService.js`): `place`; `current.conditionCode`, `cloudLow`, `cloudMid`, `cloudHigh`;
+`minutely.periods`; hourly `conditionCode`, `precipType`, `pressureTrend`, `visibilityM`, `snowMm`;
+daily `conditionCode`, `precipType`, `maxAt`, `minAt`, and the day / night parts' `conditionCode`,
+`precipType`. Server callers of `getForecast` (Director, Rentan, the gadget, the monitor) keep them.
+
+## Watching (#890 round 5, W1 stage 2)
+
+`modules/weatherWatch.js`. While a weather view is on screen (Today's weather item, the Weather app, the
+6.5 clock / Super Bar) the page sends `weather_watch` with every place it shows and its `have`, and makes
+no forecast fetch of its own for them; `weather_unwatch {}` when none is shown; again `weather_watch`
+with its `have` on `connected`. The server answers with `weather_delta { key, ... }` at once when the
+page's `have` is behind (no `have`: the whole model), afterwards only when a part's hash changes:
+`fetchedAt` alone is a clock and sends nothing, so a watched page's copy is current as of the last push.
+Forecasts come through `getForecast`'s cache: Home and Work share the alert monitor's 5-minute reads
+(the same cache key; a monitor pass pushes at once), any other watched place is read again when its
+cache entry expires (Apple's expiry, 2 to 15 minutes) and only while watched. One server timer (60 s)
+runs while anyone watches. A sleeping page that still watches gets its delta computed against what it
+had before it slept, held newest-only per `key` until it wakes.
 
 ## Forecast model
 
@@ -53,11 +96,11 @@ its zone. °C, km/h, hPa, metres, mm (mm/h for intensity), percent.
 
 ```text
 { provider, attribution: { name, url, linkText, logoLight?, logoDark?, ... }, tz, offset, fetchedAt, stale?,
-  current: { time, tempC, feelsC, dewC, humidity, code, text, conditionCode?, isDay, windKmh, windDir,
+  current: { time, tempC, feelsC, dewC, humidity, code, text, isDay, windKmh, windDir,
              gustKmh, pressure, pressureTrend, visibilityM, uv, cloud, precipMmH },
-  minutely: null | { source, stepMinutes (1 Apple, 15 Open-Meteo), summary, periods, minutes: [{ time, rain, mmh }] },
-  hourly: [{ time, tempC, feelsC, dewC, code, text, isDay, rain, precipMm, snowMm, humidity, windKmh,
-             windDir, gustKmh, uv, pressure, visibilityM, cloud }],          // about 72 hours
+  minutely: null | { source, stepMinutes (1 Apple, 15 Open-Meteo), summary, minutes: [{ time, rain, mmh }] },
+  hourly: [{ time, tempC, feelsC, dewC, code, text, isDay, rain, precipMm, humidity, windKmh,
+             windDir, gustKmh, uv, pressure, cloud }],                       // now - 3 h to 240 h ahead
   daily:  [{ date, code, text, maxC, minC, feelsMaxC, feelsMinC, rain, precipMm, snowMm, uv, windKmh,
              windMaxKmh, gustKmh, windDir, humidity, sunrise, sunset, dawn, dusk, solarNoon, moonrise,
              moonset, moonPhase, daylightSec, day: <part>, night: <part> }],   // 10 days

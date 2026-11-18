@@ -51,4 +51,10 @@ Every packet is **admin only** (authenticated, `userType === 'admin'`). Others g
 
 ## Events
 
-`tm_event` (admins only): `{ event: 'message'|'updated'|'reaction'|'typing'|'read'|'chat'|'account'|'resync'|'settings', accountId, chatGuid, message?, reaction?, targetGuid?, typing?, read?, known?, notify? }`.
+`tm_event` (admins only): `{ event: 'message'|'updated'|'reaction'|'typing'|'read'|'chat'|'account'|'resync'|'settings'|'reload'|'sync'|'syncprogress'|'pairing'|'signin_lost', accountId, chatGuid, message?, reaction?, targetGuid?, typing?, read?, known?, notify? }`.
+
+Who gets which (#890 round 5, W5):
+
+- `sync` (a reconcile pass) and `syncprogress` (`{ running, done, total }` every 2 s through a catch-up) go to desktop pages only (Messaging Bridge reads them; a DeX window is a desktop page).
+- `account` at the end of a catch-up (BlueBubbles every 30 min and on reconnect, an RCS sync) goes to desktop pages always and to phone pages only when what they list changed: the account's status / error or its conversations (`textMessagingStore.fingerprint`: the newest 100 chat rows and the newest message). An `account` from a status change, a save or a delete goes to everyone.
+- A sleeping phone page or DeX window (client_dormant): texts, edits, reactions, reads, `chat`, `pairing` and `signin_lost` go at once; `typing` is dropped (an "is typing..." on waking would be stale); `account`, `resync`, `settings`, `sync`, `syncprogress` wait as the newest per account, `reload` as the newest per conversation.
