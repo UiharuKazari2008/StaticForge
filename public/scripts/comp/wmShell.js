@@ -10416,7 +10416,9 @@
                 if (pgal) {
                     pgal.init(() => {
                         const pg = apps.get('gallery') && apps.get('gallery').page;
-                        if (pg) renderGrid(pg, false);
+                        // not on screen: drawn when it shows or wakes (gridStale), never rebuilt hidden (#890)
+                        if (pg && (current !== 'gallery' || !onScreen(pg))) gridStale = true;
+                        else if (pg) renderGrid(pg, false);
                         if (current === 'gallery') renderSoftKeys();
                     }).catch(() => { /* My Device alone */ });
                 }

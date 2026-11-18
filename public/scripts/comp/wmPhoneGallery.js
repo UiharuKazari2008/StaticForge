@@ -40,6 +40,7 @@
     'use strict';
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const TITLE = 'Pictures & Videos';
     const CAMERA_DIR = '/DCIM/Camera';
@@ -272,11 +273,34 @@
         }
     }
 
+    // what the folder held when last drawn: a refresh that finds the same leaves the grid alone (#890)
+    const entriesSig = () => entries.map((e) => `${e.path}|${e.mtime || 0}|${e.size || 0}`).join('\n');
     async function refresh(opts = {}) {
+        const before = `${loc ? `${loc.root}\n${loc.path}` : ''}\n${entriesSig()}`;
         await loadAlbums();
         if (loc) await loadEntries(true);
+        if (!opts.force && before === `${loc ? `${loc.root}\n${loc.path}` : ''}\n${entriesSig()}`) return;
         gridSig = '';
         if (!opts.quiet) onChange();
+    }
+
+    // Pictures on screen now (the program in front, the screen on, not behind an Android program): a
+    // folder change while it is not is read once when it shows again (#890: the app replays a 'changed'
+    // for every watched folder on each screen-on, and each one scanned every album and the folder)
+    const shownNow = () => !!(sh && sh.current === 'gallery' && (typeof sh.onScreen === 'function' ? sh.onScreen() : !document.hidden));
+    let changedWhileAway = false;
+    const normPath = (p) => String(p || '').replace(/^\/+|\/+$/g, '');
+    function onFolderChanged(m) {
+        if (!loc || !m || m.root !== loc.root) return;
+        // another folder of the same card (another watch: Explorer, an ActiveSync computer)
+        if (m.path != null && normPath(m.path) !== normPath(loc.path)) return;
+        if (!shownNow()) { changedWhileAway = true; return; }
+        refreshSoon();
+    }
+    function catchUpShown() {
+        if (!changedWhileAway || !loc || !shownNow()) return;
+        changedWhileAway = false;
+        refreshSoon();
     }
 
     let refreshTimer = null;
@@ -721,7 +745,7 @@
                     '-',
                     { label: 'New Folder...', action: () => newFolder(loc.root, loc.path) },
                     { label: 'Up One Level', disabled: loc.path === '/', action: () => sh.busy(open(loc.root, parentOf(loc.path)), { paint: true }) },
-                    { label: 'Reload', action: () => sh.busy(refresh(), { paint: true }) },
+                    { label: 'Reload', action: () => sh.busy(refresh({ force: true }), { paint: true }) },
                     '-',
                     { label: 'Sort By', submenu: () => sortItems(page) }
                 ]
@@ -1069,7 +1093,8 @@
         const ps = PS();
         if (!ps || typeof ps.on !== 'function' || bindEvents.done) return;
         bindEvents.done = true;
-        ps.on('changed', (m) => { if (loc && m && m.root === loc.root) refreshSoon(); });
+        ps.on('changed', onFolderChanged);
+        document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake) catchUpShown(); }, { signal: appScopeSignal });
         ps.on('config', async () => { await loadHello(false); if (loc && !cardOf(loc.root)) loc = null; refreshSoon(); });
     }
 
@@ -1089,6 +1114,7 @@
         // Ledge's desks are read on every show (they change on the server)
         const l = LG();
         const desks = l ? l.init(fn).catch(() => false) : Promise.resolve(false);
+        catchUpShown(); // (init runs on every show: a folder change while it was away is read now)
         return Promise.all([ready, desks]).then(() => available());
     }
 
@@ -1134,6 +1160,8 @@
         viewerDirector,
         cameraRoll,
         added,
-        refresh: () => refresh()
+        refresh: () => refresh(),
+        /** A refresh in 350 ms, one for several asks (the Camera's return and the app's replayed 'changed'). */
+        refreshSoon: () => refreshSoon()
     };
 })();

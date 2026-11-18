@@ -49,7 +49,8 @@
         if (!away || document.visibilityState !== 'visible') return;
         away = false;
         const g = window.wmPhoneGallery;
-        if (g && g.available()) void g.refresh();
+        // one read with the 'changed' the app replays for the folder on its return (#890: it read twice)
+        if (g && g.available()) { if (typeof g.refreshSoon === 'function') g.refreshSoon(); else void g.refresh(); }
     });
 
     window.wmCamera = { supported, open };
