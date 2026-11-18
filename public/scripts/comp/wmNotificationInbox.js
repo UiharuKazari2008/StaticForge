@@ -344,8 +344,11 @@
             try { r = await ask('inbox_list', {}); } catch (_) { return 0; }
             const waiting = ((r && r.notices) || []).filter((n) => (n.state === 'new' || n.state === 'seen') && !/^(mail|dmail|sms|chat|director):/.test(n.id));
             for (const n of waiting) {
+                // asked for: each comes up again, also one shown before and put away (its old handle kept it from showing;
+                // the tap then opened nothing, Nov 18 Fold)
+                close(n.id);
                 if (isReminder(n)) { reminders.set(n.id, n); showReminder(n); continue; }
-                if (!shownNotes.has(n.id)) show(n);
+                show(n);
             }
             return waiting.length;
         },
