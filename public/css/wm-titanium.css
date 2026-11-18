@@ -246,8 +246,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-small {
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-small] .wm-ti-line { left: calc(32 * var(--u)); }
 
 /* ---- the clock panel: time 20,22 (186 wide, right aligned, 28 pt), AM/PM 226,36, date 226,66,
-   network 20,104. The time is the item's first line: it takes Today > Text's Selected item weight (bold
-   unless set otherwise, Yukimi Nov 17). Its box is "00:00" wide in the face it is drawn in
+   network 20,104. The time stays at the ROM's weight (Tahoma regular; Tahoma Bold looked out of place,
+   Yukimi Nov 17) and takes only Today > Text's lighter Selected item weights (Semilight, Light). Its box is "00:00" wide in the face it is drawn in
    (--ti-time-w, wmTitanium.js syncClockWidth; the ROM's 93 for Tahoma regular), the AM/PM and date
    column 10 after it - Segoe's narrower digits move the time left instead of leaving a gap ---- */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-time {
@@ -255,7 +255,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-time {
     left: calc(10 * var(--u));
     top: calc(11.5 * var(--u));
     width: calc(var(--ti-time-w, 93) * var(--u));
-    font-weight: bold;
     text-align: right;
     font-size: calc(37.333 * var(--u));
     line-height: 1.2075;

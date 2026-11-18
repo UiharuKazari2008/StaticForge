@@ -1076,7 +1076,8 @@
     function syncClockWidth() {
         const band = root.dataset.wmTiBand || 'bold';
         const segoe = band === 'semilight' || band === 'light' || (() => { try { return localStorage.getItem('wmSystemFont') === 'segoe'; } catch (_) { return false; } })();
-        const weight = { bold: 700, regular: 400, semilight: 350, light: 300 }[band] || 700;
+        // (the time is never bold: Bold is the first line's, the clock keeps the ROM's regular)
+        const weight = { semilight: 350, light: 300 }[band] || 400;
         const face = `${weight}|${segoe ? 's' : 't'}`;
         if (face === clockFace) return;
         clockFace = face;
