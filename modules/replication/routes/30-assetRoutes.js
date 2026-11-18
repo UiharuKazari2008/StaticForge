@@ -78,7 +78,7 @@ function register(app, globalResources) {
         return res.status(200).end();
     });
 
-    app.get('/replication/assets/:kind/:key(*)', readAuth, (req, res) => {
+    app.get('/replication/assets/:kind/:key(*)', readAuth, async (req, res) => {
         const kind = req.params.kind;
         const key = decodeURIComponent(req.params.key || '');
         if (!key) {
@@ -86,7 +86,8 @@ function register(app, globalResources) {
         }
 
         const localPath = replicationRemoteFetch.resolveLocalPath(globalResources, kind, key);
-        if (!localPath || !fs.existsSync(localPath)) {
+        const stat = localPath ? await fs.promises.stat(localPath).catch(() => null) : null;
+        if (!stat) {
             return res.status(404).json({
                 success: false,
                 code: REPLICATION_ERROR_CODES.ASSET_UNAVAILABLE,
@@ -96,7 +97,6 @@ function register(app, globalResources) {
             });
         }
 
-        const stat = fs.statSync(localPath);
         res.setHeader('Content-Type', resolveContentType(kind, localPath));
         res.setHeader('Content-Length', stat.size);
         res.setHeader('Cache-Control', 'private, max-age=259200');

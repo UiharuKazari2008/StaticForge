@@ -573,7 +573,7 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
                     filePath = path.join(globalResources.getPath('images'), filename);
                     name = filename;
                 }
-                if (!filePath || !fs.existsSync(filePath)) continue;
+                if (!filePath || !(await fs.promises.stat(filePath).then((st) => st.isFile(), () => false))) continue;
                 const upstream = await fetch(config.origin + '/sessions/' + id + '/file-chooser/' + cid + '/file?t=' + encodeURIComponent(token) + '&name=' + encodeURIComponent(name), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/octet-stream' },

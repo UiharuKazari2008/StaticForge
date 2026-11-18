@@ -850,10 +850,11 @@ function mount(app, authMiddleware, globalResources) {
         const file = String(req.params.file || '');
         if (!/^[a-f0-9]{12}-(ref|themed|logo|\d+-(16|32|128))\.png$/.test(file)) return res.status(404).end();
         const p = path.join(jobDir(job.id), file);
-        if (!fs.existsSync(p)) return res.status(404).end();
-        res.set('Cache-Control', 'private, max-age=86400');
-        res.type('png');
-        fs.createReadStream(p).pipe(res);
+        fs.promises.stat(p).then(() => {
+            res.set('Cache-Control', 'private, max-age=86400');
+            res.type('png');
+            fs.createReadStream(p).pipe(res);
+        }, () => { res.status(404).end(); });
     });
     app.post(`${base}/jobs/:job/regenerate`, auth, admin, json, (req, res) => {
         const job = jobOr404(req, res);

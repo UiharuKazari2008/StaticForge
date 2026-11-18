@@ -788,12 +788,10 @@ function mountGuacRemoteBridge(app, authMiddleware) {
             return;
         }
         const file = previewFile(id);
-        if (!fs.existsSync(file)) {
-            res.status(404).end();
-            return;
-        }
-        res.set('Cache-Control', 'private, max-age=30');
-        res.type('jpeg').sendFile(file);
+        fs.promises.stat(file).then(() => {
+            res.set('Cache-Control', 'private, max-age=30');
+            res.type('jpeg').sendFile(file);
+        }, () => { res.status(404).end(); });
     });
 
     app.post('/api/desktop-guac/preview/:id', full, expressRawJpeg, async (req, res) => {
@@ -813,9 +811,10 @@ function mountGuacRemoteBridge(app, authMiddleware) {
                 res.status(404).json({ ok: false, error: 'That connection is not in the Komaki list' });
                 return;
             }
-            fs.mkdirSync(GUAC_PREVIEW_DIR, { recursive: true });
-            fs.writeFileSync(previewFile(id), body);
-            res.json({ ok: true, previewAt: previewStamp(id) });
+            await fs.promises.mkdir(GUAC_PREVIEW_DIR, { recursive: true });
+            await fs.promises.writeFile(previewFile(id), body);
+            const st = await fs.promises.stat(previewFile(id)).catch(() => null);
+            res.json({ ok: true, previewAt: st ? st.mtimeMs : 0 });
         } catch (err) {
             res.status(err.status || 502).json({ ok: false, error: err.message || 'Preview save failed' });
         }
