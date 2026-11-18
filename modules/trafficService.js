@@ -930,6 +930,30 @@ async function policeSample(direction) {
     return items;
 }
 
+/**
+ * Cameras and police zones around a point (traffic_nearby, #907): for a drive on no commute route (the app
+ * says the car is moving, Traffic has no route under it), the stored OpenStreetMap list of the 0.25 degree
+ * area around the point - the same weekly list the commutes use, fetched once if the area is new. The page
+ * asks once per area it drives into. { box, cameras: [...], police: [...] }.
+ */
+async function nearby(lat, lon) {
+    const la = Number(lat); const lo = Number(lon);
+    if (!Number.isFinite(la) || !Number.isFinite(lo)) throw new TrafficError('A point needs lat and lon', 'BAD_POINT');
+    // a stored list whose area holds the point (the commutes' lists are large) before a new area's fetch
+    const store = cameraStore();
+    const held = Object.keys(store).map((k) => { const [s, w, n, e] = k.split(',').map(Number); return { k, box: { s, w, n, e } }; })
+        .filter((c) => store[c.k] && Array.isArray(store[c.k].cameras) && la >= c.box.s + 0.02 && la <= c.box.n - 0.02 && lo >= c.box.w + 0.02 && lo <= c.box.e - 0.02)
+        .sort((a, b) => (a.box.n - a.box.s) * (a.box.e - a.box.w) - (b.box.n - b.box.s) * (b.box.e - b.box.w))[0];
+    const { box, key } = held ? { box: held.box, key: held.k } : cameraBoxOf([{ lat: la, lon: lo }]);
+    const list = await camerasFor(key, box);
+    const pick = (c) => ({ id: c.id, label: c.label, kind: c.kind, maxspeed: c.maxspeed || '', street: c.street || '', direction: c.direction || '', lat: c.lat, lon: c.lon });
+    return {
+        box,
+        cameras: list.map(pick),
+        police: (list.zones || []).map((z) => Object.assign(pick(z), { line: (z.line || []).map((p) => [Math.round(p.lat * 1e5) / 1e5, Math.round(p.lon * 1e5) / 1e5]) }))
+    };
+}
+
 // ------------------------------------------------------------------------------------------ preferred streets
 
 const PLACES_FILE = process.env.TRAFFIC_PLACES_FILE || path.join(__dirname, '..', '.cache', 'traffic-places.json');
@@ -1552,6 +1576,7 @@ const broadcastAdmins = broadcast;
 
 module.exports = {
     policeSample,
+    nearby,
     bind,
     getSettings,
     saveSettings,

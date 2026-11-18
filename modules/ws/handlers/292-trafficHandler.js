@@ -19,6 +19,8 @@ const trafficService = require('../../trafficService');
 // other than the preferred one, hash (the stored report's sha1).
 //   traffic_advise         { direction, force? }       the leave advisor (Google only)
 //   traffic_settings_save  { settings }                admins; merged into config `traffic`
+//   traffic_nearby         { lat, lon }                { box, cameras, police }: OSM cameras and police zones in the
+//                                                      0.25 degree area of a point (a drive on no commute route, #907)
 //   traffic_where          {}                          { lat, lon, source, accuracyKm }: the phone's place by
 //                                                      its IP, for a browser without device location (a
 //                                                      home-network or unknown IP answers the configured place)
@@ -109,6 +111,15 @@ async function handleAdvise(handlersCtx, ws, message, clientInfo) {
     }
 }
 
+async function handleNearby(handlersCtx, ws, message, clientInfo) {
+    if (!guard(handlersCtx, ws, message, clientInfo)) return;
+    try {
+        reply(handlersCtx, ws, message, await trafficService.nearby(message.lat, message.lon));
+    } catch (error) {
+        fail(handlersCtx, ws, message, error, 'Cameras near here could not be loaded');
+    }
+}
+
 async function handleWhere(handlersCtx, ws, message, clientInfo) {
     if (!guard(handlersCtx, ws, message, clientInfo)) return;
     try {
@@ -156,6 +167,7 @@ function registerPackets(handlersCtx) {
     reg('traffic_advise', handleAdvise);
     reg('traffic_settings_save', handleSave, { destructive: true });
     reg('traffic_where', handleWhere);
+    reg('traffic_nearby', handleNearby);
     trafficService.startScheduler();
 }
 

@@ -491,6 +491,50 @@
         changed();
         watchCameras();
     }
+    // ---------------------------------------------------------------- cameras off the commutes (#907)
+    //
+    // A drive the app sees on no commute route: the OpenStreetMap cameras and police zones of the area the car
+    // is in (traffic_nearby, asked once per area it drives into - not on a timer), warned of within a mile
+    // ahead of the car (its heading, or getting closer when the fix has none), once per drive.
+    const offRoute = { key: '', box: null, items: [], asking: false, failedAt: 0, last: new Map(), alerted: new Set() };
+    const bearing = (a, b) => {
+        const r = Math.PI / 180;
+        const y = Math.sin((b.lon - a.lon) * r) * Math.cos(b.lat * r);
+        const x = Math.cos(a.lat * r) * Math.sin(b.lat * r) - Math.sin(a.lat * r) * Math.cos(b.lat * r) * Math.cos((b.lon - a.lon) * r);
+        return (Math.atan2(y, x) / r + 360) % 360;
+    };
+    function warnOffRoute() {
+        if (!here || here.source !== 'device') return;
+        const key = `off:${nativeDriveSince || ''}`;
+        if (offRoute.key !== key) { offRoute.key = key; offRoute.alerted.clear(); offRoute.last.clear(); }
+        const b = offRoute.box;
+        const m = 0.03; // ~3 km before the area's edge the next area is asked for
+        if (!b || here.lat < b.s + m || here.lat > b.n - m || here.lon < b.w + m || here.lon > b.e - m) {
+            if (!offRoute.asking && Date.now() - offRoute.failedAt > 60000) {
+                offRoute.asking = true;
+                ask('traffic_nearby', { lat: here.lat, lon: here.lon }, 20000).then((d) => {
+                    if (d && d.box) { offRoute.box = d.box; offRoute.items = (d.cameras || []).concat(d.police || []); }
+                }).catch(() => { offRoute.failedAt = Date.now(); }).finally(() => { offRoute.asking = false; });
+            }
+            if (!b) return;
+        }
+        const heading = Number.isFinite(here.heading) && (here.speed || 0) > 2 ? here.heading : null;
+        offRoute.items.forEach((t) => {
+            const id = camKey(t);
+            if (offRoute.alerted.has(id)) return;
+            const pts = Array.isArray(t.line) && t.line.length ? t.line.map(([lat, lon]) => ({ lat, lon })) : [t];
+            let near = null; let dM = Infinity;
+            pts.forEach((p) => { const d = distKm(here, p) * 1000; if (d < dM) { dM = d; near = p; } });
+            const before = offRoute.last.get(id);
+            if (dM <= CAM_ALERT_M * 2) offRoute.last.set(id, dM); else offRoute.last.delete(id);
+            if (dM > CAM_ALERT_M) return;
+            const ahead = heading != null ? Math.abs(((bearing(here, near) - heading + 540) % 360) - 180) <= 60 : (before != null && dM < before - 20);
+            if (!ahead) return;
+            offRoute.alerted.add(id);
+            cameraNote(t, dM);
+        });
+    }
+
     const camDrive = { key: '', alerted: new Set() };
     let camWatchId = null;
     let camFixAt = 0;
@@ -500,7 +544,7 @@
         const r = dv ? latest[dv.direction] : null;
         syncPoliceWatch();
         // a drive the app sees but no commute route has (yet): the live position finds out where the car is
-        if (!dv && nativeDriving()) { startCamWatch(); return; }
+        if (!dv && nativeDriving()) { startCamWatch(); warnOffRoute(); return; }
         if (!dv || !r || !r.traps) { stopCamWatch(); return; }
         const key = `${dv.direction}:${dv.leaveAt}`;
         if (camDrive.key !== key) { camDrive.key = key; camDrive.alerted.clear(); }
@@ -610,7 +654,7 @@
         const L = window.wmLocation;
         if (camWatchId != null || !inApp() || geoDenied || !L || (typeof L.deviceAllowed === 'function' && !L.deviceAllowed())) return;
         camWatchId = L.watch({ precision: 'exact', intervalMs: 1000, urgent: true, hidden: true, purpose: 'Traffic cameras' }, (f) => {
-            here = { at: Date.now(), lat: f.lat, lon: f.lon, accuracyKm: Math.min(5, (f.accuracyM || 0) / 1000), source: 'device' };
+            here = { at: Date.now(), lat: f.lat, lon: f.lon, accuracyKm: Math.min(5, (f.accuracyM || 0) / 1000), source: 'device', heading: f.heading, speed: f.speed };
             geoAt = Date.now();
             watchCameras();
             // the car on the strip and the time left: every 10 s is plenty
