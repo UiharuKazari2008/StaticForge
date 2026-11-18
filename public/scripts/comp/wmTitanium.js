@@ -1913,8 +1913,11 @@
     // rate, and they hold from 1 to 8 items.
 
     /** Start the move from item a to item b. o.tap: a tap or key; o.nv: the items the flick asked for; o.at: when (ms). */
-    const FRAME_MS = 1000 / 60;
-    const STALL_MS = 50;     // a frame this late counts as a stall (the entrance's own clock waits it out)
+    // a frame this late is a hold-up (the page busy waking): the entrance's clock waits it out, keeping STALL_KEEP_MS
+    // of it. Slower frames run on the real clock: a phone drawing 10-15 frames a second while it wakes (A53) ran
+    // the rise four times slow when every late frame counted (50 ms)
+    const STALL_MS = 120;
+    const STALL_KEEP_MS = 50;
     function startTween(a, b, o) {
         cancelAnimationFrame(settle);
         flushZoom();
@@ -1952,7 +1955,7 @@
         const fc = tw.frameClock;
         if (fc) {
             if (!fc.last) tw.t0 = now;
-            else if (now - fc.last > STALL_MS) tw.t0 += now - fc.last - FRAME_MS;
+            else if (now - fc.last > STALL_MS) tw.t0 += now - fc.last - STALL_KEEP_MS;
             fc.last = now;
         }
         const t = Math.max(0, now - tw.t0);
