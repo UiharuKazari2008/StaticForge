@@ -32,7 +32,7 @@ const GOOGLE = {
             { long_name: '20601', short_name: '20601', types: ['postal_code'] }]
     }]
 };
-loc._test.setFetch(async () => { calls += 1; return { ok: true, json: async () => GOOGLE }; });
+loc._test.setFetch(async () => { calls += 1; return { ok: true, text: async () => JSON.stringify(GOOGLE) }; });
 
 (async () => {
     // a typed place as candidates, at its own specificity

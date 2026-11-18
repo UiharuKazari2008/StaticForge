@@ -749,7 +749,6 @@ function upkeepCameras() {
 
 // ------------------------------------------------------------------------------------------ preferred streets
 
-const GOOGLE_GEOCODE = 'https://maps.googleapis.com/maps/api/geocode/json';
 const PLACES_FILE = process.env.TRAFFIC_PLACES_FILE || path.join(__dirname, '..', '.cache', 'traffic-places.json');
 let placesStore = null;
 
@@ -778,17 +777,10 @@ async function geocodeNear(query, box) {
     const key = `${query.toLowerCase()}|${[box.s, box.w, box.n, box.e].map((v) => v.toFixed(1)).join(',')}`;
     const cache = placesCache();
     if (key in cache) return cache[key];
-    const gk = googleKey();
-    if (!gk) return null;
-    const q = new URLSearchParams({ address: query, bounds: `${box.s},${box.w}|${box.n},${box.e}`, region: 'us', key: gk });
-    const res = await getJson(`${GOOGLE_GEOCODE}?${q}`, { timeout: 12000 });
-    if (res && res.status && !/^(OK|ZERO_RESULTS)$/.test(res.status)) throw new TrafficError(res.error_message || `Geocoding ${res.status}`, res.status === 'REQUEST_DENIED' ? 'AUTH_FAILED' : 'PROVIDER_ERROR');
-    const hit = (res && Array.isArray(res.results) ? res.results : []).map((r) => ({
-        lat: r.geometry && r.geometry.location && r.geometry.location.lat,
-        lon: r.geometry && r.geometry.location && r.geometry.location.lng,
-        address: r.formatted_address || '',
-        types: r.types || []
-    })).find((r) => Number.isFinite(r.lat) && inBox(r, box) && !r.types.includes('country') && !r.types.includes('administrative_area_level_1'));
+    if (!googleKey()) return null;
+    // the location service's lookup (#907), inside the corridor, nothing as coarse as a state
+    const list = await require('./locationService').bind(gr).resolve(query, { box, min: 'county', max: 'exact', limit: 1 });
+    const hit = list.find((r) => Number.isFinite(r.lat) && inBox(r, box));
     cache[key] = hit ? { lat: hit.lat, lon: hit.lon, address: hit.address } : null;
     savePlacesCache();
     return cache[key];
@@ -1342,7 +1334,8 @@ module.exports = {
     _test: {
         decodePolyline, cumulative, locate, normStreet, streetCore, streetOfInstruction, matchStreets, anchorStreets, anchorCache, boxAreaKm2, pointAlong,
         normaliseGoogle, slowdownsOf, onRoute, tomtomIncidents, osmCameras, cameraState, cameraBoxOf, upkeepCameras, dueNow, localNow, summarise, routeCache, sched,
-        setFetch: (fn) => { fetchImpl = fn; },
+        // the location service's lookups (#907) go through the same fake
+        setFetch: (fn) => { fetchImpl = fn; require('./locationService')._test.setFetch(fn); },
         getFetch: () => fetchImpl,
         resetUsage: () => { usageState = null; },
         resetPlaces: () => { placesStore = {}; }

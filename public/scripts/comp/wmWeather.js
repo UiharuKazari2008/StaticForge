@@ -426,8 +426,21 @@
     }
 
     async function geocode(name, count = 8) {
+        // the location service's lookup (#907): towns and cities, as Weather keeps them
+        const L = window.wmLocation;
+        if (L && typeof L.resolve === 'function') {
+            const list = await L.resolve(name, { min: 'county', max: 'city', limit: count });
+            return list.map(fromLocation).filter(Boolean);
+        }
         const b = await ask('weather_geocode', { name, count }, 12000);
         return (b && Array.isArray(b.results) ? b.results : []).filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon));
+    }
+
+    /** A location service place as one of Weather's: { name, region, country, lat, lon }. */
+    function fromLocation(p) {
+        if (!p || !Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lon))) return null;
+        const c = p.components || {};
+        return { name: c.city || c.county || String(p.label || '').split(',')[0], region: c.state || c.stateCode || '', country: c.country || '', lat: Number(p.lat), lon: Number(p.lon) };
     }
 
     /** The server's own city search (the desktop's weather location dialog), one match. */
@@ -447,17 +460,12 @@
     // the caller does (the Sidebar's and Today's own check, wmTodayWidgets.js isAdmin)
     const isAdmin = () => { try { return localStorage.getItem('userType') === 'admin'; } catch (_) { return false; } };
 
-    /** The phone's own position (Android app): { lat, lon } or null. */
-    function devicePosition() {
-        // Settings > System > External GPS can keep programs off the phone's GPS (#805)
-        if (!inApp() || deviceDenied || !navigator.geolocation || (window.wmGps && !window.wmGps.allowed())) return Promise.resolve(null);
-        return new Promise((resolve) => {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-                (err) => { if (err && err.code === 1) deviceDenied = true; resolve(null); },
-                { enableHighAccuracy: false, maximumAge: DEVICE_HERE_MS, timeout: 15000 }
-            );
-        });
+    /** The phone's own position (Android app): { lat, lon } or null - from the location service (#907),
+     *  which shares one fix with every program and keeps to Settings > System > External GPS (#805). */
+    async function devicePosition() {
+        if (!inApp() || deviceDenied || !window.wmLocation) return null;
+        const f = await window.wmLocation.get({ precision: 'approximate', maxAgeMs: DEVICE_HERE_MS, deviceOnly: true, purpose: 'Weather' });
+        return f ? { lat: f.lat, lon: f.lon } : null;
     }
 
     /**
@@ -1140,6 +1148,12 @@
     function openPlaces() { pushLayer('places'); quiet(true); }
 
     function openAdd() {
+        // the phone: the common lookup (Settings > Location's, #907); the desktop window keeps its own box
+        const L = window.wmLocation;
+        if (MOBILE && L && typeof L.canPick === 'function' && L.canPick()) {
+            void L.pick({ title: 'Add Place', prompt: 'Enter a city or town.', min: 'county', max: 'city', purpose: 'Weather' }).then((p) => { const r = fromLocation(p); if (r) addPlace(r); });
+            return;
+        }
         addResults = [];
         els.results.innerHTML = '';
         els.input.value = '';
