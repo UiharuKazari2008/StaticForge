@@ -4155,8 +4155,11 @@
         }
         gap.style.width = `${hole.width + 2 * pad}px`;
         status.style.marginLeft = 'auto';
-        // the measured fit (fitStatusMeasured) only needs the camera's box in the bar; it splits the icons after
-        if (opts && opts.measureOnly) return { x: hole.left - pad - br.left, w: hole.width + 2 * pad };
+        // the measured fit (fitStatusMeasured) only needs the camera's box in the bar; it splits the icons after.
+        // The title's width from an earlier split goes: the split is laid out again only when an icon crosses, so a
+        // fit with every icon right of the camera kept the inner screen's 452 px title after a fold and the cover's
+        // icons ran off its right edge (Fold7, Nov 18)
+        if (opts && opts.measureOnly) { title.style.flex = ''; return { x: hole.left - pad - br.left, w: hole.width + 2 * pad }; }
         // what does not fit right of the camera moves left of it, keeping the order (first icons first).
         // The room ends where the X / ok and the bar's right padding begin: measured to the bar's edge it
         // took the X's 33 px for icons, so on Start (Fold7 inner screen, Nov 15) five icons "fitted" and
