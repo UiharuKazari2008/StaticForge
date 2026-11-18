@@ -96,45 +96,50 @@ def sources(dirs, file):
             if (w1, h1) == (w // 2, h // 2): px1 = q
         return w, h, px1, px2, px4
     return None
+def master(px2, w, h):
+    """The glyph at 8x (4x its 2x art) with smooth edges: point-enlarged, softened and thresholded again, so the
+    pixel staircases become clean diagonals and curves and straight runs stay straight (no visible art pixels
+    at any phone density - Yukimi, Nov 17: "low res, you can see the pixels up close")."""
+    return im(px2, w, h, '-filter', 'point', '-resize', '400%', '-channel', 'A', '-blur', '0x2.2', '-level', '42%,58%', '+channel')
 def fit(entries):
-    """entries: [(name, file, w2, h2, px1, px2, px4)] -> [(name, file, cw2, 32, px1, px2, px4)] fitted."""
+    """entries: [(name, file, w2, h2, px1, px2, px4)] -> [(name, file, cw2, 32, px1, px2, px4)]: each glyph from
+    its smooth 8x master, cut to its family's bounds, 16 units tall (32 px at 2x), as wide as its shape (at most
+    24 units), every density downscaled from the master (never an enlarged art pixel)."""
+    masters = {e[0]: master(e[5], e[2], e[3]) for e in entries}
     boxes = {}
     for e in entries:
         if e[0] in KEEP: continue
-        b = alpha_box(e[6], e[2] * 2, e[3] * 2)
+        b = alpha_box(masters[e[0]], e[2] * 4, e[3] * 4, 127)
         if b: boxes[e[0]] = b
     fam = {}
     for n, b in boxes.items(): fam.setdefault(family(n), []).append(b)
     plan = {}
     for f, bs in fam.items():
         bw = max(b[2] - b[0] for b in bs); bh = max(b[3] - b[1] for b in bs)
-        plan[f] = min(GLYPH4 / bh, CAPW4 / bw)
+        plan[f] = min(GLYPH4 * 2 / bh, CAPW4 * 2 / bw)
     out = []
     for name, file, w, h, px1, px2, px4 in entries:
+        W8, H8 = w * 4, h * 4
         if name not in boxes:
-            out.append((name, file, w, h, px1, px2, px4)); continue
+            # kept as drawn ("..."): its master downscaled to each density
+            m = masters[name]
+            c4 = im(m, W8, H8, '-filter', 'Lanczos', '-resize', '50%')
+            out.append((name, file, w, h, im(m, W8, H8, '-filter', 'Lanczos', '-resize', '12.5%'), im(m, W8, H8, '-filter', 'Lanczos', '-resize', '25%'), c4)); continue
         f = family(name); k = plan[f]
-        # the family's union, so its members keep their places relative to each other
-        x0 = min(b[0] for n2, b in boxes.items() if family(n2) == f); y0 = min(b[1] for n2, b in boxes.items() if family(n2) == f)
-        x1 = max(b[2] for n2, b in boxes.items() if family(n2) == f); y1 = max(b[3] for n2, b in boxes.items() if family(n2) == f)
-        x0 = max(0, x0); y0 = max(0, y0); x1 = min(w * 2, x1); y1 = min(h * 2, y1)
+        mem = [b for n2, b in boxes.items() if family(n2) == f]
+        x0 = max(0, min(b[0] for b in mem)); y0 = max(0, min(b[1] for b in mem))
+        x1 = min(W8, max(b[2] for b in mem)); y1 = min(H8, max(b[3] for b in mem))
         bw, bh = x1 - x0, y1 - y0
-        if abs(k - 1) <= 0.02:
-            g = im(px4, w * 2, h * 2, '-crop', f'{bw}x{bh}+{x0}+{y0}', '+repage'); gw, gh = bw, bh
-        elif px1 is not None and x0 % 4 == 0 and y0 % 4 == 0 and bw % 4 == 0 and bh % 4 == 0 and abs(round(k * 4) * bh // 4 - GLYPH4) <= 3 and round(k * 4) * bw // 4 <= CAPW4:
-            n = round(k * 4)
-            g = im(px1, w // 2, h // 2, '-crop', f'{bw // 4}x{bh // 4}+{x0 // 4}+{y0 // 4}', '+repage', '-filter', 'point', '-resize', f'{n * 100}%')
-            gw, gh = bw // 4 * n, bh // 4 * n
-        else:
-            gw, gh = max(1, round(bw * k)), max(1, round(bh * k))
-            g = im(px4, w * 2, h * 2, '-crop', f'{bw}x{bh}+{x0}+{y0}', '+repage', '-filter', 'Lanczos', '-resize', f'{gw}x{gh}!')
-        cw2 = max(32 if w == 32 else 0, ((gw + 8 + 3) // 4) * 2)   # 1 unit each side, whole 2x pixels, at least the old square
+        # the cell at 8x: the glyph scaled to the family's size, centred; then each density from it
+        gw8, gh8 = max(1, round(bw * k)), max(1, round(bh * k))
+        cw2 = max(32 if w == 32 else 0, ((gw8 // 4 + 8 + 3) // 4) * 2)
         cw2 = min(cw2, CAPW4 // 2 + 4)
-        cw4, ch4 = cw2 * 2, 64
-        cell4 = im(g, gw, gh, '-background', 'none', '-gravity', 'center', '-extent', f'{cw4}x{ch4}')
-        cell2 = halve(cell4, cw4, ch4)
-        cell1 = halve(cell2, cw2, 32)
-        out.append((name, file, cw2, 32, cell1, cell2, cell4))
+        cell8 = im(masters[name], W8, H8, '-crop', f'{bw}x{bh}+{x0}+{y0}', '+repage', '-filter', 'Lanczos', '-resize', f'{gw8}x{gh8}!',
+                   '-background', 'none', '-gravity', 'center', '-extent', f'{cw2 * 4}x128')
+        c4 = im(cell8, cw2 * 4, 128, '-filter', 'Lanczos', '-resize', '50%')
+        c2 = im(cell8, cw2 * 4, 128, '-filter', 'Lanczos', '-resize', '25%')
+        c1 = im(cell8, cw2 * 4, 128, '-filter', 'Lanczos', '-resize', f'{cw2 // 2}x16!')
+        out.append((name, file, cw2, 32, c1, c2, c4))
     return out
 
 def build(ver, css_path, rule_re, scope, has_1x_rules):
