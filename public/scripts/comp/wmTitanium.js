@@ -1995,7 +1995,9 @@
     // class in step with the animation's own clock. Anything that writes the rows (place, placeTween: a drag taking
     // over, a key, another move) cancels it first and carries on from tw.p. localStorage wmTiEntranceJs = '1' plays the
     // entrance the old way (the A/B).
-    const ENTRY_SAMPLES = 40;
+    // spaced as (k / n)^2: the curve is steepest at the start (enterEase), where evenly spaced points left the linear
+    // steps up to 11 device px off the curve for the first frames; this way no point of the run is 1.5 px off (A53)
+    const ENTRY_SAMPLES = 56;
     const ENTRY_JS_KEY = 'wmTiEntranceJs';
     let entryAnims = null;
     function compositorEntry() {
@@ -2015,7 +2017,7 @@
         const frames = panels.map(() => []);
         const ysAt = [];
         for (let k = 0; k <= ENTRY_SAMPLES; k++) {
-            const x = k / ENTRY_SAMPLES;
+            const x = (k / ENTRY_SAMPLES) * (k / ENTRY_SAMPLES);
             tw.x = x;
             const ys = tweenYs(top, tw.ease ? tw.ease(x) : x);
             ysAt.push(ys);
@@ -2032,7 +2034,7 @@
             // from where it stands then (dimmed under the glass) to nothing, linearly
             const bEl = panels[tw.b] && rowEl.get(panels[tw.b].id);
             if (bEl && back > FADE_MS) {
-                const k = Math.max(0, Math.min(ENTRY_SAMPLES, Math.round((1 - FADE_MS / back) * ENTRY_SAMPLES)));
+                const k = Math.max(0, Math.min(ENTRY_SAMPLES, Math.round(Math.sqrt(1 - FADE_MS / back) * ENTRY_SAMPLES)));
                 const yb = ysAt[k][tw.b];
                 const under = yb + ROW / 2 > top && yb + ROW / 2 < top + BAND;
                 list.push(bEl.animate([{ opacity: under ? 0.55 : 1 }, { opacity: 0 }], { duration: FADE_MS, delay: back - FADE_MS, easing: 'linear', fill: 'forwards' }));
