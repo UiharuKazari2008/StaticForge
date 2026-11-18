@@ -92,10 +92,43 @@
     let selectedId = load(LS.selected, null);
     let unitPicked = load(LS.unit, null);
     let gadgetUnit = null;
-    const cache = load(LS.cache, {}); // keyOf(place) -> { at, data }
     const state = { busy: new Map(), failedAt: new Map() };
 
     const keyOf = (p) => (p.id === 'here' && !Number.isFinite(p.lat) ? 'here' : `${Number(p.lat).toFixed(2)},${Number(p.lon).toFixed(2)}`);
+
+    // The last good data per place (#890): one localStorage key each (wmWeatherCache:<key>), read when
+    // first asked for and written alone when it changes. It was one map of every place's ~94 KB model,
+    // parsed whole at boot and stringified and rewritten whole on every update. The index lists the keys
+    // for pruning. An entry: { at, data, hashes } (hashes: the server's part hashes, W1 below).
+    const CACHE_INDEX = `${LS.cache}Keys`;
+    const cacheKeyOf = (k) => `${LS.cache}:${k}`;
+    const cache = {}; // keyOf(place) -> entry | null, as read so far
+    let cacheKeys = load(CACHE_INDEX, null);
+    if (!Array.isArray(cacheKeys)) {
+        // once: the old single map split into a key per place (the old key goes first, for the quota)
+        const old = load(LS.cache, null);
+        try { localStorage.removeItem(LS.cache); } catch (_) { /* blocked */ }
+        cacheKeys = [];
+        if (old && typeof old === 'object') {
+            Object.keys(old).forEach((k) => {
+                if (!old[k] || !old[k].data) return;
+                cache[k] = old[k];
+                save(cacheKeyOf(k), old[k]);
+                cacheKeys.push(k);
+            });
+        }
+        save(CACHE_INDEX, cacheKeys);
+    }
+    // the server sends part hashes (W1): it also takes weather_watch and pushes weather_delta
+    let serverDeltas = false;
+    function entryOf(k) {
+        if (!k) return null;
+        if (!(k in cache)) {
+            cache[k] = cacheKeys.includes(k) ? load(cacheKeyOf(k), null) : null;
+            if (cache[k] && cache[k].hashes) serverDeltas = true;
+        }
+        return cache[k];
+    }
 
     // ---------------------------------------------------------------- Home and Work (#792)
     //
@@ -152,24 +185,44 @@
         return p.here ? 'Current location' : [p.region, p.country].filter(Boolean).join(', ');
     }
 
-    function applyMonitored(list) {
+    function applyMonitored(list, force) {
         if (!list || typeof list !== 'object') return;
-        monitored = { home: list.home || null, work: list.work || null };
+        const next = { home: list.home || null, work: list.work || null };
+        // the same places again (a read on reconnect): nothing to store or draw (#890)
+        if (!force && JSON.stringify(next) === JSON.stringify(monitored)) return;
+        monitored = next;
         save('wmWeatherMonitored', monitored);
         renderSeen();
         changed();
+        syncWatch();
     }
 
+    // Home / Work, their alerts and rain are pushed (weather_places_changed, weather_alerts_changed,
+    // weather_rain_status): read once when wired and again on each 'connected' (pushes missed while the
+    // link was down), not every 10 minutes from the routine update (#890)
     let monitoredAt = 0;
     async function loadMonitored() {
         try {
             const r = await ask('weather_places_get', {}, 12000);
             if (!r) return;
             monitoredAt = Date.now();
+            const before = JSON.stringify([rainStatus, activeAlerts]);
             if (r.rain) rainStatus = r.rain;
             if (r.alerts) activeAlerts = r.alerts;
-            applyMonitored(r.places);
+            // rain or alerts moved: the status icons and the views draw them, as a change of places would
+            applyMonitored(r.places, JSON.stringify([rainStatus, activeAlerts]) !== before);
         } catch (_) { /* the stored copy stands */ }
+    }
+    /**
+     * A routine update reads again only when the first read failed, or while it rains at Home / Work
+     * with an end time: the server pushes rain status when rain starts or its start moves, not when its
+     * "stopping in about N min" moves, so that line is read as before (every 10 min while shown).
+     */
+    function monitoredDue() {
+        if (!monitoredAt) return true;
+        if (Date.now() - monitoredAt <= 10 * 60 * 1000) return false;
+        const rp = (rainStatus && rainStatus.places) || {};
+        return MONITORED.some((id) => rp[id] && rp[id].rainAlarm && rp[id].wet && rp[id].endsInMin);
     }
 
     /** Save a place as Home or Work on the server (administrators); a saved place of this phone moves there. */
@@ -242,11 +295,23 @@
         try { return /-(US|LR|MM|BS|BZ|KY|PW)\b/i.test(navigator.language || '') ? 'F' : 'C'; } catch (_) { return 'C'; }
     }
 
+    /** One place's data kept (memory and its own localStorage key), places no longer listed dropped. */
+    function storeEntry(k, e) {
+        cache[k] = e;
+        save(cacheKeyOf(k), e);
+        if (!cacheKeys.includes(k)) { cacheKeys.push(k); save(CACHE_INDEX, cacheKeys); }
+        persistCache();
+    }
+
     function persistCache() {
         // last good data per place only, for an instant first paint
         const keep = new Set(places().map(keyOf));
         Object.keys(cache).forEach((k) => { if (!keep.has(k)) delete cache[k]; });
-        save(LS.cache, cache);
+        const gone = cacheKeys.filter((k) => !keep.has(k));
+        if (!gone.length) return;
+        gone.forEach((k) => { try { localStorage.removeItem(cacheKeyOf(k)); } catch (_) { /* blocked */ } });
+        cacheKeys = cacheKeys.filter((k) => keep.has(k));
+        save(CACHE_INDEX, cacheKeys);
     }
 
     function changed() {
@@ -410,11 +475,68 @@
         return r && r.data && typeof r.data === 'object' ? r.data : r;
     }
 
-    /** The weather service's model for coordinates (see the header): the app keeps it as it comes. */
-    async function fetchForecast(lat, lon) {
-        const b = await ask('weather_forecast', { lat: Number(lat), lon: Number(lon) });
-        if (!b || !b.current) throw new Error('No current conditions');
-        return slim(b);
+    /*
+     * Only the parts that changed (#890 W1). The server hashes each part of a model (current, minutely,
+     * daily, alerts, and the hourly rows per local day of the place) and sends the hashes with it. The
+     * phone keeps them with its copy and sends them back as `have`; the reply then carries only the
+     * parts whose hash differs (hourly only for the days that differ, as hourly: { day: [rows] }),
+     * `same: [part names / 'hourly:<day>']` for the rest, and every scalar field. mergeForecast puts
+     * the parts it already holds back in, so the model is the one a full reply gives. A server without
+     * hashes sends the whole model as before; a reply that cannot be merged is asked for whole once.
+     */
+    const PARTS = ['current', 'minutely', 'daily', 'alerts'];
+    const dayOfRow = (h) => String((h && h.time) || '').slice(0, 10);
+
+    /** What the phone holds of a place, in the server's hashes (W1 `have`), or undefined. */
+    function haveOf(e) {
+        return e && e.data && e.hashes && typeof e.hashes === 'object' ? e.hashes : undefined;
+    }
+
+    /**
+     * A forecast reply or weather_delta merged with the copy held: { data, hashes }, or null when it
+     * cannot be (no copy, or a part said to be the same that the copy does not hold as the server means it).
+     */
+    function mergeForecast(prev, b) {
+        if (!b || typeof b !== 'object') return null;
+        const nh = b.hashes && typeof b.hashes === 'object' ? b.hashes : null;
+        if (!Array.isArray(b.same)) return b.current ? { data: slim(b), hashes: nh } : null;
+        const ph = haveOf(prev);
+        if (!ph || !nh) return null;
+        const same = new Set(b.same);
+        for (const s of same) {
+            const day = String(s).startsWith('hourly:') ? String(s).slice(7) : null;
+            const was = day ? (ph.hourly || {})[day] : ph[s];
+            const now = day ? (nh.hourly || {})[day] : nh[s];
+            if (!was || was !== now) return null;
+        }
+        const data = slim(b);
+        PARTS.forEach((k) => {
+            if (!same.has(k)) return; // changed, or gone (absent): as sent
+            if (prev.data[k] === undefined) delete data[k]; else data[k] = prev.data[k];
+        });
+        if (Array.isArray(b.hourly)) return { data, hashes: nh };
+        const sent = b.hourly && typeof b.hourly === 'object' ? b.hourly : {};
+        const held = {};
+        (Array.isArray(prev.data.hourly) ? prev.data.hourly : []).forEach((h) => { const d = dayOfRow(h); (held[d] || (held[d] = [])).push(h); });
+        const rows = [];
+        for (const day of Object.keys(nh.hourly || {}).sort()) {
+            const part = same.has(`hourly:${day}`) ? held[day] : sent[day];
+            if (!Array.isArray(part)) return null;
+            for (const h of part) rows.push(h);
+        }
+        data.hourly = rows;
+        return { data, hashes: nh };
+    }
+
+    /** The weather service's model for coordinates (see the header), with what is held sent as `have`. */
+    async function fetchForecast(lat, lon, prev) {
+        const at = { lat: Number(lat), lon: Number(lon) };
+        const have = haveOf(prev);
+        let m = mergeForecast(prev, await ask('weather_forecast', have ? Object.assign({ have }, at) : at));
+        if (!m && have) m = mergeForecast(null, await ask('weather_forecast', at));
+        if (!m || !m.data || !m.data.current) throw new Error('No current conditions');
+        if (m.hashes) serverDeltas = true;
+        return m;
     }
 
     /** Drop what the app never shows before the copy goes to localStorage. */
@@ -422,6 +544,10 @@
         const out = Object.assign({}, b);
         delete out.available;
         delete out.place;
+        // the W1 envelope: kept beside the model, not in it
+        delete out.hashes;
+        delete out.same;
+        delete out.key;
         return out;
     }
 
@@ -496,6 +622,7 @@
                 here = { name: name || 'Current location', region, country, lat: Math.round(pos.lat * 1e4) / 1e4, lon: Math.round(pos.lon * 1e4) / 1e4, at: Date.now(), device: true };
                 save(LS.here, here);
                 followPhone();
+                syncWatch(); // Current location moved: the place watched follows
                 return;
             }
         }
@@ -516,9 +643,10 @@
         save(LS.here, here);
         followPhone();
         if (w.current) {
-            cache[keyOf(Object.assign({ id: 'here' }, here))] = { at: Date.now(), data: slim(w) };
-            persistCache();
+            if (w.hashes) serverDeltas = true;
+            storeEntry(keyOf(Object.assign({ id: 'here' }, here)), { at: Date.now(), data: slim(w), hashes: w.hashes && typeof w.hashes === 'object' ? w.hashes : null });
         }
+        syncWatch();
         // the gadget's unit, until one is picked here (sidebar_get, admins too)
         const c = wsClient();
         if (c && !unitPicked && !gadgetUnit) {
@@ -560,17 +688,13 @@
                 if (!here || !Number.isFinite(here.lat)) throw new Error('No weather for this place');
                 return true;
             }
-            const before = cache[key] && cache[key].data;
-            const data = await fetchForecast(p.lat, p.lon);
-            cache[key] = { at: Date.now(), data };
-            // a saved place's new alert notifies (Home / Work's come from the server's monitor); never
-            // on a first load, so adding a place does not ring for alerts already running (#792)
-            if (!p.monitored && before && Array.isArray(data.alerts) && window.weatherAlerts) {
-                const had = new Set((before.alerts || []).map((a) => a.id));
-                data.alerts.filter((a) => !had.has(a.id)).forEach((a) => window.weatherAlerts._onIssued({ data: { alert: a, place: { label: p.name, name: p.name } } }));
-            }
+            const prev = entryOf(key);
+            const before = prev && prev.data;
+            const m = await fetchForecast(p.lat, p.lon, prev);
+            storeEntry(key, { at: Date.now(), data: m.data, hashes: m.hashes });
+            notifyNewAlerts(p, before, m.data);
             state.failedAt.delete(key);
-            persistCache();
+            syncWatch(); // (a first reply with hashes: the server takes weather_watch)
             return true;
         })();
         state.busy.set(key, run);
@@ -584,15 +708,102 @@
         }
     }
 
-    const fresh = (p) => { const c = p && cache[keyOf(p)]; return !!(c && Date.now() - c.at < STALE_MS); };
-    const dataOf = (p) => { const c = p && cache[keyOf(p)]; return c ? c.data : null; };
+    /**
+     * A saved place's new alert notifies (Home / Work's come from the server's monitor); never on a first
+     * load, so adding a place does not ring for alerts already running (#792). Fetches and pushes alike.
+     */
+    function notifyNewAlerts(p, before, data) {
+        if (p.monitored || !before || !data || !Array.isArray(data.alerts) || !window.weatherAlerts) return;
+        const had = new Set((before.alerts || []).map((a) => a.id));
+        data.alerts.filter((a) => !had.has(a.id)).forEach((a) => window.weatherAlerts._onIssued({ data: { alert: a, place: { label: p.name, name: p.name } } }));
+    }
+
+    // a place the server watches for this page is kept current by its pushes (W1 stage 2): its "current"
+    // part moves with every fetch the server makes (5-15 min), so an hour without one means the pushes
+    // stopped and the copy is stale after all
+    const fresh = (p) => {
+        if (!p) return false;
+        const k = keyOf(p);
+        const c = entryOf(k);
+        return !!(c && Date.now() - c.at < (watching(k) ? 4 * STALE_MS : STALE_MS));
+    };
+    const dataOf = (p) => { const c = p && entryOf(keyOf(p)); return c ? c.data : null; };
+
+    // ---------------------------------------------------------------- pushed updates (#890 W1 stage 2)
+    //
+    // While a weather view is on screen (this program, Today's weather item and the 6.5 clock and Super
+    // Bar: wmWeather.view('today', on) from wmTodayWidgets.js) the selected place is watched:
+    // weather_watch { places: [{ key, lat, lon, have }] } (the whole list each time). The server pushes
+    // weather_delta { key, ...a W1 reply against what it last knew this page to hold } when a fetch it
+    // already makes changes a part, and the page asks nothing on a timer for that place;
+    // weather_unwatch {} when no view shows. The server forgets a dropped socket's watches: 'connected'
+    // sends it again with `have`. Sent only to a server that sends part hashes; one that refuses the
+    // packet, or does not confirm it, leaves the routine 15-minute update as it was.
+    const viewers = new Set(); // owners showing the selected place's weather now (wmWeather.view)
+    let watchKey = ''; // what the server was asked to watch for this page ('' nothing)
+    let watchOk = null; // true: confirmed (reply or a push); false: refused (an older server)
+    let watchSeq = 0;
+    const watching = (k) => watchOk === true && !!k && watchKey === k;
+    const viewOn = () => viewers.size > 0 || (shown && !!page && seen(page));
+
+    async function syncWatch(again) {
+        const c = wsClient();
+        const p = viewOn() && serverDeltas && watchOk !== false && c ? selected() : null;
+        const key = p && Number.isFinite(p.lat) ? keyOf(p) : '';
+        if (key === watchKey && !again) return;
+        const was = watchKey;
+        const seq = ++watchSeq;
+        watchKey = key;
+        if (!key) {
+            if (was && c && watchOk !== false) c.sendMessage('weather_unwatch', {}, false).catch(() => {});
+            return;
+        }
+        const have = haveOf(entryOf(key));
+        let r;
+        try {
+            r = await Promise.race([
+                c.sendMessage('weather_watch', { places: [{ key, lat: Number(p.lat), lon: Number(p.lon), have }] }, false),
+                new Promise((resolve) => setTimeout(() => resolve(undefined), 20000))
+            ]);
+        } catch (err) {
+            if (seq !== watchSeq) return;
+            // a server without the packet: the routine update stays; anything else is tried on the next change
+            if (/unknown message type/i.test(String((err && err.message) || ''))) watchOk = false;
+            watchKey = '';
+            return;
+        }
+        if (seq !== watchSeq || r === undefined) return; // not confirmed yet: a weather_delta confirms it
+        watchOk = true;
+        // the copy went stale while nothing watched it (the screen was off): one ask with what is held
+        const e = entryOf(key);
+        if (!e || Date.now() - e.at >= STALE_MS) update(p).then(() => { changed(); renderSeen(); }).catch(() => {});
+    }
+
+    /** weather_delta: a watched place's changed parts, merged as a forecast reply is. */
+    function onDelta(d) {
+        const key = d && typeof d.key === 'string' ? d.key : '';
+        if (!key) return;
+        if (key === watchKey) watchOk = true;
+        const p = places().find((x) => Number.isFinite(x.lat) && keyOf(x) === key);
+        if (!p) return;
+        const prev = entryOf(key);
+        const m = mergeForecast(prev, d);
+        if (!m || !m.data || !m.data.current) {
+            // not mergeable with the copy held: ask once with it (only the changed parts come back)
+            update(p).then(() => { changed(); renderSeen(); }).catch(() => {});
+            return;
+        }
+        storeEntry(key, { at: Date.now(), data: m.data, hashes: m.hashes });
+        notifyNewAlerts(p, prev && prev.data, m.data);
+        changed();
+        renderSeen();
+    }
 
     /** A routine update: no cursor, no message. */
     let quietGen = 0;
     async function quiet(all) {
         const gen = ++quietGen;
-        // Home / Work, their alerts and rain: again when the first ask came before the link was up
-        if (Date.now() - monitoredAt > 10 * 60 * 1000) await loadMonitored();
+        if (monitoredDue()) await loadMonitored();
         await resolveHere();
         await seed();
         const list = all ? places() : [selected()].filter(Boolean);
@@ -1079,6 +1290,7 @@
         if (els) els.main.scrollTop = 0;
         changed();
         setTimeout(() => fxPlay(true), 60);
+        syncWatch(); // the place watched follows the selection (before fresh(): a new place is not watched yet)
         const p = selected();
         if (p && !fresh(p)) {
             // switching is a tap: the cursor shows if it takes a moment, and a failure answers it
@@ -1279,6 +1491,7 @@
         persistCache();
         render();
         changed();
+        syncWatch();
     }
 
     async function search() {
@@ -1336,7 +1549,7 @@
     }
 
     function renderFoot(p, data) {
-        const c = cache[keyOf(p)];
+        const c = entryOf(keyOf(p));
         const a = data && data.attribution;
         const updated = c ? `Updated ${updatedText(c.at)}${data && data.stale ? ' (offline copy)' : ''}` : '';
         let html = `<div>${ws.escapeHtml(updated)}</div>`;
@@ -2154,6 +2367,7 @@
         const on = radarPlaying && !!radar && shown && seen(page);
         if (on && !radarTimer) {
             let hold = 0;
+            // perf: allow the radar loop the user plays (Play); steps only while the map is on screen (seen() is wmShell.onScreen) and stops on hide and screen off
             radarTimer = setInterval(() => {
                 if (!radar || !seen(page)) { radarRun(); return; }
                 if (radarFrame === radar.frames.length - 1 && hold++ < 3) return; // rest on the newest frame
@@ -2802,37 +3016,48 @@
         syncPoll();
     }
 
-    /** The minute's routine update runs only while the app is seen; nothing wakes with the screen off. */
+    /**
+     * The minute's routine update runs only while the app is seen; nothing wakes with the screen off. It
+     * asks the server nothing for a watched place (weather_delta pushes it); it reads the phone's own
+     * position every 10 minutes while Weather is in use (resolveHere), and is the routine update for a
+     * server without weather_watch.
+     */
     function syncPoll() {
         const on = shown && seen(page);
+        // perf: allow exists only while the Weather program is on screen (cleared on hide, screen off and behind an Android program); reads the phone's position, server data is pushed
         if (on && !pollTimer) pollTimer = setInterval(() => { if (shown && seen(page)) quiet(false); else syncPoll(); }, 60 * 1000);
         else if (!on && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
 
-    /** The server's weather broadcasts (#792): Home / Work, their alerts and rain. */
+    /** The server's weather broadcasts (#792): Home / Work, their alerts and rain; the watched place's deltas. */
     let wired = false;
     function wireServer() {
         const c = window.wsClient;
         if (wired || !c || typeof c.on !== 'function') return !!wired;
         wired = true;
         const data = (pk) => (pk && (pk.data || pk)) || {};
-        c.on('weather_places_changed', (pk) => applyMonitored(data(pk).places));
-        c.on('weather_alerts_changed', (pk) => { activeAlerts = data(pk); if (ws) ws.refreshStatus(); if (shown) renderSeen(); });
-        c.on('weather_rain_status', (pk) => { rainStatus = data(pk); if (ws) ws.refreshStatus(); });
+        c.on('weather_places_changed', (pk) => applyMonitored(data(pk).places), { signal: appScopeSignal });
+        c.on('weather_alerts_changed', (pk) => { activeAlerts = data(pk); if (ws) ws.refreshStatus(); if (shown) renderSeen(); }, { signal: appScopeSignal });
+        c.on('weather_rain_status', (pk) => { rainStatus = data(pk); if (ws) ws.refreshStatus(); }, { signal: appScopeSignal });
+        c.on('weather_delta', (pk) => onDelta(data(pk)), { signal: appScopeSignal });
+        // a new link: pushes may have been missed (Home / Work read again) and the server forgot the watch
+        c.on('connected', () => { void loadMonitored(); void syncWatch(true); }, { signal: appScopeSignal });
         loadMonitored();
         return true;
     }
 
     function register() {
         ws = MOBILE ? window.wmShell : desktopShell();
-        if (!wireServer()) { let n = 0; const t = setInterval(() => { if (wireServer() || ++n > 120) clearInterval(t); }, 1000); }
-        document.addEventListener('keydown', onKey, true);
+        // websocket.js (window.wsClient) loads before this file; should it not have, every script has run by 'load'
+        if (!wireServer()) window.addEventListener('load', () => { wireServer(); }, { once: true, signal: appScopeSignal });
+        document.addEventListener('keydown', onKey, { capture: true, signal: appScopeSignal });
         // seen again (page shown, screen on, back from an Android program): the clock, an update and the
         // loops go on; not seen: the scene's animations, the poll and the radar loop stop
         const wake = () => {
             if (!els) return;
             const on = shown && seen(page);
             els.root.classList.toggle('is-paused', !on);
+            syncWatch();
             if (on) { tickClock(); quiet(false); if (renderStale) render(); }
             syncPoll();
             radarRun();
@@ -2866,6 +3091,7 @@
                 // the intro once the page is laid out (and again when first data lands: select / update)
                 setTimeout(() => fxPlay(true), 120);
                 startPoll();
+                syncWatch();
                 // opening is a tap: a first load without any data shows the cursor and answers a failure
                 const p = selected();
                 if (p && !dataOf(p)) {
@@ -2885,6 +3111,7 @@
                 clearInterval(pollTimer);
                 pollTimer = null;
                 if (els) els.root.classList.add('is-paused');
+                syncWatch();
             },
             historyDepth: () => layers.length,
             onBack: () => popLayer(),
@@ -3006,7 +3233,7 @@
                 loC: today ? num(loC(today)) : null,
                 hi: today ? tempOf(hiC(today)) : null,
                 lo: today ? tempOf(loC(today)) : null,
-                updatedAt: (cache[keyOf(p)] || {}).at || null
+                updatedAt: (entryOf(keyOf(p)) || {}).at || null
             };
         },
         /**
@@ -3048,6 +3275,16 @@
         showAlerts,
         /** { home, work } as the server keeps them. */
         monitored: () => monitored,
+        /**
+         * A view outside this program shows the selected place's weather (on) or stopped (off): Today's
+         * weather item and the 6.5 clock (wmTodayWidgets.js 'today'). While any view shows, the place is
+         * watched and its changes are pushed (#890 W1 stage 2).
+         */
+        view(owner, on) {
+            if (!owner) return;
+            if (on) viewers.add(owner); else viewers.delete(owner);
+            void syncWatch(); // (nothing when the place watched stays the same)
+        },
         refresh() { return quiet(false); },
         unit: () => unit(),
         iconUrl
