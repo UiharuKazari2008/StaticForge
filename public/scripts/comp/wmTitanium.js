@@ -2093,7 +2093,13 @@
         if (!built) { dropPrepared(); built = buildEntryAnims(tw); }
         entryPrepared = null;
         if (!built) return false;
-        for (const a of built.anims) { try { a.play(); } catch (_) { /* gone */ } }
+        // started at a given time, not play(): a play() waits for the compositor to confirm a commit first, and on a
+        // wake that confirmation took seconds - the list sat in its opening pose below the screen (A53, 2 returns in
+        // 5, Nov 18: running at 0 ms 1.5 s after Home). A start time set now plays at once, every row on one clock
+        const t0 = document.timeline.currentTime;
+        for (const a of built.anims) {
+            try { if (t0 != null) a.startTime = t0; else a.play(); } catch (_) { try { a.play(); } catch (__) { /* gone */ } }
+        }
         entryAnims = built.anims;
         return true;
     }
