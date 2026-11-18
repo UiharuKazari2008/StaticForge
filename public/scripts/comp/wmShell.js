@@ -3526,13 +3526,15 @@
     let barsKitSig = '';
     const BARS_NATIVE_ROLES = new Set(['data', 'cell', 'roaming', 'signal', 'battery', 'androidtray']);
     const artPath = (css) => { const m = /url\(\s*["']?([^"')]+?)(?:@\dx)?\.png/.exec(css || ''); return m ? m[1].replace(/^https?:\/\/[^/]+/, '') : ''; };
+    let barsCatalogSent = '';
     function barsStatusPush() {
         const ab = window.AndroidBars;
         if (!ab || typeof ab.status !== 'function' || !shell) return;
         const list = [];
-        shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((i) => {
-            const role = i.dataset.role;
-            if (!role || BARS_NATIVE_ROLES.has(role) || i.hidden || i.classList.contains('wm-shed')) return;
+        // every role's look, shown or not, in the bar's order (#908): the app's CaféReady status-bar task decides which
+        // show while this page sleeps, and draws them with these
+        const catalog = [];
+        const lookOf = (i, role) => {
             const e = { role };
             if (i.classList.contains('wm-strip')) {
                 const st = i.style.getPropertyValue('--strip');
@@ -3540,8 +3542,20 @@
             } else if (i.dataset.icon) e.atlas = i.dataset.icon;
             else e.art = artPath(i.style.backgroundImage);
             if (i.classList.contains('is-presence')) e.dim = true;
+            return e;
+        };
+        shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((i) => {
+            const role = i.dataset.role;
+            if (!role || BARS_NATIVE_ROLES.has(role)) return;
+            const e = lookOf(i, role);
+            if (e.atlas || e.art || e.strip) catalog.push(Object.assign({}, e, { dim: undefined }));
+            if (i.hidden || i.classList.contains('wm-shed')) return;
             list.push(e);
         });
+        if (typeof ab.statusCatalog === 'function') {
+            const cj = JSON.stringify(catalog);
+            if (cj !== barsCatalogSent) { barsCatalogSent = cj; try { ab.statusCatalog(cj); } catch (_) { /* older app */ } }
+        }
         barsBubbleSpecs(false);
         // the bars' look changed (theme, version, scale, width): the app asks for a new kit. Its signature reads
         // computed styles (a forced style pass right after this pass's writes): not while the screen is off or
