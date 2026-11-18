@@ -71,11 +71,21 @@ function presetFor(email) {
 
 // ---- events ----
 
-function broadcast(payload) {
+/** A Melaton Mobile page (modules/websocket.js isPhonePage). */
+const isPhonePage = (info) => !!(info && info.phone && info.phone.shell === 'mobile');
+
+/**
+ * ma_event to the admins' pages. opts.phones false: not to phone pages (#890 round 5, W6): sync progress
+ * (only CardSpace and Messaging Bridge on the desktop read it) and the end of a sync that changed nothing a
+ * phone shows (every 10 min each phone re-read ma_accounts for nothing). The desktop keeps every one.
+ */
+function broadcast(payload, opts = {}) {
     let server = null;
     try { server = resources().getWebSocketServer && resources().getWebSocketServer(); } catch (_) { server = null; }
     if (server && typeof server.broadcast === 'function') {
-        server.broadcast({ type: 'ma_event', data: payload, timestamp: new Date().toISOString() }, (info) => !!(info && info.authenticated && info.userType === 'admin'));
+        const desktopOnly = opts.phones === false;
+        server.broadcast({ type: 'ma_event', data: payload, timestamp: new Date().toISOString() },
+            (info) => !!(info && info.authenticated && info.userType === 'admin' && !(desktopOnly && isPhonePage(info))));
     }
     // the phone's New E-mail Message also when its page is not running (#876): the inbox
     try { require('./notificationInboxSources').onMailEvent(payload); } catch (error) { log(`inbox: ${error.message}`); }
@@ -171,17 +181,21 @@ function runSync(rt, folders) {
     const child = fork(path.join(__dirname, 'mailAccountsSyncWorker.js'), [], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
     rt.syncChild = child;
     rt.syncing = true;
+    // what a phone shows of the sync (#890 round 5, W6): the folders it changed and its error line
+    const errorBefore = rt.syncError || '';
+    let changed = false;
     child.on('message', (m) => {
         if (!m) return;
         if (m.progress) {
             rt.syncProgress = m.progress;
-            // live progress for CardSpace / Messaging Bridge, at most every 2 s
-            if (Date.now() - (rt.progressAt || 0) > 2000) { rt.progressAt = Date.now(); broadcast({ event: 'progress', accountId: rt.account.id, progress: m.progress }); }
+            // live progress for CardSpace / Messaging Bridge (desktop only), at most every 2 s
+            if (Date.now() - (rt.progressAt || 0) > 2000) { rt.progressAt = Date.now(); broadcast({ event: 'progress', accountId: rt.account.id, progress: m.progress }, { phones: false }); }
         }
         if (m.log) log(`${rt.account.id} sync: ${m.log}`);
         if (m.error) { log(`${rt.account.id} sync failed: ${m.error}`); rt.syncError = m.error; }
         if (m.done) {
             rt.syncError = '';
+            if ((m.changes || []).length) changed = true;
             for (const ch of m.changes || []) broadcast({ event: 'folders', accountId: rt.account.id, folder: ch.folder, fetched: ch.fetched, removed: ch.removed, flagsChanged: ch.flagsChanged });
         }
     });
@@ -189,7 +203,9 @@ function runSync(rt, folders) {
         rt.syncChild = null;
         rt.syncing = false;
         rt.syncProgress = null;
-        broadcast({ event: 'sync', accountId: rt.account.id });
+        // changed: the worker reported changes, or the sync's error line came or went
+        const real = changed || (rt.syncError || '') !== errorBefore;
+        broadcast({ event: 'sync', accountId: rt.account.id, changed: real }, { phones: real });
     });
     child.send({ cmd: 'sync', account: rt.account, password: secretFor(rt.account.id).password || '', cacheDir: cacheDir(), folders: folders || null });
     return true;
@@ -617,5 +633,7 @@ function unreadSummary() {
 
 module.exports = {
     init, listAccounts, testAccount, saveAccount, deleteAccount, listFolders, listMessages, getMessage, setFlags, move, remove, send,
-    attachment, addUpload, search, syncStatus, resync, unreadSummary, presetFor, PRESETS, saveDraft
+    attachment, addUpload, search, syncStatus, resync, unreadSummary, presetFor, PRESETS, saveDraft,
+    // tests (scripts/test-ws-phone-round5.js): a sync's events and who gets them
+    _test: { runSync, setResources: (r) => { gr = r; } }
 };
