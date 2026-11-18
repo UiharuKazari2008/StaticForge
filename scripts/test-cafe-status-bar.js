@@ -52,11 +52,18 @@ assert.strictEqual(out(a).roles.carkey, true);
 assert.ok(a.some((x) => x.op === 'timer' && x.ms > 0), 'a timer for the window\'s end');
 // the page asleep: with the shared fit (CafeTasks.lib.statusFit) and the app's layout, the output carries the fit
 let seen = null;
-g.CafeTasks.lib.statusFit = { fit: (input) => { seen = input; return { right: input.icons.map((i) => i.role), left: [], folded: [] }; } };
+const realFit = g.CafeTasks.lib.statusFit;
+assert.ok(realFit && typeof realFit.fit === 'function', 'status-fit.js is in the bundle');
+g.CafeTasks.lib.statusFit = { fit: (input) => { seen = input; return { shown: input.icons.map((i) => i.role), left: [], folded: [], shed: [], groupShown: false }; } };
 a = send('layout', { geo: { iconsRight: 1000, titleX: 100, titleMin: 200, gap: 4, icon: 54, holeX: 500, holeR: 560 }, widths: { sms: 54 }, native: ['battery'], order: ['mail', 'sms', 'director'] });
 const fit = out(a).fit;
 assert.ok(fit && fit.right.includes('sms') && fit.right.includes('battery'), 'the fit is in the output');
-assert.strictEqual(seen.roomRight, 440);
-assert.strictEqual(seen.roomLeft, 200);
+assert.strictEqual(JSON.stringify(seen.bar.hole), JSON.stringify({ x: 500, w: 60 }));
+assert.strictEqual(seen.bar.iconsRight, 1000);
 assert.ok(seen.icons.find((i) => i.role === 'battery').foldable === false);
+// and the real one, over an app on a narrow bar, folds or sheds rather than crossing the camera
+g.CafeTasks.lib.statusFit = realFit;
+a = send('layout', { geo: { iconsRight: 1000, titleX: 100, titleMin: 200, gap: 4, icon: 54, holeX: 900, holeR: 950 }, width: 1080, widths: {}, native: ['signal', 'battery'], order: ['mail', 'sms', 'director', 'carkey', 'received', 'notify'] });
+const f2 = out(a).fit;
+assert.ok(f2 && Array.isArray(f2.right), 'the real fit gives a placement');
 console.log('test-cafe-status-bar: ok');
