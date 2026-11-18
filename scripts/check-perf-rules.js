@@ -325,7 +325,8 @@ function main() {
             const c = countsOf(scanFile(f));
             const prev = old[f] || {};
             const row = {};
-            const fresh = flag('--init') || !Object.keys(old).length;
+            // only --init (or no baseline file at all) takes today's counts; an empty baseline means every count is 0
+            const fresh = flag('--init') || readBaseline() === null;
             for (const r of RULE_IDS) {
                 const now = c[r] || 0;
                 // --update only lowers: a count above the baseline stays at the baseline unless Yukimi accepted it
