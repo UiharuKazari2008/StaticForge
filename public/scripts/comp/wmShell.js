@@ -2343,18 +2343,27 @@
         }
         return false;
     }
+    // Behind an Android program what is open in Melaton is kept much harder (Yukimi, Nov 18: "why are we not more
+    // aggressive with not letting the web view be killed as there could be apps open inside it when we went to an
+    // android app"): there Android keeps this app at a foreground service's importance (A53: oom_score_adj 50, its
+    // WebView's renderer 51; the low-memory killer starts at 200, the program in front is the only one above it), so
+    // "low" is the phone's memory, not a threat to Melaton - nothing closes for it; "critical" closes only programs
+    // unused for 15 minutes, never every one. In front, Windows Mobile's rule as above
     function lowMemory(level) {
         const critical = level === 'critical';
+        const behind = document.visibilityState !== 'visible';
+        if (behind && !critical) return;
+        const all = critical && !behind;
         const now = Date.now();
         const ended = [];
         for (const id of openedApps.slice().reverse()) {
             if (id === current || id === 'today' || id === 'programs' || id === 'settings') continue;
             const app = apps.get(id);
             if (!app || app.keepAlive || editedIn(app.page)) continue;
-            if (!critical && now - (appLastShown.get(id) || 0) < 15 * 60000) continue;
+            if (!all && now - (appLastShown.get(id) || 0) < 15 * 60000) continue;
             if (endApp(id)) ended.push(id);
         }
-        if (ended.length) console.info(`[wmShell] low memory (${level}): closed ${ended.join(', ')}`);
+        if (ended.length) console.info(`[wmShell] low memory (${level}${behind ? ', behind' : ''}): closed ${ended.join(', ')}`);
     }
     window.addEventListener('melatonlowmemory', (e) => { try { lowMemory((e.detail && e.detail.level) || 'low'); } catch (err) { console.warn('[wmShell] low memory', err); } }, appScopeSignal ? { signal: appScopeSignal } : undefined);
 
