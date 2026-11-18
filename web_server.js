@@ -2323,6 +2323,8 @@ require('./modules/activeSyncScreen').mount(app, authMiddleware, globalResources
 require('./modules/deviceAdb').mount(app, authMiddleware, globalResources);
 // modules/activeSyncWallpapers.js — the phones' wallpapers kept for Device Center (Yozora #827)
 require('./modules/activeSyncWallpapers').mount(app, authMiddleware, globalResources);
+// CaféReady task code for the Android app: hashed manifest + files, api-gated by the app (#908)
+require('./modules/cafeTasksRoute').mount(app, authMiddleware);
 // modules/searchSuggest.js — Internet Search's predictions from Google / Bing (Yozora #830)
 require('./modules/searchSuggest').mount(app, authMiddleware);
 // modules/textMessagingHttp.js — Text Messaging attachments (BlueBubbles / RCS, Yozora #779)
