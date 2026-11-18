@@ -23,7 +23,8 @@
  *   lapis     { until }           a remote start's end (epoch ms), 0 = none running
  *   traffic   { days, leaveHome, leaveWork, leadMin, timeZone, delayWork, delayHome, reportAt }  (the task works the
  *             leave windows out on the phone's clock; the server has no timer for them)
- *   notices   { waiting }         other notices waiting, new or put away with Hide (seen) (the notification glyph)
+ *   notices   { waiting, list }   other notices waiting, new or put away with Hide (seen) (the notification glyph); list:
+ *                                 the newest ten { id, title, text, cls, at } - the app draws the "..." group from it
  *   prefs     { mailAll, smsAll } Messaging's "icon for any unread" choices (the page's, kept on the server)
  *   received  { unseen }          ActiveSync received items not seen yet (per phone)
  *
@@ -99,7 +100,12 @@ function inboxCounts() {
         directorUnseen: rows.some((n) => /^director:.*:turn$/.test(n.id)),
         // waiting = not yet dismissed: a notice put away with Hide (seen) stays pending in the "..." group, as on
         // Windows Mobile and on the page, until Dismiss / acting on it clears it (#907)
-        notices: rows.filter((n) => !mine(n)).length
+        notices: rows.filter((n) => !mine(n)).length,
+        // the waiting notices themselves (newest first, ten at most): the app draws the "..." group's notices from these
+        // with the page asleep (rule cafeready-background; Nov 18: a tap on it showed nothing while the app waited for
+        // the page to describe them)
+        noticeList: rows.filter((n) => !mine(n)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 10)
+            .map((n) => ({ id: n.id, title: n.title || '', text: String(n.text || '').slice(0, 300), cls: n.cls || '', at: n.createdAt || 0 }))
     };
 }
 
@@ -174,7 +180,7 @@ async function build() {
         weather: weather(),
         lapis: lapis(),
         traffic: traffic(),
-        notices: { waiting: ib.notices },
+        notices: { waiting: ib.notices, list: ib.noticeList },
         prefs: prefs()
     };
 }
