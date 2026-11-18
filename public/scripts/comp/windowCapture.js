@@ -526,7 +526,14 @@
         const x = r.left - winRect.left;
         const y = r.top - winRect.top;
         const clip = clipRect(el, win, winRect);
-        return x < clip.x + clip.w && x + r.width > clip.x && y < clip.y + clip.h && y + r.height > clip.y;
+        if (!(x < clip.x + clip.w && x + r.width > clip.x && y < clip.y + clip.h && y + r.height > clip.y)) return false;
+        // laid out but not drawn: the Director mascot's blink and mouth layers wait at opacity 0
+        // (their file changes with each expression, so every copy encoded two more ~1400 px pictures)
+        if (root.getComputedStyle(el).visibility !== 'visible') return false;
+        for (let a = el; a && a !== win.parentElement; a = a.parentElement) {
+            if (parseFloat(root.getComputedStyle(a).opacity) === 0) return false;
+        }
+        return true;
     }
 
     /** Copies the live state the clone loses (form values, scroll offsets) and swaps what an SVG
