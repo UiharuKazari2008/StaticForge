@@ -743,7 +743,10 @@
     let watchKey = ''; // what the server was asked to watch for this page ('' nothing)
     let watchOk = null; // true: confirmed (reply or a push); false: refused (an older server)
     let watchSeq = 0;
-    const watching = (k) => watchOk === true && !!k && watchKey === k;
+    // the key the server confirmed for this page (its reply, or a weather_delta for it): a newly selected
+    // place, or a watch sent again after 'connected', is not watched until then
+    let confirmedKey = '';
+    const watching = (k) => watchOk === true && !!k && watchKey === k && confirmedKey === k;
     const viewOn = () => viewers.size > 0 || (shown && !!page && seen(page));
 
     async function syncWatch(again) {
@@ -754,6 +757,7 @@
         const was = watchKey;
         const seq = ++watchSeq;
         watchKey = key;
+        confirmedKey = '';
         if (!key) {
             if (was && c && watchOk !== false) c.sendMessage('weather_unwatch', {}, false).catch(() => {});
             return;
@@ -774,6 +778,7 @@
         }
         if (seq !== watchSeq || r === undefined) return; // not confirmed yet: a weather_delta confirms it
         watchOk = true;
+        confirmedKey = key;
         // the copy went stale while nothing watched it (the screen was off): one ask with what is held
         const e = entryOf(key);
         if (!e || Date.now() - e.at >= STALE_MS) update(p).then(() => { changed(); renderSeen(); }).catch(() => {});
@@ -783,7 +788,7 @@
     function onDelta(d) {
         const key = d && typeof d.key === 'string' ? d.key : '';
         if (!key) return;
-        if (key === watchKey) watchOk = true;
+        if (key === watchKey && watchOk !== false) { watchOk = true; confirmedKey = key; }
         const p = places().find((x) => Number.isFinite(x.lat) && keyOf(x) === key);
         if (!p) return;
         const prev = entryOf(key);
@@ -3207,6 +3212,18 @@
             if (!document.hidden && Date.now() - lastAsk > RETRY_MS && (!p || !fresh(p))) {
                 lastAsk = Date.now();
                 quiet(false);
+            } else if (!document.hidden && Date.now() - lastAsk > RETRY_MS && inApp() && !deviceDenied
+                && (!selectedId || ['home', 'work', 'here'].includes(selectedId))
+                && (!here || !here.device || Date.now() - (here.at || 0) >= DEVICE_HERE_MS)) {
+                // a watched place asks the server nothing, but Current location still follows the phone
+                // as often as quiet() moved it (a local position read; a move re-points the watch)
+                lastAsk = Date.now();
+                const was = p ? keyOf(p) : '';
+                resolveHere().then(() => {
+                    const q = selected();
+                    if (q && !fresh(q)) quiet(false); // moved to a place with no fresh copy: fetched as before
+                    else if ((q ? keyOf(q) : '') !== was) changed();
+                }).catch(() => {});
             }
             if (!p || !data || !data.current) return null;
             const cur = data.current;
