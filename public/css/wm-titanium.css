@@ -365,15 +365,22 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-exp {
     animation: wm-ti-zoom-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-row.is-sel {
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-row.is-sel,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-row.is-arriving {
     visibility: visible;
     animation: wm-ti-name-out 0.15s linear both;
+}
+
+/* the grow starts while the entrance's last fraction still runs (wmTitanium growEarly) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering.is-zoom-enter .wm-ti-exp {
+    visibility: visible;
 }
 
 @media (prefers-reduced-motion: reduce) {
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-list { animation: none; }
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-exp { animation: none; }
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-row.is-sel { visibility: hidden; animation: none; }
+    html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-row.is-arriving { animation: none; }
 }
 
 /* ---- Settings > Today > Effects (wmTitanium.js; html[data-wm-ti-fx] lists the ones on) ---- */

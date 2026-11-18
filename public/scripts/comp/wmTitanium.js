@@ -1643,7 +1643,7 @@
         panels.forEach((p, i) => {
             const el = rowEl.get(p.id);
             if (!el) return;
-            el.classList.remove('is-under');
+            el.classList.remove('is-under', 'is-arriving');
             if (el.style.opacity) el.style.opacity = '';
             let y;
             if (i < sel) y = top - ROW * (sel - i) - e;
@@ -1961,6 +1961,42 @@
     // the rise four times slow when every late frame counted (50 ms)
     const STALL_MS = 120;
     const STALL_KEEP_MS = 50;
+    // The arriving panel grows out of its item's name as soon as the list has visibly settled (Yukimi, Nov 18: "when it
+    // settles its immediately starting to grow out from that items name"), not when the run's clock ends: in the run's
+    // last 40 % the logarithmic tail and the spring nearly cancel, and the item stood within a pixel or two of its
+    // place for ~200 ms before the panel came (A53 recording). settleX: the point of the run after which the item stays
+    // within GROW_NEAR units of where it lands; the rows finish their last fraction under the growing panel
+    const GROW_NEAR = 2;
+    let growAt = 0;
+    function settleX() {
+        const top = focusTop();
+        const keep = tw.x;
+        tw.x = 1;
+        const end = tweenYs(top, 1)[tw.a];
+        let gx = 1;
+        for (let k = 99; k >= 0; k--) {
+            const x = k / 100;
+            tw.x = x;
+            const y = tweenYs(top, tw.ease ? tw.ease(x) : x)[tw.a];
+            if (Math.abs(y - end) > GROW_NEAR) break;
+            gx = x;
+        }
+        tw.x = keep;
+        return gx;
+    }
+    function growEarly() {
+        if (!host || !tw || tw.grown) return;
+        tw.grown = true;
+        const el = panels[tw.b] && rowEl.get(panels[tw.b].id);
+        if (el) el.classList.add('is-arriving');
+        drawExpanded();
+        clearTimeout(zoomTimer);
+        zoomTimer = 0;
+        host.classList.remove('is-zoom');
+        host.classList.add('is-zoom-enter');
+        growAt = performance.now();
+    }
+
     function startTween(a, b, o) {
         cancelAnimationFrame(settle);
         flushZoom();
@@ -1977,7 +2013,7 @@
         // drawn frame and a late frame (the page busy waking) moves its start on, so a stall pauses the run instead
         // of skipping it - the list had shown up already halfway up, 250 ms into a 550 ms run. A finger's fling
         // keeps the real clock (its start is when the finger left the glass)
-        if (tw.entry) tw.frameClock = { last: 0 };
+        if (tw.entry) { tw.frameClock = { last: 0 }; tw.growX = settleX(); }
         if (n) {
             const nv = Math.max(n, (o && o.nv) || n);
             tw.D = b > a ? BAND + ROW * (n - 1) : ROW * n;                 // b's row to the band top, from a's rest layout
@@ -2117,6 +2153,7 @@
         const p = tw.ease ? tw.ease(x) : x;
         tw.p = p;
         if (x >= 1 || (a && a.playState === 'finished')) { arrive(); return; }
+        if (tw.growX != null && x >= tw.growX) growEarly();
         const top = focusTop();
         const ys = tweenYs(top, p);
         parallax(tw.a + tw.e0 * (1 - p) / ROW);
@@ -2143,6 +2180,7 @@
         else if (tw.ease) { tw.x = Math.min(1, t / (tw.back || BACK_MS)); p = tw.ease(tw.x); }
         else { const k = Math.pow(Math.min(1, t / (tw.back || BACK_MS)), 1.3); p = k * k * (3 - 2 * k); } // 13 %, 65 %, 100 % of the way at 103, 206, 310 ms
         if (t >= tw.end || p >= 1) { arrive(); return; }
+        if (tw.entry && tw.growX != null && tw.x >= tw.growX) growEarly();
         tw.p = p;
         // (the entrance and a Home press keep the arriving name up: the panel grows out of it as the list settles)
         placeTween(p, tw.entry || homeArrival ? 1 : Math.min(1, (tw.end - t) / FADE_MS));
@@ -2282,13 +2320,20 @@
         entering = !!entering || homeArrival;
         homeArrival = false;
         clearTimeout(zoomTimer);
-        // restart the grow only when one is still running (a forced layout otherwise for nothing)
-        if (host.classList.contains('is-zoom') || host.classList.contains('is-zoom-enter')) {
-            host.classList.remove('is-zoom', 'is-zoom-enter');
-            void host.offsetWidth;
+        // the entrance's grow already under way (growEarly, as the list settled): it carries on, the timer counts from it
+        const early = entering && growAt && host.classList.contains('is-zoom-enter') && performance.now() - growAt < ENTER_ZOOM_MS;
+        if (!early) {
+            growAt = 0;
+            // restart the grow only when one is still running (a forced layout otherwise for nothing)
+            if (host.classList.contains('is-zoom') || host.classList.contains('is-zoom-enter')) {
+                host.classList.remove('is-zoom', 'is-zoom-enter');
+                void host.offsetWidth;
+            }
+            // after the entrance (#800): a bigger grow with the panel fading in, so it reads after the run
+            host.classList.add(entering ? 'is-zoom-enter' : 'is-zoom');
         }
-        // after the entrance (#800): a bigger grow with the panel fading in, so it reads after the run
-        host.classList.add(entering ? 'is-zoom-enter' : 'is-zoom');
+        const spent = early ? performance.now() - growAt : 0;
+        growAt = 0;
         zoomTimer = setTimeout(() => {
             zoomTimer = 0;
             const wasEnter = host.classList.contains('is-zoom-enter');
@@ -2300,11 +2345,12 @@
             if (open) openSelected();
             // what came in while the list moved (a refresh it skipped) draws now it has landed and grown in
             else if (missed && page && sh.current === 'today' && !dragging && !settle) { missed = false; view.refresh(page); }
-        }, (entering ? ENTER_ZOOM_MS : ZOOM_MS) + KEY_MS);
+        }, Math.max(0, (entering ? ENTER_ZOOM_MS : ZOOM_MS) + KEY_MS - spent));
     }
 
     /** The list moves on before the panel has finished arriving: its soft key is up at once. */
     function flushZoom() {
+        growAt = 0;
         if (!zoomTimer) return;
         clearTimeout(zoomTimer);
         zoomTimer = 0;
