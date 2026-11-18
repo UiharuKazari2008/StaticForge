@@ -390,8 +390,33 @@
             clearInterval(this.reminderTick);
             this.reminderTick = null;
             if (this.app.signal.aborted || !this.loaded) return;
-            const wait = this.nextReminderDelay();
-            if (wait != null) this.reminderWake = setTimeout(() => { this.reminderWake = null; this.checkReminders(); this.syncTicks(); }, wait);
+            // one wake for whichever comes first: the next reminder, or a subscribed calendar coming due
+            // (a feed can add or move an event whose reminder must still fire while the page is not seen)
+            const remind = this.nextReminderDelay();
+            const feed = this.nextSubscriptionDelay();
+            const wait = Math.min(remind == null ? Infinity : remind, feed == null ? Infinity : feed);
+            if (!Number.isFinite(wait)) return;
+            this.reminderWake = setTimeout(async () => {
+                this.reminderWake = null;
+                if (this.app.signal.aborted) return;
+                const due = this.nextSubscriptionDelay();
+                if (due != null && due <= 0) { try { await this.refreshSubscriptions(false); } catch (_) { /* next wake */ } }
+                if (this.app.signal.aborted) return;
+                this.checkReminders();
+                this.syncTicks();
+            }, Math.max(0, wait));
+        }
+
+        /** ms until a subscribed calendar's refresh interval is up (0 when overdue), or null when none refresh. */
+        nextSubscriptionDelay() {
+            const now = Date.now();
+            let next = Infinity;
+            this.calendars.forEach((cal) => {
+                if (!cal.source || !(cal.refresh > 0)) return;
+                const at = (cal.lastRefresh || 0) + cal.refresh * 60000;
+                if (at < next) next = at;
+            });
+            return Number.isFinite(next) ? Math.max(0, next - now) : null;
         }
 
         // ---- loading and saving ----------------------------------------------------------
@@ -1845,7 +1870,8 @@
                 cal.tasks = tmp.tasks;
                 await this.save(cal);
             }
-            this.render();
+            // nothing redraws while not seen: the catch-up when the page is seen again renders (syncTicks)
+            if (!doc.hidden && doc.documentElement.dataset.screenOff === undefined) this.render();
         }
 
         // ---- import, export, send, print ---------------------------------------------------
