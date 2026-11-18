@@ -503,9 +503,38 @@
         const ch = Math.max(1, Math.min(2048, Math.round(h * es)));
         const key = `${img.currentSrc || img.src}|${cw}x${ch}`;
         if (dataUrls.has(key)) return dataUrls.get(key);
-        // drawn now (the frame the window shows: a mascot's mouth or blink layer changes src),
-        // encoded off the main thread: toDataURL encoded each picture on it, the Director's four
-        // ~2000 px mascot layers alone held one frame 1.3 s at a taskbar hover during a turn
+        const type = cw * ch > 64 * 64 ? 'image/webp' : 'image/png';
+        // Window pictures start from the image's file, not the element: fetched (the HTTP / service
+        // worker cache has it), then decoded and scaled by createImageBitmap and encoded by a CPU-backed
+        // OffscreenCanvas, all off the main thread. From the element every step held the main thread:
+        // toDataURL encoded there (1.3 s for the Director's mascot layers), a page canvas's toBlob read
+        // the pixels back from the GPU (150-340 ms a copy) and createImageBitmap(img) did the same read
+        // (~300 ms) (Modernia, Nov 18 2026). The URL is taken now, so it is the frame the window shows
+        // (a mascot's mouth and blink frames are files of their own).
+        const fileUrl = img.currentSrc || img.src;
+        if (!exact && fileUrl && typeof createImageBitmap === 'function' && typeof OffscreenCanvas === 'function') {
+            const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+            const stop = ctl ? setTimeout(() => ctl.abort(), 4000) : 0;
+            const encoded = fetch(fileUrl, { credentials: 'same-origin', signal: ctl ? ctl.signal : undefined })
+                .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
+                .then((blob) => createImageBitmap(blob, { resizeWidth: cw, resizeHeight: ch, resizeQuality: 'high' }))
+                .then((bmp) => {
+                    const oc = new OffscreenCanvas(cw, ch);
+                    oc.getContext('2d', { willReadFrequently: true }).drawImage(bmp, 0, 0);
+                    bmp.close();
+                    return oc.convertToBlob({ type, quality: 0.92 });
+                })
+                .then((blob) => (blob ? blobToDataUrl(blob) : ''))
+                // a file createImageBitmap cannot read (an SVG): the element's own picture, as before
+                .catch(() => canvasDataUrl(img, cw, ch, type))
+                .finally(() => clearTimeout(stop));
+            return remember(key, encoded);
+        }
+        return remember(key, canvasDataUrl(img, cw, ch, type));
+    }
+
+    /** The element's picture through a page canvas (exact snapshots, and the fallback). */
+    function canvasDataUrl(img, cw, ch, type) {
         let c = null;
         try {
             c = doc.createElement('canvas');
@@ -513,11 +542,9 @@
             c.height = ch;
             c.getContext('2d').drawImage(img, 0, 0, cw, ch);
         } catch (_) { return Promise.resolve(''); }
-        const type = cw * ch > 64 * 64 ? 'image/webp' : 'image/png';
-        const encoded = new Promise((resolve) => {
+        return new Promise((resolve) => {
             try { c.toBlob(resolve, type, 0.92); } catch (_) { resolve(null); }
         }).then((blob) => (blob ? blobToDataUrl(blob) : ''));
-        return remember(key, encoded);
     }
 
     /** False when nothing of `el` shows: outside the window or scrolled out of a clipping
