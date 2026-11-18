@@ -7,8 +7,9 @@
  *
  *   GET    /api/test-devices                     { devices: [{ id, name, markedAt, status, online, partner, service,
  *                                                  pageInFront }], notices: <the test lane, cleared too> }
- *   PUT    /api/test-devices/:id                 { name?, status?, replaceStatus? } mark it (status: snapshot fields set
- *                                                  over the neutral test snapshot, null drops one) -> the device
+ *   PUT    /api/test-devices/:id                 { name?, status?, replaceStatus?, sessionId? } mark it (status: snapshot
+ *                                                  fields set over the neutral test snapshot, null drops one; sessionId:
+ *                                                  the session the harness signed it in with) -> the device
  *   DELETE /api/test-devices/:id                 unmark (it is a household phone again: unpartner it first)
  *   POST   /api/test-devices/notice              { mode: 'push'|'get', id?, title, text?, cls?, app?, actions?, data?,
  *                                                  ttlMs?, alert? } -> { notice }
@@ -49,6 +50,8 @@ function mount(app, authMiddleware, globalResources) {
         const dev = testDevices.mark(req.params.id, { name: b.name });
         if (!dev) { refuse(res, 400, 'BAD_REQUEST', 'Bad device id (32 hex digits).'); return; }
         if (b.status !== undefined) testDevices.setStatusOverrides(dev.id, b.status, { replace: !!b.replaceStatus });
+        // the session the harness signed the device in with (aemu signin): fenced before the page's first hello
+        if (typeof b.sessionId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(b.sessionId)) testDevices.noteHello({ id: dev.id, sessionId: b.sessionId });
         touch();
         res.json({ success: true, device: Object.assign(testDevices.list().find((d) => d.id === dev.id), linkOf(dev.id)) });
     });
