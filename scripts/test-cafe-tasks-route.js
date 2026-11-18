@@ -14,7 +14,8 @@ const res = () => { const r = { code: 200, headers: {}, body: null, status(c) { 
 const m = res(); handlers['/api/cafe-tasks/manifest']({}, m);
 assert.strictEqual(m.code, 200);
 assert.ok(m.body.api >= 1 && m.body.files.length >= 3);
-const one = m.body.files.find((f) => f.name === 'status-bar.js');
+assert.ok(m.body.files.every((f) => typeof f === 'string'), 'files are plain names, as the engine reads them');
+const one = { sha256: m.body.sha256['status-bar.js'] };
 const disk = fs.readFileSync(path.join(__dirname, '..', 'public', 'scripts', 'tasks', 'status-bar.js'));
 assert.strictEqual(one.sha256, crypto.createHash('sha256').update(disk).digest('hex'));
 

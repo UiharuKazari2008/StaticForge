@@ -4,7 +4,7 @@
  * CaféReady task code for the Android app (StaticForge #908, rule cafeready-background). Yukimi, Nov 17 2026: the
  * native status bar should be easy to set up from the server "instead of having to keep constantly updating the app".
  *
- *   GET /api/cafe-tasks/manifest        { api, files: [{ name, sha256 }], tasks: [{ name, api }], source }
+ *   GET /api/cafe-tasks/manifest        { api, files: [name], sha256: { name: hex }, tasks: [{ name, api }], source }
  *   GET /api/cafe-tasks/file/:name      the file (only names the manifest lists); ETag = its sha256 (304 when same)
  *
  * The app (DSApp CafeTasks) fetches these when it starts and when the link comes up, verifies each file's sha256,
@@ -37,7 +37,9 @@ function load() {
     }
     const manifest = {
         api: man.api,
-        files: names.map((f) => ({ name: f, sha256: files.get(f).sha })),
+        // plain names (what the app's engine reads, as in the bundled manifest) and each one's sha256 beside them
+        files: names,
+        sha256: Object.fromEntries(names.map((f) => [f, files.get(f).sha])),
         tasks: Array.isArray(man.tasks) ? man.tasks : [],
         source: `server ${crypto.createHash('sha256').update(key).digest('hex').slice(0, 8)}`
     };
