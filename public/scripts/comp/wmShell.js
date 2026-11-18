@@ -3582,6 +3582,8 @@
             const e = lookOf(i, role);
             if (e.atlas || e.art || e.strip) catalog.push(Object.assign({}, e, { dim: undefined }));
             if (i.hidden || i.classList.contains('wm-shed')) return;
+            // placed left of the camera by the page (applyCameraHole): the app keeps the page's split (#907)
+            if (i.closest('.wm-status-left')) e.left = true;
             list.push(e);
         });
         if (typeof ab.statusCatalog === 'function') {
