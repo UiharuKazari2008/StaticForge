@@ -1086,7 +1086,10 @@
                 cutAnimations: !!c0.cutAnimations,
                 lockScreen: !!c0.lockScreen,
                 lockPhoneWall: !!c0.lockPhoneWall,
-                volumePopup: !!c0.volumePopup
+                volumePopup: !!c0.volumePopup,
+                // pulling the title bar down opens Android's own shade (DSApp config pullShade; Yukimi, Nov 18: blocking
+                // it is fine, keep it as a choice). An older app without the key always pulls
+                pullShade: c0.pullShade === true
             };
         }
         const cfg = d.barsCfg;
@@ -1102,7 +1105,7 @@
         el.innerHTML = `${check('wmBarsOn', 'Use the title bar in Android programs', cfg.enabled)}
             ${note ? `<p>${esc(note)}</p>` : ''}
             <div class="wm-form-row is-wide"><span class="wm-form-label">Corner button:</span>${ui.comboHtml('barscorner', label(BARS_CORNERS, cfg.corner))}</div>
-            ${''/* no button for Android's tray: pulling the title bar down opens it (Yukimi, Nov 17, #902) */}
+            ${check('wmBarsPullShade', 'Pull down the title bar to open Android\'s notification shade', cfg.pullShade)}
             <div class="wm-form-gap"></div>
             ${check('wmBarsSoft', 'Use the soft key bar in Android programs', cfg.softkeys)}
             <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>
@@ -1124,6 +1127,7 @@
             q('input[name="wmBarsRoom"]').disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsLandCover"]').disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsKeyguardClear"]').disabled = !cfg.enabled;
+            q('input[name="wmBarsPullShade"]').disabled = !cfg.enabled;
             q('input[name="wmBarsCutAnim"]').disabled = st.elevated === false;
             q('input[name="wmBarsLock"]').disabled = !cfg.enabled;
             q('input[name="wmBarsLockWall"]').disabled = !cfg.enabled || !cfg.lockScreen;
@@ -1135,6 +1139,7 @@
         bind('wmBarsRoom', (v) => { cfg.room = v; });
         bind('wmBarsLandCover', (v) => { cfg.hideLandCover = v; });
         bind('wmBarsKeyguardClear', (v) => { cfg.keyguardClear = v; });
+        bind('wmBarsPullShade', (v) => { cfg.pullShade = v; });
         bind('wmBarsCutAnim', (v) => { cfg.cutAnimations = v; });
         bind('wmBarsLock', (v) => { cfg.lockScreen = v; });
         bind('wmBarsLockWall', (v) => { cfg.lockPhoneWall = v; });
