@@ -2216,6 +2216,9 @@
         const before = stageSnapshot();
         const firstMount = !app.page;
         noteOpened(id);
+        const leaving = current;
+        if (leaving && leaving !== id) appLastShown.set(leaving, Date.now());
+        appLastShown.set(id, Date.now());
         const prev = current && apps.get(current);
         if (prev && prev !== app) {
             // a hidden page loses its scroll offset: kept here and put back when it returns
@@ -2317,6 +2320,37 @@
      * End an app (Task Manager's End Task): its hide() and onEnd() run, its page is removed (mounted
      * afresh on the next open), and it leaves the back stack and the Start menu's strip.
      */
+    /**
+     * Low memory (DSApp: Android's onTrimMemory as the window event 'melatonlowmemory' { level }): as Windows Mobile did,
+     * programs in the background are closed to give their memory back - those not used for 15 minutes when memory runs
+     * low, every one when it is critical. Never the program in front, Today / Programs / Settings, a program that says
+     * keepAlive, nor one with typed text not yet saved (an edited text box: a draft is never lost to free memory).
+     * Each program open keeps its screen in the page until it is closed with X (Nov 18: the A53's renderer 160 MB on
+     * Today, 307 MB with every program opened once).
+     */
+    const appLastShown = new Map();
+    function editedIn(page) {
+        if (!page) return false;
+        for (const el of page.querySelectorAll('textarea, input[type="text"], input[type="search"], input:not([type]), [contenteditable="true"]')) {
+            if (el.isContentEditable ? el.dataset.wmEdited === '1' : el.value !== el.defaultValue) return true;
+        }
+        return false;
+    }
+    function lowMemory(level) {
+        const critical = level === 'critical';
+        const now = Date.now();
+        const ended = [];
+        for (const id of openedApps.slice().reverse()) {
+            if (id === current || id === 'today' || id === 'programs' || id === 'settings') continue;
+            const app = apps.get(id);
+            if (!app || app.keepAlive || editedIn(app.page)) continue;
+            if (!critical && now - (appLastShown.get(id) || 0) < 15 * 60000) continue;
+            if (endApp(id)) ended.push(id);
+        }
+        if (ended.length) console.info(`[wmShell] low memory (${level}): closed ${ended.join(', ')}`);
+    }
+    window.addEventListener('melatonlowmemory', (e) => { try { lowMemory((e.detail && e.detail.level) || 'low'); } catch (err) { console.warn('[wmShell] low memory', err); } }, appScopeSignal ? { signal: appScopeSignal } : undefined);
+
     function endApp(id) {
         const app = apps.get(id);
         if (!app || id === 'today' || id === 'programs' || id === 'settings') return false;

@@ -339,7 +339,7 @@
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m22', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m23', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), Math.round(window.innerWidth)].join('|');
     }
@@ -558,7 +558,10 @@
                 // never past the bar's own right end (less its padding): a page laid out wrong for a moment (the inner
                 // screen's title width kept after a fold, Nov 18) gave the cover's kit icons right of its 1080 px edge,
                 // and the app kept that copy - its bar over other programs showed a clipped "..." and nothing else
-                iconsRight: last ? Math.round(Math.min(last.getBoundingClientRect().right - br.left, br.width - (parseFloat(getComputedStyle(top).paddingRight) || 0)) * dpr) : 0,
+                // and never over the X / ok: where the corner button is up, the icons end before it (an overflow clamped to
+                // the bar's end put them on the X and cut the battery, Fold inner screen over Claude, Nov 18)
+                iconsRight: last ? Math.round(Math.min(last.getBoundingClientRect().right - br.left, br.width - (parseFloat(getComputedStyle(top).paddingRight) || 0),
+                    ...(() => { const a = top.querySelector('.wm-title-action'); return a && !a.hidden && a.getClientRects().length ? [a.getBoundingClientRect().left - br.left - gap] : []; })()) * dpr) : 0,
                 corner: box(top.querySelector('.wm-title-action')),
                 hole: gapEl ? box(gapEl) : null,
                 soft: soft ? { h: Math.round(soft.getBoundingClientRect().height * dpr), left: box(keyL), right: box(keyR), sip: box(sip) } : null,
