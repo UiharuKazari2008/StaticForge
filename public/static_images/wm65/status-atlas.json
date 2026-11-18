@@ -1,7 +1,7 @@
 {
  "size2x": [
   512,
-  192
+  160
  ],
  "icons": {
   "bluetooth": {
@@ -386,210 +386,133 @@
    "file": "status-data-lte-plus-avail",
    "x": 192,
    "y": 96,
-   "w": 24,
+   "w": 40,
    "h": 32
   },
   "data-5g-uw": {
    "file": "status-data-5g-uw",
-   "x": 216,
+   "x": 232,
    "y": 96,
    "w": 32,
    "h": 32
   },
   "data-5g-uw-active": {
    "file": "status-data-5g-uw-active",
-   "x": 248,
+   "x": 264,
    "y": 96,
    "w": 32,
    "h": 32
   },
   "data-5g-uw-avail": {
    "file": "status-data-5g-uw-avail",
-   "x": 280,
+   "x": 296,
    "y": 96,
-   "w": 24,
+   "w": 40,
    "h": 32
   },
   "data-nr-uw": {
    "file": "status-data-nr-uw",
-   "x": 304,
+   "x": 336,
    "y": 96,
    "w": 32,
    "h": 32
   },
   "data-nr-uw-active": {
    "file": "status-data-nr-uw-active",
-   "x": 336,
+   "x": 368,
    "y": 96,
    "w": 32,
    "h": 32
   },
   "data-nr-uw-avail": {
    "file": "status-data-nr-uw-avail",
-   "x": 368,
+   "x": 400,
    "y": 96,
-   "w": 24,
+   "w": 40,
    "h": 32
   },
   "data-g-avail": {
    "file": "status-data-g-avail",
-   "x": 392,
+   "x": 440,
    "y": 96,
    "w": 32,
    "h": 32
   },
   "data-e-avail": {
    "file": "status-data-e-avail",
-   "x": 424,
+   "x": 472,
    "y": 96,
    "w": 32,
    "h": 32
   },
   "data-3g-avail": {
    "file": "status-data-3g-avail",
-   "x": 456,
-   "y": 96,
+   "x": 0,
+   "y": 128,
    "w": 32,
    "h": 32
   },
   "data-h-avail": {
    "file": "status-data-h-avail",
-   "x": 0,
+   "x": 32,
    "y": 128,
    "w": 32,
    "h": 32
   },
   "data-h-plus-avail": {
    "file": "status-data-h-plus-avail",
-   "x": 32,
+   "x": 64,
    "y": 128,
-   "w": 24,
+   "w": 40,
    "h": 32
   },
   "data-4g-avail": {
    "file": "status-data-4g-avail",
-   "x": 56,
+   "x": 104,
    "y": 128,
    "w": 32,
    "h": 32
   },
   "data-4g-plus-avail": {
    "file": "status-data-4g-plus-avail",
-   "x": 88,
+   "x": 136,
    "y": 128,
-   "w": 24,
+   "w": 40,
    "h": 32
   },
   "data-5g-avail": {
    "file": "status-data-5g-avail",
-   "x": 112,
+   "x": 176,
    "y": 128,
    "w": 32,
    "h": 32
   },
   "data-5g-plus-avail": {
    "file": "status-data-5g-plus-avail",
-   "x": 144,
+   "x": 208,
    "y": 128,
-   "w": 24,
+   "w": 40,
    "h": 32
   },
   "data-nr-avail": {
    "file": "status-data-nr-avail",
-   "x": 168,
+   "x": 248,
    "y": 128,
    "w": 32,
    "h": 32
   },
   "data-nr-a-avail": {
    "file": "status-data-nr-a-avail",
-   "x": 200,
+   "x": 280,
    "y": 128,
-   "w": 24,
+   "w": 40,
    "h": 32
   },
   "data-uw-avail": {
    "file": "status-data-uw-avail",
-   "x": 224,
+   "x": 320,
    "y": 128,
-   "w": 24,
-   "h": 32
-  },
-  "app-mail": {
-   "file": "status-mail",
-   "x": 248,
-   "y": 128,
-   "w": 32,
-   "h": 32
-  },
-  "app-sms": {
-   "file": "status-sms",
-   "x": 280,
-   "y": 128,
-   "w": 32,
-   "h": 32
-  },
-  "app-messenger": {
-   "file": "status-messenger",
-   "x": 312,
-   "y": 128,
-   "w": 32,
-   "h": 32
-  },
-  "app-prints": {
-   "file": "status-prints",
-   "x": 344,
-   "y": 128,
-   "w": 32,
-   "h": 32
-  },
-  "app-weather-alert": {
-   "file": "status-weather-alert",
-   "x": 376,
-   "y": 128,
-   "w": 32,
-   "h": 32
-  },
-  "app-rain-alarm": {
-   "file": "status-rain-alarm",
-   "x": 408,
-   "y": 128,
-   "w": 32,
-   "h": 32
-  },
-  "app-traffic": {
-   "file": "status-traffic",
-   "x": 440,
-   "y": 128,
-   "w": 32,
-   "h": 32
-  },
-  "app-lapis": {
-   "file": "status-lapis",
-   "x": 472,
-   "y": 128,
-   "w": 32,
-   "h": 32
-  },
-  "app-continuity": {
-   "file": "status-continuity",
-   "x": 0,
-   "y": 160,
-   "w": 32,
-   "h": 32
-  },
-  "app-activesync": {
-   "file": "status-activesync",
-   "x": 32,
-   "y": 160,
-   "w": 32,
-   "h": 32
-  },
-  "app-nightshade": {
-   "file": "status-nightshade",
-   "x": 64,
-   "y": 160,
-   "w": 32,
+   "w": 40,
    "h": 32
   }
  }
