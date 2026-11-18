@@ -1178,6 +1178,18 @@
             return (await checkServerReadiness()) !== null;
         }
 
+        async function checkServerAccessibility() {
+            try {
+                const response = await fetch('/static_images/icon-32x32.png', {
+                    method: 'HEAD',
+                    cache: 'no-cache'
+                });
+                return response.ok;
+            } catch (error) {
+                return false;
+            }
+        }
+
         /**
          * Melaton Mobile, installed (the update engine's synced manifest) with the app page kept by
          * the service worker (sw.js APP_SHELL_KEY): it starts without the server, to Today, so the
@@ -1292,7 +1304,9 @@
             pollServerReadiness();
         }
 
-        async function checkSessionValidity() {
+        // onVersionWarning: who shows the version warning (it runs beside the static files check, which
+        // decides first whether the start goes on at all)
+        async function checkSessionValidity(onVersionWarning) {
             try {
                 const response = await fetch('/app', {
                     method: 'OPTIONS',
@@ -1308,7 +1322,7 @@
                     const clientVersion = '1.0.2'; // Current client version
                     if (data.serverVersion && data.serverVersion !== clientVersion) {
                         // Version mismatch - show warning
-                        showVersionWarning({
+                        (onVersionWarning || showVersionWarning)({
                             serverVersion: data.serverVersion,
                             clientVersion: clientVersion,
                             message: data.versionMessage || 'A new version is available. Some features may not work correctly.'
@@ -1437,11 +1451,24 @@
                 return;
             }
 
-            // Step 3 was a HEAD of an icon here: the JSON answer from /status above already proves the
-            // server is reachable, so it was one more serial round trip on every start (#890)
+            // Steps 3 and 4 run side by side (#890): the static files check (a HEAD of an icon; a proxy or
+            // static mount fault still gets the rescue button) no longer adds a serial round trip
+            let versionWarning = null;
+            const accessibleCheck = checkServerAccessibility();
+            const sessionCheck = checkSessionValidity((data) => { versionWarning = data; });
+
+            // Step 3: Check server accessibility (server is ready)
+            if (!await accessibleCheck) {
+                validationInProgress = false;
+                sessionCheck.catch(() => {});
+                if (await startOfflineIfInstalled('not accessible')) return;
+                showError('Unable to connect to server', true); // Show rescue button
+                return;
+            }
 
             // Step 4: Check session validity and version compatibility
-            let sessionResult = await checkSessionValidity();
+            let sessionResult = await sessionCheck;
+            if (versionWarning) showVersionWarning(versionWarning);
             if (sessionResult === 'unreachable') {
                 validationInProgress = false;
                 if (await startOfflineIfInstalled('session check')) return;
