@@ -585,12 +585,38 @@
             phoneReadyNow = false;
             // past its boot, the DeX window starts again with the phone (Yukimi: restarting the phone restarts DeX),
             // unless the phone said this window can stay (pocketPcRestart)
-            if (isDw() && inApp() && !pocketPc && !miniport.available()) coldBootDw();
+            if (isDw() && inApp() && !pocketPc && !ownRestart && !miniport.available()) coldBootDw();
         }
     });
+    // the DeX window runs its own shutdown sequence for a restart of both (syncedRestart): the phone going away then
+    // must not cut it short; its /launch waits at the BIOS for the phone
+    let ownRestart = false;
+    /**
+     * A restart of both windows for updates, in order (Yukimi, Nov 18 2026): this computer's shutdown sequence first
+     * (Welcome, "Shutting down..."), then the phone is told to restart, then this window starts again and waits at its
+     * BIOS for the phone ("Waiting for I/O message..."), so both come up together. The DeX window only.
+     */
+    api.syncedRestart = () => {
+        if (!isDw() || !api.peers().includes('phone') || typeof root.runWinlogonPower !== 'function') return false;
+        ownRestart = true;
+        root.runWinlogonPower('restart', { beforeNavigate: () => api.post({ type: 'restart-request', why: 'updates', restartDex: true, dexDone: true }) })
+            .catch(() => { ownRestart = false; coldBootDw(); });
+        return true;
+    };
+    // the phone asks this window to shut down first (a restart of both it started): the sequence, then the answer
+    api.on('dex-shutdown', (m) => {
+        if (!isDw() || !inApp() || typeof root.runWinlogonPower !== 'function') { answer(m, 'skipped'); return; }
+        ownRestart = true;
+        root.runWinlogonPower('restart', { beforeNavigate: () => answer(m, 'done') }).catch(() => { answer(m, 'done'); ownRestart = false; coldBootDw(); });
+    });
+    /** The phone: before its own restart of both, the DeX window's shutdown sequence (at most 25 s). */
+    api.dexShutdownFirst = async () => {
+        if (!isPhone() || !api.peers().includes('desktop')) return null;
+        return api.ask('dex-shutdown', {}, 25000);
+    };
     api.on('phone-restarting', (m) => {
         phoneReadyNow = false;
-        if (!isDw() || !inApp()) return;
+        if (!isDw() || !inApp() || ownRestart) return;
         // over the Miniport the phone window going does not touch this window's connection (#815)
         if (miniport.available() && m && m.keepDex) return;
         // an update only Melaton Mobile uses: this window stays up and waits for its Pocket PC
@@ -1243,7 +1269,8 @@
         // the restart itself (#900): if not, it stays up while the phone restarts
         if (msg && typeof msg.restartDex === 'boolean') {
             api.restartScope(msg.restartDex ? 'both' : 'mobile');
-            if (m && typeof m.forceRestart === 'function') { m.forceRestart({ confirmed: true, plan: { self: true, other: msg.restartDex } }); return; }
+            // dexDone: the DeX window has shut down already (syncedRestart): no second shutdown asked of it
+            if (m && typeof m.forceRestart === 'function') { m.forceRestart({ confirmed: true, dexDone: !!msg.dexDone, plan: { self: true, other: msg.restartDex } }); return; }
         }
         if (m && typeof m.forceRestart === 'function') m.forceRestart({ confirmed: true });
         else if (typeof root.restartClientNavigate === 'function') root.restartClientNavigate();

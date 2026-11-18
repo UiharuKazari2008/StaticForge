@@ -4822,6 +4822,19 @@ class ServiceWorkerManager {
             return;
         }
         const plan = opts.plan || null;
+        // Continuity, both windows restart (Yukimi, Nov 18 2026): this DeX window's shutdown sequence first, then the
+        // phone restarts, then both start together (melatonContinuity.syncedRestart)
+        if (this._isContinuityDexWindow() && plan && plan.self && plan.other && mcw && typeof mcw.syncedRestart === 'function') {
+            const n = this.pendingUpdateFilesTotal || (this.pendingUpdateUrls ? this.pendingUpdateUrls.size : 0);
+            this.recordUpdateHistory({ name: n ? `Melaton update (${n} ${n === 1 ? 'file' : 'files'})` : 'Melaton update', status: 'Successful', importance: 'Important' });
+            this.resetPendingUpdateFuse();
+            if (mcw.syncedRestart()) { console.log('🔄 Restart for updates: this DeX window shuts down, then the phone, then both start'); return; }
+        }
+        // the phone restarting both: the DeX window's shutdown sequence runs first (it then waits at its BIOS for the phone)
+        if (!this._isContinuityDexWindow() && plan && plan.other && !opts.dexDone && mcw && typeof mcw.dexShutdownFirst === 'function') {
+            mcw.dexShutdownFirst().then(() => this.forceRestart(Object.assign({}, opts, { dexDone: true }))).catch(() => this.forceRestart(Object.assign({}, opts, { dexDone: true })));
+            return;
+        }
         if (this._isContinuityDexWindow()) {
             // the phone needs the restart: it restarts, and this window with it only when it needs it too;
             // only this computer needs it: it restarts alone and the phone stays up (falls through)
