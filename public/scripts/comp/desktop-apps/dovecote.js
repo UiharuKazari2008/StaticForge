@@ -4563,6 +4563,8 @@ const doveImapOnEvent = function (type, detail) {
         doveImapRefreshAccounts();
         return;
     }
+    // a sync pass that changed nothing (#890 W6): no counts to read, no list to reload
+    if (type === 'sync' && d.changed === false) return;
     if (type === 'new' && d.notify && d.message) doveImapQueueAnnounce(d.message);
     if (accountId) doveImapScheduleFolders(accountId);
     // the tray's Inbox flyout, when open, lists the accounts' unread too

@@ -1541,9 +1541,34 @@
         const m = maApi();
         if (m && typeof m.on === 'function' && !maOff) {
             let timer = 0;
-            const onChange = () => { clearTimeout(timer); timer = setTimeout(() => void loadMailAccounts(true), 400); };
-            ['account', 'sync', 'folders', 'progress'].forEach((e) => m.on(e, onChange));
-            maOff = () => { clearTimeout(timer); if (typeof m.off === 'function') ['account', 'sync', 'folders', 'progress'].forEach((e) => m.off(e, onChange)); };
+            const reread = () => { clearTimeout(timer); timer = setTimeout(() => void loadMailAccounts(true), 400); };
+            // the running sync's line follows the event itself: 'progress' (every ~2 s) and a 'sync' that
+            // changed nothing rewrite the status line in place; only real changes re-read ma_accounts (#890 W6)
+            const liveRow = (d) => {
+                const id = d && d.accountId;
+                const row = id ? maRows.find((r) => r.id === id) : null;
+                return row && row.sync && typeof row.sync === 'object' && maUi[id] && maUi[id].live && maUi[id].live.summary.isConnected ? row : null;
+            };
+            const handlers = {
+                account: reread,
+                folders: reread,
+                progress: (d) => {
+                    const row = liveRow(d);
+                    if (!row) { reread(); return; }
+                    row.sync.running = true;
+                    row.sync.progress = (d && d.progress) || null;
+                    maLive();
+                },
+                sync: (d) => {
+                    const row = d && d.changed === false ? liveRow(d) : null;
+                    if (!row) { reread(); return; }
+                    row.sync.running = false;
+                    row.sync.progress = null;
+                    maLive();
+                }
+            };
+            Object.keys(handlers).forEach((e) => m.on(e, handlers[e]));
+            maOff = () => { clearTimeout(timer); if (typeof m.off === 'function') Object.keys(handlers).forEach((e) => m.off(e, handlers[e])); };
         }
         void loadMailAccounts(true);
     }
