@@ -20,11 +20,14 @@
  *                                   not allow status icons to cross over camera hole"
  *   }) -> { shown: [role], left: [role], folded: [role], shed: [role], groupShown: bool, reserveUsed: bool }
  *
- * The page's order of what gives way when the bar runs short: the X / ok's kept place on a bar with none, then the
- * volume icon (unless Sound icon = Never hide), then a charging battery (Power icon default only), then program
- * icons fold into the group from the oldest (ongoing work and the newest stay out longest; a group holds two or
- * more, or one with notices of its own), and last all of them. A bar fits when its leftmost icon clears the
- * title's floor and, except on an unfolded inner screen, starts in the bar's right half (the 50 % mark).
+ * What gives way when the bar runs short (the table: status-order.js, Yukimi, Nov 17): the X / ok's kept place on a
+ * bar with none; then the icons that do not outrank the system icons fold into the group, least wanted first; then,
+ * for a short-lived icon still out (statusOrder.displace), the volume icon (unless Sound Icon = Never hide) and a
+ * charging battery (Power Icon default or "when charging") step aside; then the short-lived ones fold, least wanted
+ * first; last the volume / battery after all. Icons the table does not let fold never fold. A group holds two or
+ * more, or one with notices of its own. A bar fits when its leftmost icon clears the title's floor and, except on an
+ * unfolded inner screen, starts in the bar's right half (the 50 % mark). The icons' app / foldable / ongoing / seenAt
+ * fields are only read without the table.
  */
 (function (root) {
     'use strict';
@@ -62,10 +65,11 @@
         let folded = [];
         let reserveUsed = false;
 
-        const apps = icons.filter((i) => i.app);
-        const foldable = apps.filter((i) => i.foldable !== false);
-        // who stays out of the group first: ongoing work, then the newest
-        const outOrder = foldable.slice().sort((a, b) => ((b.ongoing ? 1 : 0) - (a.ongoing ? 1 : 0)) || ((b.seenAt || 0) - (a.seenAt || 0)));
+        const order = C.lib.statusOrder;
+        const shownRoles = icons.map((i) => i.role);
+        // the table's fold order (status-order.js); an older table-less copy folds the program icons right to left
+        const fs = order ? order.foldSequence(shownRoles)
+            : { seq: icons.filter((i) => i.app && i.foldable !== false).map((i) => i.role).reverse(), nonDisplacing: 0 };
 
         const layout = () => {
             const items = icons.filter((i) => !shed.has(i.role) && !folded.includes(i.role));
@@ -93,32 +97,23 @@
         let l = layout();
         // an unfolded inner screen has the room: nothing steps aside or folds, what does not fit crosses the camera
         if (screen.unfolded || ok(l)) return result(l);
-        const steps = [];
-        if (bar.xReserve > 0) steps.push(() => { reserveUsed = true; });
-        const vol = icons.find((i) => i.role === 'volume');
-        if (vol && prefs.sound !== 'never') steps.push(() => { shed.add('volume'); });
-        const bat = icons.find((i) => i.role === 'battery' && i.charging);
-        if (bat && !prefs.power) steps.push(() => { shed.add('battery'); });
-        for (const st of steps) {
-            st();
-            l = layout();
-            if (ok(l)) return result(l);
-        }
-        // fold from the oldest, one more each time; a group holds two or more (one alone takes the same room as the
-        // icon itself), or one with notices of its own
-        const notes = !!(notify && notify.notes);
-        const first = foldable.length - (notes ? 1 : 2);
-        for (let keep = first; keep >= 1; keep--) {
-            const out = new Set(outOrder.slice(0, keep).map((i) => i.role));
-            folded = foldable.filter((i) => !out.has(i.role)).map((i) => i.role);
-            l = layout();
-            if (ok(l)) return result(l);
-        }
-        // a bar that is really full: all of them go in
-        if (foldable.length && foldable.length + (notes ? 1 : 0) >= 2) {
-            folded = foldable.map((i) => i.role);
-            l = layout();
-        }
+        const tryStep = (fn) => { fn(); l = layout(); return ok(l); };
+        if (bar.xReserve > 0 && tryStep(() => { reserveUsed = true; })) return result(l);
+        // the volume / battery stepping aside (Settings > Screen > Sound Icon / Power Icon allow it)
+        const sysSteps = [];
+        if (icons.some((i) => i.role === 'volume') && prefs.sound !== 'never') sysSteps.push(() => shed.add('volume'));
+        if (icons.some((i) => i.role === 'battery' && i.charging) && (!prefs.power || prefs.power === 'charging')) sysSteps.push(() => shed.add('battery'));
+        const sys = () => { while (sysSteps.length) if (tryStep(sysSteps.shift())) return true; return false; };
+        // a group holds two or more (one alone takes the same room as the icon itself), or one with notices of its own
+        const minK = notify && notify.notes ? 1 : 2;
+        const foldTo = (k) => tryStep(() => { folded = fs.seq.slice(0, k); });
+        // first what does not outrank the volume and battery folds, least wanted first
+        for (let k = minK; k <= fs.nonDisplacing; k++) if (foldTo(k)) return result(l);
+        // a short-lived icon still out: the volume and battery step aside for it before it folds
+        if (fs.seq.length > fs.nonDisplacing && sys()) return result(l);
+        for (let k = Math.max(minK, fs.nonDisplacing + 1); k <= fs.seq.length; k++) if (foldTo(k)) return result(l);
+        // a bar that is still short with all of them in the group: the volume and battery as a last resort
+        if (sys()) return result(l);
         return result(l);
     }
 

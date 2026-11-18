@@ -135,9 +135,12 @@
             // the program icons (they may fold into the group); Continuity / Nightshade never fold; ongoing work stays out
             const APPS = new Set(['mail', 'sms', 'chat', 'wxalert', 'rain', 'carkey', 'received', 'prints', 'director']);
             const ongoing = { prints: true, director: !!(s.fields.director && s.fields.director.running) };
-            const order = (L.order || []).filter((r) => roles[r] && r !== 'notify');
+            // left to right as the table has it (status-order.js); the page's catalog order without it
+            const tbl = C.lib.statusOrder;
+            const order = ((tbl && tbl.display) || L.order || []).filter((r) => roles[r] && r !== 'notify');
             const icons = order.map((role) => ({ role, w: W[role] || g.icon, app: APPS.has(role), foldable: role !== 'continuity' && role !== 'nightshade', ongoing: !!ongoing[role] }))
-                .concat((L.native || []).map((role) => ({ role, w: W[role] || g.icon, app: false, foldable: false, charging: role === 'battery' && !!L.charging })));
+                .concat((L.native || []).filter((role) => role !== 'androidtray')
+                .sort((a, b) => (tbl ? tbl.display.indexOf(a) - tbl.display.indexOf(b) : 0)).map((role) => ({ role, w: W[role] || g.icon, app: false, foldable: false, charging: role === 'battery' && !!L.charging })));
             const bw = lib.barWidth(L);
             try {
                 const r = fitLib.fit({
