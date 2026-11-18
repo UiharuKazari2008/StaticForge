@@ -1590,7 +1590,15 @@
         kitSignature: () => kitSignature(),
         // a popup's drawing list as the app gets it (checks: wmShell.barsPopupOpen(role), then this on its layers)
         layoutOf: (roots, dpr) => layoutOf(roots, dpr || window.devicePixelRatio || 1),
-        renderKit: (ctx) => { serial(() => renderKit(ctx)).catch((err) => console.warn('[melatonBars] renderKit', err)); },
+        // with the page on screen (a return home just under way) the kit (pack -> toDataURL, ~650 ms on the Fold after an
+        // app restart) waits until the return's entrance has played (wmTitanium.afterEntrance): it held the first frames
+        // of Home (Nov 18, staticforge-be's trace). Behind a program it runs at once.
+        renderKit: (ctx) => {
+            const go = () => { serial(() => renderKit(ctx)).catch((err) => console.warn('[melatonBars] renderKit', err)); };
+            const ti = window.wmTitanium;
+            if (document.visibilityState === 'visible' && ti && typeof ti.afterEntrance === 'function') ti.afterEntrance(() => setTimeout(go, 0));
+            else go();
+        },
         renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },
         tap: (role) => { if (window.wmShell && window.wmShell.barsTap) window.wmShell.barsTap(role); },
         unsupported: () => unsupported(document.querySelector('#wmShell .wm-titlebar'))
