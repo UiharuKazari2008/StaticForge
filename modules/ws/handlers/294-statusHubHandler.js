@@ -21,8 +21,10 @@ function registerPackets(handlersCtx) {
         }
         try {
             const state = await feed.subscribe(ws, clientInfo);
-            // the client's request promise resolves with `data` (websocket.js); items stays beside it for older readers
-            handlersCtx.sendToClient(ws, { type: 'status_subscribe_response', requestId: message.requestId, feed: feed.name, items: state.items, data: { feed: feed.name, items: state.items }, timestamp: new Date().toISOString() });
+            // the client's request promise resolves with `data` (websocket.js), so every reader (wmYouTube,
+            // wmXLink, mmcServerManager) takes data.items: the snapshot goes once (#890 round 5, W3; it went
+            // twice, a top-level copy beside data)
+            handlersCtx.sendToClient(ws, { type: 'status_subscribe_response', requestId: message.requestId, feed: feed.name, data: { feed: feed.name, items: state.items }, timestamp: new Date().toISOString() });
         } catch (error) {
             handlersCtx.sendError(ws, error.message, error.code || 'STATUS_SUBSCRIBE_FAILED', message.requestId);
         }

@@ -13,7 +13,8 @@
  *       allow: (clientInfo) => bool,   // who may subscribe
  *       sample: async () => ({ key: value, ... })   // the whole state, keyed by item
  *   });
- *   feed.subscribe(ws, clientInfo)  -> { items } (the current state, sampled now if none is kept)
+ *   feed.subscribe(ws, clientInfo)  -> { items } (the current state, sampled now unless a snapshot younger
+ *                                    than intervalMs is kept: one stays an interval after the last subscriber left)
  *   feed.unsubscribe(ws)
  *   feed.poke()                     // something changed upstream: read now (an action, an event)
  *
@@ -38,6 +39,7 @@ function define({ name, pushType, intervalMs = 60000, allow = () => true, sample
     let running = false;
     let again = false;
     let last = null; // { items: { key: json }, at }
+    let dropTimer = null; // lets the kept snapshot go one interval after the last subscriber left
     const closeHooked = new WeakSet();
 
     const encode = (items) => {
@@ -92,10 +94,16 @@ function define({ name, pushType, intervalMs = 60000, allow = () => true, sample
         // screen-on: a listener per subscribe piled up on its socket, MaxListenersExceededWarning)
         if (ws && typeof ws.once === 'function' && !closeHooked.has(ws)) { closeHooked.add(ws); ws.once('close', () => unsubscribe(ws)); }
         subs.add(ws);
+        clearTimeout(dropTimer);
+        dropTimer = null;
+        // a snapshot younger than one interval is as fresh as a subscriber that stayed would hold (#890
+        // round 5): a phone that left Today and came back within it is answered without reading upstream
+        if (last && Date.now() - last.at >= intervalMs) last = null;
         if (!last) {
             try { await read(); } catch (error) { console.warn(`[statusHub:${name}] first read failed: ${error.message}`); }
         }
-        if (!timer && !running) timer = setTimeout(tick, intervalMs);
+        // the next read when the kept snapshot is one interval old (the cadence a staying subscriber sees)
+        if (!timer && !running) timer = setTimeout(tick, last ? Math.max(0, last.at + intervalMs - Date.now()) : intervalMs);
         return { items: last ? last.raw : {} };
     }
 
@@ -104,13 +112,17 @@ function define({ name, pushType, intervalMs = 60000, allow = () => true, sample
         if (!subs.size) {
             clearTimeout(timer);
             timer = null;
-            last = null;
+            // kept for one interval for a quick return (subscribe), then let go
+            clearTimeout(dropTimer);
+            dropTimer = last ? setTimeout(() => { dropTimer = null; if (!subs.size) last = null; }, intervalMs) : null;
+            if (dropTimer && dropTimer.unref) dropTimer.unref();
         }
     }
 
     /** Read now (an action changed something, an upstream event arrived); pushes what changed. */
     function poke() {
-        if (!subs.size) return;
+        // nobody watching: the kept snapshot is out of date, the next subscriber reads afresh
+        if (!subs.size) { last = null; return; }
         clearTimeout(timer);
         timer = null;
         void tick();
