@@ -4927,6 +4927,7 @@
         // the notification classes shown without a message, for the server's own copies (#876)
         ws.on('connected', () => setTimeout(() => sendInboxPrefs(true), 1500));
         setTimeout(() => sendInboxPrefs(true), 1500);
+        setTimeout(() => { void sendNoteSounds(); }, 1500);
     }
 
     function printsInProgress() {
@@ -7922,6 +7923,39 @@
     function saveSoundPrefs(p) {
         try { localStorage.setItem(SND_PREFS_KEY, JSON.stringify(p)); } catch (_) { /* private mode: this session only */ }
         sendInboxPrefs();
+        sendNoteSounds();
+    }
+
+    /**
+     * Every notification event's sound choices for the Android app (#907, AndroidBars.noteSounds): the app shows a
+     * notice that arrives with the page asleep as a WM popup over the program in front, with the event's sound and
+     * vibration (rule cafeready-background). { <event id>: { sound: url | '', vibrate, display, repeat, label } },
+     * the URL versioned as avPlay's (the app keeps each sound by its URL). Sent at start and when Sounds &
+     * Notifications changes; only when it changed.
+     */
+    let noteSoundsSent = '';
+    async function sendNoteSounds() {
+        const ab = window.AndroidBars;
+        if (!ab || typeof ab.noteSounds !== 'function') return;
+        const prefs = soundPrefs();
+        const out = {};
+        for (const e of SND_EVENTS) {
+            if (e.kind !== 'note') continue;
+            const p = eventPrefs(e.id, prefs);
+            if (!p) continue;
+            let url = '';
+            if (p.sound) {
+                const path = WM_SOUNDS.includes(p.sound) ? `${SND_BASE}${encodeURIComponent(p.sound)}` : `/sounds/vista/${encodeURIComponent(p.sound)}`;
+                let v = '';
+                try { v = await sndVersion(path); } catch (_) { v = ''; }
+                url = location.origin + path + (v ? `?v=${v}` : '');
+            }
+            out[e.id] = { sound: url, vibrate: !!p.vibrate, display: !!p.display, repeat: !!p.repeat, label: e.label };
+        }
+        const json = JSON.stringify(out);
+        if (json === noteSoundsSent) return;
+        noteSoundsSent = json;
+        try { ab.noteSounds(json); } catch (_) { noteSoundsSent = ''; }
     }
 
     /**

@@ -313,7 +313,11 @@
         // font: the face the page draws the bars in, 'tahoma' or 'segoe' (Settings > Screen > Text Size: the app loads
         // segoeui / segoeuib.ttf instead of tahoma / tahomabd.ttf)
         try {
-            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr), lists: barLists(dpr) });
+            // the WM notification box for the app's own popup over other programs (#907, DSApp: a notice arriving with
+            // the page asleep): its empty frame per body line count, its soft key band, and the boxes it writes into
+            let nk = null;
+            try { nk = notifyKit(dpr); } catch (err) { console.warn('[melatonBars] notify kit', err); }
+            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? { notifyFrame: nk.frames, notifySoft: nk.soft } : {}) });
         } finally { kitTarget = null; }
     }
 
@@ -335,7 +339,7 @@
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m17', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m18', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), Math.round(window.innerWidth)].join('|');
     }
@@ -383,6 +387,73 @@
                     if (soft) { const un2 = hideIn(soft, '.wm-softkey, .wm-sip'); try { out.soft = layoutOf([soft], dpr); } finally { un2(); } }
                 }
             } finally { back(); }
+        }
+        return out;
+    }
+
+    /**
+     * The WM notification box as the page lays it out over an Android program, for the app's own popup when the page
+     * sleeps (#907, rule cafeready-background): frames[n] = the empty box (title band, body, frame; text hidden) for a
+     * body of n lines (1-4: the app picks the frame for the lines it wraps), soft = the soft key bar as it is while a
+     * notice is up (black, labels hidden), geo = device px boxes: box, title { bold }, body { lineH, maxLines }, icon
+     * (null: WM's notice shows no glyph of its own), softLeft / softRight, colours, and the default labels (Hide /
+     * Dismiss; a program's notice may bring its own). Laid out with the bars staged as over a program.
+     */
+    function notifyKit(dpr) {
+        const sh = window.wmShell;
+        const shell = document.getElementById('wmShell');
+        const el = shell && shell.querySelector(':scope > .wm-notify');
+        if (!sh || !sh.barsStage || !el) return null;
+        const R = (r) => ({ x: Math.round(r.left * dpr), y: Math.round(r.top * dpr), w: Math.round(r.width * dpr), h: Math.round(r.height * dpr) });
+        const rootEl = document.documentElement;
+        const keep = { hidden: el.hidden, html: el.innerHTML, note: rootEl.hasAttribute('data-wm-note'), paint: el.dataset.wmPaint };
+        const back = sh.barsStage(stageFor({ title: 'Melaton', corner: 'close', androidTray: false, softLeft: 'Hide', softRight: 'Dismiss', sip: false }));
+        const out = { frames: {}, soft: null, geo: null };
+        try {
+            rootEl.setAttribute('data-wm-note', '');
+            delete el.dataset.wmPaint;
+            el.hidden = false;
+            const soft = shell.querySelector('.wm-softkeys');
+            for (let n = 1; n <= 4; n++) {
+                el.innerHTML = `<div class="wm-notify-title"><span class="wm-notify-name">Melaton</span></div>`
+                    + `<div class="wm-notify-body"><div class="toast-content"><div class="toast-message">${Array(n).fill('Melaton Mobile').join('<br>')}</div></div></div>`;
+                const name = el.querySelector('.wm-notify-name');
+                const msg = el.querySelector('.toast-message');
+                settle([el]);
+                if (n === 1) {
+                    const band = el.querySelector('.wm-notify-title');
+                    const ncs = getComputedStyle(name);
+                    const mcs = getComputedStyle(msg);
+                    const left = soft && soft.querySelector('.wm-softkey[data-side="left"]');
+                    const right = soft && soft.querySelector('.wm-softkey[data-side="right"]');
+                    const lineH = parseFloat(mcs.lineHeight) || Math.round(parseFloat(mcs.fontSize) * 1.2);
+                    out.geo = {
+                        box: R(el.getBoundingClientRect()),
+                        title: Object.assign(R(name.getBoundingClientRect()), { band: R(band.getBoundingClientRect()), bold: (parseInt(ncs.fontWeight, 10) || 400) >= 600, size: Math.round(parseFloat(ncs.fontSize) * dpr), color: ncs.color }),
+                        body: Object.assign(R(msg.getBoundingClientRect()), { lineH: Math.round(lineH * dpr), maxLines: 4, size: Math.round(parseFloat(mcs.fontSize) * dpr), color: mcs.color }),
+                        icon: null,
+                        softLeft: left && left.getClientRects().length ? Object.assign(R(left.getBoundingClientRect()), { color: getComputedStyle(left).color }) : null,
+                        softRight: right && right.getClientRects().length ? Object.assign(R(right.getBoundingClientRect()), { color: getComputedStyle(right).color }) : null,
+                        labels: { left: 'Hide', right: 'Dismiss' }
+                    };
+                }
+                // the frame without its words (the app writes them into the boxes above)
+                name.style.visibility = 'hidden';
+                msg.style.visibility = 'hidden';
+                out.frames[n] = { items: layoutOf([el], dpr), box: R(el.getBoundingClientRect()) };
+            }
+            if (soft) {
+                const labels = [...soft.querySelectorAll('.wm-softkey')];
+                const was = labels.map((b) => b.style.visibility);
+                labels.forEach((b) => { b.style.visibility = 'hidden'; });
+                try { out.soft = layoutOf([soft], dpr); } finally { labels.forEach((b, i) => { b.style.visibility = was[i]; }); }
+            }
+        } finally {
+            el.innerHTML = keep.html;
+            el.hidden = keep.hidden;
+            if (keep.paint) el.dataset.wmPaint = keep.paint;
+            if (!keep.note) rootEl.removeAttribute('data-wm-note');
+            back();
         }
         return out;
     }
