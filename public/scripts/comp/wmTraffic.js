@@ -476,12 +476,6 @@
     let camWatchId = null;
     let camFixAt = 0;
 
-    /** Driving home with no camera watch of the app's own: the page alerts the cameras, also with the screen off. */
-    function drivingHomeUnwatched() {
-        const dv = driving();
-        return !!(dv && dv.direction === 'home' && !(nativeDrive.active && nativeDrive.key === `home:${dv.leaveAt}`));
-    }
-
     function watchCameras() {
         const dv = driving();
         const r = latest.home;
@@ -1666,11 +1660,14 @@
             if (tk !== todayTickKey) { todayTickKey = tk; todayChanged(); }
         }
         // driving: the phone's position each minute while the page is seen, then the time left everywhere it
-        // shows. With the screen off only while the page alerts the cameras itself (a drive home the app's
-        // own watch does not have: melatonContinuity holds the page awake for it); otherwise Android gives a
-        // stopped page no position (no background location) and each read only timed out (#890)
-        if (driveWindow()) {
-            if (seenNow() || drivingHomeUnwatched()) readPosition();
+        // shows. Not seen (the screen off, the page still running) only in the window home while the app's
+        // own drive watch does not cover it: the page must notice the drive starting to alert the cameras
+        // itself (a notification driver), so it reads before driving() can be true. Otherwise a running
+        // page with the screen off asks nothing; a paused one gets no position anyway (#890)
+        const dw = driveWindow();
+        if (dw) {
+            const homeUnwatched = dw.direction === 'home' && !(nativeDrive.active && nativeDrive.key === `home:${dw.leaveAt}`);
+            if (seenNow() || homeUnwatched) readPosition();
             if (driving()) changed();
         }
         armNativeWatch();
