@@ -56,6 +56,26 @@ Logic in `modules/videosSources.js`. Items look like videos with `source` (`yout
 imported notifications by time, watched or read ones after the rest. `youtube_mark` on a `kick:` or `app:` id is
 the program's own mark (hide a stream, mark a notification read).
 
+## Watching a Kick stream in the program (Yozora #918)
+
+Logic in `modules/videosKickRelay.js`. The server pulls a listed Kick channel's live stream and serves it as HLS
+the program's own player plays (hls.js, `public/dist/hlsjs`): 4 s pieces, the newest 15 kept.
+
+| Request | Body -> reply |
+|---|---|
+| `youtube_live_modes` | `{}` -> `{ modes: [{ id, label, note, kbit, heavy }] }` |
+| `youtube_live_start` | `{ slug, mode }` -> `{ id, url, mode, state, source: { height, fps, kbit }, modes }`. Starts the relay or joins the one running; answers once the list has pieces. Another mode of the same channel replaces its session; at most two streams run. Errors `KICK_NOT_LISTED`, `KICK_OFFLINE`, `KICK_STREAM`, `KICK_PAGE`, `ALCHEMY_OFFLINE`. Admin. |
+| `youtube_live_state` | `{ id }` -> `{ state: 'live' \| 'restarting' \| 'ended' \| 'error' \| 'gone', error }`. Admin. |
+| `youtube_live_stop` | `{ id }` -> `{ stopped }`. Admin. |
+
+`GET /api/videos/live/<id>/index.m3u8` and `/s<n>.ts` (signed-in session): the stream. A session ends by itself
+45 s after the last request. Modes: `480`, `360`, `160` pass Kick's own renditions through (no encoding);
+`hw720`, `hw540` are hardware re-encodes at 30 fps; `e480`, `e360` are careful software encodes at a low
+bitrate (about two processor threads each); `audio` is one picture a second with full sound.
+
+The stream's address is only on the channel's Kick page: the Alchemy browser reads it in a hidden tab (nothing
+is played there). Yukimi allowed that step herself; `scripts/kick-stream-probe.js` is the same read for tests.
+
 ## Status feed (pushed, never polled)
 
 `status_subscribe { feed: 'youtube' }` while the Today item or the program is on screen answers

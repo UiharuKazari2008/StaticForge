@@ -2241,6 +2241,10 @@ app.use((req, res, next) => {
     if (req.path.startsWith(apocryphaPrefix)) {
         return next();
     }
+    // a live stream's pieces (Melaton Videos' Kick relay, #918): one request every few seconds for hours
+    if (req.path.startsWith('/api/videos/live/')) {
+        return next();
+    }
     
     const startTime = Date.now();
     const timestamp = requestLogTime.format(startTime);
@@ -2317,6 +2321,8 @@ require('./modules/faultAutoFix').mount(app, authMiddleware, { store: faultRepor
 require('./modules/slideshowDevices').mountPreviewRoutes(app, authMiddleware, globalResources);
 // modules/activeSyncTransfers.js — ActiveSync file bodies between a phone and the desktop (Yozora #747)
 require('./modules/activeSyncTransfers').mount(app, authMiddleware, globalResources);
+// modules/videosKickRelay.js — Melaton Videos: a Kick live stream's HLS pieces for the program's player (Yozora #918)
+require('./modules/videosKickRelay').mount(app, authMiddleware);
 // modules/activeSyncScreen.js — ActiveSync remote viewer: a phone's screen frames for the desktop (Yozora #747)
 require('./modules/activeSyncScreen').mount(app, authMiddleware, globalResources);
 // modules/deviceAdb.js — ADB on 5555 from this server: phone screenshots, displays, installs (Yozora #818)
