@@ -1147,6 +1147,8 @@ class LogViewerApplet {
         this.tasksInterval = setInterval(() => {
             if (!this.tasksSidebarOpen || this.modal?.classList.contains('hidden')
                 || this.modal?.classList.contains('minimised')) return;
+            // a hidden page or a phone's screen off: nothing is drawn (#890)
+            if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
             if (typeof websocketRequestsModal !== 'undefined' && websocketRequestsModal) {
                 websocketRequestsModal.update(true);
             }
@@ -1163,7 +1165,12 @@ class LogViewerApplet {
     startConnStatsInterval() {
         this.stopConnStatsInterval();
         this.updateConnectionStats();
-        this.connStatsInterval = setInterval(() => this.updateConnectionStats(), LOG_VIEWER_CONN_STATS_INTERVAL_MS);
+        this.connStatsInterval = setInterval(() => {
+            // drawn only while the window can be seen (not minimised, the page not hidden, #890)
+            if (document.hidden || document.documentElement.dataset.screenOff !== undefined
+                || this.modal?.classList.contains('hidden') || this.modal?.classList.contains('minimised')) return;
+            this.updateConnectionStats();
+        }, LOG_VIEWER_CONN_STATS_INTERVAL_MS);
     }
 
     stopConnStatsInterval() {
@@ -1175,33 +1182,35 @@ class LogViewerApplet {
 
     updateConnectionStats() {
         const ws = window.wsClient;
+        // each text written only when it changed (#890)
+        const set = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
         if (!ws) {
-            if (this.statOutEl) this.statOutEl.textContent = '0';
-            if (this.statInEl) this.statInEl.textContent = '0';
-            if (this.statPingEl) this.statPingEl.textContent = '—';
-            if (this.statVarEl) this.statVarEl.textContent = '—';
+            set(this.statOutEl, '0');
+            set(this.statInEl, '0');
+            set(this.statPingEl, '—');
+            set(this.statVarEl, '—');
             return;
         }
         const outCount = ws.connectionStats?.messagesOut || 0;
         const inCount = ws.connectionStats?.messagesIn || 0;
-        if (this.statOutEl) this.statOutEl.textContent = String(outCount);
-        if (this.statInEl) this.statInEl.textContent = String(inCount);
+        set(this.statOutEl, String(outCount));
+        set(this.statInEl, String(inCount));
         if (outCount > this._lastStatOut) this.flashTrafficArrow('up');
         if (inCount > this._lastStatIn) this.flashTrafficArrow('down');
         this._lastStatOut = outCount;
         this._lastStatIn = inCount;
         if (this.statPingEl) {
             if (ws.isConnected() && ws.currentRtt != null) {
-                this.statPingEl.textContent = `${Math.round(ws.currentRtt / 10) * 10}ms`;
+                set(this.statPingEl, `${Math.round(ws.currentRtt / 10) * 10}ms`);
             } else {
-                this.statPingEl.textContent = '—';
+                set(this.statPingEl, '—');
             }
         }
         if (this.statVarEl) {
             if (ws.isConnected() && ws.rttVariability != null && ws.currentRtt > 0) {
-                this.statVarEl.textContent = `${Math.round((ws.rttVariability / ws.currentRtt) * 100)}%`;
+                set(this.statVarEl, `${Math.round((ws.rttVariability / ws.currentRtt) * 100)}%`);
             } else {
-                this.statVarEl.textContent = '—';
+                set(this.statVarEl, '—');
             }
         }
         if (this.activeGlassPopover === 'uptime') {
@@ -1516,7 +1525,11 @@ class LogViewerApplet {
 
     startTrimInterval() {
         this.stopTrimInterval();
-        this.trimInterval = setInterval(() => this.trimLogLinesIfNeeded(), LOG_VIEWER_TRIM_INTERVAL_MS);
+        // every append and reload trims already; this look runs only while the page is seen (#890)
+        this.trimInterval = setInterval(() => {
+            if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+            this.trimLogLinesIfNeeded();
+        }, LOG_VIEWER_TRIM_INTERVAL_MS);
     }
 
     stopTrimInterval() {
@@ -1564,6 +1577,8 @@ class LogViewerApplet {
                 this.reconnectCountdownTimer = null;
                 return;
             }
+            // counted, but drawn only while the page is seen (#890)
+            if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
             this.showReconnectBanner(remaining);
             this.setStatus(`Reconnecting in ${remaining}s — ${this.formatStatusMeta()}`);
         }, 1000);

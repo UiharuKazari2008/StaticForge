@@ -223,6 +223,8 @@
                 tickTimer = 0;
                 return;
             }
+            // the flyout's clock draws only while the page is seen; the next tick back sets it (#890)
+            if (doc.hidden || doc.documentElement.dataset.screenOff !== undefined) return;
             renderTime();
         }, 1000);
     }

@@ -1265,21 +1265,33 @@
     // one: a desktop that keeps it open woke once a second for nothing, #849). It runs while a
     // shown window is on that page, and go() starts it again when one arrives there.
     const onNetworkPage = () => instances.some((i) => isShown(i) && (i === active ? current : i.current) === 'network');
+    // A live redraw writes a part only when its markup changed: compared with the markup this wrote
+    // last, not with innerHTML read back (that serialises the part every second, and reads back other
+    // text than it was given, so it was written again every time, #890)
+    function writeHtmlIfChanged(target, html) {
+        if (!target) return;
+        const note = () => { target.cplLiveHtml = html; target.cplLiveFirst = target.firstChild; target.cplLiveLast = target.lastChild; };
+        // still the nodes this wrote last (a render in between writes its own)
+        const ours = target.cplLiveFirst === target.firstChild && target.cplLiveLast === target.lastChild;
+        if (ours && target.cplLiveHtml === html) return;
+        // written by someone else: read back once
+        if (!ours && target.innerHTML === html) { note(); return; }
+        target.innerHTML = html;
+        note();
+    }
+
     function startLiveTimer() {
         if (liveTimer || !onNetworkPage()) return;
         liveTimer = setInterval(() => {
             if (!instances.some(isShown)) { stopTimers(); return; }
             if (!onNetworkPage()) { clearInterval(liveTimer); liveTimer = null; return; }
-            if (unseen()) return;
+            // unseen(): a hidden page, or a phone's screen off
+            if (root.document && (root.document.hidden || root.document.documentElement.dataset.screenOff !== undefined)) return;
             eachOpen(() => {
                 if (current !== 'network') return;
                 // Only the parts that change; keep the selection / focus elsewhere intact
-                const tasks = pages.network.tasks();
-                const body = pages.network.body();
-                const tasksEl = el('.cpl-tasks');
-                const mainEl = el('.cpl-main');
-                if (tasksEl.innerHTML !== tasks) tasksEl.innerHTML = tasks;
-                if (mainEl.innerHTML !== body) mainEl.innerHTML = body;
+                writeHtmlIfChanged(el('.cpl-tasks'), pages.network.tasks());
+                writeHtmlIfChanged(el('.cpl-main'), pages.network.body());
             });
         }, LIVE_TICK_MS);
     }
@@ -1409,7 +1421,8 @@
                 statusTimerId = null;
                 return;
             }
-            if (unseen()) return;
+            // unseen(): a hidden page, or a phone's screen off
+            if (root.document && (root.document.hidden || root.document.documentElement.dataset.screenOff !== undefined)) return;
             updateStatusDialog();
         }, LIVE_TICK_MS);
     }
@@ -1630,7 +1643,8 @@
         if (flyoutTimer) clearInterval(flyoutTimer);
         flyoutTimer = setInterval(() => {
             if (!flyout || flyout.classList.contains('hidden')) { clearInterval(flyoutTimer); flyoutTimer = null; return; }
-            if (unseen()) return;
+            // unseen(): a hidden page, or a phone's screen off
+            if (root.document && (root.document.hidden || root.document.documentElement.dataset.screenOff !== undefined)) return;
             renderFlyout();
         }, LIVE_TICK_MS);
     }

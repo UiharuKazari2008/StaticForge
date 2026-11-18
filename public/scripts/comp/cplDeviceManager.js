@@ -623,14 +623,30 @@
                 const body = vlv && vlv.querySelector('.vdt-lv-body');
                 if (!body) return;
                 body.classList.add('dm-values');
+                // the list is built when its rows change; a tick writes only the values that moved (#890)
+                let builtKeys = null;
+                const paintValues = (rows) => {
+                    const keys = rows.length ? rows.map((r) => String(r[0])).join('\n') : '';
+                    if (keys !== builtKeys) {
+                        body.innerHTML = rows.map(([k, v]) => `<div class="vdt-lv-row dm-value-row"><span class="dm-value-key">${esc(k)}</span><span class="dm-value-val">${esc(v)}</span></div>`).join('')
+                            || '<div class="vdt-lv-row"><span>No values</span></div>';
+                        builtKeys = keys;
+                        return;
+                    }
+                    const cells = body.querySelectorAll('.dm-value-val');
+                    rows.forEach(([, v], i) => {
+                        const text = v == null ? '' : String(v);
+                        if (cells[i] && cells[i].textContent !== text) cells[i].textContent = text;
+                    });
+                };
                 const draw = () => {
                     // the sheet closed: stop the sensors it started
                     if (!ctx.content.isConnected || ctx.content.closest('.hidden')) { clearInterval(timer); stopLive(); return; }
+                    // a hidden page or a phone's screen off: nothing is drawn (#890)
+                    if (doc.hidden || doc.documentElement.dataset.screenOff !== undefined) return;
                     const page = ctx.content.querySelector('[data-vdt-page="devmgr:values"]');
                     if (page && page.hidden) return;
-                    const rows = liveValues(info.live);
-                    body.innerHTML = rows.map(([k, v]) => `<div class="vdt-lv-row dm-value-row"><span class="dm-value-key">${esc(k)}</span><span class="dm-value-val">${esc(v)}</span></div>`).join('')
-                        || '<div class="vdt-lv-row"><span>No values</span></div>';
+                    paintValues(liveValues(info.live));
                 };
                 if (info.live.kind === 'quota' && root.navigator.storage) {
                     root.navigator.storage.estimate().then((e) => { liveQuota.quota = e.quota || 0; liveQuota.usage = e.usage || 0; }).catch(() => {});

@@ -531,10 +531,13 @@ function openNovelEditorTool() {
 }
 
 function novelProgressTick() {
+    // drawn only while the page is seen (from the start time, so it is right again at the next tick, #890)
+    if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
     const el = document.getElementById('novelProgressElapsed');
     if (!el || !novelProgressStartedAt) return;
     const seconds = Math.max(0, Math.round((Date.now() - novelProgressStartedAt) / 1000));
-    el.textContent = `Elapsed time: ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    const text = `Elapsed time: ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    if (el.textContent !== text) el.textContent = text;
 }
 
 function novelProgressSetRunning(running, state) {
