@@ -7,40 +7,19 @@
 }
 
 #manualModal:not(.windowed).opening {
+    /* perf: allow only while Studio opens (.opening) */
     will-change: opacity, filter;
 }
 
 #manualModal:not(.windowed).closing {
+    /* perf: allow only while Studio closes (.closing) */
     will-change: opacity, filter;
 }
 
-#manualPanelSection.zoomed,
-#manualPanelSection.initial {
-    will-change: width, min-width, height, top, right, z-index;
-}
-
-#manualPanelSection.zoomed div#manualPreviewContainer,
-#manualPanelSection.initial div#manualPreviewContainer {
-    will-change: background-color, backdrop-filter;
-}
-
-.glass-toast.show,
-.glass-toast.removing {
-    will-change: transform, opacity;
-}
-
-.glass-toast:not(.show):not(.removing) {
-    will-change: auto;
-}
-
-.manual-loading-overlay,
-.manual-loading-overlay.return {
-    will-change: backdrop-filter, opacity;
-}
-
-.manual-preview-navigation-loading {
-    will-change: opacity;
-}
+/* (#890) the rest of this block's hints are gone: #manualPanelSection.zoomed / .initial and
+   .manual-loading-overlay match no element; a toast at rest and the preview's loading overlay draw the
+   same without one (their transform already makes them a stacking context, and the toast's own glass
+   its backdrop root); .glass-toast.removing keeps its hint in app.css */
 
 #manualModal.windowed #manualPreviewWorkspaceBtn,
 body:not(.desktop-mode) #manualModal #unmaximizeManualBtn,

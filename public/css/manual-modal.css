@@ -173,9 +173,11 @@ html[data-glass] body.desktop-mode #manualModal .manual-modal-content.generating
 /* Reference drop to manual modal */
 .modal.reference-drop-target {
     box-shadow: 0 0 0 3px var(--accent-primary);
+    /* perf: allow drop-target highlight: only while a reference is dragged over Studio (explorerApplet.js / desktopShortcuts.js remove the class on leave and drop) */
     animation: pulse-drop-target 1s ease-in-out infinite;
 }
 
+/* perf: allow the ring grows on the window itself: a .modal's ::before / ::after carry its frame and glass, so there is no free layer to pre-draw it on; it runs only during a drag-over */
 @keyframes pulse-drop-target {
 
     0%,
@@ -314,6 +316,7 @@ body:not(.windows-classic-theme) .manual-preview-container::before {
     filter: blur(28px) brightness(0.72);
     transform: scale(1.18);
     transform-origin: center center;
+    /* perf: allow the Studio preview's blurred backdrop: its own layer keeps the 28 px blur from being re-rastered whenever the preview over it repaints (display: none in frosted glass, aero-glass.css) */
     will-change: opacity, filter;
 }
 
@@ -523,6 +526,7 @@ body:not(.windows-classic-theme) .manual-preview-container::before {
     animation: dialogFadeInNavigate 0.4s ease-out forwards;
 }
 
+/* perf: allow a one-shot 1.2 s fade-in when a print starts (not looping); the blur filter animates on the compositor */
 @keyframes dialogFadeInGenerate {
     0% {
         opacity: 0;
@@ -1160,10 +1164,12 @@ html[data-studio-transparency-bg="custom"] .manual-preview-image-container-inner
 }
 
 .manual-stage-indicator-dot.delay {
+    /* perf: allow progress indicator: pulses only while a stage waits its turn (.delay); opacity + transform */
     animation: stage-pulse 1s ease-in-out infinite;
 }
 
 .manual-stage-indicator-dot.generating::before {
+    /* perf: allow progress indicator: pulses only while the stage is generating (.generating); opacity */
     animation: stage-background-pulse 1.5s ease-in-out infinite;
 }
 
@@ -1375,12 +1381,10 @@ html.can-hover .manual-preview-content:not(:hover) .btn-danger:not(:hover) {
     html.can-hover .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
         max-width: 85%;
         max-height: 85%;
-        will-change: max-width, max-height;
     }
 
     html.can-hover .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage {
         box-shadow: 0 0px 40px 5px hsl(0deg 0% 0% / 50%);
-        will-change: box-shadow;
     }
 
     /* Inhibit preview hover zoom until generation completes */
@@ -2472,135 +2476,12 @@ body.desktop-mode .form-section.model-control .control-holder .form-row.control-
         min-width: 105px;
     }
 
-    #manualPanelSection.initial {
-        position: relative;
-        width: 100%;
-        top: 0;
-        right: 0;
-        height: 100%;
-        min-width: 0%;
-        animation: panelSlideOut 0.5s ease reverse;
-    }
-
-    #manualPanelSection.zoomed {
-        position: absolute;
-        top: 0;
-        right: 0;
-        height: calc(100% - var(--spacing-lg));
-        min-width: min(85%, max(1300px, calc(100% - 650px)));
-        z-index: var(--z-layer-10);
-        animation: panelSlideIn 0.5s ease forwards;
-    }
-
-    #manualPanelSection.initial div#manualPreviewContainer {
-        background: var(--glass-layer-2);
-        animation: panelBlurOut 0.35s ease reverse;
-        -webkit-backdrop-filter: none;
-        backdrop-filter: none;
-    }
-
-    #manualPanelSection.zoomed div#manualPreviewContainer {
-        background: var(--glass-layer-5);
-        animation: panelBlurIn 0.35s ease forwards;
-        -webkit-backdrop-filter: blur(10px);
-        backdrop-filter: blur(10px);
-    }
-
+    /* (#890) #manualPanelSection.zoomed / .initial and their panelSlide / panelBlur keyframes are gone:
+       no code sets those classes on the panel (only .manual-preview-image-container gets 'initial'),
+       so they never applied; the look is unchanged */
 
     .manual-preview-container .btn-secondary:not(:hover) {
         background: var(--glass-layer-3);
-    }
-
-    @keyframes panelBlurIn {
-        0% {
-            background: var(--glass-layer-2);
-            -webkit-backdrop-filter: none;
-            backdrop-filter: none;
-        }
-
-        0.01% {
-            background: var(--glass-layer-2);
-            -webkit-backdrop-filter: blur(0px);
-            backdrop-filter: blur(0px);
-        }
-
-        100% {
-            background: var(--glass-layer-5);
-            -webkit-backdrop-filter: blur(10px);
-            backdrop-filter: blur(10px);
-        }
-    }
-
-    @keyframes panelBlurOut {
-        0% {
-            background: var(--glass-layer-2);
-            -webkit-backdrop-filter: none;
-            backdrop-filter: none;
-        }
-
-        0.01% {
-            background: var(--glass-layer-2);
-            -webkit-backdrop-filter: blur(0px);
-            backdrop-filter: blur(0px);
-        }
-
-        100% {
-            background: var(--glass-layer-5);
-            -webkit-backdrop-filter: blur(10px);
-            backdrop-filter: blur(10px);
-        }
-    }
-
-    @keyframes panelSlideIn {
-        0% {
-            width: 100%;
-            min-width: 0%;
-            position: relative;
-            height: 100%;
-            z-index: inherit;
-        }
-
-        0.01% {
-            width: calc(100% - 650px);
-            min-width: calc(100% - 650px);
-            position: absolute;
-            height: calc(100% - var(--spacing-lg));
-            z-index: var(--z-layer-10);
-        }
-
-        100% {
-            width: 90%;
-            min-width: min(85%, max(1300px, calc(100% - 650px)));
-            position: absolute;
-            height: calc(100% - var(--spacing-lg));
-            z-index: var(--z-layer-10);
-        }
-    }
-
-    @keyframes panelSlideOut {
-        0% {
-            width: 100%;
-            min-width: 0%;
-            position: relative;
-            height: 100%;
-            z-index: inherit;
-        }
-
-        0.01% {
-            width: calc(100% - 650px);
-            min-width: calc(100% - 650px);
-            position: absolute;
-            height: calc(100% - var(--spacing-lg));
-            z-index: var(--z-layer-10);
-        }
-
-        100% {
-            width: 90%;
-            min-width: min(85%, max(1300px, calc(100% - 650px)));
-            position: absolute;
-            height: calc(100% - var(--spacing-lg));
-            z-index: var(--z-layer-10);
-        }
     }
 
     #closeManualBtn {
@@ -4153,6 +4034,7 @@ html.disable-blur .manual-loading-overlay {
 .manual-preview-navigation-progress-bar.indeterminate .manual-preview-navigation-progress-fill {
     width: 35%;
     transition: none;
+    /* perf: allow busy indicator: only while a download has no percentage (.indeterminate); transform only */
     animation: manual-preview-download-indeterminate 1.1s ease-in-out infinite;
 }
 
@@ -4182,12 +4064,6 @@ html.disable-blur .manual-loading-overlay {
     color: var(--text-muted);
 }
 
-.manual-loading-content .spinner {
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto;
-}
 /* Manual Modal Split Layout for Wide Viewports */
 /* @media (max-width: 1499px) {
     .form-section.model-control .control-holder:has(#manualImg2ImgGroup.hidden) .form-row.control-row-last {
