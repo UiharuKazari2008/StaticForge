@@ -12419,6 +12419,8 @@
             tasks: () => taskSwitcherTasks(),
             endAll: () => taskSwitcherEndAll()
         },
+        /** A status glyph's CSS image (a status role's own, or an art name such as 'status-reminder'): melatonBars' tray kit. */
+        statusArt: (name) => artImageSet(STATUS_APP_ICONS[name] || name),
         /**
          * A soft key's menu laid out once for the app to copy (melatonBars notifyKit: the WM notification box's Menu,
          * drawn by the app with the page asleep): opened quietly over the given soft key; returns { el, close }.

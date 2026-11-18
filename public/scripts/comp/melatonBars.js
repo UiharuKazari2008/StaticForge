@@ -317,7 +317,7 @@
             // the page asleep): its empty frame per body line count, its soft key band, and the boxes it writes into
             let nk = null;
             try { nk = notifyKit(dpr); } catch (err) { console.warn('[melatonBars] notify kit', err); }
-            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? Object.assign({ notifyFrame: nk.frames, notifySoft: nk.soft }, nk.menu ? { notifyMenu: nk.menu } : {}) : {}) });
+            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? Object.assign({ notifyFrame: nk.frames, notifySoft: nk.soft }, nk.menu ? { notifyMenu: nk.menu } : {}, nk.tray ? { notifyTray: nk.tray } : {}) : {}) });
         } finally { kitTarget = null; }
     }
 
@@ -339,7 +339,7 @@
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m21', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m22', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), Math.round(window.innerWidth)].join('|');
     }
@@ -401,6 +401,9 @@
      */
     // the rows of a notification's Menu (the app maps 'notemenu:<n>' to these, in order, separators left out)
     const NOTE_MENU = ['View', 'Hide', '-', 'Snooze 5 minutes', 'Snooze 15 minutes', 'Snooze 1 hour', 'Snooze 1 day'];
+    // the tray's glyph for each kind of notice (the app picks the kind from the notice's id)
+    const TRAY_KINDS = { notification: 'status-notify-many', reminder: 'status-reminder', warning: 'status-warning', error: 'status-error',
+        lapis: 'lapis', traffic: 'traffic', wxalert: 'wxalert', rain: 'rain', prints: 'prints', update: 'update' };
     function notifyKit(dpr) {
         const sh = window.wmShell;
         const shell = document.getElementById('wmShell');
@@ -449,6 +452,33 @@
                 const was = labels.map((b) => b.style.visibility);
                 labels.forEach((b) => { b.style.visibility = 'hidden'; });
                 try { out.soft = layoutOf([soft], dpr); } finally { labels.forEach((b, i) => { b.style.visibility = was[i]; }); }
+            }
+            // the notifications tray under the title bar (WM: a tap on the "..." group), for the app's own: the empty strip,
+            // one icon slot's size and spacing, and each kind of notice's glyph (the server's notices carry their kind)
+            const tray = shell.querySelector(':scope > .wm-notify-tray');
+            if (tray && typeof sh.statusArt === 'function') {
+                const tk = { hidden: tray.hidden, html: tray.innerHTML };
+                try {
+                    tray.hidden = false;
+                    const kinds = Object.keys(TRAY_KINDS);
+                    tray.innerHTML = kinds.map((k) => `<button type="button" class="wm-notify-tray-icon" data-kind="${k}"></button>`).join('');
+                    tray.querySelectorAll('button').forEach((b) => { b.style.backgroundImage = sh.statusArt(TRAY_KINDS[b.dataset.kind]); });
+                    settle([tray]);
+                    const icons = {};
+                    const first = tray.querySelector('button');
+                    const slot = R(first.getBoundingClientRect());
+                    let glyph = null;
+                    tray.querySelectorAll('button').forEach((b) => {
+                        const img = layoutOf([b], dpr).find((o) => o.k === 'img');
+                        if (!img) return;
+                        icons[b.dataset.kind] = img.url;
+                        // the glyph's box inside its slot (the same for every slot)
+                        if (!glyph) { const r = R(b.getBoundingClientRect()); glyph = { x: img.x - r.x, y: img.y - r.y, w: img.w, h: img.h }; }
+                    });
+                    const gap = Math.round((parseFloat(getComputedStyle(tray).columnGap) || 0) * dpr);
+                    tray.querySelectorAll('button').forEach((b) => { b.style.visibility = 'hidden'; });
+                    out.tray = { s: { items: layoutOf([tray], dpr).filter((o) => o.k !== 'hit'), box: R(tray.getBoundingClientRect()), slot, gap, glyph, icons } };
+                } finally { tray.innerHTML = tk.html; tray.hidden = tk.hidden; }
             }
             // the box's Menu (6.5.1's reminder: Dismiss | Menu, Yukimi Nov 18 "so that you have a reminder option"), laid
             // out over the right soft key with its fixed rows; each row's tap box is 'notemenu:<n>' for the app to act on
