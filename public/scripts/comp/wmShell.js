@@ -4204,8 +4204,16 @@
         // camera kept the inner screen's 452 px title after a fold and the cover's icons ran off its right edge; a
         // title with no width set left the gap element wherever the title's text ended, and the app's kit takes the
         // camera's place from that element - its "..." was drawn on the cover's camera (Fold7, Nov 18)
+        // the gap's left edge on the camera's (less the pad), whatever margins the parts before it carry: set, measured,
+        // corrected once (the sum of the title and the icons left of it missed their margins and put the gap ~36 px right
+        // of the inner screen's camera, an icon on the lens, Fold Nov 18)
+        const onCamera = (basis) => {
+            title.style.flex = `0 0 ${Math.max(0, basis)}px`;
+            const off = (hole.left - pad) - gap.getBoundingClientRect().left;
+            if (Math.abs(off) > 0.5) title.style.flex = `0 0 ${Math.max(0, basis + off)}px`;
+        };
         if (opts && opts.measureOnly) {
-            title.style.flex = `0 0 ${Math.max(0, hole.left - pad - tl)}px`;
+            onCamera(hole.left - pad - tl);
             return { x: hole.left - pad - br.left, w: hole.width + 2 * pad };
         }
         // what does not fit right of the camera moves left of it, keeping the order (first icons first).
@@ -4226,7 +4234,7 @@
             status._wmOrder.slice(0, status._wmOrder.indexOf(first) + 1).forEach((i) => { if (i.parentElement === status) left.append(i); });
         }
         const lw = left.firstElementChild ? left.getBoundingClientRect().width : 0;
-        title.style.flex = `0 0 ${Math.max(0, hole.left - pad - tl - lw)}px`;
+        onCamera(hole.left - pad - tl - lw);
         return true;
     }
 
