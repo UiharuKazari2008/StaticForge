@@ -1086,16 +1086,139 @@ async function nwsAlerts(lat, lon) {
 }
 
 /** Alerts for a forecast that came without them (Open-Meteo, or Apple where it has none): NWS in the US. */
+// a forecast with its NWS alerts, the same object while both cached values are the same (forecastWire's
+// work is then done once per change, not once per read)
+const withAlerts = new WeakMap();
+
 async function attachAlerts(forecast, lat, lon) {
     if (!forecast || forecast.alertsSource) return forecast;
     const place = forecast.place || await countryOf(lat, lon);
     if (place.code !== 'US') return forecast;
     try {
         const alerts = await nwsAlerts(lat, lon);
-        return Object.assign({}, forecast, { alerts, alertsSource: 'National Weather Service' });
+        const kept = withAlerts.get(forecast);
+        if (kept && kept.alerts === alerts) return kept.merged;
+        const merged = Object.assign({}, forecast, { alerts, alertsSource: 'National Weather Service' });
+        withAlerts.set(forecast, { alerts, merged });
+        return merged;
     } catch (_e) {
         return forecast;
     }
+}
+
+// ------------------------------------------------------------------------------------------ the forecast on the wire (#890 round 5, W1)
+
+// Fields no page reads (grep of public/scripts and apps, Nov 17 2026: only wmWeather.js reads
+// weather_forecast, for the phone's Weather app, Today, the 6.5 clock and the desktop's Weather window).
+// Left out of weather_forecast / weather_delta only: the Director, Rentan, the gadget and the monitor read
+// getForecast's full model. Kept although close: current pressureTrend / visibilityM, hourly dewC (the hour
+// row's text), daily and day/night snowMm.
+const WIRE_DROP = {
+    top: ['place'],
+    current: ['conditionCode', 'cloudLow', 'cloudMid', 'cloudHigh'],
+    minutely: ['periods'],
+    hourly: ['conditionCode', 'precipType', 'pressureTrend', 'visibilityM', 'snowMm'],
+    daily: ['conditionCode', 'precipType', 'maxAt', 'minAt'],
+    part: ['conditionCode', 'precipType']
+};
+// the parts hashed whole; hourly is hashed per local day of the place
+const WIRE_PARTS = ['current', 'minutely', 'daily', 'alerts'];
+
+/** Without null fields (a forecast is a quarter nulls): the pages read a missing field as no data. */
+function compactValue(value) {
+    if (Array.isArray(value)) return value.map(compactValue);
+    if (!value || typeof value !== 'object') return value;
+    const out = {};
+    Object.keys(value).forEach((k) => {
+        if (value[k] !== null && value[k] !== undefined) out[k] = compactValue(value[k]);
+    });
+    return out;
+}
+
+const dropKeys = (o, keys) => { if (o && typeof o === 'object') keys.forEach((k) => { delete o[k]; }); };
+const sha1Of = (part) => crypto.createHash('sha1').update(JSON.stringify(part === undefined ? null : part)).digest('hex');
+
+const wireMemo = new WeakMap();
+
+/**
+ * A forecast as the pages get it: { model (compacted, unread fields left out), hashes: { current,
+ * minutely, daily, alerts, hourly: { 'YYYY-MM-DD': h } }, days: Map(day -> hourly rows) }. Each hash is
+ * the sha1 of JSON.stringify(part) (null for a missing part); hourly rows are grouped by their local
+ * date (the rows' times are the place's wall clock). Made once per forecast object.
+ */
+function forecastWire(forecast) {
+    if (!forecast || typeof forecast !== 'object') return null;
+    const hit = wireMemo.get(forecast);
+    if (hit) return hit;
+    const model = compactValue(forecast);
+    dropKeys(model, WIRE_DROP.top);
+    dropKeys(model.current, WIRE_DROP.current);
+    dropKeys(model.minutely, WIRE_DROP.minutely);
+    if (Array.isArray(model.hourly)) model.hourly.forEach((h) => dropKeys(h, WIRE_DROP.hourly));
+    if (Array.isArray(model.daily)) {
+        model.daily.forEach((d) => {
+            dropKeys(d, WIRE_DROP.daily);
+            if (d) { dropKeys(d.day, WIRE_DROP.part); dropKeys(d.night, WIRE_DROP.part); }
+        });
+    }
+    const hashes = {};
+    WIRE_PARTS.forEach((k) => { hashes[k] = sha1Of(model[k]); });
+    const days = new Map();
+    (Array.isArray(model.hourly) ? model.hourly : []).forEach((row) => {
+        const day = String((row && row.time) || '').slice(0, 10);
+        if (!days.has(day)) days.set(day, []);
+        days.get(day).push(row);
+    });
+    hashes.hourly = {};
+    days.forEach((rows, day) => { hashes.hourly[day] = sha1Of(rows); });
+    const out = { model, hashes, days };
+    wireMemo.set(forecast, out);
+    return out;
+}
+
+/**
+ * The weather_forecast reply (and weather_delta's body) for a wire forecast. Every scalar field and hashes
+ * always. Without have (or have not an object): the whole model as before (hourly an array). With have
+ * ({ current?, minutely?, daily?, alerts?, hourly?: { day: h } }, the hashes the page holds): only the
+ * parts whose hash differs (a missing part is absent: the page deletes it), hourly as { day: rows } for the
+ * days that differ, and same: [names, 'hourly:<day>'] for the unchanged ones. hashes.hourly lists the
+ * days in order: the page builds hourly from them (its own rows for a same day), so a day it holds that
+ * is no longer listed goes.
+ */
+function forecastReply(wire, have) {
+    const { model, hashes, days } = wire;
+    const out = {};
+    Object.keys(model).forEach((k) => { if (k !== 'hourly' && !WIRE_PARTS.includes(k)) out[k] = model[k]; });
+    out.hashes = hashes;
+    if (!have || typeof have !== 'object' || Array.isArray(have)) {
+        WIRE_PARTS.forEach((k) => { if (model[k] !== undefined) out[k] = model[k]; });
+        if (model.hourly !== undefined) out.hourly = model.hourly;
+        return out;
+    }
+    const same = [];
+    WIRE_PARTS.forEach((k) => {
+        if (have[k] === hashes[k]) same.push(k);
+        else if (model[k] !== undefined) out[k] = model[k];
+    });
+    const held = have.hourly && typeof have.hourly === 'object' ? have.hourly : {};
+    const changed = {};
+    days.forEach((rows, day) => {
+        if (held[day] === hashes.hourly[day]) same.push(`hourly:${day}`);
+        else changed[day] = rows;
+    });
+    if (Object.keys(changed).length) out.hourly = changed;
+    out.same = same;
+    return out;
+}
+
+/** Whether a page holding these hashes (a have) is missing anything of this wire forecast. */
+function wireDiffers(wire, have) {
+    if (!have || typeof have !== 'object') return true;
+    if (WIRE_PARTS.some((k) => have[k] !== wire.hashes[k])) return true;
+    const held = have.hourly && typeof have.hourly === 'object' ? have.hourly : {};
+    const days = Object.keys(wire.hashes.hourly);
+    if (days.length !== Object.keys(held).length) return true;
+    return days.some((day) => held[day] !== wire.hashes.hourly[day]);
 }
 
 // ------------------------------------------------------------------------------------------ Home and Work (#792)
@@ -1350,6 +1473,9 @@ async function pollPlaces() {
     monitor.checkedAt = new Date().toISOString();
     if (changes.alerts) broadcast({ type: 'weather_alerts_changed', data: getActiveAlerts() });
     if (changes.rain) broadcast({ type: 'weather_rain_status', data: getRainStatus() });
+    // pages watching Home / Work hear a changed forecast from this read now, not at their next minute
+    // (weatherWatch.js; the same cache entries, so no extra upstream read)
+    try { void require('./weatherWatch').tick().catch(() => {}); } catch (_e) { /* not loaded */ }
     return getActiveAlerts();
 }
 
@@ -1598,6 +1724,9 @@ async function cached(key, fn) {
 module.exports = {
     bind,
     getForecast,
+    forecastWire,
+    forecastReply,
+    wireDiffers,
     gadgetShape,
     getAlert,
     geocode,
