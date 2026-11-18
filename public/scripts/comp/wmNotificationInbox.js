@@ -135,6 +135,17 @@
         ];
     }
 
+    /** A notice's Menu (melatonBars NOTE_MENU has the same rows for the app's own box). */
+    function noticeMenu(notice) {
+        const later = (label, minutes) => ({ label, action: () => snooze(notice, { minutes }) });
+        return [
+            { label: 'View', action: () => { ack(notice.id, 'acted'); close(notice.id); openFor(notice); } },
+            { label: 'Hide', action: () => close(notice.id) },
+            '-',
+            later('Snooze 5 minutes', 5), later('Snooze 15 minutes', 15), later('Snooze 1 hour', 60), later('Snooze 1 day', 1440)
+        ];
+    }
+
     /** Windows Mobile's reminder notification for a calendar / task reminder. */
     function showReminder(notice) {
         if (!ws || typeof ws.appNote !== 'function' || shownNotes.has(notice.id)) return;
@@ -204,9 +215,11 @@
             html: esc(notice.text || '').replace(/\n/g, '<br>'),
             icon: iconFor(notice),
             event: notice.cls || 'notification',
+            // 6.5.1's reminder keys on every notice (Yukimi, Nov 18): Dismiss | Menu, the Menu with View, Hide and the
+            // reminder's Snooze times (the server brings the notice back then, sounding); the app's own box has the same
             softKeys: () => ({
-                left: { label: 'View', action: () => { ack(notice.id, 'acted'); close(notice.id); openFor(notice); } },
-                right: { label: 'Dismiss', action: () => { ack(notice.id, 'cleared'); close(notice.id); } },
+                left: { label: 'Dismiss', icon: 'dismiss', action: () => { ack(notice.id, 'cleared'); close(notice.id); } },
+                right: { label: 'Menu', icon: 'menu', menu: () => noticeMenu(notice) },
             }),
         });
         if (!note) return;

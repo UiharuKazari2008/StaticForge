@@ -30,7 +30,8 @@
  *     until the appointment ends (at least an hour), a task's for a day.
  * - Fired ids are kept in sqlite (reminders.db next to notifications.db) so a restart neither repeats
  *   one nor loses one: those that came due in the last 15 minutes while the server was down fire once.
- * - Snooze (reminder_snooze from the page or the desktop Calendar): the notice is cleared (the phones
+ * - Snooze (reminder_snooze from the page, the phone app or the desktop Calendar; any notice since Nov 18, not
+ *   only a reminder): the notice is cleared (the phones
  *   take theirs down) and published again with the same id at the snooze time; kept in sqlite too.
  */
 
@@ -418,7 +419,7 @@ function fireSnoozed(row) {
     let notice = null;
     try { notice = JSON.parse(row.notice); } catch (_e) { return null; }
     if (!notice) return null;
-    notice.title = `${clock(new Date(nowFn()))} | Reminder`;
+    if (/^rem:/.test(row.id)) notice.title = `${clock(new Date(nowFn()))} | Reminder`;
     if (notice.expiresAt && notice.expiresAt <= nowFn()) notice.expiresAt = nowFn() + HOUR; // snoozed past its end: still shown a while
     const out = publishNotice(row.id, notice);
     console.log(`[reminders] snooze over: ${row.id}`);
@@ -494,7 +495,9 @@ function changed(info) {
  */
 function snooze(user, id, { minutes, at } = {}) {
     const key = String(id || '');
-    if (!/^rem:/.test(key)) return { ok: false, error: 'not a reminder' };
+    // any notice may be snoozed (Yukimi, Nov 18: 6.5.1's reminder option on every notification, page and app):
+    // it goes now and comes back as itself, sounding, at the time asked; a calendar reminder as its Reminder
+    if (!key) return { ok: false, error: 'no notice' };
     const u = user === 'dev_admin' ? 'dev_admin' : USER;
     if (u !== USER) return { ok: false, error: 'no reminders for this user' };
     const when = Number.isFinite(Number(at)) && Number(at) > nowFn() ? Number(at) : nowFn() + Math.max(1, Math.min(20160, Number(minutes) || 5)) * MIN;
@@ -508,7 +511,7 @@ function snooze(user, id, { minutes, at } = {}) {
     if (!notice) return { ok: false, error: 'reminder not found' };
     database().prepare('INSERT INTO snoozed (id, at, notice) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET at = excluded.at, notice = excluded.notice').run(key, when, JSON.stringify(notice));
     // never fires again from the calendar (it was already shown; snoozed before it fired: it waits for the snooze)
-    database().prepare('INSERT OR IGNORE INTO fired (id, at, firedAt) VALUES (?, ?, ?)').run(key, when, nowFn());
+    if (/^rem:/.test(key)) database().prepare('INSERT OR IGNORE INTO fired (id, at, firedAt) VALUES (?, ?, ?)').run(key, when, nowFn());
     try { inbox().clear(u, key, 'snooze'); } catch (_e) { /* best effort */ }
     arm();
     return { ok: true, at: when };

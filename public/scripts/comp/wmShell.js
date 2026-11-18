@@ -1543,7 +1543,7 @@
         if (!hadSub) syncHistory();
     }
 
-    function showPopup(side, items, btn) {
+    function showPopup(side, items, btn, opts) {
         closeMenus(true);
         const pop = shell.querySelector('.wm-popup');
         pop.dataset.side = side;
@@ -1576,6 +1576,8 @@
             delete pop.dataset.wmPaint;
         }
         pop.hidden = false;
+        // a sample laid out for the app (melatonBars' notification kit): no sound, no history, nothing kept open
+        if (opts && opts.sample) { delete pop.dataset.wmPaint; return pop; }
         openPopup = pop;
         // CE's Menu pop-up event (silent unless a sound is picked for it)
         playSystemSound('menu');
@@ -3300,7 +3302,8 @@
         directorTurnWatch(dir);
         const dirOpen = stack.includes('director') || openedApps.includes('director');
         if (current === 'director') dirUnseen = false;
-        hide(shell.querySelector('[data-role="director"]'), !((dir && dir.running) || dirOpen || dirUnseen));
+        // only while a turn runs or the Director is open (Yukimi, Nov 18): a finished turn not seen no longer keeps it
+        hide(shell.querySelector('[data-role="director"]'), !((dir && dir.running) || dirOpen));
         paintDirectorClap(!!(dir && dir.running));
         let updateReady = false;
         try { updateReady = !!(window.serviceWorkerManager && window.serviceWorkerManager.hasPendingUpdates()); } catch (_) { updateReady = false; }
@@ -12415,6 +12418,14 @@
             get isOpen() { return taskSwitch.open; },
             tasks: () => taskSwitcherTasks(),
             endAll: () => taskSwitcherEndAll()
+        },
+        /**
+         * A soft key's menu laid out once for the app to copy (melatonBars notifyKit: the WM notification box's Menu,
+         * drawn by the app with the page asleep): opened quietly over the given soft key; returns { el, close }.
+         */
+        menuSample: (side, items) => {
+            const pop = showPopup(side === 'left' ? 'left' : 'right', items, null, { sample: true });
+            return { el: pop, close: () => { pop.hidden = true; pop.innerHTML = ''; } };
         },
         /** A context menu at a point (tap-and-hold), kept on screen. */
         menuAt: (x, y, items) => {
