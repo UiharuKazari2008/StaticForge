@@ -153,6 +153,7 @@
 .pp-scan { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px 16px 16px; background: linear-gradient(#d83a3a, #a11818); color: #fff; text-align: center; }
 .pp-scan b { font: bold 20px Tahoma, sans-serif; }
 .pp-scan .pp-dim { color: #ffd0d0; }
+/* perf: allow busy indicator: the scan window shows only while it waits for a card (its bar drains in 30 s); transform */
 .pp-scan .pp-ico { animation: pp-pulse 1.2s ease-in-out infinite; }
 .pp-scan-bar { width: 200px; height: 6px; margin-top: 6px; border-radius: 3px; background: rgba(0, 0, 0, .3); overflow: hidden; }
 .pp-scan-bar i { display: block; width: 100%; height: 100%; background: #fff; transform-origin: left; animation: pp-drain 30s linear forwards; }

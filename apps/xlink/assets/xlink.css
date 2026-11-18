@@ -93,11 +93,13 @@
 /* status readouts: tally-coloured text on a black well */
 .xl-lcd { display: inline-block; box-sizing: border-box; width: 100%; max-width: 136px; padding: 6px 11px 5px; border-radius: 2px; background: #050505; box-shadow: var(--xl-well); color: var(--lcd, #59f58a); font: 11px/13px 'Lucida Console', 'Courier New', monospace; letter-spacing: .5px; text-transform: uppercase; text-shadow: 0 0 4px currentColor; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
 .xl-lcd.is-empty { color: #2a2d31; text-shadow: none; }
+/* perf: allow status: a readout blinks only while its command failed (.is-failed); opacity steps */
 .xl-lcd.is-failed { animation: xl-blink 1s steps(1) infinite; }
 .xl-head .xl-lcd { width: auto; min-width: 0; padding: 4px 9px 3px; }
 .xl-na { color: var(--xl-dim); }
 .xl-window .xl-root .xl-empty { padding: 40px 20px; text-align: center; color: var(--xl-dim); }
 .xl-wait { width: 160px; height: 6px; margin: 12px auto 0; border-radius: 3px; background: #050505; box-shadow: var(--xl-well); overflow: hidden; }
+/* perf: allow busy indicator: shown only while a cabinet is being polled (xlink.js "Polling cabinet, please wait..."); transform */
 .xl-wait span { display: block; width: 40px; height: 100%; background: var(--xl-amber); box-shadow: 0 0 6px var(--xl-amber); animation: xl-wait 1.4s linear infinite; }
 @keyframes xl-wait { from { transform: translateX(-40px); } to { transform: translateX(160px); } }
 
