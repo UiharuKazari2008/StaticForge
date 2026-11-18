@@ -3654,11 +3654,23 @@ function resetInfiniteScroll() {
         placeholderCleanupQueue.clear();
     }
 
-    // Clear scroll timeouts
+    // Clear scroll timeouts. The scroll-end timer is the only thing that clears isScrolling and the
+    // scroll shield, so cancelling it must clear them too: a switch within 150 ms of a wheel notch
+    // left isScrolling true for good, and the block loader (yieldGalleryProgressPaint) waited on it
+    // forever - the gallery stayed empty after a workspace switch and the shield ate every click.
     if (scrollEndTimeout) {
         clearTimeout(scrollEndTimeout);
         scrollEndTimeout = null;
     }
+    isScrolling = false;
+    isFastScrolling = false;
+    scrollVelocity = 0;
+    if (fastScrollTimeout) {
+        clearTimeout(fastScrollTimeout);
+        fastScrollTimeout = null;
+    }
+    const scrollShield = document.querySelector('.gallery-scroll-shield');
+    if (scrollShield && !scrollShield.hidden) scrollShield.hidden = true;
 
     window.scrollTo({ top: 0, behavior: 'instant' });
     displayedStartIndex = 0;
