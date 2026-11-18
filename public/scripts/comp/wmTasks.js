@@ -250,7 +250,9 @@
             if (!vfs()) throw new Error('Files are not available.');
             if (!(await hasFolder())) return [];
             const res = await vfs().listDirectory(folder(), { offset: 0, limit: 200 });
-            return ((res && res.items) || []).filter((i) => /\.ics$/i.test(i.name || '') && (i.targetKind === 'user-file' || i.kind === 'file')).map((i) => ({ id: i.id, name: i.name }));
+            // ver: the content hash (else time and size), so a file not changed since it was read is not fetched again
+            return ((res && res.items) || []).filter((i) => /\.ics$/i.test(i.name || '') && (i.targetKind === 'user-file' || i.kind === 'file'))
+                .map((i) => ({ id: i.id, name: i.name, ver: i.previewVersion || (i.modifiedAt ? `${i.modifiedAt}|${i.sizeBytes != null ? i.sizeBytes : i.size}` : '') }));
         },
         async read(file) {
             const r = await vfs().downloadFile(file.id);
@@ -278,9 +280,18 @@
         const forWs = workspaceId();
         const files = await api._io.list();
         const next = [];
+        const keep = new Map();
         for (const f of files) {
-            try { next.push(parseCal(await api._io.read(f), f)); } catch (err) { console.warn('wmTasks: could not read', f.name, err); }
+            try {
+                // unchanged since read (#890: every reload asked for each file's URL and fetched it whole)
+                const key = f.ver ? `${f.id}|${f.ver}` : '';
+                let text = key ? icsText.get(key) : undefined;
+                if (text === undefined) text = await api._io.read(f);
+                if (key) keep.set(key, text);
+                next.push(parseCal(text, f));
+            } catch (err) { console.warn('wmTasks: could not read', f.name, err); }
         }
+        icsText = keep;
         let hidden = [];
         try { hidden = JSON.parse(window.melatonRegistry ? window.melatonRegistry.get(REG_KEY, 'Hidden', '[]') : '[]') || []; } catch (_) { hidden = []; }
         next.forEach((c) => { c.hidden = hidden.includes(c.name); });
@@ -293,9 +304,15 @@
         try { document.dispatchEvent(new CustomEvent('wmTasksChange')); } catch (_) { /* no events */ }
     }
 
+    let icsText = new Map(); // `${file id}|${ver}` -> the file's text as last read
+    // a new link may have missed a vfs_updated: the next reader reads again (not every 5 minutes by time, #890)
+    let tasksDirty = false;
+    if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', () => { if (loadedAt) tasksDirty = true; }, { signal: appScopeSignal });
+
     function reload(force) {
         if (loading) return loading;
         if (!force && loadedAt && loadedFor === workspaceId() && Date.now() - loadedAt < RELOAD_MS) return Promise.resolve();
+        tasksDirty = false;
         const first = !loadedAt || loadedFor !== workspaceId();
         const shown = () => ws && ws.current === APP_ID;
         const p = load().catch((err) => {
@@ -935,7 +952,9 @@
 
     function show() {
         if (view !== 'form') render();
-        reload(loadedFor !== workspaceId());
+        // read again when nothing is read for this workspace or a change may have been missed; the calendars'
+        // changes come as vfs_updated (onVfsMessage), so not every show after 60 s (#890)
+        if (!loadedAt || loadedFor !== workspaceId() || tasksDirty) reload(true);
         clearInterval(printTimer);
         printTimer = null;
         syncPrintWatch();
@@ -950,6 +969,7 @@
     }
     function syncPrintWatch() {
         const on = listSeen();
+        // perf: allow only while the Tasks list is on screen (listSeen; cleared otherwise): the prints in progress are this page's own requests, with no push to follow
         if (on && !printTimer) printTimer = setInterval(() => { if (listSeen()) printCheck(); else syncPrintWatch(); }, 2000);
         else if (!on && printTimer) { clearInterval(printTimer); printTimer = null; }
     }
@@ -993,7 +1013,7 @@
 
     /** { active, high, overdue, printing, text }: Today's row ("2 Active tasks" and "1 High priority" under it). */
     function summary() {
-        if (!loading && (!loadedAt || loadedFor !== workspaceId() || Date.now() - loadedAt > RELOAD_MS * 5)) reload(false);
+        if (!loading && (!loadedAt || loadedFor !== workspaceId() || tasksDirty)) reload(true);
         const open = loadedFor === workspaceId() ? allTasks().filter((t) => !t.completed) : [];
         const active = open.length;
         const high = open.filter(isHigh).length;
