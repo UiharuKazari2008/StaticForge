@@ -59,6 +59,48 @@ def big_copies(px2, px4, w, h):
     c4 = im(m8, w * 4, h * 4, '-filter', 'Lanczos', '-resize', '50%') if doubled else px4
     return c4, m8
 
+# ---- the battery at its larger size (Yukimi, Nov 17: "looks smaller than earlier today"; "there is no width
+# restriction"): the battery family enlarged 1.28x (this afternoon's size, inside the bar's padding), as wide as
+# its shape needs, in its own cell; every other icon stays as drawn. From the light clean-up master, cut with a
+# margin so no edge is clipped.
+BIG_FAMILIES = ('battery',)
+BIG_SCALE = 1.28   # the art enlarged 1.28x: this afternoon's battery (16 -> 20.5 units wide, 9.5 -> 12.2 tall)
+def alpha_box(px, w, h, cut=20):
+    x0 = y0 = 10 ** 9; x1 = y1 = -1
+    for y in range(h):
+        row = px[y * w * 4:(y + 1) * w * 4]
+        for x in range(w):
+            if row[x * 4 + 3] > cut:
+                if x < x0: x0 = x
+                if x > x1: x1 = x
+                if y < y0: y0 = y
+                if y > y1: y1 = y
+    return (x0, y0, x1 + 1, y1 + 1) if x1 >= 0 else None
+def enlarge(arts):
+    """{name: (w2, px1, px2, px4, px8)} for the icons of BIG_FAMILIES: one scale per family (its union)."""
+    out = {}
+    for fam in BIG_FAMILIES:
+        mem = [(n, w, h, px) for n, f, w, h, px in arts if n.split('-')[0] == fam]
+        if not mem: continue
+        masters = {n: clean_up(px, w, h, 4, 0.8) for n, w, h, px in mem}
+        boxes = [alpha_box(masters[n], w * 4, h * 4) for n, w, h, px in mem]
+        boxes = [b for b in boxes if b]
+        W8, H8 = mem[0][1] * 4, mem[0][2] * 4
+        m = 4
+        x0 = max(0, min(b[0] for b in boxes) - m); y0 = max(0, min(b[1] for b in boxes) - m)
+        x1 = min(W8, max(b[2] for b in boxes) + m); y1 = min(H8, max(b[3] for b in boxes) + m)
+        bw, bh = x1 - x0, y1 - y0
+        k = BIG_SCALE
+        gw8, gh8 = round(bw * k), round(bh * k)
+        w2 = ((gw8 // 4 + 4 + 1) // 2) * 2          # whole 2x pixels, half a unit spare each side
+        for n, w, h, px in mem:
+            cell8 = im(masters[n], W8, H8, '-crop', f'{bw}x{bh}+{x0}+{y0}', '+repage', '-filter', 'Lanczos', '-resize', f'{gw8}x{gh8}!',
+                       '-background', 'none', '-gravity', 'center', '-extent', f'{w2 * 4}x128')
+            out[n] = (w2, im(cell8, w2 * 4, 128, '-filter', 'Lanczos', '-resize', f'{w2 // 2}x16!'),
+                      im(cell8, w2 * 4, 128, '-filter', 'Lanczos', '-resize', '25%'),
+                      im(cell8, w2 * 4, 128, '-filter', 'Lanczos', '-resize', '50%'), cell8)
+    return out
+
 def build(ver, css_path, rule_re, scope, has_1x_rules):
     css = open(css_path).read()
     if BEGIN in css:
@@ -78,6 +120,8 @@ def build(ver, css_path, rule_re, scope, has_1x_rules):
             continue
         w, h, px = rgba(os.path.join(d, f'{file}@2x.png'))
         arts.append((name, file, w, h, px))
+    BIG = enlarge(arts)
+    arts = [(n, f, BIG[n][0] if n in BIG else w, h, BIG[n][2] if n in BIG else px) for n, f, w, h, px in arts]
     # shelves
     W = 512; x = y = 0; shelf = 0; pos = {}
     for name, file, w, h, px in arts:
@@ -89,15 +133,20 @@ def build(ver, css_path, rule_re, scope, has_1x_rules):
         x, y = pos[name]
         blit(a2, W, px, w, h, x, y)
         p4 = os.path.join(d, f'{file}@4x.png')
-        if os.path.exists(p4):
+        if name in BIG:
+            _, big1, _, px4, px8 = BIG[name]
+        elif os.path.exists(p4):
             w4, h4, px4 = rgba(p4)
             assert (w4, h4) == (w * 2, h * 2), (file, w4, h4)
-        else: px4 = None
-        px4, px8 = big_copies(px, px4, w, h)
+            px4, px8 = big_copies(px, px4, w, h)
+        else:
+            px4, px8 = big_copies(px, None, w, h)
         blit(a4, W * 2, px4, w * 2, h * 2, x * 2, y * 2)
         blit(a8, W * 4, px8, w * 4, h * 4, x * 4, y * 4)
         p1 = os.path.join(d, f'{file}.png')
-        if os.path.exists(p1):
+        if name in BIG:
+            px1 = BIG[name][1]
+        elif os.path.exists(p1):
             w1, h1, px1 = rgba(p1)
             if (w1, h1) != (w // 2, h // 2): px1 = halve(px, w, h)
         else: px1 = halve(px, w, h)
@@ -120,7 +169,8 @@ def build(ver, css_path, rule_re, scope, has_1x_rules):
         lines.append(f"html.wm-art-1x{scope.replace('html', '', 1)}.wm-status-icon[data-icon] {{ background-image: url('{src}.png'); }}")
     for name, file, w, h, px in arts:
         x, y = pos[name]
-        lines.append(f'{scope}.wm-status-icon[data-icon="{name}"] {{ background-position: calc({-x // 2} * {U}) calc({-y // 2} * {U}); }}')
+        wd = f' width: calc({w // 2} * {U});' if w != 32 else ''
+        lines.append(f'{scope}.wm-status-icon[data-icon="{name}"] {{ background-position: calc({-x // 2} * {U}) calc({-y // 2} * {U});{wd} }}')
     lines.append(END)
     block = '\n'.join(lines)
     if BEGIN in css:
