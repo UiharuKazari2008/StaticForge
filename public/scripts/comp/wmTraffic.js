@@ -49,7 +49,12 @@
     // shows; read once (a synchronous bridge), again when the page shows and on a drive change
     let appOwnsAlerts = false;
     function readAppOwns() {
-        try { const T = window.AndroidTasks; appOwnsAlerts = !!(T && typeof T.owns === 'function' && T.owns('drive-alerts')); } catch (_) { appOwnsAlerts = false; }
+        try {
+            const T = window.AndroidTasks;
+            // only a build whose task positions run in a location foreground service (info().fgs): the first build had
+            // Android throttle them to a few an hour in the background (Nov 17 2026), and the page keeps warning then
+            appOwnsAlerts = !!(T && typeof T.owns === 'function' && T.owns('drive-alerts') && JSON.parse(T.info() || '{}').fgs === true);
+        } catch (_) { appOwnsAlerts = false; }
         return appOwnsAlerts;
     }
     const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1806,6 +1811,8 @@
         /** The commute worth showing now ('work' | 'home'), or null at Home off work. */
         commuteNow: () => commuteNow(),
         statusState,
+        /** The app's CaféReady drive-alerts task warns (the page does not); read when the page last looked. */
+        appOwnsAlerts: () => appOwnsAlerts,
         /** Driving the commute: { direction, leftSec, arriveAt, toGoM, at } or null. */
         driving: () => driving(),
         /** Read the phone's position now (Refresh does too). */
