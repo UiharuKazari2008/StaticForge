@@ -118,8 +118,20 @@ T.setFetch(async (url, init) => {
             { type: 'node', id: 11, lat: 44.0002, lon: -102.95, tags: { highway: 'speed_camera', maxspeed: '65 mph' } },
             { type: 'node', id: 12, lat: 44.03, lon: -102.95, tags: { highway: 'speed_camera' } },
             { type: 'relation', id: 90, tags: { type: 'enforcement', enforcement: 'traffic_signals' }, members: [{ type: 'node', ref: 13, role: 'device' }] },
-            { type: 'node', id: 13, lat: 44.0, lon: -102.92, tags: {} }
+            { type: 'node', id: 13, lat: 44.0, lon: -102.92, tags: {} },
+            // a police zone (#907): an enforcement relation with no device, from / to on the route
+            { type: 'relation', id: 91, tags: { type: 'enforcement', enforcement: 'maxspeed', maxspeed: '55 mph' }, members: [{ type: 'node', ref: 14, role: 'from' }, { type: 'node', ref: 15, role: 'to' }] },
+            { type: 'node', id: 14, lat: 44.0, lon: -102.97, tags: {} },
+            { type: 'node', id: 15, lat: 44.0, lon: -102.965, tags: {} }
         ] });
+    }
+    if (/waze\.p\.rapidapi\.com/.test(url)) {
+        assert.strictEqual(init.headers['X-RapidAPI-Key'], 'w-key');
+        assert.ok(/alert_types=POLICE/.test(url));
+        return json({ data: { alerts: [
+            { alert_id: 'p1', type: 'POLICE', subtype: 'POLICE_HIDING', latitude: 44.0001, longitude: -102.93, street: 'I-90 E', publish_datetime_utc: '2026-11-17T12:00:00Z' },
+            { alert_id: 'p2', type: 'POLICE', latitude: 44.06, longitude: -102.93 }
+        ] } });
     }
     throw new Error(`unexpected ${url}`);
 });
@@ -178,9 +190,23 @@ T.setFetch(async (url, init) => {
         assert.strictEqual(r.delaySec, 600);
         assert.ok(/2 speed cameras on route/.test(r.summary), r.summary);
         assert.ok(/Faster: via Omaha St \(6 mi\) saves 8 min/.test(r.summary), r.summary);
+        assert.deepStrictEqual(r.police.map((p) => [p.id, p.label]), [['osmz:91', 'Speed enforcement zone']], 'the police zone on the route');
         assert.ok(!r.preferred._points && Array.isArray(r.preferred.line));
         const b = sent.find((s) => s.msg.type === 'traffic_updated');
         assert.ok(b && b.admin && !b.user, 'updates go to admins only');
+    });
+
+    await ok('police feed: OSM zones always, Waze live reports on the route with a key, read once per 25 min', async () => {
+        let items = await svc.policeSample('work');
+        assert.deepStrictEqual(Object.keys(items), ['osmz:91'], 'no Waze key: the zones only');
+        keys.waze = [{ apiKey: 'w-key' }];
+        const before = calls.filter((c) => /waze/.test(c.url)).length;
+        items = await svc.policeSample('work');
+        assert.deepStrictEqual(Object.keys(items).sort(), ['osmz:91', 'waze:p1'], 'the report off the route is dropped');
+        assert.strictEqual(items['waze:p1'].label, 'Hidden police reported');
+        await svc.policeSample('work');
+        assert.strictEqual(calls.filter((c) => /waze/.test(c.url)).length - before, 1, 'the second read uses the kept answer');
+        delete keys.waze;
     });
 
     await ok('cache: a second check without force makes no call', async () => {

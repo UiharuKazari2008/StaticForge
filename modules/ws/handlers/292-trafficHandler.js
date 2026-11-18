@@ -19,7 +19,22 @@ const trafficService = require('../../trafficService');
 //   traffic_report            { kind: 'scheduled' | 'go', direction, report, advice?, error? }
 //   traffic_settings_changed  { settings }
 
+//
+// Feeds (statusHub, status_subscribe { feed }; #907):
+//   traffic_police_work / traffic_police_home -> traffic_police { feed, changed: { id: item }, removed: [id] }
+//       the police on that commute (OSM enforcement zones, Waze's live reports): the phone subscribes while it
+//       drives it and leaves when it stops; read every 30 min while watched, Waze at most 4 times a day
+
 const canRead = (info) => !!(info && /^(admin|dev_admin)$/.test(String(info.userType || '')));
+
+const statusHub = require('../statusHub');
+['work', 'home'].forEach((direction) => statusHub.define({
+    name: `traffic_police_${direction}`,
+    pushType: 'traffic_police',
+    intervalMs: 30 * 60 * 1000,
+    allow: (info) => canRead(info),
+    sample: () => trafficService.policeSample(direction)
+}));
 const isAdmin = (info) => !!(info && info.userType === 'admin');
 
 function reply(handlersCtx, ws, message, data) {

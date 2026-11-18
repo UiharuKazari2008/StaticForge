@@ -54,7 +54,7 @@ const TOMTOM_INCIDENTS = 'https://api.tomtom.com/traffic/services/5/incidentDeta
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 const DIRECTIONS = ['work', 'home'];
 const DIRECTION_LABEL = { work: 'To Work', home: 'To Home' };
-const DEFAULTS = { leadMin: 10, betterMin: 5, waitMin: 8, advisorMax: 90, notify: true, days: [1, 2, 3, 4, 5], budgets: { google: 4500, tomtom: 2000 } };
+const DEFAULTS = { leadMin: 10, betterMin: 5, waitMin: 8, advisorMax: 90, notify: true, days: [1, 2, 3, 4, 5], budgets: { google: 4500, tomtom: 2000, waze: 90 } };
 const ROUTE_TTL = 3 * MIN;
 const INCIDENT_TTL = 5 * MIN;
 const CAMERA_TTL = 7 * 24 * 60 * MIN; // fixed cameras: refreshed weekly, an older list is still used
@@ -169,7 +169,7 @@ function getSettings() {
         // the Car bubble's traffic light (#902): minutes of extra traffic for yellow and for red (red above yellow)
         ...lightThresholds(t.yellowMin, t.redMin),
         timeZone: validZone(t.timeZone) ? t.timeZone : '',
-        budgets: { google: clampInt(budgets.google, 0, 100000, DEFAULTS.budgets.google), tomtom: clampInt(budgets.tomtom, 0, 100000, DEFAULTS.budgets.tomtom) }
+        budgets: { google: clampInt(budgets.google, 0, 100000, DEFAULTS.budgets.google), tomtom: clampInt(budgets.tomtom, 0, 100000, DEFAULTS.budgets.tomtom), waze: clampInt(budgets.waze, 0, 100000, DEFAULTS.budgets.waze) }
     };
 }
 
@@ -218,6 +218,7 @@ async function saveSettings(next = {}) {
         out.budgets = Object.assign({}, cur.budgets || {});
         if ('google' in next.budgets) out.budgets.google = clampInt(next.budgets.google, 0, 100000, DEFAULTS.budgets.google);
         if ('tomtom' in next.budgets) out.budgets.tomtom = clampInt(next.budgets.tomtom, 0, 100000, DEFAULTS.budgets.tomtom);
+        if ('waze' in next.budgets) out.budgets.waze = clampInt(next.budgets.waze, 0, 100000, DEFAULTS.budgets.waze);
     }
     const saved = gr.modifyConfig('config').assign(['traffic'], out);
     if (saved && typeof saved.then === 'function') await saved;
@@ -257,6 +258,15 @@ function tomtomKey() {
     return k && k.apiKey ? String(k.apiKey).trim() : null;
 }
 
+/** OpenWeb Ninja's Waze API (#907: live police reports while driving): RapidAPI, or direct when Host is api.openwebninja.com. */
+const WAZE_RAPID_HOST = 'waze.p.rapidapi.com';
+function wazeAccount() {
+    const k = serviceKey('waze');
+    if (!k || !k.apiKey) return null;
+    const host = String(k.host || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '') || WAZE_RAPID_HOST;
+    return { key: String(k.apiKey).trim(), host };
+}
+
 let usageState = null;
 
 function monthKey(d = new Date()) {
@@ -275,7 +285,8 @@ function usage() {
     if (!usageState || typeof usageState !== 'object') usageState = {};
     if (usageState.month !== monthKey()) Object.assign(usageState, { month: monthKey(), google: 0 });
     if (usageState.day !== dayKey()) Object.assign(usageState, { day: dayKey(), tomtom: 0 });
-    delete usageState.waze;
+    // Waze (#907, live police while driving): its free plan is counted per month
+    if (usageState.wazeMonth !== monthKey()) Object.assign(usageState, { wazeMonth: monthKey(), waze: 0 });
     return usageState;
 }
 
@@ -299,7 +310,7 @@ function providers() {
     const s = getSettings();
     const u = usage();
     const one = (id, configured, per) => ({ configured, used: u[id] || 0, budget: s.budgets[id], left: Math.max(0, s.budgets[id] - (u[id] || 0)), per });
-    return { month: u.month, google: one('google', !!googleKey(), 'month'), tomtom: one('tomtom', !!tomtomKey(), 'day'), osm: { configured: true } };
+    return { month: u.month, google: one('google', !!googleKey(), 'month'), tomtom: one('tomtom', !!tomtomKey(), 'day'), waze: one('waze', !!wazeAccount(), 'month'), osm: { configured: true } };
 }
 
 // ------------------------------------------------------------------------------------------ geometry
@@ -633,7 +644,9 @@ async function tomtomTiles(box) {
 async function osmCameras(box) {
     const bb = [box.s, box.w, box.n, box.e].map((v) => v.toFixed(4)).join(',');
     // the main server queues queries while busy (35 s seen on Nov 13): 60 s for the query, 90 s for the answer
-    const query = `[out:json][timeout:60];(node["highway"="speed_camera"](${bb});rel["type"="enforcement"](${bb}););out body;node(r:"device");out body;`;
+    // every member node of the enforcement relations: devices are cameras, and a relation with no device is a
+    // stretch the police enforce by hand (#907, police zones)
+    const query = `[out:json][timeout:60];(node["highway"="speed_camera"](${bb});rel["type"="enforcement"](${bb}););out body;node(r);out body;`;
     let res = null;
     let lastError = null;
     for (const url of OVERPASS) {
@@ -654,7 +667,28 @@ async function osmCameras(box) {
         (r.members || []).filter((m) => m.type === 'node' && m.role === 'device').forEach((m) => enforce.set(m.ref, r.tags || {}));
     });
     const seen = new Set();
-    return els.filter((e) => e.type === 'node' && Number.isFinite(e.lat) && Number.isFinite(e.lon)).map((n) => {
+    const nodeAt = new Map();
+    els.forEach((e) => { if (e.type === 'node' && Number.isFinite(e.lat)) nodeAt.set(e.id, e); });
+    // police zones: enforcement relations with no device, as the line of their from / to / force members
+    const zones = els.filter((e) => e.type === 'relation' && !(e.members || []).some((m) => m.role === 'device')).map((r) => {
+        const t = r.tags || {};
+        const line = (r.members || []).filter((m) => m.type === 'node' && /^(from|to|force)$/.test(m.role)).map((m) => nodeAt.get(m.ref)).filter(Boolean).map((n) => ({ lat: n.lat, lon: n.lon }));
+        if (!line.length) return null;
+        const what = String(t.enforcement || 'maxspeed');
+        return {
+            id: `osmz:${r.id}`,
+            source: 'osm',
+            kind: 'police',
+            label: /average_speed/.test(what) ? 'Average speed zone' : /maxspeed/.test(what) ? 'Speed enforcement zone' : 'Enforcement zone',
+            maxspeed: t.maxspeed || '',
+            street: t.name || '',
+            fixed: true,
+            line,
+            lat: line[0].lat,
+            lon: line[0].lon
+        };
+    }).filter(Boolean);
+    const cameras = els.filter((e) => e.type === 'node' && Number.isFinite(e.lat) && Number.isFinite(e.lon)).map((n) => {
         const t = n.tags || {};
         const rel = enforce.get(n.id);
         if (!rel && t.highway !== 'speed_camera') return null;
@@ -675,6 +709,8 @@ async function osmCameras(box) {
             lon: n.lon
         };
     }).filter(Boolean);
+    cameras.zones = zones;
+    return cameras;
 }
 
 // the camera lists by box, kept on disk: { [boxKey]: { at, cameras } }; a failed refresh backs off
@@ -692,7 +728,7 @@ function refreshCameras(boxKey, box) {
     const b = cameraState.backoff.get(boxKey);
     if (b && Date.now() < b.until) return Promise.resolve(null);
     const run = osmCameras(box).then((cameras) => {
-        cameraStore()[boxKey] = { at: Date.now(), cameras };
+        cameraStore()[boxKey] = { at: Date.now(), cameras: cameras.slice(), zones: cameras.zones || [] };
         cameraState.backoff.delete(boxKey);
         try {
             fs.mkdirSync(path.dirname(CAMERA_FILE), { recursive: true });
@@ -714,14 +750,22 @@ function refreshCameras(boxKey, box) {
 async function camerasFor(boxKey, box) {
     const hit = cameraStore()[boxKey];
     if (hit && Array.isArray(hit.cameras)) {
-        if (Date.now() - hit.at > CAMERA_TTL) refreshCameras(boxKey, box);
-        return hit.cameras;
+        // a list kept before police zones (#907) is fetched again once
+        if (Date.now() - hit.at > CAMERA_TTL || !Array.isArray(hit.zones)) refreshCameras(boxKey, box);
+        return withZones(hit.cameras, hit.zones);
     }
     const first = refreshCameras(boxKey, box);
     const cams = await Promise.race([first, new Promise((r) => { const t = setTimeout(() => r(undefined), CAMERA_WAIT_MS); if (t.unref) t.unref(); })]);
     if (cams === undefined) throw new TrafficError('OpenStreetMap is slow to answer; cameras appear on the next check', 'PENDING');
     if (!cams) throw new TrafficError((cameraState.backoff.get(boxKey) || {}).error || 'OpenStreetMap could not be reached', 'UNREACHABLE');
     return cams;
+}
+
+/** A camera list carrying its box's police zones (cameras.zones). */
+function withZones(cameras, zones) {
+    const out = cameras.slice();
+    out.zones = Array.isArray(zones) ? zones : [];
+    return out;
 }
 
 /**
@@ -745,6 +789,145 @@ function upkeepCameras() {
         const hit = cameraStore()[key];
         if (!hit || Date.now() - hit.at > CAMERA_TTL) refreshCameras(key, box);
     });
+}
+
+// ------------------------------------------------------------------------------------------ police (#907)
+//
+// Police on the route: OpenStreetMap's enforcement zones (always, with the cameras' weekly list) and Waze's
+// live police reports, read only while a phone drives the commute (the statusHub feed traffic_police_<dir>,
+// every 30 min while watched), at most every POLICE_TTL per area and POLICE_DAY_MAX a day, inside the
+// monthly Waze budget (the free plan's 100).
+
+const POLICE_TTL = 25 * MIN;
+const POLICE_DAY_MAX = 4; // two reads a drive, twice a day: ~88 a month, inside the free plan's 100
+const POLICE_M = 80; // a police report this close to the route is on it
+
+function wazeRequest(pathAndQuery) {
+    const a = wazeAccount();
+    if (!a) throw new TrafficError('No Waze key (Dreamscape CardSpace > Service keys)', 'NO_ACCOUNT');
+    if (!canSpend('waze')) throw new TrafficError('This month\'s Waze budget is used up', 'BUDGET');
+    const rapid = /rapidapi\.com$/.test(a.host);
+    const url = rapid ? `https://${a.host}${pathAndQuery}` : `https://${a.host}/waze${pathAndQuery}`;
+    const headers = rapid ? { 'X-RapidAPI-Key': a.key, 'X-RapidAPI-Host': a.host } : { 'x-api-key': a.key };
+    const u = usage();
+    u.policeToday = (u.policeDayOf === dayKey() ? (u.policeToday || 0) : 0) + 1;
+    u.policeDayOf = dayKey();
+    spend('waze');
+    return getJson(url, { timeout: 20000, init: { headers } });
+}
+
+const wnum = (v) => (v === null || v === undefined || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+function wazePoint(o) {
+    if (!o) return null;
+    const loc = o.location || {};
+    const lat = wnum(o.latitude != null ? o.latitude : (o.lat != null ? o.lat : (loc.y != null ? loc.y : loc.lat)));
+    const lon = wnum(o.longitude != null ? o.longitude : (o.lon != null ? o.lon : (o.lng != null ? o.lng : (loc.x != null ? loc.x : (loc.lon != null ? loc.lon : loc.lng)))));
+    return lat != null && lon != null ? { lat, lon } : null;
+}
+function wazeTime(v) {
+    if (v == null) return null;
+    if (typeof v === 'number') return new Date(v > 1e12 ? v : v * 1000).toISOString();
+    const t = Date.parse(String(v).replace(' ', 'T'));
+    return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
+
+/** Waze's police reports in a box: [{ id, source: 'waze', kind: 'police', label, street, reportedAt, thumbsUp, lat, lon }]. */
+async function wazePolice(box) {
+    const q = `/alerts-and-jams?top_right=${box.n.toFixed(5)},${box.e.toFixed(5)}&bottom_left=${box.s.toFixed(5)},${box.w.toFixed(5)}&max_alerts=200&max_jams=0&alert_types=POLICE`;
+    const res = await wazeRequest(q);
+    const data = (res && (res.data || res)) || {};
+    return (Array.isArray(data.alerts) ? data.alerts : []).filter((a) => /POLICE/i.test(String(a.type || ''))).map((a) => {
+        const p = wazePoint(a);
+        if (!p) return null;
+        const sub = String(a.subtype || '').toUpperCase();
+        return {
+            id: `waze:${a.alert_id || a.uuid || a.id || `${p.lat},${p.lon}`}`,
+            source: 'waze',
+            kind: 'police',
+            label: /HIDING/.test(sub) ? 'Hidden police reported' : 'Police reported',
+            street: a.street || '',
+            reportedAt: wazeTime(a.publish_datetime_utc || a.pubMillis || a.publish_time),
+            thumbsUp: wnum(a.num_thumbs_up != null ? a.num_thumbs_up : a.nThumbsUp) || 0,
+            live: true,
+            lat: p.lat,
+            lon: p.lon
+        };
+    }).filter(Boolean);
+}
+
+/** A stored report's preferred route as points with distances along it. */
+function lineOf(report) {
+    const line = report && report.preferred && Array.isArray(report.preferred.line) ? report.preferred.line : [];
+    const points = line.map(([lat, lon]) => ({ lat, lon }));
+    const cum = [0];
+    for (let i = 1; i < points.length; i++) cum.push(cum[i - 1] + distanceM(points[i - 1], points[i]));
+    return { points, cum, total: cum[cum.length - 1] || 0 };
+}
+
+/** Police (zones or reports) on a route: each placed at its fraction along it, nearest first. */
+function policeOn(items, points, cum, total, maxM) {
+    if (!points.length || !(total > 0)) return [];
+    const along = (m) => Math.max(0, Math.min(1, m / total));
+    return (items || []).map((it) => {
+        const pts = Array.isArray(it.line) && it.line.length ? it.line : [it];
+        let first = Infinity;
+        let near = 0;
+        pts.forEach((p) => { const loc = locate(points, cum, p); if (loc.distM <= maxM) { near++; first = Math.min(first, loc.alongM); } });
+        if (!near) return null;
+        const out = Object.assign({}, it, { at: along(first) });
+        delete out.line;
+        return out;
+    }).filter(Boolean).sort((a, b) => a.at - b.at);
+}
+
+const policeState = { cache: new Map(), inflight: new Map() };
+
+/** A fresh check keeps the last live police reports on the new route (for 30 min after they were asked). */
+function livePoliceKept(direction, route) {
+    const old = latest[direction];
+    if (!old || !old.policeLiveAt || Date.now() - Date.parse(old.policeLiveAt) > 30 * MIN || !route) return [];
+    const live = (old.police || []).filter((p) => p.source === 'waze');
+    return policeOn(live, route._points, route._cum, route._cum[route._cum.length - 1] || 0, POLICE_M);
+}
+
+/**
+ * The police feed's state for a direction (statusHub 'traffic_police_<direction>', subscribed by the phone
+ * while it drives that commute; the feed's own timer reads it, nothing asked by the page on a timer):
+ * { <id>: item } - the OSM zones on the report's route and Waze's live reports in the route's box, the
+ * latter read at most every POLICE_TTL and POLICE_DAY_MAX a day inside the monthly Waze budget. The
+ * report keeps the merged list (lists and counts), the feed pushes only what changed.
+ */
+async function policeSample(direction) {
+    loadLatest();
+    const report = latest[direction];
+    if (!report) return {};
+    const { points, cum, total } = lineOf(report);
+    const zones = (report.police || []).filter((p) => p.source !== 'waze');
+    let live = (report.police || []).filter((p) => p.source === 'waze');
+    if (points.length && wazeAccount()) {
+        const b = bboxOf(points, 0.01);
+        const g = 0.05;
+        const box = { s: Math.floor(b.s / g) * g, w: Math.floor(b.w / g) * g, n: Math.ceil(b.n / g) * g, e: Math.ceil(b.e / g) * g };
+        const key = [box.s, box.w, box.n, box.e].map((v) => v.toFixed(2)).join(',');
+        const hit = policeState.cache.get(key);
+        const u = usage();
+        const capped = u.policeDayOf === dayKey() && (u.policeToday || 0) >= POLICE_DAY_MAX;
+        if (hit && Date.now() - hit.at < POLICE_TTL) live = policeOn(hit.reports, points, cum, total, POLICE_M);
+        else if (!capped && canSpend('waze')) {
+            if (!policeState.inflight.has(key)) policeState.inflight.set(key, wazePolice(box).finally(() => policeState.inflight.delete(key)));
+            try {
+                const reports = await policeState.inflight.get(key);
+                policeState.cache.set(key, { at: Date.now(), reports });
+                live = policeOn(reports, points, cum, total, POLICE_M);
+                report.policeLiveAt = new Date().toISOString();
+            } catch (e) { console.warn(`[traffic] live police: ${e.message}`); }
+        }
+    }
+    report.police = zones.concat(live).sort((x, y) => x.at - y.at);
+    saveLatest();
+    const items = {};
+    report.police.forEach((p) => { items[p.id] = p; });
+    return items;
 }
 
 // ------------------------------------------------------------------------------------------ preferred streets
@@ -959,7 +1142,7 @@ function slowdownsOf(route) {
 
 /** TomTom incidents and OSM cameras on a route: { alerts, traps, jams } with positions along it. */
 function onRoute(incidents, cameras, route) {
-    const out = { alerts: [], traps: [], jams: [] };
+    const out = { alerts: [], traps: [], jams: [], police: [] };
     if (!route || !route._points.length) return out;
     const total = route._cum[route._cum.length - 1] || 1;
     const along = (m) => Math.max(0, Math.min(1, m / total));
@@ -996,6 +1179,8 @@ function onRoute(incidents, cameras, route) {
         out.traps.push(Object.assign({}, c, { at: along(m), _m: m, street: c.street || (step && step.street) || '' }));
     });
     out.traps.forEach((t) => { delete t._m; });
+    // OSM police zones (#907): those along the route
+    out.police = policeOn(cameras && cameras.zones, route._points, route._cum, total, POLICE_M);
     const byAt = (a, b) => a.at - b.at;
     out.alerts.sort(byAt); out.traps.sort(byAt); out.jams.sort(byAt);
     return out;
@@ -1128,6 +1313,7 @@ async function check(direction, { force = false, origin = null } = {}) {
         slowdowns,
         alerts: pw.alerts,
         traps: pw.traps,
+        police: pw.police.concat(livePoliceKept(direction, preferred)),
         jams: pw.jams,
         delaySec: delay,
         major,
@@ -1321,6 +1507,7 @@ function broadcast(message) {
 const broadcastAdmins = broadcast;
 
 module.exports = {
+    policeSample,
     bind,
     getSettings,
     saveSettings,
