@@ -35,12 +35,18 @@
 
     const MOBILE = window.uiShell === 'mobile' && document.documentElement.classList.contains('ui-mobile');
     if (!MOBILE) return;
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const connectedAt = Date.now();
     let ws = null;
     let wired = false;
     const shownNotes = new Map(); // inbox id -> the appNote handle
     const seenAcked = new Set(); // inbox ids this session has already acked 'seen'
+    // #890 W2: after the first full list, inbox_list { since } returns only the rows created or changed
+    // after the newest one held (a server that answers with `total` does; others get the full list)
+    let listedUpTo = 0;
+    let sinceOk = false;
+    const reminders = new Map(); // reminder id -> notice, while it is not dismissed (shown again when not up)
 
     const canUse = () => { try { return /^(admin|dev_admin)$/.test(localStorage.getItem('userType') || ''); } catch (_) { return false; } };
     const client = () => (window.wsClient && (!window.wsClient.isConnected || window.wsClient.isConnected()) ? window.wsClient : null);
@@ -188,29 +194,39 @@
         if (note) { try { note.close(); } catch (_) { /* gone */ } shownNotes.delete(id); }
     }
 
-    /** List the inbox and show what arrived while the app was away (state 'new'); mark the rest seen. */
+    /**
+     * List the inbox and show what arrived while the app was away (state 'new'); mark the other new ones
+     * seen (a notice already seen is not acked again: #890, every 'seen' row was re-acked at each boot).
+     * After the first list only what changed since the newest row held comes (#890 W2).
+     */
     async function catchUp() {
         if (!canUse() || !client() || document.hidden) return;
-        let notices = [];
-        try { notices = (await ask('inbox_list', {})).notices || []; } catch (_) { return; }
+        let r = null;
+        try { r = await ask('inbox_list', sinceOk && listedUpTo ? { since: listedUpTo } : {}); } catch (_) { return; }
+        const notices = (r && r.notices) || [];
+        if (r && typeof r.total === 'number') sinceOk = true;
         for (const n of notices) {
-            if (n.state === 'cleared' || n.state === 'acted') { close(n.id); continue; }
+            const at = Number(n.updatedAt) || Number(n.createdAt) || 0;
+            if (at > listedUpTo) listedUpTo = at;
+            if (n.state === 'cleared' || n.state === 'acted') { reminders.delete(n.id); close(n.id); continue; }
             // a reminder stays until it is dismissed: shown again whenever it is not up
-            if (isReminder(n)) { showReminder(n); continue; }
+            if (isReminder(n)) { reminders.set(n.id, n); showReminder(n); continue; }
             // arrived while the app was away: show it. Arrived live (while we were here): the producing
             // app already showed it, so only mark it seen.
             if (n.state === 'new' && n.createdAt < connectedAt) show(n);
-            else ack(n.id, 'seen');
+            else if (n.state === 'new') ack(n.id, 'seen');
         }
+        // reminders listed before and still not dismissed (a delta leaves them out): up again when not up
+        reminders.forEach((n) => showReminder(n));
     }
 
     function onUpdated(pk) {
         const d = (pk && (pk.data || pk)) || {};
-        if (d.reason === 'ack' && (d.state === 'cleared' || d.state === 'acted')) { close(d.id); return; }
+        if (d.reason === 'ack' && (d.state === 'cleared' || d.state === 'acted')) { reminders.delete(d.id); close(d.id); return; }
         if (d.reason === 'new' && d.notice) {
             // a reminder has no page app to raise it: shown here, live (also in the background, so it
             // is up on resume; the app does not post it while this page is connected)
-            if (isReminder(d.notice)) { showReminder(d.notice); return; }
+            if (isReminder(d.notice)) { reminders.set(d.notice.id, d.notice); showReminder(d.notice); return; }
             // live and in the foreground: the producing app shows it; just keep it from reappearing.
             // not in the foreground (a background tick): leave it 'new' so it shows on resume.
             if (!document.hidden) ack(d.notice.id, 'seen');
@@ -221,16 +237,19 @@
         const c = window.wsClient;
         if (wired || !c || typeof c.on !== 'function') return !!wired;
         wired = true;
-        c.on('inbox_updated', onUpdated);
-        c.on('connected', () => catchUp());
+        c.on('inbox_updated', onUpdated, { signal: appScopeSignal });
+        c.on('connected', () => catchUp(), { signal: appScopeSignal });
         catchUp();
         return true;
     }
 
     function register() {
         ws = window.wmShell;
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUp(); });
-        if (!wire()) { let n = 0; const t = setInterval(() => { if (wire() || ++n > 120) clearInterval(t); }, 1000); }
+        // awake again (back from an Android program, the tab shown, the screen on): what changed while the
+        // page slept - a sleeping page is not sent other devices' acks (#890 W7), it lists what changed
+        document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake) catchUp(); }, { signal: appScopeSignal });
+        // websocket.js (window.wsClient) loads before this file; should it not have, every script has run by 'load'
+        if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });
     }
 
     window.wmNotificationInbox = {
