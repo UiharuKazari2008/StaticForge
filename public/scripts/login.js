@@ -244,7 +244,7 @@ class LoginPage {
         try {
             if ('serviceWorker' in navigator) {
                 // Re-register the service worker
-                const registration = await navigator.serviceWorker.register('/sw.js');
+                const registration = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'imports' });
                 this.updateProgressStatus(85, 'Repairing...', '');
                 
                 // Wait a moment for the service worker to be ready
