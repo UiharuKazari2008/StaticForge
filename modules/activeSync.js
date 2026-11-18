@@ -1014,6 +1014,8 @@ function event(globalResources, wsServer, clientInfo, data) {
     }
     // server modules that take a device's news themselves (Melaton Videos imports notify.posted, #861)
     if (me.kind === 'device') for (const tap of deviceEventTaps) { try { tap(name, src.detail == null ? null : src.detail, me); } catch (_) { /* the tap's own fault */ } }
+    // news for the server only: a notice's delivery confirmation (notificationInbox, #908) goes to no computer
+    if (me.kind === 'device' && name === 'inbox.posted') return 0;
     const msg = { type: 'as_event', data: { from: fromOf(clientInfo), event: name, detail: src.detail == null ? null : src.detail }, timestamp: new Date().toISOString() };
     let n = 0;
     for (const s of liveSockets(server, me.kind === 'device' ? 'computer' : 'device')) {
@@ -1276,7 +1278,11 @@ function sendInboxNotice(globalResources, wsServer, notice, opts = {}) {
         const service = live.find((x) => x.info.as.speaker === 'service');
         if (!service) continue;
         const pageConnected = live.some((x) => x.info.as.speaker === 'webview' && !linkUnanswered(server, x));
-        if (sendServerEvent(globalResources, server, service, 'inbox.notice', Object.assign({}, notice, { pageConnected }))) sent += 1;
+        if (sendServerEvent(globalResources, server, service, 'inbox.notice', Object.assign({}, notice, { pageConnected }))) {
+            sent += 1;
+            // the phones it went to: each must confirm it posted it (notificationInbox deliveries, #908)
+            if (Array.isArray(opts.sentTo)) opts.sentTo.push(id);
+        }
     }
     return sent;
 }

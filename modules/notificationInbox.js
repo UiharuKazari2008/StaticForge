@@ -81,6 +81,18 @@ function database() {
             PRIMARY KEY (user, id)
         );
         CREATE INDEX IF NOT EXISTS notices_user_created ON notices (user, createdAt);
+        CREATE TABLE IF NOT EXISTS deliveries (
+            device TEXT NOT NULL,
+            user TEXT NOT NULL,
+            id TEXT NOT NULL,
+            sentAt INTEGER NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 1,
+            alert INTEGER NOT NULL DEFAULT 1,
+            postedAt INTEGER,
+            how TEXT,
+            PRIMARY KEY (device, user, id)
+        );
+        CREATE INDEX IF NOT EXISTS deliveries_open ON deliveries (postedAt, sentAt);
         CREATE TABLE IF NOT EXISTS prefs (
             user TEXT NOT NULL,
             key TEXT NOT NULL,
@@ -184,7 +196,9 @@ function publish(notice = {}) {
     broadcast(user, { type: 'inbox_updated', data: { reason: 'new', notice: out } });
     // the phones' background links too (#876 D): a phone whose page is not running posts it natively
     if (!quiet) {
-        try { require('./activeSync').sendInboxNotice(gr, null, Object.assign({ user }, out)); } catch (e) { console.warn(`[notify-inbox] phones: ${e.message}`); }
+        const sentTo = [];
+        try { require('./activeSync').sendInboxNotice(gr, null, Object.assign({ user }, out), { sentTo }); } catch (e) { console.warn(`[notify-inbox] phones: ${e.message}`); }
+        sentTo.forEach((device) => noteSent(device, user, id, alert, true));
     }
     return out;
 }
@@ -339,6 +353,7 @@ function prune(user) {
         gone.forEach((id) => phonesCleared(u, id));
         d.prepare('DELETE FROM notices WHERE user = ? AND ((expiresAt IS NOT NULL AND expiresAt <= ?) OR createdAt < ?)').run(u, now, now - KEEP_MS);
         d.prepare('DELETE FROM notices WHERE user = ? AND id NOT IN (SELECT id FROM notices WHERE user = ? ORDER BY createdAt DESC LIMIT ?)').run(u, u, MAX_PER_USER);
+        d.prepare('DELETE FROM deliveries WHERE user = ? AND (sentAt < ? OR id NOT IN (SELECT id FROM notices WHERE user = ?))').run(u, now - 2 * 24 * 60 * 60 * 1000, u);
     } catch (_e) {
         /* best effort */
     }
@@ -378,13 +393,103 @@ function catchUpPhone(deviceId) {
     if (!gr || !deviceId) return 0;
     let sent = 0;
     const as = require('./activeSync');
+    // what this phone already confirmed is not sent again (a hello on every network change would re-send it all)
+    let done = new Set();
+    try { done = new Set(database().prepare('SELECT user, id FROM deliveries WHERE device = ? AND postedAt IS NOT NULL').all(String(deviceId)).map((r) => `${r.user}\u0000${r.id}`)); } catch (_e) { /* send all */ }
     for (const user of ['admin', 'dev_admin']) {
         for (const n of pendingForPhones(user)) {
-            try { sent += as.sendInboxNotice(gr, null, Object.assign({ user }, n, { alert: true, catchUp: true }), { deviceId }); } catch (_e) { /* the link went again */ }
+            if (done.has(`${user}\u0000${n.id}`)) continue;
+            const sentTo = [];
+            try { sent += as.sendInboxNotice(gr, null, Object.assign({ user }, n, { alert: true, catchUp: true }), { deviceId, sentTo }); } catch (_e) { /* the link went again */ }
+            // a fresh round of tries for each (the app confirms it, or says it showed it already)
+            sentTo.forEach((device) => noteSent(device, user, n.id, true, true));
         }
     }
     if (sent) console.log(`[notify-inbox] ${deviceId}: caught up ${sent} notice(s)`);
     return sent;
+}
+
+// ---- delivery to the phones: confirmed, else sent again (#908, rule cafeready-background: "as if a life depends on it") ----
+//
+// Every notice sent to a phone's background link is a delivery row until the app confirms it (as_event 'inbox.posted'
+// { id, how }: posted natively, shown by a page that confirmed, or already shown). Unconfirmed, it is sent again after
+// RESEND_MS[attempt] (a link that looked alive but was not, a lost frame) and on every hello of that phone (catchUpPhone),
+// and the rows outlive a server restart. A notice no longer new (seen, used, cleared anywhere) or expired is not sent again.
+
+const RESEND_MS = [15000, 45000, 120000, 300000];
+let resendTimer = null;
+
+function noteSent(device, user, id, alert, fresh) {
+    try {
+        database().prepare(`INSERT INTO deliveries (device, user, id, sentAt, attempts, alert, postedAt, how) VALUES (?, ?, ?, ?, 1, ?, NULL, NULL)
+            ON CONFLICT (device, user, id) DO UPDATE SET sentAt = excluded.sentAt, alert = excluded.alert,
+                attempts = CASE WHEN ? THEN 1 ELSE attempts + 1 END, postedAt = NULL, how = NULL`)
+            .run(String(device), user, String(id), nowFn(), alert ? 1 : 0, fresh ? 1 : 0);
+    } catch (e) {
+        console.warn(`[notify-inbox] delivery not kept: ${e.message}`);
+        return;
+    }
+    armResend();
+}
+
+/** The app confirmed a notice (as_event inbox.posted from its background link). */
+function confirmed(device, id, how) {
+    if (!device || !id) return;
+    try {
+        database().prepare('UPDATE deliveries SET postedAt = ?, how = ? WHERE device = ? AND id = ? AND postedAt IS NULL')
+            .run(nowFn(), String(how || 'posted').slice(0, 20), String(device), String(id));
+    } catch (_e) { /* a later resend asks again */ }
+}
+
+function openDeliveries(device) {
+    const now = nowFn();
+    try {
+        return database().prepare(`SELECT d.device, d.user, d.id, d.sentAt, d.attempts, d.alert FROM deliveries d
+            JOIN notices n ON n.user = d.user AND n.id = d.id
+            WHERE d.postedAt IS NULL AND n.state = 'new' AND (n.expiresAt IS NULL OR n.expiresAt > ?)${device ? ' AND d.device = ?' : ''}
+            ORDER BY d.sentAt ASC LIMIT 200`).all(...(device ? [now, String(device)] : [now]));
+    } catch (_e) { return []; }
+}
+
+/** One timer, only while a delivery waits for its confirmation; it sleeps until the next one is due. */
+function armResend() {
+    if (resendTimer || process.env.NOTIFICATION_INBOX_NO_TIMER) return;
+    const rows = openDeliveries(null).filter((r) => r.attempts <= RESEND_MS.length);
+    if (!rows.length) return;
+    const now = nowFn();
+    const due = Math.min(...rows.map((r) => r.sentAt + RESEND_MS[r.attempts - 1]));
+    resendTimer = setTimeout(() => { resendTimer = null; resendDue(); }, Math.max(1000, due - now));
+    if (resendTimer.unref) resendTimer.unref();
+}
+
+function noticeRow(user, id) {
+    try { return database().prepare('SELECT * FROM notices WHERE user = ? AND id = ?').get(user, id); } catch (_e) { return null; }
+}
+
+function resend(r, why) {
+    const n = noticeRow(r.user, r.id);
+    if (!n) return false;
+    const sentTo = [];
+    try {
+        require('./activeSync').sendInboxNotice(gr, null, Object.assign({ user: r.user }, rowOut(n), { alert: !!r.alert, resent: true }), { deviceId: r.device, sentTo });
+    } catch (_e) { /* the link went */ }
+    if (!sentTo.length) return false;
+    noteSent(r.device, r.user, r.id, !!r.alert, false);
+    console.log(`[notify-inbox] ${r.device.slice(0, 8)}: ${r.id} sent again (${why}, attempt ${r.attempts + 1})`);
+    return true;
+}
+
+function resendDue() {
+    const now = nowFn();
+    for (const r of openDeliveries(null)) {
+        if (r.attempts > RESEND_MS.length) continue;
+        if (r.sentAt + RESEND_MS[r.attempts - 1] > now) continue;
+        // the phone's link is down: its hello sends it again; count the attempt so the timer does not spin
+        if (!resend(r, 'not confirmed')) {
+            try { database().prepare('UPDATE deliveries SET attempts = attempts + 1, sentAt = ? WHERE device = ? AND user = ? AND id = ?').run(now, r.device, r.user, r.id); } catch (_e) { /* next tick */ }
+        }
+    }
+    armResend();
 }
 
 let helloTapped = false;
@@ -394,6 +499,13 @@ function tapPhoneHellos() {
     try { as = require('./activeSync'); } catch (_e) { return; }
     if (typeof as.onDeviceHello !== 'function') return;
     helloTapped = true;
+    if (typeof as.onDeviceEvent === 'function') {
+        as.onDeviceEvent((name, detail, me) => {
+            if (name === 'inbox.posted' && me && me.id && detail && detail.id) confirmed(me.id, detail.id, detail.how);
+        });
+    }
+    // deliveries a restart left unconfirmed
+    armResend();
     as.onDeviceHello((d) => {
         if (!d || d.speaker !== 'service' || d.session !== 'partner') return;
         // after the hello reply, once the link is settled
@@ -431,7 +543,10 @@ module.exports = {
     userOf,
     pendingForPhones,
     catchUpPhone,
+    confirmed,
+    openDeliveries,
     _test: {
+        resendDue,
         setNow: (fn) => {
             nowFn = fn || (() => Date.now());
         },
