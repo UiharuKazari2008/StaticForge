@@ -1055,6 +1055,17 @@
     const PARALLAX_KEY = 'wmTodayParallax';
     const PARALLAX_LEVEL_KEY = 'wmTodayParallaxLevel'; // 1 - 10: zoom 1 + 2 % a step, travel 7/8 of the margin
     const FX_KEY = 'wmTodayFx';
+    // Settings > Today > Text (Yukimi, Nov 17): the labels' weight and the glass item's (wm-titanium.css)
+    const ROW_WEIGHT_KEY = 'wmTodayRowWeight';
+    const BAND_WEIGHT_KEY = 'wmTodayBandWeight';
+    const WEIGHTS = ['bold', 'regular', 'semilight', 'light'];
+    function readTextWeights() {
+        [[ROW_WEIGHT_KEY, 'wmTiRow'], [BAND_WEIGHT_KEY, 'wmTiBand']].forEach(([k, attr]) => {
+            let v = null;
+            try { v = localStorage.getItem(k); } catch (_) { v = null; }
+            if (WEIGHTS.includes(v)) { if (root.dataset[attr] !== v) root.dataset[attr] = v; } else delete root.dataset[attr];
+        });
+    }
     // ... and Start's (wmStart65.js, wm65-start.css): startopen (icons in from the corner), startfrost
     // (the frosted picture under its dark sheet), startlaunch (a program grows out of its icon),
     // startticks (a tick a row while it scrolls)
@@ -1522,8 +1533,10 @@
     }
 
     readEffects();
+    readTextWeights();
     document.addEventListener('wmSettingsChange', (e) => {
         const keys = (e && e.detail && e.detail.keys) || [];
+        if (keys.includes(ROW_WEIGHT_KEY) || keys.includes(BAND_WEIGHT_KEY)) readTextWeights();
         if (keys.includes(PARALLAX_KEY) || keys.includes(PARALLAX_LEVEL_KEY) || keys.includes(FX_KEY)) { readEffects(); if (host && !host.hidden) place(); }
         if (keys.includes('wmSuperBarNotes') && superOpen) refreshNotes();
     });

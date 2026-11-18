@@ -54,6 +54,29 @@
     font-display: swap;
 }
 
+/* Segoe UI Light (300) and Semilight (350): Windows 7 / 8 faces, not Vista's (from Windows 10's
+   C:\Windows\Fonts, same fontTools conversion). Vista has no lighter weight; the phone's Today
+   (wmTitanium.js, Settings > Today > Text) draws its lighter choices with them. Segoe has no Thin. */
+@font-face {
+    font-family: 'Segoe UI';
+    src: url('/protected/fonts/vista/segoeuil.woff2') format('woff2'),
+         local('Segoe UI Light'),
+         local('SegoeUI-Light');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Segoe UI';
+    src: url('/protected/fonts/vista/segoeuisl.woff2') format('woff2'),
+         local('Segoe UI Semilight'),
+         local('SegoeUI-Semilight');
+    font-weight: 350;
+    font-style: normal;
+    font-display: swap;
+}
+
 @font-face {
     font-family: 'Tahoma';
     src: url('/protected/fonts/vista/tahoma.woff2') format('woff2'),
