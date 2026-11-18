@@ -1555,7 +1555,7 @@
         primedAt = Date.now();
         // nothing went over Melaton after all (a permission prompt pauses the app too): Today shows again
         const at = primedAt;
-        setTimeout(() => { if (primedAt === at && document.visibilityState === 'visible' && root.dataset.screenOff === undefined) unprime(); }, 2500);
+        setTimeout(() => { if (!focusWait && primedAt === at && document.visibilityState === 'visible' && root.dataset.screenOff === undefined) unprime(); }, 2500);
         return true;
     }
     let primedAt = 0;
@@ -2490,6 +2490,36 @@
         sh.refreshSoftKeys();
     }
 
+    /**
+     * Today's entrance waits for Melaton's window to have the focus (Yukimi, Nov 18: "it should not animate until
+     * the app is focused"): coming back from an Android program, the page is shown while Android's home animation and
+     * the app's return picture still cover it, and the entrance ran out under them ("most of the animation is
+     * gone"). The app says when its window has the focus (window event 'melatonfocus', DSApp onWindowFocusChanged
+     * once the return picture is gone); the page's own window focus counts too, and 2.5 s at most. Meanwhile Today
+     * holds the entrance's opening pose (prime()), which is also what the return picture shows.
+     */
+    let focusWait = null;
+    function whenFocused(fn) {
+        if (focusWait) focusWait.cancel();
+        const inApp = !!(window.AndroidBars || window.AndroidHome);
+        if (!inApp || (document.hasFocus() && !window.AndroidBars)) { fn(); return; }
+        let done = false;
+        const go = () => {
+            if (done) return;
+            done = true;
+            window.removeEventListener('melatonfocus', onApp);
+            window.removeEventListener('focus', go);
+            clearTimeout(t);
+            focusWait = null;
+            fn();
+        };
+        const onApp = (e) => { if (!e.detail || e.detail.focused !== false) go(); };
+        window.addEventListener('melatonfocus', onApp, { signal: appScopeSignal });
+        window.addEventListener('focus', go, { signal: appScopeSignal });
+        const t = setTimeout(go, 2500);
+        focusWait = { cancel() { done = true; clearTimeout(t); window.removeEventListener('melatonfocus', onApp); window.removeEventListener('focus', go); focusWait = null; } };
+    }
+
     // when Today comes back: the page from the background (an Android app, the recents list), or Today
     // from another program
     let homeArrival = false; // the move under way was started by Home: its panel grows and fades in
@@ -2503,7 +2533,7 @@
         shownAt = Date.now();
         hiddenSpan = hiddenAt ? shownAt - hiddenAt : 0;
         // back from another app (not the blink of a Home press on Today)
-        if (root.dataset.wmApp === 'today' && hiddenSpan > AWAY_MS) requestAnimationFrame(entrance);
+        if (root.dataset.wmApp === 'today' && hiddenSpan > AWAY_MS) whenFocused(() => requestAnimationFrame(entrance));
         else if (host) { unprime(); host.classList.remove('is-exiting'); }
     });
     let lastApp = root.dataset.wmApp || '';
@@ -2531,7 +2561,7 @@
     // list (prime()'s own fallback only looks once, 2.5 s in, and gives up if the page is hidden then)
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState !== 'visible' || !host || !host.classList.contains('is-primed')) return;
-        setTimeout(() => { if (host.classList.contains('is-primed') && !host.classList.contains('is-entering')) unprime(); }, 600);
+        setTimeout(() => { if (!focusWait && host.classList.contains('is-primed') && !host.classList.contains('is-entering')) unprime(); }, 600);
     });
 
     window.wmTitanium = {
