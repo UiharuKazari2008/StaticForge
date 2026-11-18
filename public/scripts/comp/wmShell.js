@@ -5282,6 +5282,7 @@
     const noteShownNote = () => noteOf(noteShown);
 
     /** Bubbles wait for startup and for full-screen takeovers (logon, errors). */
+    let homeQuietUntil = 0;
     function notesMayPop() {
         return (!root.dataset.wmBoot || root.dataset.wmBoot === 'done') && !root.dataset.wmTakeover;
     }
@@ -5952,6 +5953,9 @@
         // the tray lists the bubble's notifications and the folded icons: with neither it closes (an update
         // notice alone is the update icon's, Yukimi Nov 14: it left an empty tray open)
         if (!notesForBubbleIcon().length && !statusFolded.length) noteTrayOpen = false;
+        // just after Home every notice goes into its icon, also those the return's catch-up brings (Nov 18, HARD rule
+        // home-closes-everything: the box came back up over Today right after Home)
+        if (Date.now() < homeQuietUntil) for (const n of notes) n.ids.forEach((id) => noteSeen.add(seenKey(id, n)));
         if (!noteShown && !noteTrayOpen && notesMayPop()) {
             // a class with Display message off stays in the title bar (seen, never popped)
             for (const n of notes) if (!noteDisplays(n)) n.ids.forEach((id) => noteSeen.add(seenKey(id, n)));
@@ -11781,6 +11785,7 @@
             }
         } catch (_) { /* none */ }
         try {
+            homeQuietUntil = Date.now() + 5000;
             for (const n of notes) n.ids.forEach((id) => noteSeen.add(seenKey(id, n)));
             noteTrayOpen = false;
             hideNote();
@@ -12465,6 +12470,8 @@
         notify: (opts) => notify(opts || {}),
         /** An app's own notification with a live progress bar, soft keys and title bar glyph (appNote above). */
         appNote: (opts) => appNote(opts || {}),
+        /** A notice was dismissed or acted on: the server's "waiting" from the status task no longer counts until its next word. */
+        noticeGone: () => { notifyQuietUntilTask = true; try { paintNotifyIcon(); } catch (_) { /* before the shell */ } statusDirty(); },
         // for apps in their own files (wmFileExplorer.js ...)
         menu: (side, items, btn) => showPopup(side, items, btn),
         dropdown: (anchor, items, align, onClose) => showDropdown(anchor, items, align, onClose),

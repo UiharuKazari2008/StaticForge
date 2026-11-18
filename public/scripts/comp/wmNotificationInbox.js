@@ -66,6 +66,8 @@
         if (!id) return;
         if (state === 'seen') { if (seenAcked.has(id)) return; seenAcked.add(id); }
         try { const c = client(); if (c) c.sendMessage('inbox_ack', { id, state }, false); } catch (_) { /* offline: the server state stands */ }
+        // gone from the server's list: the title bar's "waiting" goes with it now, not at the status task's next refresh
+        if (state === 'cleared' || state === 'acted') { try { if (ws && typeof ws.noticeGone === 'function') ws.noticeGone(); } catch (_) { /* no shell */ } }
     }
 
     /** Open the app a notice came from (its data.open names the app's own layer / direction). */
