@@ -273,13 +273,21 @@
         }
     }
 
-    // what the folder held when last drawn: a refresh that finds the same leaves the grid alone (#890)
-    const entriesSig = () => entries.map((e) => `${e.path}|${e.mtime || 0}|${e.size || 0}`).join('\n');
+    // what a refresh draws: the place, its pictures, the albums (folder cells, counts, covers) and the
+    // cards. Only the replayed folder 'changed' (screen-on, Explorer watches) and the Camera's return
+    // ask to skip a refresh that finds all of it the same (#890); renames, deletes, copies, a removed
+    // card and Reload always draw.
+    const drawSig = () => [
+        loc ? `${loc.root}\n${loc.path}` : '',
+        entries.map((e) => `${e.path}|${e.mtime || 0}|${e.size || 0}`).join('\n'),
+        albums.map((a) => `${a.root}|${a.path}|${a.name}|${a.count}|${a.newest || 0}|${a.cover || ''}`).join('\n'),
+        cards().map((c) => `${c.id}:${c.label}`).join('|'),
+    ].join('\n\u0000');
     async function refresh(opts = {}) {
-        const before = `${loc ? `${loc.root}\n${loc.path}` : ''}\n${entriesSig()}`;
+        const before = opts.skipSame ? drawSig() : null;
         await loadAlbums();
         if (loc) await loadEntries(true);
-        if (!opts.force && before === `${loc ? `${loc.root}\n${loc.path}` : ''}\n${entriesSig()}`) return;
+        if (opts.skipSame && !opts.force && before === drawSig()) return;
         gridSig = '';
         if (!opts.quiet) onChange();
     }
@@ -295,18 +303,23 @@
         // another folder of the same card (another watch: Explorer, an ActiveSync computer)
         if (m.path != null && normPath(m.path) !== normPath(loc.path)) return;
         if (!shownNow()) { changedWhileAway = true; return; }
-        refreshSoon();
+        refreshSoon(true);
     }
     function catchUpShown() {
         if (!changedWhileAway || !loc || !shownNow()) return;
         changedWhileAway = false;
-        refreshSoon();
+        refreshSoon(true);
     }
 
     let refreshTimer = null;
-    function refreshSoon() {
+    // skipSame: only when every caller in the window may skip an unchanged folder (a later plain
+    // call within the 350 ms wins and always draws)
+    let refreshSkip = true;
+    function refreshSoon(skipSame) {
         clearTimeout(refreshTimer);
-        refreshTimer = setTimeout(() => { void refresh(); }, 350);
+        if (!refreshTimer) refreshSkip = true;
+        if (!skipSame) refreshSkip = false;
+        refreshTimer = setTimeout(() => { refreshTimer = null; const skip = refreshSkip; refreshSkip = true; void refresh({ skipSame: skip }); }, 350);
     }
 
     // ---------------------------------------------------------------- grid
@@ -1162,6 +1175,6 @@
         added,
         refresh: () => refresh(),
         /** A refresh in 350 ms, one for several asks (the Camera's return and the app's replayed 'changed'). */
-        refreshSoon: () => refreshSoon()
+        refreshSoon: (skipSame) => refreshSoon(skipSame === true)
     };
 })();
