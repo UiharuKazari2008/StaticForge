@@ -25,7 +25,8 @@
  *             leave windows out on the phone's clock; the server has no timer for them)
  *   notices   { waiting, list }   other notices waiting, new or put away with Hide (seen) (the notification glyph); list:
  *                                 the newest ten { id, title, text, cls, at } - the app draws the "..." group from it
- *   prefs     { mailAll, smsAll } Messaging's "icon for any unread" choices (the page's, kept on the server)
+ *   prefs     { mailAll, smsAll, popupApps } Messaging's "icon for any unread" choices (the page's, kept on the server);
+ *                                 popupApps: the registered Android apps whose notifications pop up as WM boxes
  *   received  { unseen }          ActiveSync received items not seen yet (per phone)
  *
  * Nothing runs on a timer: producers call touch() at their change points (one rebuild per second at most); a phone's
@@ -111,7 +112,8 @@ function inboxCounts() {
 
 function prefs() {
     const read = (k) => safe(() => require('./notificationInbox').getPref('admin', k), '') === '1';
-    return { mailAll: read('icon.mailAll'), smsAll: read('icon.smsAll') };
+    // popupApps: the Android apps registered in Messaging - the app pops up only their notifications as WM boxes
+    return { mailAll: read('icon.mailAll'), smsAll: read('icon.smsAll'), popupApps: safe(() => require('./textMessaging').androidPopupPackages(), []) };
 }
 
 function mailUnread() {
