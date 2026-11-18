@@ -219,10 +219,6 @@ html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
     align-items: center;
     position: relative;
     z-index: 3;
-    /* a layout boundary: the status fit measures the bar after each icon steps aside or folds, and without it each
-       measure laid out the whole page - 20-50 ms apiece on the A53 right after a return, while Today's entrance has
-       the page dirty (#907 wake profile: ~360 ms in fitStatusNow / applyCameraHole). Nothing in the bar is fixed */
-    contain: layout;
     /* how far Start and the X / ok stand in from the screen's sides (Yukimi, Nov 13: the device's
        2-3 px read as touching the edge on a phone's rounded glass); in units, so it scales */
     --wm-bar-edge: calc(6 * var(--wm-px));
