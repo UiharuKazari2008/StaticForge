@@ -10,6 +10,10 @@ These are hard requirements for Claude Code and every subagent / workflow agent 
 speed, convenience, a brief's wording and "too minor to matter" judgments. Work that breaks one is not
 done, whatever else it achieves.
 
+0. **Nothing on the phone depends on a WebView page** (Yukimi, Nov 17 2026, extremely hard rule): background
+   services, status bar handlers, notification drivers and alerts run in the app through CaféReady as portable
+   task code shipped with the app, and the app uses their output whenever CaféReady is online -
+   `cafeready-background`. Never make a phone duty work only while the page runs or has been opened.
 1. **Safety and the shared tree:** `agent-busy-lock`, `no-dreamscape-restart` / `director-idle-before-restart`,
    `no-stash-to-pretty-commit`, `android-app-builds` (never loop installs).
 2. **Performance and power on every change** (Yukimi, Nov 17 2026, #890: "prevent the need to keep doing
@@ -24,6 +28,7 @@ done, whatever else it achieves.
 3. **Behaviour and look:** `ui-standard`, `no-native-browser-ui`, `fix-ui-issues-you-find`, notifications
    and status indicators never silenced to save power.
 
+@.cursor/rules/cafeready-background.mdc
 @.cursor/rules/agent-busy-lock.mdc
 @.cursor/rules/keyboard-characters.mdc
 @.cursor/rules/no-dreamscape-restart.mdc
