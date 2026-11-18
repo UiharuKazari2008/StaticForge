@@ -229,6 +229,34 @@
         ack(notice.id, 'seen');
     }
 
+    // the page's notification boxes (showGlassToast ids toast-<n>): the newest number, and whether one carries a title
+    function toastSeq() {
+        let n = 0;
+        document.querySelectorAll('[id^="toast-"]').forEach((e) => { const v = parseInt(e.id.slice(6), 10); if (v > n) n = v; });
+        return n;
+    }
+    function toastTitled(title) {
+        const t = String(title || '').trim();
+        return !!t && [...document.querySelectorAll('[id^="toast-"] .toast-title')].some((e) => e.textContent.trim() === t);
+    }
+
+    /**
+     * A notice whose page app raises its own live note (Lapis, Traffic, Messaging...): told to the Android app as shown only
+     * once a note is really up - one with its title (the app's broadcast usually comes just before the inbox's), or a new one
+     * within PRODUCER_MS, or its app adopting it. Else the page's app did not show it (not loaded, no live note for that
+     * source) and it is shown here; before, it was confirmed unseen and the Android app, told it was shown, posted nothing
+     * either (StaticForge #913). Within the app's PAGE_MS (4 s): a page that answers nothing still gets it posted natively.
+     */
+    const PRODUCER_MS = 1500;
+    function producerShows(notice) {
+        const before = toastSeq();
+        setTimeout(() => {
+            if (document.hidden || shownNotes.has(notice.id)) return;
+            if (toastTitled(notice.title) || toastSeq() > before) { pageShown(notice.id); ack(notice.id, 'seen'); return; }
+            show(notice);
+        }, PRODUCER_MS);
+    }
+
     function close(id) {
         const note = shownNotes.get(id);
         if (note) { try { note.close(); } catch (_) { /* gone */ } shownNotes.delete(id); }
@@ -272,7 +300,7 @@
             // a kind no page app raises live (the household mailbox, server notices, #908): shown here
             const kind = d.notice.data && d.notice.data.kind;
             if (!document.hidden && SERVER_ONLY_KINDS.has(kind)) { show(d.notice); return; }
-            if (!document.hidden) { pageShown(d.notice.id); ack(d.notice.id, 'seen'); }
+            if (!document.hidden) producerShows(d.notice);
         }
     }
 
