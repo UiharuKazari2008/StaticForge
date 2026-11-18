@@ -78,6 +78,12 @@
     let wiredTo = null;
     // a push changed what the list / the open conversation shows while it was not on screen: drawn when it shows
     let listStale = false;
+    // the list as read is kept current by the pushes (message, read, chat, account, resync); a show reads it
+    // again only when something may have been missed (a new link, a chat it does not know, a failed read)
+    // or the last read is old (names and contacts have no push), not on every switch back (#890)
+    let listDirty = true;
+    let listReadAt = 0;
+    const LIST_STALE_MS = 5 * 60 * 1000;
     let convStale = false;
 
     const PAIR_NOTE = 'Pair this account on your computer: Control Panel > Dreamscape CardSpace.';
@@ -210,8 +216,8 @@
         typing: (d) => onTyping(d),
         read: (d) => onRead(d),
         chat: (d) => onChat(d),
-        account: () => { loadAccounts(true).then(() => { if (page) { showLayer(); if (view() === 'list') refresh({ quiet: true }); } }); },
-        resync: (d) => { if (d && d.accountId && d.accountId !== accountId) return; if (page && loaded) refresh({ quiet: true }); if (conv) reloadConv(); }
+        account: () => { listDirty = true; loadAccounts(true).then(() => { if (page) { showLayer(); if (view() === 'list') refresh({ quiet: true }); } }); },
+        resync: (d) => { if (d && d.accountId && d.accountId !== accountId) return; listDirty = true; if (page && loaded) refresh({ quiet: true }); if (conv) reloadConv(); }
     };
 
     /** Listen to window.textMessaging, again when a different one took its place. */
@@ -241,6 +247,8 @@
                 listChanged(c);
             } else if (!updated && loaded && page) {
                 refresh({ quiet: true });
+            } else if (!updated) {
+                listDirty = true;
             }
         }
         if (!conv || conv.accountId !== d.accountId || conv.guid !== g) return;
@@ -256,7 +264,7 @@
         else if (!updated) list.push(m);
         else return;
         if (!m.fromMe) stopTyping(g);
-        entriesChanged();
+        entriesChanged([at >= 0 ? at : list.length - 1]);
         // read only when it is seen: with the screen off or locked it stays unread (and gets its notification)
         if (!updated && !m.fromMe && view() === 'conv' && readable()) markRead();
     }
@@ -269,7 +277,7 @@
         const who = (x) => (x.fromMe ? 'me' : normAddr(x.sender && x.sender.address));
         m.reactions = (m.reactions || []).filter((x) => who(x) !== who(r));
         if (!r.removed) m.reactions.push(r);
-        entriesChanged();
+        entriesChanged([conv.messages.indexOf(m)]);
     }
 
     function stopTyping(g) {
@@ -294,13 +302,23 @@
         if (!d || d.accountId !== accountId) return;
         const t = tm();
         if (!t || !d.chatGuid) { if (loaded) refresh({ quiet: true }); return; }
+        // deleted on another client (textMessaging deleteChat): off the list now (a show no longer reads the
+        // whole list again to drop it, #890)
+        const drop = () => {
+            const at = chats.findIndex((x) => x.guid === d.chatGuid);
+            if (at < 0) return;
+            chats.splice(at, 1);
+            listChanged(null);
+        };
+        if (d.deleted) { drop(); return; }
         t.chat(accountId, d.chatGuid).then((c) => {
-            if (!c) return;
+            if (!c) { drop(); return; }
             const at = chats.findIndex((x) => x.guid === c.guid);
             if (at >= 0) chats[at] = Object.assign({}, chats[at], c);
-            if (conv && conv.guid === c.guid) { conv.chat = Object.assign({}, conv.chat, c); entriesChanged(); }
+            // only the conversation's name and members lines draw it (an RCS conversation sends this on every update)
+            if (conv && conv.guid === c.guid) { conv.chat = Object.assign({}, conv.chat, c); headChanged(); }
             listChanged(at >= 0 ? chats[at] : null);
-        }, () => {});
+        }, () => { listDirty = true; });
     }
 
     // ---------------------------------------------------------------- data
@@ -343,13 +361,16 @@
     async function refresh(opts = {}) {
         const work = async () => {
             if (!accts.length || opts.accounts) await loadAccounts(!!opts.accounts);
+            listDirty = false; // (a push that finds something missing while this reads sets it again)
             await loadChats();
+            listReadAt = Date.now();
         };
         try {
             if (opts.quiet || !sh) await work();
             else await sh.busy(work, { paint: true });
         } catch (err) {
             loaded = true;
+            listDirty = true;
             listError = (err && err.message) || 'The conversations could not be read.';
         }
         // a read a push started may end with the app away or the screen off: drawn when it shows
@@ -443,11 +464,70 @@
         return true;
     }
 
-    /** A push changed the open conversation: drawn now when it is on screen, else when it shows again. */
-    function entriesChanged() {
+    /**
+     * A push changed the open conversation: drawn now when it is on screen, else when it shows again. With
+     * the indexes of the messages that changed (one past the last drawn: added), only those entries are
+     * drawn again (#890: every push, receipt and reaction rebuilt the whole thread, links and pictures).
+     */
+    function entriesChanged(idx) {
         if (!page) return;
         if (!seen()) { convStale = true; return; }
-        renderEntries();
+        if (convStale || !Array.isArray(idx) || !patchEntries(idx)) renderEntries();
+    }
+
+    /**
+     * The entries at idx (indexes into conv.messages) drawn again in place, an index one past the drawn
+     * ones added at the end, plus the old and new last message of mine (the receipt line moves). False
+     * when what is drawn is not the list as it was (then the whole thread is drawn).
+     */
+    function patchEntries(idx, toEnd) {
+        if (!page || !conv) return false;
+        const box = page.querySelector('.wch-history');
+        const slot = box && box.querySelector('.wtm-typing-slot');
+        if (!slot) return false;
+        const list = conv.messages;
+        const drawn = box.querySelectorAll('[data-n]');
+        if (drawn.length !== list.length && drawn.length !== list.length - 1) return false;
+        const want = new Set(idx.filter((i) => Number.isInteger(i) && i >= 0 && i < list.length));
+        if (drawn.length === list.length - 1 && !want.has(list.length - 1)) return false;
+        const lastMine = (list.slice().reverse().find((m) => m.fromMe && !m.retracted) || {}).guid || '';
+        const wasMine = box.dataset.lastMine || '';
+        if (wasMine !== lastMine) {
+            [wasMine, lastMine].forEach((g) => { const i = g ? list.findIndex((m) => m.guid === g) : -1; if (i >= 0) want.add(i); });
+        }
+        for (let i = 0; i < drawn.length; i++) {
+            const el = drawn[i];
+            if (el.dataset.n !== String(i)) return false;
+            if (!want.has(i) && el.dataset.guid !== undefined && el.dataset.guid !== String(list[i].guid)) return false;
+        }
+        const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
+        const tmp = document.createElement('div');
+        [...want].sort((a, b) => a - b).forEach((i) => {
+            tmp.innerHTML = entryHtml(list[i], i, lastMine);
+            const el = tmp.firstElementChild;
+            if (!el) return;
+            if (i < drawn.length) drawn[i].replaceWith(el); else box.insertBefore(el, slot);
+        });
+        box.dataset.lastMine = lastMine;
+        if (toEnd || atEnd) box.scrollTop = box.scrollHeight;
+        fillLinkCards(box, () => { if (box.scrollHeight - box.scrollTop - box.clientHeight < 200) box.scrollTop = box.scrollHeight; });
+        return true;
+    }
+
+    /** The conversation's name / members changed: those lines drawn again (the thread as it is). */
+    function headChanged() {
+        if (!page) return;
+        if (!seen()) { convStale = true; return; }
+        const box = page.querySelector('.wch-history');
+        const head = box && box.querySelector('.wch-convhead');
+        const members = box && box.querySelector('.wtm-members');
+        const c = conv && conv.chat;
+        if (convStale || !head || !!members !== !!(c && c.isGroup)) { renderEntries(); return; }
+        const tmp = document.createElement('div');
+        tmp.innerHTML = headHtml(c);
+        const parts = tmp.children;
+        if (parts[0] && head.outerHTML !== parts[0].outerHTML) head.replaceWith(parts[0]);
+        if (members && parts[parts.length - 1] && members.outerHTML !== parts[parts.length - 1].outerHTML) members.replaceWith(parts[parts.length - 1]);
     }
 
     function selectRow(g) {
@@ -721,6 +801,15 @@
         return `<div class="wtm-typing">${esc(who)} is typing...</div>`;
     }
 
+    /** The thread's first lines: who the conversation is with, and a group's members. */
+    function headHtml(c) {
+        // an Android app account (#885): the name opens the conversation in the app (its notification's tap)
+        const opens = canOpenInApp(c);
+        let html = `<p class="wch-convhead"><i>Conversation with <span class="wch-link${opens ? ' is-open' : ''}"${opens ? ` role="link" title="Open in ${esc(c.app || 'the app')}"` : ''}>${esc(chatTitle(c))}</span></i></p>`;
+        if (c && c.isGroup) html += `<p class="wtm-members">${esc((c.participants || []).map((p) => p.name || p.address).join(', '))}</p>`;
+        return html;
+    }
+
     function renderEntries(toEnd) {
         if (!page) return;
         convStale = false;
@@ -729,14 +818,12 @@
         const list = conv ? conv.messages : [];
         const lastMine = (list.slice().reverse().find((m) => m.fromMe && !m.retracted) || {}).guid;
         const c = conv && conv.chat;
-        // an Android app account (#885): the name opens the conversation in the app (its notification's tap)
-        const opens = canOpenInApp(c);
-        let html = `<p class="wch-convhead"><i>Conversation with <span class="wch-link${opens ? ' is-open' : ''}"${opens ? ` role="link" title="Open in ${esc(c.app || 'the app')}"` : ''}>${esc(chatTitle(c))}</span></i></p>`;
-        if (c && c.isGroup) html += `<p class="wtm-members">${esc((c.participants || []).map((p) => p.name || p.address).join(', '))}</p>`;
+        let html = headHtml(c);
         html += conv && conv.more ? '<p class="wch-olderp"><a class="wch-more" role="link">Older</a></p>' : '';
         html += list.map((m, n) => entryHtml(m, n, lastMine)).join('');
         html += `<div class="wtm-typing-slot">${typingHtml()}</div>`;
         box.innerHTML = html;
+        box.dataset.lastMine = lastMine || '';
         if (toEnd || atEnd) box.scrollTop = box.scrollHeight;
         fillLinkCards(box, () => { if (box.scrollHeight - box.scrollTop - box.clientHeight < 200) box.scrollTop = box.scrollHeight; });
     }
@@ -831,25 +918,29 @@
         replyTo = null;
         renderReply();
         c.messages.push(local);
-        renderEntries(true);
+        // (the new entry added at the end, not the thread drawn again: #890)
+        if (convStale || !patchEntries([c.messages.length - 1], true)) renderEntries(true);
         sh.refreshSoftKeys();
         if (feat('typing')) t.typing(c.accountId, c.guid, false);
+        let patch = null; // the entries to draw again ([] none: the server's copy already took its place), null all
         try {
             const r = await t.send(c.accountId, { chatGuid: c.guid, text, replyTo: reply || undefined });
             const m = r && r.message;
             const at = c.messages.indexOf(local);
             if (m && at >= 0) {
                 if (c.messages.some((x) => x.guid === m.guid)) c.messages.splice(at, 1);
-                else c.messages[at] = Object.assign({}, m, { _local: true });
-            } else if (at >= 0) local._sending = false;
+                else { c.messages[at] = Object.assign({}, m, { _local: true }); patch = [at]; }
+            } else if (at >= 0) { local._sending = false; patch = [at]; } else patch = [];
             const ch = chatByGuid(c.guid);
             if (ch && m) { ch.last = m; chats = [ch].concat(chats.filter((x) => x !== ch)); }
         } catch (err) {
             local._sending = false;
             local.error = (err && err.message) || true;
+            const at = c.messages.indexOf(local);
+            patch = at >= 0 ? [at] : null;
             errorBox('The message was not sent.', err);
         }
-        if (conv === c) renderEntries(true);
+        if (conv === c && !(patch && seen() && !convStale && patchEntries(patch, true))) renderEntries(true);
         for (const f of files) { if (conv === c) await sendFile(f, reply); }
     }
 
@@ -1483,11 +1574,17 @@
         sh = window.wmShell;
         if (!sh || typeof sh.registerApp !== 'function') return;
         wire();
-        // a late client: tried again a few times until it is there (show() and every open wire again,
-        // so a stand-in a test swaps in later is heard from the next open on)
-        if (!wiredTo) {
-            let tries = 0;
-            const t = setInterval(() => { wire(); if (wiredTo || ++tries >= 20) clearInterval(t); }, 3000);
+        // textMessagingClient.js loads with the page, before this file; should it not be there yet, every
+        // script has run by 'load' (show() and every open wire again too, so a stand-in a test swaps in
+        // later is heard from the next open on, and the first show reads the list)
+        if (!wiredTo) window.addEventListener('load', () => wire(), { once: true, signal: appScopeSignal });
+        // a new link: pushes may have been missed while it was down, so the next show reads the list
+        const wsc = window.wsClient;
+        if (wsc && typeof wsc.on === 'function') {
+            wsc.on('connected', () => {
+                listDirty = true;
+                if (page && loaded && isCurrent() && seen() && view() === 'list') refresh({ quiet: true });
+            }, { signal: appScopeSignal });
         }
         // the phone woke (or the app came back, or the lock screen went): what changed meanwhile is
         // drawn, and an open conversation on screen is read (not while the lock screen covers it). After
@@ -1515,9 +1612,9 @@
             show() {
                 wire();
                 showLayer();
-                // what pushes changed while it was away, at once (the read below follows)
+                // what pushes changed while it was away, at once (a read follows only when one may be missing)
                 if (listStale && (view() === 'list' || isDual())) renderList();
-                if (view() === 'list') refresh({ quiet: loaded });
+                if (view() === 'list' && (listDirty || !loaded || Date.now() - listReadAt > LIST_STALE_MS)) refresh({ quiet: loaded });
                 else if (view() === 'conv') { renderEntries(); markRead(); }
             },
             hide() {
