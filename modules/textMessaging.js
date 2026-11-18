@@ -69,6 +69,14 @@ function readConfig() {
 
 function writeConfig(next) {
     resources().updateConfigValue('config', ['textMessaging'], { accounts: next.accounts, notifyUnknown: next.notifyUnknown === true });
+    // the phones' list of registered Android apps (their notifications pop up as WM boxes) follows
+    try { require('./phoneStatus').touch('prefs'); } catch (_) { /* best effort */ }
+}
+
+/** The Android apps registered as Messaging accounts (#885) and switched on: the only ones whose notifications the
+ *  phone app pops up as WM notification boxes (Yukimi, Nov 18: "not just registered ones" - every app's did). */
+function androidPopupPackages() {
+    try { return readConfig().accounts.filter((a) => a.kind === 'android' && a.enabled !== false && a.package).map((a) => a.package); } catch (_) { return []; }
 }
 
 function readSecrets() {
@@ -927,7 +935,7 @@ function _reset() {
 
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
-    recentAndroidApps, action, androidAppIcon, openInApp,
+    recentAndroidApps, action, androidAppIcon, openInApp, androidPopupPackages,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing, syncStatus, syncChats, resync,
     downloadAttachment, attachmentSeen, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset,
     // tests (scripts/test-ws-phone-round5.js): a provider's event and who gets it
