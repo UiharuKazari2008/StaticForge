@@ -3609,23 +3609,21 @@
      * Tray icons pixel for pixel (#735): 16 x --wm-px at a 2.25 density is 54 device px, a 1.69x
      * stretch of the 32 px art that made some art pixels 2 device px and others 1 (uneven strokes),
      * at fractional device positions. --wm-icon-unit is a whole multiple of the 2x art (Fold7: 2x,
-     * 64 device px), never larger than the slot (16 x --wm-px), and snapStatusIcons nudges each icon
-     * onto the device pixel grid.
+     * 64 device px) within an eighth of the 16-unit slot, and snapStatusIcons nudges each icon onto the
+     * device pixel grid.
      */
     function syncIconUnit() {
         const dpr = window.devicePixelRatio || 1;
         const px = rootPx();
         const want = 16 * px * dpr; // the icon's size in device px
-        // never over the slot (Yukimi, Nov 17: the icons always looked oversized): the largest whole
-        // multiple of the art that fits the 16-unit slot inside the bar's padding - rounded down, as a
-        // round up drew them up to 1.5x the cell. Always a whole multiple (a fractional size blurs the
-        // 1-bit glyphs): one that is over by less than a device pixel still counts as fitting (A53:
-        // 63 px slot, 64 px icons), the padding gives up that part of a pixel instead of the art.
-        // Under one 2x icon (32 px; a mouse-driven window at one device px a unit) the 1x art at its
-        // own size (16 px), and under that the plain unit.
+        // The 16-unit slot at a whole multiple of the art (sharp 1-bit strokes): the nearest one when it
+        // is within an eighth of the slot (Fold cover: 62.8 px slot, 64 px icons; A53 63 -> 64), else the
+        // slot's own size. Never the step below: rounding down halved them on the Fold (Yukimi, Nov 17:
+        // "microscopic"). Under one 2x icon (a mouse-driven window) the same with the 1x art.
+        const near = (art) => { const n = Math.max(1, Math.round(want / art)); return Math.abs(n * art - want) / want <= 1 / 8 ? n : 0; };
         let unit = '';
-        if (want + 1 >= 32) unit = `${(2 * Math.floor((want + 1) / 32)) / dpr}px`;
-        else if (want + 1 >= 16) unit = `${1 / dpr}px`;
+        if (want >= 28) { const n = near(32); if (n) unit = `${(2 * n) / dpr}px`; }
+        else { const n = near(16); if (n) unit = `${n / dpr}px`; }
         if (root.style.getPropertyValue('--wm-icon-unit') !== unit) {
             if (unit) root.style.setProperty('--wm-icon-unit', unit); else root.style.removeProperty('--wm-icon-unit');
         }
