@@ -26,10 +26,12 @@ a = send('push', { type: 'status.snapshot', data: { full: true, fields } });
 let r = out(a).roles;
 assert.strictEqual(r.mail, false, 'unread but none new, "any unread" off');
 assert.strictEqual(r.sms, true);
-assert.strictEqual(r.director, true);
+assert.strictEqual(r.director, false, 'a finished turn not seen no longer lights it (Yukimi, Nov 18: only while a turn runs)');
 assert.strictEqual(r.wxalert, true);
 assert.strictEqual(r.carkey, false);
 
+a = send('push', { type: 'status.snapshot', data: { full: false, fields: { director: { running: true, unseen: false } } } });
+assert.strictEqual(out(a).roles.director, true, 'a turn running');
 a = send('push', { type: 'status.snapshot', data: { full: false, fields: { prefs: { mailAll: true, smsAll: false } } } });
 assert.strictEqual(out(a).roles.mail, true, '"any unread" on');
 
