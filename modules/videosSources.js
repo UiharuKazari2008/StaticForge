@@ -8,7 +8,8 @@
  *                  API with an app's own key (Service key `kick`: a Kick developer app's Client ID and
  *                  secret), one call for up to 50 channels, at most every 3 minutes and only while
  *                  someone is looking (the YouTube status feed's sample calls liveItems()). A failure
- *                  is quiet and the last known state stays for a while.
+ *                  is quiet and the last known state stays for a while. A channel's bell (kickNotify)
+ *                  makes the server look by itself every 2 minutes and tell when it goes live.
  *   App notices    the phone relays its notifications over ActiveSync when "Send notifications" is on
  *                  (modules/activeSync.js, event notify.posted: package, app, title, text, time). The
  *                  notifications of the apps chosen here are kept as feed items. A tap on the phone that
@@ -175,11 +176,69 @@ async function kickAdd(name) {
     if (s.kick.length >= MAX_KICK && !s.kick.some((c) => c.slug === slug)) throw new SourceError(`The list holds ${MAX_KICK} Kick channels`, 'KICK_FULL');
     const r = (await kickRead([slug]))[0];
     if (!r) throw new SourceError('Kick has no channel by that name', 'KICK_NOT_FOUND');
-    s.kick = s.kick.filter((c) => c.slug !== r.channel.slug).concat([r.channel]);
+    const had = s.kick.find((c) => c.slug === r.channel.slug);
+    s.kick = s.kick.filter((c) => c.slug !== r.channel.slug).concat([Object.assign({}, r.channel, had ? { notify: !!had.notify, toldStart: had.toldStart } : {})]);
     live[r.channel.slug] = { at: Date.now(), tried: Date.now(), item: r.item };
     save();
     changed();
     return { channel: r.channel, live: !!r.item, channels: s.kick.slice() };
+}
+
+/**
+ * The bell on a Kick channel (Yukimi, Nov 18 2026: "a toggle so we get a server push notification as soon as
+ * they go live"). While any channel has it on, the server looks at Kick by itself (nobody need be watching the
+ * feed): one request for all channels every 2 minutes, slower after failures (doubling, 16 minutes at most).
+ * A channel that went live is told once per stream (its start time is remembered).
+ */
+function kickNotify(slug, on) {
+    const s = load();
+    const c = s.kick.find((x) => x.slug === String(slug || '').toLowerCase());
+    if (!c) throw new SourceError('That channel is not on the list', 'KICK_NOT_LISTED');
+    c.notify = !!on;
+    // already live when the bell is set: that stream is not news
+    const held = live[c.slug];
+    if (c.notify && held && held.item) c.toldStart = held.item.at;
+    save();
+    watchKick();
+    changed();
+    return view().kick;
+}
+
+const WATCH_MS = 2 * MIN;
+let watchTimer = null;
+let watchFails = 0;
+let onLive = null; // (channel, item) => the notification (set by the handler)
+
+function watchKick() {
+    const want = load().kick.some((c) => c.notify) && kickReady();
+    if (!want) { clearTimeout(watchTimer); watchTimer = null; return; }
+    if (watchTimer) return;
+    const tick = async () => {
+        watchTimer = null;
+        Object.values(live).forEach((x) => { x.tried = 0; });
+        try { await kickRefresh(); } catch (_e) { /* counted below */ }
+        watchFails = kickError ? Math.min(watchFails + 1, 3) : 0;
+        if (load().kick.some((c) => c.notify)) {
+            watchTimer = setTimeout(tick, WATCH_MS * 2 ** watchFails);
+            if (watchTimer.unref) watchTimer.unref();
+        }
+    };
+    watchTimer = setTimeout(tick, 5000);
+    if (watchTimer.unref) watchTimer.unref();
+}
+
+/** After a look at Kick: the channels with the bell on whose stream is new are told, once per stream. */
+function tellLive() {
+    const s = load();
+    let touched = false;
+    s.kick.forEach((c) => {
+        const item = live[c.slug] && live[c.slug].item;
+        if (!c.notify || !item || c.toldStart === item.at) return;
+        c.toldStart = item.at;
+        touched = true;
+        if (onLive) { try { onLive({ slug: c.slug, name: c.name, thumb: c.thumb }, item); } catch (e) { console.warn(`[videos] go-live notice: ${e.message}`); } }
+    });
+    if (touched) save();
 }
 
 function kickRemove(slug) {
@@ -214,6 +273,7 @@ function kickRefresh() {
             });
             if (touched) save();
             kickError = '';
+            tellLive();
         } catch (e) {
             // the last known state stays, but not for ever; said once per kind of failure, not on every look
             if (kickError !== e.message) { kickError = e.message; console.warn(`[videos] Kick's live states could not be read: ${e.message}`); }
@@ -310,13 +370,13 @@ function view() {
     return {
         kickReady: kickReady(),
         kickError,
-        kick: s.kick.map((c) => ({ slug: c.slug, name: c.name, thumb: c.thumb, live: !!(live[c.slug] && live[c.slug].item) })),
+        kick: s.kick.map((c) => ({ slug: c.slug, name: c.name, thumb: c.thumb, live: !!(live[c.slug] && live[c.slug].item), notify: !!c.notify })),
         apps: s.apps.slice(),
         seenApps: Object.keys(s.seenApps).map((p) => ({ package: p, label: s.seenApps[p].label })).sort((a, b) => a.label.localeCompare(b.label))
     };
 }
 
 module.exports = {
-    bind, kickAdd, kickRemove, liveItems, takeNotification, noticeItems, noticeRemove, appsSave, view, onChange, SourceError,
-    _test: { reset() { state = null; live = {}; kickBusy = null; listeners.length = 0; kickToken = { value: '', until: 0, client: '' }; gr = null; }, busy: () => kickBusy, live: () => live, load }
+    bind, kickAdd, kickNotify, watchKick, setOnLive(fn) { onLive = typeof fn === 'function' ? fn : null; }, kickRemove, liveItems, takeNotification, noticeItems, noticeRemove, appsSave, view, onChange, SourceError,
+    _test: { reset() { state = null; live = {}; kickBusy = null; listeners.length = 0; kickToken = { value: '', until: 0, client: '' }; gr = null; clearTimeout(watchTimer); watchTimer = null; watchFails = 0; onLive = null; kickError = ''; }, busy: () => kickBusy, live: () => live, load }
 };

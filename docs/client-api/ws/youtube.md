@@ -22,6 +22,7 @@ VisionCaster holds), scope `youtube.readonly`. Tokens never go to a client.
 | `youtube_watch_later` | `{ fresh? }` -> `{ videos[], unavailable, why, partial }`: the videos added through `youtube_later`, with the account's own list when the server's Alchemy browser can read it (`modules/youtubeAlchemy.js`: a hidden tab, closed again; no cookie leaves the browser). `why`: `browser-signin` (Alchemy is not signed in to YouTube) or `browser-offline`; the list is then only what was added here, and `unavailable` is true when that is nothing. |
 | `youtube_import_bell` | `{}` -> `{ why, favourites[], channels, found, added, left, partial }`. Every subscribed channel whose notification bell is set to All becomes a favourite (read in the same browser). Admin. |
 | `youtube_kick_add` | `{ name }` -> `{ channel: { slug, name, thumb }, live, channels[] }`. A Kick channel by the name in its address; needs Service key `kick` (a Kick developer app's Client ID and secret; errors `KICK_NO_KEY`, `KICK_KEY`, `KICK_NOT_FOUND`, `KICK_BAD_NAME`). Admin. |
+| `youtube_kick_notify` | `{ slug, on }` -> `{ channels[] }`. The channel's bell: while any is on the server looks at Kick by itself every 2 minutes (slower after failures) and publishes one notification per stream to the notification inbox (`app: 'youtube'`, `data.open: 'kick:<slug>'`). Admin. |
 | `youtube_kick_remove` | `{ slug }` -> `{ channels[] }`. Admin. |
 | `youtube_apps_save` | `{ apps: [{ package, label }] }` -> `{ apps[] }`: the Android apps whose notifications (relayed by a partnered phone over ActiveSync, `notify.posted`) become feed items. Admin. |
 | `youtube_notice_remove` | `{ id }` -> `{ removed }`: takes an imported notification (`app:<n>`) out of the feed. Admin. |
@@ -88,6 +89,6 @@ favourites' video counts (1 unit per 50 channels) and reads only the channels th
 - `favourites[]`: the channels whose uploads Today shows
 - `latest`: `{ videos[], caughtUp }`, the favourites' uploads that are not watched yet, as one list (`settings.todayCount` at most; `caughtUp` when there are uploads but all were watched). With `settings.rareFirst` (default) a video's age counts in units of its channel's usual gap between uploads, so channels that upload seldom come first; off: newest first. Each video also has `gap` (ms since that channel's upload before it, or null).
 - `live`: `{ items[] }`, the Kick channels that are live now (Today shows them first)
-- `sources`: `{ kickReady, kick: [{ slug, name, thumb, live }], apps: [{ package, label }], seenApps: [{ package, label }] }` (`seenApps`: apps that posted a notification lately, offered for choosing)
+- `sources`: `{ kickReady, kickError, kick: [{ slug, name, thumb, live, notify }], apps: [{ package, label }], seenApps: [{ package, label }] }` (`seenApps`: apps that posted a notification lately, offered for choosing)
 - `settings`: `{ noShorts, rareFirst, todayCount, budget }`
 - `feed`: `{ at }`, when the subscriptions feed or the watched marks last changed (read `youtube_feed` again when it moves)

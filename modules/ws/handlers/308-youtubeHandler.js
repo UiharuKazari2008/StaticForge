@@ -26,6 +26,7 @@ const kickRelay = require('../../videosKickRelay');
 //   youtube_live_state       { id }                    admins -> { state: live | restarting | ended | error | gone, error }
 //   youtube_live_stop        { id }                    admins -> { stopped }
 //   youtube_kick_add         { name }                  admins; a Kick channel by its name -> { channel, live, channels[] } (needs Service key `kick`)
+//   youtube_kick_notify      { slug, on }              admins; the channel's bell: the server tells when it goes live -> { channels[] }
 //   youtube_kick_remove      { slug }                  admins -> { channels[] }
 //   youtube_apps_save        { apps[{ package, label }] }  admins; the apps whose phone notifications become feed items -> { apps[] }
 //   youtube_notice_remove    { id }                    admins; takes an imported notification out of the feed -> { removed }
@@ -97,11 +98,22 @@ function registerPackets(handlersCtx) {
     reg('youtube_later', packet(true, 'Watch Later could not be changed', async (m) => youtubeService.setLater(String(m.id || ''), m.on !== false)));
     // Kick live streams played in the program through the server (#918): only channels on the program's list
     kickRelay.bind({ allowed: (slug) => sources.view().kick.some((c) => c.slug === slug) });
+    // a Kick channel with its bell on went live: a notification in the durable inbox (shown at once on a
+    // connected phone, posted by the app when the page is not running; #845), once per stream
+    sources.setOnLive((channel, item) => {
+        require('../../notificationInbox').bind(handlersCtx.globalResources).publish({
+            app: 'youtube', id: `videos:live:${channel.slug}`, cls: 'notification', alert: true,
+            title: `${channel.name} is live on Kick`, text: item.title || '', actions: [],
+            data: { app: 'youtube', open: `kick:${channel.slug}` }, ttlMs: 6 * 60 * 60 * 1000
+        });
+    });
+    sources.watchKick();
     reg('youtube_live_modes', packet(false, 'The qualities could not be read', async () => ({ modes: kickRelay.modes() })));
     reg('youtube_live_start', packet(true, 'The stream could not be started', async (m) => Object.assign(await kickRelay.start(m.slug, m.mode), { modes: kickRelay.modes() })));
     reg('youtube_live_state', packet(true, 'The stream could not be read', async (m) => kickRelay.state(m.id)));
     reg('youtube_live_stop', packet(true, 'The stream could not be stopped', async (m) => ({ stopped: await kickRelay.stop(m.id) })));
     reg('youtube_kick_add', packet(true, 'The Kick channel could not be added', async (m) => sources.kickAdd(m.name)));
+    reg('youtube_kick_notify', packet(true, 'The setting could not be saved', async (m) => ({ channels: sources.kickNotify(m.slug, m.on !== false) })));
     reg('youtube_kick_remove', packet(true, 'The Kick channel could not be removed', async (m) => ({ channels: sources.kickRemove(m.slug) })));
     reg('youtube_apps_save', packet(true, 'The apps could not be saved', async (m) => ({ apps: sources.appsSave(m.apps) })));
     reg('youtube_notice_remove', packet(true, 'The item could not be removed', async (m) => ({ removed: sources.noticeRemove(m.id) })));

@@ -588,8 +588,34 @@
 
 /* ---------------------------------------------------------------- the live player (a Kick stream through the server) */
 
-.wm-youtube .yt-player { position: absolute; inset: 0; background: black; z-index: 5; overflow: hidden; }
+/* Upright: the picture across the top at its own shape, and under it what the stream is (and room for more).
+ * On its side, or asked for with the full screen key: the picture has everything. */
+.wm-youtube .yt-player { position: absolute; inset: 0; display: flex; flex-direction: column; background: black; z-index: 5; overflow: hidden; }
+.wm-youtube .yt-stage { position: relative; flex: 0 0 auto; width: 100%; aspect-ratio: 16 / 9; max-height: 100%; background: black; overflow: hidden; }
 .wm-youtube .yt-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: black; }
+
+.wm-youtube .yt-side {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: calc(8 * var(--u)) calc(9 * var(--u));
+    border-top: 1px solid color-mix(in srgb, white 14%, transparent);
+    background: linear-gradient(color-mix(in srgb, white 9%, black), black 70%);
+}
+.wm-youtube .yt-side-title { font-size: calc(12 * var(--u)); font-weight: bold; line-height: 1.25; overflow-wrap: anywhere; }
+.wm-youtube .yt-side-sub { margin-top: calc(3 * var(--u)); color: var(--yt-dim); font-size: calc(9.5 * var(--u)); }
+
+/* a screen wider than it is tall (a phone on its side, the unfolded screen turned): the picture fills it */
+@container yt (min-aspect-ratio: 13 / 10) {
+    .wm-youtube .yt-stage { flex: 1 1 auto; aspect-ratio: auto; height: 100%; }
+    .wm-youtube .yt-side { display: none; }
+}
+
+/* full screen: the program's page over the shell's own bars, the picture over all of it */
+.wm-page.wm-youtube.is-full { position: fixed; inset: 0; z-index: 60; }
+.wm-youtube.is-full .yt-stage { flex: 1 1 auto; aspect-ratio: auto; height: 100%; }
+.wm-youtube.is-full .yt-side { display: none; }
 
 .wm-youtube .yt-pl-top {
     position: absolute;
@@ -606,8 +632,59 @@
     pointer-events: none;
 }
 .wm-youtube .yt-pl-top .yt-new { margin: 0; flex: 0 0 auto; }
+.wm-youtube .yt-pl-up { flex: 0 0 auto; color: white; }
 .wm-youtube .yt-pl-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: bold; }
 .wm-youtube .yt-pl-mode { flex: 0 0 auto; color: color-mix(in srgb, white 80%, transparent); }
+
+/* the keys over the foot of the picture: pause, sound, stop | Kick's app, full screen */
+.wm-youtube .yt-hud {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--u));
+    padding: calc(14 * var(--u)) calc(6 * var(--u)) calc(5 * var(--u));
+    background: linear-gradient(transparent, color-mix(in srgb, black 82%, transparent));
+}
+.wm-youtube .yt-hud-gap { flex: 1 1 auto; }
+.wm-youtube .yt-hud-key {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: calc(30 * var(--u));
+    height: calc(26 * var(--u));
+    padding: 0;
+    border-radius: calc(4 * var(--u));
+    border: 1px solid color-mix(in srgb, white 34%, transparent);
+    background: color-mix(in srgb, black 55%, transparent);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.wm-youtube .yt-hud-key svg { width: calc(14 * var(--u)); height: calc(14 * var(--u)); }
+.wm-youtube .yt-hud-key:active { background: linear-gradient(var(--yt-accent), var(--yt-accent-deep)); }
+
+/* the go-live bell on a Kick channel (Channels) */
+.wm-youtube .yt-bell {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: calc(30 * var(--u));
+    height: calc(30 * var(--u));
+    padding: 0;
+    border: 0;
+    background: none;
+    color: color-mix(in srgb, white 42%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.wm-youtube .yt-bell svg { width: calc(16 * var(--u)); height: calc(16 * var(--u)); }
+.wm-youtube .yt-bell.is-on { color: var(--yt-accent); }
+.wm-youtube .yt-bell.is-on svg path:first-child { fill: currentColor; }
 
 .wm-youtube .yt-pl-status {
     position: absolute;

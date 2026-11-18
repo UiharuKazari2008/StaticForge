@@ -620,6 +620,26 @@ T.setBrowser({ watched: async (on, id) => {
         await src._test.busy();
         assert.deepStrictEqual(svc.getState().live.items, []);
         assert.strictEqual(count('/oauth/token'), 1, 'one token for all of it');
+        // the bell: told once when the channel goes live, not for a stream that was already on, not twice
+        const told = [];
+        src.setOnLive((c, item) => told.push(`${c.slug}:${item.title}`));
+        kickLive.quiet_two = true;
+        Object.values(src._test.live()).forEach((x) => { x.tried = 0; });
+        src.liveItems();
+        await src._test.busy();
+        assert.deepStrictEqual(told, [], 'no bell, no notice');
+        assert.deepStrictEqual(src.kickNotify('quiet_two', true).find((c) => c.slug === 'quiet_two').notify, true);
+        Object.values(src._test.live()).forEach((x) => { x.tried = 0; });
+        src.liveItems();
+        await src._test.busy();
+        assert.deepStrictEqual(told, [], 'already live when the bell was set: not news');
+        src.kickNotify('streamer_one', true);
+        kickLive.streamer_one = true;
+        for (let i = 0; i < 2; i++) { Object.values(src._test.live()).forEach((x) => { x.tried = 0; }); src.liveItems(); await src._test.busy(); }
+        assert.deepStrictEqual(told, ['streamer_one:streamer_one title'], 'once for the stream');
+        await assert.rejects(async () => src.kickNotify('nobody_here', true), (e) => e.code === 'KICK_NOT_LISTED');
+        src.kickNotify('streamer_one', false);
+        src.kickNotify('quiet_two', false);
         assert.deepStrictEqual(src.kickRemove('quiet_two').map((c) => c.slug), ['streamer_one']);
     });
 
