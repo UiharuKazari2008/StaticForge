@@ -69,8 +69,24 @@
     // ---------------------------------------------------------------- formatting
 
     const fmtClock = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+    const CLOCK_12H = (() => { const o = fmtClock.resolvedOptions(); return o.hour12 === true || /h1[12]/.test(o.hourCycle || ''); })();
     const clock = (iso) => { const t = typeof iso === 'number' ? iso : Date.parse(iso); return Number.isFinite(t) ? fmtClock.format(new Date(t)) : ''; };
-    const mins = (sec) => (sec == null ? '--' : String(Math.max(1, Math.round(sec / 60))));
+    // minutes, or h:mm from an hour up (#907)
+    const mins = (sec) => {
+        if (sec == null) return '--';
+        const m = Math.max(1, Math.round(sec / 60));
+        return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}` : String(m);
+    };
+    const minUnit = (sec) => (sec != null && Math.round(sec / 60) >= 60 ? '' : ' min');
+    /** The clock's figures and its AM / PM apart (the LCD lights AM or PM as marks; none for a 24-hour clock). */
+    const clockParts = (t) => {
+        if (!Number.isFinite(t)) return { hm: '', period: '' };
+        const parts = fmtClock.formatToParts(new Date(t));
+        const get = (k) => (parts.find((x) => x.type === k) || {}).value || '';
+        return { hm: `${get('hour')}:${get('minute')}`, period: get('dayPeriod').toUpperCase().replace(/\./g, '') };
+    };
+    /** Seven-segment figures with their unlit segments (wmSettings.ui.segText). */
+    const seg = (el, t) => { if (!el) return; const ui = window.wmSettings && window.wmSettings.ui; if (ui && ui.segText) ui.segText(el, t); else el.textContent = t; };
     const minText = (sec) => {
         if (sec == null) return '';
         const m = Math.max(1, Math.round(sec / 60));
@@ -666,8 +682,20 @@
                     <div class="trf-dash">
                         <div class="trf-signal" aria-hidden="true"><i class="is-red"></i><i class="is-amber"></i><i class="is-green"></i></div>
                         <div class="trf-lcd">
-                            <div class="trf-lcd-num"><b class="trf-min">--</b><span class="trf-min-unit">min</span></div>
-                            <div class="trf-lcd-sub"></div>
+                            <div class="trf-lcd-main">
+                                <span class="trf-lcd-print trf-lcd-cap">Travel time</span>
+                                <div class="trf-lcd-num"><b class="trf-min wm-seg">--</b><span class="trf-lcd-anns"><i class="trf-ann" data-u="h">HRS</i><i class="trf-ann" data-u="m">MIN</i></span></div>
+                                <div class="trf-lcd-sub">
+                                    <span class="trf-lcd-print">Arrive</span><b class="trf-arrive wm-seg"></b><span class="trf-lcd-anns is-row trf-ampm"><i class="trf-ann" data-p="AM">AM</i><i class="trf-ann" data-p="PM">PM</i></span>
+                                    <span class="trf-lcd-togo"><span class="trf-lcd-print">To go</span><b class="trf-togo wm-seg"></b><span class="trf-lcd-print">mi</span></span>
+                                </div>
+                            </div>
+                            <div class="trf-lcd-side">
+                                <div class="trf-lcd-cell" data-c="traps"><span class="trf-lcd-print">Traps</span><b class="wm-seg"></b></div>
+                                <div class="trf-lcd-cell" data-c="police"><span class="trf-lcd-print">Police</span><b class="wm-seg"></b></div>
+                                <div class="trf-lcd-cell" data-c="alerts"><span class="trf-lcd-print">Alerts</span><b class="wm-seg"></b></div>
+                                <div class="trf-lcd-cell" data-c="slow"><span class="trf-lcd-print">Slow</span><b class="wm-seg"></b></div>
+                            </div>
                         </div>
                         <div class="trf-delay"></div>
                     </div>
@@ -682,7 +710,7 @@
         const q = (s) => page.querySelector(s);
         els = {
             root: q('.trf-root'), seg: q('.trf-seg'), ends: q('.trf-ends'), scroll: q('.trf-scroll'), dash: q('.trf-dash'),
-            signal: q('.trf-signal'), min: q('.trf-min'), lcdSub: q('.trf-lcd-sub'), delay: q('.trf-delay'), status: q('.trf-status'),
+            signal: q('.trf-signal'), lcd: q('.trf-lcd'), min: q('.trf-min'), arrive: q('.trf-arrive'), togo: q('.trf-togo'), delay: q('.trf-delay'), status: q('.trf-status'),
             road: q('.trf-road'), segs: q('.trf-road-segs'), pins: q('.trf-road-pins'), roadA: q('.trf-road-a'), roadB: q('.trf-road-b'), via: q('.trf-road-via'),
             advice: q('.trf-advice'), rows: q('.trf-rows'), foot: q('.trf-foot'),
             layer: q('.trf-layer'), layerHdr: q('.trf-layer-hdr'), layerBody: q('.trf-layer-body')
@@ -712,11 +740,10 @@
         const where = whereText();
         els.ends.textContent = `${where ? `${where}:  ` : ''}${fromName}  →  ${toName}`;
         if (!r) {
-            els.min.textContent = '--';
-            els.lcdSub.textContent = checking[d] ? 'Checking traffic...' : 'No report yet';
+            lcdShow(null);
             els.delay.innerHTML = '';
             els.signal.dataset.level = 'none';
-            els.status.textContent = checking[d] ? '' : 'Tap Refresh to check the traffic.';
+            els.status.textContent = checking[d] ? 'Checking traffic...' : 'Tap Refresh to check the traffic.';
             els.segs.innerHTML = '';
             els.pins.innerHTML = '';
             els.road.classList.remove('is-driving');
@@ -731,9 +758,12 @@
         els.dash.classList.toggle('is-checking', !!checking[d]);
         const dv = driving();
         const onIt = dv && dv.direction === d;
-        els.min.textContent = mins(onIt ? dv.leftSec : p.durationSec);
-        const arrive = onIt ? clock(dv.arriveAt) : (p.durationSec != null ? clock(Date.now() + p.durationSec * 1000) : '');
-        els.lcdSub.textContent = arrive ? `Arrive ${arrive}${onIt ? `  \u00b7  ${miles(dv.toGoM)} to go` : ''}` : '';
+        lcdShow({
+            sec: onIt ? dv.leftSec : p.durationSec,
+            arriveAt: onIt ? Date.parse(dv.arriveAt) : (p.durationSec != null ? Date.now() + p.durationSec * 1000 : NaN),
+            toGoM: onIt ? dv.toGoM : null,
+            counts: { traps: r.camerasChecked ? (r.traps || []).length : null, police: Array.isArray(r.police) ? r.police.length : null, alerts: (r.alerts || []).length, slow: (r.jams || []).length }
+        });
         const delay = r.delaySec || 0;
         const usual = p.staticSec ? `<small>usually ${esc(mins(p.staticSec))}</small>` : '';
         els.delay.innerHTML = `<span class="trf-delay-badge is-${delay >= 60 ? r.level : 'clear'}">${delay >= 60 ? `+${mins(delay)}` : 'On time'}</span>${usual}`;
@@ -777,11 +807,32 @@
         els.foot.textContent = footText(r);
     }
 
+    /** The LCD (#907): travel time in minutes or h:mm (HRS / MIN lit), the arrival with AM / PM lit, miles to
+     *  go while driving it, and on a wide screen the counts beside them. null: figures dark but for dashes. */
+    function lcdShow(v) {
+        const sec = v ? v.sec : null;
+        seg(els.min, mins(sec));
+        const hrs = sec != null && Math.round(sec / 60) >= 60;
+        els.lcd.querySelectorAll('[data-u]').forEach((a) => a.classList.toggle('is-on', sec != null && (a.dataset.u === 'h') === hrs));
+        const c = clockParts(v ? v.arriveAt : NaN);
+        seg(els.arrive, c.hm || '--:--');
+        els.lcd.classList.toggle('has-period', CLOCK_12H);
+        els.lcd.querySelectorAll('[data-p]').forEach((a) => a.classList.toggle('is-on', a.dataset.p === c.period));
+        const driving = !!(v && v.toGoM != null);
+        els.lcd.classList.toggle('is-driving', driving);
+        seg(els.togo, driving ? (v.toGoM / 1609.344).toFixed(v.toGoM < 16093 ? 1 : 0) : '');
+        const counts = (v && v.counts) || {};
+        els.lcd.querySelectorAll('.trf-lcd-cell').forEach((cell) => {
+            const n = counts[cell.dataset.c];
+            seg(cell.querySelector('.wm-seg'), n == null ? '--' : String(Math.min(99, n)).padStart(2, '!'));
+            cell.classList.toggle('has-items', !!n);
+        });
+    }
+
     function setEmpty(text, setup) {
         els.root.classList.add('is-empty');
         els.ends.textContent = '';
-        els.min.textContent = '--';
-        els.lcdSub.textContent = '';
+        lcdShow(null);
         els.delay.innerHTML = '';
         els.signal.dataset.level = 'none';
         els.status.textContent = '';
@@ -910,7 +961,7 @@
             const facts = [rt.durationSec != null ? `arrive ${clock(Date.now() + rt.durationSec * 1000)}` : '', rt.distanceM ? miles(rt.distanceM) : '', rt.delaySec >= 60 ? `+${minText(rt.delaySec)} traffic` : 'no delay', c.traps ? `${c.traps} camera${c.traps > 1 ? 's' : ''}` : '', c.alerts ? `${c.alerts} alert${c.alerts > 1 ? 's' : ''}` : ''].filter(Boolean).join('  ·  ');
             const streets = rt.streetsHit && rt.streetsHit.length && r.streets && r.streets.length ? `Uses ${rt.streetsHit.length} of your ${r.streets.length} streets` : '';
             return `<div class="trf-card${rt.preferred ? ' is-pref' : ''}">
-                <div class="trf-card-top"><b class="trf-card-min">${esc(mins(rt.durationSec))}<small>min</small></b><span class="trf-card-name">via ${esc(rt.summary || 'route')}</span>${badges}</div>
+                <div class="trf-card-top"><b class="trf-card-min">${esc(mins(rt.durationSec))}${minUnit(rt.durationSec) ? '<small>min</small>' : ''}</b><span class="trf-card-name">via ${esc(rt.summary || 'route')}</span>${badges}</div>
                 ${routeStrip(rt)}
                 <div class="trf-card-facts">${esc(facts)}</div>
                 ${streets ? `<div class="trf-card-facts">${esc(streets)}</div>` : ''}
@@ -991,7 +1042,7 @@
             const w = Math.max(8, Math.round((s.durationSec / max) * 100));
             const lvl = s.durationSec <= min + 120 ? 'clear' : s.durationSec - min > 600 ? 'heavy' : 'moderate';
             const pick = a.wait ? s.offsetMin === a.wait.offsetMin : s.offsetMin === 0;
-            return `<div class="trf-adv-row${pick ? ' is-pick' : ''}"><span class="trf-adv-t">${s.offsetMin ? esc(clock(s.leaveAt)) : 'Now'}</span><span class="trf-adv-bar"><i class="is-${lvl}" style="width:${w}%"></i></span><span class="trf-adv-v">${esc(mins(s.durationSec))} min<small>arrive ${esc(clock(s.arriveAt))}</small></span></div>`;
+            return `<div class="trf-adv-row${pick ? ' is-pick' : ''}"><span class="trf-adv-t">${s.offsetMin ? esc(clock(s.leaveAt)) : 'Now'}</span><span class="trf-adv-bar"><i class="is-${lvl}" style="width:${w}%"></i></span><span class="trf-adv-v">${esc(mins(s.durationSec))}${minUnit(s.durationSec)}<small>arrive ${esc(clock(s.arriveAt))}</small></span></div>`;
         }).join('');
         return `${head}<div class="trf-adv">${rows}</div><div class="trf-note">Drive times on your preferred route with the traffic Google expects at each time. Updated ${esc(clock(a.at))}.</div>`;
     }
