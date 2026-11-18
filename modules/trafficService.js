@@ -79,8 +79,20 @@ let gr = null;
 // test seam: fetch stand-in (scripts/test-traffic-service.js)
 let fetchImpl = (...args) => fetch(...args);
 
+let locationWired = false;
 function bind(globalResources) {
     if (globalResources && !gr) gr = globalResources;
+    // Home / Work changed in Settings > Location (#907): the old routes are wrong, every client hears the settings
+    if (gr && !locationWired) {
+        locationWired = true;
+        try {
+            require('./locationService').bind(gr).onPlacesChanged(() => {
+                routeCache.clear();
+                anchorCache.clear();
+                broadcast({ type: 'traffic_settings_changed', data: { settings: getSettings() } });
+            });
+        } catch (e) { console.warn(`[traffic] location: ${e.message}`); }
+    }
     return module.exports;
 }
 
@@ -124,12 +136,24 @@ function clampInt(v, lo, hi, def) {
 }
 
 /** The saved settings with defaults filled in. */
+/** Home or Work as set in Settings > Personal > Location (#907), as Traffic keeps a place; null when not set there. */
+function locationPlace(id) {
+    try {
+        const p = require('./locationService').bind(gr).getPlaces()[id];
+        if (!p || p.from) return null;
+        return cleanPlace({ address: p.address || p.label, lat: p.lat, lon: p.lon });
+    } catch (_e) {
+        return null;
+    }
+}
+
 function getSettings() {
     const t = config('traffic', {}) || {};
     const budgets = Object.assign({}, DEFAULTS.budgets, t.budgets || {});
     return {
-        home: cleanPlace(t.home),
-        work: cleanPlace(t.work),
+        // the Location applet's places first (#907); Traffic's own until those are set
+        home: locationPlace('home') || cleanPlace(t.home),
+        work: locationPlace('work') || cleanPlace(t.work),
         area: String(t.area || '').trim(),
         streets: Array.isArray(t.streets) ? t.streets.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 12) : [],
         leaveHome: cleanTime(t.leaveHome),

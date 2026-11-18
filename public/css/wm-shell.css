@@ -4435,3 +4435,30 @@ html.ui-mobile #wmShell .wm-titlebar .wm-status-icon::before {
 
 /* the title bar takes its own pull-down (Android's tray, #906): the browser does not scroll or refresh on it */
 html.ui-mobile #wmShell > .wm-titlebar { touch-action: none; }
+
+/* the common location lookup (wmLocation.pick, #907): a WM form - the box and Find, what detail the program needs,
+ * the places found as a list (the chosen one highlighted; a second tap or OK takes it) */
+#wmShell .wlp { padding: calc(6 * var(--wm-px)); }
+#wmShell .wlp-prompt, #wmShell .wlp-want, #wmShell .wlp-status { margin: calc(4 * var(--wm-px)) 0; }
+#wmShell .wlp-want { color: #555; }
+#wmShell .wlp-status.is-error { color: #c00000; }
+#wmShell .wlp-search { display: flex; gap: calc(4 * var(--wm-px)); align-items: center; }
+#wmShell .wlp-search .wm-edit { flex: 1 1 auto; min-width: 0; }
+#wmShell .wlp-go { flex: 0 0 auto; min-width: calc(48 * var(--wm-px)); }
+#wmShell .wlp-list { display: flex; flex-direction: column; margin-top: calc(4 * var(--wm-px)); border-top: calc(1 * var(--wm-px)) solid #c0c0c0; }
+#wmShell .wlp-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 calc(6 * var(--wm-px));
+    padding: calc(4 * var(--wm-px)) calc(3 * var(--wm-px));
+    border: 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #c0c0c0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+#wmShell .wlp-row.is-selected { background: var(--wm-highlight); color: var(--wm-highlight-text, #fff); }
+#wmShell .wlp-label { font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#wmShell .wlp-spec { font-size: 0.9em; opacity: 0.8; }
+#wmShell .wlp-addr { grid-column: 1 / -1; font-size: 0.9em; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

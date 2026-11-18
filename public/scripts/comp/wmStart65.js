@@ -238,7 +238,7 @@
     // Update icon (autoupdatecpl.cpl icon 101, no Start icon of its own) with the flower (#805)
     const SETTINGS_ART65 = {
         about: 'about', backlight: 'backlight', bluetooth: 'bluetooth', buttons: 'buttons', certificates: 'certificates', clock: 'clock',
-        connections: 'connections', contrast: 'contrast', encryption: 'encryption', gps: 'gps', input: 'input', lock: 'lock', managed: 'managed',
+        connections: 'connections', contrast: 'contrast', encryption: 'encryption', gps: 'gps', location: 'gps', input: 'input', lock: 'lock', managed: 'managed',
         memory: 'memory', owner: 'owner', power: 'power', regional: 'regional', 'remove-programs': 'removeprog', screen: 'screen',
         // continuity: the ROM's USB to PC (pccon); remote (Remote Access): Vista's Remote Desktop Connection
         // icon (mstscax.dll 0 at its native 256 px, from the Vista VM: 6.5's ROM has no Remote Desktop Mobile); 6.1 keeps tsclient

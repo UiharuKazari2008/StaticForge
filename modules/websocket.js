@@ -24,6 +24,9 @@ const DORMANT_HOLD = new Map([
     ['xlink_status', 'all'],
     ['lapis_updated', 'last'],
     ['traffic_updated', (d) => `dir:${d.direction || ''}`],
+    // settings pushes (#907): the whole state each time, so the newest only
+    ['traffic_settings_changed', 'last'],
+    ['location_places_changed', 'last'],
     // mail accounts: sync / flags / folders / account changes wait; new mail ('new') goes at once
     ['ma_event', (d) => (d.event === 'new' ? null : `${d.event || ''}:${d.accountId || ''}`)],
     ['service_worker_cache_update', 'all'],
@@ -87,12 +90,13 @@ const DESKTOP_ONLY_TYPES = new Set([
 // Broadcasts only Melaton Mobile reads (its programs load in the mobile shell only: app.html
 // data-shell="mobile"), never sent to a page that reported a desktop (a desktop tab, a DeX window).
 // A page that has not said which it is yet still gets them.
-const PHONE_ONLY_TYPES = new Set(['lapis_updated', 'lapis_notice', 'traffic_updated']);
+const PHONE_ONLY_TYPES = new Set(['lapis_updated', 'lapis_notice', 'traffic_updated', 'traffic_settings_changed']);
 // Broadcasts every socket gets on purpose (#890, rule phone-power-server.mdc): a new broadcast type goes in
 // exactly one of DESKTOP_ONLY_TYPES / PHONE_ONLY_TYPES / BROADCAST_ALL (and in DORMANT_HOLD when a sleeping
 // phone or DeX window should get only the newest). scripts/check-perf-rules.js reads these lists and fails a
 // file that broadcasts a type none of them names (unclassified-broadcast).
-const BROADCAST_ALL = new Set([]);
+// location_places_changed (#907): Home / Work for wmLocation, which desktop pages (Weather, backgrounds) load too
+const BROADCAST_ALL = new Set(['location_places_changed']);
 void BROADCAST_ALL;
 
 /** A Melaton Mobile page (it said so in client_desktop_state). */

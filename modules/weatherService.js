@@ -1143,6 +1143,19 @@ function getPlaces() {
     const saved = (config('weather', {}) || {}).places || {};
     const out = {};
     PLACE_IDS.forEach((id) => { out[id] = cleanPlace(saved[id]); });
+    // Home / Work set in Settings > Personal > Location (#907) are the places; Weather's own settings for them
+    // (alert radius, alerts, rain alarm) stay with Weather
+    try {
+        const lp = require('./locationService').bind(gr).getPlaces();
+        PLACE_IDS.forEach((id) => {
+            const p = lp[id];
+            if (!p || p.from) return;
+            const c = p.components || {};
+            const extras = saved[id] || {};
+            out[id] = cleanPlace({ radiusKm: extras.radiusKm, alerts: extras.alerts, rainAlarm: extras.rainAlarm, rainLeadMin: extras.rainLeadMin,
+                name: c.city || p.label, region: c.stateCode || c.state || '', country: c.country || '', lat: p.lat, lon: p.lon });
+        });
+    } catch (_e) { /* Weather's own */ }
     if (!out.home) {
         const p = primaryPlace();
         if (p) {
@@ -1165,8 +1178,9 @@ async function savePlaces(next = {}) {
         if (next[id] === null) { delete cur[id]; return; }
         // a change to the stand-in Home (the configured location, never saved) starts from it, so
         // turning its rain alarm on keeps its coordinates and saves it as Home
+        // (and a place set in Settings > Location, #907: Weather keeps only its own settings over it)
         let base = cur[id];
-        if (!base && shown[id] && shown[id].fallback) { base = Object.assign({}, shown[id]); delete base.fallback; }
+        if (!base && shown[id]) { base = Object.assign({}, shown[id]); delete base.fallback; }
         const p = cleanPlace(Object.assign({}, base || {}, next[id]));
         if (!p) throw new WeatherError(`${PLACE_LABEL[id]} needs a place with coordinates`, 'BAD_PLACE');
         cur[id] = p;
