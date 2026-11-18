@@ -846,7 +846,8 @@
         const onIt = dv && dv.direction === d;
         lcdShow({
             sec: onIt ? dv.leftSec : p.durationSec,
-            arriveAt: onIt ? Date.parse(dv.arriveAt) : (p.durationSec != null ? Date.now() + p.durationSec * 1000 : NaN),
+            // driving(): arriveAt is epoch ms (Date.parse of a number is NaN: the LCD showed --:-- while driving)
+            arriveAt: onIt ? (typeof dv.arriveAt === 'number' ? dv.arriveAt : Date.parse(dv.arriveAt)) : (p.durationSec != null ? Date.now() + p.durationSec * 1000 : NaN),
             toGoM: onIt ? dv.toGoM : null,
             counts: { traps: r.camerasChecked ? (r.traps || []).length : null, police: Array.isArray(r.police) ? r.police.length : null, alerts: (r.alerts || []).length, slow: (r.jams || []).length }
         });
