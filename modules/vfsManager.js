@@ -3460,7 +3460,13 @@ class VfsManager {
         return vfsDatabase.updateEntry(entryId, { display_name: trimmed });
     }
 
-    buildItemPreviewUrl(item, vfsPathUuid) {
+    /**
+     * opts.fit (a phone page's list, #890 round 5 W9): a gallery picture's thumbnail is its fit preview
+     * (fit inside 320 px, made on first request; ?wait=1 waits for the encode and falls back to the picture),
+     * not the full print - a 68 x 46 tile downloaded and decoded a 1-2 MB PNG. The page opens the picture
+     * itself when it is viewed. Desktop pages keep /images/ (Explorer swaps in the gallery's own preview).
+     */
+    buildItemPreviewUrl(item, vfsPathUuid, opts = {}) {
         if (item.archivePreviewUrl) {
             return item.archivePreviewUrl;
         }
@@ -3478,6 +3484,9 @@ class VfsManager {
             return `/cache/preview/${item.previewCachePreview}`;
         }
         if (item.previewImageFilename) {
+            if (opts.fit && /\.(png|jpe?g|webp)$/i.test(item.previewImageFilename)) {
+                return `/previews/${encodeURIComponent(require('./previewUtils').fitPreviewNameForFile(item.previewImageFilename))}?wait=1`;
+            }
             return `/images/${encodeURIComponent(item.previewImageFilename)}`;
         }
         if (item.previewHash) {
@@ -3840,10 +3849,10 @@ class VfsManager {
         return { success: true, count: trashRows.length };
     }
 
-    enrichItemsWithPreviewUrls(items, vfsPathUuid) {
+    enrichItemsWithPreviewUrls(items, vfsPathUuid, opts = {}) {
         return items.map(item => ({
             ...item,
-            previewUrl: this.buildItemPreviewUrl(item, vfsPathUuid)
+            previewUrl: this.buildItemPreviewUrl(item, vfsPathUuid, opts)
         }));
     }
 }

@@ -1991,7 +1991,18 @@ app.use('/previews/:preview', authMiddleware, async (req, res, next) => {
     }
     // fit preview (<file stem>@fit.webp, #788): Melaton Mobile's cells, made on first request
     if (studioPreview.isFitPreviewName(previewFile)) {
-        if (!await studioPreview.ensureFitPreview(imagesDir, previewsDir, previewFile)) {
+        // ?wait=1 (a phone's file list thumbnails, #890 round 5 W9): the request waits for its encode (two at
+        // a time) instead of a 404 after 1.5 s, and a picture no preview can be made of is answered with the
+        // picture itself, as the list showed it before
+        const waitFor = !!(req.query && req.query.wait === '1');
+        if (!await studioPreview.ensureFitPreview(imagesDir, previewsDir, previewFile, waitFor ? { wait: false } : undefined)) {
+            const source = waitFor ? await studioPreview.fitPreviewSource(imagesDir, previewFile) : null;
+            if (source) {
+                res.setHeader('Cache-Control', 'no-store');
+                return res.sendFile(path.basename(source.path), { root: imagesDir }, (err) => {
+                    if (err && !res.headersSent) res.status(404).end();
+                });
+            }
             return res.status(404).json({ success: false, error: 'Preview not found' });
         }
     }

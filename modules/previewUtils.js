@@ -248,19 +248,26 @@ function fitSlot() {
     });
 }
 
-async function ensureFitPreview(imagesDir, previewsDir, previewName, opts) {
+/** The gallery file a fit preview is made from: { path, stat } or null. */
+async function fitPreviewSource(imagesDir, previewName) {
     if (!isFitPreviewName(previewName)) return null;
-    const name = path.basename(previewName);
-    const stem = name.slice(0, -FIT_PREVIEW_SUFFIX.length);
+    const stem = path.basename(previewName).slice(0, -FIT_PREVIEW_SUFFIX.length);
     if (!stem) return null;
-    let sourcePath = null;
-    let sourceStat = null;
     for (const ext of [...STUDIO_PREVIEW_SOURCE_EXTS, '.webp']) {
         const candidate = path.join(imagesDir, `${stem}${ext}`);
         const st = await statOrNullAsync(candidate);
-        if (st && st.isFile()) { sourcePath = candidate; sourceStat = st; break; }
+        if (st && st.isFile()) return { path: candidate, stat: st };
     }
-    if (!sourcePath) return null;
+    return null;
+}
+
+async function ensureFitPreview(imagesDir, previewsDir, previewName, opts) {
+    if (!isFitPreviewName(previewName)) return null;
+    const name = path.basename(previewName);
+    const source = await fitPreviewSource(imagesDir, name);
+    if (!source) return null;
+    const sourcePath = source.path;
+    const sourceStat = source.stat;
     const outPath = path.join(previewsDir, name);
     const outStat = await statOrNullAsync(outPath);
     if (outStat && outStat.isFile() && outStat.size > 0 && outStat.mtimeMs >= sourceStat.mtimeMs) return outPath;
@@ -427,6 +434,7 @@ module.exports = {
     FIT_PREVIEW_SUFFIX,
     isFitPreviewName,
     fitPreviewNameForFile,
+    fitPreviewSource,
     ensureFitPreview,
     generatePreview,
     generateBlurredPreview,
