@@ -4144,7 +4144,13 @@
         let extend = 0;
         let extOn = false;
         try { extOn = localStorage.getItem('wmCameraExtendBar') === '1'; } catch (_) { /* storage off */ }
-        if (extOn && !bezel && !cameraIgnoredNow() && root.dataset.wmBezelEdge === 'top' && hole.width > 0 && hole.height > 0) {
+        // the room the app made for the title bar over other programs (DSApp MelatonBars.statusRoom, Yukimi Nov 18: 1:1 with
+        // the bar over Android programs, the programs pushed down): the bar grows to exactly that height, its icons keep
+        // their size and row (centred), the same as the bar the app draws over the programs
+        const statusRoom = v('--status-room-height');
+        if (statusRoom > 0 && !bezel) {
+            extend = Math.max(0, Math.round(statusRoom - (BARS651 ? 18 : 26) * pxu));
+        } else if (extOn && !bezel && !cameraIgnoredNow() && root.dataset.wmBezelEdge === 'top' && hole.width > 0 && hole.height > 0) {
             // down to where the bezel band puts the camera's lower edge (cameraBottom), not Android's box:
             // the box stops short of a punch hole's lens and left a sliver of it under the bar
             // 6.5.1 (#850) bars: the thin title bar is 18 units
