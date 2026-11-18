@@ -714,33 +714,8 @@
     }
 }
 
-@keyframes backdropFadeIn {
-    from {
-        opacity: 0;
-        -webkit-backdrop-filter: saturate(0.0);
-        backdrop-filter: saturate(0.0);
-    }
-
-    to {
-        opacity: 1;
-        -webkit-backdrop-filter: saturate(0.15);
-        backdrop-filter: saturate(0.15);
-    }
-}
-
-@keyframes backdropFadeOut {
-    from {
-        opacity: 1;
-        -webkit-backdrop-filter: saturate(0.15);
-        backdrop-filter: saturate(0.15);
-    }
-
-    to {
-        opacity: 0;
-        -webkit-backdrop-filter: saturate(0.0);
-        backdrop-filter: saturate(0.0);
-    }
-}
+/* (#890) the backdropFadeIn / backdropFadeOut keyframes (a backdrop-filter per frame) are gone: nothing
+   names them */
 
 .modal-content h2 {
     color: #ff4500;

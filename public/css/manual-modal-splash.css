@@ -197,6 +197,7 @@
     height: 4px;
     background: #fff;
     border-radius: 50%;
+    /* perf: allow busy indicator (design): the preview's stars show only while a print generates (#previewStars is .hidden otherwise, manualModalManager.js) */
     animation: previewTwinkle 4s infinite;
 }
 
@@ -434,6 +435,7 @@
     width: 10px;
     height: 300px;
     background: rgba(255, 255, 255, 0.8);
+    /* perf: allow busy indicator (design): the rising lines show only while a print generates (their layers are .hidden otherwise) */
     animation: previewRiseUp 1.5s linear infinite;
     opacity: 0;
     visibility: hidden;
@@ -444,6 +446,7 @@
     width: 5px;
     height: 175px;
     box-shadow: 0 0 15px var(--active-tab-border, rgba(100, 150, 255, 0.8));
+    /* perf: allow busy indicator (design): only while a print generates (the layer is .hidden otherwise) */
     animation: previewRiseUp 4s linear infinite;
 }
 

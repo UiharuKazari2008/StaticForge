@@ -1368,20 +1368,12 @@ div#manualResolutionDropdownMenu {
     color: var(--error-color);
 }
 
-.search-spinner {
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--accent-color-alpha);
-    border-top: 2px solid var(--accent-color);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
 /* Gallery Highlight Effect */
 .gallery-item.highlighted {
     animation: highlight-pulse 2s ease-in-out;
 }
 
+/* perf: allow a one-shot 2 s pulse when a tile is jumped to (.highlighted), not a loop; it interpolates the shadow's offset, blur and colour together, which an opacity cross-fade of two pre-drawn shadows does not match */
 @keyframes highlight-pulse {
 
     0%,

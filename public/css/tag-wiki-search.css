@@ -416,6 +416,7 @@
 }
 
 .tag-wiki-loading i {
+    /* perf: allow busy indicator: shown only while a wiki page loads (.tag-wiki-loading); transform */
     animation: spin 1s linear infinite;
 }
 
@@ -2257,6 +2258,7 @@
 }
 
 .tag-wiki-preview-text.is-scrolling {
+    /* perf: allow a wiki preview too long for its row scrolls only while its suggestion is shown and selected (.is-scrolling); transform */
     animation: tag-wiki-preview-marquee var(--tag-wiki-preview-duration, 12s) linear infinite;
 }
 

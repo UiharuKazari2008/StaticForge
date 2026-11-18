@@ -227,11 +227,8 @@
 .image-loupe.is-held,
 .image-loupe.is-park-ready,
 .image-loupe.is-resize-snapping {
+    /* perf: allow only while the loupe is dragged, held, about to park or snapping its size */
     will-change: transform, filter, opacity;
-}
-
-.image-loupe:not(.is-dragging):not(.is-held):not(.is-park-ready):not(.is-resize-snapping) {
-    will-change: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -239,6 +236,7 @@
     .image-loupe.is-held,
     .image-loupe.is-park-ready,
     .image-loupe.is-resize-snapping {
+        /* perf: allow a reset to auto (no layer) under reduced motion */
         will-change: auto;
         -webkit-filter: none !important;
         filter: none !important;

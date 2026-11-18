@@ -40,11 +40,13 @@
 
 .generation-quips-tray-icon.quips-running i {
     color: #ce93d8;
+    /* perf: allow status indicator: pulses only while quips run for this print (.quips-running) */
     animation: quips-tray-pulse 1.8s ease-in-out infinite;
 }
 
 .generation-quips-tray-icon.quips-running-other i {
     color: #90caf9;
+    /* perf: allow status indicator: pulses only while quips run elsewhere (.quips-running-other) */
     animation: quips-tray-pulse-other 2.4s ease-in-out infinite;
 }
 
@@ -99,6 +101,7 @@
 }
 
 .generation-quips-tray-icon.quips-auto-pending .generation-quips-auto-indicator {
+    /* perf: allow status indicator: pulses only while an automatic quip is pending (.quips-auto-pending) */
     animation: quips-auto-indicator-pulse 1.4s ease-in-out infinite;
 }
 

@@ -665,12 +665,7 @@ html.disable-blur .manual-loading-overlay {
     color: var(--text-muted);
 }
 
-.manual-loading-content .spinner {
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto;
-}
+/* (#890) the spinning .manual-loading-content .spinner rule is gone: no code makes that element */
 
 .left-controls {
     display: flex;
