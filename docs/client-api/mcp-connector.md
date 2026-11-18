@@ -408,6 +408,46 @@ Own-mailbox mail plus per-mailbox new-mail webhook and notify-forward. Submodule
 
 Inbox delivery emits `mailbox_new_mail`. The dispatcher consumes that stream (2-minute coalesce, global notice cap). Notices are short plain mail, no body or attachments. See [rest-api.md](./rest-api.md#dovecote-mailbox-notify-forward).
 
+#### Messaging Bridge Module (`sfapp_messaging_bridge`)
+
+Yukimi's own external mail (IMAP accounts, iCloud included), her mail rules, and her text messages (Apple iMessage through BlueBubbles, RCS, Android app notifications), for Tsubame (mailroom), who cleans the inboxes and keeps the rules (Yukimi, Nov 18 2026). Code: `modules/messagingBridgeMcp.js`, rules `modules/mailAccountsRules.js`.
+
+- **Scope:** the key must name `sfapp_messaging_bridge` itself. `universal` does **not** include it. Only the Tsubame key gets it (startup migration `directorAppKeyScopes.js` `MESSAGING_BRIDGE_KEY_TARGETS`, audit source `messaging_bridge_scope_migration`; live OAuth tokens of that key are widened too).
+- **Identity:** the key must also resolve to Tsubame (or Yukimi). Any other key gets `FORBIDDEN`, even with the scope.
+- The tools call the same functions as the admin-only `ma_*` / `tm_*` WebSocket packets ([mailAccounts.md](./ws/mailAccounts.md), [textMessaging.md](./ws/textMessaging.md)); the packets stay admin-only.
+- Send and delete tools need `confirm: true` (`CONFIRM_REQUIRED` otherwise). Every call is written to the Exchange audit (`exchange_audit`: actor, tool, target ids, ok / failed; no bodies) and to MCP activity.
+- Adding, editing or deleting an account (passwords) is not on this module; that stays in Settings.
+- Replies are `{ success: true, ... }` or `{ success: false, error, code }` with `isError`.
+
+| Tool | Description |
+|------|-------------|
+| `bridge_mail_accounts` | IMAP accounts: id, address, status, unread, sync. No passwords. |
+| `bridge_mail_folders` | `{ accountId }` → folders with counts and special use. |
+| `bridge_mail_messages` | `{ accountId, folder='INBOX', limit, before, unseenOnly }` → `{ messages, more, cursor }`. |
+| `bridge_mail_message` | `{ accountId, folder, uid, markSeen=false }` → one message (text, sanitized HTML, attachments). Reading does not mark read unless `markSeen: true`. |
+| `bridge_mail_search` | `{ q, accountId?, limit }` full-text over the synced copy. |
+| `bridge_mail_flags` | `{ accountId, folder, uids, add, remove }` e.g. `add: ["\\Seen"]` (read), `["\\Flagged"]`. |
+| `bridge_mail_move` | `{ accountId, folder, uids, to }`. |
+| `bridge_mail_delete` | `{ accountId, folder, uids, confirm: true }`: into Trash; in Trash, for good. |
+| `bridge_mail_send` | `{ accountId, to, cc, bcc, subject, text, html, reply?, forwardFrom?, draftUid?, confirm: true }` over the account's SMTP. |
+| `bridge_mail_save_draft` | `{ accountId, to, cc, bcc, subject, text, html, forwardFrom?, replaceUid? }` → `{ folder, uid }`. Nothing is sent. |
+| `bridge_mail_sync_status` | Sync state and storage. |
+| `bridge_mail_resync` | `{ accountId, rebuild? }`. |
+| `bridge_mail_list_rules` | `{ accountId? }` → `{ rules }`. |
+| `bridge_mail_save_rule` | Create (no `id`) or update (`id`). `{ accountId='*', name, enabled, position, match: { from?, to?, subject? }, actions: { markRead?, flag?, moveTo?, delete? } }`. |
+| `bridge_mail_delete_rule` | `{ id, confirm: true }`. |
+| `bridge_mail_run_rules` | `{ accountId, folder='INBOX', limit, ruleId?, dryRun=true }`; `dryRun: false` applies and needs `confirm: true`. |
+| `bridge_text_accounts` | Text accounts (iMessage / RCS / Android): id, status, unread. |
+| `bridge_text_chats` | `{ accountId, folder: inbox\|unknown\|all, limit, offset }`. |
+| `bridge_text_chat` | `{ accountId, chatGuid }`. |
+| `bridge_text_messages` | `{ accountId, chatGuid, limit, before }`. |
+| `bridge_text_search` | `{ q, accountId?, limit }`. |
+| `bridge_text_mark_read` / `bridge_text_mark_unread` | `{ accountId, chatGuid }`. |
+| `bridge_text_send` | `{ accountId, chatGuid \| addresses[], text, subject?, replyTo?, confirm: true }`. |
+| `bridge_text_delete_chat` | `{ accountId, chatGuid, confirm: true }`: deleted on the Mac / phone. |
+
+**Mail rules.** `match` fields are case-insensitive "contains" (`from` checks the sender name and address, `to` checks To and Cc, `subject` the subject); every field given must match, and at least one is required. `actions`: `markRead`, `flag`, then `moveTo` (a folder path) or `delete` (into Trash), not both. Rules run in the server on each account's Inbox as mail arrives (after the IDLE fetch and after a sync pass that fetched Inbox mail). First matching rule wins, by `position` then age. A new rule only touches mail that arrives after it; use `bridge_mail_run_rules` (dry run first) for mail already there. Rules live in `.cache/mailaccounts.db` (table `rules`) with hit counts.
+
 #### Apocrypha Module (`sfapp_apocrypha`)
 
 Hoshino (and Rook/Menma) live-publish the zine. Grok web is hard-denied this scope, same as cake pantry.

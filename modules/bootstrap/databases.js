@@ -150,6 +150,9 @@ async function initializeDatabases(gr) {
             if (widened && widened.oauthTokensUpdated > 0) {
                 console.log(`✓ OAuth access tokens widened with sfapp_dovecote: ${widened.oauthTokensUpdated}`);
             }
+            if (widened && (widened.messagingBridgeUpdated > 0 || widened.messagingBridgeTokensUpdated > 0)) {
+                console.log(`✓ Messaging Bridge scope (sfapp_messaging_bridge) on the Tsubame key: ${widened.messagingBridgeUpdated} key(s), ${widened.messagingBridgeTokensUpdated} token(s)`);
+            }
         } catch (scopeErr) {
             console.error(`Director application key scope migration skipped: ${scopeErr.message}`);
         }

@@ -156,7 +156,8 @@ const AVAILABLE_SCOPES = [
     { id: 'sfapp_apocrypha', label: 'Apocrypha Publish', description: 'Publish Apocrypha zine content directly' },
     { id: 'sfapp_dovecote', label: 'Dovecote Mail', description: 'Own-mailbox-only internal mail (send, list, read, mark, forward) plus a per-mailbox new-mail webhook. Tsubame (mailroom role) cross-mailbox Spam tools stay gated on the Tsubame key.' },
     { id: 'sfapp_alchemy_browser', label: 'Alchemy Browser', description: 'Drive the Alchemy-owned browser tab and read Discord channel history (read-only). Identity-gated to Hoshino and Yukimi; other keys are denied even with this scope.' },
-    { id: 'sfapp_mail_exchange', label: 'Dreamscape Exchange Server', description: 'Mail system admin console. Granted per application key (Tsubame mailroom, Sala, Yukimi). Identity-gated to those owners; other bot keys cannot call the tools.' }
+    { id: 'sfapp_mail_exchange', label: 'Dreamscape Exchange Server', description: 'Mail system admin console. Granted per application key (Tsubame mailroom, Sala, Yukimi). Identity-gated to those owners; other bot keys cannot call the tools.' },
+    { id: 'sfapp_messaging_bridge', label: 'Messaging Bridge', description: 'Yukimi\'s own external mail (IMAP / iCloud), mail rules, and text messages (iMessage, RCS, Android): read, search, flag, move, delete, send. Granted only to the Tsubame (mailroom) key (Yukimi, Nov 18 2026); identity-gated to Tsubame and Yukimi; universal does not include it.' }
 ];
 
 // Scope ids for O(1) membership in normalizeScopes (Jules GH #341)

@@ -12,6 +12,9 @@
  * is fetched at once and announced (ma_event 'new', notify per the account's settings). The mail
  * server wins every conflict: flags, moves and deletes go to it first, then into the copy.
  *
+ * Mail rules (modules/mailAccountsRules.js) run on the Inbox after new mail is fetched (IDLE) and after a
+ * sync pass that fetched Inbox mail.
+ *
  * Events (ws ma_event, admins): { event: 'new'|'flags'|'removed'|'folders'|'account'|'sync', accountId, folder, uids?, message?, notify? }
  */
 'use strict';
@@ -166,6 +169,12 @@ async function onNewMail(rt) {
     for (const r of rows) {
         broadcast({ event: 'new', accountId: id, folder: 'INBOX', uids: [r.uid], message: summaryOf(id, 'INBOX', rowToItem(r)), notify: notifyOn && !(r.flags || []).includes('\\Seen') });
     }
+    rulesSoon(id);
+}
+
+/** Mail rules (modules/mailAccountsRules.js) on the Inbox's new mail; never fails the caller. */
+function rulesSoon(accountId) {
+    try { require('./mailAccountsRules').applyNew(accountId).catch((e) => log(`${accountId} rules: ${e.message}`)); } catch (e) { log(`${accountId} rules: ${e.message}`); }
 }
 
 let syncTimers = new Map();
@@ -185,6 +194,7 @@ function runSync(rt, folders) {
     // what a phone shows of the sync (#890 round 5, W6): the folders it changed and its error line
     const errorBefore = rt.syncError || '';
     let changed = false;
+    let inboxFetched = false;
     child.on('message', (m) => {
         if (!m) return;
         if (m.progress) {
@@ -197,6 +207,7 @@ function runSync(rt, folders) {
         if (m.done) {
             rt.syncError = '';
             if ((m.changes || []).length) changed = true;
+            if ((m.changes || []).some((ch) => ch.folder === 'INBOX' && ch.fetched)) inboxFetched = true;
             for (const ch of m.changes || []) broadcast({ event: 'folders', accountId: rt.account.id, folder: ch.folder, fetched: ch.fetched, removed: ch.removed, flagsChanged: ch.flagsChanged });
         }
     });
@@ -207,6 +218,7 @@ function runSync(rt, folders) {
         // changed: the worker reported changes, or the sync's error line came or went
         const real = changed || (rt.syncError || '') !== errorBefore;
         broadcast({ event: 'sync', accountId: rt.account.id, changed: real }, { phones: real });
+        if (inboxFetched) rulesSoon(rt.account.id);
     });
     child.send({ cmd: 'sync', account: rt.account, password: secretFor(rt.account.id).password || '', cacheDir: cacheDir(), folders: folders || null });
     return true;

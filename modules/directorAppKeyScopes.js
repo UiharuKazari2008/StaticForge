@@ -62,6 +62,11 @@ const EXCHANGE_ADMIN_KEY_TARGETS = Object.freeze([
     { persona: 'sala', label: 'Sala' },
     { persona: 'tsubame', label: 'Tsubame' }
 ]);
+/** Messaging Bridge (Yukimi's own IMAP mail, mail rules, texts): the Tsubame key only (Yukimi, Nov 18 2026). */
+const MESSAGING_BRIDGE_SCOPE = 'sfapp_messaging_bridge';
+const MESSAGING_BRIDGE_KEY_TARGETS = Object.freeze([
+    { persona: 'tsubame', label: 'Tsubame' }
+]);
 
 function parseStoredScopes(raw) {
     try {
@@ -198,11 +203,24 @@ async function widenDirectorApplicationKeys(manager) {
         [ALCHEMY_BROWSER_SCOPE],
         'alchemy_browser_scope_migration'
     );
+    const bridge = await widenLabeledApplicationKeys(
+        manager,
+        MESSAGING_BRIDGE_KEY_TARGETS,
+        [MESSAGING_BRIDGE_SCOPE],
+        'messaging_bridge_scope_migration'
+    );
     const tokens = await widenDovecoteOAuthAccessTokens(manager);
+    const bridgeTokens = await widenOAuthAccessTokensForScope(
+        MESSAGING_BRIDGE_KEY_TARGETS.map((t) => t.label),
+        MESSAGING_BRIDGE_SCOPE,
+        { explicitOnly: true }
+    );
     return {
-        updated: director.updated + bots.updated + exchange.updated + alchemy.updated,
-        keys: director.keys.concat(bots.keys).concat(exchange.keys).concat(alchemy.keys),
+        updated: director.updated + bots.updated + exchange.updated + alchemy.updated + bridge.updated,
+        keys: director.keys.concat(bots.keys).concat(exchange.keys).concat(alchemy.keys).concat(bridge.keys),
         alchemyBrowserUpdated: alchemy.updated,
+        messagingBridgeUpdated: bridge.updated,
+        messagingBridgeTokensUpdated: bridgeTokens.updated,
         beforeScopes: LEGACY_DIRECTOR_SCOPES.slice(),
         afterScopes: DIRECTOR_MCP_SCOPES.slice(),
         directorUpdated: director.updated,
@@ -213,6 +231,54 @@ async function widenDirectorApplicationKeys(manager) {
     };
 }
 
+
+/**
+ * Widen live OAuth access-token scope snapshots of the labeled keys with one scope when the
+ * parent key already names it (explicitOnly: 'universal' on the key does not count). Idempotent;
+ * audit-logged per key. Used for sfapp_messaging_bridge on the Tsubame key.
+ */
+async function widenOAuthAccessTokensForScope(labels, scope, { explicitOnly = false } = {}) {
+    const { getDb } = require('./applicationAuthDatabase');
+    const db = getDb();
+    const nowSec = Math.floor(Date.now() / 1000);
+    const wanted = new Set(labels);
+    const rows = await db.all(
+        `SELECT t.token_hash, t.scopes AS token_scopes, t.application_key_id, k.app_name, k.scopes AS key_scopes
+         FROM oauth_access_tokens t
+         JOIN application_keys k ON k.id = t.application_key_id
+         WHERE t.revoked_at IS NULL AND t.expires_at > ?
+           AND k.status = 'active' AND k.revoked_at IS NULL`,
+        [nowSec]
+    );
+    let updated = 0;
+    const keys = [];
+    const touched = new Set();
+    for (const row of rows || []) {
+        if (!wanted.has(row.app_name)) continue;
+        const tokenScopes = parseStoredScopes(row.token_scopes || '[]');
+        const keyScopes = parseStoredScopes(row.key_scopes || '[]');
+        if (!keyScopes.includes(scope) && (explicitOnly || !keyScopes.includes('universal'))) continue;
+        if (tokenScopes.includes(scope)) continue;
+        await db.run(
+            `UPDATE oauth_access_tokens SET scopes = ? WHERE token_hash = ? AND revoked_at IS NULL`,
+            [JSON.stringify(tokenScopes.concat([scope])), row.token_hash]
+        );
+        updated += 1;
+        if (touched.has(row.application_key_id)) continue;
+        touched.add(row.application_key_id);
+        keys.push({ id: row.application_key_id, label: row.app_name, changed: true });
+        try {
+            await db.run(
+                `INSERT INTO application_key_audit
+                    (created_at, application_key_id, app_name, event, actor, source, changes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [nowSec, row.application_key_id, row.app_name, 'oauth_token_scopes_widened', 'startup',
+                    'oauth_token_scope_migration', JSON.stringify({ added: [scope] })]
+            );
+        } catch (_) { /* audit table may lack columns on old DBs; the token was still widened */ }
+    }
+    return { updated, keys };
+}
 
 /**
  * Widen live OAuth access-token scope snapshots with sfapp_dovecote when the
@@ -290,6 +356,9 @@ module.exports = {
     EXCHANGE_ADMIN_KEY_TARGETS,
     ALCHEMY_BROWSER_SCOPE,
     ALCHEMY_BROWSER_KEY_TARGETS,
+    MESSAGING_BRIDGE_SCOPE,
+    MESSAGING_BRIDGE_KEY_TARGETS,
+    widenOAuthAccessTokensForScope,
     directorScopeReport,
     widenLabeledApplicationKeys,
     widenDirectorApplicationKeys,
