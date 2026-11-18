@@ -70,6 +70,25 @@
             }
             return best;
         },
+        /**
+         * The width of the bar the geometry is for, and whether it is a foldable's inner screen. barW is the bar's own
+         * width (sent by newer apps). Older apps send only `width`, the application context's screen width, and that can be
+         * the other screen's. On the Fold cover it read 1968, so the cover was fitted as the inner screen: nothing
+         * folded and icons crossed the camera (Yukimi, Nov 17). A width that does not fit the geometry is not this bar's.
+         * Then, with a camera in the bar, its middle is taken as the bar's middle (true of the cover; the inner screen's
+         * camera is off centre, but any width from it is >= 1600 and an unfolded fit does not use the width); without
+         * one, the X sits about two icons right of iconsRight.
+         */
+        barWidth(L) {
+            const g = L.geo || {};
+            if (L.barW > 0) return { width: L.barW, unfolded: L.barW >= 1600 };
+            const w = L.width || 0;
+            const right = g.iconsRight || 0;
+            const fits = w > 0 && right <= w && right >= w * 0.8;
+            if (fits) return { width: w, unfolded: !!L.unfolded };
+            const width = g.holeX != null && g.holeR > g.holeX ? g.holeX + g.holeR : right + 2 * (g.icon || 0);
+            return { width, unfolded: width >= 1600 };
+        },
         /** The icons from the inputs (pure: the page can use it too). */
         roles(f, n, now) {
             const s = f || {};
@@ -117,14 +136,15 @@
             const order = (L.order || []).filter((r) => roles[r] && r !== 'notify');
             const icons = order.map((role) => ({ role, w: W[role] || g.icon, app: APPS.has(role), foldable: role !== 'continuity' && role !== 'nightshade', ongoing: !!ongoing[role] }))
                 .concat((L.native || []).map((role) => ({ role, w: W[role] || g.icon, app: false, foldable: false, charging: role === 'battery' && !!L.charging })));
+            const bw = lib.barWidth(L);
             try {
                 const r = fitLib.fit({
                     icons,
                     notify: { w: W.notify || g.icon, notes: !!roles.notify },
-                    bar: { width: L.width || 0, iconsRight: g.iconsRight, gap: g.gap, titleX: g.titleX, titleMin: g.titleMin,
+                    bar: { width: bw.width, iconsRight: g.iconsRight, gap: g.gap, titleX: g.titleX, titleMin: g.titleMin,
                         hole: g.holeX != null ? { x: g.holeX, w: g.holeR - g.holeX } : null, xReserve: 0 },
                     prefs: L.prefs || {},
-                    screen: { unfolded: !!L.unfolded, noCross: !!L.noCross }
+                    screen: { unfolded: bw.unfolded, noCross: !!L.noCross }
                 });
                 if (r && Array.isArray(r.shown)) {
                     const left = new Set(r.left || []);
