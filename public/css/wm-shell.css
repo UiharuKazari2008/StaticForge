@@ -2492,6 +2492,17 @@ html.ui-mobile body > #galleryWindow {
 /* Splash: full screen over the bars, as the device's boot logo. WM 6.1's is a green field
  * lighter toward the lower right with three white swirl arcs and the logo at the top left;
  * here it takes the workspace colour and the Melaton emblem. */
+/* a CaféReady phone's logo at the splash's foot (wmShell buildBootLayers) */
+.wm-splash .wm-splash-cafe {
+    position: absolute;
+    left: 50%;
+    bottom: calc(var(--wm-safe-bottom, 0px) + 6%);
+    width: min(44%, 320px);
+    transform: translateX(-50%);
+    z-index: 2;
+    pointer-events: none;
+}
+
 .wm-splash {
     position: absolute;
     inset: 0;
