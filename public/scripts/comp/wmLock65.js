@@ -760,7 +760,8 @@
         s.list.forEach((a, i) => {
             if (!a.on) return;
             const n = alarmOccurrence(a, now, 1);
-            if (n) list.push({ i, at: n, due: n, text: a.text || '', sound: url(a.sound), mode: a.mode, loud: s.loud });
+            // time and days too (#908): the app rolls each alarm to its next day itself after it rings, page or no page
+            if (n) list.push({ i, at: n, due: n, text: a.text || '', sound: url(a.sound), mode: a.mode, loud: s.loud, time: a.time, days: a.days || 0 });
         });
         s.snoozed.forEach((z) => list.push({ i: z.i, at: z.at, due: z.due, text: z.text || '', sound: url(z.sound), mode: z.mode, loud: s.loud }));
         const json = JSON.stringify(list);
