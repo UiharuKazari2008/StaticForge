@@ -229,8 +229,21 @@
      * camera) with WM's wait cursor through it. Resolves true when it started, false when it did
      * not, null when the user went to allow "Appear on top" instead (nothing started, no error).
      */
+    // Today readied for the way back as the program is asked for (wmTitanium.prime): its frame draws while Android starts
+    // the program, so the picture Android and the app keep of Melaton is the entrance's opening pose. Primed only once
+    // Melaton was behind (onPause), a warm program covered it first and the way back showed the old list for ~190 ms,
+    // then nothing, then the entrance (A53 recording, Nov 18). A start that fails shows the list again at once.
+    function startPrimed(run) {
+        let primed = false;
+        try { primed = !!(window.wmTitanium && typeof window.wmTitanium.prime === 'function' && window.wmTitanium.prime()); } catch (_) { primed = false; }
+        let ok = false;
+        try { ok = run() === true; } catch (_) { ok = false; }
+        if (!ok && primed) { try { window.wmTitanium.unprime(); } catch (_) { /* Today gone */ } }
+        return ok;
+    }
+
     async function startWithCursor(run) {
-        const go = () => { try { return run() === true; } catch (_) { return false; } };
+        const go = () => startPrimed(run);
         if (!cursorBridge() || !sh) return go();
         let allowed = false;
         try { allowed = bridge.launchCursorAllowed() === true; } catch (_) { allowed = false; }
@@ -263,7 +276,7 @@
 
     /** startWithCursor for a caller that must answer at once (the camera key): no question, and the app's cursor only when it already has the strip. */
     function startWithCursorNow(run) {
-        const go = () => { try { return run() === true; } catch (_) { return false; } };
+        const go = () => startPrimed(run);
         if (!cursorBridge() || !sh) return go();
         let allowed = false;
         try { allowed = bridge.launchCursorAllowed() === true; } catch (_) { allowed = false; }
