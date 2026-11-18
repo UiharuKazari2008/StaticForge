@@ -163,6 +163,33 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     now = until - 30000; await svc._test.tick();
     assert.deepStrictEqual(runLeft(), [5, 3, 2, 1], 'no more warnings once driving');
 
+    // ---- a remote start that runs out its timer: off at once, and BlueLink's kept report from the run does not put it
+    // back on (Today held "Running" after the timer and Start stayed off, Nov 18); one woken report confirms it
+    car.engine = false;
+    await svc.command('start', { minutes: 10 });
+    await settle();
+    const timed = svc._test.live.command;
+    assert.ok(timed.runsUntil, 'the start runs on its timer');
+    car.at = new Date(now).toISOString();
+    now = timed.runsUntil + 1000;
+    svc._test.sched.accountSig = '';
+    svc._test.sched.runPollAt = now + 60000;
+    await svc._test.tick();
+    assert.strictEqual(svc._test.live.command.ended, 'timeout');
+    assert.strictEqual(svc.getState().status.engine, false, 'the timer ran out: shown off');
+    await svc.read({ reason: 'poll' });
+    assert.strictEqual(svc.getState().status.engine, false, 'the kept report from the run does not show it running again');
+    assert.ok(svc._test.sched.runEndCheckAt > 0, 'a woken look is due');
+    car.calls.length = 0;
+    car.engine = false;
+    now = svc._test.sched.runEndCheckAt + 1000;
+    car.at = new Date(now).toISOString();
+    await svc._test.tick();
+    assert.strictEqual(svc._test.sched.runEndCheckAt, 0);
+    assert.ok(car.calls.some((c) => c.path.endsWith('vehicleStatus') && c.headers.REFRESH === 'true'), 'the end is confirmed with a woken report');
+    assert.ok(svc.getState().command === null || !svc.getState().command.runsUntil, 'Start is offered again');
+    svc._test.live.parkedSince = 0; // (the next check parks the car afresh)
+
     await assert.rejects(() => svc.command('honk'), /Unknown command/);
 
     // ---- left unlocked: one fresh look after lockRemindMin, then the notice
