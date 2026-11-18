@@ -93,6 +93,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Server Manager (root page summary) | [ws/serverManager.md](./ws/serverManager.md) | 1 |
 | Status hub (server-push status feeds, boot notes) | [ws/statusHub.md](./ws/statusHub.md) | 4 (+ feed pushes) |
 | Ledge desks (images an agent put on a desk; owner client only) | [ws/ledge.md](./ws/ledge.md) | 7 (+ `ledge_state` push) |
+| Location (Home / Work, place lookup and reverse lookup) | [ws/location.md](./ws/location.md) | 4 (+ `location_places_changed` broadcast) |
 | ActiveSync (Melaton Mobile Device Center) | [ws/activeSync.md](./ws/activeSync.md) | 10 (+ `as_request`, `as_event`, `as_peers_updated` push) |
 | NAX | [ws/nax.md](./ws/nax.md) | 11 |
 | Agora (NovelAI Explore) | [ws/explore.md](./ws/explore.md) | 11 |

@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-11-17T07:10:00-05:00",
+  "updated_at": "2026-11-18T07:05:00-05:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-11-13T07:30:00-05:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Nov17 7am loop on host dreamscape. Live tree behind lock wm732 (Nov10, Claude): untouched; lands from ~/wt/n17 off origin/main a0413756. Docs: new ws/ledge.md (ledge_list/get/checks/remove/clear/rename/dispose, ledge_state push) for 309-ledgeHandler; Android app accounts docs already landed with #885. open=[].",
+  "cake_note": "Nov18 7am loop on host dreamscape. Live tree diverged (427 ahead/475 behind origin) behind Claude lock wm732 (Nov10): untouched; lands from ~/wt/n18 off origin/main 83f8e3cd. Docs: new ws/location.md (location_places_get/save, location_resolve, location_reverse, location_places_changed) for 310-locationHandler #907; rest-api CaféReady tasks (/api/cafe-tasks/*, #908) and DreamOS updates (/api/dreamos/*, #910). open=[].",
   "eaten": [
     {
       "id": "sf-22",

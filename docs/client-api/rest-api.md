@@ -1372,6 +1372,47 @@ See [docs/ANDROID_BRIDGE.md](../ANDROID_BRIDGE.md).
 
 ---
 
+## CaféReady tasks (Android app)
+
+`modules/cafeTasksRoute.js` (#908, Nov 17 2026). This is the task code the Android app (DSApp CafeTasks) runs for the
+native status bar, served from `public/scripts/tasks/`. A task change reaches the phones with a server deploy, with no
+app update needed. **Auth required.**
+
+### `GET /api/cafe-tasks/manifest`
+
+`{ api, files: [name], sha256: { name: hex }, tasks: [{ name, api }], source }`. Only names matching `^[a-z0-9-]+\.js$`
+are listed. `source` is `"server <8 hex>"`. **503** `NO_TASKS` when the manifest or a file it lists cannot be read.
+
+### `GET /api/cafe-tasks/file/:name`
+
+The file itself. Only names the manifest lists are served (else 404). `ETag` = its sha256, and a matching `If-None-Match` gets 304.
+The app checks each file's sha256 and turns down a task whose `api` is newer than its host interface. It keeps the last
+good copy, and falls back to the copy inside the APK.
+
+---
+
+## DreamOS updates
+
+`modules/dreamosUpdates.js` (#910, Nov 18 2026). These are the signed release channels and content-addressed files that DreamOS
+laptops update from (base image, `forge-shell`, `cafeready`). The server only stores and serves them. The build host signs each
+channel manifest with Ed25519. The server checks that signature against `data/dreamos/trusted-keys.json`, and the device
+checks it again before mounting. **Auth required.** Errors are `{ success: false, code, error }`.
+
+| Route | Who | Notes |
+| --- | --- | --- |
+| `GET /api/dreamos/channel/:channel` | any signed-in | Manifest bytes exactly as signed. Headers `X-DreamOS-Signature` (base64), `X-DreamOS-Key` (key id), `ETag` (sha256 of the bytes; 304 when same), `Cache-Control: no-cache`. 404 `NOT_FOUND` |
+| `GET /api/dreamos/object/:sha256` | any signed-in | A stored file. Range requests work. `Cache-Control: public, max-age=31536000, immutable` |
+| `PUT /api/dreamos/object/:sha256` | admin | Raw body, up to 8 GiB. `{ success, sha256, size, stored: true }`, or `stored: false` when it is already there. `BAD_HASH`, `HASH_MISMATCH`, `TOO_LARGE` (413), `ABORTED`, `WRITE_FAILED` |
+| `PUT /api/dreamos/channel/:channel` | admin | `{ manifest: "<json text>", signature: "<base64>", key: "<id>", allowOlder? }` gives `{ success, channel, sha256 }`. `BAD_CHANNEL`, `BAD_MANIFEST`, `UNTRUSTED_KEY` / `BAD_SIGNATURE` (403), `MISSING_FILES` (409, `missing: [sha]`: upload those first), `OLDER_RELEASE` (409, unless `allowOlder`) |
+
+Channel names match `^[a-z][a-z0-9-]{0,31}$`. The manifest (format 1) is
+`{ format: 1, channel, released, base: Release, components: { "forge-shell": Release, cafeready: Release } }`, where
+`Release = { version, api, needsBaseApi?, files: [{ name, sha256, size }], deltas?: [{ from, sha256, size }] }`.
+A publish emits `channel` `{ channel, sha256 }` on the module's `events`, so the CaféReady link can push "update
+available" without polling.
+
+---
+
 ## Text Messaging and IMAP mail accounts
 
 All routes below need a signed-in **admin** session.
