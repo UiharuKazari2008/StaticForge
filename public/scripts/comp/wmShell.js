@@ -4240,7 +4240,7 @@
         if (!fitLib || typeof fitLib.fit !== 'function' || !statusTable()) return false;
         // nothing the fit reads changed since the last one (a return from an Android program, a refresh that moved
         // nothing): the bar is already right - no measure at all (the A53 ran three fits on every wake)
-        const key = statusFitKey(bar);
+        const key = measuredFitKey(bar);
         if (key === statusFitDone) return true;
         statusFitDone = key;
         applyCornerInset(bar);
@@ -4316,11 +4316,13 @@
         }
         return true;
     }
+    // (not statusFitKey: that name is fitStatus's own key above, and a second declaration replaced it - fitStatus
+    // then read bar.querySelectorAll of undefined, #911)
     // what the fit reads, without a layout: each icon's role, shown or not and its glyph (the battery charging, a
     // strip), the X / ok, the screen's width and turn, the camera and bezel, the Settings that steer the fit and
     // whether notices are waiting. The fit's own writes (wm-shed, the group icon, the kept room) are not in it
     let statusFitDone = '';
-    function statusFitKey(bar) {
+    function measuredFitKey(bar) {
         const parts = [];
         bar.querySelectorAll('.wm-status-icon').forEach((i) => {
             const r = i.dataset.role;
