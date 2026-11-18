@@ -59,6 +59,29 @@
         try { return JSON.parse(b.getInfo() || 'null'); } catch (_) { return null; }
     }
 
+    // CaféReady tasks (#908): the app's own background duties (drive alerts, the status bar), with their state
+    const TASK_NAMES = { 'drive-alerts': 'Drive Alerts', 'status-bar': 'Status Bar Icons' };
+    function cafeTaskDevices() {
+        const T = root.AndroidTasks;
+        if (!T || typeof T.info !== 'function') return [];
+        let info = null;
+        try { info = JSON.parse(T.info() || 'null'); } catch (_) { info = null; }
+        if (!info) return [];
+        const host = { name: 'CaféReady Task Host', info: { manufacturer: 'Melaton', location: 'Melaton Café Miniport', props: [
+            ['Host interface', `API ${info.api}`], ['Engine', info.supported ? (info.engine ? 'Running' : 'Stopped (starts on its next event)') : 'Not supported on this phone'],
+            ['Link', info.link ? 'Connected' : 'Not in use'], ['Positions', info.positions || 'off'], ['Task code', info.source || '']
+        ] } };
+        const tasks = (info.tasks || []).map((name) => {
+            let out = null;
+            try { out = JSON.parse(T.output(name) || 'null'); } catch (_) { out = null; }
+            const props = [['Task', name], ['Runs here', T.owns(name) ? 'Yes' : 'No (the page does it)']];
+            if (name === 'drive-alerts' && out) props.push(['Driving', out.active ? 'Yes' : 'No'], ['Watching', out.mode === 'route' ? `The commute (${out.direction})` : out.mode === 'area' ? 'Cameras around the car' : '-'], ['Warned this drive', String((out.alerted || []).length)]);
+            if (name === 'status-bar' && out && out.roles) props.push(['Icons shown', Object.keys(out.roles).filter((k) => out.roles[k]).join(', ') || 'None'], ['Link to Dreamscape', out.link ? 'Up' : 'Down']);
+            return { name: `CaféReady Task: ${TASK_NAMES[name] || name}`, info: { manufacturer: 'Melaton', location: 'CaféReady Task Host', props } };
+        });
+        return info.supported ? [host].concat(tasks) : [host];
+    }
+
     /** Vista's disk sizes in Device Manager style: "128 GB", "1.5 TB" (decimal, as drive makers print them). */
     function sizeText(bytes) {
         const n = Number(bytes);
@@ -460,7 +483,7 @@
         add('System devices', 'system-devices', [
             'Microsoft ACPI-Compliant System', 'ACPI Fixed Feature Button', 'ACPI Power Button', 'ACPI Thermal Zone',
             hw.vibrator && hw.vibrator.present && 'Vibration Motor', 'System timer', dev.board && `${dev.board.toUpperCase()} System Board`
-        ]);
+        ].concat(cafeTaskDevices()));
         const usb = hw.usb || {};
         add('Universal Serial Bus controllers', 'usb', [
             'USB Root Hub', usb.host ? 'USB Host Controller (OTG)' : 'USB Device Controller',
