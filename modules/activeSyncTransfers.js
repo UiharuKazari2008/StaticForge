@@ -541,9 +541,9 @@ function mount(app, authMiddleware, globalResources) {
             const src = dataPath(globalResources, meta.id);
             const apk = `${src}.apk`;
             const viaAdb = await adbInstall(globalResources, meta.deviceId, async (deviceAdb) => {
-                try { fs.unlinkSync(apk); } catch (_) { /* none */ }
-                fs.linkSync(src, apk);
-                try { return await deviceAdb.install(globalResources, meta.deviceId, apk); } finally { try { fs.unlinkSync(apk); } catch (_) { /* gone */ } }
+                await fs.promises.unlink(apk).catch(() => { /* none */ });
+                await fs.promises.link(src, apk);
+                try { return await deviceAdb.install(globalResources, meta.deviceId, apk); } finally { await fs.promises.unlink(apk).catch(() => { /* gone */ }); }
             });
             if (viaAdb) {
                 removeUpload(globalResources, meta.id);

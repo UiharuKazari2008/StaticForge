@@ -77,13 +77,14 @@ function registerHttpRoutes(app, globalResources) {
         }
     });
 
-    app.get('/replication/separation/manifest/:manifestId', authMiddleware, (req, res) => {
+    app.get('/replication/separation/manifest/:manifestId', authMiddleware, async (req, res) => {
         try {
             const paths = replicationSeparation.getBundlePathsForManifest(req.params.manifestId);
-            if (!paths.manifestPath || !fs.existsSync(paths.manifestPath)) {
+            const text = paths.manifestPath ? await fs.promises.readFile(paths.manifestPath, 'utf8').catch(() => null) : null;
+            if (text === null) {
                 return sendJson(res, 404, { success: false, error: 'Manifest not found' });
             }
-            const manifest = JSON.parse(fs.readFileSync(paths.manifestPath, 'utf8'));
+            const manifest = JSON.parse(text);
             sendJson(res, 200, {
                 success: true,
                 data: manifest,
@@ -94,13 +95,14 @@ function registerHttpRoutes(app, globalResources) {
         }
     });
 
-    app.get('/replication/separation/download/:manifestId', authMiddleware, (req, res) => {
+    app.get('/replication/separation/download/:manifestId', authMiddleware, async (req, res) => {
         if (!requireAdmin(req, res)) return;
         try {
             const paths = replicationSeparation.getBundlePathsForManifest(req.params.manifestId);
-            const job = [...paths.archiveCandidates]
-                .map((name) => path.join(globalResources.getPath('root'), name))
-                .find((full) => fs.existsSync(full));
+            let job = null;
+            for (const full of [...paths.archiveCandidates].map((name) => path.join(globalResources.getPath('root'), name))) {
+                if (await fs.promises.access(full).then(() => true, () => false)) { job = full; break; }
+            }
 
             if (!job) {
                 return sendJson(res, 404, { success: false, error: 'Archive not found' });
