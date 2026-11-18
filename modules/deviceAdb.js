@@ -513,7 +513,15 @@ async function agentPackages(globalResources, input = {}) {
  */
 async function agentScreenshot(globalResources, input = {}) {
     const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
-    const brief = (d) => ({ deviceId: d.deviceId, name: d.name, model: d.model, online: d.online, partner: d.partner, adb: status(globalResources, d.deviceId), phoneAdb: d.phoneAdb || undefined });
+    // the route that works: the phone's own ADB (5555 on the phone, Shizuku) when the phone answers; the server's own dial
+    // (only on the home network) beside it - "unreachable" / "unauthorized" for the dial read as the phone not allowing
+    // debugging while every command went through the phone (Nov 18)
+    let local = null;
+    const brief = (d, loc) => {
+        const dial = status(globalResources, d.deviceId);
+        const adb = loc && loc.listening ? { state: 'phone', authorized: loc.authorized, shizuku: !!loc.shizuku, serverDial: dial.state } : dial;
+        return { deviceId: d.deviceId, name: d.name, model: d.model, online: d.online, partner: d.partner, adb };
+    };
     const want = String(input.device || input.deviceId || '').trim().toLowerCase();
     let dev = null;
     if (want) dev = all.find((d) => d.deviceId === want) || all.find((d) => String(d.name || '').toLowerCase() === want) || all.find((d) => String(d.model || '').toLowerCase() === want) || null;
@@ -521,14 +529,14 @@ async function agentScreenshot(globalResources, input = {}) {
         const online = all.filter((d) => d.online);
         if (online.length === 1) dev = online[0];
     }
-    if (!dev) return { meta: { success: false, code: want ? 'NO_SUCH_DEVICE' : 'CHOOSE_DEVICE', error: want ? `No ActiveSync device called ${input.device}.` : 'Name a device.', devices: all.map(brief) }, images: [] };
-    if (!allowed(globalResources, dev.deviceId, 'screenshots')) return { meta: { success: false, code: 'SCREENSHOTS_OFF', device: brief(dev), hint: 'Screenshots are turned off for this phone (Device Center / Android Bridge).' }, images: [] };
-    const local = dev.online ? await phoneStatus(globalResources, dev.deviceId) : null;
+    if (!dev) return { meta: { success: false, code: want ? 'NO_SUCH_DEVICE' : 'CHOOSE_DEVICE', error: want ? `No ActiveSync device called ${input.device}.` : 'Name a device.', devices: all.map((d) => brief(d, null)) }, images: [] };
+    if (!allowed(globalResources, dev.deviceId, 'screenshots')) return { meta: { success: false, code: 'SCREENSHOTS_OFF', device: brief(dev, null), hint: 'Screenshots are turned off for this phone (Device Center / Android Bridge).' }, images: [] };
+    local = dev.online ? await phoneStatus(globalResources, dev.deviceId) : null;
     const st = local && local.listening ? { state: 'phone' } : await detect(globalResources, dev.deviceId, { force: !!input.detect });
-    if (st.state !== 'ready' && st.state !== 'phone') return { meta: { success: false, code: 'ADB_NOT_READY', device: brief(dev), hint: st.state === 'unauthorized' ? 'Tap Always allow for this server on the phone.' : st.state === 'unreachable' ? 'ADB is not listening on 5555 where the phone connects from (Wi-Fi or VPN).' : undefined }, images: [] };
+    if (st.state !== 'ready' && st.state !== 'phone') return { meta: { success: false, code: 'ADB_NOT_READY', device: brief(dev, local), hint: st.state === 'unauthorized' ? 'Tap Always allow for this server on the phone.' : st.state === 'unreachable' ? 'ADB is not listening on 5555 where the phone connects from (Wi-Fi or VPN).' : undefined }, images: [] };
     const list = await displays(globalResources, dev.deviceId);
     const which = String(input.display || '').toLowerCase() === 'all' ? list.filter((d) => d.on !== false) : [pickDisplay(list, input.display)].filter(Boolean);
-    if (!which.length) return { meta: { success: false, code: 'NO_DISPLAY', device: brief(dev), displays: list }, images: [] };
+    if (!which.length) return { meta: { success: false, code: 'NO_DISPLAY', device: brief(dev, local), displays: list }, images: [] };
     const sharp = require('sharp');
     const images = [];
     const shots = [];
@@ -542,7 +550,7 @@ async function agentScreenshot(globalResources, input = {}) {
             shots.push({ display: d.kind, id: d.id, error: err.message });
         }
     }
-    return { meta: { success: images.length > 0, device: brief(dev), displays: list, shots }, images };
+    return { meta: { success: images.length > 0, device: brief(dev, local), displays: list, shots }, images };
 }
 
 // ---------------------------------------------------------------- HTTP
