@@ -98,8 +98,10 @@
             const sms = s.sms || {};
             const lapisUntil = (s.lapis && s.lapis.until) || 0;
             return {
-                mail: !!(prefs.mailAll ? mail.unread > 0 : mail.fresh > 0),
-                sms: !!(prefs.smsAll ? sms.unread > 0 : sms.fresh > 0),
+                // the page's rule (wmShell refreshStatus): a waiting notice, or any unread with "icon for any unread",
+                // else unread that came since the mail / Text Messaging was last opened (the server's `new`, #907)
+                mail: !!(mail.fresh > 0 || (prefs.mailAll ? mail.unread > 0 : mail.new)),
+                sms: !!(sms.fresh > 0 || (sms.unread > 0 && (prefs.smsAll || sms.new))),
                 chat: !!(s.chat && s.chat.fresh > 0),
                 director: !!(s.director && (s.director.running || s.director.unseen)),
                 prints: !!(s.prints && s.prints.phone > 0),

@@ -177,6 +177,8 @@
     const isCurrent = () => !!(ws && ws.current === APP_ID);
     const isMail = () => acct === 'mail';
     const isImap = () => acct === 'imap';
+    /** A mail list opened (not the account picker): the title bar's mail envelope is no longer "new" (#907, the server keeps it). */
+    const mailSeen = () => { if (!pickerRoot && (isMail() || isImap()) && ws && typeof ws.messagesSeen === 'function') ws.messagesSeen('mail'); };
     // an e-mail list (Dreamscape Mail or an IMAP account), as against the Director's sessions
     const isList = () => isMail() || isImap();
     const isMine = () => isMail() && owner === human();
@@ -745,6 +747,8 @@
         if (key === 'mail' || key.startsWith('box:')) {
             acct = 'mail';
             switchTo(key === 'mail' ? human() : key.slice(4), f || 'inbox', { popLayers: true });
+            pickerRoot = false;
+            mailSeen();
             return;
         }
         if (key.startsWith('imap:')) {
@@ -757,6 +761,7 @@
             folder = f && f !== 'inbox' ? f : imapPathOf('\\Inbox', id) || 'INBOX';
             layers = [];
             pickerRoot = false;
+            mailSeen();
             endSelect();
             selectedId = null;
             mail = [];
@@ -3559,6 +3564,7 @@
                 freshOpen = false;
                 skipPicker = false;
                 showLayer();
+                mailSeen();
                 // the mailboxes come with dovecote_mailbox_updated: read on the first show and after a new link
                 if (mailboxesDirty) loadMailboxes();
                 probeXi();

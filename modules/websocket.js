@@ -50,6 +50,8 @@ const DORMANT_HOLD = new Map([
     // wake the page); an ack made elsewhere skips a sleeping page, which lists what changed when it wakes
     // (inbox_list since)
     ['inbox_updated', (d) => (d.reason === 'ack' ? false : null)],
+    // the envelope icons' "new since last opened" (#907, messageNew.js): whole state, the newest only
+    ['msg_new_state', 'last'],
     // weather (#890 round 5): whole-state pushes, the page keeps only the newest of each; the alert and
     // the rain alarm notifications (weather_alert_issued, weather_rain_alarm) are never held
     ['weather_rain_status', 'last'],
@@ -147,11 +149,11 @@ const DESKTOP_ONLY_TYPES = new Set([
 // data-shell="mobile"), never sent to a page that reported a desktop (a desktop tab, a DeX window).
 // A page that has not said which it is yet still gets them.
 // #890 round 5: Traffic's settings and leave-time reports (wmTraffic.js), the notification inbox
-// (wmNotificationInbox.js) - all mobile-shell only.
+// (wmNotificationInbox.js) - all mobile-shell only. #907: msg_new_state (wmShell.js envelope icons).
 const PHONE_ONLY_TYPES = new Set([
     'lapis_updated', 'lapis_notice', 'traffic_updated',
     'traffic_settings_changed', 'traffic_report',
-    'inbox_updated'
+    'inbox_updated', 'msg_new_state'
 ]);
 // Broadcasts every socket gets on purpose (#890, rule phone-power-server.mdc): a new broadcast type goes in
 // exactly one of DESKTOP_ONLY_TYPES / PHONE_ONLY_TYPES / BROADCAST_ALL (and in DORMANT_HOLD when a sleeping

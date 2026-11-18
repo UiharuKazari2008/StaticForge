@@ -564,6 +564,7 @@ module.exports = {
     getPref,
     setPref,
     openDeliveries,
+    broadcast,
     _test: {
         resendDue,
         setNow: (fn) => {

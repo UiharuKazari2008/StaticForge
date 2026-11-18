@@ -83,6 +83,15 @@ function registerPackets(handlersCtx) {
         if (typeof m.smsAll === 'boolean') inbox.setPref(user, 'icon.smsAll', m.smsAll ? '1' : '0');
         reply(handlersCtx, ctx.ws, m, { ok: true });
     });
+    // the envelope icons' "new since last opened" (#907, modules/messageNew.js): a page asks once at start, the server
+    // pushes msg_new_state on change; opening the mail / Text Messaging on a phone says so
+    reg('msg_new_state', (ctx) => {
+        reply(handlersCtx, ctx.ws, ctx.message, require('../../messageNew').state());
+    });
+    reg('msg_new_seen', (ctx) => {
+        const m = ctx.message;
+        reply(handlersCtx, ctx.ws, m, { ok: require('../../messageNew').seen(String(m.cls || '')) });
+    });
     reg('reminder_snooze', (ctx) => {
         const m = ctx.message;
         reply(handlersCtx, ctx.ws, m, reminders.snooze(inbox.userOf(ctx.clientInfo), String(m.id || ''), { minutes: m.minutes, at: m.at }));

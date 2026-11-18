@@ -17,6 +17,8 @@ A durable store of the notices producers raise, so a phone that was not connecte
 | `reminder_dismiss` | `{ id }` -> `{ ok, cleared }`. A reminder dismissed in the desktop Calendar: marked fired (never fires later) and its notice cleared. Destructive. |
 | `reminder_status` | `{}` -> `{ started, lastScanAt, lastError, next[], snoozed[] }`: the reminder scheduler's queue. |
 | `phone_status_prefs` | `{ mailAll?, smsAll? }` -> `{ ok }`. Messaging > Tools > Options "status icon for any unread mail / text" (#908), kept on the server for the phones' status icons (`modules/phoneStatus.js`, sent to the app as `as_event status.snapshot`). The page sends them on connect and when they change. |
+| `msg_new_state` | `{}` -> `{ mail, sms, known }`. The envelope icons' "new since last opened" (#907, `modules/messageNew.js`): mail = an unread inbox message (household mailbox, IMAP inboxes) newer than the last time a phone opened a mail list; sms = a conversation that got an incoming text since Text Messaging was last opened and is still unread. Kept in the inbox prefs (survives restarts); also in the phones' `status.snapshot` as `mail.new` / `sms.new`. `known` false before the server's first answer. |
+| `msg_new_seen` | `{ cls: 'mail' \| 'sms' }` -> `{ ok }`. A phone opened the mail (Messaging on a mail / IMAP list) or Text Messaging: what is there is not new any more. |
 
 ## Delivery to the phones (#908)
 
@@ -27,6 +29,7 @@ A notice: `{ id, app, cls, title, text, actions[], data, createdAt, expiresAt, s
 ## Broadcast (same user type's phone pages)
 
 - `inbox_updated` `{ reason: 'new', notice }` when a notice is published, or `{ reason: 'ack', id, state, device }` when its state moves to `acted` or `cleared` (so a notice cleared or acted on one device clears on the others). A move to `seen` is not broadcast (no page acts on it; #890 round 5).
+- `msg_new_state` `{ mail, sms }` when either changes (phone pages only; a sleeping page gets the newest).
 - Phone pages only (`modules/websocket.js` PHONE_ONLY_TYPES: the only reader, `wmNotificationInbox.js`, loads in the mobile shell). A sleeping page (client_dormant) gets `reason: 'new'` at once (reminders and missed notices wake it) but no `reason: 'ack'`: it catches up with `inbox_list { since }` when it wakes (W7).
 
 ## Reminders (Yozora #876)

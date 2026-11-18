@@ -2813,6 +2813,46 @@
             });
         });
     }
+    /**
+     * "New" mail and texts as the server keeps them (#907, modules/messageNew.js; Yukimi, Nov 17 2026): the envelope
+     * stays until the mail / Text Messaging is opened, as on Windows Mobile; the same answer the phone app's native bar
+     * uses with this page asleep, and it survives restarts. Read once per link, then pushed (msg_new_state). Until it
+     * is known (an older server, no link yet) the page's own "since this client started" stands in.
+     */
+    const srvNew = { mail: null, sms: null };
+    let msgNewWired = false;
+    function msgNewApply(d) {
+        if (!d || d.known === false) return;
+        const mail = !!d.mail;
+        const sms = !!d.sms;
+        if (mail === srvNew.mail && sms === srvNew.sms) return;
+        srvNew.mail = mail;
+        srvNew.sms = sms;
+        statusDirty();
+    }
+    function msgNewRead() {
+        const ws = window.wsClient;
+        if (!ws || typeof ws.isConnected !== 'function' || !ws.isConnected()) return;
+        ws.sendMessage('msg_new_state', {}, false).then(msgNewApply, () => { /* older server: the page's own rule */ });
+    }
+    function msgNewWire() {
+        if (msgNewWired) return;
+        const ws = window.wsClient;
+        if (!ws || typeof ws.on !== 'function') return;
+        msgNewWired = true;
+        ws.on('msg_new_state', (pk) => msgNewApply(pk && (pk.data || pk)), { signal: appScopeSignal });
+        ws.on('connected', msgNewRead, { signal: appScopeSignal });
+        msgNewRead();
+    }
+    /** The mail ('mail') or Text Messaging ('sms') was opened: what is there is not new any more (only sent while it is). */
+    function messagesSeen(cls) {
+        if (srvNew[cls] !== true) return;
+        const ws = window.wsClient;
+        if (!ws || typeof ws.isConnected !== 'function' || !ws.isConnected()) return;
+        srvNew[cls] = false;
+        statusDirty();
+        ws.sendMessage('msg_new_seen', { cls }, false).catch(() => { srvNew[cls] = true; statusDirty(); });
+    }
     let shellMailNew = false;
     let mailMark = null;      // ms of the newest inbox message when the client started
     let mailNewBusy = false;
@@ -3289,13 +3329,15 @@
         const noteWaits = (ev) => notes.some((n) => { const o = appNotes.get(n.id); return !!(o && o.event === ev); });
         const mailAll = lsFlag(MAIL_ICON_ALL_KEY, false);
         // the class's notifications stand on its icon too (messageNotes): one glyph per class
-        hide(mailEl, !(messageNotes('mail').length || (mailAll ? shellMailUnread > 0 || imapUnread() > 0 : shellMailNew || imapNew() > 0)));
+        msgNewWire();
+        const mailNewNow = srvNew.mail !== null ? srvNew.mail : (shellMailNew || imapNew() > 0);
+        hide(mailEl, !(messageNotes('mail').length || (mailAll ? shellMailUnread > 0 || imapUnread() > 0 : mailNewNow)));
         // unread text messages (Text Messaging, #779): the phone-and-envelope glyph until they are read;
         // unread Dreamscape Messenger lines: the Messenger buddy (while a class's notification waits,
         // its own glyph stands for them: one, not two)
         smsNewWire();
         const smsAll = lsFlag(SMS_ICON_ALL_KEY, false);
-        hide(shell.querySelector('[data-role="sms"]'), !(messageNotes('sms').length || (smsUnread() > 0 && (smsAll || smsNewChats.size > 0))));
+        hide(shell.querySelector('[data-role="sms"]'), !(messageNotes('sms').length || (smsUnread() > 0 && (smsAll || (srvNew.sms !== null ? srvNew.sms : smsNewChats.size > 0)))));
         hide(shell.querySelector('[data-role="chat"]'), !(messageNotes('chat').length || chatUnread() > 0));
         // Weather (#792): while Home or Work has an alert, and while rain is due or falling there
         // with the rain alarm on (wmWeather.statusState); a waiting notification of its class stands in
@@ -12017,6 +12059,8 @@
     }
 
     window.wmShell = {
+        /** The mail ('mail') or Text Messaging ('sms') was opened: its envelope icon's "new" ends (#907). */
+        messagesSeen: (cls) => messagesSeen(cls),
         /** Melaton Bars (#871): set the bars to how they show over an Android program; returns restore(). */
         barsStage: (o) => barsStage(o || {}),
         /** Melaton Bars (#871): the page is behind an Android program (its status changes go to the app). */
