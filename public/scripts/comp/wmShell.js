@@ -677,7 +677,8 @@
                 if (dy > 40 * unit() && stage === 0) { stage = 1; try { window.AndroidBars.openTray(false); } catch (_) { /* older app */ } }
                 else if (dy > 220 * unit() && stage === 1) { stage = 2; try { window.AndroidBars.openTray(true); } catch (_) { /* older app */ } }
             }, true);
-            const end = () => { y0 = null; pid = null; };
+            // a pull is followed by no click at all most times: the flag goes on its own after it
+            const end = () => { y0 = null; pid = null; if (stage > 0) setTimeout(() => { stage = 0; }, 400); };
             bar.addEventListener('pointerup', end, true);
             bar.addEventListener('pointercancel', end, true);
             // the click that follows a pull is not a tap on Start or an icon
