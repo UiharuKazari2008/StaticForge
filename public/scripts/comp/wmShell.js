@@ -625,6 +625,7 @@
             <div class="wm-volume" role="dialog" aria-label="Volume" hidden></div>
             <div class="wm-notify-tray" role="listbox" aria-label="Notifications" hidden></div>
             <div class="wm-notify" role="alertdialog" hidden></div>`;
+        applyStatusOrder();
         fixTextZoom();
         if (WM65) {
             // 6.5 draws the Today picture over the whole screen, the title and soft key bars
@@ -1014,22 +1015,10 @@
             corner.hidden = !o.corner;
             if (o.corner) corner.dataset.kind = o.corner === 'ok' ? 'ok' : 'close';
         }
-        // Android's notification tray before the radios (Settings): a list glyph of its own, not WM's
-        // notification bubble, which is Melaton's own notifications (Yukimi, Nov 16; a Melaton-only concept,
-        // drawn in the ROM glyphs' 1-bit white: static_images/wm65/status-androidtray)
-        let tray = shell.querySelector('.wm-status-icon[data-role="androidtray"]');
-        if (o.androidTray && !tray) {
-            tray = document.createElement('button');
-            tray.type = 'button';
-            tray.className = 'wm-status-icon';
-            tray.dataset.role = 'androidtray';
-            tray.style.backgroundImage = 'image-set(url("/static_images/wm65/status-androidtray.png") 1x, url("/static_images/wm65/status-androidtray@2x.png") 2x, url("/static_images/wm65/status-androidtray@4x.png") 4x)';
-            tray.setAttribute('aria-label', 'Android notifications');
-            // just left of where Bluetooth's icon comes (Yukimi, Nov 16): the app icons left of it, the radios right
-            const status = shell.querySelector('.wm-status');
-            const bt = status.querySelector('.wm-status-icon[data-role="bluetooth"]');
-            if (bt) bt.before(tray); else status.prepend(tray);
-        }
+        // Android's own tray icon is gone (Yukimi, Nov 17 2026: the notification shade always pulls down): an older
+        // app asking for it (androidTray) gets none
+        const tray = shell.querySelector('.wm-status-icon[data-role="androidtray"]');
+        if (tray) tray.remove();
         if (keys[0] && typeof o.softLeft === 'string') { keys[0].textContent = o.softLeft; keys[0].hidden = false; keys[0].disabled = !o.softLeft; }
         if (keys[1] && typeof o.softRight === 'string') { keys[1].textContent = o.softRight; keys[1].hidden = false; keys[1].disabled = !o.softRight; }
         // the keyboard key is always there over Android programs (any of them may take text)
@@ -1066,7 +1055,6 @@
                 shell.style.cssText = shellBefore;
                 syncIconUnit();
             }
-            if (tray) tray.remove();
             bar.classList.toggle('is-start-open', before.startOpen);
             // the bars as the shell itself has them now (its title, keys and corner), not the text
             // read before the copy: a title left wrong once was put back over and over
@@ -3581,7 +3569,7 @@
     }
     let barsStatusSent = '';
     let barsKitSig = '';
-    const BARS_NATIVE_ROLES = new Set(['data', 'cell', 'roaming', 'signal', 'battery', 'androidtray']);
+    const BARS_NATIVE_ROLES = new Set(['data', 'cell', 'roaming', 'signal', 'battery']);
     const artPath = (css) => { const m = /url\(\s*["']?([^"')]+?)(?:@\dx)?\.png/.exec(css || ''); return m ? m[1].replace(/^https?:\/\/[^/]+/, '') : ''; };
     let barsCatalogSent = '';
     let barsPrefsSent = '';
@@ -3605,9 +3593,6 @@
     // the one for that bar, staged as the app shows it, not this page's own (Today has no X: it gives that place to the
     // icons, the app's bar cannot - Yukimi, Nov 17, cover: two icons crossed the camera in the app's copy)
     let statusPushStaging = false;
-    function barsTrayOn() {
-        try { const st = JSON.parse(window.AndroidBars.getState() || '{}'); return !!(st && st.config && st.config.androidTray); } catch (_) { return false; }
-    }
     function barsStatusPush() {
         const ab = window.AndroidBars;
         if (!ab || typeof ab.status !== 'function' || !shell) return;
@@ -3617,7 +3602,7 @@
             statusPushStaging = true;
             let back = null;
             try {
-                back = barsStage({ title: 'Melaton', corner: 'close', androidTray: barsTrayOn() });
+                back = barsStage({ title: 'Melaton', corner: 'close', androidTray: false });
                 barsStatusCollect(ab);
             } finally {
                 try { if (back) back(); } finally { statusPushStaging = false; }
@@ -3669,7 +3654,10 @@
         }
         // Settings > Screen > Status Icons: when the volume / battery show (#907); the native bar follows them asleep (#908)
         if (typeof ab.statusPrefs === 'function') {
-            const pj = JSON.stringify({ sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon'), noCross: statusIconPref('wmStatusNoCross') === '1' });
+            // nativeOrder: the table's left-to-right order (status-order.js) for the roles the app draws itself (#907)
+            const tbl = window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder;
+            const pj = JSON.stringify({ sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon'), noCross: statusIconPref('wmStatusNoCross') === '1',
+                nativeOrder: tbl ? tbl.display.filter((r) => BARS_NATIVE_ROLES.has(r) || r === 'volume' || r === 'bluetooth') : undefined });
             if (pj !== barsPrefsSent) { barsPrefsSent = pj; try { ab.statusPrefs(pj); } catch (_) { /* older app */ } }
         }
         const json = JSON.stringify(list);
@@ -4255,21 +4243,31 @@
         statusFolded = [];
         // WM 6.1's notification area (#811, Yukimi Nov 13). Room for a few icons is kept left of
         // the device icons, so the title ends at the same place whatever is pending. When the bar
-        // runs short, what is not needed steps aside first: the kept room, the volume icon, the battery while it charges. Never: data, signal / roaming,
-        // Continuity, the battery on battery power. Then the app icons fold into the one group
-        // icon (its tap opens the tray of them): the ongoing and the newest stay out of it, and
-        // more stay out while the icons keep to the bar's right half (the 50 % mark)
+        // runs short, the kept room and the X / ok's place go first; then the table (status-order.js) decides: what
+        // does not outrank the volume / battery folds into the one group icon (its tap opens the tray of them), then
+        // those two step aside for a short-lived icon, then the short-lived ones fold. Never: data, signal / roaming,
+        // Continuity, Nightshade, the battery on battery power. The icons keep to the bar's right half (the 50 % mark)
         const slots = statusSlots();
         const apps = STATUS_APP_ROLES.filter((r) => !el(r).hidden);
         const now = Date.now();
         apps.forEach((r) => { if (!statusSeenAt.has(r)) statusSeenAt.set(r, now); });
         STATUS_APP_ROLES.forEach((r) => { if (el(r).hidden) statusSeenAt.delete(r); });
-        const foldable = apps.filter((r) => !STATUS_NEVER_FOLD.has(r));
-        // who stays out of the group first: ongoing work, then the newest
-        const outOrder = foldable.slice().sort((x, y) => (statusOngoing(el(y)) - statusOngoing(el(x))) || (statusSeenAt.get(y) - statusSeenAt.get(x)));
-        const fold = (keep) => {
-            const out = new Set(outOrder.slice(0, keep));
-            const folded = foldable.filter((r) => !out.has(r));
+        // what may fold, and in which order (the table: public/scripts/tasks/status-order.js, Yukimi, Nov 17 2026):
+        // the icons that do not outrank the volume / battery first, least wanted first, then the short-lived ones;
+        // an icon the table does not list never folds. Without the table: the oldest first, ongoing work last
+        const tbl = window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder;
+        let foldSeq;
+        let nonDisplacing = 0;
+        if (tbl) {
+            const fsq = tbl.foldSequence(apps);
+            foldSeq = fsq.seq;
+            nonDisplacing = fsq.nonDisplacing;
+        } else {
+            const foldable0 = apps.filter((r) => !STATUS_NEVER_FOLD.has(r));
+            foldSeq = foldable0.slice().sort((x, y) => (statusOngoing(el(x)) - statusOngoing(el(y))) || (statusSeenAt.get(x) - statusSeenAt.get(y)));
+        }
+        const foldTo = (k) => {
+            const folded = foldSeq.slice(0, k);
             apps.forEach((r) => el(r).classList.toggle('wm-shed', folded.includes(r)));
             statusFolded = folded;
             paintNotifyIcon();
@@ -4319,19 +4317,37 @@
         // (Yukimi, Nov 17: the cover fitted 6 icons and the "..." but folded three behind 27 empty units)
         const act = bar.querySelector('.wm-title-action');
         if ((!act || act.hidden) && step(() => bar.classList.add('wm-status-full'))) return;
-        // (Settings > Screen > Status icons: "Never hide" keeps the sound / power icon out of this)
-        if (!el('volume').hidden && statusIconPref('wmStatusSoundIcon') !== 'never' && step(() => el('volume').classList.add('wm-shed'))) return;
+        // the volume / battery stepping aside (Settings > Screen > Sound Icon / Power Icon: "Never hide" keeps them;
+        // the battery only while it charges)
+        const sysSteps = [];
+        if (!el('volume').hidden && statusIconPref('wmStatusSoundIcon') !== 'never') sysSteps.push(() => el('volume').classList.add('wm-shed'));
         const bat = el('battery');
-        if (!bat.hidden && bat.dataset.icon === 'battery-charging' && !statusIconPref('wmStatusPowerIcon') && step(() => bat.classList.add('wm-shed'))) return;
-        // fold from the oldest, one more each time; a group holds two or more (one app icon
-        // alone in it takes the same room as the icon itself), and the ongoing or newest one stays
-        // out while the bar only passes the 50 % mark
-        const notesInGroup = notesForBubbleIcon().length ? 1 : 0;
-        const first = foldable.length - (notesInGroup ? 1 : 2);
-        for (let keep = first; keep >= 1; keep--) if (step(() => fold(keep))) return;
-        if (fits()) return;
-        // a bar that is really full (a long title's floor, the X): all of them go in
-        if (foldable.length && foldable.length + notesInGroup >= 2) { fold(0); relayout(); }
+        const powerPref = statusIconPref('wmStatusPowerIcon');
+        if (!bat.hidden && bat.dataset.icon === 'battery-charging' && (!powerPref || powerPref === 'home' || powerPref === 'charging')) sysSteps.push(() => bat.classList.add('wm-shed'));
+        const sys = () => { while (sysSteps.length) if (step(sysSteps.shift())) return true; return false; };
+        // a group holds two or more (one app icon alone in it takes the same room as the icon itself), or one with
+        // notices of its own
+        const minK = notesForBubbleIcon().length ? 1 : 2;
+        // first what does not outrank the volume and battery folds; then, for a short-lived icon still out, those two
+        // step aside; then the short-lived ones fold, least wanted first; last the volume / battery after all
+        for (let k = minK; k <= nonDisplacing; k++) if (step(() => foldTo(k))) return;
+        if (foldSeq.length > nonDisplacing && sys()) return;
+        for (let k = Math.max(minK, nonDisplacing + 1); k <= foldSeq.length; k++) if (step(() => foldTo(k))) return;
+        sys();
+    }
+
+    /**
+     * The status icons left to right as the table has them (public/scripts/tasks/status-order.js, Yukimi, Nov 17 2026;
+     * the app's status-bar task reads the same table). The commute and the remote start are the Car icon: their own
+     * (always hidden) icons sit with it. Without the table the template's order stands.
+     */
+    function applyStatusOrder() {
+        const tbl = window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder;
+        const status = shell && shell.querySelector('.wm-titlebar .wm-status');
+        if (!tbl || !status) return;
+        const at = (r) => { const i = tbl.display.indexOf(r === 'traffic' || r === 'lapis' ? 'carkey' : r); return i < 0 ? tbl.display.length : i; };
+        const icons = Array.from(status.querySelectorAll(':scope > .wm-status-icon'));
+        icons.sort((a, b) => at(a.dataset.role) - at(b.dataset.role)).forEach((i) => status.append(i));
     }
 
     // #811: app icons that always keep their place (Continuity: the phone carries the DeX window)
@@ -4369,8 +4385,12 @@
         const mo = new MutationObserver((list) => {
             if (statusFitting) return;
             // data-icon: only the battery's (charging or not); the data arrows change it with every packet
-            const counts = (m) => m.target.classList && m.target.classList.contains('wm-status-icon') && m.target.dataset.role !== 'notify'
-                && (m.attributeName === 'hidden' || m.target.dataset.role === 'battery');
+            // the X / ok showing or going (opening Start, an app): its room changes what fits, refitted before that
+            // frame too (Yukimi, Nov 17 recording: one frame squeezed all six icons left of the new X, then the
+            // charging battery stepped aside and they jumped back)
+            const counts = (m) => m.target.classList && ((m.target.classList.contains('wm-status-icon') && m.target.dataset.role !== 'notify'
+                && (m.attributeName === 'hidden' || m.target.dataset.role === 'battery'))
+                || (m.target.classList.contains('wm-title-action') && m.attributeName === 'hidden'));
             if (!list.some(counts)) return;
             statusFitting = true;
             try { fitStatusNow(); snapStatusIcons(); } finally { mo.takeRecords(); statusFitting = false; }
