@@ -752,19 +752,18 @@
                     <div class="yt-player" hidden>
                         <div class="yt-stage">
                             <video class="yt-video" playsinline preload="none" disablepictureinpicture disableremoteplayback></video>
-                            <div class="yt-pl-top"><i class="yt-new is-livetag">LIVE</i><span class="yt-pl-up"></span><span class="yt-pl-title"></span><span class="yt-pl-mode"></span></div>
                             <div class="yt-pl-status" hidden><i></i><span></span></div>
                             <button type="button" class="yt-pl-key is-play" data-pl="toggle" aria-label="Play" hidden></button>
                             <div class="yt-hud" hidden>
                                 <button type="button" class="yt-hud-key" data-pl="toggle" aria-label="Pause">${I.pause}</button>
                                 <button type="button" class="yt-hud-key" data-pl="mute" aria-label="Sound off">${I.sound}</button>
                                 <button type="button" class="yt-hud-key" data-pl="stop" aria-label="Stop">${I.stop}</button>
-                                <span class="yt-hud-gap"></span>
+                                <span class="yt-hud-live"><i class="yt-new is-livetag">LIVE</i><span class="yt-pl-up"></span><span class="yt-pl-mode"></span></span>
                                 <button type="button" class="yt-hud-key" data-pl="kick" aria-label="Watch in Kick's app">${I.out}</button>
                                 <button type="button" class="yt-hud-key" data-pl="full" aria-label="Full screen">${I.full}</button>
                             </div>
                         </div>
-                        <div class="yt-side"><div class="yt-side-title"></div><div class="yt-side-sub"></div><div class="yt-side-sub yt-side-up"></div></div>
+                        <div class="yt-side"><div class="yt-side-title"></div><div class="yt-side-sub"></div><div class="yt-side-sub yt-side-live"><i class="yt-new is-livetag">LIVE</i><span class="yt-side-up"></span></div></div>
                     </div>
                     <div class="yt-sign" hidden></div>
                 </div>
@@ -773,7 +772,7 @@
         const q = (s) => page.querySelector(s);
         els = {
             root: q('.yt-root'), me: q('.yt-me'), title: q('.yt-title'), note: q('.yt-note'), panes: q('.yt-panes'),
-            player: q('.yt-player'), video: q('.yt-video'), plTitle: q('.yt-pl-title'), plMode: q('.yt-pl-mode'), plStatus: q('.yt-pl-status'), plKey: q('.yt-pl-key'),
+            player: q('.yt-player'), video: q('.yt-video'), plMode: q('.yt-pl-mode'), plStatus: q('.yt-pl-status'), plKey: q('.yt-pl-key'),
             plUp: q('.yt-pl-up'), hud: q('.yt-hud'), sideTitle: q('.yt-side-title'), sideSub: q('.yt-side-sub'), sideUp: q('.yt-side-up'),
             tabs: q('.yt-tabs'), slider: q('.yt-slider'), sign: q('.yt-sign'), layer: q('.yt-layer'), chan: q('.yt-chan'), layerList: q('.yt-layer .yt-list'),
             form: q('.yt-search'), q: q('.yt-q'), clear: q('.yt-clear'), lists: {}, paneEls: {}
@@ -1108,7 +1107,6 @@
 
     function plHead() {
         if (!els || !player) return;
-        if (els.plTitle.textContent !== player.title) els.plTitle.textContent = player.title;
         const m = modeLabel(player.mode);
         if (els.plMode.textContent !== m) els.plMode.textContent = m;
     }
@@ -1296,7 +1294,7 @@
         const up = upText();
         setText(els.sideTitle, p.streamTitle || p.channel);
         setText(els.sideSub, [p.channel, p.viewers ? `${people(p.viewers)} watching` : '', p.note || ''].filter(Boolean).join(' · '));
-        setText(els.sideUp, [up ? `Live for ${up}` : '', modeLabel(p.mode)].filter(Boolean).join(' · '));
+        setText(els.sideUp, [up, modeLabel(p.mode)].filter(Boolean).join(' · '));
         setText(els.plUp, up);
     }
 
