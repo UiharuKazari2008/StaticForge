@@ -1798,19 +1798,18 @@ if (window.wsClient) {
     }
 } else {
     console.error('❌ WebSocket client not available when chatSystem.js loaded');
-    const initInterval = setInterval(() => {
-        if (window.wsClient) {
-            clearInterval(initInterval);
-            if (window.wsClient.initializationCompleted) {
+    // a feature (featureLoader) loads after websocket.js; a page that brings wsClient later sets up at
+    // its load event (no poll, #890)
+    window.addEventListener('load', () => {
+        if (!window.wsClient) return;
+        if (window.wsClient.initializationCompleted) {
+            initializeChatSystemInstance();
+        } else {
+            window.wsClient.registerInitStep(88, 'Setting up chat system', async () => {
                 initializeChatSystemInstance();
-            } else {
-                window.wsClient.registerInitStep(88, 'Setting up chat system', async () => {
-                    initializeChatSystemInstance();
-                });
-            }
+            });
         }
-    }, 500);
-    setTimeout(() => clearInterval(initInterval), 30000);
+    }, { once: true, signal: (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined });
 }
 
 // Export for use in other scripts

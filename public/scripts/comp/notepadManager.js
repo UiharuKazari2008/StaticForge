@@ -2365,19 +2365,17 @@ if (window.wsClient) {
         });
     }
 } else {
-    const initInterval = setInterval(() => {
-        if (window.wsClient) {
-            clearInterval(initInterval);
-            if (window.wsClient.initializationCompleted) {
-                notepadManager.init();
-            } else {
-                window.wsClient.registerInitStep(19, 'Initializing notepad manager', async () => {
-                    await notepadManager.init();
-                });
-            }
+    // a page that brings wsClient after this file sets up at its load event (no poll, #890)
+    window.addEventListener('load', () => {
+        if (!window.wsClient) return;
+        if (window.wsClient.initializationCompleted) {
+            notepadManager.init();
+        } else {
+            window.wsClient.registerInitStep(19, 'Initializing notepad manager', async () => {
+                await notepadManager.init();
+            });
         }
-    }, 500);
-    setTimeout(() => clearInterval(initInterval), 30000);
+    }, { once: true, signal: (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined });
 }
 
 // Names other files use, put on the page on purpose (#872): the feature can then run as a

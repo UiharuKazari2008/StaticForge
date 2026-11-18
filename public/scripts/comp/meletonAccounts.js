@@ -230,13 +230,11 @@
         if (watching) return;
         watching = true;
         let started = false;
-        let timer = null;
         const tryStart = () => {
             if (started) return true;
             const client = ws();
             if (!(client && client.isConnected && client.isConnected() && client.initializationCompleted)) return false;
             started = true;
-            if (timer) clearInterval(timer);
             refresh();
             if (typeof client.on === 'function') {
                 client.on('account_pictures_changed', (msg) => {
@@ -250,11 +248,16 @@
         // (a few spaced tries after them: the last boot steps may still be running)
         const after = () => [0, 2000, 6000, 15000].forEach((ms) => setTimeout(tryStart, ms));
         ['desktopBootDone', 'wmBootDone'].forEach((type) => doc.addEventListener(type, after, { once: true }));
-        let tries = 0;
-        timer = setInterval(() => {
-            tries += 1;
-            if (tryStart() || tries > 10) clearInterval(timer);
-        }, 60000);
+        // and a socket that comes up after those tries (it dropped at the boot): its connected event, not a
+        // minute timer for ten minutes (#890)
+        const client = ws();
+        if (client && typeof client.on === 'function') {
+            const onConnected = () => {
+                if (tryStart()) { if (typeof client.off === 'function') client.off('connected', onConnected); return; }
+                after();
+            };
+            client.on('connected', onConnected);
+        }
     }
 
     const api = { current, name, pictureUrl, refresh, setName, set, setLogonName, apply, matchesLogonName, isLoaded: () => loaded, DEFAULT_NAMES };
