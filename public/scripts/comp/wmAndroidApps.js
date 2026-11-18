@@ -1597,10 +1597,18 @@
                 clearTimeout(soon);
                 soon = setTimeout(() => { void syncNow(kind ? [kind] : undefined); }, 4000);
             }, { signal: appScopeSignal });
-            setTimeout(() => { void syncNow(); }, 20000);
+            setTimeout(() => { lastSyncAt = Date.now(); void syncNow(); }, 20000);
+            // the 4-hourly pass (the window of days moves, the phone's own apps changed things): when the
+            // phone is in use again and it is due, not by a timer that woke a sleeping page (#890)
             clearInterval(syncTimer);
-            syncTimer = setInterval(() => { void syncNow(); }, SYNC_EVERY_MS);
+            syncTimer = 0;
+            document.addEventListener('wmawake', (e) => {
+                if (!(e.detail && e.detail.awake) || Date.now() - lastSyncAt < SYNC_EVERY_MS) return;
+                lastSyncAt = Date.now();
+                void syncNow();
+            }, { signal: appScopeSignal });
         }
+        let lastSyncAt = Date.now();
 
         return { available, mode, live, access, granted, canWrite, calendarModels, saveCalendar, contactEntries, saveContact, deleteContact, syncNow, start, device, isOwnMirror, PHOTO_URL };
     })();

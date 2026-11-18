@@ -176,7 +176,9 @@
         const client = window.wsClient;
         if (client && typeof client.on === 'function') { client.on('emotion_job_update', onPush); client.on('connected', check); }
         follow = { client, onPush, check };
-        poll = setInterval(check, 60000);
+        // (the safety read only while the page is seen: with the screen off or hidden it waits for the push,
+        // a reconnect, or the next minute on screen, #890)
+        poll = setInterval(() => { if (!document.hidden && document.documentElement.dataset.screenOff === undefined) void check(); }, 60000);
     }
 
     function finish(requestId, result, error) {

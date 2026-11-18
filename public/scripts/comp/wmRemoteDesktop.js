@@ -530,6 +530,8 @@
     /** Guacamole's credentials form (parameters-required) stays in the frame: show it and let taps through. */
     function watchFramePage() {
         if (!session || session.connected) return;
+        // nothing looked at while it cannot be seen; the next tick on screen looks (#890)
+        if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
         let asking = false;
         try {
             const doc = session.frame.contentDocument;
@@ -541,7 +543,7 @@
             status = 'Connecting...';
             setView('session');
         }
-        if (els) els.sess.classList.toggle('is-passthrough', !!session.passthrough);
+        if (els && els.sess.classList.contains('is-passthrough') !== !!session.passthrough) els.sess.classList.toggle('is-passthrough', !!session.passthrough);
     }
 
     function statusCode(key) {
@@ -776,6 +778,7 @@
         s.sizeWatch = true;
         // the screen off or the page hidden: nothing to fit, no timer (sizeWake starts it again)
         if (!sizeSeen()) return;
+        // perf: allow fits the remote screen only while the session is on screen (sizeSeen; cleared when unseen, sizeWake restarts it)
         s.sizeTimer = setInterval(() => {
             if (session !== s) { clearInterval(s.sizeTimer); s.sizeTimer = 0; return; }
             if (!sizeSeen()) { clearInterval(s.sizeTimer); s.sizeTimer = 0; return; }
