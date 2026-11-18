@@ -2016,7 +2016,20 @@
         if (!entryAnims) return;
         const list = entryAnims;
         entryAnims = null;
+        const a0 = list[0];
+        const t = a0 && a0.currentTime != null ? Number(a0.currentTime) : 0;
         for (const a of list) { try { a.cancel(); } catch (_) { /* gone */ } }
+        // something wrote the rows mid-entrance (the resize as the system bars come back, a refresh): the run carries on
+        // on the page's frames from where the compositor had it - entryStep ends with the animations, and the list was
+        // left in its opening pose below the screen (A53, 2 returns in 6, Nov 18). A caller that ends the move (a drag,
+        // select) clears tw and cancels settle itself
+        if (tw && tw.entry) {
+            const now = performance.now();
+            tw.t0 = now - t;
+            if (tw.frameClock) tw.frameClock.last = now;
+            cancelAnimationFrame(settle);
+            settle = requestAnimationFrame(tweenStep);
+        }
     }
     // The animations are built ahead (prepareEntry): creating them was the setup frame's biggest cost (A53: 34 ms of
     // element.animate in a 180 ms first frame). Built idle - an animation not yet played changes nothing on screen - as
