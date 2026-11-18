@@ -2,15 +2,17 @@
 
 /**
  * GET /sw.js (#890). The browser checks for a new service worker on every navigation and at least
- * once a day, and registration asks with updateViaCache 'none' (serviceWorkerManager.js): the check
- * goes to the server each time, as a conditional request when the browser has a copy. Served
- * no-store it had no copy to compare, so every check downloaded the whole worker again (~29 KB
- * brotli; ~100 checks a day from the phones). 'no-cache' with its ETag / Last-Modified lets an
- * unchanged worker answer 304 (~300 B); a changed one is a 200 with the new bytes, and the browser's
- * byte comparison decides the update exactly as before.
+ * once a day. sw.js itself always goes to the server (the HTTP cache is bypassed for the worker script
+ * under every updateViaCache mode the pages use: the default 'imports' at boot, 'none' on a forced
+ * update), as a conditional request when the browser has a copy. Served no-store it had no copy to
+ * compare, so every check downloaded the whole worker again (~29 KB brotli; ~100 checks a day from the
+ * phones). 'no-cache' with its ETag / Last-Modified lets an unchanged worker answer 304 (~300 B); a
+ * changed one is a 200 with the new bytes, and the browser's byte comparison decides the update exactly
+ * as before.
  *
- * The workbox modules it imports (/dist/workbox/*.js) have no version in their path or query, so they
- * stay on the static files' 'no-cache' + ETag (agentAssetBundle.applyServedAssetCacheHeaders): 304s.
+ * The workbox modules it imports (/dist/workbox/*.js) are served 'public, max-age=86400' with their
+ * ETag (agentAssetBundle WORKBOX_CACHE_CONTROL, #890 round 5 W8): with updateViaCache 'imports' an update
+ * check reads them from the HTTP cache instead of revalidating all six each time.
  */
 
 const fs = require('fs');

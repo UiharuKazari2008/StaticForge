@@ -17,6 +17,13 @@ const AGENT_STATIC_CACHE_CONTROL = 'private, max-age=120';
 // stale copy is never used and an unchanged one is not downloaded again.
 const REVALIDATE_CACHE_CONTROL = 'no-cache';
 const HASHED_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+// The service worker's workbox modules (/dist/workbox/*.js, #890 round 5 W8): the browser checks the
+// worker on every navigation, and with the default updateViaCache 'imports' each check revalidated sw.js
+// and all six imports (~1,650 requests a day from one phone). A day's freshness lets those checks take the
+// imports from the HTTP cache; the ETag still answers 304 after a day. A workbox upgrade changes sw.js's
+// own bytes (its version is in sw.js), and sw.js itself stays 'no-cache' (swScriptRoute.js).
+const WORKBOX_CACHE_CONTROL = 'public, max-age=86400';
+const WORKBOX_PATH = /^\/dist\/workbox\/[\w.-]+\.js$/;
 const PRELOAD_TIMEOUT_MS = 45000;
 const ZIP_LEVEL = 1;
 
@@ -87,6 +94,12 @@ function applyServedAssetCacheHeaders(req, res) {
     // ?sha= names an immutable compiled asset. Unversioned URLs keep the branch below.
     if (requestHasShaQuery(req)) {
         res.setHeader('Cache-Control', HASHED_ASSET_CACHE_CONTROL);
+        res.removeHeader('Pragma');
+        res.removeHeader('Expires');
+        return true;
+    }
+    if (WORKBOX_PATH.test(stripQuery((req && (req.originalUrl || req.url)) || ''))) {
+        res.setHeader('Cache-Control', WORKBOX_CACHE_CONTROL);
         res.removeHeader('Pragma');
         res.removeHeader('Expires');
         return true;
@@ -453,5 +466,6 @@ module.exports = {
     getBootUrls,
     resolveFilePath,
     webPathToZipEntry,
-    AGENT_STATIC_CACHE_CONTROL
+    AGENT_STATIC_CACHE_CONTROL,
+    WORKBOX_CACHE_CONTROL
 };
