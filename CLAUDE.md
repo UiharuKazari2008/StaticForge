@@ -58,6 +58,7 @@ done, whatever else it achieves.
 @.cursor/rules/no-native-browser-ui.mdc
 @.cursor/rules/melaton-bars-native-layouts.mdc
 @.cursor/rules/status-icon-tables.mdc
+@.cursor/rules/phone-data-via-activesync.mdc
 @.cursor/rules/cafe-ready-name.mdc
 
 ## Yozora access from Claude Code
