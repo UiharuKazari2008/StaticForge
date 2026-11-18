@@ -1666,6 +1666,22 @@ async function cacheProtectedFonts(paths) {
 }
 
 /** /logon-picture: network first; a good answer is kept, the kept copy answers when the server does not. */
+// The program icon store's pictures (wmAndroidApps, #773: /static_images/wm-android/<package>-<hash>-<version>, made
+// on the server after a deploy, so outside the install manifest, and with no file extension, so they went straight to
+// the network): kept on first use, answered from the kept copy after - each name is one version's bytes. Start and
+// Programs showed no icons when the phone booted with the server down (Yukimi, Nov 18 2026).
+const PROGRAM_ICON_PREFIX = '/static_images/wm-android/';
+async function handleProgramIcon(request, pathname) {
+  const cache = await caches.open(LAUNCH_SHELL_CACHE);
+  const kept = await cache.match(pathname);
+  if (kept) return kept;
+  const response = await fetch(request);
+  if (response && response.ok && /^image\//i.test(response.headers.get('content-type') || '')) {
+    try { await cache.put(pathname, response.clone()); } catch (_err) { /* the page still gets it */ }
+  }
+  return response;
+}
+
 async function handleLogonPicture(request) {
   const cache = await caches.open(LAUNCH_SHELL_CACHE);
   let response = null;
@@ -1809,6 +1825,10 @@ workbox.routing.registerRoute(
       // kept so the logon / lock screens still show it while the server restarts (Yukimi, Nov 13)
       else if (url.pathname === '/logon-picture') {
         response = await handleLogonPicture(request);
+      }
+      // the program icon store's pictures: kept, so they show with the server down
+      else if (url.pathname.startsWith(PROGRAM_ICON_PREFIX)) {
+        response = await handleProgramIcon(request, url.pathname);
       }
       // Every cached file has an extension (the manifest's only extensionless entries are the
       // routes above): API calls, /status, /logon-picture and the like go straight to the
@@ -3289,7 +3309,8 @@ self.addEventListener('activate', (event) => {
               cacheName !== EXPLORER_PREVIEW_CACHE &&
               cacheName !== SCRIPT_CODE_CACHE &&
               cacheName !== LAUNCH_SHELL_CACHE &&
-              cacheName !== PROTECTED_FONT_CACHE) {
+              cacheName !== PROTECTED_FONT_CACHE &&
+              cacheName !== 'videos-cache-v1') { // Melaton Videos' own cache (emote pictures, wmYouTube.js)
             return caches.delete(cacheName);
           }
         })

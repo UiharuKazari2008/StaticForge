@@ -639,6 +639,24 @@
         store = { version: m.version || 0, icons: m.icons };
         writeJson(STORE_KEY, store);
         if (JSON.stringify(store.icons) !== before && sh) refresh();
+        warmIcons();
+    }
+
+    // each store picture fetched once (the service worker keeps it: sw.js handleProgramIcon), so Start and Programs
+    // have their icons on a boot with the server down (Yukimi, Nov 18 2026); one at a time, when the page is idle,
+    // once per picture name per visit
+    const warmed = new Set();
+    function warmIcons() {
+        const urls = Object.values(store.icons || {}).map((v) => v && v.icon).filter((u) => u && !warmed.has(u));
+        if (!urls.length) return;
+        const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500));
+        const next = () => {
+            const u = urls.shift();
+            if (!u) return;
+            warmed.add(u);
+            fetch(u, { credentials: 'same-origin' }).then((r) => r.blob()).catch(() => { warmed.delete(u); }).finally(() => idle(next));
+        };
+        idle(next);
     }
 
     function loadStore() {
