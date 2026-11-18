@@ -335,13 +335,14 @@
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m16', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m17', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), Math.round(window.innerWidth)].join('|');
     }
 
     /**
-     * The bars' own drawing lists (layoutOf) for the app: the title bar empty (its background, Start; no title
+     * The bars' own drawing lists (layoutOf) for the app (barBg: the background alone; start: the Start button alone;
+     * barStartOpen: the empty bar with Start pressed; bar: background and Start, for older apps): the title bar empty (its background, Start; no title
      * text, icons or corner), the corner as X and as ok, the soft key bar empty (no labels). WM 6.1 or 6.5, any
      * theme: as this page draws it.
      */
@@ -360,6 +361,24 @@
                 if (kind === 'close') {
                     const un = hideIn(top, '.wm-status, .wm-title, .wm-title-action, .wm-status-left, .wm-cutout-gap');
                     try { out.bar = layoutOf([top], dpr); } finally { un(); }
+                    // Start as its own element (Yukimi, Nov 18: "the logo is burned into the background layer and is
+                    // not an icon"): barBg is the bar without it, start the button alone; barStartOpen the empty bar
+                    // with the Start menu open (6.1's pressed glow is the bar's own ::before, not the button's, so it is
+                    // the whole bar). `bar` (background and Start together) stays for older apps
+                    const startEl = top.querySelector('.wm-start');
+                    const rest = '.wm-status, .wm-title, .wm-title-action, .wm-status-left, .wm-cutout-gap';
+                    const unBg = hideIn(top, `.wm-start, ${rest}`);
+                    try { out.barBg = layoutOf([top], dpr); } finally { unBg(); }
+                    if (startEl) {
+                        const wasOpen = top.classList.contains('is-start-open');
+                        try {
+                            top.classList.remove('is-start-open');
+                            out.start = layoutOf([startEl], dpr);
+                            top.classList.add('is-start-open');
+                            const unOpen = hideIn(top, rest);
+                            try { out.barStartOpen = layoutOf([top], dpr); } finally { unOpen(); }
+                        } finally { top.classList.toggle('is-start-open', wasOpen); }
+                    }
                     const soft = shell.querySelector('.wm-softkeys');
                     if (soft) { const un2 = hideIn(soft, '.wm-softkey, .wm-sip'); try { out.soft = layoutOf([soft], dpr); } finally { un2(); } }
                 }
