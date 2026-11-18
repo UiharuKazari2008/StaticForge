@@ -441,11 +441,14 @@
             syncClockFields(2);
             const page = ctx.page('timedate:1');
             const tick = () => {
+                // the clock draws only while it can be seen (hidden, a phone's screen off: nothing, #890)
+                if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
                 const zone = currentZone();
                 const now = wallClock(zone);
                 setHands(page.querySelector('.cpl-dt-clock'), now);
-                page.querySelector('.cpl-dt-date').textContent = fmt(zone, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-                page.querySelector('.cpl-dt-time').textContent = fmt(zone, { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+                const set = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+                set(page.querySelector('.cpl-dt-date'), fmt(zone, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }));
+                set(page.querySelector('.cpl-dt-time'), fmt(zone, { hour: 'numeric', minute: '2-digit', second: '2-digit' }));
             };
             const zoneText = () => {
                 const zone = currentZone();
@@ -516,6 +519,8 @@
                 const now = wallClock(zone);
                 renderMonth(ctx.content.querySelector('.cpl-month'), now);
                 const tick = () => {
+                    // the clock draws only while it can be seen (hidden, a phone's screen off: nothing, #890)
+                    if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
                     const t = wallClock(zone);
                     setHands(ctx.content.querySelector('.cpl-dt-clock'), t);
                     ctx.content.querySelector('.cpl-dt-digital').value = fmt(zone, { hour: 'numeric', minute: '2-digit', second: '2-digit' });

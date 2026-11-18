@@ -1107,18 +1107,20 @@ const vsbPuzzleShuffle = function (inst) {
     vsbQueueSave();
 };
 
-const vsbPuzzlePaint = function (inst) {
+// timeOnly: the clock's tick writes the time alone (#890)
+const vsbPuzzlePaint = function (inst, timeOnly) {
     const tiles = inst.g.settings.tiles;
     const p = inst.parts;
-    tiles.forEach((tile, pos) => {
+    if (!timeOnly) tiles.forEach((tile, pos) => {
         const left = (pos % 4) * VSB_PUZZLE_TILE + 'px';
         const top = Math.floor(pos / 4) * VSB_PUZZLE_TILE + 'px';
         const el = tile === 15 ? p.empty : p.tiles[tile];
-        el.style.left = left;
-        el.style.top = top;
+        if (el.style.left !== left) el.style.left = left;
+        if (el.style.top !== top) el.style.top = top;
     });
     const s = inst.g.settings.seconds;
-    p.time.textContent = `${vsbPad2(Math.floor(s / 60))}:${vsbPad2(s % 60)}`;
+    const text = `${vsbPad2(Math.floor(s / 60))}:${vsbPad2(s % 60)}`;
+    if (p.time.textContent !== text) p.time.textContent = text;
 };
 
 const vsbPuzzleMove = function (inst, tile) {
@@ -1142,10 +1144,18 @@ const vsbPuzzleClock = function (inst) {
     const running = inst.started && !inst.paused && s.tiles && !vsbPuzzleSolved(s.tiles);
     inst.parts.timer.classList.toggle('is-paused', inst.paused);
     if (!running) return;
+    // the play time counts from when it (re)started, so a page not seen draws nothing and is right again
+    // at the first tick back; each second writes the time only, not the tiles (#890)
+    const base = s.seconds;
+    const started = Date.now();
     inst.timer = setInterval(() => {
-        s.seconds = Math.min(359999, s.seconds + 1);
-        vsbPuzzlePaint(inst);
-        if (s.seconds % 15 === 0) vsbQueueSave();
+        if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+        const secs = Math.min(359999, base + Math.floor((Date.now() - started) / 1000));
+        if (secs === s.seconds) return;
+        const save = Math.floor(secs / 15) !== Math.floor(s.seconds / 15);
+        s.seconds = secs;
+        vsbPuzzlePaint(inst, true);
+        if (save) vsbQueueSave();
     }, 1000);
 };
 

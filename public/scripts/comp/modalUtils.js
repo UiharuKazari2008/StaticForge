@@ -4679,6 +4679,23 @@ function initializeDesktopTaskbar() {
     // The clock displays minutes, so align once and update only on minute boundaries.
     updateTaskbarClock();
     scheduleTaskbarClock();
+    // It stops while the page is not seen (hidden, a DeX display asleep) and is set at once when it is
+    // seen again (#890)
+    const clockSight = () => {
+        if (document.hidden || document.documentElement.dataset.screenOff !== undefined) {
+            clearTimeout(taskbarClockAlignmentTimer);
+            taskbarClockAlignmentTimer = null;
+            clearInterval(taskbarClockInterval);
+            taskbarClockInterval = null;
+            return;
+        }
+        if (taskbarClockInterval || taskbarClockAlignmentTimer) return;
+        updateTaskbarClock();
+        scheduleTaskbarClock();
+    };
+    const clockSightSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
+    document.addEventListener('visibilitychange', clockSight, { signal: clockSightSignal });
+    window.addEventListener('melatonscreen', clockSight, { signal: clockSightSignal });
 
     // Set up modal observation
     observeModals();
@@ -4755,6 +4772,12 @@ function scheduleTaskbarClock() {
         updateTaskbarClock();
         taskbarClockResyncAt = Date.now() + (60 * minuteMs);
         taskbarClockInterval = setInterval(() => {
+            // not seen: stopped until the page is seen again (initializeDesktopTaskbar's clockSight)
+            if (document.hidden || document.documentElement.dataset.screenOff !== undefined) {
+                clearInterval(taskbarClockInterval);
+                taskbarClockInterval = null;
+                return;
+            }
             updateTaskbarClock();
             taskbarClockIntervalTicks++;
             if (taskbarClockIntervalTicks >= 60 || Date.now() >= taskbarClockResyncAt) {
@@ -7438,6 +7461,7 @@ async function waitForServerDisconnect(options = {}) {
             ws.on('disconnected', onDisconnect);
         }
 
+        // perf: allow only while a server restart an administrator started is awaited (at most timeoutMs, ended by the socket's drop or the first answer): a server going down cannot push that
         pollTimer = setInterval(async () => {
             if (Date.now() - start > timeoutMs) {
                 finish(false);

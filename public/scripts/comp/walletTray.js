@@ -749,9 +749,10 @@
     }
 
     function syncTimers() {
+        // !seen(), spelt out in each tick: a hidden page or a display asleep stops both
         if (seen()) {
-            if (!pollTimer) pollTimer = setInterval(() => { if (!seen()) syncTimers(); else if (!miniportWallet()) refresh(); }, POLL_MS);
-            if (!tickTimer) tickTimer = setInterval(() => { if (!seen()) syncTimers(); else update(); }, 60 * 1000);
+            if (!pollTimer) pollTimer = setInterval(() => { if (doc && (doc.visibilityState !== 'visible' || doc.documentElement.dataset.screenOff !== undefined)) syncTimers(); else if (!miniportWallet()) refresh(); }, POLL_MS);
+            if (!tickTimer) tickTimer = setInterval(() => { if (doc && (doc.visibilityState !== 'visible' || doc.documentElement.dataset.screenOff !== undefined)) syncTimers(); else update(); }, 60 * 1000);
             return;
         }
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -1011,8 +1012,8 @@
         if (flyoutTimer) clearInterval(flyoutTimer);
         flyoutTimer = setInterval(() => {
             if (!flyout || flyout.classList.contains('hidden')) { clearInterval(flyoutTimer); flyoutTimer = null; return; }
-            // not seen: drawn when the window shows again (wake -> update)
-            if (!seen()) return;
+            // not seen (a hidden page, a display asleep): drawn when the window shows again (wake -> update)
+            if (doc && (doc.visibilityState !== 'visible' || doc.documentElement.dataset.screenOff !== undefined)) return;
             renderFlyout();
         }, LIVE_TICK_MS);
     }

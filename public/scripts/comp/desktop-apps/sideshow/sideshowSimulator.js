@@ -357,7 +357,10 @@
             this.render();
             clearInterval(this.clockTimer);
             this.clockTimer = setInterval(() => {
-                this.lcd.querySelectorAll('.sss-clock').forEach((el) => { el.textContent = clockText(this.landscape); });
+                // the status clock draws only while the page is seen; the first tick back sets it (#890)
+                if (doc && (doc.hidden || doc.documentElement.dataset.screenOff !== undefined)) return;
+                const text = clockText(this.landscape);
+                this.lcd.querySelectorAll('.sss-clock').forEach((el) => { if (el.textContent !== text) el.textContent = text; });
             }, 15000);
             // the clock face ticks every second; time frames are re-checked every 10 s
             clearInterval(this.tickTimer);
