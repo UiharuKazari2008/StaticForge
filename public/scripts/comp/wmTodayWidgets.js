@@ -2233,6 +2233,7 @@
                 line2: now.playing ? now.artist : (now.artist ? `Paused: ${now.artist}` : 'Paused'),
                 softKey: { label: now.app, action: () => musicOpenPlayer(now) },
                 onTap: () => musicToggle(now),
+                inPlace: true, // pause / resume where it stands: no exit and return (wmTitanium openSelected)
                 menu: () => musicMenu(musicNow())
             });
         } else {

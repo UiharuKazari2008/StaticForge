@@ -2314,7 +2314,9 @@
         };
         // Effects > exit: the list drops away first (170 ms, no input meanwhile); still on Today after
         // the program's open (a box, a menu) it comes back
-        if (!fx.exit || host.hidden || (p.clock && fx.superbar)) { run(); return; }
+        // (not for a tap that works in place, as Music's pause / resume: nothing opens, so nothing drops away and
+        // comes back - Yukimi, Nov 18)
+        if (!fx.exit || host.hidden || (p.clock && fx.superbar) || (pg && pg.inPlace)) { run(); return; }
         host.classList.add('is-exiting');
         enterLockUntil = performance.now() + 200;
         setTimeout(() => {
@@ -2587,6 +2589,7 @@
      * on its first page, as the device's home screen comes back.
      */
     function home(opts) {
+        const keptPage = expKey;
         pageAt.clear();
         expKey = '';
         // a page on its way stops where it started, at once
@@ -2612,12 +2615,11 @@
         // Home while Today is already on screen (#800): the list runs back to the clock (the key's
         // pace, 45 ms an item), then the clock panel grows in
         if (opts && opts.animate) {
-            homeArrival = true;
-            if (sel !== at || tw || !host.classList.contains('is-rest')) { select(at, true); return; }
-            // already on the clock: the panel still grows and fades in, so the press shows
-            expKey = '';
+            if (sel !== at || tw || !host.classList.contains('is-rest')) { homeArrival = true; select(at, true); return; }
+            // already on the clock: nothing moves (Yukimi, Nov 18: "if your on the today screen and already at the
+            // clock item do not reanimate it"); only a clock turned to another page shows its first one again
+            expKey = keptPage;
             drawExpanded();
-            zoomIn(false);
             return;
         }
         select(at, false);
