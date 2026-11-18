@@ -93,12 +93,15 @@ function define({ name, pushType, intervalMs = 60000, allow = () => true, sample
         // one close listener per socket for the feed's lifetime (a phone subscribes again on every
         // screen-on: a listener per subscribe piled up on its socket, MaxListenersExceededWarning)
         if (ws && typeof ws.once === 'function' && !closeHooked.has(ws)) { closeHooked.add(ws); ws.once('close', () => unsubscribe(ws)); }
+        const alone = subs.size === 0 || (subs.size === 1 && subs.has(ws));
         subs.add(ws);
         clearTimeout(dropTimer);
         dropTimer = null;
         // a snapshot younger than one interval is as fresh as a subscriber that stayed would hold (#890
-        // round 5): a phone that left Today and came back within it is answered without reading upstream
-        if (last && Date.now() - last.at >= intervalMs) last = null;
+        // round 5): a phone that left Today and came back within it is answered without reading upstream.
+        // Only a kept snapshot (nobody else subscribed) expires here: while others watch, the feed's own
+        // tick reads and pushes, and a read here would race it and swallow their change push.
+        if (alone && last && Date.now() - last.at >= intervalMs) last = null;
         if (!last) {
             try { await read(); } catch (error) { console.warn(`[statusHub:${name}] first read failed: ${error.message}`); }
         }

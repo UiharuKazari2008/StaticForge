@@ -262,6 +262,34 @@ async function main() {
         assert.strictEqual(reads, 3, 'a poke with nobody watching drops the kept snapshot');
         feed.unsubscribe(s1);
 
+        // a subscribe while others watch never reads upstream itself, even when the snapshot is an interval
+        // old (the feed's tick is reading): the tick's change push still reaches the existing subscriber
+        {
+            let v = 1; let started = null; let release = null; let sampleN = 0;
+            const sent = [];
+            const slow = statusHub.define({ name: 'r5race', pushType: 'r5_race', intervalMs: 40, sample: async () => {
+                sampleN++;
+                if (sampleN === 2) { if (started) started(); await new Promise((res) => { release = res; }); }
+                return { a: v };
+            } });
+            statusHub.setSender((ws, m) => sent.push([ws.name, m]));
+            const w1 = socket('w1'); const w2 = socket('w2');
+            await slow.subscribe(w1, {});
+            v = 2;
+            await new Promise((res) => { started = res; }); // the tick's read is in flight
+            await settle(5);
+            const r2 = await slow.subscribe(w2, {});
+            assert.strictEqual(sampleN, 2, 'the second subscriber did not read upstream beside the tick');
+            assert.deepStrictEqual(r2.items, { a: 1 });
+            release();
+            await settle(5);
+            const toW1 = sent.filter(([id, m]) => id === 'w1' && m.type === 'r5_race');
+            assert.strictEqual(toW1.length, 1, 'the existing subscriber got the change push');
+            assert.deepStrictEqual(toW1[0][1].changed, { a: 2 });
+            slow.unsubscribe(w1); slow.unsubscribe(w2);
+            statusHub.setSender(() => {});
+        }
+
         const registry = require('../modules/ws/wsPacketRegistry');
         const out = [];
         require('../modules/ws/handlers/294-statusHubHandler').registerPackets({ sendToClient: (ws, m) => out.push(m), sendError: (ws, msg) => out.push({ error: msg }) });
