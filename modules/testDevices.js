@@ -32,8 +32,13 @@ let state = null;
 
 function storePath() {
     if (file) return file;
+    // the databases folder of the running server; never require globalResources here (requiring it boots the
+    // server's resources: a test or script would start a second copy beside the live one)
     let dir = null;
-    try { dir = require('./globalResources').getPath('databases'); } catch (_e) { /* tests */ }
+    try {
+        const loaded = require.cache[require.resolve('./globalResources')];
+        if (loaded && loaded.exports && typeof loaded.exports.getPath === 'function') dir = loaded.exports.getPath('databases');
+    } catch (_e) { /* not loaded: the default below */ }
     file = process.env.TEST_DEVICES_FILE || path.join(dir || path.join(__dirname, '..', '.cache'), 'test-devices.json');
     return file;
 }
