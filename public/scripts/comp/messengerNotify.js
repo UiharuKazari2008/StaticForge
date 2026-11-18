@@ -15,6 +15,7 @@
  */
 (function (root) {
     'use strict';
+    const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (typeof document === 'undefined') return;
 
@@ -170,17 +171,16 @@
     function startup() {
         if (!isDesktopTab()) return;
         wire();
-        // window.textMessaging may be swapped later (tests); and the tray exists only after the desktop builds
-        // (#849) every 5 seconds until it is wired, then once a minute for a swapped client: it
-        // asked every 5 seconds for the life of the page
-        let timer = setInterval(() => {
-            wire();
-            if (!wiredTo) return;
-            clearInterval(timer);
-            timer = setInterval(wire, 60000);
-        }, 5000);
+        // textMessagingClient.js loads before this file, so this wires at once; a page without it yet wires
+        // when the desktop is up or the page has loaded (#890: no 5 s timer, then a minute timer for the
+        // life of the page, for a client a test may swap: it calls messengerNotify.wire() itself).
+        // The tray exists only after the desktop builds (#849)
+        if (!wiredTo) {
+            const late = () => { if (!wiredTo) wire(); };
+            document.addEventListener('desktopBootDone', late, { once: true, signal: appScopeSignal });
+            root.addEventListener('load', late, { once: true, signal: appScopeSignal });
+        }
         setTimeout(() => void syncIcon(), 15000);
-        root.addEventListener('pagehide', () => clearInterval(timer), { once: true });
     }
 
     root.messengerNotify = { onMessage, syncIcon, wire, EVENT_CLASS };

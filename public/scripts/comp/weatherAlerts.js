@@ -172,8 +172,14 @@
     }
 
     if (!wire()) {
-        let tries = 0;
-        const timer = setInterval(() => { if (wire() || ++tries > 240) clearInterval(timer); }, 500);
+        // websocket.js loads before this file in app.html; a page that brings wsClient later wires at its
+        // load events (no poll, #890)
+        const late = () => { if (!wired) wire(); };
+        if (root.addEventListener) {
+            const signal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined;
+            root.addEventListener('DOMContentLoaded', late, { once: true, signal });
+            root.addEventListener('load', late, { once: true, signal });
+        }
     }
 
     root.weatherAlerts = { last: () => lastAlert, details, _onIssued: onIssued, _onRain: onRain };

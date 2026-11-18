@@ -5,6 +5,7 @@
  */
 
 (function initAgentClientBridge() {
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
     let sessionBound = false;
     let sessionClientId = null;
 
@@ -1478,13 +1479,20 @@
             if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchStudio, { once: true });
             else watchStudio();
         }
-        // a phone out of sight or with its screen off skips the net (#890): what it reads changes only
-        // with the events above, and the first minute back looks again
-        const phoneAsleep = () => window.uiShell === 'mobile'
-            && (document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined);
-        setInterval(() => { if (phoneAsleep()) return; watchConnectionFields(); announceDesktopState(false); }, 60000);
+        // a page out of sight or with its screen off skips the net (#890; a hidden desktop tab too): what
+        // it reads changes only with the events above, and the first minute back looks again
+        setInterval(() => {
+            if (document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined) return;
+            watchConnectionFields();
+            announceDesktopState(false);
+        }, 60000);
         if (!hookConnected()) {
-            const timer = setInterval(() => { if (hookConnected()) { clearInterval(timer); watchConnectionFields(); } }, 500);
+            // websocket.js loads before this file in app.html; a page that brings wsClient later hooks
+            // at its load events (no poll, #890)
+            let hooked = false;
+            const late = () => { if (!hooked && hookConnected()) { hooked = true; watchConnectionFields(); } };
+            window.addEventListener('DOMContentLoaded', late, { once: true, signal: appScopeSignal });
+            window.addEventListener('load', late, { once: true, signal: appScopeSignal });
         }
     }
 

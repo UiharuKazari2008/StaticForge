@@ -28,6 +28,7 @@
  */
 (function (root) {
     'use strict';
+    const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const doc = typeof document !== 'undefined' ? document : null;
     const ID_KEY = 'activeSyncPeerId';
@@ -943,9 +944,13 @@
 
     if (!kind) return;
     if (kind === 'device') registerDeviceOps();
-    if (!wire()) {
-        // wsClient is created later in the boot: wait for it
-        let tries = 0;
-        const t = setInterval(() => { tries += 1; if (wire() || tries > 240) clearInterval(t); }, 500);
+    if (!wire() && !wired) {
+        // websocket.js loads before this file in app.html; a page that brings wsClient later wires at
+        // its load events (no poll, #890)
+        const late = () => { if (!wired) wire(); };
+        if (root.addEventListener) {
+            root.addEventListener('DOMContentLoaded', late, { once: true, signal: appScopeSignal });
+            root.addEventListener('load', late, { once: true, signal: appScopeSignal });
+        }
     }
 })(typeof window !== 'undefined' ? window : globalThis);
