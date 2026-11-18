@@ -41,6 +41,7 @@
     const VIDEO = /\.(mp4|webm|ogv|m4v|mov)$/i;
     const MAX_DIRS = 160;
     const SKIP_DIRS = new Set(['Trash', 'Calendars', 'Contacts', 'Notes']);
+    const SYSTEM_SKIP = new Set(['Pictures', 'Scraps', 'References', 'Notes', 'Trash']);
     const SOURCE_KEY = 'wmMediaSource';
     const OWN_PACKAGE = /^jp\.net\.seventhreeseven\.dreamscape/;
 
@@ -304,6 +305,7 @@
     }
     function syncAndroidTick() {
         const want = androidPlaying && skinSeen();
+        // perf: allow the playing item's clock while the skin is on screen (skinSeen is wmShell.onScreen of the skin; cleared when it is not)
         if (want && !androidTick) androidTick = setInterval(() => { if (skinSeen()) paintTime(); else syncAndroidTick(); }, 1000);
         else if (!want && androidTick) { clearInterval(androidTick); androidTick = 0; }
     }
@@ -421,6 +423,10 @@
                 const name = i.name || '';
                 const isDir = i.kind === 'folder' || i.kind === 'dir' || i.targetKind === 'vfs-folder';
                 if (isDir) {
+                    // the workspace's own system folders hold no audio or video: Pictures and Scraps are the
+                    // gallery (the server stats every print to list them), References its refs (#890); Desktop
+                    // is a system folder too and is walked (as wmSearch does)
+                    if (i.system && SYSTEM_SKIP.has(name)) continue;
                     if (!SKIP_DIRS.has(name)) queue.push(`${dir.replace(/\/+$/, '')}/${name}`);
                     continue;
                 }
@@ -780,8 +786,10 @@
         const text = fmtTime(t);
         if (time.textContent !== text) time.textContent = text;
         const seek = skin.querySelector('.wmp-seek');
-        seek.style.setProperty('--p', d ? Math.min(1, t / d) : 0);
-        seek.classList.toggle('is-disabled', !d);
+        // written only when it moved (#890: the same value written again restyles each tick)
+        const p = String(d ? Math.min(1, t / d) : 0);
+        if (seek.style.getPropertyValue('--p') !== p) seek.style.setProperty('--p', p);
+        if (seek.classList.contains('is-disabled') !== !d) seek.classList.toggle('is-disabled', !d);
     }
 
     function renderLibrary() {
