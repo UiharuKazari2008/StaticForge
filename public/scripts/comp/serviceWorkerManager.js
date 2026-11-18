@@ -2071,7 +2071,8 @@ class ServiceWorkerManager {
      * The server's file list is the stored one (a 304 on the synced digest). A check someone asked
      * for runs on the stored list as before (its toasts, the cache walk). A quiet check only looks
      * for files this page runs older copies of (#815: the background updater filled the cache while
-     * the window was paused); the boot check samples the cache and the daily pass walks all of it.
+     * the window was paused) and samples the cache like the boot check (a miss walks the stored list);
+     * the daily pass walks all of it.
      */
     async _staticFilesUnchanged(noToast, swState) {
         let stored = null;
@@ -2103,6 +2104,16 @@ class ServiceWorkerManager {
             }
             console.log(`${loadedStale.length} file(s) already updated in the cache; this page runs older copies`);
             this._processStaticCacheComplete({ files: loadedStale, updatedFiles: loadedStale, completed: loadedStale.length, total: loadedStale.length, silent: noToast });
+            return;
+        }
+        // rows evicted or deleted since the boot: a spread sample (as the boot check does) finds them,
+        // and a miss runs the full cache walk on the stored list, which downloads what is gone
+        let missing = [];
+        try {
+            missing = this._filesCountingTowardInstaller(await this.getFilesNeedingUpdate(sampleManifestFiles(files, BOOT_CACHE_SAMPLE)));
+        } catch (_) { missing = []; }
+        if (missing.length) {
+            await this.updateStaticCache(stored, noToast);
             return;
         }
         this.servicePack = null;
