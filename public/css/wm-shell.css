@@ -647,11 +647,8 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
 .wm-status-icon {
     /* whole device pixels per art pixel (wmShell syncIconUnit), never over the 16-unit slot: the
      * 1-bit art keeps even strokes */
-    flex: 0 0 auto;
     width: calc(16 * var(--wm-icon-unit, var(--wm-px)));
     height: calc(16 * var(--wm-icon-unit, var(--wm-px)));
-    max-width: calc(16 * var(--wm-px));
-    max-height: calc(16 * var(--wm-px));
     background: center / 100% 100% no-repeat;
     /* 1-bit ROM glyphs: keep their pixel steps when a screen scale stretches them */
     image-rendering: pixelated;
