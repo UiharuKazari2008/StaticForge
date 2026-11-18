@@ -1205,6 +1205,7 @@
 
         function vbTick(fn) {
             clearInterval(vb.timer);
+            // perf: allow only while a voice note records or plays (cleared on stop and pause); each tick draws only while the bar is seen (vbSeen)
             vb.timer = fn ? setInterval(fn, 100) : null;
         }
 
@@ -1810,6 +1811,23 @@
             return { id, cards: VC().parseVcf(text) };
         }
 
+        // the list's reads: a .vcf not changed since it was read (its content hash, else time and size) is not
+        // downloaded again (#890: every Contacts show fetched every file, a 480 KB phone export among them);
+        // a write's own re-read (reread) always reads the file as it is now
+        let vcfText = new Map(); // `${file id}|${ver}` -> text
+        async function readListed(item, keep) {
+            const id = item.targetId || item.id;
+            const ver = item.previewVersion || (item.modifiedAt ? `${item.modifiedAt}|${item.sizeBytes != null ? item.sizeBytes : item.size}` : '');
+            const key = ver ? `${id}|${ver}` : '';
+            let text = key ? vcfText.get(key) : undefined;
+            if (text === undefined) {
+                const r = await vfs().downloadFile(id);
+                text = await (await fetch(r.downloadUrl, { credentials: 'same-origin' })).text();
+            }
+            if (key) keep.set(key, text);
+            return { id, cards: VC().parseVcf(text) };
+        }
+
         const keyOf = (fileId, index) => `${fileId}#${index}`;
 
         function makeEntry(c, fileId, index, count, item, path) {
@@ -1854,7 +1872,9 @@
                 // this phone's own mirror file (Synchronize) is shown live from the phone instead
                 const pdm = window.wmPhoneData;
                 if (pdm && pdm.live('contacts')) files = files.filter((f) => !pdm.isOwnMirror(f.name));
-                const read = await Promise.all(files.map((f) => readFile(f).then((r) => ({ f, r })).catch(() => null)));
+                const keep = new Map();
+                const read = await Promise.all(files.map((f) => readListed(f, keep).then((r) => ({ f, r })).catch(() => null)));
+                if (token === loadToken) vcfText = keep;
                 for (const x of read) {
                     if (!x) continue;
                     x.r.cards.forEach((c, n) => {

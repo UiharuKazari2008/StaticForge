@@ -26,6 +26,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -51,6 +52,12 @@
     let cals = [];
     let loadedAt = 0;
     let loading = null;
+    let icsText = new Map(); // `${file id}|${version}` -> the file's text as last read
+    // a calendar file changed elsewhere (vfs_updated), or a new link may have missed one: read again by the
+    // next reader (Today's row, Calendar's show), or at once while Calendar is on screen (#890: Today read
+    // every calendar again every 5 minutes, and Calendar on every show after 30 s)
+    let calDirty = false;
+    let viewStale = false; // read while Calendar was not on screen: drawn when it shows or wakes
     let view = 'agenda';
     let date = startOfDay(new Date());
     let selHour = null; // the slot picked in Day / Week (an hour, on `date`; 6.5 has half-hour slots: h + 0.5)
@@ -146,15 +153,25 @@
         }
         const files = items.filter((i) => /\.ics$/i.test(i.name || '') && (i.targetKind === 'user-file' || i.kind === 'file'));
         const next = [];
+        const keep = new Map();
         for (const f of files) {
             try {
-                const r = await V.downloadFile(f.id);
-                const text = await (await fetch(r.downloadUrl, { credentials: 'same-origin', cache: 'no-store' })).text();
+                // a file that has not changed since it was read (its content hash, else its time and size) is
+                // not downloaded again (#890: every reload asked for each file's URL and fetched it whole)
+                const ver = f.previewVersion || (f.modifiedAt ? `${f.modifiedAt}|${f.sizeBytes != null ? f.sizeBytes : f.size}` : '');
+                const key = ver ? `${f.id}|${ver}` : '';
+                let text = key ? icsText.get(key) : undefined;
+                if (text === undefined) {
+                    const r = await V.downloadFile(f.id);
+                    text = await (await fetch(r.downloadUrl, { credentials: 'same-origin', cache: 'no-store' })).text();
+                }
+                if (key) keep.set(key, text);
                 next.push(adopt(MC.parseIcs(text), f, next.length));
             } catch (err) {
                 console.warn('wmCalendar: could not read', f.name, err);
             }
         }
+        icsText = keep; // (only the files listed now)
         // the phone's own calendars, live and editable here (ActiveSync > Phone Data: Show or
         // Synchronize; the mirror files other devices read are this phone's to write, not to show:
         // wmAndroidApps.js wmPhoneData, #776 / #778)
@@ -194,8 +211,9 @@
             } else {
                 console.warn('wmCalendar: reload failed', err);
             }
-        }).finally(() => { loading = null; render(); });
+        }).finally(() => { loading = null; renderSeen(); });
         loading = p;
+        calDirty = false;
         // the first open waits under the wait cursor; later refreshes run behind the view
         if (first) ws.busy(p, { paint: true, timeout: 30000 });
         return p;
@@ -476,6 +494,33 @@
      */
     const DUAL_MIN = 600;
     const isDual = () => !!page && page.clientWidth >= DUAL_MIN && layer !== 'form';
+
+    const calSeen = () => !!(ws && ws.current === APP_ID && (typeof ws.onScreen === 'function' ? ws.onScreen(page) : !document.hidden));
+    /** Drawn now while Calendar is on screen; else when it shows (show draws) or wakes (#890: it drew hidden). */
+    function renderSeen() {
+        if (!page) return;
+        if (calSeen()) { viewStale = false; render(); } else viewStale = true;
+    }
+
+    // a change made elsewhere arrives as vfs_updated through the document 'wsMessage' bridge (as wmTasks)
+    let vfsTimer = null;
+    document.addEventListener('wsMessage', (e) => {
+        const d = (e && e.detail) || {};
+        if (d.type !== 'vfs_updated') return;
+        const path = String((d.data && d.data.path) || '');
+        if (path && !/\/Calendars(\/|$)/i.test(path)) return;
+        if (!loadedAt) return; // nothing read yet: the first reader reads them as they are
+        calDirty = true;
+        if (!calSeen()) return;
+        clearTimeout(vfsTimer);
+        vfsTimer = setTimeout(() => { if (calDirty && calSeen()) void reload(true); }, 400);
+    }, { signal: appScopeSignal });
+    if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', () => { if (loadedAt) calDirty = true; }, { signal: appScopeSignal });
+    document.addEventListener('wmawake', (e) => {
+        if (!(e.detail && e.detail.awake) || !calSeen()) return;
+        if (calDirty) void reload(true);
+        else if (viewStale) { viewStale = false; render(); }
+    }, { signal: appScopeSignal });
 
     function render() {
         if (!page) return;
@@ -930,8 +975,10 @@
             mount,
             show() {
                 if (!layer) { /* keep the date the user left, as WM */ }
+                viewStale = false;
                 render();
-                reload(false);
+                // read again only when a file changed or may have (calDirty), not every 30 s
+                if (!loadedAt || calDirty) reload(true);
             },
             titleKind: () => (layer ? 'ok' : 'close'),
             onTitleOk() {
@@ -973,8 +1020,10 @@
      */
     function upcoming(n) {
         const now = new Date();
-        if (!loading && (!loadedAt || Date.now() - loadedAt > 5 * 60000) && window.wsClient && window.wsClient.initializationCompleted) {
-            loading = load().catch(() => { loadedAt = Date.now(); }).finally(() => { loading = null; render(); });
+        // read when nothing is read yet or a file changed (vfs_updated / a new link), not every 5 minutes
+        if (!loading && (!loadedAt || calDirty) && window.wsClient && window.wsClient.initializationCompleted) {
+            calDirty = false;
+            loading = load().catch(() => { loadedAt = Date.now(); }).finally(() => { loading = null; renderSeen(); });
         }
         if (!loadedAt) return null;
         return occ(startOfDay(now), addDays(startOfDay(now), 14))
