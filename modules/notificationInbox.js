@@ -187,18 +187,44 @@ function publish(notice = {}) {
     return out;
 }
 
-/** The notices held for a user: not expired, newest first; cleared ones left out unless asked. */
+/**
+ * The notices held for a user: not expired, newest first; cleared ones left out unless asked.
+ * since (ms, #890 round 5 W2): only the rows created or changed (a state moved on) at or after it - the
+ * page sends the newest createdAt / updatedAt it holds and merges the rows by id. Cleared rows are
+ * included then (the page closes its copy); expired and pruned rows are not (the page drops a notice
+ * past its expiresAt itself).
+ */
 function list(user, { since = 0, includeCleared = false } = {}) {
     const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
     const now = nowFn();
+    const from = Number(since) || 0;
     try {
+        if (from > 0) {
+            return database()
+                .prepare('SELECT * FROM notices WHERE user = ? AND (createdAt >= ? OR updatedAt >= ?) AND (expiresAt IS NULL OR expiresAt > ?) ORDER BY createdAt DESC LIMIT ?')
+                .all(u, from, from, now, MAX_PER_USER)
+                .map(rowOut);
+        }
         const rows = database()
-            .prepare('SELECT * FROM notices WHERE user = ? AND createdAt >= ? AND (expiresAt IS NULL OR expiresAt > ?) ORDER BY createdAt DESC LIMIT ?')
-            .all(u, Number(since) || 0, now, MAX_PER_USER);
+            .prepare('SELECT * FROM notices WHERE user = ? AND (expiresAt IS NULL OR expiresAt > ?) ORDER BY createdAt DESC LIMIT ?')
+            .all(u, now, MAX_PER_USER);
         return rows.filter((r) => includeCleared || r.state !== 'cleared').map(rowOut);
     } catch (e) {
         console.warn(`[notify-inbox] list failed: ${e.message}`);
         return [];
+    }
+}
+
+/** How many notices a full list holds (not expired, not cleared): inbox_list's total. */
+function count(user) {
+    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    try {
+        const r = database()
+            .prepare("SELECT COUNT(*) AS n FROM notices WHERE user = ? AND state != 'cleared' AND (expiresAt IS NULL OR expiresAt > ?)")
+            .get(u, nowFn());
+        return Math.min(MAX_PER_USER, (r && r.n) || 0);
+    } catch (_e) {
+        return 0;
     }
 }
 
@@ -214,7 +240,10 @@ function ack(user, id, state, device) {
         const next = rank[state] >= rank[cur.state] ? state : cur.state;
         if (next === cur.state) return true; // nothing changes: no write, no broadcast
         database().prepare('UPDATE notices SET state = ?, actedBy = COALESCE(?, actedBy), updatedAt = ? WHERE user = ? AND id = ?').run(next, device ? String(device).slice(0, 60) : null, nowFn(), u, String(id || ''));
-        broadcast(u, { type: 'inbox_updated', data: { reason: 'ack', id: String(id || ''), state: next, device: device || null } });
+        // a notice only shown somewhere ('seen') is no news to any page: the inbox's only reader
+        // (wmNotificationInbox.js onUpdated) acts on cleared / acted alone (#890 round 5). Pages that were
+        // asleep for an ack list what changed when they wake (inbox_list since; websocket.js DORMANT_HOLD).
+        if (next !== 'seen') broadcast(u, { type: 'inbox_updated', data: { reason: 'ack', id: String(id || ''), state: next, device: device || null } });
         // done with (dismissed, read or used anywhere): the phones take down their Android copy
         if (rank[next] >= 2 && rank[cur.state] < 2) phonesCleared(u, String(id || ''));
         return true;
@@ -390,6 +419,7 @@ module.exports = {
     bind,
     publish,
     list,
+    count,
     ack,
     clear,
     clearWhere,
