@@ -4143,6 +4143,8 @@
             return right <= box.right + 1;
         };
         ['roaming', 'volume', 'battery', ...STATUS_APP_ROLES].forEach((r) => el(r).classList.remove('wm-shed'));
+        // the X / ok's kept place given back to the icons when there is no X / ok and the bar runs short (below)
+        bar.classList.remove('wm-status-full');
         statusFolded = [];
         // WM 6.1's notification area (#811, Yukimi Nov 13). Room for a few icons is kept left of
         // the device icons, so the title ends at the same place whatever is pending. When the bar
@@ -4206,6 +4208,10 @@
         relayout();
         if (ok()) return;
         if (!reserve.hidden && step(() => setReserve(0))) return;
+        // no X / ok on this bar (Today, Start): its kept place is room for icons before any steps aside or folds
+        // (Yukimi, Nov 17: the cover fitted 6 icons and the "..." but folded three behind 27 empty units)
+        const act = bar.querySelector('.wm-title-action');
+        if ((!act || act.hidden) && step(() => bar.classList.add('wm-status-full'))) return;
         if (!el('volume').hidden && step(() => el('volume').classList.add('wm-shed'))) return;
         const bat = el('battery');
         if (!bat.hidden && bat.dataset.icon === 'battery-charging' && step(() => bat.classList.add('wm-shed'))) return;
