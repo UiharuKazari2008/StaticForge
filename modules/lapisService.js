@@ -107,7 +107,7 @@ const live = {
     parkedSince: 0, // when the car was first seen parked with the engine off
     flags: { unlockedFor: 0, lowFuel: false, refuelDay: '', service: {}, health: {} },
 };
-const sched = { timer: null, nextPollAt: 0, lockCheckAt: 0, backoff: 0, busy: false, weatherAt: 0 };
+const sched = { timer: null, nextPollAt: 0, lockCheckAt: 0, runEndCheckAt: 0, backoff: 0, busy: false, weatherAt: 0 };
 
 function bind(globalResources) {
     if (globalResources && !gr) {
@@ -561,6 +561,15 @@ async function read({ fresh = false, locate = false, reason = 'poll' } = {}) {
     const before = live.status;
     const status = await api().status(v, { refresh: fresh });
     if (!status.location && before && before.location) status.location = before.location;
+    // a remote start that ran out its timer: the car stopped itself, and BlueLink's kept report (no wake) still says the
+    // engine is on until the car reports again - a report from before the run ended does not put it back on (Today showed
+    // Running long after the timer and Start stayed off, Nov 18)
+    const ran = live.command;
+    if (ran && ran.kind === 'start' && ran.ended === 'timeout' && Number.isFinite(ran.endedAt) && status.engine
+        && !(Number.isFinite(status.at) && status.at > ran.endedAt)) {
+        status.engine = false;
+        status.climate = false;
+    }
     live.status = status;
     live.statusSeenAt = nowFn();
     live.lastError = null;
@@ -934,6 +943,12 @@ function activeRun() {
     return c && c.kind === 'start' && c.state === 'success' && Number.isFinite(c.runsUntil) ? c : null;
 }
 
+/** A remote start that ended on its timer in the last 12 hours (kept across restarts for read()'s check), or null. */
+function timedOutRun() {
+    const c = live.command;
+    return c && c.kind === 'start' && c.ended === 'timeout' && Number.isFinite(c.endedAt) && nowFn() - c.endedAt < 12 * 60 * MIN ? c : null;
+}
+
 /** The run is over: someone drove off, the engine went off, or its time ran out. The timer stops. */
 function endRun(cmd, why) {
     cmd.runsUntil = null;
@@ -1109,7 +1124,9 @@ async function tick() {
             runWarnings(run, s);
             if (nowFn() >= run.runsUntil) {
                 endRun(run, 'timeout');
-                sched.nextPollAt = Math.min(sched.nextPollAt || Infinity, nowFn() + MIN);
+                // the car's own timer stopped it: shown off now, confirmed by one fresh report a minute later
+                if (live.status && (live.status.engine || live.status.climate)) live.status = { ...live.status, engine: false, climate: false };
+                sched.runEndCheckAt = nowFn() + MIN;
                 pushState();
             } else if (nowFn() >= (sched.runPollAt || 0) && !pendingCommand()) {
                 sched.runPollAt = nowFn() + 3 * MIN;
@@ -1119,6 +1136,11 @@ async function tick() {
         }
         if (didRead) {
             /* the run's look counts as this tick's read */
+        } else if (sched.runEndCheckAt && now >= sched.runEndCheckAt && !pendingCommand()) {
+            // the timer's end, confirmed once with a woken report
+            sched.runEndCheckAt = 0;
+            await read({ fresh: true, reason: 'run-end' });
+            sched.nextPollAt = nowFn() + s.pollMin * MIN;
         } else if (sched.lockCheckAt && now >= sched.lockCheckAt && !pendingCommand()) {
             sched.lockCheckAt = 0;
             await read({ fresh: true, reason: 'lock-check' });
@@ -1169,7 +1191,7 @@ function accountChanged() {
 function saveLatest() {
     try {
         fs.mkdirSync(path.dirname(LATEST_FILE), { recursive: true });
-        const body = JSON.stringify({ command: activeRun(), vehicle: live.vehicle, status: live.status, statusSeenAt: live.statusSeenAt, location: live.location, locationOdo: live.locationOdo, parkedSince: live.parkedSince, flags: live.flags, weather: live.weather });
+        const body = JSON.stringify({ command: activeRun() || timedOutRun(), vehicle: live.vehicle, status: live.status, statusSeenAt: live.statusSeenAt, location: live.location, locationOdo: live.locationOdo, parkedSince: live.parkedSince, flags: live.flags, weather: live.weather });
         fs.writeFileSync(`${LATEST_FILE}.tmp`, body);
         fs.renameSync(`${LATEST_FILE}.tmp`, LATEST_FILE);
     } catch (e) {
@@ -1184,7 +1206,18 @@ function loadLatest() {
             if (o[k] !== undefined && o[k] !== null) live[k] = o[k];
         });
         // a run still on its timer carries on (its warnings and the driving check)
-        if (o.command && o.command.kind === 'start' && o.command.state === 'success' && o.command.runsUntil > nowFn()) live.command = o.command;
+        const c = o.command;
+        if (c && c.kind === 'start' && c.state === 'success') {
+            if (c.runsUntil > nowFn()) live.command = c;
+            // its timer ran out while the server was down: ended there (the car stopped itself)
+            else if (Number.isFinite(c.runsUntil)) { live.command = Object.assign(c, { runsUntil: null, ended: 'timeout', endedAt: c.runsUntil }); sched.runEndCheckAt = nowFn() + MIN; }
+            // ended on its timer before: kept, so BlueLink's kept report from the run does not show it running again
+            else if (c.ended === 'timeout' && Number.isFinite(c.endedAt)) live.command = c;
+        }
+        const ran = live.command;
+        if (ran && ran.ended === 'timeout' && live.status && live.status.engine && !(Number.isFinite(live.status.at) && live.status.at > ran.endedAt)) {
+            live.status = Object.assign({}, live.status, { engine: false, climate: false });
+        }
         if (o.flags && typeof o.flags === 'object') live.flags = Object.assign(live.flags, o.flags, { service: Object.assign({}, o.flags.service || {}), health: Object.assign({}, o.flags.health || {}) });
     } catch (_e) {
         /* first run */
