@@ -501,6 +501,7 @@
 }
 
 /* Auto-normalize hint: the Rescale lamp pulses (filter runs on the compositor) */
+/* perf: allow a brightness filter animates on the compositor; opacity would let the button show through the dimmed lamp */
 @keyframes emphasis-compensate-flash {
 
     0%,
@@ -517,5 +518,6 @@
     background-color: #7eb8ff;
     border-color: #4a90e2;
     box-shadow: 0 0 6px 1px rgba(126, 184, 255, 0.5);
+    /* perf: allow status lamp: pulses only while the Rescale hint applies (normalize on, rescale off, values under the suggestion: emphasisGroupsToolManager.js) */
     animation: emphasis-compensate-flash 1.2s ease-in-out infinite;
 }

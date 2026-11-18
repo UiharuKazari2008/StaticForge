@@ -9,13 +9,14 @@
     width: 100%;
 }
 
-/* will-change while interactive */
+/* will-change while interactive (the colour and shadow hints made no layer and are gone, #890) */
 .custom-dropdown-btn:hover:not(:disabled),
 .custom-dropdown-btn:focus-visible:not(:disabled),
 .custom-dropdown-btn.active,
 .custom-dropdown-btn.context-open,
 .custom-dropdown-menu:not(.hidden) {
-    will-change: background-color, border-color, box-shadow, color, backdrop-filter, transform, opacity, top;
+    /* perf: allow only while a dropdown button is hovered, focused or open, and while its menu is open */
+    will-change: backdrop-filter, transform, opacity, top;
 }
 
 @media (max-width: 1100px) {
@@ -231,6 +232,7 @@
     font-variation-settings: "wght" 550;
 }
 
+/* perf: allow a one-shot open of a dropdown (not a loop); max-height reveals the list, which a transform would squash */
 @keyframes customDropdownFadeIn {
     0% {
         opacity: 0;
@@ -245,6 +247,7 @@
     }
 }
 
+/* perf: allow a one-shot close of a dropdown (not a loop); max-height hides the list, which a transform would squash */
 @keyframes customDropdownFadeOut {
     0% {
         opacity: 1;
