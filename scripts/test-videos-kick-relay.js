@@ -67,6 +67,11 @@ relay.bind({ allowed: (slug) => ['streamer_one', 'other_two', 'third_3', 'fourth
         assert.ok(/libx264 -preset slow/.test(by.e360) && /scale=-2:360/.test(by.e360));
         assert.ok(/fps=1,/.test(by.audio) && /zerolatency/.test(by.audio) && /-b:a 96k/.test(by.audio));
         assert.ok(Object.values(by).every((a) => /-hls_time 4 -hls_list_size 15/.test(a) && /delete_segments/.test(a)));
+        // the program's Quality list: three sub-lists (1080p, 720p, More) and three direct rows
+        const view = relay.modes();
+        assert.deepStrictEqual([...new Set(view.map((m) => m.group))], ['1080p', '720p', 'More', '']);
+        assert.deepStrictEqual(view.filter((m) => !m.group).map((m) => m.short), ['480p', '360p', 'Audio First']);
+        assert.deepStrictEqual(view.filter((m) => m.group === '1080p').map((m) => m.short), ['30 fps', '24 fps', '15 fps']);
         assert.deepStrictEqual(relay.modes().map((m) => m.id), ['hw1080', 'hw1080f24', 'hw1080f15', 'hw720', 'hw720f24', 'hw720f15', 'hw540', '480', '360', '160', 'e480', 'e360', 'audio']);
     });
 

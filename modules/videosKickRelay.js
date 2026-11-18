@@ -55,25 +55,26 @@ const vaapi = (h, kbit, fps = 30) => ['-vf', `fps=${fps},format=nv12,hwupload,sc
 const MODES = [
     // the big pictures at a calmer frame rate (Yukimi: 1080p and 720p at lower fps): hardware re-encodes from
     // Kick's 60 fps renditions; fewer pictures a second is what brings the data rate down
-    { id: 'hw1080', label: '1080p at 30 fps', note: 'Re-encoded by the server, about 3.7 Mbit/s', source: 1080, kbit: 3700, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(1080, 3500, 30) },
-    { id: 'hw1080f24', label: '1080p at 24 fps', note: 'Re-encoded, about 3 Mbit/s', source: 1080, kbit: 3000, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(1080, 2800, 24) },
-    { id: 'hw1080f15', label: '1080p at 15 fps', note: 'Re-encoded, about 2.1 Mbit/s', source: 1080, kbit: 2100, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(1080, 2000, 15) },
-    { id: 'hw720', label: '720p at 30 fps', note: 'Re-encoded by the server, about 1.9 Mbit/s', source: 720, kbit: 1900, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(720, 1800, 30) },
-    { id: 'hw720f24', label: '720p at 24 fps', note: 'Re-encoded, about 1.6 Mbit/s', source: 720, kbit: 1600, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(720, 1500, 24) },
-    { id: 'hw720f15', label: '720p at 15 fps', note: 'Re-encoded, about 1.1 Mbit/s', source: 720, kbit: 1100, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(720, 1000, 15) },
-    { id: 'hw540', label: '540p at 30 fps', note: 'Re-encoded by the server, about 1.2 Mbit/s', source: 720, kbit: 1200, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(540, 1100) },
-    { id: '480', label: '480p', note: 'Kick\'s own, about 1.4 Mbit/s', source: 480, copy: true, kbit: 1430 },
-    { id: '360', label: '360p', note: 'Kick\'s own, about 0.6 Mbit/s', source: 360, copy: true, kbit: 630 },
-    { id: '160', label: '160p', note: 'Kick\'s own, about 0.2 Mbit/s', source: 160, copy: true, kbit: 230 },
-    { id: 'e480', label: '480p Enhanced', note: 'Careful encode, about 0.9 Mbit/s', source: 480, kbit: 900, heavy: true, args: x264(480, 800, 'medium') },
-    { id: 'e360', label: '360p Enhanced', note: 'Careful encode, about 0.5 Mbit/s', source: 480, kbit: 500, heavy: true, args: x264(360, 400, 'slow') },
-    { id: 'audio', label: 'Audio First', note: 'One picture a second, full sound, about 0.2 Mbit/s', source: 360, kbit: 200,
+    { id: 'hw1080', group: '1080p', short: '30 fps', label: '1080p at 30 fps', note: 'Re-encoded by the server, about 3.7 Mbit/s', source: 1080, kbit: 3700, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(1080, 3500, 30) },
+    { id: 'hw1080f24', group: '1080p', short: '24 fps', label: '1080p at 24 fps', note: 'Re-encoded, about 3 Mbit/s', source: 1080, kbit: 3000, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(1080, 2800, 24) },
+    { id: 'hw1080f15', group: '1080p', short: '15 fps', label: '1080p at 15 fps', note: 'Re-encoded, about 2.1 Mbit/s', source: 1080, kbit: 2100, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(1080, 2000, 15) },
+    { id: 'hw720', group: '720p', short: '30 fps', label: '720p at 30 fps', note: 'Re-encoded by the server, about 1.9 Mbit/s', source: 720, kbit: 1900, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(720, 1800, 30) },
+    { id: 'hw720f24', group: '720p', short: '24 fps', label: '720p at 24 fps', note: 'Re-encoded, about 1.6 Mbit/s', source: 720, kbit: 1600, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(720, 1500, 24) },
+    { id: 'hw720f15', group: '720p', short: '15 fps', label: '720p at 15 fps', note: 'Re-encoded, about 1.1 Mbit/s', source: 720, kbit: 1100, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(720, 1000, 15) },
+    { id: 'hw540', group: 'More', short: '540p', label: '540p at 30 fps', note: 'Re-encoded by the server, about 1.2 Mbit/s', source: 720, kbit: 1200, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(540, 1100) },
+    { id: '480', group: '', short: '480p', label: '480p', note: 'Kick\'s own, about 1.4 Mbit/s', source: 480, copy: true, kbit: 1430 },
+    { id: '360', group: '', short: '360p', label: '360p', note: 'Kick\'s own, about 0.6 Mbit/s', source: 360, copy: true, kbit: 630 },
+    { id: '160', group: 'More', short: '160p', label: '160p', note: 'Kick\'s own, about 0.2 Mbit/s', source: 160, copy: true, kbit: 230 },
+    { id: 'e480', group: 'More', short: '480p Enhanced', label: '480p Enhanced', note: 'Careful encode, about 0.9 Mbit/s', source: 480, kbit: 900, heavy: true, args: x264(480, 800, 'medium') },
+    { id: 'e360', group: 'More', short: '360p Enhanced', label: '360p Enhanced', note: 'Careful encode, about 0.5 Mbit/s', source: 480, kbit: 500, heavy: true, args: x264(360, 400, 'slow') },
+    { id: 'audio', group: '', short: 'Audio First', label: 'Audio First', note: 'One picture a second, full sound, about 0.2 Mbit/s', source: 360, kbit: 200,
         // zerolatency: at one picture a second the encoder's look-ahead would hold the stream back ~20 s
         args: ['-vf', 'fps=1,scale=-2:360', '-c:v', 'libx264', '-preset', 'slow', '-tune', 'zerolatency', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-crf', '30', '-g', String(SEGMENT_S), '-keyint_min', String(SEGMENT_S), '-sc_threshold', '0', ...audio(96)] }
 ];
 const DEFAULT_MODE = '480';
 const modeById = (id) => MODES.find((m) => m.id === id) || null;
-const modesView = () => MODES.map((m) => ({ id: m.id, label: m.label, note: m.note, kbit: m.kbit, heavy: !!m.heavy }));
+// group / short: how the program's Quality list is laid out (a short list with 1080p, 720p and More opening sub-lists)
+const modesView = () => MODES.map((m) => ({ id: m.id, label: m.label, note: m.note, kbit: m.kbit, heavy: !!m.heavy, group: m.group || '', short: m.short || m.label }));
 
 let allowed = () => true; // (slug) => is this a channel on the program's list
 let hooks = { address: null, spawn: null }; // tests stand in for the browser and ffmpeg

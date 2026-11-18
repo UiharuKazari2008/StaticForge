@@ -88,6 +88,7 @@ const onChange = (fn) => { if (typeof fn === 'function') listeners.push(fn); };
 const KICK_ID = process.env.VIDEOS_KICK_ID_BASE || 'https://id.kick.com';
 let gr = null;
 let kickToken = { value: '', until: 0, client: '' };
+let kickError = ''; // why the last look at Kick failed ('' when it worked)
 
 function bind(globalResources) {
     if (globalResources && !gr) gr = globalResources;
@@ -212,8 +213,10 @@ function kickRefresh() {
                 if (r.channel.name !== c.name || r.channel.thumb !== c.thumb) { c.name = r.channel.name; c.thumb = r.channel.thumb; touched = true; }
             });
             if (touched) save();
-        } catch (_e) {
-            // quiet: the last known state stays, but not for ever
+            kickError = '';
+        } catch (e) {
+            // the last known state stays, but not for ever; said once per kind of failure, not on every look
+            if (kickError !== e.message) { kickError = e.message; console.warn(`[videos] Kick's live states could not be read: ${e.message}`); }
             s.kick.forEach((c) => { const held = live[c.slug]; if (held && Date.now() - held.at > 4 * KICK_TTL) held.item = null; });
         } finally {
             kickBusy = null;
@@ -306,6 +309,7 @@ function view() {
     const s = load();
     return {
         kickReady: kickReady(),
+        kickError,
         kick: s.kick.map((c) => ({ slug: c.slug, name: c.name, thumb: c.thumb, live: !!(live[c.slug] && live[c.slug].item) })),
         apps: s.apps.slice(),
         seenApps: Object.keys(s.seenApps).map((p) => ({ package: p, label: s.seenApps[p].label })).sort((a, b) => a.label.localeCompare(b.label))
