@@ -94,7 +94,12 @@ def enlarge(arts):
         gw8, gh8 = round(bw * k), round(bh * k)
         w2 = ((gw8 // 4 + 4 + 1) // 2) * 2          # whole 2x pixels, half a unit spare each side
         for n, w, h, px in mem:
-            cell8 = im(masters[n], W8, H8, '-crop', f'{bw}x{bh}+{x0}+{y0}', '+repage', '-filter', 'Lanczos', '-resize', f'{gw8}x{gh8}!',
+            # one scale and width for the family, but each glyph centred on its own height (centring the family's
+            # union put the plain battery low in its cell, off the other icons' centre line)
+            ob = alpha_box(masters[n], W8, H8)
+            oy0, oy1 = max(0, ob[1] - m), min(H8, ob[3] + m)
+            gh_n = round((oy1 - oy0) * k)
+            cell8 = im(masters[n], W8, H8, '-crop', f'{bw}x{oy1 - oy0}+{x0}+{oy0}', '+repage', '-filter', 'Lanczos', '-resize', f'{gw8}x{gh_n}!',
                        '-background', 'none', '-gravity', 'center', '-extent', f'{w2 * 4}x128')
             out[n] = (w2, im(cell8, w2 * 4, 128, '-filter', 'Lanczos', '-resize', f'{w2 // 2}x16!'),
                       im(cell8, w2 * 4, 128, '-filter', 'Lanczos', '-resize', '25%'),
