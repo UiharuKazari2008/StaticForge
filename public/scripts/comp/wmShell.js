@@ -4287,13 +4287,15 @@
         }
         let noCross = false;
         try { noCross = localStorage.getItem('wmStatusNoCross') === '1'; } catch (_) { /* storage off */ }
-        const r = fitLib.fit({
+        const input = {
             icons,
             notify: { w: unitW || 16 * rootPx(), notes: notesForBubbleIcon().length > 0 },
             bar: { width: br.width, iconsRight, gap, titleX, titleMin, hole, xReserve },
             prefs: { sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon') },
             screen: { unfolded: unfoldedScreen(), noCross }
-        });
+        };
+        const r = fitLib.fit(input);
+        statusFitLast = { at: Date.now(), input, result: r };
         // ---- written in one go
         (r.shed || []).forEach((role) => { const i = el(role); if (i) i.classList.add('wm-shed'); });
         (r.folded || []).forEach((role) => { const i = el(role); if (i) i.classList.add('wm-shed'); });
@@ -4341,6 +4343,8 @@
             root.dataset.wmCamera || '', root.dataset.wmBezelEdge || '', root.dataset.wmVersion || '', root.dataset.wmBars || '', root.dataset.wmFont || '',
             ls, notesForBubbleIcon().length ? 1 : 0, cameraIgnoredNow() ? 1 : 0, unfoldedScreen() ? 1 : 0, bar.querySelector('.wm-title') && bar.querySelector('.wm-title').hidden ? 1 : 0].join('|');
     }
+    // the last measured fit's inputs and answer (wmShell.statusFitLast(): checking the bar from a debugger)
+    let statusFitLast = null;
     // the shared fit, held from load like the table (the page's task runtime may replace window.CafeTasks later)
     const STATUS_FIT = (window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusFit) || null;
 
@@ -12204,6 +12208,8 @@
     }
 
     window.wmShell = {
+        /** The status fit's last inputs and answer (#907), for checking the bar. */
+        statusFitLast: () => statusFitLast,
         /** The mail ('mail') or Text Messaging ('sms') was opened: its envelope icon's "new" ends (#907). */
         messagesSeen: (cls) => messagesSeen(cls),
         /** Melaton Bars (#871): set the bars to how they show over an Android program; returns restore(). */
