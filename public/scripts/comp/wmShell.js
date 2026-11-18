@@ -3559,9 +3559,32 @@
             statusDirty();
         }, { signal: appScopeSignal });
     })();
+    // behind an Android program the app draws its bar with an X / ok (and maybe Android's tray icon): the fit pushed is
+    // the one for that bar, staged as the app shows it, not this page's own (Today has no X: it gives that place to the
+    // icons, the app's bar cannot - Yukimi, Nov 17, cover: two icons crossed the camera in the app's copy)
+    let statusPushStaging = false;
+    function barsTrayOn() {
+        try { const st = JSON.parse(window.AndroidBars.getState() || '{}'); return !!(st && st.config && st.config.androidTray); } catch (_) { return false; }
+    }
     function barsStatusPush() {
         const ab = window.AndroidBars;
         if (!ab || typeof ab.status !== 'function' || !shell) return;
+        // (a push asked for while staging or putting back - barsStage refreshes the status itself - is the same push)
+        if (statusPushStaging) return;
+        if (barsExternal) {
+            statusPushStaging = true;
+            let back = null;
+            try {
+                back = barsStage({ title: 'Melaton', corner: 'close', androidTray: barsTrayOn() });
+                barsStatusCollect(ab);
+            } finally {
+                try { if (back) back(); } finally { statusPushStaging = false; }
+            }
+            return;
+        }
+        barsStatusCollect(ab);
+    }
+    function barsStatusCollect(ab) {
         const list = [];
         // every role's look, shown or not, in the bar's order (#908): the app's CaféReady status-bar task decides which
         // show while this page sleeps, and draws them with these
