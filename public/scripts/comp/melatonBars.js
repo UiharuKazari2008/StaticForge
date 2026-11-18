@@ -34,6 +34,9 @@
         }));
     }
     let lastReq = 0;
+    // the screen a kit is being made for ({ density, widthPx } from DSApp's renderKit ctx), while renderKit runs
+    let kitTarget = null;
+    const stageFor = (o) => (kitTarget ? Object.assign({}, o, { density: kitTarget.density, widthPx: kitTarget.widthPx }) : o);
     let restoreNow = null;
     let lastGood = null;
     // Start opened for a copy (renderStart): put back at once when the page comes on screen
@@ -290,7 +293,11 @@
         if (!t) { out({ unsupported: 'no-shell' }); return; }
         if (!window.windowCapture && window.featureLoader) { try { await window.featureLoader.loadFeature('window_capture'); } catch (_) { /* below */ } }
         if (!window.windowCapture) { out({ unsupported: 'no-capture' }); return; }
-        const dpr = window.devicePixelRatio || 1;
+        // the bar's own screen (DSApp passes the bar's width and density, #907): the WebView answering may have been made
+        // at another density (the Fold's physical 2.625 against its 2.25 setting), so the bar is laid out and measured
+        // for the app's numbers, not this window's
+        kitTarget = Number(ctx.density) > 0 && Number(ctx.widthPx) > 0 ? { density: Number(ctx.density), widthPx: Math.round(Number(ctx.widthPx)) } : null;
+        const dpr = kitTarget ? kitTarget.density : (window.devicePixelRatio || 1);
         const keep = { text: t.textContent, style: t.getAttribute('style') };
         const PAD = 6;
         const chars = {};
@@ -305,7 +312,9 @@
         // kv: the kit's make (2: the degree sign and more symbols; the app asks again for an older one)
         // font: the face the page draws the bars in, 'tahoma' or 'segoe' (Settings > Screen > Text Size: the app loads
         // segoeui / segoeuib.ttf instead of tahoma / tahomabd.ttf)
-        out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr), lists: barLists(dpr) });
+        try {
+            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr), lists: barLists(dpr) });
+        } finally { kitTarget = null; }
     }
 
     /*
@@ -326,7 +335,7 @@
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m15', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m16', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), Math.round(window.innerWidth)].join('|');
     }
@@ -344,7 +353,7 @@
         const out = {};
         const hideIn = (root, sel) => { const hidden = []; root.querySelectorAll(sel).forEach((n) => { hidden.push([n, n.style.visibility]); n.style.visibility = 'hidden'; }); return () => hidden.forEach(([n, v]) => { n.style.visibility = v; }); };
         for (const kind of ['close', 'ok']) {
-            const back = sh.barsStage({ title: ' ', corner: kind, androidTray: false, softLeft: 'Back', softRight: 'Menu', sip: false });
+            const back = sh.barsStage(stageFor({ title: ' ', corner: kind, androidTray: false, softLeft: 'Back', softRight: 'Menu', sip: false }));
             try {
                 const corner = top.querySelector('.wm-title-action');
                 out[kind] = corner && !corner.hidden ? layoutOf([corner], dpr) : [];
@@ -385,7 +394,7 @@
         const shell = document.getElementById('wmShell');
         const top = shell && shell.querySelector('.wm-titlebar');
         if (!sh || !sh.barsStage || !top) return null;
-        const back = sh.barsStage({ title: 'Melaton', corner: 'close', androidTray: false, softLeft: 'Back', softRight: 'Menu', sip: false });
+        const back = sh.barsStage(stageFor({ title: 'Melaton', corner: 'close', androidTray: false, softLeft: 'Back', softRight: 'Menu', sip: false }));
         try {
             const br = top.getBoundingClientRect();
             const box = (el) => { if (!el || !el.getClientRects().length) return null; const r = el.getBoundingClientRect(); return { x: Math.round((r.left - br.left) * dpr), y: Math.round((r.top - br.top) * dpr), w: Math.round(r.width * dpr), h: Math.round(r.height * dpr) }; };

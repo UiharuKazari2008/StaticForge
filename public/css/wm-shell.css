@@ -683,6 +683,12 @@ img.wm-strip {
 /* the title bar's strips are stepped by wmShell.js (syncStrips, #890): frame --wm-strip-k, set once per
  * frame time while the page is awake, instead of the animation above (it woke the renderer every display
  * refresh). The same positions: frame k at k / (n - 1) of the way along */
+/* a status icon showing a frame strip (the data icon's sync / connecting arrows) is a 16-unit square: its frames are
+ * square, and a wide cell's width (the ROM's 20-unit "available" badges) stretched them (NR while the server was down) */
+#wmShell .wm-status-icon.wm-strip[data-icon] {
+    width: calc(16 * var(--wm-icon-unit, var(--wm-px))) !important;
+}
+
 #wmShell .wm-status-icon.is-jstep:is(.wm-strip, [data-icon="signal-search"]) {
     animation: none !important;
     background-position: calc(var(--wm-strip-k, 0) / (var(--n) - 1) * 100%) 0 !important;
