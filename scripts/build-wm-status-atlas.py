@@ -37,7 +37,7 @@ def halve(px, w, h):
             if a: out[(y * (w // 2) + x) * 4:(y * (w // 2) + x) * 4 + 4] = bytes([sum(px[i + c] * px[i + 3] for i in q) // a for c in range(3)] + [a // 4])
     return bytes(out)
 # ---- one glyph height (Yukimi, Nov 17 2026, "too small and unevenly sized" -> option 1): every glyph is cut
-# to its bounds and scaled to 15 units tall (the ROM's tallest, inside the emulator bar's 5-unit padding),
+# to its bounds and scaled to 16 units tall (the whole cell: the emulator bar's 5-unit padding above and below),
 # its cell as wide as its shape needs (at most 24 units) and 16 units high, so the bar keeps its padding and
 # wide icons (mail, prints, the car, the data badges) grow to the antenna's height. A family whose state is
 # how much of the cell it fills (signal bars, battery levels, data, wifi, volume) shares one cut and scale.
@@ -47,7 +47,7 @@ def halve(px, w, h):
 KEEP = {'notify-many'}
 GROUPS = ('data', 'signal', 'battery', 'wifi', 'volume')
 VARIANT = re.compile(r'-(?:\d+|none|off|on|alert|full|empty|low|charging|active|avail|unknown)$')
-GLYPH4 = 60    # 15 units at 4x
+GLYPH4 = 64    # 16 units at 4x: the whole cell, the bar's 5-unit padding above and below (Yukimi: bigger)
 CAPW4 = 96     # 24 units at 4x
 # the status icons of programs (wmShell STATUS_APP_ICONS), so they size like the rest and the app draws them
 # from the atlas (the Director and Update stay single pictures: their animations replace the picture)
@@ -119,9 +119,9 @@ def fit(entries):
         x1 = max(b[2] for n2, b in boxes.items() if family(n2) == f); y1 = max(b[3] for n2, b in boxes.items() if family(n2) == f)
         x0 = max(0, x0); y0 = max(0, y0); x1 = min(w * 2, x1); y1 = min(h * 2, y1)
         bw, bh = x1 - x0, y1 - y0
-        if abs(k - 1) <= 0.12:
+        if abs(k - 1) <= 0.02:
             g = im(px4, w * 2, h * 2, '-crop', f'{bw}x{bh}+{x0}+{y0}', '+repage'); gw, gh = bw, bh
-        elif px1 is not None and abs(round(k * 4) - k * 4) <= 0.35 and x0 % 4 == 0 and y0 % 4 == 0 and bw % 4 == 0 and bh % 4 == 0:
+        elif px1 is not None and x0 % 4 == 0 and y0 % 4 == 0 and bw % 4 == 0 and bh % 4 == 0 and abs(round(k * 4) * bh // 4 - GLYPH4) <= 3 and round(k * 4) * bw // 4 <= CAPW4:
             n = round(k * 4)
             g = im(px1, w // 2, h // 2, '-crop', f'{bw // 4}x{bh // 4}+{x0 // 4}+{y0 // 4}', '+repage', '-filter', 'point', '-resize', f'{n * 100}%')
             gw, gh = bw // 4 * n, bh // 4 * n

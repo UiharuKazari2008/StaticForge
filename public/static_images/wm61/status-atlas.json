@@ -29,166 +29,166 @@
    "file": "status-volume",
    "x": 104,
    "y": 0,
-   "w": 44,
+   "w": 48,
    "h": 32
   },
   "volume-off": {
    "file": "status-volume-off",
-   "x": 148,
+   "x": 152,
    "y": 0,
-   "w": 44,
+   "w": 48,
    "h": 32
   },
   "vibrate": {
    "file": "status-vibrate",
-   "x": 192,
+   "x": 200,
    "y": 0,
-   "w": 40,
+   "w": 42,
    "h": 32
   },
   "notify-many": {
    "file": "status-notify-many",
-   "x": 232,
+   "x": 242,
    "y": 0,
    "w": 32,
    "h": 32
   },
   "signal-1": {
    "file": "status-signal-1",
-   "x": 264,
+   "x": 274,
    "y": 0,
-   "w": 36,
+   "w": 38,
    "h": 32
   },
   "signal-2": {
    "file": "status-signal-2",
-   "x": 300,
+   "x": 312,
    "y": 0,
-   "w": 36,
+   "w": 38,
    "h": 32
   },
   "signal-3": {
    "file": "status-signal-3",
-   "x": 336,
+   "x": 350,
    "y": 0,
-   "w": 36,
+   "w": 38,
    "h": 32
   },
   "signal-4": {
    "file": "status-signal-4",
-   "x": 372,
+   "x": 388,
    "y": 0,
-   "w": 36,
+   "w": 38,
    "h": 32
   },
   "signal-none": {
    "file": "status-signal-none",
-   "x": 408,
+   "x": 426,
    "y": 0,
-   "w": 36,
+   "w": 38,
    "h": 32
   },
   "signal-off": {
    "file": "status-signal-off",
-   "x": 444,
+   "x": 464,
    "y": 0,
-   "w": 36,
+   "w": 38,
    "h": 32
   },
   "signal-alert": {
    "file": "status-signal-alert",
    "x": 0,
    "y": 32,
-   "w": 36,
+   "w": 38,
    "h": 32
   },
   "roaming": {
    "file": "status-roaming",
-   "x": 36,
+   "x": 38,
    "y": 32,
    "w": 32,
    "h": 32
   },
   "wifi-available": {
    "file": "status-wifi-available",
-   "x": 68,
+   "x": 70,
    "y": 32,
    "w": 36,
    "h": 32
   },
   "wifi-connected": {
    "file": "status-wifi-connected",
-   "x": 104,
+   "x": 106,
    "y": 32,
    "w": 36,
    "h": 32
   },
   "battery-full": {
    "file": "status-battery-full",
-   "x": 140,
+   "x": 142,
    "y": 32,
    "w": 36,
    "h": 32
   },
   "battery-3": {
    "file": "status-battery-3",
-   "x": 176,
+   "x": 178,
    "y": 32,
    "w": 36,
    "h": 32
   },
   "battery-2": {
    "file": "status-battery-2",
-   "x": 212,
+   "x": 214,
    "y": 32,
    "w": 36,
    "h": 32
   },
   "battery-1": {
    "file": "status-battery-1",
-   "x": 248,
+   "x": 250,
    "y": 32,
    "w": 36,
    "h": 32
   },
   "battery-empty": {
    "file": "status-battery-empty",
-   "x": 284,
+   "x": 286,
    "y": 32,
    "w": 36,
    "h": 32
   },
   "battery-charging": {
    "file": "status-battery-charging",
-   "x": 320,
+   "x": 322,
    "y": 32,
    "w": 36,
    "h": 32
   },
   "battery-unknown": {
    "file": "status-battery-unknown",
-   "x": 356,
+   "x": 358,
    "y": 32,
    "w": 36,
    "h": 32
   },
   "data-g": {
    "file": "status-data-g",
-   "x": 392,
+   "x": 394,
    "y": 32,
    "w": 36,
    "h": 32
   },
   "data-g-active": {
    "file": "status-data-g-active",
-   "x": 428,
+   "x": 430,
    "y": 32,
    "w": 36,
    "h": 32
   },
   "data-e": {
    "file": "status-data-e",
-   "x": 464,
+   "x": 466,
    "y": 32,
    "w": 36,
    "h": 32
@@ -512,77 +512,77 @@
    "file": "status-mail",
    "x": 248,
    "y": 160,
-   "w": 44,
+   "w": 48,
    "h": 32
   },
   "app-sms": {
    "file": "status-sms",
-   "x": 292,
+   "x": 296,
    "y": 160,
-   "w": 36,
+   "w": 42,
    "h": 32
   },
   "app-messenger": {
    "file": "status-messenger",
-   "x": 328,
+   "x": 338,
    "y": 160,
    "w": 32,
    "h": 32
   },
   "app-prints": {
    "file": "status-prints",
-   "x": 360,
+   "x": 370,
    "y": 160,
-   "w": 44,
+   "w": 48,
    "h": 32
   },
   "app-weather-alert": {
    "file": "status-weather-alert",
-   "x": 404,
+   "x": 418,
    "y": 160,
-   "w": 44,
+   "w": 46,
    "h": 32
   },
   "app-rain-alarm": {
    "file": "status-rain-alarm",
-   "x": 448,
+   "x": 464,
    "y": 160,
-   "w": 34,
+   "w": 36,
    "h": 32
   },
   "app-traffic": {
    "file": "status-traffic",
    "x": 0,
    "y": 192,
-   "w": 38,
+   "w": 40,
    "h": 32
   },
   "app-lapis": {
    "file": "status-lapis",
-   "x": 38,
+   "x": 40,
    "y": 192,
-   "w": 32,
+   "w": 34,
    "h": 32
   },
   "app-continuity": {
    "file": "status-continuity",
-   "x": 70,
-   "y": 192,
-   "w": 40,
-   "h": 32
-  },
-  "app-activesync": {
-   "file": "status-activesync",
-   "x": 110,
+   "x": 74,
    "y": 192,
    "w": 42,
    "h": 32
   },
+  "app-activesync": {
+   "file": "status-activesync",
+   "x": 116,
+   "y": 192,
+   "w": 44,
+   "h": 32
+  },
   "app-nightshade": {
    "file": "status-nightshade",
-   "x": 152,
+   "x": 160,
    "y": 192,
-   "w": 40,
+   "w": 42,
    "h": 32
   }
  }
