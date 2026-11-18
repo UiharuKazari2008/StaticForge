@@ -33,6 +33,7 @@
 
     if (window.uiShell !== 'mobile') return;
     const root = document.documentElement;
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const K = {
         scale: 'wmScale',
@@ -183,6 +184,29 @@
         root.dataset.wmCamera = cameraStyle();
     }
 
+    // Melaton Mobile as the phone's home screen (Yukimi, Nov 18): the title bar in Android programs and the 1:1 look it
+    // copies are on by default - Settings > Screen > Bezel > Extend Status Bar to edge of Camera, and the app's "Use the
+    // title bar in Android programs". Once per phone, only where nothing was chosen yet; turning either off afterwards
+    // stays off. Without them a fresh home screen had no bar over other programs (the bars stood down for "extend-off").
+    const LAUNCHER_DEFAULTS = 'wmLauncherDefaults';
+    function applyLauncherDefaults() {
+        if (lsGet(LAUNCHER_DEFAULTS) === '1') return;
+        const H = window.AndroidHome;
+        let home = false;
+        try { home = !!(H && typeof H.isHome === 'function' && H.isHome()); } catch (_) { home = false; }
+        if (!home) return;
+        const keys = [];
+        if (lsGet(K.cameraExtend) == null) { lsSet(K.cameraExtend, '1'); keys.push(K.cameraExtend); }
+        try {
+            const A = window.AndroidBars;
+            const st = A && typeof A.getState === 'function' ? JSON.parse(A.getState()) : null;
+            // the app turns its bar service on itself when it can (Shizuku / local ADB), else opens Accessibility
+            if (st && st.config && st.config.enabled === false && typeof A.setConfig === 'function') A.setConfig(JSON.stringify({ enabled: true }));
+        } catch (_) { /* an app without the bars */ }
+        lsSet(LAUNCHER_DEFAULTS, '1');
+        if (keys.length) changed(keys);
+    }
+
     // ---- home screen rotation (Yukimi, Nov 13): while the home screen (Today) shows, the Android app
     // locks the screen upright unless rotation is on for this screen; a foldable keeps one choice for
     // its cover screen and one for its main screen (AndroidDisplay.getScreenInfo: foldable, screen).
@@ -325,8 +349,11 @@
     })();
     applyTitleBar();
     applySystemFont();
+    applyLauncherDefaults();
     applyCamera();
     applySoftkeyExtend();
+    // made the home screen later (Android's Home choice while the app runs): the defaults then
+    document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake) applyLauncherDefaults(); }, { signal: appScopeSignal });
 
     function todayUsesDesktop() {
         const v = lsGet(K.todayUseDesktop);
