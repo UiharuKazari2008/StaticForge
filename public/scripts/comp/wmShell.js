@@ -3301,7 +3301,6 @@
         const dir = directorState();
         directorTurnWatch(dir);
         const dirOpen = stack.includes('director') || openedApps.includes('director');
-        if (current === 'director') dirUnseen = false;
         // only while a turn runs or the Director is open (Yukimi, Nov 18): a finished turn not seen no longer keeps it
         hide(shell.querySelector('[data-role="director"]'), !((dir && dir.running) || dirOpen));
         paintDirectorClap(!!(dir && dir.running));
@@ -3692,14 +3691,11 @@
      * Display message on screen, posts a notification (off by default: the clapper already stops).
      */
     let dirWasRunning = null;
-    let dirUnseen = false;
     function directorTurnWatch(dir) {
         const running = !!(dir && dir.running);
         const was = dirWasRunning;
         dirWasRunning = dir ? running : was;
         if (!dir || was !== true || running) return;
-        // the glyph stays in the title bar until the Director is opened (a finished turn is news, as unread mail)
-        if (!(stack.includes('director') && current === 'director')) dirUnseen = true;
         playSystemSound('director');
         const p = eventPrefs('director');
         if (p && p.display) {
