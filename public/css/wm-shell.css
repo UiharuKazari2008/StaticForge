@@ -612,12 +612,20 @@ html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="right"]::before { rig
 /* Icons on a 21 px pitch (16 px + 5 px), ending 6 px before the ok / X button. WM keeps the
  * button's place when an app has none, so the icons do not move; on Today they end at x 209
  * (emulator 2x: cells 262 / 304 / 346 / 386 on Today, 308 / 350 / 392 + button at 436 in apps). */
+/* The emulator's bar (6.1 QVGA and 6.5 VGA alike): 16-unit icons with 5 units above and below in the
+ * 26-unit bar (its 1-unit rule inside the bottom 5). Kept in WM units, so the gap scales with the
+ * screen; an icon is never taller than the bar less that padding, and a taller bar (Extend to the
+ * camera: the title bar shares the extra above and below itself) keeps the icons at 16 units. */
 .wm-status {
     flex: 0 0 auto;
+    align-self: stretch;
     display: flex;
     align-items: center;
     gap: calc(5 * var(--wm-px));
+    box-sizing: border-box;
     padding-right: calc(6 * var(--wm-px));
+    padding-top: calc(5 * var(--wm-px));
+    padding-bottom: calc(4 * var(--wm-px));
 }
 
 .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status {
@@ -628,10 +636,22 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
     padding-right: calc(28 * var(--wm-px) + var(--wm-bar-edge));
 }
 
+/* the left group (icons beside the camera) keeps the same padding */
+.wm-status-left {
+    align-self: stretch;
+    box-sizing: border-box;
+    padding-top: calc(5 * var(--wm-px));
+    padding-bottom: calc(4 * var(--wm-px));
+}
+
 .wm-status-icon {
-    /* whole device pixels per art pixel (wmShell syncIconUnit): the 1-bit art keeps even strokes */
+    /* whole device pixels per art pixel (wmShell syncIconUnit), never over the 16-unit slot: the
+     * 1-bit art keeps even strokes */
+    flex: 0 0 auto;
     width: calc(16 * var(--wm-icon-unit, var(--wm-px)));
     height: calc(16 * var(--wm-icon-unit, var(--wm-px)));
+    max-width: calc(16 * var(--wm-px));
+    max-height: calc(16 * var(--wm-px));
     background: center / 100% 100% no-repeat;
     /* 1-bit ROM glyphs: keep their pixel steps when a screen scale stretches them */
     image-rendering: pixelated;
