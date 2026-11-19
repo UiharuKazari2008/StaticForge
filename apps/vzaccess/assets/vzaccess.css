@@ -10,7 +10,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    height: 487px;
+    height: 481px;
     background: var(--vz-client);
     color: var(--vz-text);
     cursor: default;
@@ -18,13 +18,13 @@
 }
 
 /* ---- the menu bar and the Verizon Wireless logo beside it (7.6 draws it across the caption and menu rows) ---- */
-/* Melaton's caption cannot hold it as 7.6's own frame did, so the menu row is a 32 px band and the logo sits inside it,
-   right-aligned and centred on the menu titles (it used to rise 4 px into the frame, cut by the client edge) */
-/* by the window's id: the kit's menu bar rules are long chains */
-#vzAccessManagerModal .vz-root > .naxt-menubar.naxt-menubar[data-win32-menus]:not(#_) { flex: none; box-sizing: border-box; height: 32px; min-height: 32px; padding-right: 200px; align-items: center; }
+/* Melaton's caption cannot hold it as 7.6's own frame did: the menu row stays the kit's, and the logo sits at the
+   right from the menu row down into the tab row's free space (the tabs end well left of it), as 7.6 drew it beside
+   the tabs' top; nothing rises into the frame */
+.vz-root > .naxt-menubar { flex: none; padding-right: 200px; }
 .vz-root .vz-logo {
     position: absolute;
-    top: 1px;
+    top: 6px;
     right: 12px;
     width: 186px;
     height: 30px;
@@ -33,7 +33,7 @@
 
 /* ---- the tabs ---- */
 /* the kit's tabs at 7.6's size (27 px, a bold selected tab); by the window's id, as the kit's own rules are long chains */
-#vzAccessManagerModal .vz-root > menu[role="tablist"] { flex: none; margin: 5px 0 0 9px; }
+#vzAccessManagerModal .vz-root > menu[role="tablist"] { flex: none; margin: 9px 0 0 9px; }
 #vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"] { display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 14px 0 9px; font-size: 12px; }
 #vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"] img { width: auto; height: 16px; flex: none; }
 #vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"][aria-selected="true"] { font-weight: bold; }
@@ -170,6 +170,7 @@
 .vz-root .vz-cover .vz-national { color: var(--vz-national); }
 .vz-root .vz-cover .vz-fill { flex: 1; }
 .vz-root .vz-tech { font-weight: bold; font-size: 13px; margin-right: 3px; }
+.vz-root .vz-tech-mark { flex: none; height: 15px; width: auto; margin-right: 5px; }
 .vz-root .vz-roam {
     width: 0;
     height: 0;

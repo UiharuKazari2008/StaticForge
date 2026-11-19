@@ -61,9 +61,10 @@
      */
     function coverageOf(type) {
         const t = String(type || '').toUpperCase();
-        if (/5G\s*-?\s*(UW|A)|UWB/.test(t)) return { html: '<b>Mobile Broadband</b> (5G Ultra Wideband)', tech: '5G UW' };
-        if (/5G|NR/.test(t)) return { html: '<b>Mobile Broadband</b> (5G)', tech: '5G' };
-        if (/LTE/.test(t)) return { html: '<b>Mobile Broadband</b> (4G LTE)', tech: '4G' };
+        // 4G LTE, 5G and 5G Ultra Wideband: Verizon's own marks (Yukimi's artwork, assets/tech-*), where 7.6 had its bold "4G"
+        if (/5G\s*-?\s*(UW|A)|UWB/.test(t)) return { html: '<b>Mobile Broadband</b> (5G Ultra Wideband)', tech: '5G UW', mark: '5guw' };
+        if (/5G|NR/.test(t)) return { html: '<b>Mobile Broadband</b> (5G)', tech: '5G', mark: '5g' };
+        if (/LTE/.test(t)) return { html: '<b>Mobile Broadband</b> (4G LTE)', tech: '4G LTE', mark: '4glte' };
         if (/HSPA|3G|UMTS|EVDO|EHRPD/.test(t)) return { html: '<b>Mobile Broadband</b> (EV-RevA)', tech: '3G' };
         if (/EDGE|GPRS|1X|CDMA/.test(t)) return { html: '<span class="vz-national">National</span><b>Access</b> (1xRTT)', tech: '2G' };
         return { html: '<b>Mobile Broadband</b>', tech: '' };
@@ -483,7 +484,7 @@
             this.setHtml(this.f('cover'), !w.present
                 ? '<span>Device not detected</span>'
                 : w.searching ? '<span>Searching for network...</span>'
-                    : `<span>${cov.html}</span><span class="vz-fill"></span>${w.roaming ? '<span class="vz-roam" title="Extended Network"></span>' : ''}${cov.tech ? `<span class="vz-tech">${esc(cov.tech)}</span>` : ''}<span title="${esc(tip)}">${meterHtml(w.bars)}</span>`);
+                    : `<span>${cov.html}</span><span class="vz-fill"></span>${w.roaming ? '<span class="vz-roam" title="Extended Network"></span>' : ''}${cov.mark ? `<img class="vz-tech-mark" src="${A}/tech-${cov.mark}-15.png" srcset="${A}/tech-${cov.mark}-30.png 2x" alt="${esc(cov.tech)}" draggable="false">` : cov.tech ? `<span class="vz-tech">${esc(cov.tech)}</span>` : ''}<span title="${esc(tip)}">${meterHtml(w.bars)}</span>`);
             // Connection Status, the timer, the data arrows
             this.setText(this.f('state'), w.state);
             const arrows = `${A}/${w.connected && w.moving ? 'arrows' : 'arrows-off'}.png`;

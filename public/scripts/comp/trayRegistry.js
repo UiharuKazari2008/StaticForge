@@ -117,6 +117,16 @@ const TRAY_SYSTEM_ICON_IDS = ['powerTrayIcon', 'modemTrayIcon', 'volumeTrayIcon'
 const TRAY_OWN_CLASSES = new Set(['tray-overflow', 'tray-boot-in']);
 const TRAY_BEHAVIORS = ['inactive', 'hide', 'show'];
 
+/**
+ * Every icon the notification area can tuck away: the shell's catalog, and the icons programs add (melatonApps tray(),
+ * e.g. VZAccess Manager, #947) under their own ids and names.
+ */
+function trayCatalogRows() {
+    const apps = typeof document === 'undefined' ? [] : Array.from(document.querySelectorAll('.taskbar-tray-icons > .melaton-app-tray-icon[id]'))
+        .map((el) => ({ id: el.id, label: String(el.title || el.dataset.melatonApp || el.id).split('\n')[0] }));
+    return TRAY_ICON_CATALOG.concat(apps.filter((a) => !TRAY_ICON_CATALOG.some((row) => row.id === a.id)));
+}
+
 const trayActivity = new Map();
 let trayCollapseTimer = 0;
 let trayInactiveTimer = 0;
@@ -135,10 +145,25 @@ function trayReadBehaviors() {
 // for every icon's, many times a minute)
 let trayBehaviorSource = null;
 
+// Yukimi (#945): icons that are not always shown are hidden by default. A save from before (version 1) stored the
+// old default, Hide when inactive, for every icon it listed: those entries go once, so the new default applies; the
+// icons the user set to Show or Hide keep it.
+const TRAY_BEHAVIOR_VERSION_KEY = 'desktop-tray-icon-behavior-v';
+function trayMigrateBehaviors(map) {
+    try {
+        if (!map || localStorage.getItem(TRAY_BEHAVIOR_VERSION_KEY) === '2') return map;
+        const out = {};
+        Object.keys(map).forEach((id) => { if (map[id] === 'show' || map[id] === 'hide') out[id] = map[id]; });
+        localStorage.setItem(TRAY_ICON_BEHAVIOR_KEY, JSON.stringify(out));
+        localStorage.setItem(TRAY_BEHAVIOR_VERSION_KEY, '2');
+        return out;
+    } catch (_) { return map; }
+}
+
 function trayBehaviorsSaved() {
     if (!trayBehaviorSource) {
         let legacy = null;
-        const map = trayReadBehaviors();
+        const map = trayMigrateBehaviors(trayReadBehaviors());
         if (!map) {
             try { legacy = localStorage.getItem(TRAY_ICON_OVERFLOW_KEY) !== null ? trayReadSet(TRAY_ICON_OVERFLOW_KEY) : null; } catch (_) { /* private mode */ }
         }
@@ -153,22 +178,22 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
     });
 }
 
-/** 'show' | 'hide' | 'inactive'. Before the first save: the old "not always shown" list
- *  ('hide' for its icons, 'show' for the rest), or Vista's default, Hide when inactive. */
-// shown unless the user picked otherwise: the Nightshade Network icon is always visible (#895, Yukimi)
-const TRAY_DEFAULT_SHOW = new Set(['nightshadeTrayIcon']);
+/** 'show' | 'hide' | 'inactive'. Unset: Show for the always-visible icons, Hide for every other (Yukimi, #945). */
+// always visible unless the user picked otherwise: the Nightshade Network icon (#895) and Melaton Update, which is
+// only there while updates download or wait for a restart (#945); the system icons have their own switches
+const TRAY_DEFAULT_SHOW = new Set(['nightshadeTrayIcon', 'serviceWorkerTrayIcon']);
 function trayIconBehavior(id) {
     const { map, legacy } = trayBehaviorsSaved();
-    const fallback = TRAY_DEFAULT_SHOW.has(id) ? 'show' : 'inactive';
+    const fallback = TRAY_DEFAULT_SHOW.has(id) ? 'show' : 'hide';
     if (map) return TRAY_BEHAVIORS.includes(map[id]) ? map[id] : fallback;
-    if (legacy) return legacy.has(id) ? 'hide' : 'show';
+    if (legacy) return legacy.has(id) ? 'hide' : fallback;
     return fallback;
 }
 
 /** Save every icon's behaviour at once (Customize Notification Icons OK). */
 function traySetIconBehaviors(behaviors) {
     const out = {};
-    TRAY_ICON_CATALOG.forEach((row) => {
+    trayCatalogRows().forEach((row) => {
         if (TRAY_SYSTEM_ICON_IDS.includes(row.id)) return;
         const b = behaviors && behaviors[row.id];
         out[row.id] = TRAY_BEHAVIORS.includes(b) ? b : trayIconBehavior(row.id);
@@ -182,7 +207,7 @@ function traySetIconBehaviors(behaviors) {
 
 function traySetIconBehavior(id, behavior) {
     const all = {};
-    TRAY_ICON_CATALOG.forEach((row) => { all[row.id] = trayIconBehavior(row.id); });
+    trayCatalogRows().forEach((row) => { all[row.id] = trayIconBehavior(row.id); });
     all[id] = behavior;
     traySetIconBehaviors(all);
 }
@@ -205,7 +230,7 @@ function trayPopupCatalog() {
 function trayIconCatalog() {
     // the Vista look folds network latency into the network icon (vista-glass-controls.css)
     const vista = !window.uiTheme.is('classic');
-    return TRAY_ICON_CATALOG.filter((row) => !TRAY_SYSTEM_ICON_IDS.includes(row.id) && document.getElementById(row.id)
+    return trayCatalogRows().filter((row) => !TRAY_SYSTEM_ICON_IDS.includes(row.id) && document.getElementById(row.id)
         && !(vista && row.id === 'pingWarningIndicator'));
 }
 
@@ -317,7 +342,7 @@ function traySyncOverflow() {
     const hideInactive = trayHideInactiveEnabled();
     let any = false;
     let waiting = false;
-    TRAY_ICON_CATALOG.forEach((row) => {
+    trayCatalogRows().forEach((row) => {
         if (TRAY_SYSTEM_ICON_IDS.includes(row.id)) return;
         const el = document.getElementById(row.id);
         if (!el) return;
@@ -362,7 +387,8 @@ function trayWatchIcons() {
         let relevant = false;
         mutations.forEach((m) => {
             const icon = m.target.closest && m.target.closest('.taskbar-tray-icon');
-            if (!icon || !ids.has(icon.id) || TRAY_SYSTEM_ICON_IDS.includes(icon.id)) return;
+            // (a program's own tray icon counts too: it comes and goes after this list was read, #947)
+            if (!icon || !(ids.has(icon.id) || (icon.id && icon.classList.contains('melaton-app-tray-icon'))) || TRAY_SYSTEM_ICON_IDS.includes(icon.id)) return;
             relevant = true;
             if (icon !== m.target || trayMutationIsActivity(m)) trayNoteActivity(icon.id);
         });

@@ -398,6 +398,9 @@
                 if (!host) return null;
                 trayIcon = document.createElement('div');
                 trayIcon.className = 'taskbar-tray-icon melaton-app-tray-icon hidden';
+                // a stable id: the notification area's order (trayOrder.js) moves and remembers only icons with one, so
+                // an app's icon could not be dragged (#947, VZAccess Manager)
+                trayIcon.id = `melatonAppTray-${String(pkg.id).replace(/[^\w-]/g, '-')}`.slice(0, 64);
                 trayIcon.dataset.melatonApp = pkg.id;
                 trayIcon.dataset.melatonSegment = segmentKey(pkg.base);
                 trayIcon.title = o.title || pkg.title;
