@@ -16,6 +16,16 @@
  *   cachedLogon.verify(pin) -> { ok, userType } | null (nothing kept)
  *   cachedLogon.has()       a verifier is kept
  *   cachedLogon.forget()    drop it (sign out of this device)
+ *
+ * Logon policy, per computer (Yukimi, Nov 19 2026: log off returns to the logon without signing back in; a
+ * computer may start at the logon and require the password instead of signing in by itself). Vista keeps it in
+ * User Accounts (`control userpasswords2`): "Users must enter a user name and password to use this computer."
+ *   cachedLogon.requireLogon()        true: the logon asks for the password at every start (melatonRequireLogon)
+ *   cachedLogon.setRequireLogon(on)
+ *   cachedLogon.markLoggedOff()       log off: the next logon asks for the password whatever the setting
+ *   cachedLogon.mustSignIn()          one of the two holds (the Welcome screen asks for the password)
+ *   cachedLogon.signedIn()            a password was accepted: the log off mark goes
+ * Both are this computer's own (localStorage), read with no request to the server (installed-boot-zero-wait).
  */
 (function (root) {
     'use strict';
@@ -110,7 +120,18 @@
         return { ok: false, online: true, status: res.status, data, error: (data && (data.message || data.error)) || 'The password is incorrect.' };
     }
 
+    const REQUIRE_KEY = 'melatonRequireLogon';
+    const LOGGED_OFF_KEY = 'melatonLoggedOff';
+    const flag = (k) => { try { return root.localStorage.getItem(k) === '1'; } catch (_) { return false; } };
+    const setFlag = (k, on) => { try { if (on) root.localStorage.setItem(k, '1'); else root.localStorage.removeItem(k); } catch (_) { /* private mode */ } };
+
     root.cachedLogon = {
+        requireLogon: () => flag(REQUIRE_KEY),
+        setRequireLogon: (on) => setFlag(REQUIRE_KEY, !!on),
+        markLoggedOff: () => setFlag(LOGGED_OFF_KEY, true),
+        loggedOff: () => flag(LOGGED_OFF_KEY),
+        mustSignIn: () => flag(REQUIRE_KEY) || flag(LOGGED_OFF_KEY),
+        signedIn: () => setFlag(LOGGED_OFF_KEY, false),
         signIn,
         verify,
         remember,

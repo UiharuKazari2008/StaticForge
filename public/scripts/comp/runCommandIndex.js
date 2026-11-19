@@ -636,6 +636,19 @@ function buildRunSystemCommandEntries() {
         icon: 'fa-light fa-info-circle',
         keywords: ['winver', 'about', 'about meletonfx', 'about windows', 'version', 'build'],
         execute: () => { openAboutMelatoninModal(); }
+    }, {
+        // Vista's hidden User Accounts sheet: "Users must enter a user name and password to use this computer"
+        // (cplUserAccounts.js openUserPasswords2, in the Control Panel feature)
+        id: 'system-userpasswords2',
+        category: 'app',
+        label: 'control userpasswords2',
+        subtitle: 'User Accounts',
+        icon: 'fa-light fa-users',
+        keywords: ['control userpasswords2', 'userpasswords2', 'netplwiz', 'automatic logon', 'auto logon', 'require password', 'users must enter a user name and password'],
+        execute: async () => {
+            try { if (window.featureLoader) await window.featureLoader.loadFeature('control_panel'); } catch (_) { /* opened below if it loaded */ }
+            if (window.cplUserAccounts && typeof window.cplUserAccounts.openUserPasswords2 === 'function') window.cplUserAccounts.openUserPasswords2();
+        }
     }];
 }
 

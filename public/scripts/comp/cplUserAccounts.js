@@ -17,6 +17,12 @@
  * otherwise Guest). Admins only change.
  * Admins also get "Use Vista Logon" under the list (wsClient.setUseVistaLogon, one server-wide
  * choice): the logon screen reads it from /status (websocket.js _setVistaLogon).
+ *
+ * `control userpasswords2` / netplwiz (openUserPasswords2): Vista's User Accounts sheet from its own templates
+ * (netplwiz.dll.mui 105 Users, 118 Advanced, 113 Automatically Log On). "Users must enter a user name and password
+ * to use this computer" is this computer's logon policy (cachedLogon.requireLogon, Yukimi Nov 19 2026): on, every
+ * start stops at the logon for the password; off, the computer signs in by itself (the session, or offline its
+ * cached logon) - turning it off asks for the password first, as Vista's Automatically Log On does.
  */
 (function (root) {
     'use strict';
@@ -426,7 +432,144 @@
         });
     }
 
-    root.cplUserAccounts = { register, open: () => register() && root.melatonControlPanel.open('user-accounts'), _test: {
+    // ---- control userpasswords2 (netplwiz) ----------------------------------------------------------------------
+    const NP = '/static_images/vista-dlg';
+    let upOpen = null;
+
+    function npRows(lv, rows) {
+        if (!lv) return;
+        const doc = lv.ownerDocument;
+        const head = lv.querySelector('.vdt-lv-header');
+        const body = lv.querySelector('.vdt-lv-body');
+        lv.classList.add('is-report');
+        // the VM's columns: User Name 196 px, Group the rest
+        const widths = [196, 196];
+        head.replaceChildren(...['User Name', 'Group'].map((t, i) => {
+            const c = doc.createElement('span');
+            c.className = 'vdt-lv-col';
+            c.style.width = `${widths[i]}px`;
+            c.textContent = t;
+            return c;
+        }));
+        body.replaceChildren(...rows.map((r, i) => {
+            const row = doc.createElement('div');
+            row.className = `vdt-lv-row${i === 0 ? ' is-selected' : ''}`;
+            row.dataset.account = r.account;
+            r.cells.forEach((t, j) => {
+                const c = doc.createElement('span');
+                c.style.width = `${widths[j]}px`;
+                if (j === 0) {
+                    const img = doc.createElement('img');
+                    img.src = `${NP}/netplwiz-user-16.png`;
+                    img.alt = '';
+                    c.appendChild(img);
+                }
+                c.appendChild(doc.createTextNode(t));
+                row.appendChild(c);
+            });
+            return row;
+        }));
+    }
+
+    /** Vista's Automatically Log On: the account's password twice; resolves true when it signed in. */
+    function askAutoLogon(owner) {
+        const V = root.vistaDialogTemplate;
+        if (!V) return Promise.resolve(false);
+        return new Promise((resolve) => {
+            let done = false;
+            const finish = (v) => { if (!done) { done = true; resolve(v); } };
+            V.openDialog({
+                id: 'autoLogon',
+                key: 'netplwiz:113',
+                owner,
+                init: (ctx) => {
+                    ctx.set(1010, nameOf('administrator'));
+                    const pw = ctx.el(1013);
+                    if (pw) setTimeout(() => { try { pw.focus(); } catch (_) { /* gone */ } }, 0);
+                },
+                ok: async (ctx) => {
+                    const a = String(ctx.get(1013) || '');
+                    const b = String(ctx.get(1009) || '');
+                    const say = (text) => (typeof root.showConfirmationDialog === 'function'
+                        ? root.showConfirmationDialog(text, [{ text: 'OK', value: true }], { title: 'Automatically Log On', icon: 'error' })
+                        : Promise.resolve());
+                    // netplwiz's own strings
+                    if (a !== b) { await say('The passwords you typed do not match. Type the same password in both text boxes.'); return false; }
+                    const r = root.cachedLogon ? await root.cachedLogon.signIn(a) : { ok: false, error: 'The password could not be checked.' };
+                    if (!r.ok || (r.userType && r.userType !== 'admin')) { await say(r.error || 'The user name or password is incorrect.'); return false; }
+                    finish(true);
+                    return true;
+                },
+                cancel: () => finish(false)
+            });
+        });
+    }
+
+    function openUserPasswords2() {
+        const V = root.vistaDialogTemplate;
+        if (!V) return false;
+        if (upOpen && upOpen.modal && upOpen.modal.isConnected) {
+            if (typeof root.bringModalToFront === 'function') root.bringModalToFront(upOpen.modal);
+            return true;
+        }
+        const required = !!(root.cachedLogon && root.cachedLogon.requireLogon());
+        const rows = [{ account: 'administrator', cells: [nameOf('administrator'), 'Administrators'] }];
+        if (!(pins && pins.userPinLoginEnabled === false)) rows.push({ account: 'guest', cells: [nameOf('guest'), 'Guests'] });
+        upOpen = V.openSheet({
+            id: 'userPasswords2',
+            title: 'User Accounts',
+            icon: `${ART}/users-32.png`,
+            pages: [
+                { key: 'netplwiz:105', overrides: {
+                    1034: { image: `${NP}/netplwiz-user-32.png` },
+                    // one Melaton logon account each; accounts are made on the server, not here
+                    1014: { disabled: true }, 1003: { disabled: true }
+                } },
+                { key: 'netplwiz:118', overrides: {
+                    // Melaton's logon has no Ctrl+Alt+Delete secure attention step to require
+                    1048: { disabled: true }
+                } }
+            ],
+            init: (ctx) => {
+                ctx.set(1022, required);
+                const lv = ctx.el(1001, 'netplwiz:105');
+                npRows(lv, rows);
+                const show = (account) => {
+                    const name = nameOf(account);
+                    ctx.text(1015, `Password for ${name}`);
+                    // the signed-in account's own password changes from its account page (Vista: Ctrl+Alt+Del)
+                    ctx.text(1019, account === currentAccount()
+                        ? 'To change your password, open User Accounts in Control Panel and select Change your password.'
+                        : `To change the password for ${name}, click Reset Password.`);
+                    const reset = ctx.el(1021, 'netplwiz:105');
+                    if (reset) reset.disabled = account === currentAccount() || !isAdmin();
+                };
+                show(rows[0].account);
+                if (lv) lv.addEventListener('change', () => { const sel = lv.querySelector('.vdt-lv-row.is-selected'); if (sel) show(sel.dataset.account); });
+                const props = ctx.el(1017, 'netplwiz:105');
+                if (props) props.addEventListener('click', () => { const sel = lv && lv.querySelector('.vdt-lv-row.is-selected'); state = { ...state, view: 'account', account: sel ? sel.dataset.account : 'administrator' }; if (root.melatonControlPanel) root.melatonControlPanel.open('user-accounts'); });
+                const reset = ctx.el(1021, 'netplwiz:105');
+                if (reset) reset.addEventListener('click', () => { const sel = lv && lv.querySelector('.vdt-lv-row.is-selected'); state = { ...state, view: 'password', account: sel ? sel.dataset.account : 'guest' }; if (root.melatonControlPanel) root.melatonControlPanel.open('user-accounts'); });
+                const manage = ctx.el(1068, 'netplwiz:118');
+                if (manage) manage.addEventListener('click', () => { if (root.melatonControlPanel) root.melatonControlPanel.open('authentication'); });
+                const adv = ctx.el(1005, 'netplwiz:118');
+                if (adv) adv.addEventListener('click', () => { state = { ...state, view: 'list' }; if (root.melatonControlPanel) root.melatonControlPanel.open('user-accounts'); });
+            },
+            apply: async (ctx) => {
+                const want = !!ctx.get(1022);
+                const now = !!(root.cachedLogon && root.cachedLogon.requireLogon());
+                if (want === now || !root.cachedLogon) return;
+                if (want) { root.cachedLogon.setRequireLogon(true); return; }
+                // turning automatic logon on: the password first (Vista's Automatically Log On)
+                if (await askAutoLogon(upOpen && upOpen.modal)) root.cachedLogon.setRequireLogon(false);
+                else ctx.set(1022, true);
+            },
+            close: () => { upOpen = null; }
+        });
+        return true;
+    }
+
+    root.cplUserAccounts = { register, openUserPasswords2, open: () => register() && root.melatonControlPanel.open('user-accounts'), _test: {
         tile: (a, p, pics) => { pins = p; pictures = pics; return tile(a); },
         view: (name, st, p, pics) => {
             pins = p; pictures = pics; state = { view: name, account: null, picture: null, upload: null, ...st };

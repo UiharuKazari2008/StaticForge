@@ -406,9 +406,12 @@ function startWinlogonPowerWork(kind, onCommit) {
         })
     ];
     if (kind === 'logoff') {
-        // handleLogout: public/scripts/comp/connectionManager.js (stays put; /launch is next)
+        // the next logon asks for the password, whatever the server still holds (cachedLogon.js, Yukimi Nov 19)
+        if (window.cachedLogon && typeof window.cachedLogon.markLoggedOff === 'function') window.cachedLogon.markLoggedOff();
+        // handleLogout: public/scripts/comp/connectionManager.js (stays put; the logon is next). An installed copy
+        // logs off without its server too (the mark above keeps the desktop shut); a plain tab needs the server
         jobs.push(Promise.resolve().then(() => handleLogout({ redirect: false })).then((ok) => {
-            if (!ok) throw new Error('Could not log off. You are still signed in.');
+            if (!ok && !winlogonInstalledCopy()) throw new Error('Could not log off. You are still signed in.');
         }));
     }
     if (kind === 'server' && typeof onCommit === 'function') {
@@ -595,6 +598,35 @@ function forgetDirectorReopen() {
     window.hideWinlogonStatus = hideWinlogonStatus;
 })();
 
+/** This computer runs an installed copy of Melaton (its /app is kept): it can start at the logon by itself. */
+function winlogonInstalledCopy() {
+    try { return !!localStorage.getItem('melatonManifestHash'); } catch (_) { return false; }
+}
+
+/**
+ * Log off ends on the Welcome screen, as Windows' does: every program is closed (the page goes) and the logon
+ * comes back with no POST, no boot screen and no automatic sign-in - the password is asked (cachedLogon.mustSignIn).
+ * An installed copy opens its kept /app directly, as DreamOS' native boot does (melatonBoot.js nativeBootHandOff);
+ * anything else starts through /launch.
+ */
+function winlogonLogoffNavigate() {
+    if (!winlogonInstalledCopy()) {
+        restartClientNavigate();
+        return;
+    }
+    if (typeof melatonNoteRestart === 'function') melatonNoteRestart('logoff');
+    try { suppressWebSocketReconnectForReload(); } catch (_) { /* go anyway */ }
+    bypassConfirmation = true;
+    window.bypassConfirmation = true;
+    window.melatonRestarting = true;
+    try {
+        sessionStorage.setItem('dreamscapeLaunchHandoff', 'teal');
+        sessionStorage.setItem('dreamscapeBootTealHoldUntil', String(Date.now()));
+        sessionStorage.removeItem('melatonSafeMode');
+    } catch (_) { /* the logon just shows */ }
+    location.replace('/app');
+}
+
 /** Narrow mode has no Welcome screen: the old direct exits. */
 function commitWinlogonPower(kind, onCommit) {
     bypassConfirmation = true;
@@ -685,6 +717,10 @@ async function runWinlogonPower(kind, options) {
         // computer off or restarts it here, after the updates are installed and the screen is dark.
         // No host, or one that declines (returns false): the page restarts into /launch as before.
         if (winlogonUpdates.hostPower(kind)) return true;
+        if (kind === 'logoff') {
+            winlogonLogoffNavigate();
+            return true;
+        }
         // restartClientNavigate: public/scripts/comp/modalUtils.js (desktop: /launch)
         restartClientNavigate();
         return true;
