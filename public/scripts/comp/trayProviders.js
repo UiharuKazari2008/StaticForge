@@ -92,6 +92,17 @@
             radio: (on) => n.radio(on)
         });
     }
+    if (root.DreamOSBluetooth && typeof root.DreamOSBluetooth.get === 'function') {
+        // BlueZ through the CaféReady host (tray2): { present, on, devices: [...] }, pushed as 'dreamosbt'
+        const b = root.DreamOSBluetooth;
+        register('bluetooth', {
+            id: 'dreamos', priority: 30,
+            available: () => true,
+            get: () => b.get(),
+            subscribe: evt('dreamosbt', (d) => d),
+            power: (on) => b.power(on), connect: (id) => b.connect(id), disconnect: (id) => b.disconnect(id)
+        });
+    }
     if (root.DreamOSAudio && typeof root.DreamOSAudio.get === 'function') {
         const a = root.DreamOSAudio;
         register('volume', {
