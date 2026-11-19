@@ -4,8 +4,9 @@
  * Melaton Messenger on the desktop and the Android app's notifications.
  *
  * Config (config.json textMessaging):  { accounts: [{ id, kind, url, enabled }], notifyUnknown }
- *   kind 'android' (#885): { id, kind, package, label, enabled, settings: { notify } } - an Android app's
- *   notifications on the partnered phone as conversations (modules/textMessagingAndroid.js)
+ *   kind 'android' (#885): { id, kind, package, label, username, channels, enabled, settings: { notify } } - an
+ *   Android app's notifications on the partnered phone as conversations (modules/textMessagingAndroid.js);
+ *   channels limits it to some of the app's notification channels (Discord: direct messages / servers, Nov 18)
  * Secrets (secure.config.json textMessaging.keys[]): { name: <account id>, password }
  *
  * Chat (provider-neutral):
@@ -77,7 +78,7 @@ function writeConfig(next) {
 /** The Android apps registered as Messaging accounts (#885) and switched on: the only ones whose notifications the
  *  phone app pops up as WM notification boxes (Yukimi, Nov 18: "not just registered ones" - every app's did). */
 function androidPopupPackages() {
-    try { return readConfig().accounts.filter((a) => a.kind === 'android' && a.enabled !== false && a.package).map((a) => a.package); } catch (_) { return []; }
+    try { return [...new Set(readConfig().accounts.filter((a) => a.kind === 'android' && a.enabled !== false && a.package).map((a) => a.package))]; } catch (_) { return []; }
 }
 
 function readSecrets() {
@@ -367,9 +368,36 @@ function init(globalResources) {
     if (globalResources) gr = globalResources;
     if (started) return;
     started = true;
+    splitDefaults();
     for (const a of readConfig().accounts) startAccount(a);
     dreamscapeContacts().catch(() => {});
     scheduleReconcile();
+}
+
+/**
+ * An app split by notification channel by default (Discord, Yukimi Nov 18): its one account made before the split
+ * (no channel list stored at all) becomes the first part, and the other parts are added. Once only: a list the user
+ * cleared ([]) stays cleared.
+ */
+function splitDefaults() {
+    try {
+        const cfg = readConfig();
+        let changed = false;
+        for (const pkg of Object.keys(androidApps.DEFAULT_SPLITS)) {
+            const mine = cfg.accounts.filter((a) => a.kind === 'android' && a.package === pkg);
+            if (mine.length !== 1 || Array.isArray(mine[0].channels)) continue;
+            const [first, ...rest] = androidApps.DEFAULT_SPLITS[pkg];
+            mine[0].channels = first.channels.slice();
+            for (const part of rest) {
+                let id = `${mine[0].id}${part.suffix}`.slice(0, 29);
+                for (let n = 2; cfg.accounts.some((a) => a.id === id); n += 1) id = `${`${mine[0].id}${part.suffix}`.slice(0, 29)}${n}`;
+                cfg.accounts.push({ id, kind: 'android', url: '', package: pkg, label: part.label, channels: part.channels.slice(), enabled: mine[0].enabled !== false, settings: Object.assign({}, mine[0].settings || {}) });
+            }
+            changed = true;
+            log(`${pkg}: split into ${rest.length + 1} accounts by notification channel`);
+        }
+        if (changed) writeConfig(cfg);
+    } catch (error) { log(`channel split failed: ${error.message}`); }
 }
 
 function provider(accountId) {
@@ -473,8 +501,12 @@ function accountOut(a) {
     const s = summaries.get(a.id);
     if (a.kind === 'android') {
         const label = androidApps.realLabel(a.label, a.package) || androidApps.appLabel(a.package) || a.package || 'Android app';
+        // the signed-in user beside the app names it among others (Yukimi, Nov 18): its own, else the app's notifications'
+        const username = String(a.username || '').trim() || androidApps.appUser(a.package);
         return {
-            id: a.id, kind: 'android', name: label, service: label, url: '', package: a.package || '', label,
+            id: a.id, kind: 'android', name: username ? `${label} (${username})` : label, service: label, url: '', package: a.package || '', label,
+            username, ownUsername: String(a.username || '').trim(), defaultUsername: androidApps.appUser(a.package),
+            channels: androidApps.cleanChannels(a.channels), channelChoices: androidApps.channelsOf(a.package),
             icon: androidApps.hasAppIcon(a.package) ? `/api/textmessaging/${encodeURIComponent(a.id)}/avatar/app` : '',
             enabled: a.enabled !== false, hasPassword: true,
             status: p ? p.status : (a.enabled === false ? 'disabled' : 'error'), error: p ? p.error : '',
@@ -569,17 +601,34 @@ function saveAccount(input) {
     return accountOut(row);
 }
 
-/** An Android app account (#885): { id?, package, label?, enabled, settings: { notify } }. One per app. */
+/**
+ * An Android app account (#885): { id?, package, label?, username?, channels?, enabled, settings: { notify } }.
+ * An app can have several accounts when they are split by notification channel (channels: ids); at most one of
+ * them takes every other channel (no list). A new Discord account is split by default (DEFAULT_SPLITS).
+ */
 function saveAndroidAccount(body, cfg, id0) {
     let id = id0;
     const at0 = id ? cfg.accounts.findIndex((a) => a.id === id) : -1;
     const pkg = String(body.package || (at0 >= 0 ? cfg.accounts[at0].package : '') || '').trim();
     if (!androidApps.PACKAGE_RE.test(pkg)) throw Object.assign(new Error('Choose the Android app.'), { code: 'NO_PACKAGE' });
-    const clash = cfg.accounts.find((a) => a.kind === 'android' && a.package === pkg && a.id !== id);
-    if (clash) throw Object.assign(new Error('That app is already an account.'), { code: 'EXISTS' });
+    const siblings = cfg.accounts.filter((a) => a.kind === 'android' && a.package === pkg && a.id !== id);
+    const prevRow = at0 >= 0 ? cfg.accounts[at0] : null;
+    // a brand-new account of an app split by default: its parts, made together
+    if (!id && !siblings.length && body.channels === undefined && androidApps.DEFAULT_SPLITS[pkg]) {
+        const parts = androidApps.DEFAULT_SPLITS[pkg];
+        const out = parts.map((part, i) => saveAndroidAccount(Object.assign({}, body, { label: i === 0 ? (body.label || part.label) : part.label, channels: part.channels, idSuffix: part.suffix }), readConfig(), ''));
+        return out[0];
+    }
+    const channels = body.channels !== undefined ? androidApps.cleanChannels(body.channels) : androidApps.cleanChannels(prevRow && prevRow.channels);
+    // another account of an app takes chosen channels; only one of them takes the rest (no list)
+    if (!channels.length && siblings.length && (!id || siblings.some((a) => !androidApps.cleanChannels(a.channels).length))) {
+        throw Object.assign(new Error('That app is already an account. To add another, choose the notification channels of each of its accounts.'), { code: 'EXISTS' });
+    }
+    const taken = channels.find((c) => siblings.some((a) => androidApps.cleanChannels(a.channels).includes(c)));
+    if (taken) throw Object.assign(new Error(`The channel ${taken} belongs to another account of this app.`), { code: 'CHANNEL_TAKEN' });
     if (!id) {
         const tail = (pkg.split('.').filter((x) => !/^(com|org|net|app|android|jp|co)$/i.test(x)).pop() || pkg.split('.').pop()).toLowerCase().replace(/[^a-z0-9_-]/g, '');
-        const base = `app-${tail || 'android'}`.slice(0, 28);
+        const base = (`app-${tail || 'android'}`.slice(0, 28) + (typeof body.idSuffix === 'string' ? body.idSuffix.replace(/[^a-z0-9_-]/g, '') : '')).slice(0, 29);
         id = base;
         for (let n = 2; cfg.accounts.some((a) => a.id === id); n += 1) id = `${base}${n}`;
     }
@@ -588,8 +637,11 @@ function saveAndroidAccount(body, cfg, id0) {
     const label = String(androidApps.realLabel(body.label, pkg) || androidApps.realLabel(prev.label, pkg) || androidApps.appLabel(pkg) || pkg).trim().slice(0, 80);
     const settings = Object.assign({}, prev.settings || {});
     if (body.settings && typeof body.settings.notify === 'boolean') settings.notify = body.settings.notify;
-    const row = { id, kind: 'android', url: '', package: pkg, label, enabled: body.enabled !== false, settings };
-    if (at >= 0) cfg.accounts[at] = Object.assign({}, prev, row);
+    // the name the user gave the signed-in account ('' = the app's own, from its notifications)
+    const username = typeof body.username === 'string' ? body.username.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 80) : String(prev.username || '');
+    const row = { id, kind: 'android', url: '', package: pkg, label, enabled: body.enabled !== false, settings, channels };
+    if (username) row.username = username;
+    if (at >= 0) { cfg.accounts[at] = Object.assign({}, prev, row); if (!username) delete cfg.accounts[at].username; }
     else cfg.accounts.push(row);
     writeConfig(cfg);
     startAccount(row);
@@ -626,6 +678,7 @@ function deleteAccount(id) {
     cfg.accounts = cfg.accounts.filter((a) => a.id !== id);
     writeConfig(cfg);
     writePassword(id, '');
+    { const p = providers.get(id); if (p && typeof p.forget === 'function') { try { p.forget(); } catch (_) { /* best effort */ } } }
     stopAccount(id);
     try { if (storeOpen()) store.forgetAccount(id); } catch (error) { log(`store forget failed: ${error.message}`); }
     broadcast({ event: 'account', accountId: id, removed: true });

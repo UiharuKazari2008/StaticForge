@@ -8,7 +8,7 @@ const textMessaging = require('../../textMessaging');
  *   tm_accounts                        { accounts, settings }  (unread counts when known)
  *   tm_summary                         { accounts } with fresh unread counts
  *   tm_account_test  { kind, url, password, id? }        { identity, features, serverVersion }
- *   tm_account_save  { id?, kind, url, password?, enabled }   { account }
+ *   tm_account_save  { id?, kind, url, password?, enabled, package?, label?, username?, channels? }   { account }
  *   tm_account_delete { id }
  *   tm_settings_save { notifyUnknown }
  *   tm_chats    { accountId, folder: inbox|unknown|all, limit, offset }   { chats, more }

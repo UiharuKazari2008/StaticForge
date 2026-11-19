@@ -1235,6 +1235,12 @@
         ['hideEmptyChats', 'Hide conversations with no messages']
     ];
 
+    function snapAccounts() {
+        const t = window.textMessaging;
+        const snap = t && typeof t.snapshot === 'function' ? t.snapshot() : null;
+        return (snap && snap.accounts) || [];
+    }
+
     function tmAccountFor(key) {
         const t = window.textMessaging;
         const id = String(key).slice(3);
@@ -1278,13 +1284,50 @@
             const a = tmAccountFor(d.sub);
             if (!a) { el.innerHTML = ui.note('This account is not available right now.'); return; }
             if (a.kind === 'android') {
-                // an Android app account (#885): its alert switch (off: the app's own notification is on the phone) and Remove
-                if (!d.tmOpts) { d.tmOpts = { notify: !!(a.settings && a.settings.notify === true) }; d.tmOptsInitial = JSON.stringify(d.tmOpts); }
-                el.innerHTML = `${ui.text(`${a.name}${a.identity ? ` (${a.identity})` : ''}`)}
+                // an Android app account (#885): its alert switch (off: the app's own notification is on the phone), the
+                // signed-in user's name (tells two accounts apart, Nov 18), the notification channels it takes and Remove
+                if (!d.tmOpts) {
+                    d.tmOpts = { notify: !!(a.settings && a.settings.notify === true), username: a.ownUsername || '', channels: (a.channels || []).slice() };
+                    d.tmOptsInitial = JSON.stringify(d.tmOpts);
+                }
+                const label = a.label || a.name;
+                // the channels the app posted on lately, and the ones this account already takes
+                const choices = (a.channelChoices || []).filter((c) => c.seen || d.tmOpts.channels.includes(c.id));
+                const others = (snapAccounts().filter((x) => x.kind === 'android' && x.package === a.package && x.id !== a.id));
+                const takenBy = (id) => others.find((x) => (x.channels || []).includes(id));
+                const uid = 'tmo-username';
+                el.innerHTML = `${ui.text(`${label}${a.identity ? ` (${a.identity})` : ''}`)}
+                    ${ui.row('User name:', ui.edit(uid, d.tmOpts.username, `maxlength="80" spellcheck="false" placeholder="${ui.esc(a.defaultUsername || 'None')}" aria-label="User name"`), { for: uid })}
                     ${ui.check('tmo-notify', 'Show a Messaging notification for new messages', d.tmOpts.notify)}
-                    ${ui.note(`${a.name} shows its own notification on the phone as well.`)}
-                    ${ui.buttons([['tm-remove', 'Remove Account']])}`;
+                    ${choices.length ? `${ui.text('Notification channels:')}
+                    ${choices.map((c) => { const t = takenBy(c.id); return ui.check(`tmo-ch-${c.id}`, t ? `${c.name} (${t.label || t.name})` : c.name, d.tmOpts.channels.includes(c.id), `data-ch="${ui.esc(c.id)}"${t ? ' disabled' : ''}`); }).join('')}
+                    ${ui.note(d.tmOpts.channels.length ? 'Only these channels show in this account.' : `None selected: every channel${others.length ? ' no other account takes' : ''} shows in this account.`)}` : ''}
+                    ${ui.note(`${label} shows its own notification on the phone as well.`)}
+                    ${ui.buttons([['tm-split', 'New Account for Other Channels', !d.tmOpts.channels.length], ['tm-remove', 'Remove Account']])}`;
                 el.querySelector('input[name="tmo-notify"]').addEventListener('change', (e) => { d.tmOpts.notify = e.target.checked; });
+                el.querySelector(`#${uid}`).addEventListener('input', (e) => { d.tmOpts.username = e.target.value; });
+                el.querySelectorAll('input[data-ch]').forEach((box) => box.addEventListener('change', () => {
+                    const id = box.getAttribute('data-ch');
+                    d.tmOpts.channels = d.tmOpts.channels.filter((x) => x !== id);
+                    if (box.checked) d.tmOpts.channels.push(id);
+                    if (typeof d.rerender === 'function') d.rerender();
+                }));
+                // another account of the same app for the channels this one does not take (saved first)
+                el.querySelector('[data-act="tm-split"]').addEventListener('click', async () => {
+                    const s1 = sh();
+                    const t = window.textMessaging;
+                    const rest = (a.channelChoices || []).filter((c) => c.seen && !d.tmOpts.channels.includes(c.id) && !takenBy(c.id)).map((c) => c.id);
+                    try {
+                        if (!rest.length) throw new Error(`${label} has not posted on any other channel yet.`);
+                        await t.saveAccount({ id: a.id, kind: a.kind, package: a.package, label: a.label, username: d.tmOpts.username, enabled: a.enabled !== false, settings: { notify: d.tmOpts.notify }, channels: d.tmOpts.channels });
+                        await t.saveAccount({ kind: 'android', package: a.package, label: `${label} (2)`, channels: rest });
+                        d.tmOptsInitial = JSON.stringify(d.tmOpts);
+                        if (typeof t.preload === 'function') void t.preload();
+                        if (s1 && typeof s1.messageBox === 'function') await s1.messageBox({ title: 'Messaging', icon: 'information', text: `A new ${label} account takes the other channels. Rename it in its settings.` });
+                    } catch (err) {
+                        if (s1 && typeof s1.messageBox === 'function') await s1.messageBox({ title: 'Messaging', icon: 'error', text: `The account could not be added. ${(err && err.message) || ''}` });
+                    }
+                });
                 el.querySelector('[data-act="tm-remove"]').addEventListener('click', async () => {
                     const s1 = sh();
                     const yes = s1 && typeof s1.messageBox === 'function'
@@ -1484,7 +1527,9 @@
                 const a = tmAccountFor(d.sub);
                 const t = window.textMessaging;
                 try {
-                    if (a && t) await t.saveAccount({ id: a.id, kind: a.kind, url: a.url, package: a.package, label: a.label, enabled: a.enabled !== false, settings: d.tmOpts });
+                    // an Android app account (#885): its user name and channels beside the switch
+                    const extra = a && a.kind === 'android' ? { username: String(d.tmOpts.username || '').trim(), channels: d.tmOpts.channels || [], settings: { notify: !!d.tmOpts.notify } } : {};
+                    if (a && t) await t.saveAccount(Object.assign({ id: a.id, kind: a.kind, url: a.url, package: a.package, label: a.label, enabled: a.enabled !== false, settings: d.tmOpts }, extra));
                     d.tmOptsInitial = JSON.stringify(d.tmOpts);
                     if (t && typeof t.preload === 'function') void t.preload();
                 } catch (err) {

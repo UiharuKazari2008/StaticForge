@@ -25,7 +25,7 @@
  *       messages.google.com; 'pairing' events: { emoji, emojiSvg }, then { paired: true } or { error })
  *   refreshRcsQr(accountId) / unpairRcs(accountId)
  *   An RCS account is saveAccount({ kind: 'rcs' }) (one per server); status 'unpaired' until paired.
- *   An Android app account (#885) is saveAccount({ kind: 'android', package, label }): that app's notifications
+ *   An Android app account (#885) is saveAccount({ kind: 'android', package, label, username?, channels? }): that app's notifications
  *   on the partnered phone as conversations. androidApps() -> [{ package, label, icon, added }] (posted lately).
  *   Its chats carry canReply (the notification's quick reply is there now) and actions [{ id, title }]:
  *   androidPackages() -> Set of the packages that are (enabled) accounts, synchronous (the Super Bar hides them).
