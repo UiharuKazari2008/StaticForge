@@ -25,6 +25,13 @@ html.melaton-boot .launch-container {
     cursor: var(--c-default);
 }
 
+/* No pointer through the BIOS, the Boot Manager, "loading files" and the boot screen, as on a PC before
+   winlogon (Yukimi, Nov 19: "always hide the mouse cursor until winlogon has enabled it"); Setup has one. */
+#melatonBoot:is([data-screen="bios"], [data-screen="black"], [data-screen="boot"], [data-screen="loading"], [data-screen="menu"]),
+#melatonBoot:is([data-screen="bios"], [data-screen="black"], [data-screen="boot"], [data-screen="loading"], [data-screen="menu"]) * {
+    cursor: none !important;
+}
+
 html.melaton-boot #melatonBoot {
     display: block;
     overflow: hidden;
