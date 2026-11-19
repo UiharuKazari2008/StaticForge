@@ -920,6 +920,14 @@ class FileSearch {
     }
 
     clearSearch(reload = false, closeAutofill = false) {
+        // Reload only when there was a search to clear. The clear button and the input's change event
+        // both cleared (two switchGalleryView reloads ~30 ms apart, which raced the gallery load into an
+        // empty gallery), and the 15 s blur timer reloaded the whole gallery with no search at all.
+        const hadSearch = !!(this.currentQuery
+            || (typeof window.currentSearchTerm === 'string' && window.currentSearchTerm.trim())
+            || Array.isArray(window.filteredImageIndices)
+            || window.originalAllImages);
+        if (!hadSearch) reload = false;
         // Clear search input
         if (this.searchInput) {
             this.searchInput.value = '';
