@@ -5,7 +5,8 @@
  * Same data and wording as the flyout: walletTray.model() builds the rows and alerts (NovelAI from
  * optionsData; Cursor profiles, Claude windows, TokenRouter, RunPod, custom Director engines and
  * service-key trouble from the wallet_status packet, modules/walletStatus.js, admin only) and
- * walletTray.refresh() asks the server again. Nothing new on the server.
+ * walletTray.refresh() asks the server again. Every Claude account's plan usage comes pushed while the
+ * page is shown (walletTray.watchClaude, statusHub feed claude_usage, modules/claudeUsage.js).
  *
  *   page       Settings-style: green header, list rows (status dot, bold name, the flyout's lines,
  *              then each right-hand column as label / value / meter rows), tabs Alerts | Status
@@ -41,7 +42,7 @@
     const STALE_MS = 60 * 1000;
     const TODAY_CACHE_MS = 15 * 1000;
     const SEEN_KEY = 'sf_wallet_seen_alerts'; // walletTray.js: alerts this session has shown
-    const ACTION_LABELS = { login: 'Log In', unlock: 'Unlock', 'novelai-site': 'Open NovelAI', 'app-requests': 'View Requests' };
+    const ACTION_LABELS = { login: 'Log In', unlock: 'Unlock', 'novelai-site': 'Open NovelAI', 'app-requests': 'View Requests', 'claude-accounts': 'Claude Accounts' };
     const DOT_TITLES = { ok: 'OK', warn: 'Needs attention', bad: 'Out', off: 'Unavailable' };
 
     let sh = null;
@@ -364,7 +365,28 @@
         }, TICK_MS);
     }
 
+    /**
+     * Every Claude account's plan usage comes pushed (statusHub claude_usage via walletTray.watchClaude)
+     * while this page is shown and the phone is seen: no read of its own on a timer.
+     */
+    let claudeHooked = false;
+    function watchClaude(on) {
+        const w = wallet();
+        if (!w || typeof w.watchClaude !== 'function') return;
+        if (!claudeHooked && typeof w.onClaude === 'function') {
+            claudeHooked = true;
+            w.onClaude(() => {
+                todayCache.at = 0;
+                rowsCache.at = 0;
+                if (page && !page.hidden && sh.current === APP_ID && awake()) render();
+                else if (page) pageStale = true;
+            });
+        }
+        w.watchClaude('accounts', !!on);
+    }
+
     function show() {
+        watchClaude(awake());
         const st = state();
         // first open with no server answer yet: the user waits for it (NovelAI shows at once)
         const unseen = readModel().alerts.some((a) => !seenSet().has(a.id));
@@ -492,11 +514,13 @@
     /** The service / account type a row stands for (the sub-line), and its own name when it has one. */
     function serviceLabel(row) {
         if (row.service === 'cursor') return 'Cursor';
+        if (row.service === 'claude') return 'Claude';
         if (row.service === 'custom') return KIND_LABEL[engineKind(row)] && KIND_LABEL[engineKind(row)] !== row.name ? `${row.name} (${KIND_LABEL[engineKind(row)]})` : row.name;
         return row.name;
     }
 
     function accountName(row) {
+        if (row.service === 'claude') return String(row.name).replace(/^Claude:\s*/, '');
         return row.service === 'cursor' ? String(row.name).replace(/^Cursor:\s*/, '') : '';
     }
 
@@ -912,6 +936,8 @@
         const wake = () => {
             syncPoll();
             // the tick stops: the countdowns on the page are old from now, so it is drawn on the wake
+            const shown = page && !page.hidden && sh.current === APP_ID;
+            watchClaude(!!shown && awake());
             if (!awake()) { if (tickTimer) { clearInterval(tickTimer); tickTimer = null; pageStale = true; } return; }
             if (Date.now() - lastFetch > POLL_MS && !miniportWallet()) refresh();
             if (page && !page.hidden && sh.current === APP_ID) { if (pageStale) render(); if (!tickTimer) schedule(); }
@@ -942,8 +968,8 @@
             inStart: 'programs',
             mount,
             show,
-            hide() { clearInterval(tickTimer); tickTimer = null; },
-            onEnd() { clearInterval(tickTimer); tickTimer = null; page = null; sel = null; },
+            hide() { clearInterval(tickTimer); tickTimer = null; watchClaude(false); },
+            onEnd() { clearInterval(tickTimer); tickTimer = null; page = null; sel = null; watchClaude(false); },
             softKeys() {
                 return {
                     left: { label: 'Refresh', action: userRefresh },

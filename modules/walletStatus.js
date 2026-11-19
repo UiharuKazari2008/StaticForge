@@ -5,7 +5,9 @@
 // rest, each provider on its own so one failure only marks its own row:
 //
 //   cursor       every Cursor profile in secure config cursorAccounts (cursorUsage.js, 60 s cache)
-//   claude       the 5-hour and 7-day windows of the last Claude turn (Director claude-usage.json)
+//   claude       the 5-hour and 7-day windows of the last Claude turn (Director claude-usage.json), and
+//                accounts: every Claude account's plan and limits read with its own login
+//                (claudeUsage.js; the same snapshot the statusHub feed claude_usage pushes)
 //   tokenrouter  the account wallet (tokenRouterBridge.wallet: management key, 60 s cache)
 //   runpod       managed pods (RunpodPodManager snapshot) and the account balance (GraphQL myself)
 //   custom       every custom Director engine (customModelProviders.js): whether its API answers
@@ -149,19 +151,26 @@ function summarizeClaude(disk) {
     };
 }
 
-function claudeStatus() {
+async function claudeStatus(gr, options) {
     let disk = null;
     try {
-        disk = JSON.parse(fs.readFileSync(claudeUsageFile(), 'utf8'));
+        disk = JSON.parse(await fs.promises.readFile(claudeUsageFile(), 'utf8'));
     } catch (_) {
         disk = null;
     }
-    if (!disk) {
-        let installed = false;
-        try { installed = !!require('./cursorDirector').findClaude(); } catch (_) { /* not installed */ }
-        return installed ? summarizeClaude(null) : null;
+    let accounts = [];
+    try {
+        const snap = await require('./claudeUsage').read(gr, { force: !!(options && (options.refresh || options.fresh)) });
+        accounts = (snap && snap.accounts) || [];
+    } catch (error) {
+        console.warn(`Wallet status claude accounts failed: ${shortError(error)}`);
     }
-    return summarizeClaude(disk);
+    if (!disk) {
+        let installed = accounts.length > 0;
+        try { installed = installed || !!require('./cursorDirector').findClaude(); } catch (_) { /* not installed */ }
+        return installed ? { ...summarizeClaude(null), accounts } : null;
+    }
+    return { ...summarizeClaude(disk), accounts };
 }
 
 // ---- TokenRouter: the account wallet ----
@@ -350,10 +359,10 @@ async function settle(label, fn) {
     }
 }
 
-async function collect(gr) {
+async function collect(gr, options) {
     const [cursor, claude, tokenrouter, runpod, custom] = await Promise.all([
         settle('cursor', () => cursorStatus(gr)),
-        settle('claude', () => claudeStatus()),
+        settle('claude', () => claudeStatus(gr, options)),
         settle('tokenrouter', () => tokenRouterStatus(gr)),
         settle('runpod', () => runpodStatus(gr)),
         settle('custom', () => customStatus(gr))
@@ -371,7 +380,7 @@ async function getWalletStatus(gr, options = {}) {
         value = snapshot;
     } else {
         if (!inflight) {
-            inflight = collect(gr).then((next) => {
+            inflight = collect(gr, options).then((next) => {
                 snapshot = next;
                 return next;
             }).finally(() => {
