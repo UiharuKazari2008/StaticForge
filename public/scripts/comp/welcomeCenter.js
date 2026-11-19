@@ -242,11 +242,12 @@
         // the DeX desktop of a phone (#829): the phone itself, as System shows it (cplSystem phoneFacts)
         let phone = null;
         try { phone = T && typeof T.phoneFacts === 'function' ? T.phoneFacts() : null; } catch (_) { phone = null; }
+        // Vista's five lines only (#945): no model line, and nothing of the server's on a device
         if (phone) {
-            facts.model = [phone.manufacturer && !String(phone.model || '').startsWith(phone.manufacturer) ? phone.manufacturer : '', phone.model].filter(Boolean).join(' ');
             facts.processor = [phone.processor, phone.clock].filter(Boolean).join(' ');
             facts.memory = formatMemory(phone.memory);
-            facts.computer = phone.name || facts.computer;
+            facts.graphics = deviceGpu() || gpu;
+            facts.computer = phone.name || '';
         }
         factsLoading = false;
         if (mounted && !selected) {
@@ -255,10 +256,25 @@
         }
     }
 
+    /** The device's own GPU (AndroidHardware gpu, as Device Manager names it), '' when it does not say. */
+    function deviceGpu() {
+        let hw = null;
+        try {
+            const id = root.melatonDeviceIdentity;
+            hw = id && typeof id.hardware === 'function' ? id.hardware() : null;
+        } catch (_) { hw = null; }
+        const g = hw && hw.gpu;
+        if (!g) return '';
+        // the app reports gpu.model as { raw, name, cores } (an older build: a string)
+        const name = (g.model && typeof g.model === 'object' && g.model.name) || g.name || '';
+        if (!name) return '';
+        return `${/^Mali/i.test(name) ? 'ARM ' : /^Adreno/i.test(name) ? 'Qualcomm ' : ''}${name}`;
+    }
+
     function factsHtml() {
         const f = facts || {};
-        const lines = [f.edition || 'Melaton', f.model, f.processor, f.memory, f.graphics, f.computer ? `Computer Name: ${f.computer}` : ''];
-        return lines.filter((l, i) => l || (i !== 1)).map((l) => `<div class="wc-fact">${esc(l || '')}</div>`).join('');
+        const lines = [f.edition || 'Melaton', f.processor, f.memory, f.graphics, f.computer ? `Computer Name: ${f.computer}` : ''];
+        return lines.map((l) => `<div class="wc-fact">${esc(l || '')}</div>`).join('');
     }
 
     function accountName() {

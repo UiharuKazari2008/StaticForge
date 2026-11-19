@@ -4,8 +4,8 @@
  *   Window      a fixed sheet of frame glass (mblctr extends the frame over its whole client) holding a row of
  *               146 x 120 tiles, at most four to a row, and the help button at the bottom right. Centred in the
  *               work area, one instance (Vista raises the open one).
- *   Tiles       Vista's order: Display Brightness, Volume, Battery Status, Wireless Network, External Display,
- *               Sync Center, Presentation Settings (Screen Orientation is a Tablet PC tile: not shown, as on the
+ *   Tiles       Vista's order: Display Brightness, Volume, Battery Status, Wireless Network, (Mobile Broadband,)
+ *               External Display, Sync Center, Presentation Settings (Screen Orientation is a Tablet PC tile: not shown, as on the
  *               VM). Each tile: the icon button (opens the matching Control Panel page), the status, one
  *               control and the title. Words are mblctr.exe.mui's strings (90-97, 120-211, 500-510).
  *               As on the VM (a desktop with a battery), a desktop shows the tiles it has hardware for: Volume,
@@ -16,13 +16,22 @@
  *               unavailable" / "No ... found" wording).
  *   Sources     pushed, never polled (server-push-not-polling, phone-power-client):
  *                 brightness   DreamOS: window.DreamOSHardware get().backlight.percent, set('backlight', %),
- *                              'dreamoshw' events. Elsewhere unavailable.
+ *                              'dreamoshw' events. Android (#945): AndroidDevice.getBrightness() / setBrightness(%)
+ *                              / setAutoBrightness(on), pushed in 'dreamscape:radios' (detail.brightness). Moving
+ *                              the slider never turns adaptive brightness off; the Automatic box does that.
+ *                              Elsewhere unavailable.
  *                 volume       tabVolume.js (the volume tray provider when there is one, else the tab's own
  *                              level and mute; it coalesces a drag into one request at a time)
  *                 battery      trayPower.js's model and plans ('melaton-battery', 'melaton-power-plan')
  *                 wireless     the 'network' tray provider (melatonTray.onChange): radio(on) turns it off / on
  *                 display      window.screen.isExtended and the screen's 'change' event
- *                 sync         Sync Center (cplPages2.js): no partnerships, as on the VM
+ *                 mobile       Mobile Broadband (#945, not a Vista tile: Vista had no WWAN; Windows 7's mobile
+ *                              broadband shows the same signal bars): the network provider's mobile part, else
+ *                              AndroidDeviceStatus.cellular ('androiddevicestatus'); data on / off through the provider's
+ *                              mobileData(on) or AndroidDevice.setRadio('data', on)
+ *                 sync         the ActiveSync partnership (activeSync.state().devices, 'state' events): the
+ *                              partner phone (in Continuity the phone this DeX window runs on), else Sync Center's
+ *                              "No sync partnerships"
  *                 presentation unavailable: nothing in Melaton acts on a presenting state yet
  *   Art         public/static_images/vista-mblctr/ (mblctr.exe icons, the tile button faces and the volume
  *               wedge captured from the VM); the battery is batmeter.dll bitmap 301 (trayPower's flyout cells).
@@ -65,8 +74,11 @@
      * ('item:sound'). The control_panel feature is loaded already: this file is part of it.
      */
     function openCpl(target) {
+        // Network Connections is registered by dreamosWifi.js when it first opens
+        if (target === 'connections' && root.dreamosWifi && typeof root.dreamosWifi.openConnections === 'function') { void root.dreamosWifi.openConnections(); return; }
         const cp = root.melatonControlPanel;
         if (!cp) return;
+        if (target === 'connections') { cp.doAction('page:network'); return; }
         if (target.startsWith('item:')) cp.openItem(target.slice(5));
         else cp.doAction(target);
     }
@@ -86,19 +98,146 @@
         return !!hw() || !!root.AndroidHardware;
     }
 
-    function backlight() {
+    const pct = (v) => { const p = Number(v); return Number.isFinite(p) ? Math.max(0, Math.min(100, Math.round(p))) : null; };
+    const parse = (v) => { if (v && typeof v === 'object') return v; try { return v ? JSON.parse(v) : null; } catch (_) { return null; } };
+    const androidDevice = () => root.AndroidDevice && typeof root.AndroidDevice.getBrightness === 'function' ? root.AndroidDevice : null;
+    // the Android app's last brightness push ('dreamscape:radios' detail.brightness); read once from the bridge
+    // before the first push (a bridge call waits on the app's main thread, so never on every paint)
+    let androidBri = null;
+    function androidBrightness() {
+        if (androidBri) return androidBri;
+        const d = androidDevice();
+        if (!d) return null;
+        try { androidBri = parse(d.getBrightness()); } catch (_) { androidBri = null; }
+        return androidBri;
+    }
+
+    /** { percent, auto (null: no adaptive mode), canSet } of the display, or null when it has no control. */
+    function brightnessState() {
         const h = hw();
-        if (!h) return null;
-        try {
-            const b = h.get().backlight;
-            const p = b && Number(b.percent);
-            return Number.isFinite(p) ? Math.max(0, Math.min(100, Math.round(p))) : null;
-        } catch (_) { return null; }
+        if (h) {
+            try {
+                const p = pct(h.get().backlight && h.get().backlight.percent);
+                if (p !== null) return { percent: p, auto: null, canSet: typeof h.set === 'function' };
+            } catch (_) { /* no backlight */ }
+        }
+        const a = androidBrightness();
+        const p = a && pct(a.percent);
+        if (p === null || p === undefined) return null;
+        return { percent: p, auto: typeof a.auto === 'boolean' ? a.auto : null, canSet: a.canSet !== false };
+    }
+
+    function backlight() {
+        const b = brightnessState();
+        return b ? b.percent : null;
+    }
+
+    function setBrightness(v) {
+        const h = hw();
+        if (h && typeof h.set === 'function') { try { Promise.resolve(h.set('backlight', v)).catch(() => { /* the host pushes its state anyway */ }); } catch (_) { /* host gone */ } return; }
+        const d = androidDevice();
+        // the app sets the level only: adaptive brightness stays as it is (Yukimi, #945)
+        if (d && typeof d.setBrightness === 'function') { try { d.setBrightness(v); } catch (_) { /* old app */ } }
+    }
+
+    function setAutoBrightness(on) {
+        const d = androidDevice();
+        if (d && typeof d.setAutoBrightness === 'function') { try { d.setAutoBrightness(!!on); } catch (_) { /* old app */ } }
     }
 
     function netState() {
         const p = netProvider();
         try { const s = p && p.get(); return s && typeof s === 'object' ? s : null; } catch (_) { return null; }
+    }
+
+    // the phone's last cellular state when the network provider has no mobile part (an app build without
+    // AndroidWifi): the 'androiddevicestatus' push, read once from the bridge before the first one
+    let cellPushed = null;
+    function cellular() {
+        if (!cellPushed && root.AndroidDeviceStatus && typeof root.AndroidDeviceStatus.getState === 'function') {
+            try { const s = parse(root.AndroidDeviceStatus.getState()); cellPushed = s && s.cellular ? s.cellular : null; } catch (_) { cellPushed = null; }
+        }
+        return cellPushed;
+    }
+
+    /**
+     * The mobile broadband connection: { carrier, type, bars 0-5, on, connected, roaming, radioOn, sim } or null with no
+     * SIM / modem. The network provider's mobile part first (what the tray shows), else the cellular state.
+     */
+    function mobileState() {
+        const c = cellular();
+        const s = netState();
+        const m = s && s.mobile && s.mobile.present ? s.mobile : null;
+        if (m) {
+            return {
+                carrier: m.carrier || (c && c.operator) || '',
+                type: m.generation || (c && c.dataType) || '',
+                bars: barsOf(m.signalPercent),
+                on: m.on !== false,
+                connected: !!m.connected,
+                roaming: !!m.roaming,
+                airplane: !!(c && c.airplane)
+            };
+        }
+        if (!c || !c.present || c.simState === 'absent') return null;
+        const level = Number.isFinite(Number(c.level5)) ? Number(c.level5) : Number(c.level);
+        return {
+            carrier: c.operator || '',
+            type: c.dataType || '',
+            bars: Number.isFinite(level) ? Math.max(0, Math.min(5, Math.round(level))) : 0,
+            on: c.dataEnabled !== false && c.radioOn !== false && !c.airplane,
+            connected: !!c.dataActive,
+            roaming: !!c.roaming,
+            airplane: !!c.airplane
+        };
+    }
+
+    function setMobileData(on) {
+        const p = netProvider();
+        if (p && typeof p.mobileData === 'function') return Promise.resolve(p.mobileData(on)).catch(() => null);
+        const d = root.AndroidDevice;
+        if (d && typeof d.setRadio === 'function') { try { d.setRadio('data', !!on); } catch (_) { /* old app */ } }
+        return Promise.resolve(null);
+    }
+
+    // ---- the sync partnership (ActiveSync) ---------------------------------------------------------------------
+
+    const activeSync = () => (root.activeSync && typeof root.activeSync.state === 'function' ? root.activeSync : null);
+
+    /** The phone this DeX window runs on (Continuity, #798): its Device ID, or ''. */
+    function continuityId() {
+        try {
+            const H = root.AndroidHome;
+            if (H && typeof H.getContinuity === 'function') {
+                const c = parse(H.getContinuity());
+                return c && c.hybrid && c.external && c.deviceId ? String(c.deviceId).toLowerCase() : '';
+            }
+        } catch (_) { /* older app */ }
+        return '';
+    }
+
+    /** The partner shown: the Continuity phone first, then a connected partner, then any. Null with none. */
+    function partner() {
+        const a = activeSync();
+        if (!a) return null;
+        let list;
+        try { list = (a.state().devices || []).filter((d) => d && d.partner); } catch (_) { return null; }
+        if (!list.length) return null;
+        const cid = continuityId();
+        const dev = (cid && list.find((d) => String(d.deviceId).toLowerCase() === cid)) || list.find((d) => d.online) || list[0];
+        return { dev, local: !!(cid && String(dev.deviceId).toLowerCase() === cid), count: list.length };
+    }
+
+    function shortTime(ms) {
+        const d = new Date(ms);
+        const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        return d.toDateString() === new Date().toDateString() ? time : d.toLocaleDateString([], { month: 'numeric', day: 'numeric' });
+    }
+
+    function openDeviceCenter(deviceId) {
+        const apps = root.melatonApps;
+        if (apps && typeof apps.launch === 'function') { void apps.launch({ packageId: 'activesync', ...(deviceId ? { args: { deviceId } } : {}) }); return true; }
+        return false;
     }
 
     function wifiPresent() {
@@ -117,15 +256,23 @@
             id: 'brightness', title: 'Display Brightness', tip: 'Change display brightness settings for your power plan.',
             open: 'page:power-options:plan',
             show: () => backlight() !== null || mobilePc(),
-            html: () => `<div class="mbl-tile-status"></div>
+            // the Automatic box (Android's adaptive brightness) sits where Volume has Mute
+            html: () => `<div class="mbl-tile-status"><span data-f="status"></span><input type="checkbox" id="mblAutoBri" data-f="auto" hidden><label for="mblAutoBri" data-f="auto-label" hidden>Automatic</label></div>
                 <div class="mbl-tile-control mbl-slider"><input type="range" class="vista-trackbar-top" min="0" max="100" step="1" data-f="range" aria-label="Brightness"></div>`,
             paint(el) {
-                const p = backlight();
+                const b = brightnessState();
+                const p = b ? b.percent : null;
                 const range = el.querySelector('[data-f="range"]');
+                const auto = el.querySelector('[data-f="auto"]');
+                const hasAuto = !!(b && b.auto !== null);
                 el.classList.toggle('is-unavailable', p === null);
                 setSrc(el.querySelector('.mbl-tile-icon img'), `${ART}/brightness.png`);
-                setText(el.querySelector('.mbl-tile-status'), p === null ? 'Display brightness is unavailable' : '');
-                range.disabled = p === null;
+                setText(el.querySelector('[data-f="status"]'), p === null ? 'Display brightness is unavailable' : '');
+                auto.hidden = !hasAuto;
+                el.querySelector('[data-f="auto-label"]').hidden = !hasAuto;
+                if (hasAuto) auto.checked = !!b.auto;
+                range.disabled = p === null || !b.canSet;
+                auto.disabled = !b || !b.canSet;
                 if (p !== null && briSend === null && !range.dataset.drag) range.value = String(p);
             },
             wire(el) {
@@ -137,10 +284,10 @@
                     root.requestAnimationFrame(() => {
                         const v = briSend;
                         briSend = null;
-                        const h = hw();
-                        if (h && typeof h.set === 'function') { try { Promise.resolve(h.set('backlight', v)).catch(() => { /* the host pushes its state anyway */ }); } catch (_) { /* host gone */ } }
+                        setBrightness(v);
                     });
                 });
+                el.querySelector('[data-f="auto"]').addEventListener('change', (ev) => setAutoBrightness(ev.target.checked));
             }
         },
         {
@@ -259,6 +406,40 @@
             }
         },
         {
+            id: 'mobile', title: 'Mobile Broadband', tip: 'Change mobile broadband settings.',
+            open: 'connections',
+            show: () => !!mobileState(),
+            html: () => `<div class="mbl-tile-status" data-f="status"></div>
+                <div class="mbl-tile-control"><button type="button" data-f="data"></button></div>`,
+            paint(el) {
+                const m = mobileState();
+                if (!m) return;
+                const img = el.querySelector('.mbl-tile-icon img');
+                const btn = el.querySelector('[data-f="data"]');
+                const off = !m.on;
+                // the carrier and the data class on the first line, the state on the second (Windows 7's
+                // flyout names the provider; the phone's bar names the data class)
+                const name = [m.carrier, m.type].filter(Boolean).join(' ') || 'Mobile broadband';
+                const state = m.airplane ? 'Airplane mode' : off ? 'Mobile data off' : m.roaming ? 'Roaming' : m.connected ? 'Connected' : 'Not connected';
+                setSrc(img, `${ART}/${off ? 'wireless-off' : `wireless-${m.bars}`}.png`);
+                const st = el.querySelector('[data-f="status"]');
+                const html = `<span>${esc(name)}<br>${esc(state)}</span>`;
+                if (st.dataset.html !== html) { st.dataset.html = html; st.innerHTML = html; }
+                img.setAttribute('alt', `Current status is ${state} and signal strength is ${STRENGTH[m.bars]}`);
+                setText(btn, off ? 'Turn mobile data on' : 'Turn mobile data off');
+                btn.disabled = m.airplane || !(netProvider() && typeof netProvider().mobileData === 'function') && !(root.AndroidDevice && typeof root.AndroidDevice.setRadio === 'function');
+            },
+            wire(el) {
+                const btn = el.querySelector('[data-f="data"]');
+                btn.addEventListener('click', () => {
+                    const m = mobileState();
+                    if (!m) return;
+                    btn.disabled = true;
+                    setMobileData(!m.on).then(() => paintTile('mobile'));
+                });
+            }
+        },
+        {
             id: 'display', title: 'External Display', tip: 'Change display settings.',
             open: 'page:personalization',
             show: () => true,
@@ -276,10 +457,31 @@
             id: 'sync', title: 'Sync Center', tip: 'Change synchronization settings.',
             open: 'page:sync-center',
             show: () => true,
-            html: () => `<div class="mbl-tile-status">No sync partnerships</div>
+            html: () => `<div class="mbl-tile-status" data-f="status">No sync partnerships</div>
                 <div class="mbl-tile-control"><button type="button" data-f="sync">Sync settings</button></div>`,
-            paint(el) { setSrc(el.querySelector('.mbl-tile-icon img'), `${ART}/sync.png`); },
-            wire(el) { el.querySelector('[data-f="sync"]').addEventListener('click', () => openCpl('page:sync-center')); }
+            paint(el) {
+                setSrc(el.querySelector('.mbl-tile-icon img'), `${ART}/sync.png`);
+                // the partnership Mobile Device Center shows; in Continuity the phone is this handheld (#798)
+                const p = partner();
+                const st = el.querySelector('[data-f="status"]');
+                let html = 'No sync partnerships';
+                if (p) {
+                    const d = p.dev;
+                    const second = p.local ? (d.lastSync ? `Synced ${shortTime(d.lastSync)}` : 'This handheld')
+                        : !d.online ? 'Not connected'
+                            : d.lastSync ? `Synced ${shortTime(d.lastSync)}` : 'Connected';
+                    html = `<span>${esc(d.name || 'Mobile device')}<br>${esc(second)}</span>`;
+                }
+                if (st.dataset.html !== html) { st.dataset.html = html; st.innerHTML = html; }
+                el.dataset.device = p ? p.dev.deviceId : '';
+            },
+            wire(el) {
+                el.querySelector('[data-f="sync"]').addEventListener('click', () => {
+                    // a partnership's settings are Mobile Device Center's; none: Sync Center
+                    if (el.dataset.device && openDeviceCenter(el.dataset.device)) return;
+                    openCpl('page:sync-center');
+                });
+            }
         },
         {
             id: 'presentation', title: 'Presentation Settings', tip: 'Change presentation settings.',
@@ -415,12 +617,34 @@
         root.addEventListener('melaton-power-plan', () => paintTile('battery'), opt);
         // DreamOS's hardware push: the backlight
         root.addEventListener('dreamoshw', () => paintTile('brightness'), opt);
+        // the Android app's radios push carries the brightness (#945)
+        root.addEventListener('dreamscape:radios', (ev) => {
+            const b = ev && ev.detail && parse(ev.detail.brightness);
+            if (!b) return;
+            androidBri = b;
+            paintTile('brightness');
+        }, opt);
+        // the phone's cellular state (an app build whose network provider has no mobile part)
+        // (the push also comes for battery and data-moving changes: only a change the tile draws repaints it)
+        let cellKey = '';
+        root.addEventListener('androiddevicestatus', (ev) => {
+            const d = ev && parse(ev.detail);
+            const c = d && d.cellular;
+            if (!c) return;
+            cellPushed = c;
+            const key = [c.present, c.simState, c.operator, c.dataType, c.level5, c.level, c.dataEnabled, c.dataActive, c.radioOn, c.roaming, c.airplane].join('|');
+            if (key === cellKey) return;
+            cellKey = key;
+            paintAll();
+        }, opt);
         doc.addEventListener('visibilitychange', () => { if (!doc.hidden && stale) paintAll(); }, opt);
         // a second display attached or removed
         if (root.screen && typeof root.screen.addEventListener === 'function') root.screen.addEventListener('change', () => paintTile('display'), opt);
         if (root.melatonTray) {
             offs.push(root.melatonTray.onChange('network', paintAll));
         }
+        const as = activeSync();
+        if (as && typeof as.on === 'function') offs.push(as.on('state', () => paintTile('sync')));
         const tv = root.tabVolume;
         if (tv && typeof tv.onChange === 'function') {
             const off = tv.onChange(() => paintTile('volume'));
@@ -443,6 +667,9 @@
         }
         win = build();
         shown = '';
+        // the bridge's state is read again for a new window (no pushes are heard while it is closed)
+        androidBri = null;
+        cellPushed = null;
         paintAll(true);
         subscribe();
         call('openModal', win);

@@ -10442,8 +10442,21 @@ async function loadMeletonVersionInfo(force = false) {
 window.getMeletonVersionInfo = getMeletonVersionInfo;
 window.loadMeletonVersionInfo = loadMeletonVersionInfo;
 
-/** Physical memory in KB as winver prints it: the host's exact bytes, else the cached "N.NN GB". */
+/**
+ * Physical memory in KB as winver prints it. On a device client (window.AndroidHardware: the phone, its DeX
+ * desktop, DreamOS) that is the device's own memory (#945); elsewhere the host's exact bytes, else the cached
+ * "N.NN GB".
+ */
 function meletonPhysicalMemoryKb(systemInfo) {
+    if (window.AndroidHardware) {
+        let hw = null;
+        try {
+            const id = window.melatonDeviceIdentity;
+            hw = id && typeof id.hardware === 'function' ? id.hardware() : JSON.parse(window.AndroidHardware.getInfo() || 'null');
+        } catch (_) { hw = null; }
+        const total = hw && hw.memory && Number(hw.memory.totalBytes);
+        return total > 0 ? Math.round(total / 1024) : null;
+    }
     if (!systemInfo) return null;
     const bytes = systemInfo.host && Number(systemInfo.host.totalMemBytes);
     if (bytes > 0) return Math.round(bytes / 1024);

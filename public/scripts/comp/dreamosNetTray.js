@@ -7,6 +7,8 @@
  *                                     pnidui 30's small warning when the network wants a sign-in (dreamosPortal.js)
  *                                     or reaches nothing beyond it
  *   Wi-Fi on but nothing joined, off  pnidui.dll 19 (Not Connected); joining trades pnidui 25 / 26
+ *   mobile data (the Android app)     the same bars for the carrier's signal; the tip and the flyout name the carrier, its
+ *                                     data class (5G, LTE) and Roaming, as Windows 7 lists a mobile broadband link (#945)
  *   no adapter connected at all       pnidui.dll 19, "Not Connected"
  *
  * The icon itself is drawn by vista-glass-controls.css from #modemTrayIcon[data-link][data-bars][data-limited],
@@ -71,7 +73,8 @@
         } else if (mobile) {
             // a mobile data link (the Android app's desktop shell): Mobile broadband, the carrier and its bars
             const b = bars(mobile.signalPercent);
-            out = { kind: 'mobile', name: String(mobile.carrier || 'Mobile Broadband Connection'), bars: b, strength: STRENGTH[b], generation: mobile.generation || '', roaming: !!mobile.roaming };
+            // (Windows 7's WWAN entry: the carrier, its data class - 5G, LTE - and Roaming, #945)
+            out = { kind: 'mobile', name: String(mobile.carrier || 'Mobile Broadband Connection'), bars: b, strength: STRENGTH[b], generation: String(mobile.generation || ''), roaming: !!mobile.roaming };
         } else {
             out = { kind: 'none', name: '', bars: 0, available: !!(wifi.present && wifi.radio !== false) };
         }
@@ -80,9 +83,11 @@
         out.radio = out.kind === 'none' && wifi.present ? (wifi.radio === false || wifi.state === 'off' ? 'off' : out.connecting ? 'connecting' : 'idle') : null;
         out.limited = out.kind !== 'none' && (!!portal || browserOffline);
         out.access = out.kind === 'none' ? '' : out.limited ? 'Local only' : 'Local and Internet';
+        // a mobile link reads "<carrier> <data class>" (Verizon 5G, as the carrier's own connection manager names it)
+        const head = out.kind === 'mobile' ? `${out.name}${out.generation ? ` ${out.generation}` : ''}${out.roaming ? ' (Roaming)' : ''}` : out.name;
         out.title = out.kind === 'none'
             ? (out.connecting ? 'Connecting...' : 'Not Connected')
-            : `${out.name}\nAccess: ${out.access}${out.kind === 'wifi' || out.kind === 'mobile' ? `\nSignal strength:  ${out.strength}` : ''}`;
+            : `${head}\nAccess: ${out.access}${out.kind === 'wifi' || out.kind === 'mobile' ? `\nSignal strength:  ${out.strength}` : ''}`;
         return out;
     }
 

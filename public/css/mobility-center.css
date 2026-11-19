@@ -201,3 +201,11 @@ body.desktop-mode .mbl-window.mbl-window.modal[data-window-client="light"] .mbl-
 }
 
 .mbl-window .mbl-help > img { display: block; width: 16px; height: 16px; }
+
+/* two-line statuses (Mobile Broadband: carrier + type / state; Sync Center: the partner / last sync) (#945) */
+.mbl-window .mbl-tile .mbl-tile-status > span {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}

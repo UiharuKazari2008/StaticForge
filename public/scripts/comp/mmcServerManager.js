@@ -3,8 +3,9 @@
  * tree, laid out as Windows Server 2008's Server Manager (servermanager.msc). It replaced the old
  * Server Manager dashboard (dsap://dreamscape.jp/, a link list) on the Vista desktop:
  *
- *   Server Manager (<HOST>)   the summary: Server Summary (Computer Information, Security
- *                             Information), Roles Summary, Features Summary, Resources and Support
+ *   Server Manager (<HOST>)   the summary: Server Summary (Computer Information, System Information:
+ *                             the server machine's processor, memory, OS, Node.js, build and disk from
+ *                             get_system_info, #945; Security Information), Roles Summary, Features Summary, Resources and Support
  *     Clients                 every connected client (desktops, phones, light clients, devices) with
  *                             its state, pushed by the server_clients feed while the page shows;
  *                             Resync and Disconnect on the selected one (#898)
@@ -131,6 +132,7 @@
 
     const state = {
         sum: null,          // server_manager_summary
+        sys: null,          // get_system_info (the server machine: processor, memory, OS, disk; #945)
         sumError: '',
         loading: false,
         refreshed: 0,       // Last Refresh
@@ -152,6 +154,12 @@
             if (!data || data.success === false) throw new Error((data && (data.details || data.error)) || 'The server did not answer.');
             state.sum = data;
             state.sumError = '';
+            // the machine itself (#945: System in Control Panel describes the client's own device; the server's
+            // facts are here). loadMeletonVersionInfo (modalUtils.js) shares get_system_info's cached answer.
+            try {
+                const v = typeof root.loadMeletonVersionInfo === 'function' ? await root.loadMeletonVersionInfo(!!state.refreshed) : null;
+                state.sys = (v && v.systemInfo) || state.sys;
+            } catch (_) { /* the summary still shows */ }
         } catch (err) {
             state.sumError = (err && err.message) || 'The server did not answer.';
         }
@@ -569,6 +577,28 @@
         }
     }
 
+    /** The server machine from get_system_info (host.*, disk, gitHash), in System's words (cplSystem.js). */
+    function machineFacts(sys) {
+        const T = root.cplSystem && root.cplSystem._test;
+        const host = (sys && sys.host) || {};
+        const fmt = (b) => (T && typeof T.formatMemory === 'function' ? T.formatMemory(b) : (Number(b) > 0 ? `${(Number(b) / 1073741824).toFixed(2)} GB` : ''));
+        const facts = T && typeof T.hostFacts === 'function' ? T.hostFacts(sys) : { processor: host.cpuModel || '', clock: '', memory: fmt(host.totalMemBytes), type: host.arch || '' };
+        const disk = (sys && sys.disk) || {};
+        const diskText = Number(disk.totalBytes) > 0
+            ? `${fmt(disk.freeBytes)} free of ${fmt(disk.totalBytes)}${disk.fileSystem ? ` (${disk.fileSystem})` : ''}`
+            : (disk.total ? `${disk.free || '?'} free of ${disk.total}` : '');
+        return {
+            processor: [facts.processor, host.cpuCores ? `${host.cpuCores} cores` : '', facts.clock].filter(Boolean).join(', '),
+            memory: facts.memory || '',
+            type: facts.type || '',
+            os: host.osName || [host.osType, host.osRelease].filter(Boolean).join(' '),
+            node: host.nodeVersion || '',
+            build: sys && sys.gitHash && sys.gitHash !== 'Unknown' ? sys.gitHash : '',
+            disk: diskText,
+            booted: host.bootedAt || null
+        };
+    }
+
     function rootPage(c) {
         const s = state.sum;
         const info = netInfo();
@@ -585,6 +615,16 @@
             ['System Up Time', s ? esc(upTime(s.osUptimeSec)) : na],
             ['Connected Clients', clients]
         ]);
+        const m = machineFacts(state.sys);
+        const machine = c.props([
+            ['Processor', m.processor ? esc(m.processor) : na],
+            ['Memory (RAM)', m.memory ? esc(m.memory) : na],
+            ['System Type', m.type ? esc(m.type) : na],
+            ['Operating System Name', m.os ? esc(m.os) : na],
+            ['Node.js', m.node ? esc(m.node) : na],
+            ['Dreamscape Build', m.build ? esc(m.build) : na],
+            ['Disk (C:)', m.disk ? esc(m.disk) : na]
+        ]);
         const fg = frontGate();
         const security = c.props([
             ['Front Gate', fg ? (fg.enabled ? `On${fg.cover ? ` <span class="mmc-hint">(${esc(fg.cover)})</span>` : ''}` : 'Off') : na],
@@ -599,6 +639,9 @@
                     link('cpl:system', 'Change System Properties', `${ITEMS}/system-16.png`),
                     link('cpl:network', 'View Network Connections', `${ITEMS}/network-and-sharing-center-16.png`),
                     link('tool:remote', 'Configure Remote Access', `${VI}/remote-access-16.png`)
+                ])
+                + block('System Information', machine, [
+                    link('nav:sensors', 'Go to Hardware and Sensors', SENS16)
                 ])
                 + block('Security Information', security, [
                     link(`nav:${hostId(c, 'frontgate')}`, 'Go to Front Gate', `${ITEMS}/firewall-16.png`),
@@ -857,12 +900,14 @@
         return c;
     }
 
-    // the Nightshade Network page follows the service's state (#895)
+    // the Nightshade Network page follows the service's state (#895); the listener ends with this file's
+    // segment (app-scope, #872/#890)
     if (root.addEventListener) {
+        const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined;
         root.addEventListener('nightshade:state', () => {
             const c = state.console;
             if (c && c.node === 'nightshade' && c.modal && c.modal.isConnected) c.refresh();
-        });
+        }, { signal: appScopeSignal });
     }
 
     root.openServerManager = openServerManager;

@@ -12,7 +12,8 @@
  *                          disk (modules/globalResources.js refreshSystemInfoCache: statfs of the
  *                          project's filesystem).
  *   details pane           nothing selected: the computer (imageres.dll 103), its name, processor
- *                          and memory; the drive selected: Space used / Space free / Total size,
+ *                          and memory (the device itself on a phone / DeX / DreamOS client, #945,
+ *                          else the server); the drive selected: Space used / Space free / Total size,
  *                          File system (the disk's statfs type, when the server sends it)
  *   Portable Devices       each phone connected over ActiveSync (guest or partner; activeSyncAgent.js),
  *                          a tile with wpdshext.dll icon 14 and its name, as Vista lists a Windows
@@ -104,8 +105,36 @@
         return { total, free, usedFraction, full: free / total < 0.1, fileSystem: disk.fileSystem || '' };
     }
 
-    /** The computer's name, processor and memory, as cplSystem.js reads them from get_system_info. */
+    /**
+     * On a device client (window.AndroidHardware: the phone, its DeX desktop, DreamOS) this computer is
+     * that device (#945): Control Panel > System's phoneFacts when it is loaded, else the bridge's own
+     * report; null elsewhere.
+     */
+    function deviceFacts() {
+        if (!root.AndroidHardware) return null;
+        const sysPage = root.cplSystem && root.cplSystem._test;
+        if (sysPage && typeof sysPage.phoneFacts === 'function') {
+            try {
+                const p = sysPage.phoneFacts();
+                if (p) return { name: p.name || '', processor: [p.processor, p.clock].filter(Boolean).join(' '), memory: p.memory || '' };
+            } catch (_) { /* below */ }
+        }
+        let hw = null;
+        try {
+            const id = root.melatonDeviceIdentity;
+            hw = id && typeof id.hardware === 'function' ? id.hardware() : null;
+        } catch (_) { hw = null; }
+        let me = null;
+        try { me = root.melatonDeviceIdentity && typeof root.melatonDeviceIdentity.get === 'function' ? root.melatonDeviceIdentity.get() : null; } catch (_) { me = null; }
+        const soc = (hw && hw.soc) || {};
+        const total = hw && hw.memory && hw.memory.totalBytes;
+        return { name: (me && me.name) || '', processor: soc.name || soc.model || '', memory: total ? formatSize(total) : '' };
+    }
+
+    /** The computer's name, processor and memory: the device on a device client, else the server (get_system_info). */
     function hostFacts(sys) {
+        const device = deviceFacts();
+        if (device) return device;
         const host = (sys && sys.host) || {};
         const cpuText = sys && typeof sys.cpu === 'string' ? sys.cpu.replace(/\s*\(\d+ cores\)\s*$/, '') : '';
         return {
@@ -781,7 +810,7 @@
     ExplorerComputerView.DEVICE_PREFIX = DEVICE_PREFIX;
     /** The Cartograph root as Vista names the system drive (the breadcrumb, Recent Pages). */
     ExplorerComputerView.ROOT_NAME = `${DRIVES[0].label} (${DRIVES[0].letter}:)`;
-    ExplorerComputerView._test = { parseSize, formatSize, diskFacts, hostFacts };
+    ExplorerComputerView._test = { parseSize, formatSize, diskFacts, hostFacts, deviceFacts };
     root.ExplorerComputerView = ExplorerComputerView;
     root.EXPLORER_COMPUTER_PATH = COMPUTER_PATH;
 })(typeof window !== 'undefined' ? window : globalThis);

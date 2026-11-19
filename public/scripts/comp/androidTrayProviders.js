@@ -193,7 +193,9 @@
             mobileData: (on) => Promise.resolve(parse(call('AndroidDevice', 'setRadio', 'data', !!on)) || { error: 'No mobile data.' }),
             // round 2 (docs/client-api/tray-providers.md): read when asked, never pushed
             known: () => Promise.resolve(parse(call('AndroidWifi', 'known')) || { networks: [] }),
-            stats: () => Promise.resolve(parse(call('AndroidWifi', 'stats')) || { error: 'No figures.' }),
+            // stats(iface): the app answers per interface ({ iface, kind, ... }, #945); an older app answers every call
+            // with the Wi-Fi adapter's figures and no kind, which the status sheet (dreamosWifi.js) does not take
+            stats: (iface) => Promise.resolve(parse(iface ? call('AndroidWifi', 'stats', String(iface)) : call('AndroidWifi', 'stats')) || { error: 'No figures.' }),
             interfaces: () => Promise.resolve(parse(call('AndroidWifi', 'interfaces')) || { interfaces: [] }),
             enable: (iface, on) => (String(iface).startsWith('rmnet') || iface === 'mobile'
                 ? Promise.resolve(parse(call('AndroidDevice', 'setRadio', 'data', !!on)) || { error: 'No mobile data.' })

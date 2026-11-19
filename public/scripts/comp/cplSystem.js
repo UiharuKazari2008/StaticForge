@@ -17,7 +17,12 @@
  *   Computer name...    the host name, the full name the client reaches it by, the workspace as the
  *                       description and the domain (Change settings = Customize network)
  *   Session             this client: who is signed in, the browser, the device (navigator) and the
- *                       client version
+ *                       client version (desktop browsers only)
+ *
+ * On a device client (window.AndroidHardware: the phone, its DeX desktop, a DreamOS laptop) the page is
+ * that device, with Vista's sections only (#945): edition (plus the Android / DreamOS release), System
+ * (maker, model, rating, processor, memory, system type), computer name, activation. The server's own
+ * facts are in Server Manager (mmcServerManager.js), not here.
  *   Windows activation  the NovelAI account (optionsData.user): activated when there is one, and the
  *                       Product ID is derived from it; without an account Melaton is not activated
  *
@@ -246,8 +251,8 @@
 
     /*
      * The phone this desktop runs on (#829): in the DeX desktop of a phone with the Android app,
-     * System describes that device (window.AndroidHardware) and its Device ID; the server moves down
-     * to a "Domain controller" section of its own.
+     * System describes that device (window.AndroidHardware) and its Device ID; the server's facts are
+     * Server Manager's (#945).
      */
     const PHONE_ARCH = { arm64: 'arm64', arm: 'arm', x86_64: 'x64', x86: 'ia32' };
     function phoneFacts() {
@@ -350,6 +355,11 @@
         const pid = productId(account);
         const pending = !sys && !loadFailed;
         const value = (text) => (text ? esc(text) : `<span class="cpl-sys-na">${pending ? 'Checking...' : 'Not available'}</span>`);
+        // the device's own facts are local (AndroidHardware): never "Checking..." while the server answers
+        const local = (text) => (text ? esc(text) : '<span class="cpl-sys-na">Not available</span>');
+        const phone = phoneFacts();
+        // the device's OS release, under the edition where Vista prints the service pack
+        const osLine = phone ? (phone.dreamos ? `DreamOS ${phone.dreamos}` : phone.android) : '';
 
         const editionBody = `
             <div class="cpl-sys-edition">
@@ -357,41 +367,24 @@
                 <div class="cpl-sys-edition-text">
                     <p class="cpl-sys-line">${esc(ed.name)}</p>
                     ${ed.copyright ? `<p class="cpl-sys-line">${esc(ed.copyright)}</p>` : ''}
+                    ${osLine ? `<p class="cpl-sys-line">${esc(osLine)}</p>` : ''}
                     ${ed.servicePack ? `<p class="cpl-sys-line cpl-sys-line--last">${esc(ed.servicePack)}</p>` : ''}
                 </div>
             </div>`;
 
-        const phone = phoneFacts();
-        const serverRows = `
-                ${row('Processor:', host.processor ? `${esc(host.processor)}${host.clock ? `<span class="cpl-sys-clock">${esc(host.clock)}</span>` : ''}` : value(''))}
-                ${row('Memory (RAM):', value(host.memory))}
-                ${row('System type:', value(host.type))}`;
-        // the phone's own System section (#829): its maker, model, processor and memory; the server is further down
+        // the phone's own System section (#829): Vista's rows only (#945)
         const phoneBody = phone ? `
             <div class="cpl-sys-rows cpl-sys-rows--system">
-                ${row('Manufacturer:', value(phone.manufacturer))}
-                ${row('Model:', value(phone.model))}
+                ${row('Manufacturer:', local(phone.manufacturer))}
+                ${row('Model:', local(phone.model))}
                 <div class="cpl-sys-row cpl-sys-row--rating">
                     <span class="cpl-sys-label">Rating:</span>
                     <span class="cpl-sys-value cpl-sys-rating">${ratingHtml()}</span>
                 </div>
-                ${row('Processor:', phone.processor ? `${esc(phone.processor)}${phone.clock ? `<span class="cpl-sys-clock">${esc(phone.clock)}</span>` : ''}` : value(''))}
-                ${row('Memory (RAM):', value(phone.memory))}
-                ${phone.storage ? row('Storage:', esc(phone.storage)) : ''}
-                ${phone.screen ? row('Screen:', esc(phone.screen)) : ''}
-                ${row('System type:', value(phone.type))}
-                ${phone.android ? row('Android:', esc(phone.android)) : ''}
-                ${phone.dreamos ? row('DreamOS:', esc(phone.dreamos)) : ''}
+                ${row('Processor:', phone.processor ? `${esc(phone.processor)}${phone.clock ? `<span class="cpl-sys-clock">${esc(phone.clock)}</span>` : ''}` : local(''))}
+                ${row('Memory (RAM):', local(phone.memory))}
+                ${row('System type:', local(phone.type))}
             </div>` : '';
-        const serverBody = `
-            <div class="cpl-sys-rows cpl-sys-rows--system">
-                <img class="cpl-sys-oem-logo" src="${OEM.logo}" alt="${esc(OEM.manufacturer)}" draggable="false">
-                ${row('Manufacturer:', esc(OEM.manufacturer))}
-                ${row('Model:', esc(OEM.model))}
-                ${serverRows}
-                ${row('Server name:', value(computer))}
-                ${row('Full name:', value(net.fqdn))}
-            </div>`;
         const systemBody = `
             <div class="cpl-sys-rows cpl-sys-rows--system">
                 <img class="cpl-sys-oem-logo" src="${OEM.logo}" alt="${esc(OEM.manufacturer)}" draggable="false">
@@ -416,8 +409,8 @@
         const computerBody = `
             <div class="cpl-sys-rows cpl-sys-rows--computer">
                 <button type="button" class="cpl-link cpl-sys-change" data-cpl-action="customize"><img src="${ART}/shield-uac-16.png" alt="">Change settings</button>
-                ${row('Computer name:', value(phone ? phone.name : computer))}
-                ${row('Full computer name:', value(phone ? (phone.name && net.domain ? `${phone.name}.${String(net.domain).toLowerCase()}` : phone.name) : net.fqdn))}
+                ${row('Computer name:', phone ? local(phone.name) : value(computer))}
+                ${row('Full computer name:', phone ? local(phone.name && net.domain ? `${phone.name}.${String(net.domain).toLowerCase()}` : phone.name) : value(net.fqdn))}
                 ${row('Computer description:', esc(phone ? phone.description : workspaceName()))}
                 ${row('Domain:', esc(net.domain))}
             </div>`;
@@ -450,9 +443,7 @@
             ${section('System', phone ? phoneBody : systemBody)}
             ${phone ? '' : section(`${OEM.manufacturer} support`, supportBody)}
             ${section('Computer name, domain, and workgroup settings', computerBody)}
-            ${section('Session', sessionBody)}
-            ${phone ? section('Domain controller', serverBody) : ''}
-            ${phone ? section(`${OEM.manufacturer} support`, supportBody) : ''}
+            ${phone ? '' : section('Session', sessionBody)}
             ${section('Melaton activation', activationBody)}`;
     }
 

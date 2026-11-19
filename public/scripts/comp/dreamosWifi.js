@@ -31,7 +31,8 @@
  *                                (wlanpref 10101 / 10103 / 10104), Connect to a workplace (the Nightshade client);
  *                                a router, ad hoc network or dial-up modem: "The wizard cannot continue" (connect 701)
  *
- *   window.dreamosWifi = { openConnect(), openManage(), openStatus(), openConnections(), openSetup(), setRadio(on),
+ *   window.dreamosWifi = { openConnect(), openManage(), openStatus(), openVpnStatus(), openMobileStatus(),
+ *                          openConnections(), openSetup(), setRadio(on),
  *                          radioOff(), available(), signalLevel(percent) }
  *
  * Nothing polls: the host pushes 'dreamosnet' (state) and 'dreamosnetscan' (a scan's list); opening Connect to a
@@ -793,8 +794,34 @@
             const ip = Array.isArray(e.ip) ? e.ip : [];
             return { enabled: a.enabled, carrier: e.carrier === true, connected: a.enabled && e.carrier === true && ip.length > 0, network: N.network, ip, ip6: e.ip6 || [], mac: e.mac || a.mac, speedMbps: e.speedMbps, config: e.config || null, net: null };
         }
+        if (a.kind === 'vpn') {
+            const f = vpnFacts();
+            return { enabled: true, carrier: f.connected, connected: f.connected, network: f.name, ip: [], ip6: [], mac: '', speedMbps: null, config: null, net: null, vpn: f };
+        }
         const m = s.mobile || {};
-        return { enabled: a.enabled && m.on !== false, carrier: !!m.connected, connected: a.enabled && !!m.connected, network: m.carrier || '', ip: [], ip6: [], mac: '', speedMbps: null, config: null, net: null };
+        const on = a.enabled && m.on !== false;
+        // the carrier's signal is there with data on or off (the radio is up); data flows only when connected
+        return { enabled: on, carrier: !!m.connected, connected: on && !!m.connected, network: m.carrier || '', ip: [], ip6: [], mac: '', speedMbps: null, config: null, net: null, mobile: m };
+    }
+
+    /** The Nightshade / Café Miniport link (melatonControlPanel.connectionFacts), as a VPN adapter's facts. */
+    function vpnFacts() {
+        const cp = root.melatonControlPanel;
+        let f = null;
+        try { f = cp && typeof cp.connectionFacts === 'function' ? cp.connectionFacts() : null; } catch (_) { f = null; }
+        if (f) return f;
+        const ns = nightshade();
+        return { state: ns.connected ? 'connected' : 'disconnected', connected: ns.connected, name: ns.name, domain: '', server: (root.location && root.location.hostname) || '', device: '', encryption: '', latency: '', connectedAt: 0, bytesIn: 0, bytesOut: 0, messagesIn: 0, messagesOut: 0 };
+    }
+
+    /** The VPN connection as an adapter for the status sheet (Network Connections' third group). */
+    const vpnAdapter = () => ({ iface: 'vpn', kind: 'vpn', label: '', mac: '', enabled: true, base: vpnFacts().name, conn: vpnFacts().name });
+
+    /** A mobile link's provider line: the carrier with its data class (5G, LTE), and Roaming. */
+    function providerText(m) {
+        if (!m || !m.carrier) return '';
+        const gen = m.generation ? ` ${m.generation}` : '';
+        return `${m.carrier}${gen}${m.roaming ? ' (Roaming)' : ''}`;
     }
 
     /** Network Connections' status line for an adapter (netshell 1039-1056). */
@@ -837,7 +864,7 @@
         { id: 'ipv4', name: 'Internet Protocol Version 4 (TCP/IPv4)', text: 'Transmission Control Protocol/Internet Protocol. The default wide area network protocol that provides communication across diverse interconnected networks.' }
     ];
 
-    const adapterIcon = (a) => (a && a.kind === 'wifi' ? `${NET}/netshell-wireless-16.png` : `${NET}/pnidui-0-16.png`);
+    const adapterIcon = (a) => (a && a.kind === 'wifi' ? `${NET}/netshell-wireless-16.png` : a && a.kind === 'vpn' ? '/static_images/melaton/net-globe.png' : `${NET}/pnidui-0-16.png`);
 
     async function adapterProperties(owner, a) {
         const V = await kit();
@@ -1043,6 +1070,14 @@
 
     const statusWins = new Map(); // iface -> { ctx, a, key, timer, stats, since }
 
+    // The VPN sheet's Details tab: rasdlg's page (a Property / Value list over the General page's 227 x 215 DLU)
+    const VPN_DETAILS = 'rasdlg:details';
+    const VPN_DETAILS_LIST = 24301;
+    const VPN_DETAILS_TPL = { t: 'Details', w: 227, h: 215, f: ['MS Shell Dlg', 8], s: 1086849096, c: [[VPN_DETAILS_LIST, 'SysListView32', 7, 7, 213, 200, 1352728577, 'List1', 512]] };
+
+    /** The Café Miniport / Nightshade connection's status (Network Connections' VPN tile, the Center's View status). */
+    function openVpnStatus() { return openStatus(vpnAdapter()); }
+
     function duration(ms) {
         const t = Math.max(0, Math.floor(ms / 1000));
         const d = Math.floor(t / 86400);
@@ -1068,6 +1103,9 @@
     function ipv4Text(info, x) {
         if (!info.connected && !(info.carrier && info.enabled)) return S.notConnected;
         const ip = (x && Array.isArray(x.ip) && x.ip.length ? x.ip : info.ip) || [];
+        // a mobile data link or the VPN that is carrying this page reaches the Internet, address or not (an older app
+        // does not say the cellular address)
+        if (!ip.length && (info.mobile || info.vpn) && info.connected) return internetWord();
         if (!ip.length) return S.limited;
         return internetWord();
     }
@@ -1091,31 +1129,100 @@
             const t = h && h.querySelector('.vdt-st-text');
             if (t) { if (t.textContent !== text) t.textContent = text; } else c.text(id, text, k);
         };
+        const kind = st.a.kind;
         set(23502, ipv4Text(info, x));
-        set(23504, ipv6Text(info, x));
+        set(23504, kind === 'vpn' ? S.notConnected : ipv6Text(info, x));
         set(1007, info.connected || (info.enabled && info.carrier) ? S.enabled : info.enabled ? S.disconnected : N.disabled);
-        if (st.a.kind === 'wifi') set(24018, info.connected ? info.network : '');
+        // the wireless sheet's SSID; the mobile one names the provider there (the carrier, its data class, Roaming)
+        if (kind === 'wifi') set(24018, info.connected ? info.network : '');
+        if (kind === 'mobile') set(24018, info.enabled ? providerText(info.mobile) : '');
         // Duration from when the host says the link came up (connectedAt), else from when this page saw it
         const n = info.net || {};
-        const up = Number(x.connectedAt || n.connectedAt) || (st.a.kind === 'wifi' && info.connected ? connectedSince : 0) || (info.connected ? st.since : 0);
+        const up = Number(x.connectedAt || n.connectedAt) || (kind === 'wifi' && info.connected ? connectedSince : 0) || (info.connected ? st.since : 0);
         set(1008, info.connected && up ? duration(Date.now() - up) : '00:00:00');
         // Speed: the link's bit rate (stats, or the network's rx / tx rates), else the adapter's speed
         const kbps = Math.max(Number(x.rxBitrateKbps) || 0, Number(x.txBitrateKbps) || 0, Number(n.rxBitrateKbps) || 0, Number(n.txBitrateKbps) || 0);
-        set(1009, info.connected || info.carrier ? speed(kbps ? kbps / 1000 : info.speedMbps) : S.notAvailable);
-        set(1003, bytes(x.txBytes));
-        set(1005, bytes(x.rxBytes));
-        if (st.a.kind === 'wifi') {
+        set(1009, (info.connected || info.carrier) && (kbps || info.speedMbps) ? speed(kbps ? kbps / 1000 : info.speedMbps) : S.notAvailable);
+        // Activity: what this connection carried since it came up; nothing while it is down (not the device's totals)
+        set(1003, info.connected ? bytes(x.txBytes) : '0');
+        set(1005, info.connected ? bytes(x.rxBytes) : '0');
+        if (kind === 'wifi' || kind === 'mobile') {
+            const pct = kind === 'wifi' ? (info.connected ? n.signalPercent : 0) : (info.enabled && info.mobile ? info.mobile.signalPercent : 0);
+            const lit = info.enabled && (kind === 'mobile' || info.connected);
             const meter = c.holder(1044, k);
             const im = meter && meter.querySelector('img');
-            const src = `${NET}/tray-wifi-${info.connected ? signalLevel(n.signalPercent) : 0}-32.png`; // pnidui.dll 13-18 (netshell's set is not used)
+            const src = `${NET}/tray-wifi-${lit ? signalLevel(pct) : 0}-32.png`; // pnidui.dll 13-18 (netshell's set is not used)
             if (im && im.getAttribute('src') !== src) {
                 im.setAttribute('src', src);
                 im.setAttribute('srcset', src.replace('.png', '@2x.png 2x'));
             }
-            c.enable(24020, info.connected, k);
+            // no link, no meter
+            const vis = lit ? '' : 'hidden';
+            if (meter && meter.style.visibility !== vis) meter.style.visibility = vis;
+        }
+        if (kind === 'wifi') c.enable(24020, info.connected, k);
+        if (kind === 'vpn') {
+            // Disconnect / Connect with its access key (ctx.text writes plain text)
+            const btn = info.connected || (info.vpn && info.vpn.state === 'connecting') ? 'Dis<u>c</u>onnect' : 'C<u>o</u>nnect';
+            const b = c.el(1025, k);
+            if (b && st.vpnButton !== btn) { st.vpnButton = btn; b.innerHTML = btn; }
+            vpnDetailsPaint(st);
+            return;
         }
         c.enable(23506, info.connected || (info.enabled && info.carrier), k);
         c.enable(1025, canSwitch(st.a) && info.enabled, k);
+    }
+
+    /** The VPN sheet's Details tab: RAS's Property / Value list (rasdlg's Details page), redrawn on a change only. */
+    function vpnDetailsPaint(st) {
+        const f = vpnFacts();
+        const rows = [
+            ['Device name', f.device],
+            ['Device type', 'vpn'],
+            ['Server type', 'Melaton Café'],
+            ['Transports', 'TCP/IP (WebSocket)'],
+            ['Authentication', 'Melaton domain logon'],
+            ['Encryption', f.encryption],
+            ['Compression', '(none)'],
+            ['Domain', f.domain],
+            ['Server name', f.server],
+            ['Latency', f.latency || S.notAvailable],
+            ['Messages sent', Number(f.messagesOut || 0).toLocaleString()],
+            ['Messages received', Number(f.messagesIn || 0).toLocaleString()]
+        ];
+        const key = JSON.stringify(rows);
+        if (key === st.detailsKey) return;
+        st.detailsKey = key;
+        const lv = st.ctx.holder(VPN_DETAILS_LIST, VPN_DETAILS);
+        if (lv) fillPropertyList(lv, rows);
+    }
+
+    /** A Property / Value list (netshell's Details list, the VPN's Details tab). */
+    function fillPropertyList(lv, rows) {
+        const head = lv.querySelector('.vdt-lv-header');
+        const body = lv.querySelector('.vdt-lv-body');
+        if (!body) return;
+        if (head && !head.childElementCount) {
+            [['Property', 'dwf-col-prop'], ['Value', 'dwf-col-value']].forEach(([t, cls]) => {
+                const col = doc.createElement('span');
+                col.className = `vdt-lv-col ${cls}`;
+                col.textContent = t;
+                head.appendChild(col);
+            });
+        }
+        body.textContent = '';
+        rows.forEach(([p, v]) => {
+            const row = doc.createElement('div');
+            row.className = 'vdt-lv-row';
+            const l = doc.createElement('span');
+            l.className = 'dwf-col-prop';
+            l.textContent = p;
+            const r = doc.createElement('span');
+            r.className = 'dwf-col-value';
+            r.textContent = v == null ? '' : String(v);
+            row.append(l, r);
+            body.appendChild(row);
+        });
     }
 
     /** The sheet is on screen: not closed, not minimised, the page shown and the screen on. */
@@ -1123,12 +1230,21 @@
 
     /** One read of the adapter's counters (provider.stats: never pushed, read when asked). */
     function readStats(st) {
+        // the VPN: the page's own socket counts what the link carried
+        if (st.a.kind === 'vpn') {
+            const f = vpnFacts();
+            st.stats = { txBytes: f.bytesOut, rxBytes: f.bytesIn, connectedAt: f.connectedAt };
+            return Promise.resolve(st.stats);
+        }
         const h = host();
         if (!h || typeof h.stats !== 'function' || st.reading) return Promise.resolve(st.stats);
         st.reading = true;
         return Promise.resolve(st.a.kind === 'wifi' ? h.stats() : h.stats(st.a.iface)).then((r) => {
             st.reading = false;
-            if (r && !r.error) st.stats = r;
+            // an adapter's sheet takes only its own figures: an older app answers every interface with the Wi-Fi
+            // adapter's (no iface in the answer), which would show Wi-Fi bytes on the Mobile Broadband sheet
+            const mine = !!r && !r.error && (st.a.kind === 'wifi' || r.iface === st.a.iface || (r.kind && r.kind === st.a.kind));
+            st.stats = mine ? r : (st.a.kind === 'wifi' ? st.stats : null);
             return st.stats;
         }).catch(() => { st.reading = false; return st.stats; });
     }
@@ -1162,7 +1278,7 @@
         const prefix = v4.length && v4[0].prefix !== null ? v4[0].prefix : (Number.isFinite(Number(cfg.prefix)) && cfg.prefix !== null && cfg.prefix !== undefined ? Number(cfg.prefix) : null);
         const many = (label, list) => (list.length ? list.map((v, i) => [i ? '' : label, v]) : [[label, '']]);
         // Vista's rows (the VM's Local Area Connection Details); the lease rows need the DHCP server, which the host does not say
-        const rows = [['Connection-specific DNS Suffix', ''], ['Description', ad.label || ad.iface || ''], ['Physical Address', macText(x.mac || info.mac)], ['DHCP Enabled', dhcp ? 'Yes' : 'No']]
+        const rows = [['Connection-specific DNS Suffix', ''], ['Description', ad.label || (ad.kind === 'mobile' ? MOBILE : '') || ad.iface || ''], ['Physical Address', macText(x.mac || info.mac)], ['DHCP Enabled', dhcp ? 'Yes' : 'No']]
             .concat(many('IPv4 IP Address', v4.map((p) => p.address)))
             .concat([['IPv4 Subnet Mask', prefix !== null ? maskOf(prefix) : ''], ['IPv4 Default Gateway', x.gateway || cfg.gateway || '']])
             .concat(many('IPv4 DNS Server', dns))
@@ -1176,27 +1292,7 @@
             bareCaption: true,
             init: (c) => {
                 const lv = c.holder(24301);
-                if (!lv) return;
-                const head = lv.querySelector('.vdt-lv-header');
-                const body = lv.querySelector('.vdt-lv-body');
-                [['Property', 'dwf-col-prop'], ['Value', 'dwf-col-value']].forEach(([t, cls]) => {
-                    const col = doc.createElement('span');
-                    col.className = `vdt-lv-col ${cls}`;
-                    col.textContent = t;
-                    head.appendChild(col);
-                });
-                rows.forEach(([p, v]) => {
-                    const row = doc.createElement('div');
-                    row.className = 'vdt-lv-row';
-                    const l = doc.createElement('span');
-                    l.className = 'dwf-col-prop';
-                    l.textContent = p;
-                    const r = doc.createElement('span');
-                    r.className = 'dwf-col-value';
-                    r.textContent = v;
-                    row.append(l, r);
-                    body.appendChild(row);
-                });
+                if (lv) fillPropertyList(lv, rows);
             }
         });
     }
@@ -1209,48 +1305,83 @@
     }
 
     /** An adapter's status sheet (the wireless one with no argument). */
+    /**
+     * Every connection's status sheet is this one builder (#945), on netshell's two General templates: 24050 (the
+     * wireless sheet: a signal meter) for Wi-Fi and Mobile Broadband, 23500 (Local Area Connection) for a cable and
+     * the VPN. The same window, groups and buttons on each; what differs is the row the kind has:
+     *
+     *   Wireless           SSID, Signal Quality, Details..., Wireless Properties
+     *   Mobile Broadband   Provider (the carrier, its data class, Roaming) where the SSID is, Signal Quality, Details...
+     *                      (Windows 7's WWAN sheet: the wireless layout without Wireless Properties)
+     *   Local Area         Details...
+     *   VPN (the Café      RAS's sheet: General (Disconnect where Disable is, the socket's bytes) and a Details tab
+     *   Miniport)          (device, server type, transports, authentication, encryption, domain, server, latency,
+     *                      messages)
+     */
     async function openStatus(a) {
         const ad = a || (available() ? wifiAdapter() : null);
         if (!ad) { await message(S.noInterfaces, S.statusTitle, 'warning'); return null; }
         const open = statusWins.get(ad.iface);
         if (open && live(open.ctx.modal)) {
+            if (open.ctx.modal.classList.contains('minimised')) call('restoreMinimizedModal', open.ctx.modal, call('getOrCreateTaskbarItem', open.ctx.modal) || null);
             call('bringModalToFront', open.ctx.modal);
             statusPaint(open);
             return open.ctx.modal;
         }
         const V = await kit();
-        const wifi = ad.kind === 'wifi';
-        const k = wifi ? 'netshell:24050' : 'netshell:23500';
+        const kind = ad.kind;
+        const wifi = kind === 'wifi';
+        const meter = wifi || kind === 'mobile';
+        const vpn = kind === 'vpn';
+        const k = meter ? 'netshell:24050' : 'netshell:23500';
         const right = [23502, 23504, 1007, 24018, 1008, 1009, 1003, 1005];
         const icon = adapterIcon(ad);
-        const st = { ctx: null, a: ad, key: k, timer: null, stats: null, since: Date.now(), reading: false };
+        // the activity picture: the two screens (netshell 1915) under the adapter's mark, at 48 px (1913 wireless,
+        // netshell 110 broadband, 108 the VPN's server)
+        const mark = { wifi: 'netshell-activity-wireless-48', mobile: 'ncpa-broadband-48', vpn: 'ncpa-vpn-48' }[kind];
+        const overrides = {
+            1010: { html: `<span class="dwf-activity">${img1('netshell-activity-48')}${mark ? img1(mark) : ''}</span>` },
+            // the VM's status sheet shows Bytes only (no Errors row), one short rule between the counts
+            1027: { skip: true }, 1012: { skip: true }, 1013: { skip: true }, 1028: { skip: true }
+        };
+        // the signal quality meter: pnidui's bars at their own 32 px, where the static sits
+        if (meter) overrides[1044] = { image: `${NET}/tray-wifi-0-32.png`, nudge: [0, 0, 2, 31] };
+        if (kind === 'mobile') {
+            overrides[24016] = { text: 'Provider:' };
+            overrides[24020] = { skip: true };
+        }
+        if (vpn) {
+            // RAS's sheet: its Details are a tab, not a button; Disable is Disconnect; nothing to set for the link here
+            overrides[23506] = { skip: true };
+            overrides[1026] = { disabled: true };
+            overrides[1025] = { text: 'Dis&connect' };
+        }
+        const pages = [{ key: k, overrides }];
+        if (vpn) pages.push({ key: VPN_DETAILS, tpl: VPN_DETAILS_TPL });
+        const st = { ctx: null, a: ad, key: k, timer: null, stats: null, since: Date.now(), reading: false, detailsKey: '' };
         const ctx = V.openSheet({
             id: `dreamosNetStatus-${String(ad.iface || 'wifi').replace(/[^a-z0-9]/gi, '_')}`,
             title: fill(N.statusOf, ad.conn),
             icon,
             noApply: true,
-            pages: [{
-                key: k,
-                overrides: wifi ? {
-                    // the signal quality meter: pnidui's bars at their own 32 px, where the static sits
-                    1044: { image: `${NET}/tray-wifi-0-32.png`, nudge: [0, 0, 2, 31] },
-                    // the activity picture: the two screens (netshell 1915) under the wireless mark (1913), at 48 px
-                    1010: { html: `<span class="dwf-activity">${img1('netshell-activity-48')}${img1('netshell-activity-wireless-48')}</span>` },
-                    // the VM's status sheet shows Bytes only (no Errors row), one short rule between the counts
-                    1027: { skip: true }, 1012: { skip: true }, 1013: { skip: true }, 1028: { skip: true }
-                } : {
-                    1010: { html: `<span class="dwf-activity">${img1('netshell-activity-48')}</span>` },
-                    1027: { skip: true }, 1012: { skip: true }, 1013: { skip: true }, 1028: { skip: true }
-                }
-            }],
+            pages,
             init: (c) => {
                 // the VM's values sit right-aligned in their column (the template's statics are left-aligned)
                 right.forEach((id) => { const h = c.holder(id, k); if (h) h.classList.add('dwf-right'); });
-                // Properties and Disable carry the UAC shield, as on the VM
-                [1026, 1025].forEach((id) => {
+                // Properties and Disable carry the UAC shield, as on the VM (a VPN's Disconnect does not)
+                (vpn ? [1026] : [1026, 1025]).forEach((id) => {
                     const b = c.el(id, k);
                     if (b) b.insertAdjacentHTML('afterbegin', `<img class="dwf-shield" src="${SHIELD}" alt="" draggable="false">`);
                 });
+                if (vpn) {
+                    const cp = root.melatonControlPanel;
+                    c.on(1025, 'click', () => {
+                        if (cp && typeof cp.toggleConnection === 'function') cp.toggleConnection();
+                        root.setTimeout(() => statusPaint(st), 50);
+                    }, k);
+                    c.on(23505, 'click', () => { if (cp && typeof cp.diagnose === 'function') void cp.diagnose(); }, k);
+                    return;
+                }
                 c.on(23506, 'click', () => { void openDetails(c.modal, ad); }, k);
                 if (wifi) c.on(24020, 'click', () => { const n = current(); if (n) void networkProperties(String(n.name), c.modal); }, k);
                 c.on(1026, 'click', () => { void adapterProperties(c.modal, ad); }, k);
@@ -1268,7 +1399,7 @@
         if (cancel) { cancel.textContent = S.close; cancel.dataset.dialogPrimary = '1'; }
         // the caption shows the connection's icon on the VM (the wireless one; netshell's wired icons are the XP set)
         const main = ctx.modal.querySelector('.modal-window-title > div');
-        if (wifi && main && !main.querySelector('.icon-image')) main.insertAdjacentHTML('afterbegin', `<img class="icon-image" src="${icon}" alt="">`);
+        if ((wifi || vpn) && main && !main.querySelector('.icon-image')) main.insertAdjacentHTML('afterbegin', `<img class="icon-image" src="${icon}" alt="">`);
         statusWins.set(ad.iface, st);
         statusPaint(st);
         void readStats(st).then(() => statusPaint(st));
@@ -2115,7 +2246,9 @@
     noteConnection();
 
     root.dreamosWifi = {
-        openConnect, openManage, openStatus: () => openStatus(), available, signalLevel,
+        openConnect, openManage, openStatus: () => openStatus(), openVpnStatus, available, signalLevel,
+        /** the Mobile Broadband Connection's status sheet (null without a mobile adapter) */
+        openMobileStatus: () => { const m = adapters().find((x) => x.kind === 'mobile'); return m ? openStatus(m) : Promise.resolve(null); },
         openConnections, openSetup, setRadio,
         /** the Wi-Fi adapter is there but switched off (the flyout offers to turn it on) */
         radioOff: () => { const w = state().wifi || {}; return !!(host() && w.present && (w.radio === false || w.state === 'off')); },

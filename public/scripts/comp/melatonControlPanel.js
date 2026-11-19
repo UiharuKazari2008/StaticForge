@@ -1473,7 +1473,54 @@
         sel(statusModal, '.cs-toggle').textContent = connected || state === 'connecting' ? 'Disconnect' : 'Connect';
     }
 
+    /**
+     * The Nightshade / Café Miniport link's live facts for its status sheet (dreamosWifi.js builds every connection's
+     * status sheet from Vista's netshell templates, #945): state, names, duration, latency, the socket's counters.
+     */
+    function connectionFacts() {
+        const client = ws();
+        const i = info();
+        const state = linkState();
+        const stats = (client && client.connectionStats) || {};
+        let latency = '';
+        if (state === 'connected' && client && client.currentRtt !== null && client.currentRtt !== undefined) {
+            latency = `${Math.round(client.currentRtt / 10) * 10} ms`;
+            if (client.rttVariability !== null && client.rttVariability !== undefined && client.currentRtt > 0) {
+                latency += ` (\u00b1${Math.round((client.rttVariability / client.currentRtt) * 100)}%)`;
+            }
+        }
+        return {
+            state,
+            connected: state === 'connected',
+            access: accessText(state),
+            name: i.connectionName,
+            domain: i.domain,
+            server: i.fqdn,
+            device: net() ? net().miniportLabel(i) : `${i.connectionType} Miniport (${i.device})`,
+            viaMiniport: !!i.viaMiniport,
+            viaPhone: !!i.viaPhone,
+            encryption: root.location.protocol === 'https:' ? 'TLS (HTTPS)' : 'None',
+            latency,
+            connectedAt: state === 'connected' ? Number(stats.connectedAt) || 0 : 0,
+            bytesIn: Number(stats.bytesIn) || 0,
+            bytesOut: Number(stats.bytesOut) || 0,
+            messagesIn: Number(stats.messagesIn) || 0,
+            messagesOut: Number(stats.messagesOut) || 0
+        };
+    }
+
+    /** The status sheet's Connect / Disconnect button. */
+    function toggleConnection() {
+        const state = linkState();
+        if (state === 'connected' || state === 'connecting') disconnectFromDomain();
+        else connectToDomain();
+    }
+
     function openStatusDialog() {
+        // every connection's status is one sheet (dreamosWifi.js, Vista's netshell templates, #945); the hand-made
+        // dialog below is only for a page without it
+        const dw = root.dreamosWifi;
+        if (dw && typeof dw.openVpnStatus === 'function') { void dw.openVpnStatus(); return; }
         if (!ensureStatusModal()) return;
         if (typeof root.openModal === 'function') root.openModal(statusModal);
         else statusModal.classList.remove('hidden');
@@ -1712,8 +1759,10 @@
                     <img src="${pic}" alt="" draggable="false">
                     <div class="network-flyout-text">
                         <span class="network-flyout-name">${esc(l.name)}</span>
+                        ${l.kind === 'mobile' ? `<span class="network-flyout-sub">Mobile Broadband Connection${l.generation ? ` (${esc(l.generation)})` : ''}</span>` : ''}
                         <span class="network-flyout-sub">Access: ${esc(l.access)}</span>
                         ${l.kind === 'wifi' || l.kind === 'mobile' ? `<span class="network-flyout-sub">Signal strength:  ${esc(l.strength)}</span>` : ''}
+                        ${l.kind === 'mobile' && l.roaming ? '<span class="network-flyout-sub">Roaming</span>' : ''}
                     </div>
                     ${l.kind === 'wifi' || l.kind === 'mobile' ? `<img class="network-flyout-bars" src="/static_images/vista-net/tray-wifi-${l.bars}-16.png" srcset="/static_images/vista-net/tray-wifi-${l.bars}-32.png 2x" alt="" width="16" height="16" draggable="false">` : ''}
                 </div>`;
@@ -1814,6 +1863,8 @@
         registerPage,
         taskLinkHtml: (label, action, arg) => taskLink(label, action, arg),
         openStatusDialog,
+        connectionFacts,
+        toggleConnection,
         openCustomizeDialog,
         diagnose,
         toggleTrayFlyout,
