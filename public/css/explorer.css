@@ -507,7 +507,9 @@
     max-width: 100%;
 }
 
-.explorer-item:not(.explorer-item-list-row):not(.explorer-item-details-row) .explorer-item-label {
+/* icon captions keep two lines of room; a tile's name is one 15 px line over its details (#945: Contacts' name took
+   33 px, pushing the details down onto the next tile) */
+.explorer-item:not(.explorer-item-list-row):not(.explorer-item-details-row):not(.explorer-item-tile) .explorer-item-label {
     flex: 0 0 auto;
     min-height: 2.75em;
 }
