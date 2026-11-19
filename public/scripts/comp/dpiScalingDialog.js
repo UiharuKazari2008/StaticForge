@@ -3,7 +3,10 @@
  * the Vista Aero VM (DpiScaling.exe, 2026-11-19). On DreamOS the scale is the compositor's output scale, set live by
  * the CaféReady host (window.DreamOSSettings.display, injected by the DreamOS shell bridge) and kept on /data:
  *   Default scale = the panel's own (200% on a Retina panel), Larger scale = that x 1.25, Custom = any 100-300%.
- * The DPI figures in the labels follow (96 x scale). Elsewhere (no DreamOS host) the dialog is not offered.
+ * The DPI figures in the labels follow (96 x scale). On the Android app's desktop shell (DeX / Continuity PC, #798) the
+ * same shape comes from window.melatonDisplayScale (androidTrayProviders.js): the density of the display the desktop is
+ * on, set by the app (wm density through its own shell), kept per display; 160 dpi is 100% (96 DPI), and the page's
+ * devicePixelRatio follows live. Elsewhere (no DreamOS host, no app) the dialog is not offered.
  */
 (function (root) {
     'use strict';
@@ -12,7 +15,9 @@
 
     function settings() {
         const s = root.DreamOSSettings;
-        return s && s.display && typeof s.display.get === 'function' ? s.display : null;
+        if (s && s.display && typeof s.display.get === 'function') return s.display;
+        const a = root.melatonDisplayScale;
+        return a && typeof a.get === 'function' && typeof a.set === 'function' ? a : null;
     }
 
     function el(tag, className, text) {
@@ -110,6 +115,11 @@
     async function apply() {
         const s = settings();
         if (!s) return false;
+        if (dlg.can === false) {
+            // the Android app sets a display's density through its own shell (Localhost ADB or Shizuku)
+            if (root.bootMessageBox) root.bootMessageBox.show({ title: 'DPI Scaling', icon: 'error', message: 'The display scale could not be changed.', detail: 'Turn on Localhost ADB or Shizuku in the phone\'s Settings > Android Bridge, then try again.' });
+            return false;
+        }
         const r = await s.set(dlg.pending === null ? null : dlg.pending);
         if (r && r.error) {
             if (root.bootMessageBox) root.bootMessageBox.show({ title: 'DPI Scaling', icon: 'error', message: 'The display scale could not be changed.', detail: String(r.error) });
@@ -224,7 +234,7 @@
                 <button type="button" class="tbp-button tbp-footer-button" data-action="cancel">Cancel</button>
                 <button type="button" class="tbp-button tbp-footer-button" data-action="apply" disabled>Apply</button>
             </div>`;
-        dlg = { modal, content, def: Number(cur.default) || 1, saved: cur.auto ? null : Number(cur.scale), pending: cur.auto ? null : Number(cur.scale) };
+        dlg = { modal, content, def: Number(cur.default) || 1, saved: cur.auto ? null : Number(cur.scale), pending: cur.auto ? null : Number(cur.scale), can: cur.can };
         render();
         content.addEventListener('change', (ev) => {
             if (ev.target.id === 'dpi-default') dlg.pending = null;
