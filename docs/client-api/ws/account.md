@@ -28,6 +28,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `set_account_name` | `set_account_name_response` | admin | Rename an account (User Accounts' Change the account name; destructive) |
 | `get_claude_accounts` | `get_claude_accounts_response` | admin | Claude accounts (CardSpace's Claude keys) and the host's Remote Control. Handler `modules/ws/handlers/313-claudeAccountsHandler.js` (owner `claudeAccounts`); [Claude accounts](#claude-accounts) |
 | `switch_claude_account` / `link_claude_account_login` / `unlink_claude_account_login` / `claude_remote_control` | `*_response` | admin | Switch the engine's account (reconnects Remote Control), link / unlink a Remote Control login, reconnect / start / stop Remote Control (destructive) |
+| `claude_account_login` | `claude_account_login_response` | admin | Add an account by signing in on the host: sign-in link + pasted code, two steps (destructive); [Add Account](#claude-add-account) |
 
 ## Server push (no request)
 
@@ -36,6 +37,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `account_data_health_updated` | Account health fields change (including after balance/subscription sync) | `public/scripts/ws/handlers/40-appCoreInbound.js` |
 | `account_pictures_changed` | An administrator changed an account picture or name | `public/scripts/comp/cplUserAccounts.js` (`wsClient.on`) |
 | `claude_remote_control_status` | Claude Remote Control reconnecting / connected / error (admins) | `public/scripts/comp/wmClaudeAccounts.js` (`wsClient.on`) |
+| `claude_account_login_status` | Add Account sign-in state (link, step, done / error; admins) | `public/scripts/comp/wmClaudeAccounts.js` (`wsClient.on`) |
 
 Periodic **ping** payloads include `balance`, `opusUsage`, and `accountHealth` — see [infrastructure.md](./infrastructure.md#ping-server-push-fields).
 
@@ -320,6 +322,25 @@ Adding, renaming and deleting an account are CardSpace's own `add_api_key` / `up
 **`host`:** `{ hostname, cliVersion, engine: { account: { index, name } | null, tokenFile }, login (as remoteLogin, the host's own, or null), remoteControl: { unit, installed, active, sub, pid, since, restarts, sessionName, pane: { state, statusLine, sessions, capacity, errorLine, tail, attached }, status } }`.
 
 **Push `claude_remote_control_status`** (admins; phone-only class, a sleeping phone keeps the last): `data: { state: 'reconnecting' | 'connected' | 'error' | 'stopped' | 'unknown', message, at, account: { index, name } | null, attempt }`.
+
+<a id="claude-add-account"></a>
+**Add Account by signing in** (`claude_account_login`, `modules/claudeAccountLogin.js`). The phone's *Add Account* (button under the list, or Menu) signs a new account in with the host's `claude` CLI, run in a pty (`script`, 1000 columns) with `HOME` and `CLAUDE_CONFIG_DIR` set to a fresh owner-only `.cache/secrets/claude-accounts/pending-<8 hex>/` and an environment built from scratch (no server token or session variables, `BROWSER=true`), so the host's own login, Remote Control and the Claude agents are never touched. Two steps, each showing its sign-in link (copyable field, **Copy**, **Open in Alchemy** via `openGrimoireUrl`) and a **Paste code** field for the code claude.ai shows:
+
+1. `claude auth login --claudeai`: the full claude.ai login (with `user:sessions:claude_code`) that becomes the account's linked Remote Control login.
+2. `claude setup-token`: the long-lived engine token that becomes the CardSpace Claude key (`apiKeyManager.addApiKey`, named as given or after the login's email).
+
+The account is saved only when both are done. One sign-in at a time (a second *start* returns the running one; `restart: true` replaces it); each step times out after 10 minutes; cancel / timeout / error kill the CLI's process group and remove the pending dir (a server restart sweeps leftovers). A read-only instance (`DREAMSCAPE_CLAUDE_RC_READONLY=1`) runs the flow but saves nothing.
+
+| `action` | Extra fields | Does |
+|---|---|---|
+| `status` | | The current sign-in |
+| `start` | `name?`, `restart?` | Starts step 1 (or returns the running sign-in) |
+| `code` | `code`, `name?` | Types the pasted code into the waiting CLI |
+| `retry` | | After an error: redoes the failed step (step 1's login is kept) |
+| `name` | `name` | Sets the new account's name |
+| `cancel` | | Ends the sign-in and removes its files |
+
+Answer `data: { login, accounts }`; `login` = `{ state: 'idle' }` or `{ id, state: 'starting' | 'waiting_code' | 'verifying' | 'done' | 'error', step: 'login' | 'token', stepNumber, steps: 2, stepTitle, url, name, message, signedInAs: { email, plan, ... } | null, account: { index, name, email, plan, linked } | null, startedAt, expiresAt }`. **Push `claude_account_login_status`** (admins; phone-only class, a sleeping phone keeps the last) carries the same `login`. No token or code is ever sent, logged or broadcast (`url` is the OAuth authorize link: no secret; CLI text shown in `message` is cleaned of links, the code and anything token-shaped).
 
 Test: `npm run test:claude-accounts` (sandboxed home, store and a fake systemctl / tmux; never touches the host's Remote Control). A dev or preview instance sets `DREAMSCAPE_CLAUDE_RC_READONLY=1` so it can show the unit but never stop or start it.
 

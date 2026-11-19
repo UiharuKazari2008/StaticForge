@@ -195,18 +195,28 @@ function findAccount(gr, index) {
     return { index: i, id, key: keys[i] };
 }
 
-/** Saves the host's current claude.ai login as this account's Remote Control login. */
-function linkHostLogin(gr, index) {
+/**
+ * Makes a claude.ai login (credentials + oauthAccount) this account's Remote Control login. The same
+ * login may belong to one account only: it is moved off any other. Used by linkHostLogin and by the
+ * phone's Add Account sign-in (claudeAccountLogin.js), which brings a login that was never on the host.
+ */
+function linkLogin(gr, index, creds, oauthAccount) {
     const acc = findAccount(gr, index);
-    const host = readHostLogin();
-    const login = describeLogin(host.creds, host.oauthAccount);
-    if (!login || !host.creds || !host.creds.claudeAiOauth) throw new Error('The host has no claude.ai login to link (sign in with `claude` on the host first)');
-    // the same login may belong to one account only: move it
+    const login = describeLogin(creds, oauthAccount);
+    if (!login || !creds || !creds.claudeAiOauth) throw new Error('No claude.ai login to link');
     listAccounts(gr).forEach((row) => {
         if (row.index !== acc.index && row.remoteLogin && sameLogin(row.remoteLogin, login)) removeLinked(row.id);
     });
-    writeLinked(acc.id, host.creds, host.oauthAccount);
+    writeLinked(acc.id, creds, oauthAccount);
     return { index: acc.index, remoteLogin: login };
+}
+
+/** Saves the host's current claude.ai login as this account's Remote Control login. */
+function linkHostLogin(gr, index) {
+    const host = readHostLogin();
+    const login = describeLogin(host.creds, host.oauthAccount);
+    if (!login || !host.creds || !host.creds.claudeAiOauth) throw new Error('The host has no claude.ai login to link (sign in with `claude` on the host first)');
+    return linkLogin(gr, index, host.creds, host.oauthAccount);
 }
 
 function unlinkLogin(gr, index) {
@@ -437,7 +447,10 @@ module.exports = {
     arm,
     listAccounts,
     linkHostLogin,
+    linkLogin,
     unlinkLogin,
+    describeLogin,
+    storeDir: storeRoot,
     hostStatus,
     reconnect,
     stop,
