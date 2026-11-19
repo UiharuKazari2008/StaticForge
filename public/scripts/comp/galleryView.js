@@ -763,6 +763,12 @@ function processNextPlaceholders() {
         // four, every slot read as busy: the watcher re-armed forever and the visible cells stayed
         // BlurHash (Modernia, Nov 19 2026: activeResolutions 4 of 4, no image loading, 57 queued).
 
+        // The tile's file index as it is now: the copy taken when it was queued goes stale when the
+        // list moves (a print at the head, a search's indexes), which read as a changed filename and
+        // removed the tile
+        const liveFileIndex = parseInt(placeholderData.element.dataset.fileIndex, 10);
+        if (Number.isFinite(liveFileIndex)) placeholderData.fileImageIndex = liveFileIndex;
+
         // Resolve the placeholder - check bounds first
         if (placeholderData.fileImageIndex < 0 || placeholderData.fileImageIndex >= allImages.length) {
             // Invalid index - array was modified, remove this placeholder from queue and DOM
@@ -795,7 +801,11 @@ function processNextPlaceholders() {
                 const fileIndex = parseInt(placeholderData.element.dataset.fileIndex, 10);
                 const image = allImages && Number.isFinite(fileIndex) ? allImages[fileIndex] : null;
                 if (image && typeof ensureGalleryItemComplete === 'function') {
-                    ensureGalleryItemComplete(placeholderData.element, image, fileIndex);
+                    // its display index (data-index), not fileIndex: ensureGalleryItemComplete writes the
+                    // third argument into data-index. The same number without a search; in search
+                    // results every cell that resolved took its place in the whole gallery, then the
+                    // strip moved, dropped and refilled it (flicker, jumps, results gone; Nov 19 2026)
+                    ensureGalleryItemComplete(placeholderData.element, image, parseInt(placeholderData.element.dataset.index, 10));
                 }
                 placeholderData.element.classList.remove('gallery-placeholder');
                 if (intersectionObserver) intersectionObserver.unobserve(placeholderData.element);
@@ -1271,6 +1281,11 @@ function prependToActiveGalleryList(item) {
 
         allImages.splice(idx, 1);
         allImages.unshift(merged);
+        // a search's indexes point into allImages: the rows before the moved one go down one place,
+        // the moved one is now first (only the new-row path below kept them in step)
+        if (window.filteredImageIndices && Array.isArray(window.filteredImageIndices)) {
+            window.filteredImageIndices = window.filteredImageIndices.map((i) => (i === idx ? 0 : (i < idx ? i + 1 : i)));
+        }
         if (window.originalAllImages && window.originalAllImages !== allImages) {
             const baseIdx = window.originalAllImages.findIndex((img) =>
                 galleryListItemMatchesIdentity(img, galleryListItemIdentityKeys(merged))
@@ -2767,6 +2782,28 @@ function isGalleryDeepScrolled() {
     return getGalleryScrollHeadIndex() > GALLERY_DEEP_SCROLL_INDEX;
 }
 
+/**
+ * A search on screen (isNarrowGallerySearchActive) shows only its results, in its own order. A print
+ * arriving goes to the head of allImages, and prependToActiveGalleryList moves filteredImageIndices
+ * with it, but the tiles kept their old data-file-index: each then named the picture next to its own,
+ * the watcher found the filename changed and removed it as stale, and offsetGalleryItemIndexes pushed
+ * every tile's display index past the results until they fell back to the whole gallery's numbers
+ * (Modernia, Nov 19 2026: 33 of 45 tiles numbered 1493-1525 in a 155-result search, results gone).
+ * The tiles keep their display index (the print is not one of the results) and take their file
+ * index from the search again.
+ */
+function syncFilteredGalleryFileIndexes() {
+    const filtered = window.filteredImageIndices;
+    if (!gallery || !Array.isArray(filtered)) return;
+    gallery.querySelectorAll('.gallery-item, .gallery-placeholder').forEach((el) => {
+        const fileIndex = filtered[parseInt(el.dataset.index, 10)];
+        if (fileIndex === undefined) return;
+        const value = String(fileIndex);
+        if (el.dataset.fileIndex !== value) el.dataset.fileIndex = value;
+    });
+}
+window.syncFilteredGalleryFileIndexes = syncFilteredGalleryFileIndexes;
+
 /** Cheap +1 index sync after a new head item — avoids full displayGalleryFromStartIndex reflow. */
 function offsetGalleryItemIndexes(shiftAmount = 1, options = {}) {
     if (!gallery || !shiftAmount || shiftAmount <= 0) return;
@@ -2901,6 +2938,12 @@ async function addNewGalleryItemAfterGeneration(newImage) {
 
     // Upscale / re-delivery: upgrade existing base tile instead of skipping
     const existingDom = findGalleryDomItemByIdentity(newImage);
+    // A search on screen: the new print is not one of its results (no tile, no index shift)
+    if (isNarrowGallerySearchActive()) {
+        if (existingDom) updateGalleryItemElementFromData(existingDom, newImage);
+        syncFilteredGalleryFileIndexes();
+        return;
+    }
     if (existingDom) {
         updateGalleryItemElementFromData(existingDom, newImage);
         if (!isGalleryScrolledFromHead() && gallery.children[0] !== existingDom) {
@@ -5979,8 +6022,8 @@ function updateVirtualScrollInternal() {
                     const fileIndex = parseInt(el.dataset.fileIndex, 10);
                     const image = allImages && Number.isFinite(fileIndex) ? allImages[fileIndex] : null;
                     if (image && !galleryItemHasImageWork(el)) {
-                        // ensureGalleryItemComplete: public/scripts/comp/galleryView.js
-                        ensureGalleryItemComplete(el, image, fileIndex);
+                        // ensureGalleryItemComplete: public/scripts/comp/galleryView.js (display index, see processNextPlaceholders)
+                        ensureGalleryItemComplete(el, image, parseInt(el.dataset.index, 10));
                         el.classList.remove('gallery-placeholder');
                         addImgToGalleryItemAsync(el, image);
                         immediateVisibleResolved++;
@@ -5995,9 +6038,9 @@ function updateVirtualScrollInternal() {
                     lastObserverResolutionTime = now;
                     const fileIndex = parseInt(el.dataset.fileIndex, 10);
                     const image = allImages && Number.isFinite(fileIndex) ? allImages[fileIndex] : null;
-                    // ensureGalleryItemComplete: public/scripts/comp/galleryView.js
+                    // ensureGalleryItemComplete: public/scripts/comp/galleryView.js (display index, see processNextPlaceholders)
                     if (image) {
-                        ensureGalleryItemComplete(el, image, fileIndex);
+                        ensureGalleryItemComplete(el, image, parseInt(el.dataset.index, 10));
                     }
                     el.classList.remove('gallery-placeholder');
                     if (!galleryItemHasImageWork(el)) {

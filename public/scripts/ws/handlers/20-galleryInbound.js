@@ -73,6 +73,18 @@ function appendNewGalleryItems(newItems) {
     // isGalleryWindowHidden: public/scripts/comp/galleryView.js
     if (isGalleryWindowHidden()) return;
 
+    // A search on screen shows only its results: new prints are not among them. Upgrade a tile that is
+    // (an upscale), and give the tiles their file index from the search again (the list moved under
+    // them) - syncFilteredGalleryFileIndexes: public/scripts/comp/galleryView.js
+    if (typeof isNarrowGallerySearchActive === 'function' && isNarrowGallerySearchActive()) {
+        newItems.forEach((imageData) => {
+            const existingDom = findGalleryDomItemByIdentity(imageData);
+            if (existingDom) updateGalleryItemElementFromData(existingDom, imageData);
+        });
+        syncFilteredGalleryFileIndexes();
+        return;
+    }
+
     // findGalleryDomItemByIdentity / updateGalleryItemElementFromData: public/scripts/comp/galleryView.js
     // Upscale upgrades an existing base tile; true duplicates are skipped after update.
     const itemsToInsert = [];
@@ -309,6 +321,23 @@ async function handleGalleryUpdatedData(data) {
         }
 
         const changes = detectGalleryChanges(oldImages, newImages);
+
+        // A search on screen: new rows at the head move the whole list, not the search's results.
+        // Replacing the list without the search's context deleted filteredImageIndices while the page
+        // still showed the search, and the tiles were numbered against the whole gallery from then on
+        // (the results "stopped showing", Modernia Nov 19 2026). Keep the search, move its indexes with
+        // the list, give the tiles their file index again; the tiles themselves stay.
+        // isNarrowGallerySearchActive / syncFilteredGalleryFileIndexes: public/scripts/comp/galleryView.js
+        if ((changes.type === 'append_top' || changes.type === 'shift_indexes')
+            && typeof isNarrowGallerySearchActive === 'function' && isNarrowGallerySearchActive()) {
+            const shift = changes.type === 'append_top' ? (changes.newItems || []).length : (changes.shiftAmount || 0);
+            const kept = window.filteredImageIndices.map((i) => i + shift);
+            setActiveGalleryList(newImages, { preserveSearchContext: true });
+            window.filteredImageIndices = kept;
+            syncServiceWorkerImageCacheRules();
+            syncFilteredGalleryFileIndexes();
+            return;
+        }
 
         if (changes.type === 'full_reload') {
             // applyGalleryListReload: public/scripts/comp/galleryView.js — keeps viewport when scrolled

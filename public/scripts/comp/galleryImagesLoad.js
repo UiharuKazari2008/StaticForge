@@ -222,6 +222,18 @@ async function joinGalleryImagesLoad(progressCallback, opts) {
         return;
     }
 
+    // The joining call issued a newer load token (switchGalleryView), which made the running load's
+    // own token stale: the load threw its finished list away (isGalleryLoadTokenCurrent) and the join
+    // then found the same stale token, so the gallery stayed empty under "Loading Gallery" for good.
+    // Clearing a search does this: two switchGalleryView calls ~30 ms apart (Modernia, Nov 19 2026).
+    // Same view and workspace, so the running load carries the newer token; the token is one object
+    // shared by every check inside that load.
+    const joining = opts && opts.loadToken;
+    if (joining && task.loadToken && joining !== task.loadToken
+        && joining.viewType === task.loadToken.viewType && joining.workspaceId === task.loadToken.workspaceId) {
+        task.loadToken.id = joining.id;
+    }
+
     const loadLog = acquireGalleryLoadLogger('images', getGalleryLoadWorkspaceId());
     loadLog.step('join', 'Joining in-flight gallery load instead of starting a duplicate', {
         workspaceId: task.workspaceId,
