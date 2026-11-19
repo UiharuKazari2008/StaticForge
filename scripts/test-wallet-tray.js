@@ -12,6 +12,9 @@ const path = require('path');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wallet-tray-'));
 process.env.HOME = tmp;
+// walletStatus reads every Claude account's usage (claudeUsage.js): a temp store and home, never the real ones
+process.env.DREAMSCAPE_CLAUDE_HOME = tmp;
+process.env.DREAMSCAPE_CLAUDE_ACCOUNTS_DIR = path.join(tmp, 'claude-accounts');
 process.env.API_KEY_HEALTH_CACHE = path.join(tmp, 'api-key-health.json');
 const NOW = Date.now();
 
