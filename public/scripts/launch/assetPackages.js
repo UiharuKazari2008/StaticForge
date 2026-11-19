@@ -390,24 +390,40 @@
     // new tier's package is fetched once the desktop is up (a large one asks to restart, where the
     // installer brings it). One matchMedia listener for the current ratio; no timers while idle.
     let hidpiStarted = false;
-    let hidpiLink = null;
-    function linkHidpiSheet(tier) {
-        if (typeof document === 'undefined' || !document.head) return;
+    const hidpiLinks = { img: null, bg: null };
+    // one of the tier's sheets: linked, swapped (the old one goes once the new one is in, so art never
+    // flashes at the wrong size) or removed (tier 1)
+    function swapHidpiSheet(kind, tier) {
+        const cur = hidpiLinks[kind];
         if (tier === 1) {
-            if (hidpiLink) { hidpiLink.remove(); hidpiLink = null; }
+            if (cur) { cur.remove(); hidpiLinks[kind] = null; }
             return;
         }
-        const href = `/static_images/hidpi/${tier}/img.css`;
-        if (hidpiLink && hidpiLink.getAttribute('href') === href) return;
+        const href = `/static_images/hidpi/${tier}/${kind}.css`;
+        if (cur && cur.getAttribute('href') === href) return;
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.href = href;
         link.dataset.melatonHidpi = String(tier);
-        const old = hidpiLink;
-        // the old sheet goes once the new one is in, so <img> art never flashes at the wrong size
-        if (old) link.addEventListener('load', () => old.remove(), { once: true });
+        if (cur) link.addEventListener('load', () => cur.remove(), { once: true });
         document.head.appendChild(link);
-        hidpiLink = link;
+        hidpiLinks[kind] = link;
+    }
+    // img.css: <img> art at the tier. bg.css only when the page's own scale (the Android app's desktop,
+    // #934) asks for more than the screen: image-set() follows the real devicePixelRatio and would stay at
+    // 1x there, so bg.css repeats the stylesheets' art rules under html[data-hidpi-tier] with that tier's copy
+    function linkHidpiSheet(tier) {
+        if (typeof document === 'undefined' || !document.head) return;
+        swapHidpiSheet('img', tier);
+        const screenTier = hidpiTierFor(typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1);
+        const scaled = tier !== 1 && tier > screenTier ? tier : 1;
+        const html = document.documentElement;
+        const want = scaled === 1 ? null : String(scaled);
+        if (html && html.getAttribute('data-hidpi-tier') !== want) {
+            if (want) html.setAttribute('data-hidpi-tier', want);
+            else html.removeAttribute('data-hidpi-tier');
+        }
+        swapHidpiSheet('bg', scaled);
     }
     function hidpiPackageAdded(change) {
         const started = Date.now();
