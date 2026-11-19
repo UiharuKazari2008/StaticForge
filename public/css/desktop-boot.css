@@ -336,6 +336,19 @@ body.winlogon-power #desktopPreStartupStatus {
     display: block !important;
 }
 
+/* "Installing update 1 of 3..." / "Configuring updates: Stage 3 of 3 - 73% complete." with "Do not
+   turn off your computer." under it (#924), as measured on the Vista VM (1920x1200, a pending
+   servicing restart): the lines 32 px apart and centred on each other, the wait ring centred
+   beside the pair, the whole 2 px lower than the one-line status */
+body.winlogon-power #desktopPreStartupStatus[data-lines="2"] {
+    display: flex !important;
+    justify-content: center;
+    align-items: center;
+    line-height: 32px;
+    white-space: pre;
+    transform: translateY(calc(-50% + 2px));
+}
+
 body.winlogon-power #desktopPreStartupModal :is(
     .desktop-prestartup-vista-tile,
     .desktop-prestartup-auth-row,
@@ -639,6 +652,11 @@ body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown {
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown::before {
     inset: -1px -4px;
     background-image: url('/static_images/vista-logon/shutdown-icon.png');
+}
+
+/* updates wait to install (#924): authui's "Shut down and install updates" glyph (bitmap 11130) */
+html[data-updates-waiting] body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown::before {
+    background-image: url('/static_images/vista-logon/shutdown-update-icon.png');
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown:focus-visible {

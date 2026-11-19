@@ -317,6 +317,10 @@ class ServiceWorkerManager {
         this._swWarmScheduled = false;
         this._activeDownloadAttach = null;
         this._updateCompleteToastTimeout = null;
+        // downloaded updates waiting for a restart: installed at shutdown (#924)
+        this._updateBatches = [];
+        this._shutdownPlan = null;
+        this._shutdownInstalling = false;
 
         this.init();
     }
@@ -446,13 +450,97 @@ class ServiceWorkerManager {
         return filesCountingTowardInstaller(files, this._melatonInstallStragglers());
     }
 
-    _needsLaunchInstaller(files) {
+    /**
+     * The installer (/launch's installation media), or in place? updatePolicy.js (#924): only an
+     * install already running there, a client that never finished one, a critical file missing from
+     * the cache, or an update that replaces large parts of the OS. Everything else downloads in the
+     * background and installs at log off / shut down / restart (installUpdatesAtShutdown) or live.
+     * A page kept from before #924 (no policy loaded) keeps the old 20-file cutoff.
+     */
+    async _needsLaunchInstaller(files) {
         const installInProgress = this._melatonInstallInProgress();
         if (!this._launchInstallsHere()) return false;
-        return needsLaunchInstaller(files, {
-            installInProgress,
-            stragglers: this._melatonInstallStragglers()
+        const policy = window.melatonUpdatePolicy;
+        if (!policy) {
+            return needsLaunchInstaller(files, {
+                installInProgress,
+                stragglers: this._melatonInstallStragglers()
+            });
+        }
+        if (installInProgress) return true;
+        const fresh = this._filesCountingTowardInstaller(files);
+        if (!fresh.length) return false;
+        let criticalMissing = 0;
+        try { criticalMissing = await this._criticalFilesMissing(fresh); } catch (_) { criticalMissing = 0; }
+        const verdict = policy.route({
+            files: fresh,
+            total: this._manifestStats(),
+            installed: this._isInstalledClient(),
+            criticalMissing
         });
+        if (verdict.route === 'installer') console.log(`[update] ${fresh.length} files go to the installer (${verdict.reason})`);
+        return verdict.route === 'installer';
+    }
+
+    /** The installed mark: the desktop's last boot step, Melaton Mobile's, a finished install, or a cache once proven in sync. */
+    _isInstalledClient() {
+        try {
+            if (localStorage.getItem('melatonInstalled') || localStorage.getItem('melatonMobileInstalled') || localStorage.getItem('melatonManifestHash')) return true;
+            const record = JSON.parse(localStorage.getItem(MELATON_INSTALL_RECORD_KEY) || 'null');
+            return !!(record && record.completedAt);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    // localStorage 'melatonManifestStats': { n, code } of the kept file list (updateEngine.js writes the same
+    // key), what 'large' is measured against. 'melatonUpdateConfigure': set at shutdown once updates are
+    // installed, so the next start runs the configuring stage (#924).
+    /** { n, code } of the file list this client keeps (written whenever a whole list is stored), or null. */
+    _manifestStats() {
+        try {
+            const total = JSON.parse(localStorage.getItem('melatonManifestStats') || 'null');
+            return total && Number(total.n) > 0 ? total : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _rememberManifestStats(manifest) {
+        const policy = window.melatonUpdatePolicy;
+        if (!policy || !Array.isArray(manifest) || !manifest.length) return;
+        const stats = policy.stats(manifest);
+        const next = JSON.stringify({ n: stats.n, code: stats.code });
+        try { if (localStorage.getItem('melatonManifestStats') !== next) localStorage.setItem('melatonManifestStats', next); } catch (_) { /* judged by the fallbacks */ }
+    }
+
+    /** The files this page itself loads (its script and stylesheet tags): critical beside the policy's list. */
+    _pageCriticalPaths() {
+        if (this._pageCritical) return this._pageCritical;
+        const set = new Set();
+        document.querySelectorAll('script[src], link[rel="stylesheet"][href]').forEach((el) => {
+            const raw = el.getAttribute(el.tagName === 'SCRIPT' ? 'src' : 'href');
+            if (!raw || /^(?:[a-z]+:)?\/\//i.test(raw)) return;
+            const path = normalizeStaticFilePath(raw.charAt(0) === '/' ? raw : `/${raw}`);
+            if (path.startsWith('/scripts/') || path.startsWith('/css/')) set.add(path);
+        });
+        this._pageCritical = set;
+        return set;
+    }
+
+    /** How many critical files of an update have no row in the cache at all (a changed one is only an update). */
+    async _criticalFilesMissing(files) {
+        const policy = window.melatonUpdatePolicy;
+        if (!policy) return 0;
+        const extra = this._pageCriticalPaths();
+        const critical = (files || []).filter((file) => policy.isCritical(file, extra));
+        if (!critical.length) return 0;
+        const cache = await caches.open('static-cache-v2');
+        let missing = 0;
+        for (const file of critical) {
+            if (!(await this._matchCachedFile(cache, file))) missing += 1;
+        }
+        return missing;
     }
 
     _installerFileCount(files) {
@@ -502,10 +590,10 @@ class ServiceWorkerManager {
         console.log(`[update] ${count} files held: ${pack.label}`);
     }
 
-    _runtimeHoldsLargeUpdate(files) {
+    async _runtimeHoldsLargeUpdate(files) {
         // a package the user asked for (applyPackageChange) downloads as it is, whatever its size
         if (this._packageInstall) return false;
-        return !window.isLoginPage && this.bootComplete && this._needsLaunchInstaller(files);
+        return !window.isLoginPage && this.bootComplete && await this._needsLaunchInstaller(files);
     }
 
     /**
@@ -573,7 +661,7 @@ class ServiceWorkerManager {
             if (needing.length) await this.updateStaticCache(needing, noToast, cacheOptions);
             return;
         }
-        if (this._needsLaunchInstaller(needing)) {
+        if (await this._needsLaunchInstaller(needing)) {
             if (this._rebootIntoInstaller(this._installerFileCount(needing))) return;
         }
         const fresh = this._filesCountingTowardInstaller(needing);
@@ -981,6 +1069,7 @@ class ServiceWorkerManager {
 
     /** Resolves once the list is stored, so the digest is only written after it. */
     async _writeManifestSnapshot(manifest, hash) {
+        this._rememberManifestStats(manifest);
         try {
             const packed = packManifestSnapshot(manifest, hash || this._readSyncedManifestHash());
             if (!packed) return;
@@ -1058,6 +1147,7 @@ class ServiceWorkerManager {
     async _fetchManifestResult(options) {
         const full = !!(options && options.full === true);
         const known = full ? '' : this._readSyncedManifestHash();
+        const timeoutMs = (options && Number(options.timeoutMs)) || 30000;
         try {
             const headers = {
                 'X-Service-Worker-Version': '2.0',
@@ -1069,7 +1159,7 @@ class ServiceWorkerManager {
                 headers,
                 // The file list is about half a megabyte. 8s was aborting it, and a
                 // missed list was treated as "do not install."
-                signal: AbortSignal.timeout(30000)
+                signal: AbortSignal.timeout(timeoutMs)
             });
             this._noteBroadcastHash(response);
             if (response.status === 304) {
@@ -1109,6 +1199,7 @@ class ServiceWorkerManager {
             return;
         }
         const queue = this._pendingCacheUpdateQueue.splice(0);
+        this._syncUpdatesWaitingMark();
         queue.forEach((entry) => {
             if (entry.files && entry.files.length > 0) {
                 this.updateStaticCache(entry.files, entry.silent, entry.cacheOptions);
@@ -1120,6 +1211,7 @@ class ServiceWorkerManager {
 
     queueCacheUpdateUntilBoot(files, silent, cacheOptions) {
         this._pendingCacheUpdateQueue.push({ files, silent, cacheOptions });
+        this._syncUpdatesWaitingMark();
     }
 
     _setPreStartupUpdateStageMessage(message) {
@@ -1594,6 +1686,8 @@ class ServiceWorkerManager {
 
         if ('serviceWorker' in navigator) {
             this._scheduleWorkerMaintenance();
+            // updates installed at the last shutdown: the configuring stage, from the cache alone (#924)
+            const configured = this._configureUpdatesAtBoot().catch(() => {});
             try {
                 this._kickApplicationBootEarly();
                 // Continuity (#798): a hybrid phone's DeX window booted past the phone's ready (its BIOS
@@ -1642,6 +1736,7 @@ class ServiceWorkerManager {
                     }
                     this.loginBootPromise = this.runLoginBootSequence();
                 } else {
+                    await configured;
                     this.bootPromise = this.runBootSequence().then((result) => {
                         if (result && result.rebooted) return;
                         // A failed cache check must not fulfill the boot gate. The desktop waits.
@@ -2188,7 +2283,7 @@ class ServiceWorkerManager {
             const swState = await this.checkDownloadState();
             if (swState && swState.isDownloading) {
                 const already = await this.getFilesNeedingUpdate(files);
-                if (this._runtimeHoldsLargeUpdate(already)) {
+                if (await this._runtimeHoldsLargeUpdate(already)) {
                     this._offerServicePackUpgrade(already);
                     return;
                 }
@@ -2263,7 +2358,7 @@ class ServiceWorkerManager {
             if (filesToUpdate.length > 0) {
                 console.log(`Found ${filesToUpdate.length} files that need updating`);
 
-                if (this._runtimeHoldsLargeUpdate(filesToUpdate)) {
+                if (await this._runtimeHoldsLargeUpdate(filesToUpdate)) {
                     this._offerServicePackUpgrade(filesToUpdate);
                     return;
                 }
@@ -2878,6 +2973,8 @@ class ServiceWorkerManager {
     }
 
     _processStaticCacheComplete(data) {
+        // a download the shutdown install asked for (installUpdatesAtShutdown) is its own to finish
+        if (this._shutdownInstalling) return;
         const filesCount = this._resolvePendingUpdateFilesCount(data);
 
         if (filesCount === 0) {
@@ -2925,6 +3022,7 @@ class ServiceWorkerManager {
             return;
         }
 
+        this._noteUpdateBatch(updatedFiles);
         this.tripPendingUpdateFuse(filesCount);
         this.trayPopup.dismissedUntilComplete = false;
         this._scheduleUpdateCompleteToast('restart');
@@ -2946,7 +3044,7 @@ class ServiceWorkerManager {
         if (filesToUpdate.length === 0) {
             return { cached: 0, skipped: false };
         }
-        if (this._runtimeHoldsLargeUpdate(filesToUpdate)) {
+        if (await this._runtimeHoldsLargeUpdate(filesToUpdate)) {
             this._offerServicePackUpgrade(filesToUpdate);
             return { cached: 0, skipped: true, servicePack: this.servicePack && this.servicePack.label };
         }
@@ -4522,7 +4620,7 @@ class ServiceWorkerManager {
                 filesToUpdate = await this.getFilesNeedingUpdate(files);
             }
 
-            if (this._needsLaunchInstaller(filesToUpdate)) {
+            if (await this._needsLaunchInstaller(filesToUpdate)) {
                 const count = this._installerFileCount(filesToUpdate);
                 if (this._rebootIntoInstaller(count)) {
                     return { rebooted: true };
@@ -4698,6 +4796,234 @@ class ServiceWorkerManager {
         }
     }
     
+    // ---- updates install at shutdown, like Windows (Yozora #924) ----
+    //
+    // Downloaded updates that need a restart wait in _updateBatches (one per finished download).
+    // Log off, shut down and restart install them on the Welcome screen (winlogonPower.js):
+    // "Installing update n of N..." (each one checked in the cache, fetched when it is not there;
+    // what the server has published since comes down as one more), then "Shutting down..." and
+    // "Configuring updates: Stage 1 of 3" (a waiting service worker takes over, the proven file
+    // list is stored) and "Stage 2 of 3" (the mark for the next start, the fuse reset). The next
+    // start runs Stage 3 of 3 before the logon
+    // (_configureUpdatesAtBoot) from the cache alone: no request to the server.
+
+    /** How many updates a shut down installs now (the power buttons' "install updates" look). */
+    updatesWaitingCount() {
+        const queued = (this._pendingCacheUpdateQueue || []).some((entry) => entry && entry.files && entry.files.length);
+        return (this._updateBatches ? this._updateBatches.length : 0) + (queued ? 1 : 0);
+    }
+
+    _noteUpdateBatch(files) {
+        const rows = (files || []).map((f) => (typeof f === 'string' ? { url: f } : (f && f.url ? { url: f.url, hash: f.hash, size: f.size } : null))).filter(Boolean);
+        if (!rows.length) return;
+        if (!this._updateBatches) this._updateBatches = [];
+        this._updateBatches.push({ files: rows, at: Date.now() });
+        this._syncUpdatesWaitingMark();
+    }
+
+    /** html[data-updates-waiting] and 'melaton:updates-waiting': the Start menu and logon power buttons follow it. */
+    _syncUpdatesWaitingMark() {
+        const waiting = this.updatesWaitingCount() > 0;
+        const root = document.documentElement;
+        if ((root.dataset.updatesWaiting === '1') === waiting) return;
+        if (waiting) root.dataset.updatesWaiting = '1';
+        else delete root.dataset.updatesWaiting;
+        // the logon screen's shut down button (authui.dll.mui) and the Start menu's (modalUtils.js)
+        const logonBtn = document.getElementById('desktopPreStartupShutdownBtn');
+        if (logonBtn) {
+            const label = waiting ? 'Shut down and install updates' : 'Shut down';
+            logonBtn.title = label;
+            logonBtn.setAttribute('aria-label', label);
+        }
+        if (typeof window.refreshStartMenuPower === 'function') window.refreshStartMenuPower();
+        try { document.dispatchEvent(new CustomEvent('melaton:updates-waiting', { detail: { count: this.updatesWaitingCount() } })); } catch (_) { /* no listeners */ }
+    }
+
+    /**
+     * What this shutdown installs: the waiting updates, plus what the server has published since
+     * (one quick list request; no answer in 5 s, offline, or a set only the installer takes: left
+     * for the next start). Started as the power sequence begins, read once the Welcome screen is up.
+     * Resolves { updates: [{ files, downloaded }], manifest, hash, installer }.
+     */
+    planShutdownInstall(options = {}) {
+        if (this._shutdownPlan) return this._shutdownPlan;
+        const plan = { updates: [], manifest: null, hash: '', installer: false };
+        this._shutdownPlan = (async () => {
+            // the phone's updater owns the shared cache (Continuity); agent tabs have no worker
+            if (this.agentSession || this._isContinuityDexWindow()) return plan;
+            (this._updateBatches || []).forEach((batch) => plan.updates.push({ files: batch.files.slice(), downloaded: true }));
+            const worker = this.swRegistration && this.swRegistration.active;
+            const online = navigator.onLine !== false && window.wsClient && typeof window.wsClient.isConnected === 'function' && window.wsClient.isConnected();
+            if (options.checkServer === false || !worker || !online || !window.melatonUpdatePolicy || this.isUpdating) return plan;
+            try {
+                const result = await this._fetchManifestResult({ timeoutMs: 5000 });
+                if (result.outcome !== 'list') return plan;
+                let rows = result.rows;
+                if (window.melatonPackages && typeof window.melatonPackages.filterRows === 'function') rows = window.melatonPackages.filterRows(rows);
+                const waiting = new Set();
+                plan.updates.forEach((u) => u.files.forEach((f) => waiting.add(f.url)));
+                const fresh = this._filesCountingTowardInstaller(await this.getFilesNeedingUpdate(rows));
+                if (fresh.length && await this._needsLaunchInstaller(fresh)) {
+                    plan.installer = true;
+                    return plan;
+                }
+                const more = fresh.filter((f) => !waiting.has(f.url));
+                if (more.length) plan.updates.push({ files: more, downloaded: false });
+                plan.manifest = result.rows;
+                plan.hash = result.hash || '';
+            } catch (error) {
+                console.warn('[update] shutdown check did not finish; installing what is already here', error);
+            }
+            return plan;
+        })();
+        return this._shutdownPlan;
+    }
+
+    /** A cancelled shutdown (the still-running list): the next one plans again. */
+    forgetShutdownPlan() {
+        this._shutdownPlan = null;
+        this._shutdownInstalling = false;
+    }
+
+    /**
+     * Install the plan's updates and run configuring stages 1 and 2, calling onStatus(text) with
+     * each screen text (two lines, '\n' between); options.screenText ("Shutting down...") shows
+     * between the two, as on Vista. kind 'shutdown' turns the computer off afterwards (Windows
+     * Update's own second line); restart and log off keep it on. Never throws: what could
+     * not be fetched stays for the next start's check. Resolves { installed, failed }.
+     */
+    async installUpdatesAtShutdown(plan, options = {}) {
+        const say = (text) => { try { if (typeof options.onStatus === 'function') options.onStatus(text); } catch (_) { /* the screen is the caller's */ } };
+        const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const updates = (plan && plan.updates) || [];
+        if (!updates.length) return { installed: 0, failed: 0 };
+        // wuaueng.dll.mui: the line under "Installing update n of N..."
+        const second = options.kind === 'shutdown'
+            ? 'Do not turn off or unplug your computer; it will turn off automatically.'
+            : 'Please do not power off or unplug your machine.';
+        this._shutdownInstalling = true;
+        let failed = 0;
+        const done = [];
+        try {
+            for (let i = 0; i < updates.length; i++) {
+                const update = updates[i];
+                say(`Installing update ${i + 1} of ${updates.length}...\n${second}`);
+                const started = Date.now();
+                const hashed = update.files.filter((f) => f && f.url && f.hash);
+                let left = [];
+                try {
+                    left = hashed.length ? await this.getFilesNeedingUpdate(hashed, { full: true }) : [];
+                    if (left.length) {
+                        await this.attachToDownloadProgress({ files: left, stallMs: 20000 });
+                        left = await this.getFilesNeedingUpdate(hashed, { full: true });
+                    }
+                } catch (error) {
+                    console.warn('[update] an update could not be checked at shutdown', error);
+                    left = hashed;
+                }
+                const ok = left.length === 0;
+                if (!ok) failed += 1;
+                done.push({ update, ok });
+                this.recordUpdateHistory({
+                    key: `shutdown|${started}|${i}`,
+                    name: `Melaton update (${update.files.length} ${update.files.length === 1 ? 'file' : 'files'})`,
+                    status: ok ? 'Successful' : 'Failed',
+                    importance: 'Important'
+                });
+                // each update is on screen long enough to read (the boot screens keep their own time too)
+                const rest = 1400 - (Date.now() - started);
+                if (rest > 0) await pause(rest);
+            }
+            // Vista's order (measured on the VM): "Shutting down..." comes back, then the servicing
+            // stack's stages 1 and 2 before the screen goes dark; stage 3 is the next start's
+            if (options.screenText) {
+                say(options.screenText);
+                await pause(1200);
+            }
+            // cbsmsg.dll.mui: "Configuring updates: Stage %d of %d - %d%% complete." / "Do not turn off your computer."
+            const stage = (n, pct) => say(`Configuring updates: Stage ${n} of 3 - ${pct}% complete.\nDo not turn off your computer.`);
+            stage(1, 0);
+            await pause(350);
+            // a new service worker that waited for the pages to go takes over with this restart
+            try {
+                const waiting = this.swRegistration && this.swRegistration.waiting;
+                if (waiting) waiting.postMessage({ type: 'SKIP_WAITING' });
+            } catch (_) { /* it activates when the pages close */ }
+            stage(1, 35);
+            // the whole list proven in the cache: the next start's check is a digest and a sample
+            if (plan.manifest && !plan.installer && !failed) {
+                try {
+                    const still = this._filesCountingTowardInstaller(await this.getFilesNeedingUpdate(plan.manifest));
+                    if (!still.length && plan.hash) {
+                        await this._writeManifestSnapshot(plan.manifest, plan.hash);
+                        this._writeSyncedManifestHash(plan.hash);
+                    }
+                } catch (_) { /* the next start checks the list itself */ }
+            }
+            stage(1, 100);
+            await pause(450);
+            stage(2, 0);
+            await pause(350);
+            const files = [];
+            done.forEach((d) => { if (d.ok) d.update.files.forEach((f) => { if (f.hash && files.length < 400) files.push({ url: f.url, hash: f.hash }); }); });
+            try {
+                localStorage.setItem('melatonUpdateConfigure', JSON.stringify({ at: Date.now(), updates: updates.length - failed, failed, files }));
+            } catch (_) { /* no configuring stage at the next start */ }
+            stage(2, 60);
+            this._updateBatches = [];
+            this._syncUpdatesWaitingMark();
+            this.resetPendingUpdateFuse();
+            await pause(350);
+            stage(2, 100);
+            await pause(600);
+        } catch (error) {
+            console.warn('[update] installing at shutdown stopped early', error);
+        }
+        return { installed: updates.length - failed, failed };
+    }
+
+    /**
+     * The start after updates were installed at shutdown: "Configuring updates: Stage 3 of 3" on the
+     * Welcome screen before the logon, from the cache alone (no request to the server: the zero-wait
+     * rule). Checks the installed files are in the cache with their hashes; one that is not is left
+     * to the normal update check. Other shells (Melaton Mobile) have no Welcome screen: the mark is
+     * cleared and the check runs without one.
+     */
+    async _configureUpdatesAtBoot() {
+        let mark = null;
+        try { mark = JSON.parse(localStorage.getItem('melatonUpdateConfigure') || 'null'); } catch (_) { mark = null; }
+        if (!mark) return;
+        const clear = () => { try { localStorage.removeItem('melatonUpdateConfigure'); } catch (_) { /* storage off */ } };
+        if (this.agentSession || this._isContinuityDexWindow() || !(Date.now() - (Number(mark.at) || 0) < 7 * 24 * 60 * 60 * 1000)) { clear(); return; }
+        const files = Array.isArray(mark.files) ? mark.files.filter((f) => f && f.url && f.hash) : [];
+        const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        // showWinlogonStatus / hideWinlogonStatus: public/scripts/comp/winlogonPower.js
+        const screen = window.isDesktop && typeof showWinlogonStatus === 'function' && typeof hideWinlogonStatus === 'function';
+        const stage = (pct) => { if (screen) showWinlogonStatus(`Configuring updates: Stage 3 of 3 - ${pct}% complete.\nDo not turn off your computer.`); };
+        try {
+            if (screen && typeof dismissLaunchHandoffIfNeeded === 'function') await dismissLaunchHandoffIfNeeded();
+            stage(0);
+            let missing = 0;
+            const step = Math.max(1, Math.ceil(files.length / 4));
+            for (let i = 0; i < files.length; i += step) {
+                const started = Date.now();
+                try { missing += (await this.getFilesNeedingUpdate(files.slice(i, i + step), { full: true })).length; } catch (_) { /* the update check finds it */ }
+                if (screen) {
+                    const rest = 450 - (Date.now() - started);
+                    if (rest > 0) await pause(rest);
+                    stage(Math.min(99, Math.round(((i + step) / files.length) * 100)));
+                }
+            }
+            if (missing) console.warn(`[update] ${missing} installed file(s) are not in the cache; the update check fetches them`);
+            stage(100);
+            if (screen) await pause(900);
+        } catch (error) {
+            console.warn('[update] configuring updates stopped early', error);
+        }
+        clear();
+        if (screen) hideWinlogonStatus();
+    }
+
     // Show update complete toast with restart or apply button
     showUpdateCompleteToast(mode = 'restart') {
         // Manual re-check already showed the pending-restart prompt — don't overwrite it.
@@ -4856,7 +5182,8 @@ class ServiceWorkerManager {
             mc.restartScope(mc.updateScope(Array.from(this.pendingUpdateUrls || [])));
         }
         console.log('🔄 Force restarting application...');
-        if (this.pendingUpdateFuse) {
+        // waiting updates install on the way down (installUpdatesAtShutdown), which files them one by one
+        if (this.pendingUpdateFuse && !this.updatesWaitingCount()) {
             // the downloaded updates install with this restart (the update page's "Updates were installed")
             const n = this.pendingUpdateFilesTotal || (this.pendingUpdateUrls ? this.pendingUpdateUrls.size : 0);
             this.recordUpdateHistory({ name: n ? `Melaton update (${n} ${n === 1 ? 'file' : 'files'})` : 'Melaton update', status: 'Successful', importance: 'Important' });
@@ -5255,12 +5582,20 @@ class ServiceWorkerManager {
                 }
 
                 // More than the cutoff, or an install /launch already started: leave before any dialog.
-                if (this._needsLaunchInstaller(filesToUpdate)) {
+                if (await this._needsLaunchInstaller(filesToUpdate)) {
                     if (this._rebootIntoInstaller(this._installerFileCount(filesToUpdate))) {
                         return { rebooted: true };
                     }
                     // the installer ran minutes ago: the rest installs right here (no restart box, Yukimi, Nov 19)
                     console.log('[boot] files changed since the installer ran: installing them in place');
+                } else if (window.melatonUpdatePolicy && this._isInstalledClient()
+                    && fresh.length > window.melatonUpdatePolicy.QUIET_BOOT_FILES) {
+                    // #924: an in-place update too big to land before the desktop is not waited for. The
+                    // installed copy starts; the files download in the background once the desktop is up
+                    // and install at log off / shut down / restart (the list stays unproven until then)
+                    console.log(`[boot] ${fresh.length} files to update: the installed copy starts, they download in the background`);
+                    this.queueCacheUpdateUntilBoot(fresh, true);
+                    break;
                 }
 
                 const outcome = await this.checkAndDownloadUpdatesForInit(fresh);

@@ -372,6 +372,8 @@ function hideWinlogonPowerScreen() {
         }
     }
     if (window.wsClient) window.wsClient.winlogonPowerText = '';
+    const status = document.getElementById('desktopPreStartupStatus');
+    if (status) delete status.dataset.lines;
 }
 
 function winlogonPowerQuiet(label, job) {
@@ -446,6 +448,131 @@ function forgetDirectorReopen() {
     }, { once: true });
 }
 
+// ---- Updates on the Welcome screen (Yozora #924), one scope: nothing here is a page global ----
+(() => {
+    /** The Welcome screen's status while a power sequence or the configuring stage holds it: one or two lines ('\n'). */
+    function setWinlogonPowerText(text) {
+        if (window.wsClient) window.wsClient.winlogonPowerText = text;
+        const status = document.getElementById('desktopPreStartupStatus');
+        if (!status) return;
+        if (status.textContent !== text) status.textContent = text;
+        // two lines lay out as Vista's do (desktop-boot.css): 32 px apart, the wait ring centred beside both
+        const two = String(text).indexOf('\n') >= 0;
+        if (two !== (status.dataset.lines === '2')) {
+            if (two) status.dataset.lines = '2';
+            else delete status.dataset.lines;
+        }
+    }
+
+    // ---- Updates install on the way down, like Windows (Yozora #924) ----
+    // serviceWorkerManager.js plans (what is downloaded and waiting, what the server has since) and
+    // installs; this file owns the screen. The lines are Windows Update's and the servicing stack's
+    // (wuaueng.dll.mui, cbsmsg.dll.mui), shown where Vista shows them: the Welcome screen's status,
+    // between "Logging off..." and "Shutting down...".
+    const WINLOGON_UPDATE_PLAN_MAX_MS = 8000;
+
+    function winlogonUpdater(kind) {
+        if (kind === 'server') return null;
+        // serviceWorkerManager: public/scripts/comp/serviceWorkerManager.js
+        const m = window.serviceWorkerManager;
+        return m && typeof m.planShutdownInstall === 'function' && typeof m.installUpdatesAtShutdown === 'function' ? m : null;
+    }
+
+    /** The plan, or null when it is not known in time (the updates stay in the cache for the next start). */
+    function winlogonUpdatePlan(updater, planning) {
+        if (!updater || !planning) return Promise.resolve(null);
+        return Promise.race([planning, winlogonDelay(WINLOGON_UPDATE_PLAN_MAX_MS).then(() => null)])
+            .then((plan) => (plan && Array.isArray(plan.updates) && plan.updates.length ? plan : null), () => null);
+    }
+
+    /**
+     * The configuring stage at the next start (serviceWorkerManager._configureUpdatesAtBoot): the
+     * Welcome screen with only its status, before the logon. hideWinlogonStatus hands the screen back
+     * to the boot as it was.
+     */
+    let statusHeld = null;
+    function showWinlogonStatus(text) {
+        const modal = document.getElementById('desktopPreStartupModal');
+        if (!modal) return false;
+        if (!statusHeld) {
+            statusHeld = { wasHidden: modal.classList.contains('hidden'), hadArt: modal.classList.contains('vista-logon-art-ready') };
+            showWinlogonPowerScreen(text);
+            setWinlogonPowerText(text);
+            document.body.classList.add('winlogon-configuring');
+        } else {
+            setWinlogonPowerText(text);
+        }
+        return true;
+    }
+
+    function hideWinlogonStatus() {
+        const held = statusHeld;
+        if (!held) return;
+        statusHeld = null;
+        document.body.classList.remove('winlogon-power', 'winlogon-configuring');
+        const modal = document.getElementById('desktopPreStartupModal');
+        if (modal) {
+            modal.classList.remove('power-status-only');
+            if (!held.hadArt) modal.classList.remove('vista-logon-art-ready');
+            if (held.wasHidden) modal.classList.add('hidden');
+        }
+        const status = document.getElementById('desktopPreStartupStatus');
+        if (status) delete status.dataset.lines;
+        if (window.wsClient) {
+            window.wsClient.winlogonPowerText = '';
+            // the boot's own logon dialog takes the screen back (public/scripts/websocket.js)
+            if (!held.wasHidden && typeof window.wsClient._renderPreStartupDialog === 'function') window.wsClient._renderPreStartupDialog();
+        }
+    }
+
+    /**
+     * The native host's power switch, when the machine has one for the page: window.DreamOSPower
+     * { shutdown(), restart() } (the DreamOS shell bridge). True when the host took it; the page then
+     * stays dark and does nothing more. Log off and a server restart are always the page's own.
+     */
+    function winlogonHostPower(kind) {
+        if (kind !== 'shutdown' && kind !== 'restart') return false;
+        const host = window.DreamOSPower;
+        try {
+            if (!host || typeof host[kind] !== 'function') return false;
+            if (host[kind]() === false) return false;
+            // suppressWebSocketReconnectForReload already ran: nothing reconnects while the host powers down
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    async function installWaitingUpdatesNarrow(kind) {
+        const updater = winlogonUpdater(kind);
+        if (!updater || kind === 'logoff' || !updater.updatesWaitingCount()) return;
+        // wmShell.progressBox: public/scripts/comp/wmShell.js (#806)
+        const box = window.wmShell && typeof window.wmShell.progressBox === 'function'
+            ? window.wmShell.progressBox({ title: 'Melaton Update', text: 'Installing updates...', pct: null }) : null;
+        try {
+            // waiting updates only: a phone restart does not wait on the server for more
+            const plan = await winlogonUpdatePlan(updater, updater.planShutdownInstall({ checkServer: false }));
+            if (plan) {
+                await updater.installUpdatesAtShutdown(plan, {
+                    kind,
+                    onStatus: (text) => { if (box) box.update({ text: String(text).split('\n')[0] }); }
+                });
+            }
+        } catch (_) { /* restart anyway: the files are in the cache */ }
+        if (box) box.close();
+    }
+
+    window.winlogonUpdates = {
+        setText: setWinlogonPowerText,
+        updater: winlogonUpdater,
+        plan: winlogonUpdatePlan,
+        hostPower: winlogonHostPower,
+        installNarrow: installWaitingUpdatesNarrow
+    };
+    window.showWinlogonStatus = showWinlogonStatus;
+    window.hideWinlogonStatus = hideWinlogonStatus;
+})();
+
 /** Narrow mode has no Welcome screen: the old direct exits. */
 function commitWinlogonPower(kind, onCommit) {
     bypassConfirmation = true;
@@ -486,10 +613,12 @@ async function runWinlogonPower(kind, options) {
     const copy = winlogonPowerCopy(kind);
     const opts = options || {};
     if (!window.isDesktop) {
+        await winlogonUpdates.installNarrow(kind);
         await commitWinlogonPower(kind, opts.onCommit);
         return true;
     }
     winlogonPowerRunning = true;
+    const updater = winlogonUpdates.updater(kind);
     try {
         const blockers = collectLogoffBlockers();
         if (blockers.length) {
@@ -499,14 +628,27 @@ async function runWinlogonPower(kind, options) {
                 return false;
             }
         }
+        if (updater) updater.forgetShutdownPlan();
+        // what this shutdown installs is worked out while the desktop fades (#924)
+        const planning = updater ? Promise.resolve().then(() => updater.planShutdownInstall()).catch(() => null) : null;
+        const updatesWaiting = !!(updater && updater.updatesWaitingCount() > 0);
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
         desktopSounds.play(copy.sound);
         // dismissTransientUIForShutdown: public/scripts/comp/modalUtils.js
         dismissTransientUIForShutdown();
         await fadeShutdownCover(true);
         await winlogonDelay(WINLOGON_BLACK_HOLD_MS);
-        showWinlogonPowerScreen(copy.screen);
+        // with updates to install Vista logs off first, installs, then shuts down
+        showWinlogonPowerScreen(updatesWaiting ? WINLOGON_POWER_COPY.logoff.screen : copy.screen);
         await fadeShutdownCover(false);
+        const plan = await winlogonUpdates.plan(updater, planning);
+        if (plan) {
+            // "Installing update n of N...", then copy.screen and the configuring stages (the last one
+            // stays up for the hold below, then the screen goes dark)
+            await updater.installUpdatesAtShutdown(plan, { kind, screenText: copy.screen, onStatus: winlogonUpdates.setText });
+        } else if (updatesWaiting) {
+            winlogonUpdates.setText(copy.screen);
+        }
         await winlogonDelay(WINLOGON_TEXT_HOLD_MS);
         const work = startWinlogonPowerWork(kind, opts.onCommit);
         await lingerWinlogonPowerBlack(work, cutShutdownCover(),
@@ -517,10 +659,15 @@ async function runWinlogonPower(kind, options) {
         if (typeof opts.beforeNavigate === 'function') {
             try { await Promise.race([Promise.resolve().then(opts.beforeNavigate), winlogonDelay(3000)]); } catch (_) { /* restart anyway */ }
         }
+        // A machine whose power is the page's to switch (DreamOS, #910/#924): its host turns the
+        // computer off or restarts it here, after the updates are installed and the screen is dark.
+        // No host, or one that declines (returns false): the page restarts into /launch as before.
+        if (winlogonUpdates.hostPower(kind)) return true;
         // restartClientNavigate: public/scripts/comp/modalUtils.js (desktop: /launch)
         restartClientNavigate();
         return true;
     } catch (error) {
+        if (updater) updater.forgetShutdownPlan();
         hideWinlogonPowerScreen();
         winlogonPowerRunning = false;
         throw error;
