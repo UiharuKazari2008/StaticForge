@@ -775,6 +775,7 @@ class BannerManager {
             // Server push (server to client)
             'account_data_health_updated': 'Account Data Health',
             'account_pictures_changed': 'Account Pictures Changed',
+            'desktop_tray_order_changed': 'Tray Order Changed',
             'chat_message_response': 'Chat Message',
             'chat_streaming_start': 'Chat Stream Start',
             'chat_streaming_update': 'Chat Stream',
@@ -873,6 +874,7 @@ class WebSocketClient {
     };
     static NIGHTSHADE_BALLOON_MS = 5000; // a quiet reconnect inside this shows no balloon
     static OFFLINE_LOGON_AFTER_MS = 10000; // no server this long at boot: the offline logon (#899)
+    static AUTO_LOGON_BEAT_MS = 1500; // an installed app that signs in by itself gives the server this long, then logs on offline
     static NIGHTSHADE_QUEUE_MAX = 64;    // requests that may wait for the reconnection at once (#895)
     static NIGHTSHADE_QUEUE_MS = 600000; // how long one waits before it fails (10 minutes)
     static TIMEOUT_PING = 20000; // Ping timeout (20 seconds; cellular/WireGuard pongs)
@@ -1532,6 +1534,19 @@ class WebSocketClient {
         this._offlineLogonTimer = setTimeout(() => {
             this._offlineLogonTimer = null;
             if (this.socketAuthenticated === true || this.connectionPhase === 'auth' || !this._offlineLogonEligible()) return;
+            // signs in by itself (no "Users must enter a user name and password", not logged off, not locked): the
+            // desktop opens on this computer's own word, as Windows' automatic logon does - no password box. The
+            // installed app gives the server the Welcome screen's own beat to answer first; never longer
+            if (!this._logonPolicyAsks() && !(window.workstationLock && window.workstationLock.isLockPending())) {
+                const auto = () => {
+                    if (this.socketAuthenticated === true || this.connectionPhase === 'auth' || this._offlineBoot || this.initializationCompleted || !this._offlineLogonEligible()) return;
+                    console.log('🔑 Automatic logon: the server has not answered, this computer signs in by itself');
+                    this._completeOfflineLogon().catch((err) => console.warn('automatic logon', err));
+                };
+                if (installedApp) this._offlineLogonTimer = setTimeout(() => { this._offlineLogonTimer = null; auto(); }, WebSocketClient.AUTO_LOGON_BEAT_MS);
+                else auto();
+                return;
+            }
             this._offlineLogonReady = true;
             console.log('🔑 Offline logon: the server has not answered, the cached password is accepted');
             this._setConnectionPhase('auth', { beat: 'establishing', message: 'The Nightshade Network is not available. Log on with your password to use this computer.' });
@@ -2098,6 +2113,13 @@ class WebSocketClient {
         const iconClass = online ? 'fa-regular fa-globe' : 'fas fa-link-slash';
         // a network that wants a sign-in first (a captive portal; DreamOS, dreamosPortal.js): Vista's "Local only"
         const portal = online && window.dreamosPortal && window.dreamosPortal.captive();
+        // DreamOS (#932): the host's own link (Wi-Fi bars, the cable, nothing) - dreamosNetTray.js
+        const dos = window.dreamosNetTray && window.dreamosNetTray.look();
+        if (dos) {
+            const cls = dos.kind === 'none' ? (dos.connecting ? 'fas fa-sync-alt' : 'fas fa-link-slash') : 'fa-regular fa-globe';
+            if (typeof setClassNameIfChanged === 'function') { setClassNameIfChanged(glyph, cls); setAttrIfChanged(icon, 'title', dos.title); } else { glyph.className = cls; icon.setAttribute('title', dos.title); }
+            return;
+        }
         const title = portal
             ? `${window.dreamosPortal.networkName()}\nAccess: Local only\n${window.dreamosPortal.title}`
             : online
@@ -2781,6 +2803,7 @@ class WebSocketClient {
                 const r = await window.cachedLogon.signIn(password);
                 if (!r.ok) throw new Error(r.error || 'Authentication failed.');
                 if (r.userType && r.userType !== 'admin') throw new Error('Administrator credentials are required.');
+                if (typeof window.cachedLogon.signedIn === 'function') window.cachedLogon.signedIn();
                 if (!r.online) {
                     this._updatePreStartupAuthError('');
                     if (passwordInput) passwordInput.value = '';
@@ -2878,12 +2901,26 @@ class WebSocketClient {
      */
     _requireLogonAfterLock() {
         if (!window.isDesktop || this.initializationCompleted || !this._shouldUsePreStartupDialog()) return false;
-        if (!window.workstationLock || !window.workstationLock.isLockPending()) return false;
-        this._setConnectionPhase('auth', {
-            beat: 'establishing',
-            message: 'This computer is locked. Type your password to log on.'
-        });
-        return true;
+        if (window.workstationLock && window.workstationLock.isLockPending()) {
+            this._setConnectionPhase('auth', {
+                beat: 'establishing',
+                message: 'This computer is locked. Type your password to log on.'
+            });
+            return true;
+        }
+        // logged off, or "Users must enter a user name and password to use this computer" (cachedLogon.js): a session
+        // the server still holds does not sign in by itself; the password is asked once per start
+        if (this._logonPolicyAsks()) {
+            this._setConnectionPhase('auth', { beat: 'establishing', message: 'Type your password to log on.' });
+            return true;
+        }
+        return false;
+    }
+
+    /** The logon policy wants the password on this start, and it has not been given yet (cachedLogon.mustSignIn). */
+    _logonPolicyAsks() {
+        return !!(window.cachedLogon && typeof window.cachedLogon.mustSignIn === 'function' && window.cachedLogon.mustSignIn()
+            && !this.preStartupCredentialsAccepted && window.uiShell !== 'mobile');
     }
 
     /** True while the logon-phase init steps run (appInitSteps rethrows critical errors to it). */
