@@ -308,7 +308,10 @@
         const dev = Object.assign({}, hw.device || {});
         // Android reports some makers in lower case ("samsung")
         if (dev.manufacturer) dev.manufacturer = String(dev.manufacturer).replace(/^\w/, (c) => c.toUpperCase());
-        const bat = extra.battery || {};
+        // a DreamOS laptop (#910): the same report from its CaféReady host, for a PC - its battery (or none) is in the
+        // report, its disks and network adapters come by name, and it has no soft keyboard or system on chip
+        const pc = dev.platform === 'dreamos';
+        const bat = extra.battery && Object.keys(extra.battery).length ? extra.battery : (hw.battery || {});
         const cats = [];
         // a device is its name, or { name, info: { manufacturer, location, props [[k, v]], live } }:
         // Properties shows info, and a live source gets a Current Values tab (#829)
@@ -322,7 +325,7 @@
 
         // Batteries: the charger and the cell
         const cap = bat.designCapacityMah ? `${Math.round(bat.designCapacityMah).toLocaleString()} mAh` : '';
-        add('Batteries', 'batteries', [
+        if (!pc || hw.battery) add('Batteries', 'batteries', [
             { name: 'Microsoft AC Adapter', info: { manufacturer: 'Microsoft', location: 'Charging port', live: { kind: 'charger' } } },
             { name: `${[dev.manufacturer, bat.technology || 'Li-ion'].filter(Boolean).join(' ')} Battery${cap ? ` (${cap})` : ''}`, info: { manufacturer: maker, location: 'Internal battery', props: [['Chemistry', bat.technology || 'Li-ion'], ['Design capacity', cap]], live: { kind: 'battery' } } }
         ]);
@@ -341,12 +344,13 @@
             manufacturer: maker, location: 'on System board',
             props: [['Model', [maker, dev.marketName || dev.model].filter(Boolean).join(' ')], ['Installed memory (RAM)', hw.memory && hw.memory.totalBytes ? `${installedRam(hw.memory.totalBytes, hw.memory)} GB${hw.memory.type || soc.ramType ? ` ${hw.memory.type || soc.ramType}` : ''} (${(hw.memory.totalBytes / 1073741824).toFixed(2)} GB usable)` : ''],
                 ['Manufacturing process', soc.processNm ? `${soc.processNm} nm` : ''], ['Model number', dev.model], ['Board', dev.board], ['System on chip', [soc.manufacturer, soc.model].filter(Boolean).join(' ')], ['Instruction sets', list(soc.abis).join(', ')],
-                ['Android', dev.androidRelease ? `${dev.androidRelease} (API ${dev.sdk || '?'})` : ''], ['Security patch', dev.securityPatch], ['Build', dev.buildId], ['Kernel', dev.kernel]],
+                ['Android', dev.androidRelease ? `${dev.androidRelease} (API ${dev.sdk || '?'})` : ''], ['DreamOS', pc ? dev.osVersion : ''], ['Firmware', pc ? dev.firmware : ''], ['Security patch', dev.securityPatch], ['Build', dev.buildId], ['Kernel', dev.kernel]],
             live: { kind: 'system' } } }]);
 
         // Disk drives: Dreamscape's virtual disk, then the phone's own storage
         const vols = list(hw.storage);
         const disk = (v) => {
+            if (v.name) return v.name;
             const size = sizeText(v.totalBytes);
             if (v.kind === 'internal') return `${maker ? `${maker} ` : ''}Internal Storage${size ? ` (${size})` : ''}`;
             if (v.kind === 'sd' || v.kind === 'adopted') return `SD Memory Card${v.label ? ` ${v.label}` : ''}${size ? ` (${size})` : ''}`;
@@ -355,7 +359,7 @@
         };
         add('Disk drives', 'disk-drives', [{ name: `Dreamscape Virtual Disk${extra.quota ? ` (${sizeText(extra.quota)})` : ''}`, info: { manufacturer: 'Xyridian Corporation', location: 'Dreamscape server', live: { kind: 'quota' } } }]
             .concat(vols.filter((v) => !v.emulated || v.kind === 'internal').map((v) => ({ name: disk(v), info: {
-                manufacturer: v.kind === 'internal' ? maker : '(Standard disk drives)', location: v.kind === 'internal' ? 'Internal' : v.kind === 'usb' ? 'USB port' : 'Storage card slot',
+                manufacturer: v.kind === 'internal' && !pc ? maker : '(Standard disk drives)', location: v.kind === 'internal' ? 'Internal' : v.kind === 'usb' ? 'USB port' : 'Storage card slot',
                 props: [['Volume label', v.label], ['Volume ID', v.uuid || v.id], ['Kind', v.kind], ['File system', v.filesystem], ['Data partition', v.dataTotalBytes ? sizeText(v.dataTotalBytes) : ''],
                     ['Removable', v.removable ? 'Yes' : 'No'], ['Emulated', v.emulated ? 'Yes' : 'No']],
                 live: { kind: 'storage', id: v.id } } }))));
@@ -364,8 +368,8 @@
         const gm = gpu0.model && typeof gpu0.model === 'object' ? gpu0.model : { raw: gpu0.model || '', name: gpu0.name || '', cores: gpu0.cores || 0 };
         const gpu = Object.assign({}, gpu0, { name: gm.name || gpu0.name, cores: gm.cores || gpu0.cores, model: gm.raw || '' });
         const gpuLabel = gpu.name ? `${/^Mali/i.test(gpu.name) ? 'ARM ' : /^Adreno/i.test(gpu.name) ? 'Qualcomm ' : ''}${gpu.name}${gpu.cores ? ` (${gpu.cores} cores)` : ''}` : gpuName();
-        add('Display adapters', 'display-adapters', [{ name: gpuLabel, info: { manufacturer: soc.manufacturer || maker, location: 'on System on chip',
-            props: [['System on chip', soc.name || soc.model], ['Graphics processor', gpu.model || gpuName()], ['Cores', gpu.cores ? String(gpu.cores) : ''],
+        add('Display adapters', 'display-adapters', [{ name: gpuLabel, info: { manufacturer: gpu0.vendor || soc.manufacturer || maker, location: pc ? 'PCI bus' : 'on System on chip',
+            props: [[pc ? 'Processor' : 'System on chip', soc.name || soc.model], ['Graphics processor', gpu.model || gpuName()], ['Cores', gpu.cores ? String(gpu.cores) : ''],
                 ['Maximum clock', gpu.maxMHz ? `${Math.round(gpu.maxMHz)} MHz` : ''], ['Minimum clock', gpu.minMHz ? `${Math.round(gpu.minMHz)} MHz` : ''], ['Renderer (WebGL)', gpuName()]], live: { kind: 'gpu' } } }]);
 
         // input: Windows puts touch screens and pens under Human Interface Devices
@@ -416,7 +420,7 @@
         }));
         const kb = input.filter((d) => has(d, 'keyboard') && d.keyboardType === 'alphabetic').map((d) => (d.external ? `HID Keyboard Device (${d.name || 'USB'})` : d.name || 'Standard Keyboard'));
         // the phone's on-screen keyboard is Windows Mobile's Soft Input Panel
-        add('Keyboards', 'keyboards', ['Melaton Soft Input Panel'].concat(kb));
+        add('Keyboards', 'keyboards', (pc ? [] : ['Melaton Soft Input Panel']).concat(kb));
         const tel = hw.telephony || {};
         if (tel.present) add('Modems', 'modems', [`Mobile Broadband Modem${tel.phoneType && tel.phoneType !== 'none' ? ` (${tel.phoneType.toUpperCase()})` : ''}${tel.simSlots > 1 ? `, ${tel.simSlots} SIM slots` : ''}`]);
         add('Mice and other pointing devices', 'mice', uniq(input.filter((d) => has(d, 'mouse') || has(d, 'touchpad') || has(d, 'trackball'))
@@ -443,12 +447,13 @@
         const wifi = hw.wifi || {};
         const std = list(wifi.standards);
         const best = std.length ? std[std.length - 1] : '';
-        add('Network adapters', 'network-adapters', [
-            wifi.present && `Wireless Network Adapter${best ? ` (${best})` : ''}`,
+        const nics = pc ? list(hw.network).map((n) => n && n.name).filter(Boolean) : [];
+        add('Network adapters', 'network-adapters', nics.concat([
+            !nics.length && wifi.present && `Wireless Network Adapter${best ? ` (${best})` : ''}`,
             tel.present && 'Mobile Broadband Adapter',
             bt.present && 'Bluetooth Device (Personal Area Network)',
             extra.conn.miniport || `${extra.conn.connectionType || 'WAN'} Miniport (${extra.conn.device || 'L-PPoP'})`
-        ]);
+        ]));
         // Vista lists removable media again under Portable Devices, by drive
         add('Portable Devices', 'portable', vols.filter((v) => v.removable && v.kind !== 'internal').map((v) => v.label || (v.kind === 'usb' ? 'USB Drive' : 'Storage Card')));
         add('Processors', 'processors', processorRows(hw).map((name, i) => ({ name, info: { manufacturer: soc.manufacturer || maker, location: `Core ${i}`,
@@ -486,7 +491,7 @@
         ].concat(cafeTaskDevices()));
         const usb = hw.usb || {};
         add('Universal Serial Bus controllers', 'usb', [
-            'USB Root Hub', usb.host ? 'USB Host Controller (OTG)' : 'USB Device Controller',
+            'USB Root Hub', usb.host ? (pc ? 'Standard Enhanced PCI to USB Host Controller' : 'USB Host Controller (OTG)') : 'USB Device Controller',
             ...list(usb.devices).map((u) => u.product || u.name || 'USB Composite Device')
         ]);
         return cats;
