@@ -129,7 +129,8 @@
     // sw.js isAuthGatedStaticPath: never stored in the static cache, so never an update. By
     // path too: a manifest snapshot written before it kept `auth` had lost the flag, and the
     // shell pages then counted as missing on every start.
-    const SHELL_PATHS = new Set(['/', '/app', '/launch', '/index.html', '/manifest.json']);
+    // /sw.js: the worker script is the browser's; sw.js drops its static row on activation (#945)
+    const SHELL_PATHS = new Set(['/', '/app', '/launch', '/index.html', '/manifest.json', '/sw.js']);
 
     function isAuthGatedManifestFile(file) {
         if (file && file.auth === true) return true;

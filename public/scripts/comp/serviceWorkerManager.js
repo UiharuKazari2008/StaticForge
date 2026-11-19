@@ -2,7 +2,9 @@
 // sw.js isAuthGatedStaticPath: never stored in the static cache, so never an update. By path
 // too: a manifest snapshot written before it kept `auth` had lost the flag, and the shell
 // pages then showed as "Hash mismatch or missing" on every start.
-const STATIC_SHELL_PATHS = new Set(['/', '/app', '/launch', '/index.html', '/manifest.json']);
+// /sw.js: the browser keeps the worker script itself; sw.js drops its static-cache row on every activation, so it
+// read as missing after each worker update ("1 file missing after the restart", a needless download) (#945)
+const STATIC_SHELL_PATHS = new Set(['/', '/app', '/launch', '/index.html', '/manifest.json', '/sw.js']);
 
 function isAuthGatedManifestFile(file) {
     if (file && file.auth === true) return true;
