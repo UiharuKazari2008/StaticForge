@@ -757,8 +757,11 @@ function processNextPlaceholders() {
             continue;
         }
 
-        // Increment active resolutions counter
-        activeResolutions++;
+        // A slot (activeResolutions) is taken only when a load starts, below. It was taken here, before
+        // these checks, and the stale-entry paths (index out of range, filename changed, no image:
+        // the list changed under the queue - a workspace switch, new prints) never gave it back. After
+        // four, every slot read as busy: the watcher re-armed forever and the visible cells stayed
+        // BlurHash (Modernia, Nov 19 2026: activeResolutions 4 of 4, no image loading, 57 queued).
 
         // Resolve the placeholder - check bounds first
         if (placeholderData.fileImageIndex < 0 || placeholderData.fileImageIndex >= allImages.length) {
@@ -796,11 +799,13 @@ function processNextPlaceholders() {
                 }
                 placeholderData.element.classList.remove('gallery-placeholder');
                 if (intersectionObserver) intersectionObserver.unobserve(placeholderData.element);
-                if (!galleryItemHasImageWork(placeholderData.element)) {
-                    if (image) {
-                        // Start async image loading with completion callback
-                        addImgToGalleryItemAsync(placeholderData.element, image, () => {
-                            // Decrement active counter when image load completes (success or failure)
+                if (!galleryItemHasImageWork(placeholderData.element) && image) {
+                    activeResolutions++;
+                    let released = false;
+                    // Start async image loading with completion callback (gives the slot back once)
+                    addImgToGalleryItemAsync(placeholderData.element, image, () => {
+                            if (released) return;
+                            released = true;
                             activeResolutions = Math.max(0, activeResolutions - 1);
 
                             // Continue processing immediately if we can start another batch
@@ -813,18 +818,8 @@ function processNextPlaceholders() {
                                     }
                                 }, 0);
                             }
-                        });
-                    } else {
-                        // No image data, decrement immediately
-                        activeResolutions = Math.max(0, activeResolutions - 1);
-                    }
-                } else {
-                    // Image already exists, decrement immediately
-                    activeResolutions = Math.max(0, activeResolutions - 1);
+                    });
                 }
-            } else {
-                // Not a gallery item, decrement immediately
-                activeResolutions = Math.max(0, activeResolutions - 1);
             }
         } else {
             // Image not found at this index - array was modified, remove placeholder
@@ -1472,9 +1467,17 @@ function releaseGalleryImageLoads(names) {
 }
 
 function applyGalleryItemImage(img, image, options = {}) {
+    // onComplete runs exactly once on every path: callers count loads with it (the placeholder
+    // watcher's slots), and a lost call held a slot for the life of the page
+    let completed = false;
+    const complete = () => {
+        if (completed) return;
+        completed = true;
+        if (typeof options.onComplete === 'function') options.onComplete();
+    };
     const candidates = getGalleryImageSrcCandidates(image);
     if (!candidates.length || !img || isGalleryImageDeleteHeld(image)) {
-        if (typeof options.onComplete === 'function') options.onComplete();
+        complete();
         return;
     }
 
@@ -1493,7 +1496,9 @@ function applyGalleryItemImage(img, image, options = {}) {
 
     const host = options.hostEl;
     if (host) {
-        pendingGalleryItemImages.set(host, { img, onComplete: options.onComplete });
+        // a load already pending on this cell is superseded: it still completes (its own finish
+        // sees it is not current), so its caller's count comes back
+        pendingGalleryItemImages.set(host, { img, onComplete: complete });
     }
 
     const finish = (didLoad) => {
@@ -1502,7 +1507,10 @@ function applyGalleryItemImage(img, image, options = {}) {
         if (pending && pending.img === img) {
             pendingGalleryItemImages.delete(host);
         }
-        if (!isCurrent) return;
+        if (!isCurrent) {
+            complete();
+            return;
+        }
         if (didLoad) {
             insertGalleryItemImage(host, img);
             // Two frames: the first paints the new <img> at opacity 0 over the BlurHash, the
@@ -1512,7 +1520,7 @@ function applyGalleryItemImage(img, image, options = {}) {
                 img.classList.remove('loading-image');
             }));
         }
-        if (typeof options.onComplete === 'function') options.onComplete();
+        complete();
     };
 
     const loadCandidate = () => {
@@ -1545,6 +1553,9 @@ function applyGalleryItemImage(img, image, options = {}) {
                 const stillPending = host && pendingGalleryItemImages.get(host)?.img === img;
                 if (img.isConnected || stillPending) {
                     img.src = `${baseSrc}?galleryRetry=${previewRetryCount}`;
+                } else {
+                    // the cell let it go while it waited to retry: done (the retry never ran, nor did finish)
+                    finish(false);
                 }
             }, 350 * previewRetryCount);
             return;
