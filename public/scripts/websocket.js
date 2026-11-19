@@ -2830,6 +2830,7 @@ class WebSocketClient {
             }
             this.preStartupCredentialsAccepted = true;
             this.preStartupAuthBusy = false;
+            this._miniportRelinkTried = false;
             this.forceReconnect();
         } catch (error) {
             this.preStartupAuthBusy = false;
@@ -5185,6 +5186,16 @@ class WebSocketClient {
                 // the server answered: the offline logon is not needed (#899)
                 if (this._offlineLogonTimer) { clearTimeout(this._offlineLogonTimer); this._offlineLogonTimer = null; }
                 if (sessionAuthenticated) this._offlineLogonReady = false;
+                if (!sessionAuthenticated && this.preStartupCredentialsAccepted && connectedSocket && connectedSocket.miniport
+                    && !this._miniportRelinkTried && window.melatonContinuity && window.melatonContinuity.relinkMiniport()) {
+                    // the server took the password a moment ago: this is the Miniport's link still on the session the
+                    // sign-in replaced, not a wrong password. Its link starts again on the new session, once.
+                    this._miniportRelinkTried = true;
+                    console.warn('[ws] signed in, but the Miniport port came back unauthenticated: the Miniport reconnects on the new session');
+                    this.forceReconnect();
+                    return;
+                }
+                if (sessionAuthenticated) this._miniportRelinkTried = false;
                 if (!sessionAuthenticated) {
                     // reachable but not signed in: the logon dialog's password goes to the server (an online logon)
                     this._offlineLogonReady = false;
