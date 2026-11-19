@@ -36,7 +36,7 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb .taskbar
     width: 60px;
     height: 46px;
     overflow: visible;
-    background: url("/static_images/vista-taskbar/start-orb.png") 0 0 / 60px 138px no-repeat;
+    background: image-set(url("/static_images/vista-taskbar/start-orb.png") 1x, url("/static_images/hidpi/125/vista-taskbar/start-orb.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/start-orb.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/start-orb.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/start-orb.png") 2x) 0 0 / 60px 138px no-repeat;
 }
 
 /* the old single-image sprite stays in the markup for Classic; the cells below replace it */
@@ -50,7 +50,7 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb .taskbar
     content: '';
     position: absolute;
     inset: 0;
-    background: url("/static_images/vista-taskbar/start-orb.png") 0 -46px / 60px 138px no-repeat;
+    background: image-set(url("/static_images/vista-taskbar/start-orb.png") 1x, url("/static_images/hidpi/125/vista-taskbar/start-orb.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/start-orb.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/start-orb.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/start-orb.png") 2x) 0 -46px / 60px 138px no-repeat;
     opacity: 0;
     transition: opacity 0.3s linear;
 }
@@ -132,7 +132,7 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch-btn::before 
     inset: 0;
     border-style: solid;
     border-width: 0 4px;
-    border-image: url("/static_images/vista-taskbar/button-hot.png") 0 6 fill / 0 4px stretch;
+    border-image: image-set(url("/static_images/vista-taskbar/button-hot.png") 1x, url("/static_images/hidpi/125/vista-taskbar/button-hot.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/button-hot.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/button-hot.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/button-hot.png") 2x) 0 6 fill / 0 4px stretch;
     opacity: 0;
     transition: opacity 0.2s linear;
 }
@@ -145,7 +145,7 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch-btn::before 
 }
 
 body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch-btn:active::before {
-    border-image-source: url("/static_images/vista-taskbar/button-pressed.png");
+    border-image-source: image-set(url("/static_images/vista-taskbar/button-pressed.png") 1x, url("/static_images/hidpi/125/vista-taskbar/button-pressed.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/button-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/button-pressed.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/button-pressed.png") 2x);
     opacity: 1;
 }
 
@@ -211,7 +211,7 @@ body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.taskbar-unlocked 
     width: 8px;
     height: 22px;
     margin: 0 3px 0 2px;
-    background: url("/static_images/vista-taskbar/gripper.png") 0 0 / 8px 22px no-repeat;
+    background: image-set(url("/static_images/vista-taskbar/gripper.png") 1x, url("/static_images/hidpi/125/vista-taskbar/gripper.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/gripper.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/gripper.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/gripper.png") 2x) 0 0 / 8px 22px no-repeat;
 }
 
 /* ---------- taskbar buttons ---------- */
@@ -243,15 +243,15 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item {
     opacity: 1;
     border-style: solid;
     border-width: 0;
-    border-image: url("/static_images/vista-taskbar/button-normal.png") 0 6 fill / 0 6px stretch;
+    border-image: image-set(url("/static_images/vista-taskbar/button-normal.png") 1x, url("/static_images/hidpi/125/vista-taskbar/button-normal.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/button-normal.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/button-normal.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/button-normal.png") 2x) 0 6 fill / 0 6px stretch;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.active {
-    border-image-source: url("/static_images/vista-taskbar/button-checked.png");
+    border-image-source: image-set(url("/static_images/vista-taskbar/button-checked.png") 1x, url("/static_images/hidpi/125/vista-taskbar/button-checked.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/button-checked.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/button-checked.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/button-checked.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item:active:not(.leaving) {
-    border-image-source: url("/static_images/vista-taskbar/button-pressed.png");
+    border-image-source: image-set(url("/static_images/vista-taskbar/button-pressed.png") 1x, url("/static_images/hidpi/125/vista-taskbar/button-pressed.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/button-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/button-pressed.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/button-pressed.png") 2x);
 }
 
 /* hot: Vista fades the hot face in over the button (checked windows get the hot + checked face) */
@@ -263,13 +263,13 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item::before {
     box-shadow: none;
     border-style: solid;
     border-width: 0;
-    border-image: url("/static_images/vista-taskbar/button-hot.png") 0 6 fill / 0 6px stretch;
+    border-image: image-set(url("/static_images/vista-taskbar/button-hot.png") 1x, url("/static_images/hidpi/125/vista-taskbar/button-hot.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/button-hot.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/button-hot.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/button-hot.png") 2x) 0 6 fill / 0 6px stretch;
     opacity: 0;
     transition: opacity 0.25s linear;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.active::before {
-    border-image-source: url("/static_images/vista-taskbar/button-checked-hot.png");
+    border-image-source: image-set(url("/static_images/vista-taskbar/button-checked-hot.png") 1x, url("/static_images/hidpi/125/vista-taskbar/button-checked-hot.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/button-checked-hot.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/button-checked-hot.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/button-checked-hot.png") 2x);
     opacity: 0;
 }
 
@@ -297,7 +297,7 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item::after {
     opacity: 0;
     border-style: solid;
     border-width: 0;
-    border-image: url("/static_images/vista-taskbar/button-flash.png") 0 6 fill / 0 6px stretch;
+    border-image: image-set(url("/static_images/vista-taskbar/button-flash.png") 1x, url("/static_images/hidpi/125/vista-taskbar/button-flash.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/button-flash.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/button-flash.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/button-flash.png") 2x) 0 6 fill / 0 6px stretch;
     background: none;
     box-shadow: none;
     border-radius: 0;
@@ -389,7 +389,7 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group .taskbar-win
 }
 
 body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group.group-menu-open {
-    border-image-source: url("/static_images/vista-taskbar/button-pressed.png");
+    border-image-source: image-set(url("/static_images/vista-taskbar/button-pressed.png") 1x, url("/static_images/hidpi/125/vista-taskbar/button-pressed.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/button-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-taskbar/button-pressed.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/button-pressed.png") 2x);
     background: none;
     box-shadow: none;
 }
@@ -485,7 +485,7 @@ body.desktop-mode:not(.windows-classic-theme) .tray-overflow-btn {
     margin: 0 1px 0 0;
     padding: 0;
     border: 0;
-    background: url("/static_images/vista-taskbar/tray-chevron.png") 0 0 / 19px 60px no-repeat;
+    background: image-set(url("/static_images/vista-taskbar/tray-chevron.png") 1x, url("/static_images/hidpi/125/vista-taskbar/tray-chevron.png") 1.25x, url("/static_images/hidpi/150/vista-taskbar/tray-chevron.png") 1.5263x, url("/static_images/hidpi/175/vista-taskbar/tray-chevron.png") 1.75x, url("/static_images/hidpi/200/vista-taskbar/tray-chevron.png") 2x) 0 0 / 19px 60px no-repeat;
     cursor: var(--c-pointer, pointer);
 }
 

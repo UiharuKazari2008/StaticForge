@@ -37,7 +37,7 @@
     margin: 0;
     padding: 0;
     border: 0;
-    background: url('/static_images/vista-cardspace/back-dimple.png') 0 0 / 56px 29px no-repeat;
+    background: image-set(url('/static_images/vista-cardspace/back-dimple.png') 1x, url('/static_images/hidpi/125/vista-cardspace/back-dimple.png') 1.25x, url('/static_images/hidpi/150/vista-cardspace/back-dimple.png') 1.5x, url('/static_images/hidpi/175/vista-cardspace/back-dimple.png') 1.75x, url('/static_images/hidpi/200/vista-cardspace/back-dimple.png') 2x) 0 0 / 56px 29px no-repeat;
     box-shadow: none;
 }
 
@@ -47,7 +47,7 @@
     top: 3px;
     width: 25px;
     height: 25px;
-    background: url('/static_images/vista-cardspace/back.png') 0 0 / 25px 100px no-repeat;
+    background: image-set(url('/static_images/vista-cardspace/back.png') 1x, url('/static_images/hidpi/125/vista-cardspace/back.png') 1.25x, url('/static_images/hidpi/150/vista-cardspace/back.png') 1.52x, url('/static_images/hidpi/175/vista-cardspace/back.png') 1.75x, url('/static_images/hidpi/200/vista-cardspace/back.png') 2x) 0 0 / 25px 100px no-repeat;
 }
 
 #dreamscapeCardSpaceModal .cs-back:hover:not(:disabled) .cs-back-orb { background-position: 0 -25px; }
@@ -142,9 +142,9 @@
     cursor: var(--c-default, default);
 }
 
-#dreamscapeCardSpaceModal .cs-card:hover { border-image: url('/static_images/vista-cardspace/tile-hot.png') 3 fill / 3px stretch; }
-#dreamscapeCardSpaceModal .cs-card.is-selected { border-image: url('/static_images/vista-cardspace/tile-selected.png') 3 fill / 3px stretch; }
-#dreamscapeCardSpaceModal .cs-card.is-selected:hover { border-image: url('/static_images/vista-cardspace/tile-selected-hot.png') 3 fill / 3px stretch; }
+#dreamscapeCardSpaceModal .cs-card:hover { border-image: image-set(url('/static_images/vista-cardspace/tile-hot.png') 1x, url('/static_images/hidpi/125/vista-cardspace/tile-hot.png') 1.25x, url('/static_images/hidpi/150/vista-cardspace/tile-hot.png') 1.5x, url('/static_images/hidpi/175/vista-cardspace/tile-hot.png') 1.75x, url('/static_images/hidpi/200/vista-cardspace/tile-hot.png') 2x) 3 fill / 3px stretch; }
+#dreamscapeCardSpaceModal .cs-card.is-selected { border-image: image-set(url('/static_images/vista-cardspace/tile-selected.png') 1x, url('/static_images/hidpi/125/vista-cardspace/tile-selected.png') 1.25x, url('/static_images/hidpi/150/vista-cardspace/tile-selected.png') 1.5x, url('/static_images/hidpi/175/vista-cardspace/tile-selected.png') 1.75x, url('/static_images/hidpi/200/vista-cardspace/tile-selected.png') 2x) 3 fill / 3px stretch; }
+#dreamscapeCardSpaceModal .cs-card.is-selected:hover { border-image: image-set(url('/static_images/vista-cardspace/tile-selected-hot.png') 1x, url('/static_images/hidpi/125/vista-cardspace/tile-selected-hot.png') 1.25x, url('/static_images/hidpi/150/vista-cardspace/tile-selected-hot.png') 1.5x, url('/static_images/hidpi/175/vista-cardspace/tile-selected-hot.png') 1.75x, url('/static_images/hidpi/200/vista-cardspace/tile-selected-hot.png') 2x) 3 fill / 3px stretch; }
 
 #dreamscapeCardSpaceModal .cs-card-pic {
     position: absolute;
@@ -204,7 +204,7 @@
     top: -1px;
     width: 116px;
     height: 80px;
-    background: url('/static_images/vista-cardspace/add-card.png') no-repeat;
+    background: image-set(url('/static_images/vista-cardspace/add-card.png') 1x, url('/static_images/hidpi/125/vista-cardspace/add-card.png') 1.25x, url('/static_images/hidpi/150/vista-cardspace/add-card.png') 1.5x, url('/static_images/hidpi/175/vista-cardspace/add-card.png') 1.75x, url('/static_images/hidpi/200/vista-cardspace/add-card.png') 2x) no-repeat;
 }
 
 #dreamscapeCardSpaceModal .cs-card-add-face span {
@@ -229,7 +229,7 @@
 #dreamscapeCardSpaceModal .cs-details-card .cs-card {
     width: 104px;
     height: 90px;
-    border-image: url('/static_images/vista-cardspace/tile-details.png') 4 fill / 4px stretch;
+    border-image: image-set(url('/static_images/vista-cardspace/tile-details.png') 1x, url('/static_images/hidpi/125/vista-cardspace/tile-details.png') 1.25x, url('/static_images/hidpi/150/vista-cardspace/tile-details.png') 1.5x, url('/static_images/hidpi/175/vista-cardspace/tile-details.png') 1.75x, url('/static_images/hidpi/200/vista-cardspace/tile-details.png') 2x) 4 fill / 4px stretch;
 }
 
 #dreamscapeCardSpaceModal .cs-details-card .cs-card-pic {

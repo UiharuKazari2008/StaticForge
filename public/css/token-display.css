@@ -54,7 +54,7 @@
     padding: 3px 4px;
     overflow: auto;
     border: 2px solid transparent;
-    border-image: url("/static_images/vista-controls/edit-normal.png") 2 fill / 2px stretch;
+    border-image: image-set(url("/static_images/vista-controls/edit-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/edit-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/edit-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/edit-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/edit-normal.png") 2x) 2 fill / 2px stretch;
     background: #fff;
     color: #000;
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
@@ -65,7 +65,7 @@
 }
 
 #tokenDisplayModal .token-analysis-box:focus-visible {
-    border-image-source: url("/static_images/vista-controls/edit-focus.png");
+    border-image-source: image-set(url("/static_images/vista-controls/edit-focus.png") 1x, url("/static_images/hidpi/125/vista-controls/edit-focus.png") 1.2x, url("/static_images/hidpi/150/vista-controls/edit-focus.png") 1.6x, url("/static_images/hidpi/175/vista-controls/edit-focus.png") 1.8x, url("/static_images/hidpi/200/vista-controls/edit-focus.png") 2x);
 }
 
 /* one token: its text kept as typed (the word-start space included), tints in turn; the boxes

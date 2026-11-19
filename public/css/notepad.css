@@ -523,7 +523,7 @@
 }
 
 #notebookModal .jnl-btn {
-    --jnl-strip: url("/static_images/vista-journal/tb-standard.png");
+    --jnl-strip: image-set(url("/static_images/vista-journal/tb-standard.png") 1x, url("/static_images/hidpi/125/vista-journal/tb-standard.png") 1.25x, url("/static_images/hidpi/150/vista-journal/tb-standard.png") 1.5x, url("/static_images/hidpi/175/vista-journal/tb-standard.png") 1.75x, url("/static_images/hidpi/200/vista-journal/tb-standard.png") 2x);
     width: 31px;
 }
 
@@ -539,15 +539,15 @@
 }
 
 #notebookModal .jnl-band[data-band="pen"] .jnl-btn {
-    --jnl-strip: url("/static_images/vista-journal/tb-pen.png");
+    --jnl-strip: image-set(url("/static_images/vista-journal/tb-pen.png") 1x, url("/static_images/hidpi/125/vista-journal/tb-pen.png") 1.25x, url("/static_images/hidpi/150/vista-journal/tb-pen.png") 1.5x, url("/static_images/hidpi/175/vista-journal/tb-pen.png") 1.75x, url("/static_images/hidpi/200/vista-journal/tb-pen.png") 2x);
 }
 
 #notebookModal .jnl-btn:disabled {
-    --jnl-strip: url("/static_images/vista-journal/tb-standard-disabled.png");
+    --jnl-strip: image-set(url("/static_images/vista-journal/tb-standard-disabled.png") 1x, url("/static_images/hidpi/125/vista-journal/tb-standard-disabled.png") 1.25x, url("/static_images/hidpi/150/vista-journal/tb-standard-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-journal/tb-standard-disabled.png") 1.75x, url("/static_images/hidpi/200/vista-journal/tb-standard-disabled.png") 2x);
 }
 
 #notebookModal .jnl-band[data-band="pen"] .jnl-btn:disabled {
-    --jnl-strip: url("/static_images/vista-journal/tb-pen-disabled.png");
+    --jnl-strip: image-set(url("/static_images/vista-journal/tb-pen-disabled.png") 1x, url("/static_images/hidpi/125/vista-journal/tb-pen-disabled.png") 1.25x, url("/static_images/hidpi/150/vista-journal/tb-pen-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-journal/tb-pen-disabled.png") 1.75x, url("/static_images/hidpi/200/vista-journal/tb-pen-disabled.png") 2x);
 }
 
 #notebookModal .jnl-tbtn {
@@ -909,19 +909,19 @@
     margin: 0;
     padding: 0;
     border: 0;
-    background: url("/static_images/vista-journal/pagebar-up.png") 0 0 no-repeat;
+    background: image-set(url("/static_images/vista-journal/pagebar-up.png") 1x, url("/static_images/hidpi/125/vista-journal/pagebar-up.png") 1.2778x, url("/static_images/hidpi/150/vista-journal/pagebar-up.png") 1.5x, url("/static_images/hidpi/175/vista-journal/pagebar-up.png") 1.7778x, url("/static_images/hidpi/200/vista-journal/pagebar-up.png") 2x) 0 0 no-repeat;
 }
 
 #notebookModal .jnl-pagebar-btn[data-jnl-page="next"] {
-    background-image: url("/static_images/vista-journal/pagebar-down.png");
+    background-image: image-set(url("/static_images/vista-journal/pagebar-down.png") 1x, url("/static_images/hidpi/125/vista-journal/pagebar-down.png") 1.2778x, url("/static_images/hidpi/150/vista-journal/pagebar-down.png") 1.5x, url("/static_images/hidpi/175/vista-journal/pagebar-down.png") 1.7778x, url("/static_images/hidpi/200/vista-journal/pagebar-down.png") 2x);
 }
 
 #notebookModal .jnl-pagebar-btn[data-jnl-page="prev"]:disabled {
-    background-image: url("/static_images/vista-journal/pagebar-up-disabled.png");
+    background-image: image-set(url("/static_images/vista-journal/pagebar-up-disabled.png") 1x, url("/static_images/hidpi/125/vista-journal/pagebar-up-disabled.png") 1.2778x, url("/static_images/hidpi/150/vista-journal/pagebar-up-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-journal/pagebar-up-disabled.png") 1.7778x, url("/static_images/hidpi/200/vista-journal/pagebar-up-disabled.png") 2x);
 }
 
 #notebookModal .jnl-pagebar-btn[data-jnl-page="next"]:disabled {
-    background-image: url("/static_images/vista-journal/pagebar-down-disabled.png");
+    background-image: image-set(url("/static_images/vista-journal/pagebar-down-disabled.png") 1x, url("/static_images/hidpi/125/vista-journal/pagebar-down-disabled.png") 1.2778x, url("/static_images/hidpi/150/vista-journal/pagebar-down-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-journal/pagebar-down-disabled.png") 1.7778x, url("/static_images/hidpi/200/vista-journal/pagebar-down-disabled.png") 2x);
 }
 
 /* Full Screen (F11): the window over the whole desktop, no frame */
@@ -995,7 +995,7 @@ body:not(.windows-classic-theme) .notepad-modal[data-window-client="light"] .not
 #soundRecorderWindow .sr-glyph {
     width: 16px;
     height: 16px;
-    background: url("/static_images/vista-journal/sr-glyphs.png") 0 0 no-repeat;
+    background: image-set(url("/static_images/vista-journal/sr-glyphs.png") 1x, url("/static_images/hidpi/125/vista-journal/sr-glyphs.png") 1.25x, url("/static_images/hidpi/150/vista-journal/sr-glyphs.png") 1.5x, url("/static_images/hidpi/175/vista-journal/sr-glyphs.png") 1.75x, url("/static_images/hidpi/200/vista-journal/sr-glyphs.png") 2x) 0 0 no-repeat;
 }
 
 #soundRecorderWindow .sr-band.is-recording .sr-glyph {
@@ -1035,7 +1035,7 @@ body:not(.windows-classic-theme) .notepad-modal[data-window-client="light"] .not
     margin: 0 0 0 auto;
     padding: 0;
     border: 0;
-    background: url("/static_images/vista-journal/sr-glyphs.png") -32px 0 no-repeat;
+    background: image-set(url("/static_images/vista-journal/sr-glyphs.png") 1x, url("/static_images/hidpi/125/vista-journal/sr-glyphs.png") 1.25x, url("/static_images/hidpi/150/vista-journal/sr-glyphs.png") 1.5x, url("/static_images/hidpi/175/vista-journal/sr-glyphs.png") 1.75x, url("/static_images/hidpi/200/vista-journal/sr-glyphs.png") 2x) -32px 0 no-repeat;
 }
 
 #soundRecorderWindow .sr-more {

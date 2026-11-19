@@ -160,21 +160,21 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    background: url("/static_images/vista-controls/combo-glyph-normal.png") 3px 0 / 10px 19px no-repeat;
+    background: image-set(url("/static_images/vista-controls/combo-glyph-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-normal.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-normal.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-normal.png") 2x) 3px 0 / 10px 19px no-repeat;
     cursor: default;
 }
 
 .vdt-client .vdt-combo-edit .vdt-combo-drop:hover {
-    background: url("/static_images/vista-controls/combo-dropbtn-hot.png") 0 -2px / 17px 23px no-repeat;
+    background: image-set(url("/static_images/vista-controls/combo-dropbtn-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-dropbtn-hot.png") 1.25x, url("/static_images/hidpi/150/vista-controls/combo-dropbtn-hot.png") 1.5294x, url("/static_images/hidpi/175/vista-controls/combo-dropbtn-hot.png") 1.75x, url("/static_images/hidpi/200/vista-controls/combo-dropbtn-hot.png") 2x) 0 -2px / 17px 23px no-repeat;
 }
 
 .vdt-client .vdt-combo-edit.is-open .vdt-combo-drop,
 .vdt-client .vdt-combo-edit .vdt-combo-drop:active {
-    background: url("/static_images/vista-controls/combo-dropbtn-pressed.png") 0 -2px / 17px 23px no-repeat;
+    background: image-set(url("/static_images/vista-controls/combo-dropbtn-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-dropbtn-pressed.png") 1.25x, url("/static_images/hidpi/150/vista-controls/combo-dropbtn-pressed.png") 1.5294x, url("/static_images/hidpi/175/vista-controls/combo-dropbtn-pressed.png") 1.75x, url("/static_images/hidpi/200/vista-controls/combo-dropbtn-pressed.png") 2x) 0 -2px / 17px 23px no-repeat;
 }
 
 .vdt-client .vdt-combo-edit .vdt-combo-drop:disabled {
-    background-image: url("/static_images/vista-controls/combo-glyph-disabled.png");
+    background-image: image-set(url("/static_images/vista-controls/combo-glyph-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-disabled.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-disabled.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-disabled.png") 2x);
 }
 
 /* its list: a bordered list box under the edit, over everything (the dropped ComboLBox) */
@@ -298,7 +298,7 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
     box-sizing: border-box;
     height: 23px;
     padding: 3px 6px 0;
-    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 2 0 1 fill / 0 2px 0 1px stretch;
+    border-image: image-set(url("/static_images/vista-controls/header-item-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/header-item-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/header-item-normal.png") 2x) 0 2 0 1 fill / 0 2px 0 1px stretch;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -398,7 +398,7 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
 
 body.desktop-mode:not(.windows-classic-theme) .vdt-client .vdt-trackbar.vdt-both input[type="range"]::-webkit-slider-thumb {
     width: 6px;
-    background-image: url("/static_images/vista-controls/trackbar-thumb-both.png");
+    background-image: image-set(url("/static_images/vista-controls/trackbar-thumb-both.png") 1x, url("/static_images/hidpi/125/vista-controls/trackbar-thumb-both.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/trackbar-thumb-both.png") 1.5x, url("/static_images/hidpi/175/vista-controls/trackbar-thumb-both.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/trackbar-thumb-both.png") 2x);
     background-size: 6px 95px;
 }
 
@@ -548,7 +548,7 @@ body.desktop-mode .modal.vdt-wizard .vdt-wizard-back {
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 0;
     box-shadow: none;
 }
 
@@ -641,7 +641,7 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     padding: 0 0 0 1px;
     line-height: 15px;
     border: 2px solid transparent;
-    border-image: url('/static_images/vista-controls/edit-normal.png') 2 fill / 2px stretch;
+    border-image: image-set(url('/static_images/vista-controls/edit-normal.png') 1x, url('/static_images/hidpi/125/vista-controls/edit-normal.png') 1.25x, url('/static_images/hidpi/150/vista-controls/edit-normal.png') 1.5x, url('/static_images/hidpi/175/vista-controls/edit-normal.png') 1.75x, url('/static_images/hidpi/200/vista-controls/edit-normal.png') 2x) 2 fill / 2px stretch;
     background: #fff;
     color: #000;
     font: 12px "Segoe UI", Tahoma, sans-serif;
@@ -664,18 +664,18 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
 }
 
 .vdt-dtp:hover {
-    border-image-source: url('/static_images/vista-controls/edit-hot.png');
+    border-image-source: image-set(url('/static_images/vista-controls/edit-hot.png') 1x, url('/static_images/hidpi/125/vista-controls/edit-hot.png') 1.2x, url('/static_images/hidpi/150/vista-controls/edit-hot.png') 1.6x, url('/static_images/hidpi/175/vista-controls/edit-hot.png') 1.8x, url('/static_images/hidpi/200/vista-controls/edit-hot.png') 2x);
 }
 
 .vdt-dtp:focus,
 .vdt-dtp.is-open {
-    border-image-source: url('/static_images/vista-controls/edit-focus.png');
+    border-image-source: image-set(url('/static_images/vista-controls/edit-focus.png') 1x, url('/static_images/hidpi/125/vista-controls/edit-focus.png') 1.2x, url('/static_images/hidpi/150/vista-controls/edit-focus.png') 1.6x, url('/static_images/hidpi/175/vista-controls/edit-focus.png') 1.8x, url('/static_images/hidpi/200/vista-controls/edit-focus.png') 2x);
 }
 
 /* disabled (Recurrence's Until): the normal frame and white field, the date in #808080 */
 .vdt-dtp[aria-disabled="true"],
 .vdt-dtp[aria-disabled="true"]:hover {
-    border-image-source: url('/static_images/vista-controls/edit-normal.png');
+    border-image-source: image-set(url('/static_images/vista-controls/edit-normal.png') 1x, url('/static_images/hidpi/125/vista-controls/edit-normal.png') 1.25x, url('/static_images/hidpi/150/vista-controls/edit-normal.png') 1.5x, url('/static_images/hidpi/175/vista-controls/edit-normal.png') 1.75x, url('/static_images/hidpi/200/vista-controls/edit-normal.png') 2x);
     background: #fff;
     color: #808080;
 }
@@ -708,11 +708,11 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
 }
 
 .vdt-dtp-btn:hover {
-    border-image: url('/static_images/vista-controls/dtp-btn-hot.png') 3 fill / 3px stretch;
+    border-image: image-set(url('/static_images/vista-controls/dtp-btn-hot.png') 1x, url('/static_images/hidpi/125/vista-controls/dtp-btn-hot.png') 1.25x, url('/static_images/hidpi/150/vista-controls/dtp-btn-hot.png') 1.5x, url('/static_images/hidpi/175/vista-controls/dtp-btn-hot.png') 1.75x, url('/static_images/hidpi/200/vista-controls/dtp-btn-hot.png') 2x) 3 fill / 3px stretch;
 }
 
 .vdt-dtp.is-open .vdt-dtp-btn {
-    border-image: url('/static_images/vista-controls/dtp-btn-open.png') 3 fill / 3px stretch;
+    border-image: image-set(url('/static_images/vista-controls/dtp-btn-open.png') 1x, url('/static_images/hidpi/125/vista-controls/dtp-btn-open.png') 1.25x, url('/static_images/hidpi/150/vista-controls/dtp-btn-open.png') 1.5x, url('/static_images/hidpi/175/vista-controls/dtp-btn-open.png') 1.75x, url('/static_images/hidpi/200/vista-controls/dtp-btn-open.png') 2x) 3 fill / 3px stretch;
 }
 
 .vdt-dtp-glyph {
@@ -722,7 +722,7 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     width: 20px;
     height: 14px;
     margin-top: -6px;
-    background: url('/static_images/vista-controls/dtp-glyph.png') no-repeat;
+    background: image-set(url('/static_images/vista-controls/dtp-glyph.png') 1x, url('/static_images/hidpi/125/vista-controls/dtp-glyph.png') 1.25x, url('/static_images/hidpi/150/vista-controls/dtp-glyph.png') 1.5x, url('/static_images/hidpi/175/vista-controls/dtp-glyph.png') 1.75x, url('/static_images/hidpi/200/vista-controls/dtp-glyph.png') 2x) no-repeat;
 }
 
 .vdt-dtp[aria-disabled="true"] .vdt-dtp-glyph {
@@ -742,7 +742,7 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     border: 0;
     border-image: none;
     appearance: none;
-    background: url('/static_images/vista-controls/checkbox.png') 0 -13px / 13px auto no-repeat;
+    background: image-set(url('/static_images/vista-controls/checkbox.png') 1x, url('/static_images/hidpi/125/vista-controls/checkbox.png') 1.25x, url('/static_images/hidpi/150/vista-controls/checkbox.png') 1.5385x, url('/static_images/hidpi/175/vista-controls/checkbox.png') 1.75x, url('/static_images/hidpi/200/vista-controls/checkbox.png') 2x) 0 -13px / 13px auto no-repeat;
     box-shadow: none;
     cursor: default;
 }
@@ -1039,7 +1039,7 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
    same in a window outside the kit scope. ---- */
 
 button.vdt-colorwell:not(#_) {
-    --vista-button-face: url("/static_images/vista-controls/button-normal.png");
+    --vista-button-face: image-set(url("/static_images/vista-controls/button-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/button-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/button-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/button-normal.png") 2x);
     display: inline-block;
     box-sizing: border-box;
     width: 40px;
@@ -1078,12 +1078,12 @@ button.vdt-colorwell > .vdt-colorwell-fill {
 
 @media (hover: hover) {
     button.vdt-colorwell:not(#_):hover:not(:disabled) {
-        --vista-button-face: url("/static_images/vista-controls/button-hot.png");
+        --vista-button-face: image-set(url("/static_images/vista-controls/button-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/button-hot.png") 1.25x, url("/static_images/hidpi/150/vista-controls/button-hot.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-hot.png") 1.75x, url("/static_images/hidpi/200/vista-controls/button-hot.png") 2x);
     }
 }
 
 button.vdt-colorwell:not(#_):active:not(:disabled) {
-    --vista-button-face: url("/static_images/vista-controls/button-pressed.png");
+    --vista-button-face: image-set(url("/static_images/vista-controls/button-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/button-pressed.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/button-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-pressed.png") 1.7727x, url("/static_images/hidpi/200/vista-controls/button-pressed.png") 2x);
 }
 
 /* the focus rectangle: dotted, 4 px in as on the kit's push buttons, in place of the shell's focus glow
@@ -1099,7 +1099,7 @@ button.vdt-colorwell:not(#_):focus-visible {
 }
 
 button.vdt-colorwell:not(#_):disabled {
-    --vista-button-face: url("/static_images/vista-controls/button-disabled.png");
+    --vista-button-face: image-set(url("/static_images/vista-controls/button-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/button-disabled.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/button-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-disabled.png") 1.7727x, url("/static_images/hidpi/200/vista-controls/button-disabled.png") 2x);
 }
 
 button.vdt-colorwell:disabled > .vdt-colorwell-fill {
@@ -1256,11 +1256,11 @@ button.vdt-cmdlink:not(#_):focus-visible {
     width: 9px;
     height: 9px;
     margin-right: 6px;
-    background: url('/static_images/vista-controls/treeview-plus.png') no-repeat;
+    background: image-set(url('/static_images/vista-controls/treeview-plus.png') 1x, url('/static_images/hidpi/125/vista-controls/treeview-plus.png') 1.2222x, url('/static_images/hidpi/150/vista-controls/treeview-plus.png') 1.5556x, url('/static_images/hidpi/175/vista-controls/treeview-plus.png') 1.7778x, url('/static_images/hidpi/200/vista-controls/treeview-plus.png') 2x) no-repeat;
 }
 
 .vdt-client .vdt-stree-node[data-open] > .vdt-stree-row > .vdt-stree-exp {
-    background-image: url('/static_images/vista-controls/treeview-minus.png');
+    background-image: image-set(url('/static_images/vista-controls/treeview-minus.png') 1x, url('/static_images/hidpi/125/vista-controls/treeview-minus.png') 1.2222x, url('/static_images/hidpi/150/vista-controls/treeview-minus.png') 1.5556x, url('/static_images/hidpi/175/vista-controls/treeview-minus.png') 1.7778x, url('/static_images/hidpi/200/vista-controls/treeview-minus.png') 2x);
 }
 
 .vdt-client .vdt-stree-text {

@@ -181,10 +181,10 @@ body.desktop-mode :is(#melatonControlPanelModal, .cpl-instance)[data-page="windo
 
 /* Workspace: the Frost tile multiplied by the workspace's colour, in its shape */
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch-art--workspace {
-    background: url("/static_images/vista-personalization/swatch-frost.png"), var(--cpl-pers-ws, #0a1a2a);
+    background: image-set(url("/static_images/vista-personalization/swatch-frost.png") 1x, url("/static_images/hidpi/125/vista-personalization/swatch-frost.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/swatch-frost.png") 1.5x, url("/static_images/hidpi/175/vista-personalization/swatch-frost.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/swatch-frost.png") 2x), var(--cpl-pers-ws, #0a1a2a);
     background-blend-mode: multiply;
-    -webkit-mask: url("/static_images/vista-personalization/swatch-frost.png") 0 0 / 64px 64px;
-    mask: url("/static_images/vista-personalization/swatch-frost.png") 0 0 / 64px 64px;
+    -webkit-mask: image-set(url("/static_images/vista-personalization/swatch-frost.png") 1x, url("/static_images/hidpi/125/vista-personalization/swatch-frost.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/swatch-frost.png") 1.5x, url("/static_images/hidpi/175/vista-personalization/swatch-frost.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/swatch-frost.png") 2x) 0 0 / 64px 64px;
+    mask: image-set(url("/static_images/vista-personalization/swatch-frost.png") 1x, url("/static_images/hidpi/125/vista-personalization/swatch-frost.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/swatch-frost.png") 1.5x, url("/static_images/hidpi/175/vista-personalization/swatch-frost.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/swatch-frost.png") 2x) 0 0 / 64px 64px;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch-label {
@@ -262,7 +262,7 @@ body.desktop-mode :is(#melatonControlPanelModal, .cpl-instance)[data-page="windo
     height: 3px;
     border: 0;
     border-image: none;
-    background: url("/static_images/vista-personalization/hue.png") 0 0 / 100% 100%;
+    background: image-set(url("/static_images/vista-personalization/hue.png") 1x, url("/static_images/hidpi/125/vista-personalization/hue.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/hue.png") 1.5x, url("/static_images/hidpi/175/vista-personalization/hue.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/hue.png") 2x) 0 0 / 100% 100%;
     box-shadow: none;
 }
 
@@ -286,7 +286,7 @@ body.desktop-mode :is(#melatonControlPanelModal, .cpl-instance)[data-page="windo
     height: 3px;
     border: 0;
     border-image: none;
-    background: url("/static_images/vista-personalization/hue.png") 0 0 / 100% 100%;
+    background: image-set(url("/static_images/vista-personalization/hue.png") 1x, url("/static_images/hidpi/125/vista-personalization/hue.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/hue.png") 1.5x, url("/static_images/hidpi/175/vista-personalization/hue.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/hue.png") 2x) 0 0 / 100% 100%;
     box-shadow: none;
 }
 
@@ -337,27 +337,27 @@ body.desktop-mode :is(#melatonControlPanelModal, .cpl-instance)[data-page="windo
     flex: none;
     width: 19px;
     height: 21px;
-    background: url("/static_images/vista-personalization/expando-down.png") no-repeat;
+    background: image-set(url("/static_images/vista-personalization/expando-down.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-down.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-down.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-down.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-down.png") 2x) no-repeat;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-expando:hover .cpl-pers-expando-image {
-    background-image: url("/static_images/vista-personalization/expando-down-hot.png");
+    background-image: image-set(url("/static_images/vista-personalization/expando-down-hot.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-down-hot.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-down-hot.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-down-hot.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-down-hot.png") 2x);
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-expando:active .cpl-pers-expando-image {
-    background-image: url("/static_images/vista-personalization/expando-down-pressed.png");
+    background-image: image-set(url("/static_images/vista-personalization/expando-down-pressed.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-down-pressed.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-down-pressed.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-down-pressed.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-down-pressed.png") 2x);
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-mixer.is-open .cpl-pers-expando-image {
-    background-image: url("/static_images/vista-personalization/expando-up.png");
+    background-image: image-set(url("/static_images/vista-personalization/expando-up.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-up.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-up.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-up.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-up.png") 2x);
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-mixer.is-open .cpl-pers-expando:hover .cpl-pers-expando-image {
-    background-image: url("/static_images/vista-personalization/expando-up-hot.png");
+    background-image: image-set(url("/static_images/vista-personalization/expando-up-hot.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-up-hot.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-up-hot.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-up-hot.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-up-hot.png") 2x);
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-mixer.is-open .cpl-pers-expando:active .cpl-pers-expando-image {
-    background-image: url("/static_images/vista-personalization/expando-up-pressed.png");
+    background-image: image-set(url("/static_images/vista-personalization/expando-up-pressed.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-up-pressed.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-up-pressed.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-up-pressed.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-up-pressed.png") 2x);
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-expando:focus-visible .cpl-pers-expando-text {
@@ -718,7 +718,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     width: 16px;
     height: 16px;
     margin-right: 6px;
-    background: url("/static_images/vista-personalization/sound-tree.png") -16px 0 no-repeat;
+    background: image-set(url("/static_images/vista-personalization/sound-tree.png") 1x, url("/static_images/hidpi/125/vista-personalization/sound-tree.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/sound-tree.png") 1.5x, url("/static_images/hidpi/175/vista-personalization/sound-tree.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/sound-tree.png") 2x) -16px 0 no-repeat;
 }
 
 .tbp-client .cpl-pers-tree-icon.is-program {
@@ -903,11 +903,11 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     flex: none;
     width: 16px;
     height: 16px;
-    background: url("/static_images/vista-icons/explorer/folder-16.png") center / 16px 16px no-repeat;
+    background: image-set(url("/static_images/vista-icons/explorer/folder-16.png") 1x, url("/static_images/hidpi/125/vista-icons/explorer/folder-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/explorer/folder-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/explorer/folder-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/explorer/folder-16.png") 2x) center / 16px 16px no-repeat;
 }
 
 .tbp-client .cpl-bf-node[data-path="/"] > .cpl-bf-row .cpl-bf-icon {
-    background-image: url("/static_images/vista-personalization/computer-16.png");
+    background-image: image-set(url("/static_images/vista-personalization/computer-16.png") 1x, url("/static_images/hidpi/125/vista-personalization/computer-16.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/computer-16.png") 1.5x, url("/static_images/hidpi/175/vista-personalization/computer-16.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/computer-16.png") 2x);
 }
 
 .tbp-client .cpl-bf-loading {

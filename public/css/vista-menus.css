@@ -546,7 +546,7 @@ body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.c
     bottom: auto;
     width: 22px;
     height: 22px;
-    background: url('/static_images/vista-controls/menu-check.png') no-repeat;
+    background: image-set(url('/static_images/vista-controls/menu-check.png') 1x, url('/static_images/hidpi/125/vista-controls/menu-check.png') 1.2727x, url('/static_images/hidpi/150/vista-controls/menu-check.png') 1.5x, url('/static_images/hidpi/175/vista-controls/menu-check.png') 1.7727x, url('/static_images/hidpi/200/vista-controls/menu-check.png') 2x) no-repeat;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item-mark[data-kind="check"]::before {
@@ -654,7 +654,7 @@ body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus]:no
     padding: 0;
     gap: 0;
     border: 0;
-    background: url('/static_images/vista-controls/menubar-band.png') 0 0 / 3px 19px repeat-x;
+    background: image-set(url('/static_images/vista-controls/menubar-band.png') 1x, url('/static_images/hidpi/125/vista-controls/menubar-band.png') 1.3333x, url('/static_images/hidpi/150/vista-controls/menubar-band.png') 1.6667x, url('/static_images/hidpi/175/vista-controls/menubar-band.png') 1.6667x, url('/static_images/hidpi/200/vista-controls/menubar-band.png') 2x) 0 0 / 3px 19px repeat-x;
     box-shadow: none;
     box-sizing: border-box;
 }
@@ -681,12 +681,12 @@ body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus] .n
 }
 
 body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus] .naxt-menu-title:is(:hover, :focus-visible):not(#_) {
-    border-image: url('/static_images/vista-controls/menubar-title-hot.png') 0 4 fill / 0 4px stretch;
+    border-image: image-set(url('/static_images/vista-controls/menubar-title-hot.png') 1x, url('/static_images/hidpi/125/vista-controls/menubar-title-hot.png') 1.25x, url('/static_images/hidpi/150/vista-controls/menubar-title-hot.png') 1.5x, url('/static_images/hidpi/175/vista-controls/menubar-title-hot.png') 1.75x, url('/static_images/hidpi/200/vista-controls/menubar-title-hot.png') 2x) 0 4 fill / 0 4px stretch;
     outline: none;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus] .naxt-menu-title.context-open:not(#_) {
-    border-image: url('/static_images/vista-controls/menubar-title-open.png') 0 4 fill / 0 4px stretch;
+    border-image: image-set(url('/static_images/vista-controls/menubar-title-open.png') 1x, url('/static_images/hidpi/125/vista-controls/menubar-title-open.png') 1.25x, url('/static_images/hidpi/150/vista-controls/menubar-title-open.png') 1.5x, url('/static_images/hidpi/175/vista-controls/menubar-title-open.png') 1.75x, url('/static_images/hidpi/200/vista-controls/menubar-title-open.png') 2x) 0 4 fill / 0 4px stretch;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus] .naxt-menu-title::before,

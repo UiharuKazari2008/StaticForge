@@ -34,7 +34,7 @@
     height: 15px;
     overflow: hidden;
     border: 1px solid transparent;
-    border-image: url("/static_images/vista-controls/progress-bar.png") 7 4 6 4 fill / 7px 4px 6px 4px stretch;
+    border-image: image-set(url("/static_images/vista-controls/progress-bar.png") 1x, url("/static_images/hidpi/125/vista-controls/progress-bar.png") 1.25x, url("/static_images/hidpi/150/vista-controls/progress-bar.png") 1.5x, url("/static_images/hidpi/175/vista-controls/progress-bar.png") 1.75x, url("/static_images/hidpi/200/vista-controls/progress-bar.png") 2x) 7 4 6 4 fill / 7px 4px 6px 4px stretch;
 }
 
 .vdt-wizard .wkm-progress > div {
@@ -47,7 +47,7 @@
     max-width: calc(100% + 2px);
     border: 0 solid transparent;
     border-width: 0 8px;
-    border-image: url("/static_images/vista-controls/progress-fill.png") 0 8 fill / 0 8px stretch;
+    border-image: image-set(url("/static_images/vista-controls/progress-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/progress-fill.png") 1.25x, url("/static_images/hidpi/150/vista-controls/progress-fill.png") 1.5x, url("/static_images/hidpi/175/vista-controls/progress-fill.png") 1.75x, url("/static_images/hidpi/200/vista-controls/progress-fill.png") 2x) 0 8 fill / 0 8px stretch;
 }
 
 .vdt-wizard .wkm-progress.is-marquee > div {

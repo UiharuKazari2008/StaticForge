@@ -125,7 +125,7 @@ body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item >
     width: 4px;
     height: 7px;
     margin-right: -3px;
-    background: url("/static_images/vista-controls/menu-submenu.png") no-repeat center / 4px 7px;
+    background: image-set(url("/static_images/vista-controls/menu-submenu.png") 1x, url("/static_images/hidpi/125/vista-controls/menu-submenu.png") 1.25x, url("/static_images/hidpi/150/vista-controls/menu-submenu.png") 1.5x, url("/static_images/hidpi/175/vista-controls/menu-submenu.png") 1.75x, url("/static_images/hidpi/200/vista-controls/menu-submenu.png") 2x) no-repeat center / 4px 7px;
     -webkit-mask: none;
     mask: none;
     color: transparent;
@@ -139,7 +139,7 @@ body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item >
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item:is(.disabled, [aria-disabled="true"]) > .context-menu-submenu-arrow {
-    background-image: url("/static_images/vista-controls/menu-submenu-disabled.png");
+    background-image: image-set(url("/static_images/vista-controls/menu-submenu-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/menu-submenu-disabled.png") 1.25x, url("/static_images/hidpi/150/vista-controls/menu-submenu-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-controls/menu-submenu-disabled.png") 1.75x, url("/static_images/hidpi/200/vista-controls/menu-submenu-disabled.png") 2x);
 }
 
 /* Windows Classic draws the arrow in the highlight text colour on a hot row */
@@ -176,607 +176,607 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
 /* shell32 259 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-cut, .fa-scissors),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-cut, .fa-scissors) {
-    background-image: url("/static_images/vista-cmdbar/cut.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/cut.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/cut.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/cut.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/cut.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/cut.png") 2x);
 }
 
 /* Photo Gallery */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-copy, .fa-clipboard, .nai-clipboard),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-copy, .fa-clipboard, .nai-clipboard) {
-    background-image: url("/static_images/vista-cmdbar/copy.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/copy.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/copy.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/copy.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/copy.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/copy.png") 2x);
 }
 
 /* shell32 260 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-paste),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-paste) {
-    background-image: url("/static_images/vista-cmdbar/paste.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/paste.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/paste.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/paste.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/paste.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/paste.png") 2x);
 }
 
 /* shell32 131 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-trash, .fa-trash-alt, .fa-trash-can, .fa-xmark, .fa-times, .fa-xmark-large, .fa-circle-xmark, .fa-times-circle, .fa-folder-minus, .mdi-delete),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-trash, .fa-trash-alt, .fa-trash-can, .fa-xmark, .fa-times, .fa-xmark-large, .fa-circle-xmark, .fa-times-circle, .fa-folder-minus, .mdi-delete) {
-    background-image: url("/static_images/vista-cmdbar/delete.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/delete.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/delete.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/delete.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/delete.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/delete.png") 2x);
 }
 
 /* shell32 133 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-pen, .fa-i-cursor, .fa-pen-field),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-pen, .fa-i-cursor, .fa-pen-field) {
-    background-image: url("/static_images/vista-cmdbar/rename.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/rename.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/rename.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/rename.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/rename.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/rename.png") 2x);
 }
 
 /* shell32 269 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-sliders, .fa-cog, .fa-gear, .fa-edit, .fa-pen-to-square, .fa-file-pen, .fa-glasses-round),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-sliders, .fa-cog, .fa-gear, .fa-edit, .fa-pen-to-square, .fa-file-pen, .fa-glasses-round) {
-    background-image: url("/static_images/vista-cmdbar/properties.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/properties.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/properties.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/properties.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/properties.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/properties.png") 2x);
 }
 
 /* shell32 132 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-folder-arrow-up, .fa-file-import),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-folder-arrow-up, .fa-file-import) {
-    background-image: url("/static_images/vista-cmdbar/move-to.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/move-to.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/move-to.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/move-to.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/move-to.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/move-to.png") 2x);
 }
 
 /* Explorer */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-folder-plus),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-folder-plus) {
-    background-image: url("/static_images/vista-file-dialog/new-folder.png");
+    background-image: image-set(url("/static_images/vista-file-dialog/new-folder.png") 1x, url("/static_images/hidpi/125/vista-file-dialog/new-folder.png") 1.25x, url("/static_images/hidpi/150/vista-file-dialog/new-folder.png") 1.5x, url("/static_images/hidpi/175/vista-file-dialog/new-folder.png") 1.75x, url("/static_images/hidpi/200/vista-file-dialog/new-folder.png") 2x);
 }
 
 /* shell32 258 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-save, .fa-floppy-disk),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-save, .fa-floppy-disk) {
-    background-image: url("/static_images/vista-cmdbar/save.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/save.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/save.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/save.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/save.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/save.png") 2x);
 }
 
 /* shell32 238 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-sync, .fa-sync-alt, .fa-rotate, .fa-arrows-rotate, .mdi-refresh),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-sync, .fa-sync-alt, .fa-rotate, .fa-arrows-rotate, .mdi-refresh) {
-    background-image: url("/static_images/vista-cmdbar/refresh.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/refresh.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/refresh.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/refresh.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/refresh.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/refresh.png") 2x);
 }
 
 /* shell32 239 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-inbox),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-inbox) {
-    background-image: url("/static_images/vista-cmdbar/restore.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/restore.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/restore.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/restore.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/restore.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/restore.png") 2x);
 }
 
 /* rstrui */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-clock-rotate-left),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-clock-rotate-left) {
-    background-image: url("/static_images/vista-cmdbar/restore-point.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/restore-point.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/restore-point.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/restore-point.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/restore-point.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/restore-point.png") 2x);
 }
 
 /* shell32 271 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-broom, .fa-broom-wide),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-broom, .fa-broom-wide) {
-    background-image: url("/static_images/vista-cmdbar/clear.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/clear.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/clear.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/clear.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/clear.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/clear.png") 2x);
 }
 
 /* shell32 270 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-file-magnifying-glass),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-file-magnifying-glass) {
-    background-image: url("/static_images/vista-cmdbar/find.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/find.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/find.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/find.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/find.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/find.png") 2x);
 }
 
 /* shell32 205 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-file, .fa-file-circle-plus),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-file, .fa-file-circle-plus) {
-    background-image: url("/static_images/vista-cmdbar/new.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/new.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/new.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/new.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/new.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/new.png") 2x);
 }
 
 /* Explorer */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-check-square, .fa-square-check, .fa-square-dashed, .fa-check-double),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-check-square, .fa-square-check, .fa-square-dashed, .fa-check-double) {
-    background-image: url("/static_images/vista-cmdbar/select-all.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/select-all.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/select-all.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/select-all.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/select-all.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/select-all.png") 2x);
 }
 
 /* Explorer */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-square),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-square) {
-    background-image: url("/static_images/vista-cmdbar/select-none.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/select-none.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/select-none.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/select-none.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/select-none.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/select-none.png") 2x);
 }
 
 /* shell32 43 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-star, .fa-file-heart),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-star, .fa-file-heart) {
-    background-image: url("/static_images/vista-cmdbar/favorites.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/favorites.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/favorites.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/favorites.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/favorites.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/favorites.png") 2x);
 }
 
 /* shell32 176 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-right-to-bracket, .fa-arrow-right-to-bracket, .fa-location-arrow, .fa-crosshairs, .fa-location-crosshairs, .fa-location-dot),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-right-to-bracket, .fa-arrow-right-to-bracket, .fa-location-arrow, .fa-crosshairs, .fa-location-crosshairs, .fa-location-dot) {
-    background-image: url("/static_images/vista-cmdbar/go.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/go.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/go.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/go.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/go.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/go.png") 2x);
 }
 
 /* shell32 165 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-list-check, .fa-clipboard-list),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-list-check, .fa-clipboard-list) {
-    background-image: url("/static_images/vista-cmdbar/checklist.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/checklist.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/checklist.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/checklist.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/checklist.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/checklist.png") 2x);
 }
 
 /* shell32 109 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-ban, .fa-empty-set, .fa-user-slash, .fa-image-slash, .fa-bookmark-slash),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-ban, .fa-empty-set, .fa-user-slash, .fa-image-slash, .fa-bookmark-slash) {
-    background-image: url("/static_images/vista-cmdbar/ban.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/ban.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/ban.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/ban.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/ban.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/ban.png") 2x);
 }
 
 /* shell32 27 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-power-off, .fa-right-from-bracket),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-power-off, .fa-right-from-bracket) {
-    background-image: url("/static_images/vista-cmdbar/power.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/power.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/power.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/power.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/power.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/power.png") 2x);
 }
 
 /* shell32 32 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-bin-recycle, .fa-recycle),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-bin-recycle, .fa-recycle) {
-    background-image: url("/static_images/vista-cmdbar/recycle-bin.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/recycle-bin.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/recycle-bin.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/recycle-bin.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/recycle-bin.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/recycle-bin.png") 2x);
 }
 
 /* shell32 265 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-clock, .fa-hourglass-half),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-clock, .fa-hourglass-half) {
-    background-image: url("/static_images/vista-cmdbar/clock.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/clock.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/clock.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/clock.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/clock.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/clock.png") 2x);
 }
 
 /* shell32 116 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-music),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-music) {
-    background-image: url("/static_images/vista-cmdbar/music.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/music.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/music.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/music.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/music.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/music.png") 2x);
 }
 
 /* shell32 173 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-keyboard),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-keyboard) {
-    background-image: url("/static_images/vista-cmdbar/keyboard.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/keyboard.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/keyboard.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/keyboard.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/keyboard.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/keyboard.png") 2x);
 }
 
 /* shell32 12 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-microchip, .fa-memory),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-microchip, .fa-memory) {
-    background-image: url("/static_images/vista-cmdbar/chip.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/chip.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/chip.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/chip.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/chip.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/chip.png") 2x);
 }
 
 /* shell32 15 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-display, .fa-laptop, .fa-tv),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-display, .fa-laptop, .fa-tv) {
-    background-image: url("/static_images/vista-cmdbar/display.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/display.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/display.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/display.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/display.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/display.png") 2x);
 }
 
 /* shell32 34 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-window-alt, .fa-arrow-down-left),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-window-alt, .fa-arrow-down-left) {
-    background-image: url("/static_images/vista-cmdbar/desktop.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/desktop.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/desktop.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/desktop.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/desktop.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/desktop.png") 2x);
 }
 
 /* shell32 243 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-wifi, .fa-globe-wifi, .fa-tower-broadcast),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-wifi, .fa-globe-wifi, .fa-tower-broadcast) {
-    background-image: url("/static_images/vista-cmdbar/wireless.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/wireless.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/wireless.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/wireless.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/wireless.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/wireless.png") 2x);
 }
 
 /* shell32 244 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-shield-halved, .fa-shield, .fa-user-shield),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-shield-halved, .fa-shield, .fa-user-shield) {
-    background-image: url("/static_images/vista-cmdbar/shield.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/shield.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/shield.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/shield.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/shield.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/shield.png") 2x);
 }
 
 /* shell32 70 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-file-lines, .fa-file-alt, .fa-subtitles),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-file-lines, .fa-file-alt, .fa-subtitles) {
-    background-image: url("/static_images/vista-cmdbar/text-document.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/text-document.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/text-document.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/text-document.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/text-document.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/text-document.png") 2x);
 }
 
 /* shell32 263 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-link, .fa-link-horizontal),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-link, .fa-link-horizontal) {
-    background-image: url("/static_images/vista-cmdbar/shortcut.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/shortcut.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/shortcut.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/shortcut.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/shortcut.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/shortcut.png") 2x);
 }
 
 /* shell32 13 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-globe, .fa-earth-americas),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-globe, .fa-earth-americas) {
-    background-image: url("/static_images/vista-cmdbar/internet.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/internet.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/internet.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/internet.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/internet.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/internet.png") 2x);
 }
 
 /* imageres 3 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-folder, .fa-folder-open, .fa-folder-tree),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-folder, .fa-folder-open, .fa-folder-tree) {
-    background-image: url("/static_images/vista-cmdbar/folder.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/folder.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/folder.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/folder.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/folder.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/folder.png") 2x);
 }
 
 /* imageres 1 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-file-code-alt),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-file-code-alt) {
-    background-image: url("/static_images/vista-cmdbar/document.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/document.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/document.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/document.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/document.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/document.png") 2x);
 }
 
 /* imageres 66 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-image, .fa-image-polaroid, .nai-img2img),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-image, .fa-image-polaroid, .nai-img2img) {
-    background-image: url("/static_images/vista-cmdbar/picture.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/picture.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/picture.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/picture.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/picture.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/picture.png") 2x);
 }
 
 /* imageres 125 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-file-image),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-file-image) {
-    background-image: url("/static_images/vista-cmdbar/image-file.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/image-file.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/image-file.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/image-file.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/image-file.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/image-file.png") 2x);
 }
 
 /* imageres 180 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-film, .fa-video),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-film, .fa-video) {
-    background-image: url("/static_images/vista-cmdbar/film.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/film.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/film.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/film.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/film.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/film.png") 2x);
 }
 
 /* imageres 117 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-font, .fa-font-case, .fa-text, .fa-heading),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-font, .fa-font-case, .fa-text, .fa-heading) {
-    background-image: url("/static_images/vista-cmdbar/font.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/font.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/font.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/font.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/font.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/font.png") 2x);
 }
 
 /* imageres 53 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-lock),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-lock) {
-    background-image: url("/static_images/vista-cmdbar/lock.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/lock.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/lock.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/lock.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/lock.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/lock.png") 2x);
 }
 
 /* imageres 151 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-file-zipper, .fa-box-archive),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-file-zipper, .fa-box-archive) {
-    background-image: url("/static_images/vista-cmdbar/zip-folder.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/zip-folder.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/zip-folder.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/zip-folder.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/zip-folder.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/zip-folder.png") 2x);
 }
 
 /* imageres 97 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-chalkboard),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-chalkboard) {
-    background-image: url("/static_images/vista-cmdbar/presentation.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/presentation.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/presentation.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/presentation.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/presentation.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/presentation.png") 2x);
 }
 
 /* imageres 108 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-gears, .fa-cogs),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-gears, .fa-cogs) {
-    background-image: url("/static_images/vista-cmdbar/gears.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/gears.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/gears.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/gears.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/gears.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/gears.png") 2x);
 }
 
 /* imageres 182 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-chart-pie),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-chart-pie) {
-    background-image: url("/static_images/vista-cmdbar/pie-chart.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/pie-chart.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/pie-chart.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/pie-chart.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/pie-chart.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/pie-chart.png") 2x);
 }
 
 /* imageres 167 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-address-book, .fa-address-card),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-address-book, .fa-address-card) {
-    background-image: url("/static_images/vista-cmdbar/contacts.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/contacts.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/contacts.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/contacts.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/contacts.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/contacts.png") 2x);
 }
 
 /* imageres 14 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-envelope-open, .fa-envelope-open-text),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-envelope-open, .fa-envelope-open-text) {
-    background-image: url("/static_images/vista-cmdbar/mail.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/mail.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/mail.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/mail.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/mail.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/mail.png") 2x);
 }
 
 /* WinCal.exe 0 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-calendar, .fa-calendar-days, .fa-calendar-day, .fa-calendar-check, .fa-calendar-alt, .fa-calendar-star),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-calendar, .fa-calendar-days, .fa-calendar-day, .fa-calendar-check, .fa-calendar-alt, .fa-calendar-star) {
-    background-image: url("/static_images/vista-cmdbar/calendar.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/calendar.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/calendar.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/calendar.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/calendar.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/calendar.png") 2x);
 }
 
 /* shell32 IDB_TB_SH 8 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-undo, .fa-rotate-left, .nai-dot-reset),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-undo, .fa-rotate-left, .nai-dot-reset) {
-    background-image: url("/static_images/vista-cmdbar/undo.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/undo.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/undo.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/undo.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/undo.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/undo.png") 2x);
 }
 
 /* shell32 IDB_TB_SH 9 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-redo, .fa-rotate-right),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-redo, .fa-rotate-right) {
-    background-image: url("/static_images/vista-cmdbar/redo.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/redo.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/redo.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/redo.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/redo.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/redo.png") 2x);
 }
 
 /* shell32 IDB_TB_SH 24 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-sort, .fa-sort-amount-down, .fa-sort-alpha-down, .fa-arrow-down-wide-short, .fa-arrow-down-arrow-up),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-sort, .fa-sort-amount-down, .fa-sort-alpha-down, .fa-arrow-down-wide-short, .fa-arrow-down-arrow-up) {
-    background-image: url("/static_images/vista-cmdbar/sort.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/sort.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/sort.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/sort.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/sort.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/sort.png") 2x);
 }
 
 /* shell32 IDB_TB_IE 12 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-history),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-history) {
-    background-image: url("/static_images/vista-cmdbar/history.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/history.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/history.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/history.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/history.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/history.png") 2x);
 }
 
 /* shell32 IDB_TB_IE 14 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-window, .fa-window-restore, .fa-external-link-alt, .fa-up-right-from-square, .fa-window-maximize),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-window, .fa-window-restore, .fa-external-link-alt, .fa-up-right-from-square, .fa-window-maximize) {
-    background-image: url("/static_images/vista-cmdbar/new-window.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/new-window.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/new-window.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/new-window.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/new-window.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/new-window.png") 2x);
 }
 
 /* shell32 IDB_TB_IE 15 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-sticky-note, .fa-note-sticky, .fa-note, .fa-memo),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-sticky-note, .fa-note-sticky, .fa-note, .fa-memo) {
-    background-image: url("/static_images/vista-cmdbar/note.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/note.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/note.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/note.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/note.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/note.png") 2x);
 }
 
 /* shell32 IDB_TB_IE 22 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-plus, .fa-plus-circle, .fa-plus-large, .fa-grid-round-2-plus, .fa-user-plus),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-plus, .fa-plus-circle, .fa-plus-large, .fa-grid-round-2-plus, .fa-user-plus) {
-    background-image: url("/static_images/vista-cmdbar/add.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/add.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/add.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/add.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/add.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/add.png") 2x);
 }
 
 /* shell32 IDB_TB_IE 18 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-comment, .fa-comments, .fa-comment-dots, .fa-comment-lines, .fa-message, .fa-thought-bubble, .fa-comment-exclamation),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-comment, .fa-comments, .fa-comment-dots, .fa-comment-lines, .fa-message, .fa-thought-bubble, .fa-comment-exclamation) {
-    background-image: url("/static_images/vista-cmdbar/discuss.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/discuss.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/discuss.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/discuss.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/discuss.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/discuss.png") 2x);
 }
 
 /* msoeres 40 #49 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-paperclip),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-paperclip) {
-    background-image: url("/static_images/vista-cmdbar/attach.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/attach.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/attach.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/attach.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/attach.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/attach.png") 2x);
 }
 
 /* msoeres 40 #32 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-reply),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-reply) {
-    background-image: url("/static_images/vista-cmdbar/reply.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/reply.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/reply.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/reply.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/reply.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/reply.png") 2x);
 }
 
 /* msoeres 40 #33 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-reply-all),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-reply-all) {
-    background-image: url("/static_images/vista-cmdbar/reply-all.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/reply-all.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/reply-all.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/reply-all.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/reply-all.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/reply-all.png") 2x);
 }
 
 /* msoeres 40 #9 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-share),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-share) {
-    background-image: url("/static_images/vista-cmdbar/mail-forward.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/mail-forward.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/mail-forward.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/mail-forward.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/mail-forward.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/mail-forward.png") 2x);
 }
 
 /* msoeres 40 #47 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-paper-plane),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-paper-plane) {
-    background-image: url("/static_images/vista-cmdbar/send.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/send.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/send.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/send.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/send.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/send.png") 2x);
 }
 
 /* msoeres 40 #51 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-arrow-up, .fa-chevron-up, .fa-angles-up, .fa-chevron-double-up),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-arrow-up, .fa-chevron-up, .fa-angles-up, .fa-chevron-double-up) {
-    background-image: url("/static_images/vista-cmdbar/move-up.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/move-up.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/move-up.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/move-up.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/move-up.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/move-up.png") 2x);
 }
 
 /* msoeres 40 #50 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-arrow-down, .fa-chevron-down, .fa-angles-down),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-arrow-down, .fa-chevron-down, .fa-angles-down) {
-    background-image: url("/static_images/vista-cmdbar/move-down.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/move-down.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/move-down.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/move-down.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/move-down.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/move-down.png") 2x);
 }
 
 /* filemgmt 225 #0 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-play, .fa-forward),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-play, .fa-forward) {
-    background-image: url("/static_images/vista-cmdbar/play.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/play.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/play.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/play.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/play.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/play.png") 2x);
 }
 
 /* filemgmt 225 #1 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-stop),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-stop) {
-    background-image: url("/static_images/vista-cmdbar/stop.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/stop.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/stop.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/stop.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/stop.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/stop.png") 2x);
 }
 
 /* filemgmt 225 #2 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-pause),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-pause) {
-    background-image: url("/static_images/vista-cmdbar/pause.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/pause.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/pause.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/pause.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/pause.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/pause.png") 2x);
 }
 
 /* Explorer */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-arrow-left, .fa-chevron-left),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-arrow-left, .fa-chevron-left) {
-    background-image: url("/static_images/vista-cmdbar/back.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/back.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/back.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/back.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/back.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/back.png") 2x);
 }
 
 /* Explorer */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-arrow-right, .fa-chevron-right),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-arrow-right, .fa-chevron-right) {
-    background-image: url("/static_images/vista-cmdbar/forward.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/forward.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/forward.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/forward.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/forward.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/forward.png") 2x);
 }
 
 /* IE7 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-download, .fa-arrow-down-to-bracket, .fa-laptop-arrow-down),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-download, .fa-arrow-down-to-bracket, .fa-laptop-arrow-down) {
-    background-image: url("/static_images/vista-cmdbar/download.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/download.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/download.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/download.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/download.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/download.png") 2x);
 }
 
 /* Explorer */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-upload, .fa-cloud-arrow-up, .fa-arrow-up-from-bracket, .fa-file-export),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-upload, .fa-cloud-arrow-up, .fa-arrow-up-from-bracket, .fa-file-export) {
-    background-image: url("/static_images/vista-cmdbar/upload.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/upload.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/upload.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/upload.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/upload.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/upload.png") 2x);
 }
 
 /* Explorer */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-exchange-alt, .fa-arrow-right-arrow-left, .fa-right-left),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-exchange-alt, .fa-arrow-right-arrow-left, .fa-right-left) {
-    background-image: url("/static_images/vista-cmdbar/replace.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/replace.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/replace.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/replace.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/replace.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/replace.png") 2x);
 }
 
 /* shell32 174 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-circle-half-stroke, .fa-adjust, .fa-diamond-half-stroke),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-circle-half-stroke, .fa-adjust, .fa-diamond-half-stroke) {
-    background-image: url("/static_images/vista-cmdbar/contrast.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/contrast.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/contrast.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/contrast.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/contrast.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/contrast.png") 2x);
 }
 
 /* mspaint */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-eraser),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-eraser) {
-    background-image: url("/static_images/vista-cmdbar/paint-eraser.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/paint-eraser.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/paint-eraser.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/paint-eraser.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/paint-eraser.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/paint-eraser.png") 2x);
 }
 
 /* mspaint */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-paint-brush, .fa-paintbrush, .fa-brush),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-paint-brush, .fa-paintbrush, .fa-brush) {
-    background-image: url("/static_images/vista-cmdbar/paint-brush.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/paint-brush.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/paint-brush.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/paint-brush.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/paint-brush.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/paint-brush.png") 2x);
 }
 
 /* WindowsPhotoGallery.exe 0 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-images),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-images) {
-    background-image: url("/static_images/vista-cmdbar/photo-gallery.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/photo-gallery.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/photo-gallery.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/photo-gallery.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/photo-gallery.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/photo-gallery.png") 2x);
 }
 
 /* Photo Gallery */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.mdi-relative-scale),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.mdi-relative-scale) {
-    background-image: url("/static_images/vista-cmdbar/expand-canvas.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/expand-canvas.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/expand-canvas.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/expand-canvas.png") 1.5263x, url("/static_images/hidpi/175/vista-cmdbar/expand-canvas.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/expand-canvas.png") 2x);
 }
 
 /* Photo Gallery */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.nai-upscale, .fa-arrow-up-right-dots),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.nai-upscale, .fa-arrow-up-right-dots) {
-    background-image: url("/static_images/vista-cmdbar/upscale.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/upscale.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/upscale.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/upscale.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/upscale.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/upscale.png") 2x);
 }
 
 /* mmc.exe 202 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-columns, .fa-sidebar),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-columns, .fa-sidebar) {
-    background-image: url("/static_images/vista-cmdbar/action-pane.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/action-pane.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/action-pane.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/action-pane.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/action-pane.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/action-pane.png") 2x);
 }
 
 /* shell32 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-search, .fa-magnifying-glass),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-search, .fa-magnifying-glass) {
-    background-image: url("/static_images/vista-icons/search-16.png");
+    background-image: image-set(url("/static_images/vista-icons/search-16.png") 1x, url("/static_images/hidpi/125/vista-icons/search-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/search-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/search-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/search-16.png") 2x);
 }
 
 /* imageres 75 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-info-circle, .fa-circle-info, .fa-info),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-info-circle, .fa-circle-info, .fa-info) {
-    background-image: url("/static_images/vista-icons/info-16.png");
+    background-image: image-set(url("/static_images/vista-icons/info-16.png") 1x, url("/static_images/hidpi/125/vista-icons/info-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/info-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/info-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/info-16.png") 2x);
 }
 
 /* imageres 78 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-triangle-exclamation, .fa-exclamation-triangle, .fa-circle-exclamation, .fa-file-exclamation),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-triangle-exclamation, .fa-exclamation-triangle, .fa-circle-exclamation, .fa-file-exclamation) {
-    background-image: url("/static_images/vista-icons/warning-16.png");
+    background-image: image-set(url("/static_images/vista-icons/warning-16.png") 1x, url("/static_images/hidpi/125/vista-icons/warning-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/warning-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/warning-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/warning-16.png") 2x);
 }
 
 /* mmc.exe 138 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-check, .fa-circle-check),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-check, .fa-circle-check) {
-    background-image: url("/static_images/vista-icons/check-16.png");
+    background-image: image-set(url("/static_images/vista-icons/check-16.png") 1x, url("/static_images/hidpi/125/vista-icons/check-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/check-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/check-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/check-16.png") 2x);
 }
 
 /* SndVolSSO */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-volume-high),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-volume-high) {
-    background-image: url("/static_images/vista-icons/volume-high-16.png");
+    background-image: image-set(url("/static_images/vista-icons/volume-high-16.png") 1x, url("/static_images/hidpi/125/vista-icons/volume-high-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/volume-high-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/volume-high-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/volume-high-16.png") 2x);
 }
 
 /* pnidui */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-unlink, .fa-link-slash),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-unlink, .fa-link-slash) {
-    background-image: url("/static_images/vista-icons/net-disconnected-16.png");
+    background-image: image-set(url("/static_images/vista-icons/net-disconnected-16.png") 1x, url("/static_images/hidpi/125/vista-icons/net-disconnected-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/net-disconnected-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/net-disconnected-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/net-disconnected-16.png") 2x);
 }
 
 /* shell32 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-terminal),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-terminal) {
-    background-image: url("/static_images/vista-icons/run-16.png");
+    background-image: image-set(url("/static_images/vista-icons/run-16.png") 1x, url("/static_images/hidpi/125/vista-icons/run-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/run-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/run-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/run-16.png") 2x);
 }
 
 /* IE7 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-google),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-google) {
-    background-image: url("/static_images/vista-ie/search.png");
+    background-image: image-set(url("/static_images/vista-ie/search.png") 1x, url("/static_images/hidpi/125/vista-ie/search.png") 1.25x, url("/static_images/hidpi/150/vista-ie/search.png") 1.5x, url("/static_images/hidpi/175/vista-ie/search.png") 1.75x, url("/static_images/hidpi/200/vista-ie/search.png") 2x);
 }
 
 /* IE7 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-search-plus, .fa-magnifying-glass-plus),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-search-plus, .fa-magnifying-glass-plus) {
-    background-image: url("/static_images/vista-ie/zoom.png");
+    background-image: image-set(url("/static_images/vista-ie/zoom.png") 1x, url("/static_images/hidpi/125/vista-ie/zoom.png") 1.25x, url("/static_images/hidpi/150/vista-ie/zoom.png") 1.5x, url("/static_images/hidpi/175/vista-ie/zoom.png") 1.75x, url("/static_images/hidpi/200/vista-ie/zoom.png") 2x);
 }
 
 /* IE7 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-print),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-print) {
-    background-image: url("/static_images/vista-ie/print.png");
+    background-image: image-set(url("/static_images/vista-ie/print.png") 1x, url("/static_images/hidpi/125/vista-ie/print.png") 1.25x, url("/static_images/hidpi/150/vista-ie/print.png") 1.5x, url("/static_images/hidpi/175/vista-ie/print.png") 1.75x, url("/static_images/hidpi/200/vista-ie/print.png") 2x);
 }
 
 /* IE7 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-home, .fa-house),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-home, .fa-house) {
-    background-image: url("/static_images/vista-ie/home.png");
+    background-image: image-set(url("/static_images/vista-ie/home.png") 1x, url("/static_images/hidpi/125/vista-ie/home.png") 1.25x, url("/static_images/hidpi/150/vista-ie/home.png") 1.5x, url("/static_images/hidpi/175/vista-ie/home.png") 1.75x, url("/static_images/hidpi/200/vista-ie/home.png") 2x);
 }
 
 /* ieframe.dll bitmap 699 #7 (IE7 Tools, with alpha) */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-wrench, .fa-toolbox, .fa-hammer, .fa-screwdriver-wrench),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-wrench, .fa-toolbox, .fa-hammer, .fa-screwdriver-wrench) {
-    background-image: url("/static_images/vista-cmdbar/tools.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/tools.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/tools.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/tools.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/tools.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/tools.png") 2x);
 }
 
 /* IE7 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-rss),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-rss) {
-    background-image: url("/static_images/vista-ie/feeds.png");
+    background-image: image-set(url("/static_images/vista-ie/feeds.png") 1x, url("/static_images/hidpi/125/vista-ie/feeds.png") 1.25x, url("/static_images/hidpi/150/vista-ie/feeds.png") 1.5x, url("/static_images/hidpi/175/vista-ie/feeds.png") 1.75x, url("/static_images/hidpi/200/vista-ie/feeds.png") 2x);
 }
 
 /* IE7 */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-bookmark),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-bookmark) {
-    background-image: url("/static_images/vista-ie/favorites-add.png");
+    background-image: image-set(url("/static_images/vista-ie/favorites-add.png") 1x, url("/static_images/hidpi/125/vista-ie/favorites-add.png") 1.25x, url("/static_images/hidpi/150/vista-ie/favorites-add.png") 1.5x, url("/static_images/hidpi/175/vista-ie/favorites-add.png") 1.75x, url("/static_images/hidpi/200/vista-ie/favorites-add.png") 2x);
 }
 
 /* Explorer */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-question, .fa-question-circle, .fa-circle-question),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-question, .fa-question-circle, .fa-circle-question) {
-    background-image: url("/static_images/vista-explorer/help-16.png");
+    background-image: image-set(url("/static_images/vista-explorer/help-16.png") 1x, url("/static_images/hidpi/125/vista-explorer/help-16.png") 1.25x, url("/static_images/hidpi/150/vista-explorer/help-16.png") 1.5x, url("/static_images/hidpi/175/vista-explorer/help-16.png") 1.75x, url("/static_images/hidpi/200/vista-explorer/help-16.png") 2x);
 }
 
 /* Explorer */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-arrows-up-down-left-right),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-arrows-up-down-left-right) {
-    background-image: url("/static_images/vista-explorer/organize.png");
+    background-image: image-set(url("/static_images/vista-explorer/organize.png") 1x, url("/static_images/hidpi/125/vista-explorer/organize.png") 1.25x, url("/static_images/hidpi/150/vista-explorer/organize.png") 1.5x, url("/static_images/hidpi/175/vista-explorer/organize.png") 1.75x, url("/static_images/hidpi/200/vista-explorer/organize.png") 2x);
 }
 
 /* Explorer */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-list, .fa-list-ol, .fa-rectangle-list),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-list, .fa-list-ol, .fa-rectangle-list) {
-    background-image: url("/static_images/vista-explorer/views-list.png");
+    background-image: image-set(url("/static_images/vista-explorer/views-list.png") 1x, url("/static_images/hidpi/125/vista-explorer/views-list.png") 1.25x, url("/static_images/hidpi/150/vista-explorer/views-list.png") 1.5x, url("/static_images/hidpi/175/vista-explorer/views-list.png") 1.75x, url("/static_images/hidpi/200/vista-explorer/views-list.png") 2x);
 }
 
 /* Explorer */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-computer, .fa-hard-drive),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-computer, .fa-hard-drive) {
-    background-image: url("/static_images/vista-explorer/computer-16.png");
+    background-image: image-set(url("/static_images/vista-explorer/computer-16.png") 1x, url("/static_images/hidpi/125/vista-explorer/computer-16.png") 1.25x, url("/static_images/hidpi/150/vista-explorer/computer-16.png") 1.5x, url("/static_images/hidpi/175/vista-explorer/computer-16.png") 1.75x, url("/static_images/hidpi/200/vista-explorer/computer-16.png") 2x);
 }
 
 /* Control Panel */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-lightbulb, .fa-lightbulb-on),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-lightbulb, .fa-lightbulb-on) {
-    background-image: url("/static_images/vista-cpl/bulb-16.png");
+    background-image: image-set(url("/static_images/vista-cpl/bulb-16.png") 1x, url("/static_images/hidpi/125/vista-cpl/bulb-16.png") 1.25x, url("/static_images/hidpi/150/vista-cpl/bulb-16.png") 1.5x, url("/static_images/hidpi/175/vista-cpl/bulb-16.png") 1.75x, url("/static_images/hidpi/200/vista-cpl/bulb-16.png") 2x);
 }
 
 /* Control Panel */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-key, .fa-key-skeleton-left-right),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-key, .fa-key-skeleton-left-right) {
-    background-image: url("/static_images/vista-cpl/key-16.png");
+    background-image: image-set(url("/static_images/vista-cpl/key-16.png") 1x, url("/static_images/hidpi/125/vista-cpl/key-16.png") 1.25x, url("/static_images/hidpi/150/vista-cpl/key-16.png") 1.5x, url("/static_images/hidpi/175/vista-cpl/key-16.png") 1.75x, url("/static_images/hidpi/200/vista-cpl/key-16.png") 2x);
 }
 
 /* Control Panel */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-user, .fa-user-group, .fa-user-clock),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-user, .fa-user-group, .fa-user-clock) {
-    background-image: url("/static_images/vista-cpl/users-16.png");
+    background-image: image-set(url("/static_images/vista-cpl/users-16.png") 1x, url("/static_images/hidpi/125/vista-cpl/users-16.png") 1.25x, url("/static_images/hidpi/150/vista-cpl/users-16.png") 1.5x, url("/static_images/hidpi/175/vista-cpl/users-16.png") 1.75x, url("/static_images/hidpi/200/vista-cpl/users-16.png") 2x);
 }
 
 /* Control Panel */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-network-wired, .fa-sitemap, .fa-plug, .fa-server),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-network-wired, .fa-sitemap, .fa-plug, .fa-server) {
-    background-image: url("/static_images/vista-cpl/network-16.png");
+    background-image: image-set(url("/static_images/vista-cpl/network-16.png") 1x, url("/static_images/hidpi/125/vista-cpl/network-16.png") 1.25x, url("/static_images/hidpi/150/vista-cpl/network-16.png") 1.5x, url("/static_images/hidpi/175/vista-cpl/network-16.png") 1.75x, url("/static_images/hidpi/200/vista-cpl/network-16.png") 2x);
 }
 
 /* Control Panel */
 body.desktop-mode :is(.context-menu, .context-menu-submenu) i:not(.context-menu-submenu-arrow, .dataset-bias-controls i):is(.fa-cloud-arrow-down),
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) :is(.explorer-actions-header, .naxt-command-bar, .director-window-command-bar, .gx-commandbar, .studio-change-command-bar) button:is(.vista-text-button, :not(.vista-text-button)) > i:is(.fa-cloud-arrow-down) {
-    background-image: url("/static_images/vista-cpl/windows-update-16.png");
+    background-image: image-set(url("/static_images/vista-cpl/windows-update-16.png") 1x, url("/static_images/hidpi/125/vista-cpl/windows-update-16.png") 1.25x, url("/static_images/hidpi/150/vista-cpl/windows-update-16.png") 1.5x, url("/static_images/hidpi/175/vista-cpl/windows-update-16.png") 1.75x, url("/static_images/hidpi/200/vista-cpl/windows-update-16.png") 2x);
 }
 
 /* Studio */
@@ -993,7 +993,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
 
 /* the Director's menu (sessions and settings): MMC's Actions (Yukimi) */
 body.desktop-mode:not(.windows-classic-theme) #directorToolsBtn > i {
-    background-image: url("/static_images/vista-cmdbar/action-pane.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/action-pane.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/action-pane.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/action-pane.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/action-pane.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/action-pane.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #directorToolsBtn > i {
@@ -1014,32 +1014,32 @@ body.desktop-mode:not(.windows-classic-theme) #directorToolsBtn > i::before {
 /* ---- items that share a glyph ---- */
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text^="Large ("] > i.fa-expand {
-    background-image: url("/static_images/vista-explorer/views-icons-lg.png");
+    background-image: image-set(url("/static_images/vista-explorer/views-icons-lg.png") 1x, url("/static_images/hidpi/125/vista-explorer/views-icons-lg.png") 1.25x, url("/static_images/hidpi/150/vista-explorer/views-icons-lg.png") 1.5x, url("/static_images/hidpi/175/vista-explorer/views-icons-lg.png") 1.75x, url("/static_images/hidpi/200/vista-explorer/views-icons-lg.png") 2x);
     background-size: 16px 16px;
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text^="Medium ("] > i.fa-circle {
-    background-image: url("/static_images/vista-explorer/views-icons-md.png");
+    background-image: image-set(url("/static_images/vista-explorer/views-icons-md.png") 1x, url("/static_images/hidpi/125/vista-explorer/views-icons-md.png") 1.25x, url("/static_images/hidpi/150/vista-explorer/views-icons-md.png") 1.5x, url("/static_images/hidpi/175/vista-explorer/views-icons-md.png") 1.75x, url("/static_images/hidpi/200/vista-explorer/views-icons-md.png") 2x);
     background-size: 16px 16px;
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text^="Small ("] > i.fa-compress {
-    background-image: url("/static_images/vista-explorer/views-icons-sm.png");
+    background-image: image-set(url("/static_images/vista-explorer/views-icons-sm.png") 1x, url("/static_images/hidpi/125/vista-explorer/views-icons-sm.png") 1.25x, url("/static_images/hidpi/150/vista-explorer/views-icons-sm.png") 1.5x, url("/static_images/hidpi/175/vista-explorer/views-icons-sm.png") 1.75x, url("/static_images/hidpi/200/vista-explorer/views-icons-sm.png") 2x);
     background-size: 16px 16px;
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text^="Open Melaton Update"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon) {
-    background-image: url("/static_images/vista-cpl/windows-update-16.png");
+    background-image: image-set(url("/static_images/vista-cpl/windows-update-16.png") 1x, url("/static_images/hidpi/125/vista-cpl/windows-update-16.png") 1.25x, url("/static_images/hidpi/150/vista-cpl/windows-update-16.png") 1.5x, url("/static_images/hidpi/175/vista-cpl/windows-update-16.png") 1.75x, url("/static_images/hidpi/200/vista-cpl/windows-update-16.png") 2x);
     background-size: 16px 16px;
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Check for updates"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon) {
-    background-image: url("/static_images/vista-cpl/windows-update-16.png");
+    background-image: image-set(url("/static_images/vista-cpl/windows-update-16.png") 1x, url("/static_images/hidpi/125/vista-cpl/windows-update-16.png") 1.25x, url("/static_images/hidpi/150/vista-cpl/windows-update-16.png") 1.5x, url("/static_images/hidpi/175/vista-cpl/windows-update-16.png") 1.75x, url("/static_images/hidpi/200/vista-cpl/windows-update-16.png") 2x);
     background-size: 16px 16px;
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Software Update"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon) {
-    background-image: url("/static_images/vista-cpl/windows-update-16.png");
+    background-image: image-set(url("/static_images/vista-cpl/windows-update-16.png") 1x, url("/static_images/hidpi/125/vista-cpl/windows-update-16.png") 1.25x, url("/static_images/hidpi/150/vista-cpl/windows-update-16.png") 1.5x, url("/static_images/hidpi/175/vista-cpl/windows-update-16.png") 1.75x, url("/static_images/hidpi/200/vista-cpl/windows-update-16.png") 2x);
     background-size: 16px 16px;
 }
 
@@ -1049,32 +1049,32 @@ body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[d
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Move to..."] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon) {
-    background-image: url("/static_images/vista-cmdbar/move-to.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/move-to.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/move-to.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/move-to.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/move-to.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/move-to.png") 2x);
     background-size: 16px 16px;
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Properties"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon) {
-    background-image: url("/static_images/vista-cmdbar/properties.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/properties.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/properties.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/properties.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/properties.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/properties.png") 2x);
     background-size: 16px 16px;
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Refresh"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon) {
-    background-image: url("/static_images/vista-cmdbar/refresh.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/refresh.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/refresh.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/refresh.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/refresh.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/refresh.png") 2x);
     background-size: 16px 16px;
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Delete"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon) {
-    background-image: url("/static_images/vista-cmdbar/delete.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/delete.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/delete.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/delete.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/delete.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/delete.png") 2x);
     background-size: 16px 16px;
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Select All"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon) {
-    background-image: url("/static_images/vista-cmdbar/select-all.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/select-all.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/select-all.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/select-all.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/select-all.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/select-all.png") 2x);
     background-size: 16px 16px;
 }
 
 body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item[data-menu-text="Deselect All"] > i:first-child:is([class*="fa-"], [class*="nai-"], [class*="mdi-"], [class*="ri-"], .xai-icon) {
-    background-image: url("/static_images/vista-cmdbar/select-none.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/select-none.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/select-none.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/select-none.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/select-none.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/select-none.png") 2x);
     background-size: 16px 16px;
 }
 

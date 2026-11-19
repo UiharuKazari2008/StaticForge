@@ -348,7 +348,7 @@ body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbo
 }
 
 body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCustomPresetDropdownBtn {
-    --vista-combo-face: url("/static_images/vista-controls/combo-normal.png");
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/combo-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/combo-normal.png") 2x);
     position: relative;
     box-sizing: border-box;
     height: 23px;
@@ -365,11 +365,11 @@ body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbo
 }
 
 body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCustomPresetDropdownBtn:is(:hover, :focus-visible):not(:disabled) {
-    --vista-combo-face: url("/static_images/vista-controls/combo-hot.png");
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-hot.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-hot.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-hot.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-hot.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCustomPresetDropdownBtn:is(:active, .active, .context-open):not(:disabled) {
-    --vista-combo-face: url("/static_images/vista-controls/combo-pressed.png");
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-pressed.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-pressed.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-pressed.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-pressed.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCustomPresetDropdownBtn::before {
@@ -386,7 +386,7 @@ body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbo
     width: 10px;
     height: auto;
     margin: 0;
-    background: url("/static_images/vista-controls/combo-glyph-normal.png") center / 10px 19px no-repeat;
+    background: image-set(url("/static_images/vista-controls/combo-glyph-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-normal.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-normal.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-normal.png") 2x) center / 10px 19px no-repeat;
     border: 0;
     border-image: none;
     box-shadow: none;

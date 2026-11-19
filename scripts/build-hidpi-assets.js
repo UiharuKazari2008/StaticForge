@@ -523,10 +523,13 @@ function writeIfChanged(file, bytes) {
     return true;
 }
 
-// the density a variant declares: the tier's scale, unless re-gridded art steps by whole cells
+// the density a variant declares: the tier's scale, or the variant's exact ratio where the size had to be
+// rounded (so the natural size, and so the layout and sprite steps, stay the 1x art's)
 function density(entry, t) {
     const v = entry.t[t.id];
     if (!v) return null;
+    // a nine-slice stretches: its density is the tier's, so the slices land on the scaled pieces
+    if (/^slice9/.test(entry.m)) return t.s;
     const exact = v.w / entry.w;
     return Math.abs(exact - t.s) < 0.02 ? t.s : Number(exact.toFixed(4));
 }
@@ -672,7 +675,7 @@ function cssRewrite() {
     if (skipped.length) console.log(`skipped (uncommitted edits, rerun later): ${skipped.join(', ')}`);
 }
 
-(async () => {
+if (require.main === module) (async () => {
     mkdirp(CACHE);
     if (opt('--index-vista')) return indexVista(path.resolve(opt('--index-vista')));
     if (flag('--css')) return cssRewrite();

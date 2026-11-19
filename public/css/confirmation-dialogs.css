@@ -670,7 +670,7 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-
     min-height: 0;
     margin: 1px 0 0;
     padding: 0;
-    background: url("/static_images/vista-controls/checkbox.png") 0 0 / 13px auto no-repeat;
+    background: image-set(url("/static_images/vista-controls/checkbox.png") 1x, url("/static_images/hidpi/125/vista-controls/checkbox.png") 1.25x, url("/static_images/hidpi/150/vista-controls/checkbox.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/checkbox.png") 1.75x, url("/static_images/hidpi/200/vista-controls/checkbox.png") 2x) 0 0 / 13px auto no-repeat;
     border: 0;
     border-radius: 0;
     box-shadow: none;

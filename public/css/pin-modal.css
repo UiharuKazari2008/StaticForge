@@ -238,7 +238,7 @@ body:not(.windows-classic-theme) #pinModal .pin-dots {
     align-items: center;
     padding: 0 6px;
     border: 1px solid transparent;
-    border-image: url("/static_images/vista-controls/edit-normal.png") 2 fill / 2px stretch;
+    border-image: image-set(url("/static_images/vista-controls/edit-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/edit-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/edit-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/edit-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/edit-normal.png") 2x) 2 fill / 2px stretch;
 }
 
 body:not(.windows-classic-theme) #pinModal .pin-dot {
@@ -283,7 +283,7 @@ body:not(.windows-classic-theme) #pinModal .pin-button:is(.backspace-btn, .clear
     width: 72px;
     height: 40px;
     border: 4px solid transparent;
-    border-image: url("/static_images/vista-controls/button-normal.png") 4 fill / 4px stretch;
+    border-image: image-set(url("/static_images/vista-controls/button-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/button-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/button-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/button-normal.png") 2x) 4 fill / 4px stretch;
     border-radius: 0;
     background: none;
     box-shadow: none;
@@ -296,14 +296,14 @@ body:not(.windows-classic-theme) #pinModal .pin-button:is(.backspace-btn, .clear
 }
 
 body:not(.windows-classic-theme) #pinModal .pin-button:is(:hover, :focus-visible) {
-    border-image-source: url("/static_images/vista-controls/button-hot.png");
+    border-image-source: image-set(url("/static_images/vista-controls/button-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/button-hot.png") 1.25x, url("/static_images/hidpi/150/vista-controls/button-hot.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-hot.png") 1.75x, url("/static_images/hidpi/200/vista-controls/button-hot.png") 2x);
     background: none;
     box-shadow: none;
     color: #000;
 }
 
 body:not(.windows-classic-theme) #pinModal .pin-button:active {
-    border-image-source: url("/static_images/vista-controls/button-pressed.png");
+    border-image-source: image-set(url("/static_images/vista-controls/button-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/button-pressed.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/button-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-pressed.png") 1.7727x, url("/static_images/hidpi/200/vista-controls/button-pressed.png") 2x);
     background: none;
 }
 

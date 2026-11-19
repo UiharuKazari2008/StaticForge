@@ -16,7 +16,7 @@
     border: 0;
     min-width: 0;
     min-height: 0;
-    background: url('/static_images/vista-icons/explorer/folder-32.png') no-repeat center / 32px 32px;
+    background: image-set(url('/static_images/vista-icons/explorer/folder-32.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/folder-32.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/folder-32.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/folder-32.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/folder-32.png') 2x) no-repeat center / 32px 32px;
     box-shadow: none;
 }
 
@@ -26,7 +26,7 @@
 }
 
 .vdt-client .cpl-dbl-folder.is-open {
-    background-image: url('/static_images/vista-icons/explorer/folder-front-32.png');
+    background-image: image-set(url('/static_images/vista-icons/explorer/folder-front-32.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/folder-front-32.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/folder-front-32.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/folder-front-32.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/folder-front-32.png') 2x);
 }
 
 /* Mouse > Pointers: the scheme preview and the list with each role's pointer at the right */

@@ -20,11 +20,11 @@
 /* the command bar's Back / Forward: IE7's travel arrows (ieframe.dll bitmap 288), pale when there is
    nowhere to go */
 .wiki-window-command-bar .wiki-window-back-btn:disabled > .explorer-command-icon {
-    content: url('/static_images/vista-cmdbar/back-disabled.png');
+    content: image-set(url('/static_images/vista-cmdbar/back-disabled.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/back-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/back-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/back-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/back-disabled.png') 2x);
 }
 
 .wiki-window-command-bar .wiki-window-forward-btn:disabled > .explorer-command-icon {
-    content: url('/static_images/vista-cmdbar/forward-disabled.png');
+    content: image-set(url('/static_images/vista-cmdbar/forward-disabled.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/forward-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/forward-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/forward-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/forward-disabled.png') 2x);
 }
 
 /* Popups have no navigation, like Chrome's popup windows: no command bar */

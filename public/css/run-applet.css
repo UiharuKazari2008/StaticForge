@@ -128,7 +128,7 @@
 
 /* hovering the drop-down button keeps the whole box hot, as Vista does */
 #runModal .run-applet-combo:hover > .run-applet-input:not(:focus) {
-    --vista-edit-face: url("/static_images/vista-controls/edit-hot.png");
+    --vista-edit-face: image-set(url("/static_images/vista-controls/edit-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/edit-hot.png") 1.2x, url("/static_images/hidpi/150/vista-controls/edit-hot.png") 1.6x, url("/static_images/hidpi/175/vista-controls/edit-hot.png") 1.8x, url("/static_images/hidpi/200/vista-controls/edit-hot.png") 2x);
 }
 
 #runModal .run-applet-drop {
@@ -137,17 +137,17 @@
     top: 0;
     width: 17px;
     height: 23px;
-    background: url("/static_images/vista-controls/combo-glyph-normal.png") 3px 2px / 10px 19px no-repeat;
+    background: image-set(url("/static_images/vista-controls/combo-glyph-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-normal.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-normal.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-normal.png") 2x) 3px 2px / 10px 19px no-repeat;
     cursor: default;
 }
 
 #runModal .run-applet-drop:hover {
-    background: url("/static_images/vista-controls/combo-dropbtn-hot.png") 0 0 / 17px 23px no-repeat;
+    background: image-set(url("/static_images/vista-controls/combo-dropbtn-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-dropbtn-hot.png") 1.25x, url("/static_images/hidpi/150/vista-controls/combo-dropbtn-hot.png") 1.5294x, url("/static_images/hidpi/175/vista-controls/combo-dropbtn-hot.png") 1.75x, url("/static_images/hidpi/200/vista-controls/combo-dropbtn-hot.png") 2x) 0 0 / 17px 23px no-repeat;
 }
 
 #runModal .run-applet-combo.is-dropped > .run-applet-drop,
 #runModal .run-applet-drop:active {
-    background: url("/static_images/vista-controls/combo-dropbtn-pressed.png") 0 0 / 17px 23px no-repeat;
+    background: image-set(url("/static_images/vista-controls/combo-dropbtn-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-dropbtn-pressed.png") 1.25x, url("/static_images/hidpi/150/vista-controls/combo-dropbtn-pressed.png") 1.5294x, url("/static_images/hidpi/175/vista-controls/combo-dropbtn-pressed.png") 1.75x, url("/static_images/hidpi/200/vista-controls/combo-dropbtn-pressed.png") 2x) 0 0 / 17px 23px no-repeat;
 }
 
 #runModal .run-applet-hint-icon {
@@ -361,7 +361,7 @@
     width: 17px;
     height: 17px;
     margin: 2px 0 0;
-    background: url("/static_images/vista-controls/sizegrip.png") 0 0 / 17px 17px no-repeat;
+    background: image-set(url("/static_images/vista-controls/sizegrip.png") 1x, url("/static_images/hidpi/125/vista-controls/sizegrip.png") 1.25x, url("/static_images/hidpi/150/vista-controls/sizegrip.png") 1.5294x, url("/static_images/hidpi/175/vista-controls/sizegrip.png") 1.75x, url("/static_images/hidpi/200/vista-controls/sizegrip.png") 2x) 0 0 / 17px 17px no-repeat;
     cursor: nwse-resize;
 }
 

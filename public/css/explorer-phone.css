@@ -69,8 +69,8 @@
     border-radius: 50%;
     /* Windows Media Player's Play orb (38x39 art drawn at 30) under its glyph */
     background:
-        url('/static_images/vista-wmp/play.png') no-repeat center / 17px auto,
-        url('/static_images/vista-wmp/orb.png') no-repeat center / 30px auto;
+        image-set(url('/static_images/vista-wmp/play.png') 1x, url('/static_images/hidpi/125/vista-wmp/play.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/play.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/play.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/play.png') 2x) no-repeat center / 17px auto,
+        image-set(url('/static_images/vista-wmp/orb.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb.png') 2x) no-repeat center / 30px auto;
     box-shadow: none;
     animation: none;
     transition: none;
@@ -82,27 +82,27 @@
 }
 
 #explorerModal .explorer-phone-play.is-playing:not(#_) {
-    background-image: url('/static_images/vista-wmp/pause.png'), url('/static_images/vista-wmp/orb.png');
+    background-image: image-set(url('/static_images/vista-wmp/pause.png') 1x, url('/static_images/hidpi/125/vista-wmp/pause.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/pause.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/pause.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/pause.png') 2x), image-set(url('/static_images/vista-wmp/orb.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb.png') 2x);
 }
 
 #explorerModal .explorer-phone-play:not(#_):hover:not(:disabled) {
-    background-image: url('/static_images/vista-wmp/play.png'), url('/static_images/vista-wmp/orb-hot.png');
+    background-image: image-set(url('/static_images/vista-wmp/play.png') 1x, url('/static_images/hidpi/125/vista-wmp/play.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/play.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/play.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/play.png') 2x), image-set(url('/static_images/vista-wmp/orb-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb-hot.png') 2x);
 }
 
 #explorerModal .explorer-phone-play.is-playing:not(#_):hover:not(:disabled) {
-    background-image: url('/static_images/vista-wmp/pause.png'), url('/static_images/vista-wmp/orb-hot.png');
+    background-image: image-set(url('/static_images/vista-wmp/pause.png') 1x, url('/static_images/hidpi/125/vista-wmp/pause.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/pause.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/pause.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/pause.png') 2x), image-set(url('/static_images/vista-wmp/orb-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb-hot.png') 2x);
 }
 
 #explorerModal .explorer-phone-play:not(#_):active:not(:disabled) {
-    background-image: url('/static_images/vista-wmp/play.png'), url('/static_images/vista-wmp/orb-down.png');
+    background-image: image-set(url('/static_images/vista-wmp/play.png') 1x, url('/static_images/hidpi/125/vista-wmp/play.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/play.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/play.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/play.png') 2x), image-set(url('/static_images/vista-wmp/orb-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb-down.png') 2x);
 }
 
 #explorerModal .explorer-phone-play.is-playing:not(#_):active:not(:disabled) {
-    background-image: url('/static_images/vista-wmp/pause.png'), url('/static_images/vista-wmp/orb-down.png');
+    background-image: image-set(url('/static_images/vista-wmp/pause.png') 1x, url('/static_images/hidpi/125/vista-wmp/pause.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/pause.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/pause.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/pause.png') 2x), image-set(url('/static_images/vista-wmp/orb-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb-down.png') 2x);
 }
 
 #explorerModal .explorer-phone-play:not(#_):disabled {
-    background-image: url('/static_images/vista-wmp/play-disabled.png'), url('/static_images/vista-wmp/orb.png');
+    background-image: image-set(url('/static_images/vista-wmp/play-disabled.png') 1x, url('/static_images/hidpi/125/vista-wmp/play-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/play-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/play-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/play-disabled.png') 2x), image-set(url('/static_images/vista-wmp/orb.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb.png') 2x);
     opacity: .6;
 }
 

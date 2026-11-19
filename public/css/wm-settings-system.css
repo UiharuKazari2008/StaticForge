@@ -582,11 +582,11 @@ html.ui-mobile .wm-sys-dm-box {
     top: calc(4.5 * var(--u));
     width: calc(9 * var(--u));
     height: calc(9 * var(--u));
-    background: url('/static_images/vista-devmgr/plus.png') center / 100% 100% no-repeat;
+    background: image-set(url('/static_images/vista-devmgr/plus.png') 1x, url('/static_images/hidpi/125/vista-devmgr/plus.png') 1.2222x, url('/static_images/hidpi/150/vista-devmgr/plus.png') 1.5556x, url('/static_images/hidpi/175/vista-devmgr/plus.png') 1.7778x, url('/static_images/hidpi/200/vista-devmgr/plus.png') 2x) center / 100% 100% no-repeat;
     image-rendering: pixelated;
 }
 
-html.ui-mobile .wm-sys-dm-box.is-open { background-image: url('/static_images/vista-devmgr/minus.png'); }
+html.ui-mobile .wm-sys-dm-box.is-open { background-image: image-set(url('/static_images/vista-devmgr/minus.png') 1x, url('/static_images/hidpi/125/vista-devmgr/minus.png') 1.2222x, url('/static_images/hidpi/150/vista-devmgr/minus.png') 1.5556x, url('/static_images/hidpi/175/vista-devmgr/minus.png') 1.7778x, url('/static_images/hidpi/200/vista-devmgr/minus.png') 2x); }
 html.ui-mobile .wm-sys-dm-row.is-root .wm-sys-dm-box { left: calc(8 * var(--u)); }
 
 html.ui-mobile .wm-sys-dm-row::before,

@@ -1441,11 +1441,11 @@ body:not(.windows-classic-theme) #maskEditorDialog .mask-editor-hint {
     font-size: 0;
     color: transparent;
     text-shadow: none;
-    background: url("/static_images/vista-cmdbar/paint-rectangle.png") no-repeat center / 16px 16px;
+    background: image-set(url("/static_images/vista-cmdbar/paint-rectangle.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/paint-rectangle.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/paint-rectangle.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/paint-rectangle.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/paint-rectangle.png") 2x) no-repeat center / 16px 16px;
 }
 
 #maskEditorDialog #brushShapeBtn > i.fa-circle {
-    background-image: url("/static_images/vista-cmdbar/paint-ellipse.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/paint-ellipse.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/paint-ellipse.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/paint-ellipse.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/paint-ellipse.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/paint-ellipse.png") 2x);
 }
 
 #maskEditorDialog #brushShapeBtn > i::before {

@@ -76,7 +76,7 @@
     gap: 0;
     height: 27px;
     padding: 0 4px 0 2px;
-    background: url('/static_images/vista-mmc/toolband.png') 0 0 / 1px 100% repeat-x;
+    background: image-set(url('/static_images/vista-mmc/toolband.png') 1x, url('/static_images/hidpi/125/vista-mmc/toolband.png') 1x, url('/static_images/hidpi/150/vista-mmc/toolband.png') 2x, url('/static_images/hidpi/175/vista-mmc/toolband.png') 2x, url('/static_images/hidpi/200/vista-mmc/toolband.png') 2x) 0 0 / 1px 100% repeat-x;
     border-bottom: 1px solid #a0a0a0;
     box-shadow: 0 1px #fff;
     box-sizing: border-box;
@@ -149,14 +149,14 @@
     background: center / 16px 16px no-repeat;
 }
 
-#bracketGenerationModal .phasewalker-tb-icon[data-icon="new"] { background-image: url('/static_images/vista-cmdbar/new.png'); }
-#bracketGenerationModal .phasewalker-tb-icon[data-icon="folder"] { background-image: url('/static_images/vista-cmdbar/folder.png'); }
-#bracketGenerationModal .phasewalker-tb-icon[data-icon="save"] { background-image: url('/static_images/vista-cmdbar/save.png'); }
-#bracketGenerationModal .phasewalker-tb-icon[data-icon="add"] { background-image: url('/static_images/vista-cmdbar/add.png'); }
-#bracketGenerationModal .phasewalker-tb-icon[data-icon="go"] { background-image: url('/static_images/vista-cmdbar/go.png'); }
-#bracketGenerationModal .phasewalker-tb-icon[data-icon="move-up"] { background-image: url('/static_images/vista-cmdbar/move-up.png'); }
-#bracketGenerationModal .phasewalker-tb-icon[data-icon="move-down"] { background-image: url('/static_images/vista-cmdbar/move-down.png'); }
-#bracketGenerationModal .phasewalker-tb-icon[data-icon="delete"] { background-image: url('/static_images/vista-cmdbar/delete.png'); }
+#bracketGenerationModal .phasewalker-tb-icon[data-icon="new"] { background-image: image-set(url('/static_images/vista-cmdbar/new.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/new.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/new.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/new.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/new.png') 2x); }
+#bracketGenerationModal .phasewalker-tb-icon[data-icon="folder"] { background-image: image-set(url('/static_images/vista-cmdbar/folder.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/folder.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/folder.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/folder.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/folder.png') 2x); }
+#bracketGenerationModal .phasewalker-tb-icon[data-icon="save"] { background-image: image-set(url('/static_images/vista-cmdbar/save.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/save.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/save.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/save.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/save.png') 2x); }
+#bracketGenerationModal .phasewalker-tb-icon[data-icon="add"] { background-image: image-set(url('/static_images/vista-cmdbar/add.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/add.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/add.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/add.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/add.png') 2x); }
+#bracketGenerationModal .phasewalker-tb-icon[data-icon="go"] { background-image: image-set(url('/static_images/vista-cmdbar/go.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/go.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/go.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/go.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/go.png') 2x); }
+#bracketGenerationModal .phasewalker-tb-icon[data-icon="move-up"] { background-image: image-set(url('/static_images/vista-cmdbar/move-up.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/move-up.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/move-up.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/move-up.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/move-up.png') 2x); }
+#bracketGenerationModal .phasewalker-tb-icon[data-icon="move-down"] { background-image: image-set(url('/static_images/vista-cmdbar/move-down.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/move-down.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/move-down.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/move-down.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/move-down.png') 2x); }
+#bracketGenerationModal .phasewalker-tb-icon[data-icon="delete"] { background-image: image-set(url('/static_images/vista-cmdbar/delete.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/delete.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/delete.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/delete.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/delete.png') 2x); }
 
 #bracketGenerationModal button:disabled .phasewalker-tb-icon {
     filter: grayscale(1);
@@ -382,7 +382,7 @@
     box-sizing: border-box;
     border-top: 1px solid #a0a0a0;
     box-shadow: inset 0 1px #fff;
-    background: #f0f0f0 url('/static_images/vista-controls/sizegrip.png') right 1px bottom 1px no-repeat;
+    background: #f0f0f0 image-set(url('/static_images/vista-controls/sizegrip.png') 1x, url('/static_images/hidpi/125/vista-controls/sizegrip.png') 1.25x, url('/static_images/hidpi/150/vista-controls/sizegrip.png') 1.5294x, url('/static_images/hidpi/175/vista-controls/sizegrip.png') 1.75x, url('/static_images/hidpi/200/vista-controls/sizegrip.png') 2x) right 1px bottom 1px no-repeat;
 }
 
 #bracketGenerationModal .phasewalker-status > span {

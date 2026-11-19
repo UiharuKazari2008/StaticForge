@@ -295,7 +295,7 @@ body.desktop-mode .modal.asw-window > .modal-window-title .modal-window-title-ma
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 0;
     box-shadow: none;
     opacity: 1;
 }
@@ -404,7 +404,7 @@ body.desktop-mode .modal.asw-window > .modal-window-title .modal-window-title-ma
     overflow: hidden;
     box-sizing: border-box;
     border-style: solid;
-    border-image: url("/static_images/vista-controls/progress-bar.png") 7 4 6 4 fill / 7px 4px 6px 4px stretch;
+    border-image: image-set(url("/static_images/vista-controls/progress-bar.png") 1x, url("/static_images/hidpi/125/vista-controls/progress-bar.png") 1.25x, url("/static_images/hidpi/150/vista-controls/progress-bar.png") 1.5x, url("/static_images/hidpi/175/vista-controls/progress-bar.png") 1.75x, url("/static_images/hidpi/200/vista-controls/progress-bar.png") 2x) 7 4 6 4 fill / 7px 4px 6px 4px stretch;
 }
 
 .asw-bar > i {
@@ -413,7 +413,7 @@ body.desktop-mode .modal.asw-window > .modal-window-title .modal-window-title-ma
     bottom: 1px;
     left: -90px;
     width: 90px;
-    border-image: url("/static_images/vista-controls/progress-fill.png") 0 8 fill / 0 8px stretch;
+    border-image: image-set(url("/static_images/vista-controls/progress-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/progress-fill.png") 1.25x, url("/static_images/hidpi/150/vista-controls/progress-fill.png") 1.5x, url("/static_images/hidpi/175/vista-controls/progress-fill.png") 1.75x, url("/static_images/hidpi/200/vista-controls/progress-fill.png") 2x) 0 8 fill / 0 8px stretch;
     /* perf: allow busy indicator: the bar exists only while a session transfer works (activeSyncStudio.js working()); a translate on the compositor, the same 445 px run as the old left -90px to 355px */
     animation: asw-marquee 2s linear infinite;
 }

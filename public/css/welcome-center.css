@@ -43,7 +43,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
 :is(#melatonControlPanelModal, .cpl-instance) .wc-band-bg {
     position: absolute;
     inset: 0;
-    background: url("/static_images/vista-welcome/band.png") 0 0 / 100% 100% no-repeat;
+    background: image-set(url("/static_images/vista-welcome/band.png") 1x, url("/static_images/hidpi/125/vista-welcome/band.png") 1.25x, url("/static_images/hidpi/150/vista-welcome/band.png") 1.5x, url("/static_images/hidpi/175/vista-welcome/band.png") 1.75x, url("/static_images/hidpi/200/vista-welcome/band.png") 2x) 0 0 / 100% 100% no-repeat;
 }
 
 /* PreviewFlare: layoutpos right, its frames add light (frame - band) */
@@ -104,7 +104,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
     display: flex;
     align-items: center;
     height: 40px;
-    background: url("/static_images/vista-welcome/title-band.png") 0 0 / 100% 100% no-repeat;
+    background: image-set(url("/static_images/vista-welcome/title-band.png") 1x, url("/static_images/hidpi/125/vista-welcome/title-band.png") 1.25x, url("/static_images/hidpi/150/vista-welcome/title-band.png") 1.5x, url("/static_images/hidpi/175/vista-welcome/title-band.png") 1.75x, url("/static_images/hidpi/200/vista-welcome/title-band.png") 2x) 0 0 / 100% 100% no-repeat;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .wc-userframe {
@@ -112,7 +112,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
     flex: none;
     width: 40px;
     height: 40px;
-    background: url("/static_images/vista-welcome/user-frame.png") no-repeat;
+    background: image-set(url("/static_images/vista-welcome/user-frame.png") 1x, url("/static_images/hidpi/125/vista-welcome/user-frame.png") 1.25x, url("/static_images/hidpi/150/vista-welcome/user-frame.png") 1.5x, url("/static_images/hidpi/175/vista-welcome/user-frame.png") 1.75x, url("/static_images/hidpi/200/vista-welcome/user-frame.png") 2x) no-repeat;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .wc-userpic {
@@ -187,14 +187,14 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
     :is(#melatonControlPanelModal, .cpl-instance) .wc-command:hover {
         padding: 0 1px 1px 0;
         border-width: 5px;
-        border-image: url("/static_images/vista-welcome/button-hot.png") 5 fill / 5px stretch;
+        border-image: image-set(url("/static_images/vista-welcome/button-hot.png") 1x, url("/static_images/hidpi/125/vista-welcome/button-hot.png") 1.25x, url("/static_images/hidpi/150/vista-welcome/button-hot.png") 1.5x, url("/static_images/hidpi/175/vista-welcome/button-hot.png") 1.75x, url("/static_images/hidpi/200/vista-welcome/button-hot.png") 2x) 5 fill / 5px stretch;
     }
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .wc-command:active {
     padding: 1px 0 0 1px;
     border-width: 5px;
-    border-image: url("/static_images/vista-welcome/button-pressed.png") 5 fill / 5px stretch;
+    border-image: image-set(url("/static_images/vista-welcome/button-pressed.png") 1x, url("/static_images/hidpi/125/vista-welcome/button-pressed.png") 1.25x, url("/static_images/hidpi/150/vista-welcome/button-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-welcome/button-pressed.png") 1.75x, url("/static_images/hidpi/200/vista-welcome/button-pressed.png") 2x) 5 fill / 5px stretch;
 }
 
 /* the theme's BP_COMMANDLINKGLYPH (aero IMAGE 512, 20 x 20 normal / hot), not oobefldr's own 100 */
@@ -203,11 +203,11 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
     width: 20px;
     height: 20px;
     margin-top: 2px;
-    background: url("/static_images/vista-welcome/glyph.png") no-repeat;
+    background: image-set(url("/static_images/vista-welcome/glyph.png") 1x, url("/static_images/hidpi/125/vista-welcome/glyph.png") 1.25x, url("/static_images/hidpi/150/vista-welcome/glyph.png") 1.5x, url("/static_images/hidpi/175/vista-welcome/glyph.png") 1.75x, url("/static_images/hidpi/200/vista-welcome/glyph.png") 2x) no-repeat;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .wc-command:hover .wc-glyph {
-    background-image: url("/static_images/vista-welcome/glyph-hot.png");
+    background-image: image-set(url("/static_images/vista-welcome/glyph-hot.png") 1x, url("/static_images/hidpi/125/vista-welcome/glyph-hot.png") 1.25x, url("/static_images/hidpi/150/vista-welcome/glyph-hot.png") 1.5x, url("/static_images/hidpi/175/vista-welcome/glyph-hot.png") 1.75x, url("/static_images/hidpi/200/vista-welcome/glyph-hot.png") 2x);
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .wc-more {

@@ -640,7 +640,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     width: 13px;
     height: 13px;
     margin: 0 5px 0 2px;
-    background: url('/static_images/vista-start/search-glyph.png') no-repeat center / 13px 13px;
+    background: image-set(url('/static_images/vista-start/search-glyph.png') 1x, url('/static_images/hidpi/125/vista-start/search-glyph.png') 1.25x, url('/static_images/hidpi/150/vista-start/search-glyph.png') 1.5385x, url('/static_images/hidpi/175/vista-start/search-glyph.png') 1.75x, url('/static_images/hidpi/200/vista-start/search-glyph.png') 2x) no-repeat center / 13px 13px;
     font-size: 0;
 }
 
@@ -729,7 +729,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 
 /* Mark as Read: the list's open envelope (list-16.png, bitmap 2, icon 10) */
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar > button.dovecote-cmd[data-dove-icon="read"]::before {
-    background: url('/static_images/vista-mail/list-16.png') no-repeat -160px 0 / 960px 16px;
+    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -160px 0 / 960px 16px;
 }
 
 /* hot (VM, Reply hovered): a #112b52 edge with a #7f90aa inner line, #cddff5 then #9bbee6 to
@@ -1019,7 +1019,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     content: '';
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-mail/list-16.png') no-repeat -80px 0 / 960px 16px;
+    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -80px 0 / 960px 16px;
 }
 
 /* Windows Mail puts the attachment column before the envelope */
@@ -1112,7 +1112,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     content: '';
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-mail/list-16.png') no-repeat -160px 0 / 960px 16px;
+    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -160px 0 / 960px 16px;
 }
 
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .unread > .dovecote-col-unread::before {
@@ -1131,7 +1131,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 
 /* Sent Items: read by the recipient (#2) = Windows Mail's blue check (marks-16.png 13) */
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-col-unread:has(> .dovecote-read-receipt)::before {
-    background: url('/static_images/vista-mail/marks-16.png') no-repeat -208px 0 / 224px 16px;
+    background: image-set(url('/static_images/vista-mail/marks-16.png') 1x, url('/static_images/hidpi/125/vista-mail/marks-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/marks-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/marks-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/marks-16.png') 2x) no-repeat -208px 0 / 224px 16px;
 }
 
 /* the attachment: the gold paperclip (list-16.png 8) */
@@ -1139,7 +1139,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     content: '';
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-mail/list-16.png') no-repeat -128px 0 / 960px 16px;
+    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -128px 0 / 960px 16px;
 }
 
 /* the flag column (e-mail accounts): the header's black flag, a flagged message's red flag
@@ -1154,7 +1154,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     content: '';
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-mail/list-16.png') no-repeat -528px 0 / 960px 16px;
+    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -528px 0 / 960px 16px;
 }
 
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > .dovecote-col-flag {
@@ -1170,7 +1170,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     content: '';
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-mail/list-16.png') no-repeat -544px 0 / 960px 16px;
+    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -544px 0 / 960px 16px;
 }
 
 /* route: 16px shared vista-icons, same cell size as unread / paperclip */
@@ -1447,7 +1447,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     width: 16px;
     height: 16px;
     margin-left: 4px;
-    background: url('/static_images/vista-mail/status-16.png') no-repeat -176px 0 / 192px 16px;
+    background: image-set(url('/static_images/vista-mail/status-16.png') 1x, url('/static_images/hidpi/125/vista-mail/status-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/status-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/status-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/status-16.png') 2x) no-repeat -176px 0 / 192px 16px;
 }
 
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-status-error {
@@ -1477,7 +1477,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     content: '';
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-mail/cards-16.png') no-repeat -32px 0 / 48px 16px;
+    background: image-set(url('/static_images/vista-mail/cards-16.png') 1x, url('/static_images/hidpi/125/vista-mail/cards-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/cards-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/cards-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/cards-16.png') 2x) no-repeat -32px 0 / 48px 16px;
 }
 
 /* Windows Mail's address boxes are the classic sunken edit (VM: #a0a0a0 over #696969 top and
@@ -1539,7 +1539,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 }
 
 .dovecote-tray-icon.has-unread .dovecote-tray-glyph {
-    background: url('/static_images/vista-mail/list-16.png') no-repeat -144px 0 / 960px 16px;
+    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -144px 0 / 960px 16px;
 }
 
 .dovecote-tray-badge {
@@ -1630,7 +1630,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     grid-row: span 2;
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-mail/list-16.png') no-repeat -160px 0 / 960px 16px;
+    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -160px 0 / 960px 16px;
 }
 
 .dove-inbox-flyout-row.unread .dove-inbox-flyout-mark {
@@ -1642,7 +1642,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 }
 
 .dove-inbox-flyout-row.has-attachment .dove-inbox-flyout-clip {
-    background: url('/static_images/vista-mail/list-16.png') no-repeat -128px 0 / 960px 16px;
+    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -128px 0 / 960px 16px;
 }
 
 .dove-inbox-flyout-subject,
