@@ -12,6 +12,10 @@
  *   phoneStorage.deviceId / deviceName   the device shown (one at a time)
  *   phoneStorage.select(deviceId)        show another connected device
  *   phoneStorage.devices()               [{ deviceId, name }] that could be shown
+ *   phoneStorage.receivedDir             '/ActiveSync': where files sent to a phone go (Yukimi, Nov 18:
+ *                                        ActiveSync's own folder at the root of internal storage)
+ *   phoneStorage.receivedRoot(st)        the root it is on (internal storage, else the first shared one)
+ *   phoneStorage.openReceived(deviceId)  Explorer at that folder (made when missing)
  *
  * Not offered from a computer: the app's settings and its storage permission prompt (openSettings,
  * requestAccess) and Android's share sheet; they answer { code: 'unsupported' }.
@@ -23,6 +27,9 @@
     const as = root.activeSync;
     if (!as || as.kind !== 'computer' || root.phoneStorage) return;
 
+    // files sent to a phone (Send To, programs for an app build without its temporary folder) land here;
+    // explorerPhoneDrive.js and the menus that open it read it from phoneStorage.receivedDir
+    const RECEIVED_DIR = '/ActiveSync';
     const REMOTE_OPS = new Set(['hello', 'list', 'stat', 'mkdir', 'rename', 'delete', 'trash', 'trashList', 'restore', 'move', 'copy', 'open', 'watch', 'unwatch']);
     const listeners = new Map();
     const progress = new Map(); // transfer id -> onProgress
@@ -176,6 +183,7 @@
      * opts: { name, conflict, mtime, signal, onProgress(bytes, total), queue, deviceId, install }.
      * queue: an offline partner gets it when it next connects ({ queued: true }).
      * install: an .apk is then offered to Android's installer (#795); the answer carries install.
+     * mkdirs: the phone makes dir first when it is missing (a queued copy cannot make it ahead).
      */
     async function write(rootId, dir, file, opts = {}) {
         const deviceId = opts.deviceId || (current && current.deviceId);
@@ -186,7 +194,8 @@
         const id = transferId();
         const begun = await post(`/api/activesync/upload/${deviceId}/begin`, {
             id, root: rootId, dir, name: opts.name || file.name, size: total,
-            conflict: opts.conflict || 'fail', mtime: opts.mtime != null ? opts.mtime : (file.lastModified || undefined)
+            conflict: opts.conflict || 'fail', mtime: opts.mtime != null ? opts.mtime : (file.lastModified || undefined),
+            mkdirs: opts.mkdirs === true ? true : undefined
         }, signal, true);
         if (begun.status !== 200) throw error(begun.data.code, begun.data.error);
         const chunkSize = begun.data.chunkSize || 4 * 1024 * 1024;
@@ -257,11 +266,40 @@
             return typeof root.openExplorerApplet === 'function' ? root.openExplorerApplet('phone://') : undefined;
         }
     });
+    addTask('files', {
+        id: 'received', text: 'Open the folder of files sent to your device', icon: 'explore-32.png',
+        when: (d) => d.online && d.permissions.includes('files'),
+        run: (d) => openReceived(d.deviceId)
+    });
+
+    /** The root the received folder is on: internal storage, else the first shared folder. */
+    function receivedRoot(st) {
+        const roots = st && Array.isArray(st.roots) ? st.roots : [];
+        return roots.find((r) => r.id === 'internal') || roots[0] || null;
+    }
+
+    /** Explorer at the device's received folder (Device Center, the tray menu); made when missing. */
+    async function openReceived(deviceId) {
+        const ps = root.phoneStorage;
+        if (deviceId) ps.select(deviceId);
+        const name = (current && current.name) || 'The device';
+        const say = (text) => (typeof root.showConfirmationDialog === 'function'
+            ? root.showConfirmationDialog(String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])), [{ text: 'OK', value: true, className: 'btn-primary' }], null, { title: 'Melaton Mobile Device Center' })
+            : undefined);
+        let st = null;
+        try { st = await hello(); } catch (err) { await say((err && err.message) || `${name} is not connected.`); return; }
+        const r = st && st.enabled && st.access && !st.locked ? receivedRoot(st) : null;
+        if (!r) { await say(`${name} does not share its storage right now. Turn on phone storage in the app on the device, then try again.`); return; }
+        try { await call('mkdir', { root: r.id, path: RECEIVED_DIR }); } catch (_) { /* it is there */ }
+        if (typeof root.openExplorerApplet === 'function') root.openExplorerApplet(`phone://${r.id}${RECEIVED_DIR}`);
+    }
 
     // Programs and Services: an Android program (.apk) from this computer to the phone (Yukimi, Nov 13,
-    // #795). It goes to Download on the phone and Android's installer opens there, or a notification
-    // waits for a tap when the app is in the background; the user confirms on the phone. A partner
-    // that is away gets it, and the install, when it next connects.
+    // #795). The app keeps it in its own temporary folder, Android's installer opens (or a notification
+    // waits for a tap when the app is in the background; the user confirms on the phone) and the app
+    // deletes it once the install ended (Yukimi, Nov 18: never left in Download). An app build without
+    // the temporary folder saves it in the received folder instead. A partner that is away gets it, and
+    // the install, when it next connects.
     addTask('programs', {
         id: 'install-apk', text: 'Install a program on your device', icon: 'add-programs-32.png',
         when: (d) => d.partner && d.permissions.includes('files') && d.permissions.includes('control'),
@@ -278,13 +316,16 @@
                     : Promise.resolve());
                 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
                 try {
-                    const r = await write('internal', '/Download', file, { deviceId: d.deviceId, conflict: 'replace', install: true, queue: true });
+                    // an app build without the temporary folder saves it in the received folder and cannot make it
+                    if (d.online) { try { root.phoneStorage.select(d.deviceId); await call('mkdir', { root: 'internal', path: RECEIVED_DIR }); } catch (_) { /* there, or a newer app */ } }
+                    const r = await write('internal', RECEIVED_DIR, file, { deviceId: d.deviceId, conflict: 'replace', install: true, queue: true, mkdirs: true });
                     const st = r && r.install && (r.install.state || r.install);
                     const msg = r && r.queued ? `${esc(name)} is not connected. ${esc(file.name)} will be copied and offered for installation when it connects.`
                         : st === 'prompted' ? `${esc(file.name)} was copied to ${esc(name)}. Confirm the installation on the device.`
                             : st === 'notified' ? `${esc(file.name)} was copied to ${esc(name)}. Tap the notification on the device to install it.`
                                 : st === 'needs_permission' ? `${esc(file.name)} was copied to ${esc(name)}, but the device does not allow Dreamscape to install programs yet. Allow it on the device, then try again.`
-                                    : `${esc(file.name)} was copied to the Download folder of ${esc(name)}, but it could not be offered for installation${r && r.install && r.install.error ? `: ${esc(r.install.error)}` : '.'}`;
+                                    : st === 'installing' || st === 'installed' ? `${esc(file.name)} is being installed on ${esc(name)}.`
+                                        : `${esc(file.name)} was copied to ${esc(name)}, but it could not be offered for installation${r && r.install && r.install.error ? `: ${esc(r.install.error)}` : '.'}`;
                     await box(msg);
                 } catch (err) {
                     await box(`${esc(file.name)} could not be sent to ${esc(name)}.<br>${esc((err && err.message) || '')}`);
@@ -313,6 +354,9 @@
         unwatch,
         write,
         devices: () => usable().map((d) => ({ deviceId: d.deviceId, name: d.name })),
+        receivedDir: RECEIVED_DIR,
+        receivedRoot,
+        openReceived,
         select(deviceId) { chosen = deviceId || null; sync(); return !!(current && current.deviceId === deviceId); }
     };
     sync();

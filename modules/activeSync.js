@@ -873,7 +873,12 @@ function receivedOf(op, args) {
         const dir = String(a.dir || '/');
         return { kind: IMAGE_EXT.test(name) ? 'picture' : 'file', title: name, detail: { root: clampString(a.root || '', 64), path: `${dir.replace(/\/+$/, '')}/${name}`, size: Number(a.size) || 0 } };
     }
-    if (op === 'apps.install') return { kind: 'program', title: clampString(base(a.path) || 'Program', 200), detail: { root: clampString(a.root || '', 64), path: clampString(a.path || '', 1000) } };
+    if (op === 'apps.install') {
+        // temp: the transfer id of a program in the app's temporary folder (activeSyncTransfers.js)
+        const detail = { root: clampString(a.root || '', 64), path: clampString(a.path || '', 1000) };
+        if (/^[0-9a-f]{32}$/.test(String(a.temp || ''))) detail.temp = a.temp;
+        return { kind: 'program', title: clampString(a.name || base(a.path) || 'Program', 200), detail };
+    }
     if (op === 'clipboard.set') return { kind: 'clipboard', title: clampString(String(a.text || '').replace(/\s+/g, ' ') || 'Clipboard', 120), detail: { text: clampString(String(a.text || ''), 4000) } };
     if (op === 'notify.show') return { kind: 'note', title: clampString(a.title || a.text || 'Notification', 200), detail: { text: clampString(String(a.text || ''), 2000) } };
     if (op === 'studio.setSession') return { kind: 'studio', title: 'Studio session', detail: {} };

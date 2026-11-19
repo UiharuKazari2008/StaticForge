@@ -78,7 +78,7 @@ async function main() {
     const pc = connect('pc-session');
     as.hello(gr, server, pc.info, { kind: 'computer', id: PC, name: 'PC', ops: [] });
     const phone = connect('phone-session');
-    as.hello(gr, server, phone.info, { kind: 'device', id: DEV, name: 'Phone', ops: ['partnership.*', 'stream.*', 'storage.*'] });
+    as.hello(gr, server, phone.info, { kind: 'device', id: DEV, name: 'Phone', ops: ['partnership.*', 'stream.*', 'storage.*', 'apps.*'] });
 
     const FILE = Buffer.alloc(2500000);
     for (let i = 0; i < FILE.length; i += 1) FILE[i] = (i * 31 + 7) & 0xff;
@@ -138,8 +138,9 @@ async function main() {
                     }
                 }
                 phone.received = { args, data: Buffer.concat(parts) };
-                return { name: args.name, size: args.size, path: `${args.dir}/${args.name}` };
+                return args.temp ? { temp: true, name: args.name, size: args.size } : { name: args.name, size: args.size, path: `${args.dir}/${args.name}` };
             }
+            if (op === 'apps.install') { phone.installed = args; return { state: 'prompted', package: 'x.y', version: '1' }; }
             throw { code: 'UNSUPPORTED', message: 'no' };
         })().then((r) => answer(callId, true, r), (e) => answer(callId, false, { code: e.code || 'FAILED', message: e.message || String(e) }));
     };
@@ -221,6 +222,27 @@ async function main() {
     assert.strictEqual(phone.received.args.conflict, 'rename');
     assert.strictEqual(fs.readdirSync(path.join(tmpDir, 'activesync-transfers')).length, 0, 'delivered: nothing kept');
 
+    // a program (Yukimi, Nov 18): into the app's temporary folder, installed from there by transfer id;
+    // root / dir (/ActiveSync, made when missing) only for an app build without the temporary folder
+    const APK = Buffer.from('PK fake apk');
+    r = await request(port, 'POST', `/api/activesync/upload/${DEV}/begin`, { session: ADMIN, json: { root: 'primary', dir: '/ActiveSync', name: 'tool.apk', size: APK.length, conflict: 'replace', mkdirs: true } });
+    const apkId = r.json.id;
+    await request(port, 'POST', `/api/activesync/upload/${apkId}/chunk?offset=0`, { session: ADMIN, body: APK });
+    r = await request(port, 'POST', `/api/activesync/upload/${apkId}/commit`, { session: ADMIN, json: { install: true } });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(phone.received.args.temp, true, 'the phone keeps a program in its temporary folder');
+    assert.strictEqual(phone.received.args.mkdirs, true);
+    assert.strictEqual(phone.received.args.dir, '/ActiveSync');
+    assert.deepStrictEqual(phone.installed, { temp: apkId, name: 'tool.apk', root: 'primary', path: '/ActiveSync/tool.apk' });
+    assert.strictEqual(r.json.install.state, 'prompted');
+    // Received Items' Install: the program still in the temporary folder
+    phone.installed = null;
+    r = await request(port, 'POST', `/api/activesync/install/${DEV}`, { session: ADMIN, json: { temp: apkId, name: 'tool.apk', root: 'primary', path: '/ActiveSync/tool.apk' } });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(phone.installed.temp, apkId);
+    r = await request(port, 'POST', `/api/activesync/install/${DEV}`, { session: ADMIN, json: { temp: apkId, name: 'notes.txt' } });
+    assert.strictEqual(r.status, 400, 'only programs');
+
     // the data is the device's only
     r = await request(port, 'POST', `/api/activesync/upload/${DEV}/begin`, { session: ADMIN, json: { root: 'primary', dir: '/', name: 'q.bin', size: 5 } });
     const id2 = r.json.id;
@@ -238,7 +260,7 @@ async function main() {
     const replyTo = phone2.info;
     // the handler above answers through phone.info: point it at the new socket
     phone.info = replyTo;
-    as.hello(gr, server, phone2.info, { kind: 'device', id: DEV, name: 'Phone', ops: ['partnership.*', 'stream.*', 'storage.*'] });
+    as.hello(gr, server, phone2.info, { kind: 'device', id: DEV, name: 'Phone', ops: ['partnership.*', 'stream.*', 'storage.*', 'apps.*'] });
     assert.strictEqual(await as.deliverQueue(gr, server, DEV), 1);
     assert.strictEqual(phone.received.data.toString(), 'hello');
     assert.strictEqual(fs.readdirSync(path.join(tmpDir, 'activesync-transfers')).length, 0);

@@ -2198,7 +2198,14 @@
             if (!page || pathNow() === path) return;
             const vol = rootItems().find((r) => r.navPath === path);
             if (vol) { void openItem(vol); return; }
-            if (String(path).startsWith('phone:')) return; // a volume that went away: File Explorer as it stands
+            if (String(path).startsWith('phone:')) {
+                // a folder inside a volume (Received Items' files, ActiveSync's Received Files); a volume
+                // that went away (or a locked phone): File Explorer as it stands
+                const p = PD().parse(path);
+                if (!p || !rootItems().some((r) => r.phone.root === p.root) || phoneBlock()) return;
+                navigate(path, name || String(p.path).split('/').filter(Boolean).pop() || p.root, { trail: phoneTrail(p.root, p.path) });
+                return;
+            }
             const docs = myDocumentsPath();
             navigate(path, name, name && path.startsWith(`${docs}/`) ? { trail: trailFor(docs).concat([{ path, name: placeName(path, name) }]) } : {});
         },
