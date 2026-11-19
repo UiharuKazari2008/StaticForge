@@ -6806,7 +6806,7 @@ function buildToolsSubmenuItems(opts) {
         // Melaton Videos on the desktop (apps/videos, Yozora #920): the phone's Videos program in a window
         { launchId: 'videos', icon: 'fas fa-tv', imageIcon: 'videos.png', text: 'Melaton Videos', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'videos' }) },
         // VZAccess Manager (Yozora #947; apps/vzaccess): Verizon's connection manager, on a desktop with a phone's modem
-        { launchId: 'vzaccess', icon: 'fas fa-signal', imageIcon: 'vzaccess.png', text: 'VZAccess Manager', desktopOnly: true, appMenuLocation: 'tools', appMenu: false, startMenu: melatonHasCellularModem(), action: () => melatonApps.launch({ packageId: 'vzaccess' }) },
+        { launchId: 'vzaccess', icon: 'fas fa-signal', imageIcon: 'vzaccess.png', text: 'VZAccess Manager', desktopOnly: true, appMenuLocation: 'tools', appMenu: false, startMenu: melatonVzaccessSeen(), action: () => melatonApps.launch({ packageId: 'vzaccess' }) },
         { launchId: 'xlink', icon: 'fas fa-joystick', imageIcon: 'xlink.png', text: 'XLink Operator Console', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'xlink' }) },
         // Nightshade Network Client (#895): the service's connection manager (nightshadeClient.js, loaded with
         // the desktop so it opens while the server is out of reach); its own program folder, as a broadband
@@ -8075,7 +8075,7 @@ const START_MENU_PACKAGE_APPS = [
 // Other publishers' program folders, the same way (Yozora #719: the AmusementVISION suite's XLink)
 const START_MENU_VENDOR_FOLDERS = [
     { folderId: 'amusementvision-2024', text: 'AmusementVISION 2024', apps: [['paypass', 'PayPass Operator'], ['quickcast', 'VisionCaster'], ['xlink', 'XLink Operator Console']] },
-    // VZAccess Manager's own folder, as its installer made it (#947): listed only with a cellular modem
+    // VZAccess Manager's own folder, as its installer made it (#947): listed once this computer connected through Verizon
     { folderId: 'vzaccess-manager', text: 'VZAccess Manager', apps: [['vzaccess', 'VZAccess Manager']] },
     // the Nightshade Network's own folder (#895), as a mobile broadband utility installs itself
     { folderId: 'nightshade-network', text: 'Nightshade Network', apps: [['nightshade', 'Nightshade Network Client']] },
@@ -8084,14 +8084,12 @@ const START_MENU_VENDOR_FOLDERS = [
 ];
 const START_MENU_PACKAGE_IDS = new Set(START_MENU_PACKAGE_APPS.concat(...START_MENU_VENDOR_FOLDERS.map((f) => f.apps)).map((pair) => pair[0]));
 
-/** This computer has a cellular modem (a phone's DeX / Continuity desktop): VZAccess Manager is offered (#947). */
-function melatonHasCellularModem() {
-    try {
-        const p = window.melatonTray && window.melatonTray.provider('network');
-        const s = p && typeof p.get === 'function' ? p.get() : null;
-        if (s && s.mobile && s.mobile.present) return true;
-    } catch (_) { /* no provider */ }
-    return !!window.AndroidDeviceStatus;
+/**
+ * VZAccess Manager is in the Start menu once this computer has connected through Verizon (#947): a local mark the
+ * desktop's network provider sets on the first Verizon data connection (androidTrayProviders.js onVerizon).
+ */
+function melatonVzaccessSeen() {
+    try { return localStorage.getItem('melatonVzaccessSeen') === '1'; } catch (_) { return false; }
 }
 
 function isStartMenuPackageApp(item) {

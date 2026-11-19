@@ -140,6 +140,36 @@
         });
     }
 
+    // ---- VZAccess Manager (#947): on a Verizon data connection the desktop has Verizon's connection manager in the
+    // notification area (7.x ran at startup into the tray), and the Start menu lists it from the first such
+    // connection on (a local mark, 'melatonVzaccessSeen'). Leaving Verizon ends a copy that is only in the tray.
+    let vzOn = null;
+    let vzTimer = 0;
+    function onVerizon(on) {
+        if (on === vzOn) return;
+        vzOn = on;
+        clearTimeout(vzTimer);
+        if (!on) {
+            const vz = root.melatonVZAccess;
+            if (vz && typeof vz.leftVerizon === 'function') vz.leftVerizon();
+            return;
+        }
+        try { if (root.localStorage.getItem('melatonVzaccessSeen') !== '1') root.localStorage.setItem('melatonVzaccessSeen', '1'); } catch (_) { /* private mode */ }
+        let prefs = null;
+        try { prefs = JSON.parse(root.localStorage.getItem('vzaccess.prefs') || 'null'); } catch (_) { prefs = null; }
+        if (prefs && prefs.runAtStartup === false) return;
+        // after the desktop is up (the package comes from the server or the cache), once
+        const go = () => {
+            if (!vzOn) return;
+            const apps = root.melatonApps;
+            if (!apps || typeof apps.launch !== 'function') return;
+            const running = typeof apps.running === 'function' && apps.running().some((a) => a.packageId === 'vzaccess');
+            if (!running) void Promise.resolve(apps.launch({ packageId: 'vzaccess', args: { tray: true } })).catch(() => { /* no package: no tray icon */ });
+        };
+        if (root.wsClient && root.wsClient.initializationCompleted) vzTimer = setTimeout(go, 1500);
+        else doc.addEventListener('desktopBootDone', () => { vzTimer = setTimeout(go, 3000); }, { once: true, signal: appScopeSignal });
+    }
+
     // ---- network: Wi-Fi + mobile broadband ------------------------------------------------------------------------
     if (tray && root.AndroidWifi) {
         const h = hub();
@@ -182,6 +212,7 @@
             netKey = key;
             net = next;
             h.emit(net);
+            onVerizon(!!(next.mobile && next.mobile.connected && /^verizon/i.test(String(next.mobile.carrier || ''))));
         };
         listen('androidwifi', (d) => { if (d && typeof d === 'object') { wifi = d; update(); } });
         listen('androidwifiscan', (d) => scanHub.emit(d && Array.isArray(d.networks) ? d : { networks: [] }));

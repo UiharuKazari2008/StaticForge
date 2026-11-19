@@ -80,6 +80,10 @@
     class Manager {
         constructor(app) {
             this.app = app;
+            // started by the desktop on a Verizon connection (androidTrayProviders.js, #947): in the notification
+            // area only, as 7.x's "Run VZAccess Manager at Startup" left it; the tray icon opens the window
+            this.trayOnly = !!(app.args && app.args.tray);
+            this.shown = false;
             this.tab = 'networks';
             this.cell = null;
             this.pending = null; // 'connecting' | 'disconnecting', until the phone's state says it happened
@@ -305,13 +309,44 @@
                     sections: [{ type: 'list', initfn: (s) => { s.items = this.menu(t.dataset.vzMenu); } }]
                 });
             });
-            w.close.addEventListener('click', () => this.app.exit(), sig);
+            // the window's close button puts it back in the notification area while it runs from there (on Verizon);
+            // Exit in the File and tray menus quits
+            w.close.addEventListener('click', (ev) => {
+                if (!this.trayOnly) { this.app.exit(); return; }
+                ev.stopImmediatePropagation();
+                this.hide();
+            }, Object.assign({ capture: true }, sig));
             doc.addEventListener('staticforge:modal-lifecycle', (e) => {
-                if (e && e.detail && e.detail.id === m.id && e.detail.type === 'closed') this.app.exit();
+                if (e && e.detail && e.detail.id === m.id && e.detail.type === 'closed' && !this.hiding) this.app.exit();
             }, sig);
             this.q = q;
+            this.m = m;
+            if (!this.trayOnly) this.show();
+            this.makeTray(m);
+        }
+
+        /** The window on screen (from the tray, the Start menu or a second launch). */
+        show() {
+            const m = this.m;
+            if (!m) return;
+            if (this.shown && m.isConnected && !m.classList.contains('hidden')) { call('bringModalToFront', m); return; }
+            this.shown = true;
             call('openModal', m);
             m.classList.remove('hidden');
+            this.paintSoon();
+            this.place(m);
+        }
+
+        /** Back to the notification area (the window closes; the program keeps running in the tray). */
+        hide() {
+            const m = this.m;
+            if (!m || !this.shown) return;
+            this.shown = false;
+            this.hiding = true;
+            Promise.resolve(call('closeModal', m)).finally(() => { this.hiding = false; });
+        }
+
+        place(m) {
             let placed = false;
             const place = () => {
                 if (placed || m.hasAttribute('data-window-position-restored')) return;
@@ -324,11 +359,14 @@
             if (root.programFaults && root.programFaults.registerProgram) {
                 root.programFaults.registerProgram(m.id, { name: 'VZAccess Manager', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'vzaccess' }) });
             }
+        }
+
+        makeTray(m) {
             // the notification area: VZAM's antenna, red while connected (the User Guide's tray menu)
             this.trayIcon = this.app.tray({
                 title: 'VZAccess Manager',
                 icon: `${A}/tab-networks-off.png`,
-                onClick: () => { call('bringModalToFront', m); },
+                onClick: () => { this.show(); },
                 menu: {
                     sections: [{ type: 'list', initfn: (s) => {
                         s.items = [
@@ -345,8 +383,8 @@
                         ];
                     } }],
                     onAction: (a) => {
-                        if (a === 'show') { call('bringModalToFront', m); return; }
-                        if (a.startsWith('tab:')) { call('bringModalToFront', m); this.showTab(a.slice(4)); return; }
+                        if (a === 'show') { this.show(); return; }
+                        if (a.startsWith('tab:')) { this.show(); this.showTab(a.slice(4)); return; }
                         void this.command(a);
                     }
                 }
@@ -393,7 +431,8 @@
             }
             // one tick a second while the window is seen (the timer; on Statistics the counters too)
             let tick = null;
-            const seen = () => !doc.hidden && doc.documentElement.dataset.screenOff === undefined && !this.app.signal.aborted && !this.modal.classList.contains('minimised');
+            // (in the tray only, nothing ticks: the pushes keep the tray icon right)
+            const seen = () => this.shown && !doc.hidden && doc.documentElement.dataset.screenOff === undefined && !this.app.signal.aborted && !this.modal.classList.contains('minimised');
             const sync = () => {
                 if (seen() && !tick) {
                     this.tick();
@@ -833,12 +872,13 @@
             if (typeof root.showConfirmationDialog !== 'function') return;
             const p = readJson(PREFS_KEY, {});
             const box = (id, label, on) => `<div class="win7"><input type="checkbox" id="${id}"${on ? ' checked' : ''}><label for="${id}">${label}</label></div>`;
-            const html = `<b>Application</b><br><br>${box('vzPrefPopup', 'Show popup status windows by tray', p.popup !== false)}${box('vzPrefWarn', 'Show the charges warning before connecting', !p.noConnectWarning)}`;
+            const html = `<b>Application</b><br><br>${box('vzPrefStart', 'Run VZAccess Manager at Startup', p.runAtStartup !== false)}${box('vzPrefPopup', 'Show popup status windows by tray', p.popup !== false)}${box('vzPrefWarn', 'Show the charges warning before connecting', !p.noConnectWarning)}`;
             let dlg = null;
             const r = await root.showConfirmationDialog(html, [{ text: 'OK', value: true }, { text: 'Cancel', value: false }], null, { title: 'Preferences', icon: 'fas fa-info-circle', onDialogReady: () => { dlg = doc.getElementById('confirmationDialog'); } });
             if (!r || !dlg) return;
             const v = (id) => { const e = doc.getElementById(id); return !!(e && e.checked); };
-            writeJson(PREFS_KEY, Object.assign(p, { popup: v('vzPrefPopup'), noConnectWarning: !v('vzPrefWarn') }));
+            // runAtStartup: the desktop puts VZAccess Manager in the tray on a Verizon connection (androidTrayProviders.js)
+            writeJson(PREFS_KEY, Object.assign(p, { runAtStartup: v('vzPrefStart'), popup: v('vzPrefPopup'), noConnectWarning: !v('vzPrefWarn') }));
         }
 
         sessionLog() {
@@ -924,13 +964,23 @@
     let running = null;
     function start(app) {
         themeStyles();
-        if (running) { call('bringModalToFront', running.modal); app.exit(); return; }
+        if (running) {
+            // a second start: the desktop's own tray start is a no-op, anything else shows the window
+            if (!(app.args && app.args.tray)) running.show();
+            app.exit();
+            return;
+        }
         if (typeof root.desktopAppCreateWindow !== 'function') { app.exit(); return; }
         const m = new Manager(app);
         running = m;
         app.onExit(() => { if (running === m) running = null; m.destroy(); });
     }
 
-    root.melatonVZAccess = { start, _running: () => running };
+    /** The desktop left Verizon (androidTrayProviders.js): a copy only in the tray goes; an open window stays. */
+    function leftVerizon() {
+        if (running && running.trayOnly && !running.shown) running.app.exit();
+    }
+
+    root.melatonVZAccess = { start, leftVerizon, _running: () => running };
     if (typeof melatonApps !== 'undefined') melatonApps.define('vzaccess', start); // eslint-disable-line no-undef
 })(typeof window !== 'undefined' ? window : globalThis);
