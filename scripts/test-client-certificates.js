@@ -234,6 +234,15 @@ const hasOpenssl = (() => { try { execFileSync('openssl', ['version'], { stdio: 
     assert.strictEqual(crlPush[1]({ sessionId: 'someone-else' }), false);
     assert.strictEqual(broadcasts[0][1]({ authenticated: true, userType: 'readonly' }), false, 'Key Manager refresh is for administrators');
 
+    // ---- the routes mount before Key Manager's database is open (boot order): nothing is touched until a request ----
+    const routes = {};
+    const fakeApp = { get: (p) => { routes[`GET ${p}`] = true; }, post: (p) => { routes[`POST ${p}`] = true; } };
+    assert.doesNotThrow(() => cc.mount(fakeApp, (req, res, next) => next(), { getConfig: () => ({}) }), 'mounting needs no database yet');
+    assert.deepStrictEqual(Object.keys(routes).sort(), [
+        'GET /api/client-cert/ca', 'GET /api/client-cert/crl', 'GET /api/client-cert/crl.json', 'GET /api/client-cert/mine',
+        'POST /api/client-cert/auth', 'POST /api/client-cert/challenge', 'POST /api/client-cert/enrol', 'POST /api/client-cert/renew'
+    ]);
+
     // ---- who may enrol ----
     const ps = cc._util.personSession;
     assert.strictEqual(ps({ authMethod: 'session', session: { authenticated: true } }), true);

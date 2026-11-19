@@ -244,7 +244,7 @@ function createService(options = {}) {
     async function renew({ serial, csr, keyStore, ip, sessionId }) {
         const row = await getRow(serial);
         if (!row || row.revoked_at || row.not_after <= now()) {
-            throw new ClientCertError(403, 'RENEW_NEEDS_CERT_SESSION', 'This session was not opened by a valid certificate.');
+            throw new ClientCertError(403, 'RENEW_NEEDS_CERT_SESSION', 'This session does not belong to a valid certificate.');
         }
         const latest = await db.get('SELECT MAX(issued_at) AS at FROM client_certificates WHERE kind = ? AND device_id = ? AND replaces_serial IS NOT NULL', [row.kind, row.device_id]);
         if (latest && latest.at && now() - latest.at < RENEW_GAP_MS) {
@@ -400,8 +400,15 @@ function createService(options = {}) {
 let liveService = null;
 function live(globalResources) {
     if (!liveService) {
+        // the database opens later in the boot than the routes are mounted: looked up at each call
+        const database = () => require('./applicationAuthDatabase').getDb();
         liveService = createService({
-            db: require('./applicationAuthDatabase').getDb(),
+            db: {
+                exec: (sql) => database().exec(sql),
+                run: (sql, params) => database().run(sql, params),
+                get: (sql, params) => database().get(sql, params),
+                all: (sql, params) => database().all(sql, params)
+            },
             settings: () => {
                 try { return (globalResources.getConfig() || {}).clientCertificates || {}; } catch (_) { return {}; }
             }
@@ -579,12 +586,14 @@ function mount(app, authMiddleware, globalResources, options = {}) {
         noStore(res);
         try {
             const s = req.session;
-            if (!s || req.authMethod !== 'session' || s.authMethod !== 'client_cert' || !s.clientCertSerial) {
-                throw new ClientCertError(403, 'RENEW_NEEDS_CERT_SESSION', 'This session was not opened by a certificate. Enrol instead.');
+            // the certificate's own sessions: the ones it opened, and the sign-in that enrolled it
+            const serial = s && s.authenticated && req.authMethod === 'session' ? await service.sessionSerial(s.id) : null;
+            if (!serial) {
+                throw new ClientCertError(403, 'RENEW_NEEDS_CERT_SESSION', 'This session does not belong to a certificate. Enrol instead.');
             }
             const body = req.body || {};
-            const { answer } = await service.renew({ serial: s.clientCertSerial, csr: body.csr, keyStore: body.keyStore, ip: clientIp(req, globalResources), sessionId: s.id });
-            console.log(`🔏 Client certificate ${answer.serial.slice(0, 8)}… issued (renewal of ${String(s.clientCertSerial).slice(0, 8)}…)`);
+            const { answer } = await service.renew({ serial, csr: body.csr, keyStore: body.keyStore, ip: clientIp(req, globalResources), sessionId: s.id });
+            console.log(`🔏 Client certificate ${answer.serial.slice(0, 8)}… issued (renewal of ${serial.slice(0, 8)}…)`);
             res.json({ success: true, ...answer });
             await announce(globalResources, service, []);
         } catch (e) { fail(res, e); }

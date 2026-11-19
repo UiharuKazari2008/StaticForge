@@ -125,12 +125,14 @@ Failures are `401` with `code`:
 | `BAD_NONCE` | Unknown, used or timed-out nonce. | Ask for a new challenge once, then give up until the next event. |
 | `BAD_SIGNATURE` | Signature did not verify. | Same as revoked (the key and certificate no longer match). |
 
-### 4.5 `POST /api/client-cert/renew` (session opened by the certificate)
+### 4.5 `POST /api/client-cert/renew` (a session of the certificate)
 Request `{ "csr": "…", "keyStore": "strongbox" }`; the device identity is the certificate's. The client may keep its
 key or make a new one. Answer as 4.2. The old certificate stays valid until the new one signs in for the first
 time, then it is revoked as `superseded` (a lost answer cannot lock the client out). At most one renewal per device
-per 10 minutes (`429 TOO_MANY`). `403 RENEW_NEEDS_CERT_SESSION` when the session was not opened by a certificate
-(enrol instead, 4.2).
+per 10 minutes (`429 TOO_MANY`). The session must be one of the certificate's own: one it opened (4.4) or the
+sign-in that enrolled it. Any other gets `403 RENEW_NEEDS_CERT_SESSION`: a session a person opened since (a PIN
+sign-in) enrols instead (4.2), which replaces the certificate; make that key beside the old one and drop the old
+key only when the new certificate has arrived.
 
 ### 4.6 `GET /api/client-cert/crl` and `/api/client-cert/crl.json` (no session)
 - `/crl`: the X.509 v2 CRL, DER (`application/pkix-crl`), signed by the CA, `cRLNumber` extension, reason codes.
@@ -173,7 +175,8 @@ Event-driven only; no timers, no polling (`phone-power-native`).
    - none, or sign-in failed with a code from the table → tell the page / the user: sign-in required.
 3. **The connection is up on a session** (Android: `miniport_ready`):
    - no certificate → make the key if needed, build the CSR, enrol (4.2);
-   - `renew` was true at sign-in, or `now > renewAfter` → renew (4.5).
+   - `renew` was true at sign-in, or `now > renewAfter` → renew (4.5); on `403` enrol (4.2); if that is refused
+     too, leave it for six hours or the next sign-in.
 4. **`client_cert_revoked` arrives** → delete certificate and key, sign-in required. After the user signs in, step 3
    enrols a new one.
 5. **Network errors** in any of these: stop and wait for the next event (the next connect attempt comes from the
