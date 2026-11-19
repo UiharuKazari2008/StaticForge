@@ -102,7 +102,11 @@
                     }).catch((err) => console.error('Desktop Icon Settings', err));
                 }
                 break;
-            case 'dpi': notBuilt('DPI Scaling'); break;
+            // DPI Scaling: the DreamOS display scale (dpiScalingDialog.js); elsewhere not offered yet
+            case 'dpi':
+                if (root.dpiScalingDialog && root.dpiScalingDialog.available()) root.dpiScalingDialog.open();
+                else notBuilt('DPI Scaling');
+                break;
             case 'ease': notBuilt('Ease of Access Center'); break;
             default: break;
         }
