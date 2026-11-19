@@ -115,6 +115,7 @@ and downloads the files at the chosen size, ffmpeg joins them into HLS (H.264 + 
 | `youtube_video_start` | `{ id, mode, at }` -> `{ id, url, mode, state, at, duration, title, height, kbit, copied, modes[] }`. Admin. Modes `v1080` `v720` `v480` `v360` `v144` `vaudio`; `at` is the start place in seconds; `url` is HLS under `/api/videos/yt/<id>/` (signed-in session). Public videos only, no account: a members' video, an age gate, a live stream or a refusal fails (`YT_REFUSED`, `YT_LIVE`, `YT_TOO_LONG`, `YT_STREAM`) and the program plays it in YouTube's embedded player instead. |
 | `youtube_video_state` | `{ id }` -> `{ state: live \| done \| error \| gone, error }`. Admin. |
 | `youtube_video_stop` | `{ id }` -> `{ stopped }`. Admin. Files also go 20 minutes after the last request. |
+| `youtube_history_refresh` | `{}` -> `{ changed }`. Reads the account's watch history now unless it was read in the last 20 s (the phone asks a few seconds after coming back from YouTube's app); a change is pushed as `youtube_status`, so the video leaves Today. |
 | `youtube_segments` | `{ id }` -> `{ id, segments[{ start, end, category }] }`. SponsorBlock's marked parts (`modules/videosSponsorBlock.js`; the server asks with a hash prefix, never the id; kept 6 h; `[]` when none or unreachable). The player skips `sponsor`, `selfpromo` and `interaction` while the setting `skipSegments` is on (default), and marks all of them on its seek bar. |
 
 `apps/videos` is the same program in a desktop window (`client/videos.js` answers the shell calls

@@ -1213,6 +1213,8 @@ module.exports = {
     setLater,
     sources: () => sources,
     setProgress,
+    /** Reads the account's watch history now (the viewer just came back from YouTube's app) unless it was read in the last 20 s; pushes when it changed. */
+    refreshHistory: () => syncHistory({ maxAge: 20000 }),
     importBellFavourites,
     search,
     channelPage,

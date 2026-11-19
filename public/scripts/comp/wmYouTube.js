@@ -117,7 +117,9 @@
     const acct = () => hub.account || {};
     const signedIn = () => !!acct().signedIn;
     const favIds = () => new Set((hub.favourites || []).map((f) => f.id));
-    const latest = () => (hub.latest && Array.isArray(hub.latest.videos) ? hub.latest.videos : []);
+    // Today is what is still to watch (Yukimi, Nov 19 2026: "filter watched videos from the video carocelle"): the
+    // server leaves watched videos out, and one marked since (here, or seen in YouTube's history) goes at once
+    const latest = () => (hub.latest && Array.isArray(hub.latest.videos) ? hub.latest.videos.filter((v) => !v.watched) : []);
     const liveNow = () => (hub.live && Array.isArray(hub.live.items) ? hub.live.items.filter((v) => !v.watched) : []);
     /** Today's pages: who is live now first, then the favourites' uploads still to watch. */
     const todayList = () => liveNow().concat(latest());
@@ -177,7 +179,17 @@
         try { window.open(url, '_blank', 'noopener'); return true; } catch (_) { return false; }
     }
     /** Opens the video in the YouTube app (which records the viewing itself: the server reads the account's history). */
-    const openVideo = (id) => openUrl(videoUrl(id));
+    const openVideo = (id) => { awayAt = Date.now(); return openUrl(videoUrl(id)); };
+    // Back from YouTube's app: the account's history is read again a few seconds later (YouTube needs a moment to
+    // write it), so what was just watched leaves Today and sinks in the feed without waiting for the 10-minute read.
+    let awayAt = 0;
+    let awayTimer = null;
+    function backFromYouTube() {
+        if (document.hidden || !awayAt || Date.now() - awayAt > 6 * 3600000) return;
+        awayAt = 0;
+        clearTimeout(awayTimer);
+        awayTimer = setTimeout(() => { if (!document.hidden) ask('youtube_history_refresh', {}, 60000).catch(() => {}); }, 4000); // perf: allow one read after coming back from YouTube's app
+    }
     /** Starts an Android program by its package (an app whose notification is in the feed). */
     function launchApp(pkg, name) {
         let ok = false;
@@ -300,7 +312,7 @@
         // the server forgets a dropped socket's subscriptions: subscribe again
         c.on('connected', () => { hubOn = false; void syncHub(); if (player && player.chatOpen) { player.chatOpen = false; chatSync(); } }, { signal: appScopeSignal });
         document.addEventListener('wmAppChange', () => { void syncHub(); }, { signal: appScopeSignal });
-        document.addEventListener('visibilitychange', () => { void syncHub(); }, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', () => { void syncHub(); backFromYouTube(); }, { signal: appScopeSignal });
         window.addEventListener('melatonscreen', () => { void syncHub(); }, { signal: appScopeSignal });
         void syncHub();
         return true;
