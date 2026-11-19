@@ -360,6 +360,35 @@ Test: `npm run test:claude-accounts` (sandboxed home, store, sessions, transcrip
 
 ---
 
+<a id="claude-accounts-desktop"></a>
+### Claude Accounts on the desktop (sessions, steering, coordination)
+
+**Claude Accounts** (`apps/claudedesk`, a system package: Start > Administrative Tools, Control Panel > Administrative Tools) is an MMC console (`mmcConsole.js`) over the same accounts and host as the phone, plus every Claude session on the host and the agents' coordination. It uses the packets above for accounts, Remote Control and Add Account, and these (handler `modules/ws/handlers/314-claudeDeskHandler.js`, owner `claudeDesk`; admin only; `claude_desk_session` and `claude_desk_coord` are destructive):
+
+| Request type | Fields | Answer `data` |
+|---|---|---|
+| `claude_desk_sessions` | `offset`, `limit` (max 100) | `claudeSessions.listAll` (`{ total, offset, limit, sessions }`, the phone's Sessions list) with `account: { index, name } \| null` (from the transcript's last `session-owner` line, or the launch record), `agentId`, `task` per row |
+| `claude_desk_transcript` | `id`, `before?` (byte offset), `limit?` (80) or `since` | `{ id, messages, start, end, more }` (`modules/claudeTranscript.js`): newest last; `start` is passed as `before` for earlier ones. A message is `{ at, uuid, time, role: user \| assistant \| tool \| system, kind: text \| tool_use \| tool_result \| command \| notice, text, tool?, error?, origin?, sidechain }`; thinking, attachments and wrappers are left out, texts capped, anything token-shaped masked |
+| `claude_desk_watch` / `claude_desk_unwatch` | `id`, `from?` | One transcript per socket: its new messages are pushed to that socket as `claude_desk_transcript_append { id, messages, end }` (fs.watch, 400 ms debounce) |
+| `claude_desk_session` | `action`: `start` (`cwd`, `prompt?`, `title?`, `account?`, `mode?`), `resume` (`id`, `account?`, `mode?`), `steer` (`id`, `text`), `interrupt` (`id`), `screen` (`id`), `disconnect` (`id`) | `{ result }`: start / resume answer `{ id, state: connected \| live \| started \| failed, link, tmuxSession, account, message }` |
+| `claude_desk_coord` | `action`: `list` (`limit?`, `agentId?`), `post` (`to`, `body`, `kind`), `release` (`claimId`) | `{ agents, claims, lastMessageId, messages }`, `{ sent }`, or the lists after a release |
+
+**Launching** (`modules/claudeSessionLauncher.js`, sharing `modules/claudeSessions.js` with the phone's Sessions tab: same tmux socket, same `rc-<id8>` names). A session is `claude --session-id <new uuid>` (start) or `--resume <uuid>` (resume, never `--fork-session`) with `--remote-control <title> --permission-mode <mode>` (default `bypassPermissions`) and `--mcp-config ~/.local/state/dreamscape-agents/launch-mcp.json` (the agent-coord server), then `; sleep 3600`, in a detached tmux session on the socket `dreamscape-claude-carry`. That tmux server is started by `systemd-run --user --scope` with `exit-empty off` (`ensureServer`, also at server start), so it lives in its own user scope: not a child of Dreamscape, not in `pm2-kanmi.service`'s or `claude-remote.service`'s cgroup, and a Dreamscape / pm2 / Remote Control restart leaves the sessions running. `env -u` keeps `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` and `CLAUDE_CODE_OAUTH_TOKEN` out of a session. **Steering** types into the session's own tmux pane (found from its `~/.claude/sessions/<pid>.json` pid on either socket): one line with `send-keys -l`, several as a bracketed paste, then Enter; Claude Code takes it as the next prompt, or as steering for the turn it is working on. `interrupt` sends Esc. A session inside Remote Control's own process (`claude-rc`) cannot be typed into: steer it from claude.ai/code.
+
+**Two accounts at once** (`modules/claudeAccountRuntime.js`). The account on the host runs on `~/.claude`. Any other account with a linked login runs with `CLAUDE_CONFIG_DIR=.cache/secrets/claude-accounts/<id>/config` (0700): its `.credentials.json` (0600, the fresher of the linked login and the copy there), a `.claude.json` with onboarding done, its `oauthAccount` and the host's per-project trust / allowed tools / MCP servers, and symlinks to `~/.claude/{projects,sessions,settings.json,CLAUDE.md,skills,plugins,agents,commands}`: one set of transcripts and live records for the host, so both accounts' sessions list as one. The CLI rotates the refresh token as it runs: a newer login written into a config dir is copied back into the account's linked login (fs.watch on the config dir, and at server start), so a switch that puts the account on the host signs in with the current token. Do not switch the host to an account whose own sessions run for long: its login would then be held twice (the console warns).
+
+**Status feeds** (`status_subscribe`, statusHub; subscribed while the window is open): `claude_desk` (30 s, and at once when `~/.claude/sessions` changes or an action ran) `{ host, accounts, live, coord }` pushed as `claude_desk_status`; `claude_desk_flux` (2 s, memory only) `{ rc, login }` pushed as `claude_desk_flux` (Remote Control's reconnect and the sign-in move fast; their own pushes are phone-only). Both go only to the subscribed socket.
+
+<a id="agent-coord"></a>
+**Coordination: the agent-coord MCP server** (`modules/agentCoord/mcpServer.js`, stdio, no dependencies besides `better-sqlite3`; store `modules/agentCoord/store.js`, one WAL SQLite file for the host at `~/.local/state/dreamscape-agents/coord.db`, `AGENT_COORD_DB` overrides). Every session launched here gets it. Tools: `coord_hello`, `coord_agents`, `coord_set_task`, `coord_claim` (paths relative to the repo, folders and globs; exclusive by default, `shared` with other shared claims; 45 min lease, max 8 h; a conflicting path is not granted and the answer names its holder and task), `coord_release`, `coord_check`, `coord_claims`, `coord_post` (to an agent id / name or `all`; `steer` also types it into a Claude session's tmux pane), `coord_inbox`. Every answer ends with the caller's unread count. A Claude session is identified from the process tree (`~/.claude/sessions/<pid>.json`: `claude-<first 8 of the session id>`); claims are per repo (named by the git common dir, so worktrees share them) and lapse when released, when the lease ends, or when the agent's process is gone. Any other MCP client joins with:
+
+```json
+{ "mcpServers": { "agent-coord": { "command": "node", "args": ["/home/kanmi/staticforge/modules/agentCoord/mcpServer.js"],
+  "env": { "AGENT_COORD_KIND": "cursor", "AGENT_COORD_NAME": "Cursor - <task>", "AGENT_COORD_ID": "cursor-<name>" } } } }
+```
+
+Test: `node scripts/test-claude-desk.js` (temp home, account store, coordination DB and a fake tmux / systemd-run; never touches a real account folder, login, tmux server or session).
+
 ### `get_account_pictures` / `set_account_picture`
 
 Account pictures for Melaton's two accounts (`modules/accountPictures.js`): Administrator (the admin

@@ -500,6 +500,9 @@ class WebSocketMessageHandlers {
             'add_api_key',
             'update_api_key',
             'delete_api_key',
+            // Claude Accounts on the desktop (314-claudeDeskHandler): start / resume / steer sessions, coordination posts
+            'claude_desk_session',
+            'claude_desk_coord',
             'unlock_api_service', // JULES: Fix privilege leak for read-only clients on tripwire unlock
             'create_application_key',
             'revoke_application_key',
