@@ -665,8 +665,10 @@
     background: linear-gradient(transparent, color-mix(in srgb, black 82%, transparent));
 }
 /* a video's seek bar, over the keys: what is written (pale), what is played (the accent), SponsorBlock's parts, the thumb */
-.wm-youtube .yt-hud { flex-wrap: wrap; }
-.wm-youtube .yt-seek { flex: 0 0 100%; --p: 0; --b: 0; padding: calc(7 * var(--u)) calc(6 * var(--u)); margin: 0 0 calc(2 * var(--u)); touch-action: none; cursor: pointer; outline: none; }
+/* two rows that never wrap: the seek bar (videos), then the keys */
+.wm-youtube .yt-hud { flex-direction: column; align-items: stretch; gap: 0; }
+.wm-youtube .yt-hud-keys { display: flex; align-items: center; gap: calc(4 * var(--u)); min-width: 0; }
+.wm-youtube .yt-seek { flex: 0 0 auto; --p: 0; --b: 0; padding: calc(7 * var(--u)) calc(6 * var(--u)); margin: 0 0 calc(2 * var(--u)); touch-action: none; cursor: pointer; outline: none; }
 .wm-youtube .yt-seek[hidden] { display: none; }
 .wm-youtube .yt-seek-track { position: relative; height: calc(4 * var(--u)); border-radius: calc(2 * var(--u)); background: color-mix(in srgb, white 24%, transparent); }
 .wm-youtube .yt-seek-buf, .wm-youtube .yt-seek-fill { position: absolute; inset: 0; border-radius: inherit; transform-origin: 0 50%; }

@@ -789,6 +789,7 @@
                             <button type="button" class="yt-pl-key is-play" data-pl="toggle" aria-label="Play" hidden></button>
                             <div class="yt-hud" hidden>
                                 <div class="yt-seek" role="slider" tabindex="0" aria-label="Place in the video" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" hidden><div class="yt-seek-track"><i class="yt-seek-buf"></i><i class="yt-seek-fill"></i><span class="yt-seek-marks"></span><i class="yt-seek-thumb"></i></div></div>
+                                <div class="yt-hud-keys">
                                 <button type="button" class="yt-hud-key" data-pl="toggle" aria-label="Pause">${I.pause}</button>
                                 <button type="button" class="yt-hud-key" data-pl="mute" aria-label="Sound off">${I.sound}</button>
                                 <button type="button" class="yt-hud-key" data-pl="stop" aria-label="Stop">${I.stop}</button>
@@ -799,6 +800,7 @@
                                 <button type="button" class="yt-hud-key" data-pl="pop" aria-label="Pop out" hidden>${I.pop}</button>
                                 <button type="button" class="yt-hud-key" data-pl="kick" aria-label="Watch in Kick's app">${I.out}</button>
                                 <button type="button" class="yt-hud-key" data-pl="full" aria-label="Full screen">${I.full}</button>
+                                </div>
                             </div>
                         </div>
                         <div class="yt-side"><div class="yt-side-title"></div><div class="yt-side-sub"></div><div class="yt-side-sub yt-side-live"><i class="yt-new is-livetag">LIVE</i><span class="yt-side-up"></span></div>
