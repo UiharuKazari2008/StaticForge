@@ -209,6 +209,51 @@
         return sh.notify({ title: SMS_TITLE, icon: 'error', text: `${text}${why}` });
     }
 
+    /**
+     * Quick Reply from a text's notification (Yukimi, Nov 18: "on texts the left soft key should be Reply and should show a
+     * dialog to quick reply without opening the app with a button for Cancel and View to open the app and OK in the corner
+     * sends as well as return"): WM's message box with an edit box over whatever is up, Cancel | View, ok in the title
+     * bar's corner; ok or Enter sends (onSend(text)), View opens the conversation (onView). The app's own box draws the same
+     * dialog natively when the page sleeps (melatonBars notifyKit reply, MelatonBars quick reply).
+     */
+    let quickReplyUp = false;
+    async function quickReply({ to, said, onView, onSend }) {
+        if (quickReplyUp || !sh || typeof sh.messageBox !== 'function') return;
+        quickReplyUp = true;
+        // the box answers the field's text for any button that is not Cancel: which one was used, noted as it is pressed
+        let which = 'cancel';
+        const ac = new AbortController();
+        const line = `${to || 'Unknown'}: ${String(said || '').replace(/\s+/g, ' ').trim()}`;
+        let text = null;
+        try {
+            text = await sh.messageBox({
+                title: 'Quick Reply',
+                text: line.length > 120 ? `${line.slice(0, 117)}...` : line,
+                input: { value: '' },
+                buttons: [{ text: 'Cancel', value: false }, { text: 'View', value: 'view' }],
+                cancelValue: false,
+                titleAction: { kind: 'ok', value: 'send' },
+                onOpen: (close) => {
+                    const layer = document.querySelector('#wmShell > .wm-msgbox-layer');
+                    if (!layer) return;
+                    layer.addEventListener('click', (e) => {
+                        const b = e.target.closest && e.target.closest('button');
+                        if (b) which = b.classList.contains('wm-title-action') ? 'send' : (b.textContent.trim() === 'View' ? 'view' : 'cancel');
+                    }, { capture: true, signal: ac.signal });
+                    // Enter sends (the box's own Enter answers its first button, Cancel)
+                    layer.addEventListener('keydown', (e) => {
+                        if (e.key !== 'Enter' || !(e.target && e.target.classList && e.target.classList.contains('wm-msgbox-input'))) return;
+                        e.preventDefault(); e.stopPropagation();
+                        which = 'send';
+                        close('send');
+                    }, { capture: true, signal: ac.signal });
+                },
+            });
+        } finally { ac.abort(); quickReplyUp = false; }
+        if (which === 'view') { onView(); return; }
+        if (which === 'send' && text) onSend(text);
+    }
+
     /** What a list of chat events says: the speech line, the actions and sound effects (the desktop's rules). */
     function eventsText(events, typeOf) {
         let says = '';
@@ -848,11 +893,13 @@
                     fresh.clear(); closeSmsNote();
                     if (typeof sh.refreshStatus === 'function') sh.refreshStatus();
                 } });
+                // Reply on the left (Quick Reply, Yukimi Nov 18); Dismiss stays in the Menu
                 return {
-                    left: { label: 'Dismiss', icon: 'dismiss', action: () => { [...fresh.keys()].forEach((k) => inboxClear(`chat:${k}`)); closeSmsNote(); } },
+                    left: { label: 'Reply', action: chatQuickReply },
                     right: { label: 'Menu', icon: 'menu', menu: () => [
-                        { label: n === 1 ? 'Reply' : 'View', action: open },
+                        { label: 'View', action: open },
                         { label: 'Hide', action: () => { if (smsNote) smsNote.hide(); } },
+                        { label: 'Dismiss', action: () => { [...fresh.keys()].forEach((k) => inboxClear(`chat:${k}`)); closeSmsNote(); } },
                         '-',
                         later('Snooze 5 minutes', 5), later('Snooze 15 minutes', 15), later('Snooze 1 hour', 60), later('Snooze 1 day', 1440)
                     ] }
@@ -870,6 +917,38 @@
             // one conversation of several: it opens and is read (readFresh), the others keep waiting
             if (id && fresh.size > 1) { const key = [...fresh.keys()].find((k) => String(k) === id); if (key != null) { if (smsNote) smsNote.hide(); openFromNotice(key); return; } }
             open();
+        });
+    }
+
+    /** Quick Reply to the newest reply in the note: sent from here, the conversation not opened (View opens it). */
+    function chatQuickReply() {
+        const all = [...fresh.entries()];
+        if (!all.length) return;
+        const [id, last] = all[all.length - 1];
+        quickReply({
+            to: whoOf(id, last),
+            said: last.said,
+            onView: () => { if (smsNote) smsNote.hide(); openFromNotice(id); },
+            onSend: async (text) => {
+                // answered: out of the note at once, the server's notice used
+                const k = freshKey(id);
+                if (k != null) fresh.delete(k);
+                const ni = window.wmNotificationInbox;
+                if (ni && typeof ni.acted === 'function') ni.acted(`chat:${id}`);
+                if (fresh.size) showSmsNoteQuiet(); else closeSmsNote();
+                if (typeof sh.refreshStatus === 'function') sh.refreshStatus();
+                previews.set(id, { stamp: null, text, mine: true });
+                try {
+                    if (!connected()) throw new Error('The server connection is down.');
+                    await ensureChat();
+                    const r = await wsc().sendChatMessage(id, text, { whole: true });
+                    if (r && r.success === false) throw new Error(r.error || r.message || 'The persona could not answer.');
+                } catch (err) {
+                    failBox('The message was not sent.', err);
+                    return;
+                }
+                finishReply(id);
+            },
         });
     }
 
@@ -1989,6 +2068,37 @@
         if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
     }
 
+    /** Quick Reply to the newest text in the note: sent from here (tm_send), the program not opened (View opens it). */
+    function tmQuickReply() {
+        const x = tmFresh[tmFresh.length - 1];
+        if (!x) return;
+        quickReply({
+            to: x.from,
+            said: x.text,
+            onView: () => {
+                const i = tmFresh.indexOf(x);
+                if (i >= 0) { tmOpenOne(i); return; }
+                const ui = tmUi();
+                if (ui && typeof ui.openChat === 'function') ui.openChat(x.accountId, x.chatGuid); else tmOpenAccount(x.accountId);
+            },
+            onSend: async (text) => {
+                // answered: that conversation out of the note at once, the server's notice used
+                for (let k = tmFresh.length - 1; k >= 0; k--) if (tmFresh[k].accountId === x.accountId && tmFresh[k].chatGuid === x.chatGuid) tmFresh.splice(k, 1);
+                const ni = window.wmNotificationInbox;
+                if (ni && typeof ni.acted === 'function') ni.acted(`sms:${x.accountId}:${x.chatGuid}`);
+                tmUpdateNote();
+                if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
+                try {
+                    const api = tmApi();
+                    if (!api || typeof api.send !== 'function') throw new Error('Text Messaging is not loaded.');
+                    await api.send(x.accountId, { chatGuid: x.chatGuid, text });
+                } catch (err) {
+                    sh.notify({ title: 'Text Messages', icon: 'error', text: `The message to ${x.from} was not sent.\n\n${(err && err.message) || ''}`.trim() });
+                }
+            },
+        });
+    }
+
     function tmShowNote(o) {
         // a new arrival is a new notification: it sounds and comes up again
         if (tmNote) { try { tmNote.close(); } catch (_) { /* gone */ } tmNote = null; }
@@ -2008,11 +2118,13 @@
                     if (!ni || typeof ni.snooze !== 'function' || !ni.snooze(tmFresh.map((f) => `sms:${f.accountId}:${f.chatGuid}`), minutes)) return;
                     tmFresh.length = 0; tmCloseNote(false);
                 } });
+                // Reply on the left (Quick Reply, Yukimi Nov 18); Dismiss stays in the Menu
                 return {
-                    left: { label: 'Dismiss', icon: 'dismiss', action: () => tmCloseNote(true) },
+                    left: { label: 'Reply', action: tmQuickReply },
                     right: { label: 'Menu', icon: 'menu', menu: () => [
-                        { label: tmFresh.length === 1 ? 'Reply' : 'View', action: tmOpenFresh },
+                        { label: 'View', action: tmOpenFresh },
                         { label: 'Hide', action: () => { if (tmNote) tmNote.hide(); } },
+                        { label: 'Dismiss', action: () => tmCloseNote(true) },
                         '-',
                         later('Snooze 5 minutes', 5), later('Snooze 15 minutes', 15), later('Snooze 1 hour', 60), later('Snooze 1 day', 1440)
                     ] }

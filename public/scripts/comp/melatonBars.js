@@ -317,7 +317,7 @@
             // the page asleep): its empty frame per body line count, its soft key band, and the boxes it writes into
             let nk = null;
             try { nk = notifyKit(dpr); } catch (err) { console.warn('[melatonBars] notify kit', err); }
-            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? Object.assign({ notifyFrame: nk.frames, notifySoft: nk.soft }, nk.menu ? { notifyMenu: nk.menu } : {}, nk.tray ? { notifyTray: nk.tray } : {}) : {}) });
+            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? Object.assign({ notifyFrame: nk.frames, notifySoft: nk.soft }, nk.menu ? { notifyMenu: nk.menu } : {}, nk.replyMenu ? { notifyReplyMenu: nk.replyMenu } : {}, nk.reply ? { notifyReply: nk.reply } : {}, nk.tray ? { notifyTray: nk.tray } : {}) : {}) });
         } finally { kitTarget = null; }
     }
 
@@ -401,6 +401,8 @@
      */
     // the rows of a notification's Menu (the app maps 'notemenu:<n>' to these, in order, separators left out)
     const NOTE_MENU = ['View', 'Hide', '-', 'Snooze 5 minutes', 'Snooze 15 minutes', 'Snooze 1 hour', 'Snooze 1 day'];
+    // a text's Menu (its left key is Reply, Yukimi Nov 18): Dismiss moves into it
+    const NOTE_MENU_REPLY = ['View', 'Hide', 'Dismiss', '-', 'Snooze 5 minutes', 'Snooze 15 minutes', 'Snooze 1 hour', 'Snooze 1 day'];
     // the tray's glyph for each kind of notice (the app picks the kind from the notice's id)
     const TRAY_KINDS = { notification: 'status-notify-many', reminder: 'status-reminder', warning: 'status-warning', error: 'status-error',
         lapis: 'caralert', traffic: 'traffic', wxalert: 'wxalert', rain: 'rain', prints: 'prints', update: 'update' };
@@ -483,13 +485,54 @@
             // the box's Menu (6.5.1's reminder: Dismiss | Menu, Yukimi Nov 18 "so that you have a reminder option"), laid
             // out over the right soft key with its fixed rows; each row's tap box is 'notemenu:<n>' for the app to act on
             if (typeof sh.menuSample === 'function') {
-                const smp = sh.menuSample('right', NOTE_MENU.map((l) => (l === '-' ? '-' : { label: l, action() {} })));
+                const menuOf = (rows) => {
+                    const smp = sh.menuSample('right', rows.map((l) => (l === '-' ? '-' : { label: l, action() {} })));
+                    try {
+                        settle([smp.el]);
+                        const items = layoutOf([smp.el], dpr).filter((o) => o.k !== 'hit');
+                        [...smp.el.querySelectorAll(':scope > .wm-popup-item')].forEach((b, i) => { const r = R(b.getBoundingClientRect()); items.push({ k: 'hit', x: r.x, y: r.y, w: r.w, h: r.h, act: `notemenu:${i}` }); });
+                        return { m: { items, box: R(smp.el.getBoundingClientRect()), rows: rows.filter((l) => l !== '-') } };
+                    } finally { smp.close(); }
+                };
+                out.menu = menuOf(NOTE_MENU);
+                out.replyMenu = menuOf(NOTE_MENU_REPLY);
+            }
+            // a text's Quick Reply (Yukimi, Nov 18: Reply on the left key opens a dialog to answer without the app; Cancel |
+            // View, ok in the corner and Enter send): the message box wmChat's quickReply opens (wmShell messageBox with an
+            // edit box), laid out empty for the app's own dialog when the page sleeps. items: the box with its line and edit
+            // box blank; line / input: where the app writes the sender's line and puts Android's own edit box (device px,
+            // font size and colour); hits 'qreply:cancel' / 'qreply:view' / 'qreply:ok'; gap: the room under the box
+            const mbl = shell.querySelector(':scope > .wm-msgbox-layer');
+            if (mbl) {
+                const layer = mbl.cloneNode(false);
+                layer.hidden = false;
+                layer.setAttribute('aria-hidden', 'true');
+                layer.innerHTML = '<div class="wm-msgbox"><div class="wm-msgbox-title"><span>Quick Reply</span><button type="button" class="wm-title-action" data-kind="ok" aria-label="OK"></button></div>'
+                    + '<div class="wm-msgbox-body"><div class="wm-msgbox-text"><span class="mb-qr-line">Melaton Mobile</span><input type="text" class="wm-msgbox-input" value="" autocomplete="off" tabindex="-1"></div></div>'
+                    + '<div class="wm-msgbox-buttons"><button type="button" tabindex="-1">Cancel</button><button type="button" tabindex="-1">View</button></div></div>';
+                shell.appendChild(layer);
                 try {
-                    settle([smp.el]);
-                    const items = layoutOf([smp.el], dpr).filter((o) => o.k !== 'hit');
-                    [...smp.el.querySelectorAll(':scope > .wm-popup-item')].forEach((b, i) => { const r = R(b.getBoundingClientRect()); items.push({ k: 'hit', x: r.x, y: r.y, w: r.w, h: r.h, act: `notemenu:${i}` }); });
-                    out.menu = { m: { items, box: R(smp.el.getBoundingClientRect()), rows: NOTE_MENU.filter((l) => l !== '-') } };
-                } finally { smp.close(); }
+                    settle([layer]);
+                    const box = layer.querySelector('.wm-msgbox');
+                    const lineEl = layer.querySelector('.mb-qr-line');
+                    const field = layer.querySelector('.wm-msgbox-input');
+                    const lcs = getComputedStyle(lineEl);
+                    const fcs = getComputedStyle(field);
+                    const lineBox = R(lineEl.getBoundingClientRect());
+                    const fieldBox = R(field.getBoundingClientRect());
+                    const bw = (parseFloat(fcs.borderLeftWidth) || 0) + (parseFloat(fcs.paddingLeft) || 0);
+                    lineEl.style.visibility = 'hidden';
+                    const items = layoutOf([layer], dpr).filter((o) => o.k !== 'hit');
+                    const hit = (el, act) => { const r = R(el.getBoundingClientRect()); items.push({ k: 'hit', x: r.x, y: r.y, w: r.w, h: r.h, act }); };
+                    const [cancel, view] = layer.querySelectorAll('.wm-msgbox-buttons button');
+                    hit(cancel, 'qreply:cancel'); hit(view, 'qreply:view'); hit(layer.querySelector('.wm-title-action'), 'qreply:ok');
+                    const b = R(box.getBoundingClientRect());
+                    out.reply = { q: {
+                        items, box: b, gap: Math.max(0, Math.round(window.innerHeight * dpr) - (b.y + b.h)),
+                        line: Object.assign(lineBox, { size: Math.round(parseFloat(lcs.fontSize) * dpr), color: lcs.color, lineH: Math.round((parseFloat(lcs.lineHeight) || parseFloat(lcs.fontSize) * 1.2) * dpr), w: Math.round((box.getBoundingClientRect().right - lineEl.getBoundingClientRect().left) * dpr) - Math.round(8 * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1) * dpr) }),
+                        input: Object.assign(fieldBox, { size: Math.round(parseFloat(fcs.fontSize) * dpr), color: fcs.color, pad: Math.round(bw * dpr) })
+                    } };
+                } finally { layer.remove(); }
             }
         } finally {
             el.innerHTML = keep.html;
