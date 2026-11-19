@@ -221,7 +221,15 @@ function saveLiveLoginBack(gr) {
     const login = describeLogin(host.creds, host.oauthAccount);
     if (!login || !host.creds || !host.creds.claudeAiOauth) return null;
     const owner = listAccounts(gr).find((row) => row.remoteLogin && sameLogin(row.remoteLogin, login));
-    if (!owner) return null;
+    if (!owner) {
+        // a login no account has linked is never just overwritten: kept (0600) beside the accounts
+        const dir = path.join(storeRoot(), 'host-backup');
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+        fs.chmodSync(dir, 0o700);
+        writeJsonAtomic(path.join(dir, 'credentials.json'), host.creds, 0o600);
+        writeJsonAtomic(path.join(dir, 'account.json'), { oauthAccount: host.oauthAccount || null, savedAt: new Date().toISOString() }, 0o600);
+        return 'backup';
+    }
     writeLinked(owner.id, host.creds, host.oauthAccount);
     return owner.index;
 }
@@ -376,10 +384,10 @@ function reconnect(gr, opts = {}) {
             if (stop.code !== 0) throw new Error(`Could not stop ${unitName()}: ${(stop.stderr || '').trim().slice(0, 160)}`);
             let note = '';
             if (opts.index != null && gResources) {
-                try { saveLiveLoginBack(gResources); } catch (e) { console.warn(`[claudeAccounts] live login not saved back: ${e.message}`); }
                 const acc = findAccount(gResources, opts.index);
                 const linked = readLinked(acc.id);
-                if (linked) installLogin(linked);
+                try { saveLiveLoginBack(gResources); } catch (e) { console.warn(`[claudeAccounts] live login not saved back: ${e.message}`); }
+                if (linked) installLogin(readLinked(acc.id) || linked);
                 else note = 'This account has no linked Remote Control login: Remote Control stays signed in as before';
             }
             const start = await runner('systemctl', ['--user', 'start', unitName()], { timeout: 30000 });

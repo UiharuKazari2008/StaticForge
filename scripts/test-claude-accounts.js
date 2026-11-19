@@ -158,6 +158,15 @@ async function main() {
     assert.ok(/no linked Remote Control login/i.test(host.publicStatus().message));
     console.log('✓ unlinked account keeps the host login, with a note');
 
+    // 5b. a host login no account has linked is kept before another goes in
+    putHost(login('sk-ant-oat01-STRAY-0000000000000000000000', 'stray@example.com', 'uuid-s', 'pro'));
+    await host.reconnect(gr, { index: 1, pollMs: 20 });
+    assert.strictEqual(hostCreds().claudeAiOauth.accessToken, ACCESS_B, 'B went in');
+    const backup = JSON.parse(fs.readFileSync(path.join(paths.store, 'host-backup', 'credentials.json'), 'utf8'));
+    assert.strictEqual(backup.claudeAiOauth.accessToken, 'sk-ant-oat01-STRAY-0000000000000000000000', 'the unlinked host login was backed up');
+    assert.strictEqual(fs.statSync(path.join(paths.store, 'host-backup', 'credentials.json')).mode & 0o777, 0o600);
+    console.log('✓ unlinked host login backed up before a switch replaces it');
+
     // 6. Remote Control errors show as error
     pane = 'Error: Remote Control could not connect: login expired\n';
     const failed = await host.reconnect(gr, { index: 1, pollMs: 20, timeoutMs: 500 });
