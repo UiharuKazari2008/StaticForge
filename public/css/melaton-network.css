@@ -1000,11 +1000,20 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
 }
 
 .network-flyout-bars {
-    /* the wireless network's signal (pnidui.dll 13-18), beside its name */
+    /* the wireless network's signal (pnidui.dll 13-18): its own element at the entry's right, on the name's line;
+       the location icon (pnidui 0 / 1 / 2 / 38) keeps the left */
+    flex: 0 0 16px;
     width: 16px;
     height: 16px;
-    margin-left: 6px;
-    vertical-align: -3px;
+    margin-left: auto;
+    margin-right: 4px;
+    align-self: flex-start;
+    margin-top: 2px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-signal-bars {
+    width: 16px;
+    height: 16px;
 }
 
 .network-flyout-sub {
