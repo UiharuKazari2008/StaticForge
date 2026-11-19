@@ -1669,6 +1669,9 @@ async function grimoireShowSiteMenu(ev, win) {
 function grimoireCloseRemoteBrowser(shell) {
     if (!shell) return;
     const id = shell._grimoireRemoteSessionId;
+    // the local Alchemy (DreamOS, a captive portal's sign-in page: dreamosPortal.js) is the laptop's own host's
+    const local = shell._grimoireLocalAlchemy === true;
+    shell._grimoireLocalAlchemy = false;
     shell._grimoireRemoteSessionId = '';
     shell._grimoireRemoteViewQuery = '';
     if (grimoireAudioShell === shell) grimoireAudioShell = null;
@@ -1682,10 +1685,8 @@ function grimoireCloseRemoteBrowser(shell) {
     shell._alchemyScroll = null;
     grimoireSyncAudio();
     if (!id) return Promise.resolve();
-    // the local Alchemy (DreamOS, a captive portal's sign-in page: dreamosPortal.js) is the laptop's own host's, not
-    // the service's: the host ends it
-    if (shell._grimoireLocalAlchemy) {
-        shell._grimoireLocalAlchemy = false;
+    // not the service's session: the laptop's host ends it
+    if (local) {
         if (window.dreamosPortal) window.dreamosPortal.sessionClosed(id);
         return Promise.resolve();
     }
@@ -1697,8 +1698,8 @@ function grimoireCloseRemoteBrowser(shell) {
     }).catch(() => {});
 }
 
-// The local Alchemy's session ended by itself (the network let the laptop through): its tab goes, or its window
-// when it has one of its own; a window's only tab goes back to its home page.
+// The local Alchemy's session ended by itself (the network let the laptop through): its tab goes, and with a
+// window's last tab the window, as closing that tab by hand would.
 function grimoireCloseLocalAlchemy(shell) {
     if (!shell || !shell._grimoireLocalAlchemy) return;
     // WikiWindowInstance.close: public/scripts/comp/tagWikiSearchModal.js
@@ -1709,8 +1710,15 @@ function grimoireCloseLocalAlchemy(shell) {
     if (tab) { tabs.close(tab); return; }
     if (tabs && tabs.count() > 1 && (shell === host || shell === host.rightPane)) { tabs.close(); return; }
     grimoireCloseRemoteBrowser(shell);
-    if (host && typeof host.goHome === 'function') host.goHome();
+    // TagWikiSearchModal.close: public/scripts/comp/tagWikiSearchModal.js
+    if (host && shell === host && typeof host.close === 'function') host.close();
+    else if (host && typeof host.goHome === 'function') host.goHome();
+    else if (shell.displayArea) shell.displayArea.innerHTML = '';
 }
+
+// The shells that show the local Alchemy (a session, or its frame once the host ended the session).
+grimoireCloseLocalAlchemy.shells = () => grimoireRemoteShells()
+    .filter((shell) => shell && shell._grimoireLocalAlchemy && (shell._grimoireRemoteSessionId || grimoireRemoteFrame(shell)));
 
 function grimoireRemoteBrowserReload(shell) {
     const frame = grimoireRemoteFrame(shell);

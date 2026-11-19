@@ -49,10 +49,9 @@
 
     /** Grimoire shells that show the local Alchemy (grimoireRemoteBrowser.js marks them). */
     function localShells() {
-        if (typeof root.grimoireRemoteShells !== 'function') return [];
-        let shells = [];
-        try { shells = root.grimoireRemoteShells(); } catch (_) { shells = []; }
-        return shells.filter((s) => s && s._grimoireLocalAlchemy);
+        const close = root.grimoireCloseLocalAlchemy;
+        if (typeof close !== 'function' || typeof close.shells !== 'function') return [];
+        try { return close.shells(); } catch (_) { return []; }
     }
 
     /** The tab (or window) a local Alchemy page sits in goes when its session ended. */
@@ -77,8 +76,10 @@
 
     function refreshShell() {
         const ws = root.wsClient;
-        // the tray globe's limited state and its tooltip (websocket.js reads captive())
-        try { if (ws && typeof ws._syncTaskbarNetFlags === 'function') ws._syncTaskbarNetFlags(); } catch (_) { /* no taskbar */ }
+        // the tray globe's limited look (.desktop-taskbar.net-portal, vista-glass-controls.css: set here, on a change
+        // only) and its tooltip (websocket.js reads captive())
+        const bar = doc.querySelector('.desktop-taskbar');
+        if (bar) bar.classList.toggle('net-portal', captive());
         try { if (ws && typeof ws._updateModemTrayIcon === 'function') ws._updateModemTrayIcon(); } catch (_) { /* no taskbar */ }
         try { root.dispatchEvent(new CustomEvent('dreamosportal:change', { detail: last })); } catch (_) { /* old engine */ }
     }
@@ -88,6 +89,8 @@
         last = next && next.state ? next : { state: 'unknown' };
         if (was.state === last.state && was.network === last.network && !!was.session === !!last.session) return;
         refreshShell();
+        // the host ended the session (signed in, the network went, nobody looked at it): its view goes
+        if (was.session && !last.session) closeLocalViews();
         if (captive()) {
             // once per network: the icon keeps saying it, and the flyout and the Center open the browser too
             const key = `${last.network || ''}|${last.probe || ''}`;
@@ -98,7 +101,7 @@
             return;
         }
         balloonFor = '';
-        if (was.state === 'portal' || (was.session && !last.session)) closeLocalViews();
+        if (was.state === 'portal') closeLocalViews();
         if (last.state === 'online' && was.state === 'portal') {
             // the network is open: the link tries now instead of at its next retry
             const ws = root.wsClient;
