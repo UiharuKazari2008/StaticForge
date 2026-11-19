@@ -1055,9 +1055,33 @@ function calculatePreviewRatio() {
     return previewRatio;
 }
 
+// The preview box's size, kept by a ResizeObserver (delivered after layout): reading it at each print
+// forced a whole style recalc there, since the Director's field writes had just dirtied the page
+// (38-43 ms of each print on Modernia, Nov 19 2026). The first call measures, as before.
+const manualStepPreviewSizes = new WeakMap();
+let manualStepPreviewObserver = null;
+function watchManualStepPreviewSize(container) {
+    if (typeof ResizeObserver !== 'function' || manualStepPreviewSizes.has(container)) return;
+    if (!manualStepPreviewObserver) {
+        manualStepPreviewObserver = new ResizeObserver((entries) => {
+            entries.forEach((entry) => {
+                const box = entry.borderBoxSize && entry.borderBoxSize[0];
+                const width = Math.round(box ? box.inlineSize : entry.contentRect.width);
+                const height = Math.round(box ? box.blockSize : entry.contentRect.height);
+                manualStepPreviewSizes.set(entry.target, { width, height });
+            });
+        });
+    }
+    manualStepPreviewSizes.set(container, null);
+    manualStepPreviewObserver.observe(container);
+}
+
 function getManualModalStepPreviewDimensions() {
     const container = document.querySelector('.manual-preview-image-container');
     if (!container) return null;
+    const kept = manualStepPreviewSizes.get(container);
+    if (kept) return kept.width > 0 && kept.height > 0 ? { width: kept.width, height: kept.height } : null;
+    watchManualStepPreviewSize(container);
     const rect = container.getBoundingClientRect();
     const width = Math.round(rect.width || container.clientWidth || 0);
     const height = Math.round(rect.height || container.clientHeight || 0);

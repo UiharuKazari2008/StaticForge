@@ -3037,6 +3037,30 @@ function updatePromptStatusIcons() {
 /**
  * Format all manual prompt textareas before generation (even when still focused).
  */
+// The emphasis overlay and the height of a prompt field, refreshed once on the next frame for every
+// field queued this turn: emphasis first for all, then the heights. A Director print through Studio
+// wrote each field and then laid it out at once (updateEmphasisHighlighting rebuilds its edge spans
+// and measures, autoResizeTextarea measures), and the Generate that followed formatted and laid out
+// every field again: 7-11 forced layouts in the ~225 ms of each print on Modernia (Nov 19 2026).
+// The values are written at once (generation reads them); only what is drawn waits for the frame.
+const textareaVisualRefreshQueue = new Set();
+let textareaVisualRefreshFrame = 0;
+function scheduleTextareaVisualRefresh(textarea) {
+    if (!textarea) return;
+    textareaVisualRefreshQueue.add(textarea);
+    if (textareaVisualRefreshFrame) return;
+    textareaVisualRefreshFrame = requestAnimationFrame(flushTextareaVisualRefresh);
+}
+function flushTextareaVisualRefresh() {
+    textareaVisualRefreshFrame = 0;
+    const list = Array.from(textareaVisualRefreshQueue).filter((textarea) => textarea.isConnected);
+    textareaVisualRefreshQueue.clear();
+    // updateEmphasisHighlighting: public/scripts/comp/emphasisHighlight.js
+    if (typeof updateEmphasisHighlighting === 'function') list.forEach((textarea) => updateEmphasisHighlighting(textarea));
+    list.forEach((textarea) => autoResizeTextarea(textarea));
+}
+window.scheduleTextareaVisualRefresh = scheduleTextareaVisualRefresh;
+
 function applyPromptFormattingBeforeGeneration() {
     const textareas = [];
     if (typeof manualPrompt !== 'undefined' && manualPrompt) textareas.push(manualPrompt);
@@ -3050,14 +3074,8 @@ function applyPromptFormattingBeforeGeneration() {
 
     textareas.forEach((textarea) => {
         applyFormattedText(textarea, true);
-        // updateEmphasisHighlighting: public/scripts/comp/emphasisHighlight.js
-        if (typeof updateEmphasisHighlighting === 'function') {
-            updateEmphasisHighlighting(textarea);
-        }
-        // app.js
-        if (typeof autoResizeTextarea === 'function') {
-            autoResizeTextarea(textarea);
-        }
+        // the overlay and height on the next frame, once for all fields (scheduleTextareaVisualRefresh)
+        scheduleTextareaVisualRefresh(textarea);
     });
 }
 
