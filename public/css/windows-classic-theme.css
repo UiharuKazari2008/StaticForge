@@ -60,7 +60,7 @@ body.windows-classic-theme .modal::after {
 }
 
 /* Title Bar - Active Window (Blue gradient, left to right) */
-body.windows-classic-theme .modal.active-window .modal-window-title {
+body.windows-classic-theme .modal .modal-window-title:not(.window-inactive) {
     top: 0;
     left: 0;
     background-color: var(--ActiveTitle);
@@ -82,7 +82,7 @@ body.windows-classic-theme .modal.active-window .modal-window-title {
 }
 
 /* Title Bar Text - Active (White) */
-body.windows-classic-theme .modal.active-window .modal-window-title-main {
+body.windows-classic-theme .modal .modal-window-title-main:not(.window-inactive) {
     color: var(--TitleText);
     font-size: 10px;
     font-weight: bold;
@@ -93,21 +93,21 @@ body.windows-classic-theme .modal.active-window .modal-window-title-main {
     filter: none;
 }
 
-body.windows-classic-theme .modal.active-window .modal-window-title-main span {
+body.windows-classic-theme .modal .modal-window-title-main:not(.window-inactive) span {
     color: var(--TitleText);
     font-size: 10px;
     font-weight: bold;
     font-variation-settings: normal;
 }
 
-body.windows-classic-theme .modal.active-window .modal-window-title-main i,
-body.windows-classic-theme .modal.active-window .modal-window-title-main .icon-fa {
+body.windows-classic-theme .modal .modal-window-title-main:not(.window-inactive) i,
+body.windows-classic-theme .modal .modal-window-title-main:not(.window-inactive) .icon-fa {
     color: var(--TitleText);
     font-size: 10px;
 }
 
 /* Title Bar - Inactive Window (Light gray gradient, left to right) */
-body.windows-classic-theme .modal:not(.active-window) .modal-window-title {
+body.windows-classic-theme .modal .modal-window-title.window-inactive {
     top: 0;
     left: 0;
     background-color: var(--InactiveTitle);
@@ -125,26 +125,26 @@ body.windows-classic-theme .modal:not(.active-window) .modal-window-title {
     border-radius: 0;
 }
 
-body.windows-classic-theme .modal:not(.active-window) .modal-window-title-main {
+body.windows-classic-theme .modal .modal-window-title-main.window-inactive {
     color: var(--InactiveTitleText);
     font-size: 10px;
     padding: 0px 2px;
 }
 
-body.windows-classic-theme .modal:not(.active-window) .modal-window-title-main span {
+body.windows-classic-theme .modal .modal-window-title-main.window-inactive span {
     color: var(--InactiveTitleText);
     font-size: 10px;
 }
 
-body.windows-classic-theme .modal:not(.active-window) .modal-window-title-main i,
-body.windows-classic-theme .modal:not(.active-window) .modal-window-title-main .icon-fa {
+body.windows-classic-theme .modal .modal-window-title-main.window-inactive i,
+body.windows-classic-theme .modal .modal-window-title-main.window-inactive .icon-fa {
     color: var(--InactiveTitleText);
     font-size: 8px;
     font-weight: bold;
 }
 
 /* Window Controls Container */
-body.windows-classic-theme .modal.active-window .modal-window-controls {
+body.windows-classic-theme .modal .modal-window-controls:not(.window-inactive) {
     background-color: var(--GradientActiveTitle);
     border: none;
     border-radius: 0;
@@ -158,7 +158,7 @@ body.windows-classic-theme .modal.active-window .modal-window-controls {
     font-weight: bold;
 }
 
-body.windows-classic-theme .modal:not(.active-window) .modal-window-controls {
+body.windows-classic-theme .modal .modal-window-controls.window-inactive {
     background-color: var(--GradientInactiveTitle);
     border: none;
     border-radius: 0;
@@ -173,7 +173,7 @@ body.windows-classic-theme .modal:not(.active-window) .modal-window-controls {
 }
 
 /* Window Control Buttons - Active Window */
-body.windows-classic-theme .modal.active-window .modal-window-controls button {
+body.windows-classic-theme .modal .modal-window-controls:not(.window-inactive) button {
     background-color: var(--ButtonFace);
     color: var(--ButtonText);
     font-size: 8px;
@@ -195,7 +195,7 @@ body.windows-classic-theme .modal.active-window .modal-window-controls button {
     max-width: calc(100% - 5px);
 }
 
-body.windows-classic-theme .modal.active-window .modal-window-controls button i {
+body.windows-classic-theme .modal .modal-window-controls:not(.window-inactive) button i {
     color: var(--ButtonText);
     text-shadow: none;
     font-size: 8px;
@@ -203,7 +203,7 @@ body.windows-classic-theme .modal.active-window .modal-window-controls button i 
 }
 
 /* Window Control Buttons - Inactive Window */
-body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button {
+body.windows-classic-theme .modal .modal-window-controls.window-inactive button {
     background-color: var(--ButtonFace);
     color: var(--ButtonText);
     font-size: 8px;
@@ -225,7 +225,7 @@ body.windows-classic-theme .modal:not(.active-window) .modal-window-controls but
     max-width: calc(100% - 5px);
 }
 
-body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button i {
+body.windows-classic-theme .modal .modal-window-controls.window-inactive button i {
     color: var(--ButtonText);
     text-shadow: none;
     font-size: 8px;
@@ -233,47 +233,47 @@ body.windows-classic-theme .modal:not(.active-window) .modal-window-controls but
 }
 
 /* Button Hover State - Active Window */
-body.windows-classic-theme .modal.active-window .modal-window-controls button:hover:not(:disabled) {
+body.windows-classic-theme .modal .modal-window-controls:not(.window-inactive) button:hover:not(:disabled) {
     background-color: var(--ButtonLight);
     box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
 }
 
 /* Button Hover State - Inactive Window */
-body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button:hover:not(:disabled) {
+body.windows-classic-theme .modal .modal-window-controls.window-inactive button:hover:not(:disabled) {
     background-color: var(--ButtonLight);
     box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
 }
 
 /* Button Active/Pressed State */
-body.windows-classic-theme .modal.active-window .modal-window-controls button:active:not(:disabled) {
+body.windows-classic-theme .modal .modal-window-controls:not(.window-inactive) button:active:not(:disabled) {
     background-color: var(--ButtonFace);
     box-shadow: -1px -1px 0px 1px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonLight), -1px -1px 0px 2px var(--ButtonDkShadow), 0px 0px 0px 2px var(--ButtonHilight);
 }
 
-body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button:active:not(:disabled) {
+body.windows-classic-theme .modal .modal-window-controls.window-inactive button:active:not(:disabled) {
     background-color: var(--ButtonFace);
     box-shadow: -1px -1px 0px 1px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonLight), -1px -1px 0px 2px var(--ButtonDkShadow), 0px 0px 0px 2px var(--ButtonHilight);
 }
 
 /* Button Disabled State - Window Controls */
-body.windows-classic-theme .modal.active-window .modal-window-controls button:disabled {
+body.windows-classic-theme .modal .modal-window-controls:not(.window-inactive) button:disabled {
     background-color: var(--ButtonFace);
     box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
     opacity: 1;
 }
 
-body.windows-classic-theme .modal.active-window .modal-window-controls button:disabled i {
+body.windows-classic-theme .modal .modal-window-controls:not(.window-inactive) button:disabled i {
     color: var(--GrayText);
     opacity: 1;
 }
 
-body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button:disabled {
+body.windows-classic-theme .modal .modal-window-controls.window-inactive button:disabled {
     background-color: var(--ButtonFace);
     box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
     opacity: 1;
 }
 
-body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button:disabled i {
+body.windows-classic-theme .modal .modal-window-controls.window-inactive button:disabled i {
     color: var(--GrayText);
     opacity: 1;
 }
@@ -349,11 +349,11 @@ body.windows-classic-theme .modal .modal-footer-padded {
    `*` rule does not hang off .active-window: a universal selector under a class that changes on
    every window focus makes Chrome restyle the whole window. `.modal.modal` keeps the old
    (0,4,1) specificity. */
-body.windows-classic-theme .modal.active-window .modal-window-title {
+body.windows-classic-theme .modal .modal-window-title:not(.window-inactive) {
     --classic-caption-text: var(--TitleText);
 }
 
-body.windows-classic-theme .modal:not(.active-window) .modal-window-title {
+body.windows-classic-theme .modal .modal-window-title.window-inactive {
     --classic-caption-text: var(--InactiveTitleText);
 }
 

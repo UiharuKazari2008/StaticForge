@@ -68,7 +68,8 @@ const shared = read(SHARED);
     '.modal-window-title {',
     '.modal.toolbar-visible .modal-window-title-toolbar > [class^="btn-"]',
     '.modal-window-controls button.close-btn',
-    '.modal:not(.active-window) .modal-window-title-main',
+    // the inactive caption: the window's state is mirrored onto its title parts (rootStateFlags.js window-inactive)
+    '.modal .modal-window-title-main.window-inactive',
     'body.user-icons .icon-fa',
     '.modal.toolbar-visible.modal-maximized .modal-window-title',
 ].forEach((anchor) => assert.ok(shared.includes(anchor), `shared chrome has: ${anchor}`));

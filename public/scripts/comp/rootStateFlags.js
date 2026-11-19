@@ -126,6 +126,13 @@
     // and around it (openModal calls this so a window built and measured in one task has its flags).
     function syncRootStateFlags(root) {
         if (!document.body) return;
+        if (root && root.nodeType === 1) {
+            syncWindowChrome(root.closest('.modal'));
+            syncWindowChromeWithin(root);
+        } else {
+            const modals = document.getElementsByClassName('modal');
+            for (let i = 0; i < modals.length; i++) syncWindowChrome(modals[i]);
+        }
         for (let i = 0; i < FLAGS.length; i++) {
             const flag = FLAGS[i];
             if (!root || flag.host === 'html' || flag.host === 'body') {
@@ -135,6 +142,52 @@
                 syncHostsWithin(flag, root);
             }
         }
+    }
+
+    // ---- Window chrome: the active state on the parts that draw it -------------------------------
+    // .window-inactive on a window's own title bar, its toolbar / main / controls and the Director's
+    // command bar = the window lacks .active-window; .dialog-active on a light / Vista dialog (or one
+    // holding .win7 content) = it is the active one. The CSS reads these instead of
+    // .modal(:not)(.active-window): Chrome builds a class's invalidation set from the rightmost parts of
+    // every rule naming it, so ".modal:not(.active-window) .modal-window-title-toolbar > .btn-secondary"
+    // and ".modal-window-title-main span" made every .btn-* / span / button / i / img in a window a
+    // candidate at each focus change: ~630-1,330 elements restyled per window click on Modernia, Studio
+    // 1,237 of them (Nov 19 2026). A title bar is a few dozen elements.
+    const WINDOW_CHROME = '.modal-window-title, .modal-window-title-toolbar, .modal-window-title-main, .modal-window-controls, .director-window-command-bar';
+    const DIALOG_WINDOW = '[data-window-client="light"], [data-vista-dialog]';
+    const ACTIVE_RE = /(^|\s)active-window(\s|$)/;
+
+    function syncWindowChrome(modal) {
+        if (!modal || modal.nodeType !== 1 || !modal.classList.contains('modal')) return;
+        const inactive = !modal.classList.contains('active-window');
+        const hosts = modal.querySelectorAll(WINDOW_CHROME);
+        for (let i = 0; i < hosts.length; i++) {
+            // a window inside this one has its own chrome and state
+            if (hosts[i].closest('.modal') === modal) setClass(hosts[i], 'window-inactive', inactive);
+        }
+        const dialog = modal.matches(DIALOG_WINDOW) || modal.classList.contains('win7') || modal.querySelector('.win7') !== null;
+        setClass(modal, 'dialog-active', dialog && !inactive);
+    }
+
+    function syncWindowChromeWithin(node) {
+        if (!node || node.nodeType !== 1) return;
+        if (node.classList.contains('modal')) syncWindowChrome(node);
+        else if (node.matches(WINDOW_CHROME) || node.querySelector(WINDOW_CHROME) !== null) syncWindowChrome(node.closest('.modal'));
+        const inner = node.getElementsByClassName('modal');
+        for (let i = 0; i < inner.length; i++) syncWindowChrome(inner[i]);
+    }
+
+    function windowChromeMutation(mutation) {
+        if (mutation.type === 'attributes') {
+            const target = mutation.target;
+            if (target.classList && target.classList.contains('modal')
+                && ACTIVE_RE.test(mutation.oldValue || '') !== target.classList.contains('active-window')) {
+                syncWindowChrome(target);
+            }
+            return;
+        }
+        const added = mutation.addedNodes || [];
+        for (let i = 0; i < added.length; i++) syncWindowChromeWithin(added[i]);
     }
 
     function nodeTouchesFlag(node, flag) {
@@ -164,6 +217,7 @@
     }
 
     function onMutations(allMutations) {
+        for (let i = 0; i < allMutations.length; i++) windowChromeMutation(allMutations[i]);
         const mutations = allMutations.filter(mutationMayMatter);
         if (!mutations.length) return;
         for (let f = 0; f < FLAGS.length; f++) {

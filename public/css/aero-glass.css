@@ -268,8 +268,8 @@ html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) {
 }
 
 /* Inactive caption: a touch dimmer, still light on the tinted frame */
-html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window) .modal-window-title-main,
-html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) .modal-window-title-main {
+html[data-glass="frosted"] body.desktop-mode .modal .modal-window-title-main.window-inactive,
+html[data-glass="basic"] body.desktop-mode .modal .modal-window-title-main.window-inactive {
     color: hsl(0 0% 90%);
 }
 

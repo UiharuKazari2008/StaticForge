@@ -3705,15 +3705,15 @@ html.disable-blur .director-attach-chip {
         drop-shadow(0 0 5px rgba(0, 0, 0, 0.4));
 }
 
-.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger) {
+.modal #directorWindowToolbar.window-inactive #directorCommonHeader :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     box-shadow: inset var(--glass-shadow-2);
     color: var(--text-secondary);
 }
 
-.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader .inset-badge,
-.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader .gallery-toggle-group {
+.modal #directorWindowToolbar.window-inactive #directorCommonHeader .inset-badge,
+.modal #directorWindowToolbar.window-inactive #directorCommonHeader .gallery-toggle-group {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     box-shadow: inset var(--glass-shadow-2);
@@ -3721,7 +3721,7 @@ html.disable-blur .director-attach-chip {
 
 /* Inactive text colour goes through a variable on the badge: a `*` rule under .active-window
    restyles the whole Director window on every focus change. */
-.modal:not(.active-window) #directorWindowToolbar #directorCommonHeader .inset-badge {
+.modal #directorWindowToolbar.window-inactive #directorCommonHeader .inset-badge {
     --director-inset-badge-inactive-text: var(--text-secondary);
 }
 

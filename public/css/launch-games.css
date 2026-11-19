@@ -160,7 +160,7 @@ body.melaton-games > .modal.modal > .modal-window-title {
     user-select: none;
 }
 
-body.melaton-games > .modal.modal:not(.active-window) > .modal-window-title {
+body.melaton-games > .modal.modal > .modal-window-title.window-inactive {
     color: #434e54;
 }
 
@@ -246,7 +246,7 @@ body.melaton-games > .modal.modal > .modal-window-controls button:active {
     background-position: 0 -32px;
 }
 
-body.melaton-games > .modal.modal:not(.active-window) > .modal-window-controls button:not(:hover) {
+body.melaton-games > .modal.modal > .modal-window-controls.window-inactive button:not(:hover) {
     background-position: 0 -48px;
 }
 

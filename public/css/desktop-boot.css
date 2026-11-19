@@ -826,7 +826,7 @@ body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupMo
     background: url('/static_images/vista-logon/basic-close.png') 0 0 / 28px 15px no-repeat;
 }
 
-:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window), .modal.secure-desktop-window:not(.active-window)) > .modal-window-controls > button {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls.window-inactive > button {
     background-image: url('/static_images/vista-logon/basic-close-inactive.png');
 }
 
@@ -839,11 +839,11 @@ body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupMo
     background-image: url('/static_images/vista-logon/basic-close-pressed.png');
 }
 
-:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window), .modal.secure-desktop-window:not(.active-window)) > .modal-window-controls > button:hover {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls.window-inactive > button:hover {
     background-image: url('/static_images/vista-logon/basic-close-inactive-hot.png');
 }
 
-:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal, .active-window), .modal.secure-desktop-window:not(.active-window)) > .modal-window-controls > button:active {
+:is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls.window-inactive > button:active {
     background-image: url('/static_images/vista-logon/basic-close-inactive-pressed.png');
 }
 
