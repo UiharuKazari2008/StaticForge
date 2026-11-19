@@ -242,3 +242,8 @@
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-tasks h3.cpl-task-heading {
     padding-left: 22px;
 }
+
+/* Control Panel > Firmware (cplFirmware.js, DreamOS #910): its tables sit in the System page's sections */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fw-page .cpl-fw-table {
+    margin: 2px 0 10px;
+}

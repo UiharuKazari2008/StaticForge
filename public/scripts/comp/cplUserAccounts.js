@@ -491,12 +491,13 @@
                     const a = String(ctx.get(1013) || '');
                     const b = String(ctx.get(1009) || '');
                     const say = (text) => (typeof root.showConfirmationDialog === 'function'
-                        ? root.showConfirmationDialog(text, [{ text: 'OK', value: true }], { title: 'Automatically Log On', icon: 'error' })
+                        ? root.showConfirmationDialog(text, [{ text: 'OK', value: true }], null, { title: 'Automatically Log On' })
                         : Promise.resolve());
                     // netplwiz's own strings
                     if (a !== b) { await say('The passwords you typed do not match. Type the same password in both text boxes.'); return false; }
                     const r = root.cachedLogon ? await root.cachedLogon.signIn(a) : { ok: false, error: 'The password could not be checked.' };
-                    if (!r.ok || (r.userType && r.userType !== 'admin')) { await say(r.error || 'The user name or password is incorrect.'); return false; }
+                    // Vista's wording for a wrong password; an offline computer that never signed in here says so
+                    if (!r.ok || (r.userType && r.userType !== 'admin')) { await say(r.noCache ? r.error : 'The user name or password is incorrect.'); return false; }
                     finish(true);
                     return true;
                 },
@@ -545,6 +546,8 @@
                     if (reset) reset.disabled = account === currentAccount() || !isAdmin();
                 };
                 show(rows[0].account);
+                // the list has the focus when the sheet opens (the VM: its selection drawn in the highlight colour)
+                if (lv) setTimeout(() => { try { lv.focus(); } catch (_) { /* gone */ } }, 0);
                 if (lv) lv.addEventListener('change', () => { const sel = lv.querySelector('.vdt-lv-row.is-selected'); if (sel) show(sel.dataset.account); });
                 const props = ctx.el(1017, 'netplwiz:105');
                 if (props) props.addEventListener('click', () => { const sel = lv && lv.querySelector('.vdt-lv-row.is-selected'); state = { ...state, view: 'account', account: sel ? sel.dataset.account : 'administrator' }; if (root.melatonControlPanel) root.melatonControlPanel.open('user-accounts'); });

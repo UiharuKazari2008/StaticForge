@@ -6202,6 +6202,9 @@ class WebSocketClient {
             // syncAuthLocalStorageFromServer: public/scripts/comp/connectionManager.js
             syncAuthLocalStorageFromServer(message);
             this._resolveConnectionWelcome(message.authenticated === true);
+            // DreamOS (#910): the server tells this machine when its update channel gets a release (dreamos_channel,
+            // 120-infrastructureInbound.js), so its system agent never asks on a timer
+            if (message.authenticated === true && window.DreamOSUpdates) this.send({ type: 'dreamos_channel_watch' });
             if (message.authenticated === false) {
                 this.handleAuthError({
                     type: 'auth_error',

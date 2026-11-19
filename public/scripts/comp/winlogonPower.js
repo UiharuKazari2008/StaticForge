@@ -489,7 +489,7 @@ function forgetDirectorReopen() {
     function winlogonUpdatePlan(updater, planning) {
         if (!updater || !planning) return Promise.resolve(null);
         return Promise.race([planning, winlogonDelay(WINLOGON_UPDATE_PLAN_MAX_MS).then(() => null)])
-            .then((plan) => (plan && Array.isArray(plan.updates) && plan.updates.length ? plan : null), () => null);
+            .then((plan) => (plan && Array.isArray(plan.updates) && (plan.updates.length || (Array.isArray(plan.firmware) && plan.firmware.length)) ? plan : null), () => null);
     }
 
     /**
