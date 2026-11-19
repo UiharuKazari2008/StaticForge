@@ -3,11 +3,10 @@
  * (window.DreamOSNetwork + 'dreamosnet' events, cafeready wifi.rs), drawn the way the network icon shows it:
  *
  *   wired (a cable with an address)   the usual network icon (pnidui.dll's two screens), websocket.js's globe
- *   Wi-Fi connected                   netshell.dll 160 (Vista's Wireless Network Connection: the screen with green
- *                                     waves), with pnidui 30's small warning when the network wants a sign-in
- *                                     (dreamosPortal.js) or reaches nothing beyond it; the signal is the flyout's
- *                                     bars (pnidui.dll 13-18) and the tooltip's "Signal strength"
- *   Wi-Fi on, nothing joined          netshell.dll 158; joining 159; the radio off 157
+ *   Wi-Fi connected                   pnidui.dll's signal bars (13 = no bar lit ... 18 = five), the limited ones with
+ *                                     pnidui 30's small warning when the network wants a sign-in (dreamosPortal.js)
+ *                                     or reaches nothing beyond it
+ *   Wi-Fi on but nothing joined, off  pnidui.dll 19 (Not Connected); joining trades pnidui 25 / 26
  *   no adapter connected at all       pnidui.dll 19, "Not Connected"
  *
  * The icon itself is drawn by vista-glass-controls.css from #modemTrayIcon[data-link][data-bars][data-limited],

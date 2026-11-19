@@ -21,7 +21,7 @@
  *
  * Nothing polls: the host pushes 'dreamosnet' (state) and 'dreamosnetscan' (a scan's list); opening Connect to a
  * network and its Refresh button ask for a scan. The status sheet's Duration counts on a local clock while it
- * shows. Without window.DreamOSNetwork (a browser, the phone) there is no wireless adapter: Connect to a network
+ * shows. Without a network tray provider (a browser, the phone) there is no wireless adapter: Connect to a network
  * lists only the Dial-up and VPN connection, as Vista does on a computer without one, and the other two windows
  * say that no wireless network interface was found.
  *
@@ -32,7 +32,17 @@
     'use strict';
 
     const doc = root.document;
-    const host = () => root.DreamOSNetwork || null;
+    // the 'network' tray provider (trayProviders.js, docs/client-api/tray-providers.md): DreamOS's DreamOSNetwork
+    // wrapper, the Android app's desktop shell
+    const host = () => (root.melatonTray && root.melatonTray.provider('network')) || null;
+    /** What the adapter allows (provider.can(): { connect, forget, radio, scan }; absent = everything it has). */
+    function can(op) {
+        const h = host();
+        if (!h || typeof h[op] !== 'function') return false;
+        let c = null;
+        try { c = typeof h.can === 'function' ? h.can() : null; } catch (_) { c = null; }
+        return !c || c[op] !== false;
+    }
     const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -184,7 +194,7 @@
 
     function scan() {
         const h = host();
-        if (!h || typeof h.scan !== 'function') return;
+        if (!h || !can('scan')) return;
         Promise.resolve(h.scan()).catch(() => { /* the list stays as it was */ });
     }
 
@@ -333,7 +343,7 @@
         const r = vanSelected();
         const label = r && r.connected ? S.disconnect : S.connect;
         if (next.textContent !== label) next.textContent = label;
-        next.disabled = !r;
+        next.disabled = !r || (r.kind === 'wifi' && !can(r.connected ? 'disconnect' : 'connect'));
     }
 
     function pageInstruction(ctx, key, text) {
@@ -766,7 +776,7 @@
         set(1005, bytes(w.rxBytes !== undefined ? w.rxBytes : null));
         const meter = c.holder(1044, k);
         const im = meter && meter.querySelector('img');
-        const src = `${NET}/netshell-signal-${n ? signalLevel(n.signalPercent) : 0}-32.png`;
+        const src = `${NET}/tray-wifi-${n ? signalLevel(n.signalPercent) : 0}-32.png`; // pnidui.dll 13-18 (netshell's set is not used)
         if (im && im.getAttribute('src') !== src) {
             im.setAttribute('src', src);
             im.setAttribute('srcset', src.replace('.png', '@2x.png 2x'));
@@ -833,7 +843,7 @@
 
     async function setRadio(on) {
         const h = host();
-        if (!h || typeof h.radio !== 'function') return;
+        if (!h || !can('radio')) return;
         const r = await Promise.resolve(h.radio(on)).catch((e) => ({ error: String(e) }));
         if (r && r.error) await message(r.error, ADAPTER, 'error');
     }
@@ -857,7 +867,7 @@
                 key: k,
                 overrides: {
                     // the signal quality meter: netshell 23510-23515 at their own 32 px, where the static sits
-                    1044: { image: `${NET}/netshell-signal-0-32.png`, nudge: [0, 0, 2, 31] },
+                    1044: { image: `${NET}/tray-wifi-0-32.png`, nudge: [0, 0, 2, 31] },
                     // the activity picture: the two screens (netshell 1915) under the wireless mark (1913), as
                     // netshell draws it, at 48 px
                     1010: { html: `<span class="dwf-activity">${img1('netshell-activity-48')}${img1('netshell-activity-wireless-48')}</span>` },
@@ -919,7 +929,7 @@
         const btn = (v, icon, t, on = true) => `<button type="button" class="cpl-fbar-btn" data-cpl-vpage="${v}"${on ? '' : ' disabled'}>${icon ? img(icon) : ''}${esc(t)}</button>`;
         return `<div class="cpl-fbar" role="toolbar">
             ${btn('add', 'wlanpref-add-16', 'Add')}
-            ${sel ? btn('remove', 'wlanpref-remove-16', 'Remove') : ''}
+            ${sel ? btn('remove', 'wlanpref-remove-16', 'Remove', can('forget')) : ''}
             ${sel ? btn('up', 'wlanpref-up-16', 'Move up', i > 0) : ''}
             ${sel ? btn('down', 'wlanpref-down-16', 'Move down', i < list.length - 1) : ''}
             ${btn('adapter', 'wlanpref-adapter-16', 'Adapter properties')}
@@ -1068,13 +1078,25 @@
         mwnRerender();
     }
 
-    root.addEventListener('dreamosnet', onNet, { signal: appScopeSignal });
-    root.addEventListener('dreamosnetscan', (ev) => {
-        const d = ev && ev.detail;
+    // the provider's pushes: its state, and a finished scan's list (provider.onScan); a provider registered later is
+    // followed too
+    let scanOff = null;
+    const onScanList = (d) => {
         setList(d && Array.isArray(d.networks) ? d.networks : null);
         vanPaint();
         mwnRerender();
-    }, { signal: appScopeSignal });
+    };
+    const followScan = () => {
+        if (scanOff) { try { scanOff(); } catch (_) { /* gone */ } scanOff = null; }
+        const h = host();
+        if (h && typeof h.onScan === 'function') scanOff = h.onScan(onScanList);
+    };
+    if (root.melatonTray) {
+        let last = host();
+        const off = root.melatonTray.onChange('network', () => { if (host() !== last) { last = host(); followScan(); } onNet(); });
+        if (appScopeSignal) appScopeSignal.addEventListener('abort', () => { off(); if (scanOff) scanOff(); }, { once: true });
+        followScan();
+    }
     root.addEventListener('nightshade:state', vanPaint, { signal: appScopeSignal });
     noteConnection();
 
