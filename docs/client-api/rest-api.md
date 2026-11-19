@@ -1413,6 +1413,50 @@ Channel names match `^[a-z][a-z0-9-]{0,31}$`. The manifest (format 1) is
 A publish emits `channel` `{ channel, sha256 }` on the module's `events`, so the CaféReady link can push "update
 available" without polling.
 
+**Push instead of polling** (`modules/ws/handlers/312-dreamosUpdatesHandler.js`): a signed-in DreamOS desktop sends the
+WS packet `dreamos_channel_watch` (no fields, no answer; once per socket). When a release is published, every watching
+socket gets `dreamos_channel` `{ channel }` and hands it to its system agent, which then fetches the manifest above.
+See [ws/dreamosUpdates.md](ws/dreamosUpdates.md).
+
+---
+
+## Client certificates
+
+`modules/clientCertificates.js` (Nov 18 2026). The installed clients' certificate sign-in. The full protocol (CA,
+enrolment, challenge / sign-in, renewal, CRL) is in [../client-certificates.md](../client-certificates.md); the Key
+Manager's WS packets are in [ws/clientCertificates.md](ws/clientCertificates.md).
+
+| Route | Who | Notes |
+| --- | --- | --- |
+| `GET /api/client-cert/ca` | no session | The client CA certificate (pin it at first enrolment) |
+| `POST /api/client-cert/enrol` | signed-in session | Issue a certificate for this installed client |
+| `POST /api/client-cert/challenge` | no session | A one-time challenge to sign |
+| `POST /api/client-cert/auth` | no session | The signed challenge plus certificate; this is the sign-in |
+| `POST /api/client-cert/renew` | a session of the certificate | A fresh certificate before expiry |
+| `GET /api/client-cert/crl`, `/api/client-cert/crl.json` | no session | The revocation list (DER / JSON) |
+| `GET /api/client-cert/mine` | session | This client's certificate state |
+
+---
+
+## Test devices (admin)
+
+`modules/testDevicesRoute.js` + `modules/testDevices.js` (Nov 18 2026). The Android emulator harness on Ruiko
+(`~/.config/aemu`, see [../fold7-test-emulator.md](../fold7-test-emulator.md)) marks its device, sends test notices
+in the **test lane** and reads back what the phone confirmed. A test notice only ever goes to marked test devices, and
+every route refuses while no test device is set. **Admin only**: anyone else gets 403 `INSUFFICIENT_PERMISSIONS`.
+Errors are `{ success: false, code, error }`.
+
+| Route | Body / query | Answer / notes |
+| --- | --- | --- |
+| `GET /api/test-devices` | none | `{ devices: [{ id, name, markedAt, status, online, partner, service, pageInFront }], notices }` (the test lane, cleared ones too) |
+| `PUT /api/test-devices/:id` | `{ name?, status?, replaceStatus?, sessionId? }` | Marks the device; `status` fields are set over the neutral test snapshot (`null` drops one); `sessionId` is the session the harness signed it in with. Answers the device |
+| `DELETE /api/test-devices/:id` | none | Unmark (unpartner it first: it is a household phone again) |
+| `POST /api/test-devices/notice` | `{ mode: 'push'\|'get', id?, title, text?, cls?, app?, actions?, data?, ttlMs?, alert? }` | `{ notice }`. `push` is sent live over the background link (`as_event` `inbox.notice`); `get` is only stored and the phone fetches it (hello catch-up, the status snapshot's notices list, `POST .../catch-up`) |
+| `POST /api/test-devices/notice/:nid/clear` | none | Cleared at the server (`as_event` `inbox.cleared` to the test devices) |
+| `DELETE /api/test-devices/notices` | none | Clears the whole test lane |
+| `POST /api/test-devices/:id/catch-up` | none | What a hello would send now (`notificationInbox.catchUpPhone`) |
+| `GET /api/test-devices/deliveries` | `?device=` | The delivery rows: `sentAt`, `attempts`, `postedAt`, how |
+
 ---
 
 ## Text Messaging and IMAP mail accounts
