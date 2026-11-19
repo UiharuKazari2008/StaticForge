@@ -138,3 +138,185 @@
 body.desktop-mode :is(#dreamosWifiConnectModal, #dreamosWifiAdd).modal.tbp-window[data-vista-dialog] > .modal-content.vdt-client.vdt-segoe :is(button, input, select, label, span, div):not(.vdt-cmdlink):not(.vdt-cmdlink *) {
     font-size: inherit;
 }
+
+/* Network Connections (ncpa.cpl, dreamosWifi.js): Explorer's folder without the navigation pane, the Tiles view grouped
+   by type under the column headers, as on the VM: a 222 px tile, the 48 px picture (netshell's screens with the
+   adapter's mark and the red cross laid over them), the name and two grey lines beside it */
+:is(#melatonControlPanelModal, .cpl-instance)[data-page="network-connections"][data-page-kind="folder"] .cpl-content:not(#_) {
+    grid-template-columns: 0 1fr;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance)[data-page="network-connections"][data-page-kind="folder"] .cpl-tasks:not(#_) {
+    display: none;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-head > .dwf-nc-col0 { width: 75px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-head > .dwf-nc-col1 { width: 78px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-head > .dwf-nc-col2 { width: 100px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-head > .dwf-nc-col3 { width: 96px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-head > .dwf-nc-col4 { width: 125px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-head > .dwf-nc-col5 { width: 80px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-head > .dwf-nc-col6 { width: 80px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-head > .dwf-nc-col7 { width: 159px; }
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-head > span {
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-tiles {
+    padding: 2px 4px 6px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ficon.dwf-nc-tile {
+    width: 222px;
+    height: 50px;
+    box-sizing: border-box;
+    gap: 5px;
+    padding: 0 2px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-pic {
+    position: relative;
+    flex: none;
+    width: 48px;
+    height: 48px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-pic img {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 48px;
+    height: 48px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-text > span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) input.dwf-nc-rename {
+    width: 150px;
+    height: 17px;
+    box-sizing: border-box;
+    margin: -1px 0 0 -2px;
+    padding: 0 1px;
+    font: inherit;
+}
+
+/* Manage Wireless Networks: the network being dragged and the list view's insertion mark (an upright 2 px line with
+   a tick at each end) in the gap where it will land */
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-list .cpl-flist-icons {
+    position: relative;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-tile.is-dragging {
+    opacity: 0.6;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-insert {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 2px;
+    background: currentColor;
+    pointer-events: none;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-insert::before,
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-insert::after {
+    content: "";
+    position: absolute;
+    left: -2px;
+    width: 6px;
+    height: 2px;
+    background: currentColor;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-insert::before {
+    top: 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-insert::after {
+    bottom: 0;
+}
+
+/* the status sheet's values, right-aligned in their column on the VM */
+.vdt-client .tbp-ctl.dwf-right {
+    text-align: right;
+}
+
+/* Set up a connection or network: Choose a connection option's list (the VM's: a 32 px icon 5 px in, the name and its
+   note beside it, rows 49 px apart, the selection drawn behind the two lines only) */
+.vdt-client .dwf-sw-holder {
+    overflow: visible;
+}
+
+.vdt-client .dwf-sw-list {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    padding-top: 2px;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.vdt-client .vdt-lv-row.dwf-sw-row {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    height: 49px;
+    padding: 0 0 0 4px;
+}
+
+.vdt-client .dwf-sw-icon img {
+    display: block;
+    width: 32px;
+    height: 32px;
+}
+
+.vdt-client .dwf-sw-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 15px;
+}
+
+.vdt-client .dwf-sw-text > span {
+    padding: 0 1px;
+}
+
+.vdt-client .dwf-sw-details {
+    position: absolute;
+    inset: 0;
+    padding: 2px 4px;
+    background: Canvas;
+}
+
+/* an adapter's Properties: Connect using is a read-only box on the page's white (netshell 15021) with the adapter's
+   name in a borderless read-only edit (15003) inside it, as on the VM */
+#dreamosAdapterProps .vdt-client input.vdt-edit[data-vdt-id="15021"]:not(#_) {
+    background: Canvas;
+}
+
+#dreamosAdapterProps .vdt-client input.vdt-edit[data-vdt-id="15003"]:not(#_) {
+    padding: 0 1px;
+    border: 0;
+    border-image: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+/* the progress pages' middle picture: connect.dll 11103 (and WLanConn's line) drawn stretched over its whole control */
+#dreamosNetSetup .vdt-client .vdt-image[data-vdt-id="1702"] img {
+    width: 100%;
+    height: 100%;
+}
