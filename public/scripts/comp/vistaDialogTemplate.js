@@ -161,7 +161,13 @@
                     } else {
                         const primary = lowType === 1 ? ' data-dialog-primary="1"' : '';
                         const img = (st & 0xC0) && o.image ? `<img src="${esc(o.image)}" alt="" draggable="false">` : '';
-                        out.push(`<button type="button" class="tbp-ctl tbp-button vdt-button" id="${domId}" style="${style(r, 1)}" ${dataId}${primary}${hid}${dis}>${img}${img && !t ? '' : label(t)}</button>`);
+                        // BS_COMMANDLINK / BS_DEFCOMMANDLINK: the green arrow, the 12 pt line and the note under it
+                        // ("&Connect Anyway\n Information sent over...": the text after \n), drawn edge to edge
+                        const cmd = lowType === 0xE || lowType === 0xF;
+                        const [main, ...rest] = String(t || '').split('\n');
+                        const note = cmd ? rest.join(' ').trim() : '';
+                        const inner = cmd ? `<span class="vdt-cmdlink-main">${label(main)}</span>${note ? `<span class="vdt-cmdlink-note">${esc(note)}</span>` : ''}` : `${img}${img && !t ? '' : label(t)}`;
+                        out.push(`<button type="button" class="${cmd ? 'tbp-ctl vdt-cmdlink' : 'tbp-ctl tbp-button vdt-button'}" id="${domId}" style="${style(r, cmd ? 0 : 1)}" ${dataId}${primary}${hid}${dis}>${inner}</button>`);
                     }
                     break;
                 }

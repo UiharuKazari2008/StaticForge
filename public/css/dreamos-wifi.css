@@ -1,0 +1,144 @@
+/* DreamOS Wi-Fi windows (#910, dreamosWifi.js): layout only. Colours, fonts and controls come from the dialog kit
+   (vista-dialog-template.css: list view rows and their selection, group headers, command links) and Control
+   Panel's folder pages; the positions are the VM's (VAN.dll 7111, netshell 24050). */
+
+/* Connect to a network: the list box (VAN 1009) as Vista draws it, one 56 px row per connection: the 32 px icon
+   13 px in, the name at 56 (from the list's outer edge), the state at 193, the unsecured mark beside the bars, the bars 10 px from the edge */
+.vdt-client .dwf-van-holder {
+    overflow: visible;
+}
+
+.vdt-client .dwf-van-list .vdt-lv-group {
+    flex: none;
+}
+
+.vdt-client .dwf-van-list {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.vdt-client .vdt-lv-row.dwf-van-row {
+    display: grid;
+    flex: none;
+    grid-template-columns: 53px 137px minmax(0, 1fr) 20px 32px;
+    align-items: center;
+    height: 56px;
+    box-sizing: border-box;
+    padding-right: 8px;
+}
+
+.vdt-client .vdt-lv-row.dwf-van-row > span {
+    padding: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vdt-client .vdt-lv-row.dwf-van-row > .dwf-van-icon {
+    padding-left: 11px;
+}
+
+.vdt-client .dwf-van-row img {
+    display: block;
+    width: 32px;
+    height: 32px;
+    margin: 0;
+}
+
+.vdt-client .dwf-van-row img.dwf-van-mark {
+    width: 16px;
+    height: 16px;
+}
+
+.vdt-client .dwf-van-row .dwf-van-mark-cell {
+    display: flex;
+    justify-content: flex-start;
+}
+
+/* the connecting page: WLanConn 407 is a 214 x 48 icon drawn at its real size */
+.vdt-client .dwf-line {
+    overflow: visible;
+}
+
+.vdt-client .dwf-line img {
+    width: 214px;
+    height: 48px;
+}
+
+/* the status sheet: values right-aligned in their column (the VM's), the 48 px activity picture (two images, as
+   netshell draws them), the UAC shield in front of a button's label */
+.vdt-client .dwf-right {
+    text-align: right;
+}
+
+.vdt-client .dwf-activity {
+    position: relative;
+    display: block;
+    width: 48px;
+    height: 48px;
+}
+
+.vdt-client .dwf-activity img {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 48px;
+    height: 48px;
+}
+
+.vdt-client .dwf-shield {
+    width: 16px;
+    height: 16px;
+    margin: 0 3px 0 -2px;
+    vertical-align: -4px;
+}
+
+.vdt-client .dwf-col-prop {
+    width: 130px;
+}
+
+.vdt-client .vdt-lv-col.dwf-col-value,
+.vdt-client .vdt-lv-row > .dwf-col-value {
+    flex: 1;
+}
+
+.vdt-client .vdt-lv-row.dwf-item {
+    gap: 4px;
+    padding-left: 4px;
+}
+
+/* Manage Wireless Networks: a folder without the navigation pane, its heading over the tiles */
+:is(#melatonControlPanelModal, .cpl-instance)[data-page="manage-wireless-networks"][data-page-kind="folder"] .cpl-content:not(#_) {
+    grid-template-columns: 0 1fr;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance)[data-page="manage-wireless-networks"][data-page-kind="folder"] .cpl-tasks:not(#_) {
+    display: none;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-head {
+    padding: 12px 16px 8px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-head .cpl-vtext {
+    max-width: 640px;
+    margin: 6px 0 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-tile {
+    width: 320px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn img {
+    width: 16px;
+    height: 16px;
+}
+
+/* Connect to a network's pages are Segoe UI 9 pt templates: their controls take the client's 12 px (the property
+   sheet rule in taskbar-properties.css sets every control to 11 px) */
+body.desktop-mode :is(#dreamosWifiConnectModal, #dreamosWifiAdd).modal.tbp-window[data-vista-dialog] > .modal-content.vdt-client.vdt-segoe :is(button, input, select, label, span, div):not(.vdt-cmdlink):not(.vdt-cmdlink *) {
+    font-size: inherit;
+}

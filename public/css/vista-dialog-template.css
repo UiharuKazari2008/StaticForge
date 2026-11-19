@@ -564,6 +564,12 @@ body.desktop-mode .modal.vdt-wizard .vdt-wizard-back:active {
     background-position: 0 -54px;
 }
 
+/* a wizard that keeps its Back orb on the first page draws it disabled (Connect to a network on the VM) */
+body.desktop-mode .modal.vdt-wizard .vdt-wizard-back:disabled {
+    background-position: 0 -81px;
+    pointer-events: none;
+}
+
 body.desktop-mode .modal.vdt-wizard > .modal-content.vdt-client.vdt-wizard-client {
     position: relative;
     background: #fff !important;
@@ -1098,4 +1104,117 @@ button.vdt-colorwell:not(#_):disabled {
 
 button.vdt-colorwell:disabled > .vdt-colorwell-fill {
     opacity: .5;
+}
+
+/* ---- command links (BS_COMMANDLINK), Vista's: the theme's COMMANDLINKGLYPH (aero.msstyles, 20 px frames:
+   normal, hot, pressed, disabled, default) 7 px in, the main line in 12 pt, the note in 9 pt under it; hot and
+   pressed draw the light frame of Vista's command link (Connect to a network's unsecured / failed pages) ---- */
+button.vdt-cmdlink:not(#_) {
+    display: block;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 9px 8px 7px 34px;
+    border: 1px solid transparent;
+    border-image: none;
+    border-radius: 3px;
+    background: transparent;
+    box-shadow: none;
+    color: #151c55;
+    font: 12pt/21px "Segoe UI", Tahoma, sans-serif;
+    text-align: left;
+    text-shadow: none;
+    white-space: normal;
+    animation: none;
+    transition: none;
+    cursor: var(--c-default);
+}
+
+button.vdt-cmdlink:not(#_)::before {
+    content: "";
+    position: absolute;
+    inset: auto;
+    left: 7px;
+    top: 10px;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    opacity: 1;
+    transform: none;
+    background: url('/static_images/vista-games/ui/commandlink-glyph.png') no-repeat 0 0 / 20px 100px;
+    background-image: image-set(url('/static_images/vista-games/ui/commandlink-glyph.png') 1x, url('/static_images/vista-games/ui/commandlink-glyph@2x.png') 2x);
+}
+
+button.vdt-cmdlink:not(#_)::after {
+    content: none;
+}
+
+button.vdt-cmdlink:not(#_) > span {
+    display: block;
+    font: 12pt/21px "Segoe UI", Tahoma, sans-serif;
+}
+
+button.vdt-cmdlink:not(#_) > .vdt-cmdlink-note {
+    margin-top: 1px;
+    font-size: 9pt;
+    line-height: 15px;
+}
+
+@media (hover: hover) {
+    button.vdt-cmdlink:not(#_):hover:not(:disabled) {
+        border-color: #c6c6c6;
+        background: #f9f9f9;
+        color: #074ae5;
+    }
+
+    button.vdt-cmdlink:not(#_):hover:not(:disabled)::before {
+        background-position: 0 -20px;
+    }
+}
+
+button.vdt-cmdlink:not(#_):active:not(:disabled) {
+    border-color: #9e9e9e;
+    background: #efefef;
+    color: #062073;
+}
+
+button.vdt-cmdlink:not(#_):active:not(:disabled)::before {
+    background-position: 0 -40px;
+}
+
+button.vdt-cmdlink:not(#_):disabled {
+    color: #6d6d6d;
+}
+
+button.vdt-cmdlink:not(#_):disabled::before {
+    background-position: 0 -60px;
+}
+
+button.vdt-cmdlink:not(#_):focus-visible {
+    outline: 1px dotted #000 !important;
+    outline-offset: -4px !important;
+}
+
+/* ---- a list view's group header (Explorer's "Wireless Network Connection" / "Dial-up and VPN" bands): the
+   group's name in the theme's header blue and the rule after it (also over a Control Panel folder's tiles: Manage Wireless Networks) ---- */
+:is(.vdt-client, .cpl-instance) .vdt-lv-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 23px;
+    padding: 0 6px 0 9px;
+    color: #1e3287;
+    white-space: nowrap;
+}
+
+:is(.vdt-client, .cpl-instance) .vdt-lv-group::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, #e2e7f3, #fff);
 }
