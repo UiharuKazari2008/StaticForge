@@ -170,7 +170,10 @@ if (window.wsClient) {
     // Priority 0.45: User global settings (startup behaviour, Atelier, etc.) from server config
     window.wsClient.registerInitStep(0.45, 'Loading user global settings', async () => {
         if (typeof loadUserGlobalSettingsFromServer === 'function') {
-            await loadUserGlobalSettingsFromServer();
+            const settings = await loadUserGlobalSettingsFromServer();
+            // no server copy (an offline boot, #899): fail, so the step runs again when the server is back - the
+            // desktop must not stay on defaults (Nov 19 2026)
+            if (!settings && window.wsClient && window.wsClient._offlineBoot) throw new Error('user settings wait for the server');
         }
     }, true, { logon: true });
 

@@ -10023,9 +10023,13 @@ async function persistUserGlobalSettingsPatch(patch) {
     if (!window.wsClient || !window.wsClient.isConnected()) {
         return;
     }
+    // never written before the server's copy has loaded (a write is not a load: the flag comes from the read only)
+    if (window.userGlobalSettingsHydrated !== true) {
+        console.warn('[settings] user settings not written: the server copy has not loaded yet');
+        return;
+    }
     try {
         await window.wsClient.sendMessage('update_user_global_settings', { settings: patch }, false);
-        window.userGlobalSettingsHydrated = true;
     } catch (e) {
         console.error('update_user_global_settings', e);
         throw e;
