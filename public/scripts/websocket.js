@@ -1527,7 +1527,8 @@ class WebSocketClient {
         try { offlineStart = Date.now() - (Number(sessionStorage.getItem('melatonOfflineStart')) || 0) < 120000; } catch (_) { /* storage off */ }
         // TOP RULE (Yukimi, Nov 18 2026): the installed app (the Dreamscape app's window) logs on with its cached password at
         // once - the server's word is not waited for; the session catches up when the server answers
-        const installedApp = !!(window.AndroidDevice || window.AndroidCaption || window.AndroidNotification);
+        // (a DreamOS laptop too, #923: its kiosk adds " DreamOS/<version>" to the user agent)
+        const installedApp = !!(window.AndroidDevice || window.AndroidCaption || window.AndroidNotification) || / DreamOS\//.test(navigator.userAgent || '');
         this._offlineLogonTimer = setTimeout(() => {
             this._offlineLogonTimer = null;
             if (this.socketAuthenticated === true || this.connectionPhase === 'auth' || !this._offlineLogonEligible()) return;
@@ -2095,7 +2096,11 @@ class WebSocketClient {
         const online = typeof navigator === 'undefined' || navigator.onLine !== false;
         const lan = !!(this.melatonConnection && this.melatonConnection.connectionType === 'Ethernet');
         const iconClass = online ? 'fa-regular fa-globe' : 'fas fa-link-slash';
-        const title = online
+        // a network that wants a sign-in first (a captive portal; DreamOS, dreamosPortal.js): Vista's "Local only"
+        const portal = online && window.dreamosPortal && window.dreamosPortal.captive();
+        const title = portal
+            ? `${window.dreamosPortal.networkName()}\nAccess: Local only\n${window.dreamosPortal.title}`
+            : online
             ? `${lan ? 'Local Area Connection' : 'Network'}\nAccess: Local and Internet`
             : 'Not connected\nNo connections are available';
 
@@ -2612,6 +2617,11 @@ class WebSocketClient {
         if (!modal.dataset.prestartupOpened) {
             this.preStartupMarqueeManualPause = false;
             modal.dataset.prestartupOpened = 'true';
+            // DreamOS (#923): the machine's native boot screen covers the page until the logon is painted
+            // (two frames from here: this one lays it out, the next has it on screen)
+            if (window.DreamOSBoot && window.DreamOSBoot.native) {
+                requestAnimationFrame(() => requestAnimationFrame(() => window.DreamOSBoot.ready('logon')));
+            }
         }
 
         const phase = this.connectionPhase;
@@ -10907,8 +10917,9 @@ class WebSocketClient {
             send: upOn,
             recv: downOn,
             // a slow or silent server is the Nightshade Network's (its tooltip and balloon, #895), not
-            // the computer's network: the globe shows limited no more
-            limited: false
+            // the computer's network: the globe shows limited no more. Limited is the network itself: a captive portal
+            // that wants a sign-in first (DreamOS, dreamosPortal.js)
+            limited: !!(window.dreamosPortal && window.dreamosPortal.captive())
         });
     }
 

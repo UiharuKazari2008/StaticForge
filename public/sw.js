@@ -1526,7 +1526,9 @@ function perfRoute(handler) {
 // one request in the way - its kept boot pages answer at once, and the server is asked behind them only to keep the
 // copy fresh for the next start. A flaky network (slow, not down) held the phone on a blank screen until the
 // browser's own timeout. Browsers are unchanged (the network first, the kept copy when it fails).
-const isAppWebView = (request) => / wv\)/.test((request && request.headers && request.headers.get('user-agent')) || '') || / wv\)/.test(self.navigator && self.navigator.userAgent || '');
+// A DreamOS laptop is an installed client too (#923): its kiosk adds " DreamOS/<version>" to Chromium's user agent.
+const INSTALLED_CLIENT_UA = /(?: wv\)| DreamOS\/)/;
+const isAppWebView = (request) => INSTALLED_CLIENT_UA.test((request && request.headers && request.headers.get('user-agent')) || '') || INSTALLED_CLIENT_UA.test(self.navigator && self.navigator.userAgent || '');
 async function keptFirst(event, key, refresh) {
   try {
     const cache = await caches.open(LAUNCH_SHELL_CACHE);

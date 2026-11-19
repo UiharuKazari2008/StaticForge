@@ -518,6 +518,36 @@ const flush = () => new Promise((r) => setImmediate(r));
         assert.strictEqual(JSON.parse(o.t.local[boot.SETUP_RESUME_KEY] || 'null').resume, 'install', 'unforeseen: the restart boots the media into the installer');
     }
 
+    // ---------- DreamOS (#923): the native POST and boot screen were shown; an installed copy goes straight to /app ----------
+    {
+        const kept = { open: async () => ({ match: async (k) => (k === '/app' ? {} : null) }) };
+        const nativeBoot = () => { const b = { native: true, calls: [], ready(at) { b.calls.push(at); b.native = false; } }; return b; };
+        h = harness([networkErr()], { local: { melatonManifestHash: 'abc' }, caches: kept });
+        h.env.navigator.userAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 DreamOS/0.2.90';
+        h.env.dreamosBoot = nativeBoot();
+        assert.strictEqual(await h.ctl.runChecks(), 'teal');
+        assert.deepStrictEqual(h.t.screens(), [], 'no BIOS, no boot screen, no black: the native boot screen covers the page');
+        assert.deepStrictEqual(h.t.replaced, ['/app']);
+        assert.deepStrictEqual(h.t.fetches, [], 'not one request to the server');
+        assert.strictEqual(h.t.now, 0, 'and nothing waited for');
+        assert.strictEqual(h.t.storage.dreamscapeLaunchHandoff, 'teal');
+        assert.strictEqual(Number(h.t.storage.dreamscapeBootTealHoldUntil), 0, 'the logon shows at once');
+        assert.deepStrictEqual(h.env.dreamosBoot.calls, [], 'the logon (websocket.js) says when it is painted');
+        // nothing installed on that laptop: the usual boot, and its first screen takes over from the native one
+        h = harness([json(true)], { fresh: true, engine: mediaEngine() });
+        h.env.navigator.userAgent = 'Mozilla/5.0 (X11; Linux x86_64) Chrome/141.0.0.0 Safari/537.36 DreamOS/0.2.90';
+        h.env.dreamosBoot = nativeBoot();
+        await h.ctl.runChecks();
+        assert.strictEqual(h.t.screens()[0], 'bios');
+        assert.deepStrictEqual(h.env.dreamosBoot.calls, ['launch:bios']);
+        // a browser on the same laptop without the native boot screen up (a restart from the Start menu): the usual boot
+        h = harness([json(true)], { local: { melatonManifestHash: 'abc' }, caches: kept });
+        h.env.navigator.userAgent = 'Mozilla/5.0 (X11; Linux x86_64) Chrome/141.0.0.0 Safari/537.36 DreamOS/0.2.90';
+        h.env.dreamosBoot = Object.assign(nativeBoot(), { native: false });
+        await h.ctl.runChecks();
+        assert.strictEqual(h.t.screens()[0], 'bios');
+    }
+
     // the media cannot be read: the boot menu says so
     h = harness([networkErr()], { fresh: true, engine: { ...mediaEngine(), readRecord: () => null } });
     assert.strictEqual(await h.ctl.runChecks(), 'menu');
