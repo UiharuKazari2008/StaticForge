@@ -289,7 +289,7 @@ Usage and balance of every connected account and API key except NovelAI, and the
 |-------|------|-------------|
 | `fetchedAt` | number | ms epoch |
 | `cursor` | object \| null | `{ accounts: [{ id, name, email, color, personas: ['Wren'\|'Xi'], plan, percent, autoPercent, apiPercent, limited, daysLeft, costLabel, needsLogin, error }] }` from `cursorUsage.getCursorUsageForAccount` per saved profile; `null` with no profiles and no host login. `needsLogin` follows Security Center's Login button (never logged in, or the usage error says the login expired / is missing); the wallet then offers `login_cursor_account` |
-| `claude` | object \| null | `{ at, status, resetsAt, fiveHour: { percent, resetsAt }, sevenDay: { percent, resetsAt } }` from the last Claude turn (Director `claude-usage.json`); a window whose `resetsAt` passed has reset since. `null` when Claude Code is not installed |
+| `claude` | object \| null | `{ at, status, resetsAt, fiveHour: { percent, resetsAt }, sevenDay: { percent, resetsAt }, accounts: [row] }`: the windows from the last Claude turn (Director `claude-usage.json`; a window whose `resetsAt` passed has reset since) and `accounts`, every Claude account's plan usage (see [`claude_usage` feed](#claude-usage-feed)). `refresh` / `fresh` read the accounts again (20 s floor). `null` when Claude Code is not installed and no Claude account exists |
 | `tokenrouter` | object \| null | `{ managementKey: false }` without a management key, else `{ managementKey: true, remaining, topUp, vouchers, spent }` (USD, `tokenRouterBridge.wallet`) |
 | `runpod` | object \| null | `{ pods: [{ id, name, status, costPerHr, lastStartedAt, gpuName, error }], running, balance, spendPerHr, spendLimit }`; balance from GraphQL `myself { clientBalance currentSpendPerHr spendLimit }` |
 | `custom` | object \| null | `{ providers: [{ id, name, kind, host, defaultModel, monitorUsage, hasKey, api: { state, message, status, ms, models, checkedAt }, balance }] }`, one per custom Director engine (`customModelProviders.js`); `null` when none is configured. `api` is one authenticated read (`apiStatus`: `{baseUrl}/v1/models`, Google `{baseUrl}/models`, OpenRouter `{baseUrl}/v1/key`; TokenRouter through `tokenRouterGate`), shown whether or not the host reports usage. `state` follows Security Center's key dots: `ok`, `fail` (key refused), `warn` (outage, rate limit, network), `off` (no key, no call); the key is scrubbed from `message`. `balance` (`balanceInfo`) is `{ balance, title, topUp?, vouchers? }` for TokenRouter (management key) and OpenRouter (credits), `balance: null` when it could not be read, and `null` for other hosts. Cached 60 seconds per provider, also on `fresh` |
@@ -298,6 +298,29 @@ Usage and balance of every connected account and API key except NovelAI, and the
 **Response (session user):** `{ "success": true, "restricted": true }`; the wallet shows NovelAI and the RunPod pods only.
 
 ---
+
+### `claude_usage` feed
+
+<a id="claude-usage-feed"></a>Plan usage of **every** Claude account (Security Center's Claude keys), each read with its own claude.ai login: `modules/claudeUsage.js`, `modules/ws/handlers/315-claudeUsageHandler.js`. The Account Manager tray (`walletTray.js`, while the window is seen) and Melaton Mobile's Accounts (`wmAccounts.js`, while its page is shown) subscribe with `status_subscribe { feed: 'claude_usage' }` (admins only); the server reads every 5 minutes while someone is subscribed and pushes `claude_usage_status { changed, removed }` only when a row changed. No client timer.
+
+- Source: `GET https://api.anthropic.com/api/oauth/usage` (`anthropic-beta: oauth-2025-04-20`), the call the CLI's `/usage` makes. The account on the host uses `~/.claude/.credentials.json`; any other the fresher of its linked login and its parallel-session config dir.
+- An idle non-host login whose access token ran out is renewed with its own refresh token (`platform.claude.com/v1/oauth/token`, the CLI's client id) and the rotated login is saved back as the linked login and into its config dir. Never done for the host's login, a login a running CLI holds (`CLAUDE_CONFIG_DIR` of a live `~/.claude/sessions/<pid>.json` process), or during an account switch: those wait for their CLI. A refused renewal asks for a sign-in (10-minute back-off).
+- An account without a linked login (setup token only, which cannot read the endpoint) shows the last Claude turn's windows when it is the engine's account, else `needsLogin`.
+
+Items: `_meta { at, error }` and one per account id:
+
+| Field | Description |
+|-------|-------------|
+| `id`, `index`, `name` | CardSpace account (`claudeAccountHost.listAccounts`) |
+| `email`, `organization` | of its linked login |
+| `engine`, `onHost` | the Director's account; the login Remote Control runs on |
+| `plan` | `Max 5x`, `Max 20x`, `Pro`, ... (`rateLimitTier` / `subscriptionType`) |
+| `source`, `at` | `login` (its own login) or `turns` (last Claude turn); when read |
+| `limits` | `[{ kind: session \| weekly_all \| weekly_scoped \| five_hour..., label: 'Current session' \| 'Weekly (all models)' \| 'Weekly (<model>)', short, percent, resetsAt (ms), severity, active }]` |
+| `extra` | `{ enabled, used, limit, currency, decimals, percent, limitReached }` when extra usage is on, else `null` |
+| `needsLogin`, `error` | no usable login / why the figures are missing or old (last good figures are kept) |
+
+No token is ever in a row, a push or a log line.
 
 ### Claude accounts
 

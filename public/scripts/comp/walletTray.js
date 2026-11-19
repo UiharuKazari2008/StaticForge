@@ -6,7 +6,8 @@
  *
  *   Status   one row per account, a status dot on the left: NovelAI (Anlas fixed + paid,
  *            subscription and days left), each Cursor profile (a Log in link when it needs
- *            one), Claude (5-hour / 7-day windows), TokenRouter (balance), RunPod (running
+ *            one), each Claude account (plan, current session and weekly limits with reset times, read
+ *            with its own login; pushed by the statusHub feed claude_usage), TokenRouter (balance), RunPod (running
  *            pods, spend an hour, balance), each custom Director engine (API status, and the
  *            balance where its host has one). NovelAI V5, Cursor and Claude usage percents sit in
  *            a column on the right behind a divider (usageSide). No OpenAI: it gives API keys
@@ -453,6 +454,101 @@
             title: 'Claude reports these windows on every Claude turn (Wren, Xi, the usage probe)' };
     }
 
+    // ---- Claude: every account, read with its own login (modules/claudeUsage.js) -------------------
+    //
+    // One row per Claude account (Security Center's Claude keys): plan, the current session (5-hour)
+    // and weekly limits with percent used and reset times, a per-model weekly limit where the plan has
+    // one, extra usage when it is on. The figures come pushed by the statusHub feed claude_usage while
+    // the tray or the Accounts app is seen (watchClaude), else from wallet_status.claude.accounts.
+
+    function claudeAccountWho(acc) {
+        const bits = [];
+        if (acc.engine) bits.push('Director');
+        if (acc.onHost) bits.push('Remote Control');
+        return bits.length ? ` (${bits.join(', ')})` : '';
+    }
+
+    function claudeLimitLine(l, now) {
+        if (l.percent == null) return `${l.label}: -`;
+        if (l.resetsAt && l.resetsAt <= now) return `${l.label}: reset ${span(now - l.resetsAt)} ago`;
+        const resets = l.resetsAt ? `, resets in ${span(l.resetsAt - now)}` : '';
+        return `${l.label}: ${l.percent}% used${resets}`;
+    }
+
+    function claudeLimitBar(l, now) {
+        if (!l || l.percent == null) return usageBar(l ? l.short : '-', null);
+        if (l.resetsAt && l.resetsAt <= now) return usageBar(l.short, null, `${l.label}: reset since the last reading`);
+        const at = l.resetsAt ? new Date(l.resetsAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+        return usageBar(l.short, l.percent, `${l.label}${at ? `, resets ${at}` : ''}`);
+    }
+
+    function claudeMoney(amount, x) {
+        if (amount == null) return '-';
+        const n = amount / Math.pow(10, x.decimals == null ? 2 : x.decimals);
+        return x.currency === 'USD' ? usd(n) : `${n.toFixed(2)} ${x.currency}`;
+    }
+
+    function claudeAccountRow(acc, now, alerts) {
+        const key = `claude:${acc.id}`;
+        const name = `Claude: ${acc.name}${claudeAccountWho(acc)}`;
+        const title = [acc.email, acc.organization && acc.organization !== acc.email ? acc.organization : ''].filter(Boolean).join(', ');
+        const head = [acc.plan, acc.email].filter(Boolean).join(', ');
+        const lines = head ? [head] : [];
+        const limits = Array.isArray(acc.limits) ? acc.limits : [];
+        if (!limits.length) {
+            if (acc.needsLogin) {
+                const open = { label: 'Claude Accounts', name: 'claude-accounts', arg: acc.id };
+                lines.push({ text: `${acc.error || 'Link a claude.ai login to see its usage'}.`.replace(/\.\.$/, '.'), link: open });
+                alert(alerts, `${key}:login`, 'warning', 'Claude', `${acc.name}: Claude login needed`,
+                    'Its plan usage shows again once the account has a claude.ai login.', open);
+                return { key, service: 'claude', dot: 'warn', name, value: '', lines, title };
+            }
+            lines.push(`Usage unavailable${acc.error ? `: ${acc.error}` : ''}`);
+            return { key, service: 'claude', dot: 'off', name, value: '', lines, title };
+        }
+        const levels = [];
+        limits.forEach((l) => {
+            lines.push(claudeLimitLine(l, now));
+            if (l.percent == null || (l.resetsAt && l.resetsAt <= now)) return;
+            const reset = l.resetsAt ? `Resets in ${span(l.resetsAt - now)}.` : '';
+            if (l.percent >= 100) {
+                levels.push('bad');
+                alert(alerts, `${key}:${l.kind}:${l.resetsAt}:out`, 'critical', 'Claude', `${acc.name}: ${l.label.toLowerCase()} limit reached`, reset);
+            } else if (l.percent >= 90) {
+                levels.push('warn');
+                alert(alerts, `${key}:${l.kind}:${l.resetsAt}:high`, 'warning', 'Claude', `${acc.name}: ${l.label.toLowerCase()} ${l.percent}% used`, reset);
+            }
+        });
+        const x = acc.extra;
+        if (x && x.enabled) {
+            lines.push(`Extra usage: ${claudeMoney(x.used, x)}${x.limit != null ? ` of ${claudeMoney(x.limit, x)}` : ''} this month${x.limitReached ? ' (limit reached)' : ''}`);
+            if (x.limitReached) levels.push('warn');
+        }
+        if (acc.error) lines.push(`${acc.error}${acc.at ? ` (figures from ${span(now - acc.at)} ago)` : ''}`);
+        else if (acc.at) lines.push(`${acc.source === 'turns' ? 'As of the last Claude turn' : 'Updated'} ${span(now - acc.at)} ago`);
+        // the session and the all-models week side by side; per-model weeks stay in the lines
+        const session = limits.find((l) => l.kind === 'session' || l.kind === 'five_hour');
+        const week = limits.find((l) => l.kind === 'weekly_all' || l.kind === 'seven_day');
+        const bars = [claudeLimitBar(session, now), claudeLimitBar(week, now)];
+        const side = barsColumn('Usage', bars, 'ok', acc.plan ? `${acc.plan} plan limits` : '', bars.map((b) => `${b.caption} ${b.value}`).join(', '));
+        levels.push(sideDot(side));
+        return { key, service: 'claude', dot: worst(levels), name, value: '', lines, side, title };
+    }
+
+    /** Every Claude account's row; without accounts (an older server) the engine's last-turn row. */
+    function claudeRows(data, now, alerts) {
+        const accounts = claudeAccounts(data);
+        if (!accounts.length) return data ? [claudeRow(data, now, alerts)] : [];
+        return accounts.map((acc) => claudeAccountRow(acc, now, alerts));
+    }
+
+    // Pushed rows (feed claude_usage) win over the last wallet_status copy.
+    let claudeLive = null; // Map id -> row, in arrival order; null until the feed answered
+    function claudeAccounts(data) {
+        if (claudeLive) return [...claudeLive.values()].sort((a, b) => (a.index || 0) - (b.index || 0));
+        return data && Array.isArray(data.accounts) ? data.accounts : [];
+    }
+
     function tokenRouterRow(data, alerts) {
         if (!data.managementKey) {
             return { key: 'tokenrouter', service: 'tokenrouter', dot: 'off', name: 'TokenRouter', value: '',
@@ -630,7 +726,7 @@
         const rows = [novelAiRow(novelAiData(now), alerts)];
         const s = server || {};
         if (s.cursor && !s.cursor.error) rows.push(...cursorRows(s.cursor, alerts));
-        if (s.claude && !s.claude.error) rows.push(claudeRow(s.claude, now, alerts));
+        if ((s.claude && !s.claude.error) || claudeLive) rows.push(...claudeRows(s.claude && !s.claude.error ? s.claude : null, now, alerts));
         if (s.tokenrouter) rows.push(tokenRouterRow(s.tokenrouter, alerts));
         const live = runpodLive();
         if (s.runpod) rows.push(runpodRow(live && live.pods.length ? { ...s.runpod, pods: live.pods } : s.runpod, alerts));
@@ -750,6 +846,7 @@
 
     function syncTimers() {
         // !seen(), spelt out in each tick: a hidden page or a display asleep stops both
+        watchClaude('tray', seen());
         if (seen()) {
             if (!pollTimer) pollTimer = setInterval(() => { if (doc && (doc.visibilityState !== 'visible' || doc.documentElement.dataset.screenOff !== undefined)) syncTimers(); else if (!miniportWallet()) refresh(); }, POLL_MS);
             if (!tickTimer) tickTimer = setInterval(() => { if (doc && (doc.visibilityState !== 'visible' || doc.documentElement.dataset.screenOff !== undefined)) syncTimers(); else update(); }, 60 * 1000);
@@ -766,6 +863,67 @@
         if (Date.now() - lastFetch > POLL_MS && !miniportWallet()) refresh();
         else update();
     }
+
+    // ---- Claude usage feed (statusHub claude_usage, 315-claudeUsageHandler.js) --------------------
+    //
+    // Subscribed while something that shows it is seen: the tray (syncTimers) and Melaton Mobile's
+    // Accounts (wmAccounts.js, watchClaude('accounts', on)). The server reads every account every 5 minutes
+    // while subscribed and pushes only what changed; the client never asks on a timer.
+
+    const claudeWatchers = new Set();
+    const claudeListeners = new Set();
+    let claudeOn = false;       // subscribed (or asking)
+    let claudeDenied = false;   // not an admin: the feed refuses, wallet_status says restricted
+    let claudeWired = false;
+
+    function applyClaude(changed, removed, whole) {
+        if (!claudeLive || whole) claudeLive = new Map();
+        Object.entries(changed || {}).forEach(([id, row]) => {
+            if (id === '_meta') return;
+            if (row && typeof row === 'object') claudeLive.set(id, row);
+        });
+        (removed || []).forEach((id) => claudeLive.delete(id));
+        update();
+        claudeListeners.forEach((fn) => { try { fn(); } catch (_) { /* a listener's own trouble */ } });
+    }
+
+    function wireClaude(client) {
+        if (claudeWired || !client || typeof client.on !== 'function') return;
+        claudeWired = true;
+        client.on('claude_usage_status', (msg) => {
+            const d = msg && msg.changed ? msg : (msg && msg.data) || {};
+            if (claudeOn) applyClaude(d.changed, d.removed, false);
+        }, { signal: appScopeSignal });
+        // the server forgets a dropped socket's subscriptions
+        client.on('connected', () => { claudeOn = false; void syncClaude(); }, { signal: appScopeSignal });
+    }
+
+    async function syncClaude() {
+        const client = ws();
+        if (!client || typeof client.sendMessage !== 'function') return;
+        wireClaude(client);
+        const want = claudeWatchers.size > 0 && !claudeDenied && !restricted;
+        if (want === claudeOn) return;
+        if (typeof client.isConnected === 'function' && !client.isConnected()) return; // 'connected' subscribes
+        claudeOn = want;
+        try {
+            const r = await client.sendMessage(want ? 'status_subscribe' : 'status_unsubscribe', { feed: 'claude_usage' }, false);
+            if (want && claudeOn) applyClaude((r && (r.items || (r.data && r.data.items))) || {}, [], true);
+        } catch (error) {
+            if (!want) return;
+            claudeOn = false;
+            if (/permission|not allowed|admin/i.test(String((error && (error.code || error.message)) || ''))) claudeDenied = true;
+        }
+    }
+
+    /** owner: who shows the figures ('tray', 'accounts'); on: it is seen now. */
+    function watchClaude(owner, on) {
+        if (on) claudeWatchers.add(owner); else claudeWatchers.delete(owner);
+        void syncClaude();
+    }
+
+    /** fn() after pushed Claude figures arrived (Melaton Mobile's Accounts redraws). */
+    function onClaude(fn) { claudeListeners.add(fn); return () => claudeListeners.delete(fn); }
 
     // ---- Cursor login (same flow as Security Center's Login button) ---------------------------
 
@@ -1057,6 +1215,9 @@
             loginCursor(arg);
         } else if (action === 'unlock') {
             unlockService(arg);
+        } else if (action === 'claude-accounts') {
+            hideFlyout();
+            return openClaudeAccounts();
         } else if (action === 'novelai-site') {
             // openWebUrl: public/scripts/comp/featureLoader.js
             void root.openWebUrl('https://novelai.net/');
@@ -1065,6 +1226,18 @@
             return openServiceKeys();
         }
         return undefined;
+    }
+
+    // A Claude account's login: the desktop's Claude Accounts (apps/claudedesk), the phone's Claude Accounts
+    // (wmClaudeAccounts.js)
+    function openClaudeAccounts() {
+        try {
+            if (root.wmClaudeAccounts && typeof root.wmClaudeAccounts.open === 'function') { root.wmClaudeAccounts.open('accounts'); return 'phone'; }
+            if (root.melatonApps && typeof root.melatonApps.launch === 'function') { root.melatonApps.launch({ packageId: 'claudedesk' }); return 'claudedesk'; }
+        } catch (error) {
+            console.warn('Wallet: could not open Claude Accounts', error);
+        }
+        return null;
     }
 
     // Service keys live in Control Panel's Dreamscape CardSpace (cplAuthentication.js open('service')),
@@ -1219,11 +1392,16 @@
         /** What the flyout's notes read (Melaton Mobile's Accounts app, wmAccounts.js). */
         state: () => ({ restricted, loading, error: serverError, hasServer: !!server, fetchedAt: (server && server.fetchedAt) || null }),
         runAction,
+        watchClaude,
+        onClaude,
         isOpen: () => !!(flyout && !flyout.classList.contains('hidden')),
         _test: {
             novelAiData,
             cursorRows,
             claudeRow,
+            claudeRows,
+            claudeAccountRow,
+            applyClaude,
             tokenRouterRow,
             runpodRow,
             customRows,
@@ -1234,6 +1412,7 @@
             unseen,
             markSeen,
             setServer: (data) => { server = data; restricted = false; },
+            clearClaudeLive: () => { claudeLive = null; },
             setRestricted: (value) => { restricted = !!value; },
             runAction,
             openServiceKeys
