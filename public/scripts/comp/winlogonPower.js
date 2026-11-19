@@ -547,18 +547,27 @@ function forgetDirectorReopen() {
         const updater = winlogonUpdater(kind);
         if (!updater || kind === 'logoff' || !updater.updatesWaitingCount()) return;
         // wmShell.progressBox: public/scripts/comp/wmShell.js (#806)
-        const box = window.wmShell && typeof window.wmShell.progressBox === 'function'
-            ? window.wmShell.progressBox({ title: 'Melaton Update', text: 'Installing updates...', pct: null }) : null;
+        // the box only when the install takes long enough to see (files already in the cache check in
+        // an instant: a box that flashes says nothing)
+        let box = null;
+        let text = 'Installing updates...';
+        const boxTimer = setTimeout(() => {
+            if (window.wmShell && typeof window.wmShell.progressBox === 'function') box = window.wmShell.progressBox({ title: 'Melaton Update', text, pct: null });
+        }, 400);
         try {
             // waiting updates only: a phone restart does not wait on the server for more
             const plan = await winlogonUpdatePlan(updater, updater.planShutdownInstall({ checkServer: false }));
             if (plan) {
+                // Windows Mobile installs before the restart, under its own box: no Welcome screen, no
+                // servicing stages (those are the desktop's)
                 await updater.installUpdatesAtShutdown(plan, {
                     kind,
-                    onStatus: (text) => { if (box) box.update({ text: String(text).split('\n')[0] }); }
+                    plain: true,
+                    onStatus: (line) => { text = String(line).split('\n')[0]; if (box) box.update({ text }); }
                 });
             }
         } catch (_) { /* restart anyway: the files are in the cache */ }
+        clearTimeout(boxTimer);
         if (box) box.close();
     }
 

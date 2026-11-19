@@ -187,6 +187,9 @@
                 return { installed: false };
             }
             if (!engine.needsInstaller(e, found.files)) {
+                // #924: more than a small set is not waited for behind the logo. The installed copy starts,
+                // the running app downloads it in the background and installs it when it restarts
+                if (typeof engine.quietAtBoot === 'function' && !engine.quietAtBoot(e, found.files)) return { installed: false, later: true };
                 await silent(engine, e, found, workerOk);
                 return { installed: false, silent: true };
             }

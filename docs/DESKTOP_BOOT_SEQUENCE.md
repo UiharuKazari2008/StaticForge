@@ -115,8 +115,17 @@ Everything else installs **in place**:
   Vista's cell with the update shield (`vista-start/shutdown-update.png`, explorer.exe strip cell 2), tip
   "Installs updates and then shuts down your computer."; the logon screen's shut down button carries
   authui's bitmap 11130, named "Shut down and install updates".
-- **Melaton Mobile** (no Welcome screen): a restart installs the waiting updates first under a progress
-  box ("Melaton Update"), then the app's cold boot. It does not ask the server for more on the way.
+- **Melaton Mobile** (Yukimi, Nov 19: "handle the updates on mobile the way Windows Mobile would"): none of
+  the Vista screens. Updates download in the background; the title bar's update icon and its notification
+  ("Updates are ready to install ... Restart Now") announce them; they install at the Windows Mobile moments:
+  when the user accepts the notification, or at any restart (Settings > System > Melaton Update > Restart Now,
+  Power). The install runs before the app's cold boot (`installWaitingUpdatesNarrow`), under a "Melaton Update"
+  progress box only if it takes longer than 400 ms, with no servicing stages and no wait on the server; the
+  next start clears the mark and does no extra work. Settings > System > Melaton Update uses Windows Update for
+  Windows Mobile's wording where the device has it (6.1 emulator: "Updates last checked:", "Update check:",
+  "Please wait... / It may take a few moments to connect and to check for updates available for your device.").
+  The full installer (`phoneUpdate.js` Software Update, before launch) only in the same three cases; an
+  in-place set of more than 20 files is no longer waited for behind the logo.
 - **DreamOS / a host that owns the power** : after the screen goes dark the page calls
   `window.DreamOSPower.shutdown()` or `.restart()` when the host provides it (returning `false` declines);
   otherwise it navigates to `/launch` as on a browser.

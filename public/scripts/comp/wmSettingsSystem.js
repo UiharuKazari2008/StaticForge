@@ -1954,13 +1954,14 @@
         const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
         switch (v.state) {
             case 'preparing': return { icon: 'info', title: 'Preparing system to update...', text: 'Getting the server ready.', bar: v.progress > 0 ? v.progress : null };
-            case 'checking': return { icon: 'info', title: 'Checking for updates...', text: 'Looking for updates on the server.', bar: null };
+            // Windows Mobile's Windows Update while it checks (the 6.1 emulator, Nov 19 2026)
+            case 'checking': return { icon: 'info', title: 'Please wait...', text: 'It may take a few moments to connect and to check for updates available for your device.', bar: null };
             case 'available': return { icon: 'warning', title: 'Updates are available', text: v.message && !/available\.?$/i.test(v.message) ? v.message : 'Updates to Melaton are available.', button: ['install', 'Install'] };
             case 'downloading': return { icon: 'info', title: 'Downloading updates...', text: `Downloading ${fileText} (${Math.round(v.progress || 0)}% complete)`, bar: v.progress || 0 };
             case 'installing': return { icon: 'info', title: 'Installing updates...', text: `Installing ${fileText}. Melaton keeps running while they install.`, bar: null };
             case 'ready': return { icon: 'warning', title: 'Install updates', text: `${cap(fileText)} downloaded. They change styles and assets only, so they install without restarting Melaton.`, button: ['apply', 'Install'] };
-            case 'restart': return { icon: 'warning', title: 'Restart to finish installing updates', text: `${cap(fileText)} downloaded and ready. Save your work before restarting.`, button: ['restart', 'Restart'] };
-            case 'upgrade': return { icon: 'warning', title: v.message || 'Upgrade to Service Pack', text: 'This update is too large to install while Melaton is running. Restart to install it.', button: ['restart', 'Restart'] };
+            case 'restart': return { icon: 'warning', title: 'Updates are ready to install', text: `${cap(fileText)} downloaded. Melaton Mobile installs them when it restarts.`, button: ['restart', 'Restart Now'] };
+            case 'upgrade': return { icon: 'warning', title: v.message || 'Upgrade to Service Pack', text: 'This update replaces large parts of Melaton. Restart to install it with Software Update.', button: ['restart', 'Restart Now'] };
             case 'uptodate': return { icon: 'info', title: 'Melaton is up to date', text: 'There are no updates available for your device.', button: ['check', 'Check Now'] };
             case 'failed': return { icon: 'error', title: 'Melaton could not search for new updates', text: v.message || 'The server did not answer.', button: ['check', 'Try Again'] };
             default: return { icon: 'info', title: 'Melaton Update', text: 'Check for updates to Melaton and install them.', button: ['check', 'Check Now'] };
@@ -2195,8 +2196,9 @@
             ${bar}
             ${v.button ? ui.buttons([[v.button[0], v.button[1]]]) : ''}
             ${ui.gap()}
-            ${ui.value('Last checked:', stampText('meletonUpdateCheckedAt'), { wide: true })}
-            ${ui.value('Last installed:', stampText('meletonUpdateInstalledAt'), { wide: true })}`;
+            ${ui.value('Updates last checked:', stampText('meletonUpdateCheckedAt').replace(/^Never$/, 'Not checked'), { wide: true })}
+            ${ui.value('Last installed:', stampText('meletonUpdateInstalledAt'), { wide: true })}
+            ${ui.value('Update check:', 'Automatic', { wide: true })}`;
         const btn = el.querySelector('.wm-button');
         if (btn) btn.addEventListener('click', () => updateAct(d, btn.dataset.act));
         attachForeground(d, el);

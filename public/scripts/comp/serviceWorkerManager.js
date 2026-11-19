@@ -4894,7 +4894,10 @@ class ServiceWorkerManager {
      */
     async installUpdatesAtShutdown(plan, options = {}) {
         const say = (text) => { try { if (typeof options.onStatus === 'function') options.onStatus(text); } catch (_) { /* the screen is the caller's */ } };
-        const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        // options.plain (Melaton Mobile, #924): no Welcome screen and no servicing stages to show. The
+        // phone's own box says what is installing; nothing is held on screen for reading
+        const plain = options.plain === true;
+        const pause = (ms) => (plain ? Promise.resolve() : new Promise((resolve) => setTimeout(resolve, ms)));
         const updates = (plan && plan.updates) || [];
         if (!updates.length) return { installed: 0, failed: 0 };
         // wuaueng.dll.mui: the line under "Installing update n of N..."
@@ -4907,7 +4910,7 @@ class ServiceWorkerManager {
         try {
             for (let i = 0; i < updates.length; i++) {
                 const update = updates[i];
-                say(`Installing update ${i + 1} of ${updates.length}...\n${second}`);
+                say(plain ? `Installing update ${i + 1} of ${updates.length}...` : `Installing update ${i + 1} of ${updates.length}...\n${second}`);
                 const started = Date.now();
                 const hashed = update.files.filter((f) => f && f.url && f.hash);
                 let left = [];
@@ -4941,7 +4944,7 @@ class ServiceWorkerManager {
                 await pause(1200);
             }
             // cbsmsg.dll.mui: "Configuring updates: Stage %d of %d - %d%% complete." / "Do not turn off your computer."
-            const stage = (n, pct) => say(`Configuring updates: Stage ${n} of 3 - ${pct}% complete.\nDo not turn off your computer.`);
+            const stage = (n, pct) => { if (!plain) say(`Configuring updates: Stage ${n} of 3 - ${pct}% complete.\nDo not turn off your computer.`); };
             stage(1, 0);
             await pause(350);
             // a new service worker that waited for the pages to go takes over with this restart
@@ -4995,6 +4998,9 @@ class ServiceWorkerManager {
         if (!mark) return;
         const clear = () => { try { localStorage.removeItem('melatonUpdateConfigure'); } catch (_) { /* storage off */ } };
         if (this.agentSession || this._isContinuityDexWindow() || !(Date.now() - (Number(mark.at) || 0) < 7 * 24 * 60 * 60 * 1000)) { clear(); return; }
+        // Melaton Mobile has no Welcome screen and its start does no extra work: the mark is cleared, and
+        // the update check that follows the start finds anything that did not land
+        if (!window.isDesktop) { clear(); return; }
         const files = Array.isArray(mark.files) ? mark.files.filter((f) => f && f.url && f.hash) : [];
         const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         // showWinlogonStatus / hideWinlogonStatus: public/scripts/comp/winlogonPower.js
