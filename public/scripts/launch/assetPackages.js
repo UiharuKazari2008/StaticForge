@@ -16,6 +16,14 @@
  * and 'source': the animation frames the strips and the status atlas are built from (no client
  * loads them; scripts/build-wm-sprite-strips.sh, build-wm-status-atlas.py), shipped to nobody.
  *
+ * The desktop's HiDPI art (#921, DreamOS fractional scaling): hidpi-125 / hidpi-150 / hidpi-175 /
+ * hidpi-200 are public/static_images/hidpi/<tier>/, the 1.25x ... 2x copies of the Vista art
+ * (scripts/build-hidpi-assets.js). A desktop page (also a phone's DeX window) keeps the one tier its
+ * devicePixelRatio needs (the smallest at or above it, 2x above that), noted at boot and again when
+ * the scale changes (a DreamOS DPI change, a move to another screen); the stylesheets' image-set()
+ * picks the same density, and the tier's img.css (linked here) gives <img> art its copy. A client
+ * from before packages (no cookie) gets every package but these.
+ *
  * The client's set: automatic (Melaton Mobile booted here: its version, and the density tiers up to
  * the screen's: 1x = wm61, 2x = + wm61-2x, 4x = + wm61-4x; 6.5 also takes 6.1's, which it draws) plus the ones added in Melaton Update >
  * Applied Updates (pinned, e.g. a phone that also runs a desktop in DeX). The mobile bit stays once
@@ -44,6 +52,9 @@
  *   pin(id) / unpin(id) / pinned()        Applied Updates
  *   filterRows(rows)          manifest rows (url) this client keeps
  *   tierFor(dpr, px)          1 | 2 | 4 (wmShell syncPixelScale's steps)
+ *   hidpiTierFor(dpr)         1 | 125 | 150 | 175 | 200 (the desktop's HiDPI art)
+ *   noteHidpi(tier)           the desktop's density changed: same return as noteBoot
+ *   legacyRows(rows)          server: a cookie-less client's manifest (everything but the HiDPI art)
  *
  * In a phone's Melaton Mobile page (/app, with the flag) it also tells the service worker what network
  * the phone is on, once after the boot and then on each change (PHONE_PREFETCH): the worker's Wi-Fi
@@ -65,7 +76,11 @@
         PACKAGES.push({ id: `${v}-2x`, label: `${NAMES[v]} (for HiDPI)`, version: v, tier: 2 });
         PACKAGES.push({ id: `${v}-4x`, label: `${NAMES[v]} (for UHiDPI)`, version: v, tier: 4 });
     }
+    // the desktop's HiDPI art (#921): one package per density
+    const HIDPI_TIERS = [125, 150, 175, 200];
+    for (const t of HIDPI_TIERS) PACKAGES.push({ id: `hidpi-${t}`, label: `Melaton Desktop (for ${t}% scaling)`, version: 'desktop', tier: t / 100 });
     const IDS = new Set(PACKAGES.map((p) => p.id));
+    const HIDPI_ART = /^\/static_images\/hidpi\/(125|150|175|200)\//;
     // the animation frames: built into strips / the status atlas, loaded by nobody
     const SOURCE = /\/(?:status-[a-z0-9-]+-(?:sync|anim)-\d\d|status-data-(?:sync|anim)-\d\d|status-wifi-(?:sync|anim)-\d\d|wait-\d{1,2}|status-director-open-\d|status-signal-search-\d)(?:@[24]x)?\.png$/;
     // the few Melaton Mobile pictures the desktop shows too (ActiveSync's Device Center)
@@ -96,6 +111,10 @@
     }
     function packageOf(url) {
         const u = String(url || '').split('?')[0];
+        const hd = HIDPI_ART.exec(u);
+        if (hd) return `hidpi-${hd[1]}`;
+        // the build's own list of the HiDPI art (scripts/build-hidpi-assets.js): no client reads it
+        if (u === '/static_images/hidpi/index.json') return 'source';
         // the Wallet's barcode drawing (#874, 1 MB): phones only
         if (u === '/scripts/vendor/bwip-js.min.js') return 'wmc';
         // Melaton Mobile's sounds (notification classes, alarms, rings, taps; 3.9 MB): both versions play
@@ -120,6 +139,12 @@
         return v;
     }
 
+    /** The HiDPI art tier for a desktop at this devicePixelRatio: 1 (none) | 125 | 150 | 175 | 200. */
+    function hidpiTierFor(dpr) {
+        const d = Number(dpr) || 1;
+        if (d <= 1.01) return 1;
+        return HIDPI_TIERS.find((t) => d <= t / 100 + 0.01) || 200;
+    }
     function tierFor(dpr, px) {
         const s = (Number(dpr) || 1) * (Number(px) || 1);
         return s <= 1.01 ? 1 : s <= 2.01 ? 2 : 4;
@@ -138,7 +163,7 @@
     function read() {
         try {
             const s = JSON.parse(localStorage.getItem(STORE) || 'null');
-            if (s && typeof s === 'object') return { mobile: !!s.mobile, handheld: !!s.handheld, version: s.version === 'wm65' ? 'wm65' : 'wm61', tier: [1, 2, 4].includes(s.tier) ? s.tier : 1, pinned: Array.isArray(s.pinned) ? s.pinned.filter((id) => IDS.has(id)) : [] };
+            if (s && typeof s === 'object') return { mobile: !!s.mobile, handheld: !!s.handheld, version: s.version === 'wm65' ? 'wm65' : 'wm61', tier: [1, 2, 4].includes(s.tier) ? s.tier : 1, hidpi: HIDPI_TIERS.includes(s.hidpi) ? s.hidpi : 1, pinned: Array.isArray(s.pinned) ? s.pinned.filter((id) => IDS.has(id)) : [] };
         } catch (_) { /* storage off or junk */ }
         return null;
     }
@@ -150,6 +175,7 @@
         if (!s) return [];
         const set = new Set(s.pinned || []);
         if (s.mobile) tierIds(s.version, s.tier).forEach((id) => set.add(id));
+        if (HIDPI_TIERS.includes(s.hidpi)) set.add(`hidpi-${s.hidpi}`);
         return [...set].filter((id) => IDS.has(id)).sort();
     }
     // a phone's lighter install: Melaton Mobile booted here on a handheld
@@ -181,7 +207,7 @@
 
     function change(mutate) {
         const before = read();
-        const s = before ? { ...before, pinned: before.pinned.slice() } : { mobile: false, handheld: false, version: 'wm61', tier: 1, pinned: [] };
+        const s = before ? { ...before, pinned: before.pinned.slice() } : { mobile: false, handheld: false, version: 'wm61', tier: 1, hidpi: 1, pinned: [] };
         mutate(s);
         const was = idsOf(before);
         const now = idsOf(s);
@@ -211,7 +237,11 @@
      * went back and forth would download the left-out files again each time).
      */
     function noteBoot(opts = {}) {
+        // a desktop (also a phone's DeX window) draws the Vista art: its density tier; Melaton Mobile
+        // keeps the one a desktop boot set (a hybrid phone's DeX window)
+        if (opts.shell !== 'mobile') startHidpi();
         return change((s) => {
+            if (opts.shell !== 'mobile') s.hidpi = hidpiTierFor(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1);
             if (opts.shell === 'mobile') {
                 s.mobile = true;
                 if (!s.handheld && handheldNow()) s.handheld = true;
@@ -233,11 +263,19 @@
         const t = [1, 2, 4].includes(tier) ? tier : 1;
         return change((s) => { if (s.mobile) s.tier = t; });
     }
+    function noteHidpi(tier) {
+        const t = HIDPI_TIERS.includes(tier) ? tier : 1;
+        return change((s) => { s.hidpi = t; });
+    }
     function pin(id) { return change((s) => { if (IDS.has(id) && !s.pinned.includes(id)) s.pinned.push(id); }); }
     function unpin(id) { return change((s) => { s.pinned = s.pinned.filter((x) => x !== id); }); }
     function pinned() { const s = read(); return s ? s.pinned.slice() : []; }
     /** What the automatic set holds (the ones Applied Updates cannot remove). */
-    function automatic() { const s = read(); return s && s.mobile ? tierIds(s.version, s.tier) : []; }
+    function automatic() {
+        const s = read();
+        if (!s) return [];
+        return [...(s.mobile ? tierIds(s.version, s.tier) : []), ...(HIDPI_TIERS.includes(s.hidpi) ? [`hidpi-${s.hidpi}`] : [])];
+    }
 
     /** ids: a set from parseSet (the server); default this client's own, with its flag. */
     function filterRows(rows, ids) {
@@ -249,6 +287,11 @@
             if (p !== null) return p !== 'source' && have.has(p);
             return !(lite && phoneOptional(url));
         });
+    }
+
+    /** Server: a client from before packages (no cookie) keeps everything but the HiDPI art. */
+    function legacyRows(rows) {
+        return (Array.isArray(rows) ? rows : []).filter((r) => !/^hidpi-/.test(String(packageOf(r && (r.url || r.path)))));
     }
 
     /** Server: the client's set from its cookie / header value; null = everything (a client from before). */
@@ -341,5 +384,68 @@
     }
     try { startPrefetchHints(); } catch (_) { /* no worker: on demand only */ }
 
-    return { PACKAGES, COOKIE, MOBILE_FLAG, packageOf, phoneOptional, tierFor, current, noteBoot, noteTier, pin, unpin, pinned, automatic, filterRows, parseSet, cookieValue, read };
+    // ---- The desktop's HiDPI art (#921). image-set() in the stylesheets picks the density by itself
+    // (and again when the scale changes); <img> art takes its copy from the tier's img.css, linked here.
+    // A scale change (DreamOS DPI Scaling, another screen) moves the tier: the sheet is swapped and the
+    // new tier's package is fetched once the desktop is up (a large one asks to restart, where the
+    // installer brings it). One matchMedia listener for the current ratio; no timers while idle.
+    let hidpiStarted = false;
+    let hidpiLink = null;
+    function linkHidpiSheet(tier) {
+        if (typeof document === 'undefined' || !document.head) return;
+        if (tier === 1) {
+            if (hidpiLink) { hidpiLink.remove(); hidpiLink = null; }
+            return;
+        }
+        const href = `/static_images/hidpi/${tier}/img.css`;
+        if (hidpiLink && hidpiLink.getAttribute('href') === href) return;
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        link.dataset.melatonHidpi = String(tier);
+        const old = hidpiLink;
+        // the old sheet goes once the new one is in, so <img> art never flashes at the wrong size
+        if (old) link.addEventListener('load', () => old.remove(), { once: true });
+        document.head.appendChild(link);
+        hidpiLink = link;
+    }
+    function hidpiPackageAdded(change) {
+        const started = Date.now();
+        const go = () => {
+            const m = window.serviceWorkerManager;
+            if (!m || typeof m.applyPackageChange !== 'function' || !m.bootComplete) {
+                if (Date.now() - started < 180000) setTimeout(go, 5000);
+                return;
+            }
+            m.applyPackageChange(change, {
+                confirmLarge: ({ bytes }) => (typeof window.showConfirmationDialog === 'function'
+                    ? window.showConfirmationDialog(`The pictures for this display scale are not on this computer yet (${(bytes / 1048576).toFixed(1)} MB). Restart Melaton now to install them?`, [{ text: 'Restart now', value: true }, { text: 'Later', value: false }])
+                    : Promise.resolve(false))
+            }).catch(() => { /* the next boot's update check brings them */ });
+        };
+        go();
+    }
+    function startHidpi() {
+        if (hidpiStarted || typeof window === 'undefined' || typeof document === 'undefined' || typeof window.matchMedia !== 'function') return;
+        hidpiStarted = true;
+        const watch = () => {
+            const dpr = window.devicePixelRatio || 1;
+            const tier = hidpiTierFor(dpr);
+            linkHidpiSheet(tier);
+            let mq = null;
+            try { mq = window.matchMedia(`(resolution: ${dpr}dppx)`); } catch (_) { mq = null; }
+            if (!mq || typeof mq.addEventListener !== 'function') return;
+            // app-scope: allow page-lifetime display scale watch (launch code, not an app segment)
+            mq.addEventListener('change', () => {
+                watch();
+                const next = hidpiTierFor(window.devicePixelRatio || 1);
+                if (next === tier) return;
+                const change = noteHidpi(next);
+                if (change && change.added && change.added.length) hidpiPackageAdded(change);
+            }, { once: true });
+        };
+        watch();
+    }
+
+    return { PACKAGES, COOKIE, MOBILE_FLAG, HIDPI_TIERS, packageOf, phoneOptional, tierFor, hidpiTierFor, current, noteBoot, noteTier, noteHidpi, pin, unpin, pinned, automatic, filterRows, legacyRows, parseSet, cookieValue, read };
 }));
