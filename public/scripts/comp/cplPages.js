@@ -499,6 +499,7 @@
             id: 'cplPowerAdvanced',
             title: 'Power Options',
             icon: `${ITEMS}/power-options-16.png`,
+            help: true,
             pages: [{ key: 'powercpl:adv', tpl: ADV_TPL, overrides: { 101: { image: `${ITEMS}/power-options-32.png` }, 104: { html: '', cls: 'tbp-tree vdt-stree' } } }],
             init(ctx) {
                 const tree = ctx.holder(104);
