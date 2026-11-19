@@ -7,6 +7,8 @@
    The task pane is the window's own (vista-explorer.css), with 16 px icons 22 px left of the text. */
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-main:has(> .cpl-vpage) {
+    /* the content pane's rules (CPANEL_CONTENTPANELINE): section bars, the spoke pages' command area */
+    --cpl-content-line: #cccccc;
     padding: 0;
     position: relative;
 }
@@ -99,7 +101,7 @@
     flex: 1;
     height: 1px;
     margin-top: 1px;
-    background: #cccccc;
+    background: var(--cpl-content-line);
 }
 
 /* a link with an icon and a line under it (Default Programs, Speech Recognition Options) */
@@ -575,4 +577,260 @@
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-chat-status {
     margin-right: auto;
     align-self: center;
+}
+
+/* ---- Power Options' spoke pages (powercpl.dll UIFILE 102-104 + 110, measured beside the VM): no task pane, the
+   600 px content pane centred with 10 px sides, the title 19 px down; the command area under a full-width #cccccc
+   rule (7 px under the content), its buttons 10 px under the rule at the pane's right edge, 6 px apart ---- */
+body.desktop-mode.theme-vista :is(#melatonControlPanelModal, .cpl-instance):is([data-page="power-plan"], [data-page="power-system"], [data-page="power-create"]) .cpl-tasks {
+    display: none;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vpage.cpl-spoke {
+    max-width: none;
+    padding: 19px 0 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-spoke-pane {
+    box-sizing: border-box;
+    width: 620px;
+    margin: 0 auto;
+    padding: 0 10px 7px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-spoke-commands {
+    border-top: 1px solid var(--cpl-content-line);
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-spoke-buttons {
+    box-sizing: border-box;
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    width: 600px;
+    margin: 0 auto;
+    padding: 10px 10px 10px 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-spoke-buttons .cpl-vbutton {
+    min-width: 76px;
+}
+
+/* the settings table: the label column as wide as its text, then 166 px per power source, a 150 px combo 16 px in;
+   setting rows 10 px apart, a combo 21 px with 5 px above and below; the header's 32 px icons with their text 6 px on */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-table {
+    margin: 7px 0 0;
+    border: 0;
+    border-collapse: collapse;
+    background: none;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-table td {
+    border: 0;
+    padding: 0;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-head td {
+    padding-top: 7px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-head td + td {
+    width: 150px;
+    padding-left: 16px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-colhead {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-row td {
+    padding-top: 10px;
+    padding-bottom: 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-row.is-slider td {
+    padding-bottom: 10px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-labelbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-cell {
+    width: 150px;
+    padding-left: 16px !important;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) select.cpl-pwr-combo {
+    width: 150px;
+    min-width: 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-slider {
+    display: flex;
+    align-items: flex-start;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-slider img {
+    margin-top: 3px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-slider input[type="range"] {
+    width: 114px;
+    margin: 0 2px;
+}
+
+/* Change advanced power settings 32 px under the table, Restore default settings 14 px under it, Delete this plan
+   (with its 16 px icon) 35 px further */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-link {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-link.is-advanced {
+    margin-top: 32px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-link.is-restore {
+    margin-top: 14px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-link.is-delete {
+    margin-top: 35px;
+}
+
+/* System Settings: the header bars as the hub page's, the setting rows 16 px in, the radio buttons 16 px in with
+   their descriptions under the text (the circle's width in) */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-section {
+    margin: 14px 0 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-settings {
+    padding: 0 10px 0 16px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-settings .cpl-pwr-table {
+    margin: 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-settings .cpl-pwr-row td {
+    padding-top: 10px;
+    padding-bottom: 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-radios {
+    padding: 0 20px 10px 16px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-radio {
+    margin: 10px 0 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-desc {
+    margin: 0 !important;
+    padding: 0 5px 5px 16px;
+}
+
+/* Create a power plan: each plan with its description, the rating on the right, a rule, then the 325 px name box */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-create {
+    margin: 4px 0 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-createplan {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: 15px auto;
+    margin: 0;
+    padding: 10px 10px 8px 16px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-plandesc {
+    grid-column: 1;
+    grid-row: 2;
+    margin: 0 !important;
+    padding-left: 16px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-rule {
+    height: 1px;
+    margin: 14px 0 0 5px;
+    background: var(--cpl-content-line);
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-name {
+    display: flex;
+    flex-direction: column;
+    margin: 14px 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) input.cpl-pwr-nameedit {
+    width: 325px;
+    height: 20px;
+    margin: 0;
+}
+
+/* Show / Hide additional plans: the group text, a rule to the right, the expando button (comctl32 LVP_EXPANDBUTTON) */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-expando {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 0;
+    height: 21px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font: 12px var(--cpl-font);
+    cursor: var(--c-default, default);
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-expando::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-expando::after {
+    content: none;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-expando-rule {
+    flex: 1;
+    height: 1px;
+    margin: 0 5px;
+    background: var(--cpl-content-line);
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-expando-image {
+    flex: none;
+    width: 19px;
+    height: 21px;
+    background: url("/static_images/vista-personalization/expando-down.png") no-repeat;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-expando:hover .cpl-pwr-expando-image {
+    background-image: url("/static_images/vista-personalization/expando-down-hot.png");
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-more.is-open .cpl-pwr-expando-image {
+    background-image: url("/static_images/vista-personalization/expando-up.png");
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-more.is-open .cpl-pwr-expando:hover .cpl-pwr-expando-image {
+    background-image: url("/static_images/vista-personalization/expando-up-hot.png");
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-more {
+    margin-top: 14px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-more-plans {
+    display: none;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-more.is-open .cpl-pwr-more-plans {
+    display: block;
 }

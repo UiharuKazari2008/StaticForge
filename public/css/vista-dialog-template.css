@@ -1218,3 +1218,98 @@ button.vdt-cmdlink:not(#_):focus-visible {
     height: 1px;
     background: linear-gradient(90deg, #e2e7f3, #fff);
 }
+
+/* ---- the settings tree (Power Options > Advanced settings, cplPages.js): Vista's tree view of settings and their
+   values, measured on the VM. 18 px rows from 2 px under the frame; the classic 9 px plus / minus boxes (cut from the
+   VM: vista-controls/treeview-plus / -minus) 9 px in, 20 px per level, the text 8 px after the box; a value row reads
+   "Setting: <value>" with the value in #0066cc. The selected row's text sits on #3399ff in white (1 px inside the
+   row), and a selected value row holds its editor right after the label: a 19 px combo, or a 48 x 18 edit with its
+   own 17 px up-down 2 px to its right. ---- */
+.vdt-client .vdt-stree {
+    overflow: auto;
+    padding: 2px 0;
+    cursor: var(--c-default, default);
+    user-select: none;
+}
+
+.vdt-client .vdt-stree-row {
+    display: flex;
+    align-items: center;
+    height: 18px;
+    white-space: nowrap;
+}
+
+.vdt-client .vdt-stree-row.is-l0 { padding-left: 9px; }
+.vdt-client .vdt-stree-row.is-l1 { padding-left: 29px; }
+.vdt-client .vdt-stree-row.is-l2 { padding-left: 46px; }
+
+.vdt-client .vdt-stree-kids {
+    display: none;
+}
+
+.vdt-client .vdt-stree-node[data-open] > .vdt-stree-kids {
+    display: block;
+}
+
+.vdt-client .vdt-stree-exp {
+    flex: none;
+    width: 9px;
+    height: 9px;
+    margin-right: 6px;
+    background: url('/static_images/vista-controls/treeview-plus.png') no-repeat;
+}
+
+.vdt-client .vdt-stree-node[data-open] > .vdt-stree-row > .vdt-stree-exp {
+    background-image: url('/static_images/vista-controls/treeview-minus.png');
+}
+
+.vdt-client .vdt-stree-text {
+    padding: 0 2px;
+    line-height: 16px;
+}
+
+.vdt-client .vdt-stree-row.is-selected > .vdt-stree-text {
+    background: #3399ff;
+    color: #fff;
+}
+
+.vdt-client .vdt-stree-val {
+    display: flex;
+    align-items: center;
+    margin-left: 3px;
+    color: #0066cc;
+}
+
+.vdt-client .vdt-stree-row.is-selected .vdt-stree-val {
+    color: inherit;
+}
+
+.vdt-client .vdt-stree select.vdt-stree-combo {
+    position: static;
+    width: 79px;
+    height: 19px;
+    margin: 0;
+}
+
+.vdt-client .vdt-stree input.vdt-stree-edit {
+    position: static;
+    width: 48px;
+    height: 18px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0 3px;
+}
+
+.vdt-client .vdt-stree-spin {
+    display: inline-flex;
+    flex-direction: column;
+    width: 17px;
+    height: 18px;
+    margin-left: 2px;
+}
+
+.vdt-client .vdt-stree-spin .tbp-spin {
+    position: static;
+    width: 17px;
+    height: 9px;
+}

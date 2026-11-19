@@ -212,17 +212,27 @@
             else if (arg === 'plan') setTimeout(() => nav('power-plan'), 0);
             const active = activePlan();
             const list = planList();
+            const label = onBatteryMachine() ? 'Battery life:' : 'Energy savings:';
             const plan = (p) => `
                     <div class="cpl-power-plan">
                         <div class="cpl-power-name"><input type="radio" name="cpl-power" id="cpl-power-${esc(p.id)}" value="${esc(p.id)}"${p.id === active ? ' checked' : ''}><label for="cpl-power-${esc(p.id)}">${esc(p.name)}</label></div>
                         <button type="button" class="cpl-vlink cpl-power-change" data-cpl-vpage="plan" data-plan="${esc(p.id)}">Change plan settings</button>
-                        <div class="cpl-power-meter"><span>${onBatteryMachine() ? 'Battery life:' : 'Energy savings:'}</span>${dots(p.savings, 'is-savings')}<span>Performance:</span>${dots(p.perf, 'is-perf')}</div>
+                        <div class="cpl-power-meter"><span>${label}</span>${dots(p.savings, 'is-savings')}<span>Performance:</span>${dots(p.perf, 'is-perf')}</div>
                     </div>`;
+            // Vista's preferred plans are the built-in three; the user's own plans (and a built-in one a custom plan
+            // took the place of) wait under "Show additional plans" unless active
+            const preferred = list.filter((p) => p.builtin || p.id === active);
+            const more = list.filter((p) => !preferred.includes(p));
+            const openMore = !!handlers['power-options'].moreOpen;
             return `<div class="cpl-vpage">${help('power')}
                 <h1 class="cpl-vtitle">Select a power plan</h1>
                 <p class="cpl-vtext">Power plans can help you maximize your computer's performance or conserve energy. Make a plan active by selecting it, or choose a plan and customize it by changing its power settings. <a href="#" class="cpl-vlink is-underlined" data-cpl-vpage="help" data-topic="power">Tell me more about power plans</a></p>
                 <div class="cpl-vsection"><span>${onBatteryMachine() ? 'Plans shown on the battery meter' : 'Preferred plans'}</span></div>
-                <div class="cpl-power-plans">${list.map(plan).join('')}</div>
+                <div class="cpl-power-plans">${preferred.map(plan).join('')}</div>
+                ${more.length ? `<div class="cpl-pwr-more${openMore ? ' is-open' : ''}">
+                    <button type="button" class="cpl-pwr-expando" data-cpl-vpage="more" aria-expanded="${openMore}"><span class="cpl-pwr-expando-text">${openMore ? 'Hide additional plans' : 'Show additional plans'}</span><span class="cpl-pwr-expando-rule"></span><span class="cpl-pwr-expando-image" aria-hidden="true"></span></button>
+                    <div class="cpl-power-plans cpl-pwr-more-plans">${more.map(plan).join('')}</div>
+                </div>` : ''}
             </div>`;
         }
     };
@@ -237,20 +247,55 @@
         plan(t) {
             handlers['power-plan'].plan = t.dataset.plan;
             nav('power-plan');
+        },
+        moreOpen: false,
+        more(t) {
+            const box = t.closest('.cpl-pwr-more');
+            const on = !box.classList.contains('is-open');
+            handlers['power-options'].moreOpen = on;
+            box.classList.toggle('is-open', on);
+            t.setAttribute('aria-expanded', String(on));
+            t.querySelector('.cpl-pwr-expando-text').textContent = on ? 'Hide additional plans' : 'Show additional plans';
         }
     };
+
+    // ---- the spoke pages (powercpl.dll UIFILE 102-104, measured beside the VM): no task pane, the 600 px content
+    // pane centred (title 19 px down), and Vista's command area under a full-width #cccccc rule with Save changes /
+    // Cancel at the pane's right edge; Save changes stays disabled until something changes.
+
+    function spoke(inner, buttons) {
+        return `<div class="cpl-vpage cpl-spoke"><div class="cpl-spoke-pane">${inner}</div>
+            <div class="cpl-spoke-commands"><div class="cpl-spoke-buttons">${buttons}</div></div></div>`;
+    }
+
+    const SAVE_CANCEL = '<button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="save" disabled>Save changes</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cancel">Cancel</button>';
+
+    function spokeChanged() {
+        const b = doc && doc.querySelector('.cpl-instance.cpl-current .cpl-spoke [data-cpl-vpage="save"]');
+        if (b) b.disabled = false;
+    }
 
     function minuteSelect(name, value, side = 'ac') {
         const v = Number(value);
         const list = MINUTES.includes(v) ? MINUTES : [...MINUTES.slice(0, -1).filter((m) => m < v), v, ...MINUTES.filter((m) => m > v || m === 0)];
-        return `<select class="cpl-vselect" data-power="${name}" data-side="${side}" aria-label="${side === 'dc' ? 'On battery' : 'Plugged in'}">${list.map((m) => `<option value="${m}"${m === v ? ' selected' : ''}>${minuteText(m)}</option>`).join('')}</select>`;
+        return `<select class="cpl-vselect cpl-pwr-combo" data-power="${name}" data-side="${side}" aria-label="${side === 'dc' ? 'On battery' : 'Plugged in'}">${list.map((m) => `<option value="${m}"${m === v ? ' selected' : ''}>${minuteText(m)}</option>`).join('')}</select>`;
     }
 
-    function percentSelect(name, value, side) {
-        const v = Number(value) || 100;
-        const steps = Array.from({ length: 10 }, (_, i) => (i + 1) * 10);
-        const list = steps.includes(v) ? steps : [...steps, v].sort((a, b) => a - b);
-        return `<select class="cpl-vselect" data-power="${name}" data-side="${side}" aria-label="${side === 'dc' ? 'On battery' : 'Plugged in'}">${list.map((p) => `<option value="${p}"${p === v ? ' selected' : ''}>${p}%</option>`).join('')}</select>`;
+    /** Vista's power settings table (UIFILE 110 PowerTableHeader / SettingControl / SliderSettingControl): the label
+        with its icon, then one 166 px column per power source holding a 150 px combo (or trackbar) 16 px in; a laptop
+        gets the On battery / Plugged in header with the 32 px battery and plug icons */
+    function powerTable(rows, two) {
+        const head = two ? `<tr class="cpl-pwr-head"><td></td>
+            <td><span class="cpl-pwr-colhead"><img src="${ART}/power-battery-32.png" alt="" width="32" height="32"><span>On battery</span></span></td>
+            <td><span class="cpl-pwr-colhead"><img src="${ART}/power-plugged-32.png" alt="" width="32" height="32"><span>Plugged in</span></span></td></tr>` : '';
+        const sides = two ? ['dc', 'ac'] : ['ac'];
+        return `<table class="cpl-pwr-table" role="presentation">${head}${rows.map((r) => `
+            <tr class="cpl-pwr-row${r.slider ? ' is-slider' : ''}"><td class="cpl-pwr-label"><div class="cpl-pwr-labelbox">${r.icon ? `<img src="${r.icon}" alt="" width="${r.big ? 32 : 16}" height="${r.big ? 32 : 16}">` : ''}<span>${esc(r.label)}</span></div></td>${sides.map((s) => `<td class="cpl-pwr-cell">${r.cell(s)}</td>`).join('')}</tr>`).join('')}
+        </table>`;
+    }
+
+    function brightnessSlider(value, side) {
+        return `<span class="cpl-pwr-slider"><img src="${ART}/power-dim-16.png" alt="" width="16" height="16"><input type="range" min="1" max="100" value="${Number(value) || 100}" data-power="brightness" data-side="${side}" aria-label="${side === 'dc' ? 'On battery' : 'Plugged in'}"><img src="${ART}/power-bright-16.png" alt="" width="16" height="16"></span>`;
     }
 
     pages['power-plan'] = {
@@ -264,22 +309,17 @@
             const two = onBatteryMachine();
             const sleepOk = !st || (st.sleep && st.sleep.supported);
             const bright = !!(st && root.DreamOSHardware && (() => { try { return root.DreamOSHardware.get().backlight; } catch (_) { return null; } })());
-            const row = (icon, labelText, cell) => `<tr><td>${icon ? `<img src="${ART}/${icon}" alt=""> ` : ''}${labelText}</td>${two ? `<td>${cell('dc')}</td>` : ''}<td>${cell('ac')}</td></tr>`;
-            const head = two ? `<tr class="cpl-power-cols"><td></td><td>On battery</td><td>Plugged in</td></tr>` : '';
+            const rows = [{ icon: `${ART}/power-display.png`, label: 'Turn off the display:', cell: (s) => minuteSelect('display', planValue(p.id, 'display', s), s) }];
+            if (sleepOk) rows.push({ icon: `${ART}/power-sleep.png`, label: 'Put the computer to sleep:', cell: (s) => minuteSelect('sleep', planValue(p.id, 'sleep', s), s) });
+            if (bright) rows.push({ slider: true, label: 'Adjust display brightness:', cell: (s) => brightnessSlider(planValue(p.id, 'brightness', s), s) });
             const canDelete = st && !p.builtin && p.id !== activePlan();
-            return `<div class="cpl-vpage">${help('power')}
+            return spoke(`
                 <h1 class="cpl-vtitle">Change settings for the plan: ${esc(p.name)}</h1>
                 <p class="cpl-vtext">Choose the sleep and display settings that you want your computer to use.</p>
-                <table class="cpl-power-grid">${head}
-                    ${row('power-display.png', 'Turn off the display:', (side) => minuteSelect('display', planValue(p.id, 'display', side), side))}
-                    ${sleepOk ? row('power-sleep.png', 'Put the computer to sleep:', (side) => minuteSelect('sleep', planValue(p.id, 'sleep', side), side)) : ''}
-                    ${bright ? row('', 'Adjust plan brightness:', (side) => percentSelect('brightness', planValue(p.id, 'brightness', side), side)) : ''}
-                </table>
-                <p class="cpl-vtext"><button type="button" class="cpl-vlink" data-cpl-vpage="advanced">Change advanced power settings</button></p>
-                ${canDelete ? '<p class="cpl-vtext"><button type="button" class="cpl-vlink" data-cpl-vpage="remove">Delete this plan</button></p>' : ''}
-                <p class="cpl-vtext"><button type="button" class="cpl-vlink" data-cpl-vpage="restore">Restore default settings for this plan</button></p>
-                <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="save">Save changes</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cancel">Cancel</button></div>
-            </div>`;
+                ${powerTable(rows, two)}
+                <p class="cpl-pwr-link is-advanced"><button type="button" class="cpl-vlink" data-cpl-vpage="advanced">Change advanced power settings</button></p>
+                <p class="cpl-pwr-link is-restore"><button type="button" class="cpl-vlink" data-cpl-vpage="restore">Restore default settings for this plan</button></p>
+                ${canDelete ? `<p class="cpl-pwr-link is-delete"><img src="${ART}/power-delete-16.png" alt="" width="16" height="16"><button type="button" class="cpl-vlink" data-cpl-vpage="remove">Delete this plan</button></p>` : ''}`, SAVE_CANCEL);
         }
     };
 
@@ -291,6 +331,7 @@
 
     handlers['power-plan'] = {
         plan: null,
+        change: spokeChanged,
         async save() {
             const plan = handlers['power-plan'].plan || activePlan();
             const main = doc.querySelector('.cpl-instance.cpl-current .cpl-main');
@@ -335,8 +376,11 @@
     };
 
     // ---- Advanced settings (DreamOS): Vista's Power Options sheet, measured on the VM (Segoe UI 9: the icon, the
-    // text, the plan box, the settings tree with "Setting:" or "On battery:" / "Plugged in:" rows, Restore plan
-    // defaults). Only the settings this computer really applies are listed, as Vista lists only what the machine has.
+    // text, the plan box, the settings tree, Restore plan defaults). The tree is the kit's settings tree
+    // (vista-dialog-template.css .vdt-stree): 18 px rows, the classic plus / minus boxes, 20 px per level; a value row
+    // reads "Setting: <value>" (the value in link blue), and the selected one becomes its editor - a combo for a
+    // choice, "Setting (Minutes):" / "(%):" with an edit box and its own up-down for a number. Only the settings this
+    // computer really applies are listed, as Vista lists only what the machine has.
 
     const ADV_TPL = {
         t: 'Advanced settings', w: 221, h: 183, f: ['Segoe UI', 9], s: 0,
@@ -365,102 +409,175 @@
         return groups;
     }
 
-    function advValueControl(item, side, value, sleepOk) {
-        const attrs = `data-adv="${item.key}" data-side="${side}"`;
-        if (item.type === 'yesno') return `<select class="tbp-select cpl-pwr-value" ${attrs}><option value="1"${value ? ' selected' : ''}>Yes</option><option value="0"${value ? '' : ' selected'}>No</option></select>`;
-        if (item.type === 'action') {
-            const acts = ['nothing', ...(sleepOk ? ['sleep'] : []), 'shutdown'];
-            if (!acts.includes(value)) acts.splice(1, 0, value);
-            return `<select class="tbp-select cpl-pwr-value" ${attrs}>${acts.map((a) => `<option value="${a}"${a === value ? ' selected' : ''}>${esc(ACTION_TEXT[a] || a)}</option>`).join('')}</select>`;
-        }
-        if (item.type === 'minutes') {
-            const m = Math.round((Number(value) || 0) / 60);
-            const list = MINUTES.includes(m) ? MINUTES : [...MINUTES.slice(0, -1).filter((x) => x < m), m, ...MINUTES.filter((x) => x > m || x === 0)];
-            return `<select class="tbp-select cpl-pwr-value" ${attrs}>${list.map((x) => `<option value="${x * 60}"${x === m ? ' selected' : ''}>${minuteText(x)}</option>`).join('')}</select>`;
-        }
-        // a percentage: Vista's spin box with "%" after it
-        return `<input type="text" class="tbp-edit cpl-pwr-pct" inputmode="numeric" maxlength="3" value="${esc(value)}" ${attrs} autocomplete="off" spellcheck="false"><span class="cpl-pwr-unit">%</span>`;
+    /** Vista's value text: "20 Minutes", "Never", "100%", "Yes", "Shut down" */
+    function advValueText(type, v, sleepOk) {
+        if (type === 'yesno') return v ? 'Yes' : 'No';
+        if (type === 'action') return ACTION_TEXT[v] || String(v);
+        if (type === 'minutes') { const m = Math.round((Number(v) || 0) / 60); return m ? `${m} Minute${m === 1 ? '' : 's'}` : 'Never'; }
+        return `${Number(v)}%`;
     }
 
-    function advTreeHtml(st, plan, open) {
-        const p = st.plans[plan];
-        const sides = st.battery ? [['dc', 'On battery:'], ['ac', 'Plugged in:']] : [['ac', 'Setting:']];
-        const sleepOk = !!(st.sleep && st.sleep.supported);
-        return advGroups(st).map((g, gi) => {
-            const gOpen = open.has(`g${gi}`);
-            const items = g.items.map((it, ii) => {
-                const id = `g${gi}i${ii}`;
-                const iOpen = open.has(id);
-                // a setting of the whole computer (password on wakeup) has one value: "Setting:"
-                const leaves = (it.global ? [['ac', 'Setting:']] : sides).map(([side, text]) => {
-                    const value = it.global ? st[it.key] : p[side][it.key];
-                    return `<div class="tbp-tree-row cpl-pwr-leaf"><span>${esc(text)}</span>${advValueControl(it, side, value, sleepOk)}</div>`;
-                }).join('');
-                return `<div class="cpl-pwr-node" role="treeitem" aria-expanded="${iOpen}" data-node="${id}"${iOpen ? ' data-open=""' : ''}><div class="tbp-tree-row cpl-pwr-item"><span class="cpl-pwr-exp" aria-hidden="true"></span><span>${esc(it.t)}</span></div><div class="cpl-pwr-kids">${leaves}</div></div>`;
+    function advChoices(type, sleepOk) {
+        if (type === 'yesno') return [['1', 'Yes'], ['0', 'No']];
+        return ['nothing', ...(sleepOk ? ['sleep'] : []), 'shutdown'].map((a) => [a, ACTION_TEXT[a]]);
+    }
+
+    function advTreeHtml(st, plan, open, values) {
+        const sides = st.battery ? [['dc', 'On battery'], ['ac', 'Plugged in']] : [['ac', 'Setting']];
+        const node = (id, level, text, kids, isOpen) => `<div class="vdt-stree-node" role="treeitem" aria-expanded="${isOpen}" data-node="${id}"${isOpen ? ' data-open=""' : ''}>
+            <div class="vdt-stree-row is-l${level}"><span class="vdt-stree-exp" aria-hidden="true"></span><span class="vdt-stree-text">${esc(text)}</span></div>
+            <div class="vdt-stree-kids">${kids}</div></div>`;
+        return advGroups(st).map((g, gi) => node(`g${gi}`, 0, g.t, g.items.map((it, ii) => {
+            // a setting of the whole computer (password on wakeup) has one value: "Setting:"
+            const leaves = (it.global ? [['ac', 'Setting']] : sides).map(([side, label]) => {
+                const v = values[`${it.key}|${side}`];
+                return `<div class="vdt-stree-row vdt-stree-value is-l2" role="treeitem" data-adv="${it.key}" data-side="${side}" data-type="${it.type}" data-label="${esc(label)}" data-value="${esc(v)}">
+                    <span class="vdt-stree-text">${esc(label)}:</span> <span class="vdt-stree-val">${esc(advValueText(it.type, v))}</span></div>`;
             }).join('');
-            return `<div class="cpl-pwr-node" role="treeitem" aria-expanded="${gOpen}" data-node="g${gi}"${gOpen ? ' data-open=""' : ''}><div class="tbp-tree-row cpl-pwr-group"><span class="cpl-pwr-exp" aria-hidden="true"></span><span>${esc(g.t)}</span></div><div class="cpl-pwr-kids">${items}</div></div>`;
-        }).join('');
+            return node(`g${gi}i${ii}`, 1, it.t, leaves, open.has(`g${gi}i${ii}`));
+        }).join(''), open.has(`g${gi}`))).join('');
+    }
+
+    /** the selected value row becomes its editor (Vista's: a combo, or "(Minutes)" / "(%)" with an edit and up-down) */
+    function advEdit(row, sleepOk, onChange) {
+        const type = row.dataset.type;
+        const label = row.dataset.label;
+        const v = row.dataset.value;
+        const text = row.querySelector('.vdt-stree-text');
+        const val = row.querySelector('.vdt-stree-val');
+        if (type === 'yesno' || type === 'action') {
+            text.textContent = `${label}:`;
+            const cur = type === 'yesno' ? (v === 'true' || v === '1' ? '1' : '0') : v;
+            val.innerHTML = `<select class="tbp-select vdt-stree-combo" aria-label="${esc(label)}">${advChoices(type, sleepOk).map(([k, t]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+            const sel = val.querySelector('select');
+            sel.addEventListener('change', () => { row.dataset.value = type === 'yesno' ? String(sel.value === '1') : sel.value; onChange(); });
+            return;
+        }
+        const minutes = type === 'minutes';
+        text.textContent = `${label} (${minutes ? 'Minutes' : '%'}):`;
+        const n = minutes ? Math.round((Number(v) || 0) / 60) : Number(v) || 0;
+        const max = minutes ? 9999 : 100;
+        val.innerHTML = `<input type="text" class="tbp-edit vdt-stree-edit" inputmode="numeric" maxlength="4" value="${n}" autocomplete="off" spellcheck="false" aria-label="${esc(label)}"><span class="vdt-stree-spin"><span class="tbp-spin tbp-spin-up" data-step="1"></span><span class="tbp-spin tbp-spin-down" data-step="-1"></span></span>`;
+        const input = val.querySelector('input');
+        const commit = () => {
+            let x = Math.round(Number(input.value));
+            if (!Number.isFinite(x)) x = n;
+            x = Math.max(row.dataset.adv === 'brightness' ? 1 : 0, Math.min(max, x));
+            input.value = String(x);
+            row.dataset.value = String(minutes ? x * 60 : x);
+            onChange();
+        };
+        input.addEventListener('change', commit);
+        input.addEventListener('input', () => onChange());
+        val.querySelector('.vdt-stree-spin').addEventListener('mousedown', (ev) => {
+            const s = ev.target.closest('[data-step]');
+            if (!s) return;
+            ev.preventDefault();
+            input.value = String((Math.round(Number(input.value)) || 0) + Number(s.dataset.step));
+            commit();
+        });
+    }
+
+    /** a row that leaves the selection shows its value as text again */
+    function advShow(row) {
+        if (!row || !row.classList.contains('vdt-stree-value')) return;
+        const input = row.querySelector('input.vdt-stree-edit');
+        if (input) input.dispatchEvent(new Event('change'));
+        row.querySelector('.vdt-stree-text').textContent = `${row.dataset.label}:`;
+        const type = row.dataset.type;
+        const raw = row.dataset.value;
+        const v = type === 'yesno' ? raw === 'true' || raw === '1' : type === 'action' ? raw : Number(raw);
+        row.querySelector('.vdt-stree-val').textContent = advValueText(type, v);
     }
 
     function openAdvancedPower(startPlan) {
         const V = root.vistaDialogTemplate;
         let plan = startPlan;
         const open = new Set(['g0', 'g0i0']); // Vista opens on Additional settings > Require a password on wakeup
+        const edits = {}; // plan -> { "key|side": value } not yet applied (Vista keeps every plan's edits until OK / Apply)
         V.openSheet({
             id: 'cplPowerAdvanced',
             title: 'Power Options',
             icon: `${ITEMS}/power-options-16.png`,
-            pages: [{ key: 'powercpl:adv', tpl: ADV_TPL, overrides: { 101: { image: `${ITEMS}/power-options-32.png` }, 104: { html: '', cls: 'tbp-tree cpl-pwr-tree' } } }],
+            pages: [{ key: 'powercpl:adv', tpl: ADV_TPL, overrides: { 101: { image: `${ITEMS}/power-options-32.png` }, 104: { html: '', cls: 'tbp-tree vdt-stree' } } }],
             init(ctx) {
                 const tree = ctx.holder(104);
+                const st0 = hostState();
+                const sleepOk = !!(st0 && st0.sleep && st0.sleep.supported);
+                let selected = null;
+                const valuesOf = (st) => {
+                    const p = st.plans[plan];
+                    const out = {};
+                    advGroups(st).forEach((g) => g.items.forEach((it) => {
+                        ['ac', 'dc'].forEach((side) => { out[`${it.key}|${side}`] = it.global ? !!st[it.key] : p[side][it.key]; });
+                    }));
+                    return Object.assign(out, edits[plan] || {});
+                };
                 const fill = () => {
                     const st = hostState();
                     if (!st || !st.plans[plan]) return;
                     ctx.options(103, planList().map((x) => ({ value: x.id, text: `${x.name}${x.id === st.active ? ' [Active]' : ''}` })), plan);
-                    tree.innerHTML = advTreeHtml(st, plan, open);
+                    tree.innerHTML = advTreeHtml(st, plan, open, valuesOf(st));
+                    selected = null;
+                    const first = tree.querySelector('.vdt-stree-node[data-open] .vdt-stree-node[data-open] .vdt-stree-value');
+                    if (first) select(first);
+                };
+                const changed = () => {
+                    if (!selected) return;
+                    (edits[plan] = edits[plan] || {})[`${selected.dataset.adv}|${selected.dataset.side}`] = selected.dataset.value;
+                    ctx.dirty();
+                };
+                const select = (row) => {
+                    if (selected === row) return;
+                    if (selected) { advShow(selected); selected.classList.remove('is-selected'); }
+                    selected = row;
+                    row.classList.add('is-selected');
+                    if (row.classList.contains('vdt-stree-value')) advEdit(row, sleepOk, changed);
                 };
                 fill();
-                tree.addEventListener('click', (ev) => {
-                    const b = ev.target.closest('.cpl-pwr-exp, .cpl-pwr-group, .cpl-pwr-item');
-                    if (!b) return;
-                    const node = b.closest('.cpl-pwr-node');
-                    const on = !node.hasAttribute('data-open');
-                    node.toggleAttribute('data-open', on);
-                    node.setAttribute('aria-expanded', String(on));
-                    if (on) open.add(node.dataset.node); else open.delete(node.dataset.node);
+                tree.addEventListener('mousedown', (ev) => {
+                    if (ev.target.closest('select, input, .vdt-stree-spin')) return;
+                    const row = ev.target.closest('.vdt-stree-row');
+                    if (!row) return;
+                    const node = row.parentElement;
+                    if (!row.classList.contains('vdt-stree-value') && (ev.target.closest('.vdt-stree-exp') || ev.detail === 2)) {
+                        const on = !node.hasAttribute('data-open');
+                        node.toggleAttribute('data-open', on);
+                        node.setAttribute('aria-expanded', String(on));
+                        if (on) open.add(node.dataset.node); else open.delete(node.dataset.node);
+                    }
+                    select(row);
                 });
-                tree.addEventListener('change', () => ctx.dirty());
-                tree.addEventListener('input', (ev) => { if (ev.target.classList.contains('cpl-pwr-pct')) ctx.dirty(); });
-                ctx.on(103, 'change', async () => {
-                    // Vista keeps each plan's edits until OK; here they are applied before another plan is shown
-                    if (ctx.store.dirtyPlan) await ctx.store.applyNow();
+                ctx.on(103, 'change', () => {
+                    if (selected) advShow(selected);
                     plan = String(ctx.get(103));
                     fill();
                 });
                 ctx.on(105, 'click', async () => {
                     if (!await ask("Are you sure you want to restore this plan's default settings?", "Clicking 'Yes' immediately restores all of the plan's default settings.")) return;
+                    delete edits[plan];
                     await hostCall('restore', plan);
                     fill();
                 });
                 ctx.store.applyNow = async () => {
+                    if (selected) advShow(selected);
                     const st = hostState();
                     if (!st) return;
-                    const patch = { ac: {}, dc: {} };
-                    let pw = null;
-                    tree.querySelectorAll('[data-adv]').forEach((el) => {
-                        const key = el.dataset.adv;
-                        const side = el.dataset.side;
-                        if (key === 'passwordOnWake') { pw = el.value === '1'; return; }
-                        let v = el.value;
-                        if (el.classList.contains('cpl-pwr-pct')) v = Math.max(key === 'brightness' ? 1 : 0, Math.min(100, Math.round(Number(v) || 0)));
-                        else if (key === 'display' || key === 'sleep') v = Number(v);
-                        if (st.plans[plan][side][key] !== v) patch[side][key] = v;
-                    });
-                    if (Object.keys(patch.ac).length || Object.keys(patch.dc).length) await hostCall('set', plan, patch);
-                    if (pw !== null && pw !== !!st.passwordOnWake) await hostCall('system', { passwordOnWake: pw });
-                    ctx.store.dirtyPlan = false;
+                    for (const id of Object.keys(edits)) {
+                        if (!st.plans[id]) continue;
+                        const patch = { ac: {}, dc: {} };
+                        let pw = null;
+                        Object.entries(edits[id]).forEach(([k, raw]) => {
+                            const [key, side] = k.split('|');
+                            if (key === 'passwordOnWake') { pw = raw === true || raw === 'true'; return; }
+                            const v = key === 'lid' || key === 'power' || key === 'sleepButton' ? String(raw) : Number(raw);
+                            if (st.plans[id][side][key] !== v) patch[side][key] = v;
+                        });
+                        if (Object.keys(patch.ac).length || Object.keys(patch.dc).length) await hostCall('set', id, patch);
+                        if (pw !== null && pw !== !!st.passwordOnWake) await hostCall('system', { passwordOnWake: pw });
+                        delete edits[id];
+                    }
                 };
-                tree.addEventListener('change', () => { ctx.store.dirtyPlan = true; });
             },
             async apply(ctx) {
                 await ctx.store.applyNow();
@@ -484,29 +601,30 @@
                 if (st) { const a = st.plans[st.active] || {}; return (a[side] && a[side][key]) || def; }
                 return reg(POWER, { power: 'PowerButtonAction', sleepButton: 'SleepButtonAction', lid: 'LidCloseAction' }[key], def);
             };
-            const cell = (key, side, def) => `<select class="cpl-vselect" data-power-sys="${key}" data-side="${side}" aria-label="${side === 'dc' ? 'On battery' : 'Plugged in'}">${actions(sysValue(key, side, def))}</select>`;
-            const row = (text, key, def) => `<tr><td>${text}</td>${two ? `<td>${cell(key, 'dc', def)}</td>` : ''}<td>${cell(key, 'ac', def)}</td></tr>`;
-            const head = two ? `<tr class="cpl-power-cols"><td></td><td>On battery</td><td>Plugged in</td></tr>` : '';
+            const cell = (key, def) => (side) => `<select class="cpl-vselect cpl-pwr-combo" data-power-sys="${key}" data-side="${side}" aria-label="${side === 'dc' ? 'On battery' : 'Plugged in'}">${actions(sysValue(key, side, def))}</select>`;
+            const rows = [{ big: true, icon: `${ART}/power-button-32.png`, label: 'When I press the power button:', cell: cell('power', 'shutdown') }];
+            // Vista lists the buttons this computer has: a laptop's sleep key and lid
+            if (two) {
+                rows.push({ big: true, icon: `${ART}/power-sleepbutton-32.png`, label: 'When I press the sleep button:', cell: cell('sleepButton', 'sleep') });
+                rows.push({ big: true, icon: `${ART}/power-lid-32.png`, label: 'When I close the lid:', cell: cell('lid', 'sleep') });
+            }
             const pw = st ? st.passwordOnWake !== false : reg(POWER, 'RequirePasswordOnWakeup', true);
-            return `<div class="cpl-vpage">${help('power')}
+            return spoke(`
                 <h1 class="cpl-vtitle">Define power buttons and turn on password protection</h1>
                 <p class="cpl-vtext">Choose the power settings that you want for your computer. The changes you make to the settings on this page apply to all of your power plans.</p>
-                <div class="cpl-vsection"><span>${two ? 'Power and sleep buttons and lid settings' : 'Power and sleep button settings'}</span></div>
-                <table class="cpl-power-grid">${head}
-                    ${row('When I press the power button:', 'power', 'shutdown')}
-                    ${row('When I press the sleep button:', 'sleepButton', 'sleep')}
-                    ${two ? row('When I close the lid:', 'lid', 'sleep') : ''}
-                </table>
-                <div class="cpl-vsection"><span>Password protection on wakeup</span></div>
-                <div class="cpl-vradio"><input type="radio" name="cpl-pw" id="cpl-pw-on" value="1"${pw ? ' checked' : ''}><label for="cpl-pw-on"><b>Require a password (recommended)</b></label>
-                    <p class="cpl-vtext cpl-vindent">When your computer wakes from sleep, no one can access your data without entering the correct password to unlock the computer. <a href="#" class="cpl-vlink is-underlined" data-cpl-vpage="accounts">Create or change your user account password</a></p></div>
-                <div class="cpl-vradio"><input type="radio" name="cpl-pw" id="cpl-pw-off" value="0"${pw ? '' : ' checked'}><label for="cpl-pw-off"><b>Don't require a password</b></label>
-                    <p class="cpl-vtext cpl-vindent">When your computer wakes from sleep, anyone can access your data because the computer isn't locked.</p></div>
-                <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="save">Save changes</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cancel">Cancel</button></div>
-            </div>`;
+                <div class="cpl-vsection cpl-pwr-section"><span>${two ? 'Power and sleep buttons and lid settings' : 'Power button settings'}</span></div>
+                <div class="cpl-pwr-settings">${powerTable(rows, two)}</div>
+                <div class="cpl-vsection cpl-pwr-section"><span>Password protection on wakeup</span></div>
+                <div class="cpl-pwr-radios">
+                    <div class="cpl-vradio cpl-pwr-radio"><input type="radio" name="cpl-pw" id="cpl-pw-on" value="1"${pw ? ' checked' : ''}><label for="cpl-pw-on">Require a password (recommended)</label>
+                        <p class="cpl-vtext cpl-pwr-desc">When your computer wakes from sleep, no one can access your data without entering the correct password to unlock the computer. <a href="#" class="cpl-vlink is-underlined" data-cpl-vpage="accounts">Create or change your user account password</a></p></div>
+                    <div class="cpl-vradio cpl-pwr-radio"><input type="radio" name="cpl-pw" id="cpl-pw-off" value="0"${pw ? '' : ' checked'}><label for="cpl-pw-off">Don't require a password</label>
+                        <p class="cpl-vtext cpl-pwr-desc">When your computer wakes from sleep, anyone can access your data because the computer isn't locked.</p></div>
+                </div>`, SAVE_CANCEL);
         }
     };
     handlers['power-system'] = {
+        change: spokeChanged,
         async save() {
             const main = doc.querySelector('.cpl-instance.cpl-current .cpl-main');
             const pw = main.querySelector('input[name="cpl-pw"]:checked');
@@ -527,6 +645,13 @@
         accounts() { if (CP()) CP().doAction('item:user-accounts'); }
     };
 
+    // the plans' own descriptions (Vista's, Windows -> Melaton where it names the OS)
+    const PLAN_TEXT = {
+        balanced: 'Automatically balances performance with energy consumption on capable hardware.',
+        saver: "Saves energy by reducing your computer's performance where possible.",
+        high: 'Favors performance, but may use more energy.'
+    };
+
     pages['power-create'] = {
         parent: 'power-options',
         title: () => 'Create a Power Plan',
@@ -534,14 +659,20 @@
         body: () => {
             const builtins = planList().filter((p) => p.builtin);
             const n = (planList().filter((p) => !p.builtin).length || 0) + 1;
-            return `<div class="cpl-vpage">${help('power')}
-            <h1 class="cpl-vtitle">Create a power plan</h1>
-            <p class="cpl-vtext">To create your own plan, start by selecting one of the following plans that is closest to what you want.</p>
-            ${builtins.map((p, i) => `<div class="cpl-vradio"><input type="radio" name="cpl-newplan" id="cpl-np-${p.id}" value="${p.id}"${i === 0 ? ' checked' : ''}><label for="cpl-np-${p.id}"><b>${esc(p.name)}</b></label></div>`).join('')}
-            <p class="cpl-vtext">Plan name:</p>
-            <input type="text" class="tbp-edit cpl-vedit" data-newplan-name value="My Custom Plan ${n}" autocomplete="off" spellcheck="false">
-            <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="next">Next</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cancel">Cancel</button></div>
-        </div>`;
+            const label = onBatteryMachine() ? 'Battery life:' : 'Energy savings:';
+            return spoke(`
+                <h1 class="cpl-vtitle">Create a power plan</h1>
+                <p class="cpl-vtext">To create your own plan, start by selecting one of the following plans that is closest to what you want.</p>
+                <div class="cpl-pwr-create">${builtins.map((p, i) => `
+                    <div class="cpl-power-plan cpl-pwr-createplan">
+                        <div class="cpl-power-name"><input type="radio" name="cpl-newplan" id="cpl-np-${p.id}" value="${p.id}"${i === 0 ? ' checked' : ''}><label for="cpl-np-${p.id}">${esc(p.name)}</label></div>
+                        <p class="cpl-vtext cpl-pwr-plandesc">${esc(PLAN_TEXT[p.id] || '')}</p>
+                        <div class="cpl-power-meter"><span>${label}</span>${dots(p.savings, 'is-savings')}<span>Performance:</span>${dots(p.perf, 'is-perf')}</div>
+                    </div>`).join('')}</div>
+                <div class="cpl-pwr-rule"></div>
+                <div class="cpl-pwr-name"><label for="cpl-np-name" class="cpl-vtext">Plan name:</label>
+                    <input type="text" id="cpl-np-name" class="tbp-edit cpl-vedit cpl-pwr-nameedit" data-newplan-name maxlength="128" value="My Custom Plan ${n}" autocomplete="off" spellcheck="false"></div>`,
+            '<button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="next" data-dialog-primary="1">Next</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="cancel">Cancel</button>');
         }
     };
     handlers['power-create'] = {
