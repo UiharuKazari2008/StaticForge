@@ -595,7 +595,11 @@ body.desktop-mode.theme-vista :is(#melatonControlPanelModal, .cpl-instance):is([
     box-sizing: border-box;
     width: 620px;
     margin: 0 auto;
-    padding: 0 10px 7px;
+    padding: 0 10px 17px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-spoke h1.cpl-vtitle {
+    margin-bottom: 13px;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-spoke-commands {
@@ -648,8 +652,8 @@ body.desktop-mode.theme-vista :is(#melatonControlPanelModal, .cpl-instance):is([
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-row td {
-    padding-top: 10px;
-    padding-bottom: 0;
+    padding-top: 15px;
+    padding-bottom: 5px;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-pwr-row.is-slider td {
