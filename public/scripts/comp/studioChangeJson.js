@@ -463,11 +463,11 @@ function writeStudioFieldValue(fieldId, next) {
     textarea.dispatchEvent(new CustomEvent('input', { bubbles: true, detail: { skipAutofill: true } }));
     // applyFormattedText: public/scripts/comp/utilities.js
     applyFormattedText(textarea, true);
-    // updateEmphasisHighlighting: public/scripts/comp/emphasisHighlight.js
-    updateEmphasisHighlighting(textarea);
-    // autoResizeTextarea: public/scripts/comp/utilities.js
-    autoResizeTextarea(textarea);
-    if (window.promptTextareaToolbar) window.promptTextareaToolbar.updateTokenCount(textarea);
+    // The overlay and height on the next frame, once for every field this change writes
+    // (scheduleTextareaVisualRefresh: public/scripts/comp/utilities.js); the token count is the input
+    // event's (promptTextareaToolbar.js schedules it for the frame) - counting here too ran the
+    // tokenizer twice per field
+    scheduleTextareaVisualRefresh(textarea);
     const charMatch = /^character:(\d+):prompt$/.exec(fieldId);
     if (charMatch) {
         const item = getStudioCharacterItems()[Number(charMatch[1])];
