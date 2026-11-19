@@ -4,6 +4,7 @@ const youtubeService = require('../../youtubeService');
 const activeSync = require('../../activeSync');
 const kickRelay = require('../../videosKickRelay');
 const kickChat = require('../../videosKickChat');
+const ytRelay = require('../../videosYoutubeRelay');
 
 // Melaton Videos, first Melaton Mobile YouTube (Yozora #839, #861): the phone's videos program and its Today item.
 // Beside YouTube it shows Kick live streams and the notifications of chosen Android apps (modules/videosSources.js). Everything
@@ -38,6 +39,11 @@ const kickChat = require('../../videosKickChat');
 //   youtube_chat_send        { slug, text }            admins; says it in the channel's chat as the linked account -> { sent, id }
 //                                                      a chat message is { id, at (ms), name, color ('' | #rrggbb), badges[], text };
 //                                                      text carries emotes as [emote:<id>:<NAME>] (picture: /api/videos/kick/emote/<id>)
+//   youtube_video_start      { id, mode, at }          admins; a YouTube video through the server from `at` seconds (modules/videosYoutubeRelay.js)
+//                                                      -> { id, url, mode, state, at, duration, title, height, kbit, copied, modes } (url: HLS under /api/videos/yt/<id>/)
+//                                                      fails (YT_REFUSED, YT_LIVE, YT_TOO_LONG...) for what a server cannot be given: the program then uses YouTube's embedded player
+//   youtube_video_state      { id }                    admins -> { state: live | done | error | gone, error }
+//   youtube_video_stop       { id }                    admins -> { stopped }
 //   youtube_kick_add         { name }                  admins; a Kick channel by its name -> { channel, live, channels[] } (needs Service key `kick`)
 //   youtube_kick_notify      { slug, on }              admins; the channel's bell: the server tells when it goes live -> { channels[] }
 //   youtube_kick_remove      { slug }                  admins -> { channels[] }
@@ -148,6 +154,11 @@ function registerPackets(handlersCtx) {
     wsPacketRegistry.registerWsPacket('youtube_chat_close', async ({ ws, message, clientInfo }) => {
         await packet(true, 'Chat could not be closed', async (m) => { kickChat.leave(String(m.slug || ''), ws); return { closed: true }; })(handlersCtx, ws, message, clientInfo);
     }, { owner: 'youtube' });
+    // a YouTube video through the server (yt-dlp + ffmpeg, #920): public videos; anything else fails and the program uses YouTube's embedded player
+    ytRelay.sweep();
+    reg('youtube_video_start', packet(true, 'The video could not be started', async (m) => Object.assign(await ytRelay.start(String(m.id || ''), m.mode, m.at), { modes: ytRelay.modes() })));
+    reg('youtube_video_state', packet(true, 'The video could not be read', async (m) => ytRelay.state(m.id)));
+    reg('youtube_video_stop', packet(true, 'The video could not be stopped', async (m) => ({ stopped: await ytRelay.stop(m.id) })));
     reg('youtube_live_modes', packet(false, 'The qualities could not be read', async () => ({ modes: kickRelay.modes() })));
     reg('youtube_live_start', packet(true, 'The stream could not be started', async (m) => Object.assign(await kickRelay.start(m.slug, m.mode), { modes: kickRelay.modes() })));
     reg('youtube_live_state', packet(true, 'The stream could not be read', async (m) => kickRelay.state(m.id)));

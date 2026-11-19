@@ -623,7 +623,7 @@
 .wm-youtube .yt-frame-el { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
 .wm-youtube .yt-more { margin: calc(8 * var(--u)) calc(-9 * var(--u)) 0; }
 .wm-youtube .yt-more[hidden] { display: none; }
-.wm-youtube .yt-player.is-yt .yt-video, .wm-youtube .yt-player.is-yt .is-livetag { display: none; }
+.wm-youtube .yt-player.is-yt .yt-video, .wm-youtube .yt-player.is-vod .is-livetag { display: none; }
 
 /* ---------------------------------------------------------------- a stream's chat (off until asked for, #919) */
 

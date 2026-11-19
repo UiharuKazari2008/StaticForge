@@ -2245,7 +2245,7 @@ app.use((req, res, next) => {
         return next();
     }
     // a live stream's pieces (Melaton Videos' Kick relay, #918): one request every few seconds for hours
-    if (req.path.startsWith('/api/videos/live/')) {
+    if (req.path.startsWith('/api/videos/live/') || req.path.startsWith('/api/videos/yt/')) {
         return next();
     }
     
@@ -2326,6 +2326,8 @@ require('./modules/slideshowDevices').mountPreviewRoutes(app, authMiddleware, gl
 require('./modules/activeSyncTransfers').mount(app, authMiddleware, globalResources);
 // modules/videosKickRelay.js — Melaton Videos: a Kick live stream's HLS pieces for the program's player (Yozora #918)
 require('./modules/videosKickRelay').mount(app, authMiddleware);
+// modules/videosYoutubeRelay.js — Melaton Videos: a YouTube video's HLS pieces (yt-dlp + ffmpeg, Yozora #920)
+require('./modules/videosYoutubeRelay').mount(app, authMiddleware);
 // modules/videosKickChat.js — Melaton Videos: the Kick sign-in answer and emote pictures (Yozora #919)
 require('./modules/videosKickChat').mount(app, authMiddleware, (res) => sendNginxError(res, 404));
 // modules/activeSyncScreen.js — ActiveSync remote viewer: a phone's screen frames for the desktop (Yozora #747)
