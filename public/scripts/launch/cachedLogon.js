@@ -101,7 +101,9 @@
                 method: 'POST',
                 credentials: 'include',
                 cache: 'no-store',
-                headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+                // a Dreamscape client says so (modules/siteGate.js): behind the site gate the logon's own sign-in
+                // must reach the server without the gate's cookie too - log off clears it (Nov 19 2026)
+                headers: { 'Content-Type': 'application/json', 'X-Dreamscape-Client': 'melaton-logon', ...(opts.headers || {}) },
                 body: JSON.stringify({ action: 'login', data: { pin } }),
                 signal: ctl ? ctl.signal : undefined
             });
