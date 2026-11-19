@@ -659,6 +659,18 @@ function buildRunSystemCommandEntries() {
         keywords: ['vzaccess', 'vzam', 'vzaccess manager', 'verizon', 'mobile broadband', 'wwan'],
         execute: () => { if (window.melatonApps) void window.melatonApps.launch({ packageId: 'vzaccess' }); }
     }, {
+        // Vista's cleanmgr: Disk Cleanup (diskCleanup.js, in the Control Panel feature, #945)
+        id: 'system-cleanmgr',
+        category: 'app',
+        label: 'cleanmgr',
+        subtitle: 'Disk Cleanup',
+        icon: 'fa-light fa-broom',
+        keywords: ['cleanmgr', 'disk cleanup', 'free disk space', 'temporary files', 'thumbnails'],
+        execute: async () => {
+            if (window.featureLoader) await window.featureLoader.loadFeature('control_panel');
+            if (typeof window.openDiskCleanup === 'function') void window.openDiskCleanup();
+        }
+    }, {
         // Vista's mblctr: Melaton Mobility Center (mobilityCenter.js, in the Control Panel feature)
         id: 'system-mblctr',
         category: 'app',

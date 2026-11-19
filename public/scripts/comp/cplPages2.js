@@ -100,7 +100,8 @@
             const d = wei && wei.details ? wei.details : {};
             msg(Object.entries(d).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ') || 'No details yet.', 'Melaton Experience Index');
         },
-        cleanup() { callGlobal('openDataManagementDsap'); },
+        // Disk Cleanup (diskCleanup.js, #945): Vista's cleanmgr
+        cleanup() { callGlobal('openDiskCleanup'); },
         advanced() { CP().doAction('page:administrative-tools'); }
     };
 
@@ -660,6 +661,39 @@
         options() { msg('Family Safety options are kept with each user\'s Parental Controls.', 'Family Safety Options'); }
     };
 
+    // Offline Files' details (#945): what this computer keeps offline, measured when Sync Center opens
+    // (diskCleanup.js melatonStorage); Melaton's own files are not offline files, Disk Cleanup lists them
+    let syncUsage = null;
+    let syncUsageAsked = 0;
+    function syncDetails() {
+        const st = root.melatonStorage;
+        if (!st) return '';
+        if (!syncUsage || Date.now() - syncUsageAsked > 30000) {
+            if (Date.now() - syncUsageAsked > 2000) {
+                syncUsageAsked = Date.now();
+                st.measure().then((r) => { syncUsage = r; if (CP() && CP().currentPage() === 'sync-center') rerender(); }).catch(() => {});
+            }
+        }
+        const r = syncUsage;
+        const row = (k, v) => `<span class="dcl-sd-label">${esc(k)}</span><span>${esc(v)}</span>`;
+        if (!r) return `<div class="dcl-sync-details"><img src="/static_images/vista-cpl/items/offline-files-48.png" alt=""><div class="dcl-sd-text"><b>Offline Files</b><div class="dcl-sd-grid">${row('Status:', 'Calculating...')}</div></div></div>`;
+        const o = r.offline;
+        const t = r.temporary;
+        const pics = `${o.pictures.count.toLocaleString('en-US')} picture${o.pictures.count === 1 ? '' : 's'}, ${st.size(o.pictures.bytes)}${o.pictures.pinned ? ` (${o.pictures.pinned.toLocaleString('en-US')} pinned)` : ''}`;
+        const dbs = o.databases.bytes == null ? `${o.databases.names.length} database${o.databases.names.length === 1 ? '' : 's'}` : `${o.databases.names.length} database${o.databases.names.length === 1 ? '' : 's'}, ${st.size(o.databases.bytes)}`;
+        const all = (o.pictures.bytes || 0) + (o.wallpapers.bytes || 0) + (o.databases.bytes || 0);
+        const temp = (t.thumbnails.bytes || 0) + (t.temporary.bytes || 0);
+        return `<div class="dcl-sync-details"><img src="/static_images/vista-cpl/items/offline-files-48.png" alt=""><div class="dcl-sd-text"><b>Offline Files</b><div class="dcl-sd-grid">
+            ${row('Offline pictures:', pics)}
+            ${row('Wallpapers:', `${o.wallpapers.count} file${o.wallpapers.count === 1 ? '' : 's'}, ${st.size(o.wallpapers.bytes)}`)}
+            ${row('Offline databases:', dbs)}
+            ${o.cafe ? row('Café cache (phone):', `${o.cafe.entries.toLocaleString('en-US')} replies kept, ${o.cafe.served.toLocaleString('en-US')} served`) : ''}
+            ${row('Temporary files:', `${st.size(temp)} (thumbnails and temporary internet files)`)}
+            ${row('Disk usage:', `${st.size(all)} offline${r.quota ? ` of ${st.size(r.quota)} available to Melaton` : ''}`)}
+        </div>
+        <div class="dcl-sd-links"><a href="#" class="cpl-vlink" data-cpl-vpage="usage">Manage disk space used by your offline files</a><a href="#" class="cpl-vlink" data-cpl-vpage="cleanup">Free up space used by Melaton (Disk Cleanup)</a></div></div></div>`;
+    }
+
     pages['sync-center'] = {
         title: () => 'Sync Center',
         tasks: () => tasks([[
@@ -672,6 +706,7 @@
             <div class="cpl-pf-bar"><button type="button" class="cpl-pf-cmd" data-cpl-vpage="syncall">Sync All</button><button type="button" class="cpl-pf-cmd" data-cpl-vpage="schedule">Schedule</button></div>
             <table class="cpl-vtable"><tr class="is-head"><td>Name</td><td>Status</td><td>Category</td><td>Progress</td></tr>
             <tr data-cpl-vpage="syncall"><td><img src="/static_images/vista-cpl/items/sync-center-16.png" alt=""> Offline Files</td><td>${esc(reg('HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\SyncMgr', 'LastSync', '') ? `Sync completed ${reg('HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\SyncMgr', 'LastSync', '')}` : 'Not synced')}</td><td>Folders</td><td></td></tr></table>
+            ${syncDetails()}
         </div>`
     };
     handlers['sync-center'] = {
@@ -683,6 +718,8 @@
         schedule() { callGlobal('openDataManagementDsap', 'replication'); },
         partnerships() { rerender(); },
         conflicts() { msg('There are no sync conflicts.', 'Sync Center'); },
+        usage() { const cp = CP(); if (cp) cp.doAction('dialog:offline-files:disk'); },
+        cleanup() { callGlobal('openDiskCleanup'); },
         results() { msg('No sync results to show.', 'Sync Center'); },
         setup() { callGlobal('openDataManagementDsap', 'replication'); }
     };

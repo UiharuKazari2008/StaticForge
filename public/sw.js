@@ -2147,6 +2147,11 @@ self.addEventListener('message', (event) => {
         });
     } else if (event.data && event.data.type === 'CACHE_INTERNAL') {
         event.waitUntil(cacheInternalData(event.data.url, event.data.data));
+    } else if (event.data && event.data.type === 'STORAGE_REPORT') {
+        // Disk Cleanup, Offline Files' Disk Usage and Sync Center (diskCleanup.js), only while one is open
+        event.waitUntil(storageReport(event.data.requestId, event.source));
+    } else if (event.data && event.data.type === 'CLEAR_CACHE') {
+        event.waitUntil(clearCacheGroup(event.data.target, event.data.requestId, event.source));
     } else if (event.data && event.data.type === 'GET_CACHE_STATUS') {
         event.waitUntil(getCacheStatus(event.data.requestId, event.source));
     } else if (event.data && event.data.type === 'GET_CACHED_FILES') {
@@ -2976,6 +2981,84 @@ async function getCacheStatus(requestId, source = null) {
   } catch (error) {
     console.error('Error getting cache status:', error);
   }
+}
+
+// ---------- storage report and cleanup (#945: Disk Cleanup / Offline Files / Sync Center, diskCleanup.js) ----------
+
+/** One cache's rows and bytes: Content-Length where the row has it, else the body's size. A large cache is sampled. */
+async function measureCache(name) {
+  if (!(await caches.has(name))) return { count: 0, bytes: 0 };
+  const cache = await caches.open(name);
+  const keys = await cache.keys();
+  const SAMPLE = 600;
+  const list = keys.length > SAMPLE ? keys.filter((_, i) => i % Math.ceil(keys.length / SAMPLE) === 0) : keys;
+  let bytes = 0;
+  for (let i = 0; i < list.length; i += 16) {
+    await Promise.all(list.slice(i, i + 16).map(async (key) => {
+      try {
+        const r = await cache.match(key);
+        if (!r) return;
+        const len = Number(r.headers.get('content-length'));
+        bytes += len > 0 ? len : (await r.clone().blob()).size;
+      } catch (_err) { /* a row that went meanwhile */ }
+    }));
+  }
+  if (list.length && list.length < keys.length) bytes = Math.round(bytes * (keys.length / list.length));
+  return { count: keys.length, bytes, sampled: list.length < keys.length };
+}
+
+async function storageReport(requestId, source) {
+  const out = { type: 'STORAGE_REPORT', requestId, caches: {} };
+  try {
+    // the static cache is Melaton's installed files (thousands of rows): counted, its size is the page's sum
+    if (await caches.has(STATIC_CACHE)) out.caches.static = { count: (await (await caches.open(STATIC_CACHE)).keys()).length, bytes: null };
+    // the picture cache: its own metadata's sizes (listing 20,000 previews can fail, getCacheStatus)
+    const metadata = await readImageMetadata();
+    const entries = Object.values(metadata.entries || {});
+    out.caches.images = {
+      count: entries.length,
+      bytes: entries.reduce((n, e) => n + (Number(e && e.size) || 0), 0),
+      pinned: entries.filter((e) => e && e.pinned).length
+    };
+    const names = { dynamic: DYNAMIC_CACHE, internal: INTERNAL_CACHE, wallpapers: WALLPAPER_CACHE, fonts: PROTECTED_FONT_CACHE,
+      thumbnails: EXPLORER_PREVIEW_CACHE, scriptCode: SCRIPT_CODE_CACHE, launchShell: LAUNCH_SHELL_CACHE };
+    for (const [key, name] of Object.entries(names)) out.caches[key] = await measureCache(name);
+  } catch (error) {
+    out.error = String((error && error.message) || error);
+  }
+  replyToSource(source, out);
+}
+
+/**
+ * Disk Cleanup's deletions, only what comes back on its own: 'temporary' (the dynamic cache: responses kept for
+ * quick viewing), 'thumbnails' (Explorer's previews) and 'pictures' (the gallery pictures kept for offline viewing,
+ * except the pinned ones). Melaton's own files (static, fonts, script code, the launch shell) are never deleted here.
+ */
+async function clearCacheGroup(target, requestId, source) {
+  const reply = { type: 'CLEAR_CACHE_DONE', requestId, target, removed: 0 };
+  try {
+    if (target === 'temporary' || target === 'thumbnails') {
+      const name = target === 'temporary' ? DYNAMIC_CACHE : EXPLORER_PREVIEW_CACHE;
+      if (await caches.has(name)) {
+        reply.removed = (await (await caches.open(name)).keys()).length;
+        await caches.delete(name);
+      }
+    } else if (target === 'pictures') {
+      const metadata = await readImageMetadata();
+      const urls = Object.keys(metadata.entries || {}).filter((url) => !(metadata.entries[url] && metadata.entries[url].pinned));
+      const cache = await caches.open(IMAGE_CACHE);
+      for (let i = 0; i < urls.length; i += 32) {
+        await Promise.all(urls.slice(i, i + 32).map((url) => cache.delete(url, { ignoreVary: true }).catch(() => false)));
+      }
+      await deleteImageMetadata(urls);
+      reply.removed = urls.length;
+    } else {
+      reply.error = 'not a cleanable group';
+    }
+  } catch (error) {
+    reply.error = String((error && error.message) || error);
+  }
+  replyToSource(source, reply);
 }
 
 // Delete matching URL entries from static, dynamic, and image caches

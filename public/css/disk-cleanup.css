@@ -1,0 +1,71 @@
+/* Disk Cleanup (#945; public/scripts/comp/diskCleanup.js): cleanmgr.exe's "Files to delete" list - a check box, the
+   category's 16 px icon and name, its size at the right - on the template kit's list view. Layout only. */
+
+.vdt-client .vdt-lv-row.dcl-row {
+    justify-content: space-between;
+    padding-right: 4px;
+}
+
+.vdt-client .vdt-lv-row.dcl-row > .dcl-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 0 0 2px;
+}
+
+.vdt-client .vdt-lv-row.dcl-row > .dcl-name label > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+}
+
+.vdt-client .vdt-lv-row.dcl-row img {
+    margin: 0;
+    vertical-align: middle;
+}
+
+.vdt-client .vdt-lv-row.dcl-row > .dcl-size {
+    flex: none;
+    padding: 0 2px 0 8px;
+    text-align: right;
+}
+
+/* the description: cleanmgr wraps it inside the group box */
+.vdt-client [data-vdt-id="1003"] {
+    white-space: normal;
+}
+
+/* Sync Center (cplPages2.js): the Offline Files partnership's details under the list, as Sync Center's details pane
+   lays out a selected partnership - its 48 px picture, the name, label | value rows */
+:is(#melatonControlPanelModal, .cpl-instance) .dcl-sync-details {
+    display: flex;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid var(--cpl-rule, currentColor);
+    border-top-color: color-mix(in srgb, currentColor 15%, transparent);
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dcl-sync-details > img {
+    width: 48px;
+    height: 48px;
+    flex: none;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dcl-sd-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 14px;
+    margin-top: 6px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dcl-sd-label {
+    opacity: 0.7;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dcl-sd-links {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 10px;
+}

@@ -405,21 +405,46 @@
             ctx.on(2234, 'click', () => { ctx.store.enabled = false; showGeneral(); ctx.dirty(); }, 'cscui:1358');
             ctx.on(2212, 'click', () => openCpl('sync-center'), 'cscui:1358');
             ctx.on(2214, 'click', () => callGlobal('openExplorerApplet'), 'cscui:1358');
-            // Disk Usage: the browser's storage quota stands in for the disk
-            const est = root.navigator.storage && root.navigator.storage.estimate ? root.navigator.storage.estimate() : Promise.resolve(null);
-            est.then((e) => {
-                if (!e) return;
-                const gb = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
-                const pct = e.quota ? Math.min(100, Math.round((e.usage / e.quota) * 100)) : 0;
-                ctx.text(2238, `${gb(e.usage || 0)} in use (${gb(Math.max(0, (e.quota || 0) - (e.usage || 0)))} available)`, 'cscui:1359');
-                ctx.text(2242, `${gb(e.quota || 0)} limit`, 'cscui:1359');
-                ctx.text(2245, `(${pct}% of browser storage)`, 'cscui:1359');
-                const f = ctx.holder(2138, 'cscui:1359');
-                if (f) f.querySelector('.vdt-progress-fill').style.setProperty('--vdt-progress', `${pct}%`);
-                ctx.text(2243, `0 MB in use (${gb(Math.max(0, (e.quota || 0) - (e.usage || 0)))} available)`, 'cscui:1359');
-                ctx.text(2244, `${gb(e.quota || 0)} limit`, 'cscui:1359');
-                ctx.text(2246, `(${pct}% of browser storage)`, 'cscui:1359');
-            }).catch(() => {});
+            // Disk Usage (#945, diskCleanup.js melatonStorage): what is kept offline for the user (pictures kept for
+            // offline viewing, wallpapers, offline databases) and the temporary offline files (recent pictures,
+            // thumbnails, temporary internet files), against the storage the browser grants Melaton. Melaton's own
+            // files are not offline files: Disk Cleanup lists them. Read once, when the dialog opens.
+            const D = 'cscui:1359';
+            const bar = (id, pct) => { const f = ctx.holder(id, D); const fill = f && f.querySelector('.vdt-progress-fill'); if (fill) fill.style.setProperty('--vdt-progress', `${pct}%`); };
+            const showUsage = () => {
+                const st = root.melatonStorage;
+                if (!st) return;
+                ctx.text(2238, 'Calculating...', D);
+                ctx.text(2243, 'Calculating...', D);
+                st.measure().then((r) => {
+                    const quota = r.quota || 0;
+                    const avail = Math.max(0, quota - (r.usage || 0));
+                    const o = r.offline;
+                    const all = (o.pictures.bytes || 0) + (o.wallpapers.bytes || 0) + (o.databases.bytes || 0);
+                    const t = r.temporary;
+                    const temp = (t.pictures.bytes || 0) + (t.thumbnails.bytes || 0) + (t.temporary.bytes || 0);
+                    const pct = (b) => (quota ? Math.min(100, Math.round((b / quota) * 100)) : 0);
+                    ctx.text(2238, `${st.size(all)} in use (${st.size(avail)} available)`, D);
+                    ctx.text(2242, `${st.size(quota)} limit`, D);
+                    ctx.text(2245, `(${pct(all)}% of Melaton's storage)`, D);
+                    bar(2138, pct(all));
+                    ctx.text(2243, `${st.size(temp)} in use (${st.size(avail)} available)`, D);
+                    ctx.text(2244, `${st.size(quota)} limit`, D);
+                    ctx.text(2246, `(${pct(temp)}% of Melaton's storage)`, D);
+                    bar(2240, pct(temp));
+                }).catch(() => {});
+            };
+            showUsage();
+            ctx.on(2235, 'click', async () => {
+                const st = root.melatonStorage;
+                if (!st) return;
+                const sure = typeof root.showConfirmationDialog === 'function'
+                    ? await root.showConfirmationDialog('Are you sure you want to delete your temporary offline files? Pictures you pinned to keep offline are kept.', [{ text: 'Delete', value: true }, { text: 'Cancel', value: false }], null, { title: 'Offline Files', icon: 'fas fa-question-circle' })
+                    : true;
+                if (!sure) return;
+                for (const target of ['pictures', 'thumbnails', 'temporary']) await st.clear(target);
+                showUsage();
+            }, D);
             ctx.store.encrypted = reg(KEY.csc, 'EncryptOfflineFiles', false);
             const showEnc = () => {
                 ctx.text(2218, ctx.store.encrypted ? 'Your offline files are encrypted.' : 'You can encrypt your offline files to help protect them from unauthorized access.', 'cscui:1360');

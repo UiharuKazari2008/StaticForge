@@ -6825,6 +6825,8 @@ function buildToolsSubmenuItems(opts) {
         // Accessories > Snipping Tool (Yozora #632; apps/snipping, a system package)
         { launchId: 'snipping', icon: 'fas fa-scissors', imageIcon: 'vista-snipping-tool.png', text: 'Snipping Tool', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'snipping' }) },
         // Accessories > Character Map (Yozora #632; public/scripts/comp/desktop-apps/charmap/charmapApp.js)
+        // Accessories > System Tools > Disk Cleanup (public/scripts/comp/diskCleanup.js, in the Control Panel feature, #945)
+        { launchId: 'disk-cleanup', icon: 'fas fa-broom', imageIcon: '/static_images/vista-cleanmgr/cleanmgr-48.png', text: 'Disk Cleanup', appMenuLocation: 'tools', desktopOnly: true, action: async () => { await featureLoader.loadFeature('control_panel'); if (typeof window.openDiskCleanup === 'function') window.openDiskCleanup(); } },
         { launchId: 'charmap', icon: 'fas fa-font', imageIcon: 'vista-charmap.png', text: 'Character Map', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('charmap'); window.openMelatonCharmap(); } },
         // Accessories > Notepad: a blank Untitled document (Yozora #632; public/scripts/comp/notepadVista.js)
         { launchId: 'notepad', icon: 'fas fa-file-lines', imageIcon: 'vista-notepad.png', text: 'Notepad', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('notepad'); window.notepadVista.openBlank(); } },
@@ -8136,6 +8138,7 @@ const START_MENU_SYSTEM_PLACES = {
     'media-player': { at: 'top' },                 // Windows Media Player
     'remote-desktop-connection': { at: 'accessories' },
     charmap: { at: 'system-tools' },               // Accessories > System Tools > Character Map
+    'disk-cleanup': { at: 'system-tools' },        // Accessories > System Tools > Disk Cleanup
     taskmgr: { at: 'system-tools' },               // not listed on Vista; System Tools is its nearest home
     perfmon: { at: 'administrative-tools' },       // Administrative Tools > Reliability and Performance Monitor
     // the MMC consoles (#828): Administrative Tools, as Vista's snap-ins are

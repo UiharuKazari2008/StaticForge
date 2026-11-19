@@ -386,13 +386,17 @@ const FEATURE_MANIFEST = {
             'css/cpl-catalog.css', 'css/cpl-dialogs.css', 'css/cpl-pages.css', 'css/cpl-pages2.css',
             'css/welcome-center.css', 'css/cpl-cardspace.css', 'css/cpl-indexing.css', 'css/dpi-scaling.css',
             // Melaton Mobility Center (#932): the Vista theme's colours and art, then the layout
-            'css/themes/vista/mobility-center.css', 'css/mobility-center.css'],
+            'css/themes/vista/mobility-center.css', 'css/mobility-center.css',
+            // Disk Cleanup's list (#945, diskCleanup.js)
+            'css/disk-cleanup.css'],
         scripts: [
             // Vista's items, categories and task links (Yozora #632), read by melatonControlPanel.js
             'scripts/comp/cplCatalog.js',
             'scripts/comp/melatonControlPanel.js',
             'scripts/comp/experienceIndex.js',
             'scripts/comp/cplSystem.js',
+            // this computer's storage: Disk Cleanup, Offline Files' Disk Usage, Sync Center (#945)
+            'scripts/comp/diskCleanup.js',
             'scripts/comp/remoteAccessProperties.js',
             'scripts/comp/cplAuthentication.js',
             'scripts/comp/cplUpdate.js',
