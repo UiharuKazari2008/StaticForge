@@ -594,6 +594,7 @@ async function build() {
         writeIfChanged(path.join(OUT, String(t.id), 'img.css'), css);
     }
     writeIfChanged(indexFile, Buffer.from(`${JSON.stringify(index)}\n`));
+    writeBgSheets(index);
     console.log({ plans: counts, variants: methods, written, bytesPerTier: Object.fromEntries(Object.entries(sizes).map(([k, v]) => [k, `${(v / 1048576).toFixed(1)} MB`])) });
 }
 
@@ -609,6 +610,163 @@ function cacheDirOf(p) {
     const dir = path.join(CACHE, 'v', key.slice(0, 2), key);
     cacheKeys.set(p.rel, dir);
     return dir;
+}
+
+// ---------------------------------------------------------------- page-scale backgrounds (bg.css)
+// The Android app's desktop scales in the page (app.html melatonPageScale, #934), not through the display:
+// devicePixelRatio stays the screen's, so image-set() and resolution queries keep picking 1x there. When the
+// page's own scale needs a higher tier than the screen does, assetPackages.js sets html[data-hidpi-tier] and
+// links hidpi/<tier>/bg.css: every rule of the stylesheets that draws HiDPI art through image-set(), again,
+// with that tier's copy as the only candidate (same density, so sizes and border-image slices hold).
+// Specificity is unchanged (:where()), and in each stylesheet the rules that put other art or none on the
+// same elements (sharing a class or id with an art rule) are repeated too, so their order still wins.
+const ART_PROPS = /^(?:background|background-image|border-image|border-image-source|list-style|list-style-image|content|mask|mask-image|-webkit-mask|-webkit-mask-image|cursor)$/;
+const OUR_SET = /image-set\(url\((['"]?)\/static_images\/([^'")\s]+)\1\) 1x(?:, url\(\1\/static_images\/hidpi\/[^)]*\) [\d.]+x)+\)/g;
+
+function stripComments(css) { return css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')); }
+
+// rules in document order with their at-rule wrappers: { wrap: ['@media ...'], sel, body }
+function cssRules(css) {
+    const out = [];
+    const walk = (text, wrap) => {
+        let i = 0;
+        while (i < text.length) {
+            const open = text.indexOf('{', i);
+            if (open < 0) break;
+            const head = text.slice(i, open).trim().replace(/^[;}\s]+/, '');
+            let depth = 1; let j = open + 1; let q = null;
+            for (; j < text.length && depth; j++) {
+                const ch = text[j];
+                if (q) { if (ch === '\\') j++; else if (ch === q) q = null; continue; }
+                if (ch === '"' || ch === "'") q = ch;
+                else if (ch === '{') depth++;
+                else if (ch === '}') depth--;
+            }
+            const body = text.slice(open + 1, j - 1);
+            if (/^@(?:media|supports|container|layer)\b/i.test(head)) walk(body, [...wrap, head]);
+            else if (!head.startsWith('@') && !/[{}]/.test(body)) out.push({ wrap, sel: head, body });
+            i = j;
+        }
+    };
+    walk(stripComments(css), []);
+    return out;
+}
+
+function decls(body) {
+    const out = [];
+    let depth = 0; let q = null; let start = 0;
+    for (let i = 0; i <= body.length; i++) {
+        const ch = body[i];
+        if (q) { if (ch === '\\') i++; else if (ch === q) q = null; continue; }
+        if (ch === '"' || ch === "'") q = ch;
+        else if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        else if ((ch === ';' && depth === 0) || i === body.length) {
+            const d = body.slice(start, i);
+            const k = d.indexOf(':');
+            if (k > 0) out.push({ prop: d.slice(0, k).trim().toLowerCase(), value: d.slice(k + 1).trim() });
+            start = i + 1;
+        }
+    }
+    return out;
+}
+
+function splitTop(value, sep) {
+    const out = []; let depth = 0; let q = null; let start = 0;
+    for (let i = 0; i < value.length; i++) {
+        const ch = value[i];
+        if (q) { if (ch === '\\') i++; else if (ch === q) q = null; continue; }
+        if (ch === '"' || ch === "'") q = ch;
+        else if (ch === '(') depth++;
+        else if (ch === ')') depth--;
+        else if (ch === sep && depth === 0) { out.push(value.slice(start, i)); start = i + 1; }
+    }
+    out.push(value.slice(start));
+    return out.map((x) => x.trim());
+}
+
+// the image of one background / mask layer, or none
+function layerImage(layer) {
+    const m = /(?:-webkit-)?image-set\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)|url\([^)]*\)|(?:repeating-)?(?:linear|radial|conic)-gradient\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)/.exec(layer);
+    if (m) return m[0];
+    // a layer whose picture comes from a custom property (desktop-boot.css --vista-logon-bg)
+    const vars = layer.match(/var\(--[\w-]+(?:,[^()]*)?\)/g) || [];
+    return vars.find((v) => /bg|image|img|art|face|icon|picture/i.test(v)) || vars[0] || 'none';
+}
+
+function tierSelector(sel, tier) {
+    const attr = `[data-hidpi-tier="${tier}"]`;
+    return splitTop(sel, ',').map((part) => {
+        const m = /^(html|:root)((?:[.#[:][^\s>+~]*)?)(.*)$/i.exec(part);
+        if (m) return `${m[1]}${m[2]}:where(${attr})${m[3]}`;
+        return `:where(html${attr}) ${part}`;
+    }).join(', ');
+}
+
+function bgSheet(index, tier) {
+    const t = TIERS.find((x) => x.id === tier);
+    const single = (all, q, rel) => {
+        const e = index.a[rel];
+        const d = e && density(e, t);
+        return d ? `image-set(url(${q}${variantUrl(rel, e.x || path.extname(rel), t.id)}${q}) ${d}x)` : all;
+    };
+    const blocks = [];
+    let rules = 0;
+    for (const f of cssFiles()) {
+        const css = fs.readFileSync(f, 'utf8');
+        if (!css.includes('/static_images/hidpi/')) continue;
+        const list = cssRules(css);
+        const tokens = new Set();
+        for (const r of list) if (/\/static_images\/hidpi\//.test(r.body)) (r.sel.match(/[.#][\w-]+/g) || []).forEach((x) => tokens.add(x));
+        const lines = [];
+        for (const r of list) {
+            const art = /\/static_images\/hidpi\//.test(r.body);
+            if (!art && !(r.sel.match(/[.#][\w-]+/g) || []).some((x) => tokens.has(x))) continue;
+            const out = [];
+            for (const { prop, value } of decls(r.body)) {
+                const custom = prop.startsWith('--');
+                if (!ART_PROPS.test(prop) && !(custom && value.includes('/static_images/hidpi/'))) continue;
+                const imp = /!important\s*$/i.test(value) ? ' !important' : '';
+                const v = value.replace(/!important\s*$/i, '').trim();
+                const has = v.includes('/static_images/hidpi/');
+                if (!art && /^(?:content|cursor|list-style|list-style-image)$/.test(prop)) continue;
+                let p = prop; let nv = v;
+                // a value built from custom properties cannot be split here; the properties themselves are
+                // repeated (art in a custom property is, with the tier's copy)
+                if (!custom && v.includes('var(') && !has) continue;
+                if (custom) { /* as it is, the art swapped below */ } else if (prop === 'background' || prop === 'mask' || prop === '-webkit-mask') {
+                    p = prop === 'background' ? 'background-image' : `${prop}-image`;
+                    nv = splitTop(v, ',').map(layerImage).join(', ');
+                } else if (prop === 'border-image') {
+                    p = 'border-image-source';
+                    nv = layerImage(v);
+                } else if (prop === 'list-style') {
+                    p = 'list-style-image';
+                    nv = layerImage(v);
+                }
+                if (!has && !art && /^(?:inherit|initial|unset|revert|var\()/.test(nv)) continue;
+                nv = nv.replace(OUR_SET, single);
+                out.push(`${p}:${nv}${imp}`);
+            }
+            if (!out.length) continue;
+            let rule = `${tierSelector(r.sel, tier)}{${out.join(';')}}`;
+            for (const w of [...r.wrap].reverse()) rule = `${w}{${rule}}`;
+            lines.push(rule);
+            rules++;
+        }
+        if (lines.length) blocks.push(`/* ${path.relative(PUB, f)} */`, ...lines);
+    }
+    return { css: `/* generated by scripts/build-hidpi-assets.js (Yozora #921): the stylesheets' HiDPI art at ${t.s}x for a page-scaled desktop */\n${blocks.join('\n')}\n`, rules };
+}
+
+function writeBgSheets(index) {
+    const counts = {};
+    for (const t of TIERS) {
+        const { css, rules } = bgSheet(index, t.id);
+        writeIfChanged(path.join(OUT, String(t.id), 'bg.css'), Buffer.from(css));
+        counts[t.id] = `${rules} rules, ${(css.length / 1024).toFixed(0)} KB`;
+    }
+    console.log({ bgSheets: counts });
 }
 
 // ---------------------------------------------------------------- the stylesheet rewrite
@@ -673,6 +831,7 @@ function cssRewrite() {
     }
     console.log(`${total} references ${flag('--write') ? 'rewritten' : 'to rewrite (dry run)'}`);
     if (skipped.length) console.log(`skipped (uncommitted edits, rerun later): ${skipped.join(', ')}`);
+    if (flag('--write')) writeBgSheets(index);
 }
 
 if (require.main === module) (async () => {
