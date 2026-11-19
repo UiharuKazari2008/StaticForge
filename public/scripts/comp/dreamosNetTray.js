@@ -49,11 +49,25 @@
         return 1;
     }
 
+    /**
+     * Vista's network location (#945): a local network (an address in 10/8, 172.16/12 or 192.168/16) is Private; mobile
+     * broadband and anything else (a carrier's 100.64/10, a public address) is Public.
+     */
+    function privateAddress(list) {
+        return (Array.isArray(list) ? list : []).some((v) => {
+            const m = /^(\d+)\.(\d+)\./.exec(String(v));
+            if (!m) return false;
+            const a = Number(m[1]);
+            const b = Number(m[2]);
+            return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+        });
+    }
+
     const wiredLink = (s) => (Array.isArray(s.ethernet) ? s.ethernet : []).find((l) => l && l.carrier === true && Array.isArray(l.ip) && l.ip.length) || null;
 
     /**
      * What the icon shows now, or null when the host says nothing (not DreamOS, or before its first state):
-     * { kind: 'wired' | 'wifi' | 'none', name, bars, strength, limited, access, title }
+     * { kind: 'wired' | 'wifi' | 'mobile' | 'none', name, bars, strength, limited, access, category ('private' | 'public'), title }
      */
     function look() {
         const s = state;
@@ -83,6 +97,9 @@
         out.radio = out.kind === 'none' && wifi.present ? (wifi.radio === false || wifi.state === 'off' ? 'off' : out.connecting ? 'connecting' : 'idle') : null;
         out.limited = out.kind !== 'none' && (!!portal || browserOffline);
         out.access = out.kind === 'none' ? '' : out.limited ? 'Local only' : 'Local and Internet';
+        out.category = out.kind === 'none' ? null
+            : out.kind === 'mobile' ? 'public'
+                : privateAddress(out.kind === 'wired' ? wired.ip : wifi.ip) ? 'private' : 'public';
         // a mobile link reads "<carrier> <data class>" (Verizon 5G, as the carrier's own connection manager names it)
         const head = out.kind === 'mobile' ? `${out.name}${out.generation ? ` ${out.generation}` : ''}${out.roaming ? ' (Roaming)' : ''}` : out.name;
         out.title = out.kind === 'none'

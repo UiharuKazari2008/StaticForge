@@ -433,6 +433,7 @@
             case 'wifi-connect': if (root.dreamosWifi) root.dreamosWifi.openConnect(); break;
             case 'wifi-manage': if (root.dreamosWifi) root.dreamosWifi.openManage(); break;
             case 'wifi-status': if (root.dreamosWifi) root.dreamosWifi.openStatus(); break;
+            case 'mobile-status': if (root.dreamosWifi && root.dreamosWifi.openMobileStatus) void root.dreamosWifi.openMobileStatus(); break;
             // Network Connections and Set up a connection or network (#932): dreamosWifi.js; without it the old status
             case 'ncpa': if (root.dreamosWifi && root.dreamosWifi.openConnections) root.dreamosWifi.openConnections(); else openStatusDialog(); break;
             case 'net-setup': if (root.dreamosWifi && root.dreamosWifi.openSetup) root.dreamosWifi.openSetup(); break;
@@ -1085,6 +1086,36 @@
         return rows;
     }
 
+    /**
+     * Vista's network location pictures (pnidui.dll, as the VM's Network and Sharing Center draws them): 0 the house
+     * (Private), 1 the park bench (Public), 2 the office building (Domain).
+     */
+    function locationArt(look) {
+        return look && look.category === 'private' ? 'pnidui-0' : 'pnidui-1';
+    }
+
+    let hostAsked = false;
+    /** The map's first node: the computer's name over "(This computer)", as on the VM. */
+    function thisComputer() {
+        // a device (phone, DeX, DreamOS) is named by its Device ID, as Control Panel > System names it; a browser by the server
+        try {
+            const id = root.AndroidHardware && root.melatonDeviceIdentity && typeof root.melatonDeviceIdentity.get === 'function' ? root.melatonDeviceIdentity.get() : null;
+            if (id && id.name) return String(id.name);
+        } catch (_) { /* no Device ID */ }
+        let host = '';
+        try {
+            const v = typeof root.getMeletonVersionInfo === 'function' ? root.getMeletonVersionInfo() : null;
+            const sys = v && v.systemInfo;
+            host = sys && sys.host && sys.host.hostname ? String(sys.host.hostname) : '';
+            // not loaded yet: once (the server answers from its cache), then the page draws again
+            if (!sys && !hostAsked && typeof root.loadMeletonVersionInfo === 'function') {
+                hostAsked = true;
+                Promise.resolve(root.loadMeletonVersionInfo()).then(() => render()).catch(() => { /* the plain label stays */ });
+            }
+        } catch (_) { host = ''; }
+        return host ? host.toUpperCase() : 'This computer';
+    }
+
     function mapNode(image, label, sub) {
         return `<div class="cpl-map-node"><img src="${image}" alt="" draggable="false"><span class="cpl-map-label">${esc(label)}</span>${sub ? `<span class="cpl-map-sub">${esc(sub)}</span>` : ''}</div>`;
     }
@@ -1139,17 +1170,17 @@
                 <h1 class="cpl-page-title">Network and Server Center</h1>
                 ${dos ? `
                 <div class="cpl-map">
-                    ${mapNode('/static_images/vista-net/netcenter-1-48.png', 'This computer')}
+                    ${mapNode('/static_images/vista-net/netcenter-1-48.png', thisComputer(), '(This computer)')}
                     ${mapLink(dos.kind === 'none' ? 'down' : 'ok', dos.kind === 'none' ? 'Not connected' : `Connected through ${dos.kind === 'wifi' ? 'Wireless Network Connection' : dos.kind === 'mobile' ? 'Mobile Broadband Connection' : 'Local Area Connection'}`)}
-                    ${mapNode(dos.kind === 'none' ? '/static_images/vista-net/pnidui-19-48.png' : '/static_images/vista-net/pnidui-0-48.png', dos.kind === 'none' ? 'Not connected' : dos.name, dos.kind === 'wifi' ? 'Wireless network' : dos.kind === 'mobile' ? 'Mobile broadband' : dos.kind === 'wired' ? 'Network' : '')}
+                    ${mapNode(dos.kind === 'none' ? '/static_images/vista-net/pnidui-19-48.png' : `/static_images/vista-net/${locationArt(dos)}-48.png`, dos.kind === 'none' ? 'Not connected' : dos.name)}
                     ${mapLink(dos.kind === 'none' ? 'down' : dos.limited ? 'limited' : 'ok', dos.kind === 'none' || dos.limited ? 'Local only' : 'Local and Internet')}
                     ${mapNode('/static_images/vista-net/netcenter-3-48.png', 'Internet')}
                 </div>
                 ${dos.kind !== 'none' ? `
                 <div class="cpl-box">
                     <div class="cpl-box-head">
-                        <img src="/static_images/vista-net/pnidui-0-16.png" alt="" class="cpl-box-icon" draggable="false">
-                        <span class="cpl-box-title">${esc(dos.name)} <span class="cpl-box-kind">(Private network)</span></span>
+                        <img src="/static_images/vista-net/${locationArt(dos)}-16.png" srcset="/static_images/vista-net/${locationArt(dos)}-32.png 2x" alt="" class="cpl-box-icon" draggable="false">
+                        <span class="cpl-box-title">${esc(dos.name)} <span class="cpl-box-kind">(${dos.category === 'private' ? 'Private' : 'Public'} network)</span></span>
                     </div>
                     <div class="cpl-row">
                         <span class="cpl-row-label">Access</span>
@@ -1159,6 +1190,7 @@
                         <span class="cpl-row-label">Connection</span>
                         <span class="cpl-row-value">${dos.kind === 'wifi' ? `Wireless Network Connection (${esc(dos.name)})` : dos.kind === 'mobile' ? `Mobile Broadband Connection (${esc(dos.name)})` : 'Local Area Connection'}</span>
                         ${dos.kind === 'wifi' && wifiUi() ? '<button type="button" class="cpl-link cpl-row-action" data-cpl-action="wifi-status">View status</button>' : ''}
+                        ${dos.kind === 'mobile' && root.dreamosWifi && root.dreamosWifi.openMobileStatus ? '<button type="button" class="cpl-link cpl-row-action" data-cpl-action="mobile-status">View status</button>' : ''}
                     </div>
                     ${dos.kind === 'wifi' || dos.kind === 'mobile' ? `
                     <div class="cpl-row">
@@ -1168,15 +1200,15 @@
                     </div>` : ''}
                 </div>` : ''}` : `
                 <div class="cpl-map">
-                    ${mapNode('/static_images/vista-net/netcenter-1-48.png', 'This computer')}
+                    ${mapNode('/static_images/vista-net/netcenter-1-48.png', thisComputer(), '(This computer)')}
                     ${mapLink(clientLink, state === 'connected' && !portal() ? `Connected through ${i.connectionName}` : accessText(state))}
-                    ${mapNode('/static_images/vista-net/pnidui-38-48.png', i.domain, 'Domain controller')}
+                    ${mapNode('/static_images/vista-net/pnidui-2-48.png', i.domain)}
                     ${mapLink(serverLink, reachable ? 'Connected' : 'Unknown')}
                     ${mapNode('/static_images/vista-net/netcenter-3-48.png', 'Internet')}
                 </div>`}
                 <div class="cpl-box">
                     <div class="cpl-box-head">
-                        <img src="/static_images/vista-net/pnidui-38-16.png" alt="" class="cpl-box-icon" draggable="false">
+                        <img src="/static_images/vista-net/pnidui-2-16.png" srcset="/static_images/vista-net/pnidui-2-32.png 2x" alt="" class="cpl-box-icon" draggable="false">
                         <span class="cpl-box-title">${esc(i.domain)} <span class="cpl-box-kind">(Domain network)</span></span>
                         <button type="button" class="cpl-link cpl-box-action" data-cpl-action="customize">Customize</button>
                     </div>

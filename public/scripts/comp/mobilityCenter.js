@@ -419,11 +419,13 @@
                 const off = !m.on;
                 // the carrier and the data class on the first line, the state on the second (Windows 7's
                 // flyout names the provider; the phone's bar names the data class)
-                const name = [m.carrier, m.type].filter(Boolean).join(' ') || 'Mobile broadband';
+                // the carrier, and the data class as a badge beside it (5G UW, LTE, as the phone's bar shows it)
+                const name = m.carrier || 'Mobile broadband';
                 const state = m.airplane ? 'Airplane mode' : off ? 'Mobile data off' : m.roaming ? 'Roaming' : m.connected ? 'Connected' : 'Not connected';
                 setSrc(img, `${ART}/${off ? 'wireless-off' : `wireless-${m.bars}`}.png`);
                 const st = el.querySelector('[data-f="status"]');
-                const html = `<span>${esc(name)}<br>${esc(state)}</span>`;
+                const badge = m.type ? ` <b class="mbl-badge">${esc(m.type)}</b>` : '';
+                const html = `<span>${esc(name)}${badge}<br>${esc(state)}</span>`;
                 if (st.dataset.html !== html) { st.dataset.html = html; st.innerHTML = html; }
                 img.setAttribute('alt', `Current status is ${state} and signal strength is ${STRENGTH[m.bars]}`);
                 setText(btn, off ? 'Turn mobile data on' : 'Turn mobile data off');

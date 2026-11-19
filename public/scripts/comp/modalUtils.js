@@ -6826,6 +6826,9 @@ function buildToolsSubmenuItems(opts) {
         { launchId: 'charmap', icon: 'fas fa-font', imageIcon: 'vista-charmap.png', text: 'Character Map', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('charmap'); window.openMelatonCharmap(); } },
         // Accessories > Notepad: a blank Untitled document (Yozora #632; public/scripts/comp/notepadVista.js)
         { launchId: 'notepad', icon: 'fas fa-file-lines', imageIcon: 'vista-notepad.png', text: 'Notepad', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('notepad'); window.notepadVista.openBlank(); } },
+        // Accessories > Windows Mobility Center (Vista's place for mblctr; public/scripts/comp/mobilityCenter.js, in the
+        // Control Panel feature, #945)
+        { launchId: 'mobility-center', icon: 'fas fa-laptop', imageIcon: '/static_images/vista-mblctr/mblctr-48.png', text: 'Melaton Mobility Center', appMenuLocation: 'tools', desktopOnly: true, action: async () => { await featureLoader.loadFeature('control_panel'); if (window.melatonControlPanel) window.melatonControlPanel.openItem('mobility-center'); } },
         { launchId: 'calculator', icon: 'fas fa-calculator', imageIcon: 'vista-calculator.png', text: 'Calculator', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'calculator' }) /* apps/calculator (Yozora #642) */ },
         { launchId: 'vista-sidebar', icon: 'fas fa-sidebar-flip', imageIcon: 'vista-sidebar.png', text: 'Melaton Sidebar', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, startMenu: localStorage.getItem('userType') === 'admin', action: () => { /* public/scripts/comp/vistaSidebar.js */ openVistaSidebar(); } },
         { launchId: 'alarm', icon: 'fas fa-alarm-clock', imageIcon: 'vista-date-time.png', text: 'Alarm Clock', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'alarm' }) /* apps/alarm (Yozora #642) */ },
