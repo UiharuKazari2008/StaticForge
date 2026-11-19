@@ -586,7 +586,9 @@ function forgetDirectorReopen() {
                 await updater.installUpdatesAtShutdown(plan, {
                     kind,
                     plain: true,
-                    onStatus: (line) => { text = String(line).split('\n')[0]; if (box) box.update({ text }); }
+                    onStatus: (line) => { text = String(line).split('\n')[0]; if (box) box.update({ text, pct: null }); },
+                    // the download's progress on the box's bar (#951: updates held as a count download here)
+                    onPercent: (pct) => { if (box) box.update({ text, pct }); }
                 });
             }
         } catch (_) { /* restart anyway: the files are in the cache */ }

@@ -5,12 +5,12 @@
    after its label). Colours are the theme's (css/themes/vista/update-restart.css). */
 
 /* no caption buttons: the prompt is answered with Restart now or Postpone */
-#melatonUpdateRestartDialog > .modal-window-controls { display: none; }
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) > .modal-window-controls { display: none; }
 
 /* its height is its content's (the countdown area comes and goes), not the kit's template size */
-#melatonUpdateRestartDialog.modal { height: auto !important; }
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog).modal { height: auto !important; }
 
-#melatonUpdateRestartDialog > .modal-content.vdt-client.vdt-plain {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) > .modal-content.vdt-client.vdt-plain {
     box-sizing: border-box;
     width: 404px !important;
     height: auto !important;
@@ -19,12 +19,12 @@
     background: var(--wur-content);
 }
 
-#melatonUpdateRestartDialog .wur {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur {
     display: flex;
     flex-direction: column;
 }
 
-#melatonUpdateRestartDialog .wur > * {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur > * {
     flex: none;
     font-size: 12px;
     line-height: 15px;
@@ -32,7 +32,7 @@
 }
 
 /* the shield-warning banner: the 32 px shield 9 px in, the main instruction (12 pt) from 50 px, 53 px with its edge */
-#melatonUpdateRestartDialog .wur-banner {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-banner {
     position: relative;
     box-sizing: border-box;
     min-height: 53px;
@@ -41,7 +41,7 @@
     background: var(--wur-banner);
 }
 
-#melatonUpdateRestartDialog .wur-icon {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-icon {
     position: absolute;
     left: 9px;
     top: 10px;
@@ -51,11 +51,11 @@
 
 /* a task dialog's text and controls are Segoe UI 9 pt (12 px), not the 11 px of the kit's MS Shell Dlg dialogs
    (taskbar-properties.css); the main instruction 12 pt */
-#melatonUpdateRestartDialog .wur :is(div, label, button, select) {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur :is(div, label, button, select) {
     font-size: 12px;
 }
 
-#melatonUpdateRestartDialog .wur .wur-instruction {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur .wur-instruction {
     font-size: 16px;
     line-height: 21px;
     color: var(--wur-instruction);
@@ -63,38 +63,38 @@
 
 /* the content: aligned with the instruction, 9 px under the banner */
 /* (the text wraps at Vista's width, ~334 px; the combo row runs to 6 px from the edge) */
-#melatonUpdateRestartDialog .wur-content {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-content {
     padding: 9px 6px 10px 50px;
 }
 
-#melatonUpdateRestartDialog .wur-text {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-text {
     padding-right: 24px;
 }
 
-#melatonUpdateRestartDialog .wur-countdown {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-countdown {
     display: flex;
     flex-direction: column;
     align-items: center;
     padding-top: 15px;
 }
 
-#melatonUpdateRestartDialog .wur-count-text {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-count-text {
     font-weight: bold;
 }
 
-#melatonUpdateRestartDialog .wur-bar[role="progressbar"] {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-bar[role="progressbar"] {
     box-sizing: border-box;
     width: 206px;
     height: 16px;
     margin: 3px 0 11px;
 }
 
-#melatonUpdateRestartDialog .wur-bar[role="progressbar"] > div {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-bar[role="progressbar"] > div {
     width: var(--wur-done, 0%);
 }
 
 /* Remind me in: [combo], right-aligned */
-#melatonUpdateRestartDialog .wur-postpone {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-postpone {
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -102,7 +102,7 @@
     padding: 15px 0 6px;
 }
 
-#melatonUpdateRestartDialog .wur-postpone .vdt-select {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-postpone .vdt-select {
     position: static !important;
     width: 151px !important;
     height: 22px !important;
@@ -110,7 +110,7 @@
 }
 
 /* the command area: the grey band under a 1 px edge, Restart now and Postpone (the default) at the right */
-#melatonUpdateRestartDialog .wur-footer {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-footer {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
@@ -119,9 +119,34 @@
     background: var(--wur-footer);
 }
 
-#melatonUpdateRestartDialog .wur-footer > button {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-footer > button {
     position: static !important;
     min-width: 90px;
     height: 23px;
     margin: 0;
 }
+
+/* The Continuity restart confirmation (#951; melatonContinuity.confirmUpdateRestart -> melatonRestartPrompt.confirmRestart):
+   the same task dialog, centred; under the reason, one row per computer: its 32 px picture, its name and what happens
+   to it (restarts, or stays on and reconnects) */
+#melatonContinuityRestartDialog .wur-devices {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 0 2px;
+}
+
+#melatonContinuityRestartDialog .wur-device {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#melatonContinuityRestartDialog .wur-device > img {
+    flex: none;
+    width: 32px;
+    height: 32px;
+}
+
+#melatonContinuityRestartDialog .wur-device-name { font-weight: bold; }
+#melatonContinuityRestartDialog .wur-device-note { color: var(--wur-note); }

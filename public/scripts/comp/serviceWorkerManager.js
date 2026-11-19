@@ -50,7 +50,9 @@ function isApplySafeStaticFilePath(pathname) {
     if (pathname.startsWith('/dist/')) {
         return true;
     }
-    return /\.(woff2?|ttf|otf|eot|svg)$/i.test(pathname);
+    // pictures, cursors, sounds and pages a window loads (#951): the next draw or open takes the new copy, and images
+    // on screen are re-pointed (bumpStaticAssetReferences); json stays a restart - a running script may hold its data
+    return /\.(woff2?|ttf|otf|eot|svg|png|jpe?g|gif|webp|avif|bmp|ico|cur|ani|wav|mp3|ogg|opus|m4a|flac|html?)$/i.test(pathname);
 }
 
 function buildShaBustUrl(pathname, hash) {
@@ -247,6 +249,44 @@ function servicePackFromFiles(files, now) {
     const name = `Service Pack ${yy}Q${quarter} ${patchId}`;
     return { yy, quarter, patchId, name, label: `Upgrade to ${name}` };
 }
+
+/*
+ * How Melaton takes updates (#951, Yukimi Nov 19): Vista's "Choose how Windows can install updates", in
+ * localStorage melatonUpdateAutoRestart (the restart prompt's key, #945):
+ *   'notify'   Check for updates but let me choose whether to download and install them (the default): updates are
+ *              counted ("N updates are available"), nothing is downloaded; Install updates, a restart or a shut down
+ *              downloads and installs them.
+ *   'download' Download updates but let me choose whether to install them: they download in the background and the
+ *              restart installs them (no countdown).
+ *   'auto'     Install updates automatically (recommended): they download, and the restart prompt counts down.
+ * A save from before the modes (#945's { auto, warnMin }) is read as 'notify': that default was hours old.
+ */
+// app-scope: allow page-lifetime shell runtime: Melaton Update's setting, read by the restart prompt and Control Panel
+(typeof window !== 'undefined' ? window : globalThis).melatonUpdateSettings = (() => {
+    const UPDATE_SETTINGS_KEY = 'melatonUpdateAutoRestart';
+    const UPDATE_MODES = ['notify', 'download', 'auto'];
+    const UPDATE_WARN_MINUTES = [1, 5, 15];
+    function melatonUpdateSettingsGet() {
+        let v = null;
+        try { v = JSON.parse(localStorage.getItem(UPDATE_SETTINGS_KEY) || 'null'); } catch (_) { v = null; }
+        const mode = v && UPDATE_MODES.includes(v.mode) ? v.mode : 'notify';
+        const warnMin = v && UPDATE_WARN_MINUTES.includes(Number(v.warnMin)) ? Number(v.warnMin) : 5;
+        return { mode, auto: mode === 'auto', warnMin };
+    }
+    function melatonUpdateSettingsSave(next) {
+        const cur = melatonUpdateSettingsGet();
+        const n = next || {};
+        let mode = UPDATE_MODES.includes(n.mode) ? n.mode : cur.mode;
+        // older callers say only { auto }
+        if (!UPDATE_MODES.includes(n.mode) && typeof n.auto === 'boolean') mode = n.auto ? 'auto' : (cur.mode === 'auto' ? 'download' : cur.mode);
+        const warnMin = UPDATE_WARN_MINUTES.includes(Number(n.warnMin)) ? Number(n.warnMin) : cur.warnMin;
+        try { localStorage.setItem(UPDATE_SETTINGS_KEY, JSON.stringify({ mode, warnMin })); } catch (_) { /* private mode */ }
+        const out = { mode, auto: mode === 'auto', warnMin };
+        try { document.dispatchEvent(new CustomEvent('melaton:update-settings', { detail: out })); } catch (_) { /* no listeners */ }
+        return out;
+    }
+return { get: melatonUpdateSettingsGet, save: melatonUpdateSettingsSave };
+})();
 
 class ServiceWorkerManager {
     constructor() {
@@ -1144,6 +1184,115 @@ class ServiceWorkerManager {
             rec.at = Date.now();
             await this._pendingWrite(rec);
         }).catch(() => {});
+    }
+
+    // ---- updates available, not downloaded (#951: Check for updates but let me choose, the default) ----
+
+    _updateMode() {
+        return (typeof window !== 'undefined' ? window : globalThis).melatonUpdateSettings.get().mode;
+    }
+
+    /**
+     * Updates are held as a count: the notify mode, unless this download was asked for (Install updates, a package
+     * the person added, the shut down / restart install) or the boot is repairing its own install.
+     */
+    _holdsUpdates(cacheOptions) {
+        if (this._updateMode() !== 'notify') return false;
+        if (cacheOptions && cacheOptions.install) return false;
+        if (this._packageInstall || this._shutdownInstalling || this._installingAvailable) return false;
+        return true;
+    }
+
+    /** repairs: the installed list (the synced snapshot) names the file at this hash; updates: everything else. */
+    async _splitRepairs(files) {
+        let snap = null;
+        try { snap = await this._readManifestSnapshot(); } catch (_) { snap = null; }
+        const installed = new Map();
+        (Array.isArray(snap) ? snap : []).forEach((row) => { if (row && row.url) installed.set(normalizeStaticFilePath(row.url), row.hash); });
+        const repairs = [];
+        const updates = [];
+        files.forEach((f) => {
+            const h = installed.get(normalizeStaticFilePath(f.url));
+            if (h && h === f.hash) repairs.push(f); else updates.push(f);
+        });
+        return { repairs, updates };
+    }
+
+    /**
+     * The updates available, as Melaton Update counts them: one per program package it touches (apps/<id>), and
+     * one "Melaton update" for everything else - Vista lists updates, not files.
+     */
+    availableUpdateGroups(files = this.availableUpdates) {
+        const groups = new Map();
+        (Array.isArray(files) ? files : []).forEach((f) => {
+            const m = /^\/melaton-apps\/([^/]+)\//.exec(String(f && f.url || ''));
+            const key = m ? `app:${m[1]}` : 'melaton';
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(f);
+        });
+        return Array.from(groups.entries()).map(([key, list]) => ({ key, files: list }));
+    }
+
+    availableUpdateCount() {
+        // a Continuity DeX window shows the phone's count (melatonContinuity mirrorUpdateState): the phone's updater
+        // counts, downloads and installs for both
+        if (this._isContinuityDexWindow()) return Number(this._mirroredAvailable) || 0;
+        return Array.isArray(this.availableUpdates) && this.availableUpdates.length ? this.availableUpdateGroups().length : 0;
+    }
+
+    /** A check found updates and holds them: the count, the tray icon, the power buttons' shield, one balloon. */
+    _noteAvailableUpdates(files, noToast) {
+        const byUrl = new Map((this.availableUpdates || []).map((f) => [f.url, f]));
+        files.forEach((f) => byUrl.set(f.url, { url: f.url, hash: f.hash, size: f.size }));
+        const before = (this.availableUpdates || []).map((f) => `${f.url}@${f.hash}`).sort().join('|');
+        this.availableUpdates = Array.from(byUrl.values());
+        const after = this.availableUpdates.map((f) => `${f.url}@${f.hash}`).sort().join('|');
+        this._syncUpdatesWaitingMark();
+        this._notifyTrayIconUpdate();
+        const n = this.availableUpdateCount();
+        const text = n === 1 ? '1 update is available for Melaton.' : `${n} updates are available for Melaton.`;
+        if (typeof this.foregroundUpdateView === 'function') {
+            try { this.foregroundUpdateView('available', { message: text }); } catch (_) { /* the page draws itself */ }
+        }
+        // the balloon once per new set (wucltux: "Updates are available for your computer"), not at every check
+        if (after !== before && (!noToast || !this._availableAnnounced)) {
+            this._availableAnnounced = true;
+            if (typeof this.showUpdateAvailableTrayPrompt === 'function') this.showUpdateAvailableTrayPrompt(`${text} Click here to install them.`);
+        }
+        try { document.dispatchEvent(new CustomEvent('melaton:updates-available', { detail: { count: n, files: this.availableUpdates.length } })); } catch (_) { /* no listeners */ }
+    }
+
+    /** Install updates (Melaton Update's button, the balloon): download what is available now; the classifier then
+     *  applies what can apply live and leaves the rest for a restart. */
+    async installAvailableUpdates() {
+        if (this._isContinuityDexWindow()) {
+            const mc = window.melatonContinuity;
+            if (mc && typeof mc.phoneInstallUpdates === 'function') mc.phoneInstallUpdates();
+            return null;
+        }
+        const list = Array.isArray(this.availableUpdates) ? this.availableUpdates.slice() : [];
+        if (!list.length) return this.checkStaticFileUpdates(false);
+        this._installingAvailable = true;
+        try {
+            await this.updateStaticCache(list, false, { install: true });
+        } finally {
+            this._installingAvailable = false;
+        }
+        return null;
+    }
+
+    /** What was available came down (installed live, downloaded for a restart, or the restart installed it). */
+    _clearAvailableUpdates(files) {
+        if (!Array.isArray(this.availableUpdates) || !this.availableUpdates.length) return;
+        if (Array.isArray(files)) {
+            const done = new Set(files.map((f) => `${f.url}@${f.hash}`));
+            this.availableUpdates = this.availableUpdates.filter((f) => !done.has(`${f.url}@${f.hash}`));
+        } else {
+            this.availableUpdates = [];
+        }
+        this._syncUpdatesWaitingMark();
+        this._notifyTrayIconUpdate();
+        try { document.dispatchEvent(new CustomEvent('melaton:updates-available', { detail: { count: this.availableUpdateCount(), files: this.availableUpdates.length } })); } catch (_) { /* no listeners */ }
     }
 
     _pendingClear() {
@@ -2498,10 +2647,25 @@ class ServiceWorkerManager {
 
             // Check which files need updating before showing UI — avoids flashing
             // "checking" when we already know the outcome is pending-only or up to date.
-            const filesToUpdate = await this.getFilesNeedingUpdate(files);
+            let filesToUpdate = await this.getFilesNeedingUpdate(files);
             // nothing to download, but this page runs older copies than the cache holds (the
             // background updater filled it while this window was paused, #815): a restart is pending
             const loadedStale = filesToUpdate.length || this.pendingUpdateFuse ? [] : this._filesNewerThanLoaded(files);
+
+            // Check for updates but let me choose (#951, the default): new versions are counted, not downloaded; a
+            // file the install already lists at this hash but the cache lost is a repair and comes down now
+            if (filesToUpdate.length && this._holdsUpdates(cacheOptions)) {
+                const { repairs, updates } = await this._splitRepairs(filesToUpdate);
+                if (updates.length) this._noteAvailableUpdates(updates, noToast);
+                filesToUpdate = repairs;
+                if (!filesToUpdate.length) {
+                    if (this.checkingToastId && typeof removeGlassToast === 'function') {
+                        removeGlassToast(this.checkingToastId);
+                        this.checkingToastId = null;
+                    }
+                    return;
+                }
+            }
 
             console.log(`Found ${filesToUpdate.length} files that need updating:`, filesToUpdate);
 
@@ -3050,8 +3214,9 @@ class ServiceWorkerManager {
 
     bumpStaticAssetReferences(pathname, hash) {
         const nextUrl = buildShaBustUrl(pathname, hash);
-        document.querySelectorAll(`link[href*="${pathname}"], script[src*="${pathname}"]`).forEach((el) => {
-            const attr = el.tagName === 'SCRIPT' ? 'src' : 'href';
+        document.querySelectorAll(`link[href*="${pathname}"], script[src*="${pathname}"], img[src*="${pathname}"], source[src*="${pathname}"]`).forEach((el) => {
+            // a script already ran: its tag's src changes nothing (the restart loads it); a picture draws again (#951)
+            const attr = el.tagName === 'LINK' ? 'href' : 'src';
             const val = el.getAttribute(attr);
             if (!val || !pathnameMatchesAssetUrl(pathname, val)) {
                 return;
@@ -3105,12 +3270,15 @@ class ServiceWorkerManager {
         // switchWorkspaceTheme: public/scripts/comp/workspaceUtils.js (only when something on screen changed)
         if (cssUpdates.length || assetUpdates.length || workspaceUpdates.length) switchWorkspaceTheme(activeWorkspace);
 
-        this.pendingApplyFiles = null;
-        this.pendingUpdateKind = 'restart';
-        this.resetPendingUpdateFuse();
-        this.hideUpdateToast();
+        // keepPending (#951): applied beside a restart that is still owed - its fuse, kind and files stay
+        if (!options.keepPending) {
+            this.pendingApplyFiles = null;
+            this.pendingUpdateKind = 'restart';
+            this.resetPendingUpdateFuse();
+            this.hideUpdateToast();
+        }
 
-        if (this._isDesktopTrayMode()) {
+        if (this._isDesktopTrayMode() && !options.keepPending) {
             this._hideServiceWorkerTrayPopup();
         }
 
@@ -3127,6 +3295,8 @@ class ServiceWorkerManager {
     }
 
     _processStaticCacheComplete(data) {
+        // what was available and has now come down is no longer "available" (#951)
+        if (this.availableUpdates && this.availableUpdates.length) this._clearAvailableUpdates(this._resolveUpdatedFilesFromCacheComplete(data));
         // a download the shutdown install asked for (installUpdatesAtShutdown) is its own to finish
         if (this._shutdownInstalling) return;
         const filesCount = this._resolvePendingUpdateFilesCount(data);
@@ -3145,20 +3315,30 @@ class ServiceWorkerManager {
         // A restart already pending (scripts waiting to load) takes later batches with it: applying a
         // CSS-only batch live would run the old scripts on new CSS (seen on phones, #709), and the
         // apply resets the fuse, so the pending script restart would be forgotten
+        // (#951) only what would mix old scripts with new styling joins it: stylesheets and scripts. Files nothing here
+        // runs, hot features and pictures / sounds / pages apply live, and the restart stays owed for the rest.
         const restartPending = this.pendingUpdateFuse && this.pendingUpdateKind === 'restart';
-        const updateKind = restartPending ? 'restart' : this.classifyStaticCacheUpdate(updatedFiles);
-        console.log('Static cache update classified:', updateKind, updatedFiles);
+        let updateKind = this.classifyStaticCacheUpdate(updatedFiles);
+        if (restartPending && (updateKind === 'css-only'
+            || (updateKind === 'apply-safe' && updatedFiles.some((f) => isCssStaticFilePath(normalizeStaticFilePath(typeof f === 'string' ? f : f.url)))))) updateKind = 'restart';
+        console.log('Static cache update classified:', updateKind, updatedFiles, restartPending ? '(a restart is pending)' : '');
         // nothing this page runs changed (#872): the new copies are in the cache for the next load
         if (updateKind === 'unused') {
             this._noteStaticHashUpdate(updatedFiles);
             updatedFiles.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this.pendingUpdateUrls.delete(u); });
-            this.applyStaticCacheUpdate(updatedFiles, { silent: true });
+            this.applyStaticCacheUpdate(updatedFiles, { silent: true, keepPending: restartPending });
             return;
         }
         if (updateKind === 'segments') {
             updatedFiles.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this.pendingUpdateUrls.delete(u); });
-            this.pendingUpdateKind = null;
+            if (!restartPending) this.pendingUpdateKind = null;
             void this.applySegmentUpdate(updatedFiles);
+            return;
+        }
+        // pictures, sounds, pages with a restart already owed: on screen now, the restart still waits
+        if (restartPending && updateKind === 'apply-safe') {
+            this._noteStaticHashUpdate(updatedFiles);
+            this.applyStaticCacheUpdate(updatedFiles, { silent: true, keepPending: true });
             return;
         }
         this.pendingUpdateKind = updateKind;
@@ -3166,7 +3346,9 @@ class ServiceWorkerManager {
         this.pendingApplyFiles = canApplyWithoutRestart ? updatedFiles.slice() : null;
 
         if (canApplyWithoutRestart) {
-            if (silent && this.isCssOnlyAutoApplyEnabled()) {
+            // Install updates automatically (#951): what needs no restart is installed as it arrives, as Vista's
+            // automatic updates install; Download but let me choose waits for Install updates
+            if ((silent && this.isCssOnlyAutoApplyEnabled()) || this._updateMode() === 'auto') {
                 this.applyStaticCacheUpdate(updatedFiles, { silent: true });
                 return;
             }
@@ -4778,6 +4960,20 @@ class ServiceWorkerManager {
                 filesToUpdate = await this.getFilesNeedingUpdate(files);
             }
 
+            // Check for updates but let me choose (#951, the default): the start installs nothing new - newer
+            // versions are counted once the desktop is up (no installer, no download); a file the install lists but
+            // the cache lost is repaired as before
+            if (filesToUpdate.length && this._holdsUpdates(null)) {
+                const { repairs, updates } = await this._splitRepairs(filesToUpdate);
+                if (updates.length) {
+                    const held = updates;
+                    const note = () => this._noteAvailableUpdates(held, true);
+                    if (window.wsClient && window.wsClient.initializationCompleted) note();
+                    else document.addEventListener('desktopBootDone', () => setTimeout(note, 0), { once: true });
+                }
+                filesToUpdate = repairs;
+            }
+
             if (await this._needsLaunchInstaller(filesToUpdate)) {
                 const count = this._installerFileCount(filesToUpdate);
                 if (this._rebootIntoInstaller(count)) {
@@ -4984,7 +5180,8 @@ class ServiceWorkerManager {
     /** How many updates a shut down installs now (the power buttons' "install updates" look). */
     updatesWaitingCount() {
         const queued = (this._pendingCacheUpdateQueue || []).some((entry) => entry && entry.files && entry.files.length);
-        return (this._updateBatches ? this._updateBatches.length : 0) + (queued ? 1 : 0) + this._firmwareWaiting().length;
+        // + the updates available but not downloaded (#951): a shut down installs them too
+        return (this._updateBatches ? this._updateBatches.length : 0) + (queued ? 1 : 0) + this._firmwareWaiting().length + this.availableUpdateCount();
     }
 
     /**
@@ -5054,6 +5251,11 @@ class ServiceWorkerManager {
             // (a restart in the middle of one left a client with part of an update, #924)
             if (this.isUpdating && Array.isArray(this._activeDownloadFiles) && this._activeDownloadFiles.length) {
                 plan.updates.push({ files: this._activeDownloadFiles.map((f) => ({ url: f.url, hash: f.hash })), downloaded: false, running: true });
+            }
+            // the updates held as a count (#951, Check for updates but let me choose): this shut down downloads and
+            // installs them, one "update n of N" per program package and one for Melaton
+            if (Array.isArray(this.availableUpdates) && this.availableUpdates.length) {
+                this.availableUpdateGroups().forEach((g) => plan.updates.push({ files: g.files.map((f) => ({ url: f.url, hash: f.hash })), downloaded: false, available: true }));
             }
             const worker = this.swRegistration && this.swRegistration.active;
             const online = navigator.onLine !== false && window.wsClient && typeof window.wsClient.isConnected === 'function' && window.wsClient.isConnected();
@@ -5128,7 +5330,12 @@ class ServiceWorkerManager {
                     if (update.running) await this.attachToDownloadProgress({ stallMs: 20000 });
                     left = hashed.length ? await this.getFilesNeedingUpdate(hashed, { full: true }) : [];
                     if (left.length) {
-                        await this.attachToDownloadProgress({ files: left, stallMs: 20000 });
+                        // the download's percent for the phone's progress box (#951); Vista's screen says only "n of N"
+                        const onProgress = ({ completed, total: all }) => {
+                            if (typeof options.onPercent !== 'function' || !all) return;
+                            try { options.onPercent(Math.round((completed / all) * 100), i + 1, total); } catch (_) { /* the box is the caller's */ }
+                        };
+                        await this.attachToDownloadProgress({ files: left, stallMs: 20000, onProgress });
                         left = await this.getFilesNeedingUpdate(hashed, { full: true });
                     }
                 } catch (error) {
@@ -5138,6 +5345,8 @@ class ServiceWorkerManager {
                 const ok = left.length === 0;
                 if (!ok) failed += 1;
                 done.push({ update, ok });
+                // an available update that is in now is no longer counted (#951)
+                if (ok && update.available) this._clearAvailableUpdates(update.files);
                 this.recordUpdateHistory({
                     key: `shutdown|${started}|${i}`,
                     name: `Melaton update (${update.files.length} ${update.files.length === 1 ? 'file' : 'files'})`,

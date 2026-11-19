@@ -22,7 +22,7 @@
  * stays there as the screen changes; it does not take the keyboard focus from the window in use.
  *
  *   window.melatonRestartPrompt = { schedule(delayMs), show(), cancel(), settings(), save(settings) }
- *   settings: localStorage melatonUpdateAutoRestart { auto, warnMin 1 | 5 | 15 }
+ *   settings: melatonUpdateSettings (serviceWorkerManager.js): { mode notify | download | auto, auto, warnMin 1 | 5 | 15 }
  */
 (function (root) {
     'use strict';
@@ -76,17 +76,21 @@
         if (typeof root.setModalOffsetsFromViewportTopLeft === 'function') root.setModalOffsetsFromViewportTopLeft(m, x, y);
     }
 
+    // Melaton Update's setting (#951; serviceWorkerManager.js melatonUpdateSettings): the countdown is the automatic
+    // mode's; with the others the dialog only offers the restart (opened from Melaton Update or the tray)
     function settings() {
+        const u = root.melatonUpdateSettings;
+        if (u && typeof u.get === 'function') return u.get();
         let v = null;
         try { v = JSON.parse(root.localStorage.getItem(KEY) || 'null'); } catch (_) { v = null; }
         const warnMin = v && WARN.includes(Number(v.warnMin)) ? Number(v.warnMin) : 5;
-        return { auto: !v || v.auto !== false, warnMin };
+        return { mode: v && v.mode ? v.mode : 'notify', auto: !!(v && v.mode === 'auto'), warnMin };
     }
 
     function save(next) {
-        const s = Object.assign(settings(), next || {});
-        try { root.localStorage.setItem(KEY, JSON.stringify({ auto: !!s.auto, warnMin: s.warnMin })); } catch (_) { /* private mode */ }
-        return s;
+        const u = root.melatonUpdateSettings;
+        if (u && typeof u.save === 'function') return u.save(next);
+        return settings();
     }
 
     function manager() { return root.serviceWorkerManager || null; }
@@ -261,5 +265,52 @@
         if (ctx) { const c = ctx; ctx = null; try { c.close(); } catch (_) { /* gone */ } }
     }
 
-    root.melatonRestartPrompt = { schedule, show, cancel, settings, save };
+    /**
+     * A restart's confirmation in the same task dialog (#951: the Continuity "this will restart both" question):
+     * { instruction, reason, devices: [{ icon, name, note }], ok = 'Restart Now', later = 'Later' }. Centred over the
+     * desktop, as a task dialog that answers a click. Resolves true for the restart, false for Later / Esc.
+     */
+    let confirmCtx = null;
+    async function confirmRestart(o = {}) {
+        if (confirmCtx) { try { confirmCtx.close(); } catch (_) { /* gone */ } confirmCtx = null; }
+        const V = await kit();
+        if (!V || typeof V.openDialog !== 'function') return true;
+        styles();
+        const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+        return new Promise((resolve) => {
+            let settled = false;
+            const done = (v) => { if (settled) return; settled = true; const c = confirmCtx; confirmCtx = null; if (c) { try { c.close(); } catch (_) { /* gone */ } } resolve(v); };
+            confirmCtx = V.openDialog({
+                id: 'melatonContinuityRestartDialog',
+                tpl: { t: o.title || S.title, w: 231, h: 109, f: ['Segoe UI', 9], s: 0x80C800C8, c: [] },
+                icon: ICON,
+                bareCaption: true,
+                init: (c) => {
+                    const wrap = doc.createElement('div');
+                    wrap.className = 'wur';
+                    const rows = (o.devices || []).map((d) => `<div class="wur-device"><img src="${esc(d.icon)}" alt="" draggable="false"><div><div class="wur-device-name">${esc(d.name)}</div><div class="wur-device-note">${esc(d.note)}</div></div></div>`).join('');
+                    wrap.innerHTML = `
+                        <div class="wur-banner"><img class="wur-icon" src="${SHIELD}" alt="" draggable="false"><div class="wur-instruction">${esc(o.instruction || 'Restart to finish installing updates')}</div></div>
+                        <div class="wur-content">
+                            <div class="wur-text">${esc(o.reason || S.reason)}</div>
+                            ${rows ? `<div class="wur-devices">${rows}</div>` : ''}
+                        </div>
+                        <div class="wur-footer">
+                            <button type="button" class="tbp-ctl tbp-button" data-wur="ok" data-dialog-primary="1">${esc(o.ok || 'Restart Now')}</button>
+                            <button type="button" class="tbp-ctl tbp-button" data-wur="later">${esc(o.later || 'Later')}</button>
+                        </div>`;
+                    c.content.appendChild(wrap);
+                    wrap.addEventListener('click', (ev) => {
+                        const b = ev.target.closest('[data-wur]');
+                        if (b) done(b.dataset.wur === 'ok');
+                    });
+                    c.modal.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); done(false); } });
+                },
+                cancel: () => done(false)
+            });
+            if (!confirmCtx) resolve(true);
+        });
+    }
+
+    root.melatonRestartPrompt = { schedule, show, cancel, settings, save, confirmRestart };
 })(typeof window !== 'undefined' ? window : globalThis);

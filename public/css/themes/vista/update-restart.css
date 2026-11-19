@@ -1,7 +1,7 @@
 /* Melaton Update's restart prompt, Vista theme (#945): wuauclt's task dialog as captured on Vista - the shield-warning
    banner's yellow and its edge, black main instruction, the grey command area. The layout is css/update-restart.css. */
 
-#melatonUpdateRestartDialog {
+:is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) {
     --wur-banner: #fcc837;
     --wur-banner-edge: #e7c875;
     --wur-instruction: #000;
@@ -9,4 +9,5 @@
     --wur-content: #fff;
     --wur-footer: #f0f0f0;
     --wur-footer-edge: #dfdfdf;
+    --wur-note: #575757;
 }

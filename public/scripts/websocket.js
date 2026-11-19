@@ -1992,6 +1992,9 @@ class WebSocketClient {
                     && window.serviceWorkerManager.hasPendingUpdates())
                 || window.serviceWorkerManager.updateAvailable
             );
+            // updates counted but not downloaded (#951, Check for updates but let me choose: the default)
+            swStatus.availableCount = typeof window.serviceWorkerManager.availableUpdateCount === 'function'
+                ? window.serviceWorkerManager.availableUpdateCount() : 0;
         }
 
         let iconClass = 'fas fa-hard-drive';
@@ -2000,7 +2003,8 @@ class WebSocketClient {
             'sw-unavailable',
             'sw-heartbeat-missed',
             'sw-update-downloading',
-            'sw-update-complete'
+            'sw-update-complete',
+            'sw-update-available'
         );
 
         if (!swStatus.available) {
@@ -2022,6 +2026,11 @@ class WebSocketClient {
             iconClass = 'fa-regular fa-laptop-arrow-down';
             trayIcon.classList.add('sw-update-complete');
             title = 'Restart Melaton to finish installing updates';
+        } else if (swStatus.availableCount > 0) {
+            // wucltux: Windows Update's icon while updates wait to be downloaded and installed
+            iconClass = 'fa-regular fa-laptop-arrow-down';
+            trayIcon.classList.add('sw-update-available');
+            title = swStatus.availableCount === 1 ? '1 update is available' : `${swStatus.availableCount} updates are available`;
         }
 
         if (typeof setClassNameIfChanged === 'function') {
@@ -2033,7 +2042,7 @@ class WebSocketClient {
         }
         // Melaton Update's icon is there only for updates, as Windows Update's (#945): while they download and while
         // they wait to be installed; the worker's own health and storage are not a tray icon any more
-        const wanted = swStatus.isUpdating || swStatus.updateAvailable;
+        const wanted = swStatus.isUpdating || swStatus.updateAvailable || swStatus.availableCount > 0;
         const hidden = trayIcon.classList.contains('hidden');
         if (wanted && hidden) {
             // the desktop's boot reveals its tray in order (systemTrayManager.js); after it, at once

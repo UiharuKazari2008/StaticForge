@@ -394,7 +394,9 @@
             pending: !!sw.pendingUpdateFuse,
             kind: sw.pendingUpdateKind || null,
             files: sw.pendingUpdateFilesTotal || urls.length,
-            urls: urls.slice(0, 4000)
+            urls: urls.slice(0, 4000),
+            // updates counted, not downloaded (#951): the DeX window shows the same count
+            available: typeof sw.availableUpdateCount === 'function' ? sw.availableUpdateCount() : 0
         };
     }
     let updateRelayTimer = null;
@@ -411,6 +413,8 @@
         const sw = root.serviceWorkerManager;
         if (!sw || sw.__mcUpdateWatch || !isPhone()) return;
         sw.__mcUpdateWatch = true;
+        // the count of updates available changes without a watched field (#951)
+        document.addEventListener('melaton:updates-available', relayUpdateState, { signal: appScopeSignal });
         UPDATE_FIELDS.forEach((key) => {
             let value = sw[key];
             Object.defineProperty(sw, key, {
@@ -443,6 +447,8 @@
         sw.pendingUpdateFilesTotal = Math.max(state.files || 0, sw.pendingUpdateUrls.size);
         sw.pendingUpdateKind = state.kind || (local.size ? 'restart' : null);
         sw.pendingUpdateFuse = !!state.pending || local.size > 0;
+        sw._mirroredAvailable = Number(state.available) || 0;
+        if (typeof sw._syncUpdatesWaitingMark === 'function') sw._syncUpdatesWaitingMark();
         if (typeof sw._notifyTrayIconUpdate === 'function') sw._notifyTrayIconUpdate();
         // the update page, if open, shows the phone's progress
         if (typeof sw.foregroundUpdateView === 'function') {
@@ -454,6 +460,14 @@
         if (state.pending && !wasPending && typeof sw._scheduleUpdateCompleteToast === 'function') sw._scheduleUpdateCompleteToast(state.kind === 'restart' ? 'restart' : 'apply');
     }
     api.on('update-state', (m) => mirrorUpdateState(m.state));
+    // the DeX window's Install updates (#951): the phone downloads and installs what it counted
+    api.phoneInstallUpdates = () => (isDw() && api.peers().includes('phone') ? api.post({ type: 'update-install' }) : false);
+    api.on('update-install', () => {
+        if (!isPhone()) return;
+        watchUpdateState();
+        const sw = root.serviceWorkerManager;
+        if (sw && typeof sw.installAvailableUpdates === 'function') void sw.installAvailableUpdates();
+    });
     /** The DeX window's Check for updates (serviceWorkerManager.checkStaticFileUpdates): the phone checks. */
     api.phoneCheckForUpdates = async (noToast) => {
         if (!isDw() || !api.peers().includes('phone')) return null;
@@ -490,27 +504,74 @@
      * Resolves true to go on, false when the person cancelled.
      */
     api.confirmUpdateRestart = async (plan) => {
-        const ask = (text) => (typeof root.showConfirmationDialog === 'function'
-            ? root.showConfirmationDialog(text, [{ text: 'Restart Now', value: true }, { text: 'Cancel', value: false }], null, { title: 'Melaton Update', icon: 'fas fa-exclamation-triangle', sound: true })
-            : Promise.resolve(true));
-        // a plan (restartPlan, #900): the warning says exactly which windows restart
+        // the computers this restart takes down, as the Network and Server Center draws them (#951): the Pocket PC
+        // (imageres.dll 87) and this desktop by its kind (a docked display: Tablet PC with a touchscreen, laptop with
+        // a touchpad or a dock battery, else desktop)
+        const NET = '/static_images/vista-net';
+        const hw = (() => { try { const id = root.melatonDeviceIdentity; return id && typeof id.hardware === 'function' ? id.hardware() : null; } catch (_) { return null; } })();
+        const inputs = hw && Array.isArray(hw.input) ? hw.input : [];
+        const ext = (src) => inputs.some((d) => d && d.external && Array.isArray(d.sources) && d.sources.includes(src));
+        const pcArt = ext('touchscreen') ? `${NET}/tabletpc-0-48.png` : (ext('touchpad') || (api.continuityPc() && api.continuityPc().dockBattery)) ? `${NET}/imageres-112-48.png` : `${NET}/netcenter-1-48.png`;
+        const phoneName = (() => {
+            try {
+                const H = root.AndroidHome;
+                const c = H && typeof H.getContinuity === 'function' ? JSON.parse(H.getContinuity()) : null;
+                const as = root.activeSync && typeof root.activeSync.state === 'function' ? root.activeSync.state() : null;
+                const dev = c && c.deviceId && as ? (as.devices || []).find((d) => String(d.deviceId).toLowerCase() === String(c.deviceId).toLowerCase()) : null;
+                if (dev && dev.name) return String(dev.name);
+            } catch (_) { /* below */ }
+            return (hw && hw.device && (hw.device.marketName || hw.device.model)) || 'Pocket PC';
+        })();
+        const pcName = (() => {
+            try {
+                const me = root.melatonDeviceIdentity && root.melatonDeviceIdentity.get();
+                if (me && me.name) return typeof root.melatonHostName === 'function' ? root.melatonHostName(me.name) : me.name;
+            } catch (_) { /* below */ }
+            return 'This computer';
+        })();
+        const pocket = (note) => ({ icon: `${NET}/imageres-87-48.png`, name: `${phoneName} (Pocket PC)`, note });
+        const desktop = (note) => ({ icon: pcArt, name: `${pcName} (Continuity-enabled PC)`, note });
+        const ask = (o) => {
+            const p = root.melatonRestartPrompt;
+            // the desktop's task dialog; Melaton Mobile asks in its own message box
+            if (root.uiShell !== 'mobile' && p && typeof p.confirmRestart === 'function') return p.confirmRestart(o);
+            // without the prompt's module: the plain question, as before
+            return typeof root.showConfirmationDialog === 'function'
+                ? root.showConfirmationDialog(`${o.instruction}<br><br>${o.reason}`, [{ text: 'Restart Now', value: true }, { text: 'Cancel', value: false }], null, { title: 'Melaton Update', icon: 'fas fa-exclamation-triangle', sound: true })
+                : Promise.resolve(true);
+        };
+        const SAVE = 'Programs that are open on a computer that restarts will close. Save your work before you continue.';
+        const both = () => ask({
+            instruction: 'Restart your Pocket PC and this Continuity-enabled PC to finish installing updates',
+            reason: SAVE,
+            devices: [pocket('Installs the updates and restarts.'), desktop('Shuts down first, then starts again with your Pocket PC.')]
+        });
+        const phoneOnly = () => ask({
+            instruction: 'Restart your Pocket PC to finish installing updates',
+            reason: 'Programs that are open on your Pocket PC will close. Save your work there before you continue.',
+            devices: [pocket('Installs the updates and restarts.'), desktop('Stays on and reconnects when your Pocket PC is ready.')]
+        });
+        const fromPhone = () => ask({
+            instruction: 'These updates also restart your Continuity-enabled PC',
+            reason: SAVE,
+            devices: [desktop('Shuts down first, then starts again with this phone.'), pocket('Installs the updates and restarts.')]
+        });
+        // a plan (restartPlan, #900): the question names exactly the computers that restart
         if (plan && typeof plan === 'object') {
             if (isDw()) {
-                if (plan.other && plan.self) return !!(await ask('Melaton will restart your Pocket PC and this Continuity-enabled PC to install updates.<br><br>Programs that are open on either one will close. Save your work before you continue.'));
-                if (plan.other) return !!(await ask('Melaton will restart your Pocket PC to install updates.<br><br>Programs that are open on your Pocket PC will close. This computer stays on and reconnects when your Pocket PC is ready.'));
+                if (plan.other && plan.self) return !!(await both());
+                if (plan.other) return !!(await phoneOnly());
                 return true; // only this computer restarts: the usual Restart Now
             }
-            if (plan.other) return !!(await ask('These updates also restart your Continuity-enabled PC.<br><br>Programs that are open on it will close. Save your work there before you continue.'));
+            if (plan.other) return !!(await fromPhone());
             return true;
         }
         if (isDw() && api.peers().includes('phone')) {
             const scope = await api.ask('update-scope?');
-            return !!(await ask(scope === 'both'
-                ? 'Melaton will restart your Pocket PC and this Continuity-enabled PC to install updates.<br><br>Programs that are open on either one will close. Save your work before you continue.'
-                : 'Melaton will restart your Pocket PC to install updates.<br><br>Programs that are open on your Pocket PC will close. This computer stays on and reconnects when your Pocket PC is ready.'));
+            return !!(await (scope === 'both' ? both() : phoneOnly()));
         }
         if (isPhone() && api.peers().includes('desktop') && pendingScope() === 'both') {
-            return !!(await ask('These updates also restart your Continuity-enabled PC.<br><br>Programs that are open on it will close. Save your work there before you continue.'));
+            return !!(await fromPhone());
         }
         return true;
     };

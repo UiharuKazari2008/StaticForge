@@ -3280,6 +3280,8 @@
         statusTimer = setTimeout(statusPass, STATUS_COALESCE_MS);
     }
     function watchStatusSignals() {
+        // updates counted or installed (#951): the update glyph follows
+        document.addEventListener('melaton:updates-available', statusDirty, { signal: appScopeSignal });
         const ws = window.wsClient;
         if (ws && typeof ws.on === 'function') { ws.on('connected', statusDirtyToday); ws.on('disconnected', statusDirtyToday); }
         // the Nightshade Network's state moved (restarting, no internet, unavailable, CaféReady, #895): its glyph
@@ -3388,6 +3390,8 @@
         paintDirectorClap(!!(dir && dir.running));
         let updateReady = false;
         try { updateReady = !!(window.serviceWorkerManager && window.serviceWorkerManager.hasPendingUpdates()); } catch (_) { updateReady = false; }
+        // updates counted, not downloaded (#951, the default): the same icon, its popup offers Install
+        try { if (!updateReady && window.serviceWorkerManager && typeof window.serviceWorkerManager.availableUpdateCount === 'function') updateReady = window.serviceWorkerManager.availableUpdateCount() > 0; } catch (_) { /* as it was */ }
         // the update icon also stands for a waiting update notice (stalled, applied ...) and, animated,
         // for updates downloading (its popup shows the progress)
         const updDl = updateProgressToast();
@@ -7205,6 +7209,16 @@
             const waiting = notes.find(isUpdateNote);
             if (waiting) { if (capture) return; closeBubble(); showNote(waiting.id); return; }
             const sw = window.serviceWorkerManager;
+            const avail = sw && !sw.hasPendingUpdates() && typeof sw.availableUpdateCount === 'function' ? sw.availableUpdateCount() : 0;
+            if (avail > 0) {
+                // counted, not downloaded (#951): Install now, or the restart downloads and installs them
+                const msg = `${avail === 1 ? '1 update is' : `${avail} updates are`} available. Install them now, or Melaton installs them when it restarts.`;
+                bubble({ title: 'Updates', role, anchor, sections: [msg, { links: [
+                    { label: 'Install', action: () => { closeBubble(); void sw.installAvailableUpdates(); } },
+                    { label: 'Restart Now', action: () => { closeBubble(); sw.forceRestart(); } }
+                ] }], buttons: [{ text: 'Hide' }] });
+                return;
+            }
             const n = sw && Number(sw.pendingUpdateFilesTotal);
             const text = `Updates are ready to install${Number.isFinite(n) && n > 0 ? ` (${n.toLocaleString()} ${n === 1 ? 'file' : 'files'})` : ''}. Melaton restarts to install them.`;
             const links = sw && typeof sw.forceRestart === 'function' ? [{ label: 'Restart Now', action: () => { closeBubble(); sw.forceRestart(); } }] : [];

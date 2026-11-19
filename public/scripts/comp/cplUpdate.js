@@ -119,7 +119,15 @@
         if (manager.servicePack && manager.servicePack.label) return { state: 'upgrade', message: manager.servicePack.label };
         if (manager.pendingApplyFiles && manager.pendingApplyFiles.length) return { state: 'ready' };
         if (manager.hasPendingUpdates && manager.hasPendingUpdates()) return { state: 'restart' };
+        // counted, not downloaded (#951, Check for updates but let me choose)
+        const n = typeof manager.availableUpdateCount === 'function' ? manager.availableUpdateCount() : 0;
+        if (n > 0) return { state: 'available', message: availableText(n) };
         return { state: 'checking' };
+    }
+
+    /** wucltux: "1 important update is available" / "N important updates are available". */
+    function availableText(n) {
+        return n === 1 ? '1 important update is available' : `${n} important updates are available`;
     }
 
     function bar(progress) {
@@ -140,7 +148,11 @@
             checking: { band: 'blue', title: 'Checking for updates…', body: `<p>Looking for updates on the server.</p>${bar(null)}` },
             available: {
                 band: 'yellow', shield: 'shield-warning', title: 'Download and install updates for your computer',
-                body: `<p>${esc(view.message && !/available\.?$/i.test(view.message) ? view.message : 'Updates to Melaton are available.')}</p>`,
+                body: (() => {
+                    const n = sw() && typeof sw().availableUpdateCount === 'function' ? sw().availableUpdateCount() : 0;
+                    const line = n ? availableText(n) : (view.message || 'Updates to Melaton are available.');
+                    return `<p class="cpl-wu-strong">${esc(line)}</p><p>They download and install when you click Install updates, or when you restart or shut down Melaton.</p>`;
+                })(),
                 button: ['Install updates', 'install']
             },
             downloading: {
@@ -190,9 +202,7 @@
         const rows = [
             ['Most recent check for updates:', stamp('meletonUpdateCheckedAt')],
             ['Updates were installed:', stamp('meletonUpdateInstalledAt')],
-            ['You have Melaton set to:', restartPrompt().settings().auto
-                ? 'Install updates automatically and restart to finish installing them (recommended)'
-                : 'Download updates in the background and install them when Melaton restarts'],
+            ['You have Melaton set to:', MODE_TEXT[updateSettings().get().mode] || MODE_TEXT.notify],
             ['You receive updates:', `From the ${domain} domain controller (${root.location ? root.location.hostname : 'this server'})`]
         ];
         const f = fw();
@@ -320,6 +330,15 @@
             paint();
             return;
         }
+        // Install updates with updates counted (#951): they download now; what applies live does, the rest waits for
+        // the restart (the page then shows Restart now)
+        if (what === 'install' && typeof manager.availableUpdateCount === 'function' && manager.availableUpdateCount() > 0
+            && typeof manager.installAvailableUpdates === 'function') {
+            view = { ...view, state: 'downloading', progress: 0 };
+            paint();
+            void manager.installAvailableUpdates();
+            return;
+        }
         if (what === 'check' || what === 'install') {
             // Check for updates looks for firmware too (the host pushes what it finds)
             if (what === 'check' && fw()) void fw().check();
@@ -422,21 +441,28 @@
         return true;
     }
 
-    // ---- Change settings (#945): Vista's "Choose how Windows can install updates" (wucltux.dll.mui 1100-1117),
-    // Melaton's two ways: updates always download in the background; the choice is whether Melaton restarts by
-    // itself to finish them (the restart prompt's countdown, updateRestartPrompt.js) or waits for you
-    const restartPrompt = () => root.melatonRestartPrompt || { settings: () => ({ auto: true, warnMin: 5 }), save: (x) => x };
+    // ---- Change settings (#945, #951): Vista's "Choose how Windows can install updates" (wucltux.dll.mui 1100-1117):
+    // its three ways that apply here. Check for updates but let me choose is the default (Yukimi): updates are
+    // counted, and a restart or shut down (or Install updates) downloads and installs them.
+    const updateSettings = () => root.melatonUpdateSettings || { get: () => ({ mode: 'notify', auto: false, warnMin: 5 }), save: (x) => x };
+    const restartPrompt = () => root.melatonRestartPrompt || { settings: () => updateSettings().get(), save: (x) => x, schedule() {}, cancel() {} };
+    const MODE_TEXT = {
+        auto: 'Install updates automatically (recommended)',
+        download: 'Download updates but let me choose whether to install them',
+        notify: 'Check for updates but let me choose whether to download and install them'
+    };
     const WARN_TEXT = { 1: '1 minute', 5: '5 minutes', 15: '15 minutes' };
     function settingsBody() {
-        const st = restartPrompt().settings();
-        const radio = (value, label, desc) => `<div class="cpl-vradio cpl-wu-radio"><input type="radio" name="cpl-wu-auto" id="cpl-wu-auto-${value}" value="${value}"${(value === '1') === st.auto ? ' checked' : ''}><label for="cpl-wu-auto-${value}">${esc(label)}</label>${desc || ''}</div>`;
+        const st = updateSettings().get();
+        const radio = (value, label, desc) => `<div class="cpl-vradio cpl-wu-radio"><input type="radio" name="cpl-wu-mode" id="cpl-wu-mode-${value}" value="${value}"${value === st.mode ? ' checked' : ''}><label for="cpl-wu-mode-${value}">${esc(label)}</label>${desc || ''}</div>`;
         const warn = `<p class="cpl-vtext cpl-wu-warn">Warn me before restarting: <button type="button" class="custom-dropdown-btn vista-combo-list" data-cpl-wu-warn="${st.warnMin}">${esc(WARN_TEXT[st.warnMin])}</button></p>`;
         return `<div class="cpl-vpage cpl-spoke"><div class="cpl-spoke-pane">
                 <h1 class="cpl-vtitle">Choose how Melaton can install updates</h1>
-                <p class="cpl-vtext">When your computer is online, Melaton downloads important updates in the background and installs them when it restarts. When updates that need a restart are ready, Melaton can restart by itself to finish installing them, or wait until you restart.</p>
+                <p class="cpl-vtext">When your computer is online, Melaton can check for important updates and install them using these settings. When new updates are available, you can also install them before shutting down the computer.</p>
                 <div class="cpl-vsection"><span>Important updates</span></div>
-                ${radio('1', 'Install updates automatically (recommended)', warn)}
-                ${radio('0', 'Download updates but let me choose when to restart to install them')}
+                ${radio('auto', MODE_TEXT.auto, warn)}
+                ${radio('download', MODE_TEXT.download)}
+                ${radio('notify', MODE_TEXT.notify)}
                 <p class="cpl-vtext">Melaton never restarts while a program has unsaved work: it asks you first, as when you shut down.</p>
             </div>
             <div class="cpl-spoke-commands"><div class="cpl-spoke-buttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-wu-set="ok">OK</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-wu-set="cancel">Cancel</button></div></div></div>`;
@@ -455,12 +481,17 @@
         }
         el.querySelectorAll('[data-cpl-wu-set]').forEach((b) => b.addEventListener('click', () => {
             if (b.dataset.cplWuSet === 'ok') {
-                const on = el.querySelector('input[name="cpl-wu-auto"]:checked');
-                const auto = !on || on.value === '1';
-                restartPrompt().save({ auto, warnMin: Number(btn ? btn.dataset.cplWuWarn : 5) || 5 });
-                // turned on with a restart waiting: the prompt asks now; off: no countdown is left running
-                const p = root.melatonRestartPrompt;
-                if (p) { if (auto) p.schedule(500); else p.cancel(); }
+                const on = el.querySelector('input[name="cpl-wu-mode"]:checked');
+                const mode = on ? on.value : 'notify';
+                const was = updateSettings().get().mode;
+                updateSettings().save({ mode, warnMin: Number(btn ? btn.dataset.cplWuWarn : 5) || 5 });
+                // automatic with a restart waiting: the prompt asks now; otherwise no countdown is left running
+                const p = restartPrompt();
+                if (mode === 'auto') p.schedule(500); else p.cancel();
+                // now downloading in the background: what was only counted comes down
+                const m = root.serviceWorkerManager;
+                if (was === 'notify' && mode !== 'notify' && m && typeof m.installAvailableUpdates === 'function'
+                    && typeof m.availableUpdateCount === 'function' && m.availableUpdateCount() > 0) void m.installAvailableUpdates();
             }
             cpl.open('update');
         }));

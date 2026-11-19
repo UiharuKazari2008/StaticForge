@@ -375,6 +375,8 @@ const FEATURE_MANIFEST = {
     // DreamOS firmware updates (#910): the OS base and CaféReady's components - Melaton Update, Control Panel >
     // Firmware and the shut down screen (serviceWorkerManager.installUpdatesAtShutdown) load it
     dreamos_firmware: {
+        // swaps live (#951: check-app-scope --features finds it eligible - no globals other files use)
+        hot: true,
         scripts: ['scripts/comp/dreamosFirmware.js']
     },
     control_panel: {
