@@ -1858,8 +1858,9 @@
         // the wireless adapter is there but switched off: Vista's offer to turn it on (pnidui.dll.mui 31 / 33)
         const radioOff = l.kind === 'none' && l.radio === 'off' && wifiUi && typeof root.dreamosWifi.setRadio === 'function';
         const captive = portal();
-        // Vista's flyout shows the network's location icon (pnidui.dll 0, a private network), or 19 with nothing connected
-        const pic = l.kind === 'none' ? '/static_images/vista-net/pnidui-19-32.png' : '/static_images/vista-net/pnidui-0-32.png';
+        // Vista's flyout shows the network's location icon (pnidui.dll 0 house = Private, 1 bench = Public: the same
+        // choice as the Network and Server Center's map, #945), or 19 with nothing connected
+        const pic = l.kind === 'none' ? '/static_images/vista-net/pnidui-19-32.png' : `/static_images/vista-net/${locationArt(l)}-32.png`;
         const item = l.kind === 'none'
             ? `<div class="network-flyout-item">
                     <img src="${pic}" alt="" draggable="false">
