@@ -1,0 +1,214 @@
+/* VZAccess Manager 7.6 (apps/vzaccess, Yozora issue 947): Verizon Wireless' connection manager of the 4G LTE launch
+   (2010-2011, Smith Micro's QuickLink Mobile), inside the Melaton frame. Layout and metrics from the 716 x 519
+   AnandTech capture of 7.6.3.1 on Windows 7; its colours are tokens (--vz-*) set by the theme
+   (css/themes/vista/vzaccess.css), the only place their literals live (ui-standard section 6, a custom app). */
+
+.vz-window.vz-window { width: 716px; }
+.vz-window > .modal-content.vz-client { padding: 0 !important; background: var(--vz-client); }
+
+.vz-root {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 481px;
+    background: var(--vz-client);
+    color: var(--vz-text);
+    cursor: default;
+    user-select: none;
+}
+
+/* ---- the menu bar and the Verizon Wireless logo beside it (7.6 draws it across the caption and menu rows) ---- */
+.vz-root > .naxt-menubar { flex: none; padding-right: 200px; }
+.vz-root .vz-logo {
+    position: absolute;
+    top: -4px;
+    right: 10px;
+    width: 186px;
+    height: 30px;
+    pointer-events: none;
+}
+
+/* ---- the tabs ---- */
+/* the kit's tabs at 7.6's size (27 px, a bold selected tab); by the window's id, as the kit's own rules are long chains */
+#vzAccessManagerModal .vz-root > menu[role="tablist"] { flex: none; margin: 9px 0 0 9px; }
+#vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"] { display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 14px 0 9px; font-size: 12px; }
+#vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"] img { width: auto; height: 16px; flex: none; }
+#vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"][aria-selected="true"] { font-weight: bold; }
+.vz-root .vz-panel {
+    position: relative;
+    flex: none;
+    box-sizing: border-box;
+    height: 350px;
+    margin: 0 8px 0 4px;
+    padding: 0;
+    overflow: hidden;
+}
+.vz-root .vz-page { position: absolute; inset: 0; display: none; padding: 10px 14px 12px 16px; box-sizing: border-box; }
+.vz-root .vz-page.is-shown { display: flex; flex-direction: column; }
+
+/* ---- buttons: the kit's push buttons (7.6 used Windows' own), sized as on the capture; Disconnect WWAN is
+   VZAM's red command button, drawn here in every state (the kit's face layers are not drawn on it) ---- */
+.vz-root .vz-bar button, .vz-root .vz-status button { box-sizing: border-box; height: 22px; padding: 0 9px; }
+.vz-root .vz-status button.vz-red::before, .vz-root .vz-status button.vz-red::after { display: none; }
+.vz-root .vz-status button.vz-red { border: 1px solid var(--vz-red-edge); border-radius: 3px; background: var(--vz-red-face); color: var(--vz-red-text); box-shadow: inset 0 0 0 1px var(--vz-btn-inner); }
+.vz-root .vz-status button.vz-red:hover:not(:disabled) { background: var(--vz-red-hot); }
+.vz-root .vz-status button.vz-red:active:not(:disabled) { background: var(--vz-red-down); }
+.vz-root .vz-status button.vz-red:focus-visible { outline: 1px dotted var(--vz-red-text); outline-offset: -4px; }
+.vz-root .vz-status button.vz-red:disabled { opacity: .6; }
+.vz-root button u { text-decoration: underline; }
+
+.vz-root .vz-bar { flex: none; display: flex; align-items: center; gap: 4px; height: 26px; margin-bottom: 6px; }
+.vz-root .vz-bar button { min-width: 77px; }
+.vz-root .vz-bar .vz-fill { flex: 1; }
+
+/* ---- the lists: Available Network | Status | Signal, TXT Messaging, Wi-Fi Locations ---- */
+.vz-root .vz-list {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    border: 1px solid var(--vz-box-edge);
+    background: var(--vz-box-face);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.vz-root .vz-list:focus { outline: none; }
+.vz-root .vz-head {
+    flex: none;
+    display: grid;
+    height: 22px;
+    background: var(--vz-head-face);
+    color: var(--vz-head-text);
+}
+.vz-root .vz-head > span { display: flex; align-items: center; padding: 0 6px; border-right: 1px solid var(--vz-head-edge); overflow: hidden; white-space: nowrap; }
+.vz-root .vz-rows { flex: 1; min-height: 0; overflow-y: auto; }
+.vz-root .vz-row { display: grid; align-items: center; min-height: 32px; color: var(--vz-row-text); }
+.vz-root .vz-row > span { display: flex; align-items: center; gap: 6px; padding: 0 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.vz-root .vz-row:hover { background: var(--vz-row-hot); }
+.vz-root .vz-row.is-selected { background: var(--vz-row-sel); }
+.vz-root .vz-row.is-dim { color: var(--vz-dim); }
+.vz-root .vz-net .vz-head, .vz-root .vz-net .vz-row { grid-template-columns: 337px 155px 62px 1fr; }
+.vz-root .vz-net .vz-row { font-size: 15px; }
+.vz-root .vz-net .vz-row.is-on { font-weight: bold; }
+.vz-root .vz-net .vz-row img { flex: none; }
+.vz-root .vz-net .vz-row .vz-name { overflow: hidden; text-overflow: ellipsis; }
+.vz-root .vz-txt .vz-head, .vz-root .vz-txt .vz-row { grid-template-columns: 150px 150px 1fr 120px; }
+.vz-root .vz-txt .vz-row { min-height: 18px; }
+.vz-root .vz-txt .vz-row.is-unread { font-weight: bold; }
+.vz-root .vz-wloc .vz-head, .vz-root .vz-wloc .vz-row { grid-template-columns: 1fr 160px 140px; }
+.vz-root .vz-wloc .vz-row { min-height: 26px; }
+.vz-root .vz-empty { padding: 10px 8px; color: var(--vz-dim); }
+.vz-root .vz-preview {
+    flex: none;
+    height: 72px;
+    margin-top: 6px;
+    padding: 6px 8px;
+    box-sizing: border-box;
+    border: 1px solid var(--vz-box-edge);
+    background: var(--vz-field-face);
+    overflow: auto;
+    white-space: pre-wrap;
+    user-select: text;
+}
+
+/* ---- the signal meter: VZAM's own bitmap (bracket and four bars, meter-0 ... meter-4) ---- */
+.vz-meter { display: block; width: 30px; height: 22px; flex: none; }
+
+/* ---- Statistics ---- */
+.vz-root .vz-legend { flex: none; display: flex; align-items: center; justify-content: center; gap: 22px; height: 16px; margin: 0 0 6px; }
+.vz-root .vz-legend i { display: block; width: 116px; height: 0; border-top: 2px solid var(--vz-graph-tx); }
+.vz-root .vz-legend i.rx { border-top-color: var(--vz-graph-rx); }
+.vz-root .vz-graph { flex: none; display: grid; grid-template-columns: 62px 1fr; height: 196px; }
+.vz-root .vz-axis { position: relative; font-size: 13px; }
+.vz-root .vz-axis .max { position: absolute; top: -2px; right: 12px; }
+.vz-root .vz-axis .unit { position: absolute; top: 86px; right: 26px; }
+.vz-root .vz-axis .zero { position: absolute; bottom: -2px; right: 12px; }
+.vz-root .vz-graph canvas { width: 100%; height: 196px; border: 1px solid var(--vz-field-edge); box-sizing: border-box; background: var(--vz-graph-face); }
+.vz-root .vz-fields { flex: none; display: grid; grid-template-columns: 112px 74px 112px 74px 82px 1fr; gap: 4px 6px; align-items: center; margin-top: 8px; }
+.vz-root .vz-fields label { text-align: right; }
+.vz-root .vz-fields output {
+    box-sizing: border-box;
+    height: 22px;
+    padding: 3px 5px 0;
+    border: 1px solid var(--vz-field-edge);
+    background: var(--vz-field-face);
+    text-align: right;
+    overflow: hidden;
+    white-space: nowrap;
+    user-select: text;
+}
+.vz-root .vz-fields output.rx { background: var(--vz-field-rx); }
+.vz-root .vz-fields output.wide { text-align: left; }
+.vz-root .vz-notice { flex: none; align-self: flex-end; margin-top: 4px; color: var(--vz-link); text-decoration: underline; cursor: pointer; }
+.vz-root .vz-notice:focus-visible { outline: 1px dotted var(--vz-link); }
+
+/* ---- the status area: Coverage Indicator / Connection Status | device | VPN and the command button ---- */
+.vz-root .vz-status {
+    flex: none;
+    display: grid;
+    grid-template-columns: 407px 164px 112px;
+    grid-template-rows: 28px 28px;
+    gap: 4px 5px;
+    margin: 10px 8px 0 4px;
+}
+.vz-root .vz-box {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding: 0 5px;
+    border: 1px solid var(--vz-box-edge);
+    border-radius: 4px;
+    background: var(--vz-box-face);
+    overflow: hidden;
+    white-space: nowrap;
+}
+.vz-root .vz-cover { font-size: 14px; gap: 4px; }
+.vz-root .vz-cover b { font-weight: bold; }
+.vz-root .vz-cover .vz-national { color: var(--vz-national); }
+.vz-root .vz-cover .vz-fill { flex: 1; }
+.vz-root .vz-tech { font-weight: bold; font-size: 13px; margin-right: 3px; }
+.vz-root .vz-roam {
+    width: 0;
+    height: 0;
+    margin-right: 4px;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-bottom: 12px solid var(--vz-extended);
+}
+.vz-root .vz-conn { gap: 8px; }
+.vz-root .vz-conn .vz-fill { flex: 1; }
+.vz-root .vz-conn img { flex: none; margin-right: 2px; }
+.vz-root .vz-device {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    grid-template-rows: 1fr 1fr;
+    align-items: center;
+    padding: 0 6px 0 4px;
+}
+.vz-root .vz-device .mode { display: flex; justify-content: flex-end; gap: 22px; padding-right: 2px; }
+.vz-root .vz-device .mode b { font-weight: bold; }
+.vz-root .vz-device .num { text-align: right; padding-right: 2px; overflow: hidden; text-overflow: ellipsis; }
+.vz-root .vz-device img { justify-self: center; }
+.vz-root .vz-status button { height: 27px; width: 112px; padding: 0 2px; font-size: 12px; white-space: nowrap; }
+.vz-root .vz-status .vz-vpn { grid-column: 3; grid-row: 1; }
+.vz-root .vz-status .vz-cmd { grid-column: 3; grid-row: 2; }
+
+/* ---- About VZAccess Manager and WWAN Device Info (the program's own child windows) ---- */
+.vz-window.vz-info-window.vz-info-window { width: 534px; }
+.vz-root.vz-info { height: auto; padding: 10px 12px 0; }
+.vz-root .vz-about { display: grid; grid-template-columns: 1fr 161px; align-items: start; margin-bottom: 12px; }
+.vz-root .vz-about-text { line-height: 14px; user-select: text; }
+.vz-root .vz-about-logo { width: 161px; height: 61px; margin-top: 18px; }
+.vz-root .vz-about-head { margin-bottom: 3px; }
+.vz-root .vz-props { flex: none; height: 290px; }
+.vz-root .vz-props .vz-row { grid-template-columns: 130px 1fr; min-height: 17px; }
+.vz-root .vz-props .vz-row:first-child { background: var(--vz-row-sel); }
+.vz-root.vz-info .vista-dialog-footer { display: flex; justify-content: flex-end; margin: 10px -12px 0; padding: 8px 12px; }
+.vz-root .vz-durrow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.vz-root .vz-durrow output { flex: 1; min-width: 0; }
+.vz-root .vz-durrow .vz-reset { flex: none; min-width: 72px; height: 22px; }
+
+/* the connect warning (a shell message box): 7.x's triangle beside the text */
+.vz-warn { display: grid; grid-template-columns: 32px 1fr; gap: 12px; align-items: start; }

@@ -650,6 +650,15 @@ function buildRunSystemCommandEntries() {
             if (window.cplUserAccounts && typeof window.cplUserAccounts.openUserPasswords2 === 'function') window.cplUserAccounts.openUserPasswords2();
         }
     }, {
+        // VZAccess Manager (apps/vzaccess, #947): Verizon Wireless' connection manager for the phone's modem
+        id: 'system-vzaccess',
+        category: 'app',
+        label: 'vzaccess',
+        subtitle: 'VZAccess Manager',
+        icon: 'fa-light fa-signal',
+        keywords: ['vzaccess', 'vzam', 'vzaccess manager', 'verizon', 'mobile broadband', 'wwan'],
+        execute: () => { if (window.melatonApps) void window.melatonApps.launch({ packageId: 'vzaccess' }); }
+    }, {
         // Vista's mblctr: Melaton Mobility Center (mobilityCenter.js, in the Control Panel feature)
         id: 'system-mblctr',
         category: 'app',

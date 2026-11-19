@@ -1,0 +1,15 @@
+{
+    "id": "vzaccess",
+    "version": "7.6.3.1",
+    "title": "VZAccess Manager",
+    "publisher": "Verizon Wireless",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "vzaccess",
+    "windowKind": "custom",
+    "icon": "assets/vzaccess-48.png",
+    "client": {
+        "entry": "client/vzaccess.js",
+        "styles": ["assets/vzaccess.css"]
+    }
+}

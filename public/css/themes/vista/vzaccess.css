@@ -1,0 +1,37 @@
+/* VZAccess Manager (apps/vzaccess, Yozora issue 947), Vista theme: the program's own colours, sampled from
+   VZAccess Manager 7.6.3.1 on Windows 7 (~/.cache/vzam-ref, the AnandTech captures). The layout is
+   apps/vzaccess/assets/vzaccess.css; the app's private colours live only here (ui-standard section 6). */
+
+.vz-window {
+    --vz-client: #f2f2f2;
+    --vz-box-face: #fff;
+    --vz-box-edge: #5794bf;
+    --vz-panel-edge: #86b1d0;
+    --vz-text: #000;
+    --vz-row-text: #333;
+    --vz-dim: #888;
+    --vz-row-hot: #ececec;
+    --vz-row-sel: #e1e1e1;
+    --vz-head-face: linear-gradient(#e9e9e9, #bebebe);
+    --vz-head-edge: #d5d5d5;
+    --vz-head-text: #222;
+
+    --vz-btn-inner: rgba(255, 255, 255, .6);
+
+    --vz-red-face: linear-gradient(#fadcdc 0, #f08686 35%, #dd0707 55%, #cc0707 100%);
+    --vz-red-hot: linear-gradient(#fde6e6 0, #f59a9a 35%, #ee1414 55%, #dd0d0d 100%);
+    --vz-red-down: linear-gradient(#e8b0b0 0, #d65c5c 35%, #b30505 55%, #a00404 100%);
+    --vz-red-edge: #8c0000;
+    --vz-red-text: #fff;
+    --vz-national: #e00000;
+    --vz-extended: #1e5fd1;
+    --vz-graph-face: #fff;
+    --vz-graph-grid: #e6e6e6;
+    --vz-graph-tx: #b4b4b4;
+    --vz-graph-rx: #e00000;
+    --vz-field-face: #f0f0f0;
+    --vz-field-rx: #ffe6e6;
+    --vz-field-edge: #a5a5a5;
+    --vz-link: #e00000;
+    --vz-connected: #008000;
+}
