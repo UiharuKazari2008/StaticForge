@@ -186,7 +186,7 @@
                         <div class="nsc-name">Nightshade Network</div>
                         <div class="nsc-status" data-f="status"></div>
                     </div>
-                    <span class="nsc-light" data-f="light" data-lit="red" role="img" aria-label="Connection quality"><span class="nsc-lamp is-red"></span><span class="nsc-lamp is-yellow"></span><span class="nsc-lamp is-green"></span></span>
+                    <span class="nsc-light" data-f="light" data-lit="red" role="img" aria-label="Connection quality"></span>
                 </div>
                 <div class="nsc-rows">
                     <span>Connection quality:</span><span data-f="quality"></span>

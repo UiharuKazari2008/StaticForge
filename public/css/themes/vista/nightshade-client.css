@@ -1,18 +1,10 @@
-/* Nightshade Network Client, Vista theme (#945): the connection's traffic light. The layout is css/nightshade-client.css. */
+/* Nightshade Network Client, Vista theme (#945): the connection's traffic light, drawn as a signal head
+   (public/static_images/nightshade/traffic-light-*.svg: shaded housing, visors, fresnel lenses, the lit lamp's glow).
+   The layout is css/nightshade-client.css. */
 
 .nsc-window {
-    /* the housing: dark enamel with a lighter top edge */
-    --nsc-light-housing: linear-gradient(#5a5a5a, #2c2c2c);
-    --nsc-light-edge: #1c1c1c;
-    --nsc-light-shine: rgba(255, 255, 255, 0.25);
-    /* each lamp lit (a lens with its hot spot) and dark (the same lens, unlit) */
-    --nsc-lamp-red: radial-gradient(circle at 35% 35%, #ffb3a8 0, #f0301c 45%, #8e1206 100%);
-    --nsc-lamp-red-off: radial-gradient(circle at 35% 35%, #6a3a36 0, #3d1310 60%, #260a08 100%);
-    --nsc-lamp-red-glow: rgba(255, 60, 30, 0.7);
-    --nsc-lamp-yellow: radial-gradient(circle at 35% 35%, #fff6b8 0, #f5c400 45%, #8c6900 100%);
-    --nsc-lamp-yellow-off: radial-gradient(circle at 35% 35%, #625a32 0, #3b3410 60%, #241f08 100%);
-    --nsc-lamp-yellow-glow: rgba(255, 200, 0, 0.7);
-    --nsc-lamp-green: radial-gradient(circle at 35% 35%, #c8ffb0 0, #2ec22e 45%, #0d6610 100%);
-    --nsc-lamp-green-off: radial-gradient(circle at 35% 35%, #34553a 0, #123a16 60%, #0a240c 100%);
-    --nsc-lamp-green-glow: rgba(60, 220, 60, 0.7);
+    --nsc-light-off: url("/static_images/nightshade/traffic-light-off.svg");
+    --nsc-light-red: url("/static_images/nightshade/traffic-light-red.svg");
+    --nsc-light-yellow: url("/static_images/nightshade/traffic-light-yellow.svg");
+    --nsc-light-green: url("/static_images/nightshade/traffic-light-green.svg");
 }
