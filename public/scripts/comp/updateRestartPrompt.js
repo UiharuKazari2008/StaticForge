@@ -15,6 +15,12 @@
  * Desktops only: Melaton Mobile keeps its notification (the phone owns the restart of a Continuity pair, and its
  * DeX window prompts for both); agent tabs never.
  *
+ * The window (#945, Yukimi: 1:1 and at the bottom right): Vista's task dialog as captured (408 x 230: the shield-warning
+ * banner with the main instruction, the reason, the countdown area of wucltux.dll UIFILE 127 - bold "Restarting in:"
+ * over a progress bar - "Remind me in:" right-aligned, and the grey command area with Restart now and Postpone, the
+ * default). No caption buttons. It opens in the bottom-right corner of the work area, by the notification area, and
+ * stays there as the screen changes; it does not take the keyboard focus from the window in use.
+ *
  *   window.melatonRestartPrompt = { schedule(delayMs), show(), cancel(), settings(), save(settings) }
  *   settings: localStorage melatonUpdateAutoRestart { auto, warnMin 1 | 5 | 15 }
  */
@@ -26,26 +32,49 @@
     const WARN = [1, 5, 15];
     // wucltux.dll.mui 1109 / 92 / 88 / 89: Remind me in 10 minutes, 1 hour, 4 hours (the last is Vista's default)
     const REMIND = [{ value: '10', text: '10 minutes' }, { value: '60', text: '1 hour' }, { value: '240', text: '4 hours' }];
+    // the task bar's icon; the banner's is TD_SHIELD_WARNING_ICON (imageres.dll 101, as Vista draws it)
     const ICON = '/static_images/vista-icons/windows-update-32.png';
-
-    // Segoe UI 9 dialog units (x * 7/4, y * 15/8): 230 x 106 is Vista's 403 x 199 px dialog
+    const SHIELD = '/static_images/vista-defender/shield-warning-32.png';
+    // wucltux.dll.mui 221, 1110, 222, 1109, 223, 224 (Windows -> Melaton)
+    const S = {
+        title: 'Melaton Update',
+        instruction: 'Restart your computer to finish installing important updates',
+        reason: "Melaton can't update important files and services while the system is using them. Make sure to save your files before restarting."
+    };
+    // the kit gives the combo ("Remind me in:"); the task dialog around it is drawn here (css/update-restart.css)
     const TPL = {
-        t: 'Melaton Update',
-        w: 230,
-        h: 106,
+        t: S.title,
+        w: 231,
+        h: 109,
         f: ['Segoe UI', 9],
         s: 0x80C800C8,
-        c: [
-            [200, 'S', 9, 9, 18, 17, 0x50000003, '', 0],
-            [101, 'S', 34, 8, 188, 18, 0x50020000, 'Restart your computer to finish installing important updates', 0],
-            [102, 'S', 34, 30, 188, 26, 0x50020000, "Melaton can't update important files and services while the system is using them. Make sure to save your files before restarting.", 0],
-            [103, 'S', 34, 58, 188, 9, 0x50020000, 'Restarting in: 5 min, 0 sec', 0],
-            [104, 'S', 34, 73, 52, 9, 0x50020000, '&Remind me in:', 0],
-            [105, 'C', 88, 71, 70, 60, 0x50210003, '', 0],
-            [1, 'B', 108, 87, 58, 14, 0x50010001, 'Restart &now', 0],
-            [2, 'B', 170, 87, 52, 14, 0x50010000, '&Postpone', 0]
-        ]
+        c: [[105, 'C', 0, 0, 86, 60, 0x50210003, '', 0]]
     };
+    const COMBO_ID = 'melatonUpdateRestartDialog-105';
+
+    let cssDone = false;
+    function styles() {
+        if (cssDone || !doc) return;
+        cssDone = true;
+        ['/css/themes/vista/update-restart.css', '/css/update-restart.css'].forEach((href) => {
+            const link = doc.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = href;
+            doc.head.appendChild(link);
+        });
+    }
+
+    /** The bottom-right corner of the work area (above a bottom task bar), as Vista puts it by the notification area. */
+    function place(m) {
+        if (!m || !m.isConnected) return;
+        const r = m.getBoundingClientRect();
+        const bar = doc.getElementById('desktopTaskbar') || doc.getElementById('taskbar');
+        const b = bar ? bar.getBoundingClientRect() : null;
+        const bottom = b && b.height && b.top > root.innerHeight / 2 ? b.top : root.innerHeight;
+        const x = Math.max(0, Math.round(root.innerWidth - r.width - 10));
+        const y = Math.max(0, Math.round(bottom - r.height - 10));
+        if (typeof root.setModalOffsetsFromViewportTopLeft === 'function') root.setModalOffsetsFromViewportTopLeft(m, x, y);
+    }
 
     function settings() {
         let v = null;
@@ -81,8 +110,11 @@
     let deadlineTimer = 0;
     let ctx = null;
     let deadline = 0;
+    let started = 0;
+    let placing = null; // the resize listener while the prompt is up
 
     function clearTimers() {
+        if (placing) { placing.abort(); placing = null; }
         clearTimeout(remindTimer);
         remindTimer = 0;
         clearInterval(tickTimer);
@@ -132,39 +164,95 @@
         if (ctx || !eligible()) return;
         const V = await kit();
         if (!V || typeof V.openDialog !== 'function' || ctx || !eligible()) return;
+        styles();
         const auto = settings().auto;
+        const esc = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
         let remind = '240';
+        // the window in use keeps the keyboard (Vista shows the prompt without taking the focus)
+        const had = doc.activeElement && doc.activeElement !== doc.body ? doc.activeElement : null;
         ctx = V.openDialog({
             id: 'melatonUpdateRestartDialog',
             tpl: TPL,
             icon: ICON,
             bareCaption: true,
-            overrides: { 200: { image: ICON } },
             init: (c) => {
-                const head = c.el(101);
-                if (head) head.classList.add('vdt-main-instruction');
+                const content = c.content;
+                const combo = content.querySelector(`[data-vdt-id="105"]`);
+                const wrap = doc.createElement('div');
+                wrap.className = 'wur';
+                wrap.innerHTML = `
+                    <div class="wur-banner"><img class="wur-icon" src="${SHIELD}" alt="" draggable="false"><div class="wur-instruction">${esc(S.instruction)}</div></div>
+                    <div class="wur-content">
+                        <div class="wur-text">${esc(S.reason)}</div>
+                        ${auto ? '<div class="wur-countdown"><div class="wur-count-text"></div><div class="wur-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><div></div></div></div>' : ''}
+                        <div class="wur-postpone"><label class="wur-remind" for="${COMBO_ID}"><u>R</u>emind me in:</label></div>
+                    </div>
+                    <div class="wur-footer">
+                        <button type="button" class="tbp-ctl tbp-button" data-wur="restart">Restart <u>n</u>ow</button>
+                        <button type="button" class="tbp-ctl tbp-button" data-wur="postpone" data-dialog-primary="1"><u>P</u>ostpone</button>
+                    </div>`;
+                content.appendChild(wrap);
+                if (combo) wrap.querySelector('.wur-postpone').appendChild(combo);
                 c.options(105, REMIND, remind);
                 c.on(105, 'change', () => { remind = String(c.get(105) || remind); });
-                const line = c.el(103);
-                if (!auto) {
-                    if (line) line.hidden = true;
-                    return;
-                }
-                deadline = Date.now() + settings().warnMin * 60 * 1000;
-                c.text(103, countdownText(deadline - Date.now()));
+                // Restart now / Postpone (the default: Enter), Esc postpones; Alt+N, Alt+P, Alt+R (the combo)
+                wrap.addEventListener('click', (ev) => {
+                    const b = ev.target.closest('[data-wur]');
+                    if (!b) return;
+                    if (b.dataset.wur === 'restart') restartNow(true);
+                    else postpone(remind);
+                });
+                c.modal.addEventListener('keydown', (ev) => {
+                    const k = String(ev.key || '').toLowerCase();
+                    if (ev.altKey && k === 'n') { ev.preventDefault(); restartNow(true); return; }
+                    if (ev.altKey && k === 'p') { ev.preventDefault(); postpone(remind); return; }
+                    if (ev.altKey && k === 'r') { ev.preventDefault(); const sel = doc.getElementById(COMBO_ID); if (sel) sel.focus(); return; }
+                    if (ev.key === 'Escape') { ev.preventDefault(); postpone(remind); return; }
+                    if (ev.key === 'Enter' && !(ev.target.closest && ev.target.closest('button, select'))) { ev.preventDefault(); postpone(remind); }
+                });
+                if (!auto) return;
+                const total = settings().warnMin * 60 * 1000;
+                started = Date.now();
+                deadline = started + total;
+                const line = wrap.querySelector('.wur-count-text');
+                const bar = wrap.querySelector('.wur-bar');
+                const paint = () => {
+                    const left = deadline - Date.now();
+                    if (line.textContent !== countdownText(left)) line.textContent = countdownText(left);
+                    const done = Math.max(0, Math.min(100, Math.round(((total - left) / total) * 100)));
+                    bar.style.setProperty('--wur-done', `${done}%`);
+                    bar.setAttribute('aria-valuenow', String(done));
+                };
+                paint();
                 // the restart at the deadline (one timeout: it holds with the screen off, as Vista's does) ...
-                deadlineTimer = setTimeout(() => restartNow(true), deadline - Date.now());
-                // ... and the second tick of the text, drawn only while the page is seen
+                deadlineTimer = setTimeout(() => restartNow(true), total);
+                // ... and the second tick of the text and bar, drawn only while the page is seen
                 tickTimer = setInterval(() => {
                     if (doc.hidden || doc.documentElement.dataset.screenOff !== undefined) return;
-                    c.text(103, countdownText(deadline - Date.now()));
+                    paint();
                 }, 1000);
             },
-            // Restart now (IDOK) / Postpone (IDCANCEL, also the caption's close)
-            ok: () => { restartNow(false); },
+            // the kit's own cancel (its close paths): postponed, as Vista's Postpone
             cancel: () => { const r = remind; ctx = null; clearTimers(); postpone(r); }
         });
-        if (ctx && ctx.modal && typeof root.bringModalToFront === 'function') root.bringModalToFront(ctx.modal);
+        if (!ctx || !ctx.modal) return;
+        const m = ctx.modal;
+        // the bottom-right corner, after the kit's own centring (next frame), and again whenever the screen changes
+        placing = new AbortController();
+        root.addEventListener('resize', () => place(m), { signal: placing.signal });
+        // its own size settles after the styles and fonts land: placed again then (the corner is its bottom-right)
+        if (typeof root.ResizeObserver === 'function') {
+            // (a frame later: the window manager keeps a growing window on screen first, flush to the edge)
+            const ro = new root.ResizeObserver(() => root.requestAnimationFrame(() => place(m)));
+            ro.observe(m);
+            placing.signal.addEventListener('abort', () => ro.disconnect(), { once: true });
+        }
+        root.requestAnimationFrame(() => root.requestAnimationFrame(() => {
+            place(m);
+            if (had && had.isConnected && typeof had.focus === 'function') { try { had.focus({ preventScroll: true }); } catch (_) { /* gone */ } }
+        }));
+        setTimeout(() => place(m), 120);
+        setTimeout(() => place(m), 600);
     }
 
     /** The updates are gone (installed live, or the restart runs): no prompt, no reminder. */

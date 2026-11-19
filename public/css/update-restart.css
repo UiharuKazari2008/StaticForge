@@ -1,0 +1,127 @@
+/* Melaton Update's restart prompt (#945; public/scripts/comp/updateRestartPrompt.js): Vista's wuauclt task dialog
+   "Restart your computer to finish installing important updates", 1:1 with the Vista capture (408 x 230 window,
+   404 x 204 client) and wucltux.dll's UIFILE 127 (the countdown area: bold "Restarting in: ..." over a 206 px
+   progress bar, 15 px above; the postpone row right-aligned, 15 px above and 6 px under; the combo 150 px, 18 px
+   after its label). Colours are the theme's (css/themes/vista/update-restart.css). */
+
+/* no caption buttons: the prompt is answered with Restart now or Postpone */
+#melatonUpdateRestartDialog > .modal-window-controls { display: none; }
+
+/* its height is its content's (the countdown area comes and goes), not the kit's template size */
+#melatonUpdateRestartDialog.modal { height: auto !important; }
+
+#melatonUpdateRestartDialog > .modal-content.vdt-client.vdt-plain {
+    box-sizing: border-box;
+    width: 404px !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 0 !important;
+    background: var(--wur-content);
+}
+
+#melatonUpdateRestartDialog .wur {
+    display: flex;
+    flex-direction: column;
+}
+
+#melatonUpdateRestartDialog .wur > * {
+    flex: none;
+    font-size: 12px;
+    line-height: 15px;
+    color: var(--wur-text);
+}
+
+/* the shield-warning banner: the 32 px shield 9 px in, the main instruction (12 pt) from 50 px, 53 px with its edge */
+#melatonUpdateRestartDialog .wur-banner {
+    position: relative;
+    box-sizing: border-box;
+    min-height: 53px;
+    padding: 8px 12px 9px 50px;
+    border-bottom: 1px solid var(--wur-banner-edge);
+    background: var(--wur-banner);
+}
+
+#melatonUpdateRestartDialog .wur-icon {
+    position: absolute;
+    left: 9px;
+    top: 10px;
+    width: 32px;
+    height: 32px;
+}
+
+/* a task dialog's text and controls are Segoe UI 9 pt (12 px), not the 11 px of the kit's MS Shell Dlg dialogs
+   (taskbar-properties.css); the main instruction 12 pt */
+#melatonUpdateRestartDialog .wur :is(div, label, button, select) {
+    font-size: 12px;
+}
+
+#melatonUpdateRestartDialog .wur .wur-instruction {
+    font-size: 16px;
+    line-height: 21px;
+    color: var(--wur-instruction);
+}
+
+/* the content: aligned with the instruction, 9 px under the banner */
+/* (the text wraps at Vista's width, ~334 px; the combo row runs to 6 px from the edge) */
+#melatonUpdateRestartDialog .wur-content {
+    padding: 9px 6px 10px 50px;
+}
+
+#melatonUpdateRestartDialog .wur-text {
+    padding-right: 24px;
+}
+
+#melatonUpdateRestartDialog .wur-countdown {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 15px;
+}
+
+#melatonUpdateRestartDialog .wur-count-text {
+    font-weight: bold;
+}
+
+#melatonUpdateRestartDialog .wur-bar[role="progressbar"] {
+    box-sizing: border-box;
+    width: 206px;
+    height: 16px;
+    margin: 3px 0 11px;
+}
+
+#melatonUpdateRestartDialog .wur-bar[role="progressbar"] > div {
+    width: var(--wur-done, 0%);
+}
+
+/* Remind me in: [combo], right-aligned */
+#melatonUpdateRestartDialog .wur-postpone {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 18px;
+    padding: 15px 0 6px;
+}
+
+#melatonUpdateRestartDialog .wur-postpone .vdt-select {
+    position: static !important;
+    width: 151px !important;
+    height: 22px !important;
+    margin: 0;
+}
+
+/* the command area: the grey band under a 1 px edge, Restart now and Postpone (the default) at the right */
+#melatonUpdateRestartDialog .wur-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 8px 12px 9px;
+    border-top: 1px solid var(--wur-footer-edge);
+    background: var(--wur-footer);
+}
+
+#melatonUpdateRestartDialog .wur-footer > button {
+    position: static !important;
+    min-width: 90px;
+    height: 23px;
+    margin: 0;
+}
