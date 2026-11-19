@@ -4728,11 +4728,10 @@
      * The RIL's operator names as the phone shows them: Android reports today's short brand, the
      * device shows the carrier's classic network name (Yukimi, Nov 13). Exact names only, any case.
      */
-    const CARRIER_NAMES = { verizon: 'Verizon Wireless' };
+    // the names live in androidTrayProviders.js (melatonCarrierName), shared with the desktop (#945)
     function carrierName(name) {
-        if (typeof name !== 'string') return name;
-        const t = name.trim();
-        return CARRIER_NAMES[t.toLowerCase()] || t;
+        if (typeof window.melatonCarrierName === 'function') return window.melatonCarrierName(name);
+        return typeof name === 'string' ? name.trim() : name;
     }
 
     function takeDeviceStatus(s) {

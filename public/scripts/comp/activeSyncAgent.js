@@ -296,7 +296,9 @@
         if (s) {
             if (s.battery) out.battery = s.battery;
             if (s.wifi) out.wifi = s.wifi;
-            if (s.cellular) out.cellular = s.cellular;
+            // the carrier's classic name (melatonCarrierName, androidTrayProviders.js: Verizon Wireless), as Melaton shows it (#945)
+            if (s.cellular) out.cellular = typeof root.melatonCarrierName === 'function' && typeof s.cellular.operator === 'string'
+                ? Object.assign({}, s.cellular, { operator: root.melatonCarrierName(s.cellular.operator) }) : s.cellular;
             if (s.active != null) out.active = s.active;
         } else if (webBattery) {
             out.battery = { level: Math.round(webBattery.level * 100), charging: !!webBattery.charging };

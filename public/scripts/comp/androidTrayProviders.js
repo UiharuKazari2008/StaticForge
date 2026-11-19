@@ -27,6 +27,17 @@
     const doc = root.document;
     const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
     const tray = root.melatonTray;
+    /*
+     * The RIL's operator names as Melaton shows them, on the phone and its desktop alike (#945): Android reports
+     * today's short brand, Melaton the carrier's classic network name (Yukimi, Nov 13). Exact names, any case.
+     * Defined before this file's desktop-only part: Melaton Mobile (wmShell.js) uses it too.
+     */
+    const CARRIER_NAMES = { verizon: 'Verizon Wireless' };
+    root.melatonCarrierName = (name) => {
+        if (typeof name !== 'string') return name;
+        const t = name.trim();
+        return CARRIER_NAMES[t.toLowerCase()] || t;
+    };
     const isDesktop = (() => {
         try { return !!(root.AndroidDisplay && typeof root.AndroidDisplay.isDesktop === 'function' && root.AndroidDisplay.isDesktop()); } catch (_) { return false; }
     })();
@@ -144,7 +155,7 @@
                 present: true,
                 on: c.dataEnabled !== false && c.radioOn !== false && !c.airplane,
                 connected: !!c.dataActive,
-                carrier: c.operator || '',
+                carrier: root.melatonCarrierName(c.operator || ''),
                 generation: c.dataType || '',
                 // 0-5 bars to the tray's percent scale (bars() there: 20 % a bar)
                 signalPercent: Number.isFinite(bars) ? Math.max(0, Math.min(100, bars * 20)) : 0,

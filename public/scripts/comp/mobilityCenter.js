@@ -170,7 +170,7 @@
         const m = s && s.mobile && s.mobile.present ? s.mobile : null;
         if (m) {
             return {
-                carrier: m.carrier || (c && c.operator) || '',
+                carrier: m.carrier || (c && c.operator && typeof root.melatonCarrierName === 'function' ? root.melatonCarrierName(c.operator) : (c && c.operator)) || '',
                 type: m.generation || (c && c.dataType) || '',
                 bars: barsOf(m.signalPercent),
                 on: m.on !== false,
@@ -182,7 +182,7 @@
         if (!c || !c.present || c.simState === 'absent') return null;
         const level = Number.isFinite(Number(c.level5)) ? Number(c.level5) : Number(c.level);
         return {
-            carrier: c.operator || '',
+            carrier: typeof root.melatonCarrierName === 'function' ? root.melatonCarrierName(c.operator || '') : (c.operator || ''),
             type: c.dataType || '',
             bars: Number.isFinite(level) ? Math.max(0, Math.min(5, Math.round(level))) : 0,
             on: c.dataEnabled !== false && c.radioOn !== false && !c.airplane,
