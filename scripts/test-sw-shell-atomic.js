@@ -66,8 +66,9 @@ function world() {
         'let scriptCodeCacheOpen = null; let scriptCodeKeyIndex = null;',
         fnSource('openScriptCodeCache'), fnSource('scriptCodeKeys'), fnSource('isAuthGatedStaticPath'), fnSource('matchStaticShell'),
         fnSource('shellFileRefs'), fnSource('shellFileMissing'), fnSource('keepShell'), fnSource('promoteShell'), fnSource('commitShells'),
+        constSource('SHELL_MISSING_SUFFIX'), fnSource('promoteBeforeStart'), fnSource('refreshShellCandidates'),
         fnSource('answerHashedAsset'), fnSource('earlierScriptCopy'), fnSource('fetchMissingHashedAsset'), fnSource('reportMissingAsset'),
-        'this.api = { shellFileRefs, keepShell, commitShells, answerHashedAsset, SHELL_CRITICAL_PATHS };'
+        'this.api = { shellFileRefs, keepShell, commitShells, answerHashedAsset, promoteBeforeStart, refreshShellCandidates, SHELL_CRITICAL_PATHS };'
     ].join('\n'), ctx);
     return { ctx, api: ctx.api, open, posted, navigated };
 }
@@ -160,6 +161,45 @@ const shell = (html) => new Response(html, { status: 200, headers: { 'x-melaton-
     answer = await w.api.answerHashedAsset({ waitUntil: () => {} }, request, url, url.href);
     assert.strictEqual(await answer.text(), 'previous', 'the previous version answers');
     assert.deepStrictEqual(w.navigated, []);
+
+    // ---- #951: a start promotes a candidate whose files arrived; one lookup while they have not ----
+    w = world();
+    const stat3 = await w.open('static');
+    const kept3 = await w.open('shell');
+    await stat3.put('/scripts/comp/desktopBoot.js', row(A));
+    await stat3.put('/scripts/app.js', row(A));
+    await stat3.put('/css/x.css', row(C));
+    await kept3.put('/app', shell(page(A, A)));
+    assert.strictEqual(await w.api.keepShell('/app', shell(page(B, B))), false, 'the newer page waits as a candidate');
+    assert.strictEqual(await w.api.promoteBeforeStart('/app'), false, 'a start keeps the old shell while the files are missing');
+    const mark = await kept3.match('/app.next-missing');
+    assert.ok(mark && /\?b{64}$/.test(await mark.text()), 'the first missing file is remembered');
+    let lookups = 0;
+    const realGet = stat3.rows.get.bind(stat3.rows);
+    stat3.rows.get = (k) => { lookups += 1; return realGet(k); };
+    assert.strictEqual(await w.api.promoteBeforeStart('/app'), false);
+    assert.strictEqual(lookups, 1, 'while it is still missing a start looks up that one file only');
+    stat3.rows.get = realGet;
+    await stat3.put('/scripts/comp/desktopBoot.js', row(B));
+    await stat3.put('/scripts/app.js', row(B));
+    assert.strictEqual(await w.api.promoteBeforeStart('/app'), true, 'once the files are here the start runs the new shell');
+    assert.strictEqual(await (await kept3.match('/app')).text(), page(B, B));
+    assert.strictEqual(await kept3.match('/app.next-missing'), undefined, 'the mark goes with the candidate');
+
+    // ---- #951: a shutdown install fetches the server's newest shell and commits it with its files ----
+    w = world();
+    const stat4 = await w.open('static');
+    const kept4 = await w.open('shell');
+    await stat4.put('/scripts/comp/desktopBoot.js', row(B));
+    await stat4.put('/scripts/app.js', row(B));
+    await stat4.put('/css/x.css', row(C));
+    await kept4.put('/app', shell(page(A, A)));
+    w.ctx.fetch = async (key) => (key === '/app' ? shell(page(B, B)) : new Response('', { status: 404 }));
+    assert.strictEqual((await w.api.commitShells(true)).app, true, 'the refreshed candidate becomes the kept shell');
+    assert.strictEqual(await (await kept4.match('/app')).text(), page(B, B), 'the restart starts on the files just installed');
+    // the server unreachable: the commit still runs with what is held
+    w.ctx.fetch = async () => { throw new Error('offline'); };
+    assert.strictEqual((await w.api.commitShells(true)).app, false, 'nothing new to switch, and no hang');
 
     // the pages keep these in step with the worker
     const boot = fs.readFileSync(path.join(__dirname, '..', 'public', 'scripts', 'launch', 'melatonBoot.js'), 'utf8');

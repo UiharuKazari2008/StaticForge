@@ -35,6 +35,18 @@ async function answerHashedAsset(event, request, url, key) {
     if (row) return row;
     // the kept file is another version than the page asked for: what the router answered before
     const shellHit = await matchStaticShell(url.pathname);
+    // a browser (not an installed client, which must start without the server) asking for a newer version than the
+    // cache holds gets it from the server when it answers in time (#951): old bytes under the new ?sha= left the
+    // page on old code with nothing telling it so
+    const wanted = url.searchParams.get('sha');
+    if (shellHit && wanted && shellHit.headers.get('x-file-hash') !== wanted && !isAppWebView(request)) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 3000);
+      try {
+        const net = await fetch(request, { signal: ctl.signal });
+        if (net && net.ok) return net;
+      } catch (_err) { /* the held copy below */ } finally { clearTimeout(timer); }
+    }
     if (shellHit) return respondWithSavedAsset(request, shellHit, SHELL_ASSET_CACHE_CONTROL);
     // no row at all (#924): an earlier version this worker still holds a copy of boots the page;
     // the update check that follows the start fetches the right one
@@ -401,7 +413,13 @@ function freshDownloadState() {
         abortController: null,
         silent: false,
         updatedFiles: [],
-        absentFiles: []
+        absentFiles: [],
+        // #951: the files still to fetch (a later request merges in), what each finished url was fetched at,
+        // the files whose bytes were not the manifest's, and the pages that asked for this download
+        queue: [],
+        doneHash: new Map(),
+        mismatched: [],
+        requesters: new Set()
     };
 }
 
@@ -1652,6 +1670,7 @@ async function keepShell(key, response) {
     return true;
   }
   await cache.put(key + SHELL_NEXT_SUFFIX, response);
+  await cache.delete(key + '.next-missing'); // the old candidate's missing file says nothing about this one
   return promoteShell(key);
 }
 
@@ -1663,18 +1682,66 @@ async function promoteShell(key) {
   if (missing) return false;
   await cache.put(key, next);
   await cache.delete(key + SHELL_NEXT_SUFFIX);
+  await cache.delete(key + '.next-missing');
   return true;
 }
 
-/** SHELL_COMMIT from a page: the cache is in sync, so the candidates' files are here now. */
-async function commitShells() {
-  const app = await promoteShell(APP_SHELL_KEY).catch(() => false);
-  const launch = await promoteShell(LAUNCH_SHELL_KEY).catch(() => false);
+/**
+ * The server's newest shells as candidates (#951): at a shutdown install the page asks for this before it commits, so
+ * the restart boots the /app that names the files just installed. Before, the candidate only came with the next
+ * start's background refresh, so a restart for updates on an installed client booted the old /app (old ?sha=, old
+ * code) and then asked for a second restart. Bounded; offline or slow, the candidates already held are used.
+ */
+async function refreshShellCandidates(ms = 1500) {
+  const one = async (key, mark) => {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), ms);
+    try {
+      const r = await fetch(key, { credentials: 'same-origin', cache: 'no-store', signal: ctl.signal });
+      // true: the server's page is the kept shell now (new and complete, or the same as the one kept)
+      if (r && r.status === 200 && r.headers.get('x-melaton-shell') === mark) return await keepShell(key, r.clone());
+    } catch (_err) { /* the held candidate stays */ } finally { clearTimeout(timer); }
+    return false;
+  };
+  const [app, launch] = await Promise.all([one(APP_SHELL_KEY, 'app'), one(LAUNCH_SHELL_KEY, 'launch')]);
   return { app, launch };
+}
+
+/** SHELL_COMMIT from a page: the cache is in sync, so the candidates' files are here now. */
+async function commitShells(refresh = false) {
+  const fresh = refresh ? await refreshShellCandidates().catch(() => ({})) : {};
+  const app = (await promoteShell(APP_SHELL_KEY).catch(() => false)) || fresh.app === true;
+  const launch = (await promoteShell(LAUNCH_SHELL_KEY).catch(() => false)) || fresh.launch === true;
+  return { app, launch };
+}
+
+// The candidate's first missing file, kept beside it (<key>.next-missing): a start looks that one file up instead of
+// the candidate's ~450, so a candidate whose files are not here yet costs one cache lookup per start
+const SHELL_MISSING_SUFFIX = '.next-missing';
+
+/** A start: a held candidate whose files are all here becomes the kept shell first (#951), cheaply when they are not. */
+async function promoteBeforeStart(key) {
+  const cache = await caches.open(LAUNCH_SHELL_CACHE);
+  const next = await cache.match(key + SHELL_NEXT_SUFFIX);
+  if (!next) return false;
+  const mark = await cache.match(key + SHELL_MISSING_SUFFIX);
+  if (mark) {
+    const ref = String(await mark.text()).split('?');
+    const row = ref[0] ? await matchStaticShell(ref[0]) : null;
+    if (!row || row.headers.get('x-file-hash') !== ref[1]) return false;
+  }
+  const missing = await shellFileMissing(await next.clone().text());
+  if (missing) {
+    await cache.put(key + SHELL_MISSING_SUFFIX, new Response(`${missing.path}?${missing.sha}`));
+    return false;
+  }
+  return promoteShell(key);
 }
 
 async function keptFirst(event, key, refresh) {
   try {
+    // a candidate whose files are all here now (an install at shutdown that could not commit) is the start's shell
+    await promoteBeforeStart(key).catch(() => false);
     const cache = await caches.open(LAUNCH_SHELL_CACHE);
     const kept = await cache.match(key);
     if (kept) {
@@ -2128,7 +2195,7 @@ self.addEventListener('message', (event) => {
         const files = event.data.files || [];
         // held by the message (up to EVENT_HOLD_MAX_MS): a worker with nothing else to answer was
         // stopped mid-download
-        event.waitUntil(heldAtMost(perfSpan(`cacheStaticFiles ${files.length} files`, () => cacheStaticFiles(files, event.data.silent === true))));
+        event.waitUntil(heldAtMost(perfSpan(`cacheStaticFiles ${files.length} files`, () => cacheStaticFiles(files, event.data.silent === true, event.data.requester || ''))));
     } else if (event.data && event.data.type === 'PHONE_PREFETCH') {
         // Melaton Mobile's page: the network it is on (assetPackages.js); Wi-Fi starts the prefetch
         notePhoneNetwork(event.data.network);
@@ -2193,7 +2260,7 @@ self.addEventListener('message', (event) => {
     } else if (event.data && event.data.type === 'SHELL_COMMIT') {
         // the page proved the cache in sync: the held shells switch with their files (#924)
         const source = event.source;
-        event.waitUntil(commitShells().then((result) => {
+        event.waitUntil(commitShells(event.data.refresh === true).then((result) => {
             if (source && event.data.requestId) source.postMessage({ type: 'SHELL_COMMITTED', requestId: event.data.requestId, app: result.app, launch: result.launch });
         }));
     } else if (event.data && event.data.type === 'GET_DOWNLOAD_STATE') {
@@ -2573,8 +2640,34 @@ function noteInstallFileDone(fileUrl, absentReason) {
     postStaticCacheProgress(downloadState.completed, downloadState.total, fileUrl);
 }
 
-async function cacheStaticFiles(files, silent = false) {
-    // Check if already downloading
+/**
+ * A request while a download runs (#951): its files join the running one instead of being dropped - a new url is
+ * queued, a queued one takes the newer hash, a finished one fetched at another hash is fetched again. One completion
+ * then covers every set, so a later notify never needs a second restart. True when it merged.
+ */
+function mergeIntoRunningDownload(files, requester) {
+    if (!downloadState.isDownloading || !Array.isArray(downloadState.queue)) return false;
+    if (requester) downloadState.requesters.add(String(requester));
+    let added = 0;
+    for (const file of files) {
+        if (!file || !file.url) continue;
+        const queued = downloadState.queue.find((f) => f.url === file.url);
+        if (queued) { queued.hash = file.hash; continue; }
+        if (downloadState.doneHash.get(file.url) === file.hash) continue;
+        downloadState.queue.push(Object.assign({}, file));
+        downloadState.files.push(file);
+        added++;
+    }
+    downloadState.total += added;
+    if (added) postStaticCacheProgress(downloadState.completed, downloadState.total, downloadState.currentFile);
+    return true;
+}
+
+async function cacheStaticFiles(files, silent = false, requester = '') {
+    // Check if already downloading: the new set joins it (#951)
+    if (downloadState.isDownloading && mergeIntoRunningDownload(files, requester)) {
+        if (silent !== true) downloadState.silent = false;
+    }
     if (downloadState.isDownloading) {
         console.warn('Download already in progress, sending current status');
         const completedNow = downloadState.completed;
@@ -2613,7 +2706,11 @@ async function cacheStaticFiles(files, silent = false) {
         downloadState.currentFile = null;
         downloadState.startTime = Date.now();
         downloadState.lastProgressTime = Date.now();
-        downloadState.files = files;
+        downloadState.files = files.slice();
+        downloadState.queue = files.map((f) => Object.assign({}, f));
+        downloadState.doneHash = new Map();
+        downloadState.mismatched = [];
+        downloadState.requesters = new Set(requester ? [String(requester)] : []);
         // kept here too: a cancel nulls downloadState.abortController while caches.open is awaited
         const downloadAbort = new AbortController();
         downloadState.abortController = downloadAbort;
@@ -2637,8 +2734,9 @@ async function cacheStaticFiles(files, silent = false) {
         const cache = await caches.open(STATIC_CACHE);
         const signal = downloadAbort.signal;
         
-        // Cache files one by one to track progress
-        for (const file of files) {
+        // Cache files one by one to track progress; the queue grows when a later request merges in (#951)
+        while (downloadState.queue.length) {
+            const file = downloadState.queue.shift();
             // Check if download was cancelled
             if (signal.aborted) {
                 console.log('Download cancelled by user');
@@ -2745,9 +2843,13 @@ async function cacheStaticFiles(files, silent = false) {
 
                         const cachedResponse = await cache.match(cacheKey, { ignoreVary: true });
                         const newHash = cachedResponse && cachedResponse.headers.get('x-file-hash');
+                        downloadState.doneHash.set(file.url, newHash || '');
                         if (newHash !== file.hash) {
                             console.warn(`Hash mismatch! Expected: ${file.hash}, Got: ${newHash}`);
+                            // not an update the page can restart into: reported apart, never as updated (#951)
+                            downloadState.mismatched.push({ url: file.url, hash: file.hash, got: newHash || '' });
                         } else {
+                            downloadState.updatedFiles = downloadState.updatedFiles.filter((f) => f.url !== file.url);
                             downloadState.updatedFiles.push({ url: file.url, hash: file.hash });
                         }
 
@@ -2804,6 +2906,9 @@ async function cacheStaticFiles(files, silent = false) {
         const completedCount = downloadState.completed > 0 ? downloadState.completed : files.length;
         const totalCount = downloadState.total > 0 ? downloadState.total : files.length;
         const updatedFiles = downloadState.updatedFiles.slice();
+        const mismatched = (downloadState.mismatched || []).slice();
+        const requesters = Array.from(downloadState.requesters || []);
+        const allFiles = (downloadState.files || files).slice();
         const wasSilent = downloadState.silent === true;
         // when it began: a page that loaded after that (a restart that did not wait for the download, #945)
         // knows it is not a new update for it - its own boot check judged the cache
@@ -2817,13 +2922,18 @@ async function cacheStaticFiles(files, silent = false) {
             clients.forEach(client => {
                 client.postMessage({
                     type: 'STATIC_CACHE_COMPLETE',
-                    files: files,
+                    files: allFiles,
                     completed: completedCount,
                     total: totalCount,
                     updatedFiles: updatedFiles,
                     silent: wasSilent,
                     absent: absent,
-                    startedAt: startedAt
+                    startedAt: startedAt,
+                    // #951: the pages that asked for or joined this download, and the files whose bytes were not the
+                    // manifest's (not updates); 'v' tells a page this worker reports updatedFiles exactly
+                    requesters: requesters,
+                    mismatched: mismatched,
+                    v: 2
                 });
             });
         });
