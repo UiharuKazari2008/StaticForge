@@ -433,6 +433,9 @@
             case 'wifi-connect': if (root.dreamosWifi) root.dreamosWifi.openConnect(); break;
             case 'wifi-manage': if (root.dreamosWifi) root.dreamosWifi.openManage(); break;
             case 'wifi-status': if (root.dreamosWifi) root.dreamosWifi.openStatus(); break;
+            // Network Connections and Set up a connection or network (#932): dreamosWifi.js; without it the old status
+            case 'ncpa': if (root.dreamosWifi && root.dreamosWifi.openConnections) root.dreamosWifi.openConnections(); else openStatusDialog(); break;
+            case 'net-setup': if (root.dreamosWifi && root.dreamosWifi.openSetup) root.dreamosWifi.openSetup(); break;
             default: break;
         }
     }
@@ -1100,10 +1103,11 @@
                 <h3 class="cpl-task-heading">Tasks</h3>
                 <ul class="cpl-task-list">
                     ${wifiUi() ? `${taskLink('Connect to a network', 'wifi-connect')}${taskLink('Manage wireless networks', 'wifi-manage')}` : ''}
+                    ${root.dreamosWifi && root.dreamosWifi.openSetup ? taskLink('Set up a connection or network', 'net-setup') : ''}
+                    ${taskLink('Manage network connections', 'ncpa')}
                     ${state === 'connected' || state === 'connecting'
                         ? taskLink(`Disconnect ${i.connectionName}`, 'disconnect')
                         : taskLink(`Connect ${i.connectionName}`, 'connect')}
-                    ${taskLink('Manage network connections', 'status')}
                     ${taskLink('Customize network name', 'customize')}
                     ${taskLink('Rename this connection', 'rename')}
                     ${taskLink('Diagnose and repair', 'diagnose')}
@@ -1638,6 +1642,9 @@
             if (action === 'center') open('network');
             else if (action === 'portal' && portal()) void portal().openBrowser();
             else if (action === 'wifi-connect' && root.dreamosWifi) root.dreamosWifi.openConnect();
+            // the wireless adapter switched off: Turn this on (pnidui 33) / Network Connections
+            else if (action === 'wifi-on' && root.dreamosWifi && root.dreamosWifi.setRadio) void root.dreamosWifi.setRadio(true);
+            else if (action === 'ncpa' && root.dreamosWifi && root.dreamosWifi.openConnections) root.dreamosWifi.openConnections();
         });
         doc.body.appendChild(flyout);
         // Outside click / Escape closes it, like Vista's flyouts
@@ -1686,6 +1693,8 @@
     /** DreamOS (#932): the laptop's own link from the CaféReady host (dreamosNetTray.js), Wi-Fi with its signal. */
     function dreamosFlyoutHtml(l) {
         const wifiUi = root.dreamosWifi && typeof root.dreamosWifi.openConnect === 'function';
+        // the wireless adapter is there but switched off: Vista's offer to turn it on (pnidui.dll.mui 31 / 33)
+        const radioOff = l.kind === 'none' && l.radio === 'off' && wifiUi && typeof root.dreamosWifi.setRadio === 'function';
         const captive = portal();
         // Vista's flyout shows the network's location icon (pnidui.dll 0, a private network), or 19 with nothing connected
         const pic = l.kind === 'none' ? '/static_images/vista-net/pnidui-19-32.png' : '/static_images/vista-net/pnidui-0-32.png';
@@ -1694,6 +1703,8 @@
                     <img src="${pic}" alt="" draggable="false">
                     <div class="network-flyout-text">
                         <span class="network-flyout-sub">${l.connecting ? 'Connecting...' : 'You are currently not connected to any networks.'}</span>
+                        ${radioOff ? `<span class="network-flyout-sub">Do you want to turn on Wireless Network Connection?</span>
+                        <button type="button" class="network-flyout-link network-flyout-turnon" data-flyout-action="wifi-on">Turn this on</button>` : ''}
                         ${l.available && !l.connecting ? '<span class="network-flyout-sub">Wireless networks are available.</span>' : ''}
                     </div>
                 </div>`
@@ -1714,6 +1725,7 @@
             <div class="network-flyout-links">
                 ${captive ? `<button type="button" class="network-flyout-link" data-flyout-action="portal">${esc(captive.title)} Open your browser</button>` : ''}
                 ${wifiUi ? `<button type="button" class="network-flyout-link" data-flyout-action="wifi-connect">${l.kind === 'none' ? 'Connect to a network' : 'Connect or disconnect...'}</button>` : ''}
+                ${radioOff ? '<button type="button" class="network-flyout-link" data-flyout-action="ncpa">Network Connections</button>' : ''}
                 <button type="button" class="network-flyout-link" data-flyout-action="center">Network and Server Center</button>
             </div>`;
     }
