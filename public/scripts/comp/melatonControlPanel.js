@@ -1087,7 +1087,7 @@
     }
 
     function mapLink(state, title) {
-        return `<div class="cpl-map-link cpl-map-link--${state}" title="${esc(title)}"><span class="cpl-map-line"></span>${state === 'down' ? '<span class="cpl-map-x" aria-hidden="true">&#10005;</span>' : ''}</div>`;
+        return `<div class="cpl-map-link cpl-map-link--${state}" title="${esc(title)}"><span class="cpl-map-line"></span>${state === 'down' ? '<img class="cpl-map-x" src="/static_images/vista-net/netcenter-16-16.png" alt="" draggable="false">' : state === 'limited' ? '<img class="cpl-map-x" src="/static_images/vista-net/netcenter-17-16.png" alt="" draggable="false">' : ''}</div>`;
     }
 
     pages.network = {
@@ -1135,11 +1135,11 @@
                 <h1 class="cpl-page-title">Network and Server Center</h1>
                 ${dos ? `
                 <div class="cpl-map">
-                    ${mapNode('/static_images/vista-net/pnidui-22-48.png', 'This computer')}
-                    ${mapLink(dos.kind === 'none' ? 'down' : 'ok', dos.kind === 'none' ? 'Not connected' : `Connected through ${dos.kind === 'wifi' ? 'Wireless Network Connection' : 'Local Area Connection'}`)}
-                    ${mapNode(dos.kind === 'none' ? '/static_images/vista-net/pnidui-19-48.png' : '/static_images/vista-net/pnidui-0-48.png', dos.kind === 'none' ? 'Not connected' : dos.name, dos.kind === 'wifi' ? 'Wireless network' : dos.kind === 'wired' ? 'Network' : '')}
-                    ${mapLink(dos.kind === 'none' || dos.limited ? 'down' : 'ok', dos.kind === 'none' || dos.limited ? 'Local only' : 'Local and Internet')}
-                    ${mapNode('/static_images/vista-net/pnidui-20-48.png', 'Internet')}
+                    ${mapNode('/static_images/vista-net/netcenter-1-48.png', 'This computer')}
+                    ${mapLink(dos.kind === 'none' ? 'down' : 'ok', dos.kind === 'none' ? 'Not connected' : `Connected through ${dos.kind === 'wifi' ? 'Wireless Network Connection' : dos.kind === 'mobile' ? 'Mobile Broadband Connection' : 'Local Area Connection'}`)}
+                    ${mapNode(dos.kind === 'none' ? '/static_images/vista-net/pnidui-19-48.png' : '/static_images/vista-net/pnidui-0-48.png', dos.kind === 'none' ? 'Not connected' : dos.name, dos.kind === 'wifi' ? 'Wireless network' : dos.kind === 'mobile' ? 'Mobile broadband' : dos.kind === 'wired' ? 'Network' : '')}
+                    ${mapLink(dos.kind === 'none' ? 'down' : dos.limited ? 'limited' : 'ok', dos.kind === 'none' || dos.limited ? 'Local only' : 'Local and Internet')}
+                    ${mapNode('/static_images/vista-net/netcenter-3-48.png', 'Internet')}
                 </div>
                 ${dos.kind !== 'none' ? `
                 <div class="cpl-box">
@@ -1153,21 +1153,21 @@
                     </div>
                     <div class="cpl-row">
                         <span class="cpl-row-label">Connection</span>
-                        <span class="cpl-row-value">${dos.kind === 'wifi' ? `Wireless Network Connection (${esc(dos.name)})` : 'Local Area Connection'}</span>
+                        <span class="cpl-row-value">${dos.kind === 'wifi' ? `Wireless Network Connection (${esc(dos.name)})` : dos.kind === 'mobile' ? `Mobile Broadband Connection (${esc(dos.name)})` : 'Local Area Connection'}</span>
                         ${dos.kind === 'wifi' && wifiUi() ? '<button type="button" class="cpl-link cpl-row-action" data-cpl-action="wifi-status">View status</button>' : ''}
                     </div>
-                    ${dos.kind === 'wifi' ? `
+                    ${dos.kind === 'wifi' || dos.kind === 'mobile' ? `
                     <div class="cpl-row">
                         <span class="cpl-row-label">Signal strength</span>
                         <span class="cpl-row-value">${esc(dos.strength)}</span>
                     </div>` : ''}
                 </div>` : ''}` : `
                 <div class="cpl-map">
-                    ${mapNode('/static_images/vista-net/pnidui-22-48.png', 'This computer')}
+                    ${mapNode('/static_images/vista-net/netcenter-1-48.png', 'This computer')}
                     ${mapLink(clientLink, state === 'connected' && !portal() ? `Connected through ${i.connectionName}` : accessText(state))}
                     ${mapNode('/static_images/vista-net/pnidui-38-48.png', i.domain, 'Domain controller')}
                     ${mapLink(serverLink, reachable ? 'Connected' : 'Unknown')}
-                    ${mapNode('/static_images/vista-net/pnidui-20-48.png', 'Internet')}
+                    ${mapNode('/static_images/vista-net/netcenter-3-48.png', 'Internet')}
                 </div>`}
                 <div class="cpl-box">
                     <div class="cpl-box-head">
@@ -1699,9 +1699,9 @@
             : `<div class="network-flyout-item">
                     <img src="${pic}" alt="" draggable="false">
                     <div class="network-flyout-text">
-                        <span class="network-flyout-name">${esc(l.name)}</span>
+                        <span class="network-flyout-name">${esc(l.name)}${l.kind === 'wifi' || l.kind === 'mobile' ? `<img class="network-flyout-bars" src="/static_images/vista-net/tray-wifi-${l.bars}-16.png" srcset="/static_images/vista-net/tray-wifi-${l.bars}-32.png 2x" alt="" width="16" height="16" draggable="false">` : ''}</span>
                         <span class="network-flyout-sub">Access: ${esc(l.access)}</span>
-                        ${l.kind === 'wifi' ? `<span class="network-flyout-sub">Signal strength:  ${esc(l.strength)}</span>` : ''}
+                        ${l.kind === 'wifi' || l.kind === 'mobile' ? `<span class="network-flyout-sub">Signal strength:  ${esc(l.strength)}</span>` : ''}
                     </div>
                 </div>`;
         return `

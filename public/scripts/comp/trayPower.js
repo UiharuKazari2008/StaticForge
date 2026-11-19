@@ -2,7 +2,7 @@
  * The battery meter in the notification area (#932, #910): Vista's power icon (batmeter.dll), its flyout and its
  * balloons, for a computer with a battery.
  *
- *   Source      DreamOS: the CaféReady host's pushed hardware state (window.DreamOSHardware + 'dreamoshw': the
+ *   Source      the 'power' tray provider (trayProviders.js, docs/client-api/tray-providers.md). DreamOS's: the CaféReady host's pushed hardware state (window.DreamOSHardware + 'dreamoshw': the
  *               batteries, AC, battery protection) and window.AndroidHardware.getBattery() for the time left (a
  *               loopback read, done when the host pushes, never on a timer). A browser: the Battery Status API
  *               (navigator.getBattery, its own events). Neither, or a browser that only reports the "always full,
@@ -131,7 +131,13 @@
 
     // ---- power plans: Power Options' (cplPages.js), or a newer source ----------------------------------------------
 
+    const powerProvider = () => (root.melatonTray && root.melatonTray.provider('power')) || null;
+
     function plans() {
+        const pp = powerProvider();
+        if (pp && typeof pp.plans === 'function') {
+            try { const l = pp.plans(); if (Array.isArray(l) && l.length) return l.map((p) => ({ id: String(p.id), name: String(p.name) })); } catch (_) { /* fall back */ }
+        }
         const api = root.melatonPowerPlans;
         if (api && typeof api.list === 'function') {
             try { const l = api.list(); if (Array.isArray(l) && l.length) return l.map((p) => ({ id: String(p.id), name: String(p.name) })); } catch (_) { /* fall back */ }
@@ -140,6 +146,10 @@
     }
 
     function activePlan() {
+        const pp = powerProvider();
+        if (pp && typeof pp.activePlan === 'function') {
+            try { const a = pp.activePlan(); if (a) return String(a); } catch (_) { /* fall back */ }
+        }
         const api = root.melatonPowerPlans;
         if (api && typeof api.active === 'function') {
             try { const a = api.active(); if (a) return String(a); } catch (_) { /* fall back */ }
@@ -154,6 +164,10 @@
     }
 
     function setPlan(id) {
+        const pp = powerProvider();
+        if (pp && typeof pp.setPlan === 'function') {
+            try { pp.setPlan(id); return; } catch (_) { /* fall back */ }
+        }
         const api = root.melatonPowerPlans;
         if (api && typeof api.setActive === 'function') {
             try { api.setActive(id); return; } catch (_) { /* fall back */ }
@@ -405,10 +419,6 @@
         try { root.dispatchEvent(new CustomEvent('melaton-battery', { detail: model })); } catch (_) { /* old engine */ }
     }
 
-    function fromHost(hw) {
-        setModel(fromDreamOS(hw));
-    }
-
     function startBrowser() {
         const nav = root.navigator;
         if (!nav || typeof nav.getBattery !== 'function') return;
@@ -417,6 +427,7 @@
             source = 'browser';
             browserBattery = { bm, moved: false, first: `${bm.level}|${bm.charging}` };
             const upd = () => {
+                if (source !== 'browser') return;
                 if (`${bm.level}|${bm.charging}` !== browserBattery.first) browserBattery.moved = true;
                 setModel(fromBrowser(bm));
             };
@@ -425,16 +436,34 @@
         }).catch(() => { /* no battery API */ });
     }
 
+    /** A provider's state (docs/client-api/tray-providers.md): DreamOS's hw snapshot, or the plain battery shape. */
+    function fromProvider(st) {
+        if (!st || typeof st !== 'object') return null;
+        if (Array.isArray(st.batteries)) return fromDreamOS(st);
+        if (st.present === false) return st.plugged ? { absent: true, percent: null, plugged: true, charging: false, full: false, protect: false, minutesLeft: null, minutesToFull: null } : null;
+        const n = (v) => (Number.isFinite(Number(v)) && v !== null ? Math.round(Number(v)) : null);
+        return {
+            percent: st.full ? 100 : n(st.percent), plugged: !!st.plugged, charging: !!st.charging, full: !!st.full,
+            protect: !!st.protect, minutesLeft: n(st.minutesLeft), minutesToFull: n(st.minutesToFull),
+            packs: Array.isArray(st.packs) ? st.packs.map((b) => ({ percent: n(b.percent), plugged: !!st.plugged, charging: !!b.charging, full: !!b.full, protect: false, minutesLeft: null, minutesToFull: null })) : undefined
+        };
+    }
+
     function start() {
         if (root.uiShell === 'mobile' || !iconEl()) return;
         wireIcon();
-        const dos = root.DreamOSHardware;
-        if (dos && typeof dos.get === 'function') {
-            source = 'dreamos';
-            root.addEventListener('dreamoshw', (e) => fromHost(e && e.detail), { signal: appScopeSignal });
-            let hw = null;
-            try { hw = dos.get(); } catch (_) { hw = null; }
-            fromHost(hw);
+        const tray = root.melatonTray;
+        const prov = tray && tray.provider('power');
+        if (tray) {
+            // the provider in use, and one registered later (the Android app's desktop shell registers its own)
+            const off = tray.onChange('power', (st) => { source = 'provider'; setModel(fromProvider(st)); });
+            if (appScopeSignal) appScopeSignal.addEventListener('abort', off, { once: true });
+        }
+        if (prov) {
+            source = 'provider';
+            let st = null;
+            try { st = prov.get(); } catch (_) { st = null; }
+            setModel(fromProvider(st));
         } else {
             startBrowser();
         }
@@ -449,7 +478,7 @@
         statusText: () => statusText(model),
         showFlyout,
         hideFlyout,
-        _test: { fromDreamOS, fromBrowser, statusText, frames, setModel }
+        _test: { fromDreamOS, fromBrowser, fromProvider, statusText, frames, setModel }
     };
     root.trayPower = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
