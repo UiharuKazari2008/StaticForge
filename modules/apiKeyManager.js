@@ -695,7 +695,12 @@ class ApiKeyManager {
 
         const restartedServices = [];
         for (const change of changed) {
-            if (change.service === 'claude') this.syncClaudeTokenFile();
+            if (change.service === 'claude') {
+                this.syncClaudeTokenFile();
+                // CardSpace and the phone's Claude Accounts: Remote Control follows the account (in the
+                // background; claude_remote_control_status tells how it went)
+                try { require('./claudeAccountHost').onSelectionChanged(this.globalResources, change.index); } catch (error) { console.warn(`Claude Remote Control not reconnected: ${error.message}`); }
+            }
             // Swapping the active key is an admin correction — clear any tripwire lock.
             this.unlockService(change.service);
             const handler = this.restartHandlers.get(change.service);
