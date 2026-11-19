@@ -1283,6 +1283,23 @@ async function generateCacheData(directory) {
                     continue;
                 }
 
+                // A managed script or stylesheet the compiler has not built yet (a new file, or one no client has
+                // asked for since the start): compile it now and list the hash of what is served. Hashing the
+                // source here listed one hash and served another (the minified copy), so every client re-fetched
+                // it, found a mismatch and asked for a restart again (#951 P4, #740)
+                if (runtimeAssetService.isRuntimeManagedWebPath(webPath)
+                    && !(runtimeAssetService.isHtmlShaLinkWebPath && runtimeAssetService.isHtmlShaLinkWebPath(webPath))
+                    && typeof runtimeAssetService.resolveRuntimeAsset === 'function'
+                    // (only once the start's compile has run: before it, every file would be built here, one by one)
+                    && (() => { try { return runtimeAssetService.getStatus().complete === true; } catch (_) { return false; } })()) {
+                    let built = null;
+                    try { built = await runtimeAssetService.resolveRuntimeAsset(__dirname, webPath); } catch (_) { built = null; }
+                    if (built && built.hash && built.body) {
+                        assets.push({ path: webPath, hash: built.hash, size: built.body.length, modified: built.modified || Date.now() });
+                        continue;
+                    }
+                }
+
                 // SHA-256 of bytes actually served to clients (optimised copy for managed css/scripts)
                 let hashPath = filePath;
                 if (runtimeAssetService.isRuntimeManagedWebPath(webPath)
