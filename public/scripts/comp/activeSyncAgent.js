@@ -872,6 +872,30 @@
 
         // clipboard.set and open.url: public/scripts/comp/activeSyncClipboard.js (both kinds of peer)
 
+        // the phone's Bluetooth for a computer's Control Panel > Bluetooth Devices (#945): read when that page opens
+        // (no push, no poll); connect / disconnect / delete through the app (DSApp BluetoothControl)
+        const btBridge = () => (root.AndroidBluetooth && typeof root.AndroidBluetooth.getState === 'function' ? root.AndroidBluetooth : null);
+        registerOp('status.bluetooth', () => {
+            const b = btBridge();
+            if (!b) return { present: false, on: false, devices: [] };
+            let s = null;
+            try { s = JSON.parse(b.getState()); } catch (_) { s = null; }
+            if (!s || typeof s !== 'object') return { present: false, on: false, devices: [] };
+            const devices = (Array.isArray(s.devices) ? s.devices : []).slice(0, 64).map((d) => ({
+                address: String(d.address || ''), name: String(d.name || d.address || ''), kind: String(d.kind || 'other'),
+                connected: !!d.connected, battery: Number.isFinite(Number(d.battery)) && d.battery !== null ? Number(d.battery) : null,
+                services: Array.isArray(d.services) ? d.services.map(String).slice(0, 8) : []
+            }));
+            return { present: !!s.present, on: !!s.on, devices };
+        });
+        registerOp('device.bluetooth', async (args) => {
+            const b = btBridge();
+            const a = args || {};
+            const fn = { connect: 'connect', disconnect: 'disconnect', remove: 'unpair' }[String(a.action || '')];
+            if (!b || !fn || typeof b[fn] !== 'function') return { ok: false, error: 'This phone cannot do that.' };
+            try { return JSON.parse(b[fn](String(a.address || ''))) || { ok: false }; } catch (_) { return { ok: false }; }
+        });
+
         registerOp('device.ring', async () => {
             // the app rings for real (ringtone on the alarm stream, whatever the ringer mode)
             try {

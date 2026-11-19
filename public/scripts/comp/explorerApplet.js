@@ -4115,7 +4115,9 @@ class ExplorerApplet {
         }
 
         const sizeStr = this._formatStatusSize(stats.totalSizeBytes || 0);
-        const count = stats.itemCount || 0;
+        // the Contacts folder counts contacts: a file of several is one item per contact there (explorerContacts.js, #945)
+        const perCard = typeof explorerContacts !== 'undefined' && explorerContacts.active(this) && (this.items || []).some((it) => explorerContacts.isCardEntry(it));
+        const count = perCard ? this.items.length : (stats.itemCount || 0);
         let text = `${count} item${count === 1 ? '' : 's'}`;
         // the Contacts folder says the count alone, as Vista's does (explorerContacts.js)
         if (!(typeof explorerContacts !== 'undefined' && explorerContacts.active(this))) text += ` · ${sizeStr}`;
@@ -5424,6 +5426,8 @@ class ExplorerApplet {
         const permanent = options.permanent === true;
         const sel = this.grid?.getSelectedItems() || [];
         if (!sel.length) return;
+        // contacts listed out of a file of several (the phone's mirror): never the whole file (explorerContacts.js, #945)
+        if (typeof explorerContacts !== 'undefined' && await explorerContacts.guardDelete(this, sel)) return;
         // on the phone: to Android's trash, a confirmed permanent delete for what cannot go there
         if (typeof explorerPhoneDrive !== 'undefined' && sel.every(i => explorerPhoneDrive.isEntry(i))) {
             await explorerPhoneDrive.remove(this, sel, permanent);

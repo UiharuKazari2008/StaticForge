@@ -34,6 +34,8 @@
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const vfs = () => root.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null); // eslint-disable-line no-undef
     const VC = () => root.melatonVCard;
+    // the phone's contacts as ActiveSync mirrors them (wmAndroidApps.js Phone Data > Synchronize): read-only here
+    const PHONE_MIRROR = /^Phone contacts \(.+\)\.vcf$/i;
 
     // the sheet's pages: wab32res.dll.mui dialogs, their tab names its strings (4416, 4458, 4016-4018, 4091, 4028, 4457)
     const CONTACT_PAGES = [['wab32res:6007', 'Summary'], ['wab32res:114', 'Name and E-mail'], ['wab32res:115', 'Home'], ['wab32res:116', 'Work'], ['wab32res:6066', 'Family'], ['wab32res:117', 'Notes'], ['wab32res:119', 'IDs']];
@@ -146,7 +148,11 @@
                     const id = f.targetId || f.id;
                     const r = await vfs().downloadFile(id);
                     const text = await (await fetch(r.downloadUrl, { credentials: 'same-origin' })).text();
-                    VC().parseVcf(text).forEach((c, i) => this.items.push({ c, fileId: i ? null : id, fileName: i ? null : f.name }));
+                    // every card keeps its file and place: a file of several (the phone's mirror, an imported address
+                    // book) is listed per contact in the Contacts folder and opened by that place (#945)
+                    const list = VC().parseVcf(text);
+                    const phone = PHONE_MIRROR.test(f.name || '');
+                    list.forEach((c, i) => this.items.push({ c, fileId: i ? null : id, fileName: i ? null : f.name, fileRef: id, index: i, count: list.length, phone }));
                 } catch (err) {
                     console.warn('Contacts: could not read', f.name, err);
                 }
@@ -154,13 +160,30 @@
             return this.items;
         }
 
-        byFile(id) { return this.items.find((x) => x.fileId === id) || null; }
+        byFile(id, index) {
+            const at = Number.isInteger(index) ? index : 0;
+            return this.items.find((x) => x.fileRef === id && x.index === at) || this.items.find((x) => x.fileId === id) || null;
+        }
 
         fileNameOf(c) {
             return `${VC().displayName(c).replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80) || 'Contact'}.vcf`;
         }
 
         async save(it) {
+            // the phone's own contacts: the phone rewrites that file one way (ActiveSync > Phone Data); nothing is kept here
+            if (it.phone) return false;
+            // one card of a file of several: the file is written again with every card, this one changed
+            if (it.fileRef && it.count > 1) {
+                const all = this.items.filter((x) => x.fileRef === it.fileRef).sort((a, b) => a.index - b.index);
+                const data = await textB64(all.map((x) => VC().toVcf(x.c)).join(''));
+                try {
+                    await vfs().replaceFile(it.fileRef, data, 'text/vcard');
+                    return true;
+                } catch (err) {
+                    console.warn('Contacts: could not save', err);
+                    return false;
+                }
+            }
             const data = await textB64(VC().toVcf(it.c));
             try {
                 if (it.fileId) await vfs().replaceFile(it.fileId, data, 'text/vcard');
@@ -410,6 +433,16 @@
         });
         // a new contact's sheet opens with OK ready (Vista: Apply is not needed to add it)
         if (ctx0 && isNew) ctx0.dirty();
+        // the phone's own contact (#945): shown, not changed here - the phone rewrites its mirror; the fields are
+        // read-only and the sheet says where to change it
+        if (ctx0 && it && it.phone && ctx0.modal) {
+            ctx0.modal.querySelectorAll('.vdt-page input, .vdt-page textarea, .vdt-page select, .vdt-page .vdt-dtp, .vdt-page button:not([data-vdt-tab])').forEach((el) => {
+                if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.readOnly = true;
+                if (el.tagName === 'BUTTON' || el.tagName === 'SELECT') el.disabled = true;
+                if (el.classList && el.classList.contains('vdt-dtp')) el.setAttribute('aria-disabled', 'true');
+            });
+            ctx0.modal.title = 'This contact is on your phone. Change it there; ActiveSync brings the change here.';
+        }
     }
 
     /** The Persona page (#763): the state as the server has it now; nothing on it is edited. */
@@ -828,7 +861,7 @@
         if (root.featureLoader && !root.vistaDialogTemplate) { try { await root.featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialogs */ } }
         if (!VC() && root.featureLoader) { try { await root.featureLoader.loadFeature('explorer'); } catch (_) { /* no cards */ } }
         await folder.load();
-        const chosen = (a.files || []).map((f) => folder.byFile(f.id)).filter(Boolean);
+        const chosen = (a.files || []).map((f) => folder.byFile(f.id, f.index)).filter(Boolean);
         chosen.forEach((x) => { x.folder = folder.path; });
         switch (action) {
             case 'open': if (chosen[0]) properties(folder, chosen[0], chosen[0].c.group); return;

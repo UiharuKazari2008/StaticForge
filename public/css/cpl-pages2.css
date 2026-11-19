@@ -1590,3 +1590,21 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     flex: 1 1 auto;
     font-variant-numeric: tabular-nums;
 }
+
+/* Bluetooth Devices > Properties (#945): the device's picture beside its facts */
+.cpl-bt-props {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.cpl-bt-props table {
+    border: 0;
+    border-collapse: collapse;
+}
+
+.cpl-bt-props td {
+    border: 0;
+    padding: 2px 12px 2px 0;
+    vertical-align: top;
+}

@@ -18,6 +18,7 @@
     const doc = typeof document !== 'undefined' ? document : null;
     const R = () => root.melatonRegistry;
     const CP = () => root.melatonControlPanel;
+    const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
     const ITEMS = '/static_images/vista-cpl/items';
     const FAV = '/static_images/vista-explorer';
 
@@ -344,35 +345,177 @@
 
     const BTH = 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\BTHPORT\\Parameters\\Devices';
 
+    // The phone's Bluetooth (#945): the devices Melaton Mobile's Bluetooth applet lists (DSApp BluetoothControl,
+    // window.AndroidBluetooth) show here too - this window's own phone (a DeX window of the Android app), and every
+    // phone connected over ActiveSync, asked once when the page opens (activeSync status.bluetooth: no push, no poll).
+    const BT_ART = '/static_images/vista-bth';
+    const BT_CATEGORY = { audio: 'Audio/Video', phone: 'Phone', computer: 'Computer', peripheral: 'Peripheral', input: 'Peripheral', imaging: 'Imaging', wearable: 'Wearable', health: 'Health', toy: 'Toy' };
+    const bt = { phones: new Map(), asking: false, askedAt: 0, sel: null };
+
+    /** bthprops.cpl's picture for a device: headphones, headset, speaker, phone, computer, keyboard, mouse, camera, other. */
+    function btIcon(d, size) {
+        const svc = Array.isArray(d.services) ? d.services : [];
+        const name = String(d.name || '');
+        let i = 11;
+        if (d.kind === 'audio') i = svc.includes('a2dp') && !svc.includes('headset') ? 19 : svc.includes('headset') ? 18 : 17;
+        else if (d.kind === 'phone') i = 7;
+        else if (d.kind === 'computer') i = 8;
+        else if (d.kind === 'peripheral' || d.kind === 'input') i = /keyboard/i.test(name) ? 15 : /mouse|trackball|trackpad|mx master|pointer/i.test(name) ? 16 : 10;
+        else if (d.kind === 'imaging') i = 6;
+        return `${BT_ART}/bth-${i}-${size}.png`;
+    }
+
+    /** This window's own phone (the app's bridge, else its tray provider): { name, present, on, devices } or null. */
+    function btLocal() {
+        const b = root.AndroidBluetooth;
+        if (b && typeof b.getState === 'function') {
+            try {
+                const s = JSON.parse(b.getState());
+                if (s && typeof s === 'object') return { name: 'This computer', local: true, present: !!s.present, on: !!s.on, devices: Array.isArray(s.devices) ? s.devices : [] };
+            } catch (_) { /* below */ }
+        }
+        const p = root.melatonTray && root.melatonTray.provider('bluetooth');
+        let v = null;
+        try { v = p && p.kind === 'android' ? p.get() : null; } catch (_) { v = null; }
+        if (!v || !v.present) return null;
+        return { name: 'This computer', local: true, present: true, on: !!v.on, devices: (v.devices || []).map((d) => ({ address: d.id, name: d.name, kind: d.kind, connected: d.connected, battery: d.battery })) };
+    }
+
+    /** The phones connected over ActiveSync (not this window's own Continuity phone): asked when the page opens. */
+    function btAskPhones() {
+        const as = root.activeSync;
+        if (!as || typeof as.state !== 'function' || typeof as.call !== 'function' || bt.asking) return;
+        if (Date.now() - bt.askedAt < 20000) return;
+        let list = [];
+        try { list = (as.state().devices || []).filter((d) => d && d.online && d.session && d.session !== 'pending'); } catch (_) { list = []; }
+        if (!list.length) return;
+        bt.asking = true;
+        bt.askedAt = Date.now();
+        Promise.all(list.map((d) => Promise.resolve(as.call(d.deviceId, 'status.bluetooth', {}, { timeoutMs: 8000 }))
+            .then((r) => { if (r && typeof r === 'object') bt.phones.set(d.deviceId, { name: d.name || 'Phone', deviceId: d.deviceId, present: !!r.present, on: !!r.on, devices: Array.isArray(r.devices) ? r.devices : [] }); })
+            .catch(() => { /* an older phone page: not listed */ })))
+            .finally(() => {
+                bt.asking = false;
+                const cp = CP();
+                if (cp && cp.currentPage() === 'bluetooth-devices') rerender();
+            });
+    }
+
+    /** Every device to list: { id, source, address, name, kind, connected, battery, services, from }. */
+    function btRows() {
+        const out = [];
+        const add = (src, key) => (src.devices || []).forEach((d) => out.push({
+            id: `${key}|${d.address || d.name}`, source: key, address: String(d.address || ''), name: String(d.name || d.address || 'Bluetooth device'),
+            kind: String(d.kind || 'other'), connected: !!d.connected, battery: d.battery == null ? null : Number(d.battery), services: d.services || [], from: src.name, local: !!src.local
+        }));
+        const local = btLocal();
+        if (local) add(local, 'local');
+        // a Continuity window's own phone answers locally; the same phone over ActiveSync is not listed twice
+        bt.phones.forEach((src, deviceId) => { if (!local) add(src, `as:${deviceId}`); });
+        reg(BTH, 'Paired', []).forEach((name) => out.push({ id: `web|${name}`, source: 'web', address: '', name, kind: 'other', connected: false, battery: null, services: [], from: 'This computer', local: true }));
+        return out;
+    }
+
+    function btStatus(r) {
+        if (!r.connected) return 'Paired';
+        return r.battery != null && Number.isFinite(r.battery) ? `Connected (${Math.round(r.battery)}%)` : 'Connected';
+    }
+
     pages['bluetooth-devices'] = {
         kind: 'folder',
         title: () => 'Bluetooth Devices',
         tasks: favorites,
         body: () => {
-            const devices = reg(BTH, 'Paired', []);
+            btAskPhones();
+            const rows = btRows();
             return folder([{ t: 'Add Wireless Device', v: 'add', icon: '/static_images/vista-cpl/items/bluetooth-devices-16.png' }, { t: 'Bluetooth Settings', v: 'settings', icon: '/static_images/vista-cpl/items/bluetooth-devices-16.png' }],
-                [{ t: 'Name', w: 200 }, { t: 'Device Category', w: 160 }],
-                devices.map((d) => ({ id: d, icon: '/static_images/vista-cpl/items/bluetooth-devices-16.png', cells: [d, 'Other'] })),
-                { topic: 'bluetooth' });
+                [{ t: 'Name', w: 220 }, { t: 'Device Category', w: 120 }, { t: 'Status', w: 120 }, { t: 'Paired With', w: 160 }],
+                rows.map((r) => ({ id: r.id, icon: btIcon(r, 16), cells: [r.name, BT_CATEGORY[r.kind] || 'Other', btStatus(r), r.from] })),
+                { topic: 'bluetooth', sel: bt.sel, status: bt.asking && !rows.length ? 'Searching for devices...' : null });
         }
     };
+
+    /** Connect, Disconnect or Remove a phone's device: this window's own bridge, else the phone over ActiveSync. */
+    async function btAct(r, action) {
+        let res = null;
+        if (r.source === 'local') {
+            const fn = { connect: 'connect', disconnect: 'disconnect', remove: 'unpair' }[action];
+            const b = root.AndroidBluetooth;
+            try { res = b && typeof b[fn] === 'function' ? JSON.parse(b[fn](r.address)) : null; } catch (_) { res = null; }
+        } else if (r.source.startsWith('as:') && root.activeSync) {
+            try { res = await root.activeSync.call(r.source.slice(3), 'device.bluetooth', { action, address: r.address }, { timeoutMs: 15000 }); } catch (err) { res = { ok: false, error: (err && err.message) || '' }; }
+        }
+        if (!res || !res.ok) {
+            const why = res && res.via === 'settings' ? `Android does not let other programs ${action === 'remove' ? 'remove' : action} this device. Finish in Android's Bluetooth settings on ${r.from === 'This computer' ? 'the phone' : r.from}.`
+                : res && res.error ? res.error : `${r.name} could not be ${action === 'remove' ? 'removed' : action === 'connect' ? 'connected' : 'disconnected'}.`;
+            msg(why, 'Bluetooth Devices');
+        }
+        bt.askedAt = 0;
+        setTimeout(rerender, 600);
+    }
+
+    function btSelected() { return btRows().find((r) => r.id === bt.sel) || null; }
+
+    function btProperties(r) {
+        const rows = [['Name', r.name], ['Device category', BT_CATEGORY[r.kind] || 'Other'], ['Status', btStatus(r)], ['Paired with', r.from]];
+        if (r.address) rows.push(['Address', r.address]);
+        if (r.services && r.services.length) rows.push(['Services', r.services.map((x) => ({ a2dp: 'Wireless Stereo', headset: 'Hands Free', le_audio: 'LE Audio', hid: 'Input Device' }[x] || x)).join(', ')]);
+        const html = `<div class="cpl-bt-props"><img src="${esc(btIcon(r, 48))}" alt="" width="48" height="48"><table>${rows.map(([k, v]) => `<tr><td>${esc(k)}:</td><td>${esc(v)}</td></tr>`).join('')}</table></div>`;
+        if (typeof root.showConfirmationDialog === 'function') root.showConfirmationDialog(html, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: `${r.name} Properties`, width: 420 });
+    }
+
+    // the app's Bluetooth pushes while this page is on screen (no listener does anything elsewhere)
+    if (root.addEventListener) {
+        root.addEventListener('dreamscape:bluetooth', () => {
+            const cp = CP();
+            if (cp && cp.currentPage() === 'bluetooth-devices') rerender();
+        }, { signal: appScopeSignal });
+    }
+
     handlers['bluetooth-devices'] = {
         async add() {
-            const bt = root.navigator && root.navigator.bluetooth;
-            if (!bt || !bt.requestDevice) {
-                msg('Melaton could not find a Bluetooth radio this browser can use.', 'Add a Bluetooth Device');
+            // a phone's own devices pair in Android's Bluetooth settings (Melaton Mobile's Add new device does the same)
+            const b = root.AndroidBluetooth;
+            if (b && typeof b.openSettings === 'function') { try { b.openSettings(null); return; } catch (_) { /* the browser below */ } }
+            const web = root.navigator && root.navigator.bluetooth;
+            if (!web || !web.requestDevice) {
+                msg('Melaton could not find a Bluetooth radio this browser can use. To add a device to your phone, use Bluetooth in Melaton Mobile\'s Settings.', 'Add a Bluetooth Device');
                 return;
             }
             try {
-                const dev = await bt.requestDevice({ acceptAllDevices: true });
+                const dev = await web.requestDevice({ acceptAllDevices: true });
                 const name = (dev && dev.name) || 'Bluetooth device';
                 if (R()) await R().set(BTH, { Paired: Array.from(new Set(reg(BTH, 'Paired', []).concat([name]))) });
                 rerender();
             } catch (_) { /* the person cancelled the browser's chooser */ }
         },
         settings() { if (root.cplDialogs) root.cplDialogs.open('bluetooth'); },
-        pick(t) { markSel(t); },
-        organize() {}, views() {}
+        pick(t) { bt.sel = t.dataset.id; markSel(t); },
+        open(id) { bt.sel = id; const r = btSelected(); if (r) btProperties(r); },
+        organize() {},
+        organizeItems() {
+            const r = btSelected();
+            const phoneDev = !!(r && r.source !== 'web');
+            return [
+                { text: 'Connect', action: 'cpl-org:btConnect', disabled: !phoneDev || r.connected },
+                { text: 'Disconnect', action: 'cpl-org:btDisconnect', disabled: !phoneDev || !r.connected },
+                { text: 'Remove Device', action: 'cpl-org:btRemove', disabled: !phoneDev },
+                { separator: true },
+                { text: 'Properties', action: 'cpl-org:btProps', disabled: !r }
+            ];
+        },
+        btConnect() { const r = btSelected(); if (r) void btAct(r, 'connect'); },
+        btDisconnect() { const r = btSelected(); if (r) void btAct(r, 'disconnect'); },
+        async btRemove() {
+            const r = btSelected();
+            if (!r) return;
+            const yes = typeof root.showConfirmationDialog === 'function'
+                ? await root.showConfirmationDialog(`<p>Are you sure you want to remove ${esc(r.name)}?</p><p>You will need to pair it again to use it.</p>`, [{ text: 'Yes', value: true, className: 'btn-standard primary' }, { text: 'No', value: false, className: 'btn-standard' }], null, { title: 'Remove Bluetooth Device', width: 400, icon: 'question' })
+                : true;
+            if (yes) void btAct(r, 'remove');
+        },
+        btProps() { const r = btSelected(); if (r) btProperties(r); },
+        views() {}
     };
 
     // ---- Scanners and Cameras ----------------------------------------------------------------

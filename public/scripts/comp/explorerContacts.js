@@ -58,14 +58,28 @@
 
     // ---- the cards ---------------------------------------------------------------------------
 
-    const cards = new Map(); // file id -> { stamp, card }
+    const cards = new Map(); // file id -> { stamp, card, list }
     const loading = new Map(); // file id -> promise
+
+    /**
+     * The phone's contacts mirrored into the workspace by ActiveSync (Melaton Mobile > ActiveSync > Phone Data:
+     * Synchronize, wmAndroidApps.js): "Phone contacts (<device>).vcf", every contact in one file, rewritten from the
+     * phone one way - read-only here (#945).
+     */
+    const PHONE_MIRROR = /^Phone contacts \(.+\)\.vcf$/i;
+    function isPhoneMirror(name) { return PHONE_MIRROR.test(String(name || '')); }
 
     function cardOf(item) {
         if (!isCardFile(item)) return null;
         const hit = cards.get(fileIdOf(item));
-        return hit ? hit.card : null;
+        if (!hit) return null;
+        // a file holding several contacts is listed once per contact (expandItems): its own card
+        if (item.cardIndex != null) return (hit.list && hit.list[item.cardIndex]) || null;
+        return hit.card;
     }
+
+    /** A contact listed out of a file of several (expandItems): read-only as a file (no rename, no delete). */
+    function isCardEntry(item) { return !!item && item.cardIndex != null; }
 
     async function readCard(item) {
         const id = fileIdOf(item);
@@ -77,13 +91,14 @@
             try {
                 const r = await vfs().downloadFile(id);
                 const text = await (await fetch(r.downloadUrl, { credentials: 'same-origin' })).text();
-                const card = (V() && V().parseVcf(text)[0]) || null;
-                cards.set(id, { stamp, card });
+                const list = (V() && V().parseVcf(text)) || [];
+                const card = list[0] || null;
+                cards.set(id, { stamp, card, list });
                 return card;
             } catch (err) {
                 console.warn('Contacts: could not read', item.name, err);
                 // the next listing tries again
-                cards.set(id, { stamp: '!failed', card: null });
+                cards.set(id, { stamp: '!failed', card: null, list: [] });
                 return null;
             } finally {
                 loading.delete(id);
@@ -93,16 +108,57 @@
         return p;
     }
 
+    /**
+     * A file of several contacts (the phone's mirror, an imported address book) shows one item per contact, as
+     * Windows Contacts shows one card per contact: each item points at its file and its place in it (cardIndex),
+     * under the contact's name. The folder's listing order (by name) then holds for them too.
+     */
+    function expandItems(app) {
+        const items = Array.isArray(app.items) ? app.items : [];
+        if (!items.some((it) => isCardFile(it) && !isCardEntry(it) && ((cards.get(fileIdOf(it)) || {}).list || []).length > 1)) return false;
+        const out = [];
+        items.forEach((it) => {
+            const list = isCardFile(it) && !isCardEntry(it) ? ((cards.get(fileIdOf(it)) || {}).list || []) : [];
+            if (list.length < 2) { out.push(it); return; }
+            const phone = isPhoneMirror(it.name);
+            list.forEach((c, n) => {
+                out.push(Object.assign({}, it, {
+                    id: `${fileIdOf(it)}#card${n}`,
+                    targetId: fileIdOf(it),
+                    cardIndex: n,
+                    cardCount: list.length,
+                    cardFile: it.name,
+                    phoneCard: phone,
+                    protected: true,
+                    name: `${(V().displayName(c) || 'Contact').replace(/[\\/:*?"<>|]+/g, '_')}.vcf`
+                }));
+            });
+        });
+        if (app.sortField === 'name' || !app.sortField) {
+            const coll = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+            const dir = app.sortDirection === 'desc' ? -1 : 1;
+            const folders = out.filter((it) => !isCardFile(it));
+            const people = out.filter(isCardFile).sort((a, b) => dir * coll.compare(labelFor(app, a) || '', labelFor(app, b) || ''));
+            out.length = 0;
+            out.push(...folders, ...people);
+        }
+        app.items = out;
+        if (app.grid && typeof app.grid.replaceItems === 'function') app.grid.replaceItems(out);
+        if (typeof app.updateStatusBar === 'function') void app.updateStatusBar();
+        return true;
+    }
+
     /** After a listing: read the cards not read yet, then redraw what shows them. */
     async function onItems(app, items) {
         if (!active(app) || !V()) return;
-        const want = (items || []).filter(isCardFile).filter((it) => {
+        const want = (items || []).filter(isCardFile).filter((it) => !isCardEntry(it)).filter((it) => {
             const hit = cards.get(fileIdOf(it));
             return !hit || hit.stamp !== `${it.modifiedAt || ''}|${it.size || ''}`;
         });
-        if (!want.length) return;
-        await Promise.all(want.map(readCard));
+        if (want.length) await Promise.all(want.map(readCard));
         if (!active(app)) return;
+        const expanded = expandItems(app);
+        if (!want.length && !expanded) return;
         if (app.grid) app.grid.repaint();
         const sel = app.grid ? app.grid.getSelectedItems() : [];
         syncPreview(app, sel);
@@ -519,7 +575,21 @@
     // ---- actions ------------------------------------------------------------------------------
 
     function fileRefs(app, items) {
-        return (items || []).filter(isCardFile).map((it) => ({ id: fileIdOf(it), name: it.name, path: app.currentPath }));
+        return (items || []).filter(isCardFile).map((it) => ({ id: fileIdOf(it), name: it.cardFile || it.name, path: app.currentPath, ...(isCardEntry(it) ? { index: it.cardIndex } : {}) }));
+    }
+
+    /** Explorer's Delete on contacts listed out of a file of several: never the whole file (#945). */
+    async function guardDelete(app, sel) {
+        const entries = (sel || []).filter(isCardEntry);
+        if (!entries.length) return false;
+        if (typeof root.showConfirmationDialog === 'function') {
+            const phone = entries.some((it) => it.phoneCard);
+            const text = phone
+                ? 'These contacts are on your phone. They come to Melaton through ActiveSync; delete them on the phone and the next sync removes them here.'
+                : `These contacts are kept together in "${esc(entries[0].cardFile || '')}". Open the contact to change it, or delete the file itself in a folder view of its own.`;
+            await root.showConfirmationDialog(`<p>${text}</p>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'Melaton Contacts', width: 420, icon: 'info' });
+        }
+        return true;
     }
 
     async function run(app, verb, items) {
@@ -573,6 +643,9 @@
         isPath,
         active,
         isCardFile,
+        isCardEntry,
+        isPhoneMirror,
+        guardDelete,
         cardOf,
         onItems,
         labelFor,
