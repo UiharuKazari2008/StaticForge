@@ -217,6 +217,30 @@ async function dispatch(name, input, actor) {
     }
 }
 
+// the tools that change the mail rules: the Ingest Controller console's feed is told (ingest's own writes tell
+// it through ingestStore.onChange)
+const RULE_WRITES = new Set(['bridge_mail_save_rule', 'bridge_mail_delete_rule', 'bridge_mail_run_rules']);
+const changeListeners = new Set();
+function onRulesChange(fn) { if (typeof fn === 'function') changeListeners.add(fn); return () => changeListeners.delete(fn); }
+
+/**
+ * One tool, already past the gates: the same dispatch and audit for MCP (handleBridgeTool) and the Ingest
+ * Controller console's WS packets (modules/ws/handlers/314-ingestControllerHandler.js). Throws the tool's error.
+ */
+async function runBridgeTool(name, input, actor) {
+    const body = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+    const target = targetOf(body);
+    try {
+        const out = await dispatch(name, body, actor);
+        audit(actor, name, target, true, null);
+        if (RULE_WRITES.has(name)) for (const fn of changeListeners) { try { fn(name); } catch (_) { /* a listener's own problem */ } }
+        return out || {};
+    } catch (error) {
+        audit(actor, name, target, false, error && error.message);
+        throw error;
+    }
+}
+
 async function handleBridgeTool(req, name, args) {
     const input = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
     const actor = resolveActor(req);
@@ -231,11 +255,9 @@ async function handleBridgeTool(req, name, args) {
         return mcpTextResult({ success: false, error: `Application key does not have ${SCOPE}`, code: 'INSUFFICIENT_SCOPE' }, true);
     }
     try {
-        const out = await dispatch(name, input, owner);
-        audit(owner, name, target, true, null);
-        return mcpTextResult(Object.assign({ success: true }, out || {}));
+        const out = await runBridgeTool(name, input, owner);
+        return mcpTextResult(Object.assign({ success: true }, out));
     } catch (error) {
-        audit(owner, name, target, false, error && error.message);
         return mcpTextResult({ success: false, error: (error && error.message) || 'Failed', code: (error && error.code) || 'ERROR' }, true);
     }
 }
@@ -249,5 +271,7 @@ module.exports = {
     isBridgeOwner,
     scopesHaveBridge,
     handleBridgeTool,
+    runBridgeTool,
+    onRulesChange,
     _test: { setBackends: (b) => { backends = b || null; }, dispatch }
 };
