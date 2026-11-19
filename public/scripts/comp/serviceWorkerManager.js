@@ -362,6 +362,8 @@ class ServiceWorkerManager {
         this.updateAvailable = false;
         this.pendingUpdateFilesTotal = 0;
         this._clearScheduledUpdateCompleteToast();
+        // the restart prompt and its reminder go with the updates (updateRestartPrompt.js, #945)
+        if (window.melatonRestartPrompt) window.melatonRestartPrompt.cancel();
         this._notifyTrayIconUpdate();
     }
 
@@ -5203,6 +5205,9 @@ class ServiceWorkerManager {
             return;
         }
 
+        // Vista's automatic updates restart dialog (updateRestartPrompt.js, #945): with the automatic restart on it
+        // opens after the balloon with its countdown; off, the balloon alone asks
+        if (window.melatonRestartPrompt) window.melatonRestartPrompt.schedule(4000);
         // Desktop mode: tray popup completion prompt
         if (this._isDesktopTrayMode()) {
             const filesTotal = this.pendingUpdateFilesTotal || this.trayPopup.filesTotal || 0;

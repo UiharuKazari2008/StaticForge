@@ -2031,6 +2031,18 @@ class WebSocketClient {
             glyph.className = iconClass;
             trayIcon.setAttribute('title', title);
         }
+        // Melaton Update's icon is there only for updates, as Windows Update's (#945): while they download and while
+        // they wait to be installed; the worker's own health and storage are not a tray icon any more
+        const wanted = swStatus.isUpdating || swStatus.updateAvailable;
+        const hidden = trayIcon.classList.contains('hidden');
+        if (wanted && hidden) {
+            // the desktop's boot reveals its tray in order (systemTrayManager.js); after it, at once
+            const bootPending = typeof isDesktopTrayBootPending === 'function' && isDesktopTrayBootPending();
+            if (!bootPending && typeof revealTrayIconElement === 'function') revealTrayIconElement(trayIcon);
+        } else if (!wanted && !hidden) {
+            trayIcon.classList.add('hidden');
+            if (typeof traySyncOverflow === 'function') traySyncOverflow();
+        }
     }
 
     /** The network interface name (desktop.connectionName, default Nightshade Network). */

@@ -1442,3 +1442,12 @@ button.vdt-cmdlink:not(#_):focus-visible {
 :is(.vdt-client, .cpl-instance) .vdt-graytext {
     color: #6d6d6d;
 }
+
+/* a dialog's main instruction on a plain dialog (a static the dialog's script marks: Melaton Update's restart
+   prompt, #945): Vista's 12 pt navy, as the wizard's instruction above */
+body.desktop-mode .modal .vdt-client .vdt-static.vdt-main-instruction,
+body.desktop-mode .modal .vdt-plain .vdt-static.vdt-main-instruction {
+    font-size: 16px;
+    line-height: 1.25;
+    color: #003399;
+}

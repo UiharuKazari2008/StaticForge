@@ -190,7 +190,9 @@
         const rows = [
             ['Most recent check for updates:', stamp('meletonUpdateCheckedAt')],
             ['Updates were installed:', stamp('meletonUpdateInstalledAt')],
-            ['You have Melaton set to:', 'Download updates in the background and install them when Melaton restarts (recommended)'],
+            ['You have Melaton set to:', restartPrompt().settings().auto
+                ? 'Install updates automatically and restart to finish installing them (recommended)'
+                : 'Download updates in the background and install them when Melaton restarts'],
             ['You receive updates:', `From the ${domain} domain controller (${root.location ? root.location.hostname : 'this server'})`]
         ];
         const f = fw();
@@ -392,6 +394,7 @@
                 <div class="cpl-task-group">
                     <ul class="cpl-task-list">
                         <li><button type="button" class="cpl-link cpl-link--icon" data-cpl-wu="check"><img src="/static_images/vista-ie/refresh.png" alt="">Check for updates</button></li>
+                        <li><button type="button" class="cpl-link" data-cpl-action="nav" data-cpl-arg="update-settings">Change settings</button></li>
                         <li><button type="button" class="cpl-link" data-cpl-action="nav" data-cpl-arg="update-history">View update history</button></li>
                         <li><button type="button" class="cpl-link" data-cpl-action="nav" data-cpl-arg="update-applied">Applied updates</button></li>
                     </ul>
@@ -415,7 +418,61 @@
         });
         registerApplied(cpl);
         registerHistory(cpl);
+        registerSettings(cpl);
         return true;
+    }
+
+    // ---- Change settings (#945): Vista's "Choose how Windows can install updates" (wucltux.dll.mui 1100-1117),
+    // Melaton's two ways: updates always download in the background; the choice is whether Melaton restarts by
+    // itself to finish them (the restart prompt's countdown, updateRestartPrompt.js) or waits for you
+    const restartPrompt = () => root.melatonRestartPrompt || { settings: () => ({ auto: true, warnMin: 5 }), save: (x) => x };
+    const WARN_TEXT = { 1: '1 minute', 5: '5 minutes', 15: '15 minutes' };
+    function settingsBody() {
+        const st = restartPrompt().settings();
+        const radio = (value, label, desc) => `<div class="cpl-vradio cpl-wu-radio"><input type="radio" name="cpl-wu-auto" id="cpl-wu-auto-${value}" value="${value}"${(value === '1') === st.auto ? ' checked' : ''}><label for="cpl-wu-auto-${value}">${esc(label)}</label>${desc || ''}</div>`;
+        const warn = `<p class="cpl-vtext cpl-wu-warn">Warn me before restarting: <button type="button" class="custom-dropdown-btn vista-combo-list" data-cpl-wu-warn="${st.warnMin}">${esc(WARN_TEXT[st.warnMin])}</button></p>`;
+        return `<div class="cpl-vpage cpl-spoke"><div class="cpl-spoke-pane">
+                <h1 class="cpl-vtitle">Choose how Melaton can install updates</h1>
+                <p class="cpl-vtext">When your computer is online, Melaton downloads important updates in the background and installs them when it restarts. When updates that need a restart are ready, Melaton can restart by itself to finish installing them, or wait until you restart.</p>
+                <div class="cpl-vsection"><span>Important updates</span></div>
+                ${radio('1', 'Install updates automatically (recommended)', warn)}
+                ${radio('0', 'Download updates but let me choose when to restart to install them')}
+                <p class="cpl-vtext">Melaton never restarts while a program has unsaved work: it asks you first, as when you shut down.</p>
+            </div>
+            <div class="cpl-spoke-commands"><div class="cpl-spoke-buttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-wu-set="ok">OK</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-wu-set="cancel">Cancel</button></div></div></div>`;
+    }
+    function settingsMount(el) {
+        const cpl = root.melatonControlPanel;
+        const btn = el.querySelector('[data-cpl-wu-warn]');
+        const cm = root.contextMenu;
+        // the kit's combo (no native select): 1 / 5 / 15 minutes
+        if (btn && cm && typeof cm.attachPickerMenu === 'function') {
+            cm.attachPickerMenu(btn, {
+                items: () => Object.keys(WARN_TEXT).map((k) => ({ value: k, text: WARN_TEXT[k] })),
+                value: () => btn.dataset.cplWuWarn,
+                onSelect: (value) => { btn.dataset.cplWuWarn = String(value); btn.textContent = WARN_TEXT[value] || ''; }
+            });
+        }
+        el.querySelectorAll('[data-cpl-wu-set]').forEach((b) => b.addEventListener('click', () => {
+            if (b.dataset.cplWuSet === 'ok') {
+                const on = el.querySelector('input[name="cpl-wu-auto"]:checked');
+                const auto = !on || on.value === '1';
+                restartPrompt().save({ auto, warnMin: Number(btn ? btn.dataset.cplWuWarn : 5) || 5 });
+                // turned on with a restart waiting: the prompt asks now; off: no countdown is left running
+                const p = root.melatonRestartPrompt;
+                if (p) { if (auto) p.schedule(500); else p.cancel(); }
+            }
+            cpl.open('update');
+        }));
+    }
+    function registerSettings(cpl) {
+        cpl.registerPage('update-settings', {
+            parent: 'update',
+            title: () => 'Change settings',
+            tasks: () => '',
+            body: settingsBody,
+            mount: settingsMount
+        });
     }
 
     // ---- View update history (#872): Vista's "Review your update history". Live updates (an app or

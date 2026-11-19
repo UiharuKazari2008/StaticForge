@@ -92,7 +92,9 @@ async function startBackgroundTrayServices() {
             return 'searchIndexingIndicator';
         },
         () => {
-            revealTrayIconById('serviceWorkerTrayIcon');
+            // Melaton Update: only with updates downloading or waiting (#945)
+            const sw = window.serviceWorkerManager;
+            if (sw && (sw.isUpdating || (typeof sw.hasPendingUpdates === 'function' && sw.hasPendingUpdates()))) revealTrayIconById('serviceWorkerTrayIcon');
             return 'serviceWorkerTrayIcon';
         },
         () => {
@@ -433,86 +435,7 @@ function setupServiceWorkerTrayContextMenu() {
 
     contextMenu.attachToElement(icon, {
         sections: [
-            {
-                type: 'list',
-                title: 'Storage Usage',
-                items: [
-                    {
-                        disabled: true,
-                        className: 'sw-storage-item sw-storage-total',
-                        text: 'Total',
-                        badge: '—'
-                    },
-                    {
-                        disabled: true,
-                        className: 'sw-storage-item sw-storage-used',
-                        text: 'Used',
-                        badge: '—'
-                    },
-                    {
-                        disabled: true,
-                        className: 'sw-storage-item sw-storage-static',
-                        text: 'Static',
-                        badge: '—'
-                    },
-                    {
-                        disabled: true,
-                        className: 'sw-storage-item sw-storage-dynamic',
-                        text: 'Dynamic',
-                        badge: '—'
-                    },
-                    {
-                        disabled: true,
-                        className: 'sw-storage-item sw-storage-internal',
-                        text: 'Internal',
-                        badge: '—'
-                    },
-                    {
-                        disabled: true,
-                        className: 'sw-storage-item sw-storage-images',
-                        text: 'Images',
-                        badge: '—'
-                    }
-                ],
-                loadfn: async () => {
-                    try {
-                        const setStorageItem = (className, value) => {
-                            const item = document.querySelector(`.${className}`);
-                            if (!item) return;
-                            const badge = item.querySelector('.context-menu-item-badge');
-                            if (badge) badge.textContent = value ?? '—';
-                        };
-
-                        if (navigator.storage && navigator.storage.estimate) {
-                            const est = await navigator.storage.estimate();
-                            const usage = Number.isFinite(est.usage) ? est.usage : null;
-                            const quota = Number.isFinite(est.quota) ? est.quota : null;
-                            if (usage != null && quota != null && quota > 0) {
-                                const pct = Math.round((usage / quota) * 100);
-                                setStorageItem('sw-storage-total', `${formatBytes(usage)} / ${formatBytes(quota)}`);
-                                setStorageItem('sw-storage-used', `${pct}%`);
-                            } else if (usage != null) {
-                                setStorageItem('sw-storage-total', `${formatBytes(usage)}`);
-                                setStorageItem('sw-storage-used', '—');
-                            } else {
-                                setStorageItem('sw-storage-total', '—');
-                                setStorageItem('sw-storage-used', '—');
-                            }
-                        }
-
-                        if (window.serviceWorkerManager && typeof window.serviceWorkerManager.getCacheStats === 'function') {
-                            const status = await window.serviceWorkerManager.getCacheStats();
-                            const s = status || {};
-                            setStorageItem('sw-storage-static', Number.isFinite(s.static) ? String(s.static) : '—');
-                            setStorageItem('sw-storage-dynamic', Number.isFinite(s.dynamic) ? String(s.dynamic) : '—');
-                            setStorageItem('sw-storage-internal', Number.isFinite(s.internal) ? String(s.internal) : '—');
-                            setStorageItem('sw-storage-images', Number.isFinite(s.images) ? String(s.images) : '—');
-                        }
-                    } catch (error) {
-                        console.error('Failed to update service worker tray stats:', error);
-                    }
-                }
-            },
+            // (the worker's storage figures moved out of this menu: the icon shows only for updates now, #945)
             {
                 type: 'list',
                 title: 'Updates',

@@ -2298,3 +2298,17 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-map--4 .cpl-map-node {
     flex-basis: 104px;
 }
+
+/* Change settings (#945): "Warn me before restarting:" with its combo on the same line, indented under its radio */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vradio > p.cpl-wu-warn.cpl-wu-warn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 6px 20px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vradio > p.cpl-wu-warn > button.custom-dropdown-btn.custom-dropdown-btn {
+    flex: none;
+    width: 120px;
+    min-width: 0;
+}
