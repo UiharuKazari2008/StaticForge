@@ -1732,6 +1732,28 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     outline-offset: 0;
 }
 
+/* Top-pointing track bars (TBS_TOP; Mobility Center's sliders): TRACKBAR THUMBTOP IMAGE_799 (11x19, the same five
+   states), its point 11 px above the groove. Add class vista-trackbar-top to the input. (Scoped by desktop-mode
+   alone, no "not the classic theme" test; the class doubles to outrank the THUMBBOTTOM rule.) */
+body.desktop-mode :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="range"].vista-trackbar-top.vista-trackbar-top:not(.win7 .is-vertical > input, .hover-show)::-webkit-slider-thumb {
+    margin-top: -11px;
+    background-image: url("/static_images/vista-controls/trackbar-thumb-top.png");
+}
+
+/* A drop-down list drawn as an edit box with the glyph (DirectUI's combo: Mobility Center's power plans): the edit
+   border (edit-normal / edit-hot) and the black glyph, the hot drop button face on hover. Add class vista-combo-list
+   to a custom-dropdown-btn. */
+body.desktop-mode :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .custom-dropdown-btn.vista-combo-list.vista-combo-list.vista-combo-list.vista-combo-list:not(.hover-show) {
+    --vista-combo-face: url("/static_images/vista-controls/edit-normal.png");
+    min-height: 21px;
+    padding: 0 19px 0 4px;
+    border-image: var(--vista-combo-face) 2 fill / 2px stretch;
+    color: #000;
+}
+body.desktop-mode :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .custom-dropdown-btn.vista-combo-list.vista-combo-list.vista-combo-list.vista-combo-list:not(.hover-show):is(:hover, .active, .context-open, [aria-expanded="true"]):not(:disabled) {
+    --vista-combo-face: url("/static_images/vista-controls/edit-hot.png");
+}
+
 /* Progress bars: PROGRESS BAR IMAGE_622 stretched over the rect, FILL IMAGE_626 (red 627 on error,
    yellow 628 paused) over the same height from the bar's left edge, 9-sliced 8 px at the ends.
    Covers <progress> and 7.css's [role=progressbar] > div (startup and Windows Update dialogs). */
