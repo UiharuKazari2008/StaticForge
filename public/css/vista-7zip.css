@@ -42,161 +42,161 @@ body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) :is
 }
 
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-7z {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-7z-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-7z-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-7z-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-7z-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-7z-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-7z-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-7z-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-7z-48.png') 1x, url('/static_images/vista-7zip/archive-7z-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-7z-16.png') 1x, url('/static_images/vista-7zip/archive-7z-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-7z-16.png') 1x, url('/static_images/vista-7zip/archive-7z-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-zip {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-zip-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-zip-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-zip-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-zip-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-zip-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-zip-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-zip-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-zip-48.png') 1x, url('/static_images/vista-7zip/archive-zip-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-zip-16.png') 1x, url('/static_images/vista-7zip/archive-zip-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-zip-16.png') 1x, url('/static_images/vista-7zip/archive-zip-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-rar {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-rar-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-rar-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-rar-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-rar-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-rar-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-rar-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-rar-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-rar-48.png') 1x, url('/static_images/vista-7zip/archive-rar-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-rar-16.png') 1x, url('/static_images/vista-7zip/archive-rar-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-rar-16.png') 1x, url('/static_images/vista-7zip/archive-rar-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-tar {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-tar-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-tar-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-tar-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-tar-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-tar-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-tar-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-tar-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-tar-48.png') 1x, url('/static_images/vista-7zip/archive-tar-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-tar-16.png') 1x, url('/static_images/vista-7zip/archive-tar-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-tar-16.png') 1x, url('/static_images/vista-7zip/archive-tar-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-gz {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-gz-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-gz-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-gz-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-gz-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-gz-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-gz-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-gz-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-gz-48.png') 1x, url('/static_images/vista-7zip/archive-gz-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-gz-16.png') 1x, url('/static_images/vista-7zip/archive-gz-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-gz-16.png') 1x, url('/static_images/vista-7zip/archive-gz-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-bz2 {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-bz2-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-bz2-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-bz2-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-bz2-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-bz2-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-bz2-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-bz2-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-bz2-48.png') 1x, url('/static_images/vista-7zip/archive-bz2-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-bz2-16.png') 1x, url('/static_images/vista-7zip/archive-bz2-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-bz2-16.png') 1x, url('/static_images/vista-7zip/archive-bz2-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-xz {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-xz-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-xz-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-xz-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-xz-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-xz-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-xz-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-xz-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-xz-48.png') 1x, url('/static_images/vista-7zip/archive-xz-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-xz-16.png') 1x, url('/static_images/vista-7zip/archive-xz-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-xz-16.png') 1x, url('/static_images/vista-7zip/archive-xz-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-lzma {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-lzma-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-lzma-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-lzma-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-lzma-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-lzma-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-lzma-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-lzma-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-lzma-48.png') 1x, url('/static_images/vista-7zip/archive-lzma-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-lzma-16.png') 1x, url('/static_images/vista-7zip/archive-lzma-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-lzma-16.png') 1x, url('/static_images/vista-7zip/archive-lzma-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-zst {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-zst-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-zst-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-zst-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-zst-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-zst-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-zst-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-zst-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-zst-48.png') 1x, url('/static_images/vista-7zip/archive-zst-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-zst-16.png') 1x, url('/static_images/vista-7zip/archive-zst-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-zst-16.png') 1x, url('/static_images/vista-7zip/archive-zst-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-z {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-z-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-z-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-z-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-z-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-z-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-z-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-z-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-z-48.png') 1x, url('/static_images/vista-7zip/archive-z-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-z-16.png') 1x, url('/static_images/vista-7zip/archive-z-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-z-16.png') 1x, url('/static_images/vista-7zip/archive-z-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-cab {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-cab-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-cab-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-cab-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-cab-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-cab-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-cab-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-cab-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-cab-48.png') 1x, url('/static_images/vista-7zip/archive-cab-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-cab-16.png') 1x, url('/static_images/vista-7zip/archive-cab-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-cab-16.png') 1x, url('/static_images/vista-7zip/archive-cab-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-iso {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-iso-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-iso-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-iso-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-iso-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-iso-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-iso-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-iso-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-iso-48.png') 1x, url('/static_images/vista-7zip/archive-iso-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-iso-16.png') 1x, url('/static_images/vista-7zip/archive-iso-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-iso-16.png') 1x, url('/static_images/vista-7zip/archive-iso-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-wim {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-wim-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-wim-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-wim-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-wim-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-wim-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-wim-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-wim-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-wim-48.png') 1x, url('/static_images/vista-7zip/archive-wim-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-wim-16.png') 1x, url('/static_images/vista-7zip/archive-wim-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-wim-16.png') 1x, url('/static_images/vista-7zip/archive-wim-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-arj {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-arj-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-arj-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-arj-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-arj-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-arj-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-arj-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-arj-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-arj-48.png') 1x, url('/static_images/vista-7zip/archive-arj-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-arj-16.png') 1x, url('/static_images/vista-7zip/archive-arj-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-arj-16.png') 1x, url('/static_images/vista-7zip/archive-arj-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-lzh {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-lzh-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-lzh-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-lzh-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-lzh-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-lzh-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-lzh-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-lzh-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-lzh-48.png') 1x, url('/static_images/vista-7zip/archive-lzh-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-lzh-16.png') 1x, url('/static_images/vista-7zip/archive-lzh-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-lzh-16.png') 1x, url('/static_images/vista-7zip/archive-lzh-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-cpio {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-cpio-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-cpio-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-cpio-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-cpio-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-cpio-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-cpio-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-cpio-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-cpio-48.png') 1x, url('/static_images/vista-7zip/archive-cpio-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-cpio-16.png') 1x, url('/static_images/vista-7zip/archive-cpio-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-cpio-16.png') 1x, url('/static_images/vista-7zip/archive-cpio-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-rpm {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-rpm-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-rpm-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-rpm-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-rpm-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-rpm-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-rpm-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-rpm-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-rpm-48.png') 1x, url('/static_images/vista-7zip/archive-rpm-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-rpm-16.png') 1x, url('/static_images/vista-7zip/archive-rpm-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-rpm-16.png') 1x, url('/static_images/vista-7zip/archive-rpm-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-deb {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-deb-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-deb-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-deb-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-deb-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-deb-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-deb-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-deb-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-deb-48.png') 1x, url('/static_images/vista-7zip/archive-deb-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-deb-16.png') 1x, url('/static_images/vista-7zip/archive-deb-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-deb-16.png') 1x, url('/static_images/vista-7zip/archive-deb-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-dmg {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-dmg-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-dmg-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-dmg-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-dmg-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-dmg-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-dmg-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-dmg-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-dmg-48.png') 1x, url('/static_images/vista-7zip/archive-dmg-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-dmg-16.png') 1x, url('/static_images/vista-7zip/archive-dmg-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-dmg-16.png') 1x, url('/static_images/vista-7zip/archive-dmg-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-xar {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-xar-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-xar-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-xar-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-xar-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-xar-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-xar-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-xar-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-xar-48.png') 1x, url('/static_images/vista-7zip/archive-xar-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-xar-16.png') 1x, url('/static_images/vista-7zip/archive-xar-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-xar-16.png') 1x, url('/static_images/vista-7zip/archive-xar-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-vhd {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-vhd-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-vhd-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-vhd-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-vhd-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-vhd-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-vhd-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-vhd-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-vhd-48.png') 1x, url('/static_images/vista-7zip/archive-vhd-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-vhd-16.png') 1x, url('/static_images/vista-7zip/archive-vhd-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-vhd-16.png') 1x, url('/static_images/vista-7zip/archive-vhd-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-squashfs {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-squashfs-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-squashfs-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-squashfs-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-squashfs-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-squashfs-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-squashfs-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-squashfs-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-squashfs-48.png') 1x, url('/static_images/vista-7zip/archive-squashfs-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-squashfs-16.png') 1x, url('/static_images/vista-7zip/archive-squashfs-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-7zip/archive-squashfs-16.png') 1x, url('/static_images/vista-7zip/archive-squashfs-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon.fa-file-zipper.ex-archive-split {
-    --ex-icon-lg: url('/static_images/vista-7zip/archive-split-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-7zip/archive-split-96.png') 1x, url('/static_images/hidpi/125/vista-7zip/archive-split-96.png') 1.25x, url('/static_images/hidpi/150/vista-7zip/archive-split-96.png') 1.5x, url('/static_images/hidpi/175/vista-7zip/archive-split-96.png') 1.75x, url('/static_images/hidpi/200/vista-7zip/archive-split-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-7zip/archive-split-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-7zip/archive-split-48.png') 1x, url('/static_images/vista-7zip/archive-split-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-7zip/archive-split-16.png') 1x, url('/static_images/vista-7zip/archive-split-32.png') 2x);
@@ -325,7 +325,7 @@ body.desktop-mode:not(.windows-classic-theme) .win7.sz-client .sz-progress[role=
     width: 16px;
     height: 16px;
     flex: none;
-    background: url('/static_images/vista-explorer/folders-up.png') no-repeat center / 9px 9px;
+    background: image-set(url('/static_images/vista-explorer/folders-up.png') 1x, url('/static_images/hidpi/125/vista-explorer/folders-up.png') 1.2727x, url('/static_images/hidpi/150/vista-explorer/folders-up.png') 1.5455x, url('/static_images/hidpi/175/vista-explorer/folders-up.png') 1.7273x, url('/static_images/hidpi/200/vista-explorer/folders-up.png') 2x) no-repeat center / 9px 9px;
     transform: rotate(90deg);
     opacity: 0.6;
 }
@@ -339,7 +339,7 @@ body.desktop-mode:not(.windows-classic-theme) .win7.sz-client .sz-progress[role=
     width: 16px;
     height: 16px;
     flex: none;
-    background: url('/static_images/vista-icons/explorer/folder-16.png') no-repeat center;
+    background: image-set(url('/static_images/vista-icons/explorer/folder-16.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/folder-16.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/folder-16.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/folder-16.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/folder-16.png') 2x) no-repeat center;
 }
 .sz-client .sz-bf-name {
     padding: 1px 2px;

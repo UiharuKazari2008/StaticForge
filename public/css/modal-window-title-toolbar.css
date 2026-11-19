@@ -1620,25 +1620,25 @@ body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed)))
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-minimize {
     width: 12px;
     height: 5px;
-    background-image: url("/static_images/window-controls/vista-minimize.png");
+    background-image: image-set(url("/static_images/window-controls/vista-minimize.png") 1x, url("/static_images/hidpi/125/window-controls/vista-minimize.png") 1.25x, url("/static_images/hidpi/150/window-controls/vista-minimize.png") 1.5x, url("/static_images/hidpi/175/window-controls/vista-minimize.png") 1.75x, url("/static_images/hidpi/200/window-controls/vista-minimize.png") 2x);
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-maximize {
     width: 12px;
     height: 10px;
-    background-image: url("/static_images/window-controls/vista-maximize.png");
+    background-image: image-set(url("/static_images/window-controls/vista-maximize.png") 1x, url("/static_images/hidpi/125/window-controls/vista-maximize.png") 1.25x, url("/static_images/hidpi/150/window-controls/vista-maximize.png") 1.5x, url("/static_images/hidpi/175/window-controls/vista-maximize.png") 1.75x, url("/static_images/hidpi/200/window-controls/vista-maximize.png") 2x);
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-restore {
     width: 12px;
     height: 12px;
-    background-image: url("/static_images/window-controls/vista-restore.png");
+    background-image: image-set(url("/static_images/window-controls/vista-restore.png") 1x, url("/static_images/hidpi/125/window-controls/vista-restore.png") 1.25x, url("/static_images/hidpi/150/window-controls/vista-restore.png") 1.5x, url("/static_images/hidpi/175/window-controls/vista-restore.png") 1.75x, url("/static_images/hidpi/200/window-controls/vista-restore.png") 2x);
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-xmark-large {
     width: 11px;
     height: 10px;
-    background-image: url("/static_images/window-controls/vista-close.png");
+    background-image: image-set(url("/static_images/window-controls/vista-close.png") 1x, url("/static_images/hidpi/125/window-controls/vista-close.png") 1.2727x, url("/static_images/hidpi/150/window-controls/vista-close.png") 1.5455x, url("/static_images/hidpi/175/window-controls/vista-close.png") 1.7273x, url("/static_images/hidpi/200/window-controls/vista-close.png") 2x);
 }
 
 /* The bloom layer (7.css button:before): under the glyph, active windows only */
@@ -1733,62 +1733,62 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
 /* the piece and window state pick the face; the paint rule below reads these */
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown),
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > .custom-dropdown > button {
-    --caption-face-normal: url("/static_images/window-controls/faces/mid-active-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/faces/mid-active-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/faces/mid-active-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/faces/mid-active-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/faces/mid-active-normal.png") 1x, url("/static_images/hidpi/125/window-controls/faces/mid-active-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/mid-active-normal.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/mid-active-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/mid-active-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/faces/mid-active-hot.png") 1x, url("/static_images/hidpi/125/window-controls/faces/mid-active-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/mid-active-hot.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/mid-active-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/mid-active-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/faces/mid-active-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/faces/mid-active-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/mid-active-pressed.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/mid-active-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/mid-active-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/faces/mid-active-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/faces/mid-active-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/mid-active-disabled.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/mid-active-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/mid-active-disabled.png") 2x);
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown),
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
-    --caption-face-normal: url("/static_images/window-controls/faces/mid-inactive-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/faces/mid-inactive-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/faces/mid-inactive-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/faces/mid-inactive-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/faces/mid-inactive-normal.png") 1x, url("/static_images/hidpi/125/window-controls/faces/mid-inactive-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/mid-inactive-normal.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/mid-inactive-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/mid-inactive-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/faces/mid-inactive-hot.png") 1x, url("/static_images/hidpi/125/window-controls/faces/mid-inactive-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/mid-inactive-hot.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/mid-inactive-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/mid-inactive-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/faces/mid-inactive-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/faces/mid-inactive-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/mid-inactive-pressed.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/mid-inactive-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/mid-inactive-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/faces/mid-inactive-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/faces/mid-inactive-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/mid-inactive-disabled.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/mid-inactive-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/mid-inactive-disabled.png") 2x);
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown):is(:first-child, .indicator + :not(.indicator)):not(:last-child),
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > .custom-dropdown:first-child:not(:last-child) > button {
-    --caption-face-normal: url("/static_images/window-controls/faces/left-active-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/faces/left-active-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/faces/left-active-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/faces/left-active-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/faces/left-active-normal.png") 1x, url("/static_images/hidpi/125/window-controls/faces/left-active-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/left-active-normal.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/left-active-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/left-active-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/faces/left-active-hot.png") 1x, url("/static_images/hidpi/125/window-controls/faces/left-active-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/left-active-hot.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/left-active-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/left-active-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/faces/left-active-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/faces/left-active-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/left-active-pressed.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/left-active-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/left-active-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/faces/left-active-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/faces/left-active-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/left-active-disabled.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/left-active-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/left-active-disabled.png") 2x);
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown):is(:first-child, .indicator + :not(.indicator)):not(:last-child),
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > .custom-dropdown:first-child:not(:last-child) > button {
-    --caption-face-normal: url("/static_images/window-controls/faces/left-inactive-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/faces/left-inactive-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/faces/left-inactive-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/faces/left-inactive-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/faces/left-inactive-normal.png") 1x, url("/static_images/hidpi/125/window-controls/faces/left-inactive-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/left-inactive-normal.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/left-inactive-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/left-inactive-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/faces/left-inactive-hot.png") 1x, url("/static_images/hidpi/125/window-controls/faces/left-inactive-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/left-inactive-hot.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/left-inactive-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/left-inactive-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/faces/left-inactive-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/faces/left-inactive-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/left-inactive-pressed.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/left-inactive-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/left-inactive-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/faces/left-inactive-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/faces/left-inactive-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/left-inactive-disabled.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/left-inactive-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/left-inactive-disabled.png") 2x);
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):not(:first-child, .indicator + *) {
-    --caption-face-normal: url("/static_images/window-controls/faces/right-active-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/faces/right-active-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/faces/right-active-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/faces/right-active-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/faces/right-active-normal.png") 1x, url("/static_images/hidpi/125/window-controls/faces/right-active-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/right-active-normal.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/right-active-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/right-active-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/faces/right-active-hot.png") 1x, url("/static_images/hidpi/125/window-controls/faces/right-active-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/right-active-hot.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/right-active-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/right-active-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/faces/right-active-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/faces/right-active-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/right-active-pressed.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/right-active-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/right-active-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/faces/right-active-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/faces/right-active-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/right-active-disabled.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/right-active-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/right-active-disabled.png") 2x);
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):not(:first-child, .indicator + *) {
-    --caption-face-normal: url("/static_images/window-controls/faces/right-inactive-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/faces/right-inactive-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/faces/right-inactive-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/faces/right-inactive-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/faces/right-inactive-normal.png") 1x, url("/static_images/hidpi/125/window-controls/faces/right-inactive-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/right-inactive-normal.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/right-inactive-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/right-inactive-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/faces/right-inactive-hot.png") 1x, url("/static_images/hidpi/125/window-controls/faces/right-inactive-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/right-inactive-hot.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/right-inactive-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/right-inactive-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/faces/right-inactive-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/faces/right-inactive-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/right-inactive-pressed.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/right-inactive-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/right-inactive-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/faces/right-inactive-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/faces/right-inactive-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/right-inactive-disabled.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/right-inactive-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/right-inactive-disabled.png") 2x);
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):is(:first-child, .indicator + *) {
-    --caption-face-normal: url("/static_images/window-controls/faces/single-active-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/faces/single-active-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/faces/single-active-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/faces/single-active-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/faces/single-active-normal.png") 1x, url("/static_images/hidpi/125/window-controls/faces/single-active-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/single-active-normal.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/single-active-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/single-active-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/faces/single-active-hot.png") 1x, url("/static_images/hidpi/125/window-controls/faces/single-active-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/single-active-hot.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/single-active-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/single-active-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/faces/single-active-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/faces/single-active-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/single-active-pressed.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/single-active-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/single-active-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/faces/single-active-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/faces/single-active-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/single-active-disabled.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/single-active-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/single-active-disabled.png") 2x);
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):is(:first-child, .indicator + *) {
-    --caption-face-normal: url("/static_images/window-controls/faces/single-inactive-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/faces/single-inactive-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/faces/single-inactive-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/faces/single-inactive-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/faces/single-inactive-normal.png") 1x, url("/static_images/hidpi/125/window-controls/faces/single-inactive-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/single-inactive-normal.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/single-inactive-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/single-inactive-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/faces/single-inactive-hot.png") 1x, url("/static_images/hidpi/125/window-controls/faces/single-inactive-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/single-inactive-hot.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/single-inactive-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/single-inactive-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/faces/single-inactive-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/faces/single-inactive-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/single-inactive-pressed.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/single-inactive-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/single-inactive-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/faces/single-inactive-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/faces/single-inactive-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/faces/single-inactive-disabled.png") 1.5x, url("/static_images/hidpi/175/window-controls/faces/single-inactive-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/faces/single-inactive-disabled.png") 2x);
 }
 
 /* The face: a horizontal 9-slice over 5 px caps, so wider app buttons stretch only the middle. The .modal.active-window / :not() pair outranks the 7.css rules above. */
@@ -2007,31 +2007,31 @@ html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls:not(.window-inactive) > button {
-    --caption-face-normal: url("/static_images/window-controls/tool/button-active-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/tool/button-active-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/tool/button-active-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/tool/button-active-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/tool/button-active-normal.png") 1x, url("/static_images/hidpi/125/window-controls/tool/button-active-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/button-active-normal.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/button-active-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/button-active-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/tool/button-active-hot.png") 1x, url("/static_images/hidpi/125/window-controls/tool/button-active-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/button-active-hot.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/button-active-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/button-active-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/tool/button-active-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/tool/button-active-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/button-active-pressed.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/button-active-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/button-active-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/tool/button-active-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/tool/button-active-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/button-active-disabled.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/button-active-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/button-active-disabled.png") 2x);
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls.window-inactive > button {
-    --caption-face-normal: url("/static_images/window-controls/tool/button-inactive-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/tool/button-inactive-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/tool/button-inactive-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/tool/button-inactive-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/tool/button-inactive-normal.png") 1x, url("/static_images/hidpi/125/window-controls/tool/button-inactive-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/button-inactive-normal.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/button-inactive-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/button-inactive-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/tool/button-inactive-hot.png") 1x, url("/static_images/hidpi/125/window-controls/tool/button-inactive-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/button-inactive-hot.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/button-inactive-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/button-inactive-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/tool/button-inactive-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/tool/button-inactive-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/button-inactive-pressed.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/button-inactive-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/button-inactive-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/tool/button-inactive-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/tool/button-inactive-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/button-inactive-disabled.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/button-inactive-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/button-inactive-disabled.png") 2x);
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls:not(.window-inactive) > button:is(.close-btn, .modal-close) {
-    --caption-face-normal: url("/static_images/window-controls/tool/close-active-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/tool/close-active-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/tool/close-active-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/tool/close-active-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/tool/close-active-normal.png") 1x, url("/static_images/hidpi/125/window-controls/tool/close-active-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/close-active-normal.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/close-active-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/close-active-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/tool/close-active-hot.png") 1x, url("/static_images/hidpi/125/window-controls/tool/close-active-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/close-active-hot.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/close-active-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/close-active-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/tool/close-active-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/tool/close-active-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/close-active-pressed.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/close-active-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/close-active-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/tool/close-active-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/tool/close-active-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/close-active-disabled.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/close-active-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/close-active-disabled.png") 2x);
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls.window-inactive > button:is(.close-btn, .modal-close) {
-    --caption-face-normal: url("/static_images/window-controls/tool/close-inactive-normal.png");
-    --caption-face-hot: url("/static_images/window-controls/tool/close-inactive-hot.png");
-    --caption-face-pressed: url("/static_images/window-controls/tool/close-inactive-pressed.png");
-    --caption-face-disabled: url("/static_images/window-controls/tool/close-inactive-disabled.png");
+    --caption-face-normal: image-set(url("/static_images/window-controls/tool/close-inactive-normal.png") 1x, url("/static_images/hidpi/125/window-controls/tool/close-inactive-normal.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/close-inactive-normal.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/close-inactive-normal.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/close-inactive-normal.png") 2x);
+    --caption-face-hot: image-set(url("/static_images/window-controls/tool/close-inactive-hot.png") 1x, url("/static_images/hidpi/125/window-controls/tool/close-inactive-hot.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/close-inactive-hot.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/close-inactive-hot.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/close-inactive-hot.png") 2x);
+    --caption-face-pressed: image-set(url("/static_images/window-controls/tool/close-inactive-pressed.png") 1x, url("/static_images/hidpi/125/window-controls/tool/close-inactive-pressed.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/close-inactive-pressed.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/close-inactive-pressed.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/close-inactive-pressed.png") 2x);
+    --caption-face-disabled: image-set(url("/static_images/window-controls/tool/close-inactive-disabled.png") 1x, url("/static_images/hidpi/125/window-controls/tool/close-inactive-disabled.png") 1.25x, url("/static_images/hidpi/150/window-controls/tool/close-inactive-disabled.png") 1.5294x, url("/static_images/hidpi/175/window-controls/tool/close-inactive-disabled.png") 1.75x, url("/static_images/hidpi/200/window-controls/tool/close-inactive-disabled.png") 2x);
 }
 
 /* pressed and disabled faces (the shorthands above outrank the shared swaps) */
@@ -2047,14 +2047,14 @@ html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert
 html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls > button > i.fa-xmark-large {
     width: 7px;
     height: 7px;
-    background-image: url("/static_images/window-controls/vista-close-small.png");
+    background-image: image-set(url("/static_images/window-controls/vista-close-small.png") 1x, url("/static_images/hidpi/125/window-controls/vista-close-small.png") 1.2857x, url("/static_images/hidpi/150/window-controls/vista-close-small.png") 1.5714x, url("/static_images/hidpi/175/window-controls/vista-close-small.png") 1.7143x, url("/static_images/hidpi/200/window-controls/vista-close-small.png") 2x);
 }
 
 html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls > button > i.fa-window-minimize {
     width: 7px;
     height: 5px;
     margin-top: 6px;
-    background-image: url("/static_images/window-controls/vista-minimize-small.png");
+    background-image: image-set(url("/static_images/window-controls/vista-minimize-small.png") 1x, url("/static_images/hidpi/125/window-controls/vista-minimize-small.png") 1.2857x, url("/static_images/hidpi/150/window-controls/vista-minimize-small.png") 1.5714x, url("/static_images/hidpi/175/window-controls/vista-minimize-small.png") 1.7143x, url("/static_images/hidpi/200/window-controls/vista-minimize-small.png") 2x);
 }
 
 /* a tool window has no Maximize (Vista draws only Close on WS_EX_TOOLWINDOW; modalUtils adds the

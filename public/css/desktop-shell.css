@@ -1858,11 +1858,11 @@ html[data-glass="basic"] #startMenu.start-menu {
     flex: none;
     width: 47px;
     height: 23px;
-    background: url('/static_images/vista-start/programs-arrow.png') no-repeat 4px center;
+    background: image-set(url('/static_images/vista-start/programs-arrow.png') 1x, url('/static_images/hidpi/125/vista-start/programs-arrow.png') 1.25x, url('/static_images/hidpi/150/vista-start/programs-arrow.png') 1.5217x, url('/static_images/hidpi/175/vista-start/programs-arrow.png') 1.75x, url('/static_images/hidpi/200/vista-start/programs-arrow.png') 2x) no-repeat 4px center;
 }
 
 .start-menu-all-programs.is-back .start-menu-all-programs-arrow {
-    background-image: url('/static_images/vista-start/back-arrow.png');
+    background-image: image-set(url('/static_images/vista-start/back-arrow.png') 1x, url('/static_images/hidpi/125/vista-start/back-arrow.png') 1.25x, url('/static_images/hidpi/150/vista-start/back-arrow.png') 1.5217x, url('/static_images/hidpi/175/vista-start/back-arrow.png') 1.75x, url('/static_images/hidpi/200/vista-start/back-arrow.png') 2x);
 }
 
 /* ---- Start Search ---- */
@@ -1881,7 +1881,7 @@ html[data-glass="basic"] #startMenu.start-menu {
     border: 1px solid #414243;
     border-radius: 2px;
     box-shadow: 0 0 0 1px hsl(0 0% 100% / 30%);
-    background: #fff url('/static_images/vista-start/search-glyph.png') no-repeat right 8px center;
+    background: #fff image-set(url('/static_images/vista-start/search-glyph.png') 1x, url('/static_images/hidpi/125/vista-start/search-glyph.png') 1.25x, url('/static_images/hidpi/150/vista-start/search-glyph.png') 1.5385x, url('/static_images/hidpi/175/vista-start/search-glyph.png') 1.75x, url('/static_images/hidpi/200/vista-start/search-glyph.png') 2x) no-repeat right 8px center;
     color: #000;
     font: 15px var(--start-menu-font);
     outline: none;
@@ -1990,7 +1990,7 @@ html[data-glass="basic"] #startMenu.start-menu {
     content: '';
     position: absolute;
     inset: 0;
-    background: url('/static_images/vista-start/user-frame.png') no-repeat 0 0 / 80px 80px;
+    background: image-set(url('/static_images/vista-start/user-frame.png') 1x, url('/static_images/hidpi/125/vista-start/user-frame.png') 1.25x, url('/static_images/hidpi/150/vista-start/user-frame.png') 1.5x, url('/static_images/hidpi/175/vista-start/user-frame.png') 1.75x, url('/static_images/hidpi/200/vista-start/user-frame.png') 2x) no-repeat 0 0 / 80px 80px;
     transition: opacity 0.25s ease;
 }
 
@@ -2043,32 +2043,32 @@ html[data-glass="basic"] #startMenu.start-menu {
     padding: 0;
     border: 0;
     border-radius: 0;
-    background: url('/static_images/vista-start/shutdown.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-start/shutdown.png') 1x, url('/static_images/hidpi/125/vista-start/shutdown.png') 1.25x, url('/static_images/hidpi/150/vista-start/shutdown.png') 1.5x, url('/static_images/hidpi/175/vista-start/shutdown.png') 1.75x, url('/static_images/hidpi/200/vista-start/shutdown.png') 2x) no-repeat 0 0;
     cursor: var(--c-default);
 }
 
 /* updates wait to install (#924): Vista's shut down cell with the update shield */
 .start-menu-power-button.is-shutdown-update {
-    background-image: url('/static_images/vista-start/shutdown-update.png');
+    background-image: image-set(url('/static_images/vista-start/shutdown-update.png') 1x, url('/static_images/hidpi/125/vista-start/shutdown-update.png') 1.25x, url('/static_images/hidpi/150/vista-start/shutdown-update.png') 1.5x, url('/static_images/hidpi/175/vista-start/shutdown-update.png') 1.75x, url('/static_images/hidpi/200/vista-start/shutdown-update.png') 2x);
 }
 
 .start-menu-power-button.is-lock {
-    background-image: url('/static_images/vista-start/lock.png');
+    background-image: image-set(url('/static_images/vista-start/lock.png') 1x, url('/static_images/hidpi/125/vista-start/lock.png') 1.25x, url('/static_images/hidpi/150/vista-start/lock.png') 1.5x, url('/static_images/hidpi/175/vista-start/lock.png') 1.75x, url('/static_images/hidpi/200/vista-start/lock.png') 2x);
 }
 
 /* the buttons' other actions (Customize Start Menu): Log off draws Vista's disconnect cell, and on
    the lock button the lock cell with that X */
 .start-menu-power-button.is-disconnect {
-    background-image: url('/static_images/vista-start/disconnect.png');
+    background-image: image-set(url('/static_images/vista-start/disconnect.png') 1x, url('/static_images/hidpi/125/vista-start/disconnect.png') 1.25x, url('/static_images/hidpi/150/vista-start/disconnect.png') 1.5x, url('/static_images/hidpi/175/vista-start/disconnect.png') 1.75x, url('/static_images/hidpi/200/vista-start/disconnect.png') 2x);
 }
 
 .start-menu-power-button.is-lock-logoff {
-    background-image: url('/static_images/vista-start/lock-logoff.png');
+    background-image: image-set(url('/static_images/vista-start/lock-logoff.png') 1x, url('/static_images/hidpi/125/vista-start/lock-logoff.png') 1.25x, url('/static_images/hidpi/150/vista-start/lock-logoff.png') 1.5x, url('/static_images/hidpi/175/vista-start/lock-logoff.png') 1.75x, url('/static_images/hidpi/200/vista-start/lock-logoff.png') 2x);
 }
 
 .start-menu-power-button.is-arrow {
     width: 28px;
-    background-image: url('/static_images/vista-start/arrow.png');
+    background-image: image-set(url('/static_images/vista-start/arrow.png') 1x, url('/static_images/hidpi/125/vista-start/arrow.png') 1.25x, url('/static_images/hidpi/150/vista-start/arrow.png') 1.5x, url('/static_images/hidpi/175/vista-start/arrow.png') 1.75x, url('/static_images/hidpi/200/vista-start/arrow.png') 2x);
 }
 
 .start-menu-power-button:hover {
@@ -2156,7 +2156,7 @@ html[data-glass="basic"] #startMenu.start-menu {
     margin-top: 25px;
     border-style: solid;
     border-width: 0 7px;
-    border-image: url('/static_images/vista-shutdown/rule.png') 1 24 fill / 0 7px stretch;
+    border-image: image-set(url('/static_images/vista-shutdown/rule.png') 1x, url('/static_images/hidpi/125/vista-shutdown/rule.png') 1.25x, url('/static_images/hidpi/150/vista-shutdown/rule.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/rule.png') 1.75x, url('/static_images/hidpi/200/vista-shutdown/rule.png') 2x) 1 24 fill / 0 7px stretch;
 }
 
 .winlogon-block-list {
@@ -2276,45 +2276,45 @@ html[data-glass="basic"] #startMenu.start-menu {
 .winlogon-block-go {
     left: 109px;
     width: 140px;
-    --winlogon-button-art: url('/static_images/vista-shutdown/restart-normal.png');
+    --winlogon-button-art: image-set(url('/static_images/vista-shutdown/restart-normal.png') 1x, url('/static_images/hidpi/125/vista-shutdown/restart-normal.png') 1.25x, url('/static_images/hidpi/150/vista-shutdown/restart-normal.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/restart-normal.png') 1.75x, url('/static_images/hidpi/200/vista-shutdown/restart-normal.png') 2x);
 }
 
 .winlogon-block-go:hover {
-    --winlogon-button-art: url('/static_images/vista-shutdown/restart-hot.png');
+    --winlogon-button-art: image-set(url('/static_images/vista-shutdown/restart-hot.png') 1x, url('/static_images/hidpi/125/vista-shutdown/restart-hot.png') 1.25x, url('/static_images/hidpi/150/vista-shutdown/restart-hot.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/restart-hot.png') 1.75x, url('/static_images/hidpi/200/vista-shutdown/restart-hot.png') 2x);
 }
 
 .winlogon-block-go:focus {
-    --winlogon-button-art: url('/static_images/vista-shutdown/restart-focus.png');
+    --winlogon-button-art: image-set(url('/static_images/vista-shutdown/restart-focus.png') 1x, url('/static_images/hidpi/125/vista-shutdown/restart-focus.png') 1.25x, url('/static_images/hidpi/150/vista-shutdown/restart-focus.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/restart-focus.png') 1.75x, url('/static_images/hidpi/200/vista-shutdown/restart-focus.png') 2x);
 }
 
 .winlogon-block-go:focus:hover {
-    --winlogon-button-art: url('/static_images/vista-shutdown/restart-focus-hot.png');
+    --winlogon-button-art: image-set(url('/static_images/vista-shutdown/restart-focus-hot.png') 1x, url('/static_images/hidpi/125/vista-shutdown/restart-focus-hot.png') 1.25x, url('/static_images/hidpi/150/vista-shutdown/restart-focus-hot.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/restart-focus-hot.png') 1.75x, url('/static_images/hidpi/200/vista-shutdown/restart-focus-hot.png') 2x);
 }
 
 .winlogon-block-go:active {
-    --winlogon-button-art: url('/static_images/vista-shutdown/restart-pressed.png');
+    --winlogon-button-art: image-set(url('/static_images/vista-shutdown/restart-pressed.png') 1x, url('/static_images/hidpi/125/vista-shutdown/restart-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-shutdown/restart-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/restart-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-shutdown/restart-pressed.png') 2x);
 }
 
 .winlogon-block-cancel {
     left: 263px;
     width: 88px;
-    --winlogon-button-art: url('/static_images/vista-shutdown/cancel-normal.png');
+    --winlogon-button-art: image-set(url('/static_images/vista-shutdown/cancel-normal.png') 1x, url('/static_images/hidpi/125/vista-shutdown/cancel-normal.png') 1.25x, url('/static_images/hidpi/150/vista-shutdown/cancel-normal.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/cancel-normal.png') 1.75x, url('/static_images/hidpi/200/vista-shutdown/cancel-normal.png') 2x);
 }
 
 .winlogon-block-cancel:hover {
-    --winlogon-button-art: url('/static_images/vista-shutdown/cancel-hot.png');
+    --winlogon-button-art: image-set(url('/static_images/vista-shutdown/cancel-hot.png') 1x, url('/static_images/hidpi/125/vista-shutdown/cancel-hot.png') 1.25x, url('/static_images/hidpi/150/vista-shutdown/cancel-hot.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/cancel-hot.png') 1.75x, url('/static_images/hidpi/200/vista-shutdown/cancel-hot.png') 2x);
 }
 
 .winlogon-block-cancel:focus {
-    --winlogon-button-art: url('/static_images/vista-shutdown/cancel-focus.png');
+    --winlogon-button-art: image-set(url('/static_images/vista-shutdown/cancel-focus.png') 1x, url('/static_images/hidpi/125/vista-shutdown/cancel-focus.png') 1.25x, url('/static_images/hidpi/150/vista-shutdown/cancel-focus.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/cancel-focus.png') 1.75x, url('/static_images/hidpi/200/vista-shutdown/cancel-focus.png') 2x);
 }
 
 .winlogon-block-cancel:focus:hover {
-    --winlogon-button-art: url('/static_images/vista-shutdown/cancel-focus-hot.png');
+    --winlogon-button-art: image-set(url('/static_images/vista-shutdown/cancel-focus-hot.png') 1x, url('/static_images/hidpi/125/vista-shutdown/cancel-focus-hot.png') 1.25x, url('/static_images/hidpi/150/vista-shutdown/cancel-focus-hot.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/cancel-focus-hot.png') 1.75x, url('/static_images/hidpi/200/vista-shutdown/cancel-focus-hot.png') 2x);
 }
 
 .winlogon-block-cancel:active {
-    --winlogon-button-art: url('/static_images/vista-shutdown/cancel-pressed.png');
+    --winlogon-button-art: image-set(url('/static_images/vista-shutdown/cancel-pressed.png') 1x, url('/static_images/hidpi/125/vista-shutdown/cancel-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-shutdown/cancel-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/cancel-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-shutdown/cancel-pressed.png') 2x);
 }
 
 /* bitmap 544: drawn still, it does not turn */
@@ -2324,7 +2324,7 @@ html[data-glass="basic"] #startMenu.start-menu {
     top: 5px;
     width: 18px;
     height: 18px;
-    background: url('/static_images/vista-shutdown/busy.png') no-repeat;
+    background: image-set(url('/static_images/vista-shutdown/busy.png') 1x, url('/static_images/hidpi/125/vista-shutdown/busy.png') 1.2778x, url('/static_images/hidpi/150/vista-shutdown/busy.png') 1.5x, url('/static_images/hidpi/175/vista-shutdown/busy.png') 1.7778x, url('/static_images/hidpi/200/vista-shutdown/busy.png') 2x) no-repeat;
 }
 
 /* centred in the part right of the busy mark */

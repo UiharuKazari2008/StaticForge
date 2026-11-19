@@ -107,7 +107,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     width: 16px;
     height: 16px;
     margin: auto;
-    background: url('/static_images/vista-paint/tools.png') calc(var(--i) * -16px) 0 no-repeat;
+    background: image-set(url('/static_images/vista-paint/tools.png') 1x, url('/static_images/hidpi/125/vista-paint/tools.png') 1.25x, url('/static_images/hidpi/150/vista-paint/tools.png') 1.5x, url('/static_images/hidpi/175/vista-paint/tools.png') 1.75x, url('/static_images/hidpi/200/vista-paint/tools.png') 2x) calc(var(--i) * -16px) 0 no-repeat;
 }
 
 .mp-client .mp-tool-art.is-extra {
@@ -172,7 +172,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 .mp-client .mp-opt-art.is-transparent {
     width: 34px;
     height: 21px;
-    background: url('/static_images/vista-paint/select-opaque.png') 0 0 no-repeat;
+    background: image-set(url('/static_images/vista-paint/select-opaque.png') 1x, url('/static_images/hidpi/125/vista-paint/select-opaque.png') 1.25x, url('/static_images/hidpi/150/vista-paint/select-opaque.png') 1.5x, url('/static_images/hidpi/175/vista-paint/select-opaque.png') 1.75x, url('/static_images/hidpi/200/vista-paint/select-opaque.png') 2x) 0 0 no-repeat;
 }
 
 .mp-client .mp-opt-art.is-transparent {
@@ -182,7 +182,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 .mp-client .mp-opt-art.is-air {
     width: 22px;
     height: 22px;
-    background: url('/static_images/vista-paint/airbrush-sizes.png') var(--x) 0 no-repeat;
+    background: image-set(url('/static_images/vista-paint/airbrush-sizes.png') 1x, url('/static_images/hidpi/125/vista-paint/airbrush-sizes.png') 1.25x, url('/static_images/hidpi/150/vista-paint/airbrush-sizes.png') 1.5x, url('/static_images/hidpi/175/vista-paint/airbrush-sizes.png') 1.75x, url('/static_images/hidpi/200/vista-paint/airbrush-sizes.png') 2x) var(--x) 0 no-repeat;
 }
 
 .mp-client .mp-opt.is-on .mp-opt-art.is-air {
@@ -280,7 +280,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     touch-action: none;
 }
 
-.mp-client .mp-overlay[data-tool="pencil"] { cursor: url('/static_images/vista-cursors/aero_pen.png') 0 15, crosshair; }
+.mp-client .mp-overlay[data-tool="pencil"] { cursor: image-set(url('/static_images/vista-cursors/aero_pen.png') 1x, url('/static_images/hidpi/125/vista-cursors/aero_pen.png') 1.25x, url('/static_images/hidpi/150/vista-cursors/aero_pen.png') 1.5x, url('/static_images/hidpi/175/vista-cursors/aero_pen.png') 1.75x, url('/static_images/hidpi/200/vista-cursors/aero_pen.png') 2x) 0 15, crosshair; }
 .mp-client .mp-overlay[data-tool="select"],
 .mp-client .mp-overlay[data-tool="freeselect"],
 .mp-client .mp-overlay[data-tool="wand"] { cursor: crosshair; }
@@ -409,7 +409,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     width: 16px;
     height: 15px;
     margin: auto;
-    background: url('/static_images/vista-paint/text-toolbar.png') var(--x) 0 no-repeat;
+    background: image-set(url('/static_images/vista-paint/text-toolbar.png') 1x, url('/static_images/hidpi/125/vista-paint/text-toolbar.png') 1.25x, url('/static_images/hidpi/150/vista-paint/text-toolbar.png') 1.5x, url('/static_images/hidpi/175/vista-paint/text-toolbar.png') 1.75x, url('/static_images/hidpi/200/vista-paint/text-toolbar.png') 2x) var(--x) 0 no-repeat;
 }
 
 .mp-client .mp-tb-b::before,
@@ -507,7 +507,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 }
 
 .mp-client .mp-status > span:last-child {
-    background: url('/static_images/vista-controls/sizegrip.png') no-repeat right 2px bottom 2px;
+    background: image-set(url('/static_images/vista-controls/sizegrip.png') 1x, url('/static_images/hidpi/125/vista-controls/sizegrip.png') 1.25x, url('/static_images/hidpi/150/vista-controls/sizegrip.png') 1.5294x, url('/static_images/hidpi/175/vista-controls/sizegrip.png') 1.75x, url('/static_images/hidpi/200/vista-controls/sizegrip.png') 2x) no-repeat right 2px bottom 2px;
 }
 
 /* ---- the Layers and History windows (docked right) ---- */
@@ -590,7 +590,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     width: 16px;
     height: 16px;
     vertical-align: -4px;
-    background: url('/static_images/vista-cmdbar/lock.png') no-repeat;
+    background: image-set(url('/static_images/vista-cmdbar/lock.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/lock.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/lock.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/lock.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/lock.png') 2x) no-repeat;
 }
 
 .mp-client .mp-panel-bar {
@@ -717,7 +717,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     width: 16px;
     height: 16px;
     margin: auto;
-    background: url('/static_images/vista-paint/select-modes.png') var(--x) 0 no-repeat;
+    background: image-set(url('/static_images/vista-paint/select-modes.png') 1x, url('/static_images/hidpi/125/vista-paint/select-modes.png') 1.25x, url('/static_images/hidpi/150/vista-paint/select-modes.png') 1.5x, url('/static_images/hidpi/175/vista-paint/select-modes.png') 1.75x, url('/static_images/hidpi/200/vista-paint/select-modes.png') 2x) var(--x) 0 no-repeat;
 }
 
 .mp-client .mp-selmode::before,
@@ -752,7 +752,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     min-height: 0;
     padding: 0;
     border: 0;
-    background: url('/static_images/vista-paint/color-mini.png') 0 0 no-repeat;
+    background: image-set(url('/static_images/vista-paint/color-mini.png') 1x, url('/static_images/hidpi/125/vista-paint/color-mini.png') 1.25x, url('/static_images/hidpi/150/vista-paint/color-mini.png') 1.5x, url('/static_images/hidpi/175/vista-paint/color-mini.png') 1.75x, url('/static_images/hidpi/200/vista-paint/color-mini.png') 2x) 0 0 no-repeat;
     box-shadow: none;
     z-index: 2;
 }
@@ -1092,7 +1092,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     border-image: none;
     border-radius: 2px;
     box-shadow: none;
-    background: url('/static_images/vista-cmdbar/add.png') center / 12px 12px no-repeat;
+    background: image-set(url('/static_images/vista-cmdbar/add.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/add.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/add.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/add.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/add.png') 2x) center / 12px 12px no-repeat;
 }
 
 .mp-window .win7.mp-client .mp-sw-tools .mp-sw-menu {
@@ -1270,7 +1270,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 }
 
 .mp-client .mp-layer-kind.is-adjust {
-    background: #fff url('/static_images/vista-cmdbar/contrast.png') center no-repeat;
+    background: #fff image-set(url('/static_images/vista-cmdbar/contrast.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/contrast.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/contrast.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/contrast.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/contrast.png') 2x) center no-repeat;
 }
 
 .mp-client .mp-layer-kind.is-text {
@@ -1408,7 +1408,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 .mp-client .mp-group-icon {
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-cmdbar/folder.png') center / 16px 16px no-repeat;
+    background: image-set(url('/static_images/vista-cmdbar/folder.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/folder.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/folder.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/folder.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/folder.png') 2x) center / 16px 16px no-repeat;
 }
 
 /* ---- the panels' divider: drag to resize the Layers / History / Navigator side ---- */
@@ -1578,7 +1578,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     display: block;
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-paint/options-bar.png') 0 0 no-repeat;
+    background: image-set(url('/static_images/vista-paint/options-bar.png') 1x, url('/static_images/hidpi/125/vista-paint/options-bar.png') 1.25x, url('/static_images/hidpi/150/vista-paint/options-bar.png') 1.5x, url('/static_images/hidpi/175/vista-paint/options-bar.png') 1.75x, url('/static_images/hidpi/200/vista-paint/options-bar.png') 2x) 0 0 no-repeat;
 }
 
 .mp-client .mp-bar-check .mp-bar-art {
@@ -2393,7 +2393,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     display: block;
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-paint/liquify-tools.png') calc(var(--i) * -16px) 0 no-repeat;
+    background: image-set(url('/static_images/vista-paint/liquify-tools.png') 1x, url('/static_images/hidpi/125/vista-paint/liquify-tools.png') 1.25x, url('/static_images/hidpi/150/vista-paint/liquify-tools.png') 1.5x, url('/static_images/hidpi/175/vista-paint/liquify-tools.png') 1.75x, url('/static_images/hidpi/200/vista-paint/liquify-tools.png') 2x) calc(var(--i) * -16px) 0 no-repeat;
 }
 
 .mp-client .mp-lq-stage {

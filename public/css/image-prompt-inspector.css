@@ -424,7 +424,7 @@ body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector .explorer-
     width: 16px;
     height: 16px;
     margin-right: 5px;
-    background: url("/static_images/vista-cmdbar/photo-gallery.png") no-repeat center / 16px 16px;
+    background: image-set(url("/static_images/vista-cmdbar/photo-gallery.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/photo-gallery.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/photo-gallery.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/photo-gallery.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/photo-gallery.png") 2x) no-repeat center / 16px 16px;
     font-size: 0;
 }
 

@@ -353,7 +353,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
    toolbar / hover-show / toggle-group buttons, the drop-down triggers (combo box rules below), tabs.
    Custom apps on dark glass (Studio and its tool windows) keep their own buttons. */
 body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *) {
-    --vista-button-face: url("/static_images/vista-controls/button-normal.png");
+    --vista-button-face: image-set(url("/static_images/vista-controls/button-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/button-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/button-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/button-normal.png") 2x);
     position: relative;
     z-index: 0;
     box-sizing: border-box;
@@ -400,7 +400,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client=
     padding: 0;
     background: none;
     border: 4px solid transparent;
-    border-image: url("/static_images/vista-controls/button-hot.png") 4 fill / 4px / var(--vista-button-outset, 0) stretch;
+    border-image: image-set(url("/static_images/vista-controls/button-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/button-hot.png") 1.25x, url("/static_images/hidpi/150/vista-controls/button-hot.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-hot.png") 1.75x, url("/static_images/hidpi/200/vista-controls/button-hot.png") 2x) 4 fill / 4px / var(--vista-button-outset, 0) stretch;
     border-radius: 0;
     box-shadow: none;
     opacity: 0;
@@ -410,7 +410,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client=
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *)::after {
-    border-image-source: url("/static_images/vista-controls/button-default-pulse.png");
+    border-image-source: image-set(url("/static_images/vista-controls/button-default-pulse.png") 1x, url("/static_images/hidpi/125/vista-controls/button-default-pulse.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/button-default-pulse.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-default-pulse.png") 1.7727x, url("/static_images/hidpi/200/vista-controls/button-default-pulse.png") 2x);
     transition: none;
 }
 
@@ -431,14 +431,14 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
     display: block;
     width: 16px;
     height: 16px;
-    background: url("/static_images/vista-cmdbar/delete.png") no-repeat center / 16px 16px;
+    background: image-set(url("/static_images/vista-cmdbar/delete.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/delete.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/delete.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/delete.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/delete.png") 2x) no-repeat center / 16px 16px;
     font-size: 0;
     color: transparent;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-edit, .fa-pen-to-square) { background-image: url("/static_images/vista-cmdbar/properties.png"); }
-body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-save, .fa-floppy-disk) { background-image: url("/static_images/vista-cmdbar/save.png"); }
-body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-sync, .fa-rotate, .fa-arrows-rotate) { background-image: url("/static_images/vista-cmdbar/refresh.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-edit, .fa-pen-to-square) { background-image: image-set(url("/static_images/vista-cmdbar/properties.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/properties.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/properties.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/properties.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/properties.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-save, .fa-floppy-disk) { background-image: image-set(url("/static_images/vista-cmdbar/save.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/save.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/save.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/save.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/save.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-sync, .fa-rotate, .fa-arrows-rotate) { background-image: image-set(url("/static_images/vista-cmdbar/refresh.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/refresh.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/refresh.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/refresh.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/refresh.png") 2x); }
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-trash, .fa-trash-can, .fa-edit, .fa-pen-to-square, .fa-save, .fa-floppy-disk, .fa-sync, .fa-rotate, .fa-arrows-rotate)::before {
     content: none;
@@ -455,13 +455,13 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
     width: 16px;
     height: 16px;
     vertical-align: -3px;
-    background: url("/static_images/vista-icons/warning-16.png") no-repeat center / 16px 16px;
+    background: image-set(url("/static_images/vista-icons/warning-16.png") 1x, url("/static_images/hidpi/125/vista-icons/warning-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/warning-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/warning-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/warning-16.png") 2x) no-repeat center / 16px 16px;
     font-size: 0;
     color: transparent;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content i:is(.fa-info-circle, .fa-circle-info):not(.vista-text-button > i) { background-image: url("/static_images/vista-icons/info-16.png"); }
-body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content i:is(.fa-circle-xmark, .fa-times-circle):not(.vista-text-button > i) { background-image: url("/static_images/vista-icons/error-16.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content i:is(.fa-info-circle, .fa-circle-info):not(.vista-text-button > i) { background-image: image-set(url("/static_images/vista-icons/info-16.png") 1x, url("/static_images/hidpi/125/vista-icons/info-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/info-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/info-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/info-16.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content i:is(.fa-circle-xmark, .fa-times-circle):not(.vista-text-button > i) { background-image: image-set(url("/static_images/vista-icons/error-16.png") 1x, url("/static_images/hidpi/125/vista-icons/error-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/error-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/error-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/error-16.png") 2x); }
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content i:is(.fa-exclamation-triangle, .fa-triangle-exclamation, .fa-info-circle, .fa-circle-info, .fa-circle-xmark, .fa-times-circle):not(.vista-text-button > i)::before {
     content: none;
@@ -480,7 +480,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
 body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] :is(.text-replacement-search, .config-editor-search-row, .character-db-search-row) > i:is(.fa-search, .fa-magnifying-glass) {
     width: 13px;
     height: 13px;
-    background: url("/static_images/vista-start/search-glyph.png") no-repeat center / 13px 13px;
+    background: image-set(url("/static_images/vista-start/search-glyph.png") 1x, url("/static_images/hidpi/125/vista-start/search-glyph.png") 1.25x, url("/static_images/hidpi/150/vista-start/search-glyph.png") 1.5385x, url("/static_images/hidpi/175/vista-start/search-glyph.png") 1.75x, url("/static_images/hidpi/200/vista-start/search-glyph.png") 2x) no-repeat center / 13px 13px;
     font-size: 0;
     opacity: 1;
 }
@@ -494,20 +494,20 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
     display: block;
     width: 16px;
     height: 16px;
-    background: url("/static_images/vista-cmdbar/back.png") no-repeat center / 16px 16px;
+    background: image-set(url("/static_images/vista-cmdbar/back.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/back.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/back.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/back.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/back.png") 2x) no-repeat center / 16px 16px;
     font-size: 0;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .pagination-btn > i.fa-chevron-right {
-    background-image: url("/static_images/vista-cmdbar/forward.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/forward.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/forward.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/forward.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/forward.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/forward.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .pagination-btn:disabled > i.fa-chevron-left {
-    background-image: url("/static_images/vista-cmdbar/back-disabled.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/back-disabled.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/back-disabled.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/back-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/back-disabled.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/back-disabled.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .pagination-btn:disabled > i.fa-chevron-right {
-    background-image: url("/static_images/vista-cmdbar/forward-disabled.png");
+    background-image: image-set(url("/static_images/vista-cmdbar/forward-disabled.png") 1x, url("/static_images/hidpi/125/vista-cmdbar/forward-disabled.png") 1.25x, url("/static_images/hidpi/150/vista-cmdbar/forward-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-cmdbar/forward-disabled.png") 1.75x, url("/static_images/hidpi/200/vista-cmdbar/forward-disabled.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .pagination-btn > i:is(.fa-chevron-left, .fa-chevron-right)::before {
@@ -522,7 +522,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client=
    .modal.push-button-focused is kept by rootStateFlags.js; the :has(button:focus...) it replaces put every
    element of every window under a :has(), ~220 ms of style per change inside the gallery (#647) */
 body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, [data-dialog-primary="1"], .primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])):is(:focus, :is(.btn-primary, [data-dialog-primary="1"], .primary):not(.modal.push-button-focused *)), button.btn-standard:is(:focus, .primary:not(.modal.push-button-focused *))):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):not(:disabled) {
-    --vista-button-face: url("/static_images/vista-controls/button-default.png");
+    --vista-button-face: image-set(url("/static_images/vista-controls/button-default.png") 1x, url("/static_images/hidpi/125/vista-controls/button-default.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/button-default.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-default.png") 1.7727x, url("/static_images/hidpi/200/vista-controls/button-default.png") 2x);
 }
 
 /* it pulses only while its window is the active one (.dialog-active: rootStateFlags.js sets it on light / Vista dialogs
@@ -561,7 +561,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client=
 
 /* pressed (and latched app buttons): Vista's sunken face, no fade */
 body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):is(:active, .active, [data-state="on"], [aria-pressed="true"]):not(:disabled) {
-    --vista-button-face: url("/static_images/vista-controls/button-pressed.png");
+    --vista-button-face: image-set(url("/static_images/vista-controls/button-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/button-pressed.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/button-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-pressed.png") 1.7727x, url("/static_images/hidpi/200/vista-controls/button-pressed.png") 2x);
     background: none;
     box-shadow: none;
 }
@@ -572,7 +572,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client=
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):disabled {
-    --vista-button-face: url("/static_images/vista-controls/button-disabled.png");
+    --vista-button-face: image-set(url("/static_images/vista-controls/button-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/button-disabled.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/button-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-controls/button-disabled.png") 1.7727x, url("/static_images/hidpi/200/vista-controls/button-disabled.png") 2x);
     background: none;
     box-shadow: none;
     color: #838383;
@@ -1307,7 +1307,7 @@ body:not(.windows-classic-theme) :is(.custom-dropdown-badge, .image-prompt-inspe
    app's own #id rules. .win7 content (the property sheets measured in Tahoma) takes the face but
    keeps its font. ---------- */
 body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show:not(.modal[data-vista-dialog] *)):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button) {
-    --vista-edit-face: url("/static_images/vista-controls/edit-normal.png");
+    --vista-edit-face: image-set(url("/static_images/vista-controls/edit-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/edit-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/edit-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/edit-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/edit-normal.png") 2x);
     background: #fff;
     border-style: solid;
     border-color: transparent;
@@ -1325,19 +1325,19 @@ body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type=
     color: #777;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show:not(.modal[data-vista-dialog] *)):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):hover:not(:disabled) {
-    --vista-edit-face: url("/static_images/vista-controls/edit-hot.png");
+    --vista-edit-face: image-set(url("/static_images/vista-controls/edit-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/edit-hot.png") 1.2x, url("/static_images/hidpi/150/vista-controls/edit-hot.png") 1.6x, url("/static_images/hidpi/175/vista-controls/edit-hot.png") 1.8x, url("/static_images/hidpi/200/vista-controls/edit-hot.png") 2x);
     background: #fff;
     box-shadow: none;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show:not(.modal[data-vista-dialog] *)):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):is(:focus, :focus-visible):not(:disabled) {
-    --vista-edit-face: url("/static_images/vista-controls/edit-focus.png");
+    --vista-edit-face: image-set(url("/static_images/vista-controls/edit-focus.png") 1x, url("/static_images/hidpi/125/vista-controls/edit-focus.png") 1.2x, url("/static_images/hidpi/150/vista-controls/edit-focus.png") 1.6x, url("/static_images/hidpi/175/vista-controls/edit-focus.png") 1.8x, url("/static_images/hidpi/200/vista-controls/edit-focus.png") 2x);
     background: #fff;
     box-shadow: none;
     outline: none;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show:not(.modal[data-vista-dialog] *)):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):disabled {
     background: #f4f4f4;
-    border-image: url("/static_images/vista-controls/edit-disabled.png") 1 / 1px stretch;
+    border-image: image-set(url("/static_images/vista-controls/edit-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/edit-disabled.png") 1.25x, url("/static_images/hidpi/150/vista-controls/edit-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-controls/edit-disabled.png") 1.75x, url("/static_images/hidpi/200/vista-controls/edit-disabled.png") 2x) 1 / 1px stretch;
     box-shadow: none;
     color: #6d6d6d;
     opacity: 1;
@@ -1366,12 +1366,12 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     width: 14px;
     height: 18px;
     margin: -2px -2px 0 2px;
-    background: url("/static_images/vista-controls/spin-up-normal.png") top / 14px 9px no-repeat, url("/static_images/vista-controls/spin-down-normal.png") bottom / 14px 9px no-repeat;
+    background: image-set(url("/static_images/vista-controls/spin-up-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/spin-up-normal.png") 1.2857x, url("/static_images/hidpi/150/vista-controls/spin-up-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/spin-up-normal.png") 1.7857x, url("/static_images/hidpi/200/vista-controls/spin-up-normal.png") 2x) top / 14px 9px no-repeat, image-set(url("/static_images/vista-controls/spin-down-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/spin-down-normal.png") 1.2857x, url("/static_images/hidpi/150/vista-controls/spin-down-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/spin-down-normal.png") 1.7857x, url("/static_images/hidpi/200/vista-controls/spin-down-normal.png") 2x) bottom / 14px 9px no-repeat;
     opacity: 1;
     cursor: var(--c-default, default);
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="number"]:not(.hover-show, .toolbar-input-segment):not(.tbp-client *, .modal-window-title-toolbar *)::-webkit-inner-spin-button:hover {
-    background-image: url("/static_images/vista-controls/spin-up-hot.png"), url("/static_images/vista-controls/spin-down-hot.png");
+    background-image: image-set(url("/static_images/vista-controls/spin-up-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/spin-up-hot.png") 1.2857x, url("/static_images/hidpi/150/vista-controls/spin-up-hot.png") 1.5x, url("/static_images/hidpi/175/vista-controls/spin-up-hot.png") 1.7857x, url("/static_images/hidpi/200/vista-controls/spin-up-hot.png") 2x), image-set(url("/static_images/vista-controls/spin-down-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/spin-down-hot.png") 1.2857x, url("/static_images/hidpi/150/vista-controls/spin-down-hot.png") 1.5x, url("/static_images/hidpi/175/vista-controls/spin-down-hot.png") 1.7857x, url("/static_images/hidpi/200/vista-controls/spin-down-hot.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="number"]:not(.hover-show, .toolbar-input-segment):not(.tbp-client *, .modal-window-title-toolbar *):disabled::-webkit-inner-spin-button {
     opacity: 0.5;
@@ -1384,9 +1384,9 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
    paints over the background, so its face is an edge-only border image over the face's centre
    column (combo-*-fill.png) and the glyph as backgrounds. */
 body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) {
-    --vista-combo-face: url("/static_images/vista-controls/combo-normal.png");
-    --vista-combo-fill: url("/static_images/vista-controls/combo-normal-fill.png");
-    --vista-combo-glyph: url("/static_images/vista-controls/combo-glyph-normal.png");
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/combo-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/combo-normal.png") 2x);
+    --vista-combo-fill: image-set(url("/static_images/vista-controls/combo-normal-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-normal-fill.png") 1x, url("/static_images/hidpi/150/vista-controls/combo-normal-fill.png") 2x, url("/static_images/hidpi/175/vista-controls/combo-normal-fill.png") 2x, url("/static_images/hidpi/200/vista-controls/combo-normal-fill.png") 2x);
+    --vista-combo-glyph: image-set(url("/static_images/vista-controls/combo-glyph-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-normal.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-normal.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-normal.png") 2x);
     --vista-combo-text: none;
     appearance: none;
     -webkit-appearance: none;
@@ -1414,17 +1414,17 @@ body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-
     color: #000;
 }
 body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):hover:not(:disabled) {
-    --vista-combo-face: url("/static_images/vista-controls/combo-hot.png");
-    --vista-combo-fill: url("/static_images/vista-controls/combo-hot-fill.png");
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-hot.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-hot.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-hot.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-hot.png") 2x);
+    --vista-combo-fill: image-set(url("/static_images/vista-controls/combo-hot-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-hot-fill.png") 1x, url("/static_images/hidpi/150/vista-controls/combo-hot-fill.png") 2x, url("/static_images/hidpi/175/vista-controls/combo-hot-fill.png") 2x, url("/static_images/hidpi/200/vista-controls/combo-hot-fill.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):is(:active, :open):not(:disabled) {
-    --vista-combo-face: url("/static_images/vista-controls/combo-pressed.png");
-    --vista-combo-fill: url("/static_images/vista-controls/combo-pressed-fill.png");
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-pressed.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-pressed.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-pressed.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-pressed.png") 2x);
+    --vista-combo-fill: image-set(url("/static_images/vista-controls/combo-pressed-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-pressed-fill.png") 1x, url("/static_images/hidpi/150/vista-controls/combo-pressed-fill.png") 2x, url("/static_images/hidpi/175/vista-controls/combo-pressed-fill.png") 2x, url("/static_images/hidpi/200/vista-controls/combo-pressed-fill.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):disabled {
-    --vista-combo-face: url("/static_images/vista-controls/combo-disabled.png");
-    --vista-combo-fill: url("/static_images/vista-controls/combo-disabled-fill.png");
-    --vista-combo-glyph: url("/static_images/vista-controls/combo-glyph-disabled.png");
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-disabled.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-disabled.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-disabled.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-disabled.png") 2x);
+    --vista-combo-fill: image-set(url("/static_images/vista-controls/combo-disabled-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-disabled-fill.png") 1x, url("/static_images/hidpi/150/vista-controls/combo-disabled-fill.png") 2x, url("/static_images/hidpi/175/vista-controls/combo-disabled-fill.png") 2x, url("/static_images/hidpi/200/vista-controls/combo-disabled-fill.png") 2x);
+    --vista-combo-glyph: image-set(url("/static_images/vista-controls/combo-glyph-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-disabled.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-disabled.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-disabled.png") 2x);
     color: #6d6d6d;
     opacity: 1;
 }
@@ -1515,7 +1515,7 @@ body.desktop-mode:not(.windows-classic-theme) select[multiple]:not(.hover-show):
    hover-show pickers (not in Vista dialogs) and their indicator lamps (credit-cost Scale / Speed draw on ::after), the
    Visual Index pickers on its dark command bar. */
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *) {
-    --vista-combo-face: url("/static_images/vista-controls/combo-normal.png");
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/combo-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/combo-normal.png") 2x);
     position: relative;
     z-index: 0;
     box-sizing: border-box;
@@ -1552,7 +1552,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     width: 10px;
     height: auto;
     margin: 0;
-    background: url("/static_images/vista-controls/combo-glyph-normal.png") center / 10px 19px no-repeat;
+    background: image-set(url("/static_images/vista-controls/combo-glyph-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-normal.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-normal.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-normal.png") 2x) center / 10px 19px no-repeat;
     border: 0;
     box-shadow: none;
     opacity: 1;
@@ -1564,22 +1564,22 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     text-shadow: none;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):is(:hover, :focus-visible):not(:disabled) {
-    --vista-combo-face: url("/static_images/vista-controls/combo-hot.png");
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-hot.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-hot.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-hot.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-hot.png") 2x);
     background: none;
     box-shadow: none;
     color: #000;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):is(:active, .active, .context-open):not(:disabled) {
-    --vista-combo-face: url("/static_images/vista-controls/combo-pressed.png");
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-pressed.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-pressed.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-pressed.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-pressed.png") 2x);
     background: none;
     box-shadow: none;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):disabled {
-    --vista-combo-face: url("/static_images/vista-controls/combo-disabled.png");
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-disabled.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-disabled.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-disabled.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-disabled.png") 2x);
     color: #6d6d6d;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):disabled::after {
-    background-image: url("/static_images/vista-controls/combo-glyph-disabled.png");
+    background-image: image-set(url("/static_images/vista-controls/combo-glyph-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-disabled.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-disabled.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-disabled.png") 2x);
 }
 
 /* Check boxes and radio buttons: BUTTON CHECKBOX IMAGE_508 / RADIOBUTTON IMAGE_516 (13 px frames:
@@ -1592,7 +1592,7 @@ body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-di
     width: 13px;
     height: 13px;
     margin-right: 3px;
-    background: url("/static_images/vista-controls/checkbox.png") 0 0 / 13px auto no-repeat;
+    background: image-set(url("/static_images/vista-controls/checkbox.png") 1x, url("/static_images/hidpi/125/vista-controls/checkbox.png") 1.25x, url("/static_images/hidpi/150/vista-controls/checkbox.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/checkbox.png") 1.75x, url("/static_images/hidpi/200/vista-controls/checkbox.png") 2x) 0 0 / 13px auto no-repeat;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -1601,7 +1601,7 @@ body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-di
     transition: none;
 }
 body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="radio"] + label::before {
-    background-image: url("/static_images/vista-controls/radio.png");
+    background-image: image-set(url("/static_images/vista-controls/radio.png") 1x, url("/static_images/hidpi/125/vista-controls/radio.png") 1.25x, url("/static_images/hidpi/150/vista-controls/radio.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/radio.png") 1.75x, url("/static_images/hidpi/200/vista-controls/radio.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label::after {
     content: '';
@@ -1612,7 +1612,7 @@ body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-di
     width: 13px;
     height: 13px;
     margin: auto 0;
-    background: url("/static_images/vista-controls/checkbox.png") 0 -13px / 13px auto no-repeat;
+    background: image-set(url("/static_images/vista-controls/checkbox.png") 1x, url("/static_images/hidpi/125/vista-controls/checkbox.png") 1.25x, url("/static_images/hidpi/150/vista-controls/checkbox.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/checkbox.png") 1.75x, url("/static_images/hidpi/200/vista-controls/checkbox.png") 2x) 0 -13px / 13px auto no-repeat;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -1624,7 +1624,7 @@ body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-di
     left: calc(var(--w7-rd-left) * -1);
     bottom: auto;
     margin: 0;
-    background-image: url("/static_images/vista-controls/radio.png");
+    background-image: image-set(url("/static_images/vista-controls/radio.png") 1x, url("/static_images/hidpi/125/vista-controls/radio.png") 1.25x, url("/static_images/hidpi/150/vista-controls/radio.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/radio.png") 1.75x, url("/static_images/hidpi/200/vista-controls/radio.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label {
     filter: none;
@@ -1656,7 +1656,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     height: 13px;
     margin: 0 3px 0 0;
     padding: 0;
-    background: url("/static_images/vista-controls/checkbox.png") 0 0 / 13px auto no-repeat;
+    background: image-set(url("/static_images/vista-controls/checkbox.png") 1x, url("/static_images/hidpi/125/vista-controls/checkbox.png") 1.25x, url("/static_images/hidpi/150/vista-controls/checkbox.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/checkbox.png") 1.75x, url("/static_images/hidpi/200/vista-controls/checkbox.png") 2x) 0 0 / 13px auto no-repeat;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -1665,7 +1665,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     vertical-align: -2px;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="radio"]:not(.win7 input[type="radio"]:has(+ label)) {
-    background-image: url("/static_images/vista-controls/radio.png");
+    background-image: image-set(url("/static_images/vista-controls/radio.png") 1x, url("/static_images/hidpi/125/vista-controls/radio.png") 1.25x, url("/static_images/hidpi/150/vista-controls/radio.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/radio.png") 1.75x, url("/static_images/hidpi/200/vista-controls/radio.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked { background-position-y: -52px; }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="checkbox"]:not(.win7 input[type="checkbox"]:has(+ label)):indeterminate { background-position-y: -104px; }
@@ -1676,12 +1676,12 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     content: '';
     position: absolute;
     inset: 0;
-    background: url("/static_images/vista-controls/checkbox.png") 0 -13px / 13px auto no-repeat;
+    background: image-set(url("/static_images/vista-controls/checkbox.png") 1x, url("/static_images/hidpi/125/vista-controls/checkbox.png") 1.25x, url("/static_images/hidpi/150/vista-controls/checkbox.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/checkbox.png") 1.75x, url("/static_images/hidpi/200/vista-controls/checkbox.png") 2x) 0 -13px / 13px auto no-repeat;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.5s linear;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="radio"]:not(.win7 input[type="radio"]:has(+ label))::after { background-image: url("/static_images/vista-controls/radio.png"); }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="radio"]:not(.win7 input[type="radio"]:has(+ label))::after { background-image: image-set(url("/static_images/vista-controls/radio.png") 1x, url("/static_images/hidpi/125/vista-controls/radio.png") 1.25x, url("/static_images/hidpi/150/vista-controls/radio.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/radio.png") 1.75x, url("/static_images/hidpi/200/vista-controls/radio.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):is(:hover, label:hover > *)::after { opacity: 1; transition-duration: 0.1s; }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked::after { background-position-y: -65px; }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="checkbox"]:not(.win7 input[type="checkbox"]:has(+ label)):indeterminate::after { background-position-y: -117px; }
@@ -1706,7 +1706,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     height: 4px;
     background: none;
     border: 2px solid transparent;
-    border-image: url("/static_images/vista-controls/trackbar-track.png") 2 fill / 2px stretch;
+    border-image: image-set(url("/static_images/vista-controls/trackbar-track.png") 1x, url("/static_images/hidpi/125/vista-controls/trackbar-track.png") 1.25x, url("/static_images/hidpi/150/vista-controls/trackbar-track.png") 1.5x, url("/static_images/hidpi/175/vista-controls/trackbar-track.png") 1.75x, url("/static_images/hidpi/200/vista-controls/trackbar-track.png") 2x) 2 fill / 2px stretch;
     border-radius: 0;
     box-shadow: none;
 }
@@ -1716,7 +1716,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     width: 11px;
     height: 19px;
     margin-top: -9px;
-    background: url("/static_images/vista-controls/trackbar-thumb.png") 0 0 / 11px 95px no-repeat;
+    background: image-set(url("/static_images/vista-controls/trackbar-thumb.png") 1x, url("/static_images/hidpi/125/vista-controls/trackbar-thumb.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/trackbar-thumb.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/trackbar-thumb.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/trackbar-thumb.png") 2x) 0 0 / 11px 95px no-repeat;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -1744,7 +1744,7 @@ body.desktop-mode:not(.windows-classic-theme) .win7 [role="progressbar"]:not(.lo
     padding: 0;
     background: none;
     border: 1px solid transparent;
-    border-image: url("/static_images/vista-controls/progress-bar.png") 7 4 6 4 fill / 7px 4px 6px 4px stretch;
+    border-image: image-set(url("/static_images/vista-controls/progress-bar.png") 1x, url("/static_images/hidpi/125/vista-controls/progress-bar.png") 1.25x, url("/static_images/hidpi/150/vista-controls/progress-bar.png") 1.5x, url("/static_images/hidpi/175/vista-controls/progress-bar.png") 1.75x, url("/static_images/hidpi/200/vista-controls/progress-bar.png") 2x) 7 4 6 4 fill / 7px 4px 6px 4px stretch;
     border-radius: 0;
     box-shadow: none;
 }
@@ -1755,7 +1755,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
 body.desktop-mode:not(.windows-classic-theme) .win7 [role="progressbar"]:not(.log-viewer-metric-bar) > div {
     background: none;
     border: 0 solid transparent;
-    border-image: url("/static_images/vista-controls/progress-fill.png") 0 8 fill / 0 8px stretch;
+    border-image: image-set(url("/static_images/vista-controls/progress-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/progress-fill.png") 1.25x, url("/static_images/hidpi/150/vista-controls/progress-fill.png") 1.5x, url("/static_images/hidpi/175/vista-controls/progress-fill.png") 1.75x, url("/static_images/hidpi/200/vista-controls/progress-fill.png") 2x) 0 8 fill / 0 8px stretch;
     border-radius: 0;
     box-shadow: none;
 }
@@ -1769,10 +1769,10 @@ body.desktop-mode:not(.windows-classic-theme) .win7 [role="progressbar"]:not(.lo
     max-width: calc(100% + 2px);
 }
 body.desktop-mode:not(.windows-classic-theme) .win7 [role="progressbar"].error:not(.log-viewer-metric-bar) > div {
-    border-image-source: url("/static_images/vista-controls/progress-fill-error.png");
+    border-image-source: image-set(url("/static_images/vista-controls/progress-fill-error.png") 1x, url("/static_images/hidpi/125/vista-controls/progress-fill-error.png") 1.25x, url("/static_images/hidpi/150/vista-controls/progress-fill-error.png") 1.5x, url("/static_images/hidpi/175/vista-controls/progress-fill-error.png") 1.75x, url("/static_images/hidpi/200/vista-controls/progress-fill-error.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) .win7 [role="progressbar"].paused:not(.log-viewer-metric-bar) > div {
-    border-image-source: url("/static_images/vista-controls/progress-fill-paused.png");
+    border-image-source: image-set(url("/static_images/vista-controls/progress-fill-paused.png") 1x, url("/static_images/hidpi/125/vista-controls/progress-fill-paused.png") 1.25x, url("/static_images/hidpi/150/vista-controls/progress-fill-paused.png") 1.5x, url("/static_images/hidpi/175/vista-controls/progress-fill-paused.png") 1.75x, url("/static_images/hidpi/200/vista-controls/progress-fill-paused.png") 2x);
 }
 
 /* Tabs: TAB TABITEM IMAGE_726 (normal, hot, disabled; LEFTEDGE 727 for the first) and the selected
@@ -1804,7 +1804,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :
     background: none;
     border: 1px solid transparent;
     border-bottom: 0;
-    border-image: url("/static_images/vista-controls/tab-normal.png") 2 2 0 2 fill / 2px 2px 0 2px stretch;
+    border-image: image-set(url("/static_images/vista-controls/tab-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/tab-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/tab-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/tab-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/tab-normal.png") 2x) 2 2 0 2 fill / 2px 2px 0 2px stretch;
     border-radius: 0;
     box-shadow: none;
     color: #000;
@@ -1814,22 +1814,22 @@ body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :
     top: 0;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab):first-child {
-    border-image-source: url("/static_images/vista-controls/tab-left-normal.png");
+    border-image-source: image-set(url("/static_images/vista-controls/tab-left-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/tab-left-normal.png") 1.2x, url("/static_images/hidpi/150/vista-controls/tab-left-normal.png") 1.6x, url("/static_images/hidpi/175/vista-controls/tab-left-normal.png") 1.8x, url("/static_images/hidpi/200/vista-controls/tab-left-normal.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab):hover:not([aria-selected="true"], .active, :disabled) {
-    border-image-source: url("/static_images/vista-controls/tab-hot.png");
+    border-image-source: image-set(url("/static_images/vista-controls/tab-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/tab-hot.png") 1.2x, url("/static_images/hidpi/150/vista-controls/tab-hot.png") 1.6x, url("/static_images/hidpi/175/vista-controls/tab-hot.png") 1.8x, url("/static_images/hidpi/200/vista-controls/tab-hot.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab):first-child:hover:not([aria-selected="true"], .active, :disabled) {
-    border-image-source: url("/static_images/vista-controls/tab-left-hot.png");
+    border-image-source: image-set(url("/static_images/vista-controls/tab-left-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/tab-left-hot.png") 1.2x, url("/static_images/hidpi/150/vista-controls/tab-left-hot.png") 1.6x, url("/static_images/hidpi/175/vista-controls/tab-left-hot.png") 1.8x, url("/static_images/hidpi/200/vista-controls/tab-left-hot.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab):is([aria-selected="true"], .active) {
     z-index: 2;
     margin: 0 -3px -1px -2px;
     padding: 3px 8px 4px;
-    border-image-source: url("/static_images/vista-controls/tab-top-selected.png");
+    border-image-source: image-set(url("/static_images/vista-controls/tab-top-selected.png") 1x, url("/static_images/hidpi/125/vista-controls/tab-top-selected.png") 1.2x, url("/static_images/hidpi/150/vista-controls/tab-top-selected.png") 1.6x, url("/static_images/hidpi/175/vista-controls/tab-top-selected.png") 1.8x, url("/static_images/hidpi/200/vista-controls/tab-top-selected.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab):is([aria-selected="true"], .active):first-child {
-    border-image-source: url("/static_images/vista-controls/tab-top-left-selected.png");
+    border-image-source: image-set(url("/static_images/vista-controls/tab-top-left-selected.png") 1x, url("/static_images/hidpi/125/vista-controls/tab-top-left-selected.png") 1.2x, url("/static_images/hidpi/150/vista-controls/tab-top-left-selected.png") 1.6x, url("/static_images/hidpi/175/vista-controls/tab-top-left-selected.png") 1.8x, url("/static_images/hidpi/200/vista-controls/tab-top-left-selected.png") 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab)::before,
 body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab)::after {
@@ -1841,7 +1841,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.win7 [role="tabpanel"], .vpn-
     border: 1px solid transparent;
     border-right-width: 3px;
     border-bottom-width: 2px;
-    border-image: url("/static_images/vista-controls/tab-pane.png") 1 3 2 1 fill / 1px 3px 2px 1px stretch;
+    border-image: image-set(url("/static_images/vista-controls/tab-pane.png") 1x, url("/static_images/hidpi/125/vista-controls/tab-pane.png") 1.25x, url("/static_images/hidpi/150/vista-controls/tab-pane.png") 1.5x, url("/static_images/hidpi/175/vista-controls/tab-pane.png") 1.75x, url("/static_images/hidpi/200/vista-controls/tab-pane.png") 2x) 1 3 2 1 fill / 1px 3px 2px 1px stretch;
     border-radius: 0;
     box-shadow: none;
 }
@@ -1851,7 +1851,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.win7 [role="tabpanel"], .vpn-
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) fieldset:not(.tbp-client *, .rap-window *, .vista-game-dialog *, .vista-game-dialog-client *, .vista-gx-options *, [id="desktopCalculatorModal"] *) {
     border: 2px solid transparent;
     border-bottom-width: 3px;
-    border-image: url("/static_images/vista-controls/groupbox.png") 2 2 3 2 / 2px 2px 3px 2px stretch;
+    border-image: image-set(url("/static_images/vista-controls/groupbox.png") 1x, url("/static_images/hidpi/125/vista-controls/groupbox.png") 1.25x, url("/static_images/hidpi/150/vista-controls/groupbox.png") 1.5x, url("/static_images/hidpi/175/vista-controls/groupbox.png") 1.75x, url("/static_images/hidpi/200/vista-controls/groupbox.png") 2x) 2 2 3 2 / 2px 2px 3px 2px stretch;
     border-radius: 0;
     box-shadow: none;
 }
@@ -1995,7 +1995,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
     padding: 0;
     border: 1px solid #8e8f8f;
     border-radius: 2px;
-    background: #f3f3f3 url("/static_images/vista-icons/volume-high-16.png") center / 16px 16px no-repeat;
+    background: #f3f3f3 image-set(url("/static_images/vista-icons/volume-high-16.png") 1x, url("/static_images/hidpi/125/vista-icons/volume-high-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/volume-high-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/volume-high-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/volume-high-16.png") 2x) center / 16px 16px no-repeat;
     cursor: var(--c-pointer);
     outline: none;
 }
@@ -2007,7 +2007,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
 
 .volume-flyout.is-muted .is-device .volume-flyout-mute,
 .volume-flyout-column.is-app.is-muted .volume-flyout-mute {
-    background-image: url("/static_images/vista-icons/volume-mute-16.png");
+    background-image: image-set(url("/static_images/vista-icons/volume-mute-16.png") 1x, url("/static_images/hidpi/125/vista-icons/volume-mute-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/volume-mute-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/volume-mute-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/volume-mute-16.png") 2x);
 }
 
 .volume-flyout-mute:hover {

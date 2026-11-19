@@ -40,7 +40,7 @@ html.phone-launch .launch-content::before {
     width: min(62vw, 420px);
     aspect-ratio: 512 / 187;
     margin: 0 auto;
-    background: url('/static_images/xyridian/xyridian-logo-color-512.png') center / contain no-repeat;
+    background: image-set(url('/static_images/xyridian/xyridian-logo-color-512.png') 1x, url('/static_images/hidpi/125/xyridian/xyridian-logo-color-512.png') 1.25x, url('/static_images/hidpi/150/xyridian/xyridian-logo-color-512.png') 1.5x, url('/static_images/hidpi/175/xyridian/xyridian-logo-color-512.png') 1.75x, url('/static_images/hidpi/200/xyridian/xyridian-logo-color-512.png') 2x) center / contain no-repeat;
 }
 
 #phoneUpdate[hidden] {
@@ -154,7 +154,7 @@ html.phone-launch .launch-content::before {
     bottom: 14px;
     width: 96px;
     height: 24px;
-    background: url('/static_images/xyridian/xyridian-wordmark-white-512.png') left center / contain no-repeat;
+    background: image-set(url('/static_images/xyridian/xyridian-wordmark-white-512.png') 1x, url('/static_images/hidpi/125/xyridian/xyridian-wordmark-white-512.png') 1.25x, url('/static_images/hidpi/150/xyridian/xyridian-wordmark-white-512.png') 1.5x, url('/static_images/hidpi/175/xyridian/xyridian-wordmark-white-512.png') 1.75x, url('/static_images/hidpi/200/xyridian/xyridian-wordmark-white-512.png') 2x) left center / contain no-repeat;
     opacity: 0.9;
 }
 

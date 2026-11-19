@@ -21,7 +21,7 @@ body:not(.windows-classic-theme) .notepad-modal[data-window-client="light"] .not
     flex: 0 0 22px;
     height: 22px;
     border-top: 1px solid #d7d7d7;
-    background: #f0f0f0 url('/static_images/vista-controls/sizegrip.png') no-repeat right 2px bottom 2px;
+    background: #f0f0f0 image-set(url('/static_images/vista-controls/sizegrip.png') 1x, url('/static_images/hidpi/125/vista-controls/sizegrip.png') 1.25x, url('/static_images/hidpi/150/vista-controls/sizegrip.png') 1.5294x, url('/static_images/hidpi/175/vista-controls/sizegrip.png') 1.75x, url('/static_images/hidpi/200/vista-controls/sizegrip.png') 2x) no-repeat right 2px bottom 2px;
     color: #000;
     font: 12px "Segoe UI", Tahoma, sans-serif;
 }

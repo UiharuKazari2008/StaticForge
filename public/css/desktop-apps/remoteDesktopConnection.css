@@ -88,21 +88,21 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
 }
 
 /* mstsc.exe icons 10, 8, 5, 12, 7, 6, 11, 13, 9, 3, 4 */
-.rdc-client .rdc-opt-logon { background-image: url('/static_images/vista-mstsc/opt-logon.png'); }
-.rdc-client .rdc-opt-connection { background-image: url('/static_images/vista-mstsc/opt-connection.png'); }
-.rdc-client .rdc-opt-display { background-image: url('/static_images/vista-mstsc/opt-display.png'); }
-.rdc-client .rdc-opt-colors { background-image: url('/static_images/vista-mstsc/opt-colors.png'); }
-.rdc-client .rdc-opt-sound { background-image: url('/static_images/vista-mstsc/opt-sound.png'); }
-.rdc-client .rdc-opt-keyboard { background-image: url('/static_images/vista-mstsc/opt-keyboard.png'); }
-.rdc-client .rdc-opt-devices { background-image: url('/static_images/vista-mstsc/opt-devices.png'); }
-.rdc-client .rdc-opt-programs { background-image: url('/static_images/vista-mstsc/opt-programs.png'); }
-.rdc-client .rdc-opt-experience { background-image: url('/static_images/vista-mstsc/opt-experience.png'); }
-.rdc-client .rdc-opt-auth { background-image: url('/static_images/vista-mstsc/opt-auth.png'); }
-.rdc-client .rdc-opt-gateway { background-image: url('/static_images/vista-mstsc/opt-gateway.png'); }
+.rdc-client .rdc-opt-logon { background-image: image-set(url('/static_images/vista-mstsc/opt-logon.png') 1x, url('/static_images/hidpi/125/vista-mstsc/opt-logon.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/opt-logon.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/opt-logon.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/opt-logon.png') 2x); }
+.rdc-client .rdc-opt-connection { background-image: image-set(url('/static_images/vista-mstsc/opt-connection.png') 1x, url('/static_images/hidpi/125/vista-mstsc/opt-connection.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/opt-connection.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/opt-connection.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/opt-connection.png') 2x); }
+.rdc-client .rdc-opt-display { background-image: image-set(url('/static_images/vista-mstsc/opt-display.png') 1x, url('/static_images/hidpi/125/vista-mstsc/opt-display.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/opt-display.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/opt-display.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/opt-display.png') 2x); }
+.rdc-client .rdc-opt-colors { background-image: image-set(url('/static_images/vista-mstsc/opt-colors.png') 1x, url('/static_images/hidpi/125/vista-mstsc/opt-colors.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/opt-colors.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/opt-colors.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/opt-colors.png') 2x); }
+.rdc-client .rdc-opt-sound { background-image: image-set(url('/static_images/vista-mstsc/opt-sound.png') 1x, url('/static_images/hidpi/125/vista-mstsc/opt-sound.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/opt-sound.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/opt-sound.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/opt-sound.png') 2x); }
+.rdc-client .rdc-opt-keyboard { background-image: image-set(url('/static_images/vista-mstsc/opt-keyboard.png') 1x, url('/static_images/hidpi/125/vista-mstsc/opt-keyboard.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/opt-keyboard.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/opt-keyboard.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/opt-keyboard.png') 2x); }
+.rdc-client .rdc-opt-devices { background-image: image-set(url('/static_images/vista-mstsc/opt-devices.png') 1x, url('/static_images/hidpi/125/vista-mstsc/opt-devices.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/opt-devices.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/opt-devices.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/opt-devices.png') 2x); }
+.rdc-client .rdc-opt-programs { background-image: image-set(url('/static_images/vista-mstsc/opt-programs.png') 1x, url('/static_images/hidpi/125/vista-mstsc/opt-programs.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/opt-programs.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/opt-programs.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/opt-programs.png') 2x); }
+.rdc-client .rdc-opt-experience { background-image: image-set(url('/static_images/vista-mstsc/opt-experience.png') 1x, url('/static_images/hidpi/125/vista-mstsc/opt-experience.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/opt-experience.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/opt-experience.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/opt-experience.png') 2x); }
+.rdc-client .rdc-opt-auth { background-image: image-set(url('/static_images/vista-mstsc/opt-auth.png') 1x, url('/static_images/hidpi/125/vista-mstsc/opt-auth.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/opt-auth.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/opt-auth.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/opt-auth.png') 2x); }
+.rdc-client .rdc-opt-gateway { background-image: image-set(url('/static_images/vista-mstsc/opt-gateway.png') 1x, url('/static_images/hidpi/125/vista-mstsc/opt-gateway.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/opt-gateway.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/opt-gateway.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/opt-gateway.png') 2x); }
 
 /* the 32-bit colour sample (bitmap 623, cropped from the VM with its sunken top-left edge) */
 .rdc-client .rdc-color-bar {
-    background: url('/static_images/vista-mstsc/colors-32bit.png') 0 0 no-repeat;
+    background: image-set(url('/static_images/vista-mstsc/colors-32bit.png') 1x, url('/static_images/hidpi/125/vista-mstsc/colors-32bit.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/colors-32bit.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/colors-32bit.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/colors-32bit.png') 2x) 0 0 no-repeat;
 }
 
 /* multi-line statics break where Vista's GDI text breaks them (Chrome's glyphs run a little wider) */
@@ -148,7 +148,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     top: 10px;
     width: 110px;
     height: 4px;
-    background: url('/static_images/vista-mstsc/slider-channel.png') 0 0 no-repeat;
+    background: image-set(url('/static_images/vista-mstsc/slider-channel.png') 1x, url('/static_images/hidpi/125/vista-mstsc/slider-channel.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/slider-channel.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/slider-channel.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/slider-channel.png') 2x) 0 0 no-repeat;
 }
 
 .rdc-client .rdc-slider-ticks i {
@@ -169,7 +169,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     top: 3px;
     width: 11px;
     height: 19px;
-    background: url('/static_images/vista-controls/trackbar-thumb.png') 0 0 / 11px 95px no-repeat;
+    background: image-set(url('/static_images/vista-controls/trackbar-thumb.png') 1x, url('/static_images/hidpi/125/vista-controls/trackbar-thumb.png') 1.2727x, url('/static_images/hidpi/150/vista-controls/trackbar-thumb.png') 1.5455x, url('/static_images/hidpi/175/vista-controls/trackbar-thumb.png') 1.7273x, url('/static_images/hidpi/200/vista-controls/trackbar-thumb.png') 2x) 0 0 / 11px 95px no-repeat;
 }
 
 .rdc-client .rdc-slider:focus .rdc-slider-thumb { background-position-y: -57px; }
@@ -205,9 +205,9 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     width: 405px;
     height: 67px;
     background:
-        url('/static_images/vista-mstsc/banner-left.png') 0 0 no-repeat,
-        url('/static_images/vista-mstsc/banner-right.png') 199px 0 no-repeat,
-        url('/static_images/vista-mstsc/banner-tile.png') 90px 0 no-repeat;
+        image-set(url('/static_images/vista-mstsc/banner-left.png') 1x, url('/static_images/hidpi/125/vista-mstsc/banner-left.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/banner-left.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/banner-left.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/banner-left.png') 2x) 0 0 no-repeat,
+        image-set(url('/static_images/vista-mstsc/banner-right.png') 1x, url('/static_images/hidpi/125/vista-mstsc/banner-right.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/banner-right.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/banner-right.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/banner-right.png') 2x) 199px 0 no-repeat,
+        image-set(url('/static_images/vista-mstsc/banner-tile.png') 1x, url('/static_images/hidpi/125/vista-mstsc/banner-tile.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/banner-tile.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/banner-tile.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/banner-tile.png') 2x) 90px 0 no-repeat;
 }
 
 .rdc-client .rdc-banner-line {
@@ -216,7 +216,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     top: 67px;
     width: 405px;
     height: 5px;
-    background: url('/static_images/vista-mstsc/banner-line.png') 0 0 repeat-x;
+    background: image-set(url('/static_images/vista-mstsc/banner-line.png') 1x, url('/static_images/hidpi/125/vista-mstsc/banner-line.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/banner-line.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/banner-line.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/banner-line.png') 2x) 0 0 repeat-x;
 }
 
 /* While a connection is being made the rule scrolls right as a loop, 5 px every 31.25 ms (a 30 ms
@@ -389,7 +389,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-clie
     top: 10px;
     width: 32px;
     height: 32px;
-    background: url('/static_images/vista-icons/msgbox-error-32.png') 0 0 / 32px 32px no-repeat;
+    background: image-set(url('/static_images/vista-icons/msgbox-error-32.png') 1x, url('/static_images/hidpi/125/vista-icons/msgbox-error-32.png') 1.25x, url('/static_images/hidpi/150/vista-icons/msgbox-error-32.png') 1.5x, url('/static_images/hidpi/175/vista-icons/msgbox-error-32.png') 1.75x, url('/static_images/hidpi/200/vista-icons/msgbox-error-32.png') 2x) 0 0 / 32px 32px no-repeat;
 }
 
 .rdc-client.rdc-error .rdc-error-text {
@@ -470,7 +470,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-clie
     top: 9px;
     width: 62px;
     height: 62px;
-    background: url('/static_images/vista-mstsc/cred-tile.png') 0 0 no-repeat;
+    background: image-set(url('/static_images/vista-mstsc/cred-tile.png') 1x, url('/static_images/hidpi/125/vista-mstsc/cred-tile.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/cred-tile.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/cred-tile.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/cred-tile.png') 2x) 0 0 no-repeat;
 }
 
 #remoteDesktopConnectionCredentialDialog .rdc-client.rdc-cred input.rdc-cred-edit {
@@ -553,7 +553,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-clie
     width: 313px;
     height: 198px;
     margin: -99px 0 0 -157px;
-    background: url('/static_images/vista-mstsc/reconnect-panel.png') 0 0 no-repeat;
+    background: image-set(url('/static_images/vista-mstsc/reconnect-panel.png') 1x, url('/static_images/hidpi/125/vista-mstsc/reconnect-panel.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/reconnect-panel.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/reconnect-panel.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/reconnect-panel.png') 2x) 0 0 no-repeat;
     color: #fff;
     font: 11px/13px 'Microsoft Sans Serif', Tahoma, sans-serif;
     cursor: default;
@@ -585,7 +585,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-clie
     top: 5px;
     width: 32px;
     height: 32px;
-    background: url('/static_images/vista-mstsc/reconnect-logo.png') 0 0 / 32px 32px no-repeat;
+    background: image-set(url('/static_images/vista-mstsc/reconnect-logo.png') 1x, url('/static_images/hidpi/125/vista-mstsc/reconnect-logo.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/reconnect-logo.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/reconnect-logo.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/reconnect-logo.png') 2x) 0 0 / 32px 32px no-repeat;
 }
 
 .rdc-reconnect .rdc-reconnect-icon {
@@ -593,7 +593,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-clie
     top: 62px;
     width: 64px;
     height: 64px;
-    background: url('/static_images/vista-mstsc/reconnect-icon.png') 0 0 no-repeat;
+    background: image-set(url('/static_images/vista-mstsc/reconnect-icon.png') 1x, url('/static_images/hidpi/125/vista-mstsc/reconnect-icon.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/reconnect-icon.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/reconnect-icon.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/reconnect-icon.png') 2x) 0 0 no-repeat;
 }
 
 .rdc-reconnect .rdc-reconnect-text {

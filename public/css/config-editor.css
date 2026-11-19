@@ -137,11 +137,11 @@
 }
 
 #configEditorModal .config-editor-tree-expand {
-    background: #fff url('/static_images/vista-controls/tree-closed.png') no-repeat;
+    background: #fff image-set(url('/static_images/vista-controls/tree-closed.png') 1x, url('/static_images/hidpi/125/vista-controls/tree-closed.png') 1.25x, url('/static_images/hidpi/150/vista-controls/tree-closed.png') 1.5x, url('/static_images/hidpi/175/vista-controls/tree-closed.png') 1.75x, url('/static_images/hidpi/200/vista-controls/tree-closed.png') 2x) no-repeat;
 }
 
 #configEditorModal .config-editor-tree-expand:has(.fa-chevron-down) {
-    background-image: url('/static_images/vista-controls/tree-open.png');
+    background-image: image-set(url('/static_images/vista-controls/tree-open.png') 1x, url('/static_images/hidpi/125/vista-controls/tree-open.png') 1.25x, url('/static_images/hidpi/150/vista-controls/tree-open.png') 1.5x, url('/static_images/hidpi/175/vista-controls/tree-open.png') 1.75x, url('/static_images/hidpi/200/vista-controls/tree-open.png') 2x);
 }
 
 #configEditorModal .config-editor-tree-expand i {
@@ -198,7 +198,7 @@
     border-style: solid;
     border-color: transparent;
     border-width: 0 2px 1px 1px;
-    border-image: url('/static_images/vista-controls/regedit-header-item.png') 0 2 1 1 fill / 0 2px 1px 1px stretch;
+    border-image: image-set(url('/static_images/vista-controls/regedit-header-item.png') 1x, url('/static_images/hidpi/125/vista-controls/regedit-header-item.png') 1.25x, url('/static_images/hidpi/150/vista-controls/regedit-header-item.png') 1.5x, url('/static_images/hidpi/175/vista-controls/regedit-header-item.png') 1.75x, url('/static_images/hidpi/200/vista-controls/regedit-header-item.png') 2x) 0 2 1 1 fill / 0 2px 1px 1px stretch;
     color: #000;
     font-weight: 400;
     text-align: left;
@@ -336,7 +336,7 @@
     bottom: 0;
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-controls/regedit-sizegrip.png') no-repeat;
+    background: image-set(url('/static_images/vista-controls/regedit-sizegrip.png') 1x, url('/static_images/hidpi/125/vista-controls/regedit-sizegrip.png') 1.25x, url('/static_images/hidpi/150/vista-controls/regedit-sizegrip.png') 1.5x, url('/static_images/hidpi/175/vista-controls/regedit-sizegrip.png') 1.75x, url('/static_images/hidpi/200/vista-controls/regedit-sizegrip.png') 2x) no-repeat;
 }
 
 #configEditorModal.maximised .config-editor-status-bar::after {

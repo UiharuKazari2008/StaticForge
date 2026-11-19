@@ -219,7 +219,7 @@ body.vista-logon #desktopPreStartupModal {
     backdrop-filter: none;
     /* branding (#495): the Dreamscape mark, "Dreamscape" in Segoe UI and "2026 R7" light, built by
        scripts/build-vista-logon-branding.sh into the slot Vista's flag + "Windows Vista" used */
-    background: url('/static_images/vista-logon/branding.png') center bottom 23px / 400px 50px no-repeat,
+    background: image-set(url('/static_images/vista-logon/branding.png') 1x, url('/static_images/hidpi/125/vista-logon/branding.png') 1.25x, url('/static_images/hidpi/150/vista-logon/branding.png') 1.5x, url('/static_images/hidpi/175/vista-logon/branding.png') 1.75x, url('/static_images/hidpi/200/vista-logon/branding.png') 2x) center bottom 23px / 400px 50px no-repeat,
         #000 var(--vista-logon-bg) 0 0 / 100% 100% no-repeat;
     color: #fff;
     font-family: 'Segoe UI', 'Noto Sans', sans-serif;
@@ -312,7 +312,7 @@ body.vista-logon #desktopPreStartupStatus::before {
     height: 20px;
     margin: 0 10px 0 -5px;
     vertical-align: top;
-    background: url('/static_images/vista-logon/wait-20.png') 0 0 / 20px 360px no-repeat;
+    background: image-set(url('/static_images/vista-logon/wait-20.png') 1x, url('/static_images/hidpi/125/vista-logon/wait-20.png') 1.25x, url('/static_images/hidpi/150/vista-logon/wait-20.png') 1.5x, url('/static_images/hidpi/175/vista-logon/wait-20.png') 1.75x, url('/static_images/hidpi/200/vista-logon/wait-20.png') 2x) 0 0 / 20px 360px no-repeat;
     /* perf: allow busy indicator: the Welcome screen's wait ring beside the logon status, frames of its sprite */
     animation: vista-logon-wait 1s steps(18) infinite;
 }
@@ -376,7 +376,7 @@ body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-tile::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: url('/static_images/vista-logon/usertile-frame-190.png') 0 0 / 190px 190px no-repeat;
+    background: image-set(url('/static_images/vista-logon/usertile-frame-190.png') 1x, url('/static_images/hidpi/125/vista-logon/usertile-frame-190.png') 1.25x, url('/static_images/hidpi/150/vista-logon/usertile-frame-190.png') 1.5x, url('/static_images/hidpi/175/vista-logon/usertile-frame-190.png') 1.75x, url('/static_images/hidpi/200/vista-logon/usertile-frame-190.png') 2x) 0 0 / 190px 190px no-repeat;
 }
 
 #desktopPreStartupPicture {
@@ -417,7 +417,7 @@ body.vista-logon #desktopPreStartupPassword {
     margin: 0;
     padding: 0 4px 5px 5px;
     border: 4px solid transparent;
-    border-image: url('/static_images/vista-logon/password.png') 4 fill / 4px stretch;
+    border-image: image-set(url('/static_images/vista-logon/password.png') 1x, url('/static_images/hidpi/125/vista-logon/password.png') 1.25x, url('/static_images/hidpi/150/vista-logon/password.png') 1.5x, url('/static_images/hidpi/175/vista-logon/password.png') 1.75x, url('/static_images/hidpi/200/vista-logon/password.png') 2x) 4 fill / 4px stretch;
     background: transparent;
     color: #000;
     font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
@@ -429,15 +429,15 @@ body.vista-logon #desktopPreStartupPassword::placeholder {
 }
 
 body.vista-logon #desktopPreStartupPassword:hover {
-    border-image-source: url('/static_images/vista-logon/password-hover.png');
+    border-image-source: image-set(url('/static_images/vista-logon/password-hover.png') 1x, url('/static_images/hidpi/125/vista-logon/password-hover.png') 1.2222x, url('/static_images/hidpi/150/vista-logon/password-hover.png') 1.5556x, url('/static_images/hidpi/175/vista-logon/password-hover.png') 1.7778x, url('/static_images/hidpi/200/vista-logon/password-hover.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupPassword:focus {
-    border-image-source: url('/static_images/vista-logon/password-focus.png');
+    border-image-source: image-set(url('/static_images/vista-logon/password-focus.png') 1x, url('/static_images/hidpi/125/vista-logon/password-focus.png') 1.2222x, url('/static_images/hidpi/150/vista-logon/password-focus.png') 1.5556x, url('/static_images/hidpi/175/vista-logon/password-focus.png') 1.7778x, url('/static_images/hidpi/200/vista-logon/password-focus.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupPassword:disabled {
-    border-image-source: url('/static_images/vista-logon/password-disabled.png');
+    border-image-source: image-set(url('/static_images/vista-logon/password-disabled.png') 1x, url('/static_images/hidpi/125/vista-logon/password-disabled.png') 1.2222x, url('/static_images/hidpi/150/vista-logon/password-disabled.png') 1.5556x, url('/static_images/hidpi/175/vista-logon/password-disabled.png') 1.7778x, url('/static_images/hidpi/200/vista-logon/password-disabled.png') 2x);
 }
 
 /* :where() keeps this reset under each button's own rule below */
@@ -459,7 +459,7 @@ body.vista-logon #desktopPreStartupLoginBtn {
     height: 30px;
     font-size: 0;
     color: transparent;
-    background: url('/static_images/vista-logon/submit.png') 0 0 / 30px 30px no-repeat;
+    background: image-set(url('/static_images/vista-logon/submit.png') 1x, url('/static_images/hidpi/125/vista-logon/submit.png') 1.25x, url('/static_images/hidpi/150/vista-logon/submit.png') 1.5x, url('/static_images/hidpi/175/vista-logon/submit.png') 1.75x, url('/static_images/hidpi/200/vista-logon/submit.png') 2x) 0 0 / 30px 30px no-repeat;
 }
 
 body.vista-logon #desktopPreStartupLoginBtn::before {
@@ -467,11 +467,11 @@ body.vista-logon #desktopPreStartupLoginBtn::before {
 }
 
 body.vista-logon #desktopPreStartupLoginBtn:hover {
-    background-image: url('/static_images/vista-logon/submit-hover.png');
+    background-image: image-set(url('/static_images/vista-logon/submit-hover.png') 1x, url('/static_images/hidpi/125/vista-logon/submit-hover.png') 1.25x, url('/static_images/hidpi/150/vista-logon/submit-hover.png') 1.5x, url('/static_images/hidpi/175/vista-logon/submit-hover.png') 1.75x, url('/static_images/hidpi/200/vista-logon/submit-hover.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupLoginBtn:active {
-    background-image: url('/static_images/vista-logon/submit-pressed.png');
+    background-image: image-set(url('/static_images/vista-logon/submit-pressed.png') 1x, url('/static_images/hidpi/125/vista-logon/submit-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-logon/submit-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-logon/submit-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-logon/submit-pressed.png') 2x);
 }
 
 /* Message view (wrong password and the like): the icon and text, one OK; the tile, the name,
@@ -555,7 +555,7 @@ body.vista-logon #desktopPreStartupAuthError::before {
     content: '';
     flex: 0 0 32px;
     height: 32px;
-    background: url('/static_images/vista-icons/msgbox-error-32.png') 0 0 / 32px 32px no-repeat;
+    background: image-set(url('/static_images/vista-icons/msgbox-error-32.png') 1x, url('/static_images/hidpi/125/vista-icons/msgbox-error-32.png') 1.25x, url('/static_images/hidpi/150/vista-icons/msgbox-error-32.png') 1.5x, url('/static_images/hidpi/175/vista-icons/msgbox-error-32.png') 1.75x, url('/static_images/hidpi/200/vista-icons/msgbox-error-32.png') 2x) 0 0 / 32px 32px no-repeat;
 }
 
 /* LogonUI button: 93 x 28 minimum, 9-grid (4, 3), white 11 pt caption; OK and Switch User share
@@ -568,7 +568,7 @@ body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-button {
     padding: 0 10px 2px;
     border: solid transparent;
     border-width: 3px 4px;
-    border-image: url('/static_images/vista-logon/button.png') 3 4 fill / 3px 4px stretch;
+    border-image: image-set(url('/static_images/vista-logon/button.png') 1x, url('/static_images/hidpi/125/vista-logon/button.png') 1.25x, url('/static_images/hidpi/150/vista-logon/button.png') 1.5x, url('/static_images/hidpi/175/vista-logon/button.png') 1.75x, url('/static_images/hidpi/200/vista-logon/button.png') 2x) 3 4 fill / 3px 4px stretch;
     color: #fff;
     font-size: 15px;
     line-height: 21px;
@@ -576,19 +576,19 @@ body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-button {
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-button:focus-visible {
-    border-image-source: url('/static_images/vista-logon/button-focus.png');
+    border-image-source: image-set(url('/static_images/vista-logon/button-focus.png') 1x, url('/static_images/hidpi/125/vista-logon/button-focus.png') 1.25x, url('/static_images/hidpi/150/vista-logon/button-focus.png') 1.5x, url('/static_images/hidpi/175/vista-logon/button-focus.png') 1.75x, url('/static_images/hidpi/200/vista-logon/button-focus.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-button:hover {
-    border-image-source: url('/static_images/vista-logon/button-hover.png');
+    border-image-source: image-set(url('/static_images/vista-logon/button-hover.png') 1x, url('/static_images/hidpi/125/vista-logon/button-hover.png') 1.25x, url('/static_images/hidpi/150/vista-logon/button-hover.png') 1.5x, url('/static_images/hidpi/175/vista-logon/button-hover.png') 1.75x, url('/static_images/hidpi/200/vista-logon/button-hover.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-button:hover:focus-visible {
-    border-image-source: url('/static_images/vista-logon/button-hover-focus.png');
+    border-image-source: image-set(url('/static_images/vista-logon/button-hover-focus.png') 1x, url('/static_images/hidpi/125/vista-logon/button-hover-focus.png') 1.25x, url('/static_images/hidpi/150/vista-logon/button-hover-focus.png') 1.5x, url('/static_images/hidpi/175/vista-logon/button-hover-focus.png') 1.75x, url('/static_images/hidpi/200/vista-logon/button-hover-focus.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-button:active {
-    border-image-source: url('/static_images/vista-logon/button-pressed.png');
+    border-image-source: image-set(url('/static_images/vista-logon/button-pressed.png') 1x, url('/static_images/hidpi/125/vista-logon/button-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-logon/button-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-logon/button-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-logon/button-pressed.png') 2x);
 }
 
 /* Options bar (the bottom 96 px): Ease of Access 34 px in from the left, Shut down and its
@@ -620,28 +620,28 @@ body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease {
     width: 38px;
     border: solid transparent;
     border-width: 2px 4px;
-    border-image: url('/static_images/vista-logon/button.png') 2 4 fill / 2px 4px stretch;
+    border-image: image-set(url('/static_images/vista-logon/button.png') 1x, url('/static_images/hidpi/125/vista-logon/button.png') 1.25x, url('/static_images/hidpi/150/vista-logon/button.png') 1.5x, url('/static_images/hidpi/175/vista-logon/button.png') 1.75x, url('/static_images/hidpi/200/vista-logon/button.png') 2x) 2 4 fill / 2px 4px stretch;
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease::before {
     inset: -2px -4px;
-    background-image: url('/static_images/vista-logon/ease-of-access.png');
+    background-image: image-set(url('/static_images/vista-logon/ease-of-access.png') 1x, url('/static_images/hidpi/125/vista-logon/ease-of-access.png') 1.25x, url('/static_images/hidpi/150/vista-logon/ease-of-access.png') 1.5x, url('/static_images/hidpi/175/vista-logon/ease-of-access.png') 1.75x, url('/static_images/hidpi/200/vista-logon/ease-of-access.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease:focus-visible {
-    border-image-source: url('/static_images/vista-logon/button-focus.png');
+    border-image-source: image-set(url('/static_images/vista-logon/button-focus.png') 1x, url('/static_images/hidpi/125/vista-logon/button-focus.png') 1.25x, url('/static_images/hidpi/150/vista-logon/button-focus.png') 1.5x, url('/static_images/hidpi/175/vista-logon/button-focus.png') 1.75x, url('/static_images/hidpi/200/vista-logon/button-focus.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease:hover {
-    border-image-source: url('/static_images/vista-logon/button-hover.png');
+    border-image-source: image-set(url('/static_images/vista-logon/button-hover.png') 1x, url('/static_images/hidpi/125/vista-logon/button-hover.png') 1.25x, url('/static_images/hidpi/150/vista-logon/button-hover.png') 1.5x, url('/static_images/hidpi/175/vista-logon/button-hover.png') 1.75x, url('/static_images/hidpi/200/vista-logon/button-hover.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease:hover:focus-visible {
-    border-image-source: url('/static_images/vista-logon/button-hover-focus.png');
+    border-image-source: image-set(url('/static_images/vista-logon/button-hover-focus.png') 1x, url('/static_images/hidpi/125/vista-logon/button-hover-focus.png') 1.25x, url('/static_images/hidpi/150/vista-logon/button-hover-focus.png') 1.5x, url('/static_images/hidpi/175/vista-logon/button-hover-focus.png') 1.75x, url('/static_images/hidpi/200/vista-logon/button-hover-focus.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-ease:active {
-    border-image-source: url('/static_images/vista-logon/button-pressed.png');
+    border-image-source: image-set(url('/static_images/vista-logon/button-pressed.png') 1x, url('/static_images/hidpi/125/vista-logon/button-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-logon/button-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-logon/button-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-logon/button-pressed.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown {
@@ -649,60 +649,60 @@ body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown {
     width: 38px;
     border: solid transparent;
     border-width: 1px 4px;
-    border-image: url('/static_images/vista-logon/shutdown.png') 1 4 fill / 1px 4px stretch;
+    border-image: image-set(url('/static_images/vista-logon/shutdown.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown.png') 1.5x, url('/static_images/hidpi/175/vista-logon/shutdown.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown.png') 2x) 1 4 fill / 1px 4px stretch;
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown::before {
     inset: -1px -4px;
-    background-image: url('/static_images/vista-logon/shutdown-icon.png');
+    background-image: image-set(url('/static_images/vista-logon/shutdown-icon.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-icon.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown-icon.png') 1.5x, url('/static_images/hidpi/175/vista-logon/shutdown-icon.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown-icon.png') 2x);
 }
 
 /* updates wait to install (#924): authui's "Shut down and install updates" glyph (bitmap 11130) */
 html[data-updates-waiting] body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown::before {
-    background-image: url('/static_images/vista-logon/shutdown-update-icon.png');
+    background-image: image-set(url('/static_images/vista-logon/shutdown-update-icon.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-update-icon.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown-update-icon.png') 1.5x, url('/static_images/hidpi/175/vista-logon/shutdown-update-icon.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown-update-icon.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown:focus-visible {
-    border-image-source: url('/static_images/vista-logon/shutdown-focus.png');
+    border-image-source: image-set(url('/static_images/vista-logon/shutdown-focus.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-focus.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown-focus.png') 1.5238x, url('/static_images/hidpi/175/vista-logon/shutdown-focus.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown-focus.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown:hover {
-    border-image-source: url('/static_images/vista-logon/shutdown-hover.png');
+    border-image-source: image-set(url('/static_images/vista-logon/shutdown-hover.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-hover.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown-hover.png') 1.5238x, url('/static_images/hidpi/175/vista-logon/shutdown-hover.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown-hover.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown:hover:focus-visible {
-    border-image-source: url('/static_images/vista-logon/shutdown-hover-focus.png');
+    border-image-source: image-set(url('/static_images/vista-logon/shutdown-hover-focus.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-hover-focus.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown-hover-focus.png') 1.5238x, url('/static_images/hidpi/175/vista-logon/shutdown-hover-focus.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown-hover-focus.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown:active {
-    border-image-source: url('/static_images/vista-logon/shutdown-pressed.png');
+    border-image-source: image-set(url('/static_images/vista-logon/shutdown-pressed.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown-pressed.png') 1.5238x, url('/static_images/hidpi/175/vista-logon/shutdown-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown-pressed.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu {
     right: 34px;
     width: 20px;
-    background: url('/static_images/vista-logon/shutdown-options.png') 0 0 / 20px 28px no-repeat;
+    background: image-set(url('/static_images/vista-logon/shutdown-options.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-options.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown-options.png') 1.5x, url('/static_images/hidpi/175/vista-logon/shutdown-options.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown-options.png') 2x) 0 0 / 20px 28px no-repeat;
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu::before {
-    background-image: url('/static_images/vista-logon/shutdown-arrow.png');
+    background-image: image-set(url('/static_images/vista-logon/shutdown-arrow.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-arrow.png') 1.2222x, url('/static_images/hidpi/150/vista-logon/shutdown-arrow.png') 1.5556x, url('/static_images/hidpi/175/vista-logon/shutdown-arrow.png') 1.7778x, url('/static_images/hidpi/200/vista-logon/shutdown-arrow.png') 2x);
     background-size: 9px 6px;
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu:focus-visible {
-    background-image: url('/static_images/vista-logon/shutdown-options-focus.png');
+    background-image: image-set(url('/static_images/vista-logon/shutdown-options-focus.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-options-focus.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown-options-focus.png') 1.5x, url('/static_images/hidpi/175/vista-logon/shutdown-options-focus.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown-options-focus.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu:hover {
-    background-image: url('/static_images/vista-logon/shutdown-options-hover.png');
+    background-image: image-set(url('/static_images/vista-logon/shutdown-options-hover.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-options-hover.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown-options-hover.png') 1.5x, url('/static_images/hidpi/175/vista-logon/shutdown-options-hover.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown-options-hover.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu:hover:focus-visible {
-    background-image: url('/static_images/vista-logon/shutdown-options-hover-focus.png');
+    background-image: image-set(url('/static_images/vista-logon/shutdown-options-hover-focus.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-options-hover-focus.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown-options-hover-focus.png') 1.5x, url('/static_images/hidpi/175/vista-logon/shutdown-options-hover-focus.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown-options-hover-focus.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu:active {
-    background-image: url('/static_images/vista-logon/shutdown-options-pressed.png');
+    background-image: image-set(url('/static_images/vista-logon/shutdown-options-pressed.png') 1x, url('/static_images/hidpi/125/vista-logon/shutdown-options-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-logon/shutdown-options-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-logon/shutdown-options-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-logon/shutdown-options-pressed.png') 2x);
 }
 
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-switch {
@@ -823,28 +823,28 @@ body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupMo
     display: block;
     width: 28px;
     height: 15px;
-    background: url('/static_images/vista-logon/basic-close.png') 0 0 / 28px 15px no-repeat;
+    background: image-set(url('/static_images/vista-logon/basic-close.png') 1x, url('/static_images/hidpi/125/vista-logon/basic-close.png') 1.25x, url('/static_images/hidpi/150/vista-logon/basic-close.png') 1.5x, url('/static_images/hidpi/175/vista-logon/basic-close.png') 1.75x, url('/static_images/hidpi/200/vista-logon/basic-close.png') 2x) 0 0 / 28px 15px no-repeat;
 }
 
 :is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls.window-inactive > button {
-    background-image: url('/static_images/vista-logon/basic-close-inactive.png');
+    background-image: image-set(url('/static_images/vista-logon/basic-close-inactive.png') 1x, url('/static_images/hidpi/125/vista-logon/basic-close-inactive.png') 1.25x, url('/static_images/hidpi/150/vista-logon/basic-close-inactive.png') 1.5x, url('/static_images/hidpi/175/vista-logon/basic-close-inactive.png') 1.75x, url('/static_images/hidpi/200/vista-logon/basic-close-inactive.png') 2x);
 }
 
 /* hot / pressed: uxtheme WINDOW WP_CLOSEBUTTON states 2 / 3 (inactive 6 / 7), drawn on the VM (themeimg) */
 :is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls > button:hover {
-    background-image: url('/static_images/vista-logon/basic-close-hot.png');
+    background-image: image-set(url('/static_images/vista-logon/basic-close-hot.png') 1x, url('/static_images/hidpi/125/vista-logon/basic-close-hot.png') 1.25x, url('/static_images/hidpi/150/vista-logon/basic-close-hot.png') 1.5x, url('/static_images/hidpi/175/vista-logon/basic-close-hot.png') 1.75x, url('/static_images/hidpi/200/vista-logon/basic-close-hot.png') 2x);
 }
 
 :is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls > button:active {
-    background-image: url('/static_images/vista-logon/basic-close-pressed.png');
+    background-image: image-set(url('/static_images/vista-logon/basic-close-pressed.png') 1x, url('/static_images/hidpi/125/vista-logon/basic-close-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-logon/basic-close-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-logon/basic-close-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-logon/basic-close-pressed.png') 2x);
 }
 
 :is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls.window-inactive > button:hover {
-    background-image: url('/static_images/vista-logon/basic-close-inactive-hot.png');
+    background-image: image-set(url('/static_images/vista-logon/basic-close-inactive-hot.png') 1x, url('/static_images/hidpi/125/vista-logon/basic-close-inactive-hot.png') 1.25x, url('/static_images/hidpi/150/vista-logon/basic-close-inactive-hot.png') 1.5x, url('/static_images/hidpi/175/vista-logon/basic-close-inactive-hot.png') 1.75x, url('/static_images/hidpi/200/vista-logon/basic-close-inactive-hot.png') 2x);
 }
 
 :is(body.vista-basic-theme .modal.boot-dialog:not(#desktopPreStartupModal), .modal.secure-desktop-window) > .modal-window-controls.window-inactive > button:active {
-    background-image: url('/static_images/vista-logon/basic-close-inactive-pressed.png');
+    background-image: image-set(url('/static_images/vista-logon/basic-close-inactive-pressed.png') 1x, url('/static_images/hidpi/125/vista-logon/basic-close-inactive-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-logon/basic-close-inactive-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-logon/basic-close-inactive-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-logon/basic-close-inactive-pressed.png') 2x);
 }
 
 /* ---------- The secure desktop (cplAuthentication.js melatonSecureDesktop) ----------

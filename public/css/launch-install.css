@@ -114,7 +114,7 @@
     margin: 0;
     padding: 0;
     border: 0;
-    background: url('/static_images/vista-setup/classic-caption-buttons.png') 0 0 / 52px 16px no-repeat;
+    background: image-set(url('/static_images/vista-setup/classic-caption-buttons.png') 1x, url('/static_images/hidpi/125/vista-setup/classic-caption-buttons.png') 1.25x, url('/static_images/hidpi/150/vista-setup/classic-caption-buttons.png') 1.5x, url('/static_images/hidpi/175/vista-setup/classic-caption-buttons.png') 1.75x, url('/static_images/hidpi/200/vista-setup/classic-caption-buttons.png') 2x) 0 0 / 52px 16px no-repeat;
     color: transparent;
     font-size: 0;
     box-shadow: none;
@@ -223,20 +223,20 @@
     width: 26px;
     height: 25px;
     border-radius: 50%;
-    background: url('/static_images/vista-defender/back.png') 0 0 / 26px 25px no-repeat;
+    background: image-set(url('/static_images/vista-defender/back.png') 1x, url('/static_images/hidpi/125/vista-defender/back.png') 1.25x, url('/static_images/hidpi/150/vista-defender/back.png') 1.5x, url('/static_images/hidpi/175/vista-defender/back.png') 1.75x, url('/static_images/hidpi/200/vista-defender/back.png') 2x) 0 0 / 26px 25px no-repeat;
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 0 2px rgba(60, 80, 90, 0.3);
 }
 
 #melatonInstall .mi-title-back:hover:not(:disabled) {
-    background-image: url('/static_images/vista-defender/back-hot.png');
+    background-image: image-set(url('/static_images/vista-defender/back-hot.png') 1x, url('/static_images/hidpi/125/vista-defender/back-hot.png') 1.25x, url('/static_images/hidpi/150/vista-defender/back-hot.png') 1.5x, url('/static_images/hidpi/175/vista-defender/back-hot.png') 1.75x, url('/static_images/hidpi/200/vista-defender/back-hot.png') 2x);
 }
 
 #melatonInstall .mi-title-back:active:not(:disabled) {
-    background-image: url('/static_images/vista-defender/back-pressed.png');
+    background-image: image-set(url('/static_images/vista-defender/back-pressed.png') 1x, url('/static_images/hidpi/125/vista-defender/back-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-defender/back-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-defender/back-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-defender/back-pressed.png') 2x);
 }
 
 #melatonInstall .mi-title-back:disabled {
-    background-image: url('/static_images/vista-defender/back-disabled.png');
+    background-image: image-set(url('/static_images/vista-defender/back-disabled.png') 1x, url('/static_images/hidpi/125/vista-defender/back-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-defender/back-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-defender/back-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-defender/back-disabled.png') 2x);
 }
 
 #melatonInstall[data-page="key"] .mi-window > .mi-title::after,
@@ -272,17 +272,17 @@
     border-radius: 0;
     background: none;
     box-shadow: none;
-    border-image: url('/static_images/window-controls/faces/single-active-normal.png') 0 5 fill / 0 5px / 0 stretch;
+    border-image: image-set(url('/static_images/window-controls/faces/single-active-normal.png') 1x, url('/static_images/hidpi/125/window-controls/faces/single-active-normal.png') 1.25x, url('/static_images/hidpi/150/window-controls/faces/single-active-normal.png') 1.5x, url('/static_images/hidpi/175/window-controls/faces/single-active-normal.png') 1.75x, url('/static_images/hidpi/200/window-controls/faces/single-active-normal.png') 2x) 0 5 fill / 0 5px / 0 stretch;
     font-size: 0;
     color: transparent;
 }
 
 #melatonInstall .mi-window > .mi-title > .mi-title-close:hover {
-    border-image-source: url('/static_images/window-controls/faces/single-active-hot.png');
+    border-image-source: image-set(url('/static_images/window-controls/faces/single-active-hot.png') 1x, url('/static_images/hidpi/125/window-controls/faces/single-active-hot.png') 1.25x, url('/static_images/hidpi/150/window-controls/faces/single-active-hot.png') 1.5x, url('/static_images/hidpi/175/window-controls/faces/single-active-hot.png') 1.75x, url('/static_images/hidpi/200/window-controls/faces/single-active-hot.png') 2x);
 }
 
 #melatonInstall .mi-window > .mi-title > .mi-title-close:active {
-    border-image-source: url('/static_images/window-controls/faces/single-active-pressed.png');
+    border-image-source: image-set(url('/static_images/window-controls/faces/single-active-pressed.png') 1x, url('/static_images/hidpi/125/window-controls/faces/single-active-pressed.png') 1.25x, url('/static_images/hidpi/150/window-controls/faces/single-active-pressed.png') 1.5x, url('/static_images/hidpi/175/window-controls/faces/single-active-pressed.png') 1.75x, url('/static_images/hidpi/200/window-controls/faces/single-active-pressed.png') 2x);
 }
 
 #melatonInstall[data-page="key"] .mi-window > .mi-title > .mi-title-close::before,
@@ -673,7 +673,7 @@
     margin-left: 9px;
     width: 28px;
     height: 28px;
-    background: url('/static_images/vista-setup/go-arrow.png') 0 0 / 28px 28px no-repeat;
+    background: image-set(url('/static_images/vista-setup/go-arrow.png') 1x, url('/static_images/hidpi/125/vista-setup/go-arrow.png') 1.25x, url('/static_images/hidpi/150/vista-setup/go-arrow.png') 1.5x, url('/static_images/hidpi/175/vista-setup/go-arrow.png') 1.75x, url('/static_images/hidpi/200/vista-setup/go-arrow.png') 2x) 0 0 / 28px 28px no-repeat;
 }
 
 .mi-media-links {
@@ -969,7 +969,7 @@
     flex: 0 0 32px;
     width: 32px;
     height: 24px;
-    background: url('/static_images/vista-setup/disk-32.png') center / contain no-repeat;
+    background: image-set(url('/static_images/vista-setup/disk-32.png') 1x, url('/static_images/hidpi/125/vista-setup/disk-32.png') 1.25x, url('/static_images/hidpi/150/vista-setup/disk-32.png') 1.5x, url('/static_images/hidpi/175/vista-setup/disk-32.png') 1.75x, url('/static_images/hidpi/200/vista-setup/disk-32.png') 2x) center / contain no-repeat;
 }
 
 .mi-disk-tools {
@@ -997,12 +997,12 @@
     background: center / contain no-repeat;
 }
 
-.mi-tool--refresh::before { background-image: url('/static_images/vista-setup/tool-refresh.png'); }
-.mi-tool--driver::before { background-image: url('/static_images/vista-setup/tool-driver.png'); }
-.mi-tool--delete::before { background-image: url('/static_images/vista-setup/tool-delete.png'); }
-.mi-tool--format::before { background-image: url('/static_images/vista-setup/tool-format.png'); }
-.mi-tool--new::before { background-image: url('/static_images/vista-setup/tool-new.png'); }
-.mi-tool--extend::before { background-image: url('/static_images/vista-setup/tool-extend.png'); }
+.mi-tool--refresh::before { background-image: image-set(url('/static_images/vista-setup/tool-refresh.png') 1x, url('/static_images/hidpi/125/vista-setup/tool-refresh.png') 1.25x, url('/static_images/hidpi/150/vista-setup/tool-refresh.png') 1.5x, url('/static_images/hidpi/175/vista-setup/tool-refresh.png') 1.75x, url('/static_images/hidpi/200/vista-setup/tool-refresh.png') 2x); }
+.mi-tool--driver::before { background-image: image-set(url('/static_images/vista-setup/tool-driver.png') 1x, url('/static_images/hidpi/125/vista-setup/tool-driver.png') 1.25x, url('/static_images/hidpi/150/vista-setup/tool-driver.png') 1.5x, url('/static_images/hidpi/175/vista-setup/tool-driver.png') 1.75x, url('/static_images/hidpi/200/vista-setup/tool-driver.png') 2x); }
+.mi-tool--delete::before { background-image: image-set(url('/static_images/vista-setup/tool-delete.png') 1x, url('/static_images/hidpi/125/vista-setup/tool-delete.png') 1.25x, url('/static_images/hidpi/150/vista-setup/tool-delete.png') 1.5x, url('/static_images/hidpi/175/vista-setup/tool-delete.png') 1.75x, url('/static_images/hidpi/200/vista-setup/tool-delete.png') 2x); }
+.mi-tool--format::before { background-image: image-set(url('/static_images/vista-setup/tool-format.png') 1x, url('/static_images/hidpi/125/vista-setup/tool-format.png') 1.25x, url('/static_images/hidpi/150/vista-setup/tool-format.png') 1.5x, url('/static_images/hidpi/175/vista-setup/tool-format.png') 1.75x, url('/static_images/hidpi/200/vista-setup/tool-format.png') 2x); }
+.mi-tool--new::before { background-image: image-set(url('/static_images/vista-setup/tool-new.png') 1x, url('/static_images/hidpi/125/vista-setup/tool-new.png') 1.25x, url('/static_images/hidpi/150/vista-setup/tool-new.png') 1.5x, url('/static_images/hidpi/175/vista-setup/tool-new.png') 1.75x, url('/static_images/hidpi/200/vista-setup/tool-new.png') 2x); }
+.mi-tool--extend::before { background-image: image-set(url('/static_images/vista-setup/tool-extend.png') 1x, url('/static_images/hidpi/125/vista-setup/tool-extend.png') 1.25x, url('/static_images/hidpi/150/vista-setup/tool-extend.png') 1.5x, url('/static_images/hidpi/175/vista-setup/tool-extend.png') 1.75x, url('/static_images/hidpi/200/vista-setup/tool-extend.png') 2x); }
 .mi-tool--options::before { display: none; }
 
 .mi-tool--options {
@@ -1235,7 +1235,7 @@
     border-image: none;
     border-radius: 0;
     box-shadow: none;
-    background: url('/static_images/vista-logon/basic-close.png') 0 0 / 28px 15px no-repeat;
+    background: image-set(url('/static_images/vista-logon/basic-close.png') 1x, url('/static_images/hidpi/125/vista-logon/basic-close.png') 1.25x, url('/static_images/hidpi/150/vista-logon/basic-close.png') 1.5x, url('/static_images/hidpi/175/vista-logon/basic-close.png') 1.75x, url('/static_images/hidpi/200/vista-logon/basic-close.png') 2x) 0 0 / 28px 15px no-repeat;
     color: transparent;
     font-size: 0;
 }
@@ -1264,10 +1264,10 @@
     display: none;
 }
 
-.mi-msgbox-icon[data-icon="error"] { background-image: url('/static_images/vista-icons/msgbox-error-32.png'); }
-.mi-msgbox-icon[data-icon="warning"] { background-image: url('/static_images/vista-icons/msgbox-warning-32.png'); }
-.mi-msgbox-icon[data-icon="info"] { background-image: url('/static_images/vista-icons/msgbox-info-32.png'); }
-.mi-msgbox-icon[data-icon="question"] { background-image: url('/static_images/vista-icons/msgbox-question-32.png'); }
+.mi-msgbox-icon[data-icon="error"] { background-image: image-set(url('/static_images/vista-icons/msgbox-error-32.png') 1x, url('/static_images/hidpi/125/vista-icons/msgbox-error-32.png') 1.25x, url('/static_images/hidpi/150/vista-icons/msgbox-error-32.png') 1.5x, url('/static_images/hidpi/175/vista-icons/msgbox-error-32.png') 1.75x, url('/static_images/hidpi/200/vista-icons/msgbox-error-32.png') 2x); }
+.mi-msgbox-icon[data-icon="warning"] { background-image: image-set(url('/static_images/vista-icons/msgbox-warning-32.png') 1x, url('/static_images/hidpi/125/vista-icons/msgbox-warning-32.png') 1.25x, url('/static_images/hidpi/150/vista-icons/msgbox-warning-32.png') 1.5x, url('/static_images/hidpi/175/vista-icons/msgbox-warning-32.png') 1.75x, url('/static_images/hidpi/200/vista-icons/msgbox-warning-32.png') 2x); }
+.mi-msgbox-icon[data-icon="info"] { background-image: image-set(url('/static_images/vista-icons/msgbox-info-32.png') 1x, url('/static_images/hidpi/125/vista-icons/msgbox-info-32.png') 1.25x, url('/static_images/hidpi/150/vista-icons/msgbox-info-32.png') 1.5x, url('/static_images/hidpi/175/vista-icons/msgbox-info-32.png') 1.75x, url('/static_images/hidpi/200/vista-icons/msgbox-info-32.png') 2x); }
+.mi-msgbox-icon[data-icon="question"] { background-image: image-set(url('/static_images/vista-icons/msgbox-question-32.png') 1x, url('/static_images/hidpi/125/vista-icons/msgbox-question-32.png') 1.25x, url('/static_images/hidpi/150/vista-icons/msgbox-question-32.png') 1.5x, url('/static_images/hidpi/175/vista-icons/msgbox-question-32.png') 1.75x, url('/static_images/hidpi/200/vista-icons/msgbox-question-32.png') 2x); }
 
 .mi-msgbox-text {
     flex: 1 1 auto;

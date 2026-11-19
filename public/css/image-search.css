@@ -77,7 +77,7 @@
 
 #imageSearchModal .isx-search-clear {
     width: 17px;
-    background: url('/static_images/vista-explorer/search-clear.png') no-repeat center;
+    background: image-set(url('/static_images/vista-explorer/search-clear.png') 1x, url('/static_images/hidpi/125/vista-explorer/search-clear.png') 1.2222x, url('/static_images/hidpi/150/vista-explorer/search-clear.png') 1.5556x, url('/static_images/hidpi/175/vista-explorer/search-clear.png') 1.7778x, url('/static_images/hidpi/200/vista-explorer/search-clear.png') 2x) no-repeat center;
 }
 
 /* both boxes: Vista's sides run from the top edge's dark grey down to a lighter one, the corners
@@ -150,19 +150,19 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-ti
     height: 16px;
     /* VM: the icon 3 px in from the box's edges, the first > 1 px after it */
     margin: -2px 2px 0 0;
-    background: url('/static_images/vista-icons/search-folder-16.png') no-repeat center / 16px 16px;
+    background: image-set(url('/static_images/vista-icons/search-folder-16.png') 1x, url('/static_images/hidpi/125/vista-icons/search-folder-16.png') 1.25x, url('/static_images/hidpi/150/vista-icons/search-folder-16.png') 1.5x, url('/static_images/hidpi/175/vista-icons/search-folder-16.png') 1.75x, url('/static_images/hidpi/200/vista-icons/search-folder-16.png') 2x) no-repeat center / 16px 16px;
     background-image: image-set(url('/static_images/vista-icons/search-folder-16.png') 1x, url('/static_images/vista-icons/search-folder-32.png') 2x);
 }
 
 /* an empty search: "Search Results" with the grey magnifier (shell32.dll 209) */
 body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-title-toolbar .cpl-address-group.isx-address-group .isx-address.is-empty-search .cpl-address-icon[class] {
-    background-image: url('/static_images/vista-icons/search-empty-16.png');
+    background-image: image-set(url('/static_images/vista-icons/search-empty-16.png') 1x, url('/static_images/hidpi/125/vista-icons/search-empty-16.png') 1.25x, url('/static_images/hidpi/150/vista-icons/search-empty-16.png') 1.5x, url('/static_images/hidpi/175/vista-icons/search-empty-16.png') 1.75x, url('/static_images/hidpi/200/vista-icons/search-empty-16.png') 2x);
     background-image: image-set(url('/static_images/vista-icons/search-empty-16.png') 1x, url('/static_images/vista-icons/search-empty-32.png') 2x);
 }
 
 /* a place under the search (a Show only type, Prompt Usages): the stack (imageres.dll 141) */
 body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-title-toolbar .cpl-address-group.isx-address-group .isx-address.is-sub-place .cpl-address-icon[class] {
-    background-image: url('/static_images/vista-icons/search-stack-16.png');
+    background-image: image-set(url('/static_images/vista-icons/search-stack-16.png') 1x, url('/static_images/hidpi/125/vista-icons/search-stack-16.png') 1.25x, url('/static_images/hidpi/150/vista-icons/search-stack-16.png') 1.5x, url('/static_images/hidpi/175/vista-icons/search-stack-16.png') 1.75x, url('/static_images/hidpi/200/vista-icons/search-stack-16.png') 2x);
     background-image: image-set(url('/static_images/vista-icons/search-stack-16.png') 1x, url('/static_images/vista-icons/search-stack-32.png') 2x);
 }
 
@@ -397,7 +397,7 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-ti
     min-height: 0;
     margin: 0;
     padding: 0;
-    background: url('/static_images/vista-explorer/search-clear.png') no-repeat 4px 6px;
+    background: image-set(url('/static_images/vista-explorer/search-clear.png') 1x, url('/static_images/hidpi/125/vista-explorer/search-clear.png') 1.2222x, url('/static_images/hidpi/150/vista-explorer/search-clear.png') 1.5556x, url('/static_images/hidpi/175/vista-explorer/search-clear.png') 1.7778x, url('/static_images/hidpi/200/vista-explorer/search-clear.png') 2x) no-repeat 4px 6px;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -532,11 +532,11 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     width: 19px;
     height: 19px;
     margin: -1px 0;
-    background: url('/static_images/vista-explorer/advanced-search-down.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-explorer/advanced-search-down.png') 1x, url('/static_images/hidpi/125/vista-explorer/advanced-search-down.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/advanced-search-down.png') 1.5263x, url('/static_images/hidpi/175/vista-explorer/advanced-search-down.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/advanced-search-down.png') 2x) no-repeat 0 0;
 }
 
 #imageSearchModal .isx-advanced-toggle.is-open .isx-chevron {
-    background-image: url('/static_images/vista-explorer/advanced-search-up.png');
+    background-image: image-set(url('/static_images/vista-explorer/advanced-search-up.png') 1x, url('/static_images/hidpi/125/vista-explorer/advanced-search-up.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/advanced-search-up.png') 1.5263x, url('/static_images/hidpi/175/vista-explorer/advanced-search-up.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/advanced-search-up.png') 2x);
 }
 
 /* ---- the search terms ---- */
@@ -741,7 +741,7 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     border: 3px solid transparent;
     border-width: 1px;
     position: relative;
-    border-image: url('/static_images/vista-controls/combo-normal.png') 3 fill / 3px stretch;
+    border-image: image-set(url('/static_images/vista-controls/combo-normal.png') 1x, url('/static_images/hidpi/125/vista-controls/combo-normal.png') 1.25x, url('/static_images/hidpi/150/vista-controls/combo-normal.png') 1.5x, url('/static_images/hidpi/175/vista-controls/combo-normal.png') 1.75x, url('/static_images/hidpi/200/vista-controls/combo-normal.png') 2x) 3 fill / 3px stretch;
     color: #000;
     font: 9pt var(--isx-font);
     white-space: nowrap;
@@ -758,15 +758,15 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     right: 3px;
     width: 10px;
     height: 19px;
-    background: url('/static_images/vista-controls/combo-glyph-normal.png') center / 10px 19px no-repeat;
+    background: image-set(url('/static_images/vista-controls/combo-glyph-normal.png') 1x, url('/static_images/hidpi/125/vista-controls/combo-glyph-normal.png') 1.3x, url('/static_images/hidpi/150/vista-controls/combo-glyph-normal.png') 1.5x, url('/static_images/hidpi/175/vista-controls/combo-glyph-normal.png') 1.8x, url('/static_images/hidpi/200/vista-controls/combo-glyph-normal.png') 2x) center / 10px 19px no-repeat;
 }
 
 #imageSearchModal .isx-combo-btn:hover {
-    border-image-source: url('/static_images/vista-controls/combo-hot.png');
+    border-image-source: image-set(url('/static_images/vista-controls/combo-hot.png') 1x, url('/static_images/hidpi/125/vista-controls/combo-hot.png') 1.2727x, url('/static_images/hidpi/150/vista-controls/combo-hot.png') 1.5455x, url('/static_images/hidpi/175/vista-controls/combo-hot.png') 1.7273x, url('/static_images/hidpi/200/vista-controls/combo-hot.png') 2x);
 }
 
 #imageSearchModal .isx-combo-btn:is(:active, .context-open, [aria-expanded="true"]) {
-    border-image-source: url('/static_images/vista-controls/combo-pressed.png');
+    border-image-source: image-set(url('/static_images/vista-controls/combo-pressed.png') 1x, url('/static_images/hidpi/125/vista-controls/combo-pressed.png') 1.2727x, url('/static_images/hidpi/150/vista-controls/combo-pressed.png') 1.5455x, url('/static_images/hidpi/175/vista-controls/combo-pressed.png') 1.7273x, url('/static_images/hidpi/200/vista-controls/combo-pressed.png') 2x);
 }
 
 /* ---- the command bar: Explorer's (vista-explorer.css, its art) ---- */
@@ -780,9 +780,9 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     padding: 3px 3px 0;
     box-sizing: border-box;
     background:
-        url('/static_images/vista-explorer/cmdbar-band-edge.png') left top / 1px 100% no-repeat,
-        url('/static_images/vista-explorer/cmdbar-band-edge.png') right top / 1px 100% no-repeat,
-        url('/static_images/vista-explorer/cmdbar-band.png') left top / 1px 100% repeat-x,
+        image-set(url('/static_images/vista-explorer/cmdbar-band-edge.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-band-edge.png') 1x, url('/static_images/hidpi/150/vista-explorer/cmdbar-band-edge.png') 2x, url('/static_images/hidpi/175/vista-explorer/cmdbar-band-edge.png') 2x, url('/static_images/hidpi/200/vista-explorer/cmdbar-band-edge.png') 2x) left top / 1px 100% no-repeat,
+        image-set(url('/static_images/vista-explorer/cmdbar-band-edge.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-band-edge.png') 1x, url('/static_images/hidpi/150/vista-explorer/cmdbar-band-edge.png') 2x, url('/static_images/hidpi/175/vista-explorer/cmdbar-band-edge.png') 2x, url('/static_images/hidpi/200/vista-explorer/cmdbar-band-edge.png') 2x) right top / 1px 100% no-repeat,
+        image-set(url('/static_images/vista-explorer/cmdbar-band.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-band.png') 1x, url('/static_images/hidpi/150/vista-explorer/cmdbar-band.png') 2x, url('/static_images/hidpi/175/vista-explorer/cmdbar-band.png') 2x, url('/static_images/hidpi/200/vista-explorer/cmdbar-band.png') 2x) left top / 1px 100% repeat-x,
         linear-gradient(to right, #045082, #116584, #1d7986);
 }
 
@@ -817,7 +817,7 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     width: 13px;
     height: 12px;
     margin: 2px 0 0 4px;
-    background: url('/static_images/vista-explorer/cmdbar-glyph.png') no-repeat;
+    background: image-set(url('/static_images/vista-explorer/cmdbar-glyph.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-glyph.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-glyph.png') 1.5385x, url('/static_images/hidpi/175/vista-explorer/cmdbar-glyph.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-glyph.png') 2x) no-repeat;
 }
 
 /* the glyph on a light face (a search term): the combo's black arrow */
@@ -830,17 +830,17 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
 }
 
 #imageSearchModal :is(.isx-cmd, .isx-help):is(:hover, .context-open, [aria-expanded="true"], .is-on):not(:disabled) {
-    border-image: url('/static_images/vista-explorer/cmdbar-hot.png') 0 4 fill / 0 4px;
+    border-image: image-set(url('/static_images/vista-explorer/cmdbar-hot.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-hot.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-hot.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/cmdbar-hot.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-hot.png') 2x) 0 4 fill / 0 4px;
 }
 
 #imageSearchModal .isx-cmd:is(.context-open, [aria-expanded="true"]):not(:disabled) {
-    border-image-source: url('/static_images/vista-explorer/cmdbar-open.png');
+    border-image-source: image-set(url('/static_images/vista-explorer/cmdbar-open.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-open.png') 1.2222x, url('/static_images/hidpi/150/vista-explorer/cmdbar-open.png') 1.5556x, url('/static_images/hidpi/175/vista-explorer/cmdbar-open.png') 1.7778x, url('/static_images/hidpi/200/vista-explorer/cmdbar-open.png') 2x);
 }
 
 #imageSearchModal :is(.isx-cmd, .isx-help):active:not(:disabled),
 #imageSearchModal .isx-cmd.is-on:not(:disabled) {
     padding: 1px 5px 1px 7px;
-    border-image: url('/static_images/vista-explorer/cmdbar-pressed.png') 0 4 fill / 0 4px;
+    border-image: image-set(url('/static_images/vista-explorer/cmdbar-pressed.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/cmdbar-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-pressed.png') 2x) 0 4 fill / 0 4px;
 }
 
 #imageSearchModal .isx-cmd:disabled {
@@ -973,7 +973,7 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
 #imageSearchModal .isx-folders-chevron {
     width: 11px;
     height: 8px;
-    background: url('/static_images/vista-explorer/folders-up.png') no-repeat center;
+    background: image-set(url('/static_images/vista-explorer/folders-up.png') 1x, url('/static_images/hidpi/125/vista-explorer/folders-up.png') 1.2727x, url('/static_images/hidpi/150/vista-explorer/folders-up.png') 1.5455x, url('/static_images/hidpi/175/vista-explorer/folders-up.png') 1.7273x, url('/static_images/hidpi/200/vista-explorer/folders-up.png') 2x) no-repeat center;
     transition: transform 0.2s;
 }
 
@@ -1029,11 +1029,11 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
 #imageSearchModal .isx-tree-glyph {
     flex: 0 0 16px;
     align-self: stretch;
-    background: url('/static_images/vista-controls/tree-closed.png') no-repeat right 0 center;
+    background: image-set(url('/static_images/vista-controls/tree-closed.png') 1x, url('/static_images/hidpi/125/vista-controls/tree-closed.png') 1.25x, url('/static_images/hidpi/150/vista-controls/tree-closed.png') 1.5x, url('/static_images/hidpi/175/vista-controls/tree-closed.png') 1.75x, url('/static_images/hidpi/200/vista-controls/tree-closed.png') 2x) no-repeat right 0 center;
 }
 
 #imageSearchModal .isx-tree-node.is-open > .isx-tree-row .isx-tree-glyph {
-    background-image: url('/static_images/vista-controls/tree-open.png');
+    background-image: image-set(url('/static_images/vista-controls/tree-open.png') 1x, url('/static_images/hidpi/125/vista-controls/tree-open.png') 1.25x, url('/static_images/hidpi/150/vista-controls/tree-open.png') 1.5x, url('/static_images/hidpi/175/vista-controls/tree-open.png') 1.75x, url('/static_images/hidpi/200/vista-controls/tree-open.png') 2x);
 }
 
 #imageSearchModal .isx-tree-node.is-leaf > .isx-tree-row .isx-tree-glyph {
@@ -1101,7 +1101,7 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     height: 23px;
     padding: 3px 6px 0;
     line-height: 16px;
-    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 2 0 1 fill / 0 2px 0 1px stretch;
+    border-image: image-set(url('/static_images/vista-controls/header-item-normal.png') 1x, url('/static_images/hidpi/125/vista-controls/header-item-normal.png') 1.25x, url('/static_images/hidpi/150/vista-controls/header-item-normal.png') 1.5x, url('/static_images/hidpi/175/vista-controls/header-item-normal.png') 1.75x, url('/static_images/hidpi/200/vista-controls/header-item-normal.png') 2x) 0 2 0 1 fill / 0 2px 0 1px stretch;
     color: #000;
     white-space: nowrap;
     overflow: hidden;
@@ -1110,15 +1110,15 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
 }
 
 #imageSearchModal .isx-column[data-sort]:hover {
-    border-image-source: url('/static_images/vista-controls/header-item-hot.png');
+    border-image-source: image-set(url('/static_images/vista-controls/header-item-hot.png') 1x, url('/static_images/hidpi/125/vista-controls/header-item-hot.png') 1.3333x, url('/static_images/hidpi/150/vista-controls/header-item-hot.png') 1.5x, url('/static_images/hidpi/175/vista-controls/header-item-hot.png') 1.8333x, url('/static_images/hidpi/200/vista-controls/header-item-hot.png') 2x);
 }
 
 #imageSearchModal .isx-column[data-sort]:active {
-    border-image-source: url('/static_images/vista-controls/header-item-pressed.png');
+    border-image-source: image-set(url('/static_images/vista-controls/header-item-pressed.png') 1x, url('/static_images/hidpi/125/vista-controls/header-item-pressed.png') 1.3333x, url('/static_images/hidpi/150/vista-controls/header-item-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-controls/header-item-pressed.png') 1.8333x, url('/static_images/hidpi/200/vista-controls/header-item-pressed.png') 2x);
 }
 
 #imageSearchModal .isx-column.is-sorted {
-    border-image-source: url('/static_images/vista-controls/header-item-sorted.png');
+    border-image-source: image-set(url('/static_images/vista-controls/header-item-sorted.png') 1x, url('/static_images/hidpi/125/vista-controls/header-item-sorted.png') 1.3333x, url('/static_images/hidpi/150/vista-controls/header-item-sorted.png') 1.5x, url('/static_images/hidpi/175/vista-controls/header-item-sorted.png') 1.8333x, url('/static_images/hidpi/200/vista-controls/header-item-sorted.png') 2x);
 }
 
 #imageSearchModal .isx-column.is-sorted::before {
@@ -1128,7 +1128,7 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     left: calc(50% - 6px);
     width: 13px;
     height: 5px;
-    background: url('/static_images/vista-controls/header-sort-arrow.png') 0 0 no-repeat;
+    background: image-set(url('/static_images/vista-controls/header-sort-arrow.png') 1x, url('/static_images/hidpi/125/vista-controls/header-sort-arrow.png') 1.25x, url('/static_images/hidpi/150/vista-controls/header-sort-arrow.png') 1.5385x, url('/static_images/hidpi/175/vista-controls/header-sort-arrow.png') 1.75x, url('/static_images/hidpi/200/vista-controls/header-sort-arrow.png') 2x) 0 0 no-repeat;
 }
 
 #imageSearchModal .isx-column.is-sorted.is-desc::before {
@@ -1137,7 +1137,7 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
 
 #imageSearchModal .isx-column-rest {
     flex: 1 1 auto;
-    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 0 0 1 fill / 0 0 0 1px stretch;
+    border-image: image-set(url('/static_images/vista-controls/header-item-normal.png') 1x, url('/static_images/hidpi/125/vista-controls/header-item-normal.png') 1.25x, url('/static_images/hidpi/150/vista-controls/header-item-normal.png') 1.5x, url('/static_images/hidpi/175/vista-controls/header-item-normal.png') 1.75x, url('/static_images/hidpi/200/vista-controls/header-item-normal.png') 2x) 0 0 0 1 fill / 0 0 0 1px stretch;
 }
 
 #imageSearchModal .isx-results {
@@ -1393,7 +1393,7 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
 }
 
 #imageSearchModal .isx-usage.is-open .isx-usage-row .isx-tree-glyph {
-    background-image: url('/static_images/vista-controls/tree-open.png');
+    background-image: image-set(url('/static_images/vista-controls/tree-open.png') 1x, url('/static_images/hidpi/125/vista-controls/tree-open.png') 1.25x, url('/static_images/hidpi/150/vista-controls/tree-open.png') 1.5x, url('/static_images/hidpi/175/vista-controls/tree-open.png') 1.75x, url('/static_images/hidpi/200/vista-controls/tree-open.png') 2x);
 }
 
 #imageSearchModal .isx-usage-full {
@@ -1525,7 +1525,7 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     padding: 3px 12px 3px 8px;
     box-sizing: border-box;
     background:
-        url('/static_images/vista-explorer/details-swoosh.png') no-repeat right 2px bottom 0,
+        image-set(url('/static_images/vista-explorer/details-swoosh.png') 1x, url('/static_images/hidpi/125/vista-explorer/details-swoosh.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/details-swoosh.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/details-swoosh.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/details-swoosh.png') 2x) no-repeat right 2px bottom 0,
         linear-gradient(to right, #f4fcff, #ecfbfe 50%, #bbd9f0);
     border-top: 1px solid #9db6c5;
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 45%);
@@ -1752,7 +1752,7 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     overflow: auto;
     background: #fff;
     border: 1px solid transparent;
-    border-image: url('/static_images/vista-controls/edit-normal.png') 1 / 1px stretch;
+    border-image: image-set(url('/static_images/vista-controls/edit-normal.png') 1x, url('/static_images/hidpi/125/vista-controls/edit-normal.png') 1.25x, url('/static_images/hidpi/150/vista-controls/edit-normal.png') 1.5x, url('/static_images/hidpi/175/vista-controls/edit-normal.png') 1.75x, url('/static_images/hidpi/200/vista-controls/edit-normal.png') 2x) 1 / 1px stretch;
     line-height: 17px;
     word-break: break-word;
     user-select: text;
@@ -1833,7 +1833,7 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     left: 7px;
     width: 16px;
     height: 9px;
-    background: url('/static_images/vista-explorer/views-slider-thumb.png') no-repeat;
+    background: image-set(url('/static_images/vista-explorer/views-slider-thumb.png') 1x, url('/static_images/hidpi/125/vista-explorer/views-slider-thumb.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/views-slider-thumb.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/views-slider-thumb.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/views-slider-thumb.png') 2x) no-repeat;
     cursor: var(--c-default);
 }
 

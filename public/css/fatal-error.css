@@ -322,7 +322,7 @@ body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-win
     content: "";
     width: 32px;
     height: 32px;
-    background: url("/static_images/vista-icons/msgbox-error-32.png") no-repeat center / 32px 32px;
+    background: image-set(url("/static_images/vista-icons/msgbox-error-32.png") 1x, url("/static_images/hidpi/125/vista-icons/msgbox-error-32.png") 1.25x, url("/static_images/hidpi/150/vista-icons/msgbox-error-32.png") 1.5x, url("/static_images/hidpi/175/vista-icons/msgbox-error-32.png") 1.75x, url("/static_images/hidpi/200/vista-icons/msgbox-error-32.png") 2x) no-repeat center / 32px 32px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-window[data-vista-dialog="message"] .vista-dialog-text {

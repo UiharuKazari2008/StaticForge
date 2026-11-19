@@ -44,7 +44,7 @@
     gap: 0;
     height: 27px;
     padding: 0 4px 0 2px;
-    background: url('/static_images/vista-mmc/toolband.png') 0 0 / 1px 100% repeat-x;
+    background: image-set(url('/static_images/vista-mmc/toolband.png') 1x, url('/static_images/hidpi/125/vista-mmc/toolband.png') 1x, url('/static_images/hidpi/150/vista-mmc/toolband.png') 2x, url('/static_images/hidpi/175/vista-mmc/toolband.png') 2x, url('/static_images/hidpi/200/vista-mmc/toolband.png') 2x) 0 0 / 1px 100% repeat-x;
     border-bottom: 1px solid #a0a0a0;
     box-shadow: 0 1px #fff;
     box-sizing: border-box;
@@ -133,13 +133,13 @@
     background: center / 16px 16px no-repeat;
 }
 
-#stageResultsReview .stage-results-tb-icon[data-icon="preview"] { background-image: url('/static_images/vista-cmdbar/photo-gallery.png'); }
+#stageResultsReview .stage-results-tb-icon[data-icon="preview"] { background-image: image-set(url('/static_images/vista-cmdbar/photo-gallery.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/photo-gallery.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/photo-gallery.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/photo-gallery.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/photo-gallery.png') 2x); }
 #stageResultsReview .stage-results-tb-icon[data-icon="studio"] { background-image: url('/static_images/app_icons/16/studio.webp'); }
-#stageResultsReview .stage-results-tb-icon[data-icon="phase"] { background-image: url('/static_images/vista-icons/phasewalker-16.png'); }
-#stageResultsReview .stage-results-tb-icon[data-icon="favorite"] { background-image: url('/static_images/vista-cmdbar/favorites.png'); }
-#stageResultsReview .stage-results-tb-icon[data-icon="copy"] { background-image: url('/static_images/vista-cmdbar/copy.png'); }
-#stageResultsReview .stage-results-tb-icon[data-icon="download"] { background-image: url('/static_images/vista-cmdbar/download.png'); }
-#stageResultsReview .stage-results-tb-icon[data-icon="properties"] { background-image: url('/static_images/vista-cmdbar/properties.png'); }
+#stageResultsReview .stage-results-tb-icon[data-icon="phase"] { background-image: image-set(url('/static_images/vista-icons/phasewalker-16.png') 1x, url('/static_images/hidpi/125/vista-icons/phasewalker-16.png') 1.25x, url('/static_images/hidpi/150/vista-icons/phasewalker-16.png') 1.5x, url('/static_images/hidpi/175/vista-icons/phasewalker-16.png') 1.75x, url('/static_images/hidpi/200/vista-icons/phasewalker-16.png') 2x); }
+#stageResultsReview .stage-results-tb-icon[data-icon="favorite"] { background-image: image-set(url('/static_images/vista-cmdbar/favorites.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/favorites.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/favorites.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/favorites.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/favorites.png') 2x); }
+#stageResultsReview .stage-results-tb-icon[data-icon="copy"] { background-image: image-set(url('/static_images/vista-cmdbar/copy.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/copy.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/copy.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/copy.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/copy.png') 2x); }
+#stageResultsReview .stage-results-tb-icon[data-icon="download"] { background-image: image-set(url('/static_images/vista-cmdbar/download.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/download.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/download.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/download.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/download.png') 2x); }
+#stageResultsReview .stage-results-tb-icon[data-icon="properties"] { background-image: image-set(url('/static_images/vista-cmdbar/properties.png') 1x, url('/static_images/hidpi/125/vista-cmdbar/properties.png') 1.25x, url('/static_images/hidpi/150/vista-cmdbar/properties.png') 1.5x, url('/static_images/hidpi/175/vista-cmdbar/properties.png') 1.75x, url('/static_images/hidpi/200/vista-cmdbar/properties.png') 2x); }
 
 /* ---- the item view ---- */
 
@@ -255,7 +255,7 @@
     content: "";
     width: 32px;
     height: 32px;
-    background: url('/static_images/vista-icons/error-32.png') center / 32px 32px no-repeat;
+    background: image-set(url('/static_images/vista-icons/error-32.png') 1x, url('/static_images/hidpi/125/vista-icons/error-32.png') 1.25x, url('/static_images/hidpi/150/vista-icons/error-32.png') 1.5x, url('/static_images/hidpi/175/vista-icons/error-32.png') 1.75x, url('/static_images/hidpi/200/vista-icons/error-32.png') 2x) center / 32px 32px no-repeat;
 }
 
 /* the step preview while a slot renders: the frame, slightly faded until the stage saves (its

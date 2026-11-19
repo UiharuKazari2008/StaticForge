@@ -38,7 +38,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     min-height: 0;
     align-items: flex-start;
     align-self: center;
-    background: url('/static_images/vista-explorer/travel-gutter.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-explorer/travel-gutter.png') 1x, url('/static_images/hidpi/125/vista-explorer/travel-gutter.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/travel-gutter.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/travel-gutter.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/travel-gutter.png') 2x) no-repeat 0 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -53,7 +53,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, :is(#melatonCo
     min-height: 0;
     padding: 0;
     margin: 0 0 0 -1px;
-    background: url('/static_images/vista-explorer/recent-pages.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-explorer/recent-pages.png') 1x, url('/static_images/hidpi/125/vista-explorer/recent-pages.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/recent-pages.png') 1.5385x, url('/static_images/hidpi/175/vista-explorer/recent-pages.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/recent-pages.png') 2x) no-repeat 0 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -80,7 +80,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 0;
     box-shadow: none;
     filter: none;
     opacity: 1;
@@ -89,7 +89,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
 /* orb centres 28px apart, as on the VM */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerForwardBtn {
     margin-left: -1px;
-    background-image: url('/static_images/vista-explorer/nav-forward.png');
+    background-image: image-set(url('/static_images/vista-explorer/nav-forward.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-forward.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-forward.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-forward.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-forward.png') 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn) i {
@@ -302,7 +302,7 @@ body.desktop-mode:not(.windows-classic-theme) #desktopGuacModal #desktopGuacSear
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerSearchBar,
 body.desktop-mode:not(.windows-classic-theme) #desktopGuacModal #desktopGuacSearch {
     padding-right: 24px;
-    background: url('/static_images/vista-start/search-glyph.png') no-repeat right 5px center;
+    background: image-set(url('/static_images/vista-start/search-glyph.png') 1x, url('/static_images/hidpi/125/vista-start/search-glyph.png') 1.25x, url('/static_images/hidpi/150/vista-start/search-glyph.png') 1.5385x, url('/static_images/hidpi/175/vista-start/search-glyph.png') 1.75x, url('/static_images/hidpi/200/vista-start/search-glyph.png') 2x) no-repeat right 5px center;
     font-family: "Segoe UI", "Noto Sans", sans-serif;
     font-size: 12px;
 }
@@ -319,7 +319,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     height: 18px;
     min-height: 0;
     padding: 0;
-    background: url('/static_images/vista-ie/refresh.png') no-repeat center;
+    background: image-set(url('/static_images/vista-ie/refresh.png') 1x, url('/static_images/hidpi/125/vista-ie/refresh.png') 1.25x, url('/static_images/hidpi/150/vista-ie/refresh.png') 1.5x, url('/static_images/hidpi/175/vista-ie/refresh.png') 1.75x, url('/static_images/hidpi/200/vista-ie/refresh.png') 2x) no-repeat center;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -465,9 +465,9 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     padding: 3px 3px 0;
     border-bottom: 0;
     background:
-        url('/static_images/vista-explorer/cmdbar-band-edge.png') left top / 1px 100% no-repeat,
-        url('/static_images/vista-explorer/cmdbar-band-edge.png') right top / 1px 100% no-repeat,
-        url('/static_images/vista-explorer/cmdbar-band.png') left top / 1px 100% repeat-x,
+        image-set(url('/static_images/vista-explorer/cmdbar-band-edge.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-band-edge.png') 1x, url('/static_images/hidpi/150/vista-explorer/cmdbar-band-edge.png') 2x, url('/static_images/hidpi/175/vista-explorer/cmdbar-band-edge.png') 2x, url('/static_images/hidpi/200/vista-explorer/cmdbar-band-edge.png') 2x) left top / 1px 100% no-repeat,
+        image-set(url('/static_images/vista-explorer/cmdbar-band-edge.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-band-edge.png') 1x, url('/static_images/hidpi/150/vista-explorer/cmdbar-band-edge.png') 2x, url('/static_images/hidpi/175/vista-explorer/cmdbar-band-edge.png') 2x, url('/static_images/hidpi/200/vista-explorer/cmdbar-band-edge.png') 2x) right top / 1px 100% no-repeat,
+        image-set(url('/static_images/vista-explorer/cmdbar-band.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-band.png') 1x, url('/static_images/hidpi/150/vista-explorer/cmdbar-band.png') 2x, url('/static_images/hidpi/175/vista-explorer/cmdbar-band.png') 2x, url('/static_images/hidpi/200/vista-explorer/cmdbar-band.png') 2x) left top / 1px 100% repeat-x,
         linear-gradient(to right, #045082, #116584, #1d7986);
 }
 
@@ -501,7 +501,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     width: 13px;
     height: 12px;
     margin: 2px 0 0 4px;
-    background: url('/static_images/vista-explorer/cmdbar-glyph.png') no-repeat;
+    background: image-set(url('/static_images/vista-explorer/cmdbar-glyph.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-glyph.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-glyph.png') 1.5385x, url('/static_images/hidpi/175/vista-explorer/cmdbar-glyph.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-glyph.png') 2x) no-repeat;
     -webkit-mask: none;
     mask: none;
     filter: none;
@@ -510,12 +510,12 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-command-btn:is(:hover, .active, .context-open, [aria-expanded="true"], [data-state="on"]):not(:disabled) {
     background: none;
     box-shadow: none;
-    border-image: url('/static_images/vista-explorer/cmdbar-hot.png') 0 4 fill / 0 4px;
+    border-image: image-set(url('/static_images/vista-explorer/cmdbar-hot.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-hot.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-hot.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/cmdbar-hot.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-hot.png') 2x) 0 4 fill / 0 4px;
 }
 
 /* the menu is open: the edge stays, the fill goes (VM, Organize clicked) */
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-command-btn:is(.context-open, [aria-expanded="true"]):not(:disabled) {
-    border-image-source: url('/static_images/vista-explorer/cmdbar-open.png');
+    border-image-source: image-set(url('/static_images/vista-explorer/cmdbar-open.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-open.png') 1.2222x, url('/static_images/hidpi/150/vista-explorer/cmdbar-open.png') 1.5556x, url('/static_images/hidpi/175/vista-explorer/cmdbar-open.png') 1.7778x, url('/static_images/hidpi/200/vista-explorer/cmdbar-open.png') 2x);
 }
 
 /* pressed: the face darkens and the content moves 1px right and down */
@@ -523,7 +523,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     padding: 1px 5px 1px 7px;
     background: none;
     box-shadow: none;
-    border-image: url('/static_images/vista-explorer/cmdbar-pressed.png') 0 4 fill / 0 4px;
+    border-image: image-set(url('/static_images/vista-explorer/cmdbar-pressed.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/cmdbar-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-pressed.png') 2x) 0 4 fill / 0 4px;
 }
 
 /* Views is Vista's split button: the label half and a 20px arrow half share one dark line */
@@ -552,13 +552,13 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) #explorerViewsDropdownBtn:is(:hover, .active):not(:disabled):not(:active, .context-open, [aria-expanded="true"])::before {
     left: 0;
     right: 20px;
-    border-image: url('/static_images/vista-explorer/cmdbar-split-left.png') 0 5 0 4 fill / 0 5px 0 4px;
+    border-image: image-set(url('/static_images/vista-explorer/cmdbar-split-left.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-split-left.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-split-left.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/cmdbar-split-left.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-split-left.png') 2x) 0 5 0 4 fill / 0 5px 0 4px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) #explorerViewsDropdownBtn:is(:hover, .active):not(:disabled):not(:active, .context-open, [aria-expanded="true"])::after {
     right: 0;
     width: 20px;
-    border-image: url('/static_images/vista-explorer/cmdbar-split-right.png') 0 3 0 4 fill / 0 3px 0 4px;
+    border-image: image-set(url('/static_images/vista-explorer/cmdbar-split-right.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-split-right.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-split-right.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/cmdbar-split-right.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-split-right.png') 2x) 0 3 0 4 fill / 0 3px 0 4px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) #explorerViewsDropdownBtn:active:not(:disabled) {
@@ -585,12 +585,12 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-help-btn:hover {
-    border-image: url('/static_images/vista-explorer/cmdbar-hot.png') 0 4 fill / 0 4px;
+    border-image: image-set(url('/static_images/vista-explorer/cmdbar-hot.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-hot.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-hot.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/cmdbar-hot.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-hot.png') 2x) 0 4 fill / 0 4px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-help-btn:active {
     padding: 2px 5px 0 7px;
-    border-image: url('/static_images/vista-explorer/cmdbar-pressed.png') 0 4 fill / 0 4px;
+    border-image: image-set(url('/static_images/vista-explorer/cmdbar-pressed.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/cmdbar-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-pressed.png') 2x) 0 4 fill / 0 4px;
 }
 
 /* ---- the panes ---- */
@@ -710,7 +710,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-folders-chevron {
     width: 11px;
     height: 8px;
-    background: url('/static_images/vista-explorer/folders-up.png') no-repeat center;
+    background: image-set(url('/static_images/vista-explorer/folders-up.png') 1x, url('/static_images/hidpi/125/vista-explorer/folders-up.png') 1.2727x, url('/static_images/hidpi/150/vista-explorer/folders-up.png') 1.5455x, url('/static_images/hidpi/175/vista-explorer/folders-up.png') 1.7273x, url('/static_images/hidpi/200/vista-explorer/folders-up.png') 2x) no-repeat center;
     transition: transform 0.2s;
 }
 
@@ -818,11 +818,11 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-row 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-glyph {
     flex: 0 0 16px;
     align-self: stretch;
-    background: url('/static_images/vista-controls/tree-closed.png') no-repeat right 0 center;
+    background: image-set(url('/static_images/vista-controls/tree-closed.png') 1x, url('/static_images/hidpi/125/vista-controls/tree-closed.png') 1.25x, url('/static_images/hidpi/150/vista-controls/tree-closed.png') 1.5x, url('/static_images/hidpi/175/vista-controls/tree-closed.png') 1.75x, url('/static_images/hidpi/200/vista-controls/tree-closed.png') 2x) no-repeat right 0 center;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-node.is-open > .explorer-tree-row .explorer-tree-glyph {
-    background-image: url('/static_images/vista-controls/tree-open.png');
+    background-image: image-set(url('/static_images/vista-controls/tree-open.png') 1x, url('/static_images/hidpi/125/vista-controls/tree-open.png') 1.25x, url('/static_images/hidpi/150/vista-controls/tree-open.png') 1.5x, url('/static_images/hidpi/175/vista-controls/tree-open.png') 1.75x, url('/static_images/hidpi/200/vista-controls/tree-open.png') 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-node.is-leaf > .explorer-tree-row .explorer-tree-glyph {
@@ -900,7 +900,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header::after {
     content: '';
     height: 23px;
-    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 0 0 1 fill / 0 0 0 1px stretch;
+    border-image: image-set(url("/static_images/vista-controls/header-item-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/header-item-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/header-item-normal.png") 2x) 0 0 0 1 fill / 0 0 0 1px stretch;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col {
@@ -909,7 +909,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     height: 23px;
     padding: 3px 6px 0;
     border: 0;
-    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 2 0 1 fill / 0 2px 0 1px stretch;
+    border-image: image-set(url("/static_images/vista-controls/header-item-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/header-item-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/header-item-normal.png") 2x) 0 2 0 1 fill / 0 2px 0 1px stretch;
     line-height: 16px;
     background: none;
     box-shadow: none;
@@ -918,23 +918,23 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col:hover {
-    border-image-source: url("/static_images/vista-controls/header-item-hot.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-hot.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-hot.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-hot.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-hot.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col:active {
-    border-image-source: url("/static_images/vista-controls/header-item-pressed.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-pressed.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-pressed.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-pressed.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col.active {
-    border-image-source: url("/static_images/vista-controls/header-item-sorted.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-sorted.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-sorted.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-sorted.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-sorted.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-sorted.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col.active:hover {
-    border-image-source: url("/static_images/vista-controls/header-item-sorted-hot.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-sorted-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-sorted-hot.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-sorted-hot.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-sorted-hot.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-sorted-hot.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col.active:active {
-    border-image-source: url("/static_images/vista-controls/header-item-sorted-pressed.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-sorted-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-sorted-pressed.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-sorted-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-sorted-pressed.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-sorted-pressed.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header :is(.explorer-details-sort-icon, .explorer-details-col-icon) {
@@ -950,7 +950,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     height: 5px;
     margin: 0;
     opacity: 1;
-    background: url("/static_images/vista-controls/header-sort-arrow.png") 0 0 no-repeat;
+    background: image-set(url("/static_images/vista-controls/header-sort-arrow.png") 1x, url("/static_images/hidpi/125/vista-controls/header-sort-arrow.png") 1.25x, url("/static_images/hidpi/150/vista-controls/header-sort-arrow.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/header-sort-arrow.png") 1.75x, url("/static_images/hidpi/200/vista-controls/header-sort-arrow.png") 2x) 0 0 no-repeat;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col.active .explorer-details-sort-icon.fa-sort-down {
@@ -1041,7 +1041,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-statusbar
     padding: 4px 12px 4px 6px;
     /* Explorer's UIFILE gradient (#f4fcff, #ecfbfe, #bbd9f0, left to right) and its swoosh */
     background:
-        url('/static_images/vista-explorer/details-swoosh.png') no-repeat right 2px bottom 0,
+        image-set(url('/static_images/vista-explorer/details-swoosh.png') 1x, url('/static_images/hidpi/125/vista-explorer/details-swoosh.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/details-swoosh.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/details-swoosh.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/details-swoosh.png') 2x) no-repeat right 2px bottom 0,
         linear-gradient(to right, #f4fcff, #ecfbfe 50%, #bbd9f0);
     border-top: 1px solid #9db6c5;
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 45%);
@@ -1111,33 +1111,33 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-compute
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header::after {
-    border-image: url("/static_images/vista-controls/header-item-edged.png") 0 0 0 2 fill / 0 0 0 2px stretch;
+    border-image: image-set(url("/static_images/vista-controls/header-item-edged.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-edged.png") 1.25x, url("/static_images/hidpi/150/vista-controls/header-item-edged.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-edged.png") 1.75x, url("/static_images/hidpi/200/vista-controls/header-item-edged.png") 2x) 0 0 0 2 fill / 0 0 0 2px stretch;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col {
-    border-image-source: url("/static_images/vista-controls/header-item-edged.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-edged.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-edged.png") 1.25x, url("/static_images/hidpi/150/vista-controls/header-item-edged.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-edged.png") 1.75x, url("/static_images/hidpi/200/vista-controls/header-item-edged.png") 2x);
     border-image-slice: 0 2 fill;
     border-image-width: 0 2px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col:hover {
-    border-image-source: url("/static_images/vista-controls/header-item-edged-hot.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-edged-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-edged-hot.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-edged-hot.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-edged-hot.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-edged-hot.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col:active {
-    border-image-source: url("/static_images/vista-controls/header-item-edged-pressed.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-edged-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-edged-pressed.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-edged-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-edged-pressed.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-edged-pressed.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col.active {
-    border-image-source: url("/static_images/vista-controls/header-item-edged-sorted.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-edged-sorted.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-edged-sorted.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-edged-sorted.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-edged-sorted.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-edged-sorted.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col.active:hover {
-    border-image-source: url("/static_images/vista-controls/header-item-edged-sorted-hot.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-edged-sorted-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-edged-sorted-hot.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-edged-sorted-hot.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-edged-sorted-hot.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-edged-sorted-hot.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col.active:active {
-    border-image-source: url("/static_images/vista-controls/header-item-edged-sorted-pressed.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-edged-sorted-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-edged-sorted-pressed.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-edged-sorted-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-edged-sorted-pressed.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-edged-sorted-pressed.png") 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-view {
@@ -1219,7 +1219,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-drive-bar {
     border-color: transparent;
-    border-image: url("/static_images/vista-controls/drive-bar-track.png") 6 4 6 4 fill / 6px 4px 6px 4px stretch;
+    border-image: image-set(url("/static_images/vista-controls/drive-bar-track.png") 1x, url("/static_images/hidpi/125/vista-controls/drive-bar-track.png") 1.25x, url("/static_images/hidpi/150/vista-controls/drive-bar-track.png") 1.5x, url("/static_images/hidpi/175/vista-controls/drive-bar-track.png") 1.75x, url("/static_images/hidpi/200/vista-controls/drive-bar-track.png") 2x) 6 4 6 4 fill / 6px 4px 6px 4px stretch;
 }
 
 /* the fill's art carries a clear row and column round it: it spans the frame */
@@ -1229,12 +1229,12 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-drive-bar
     bottom: -1px;
     width: calc(var(--used, 0) * (100% + 2px));
     width: round(nearest, var(--used, 0) * (100% + 2px), 1px);
-    background: url("/static_images/vista-controls/drive-bar-fill.png") 0 0 / 100% 100% no-repeat;
+    background: image-set(url("/static_images/vista-controls/drive-bar-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/drive-bar-fill.png") 1.25x, url("/static_images/hidpi/150/vista-controls/drive-bar-fill.png") 1.5x, url("/static_images/hidpi/175/vista-controls/drive-bar-fill.png") 1.75x, url("/static_images/hidpi/200/vista-controls/drive-bar-fill.png") 2x) 0 0 / 100% 100% no-repeat;
     image-rendering: pixelated;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-drive-bar.is-full .explorer-drive-bar-fill {
-    background-image: url("/static_images/vista-controls/drive-bar-fill-error.png");
+    background-image: image-set(url("/static_images/vista-controls/drive-bar-fill-error.png") 1x, url("/static_images/hidpi/125/vista-controls/drive-bar-fill-error.png") 1.25x, url("/static_images/hidpi/150/vista-controls/drive-bar-fill-error.png") 1.5x, url("/static_images/hidpi/175/vista-controls/drive-bar-fill-error.png") 1.75x, url("/static_images/hidpi/200/vista-controls/drive-bar-fill-error.png") 2x);
 }
 
 /* the details pane in Computer: Vista's grid, name / label: value / label: value on the first line,
@@ -1284,7 +1284,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal,
     min-height: 0;
     align-items: flex-start;
     align-self: center;
-    background: url('/static_images/vista-explorer/travel-gutter.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-explorer/travel-gutter.png') 1x, url('/static_images/hidpi/125/vista-explorer/travel-gutter.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/travel-gutter.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/travel-gutter.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/travel-gutter.png') 2x) no-repeat 0 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -1298,7 +1298,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal,
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 0;
     box-shadow: none;
     filter: none;
     opacity: 1;
@@ -1306,7 +1306,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal,
 
 body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .cpl-forward {
     margin-left: -1px;
-    background-image: url('/static_images/vista-explorer/nav-forward.png');
+    background-image: image-set(url('/static_images/vista-explorer/nav-forward.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-forward.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-forward.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-forward.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-forward.png') 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar :is(.cpl-back, .cpl-forward) i {
@@ -1401,7 +1401,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal,
     height: 18px;
     min-height: 0;
     padding: 0;
-    background: url('/static_images/vista-ie/refresh.png') no-repeat center;
+    background: image-set(url('/static_images/vista-ie/refresh.png') 1x, url('/static_images/hidpi/125/vista-ie/refresh.png') 1.25x, url('/static_images/hidpi/150/vista-ie/refresh.png') 1.5x, url('/static_images/hidpi/175/vista-ie/refresh.png') 1.75x, url('/static_images/hidpi/200/vista-ie/refresh.png') 2x) no-repeat center;
     border: 0;
     border-left: 1px solid #54585c;
     border-radius: 0;
@@ -1417,7 +1417,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal,
     height: 20px;
     min-height: 0;
     padding: 0 24px 0 6px;
-    background: url('/static_images/vista-start/search-glyph.png') no-repeat right 5px center;
+    background: image-set(url('/static_images/vista-start/search-glyph.png') 1x, url('/static_images/hidpi/125/vista-start/search-glyph.png') 1.25x, url('/static_images/hidpi/150/vista-start/search-glyph.png') 1.5385x, url('/static_images/hidpi/175/vista-start/search-glyph.png') 1.75x, url('/static_images/hidpi/200/vista-start/search-glyph.png') 2x) no-repeat right 5px center;
     border: 0;
     box-shadow: none;
     color: #000;
@@ -1435,7 +1435,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
     flex-direction: column;
     padding: 14px 12px 16px 16px;
     background:
-        url('/static_images/vista-cpl/task-pane-swoosh.png') no-repeat left bottom / 200px auto,
+        image-set(url('/static_images/vista-cpl/task-pane-swoosh.png') 1x, url('/static_images/hidpi/125/vista-cpl/task-pane-swoosh.png') 1.25x, url('/static_images/hidpi/150/vista-cpl/task-pane-swoosh.png') 1.5x, url('/static_images/hidpi/175/vista-cpl/task-pane-swoosh.png') 1.75x, url('/static_images/hidpi/200/vista-cpl/task-pane-swoosh.png') 2x) no-repeat left bottom / 200px auto,
         linear-gradient(#416fa5, #69b570);
     border-right: 0;
     color: #fff;
@@ -1492,7 +1492,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     min-height: 0;
     align-items: flex-start;
     align-self: center;
-    background: url('/static_images/vista-explorer/travel-gutter.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-explorer/travel-gutter.png') 1x, url('/static_images/hidpi/125/vista-explorer/travel-gutter.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/travel-gutter.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/travel-gutter.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/travel-gutter.png') 2x) no-repeat 0 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -1506,7 +1506,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 0;
     box-shadow: none;
     filter: none;
     opacity: 1;
@@ -1515,7 +1515,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"]) {
     margin-left: -1px;
-    background-image: url('/static_images/vista-explorer/nav-forward.png');
+    background-image: image-set(url('/static_images/vista-explorer/nav-forward.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-forward.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-forward.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-forward.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-forward.png') 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(:is(#tagWikiSearchBackBtn, [data-grimoire-part="tagWikiSearchBackBtn"]), :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"])) i {
@@ -1544,7 +1544,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn):is(:disabled, .disabled):hover,
 body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar :is(.cpl-back, .cpl-forward):is(:disabled, .disabled):hover,
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(:is(#tagWikiSearchBackBtn, [data-grimoire-part="tagWikiSearchBackBtn"]), :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"])):is(:disabled, .disabled):hover {
-    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 -81px !important;
+    background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 -81px !important;
     box-shadow: none !important;
     filter: none !important;
     opacity: 1 !important;
@@ -1552,7 +1552,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerForwardBtn:is(:disabled, .disabled):hover,
 body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .cpl-forward:is(:disabled, .disabled):hover,
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"]):is(:disabled, .disabled):hover {
-    background-image: url('/static_images/vista-explorer/nav-forward.png') !important;
+    background-image: image-set(url('/static_images/vista-explorer/nav-forward.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-forward.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-forward.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-forward.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-forward.png') 2x) !important;
 }
 
 /* Recent Pages ▾ is IE7's own, not Explorer's: ieframe.dll TRAVEL_BACKGROUND (76x29 per state:
@@ -1568,7 +1568,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     min-height: 0;
     padding: 0;
     margin: -1px -3px 0 -1px;
-    background: url('/static_images/vista-ie/recent-pages.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-ie/recent-pages.png') 1x, url('/static_images/hidpi/125/vista-ie/recent-pages.png') 1.25x, url('/static_images/hidpi/150/vista-ie/recent-pages.png') 1.5x, url('/static_images/hidpi/175/vista-ie/recent-pages.png') 1.75x, url('/static_images/hidpi/200/vista-ie/recent-pages.png') 2x) no-repeat 0 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -1627,7 +1627,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     content: '';
     position: absolute;
     inset: 0;
-    background: url('/static_images/vista-ie/drop.png') no-repeat center;
+    background: image-set(url('/static_images/vista-ie/drop.png') 1x, url('/static_images/hidpi/125/vista-ie/drop.png') 1.25x, url('/static_images/hidpi/150/vista-ie/drop.png') 1.5x, url('/static_images/hidpi/175/vista-ie/drop.png') 1.75x, url('/static_images/hidpi/200/vista-ie/drop.png') 2x) no-repeat center;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(.grimoire-ie-refresh, .grimoire-ie-stop)::before {
@@ -1638,7 +1638,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-refresh::before {
-    background-image: url('/static_images/vista-ie/refresh.png');
+    background-image: image-set(url('/static_images/vista-ie/refresh.png') 1x, url('/static_images/hidpi/125/vista-ie/refresh.png') 1.25x, url('/static_images/hidpi/150/vista-ie/refresh.png') 1.5x, url('/static_images/hidpi/175/vista-ie/refresh.png') 1.75x, url('/static_images/hidpi/200/vista-ie/refresh.png') 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-stop {
@@ -1646,7 +1646,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-stop::before {
-    background-image: url('/static_images/vista-ie/stop.png');
+    background-image: image-set(url('/static_images/vista-ie/stop.png') 1x, url('/static_images/hidpi/125/vista-ie/stop.png') 1.25x, url('/static_images/hidpi/150/vista-ie/stop.png') 1.5x, url('/static_images/hidpi/175/vista-ie/stop.png') 1.75x, url('/static_images/hidpi/200/vista-ie/stop.png') 2x);
 }
 
 /* IE keeps the red X showing when idle */
@@ -1704,7 +1704,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     height: 20px;
     min-height: 0;
     padding: 0;
-    background: url('/static_images/vista-ie/search.png') no-repeat center;
+    background: image-set(url('/static_images/vista-ie/search.png') 1x, url('/static_images/hidpi/125/vista-ie/search.png') 1.25x, url('/static_images/hidpi/150/vista-ie/search.png') 1.5x, url('/static_images/hidpi/175/vista-ie/search.png') 1.75x, url('/static_images/hidpi/200/vista-ie/search.png') 2x) no-repeat center;
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -1734,7 +1734,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-mode-icon.fa-globe {
-    background-image: url('/static_images/vista-ie/page-ie.png');
+    background-image: image-set(url('/static_images/vista-ie/page-ie.png') 1x, url('/static_images/hidpi/125/vista-ie/page-ie.png') 1.25x, url('/static_images/hidpi/150/vista-ie/page-ie.png') 1.5x, url('/static_images/hidpi/175/vista-ie/page-ie.png') 1.75x, url('/static_images/hidpi/200/vista-ie/page-ie.png') 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-mode-icon:is(.fa-book, .fa-puzzle-piece) {
@@ -1743,7 +1743,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-mode-icon.fa-file-alt {
-    background-image: url('/static_images/vista-icons/explorer/file-16.png');
+    background-image: image-set(url('/static_images/vista-icons/explorer/file-16.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/file-16.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/file-16.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/file-16.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/file-16.png') 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-display-layer:hover {
@@ -1868,7 +1868,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 /* loading: IE7's ring (ieframe.dll bitmap 624, 18 frames) in place of the page icon */
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab.is-loading .grimoire-ie-tab-icon {
     object-position: -9999px 0;
-    background: url('/static_images/vista-ie/loading.png') no-repeat 0 0 / 288px 16px;
+    background: image-set(url('/static_images/vista-ie/loading.png') 1x, url('/static_images/hidpi/125/vista-ie/loading.png') 1.25x, url('/static_images/hidpi/150/vista-ie/loading.png') 1.5x, url('/static_images/hidpi/175/vista-ie/loading.png') 1.75x, url('/static_images/hidpi/200/vista-ie/loading.png') 2x) no-repeat 0 0 / 288px 16px;
     /* perf: allow busy indicator: IE7's ring only on a tab whose page loads (.is-loading) */
     animation: grimoire-ie-ring 0.9s steps(18) infinite;
 }
@@ -2219,28 +2219,28 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
    48 box, 32 for a 16 box), never the 256. ---------- */
 
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon:is(.fa-file) {
-    --ex-icon-lg: url('/static_images/vista-icons/explorer/file-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/file-96.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/file-96.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/file-96.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/file-96.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/file-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-icons/explorer/file-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/file-48.png') 1x, url('/static_images/vista-icons/explorer/file-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/file-16.png') 1x, url('/static_images/vista-icons/explorer/file-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/file-16.png') 1x, url('/static_images/vista-icons/explorer/file-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon:is(.fa-file-image, .fa-image) {
-    --ex-icon-lg: url('/static_images/vista-icons/explorer/image-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/image-96.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/image-96.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/image-96.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/image-96.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/image-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-icons/explorer/image-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/image-48.png') 1x, url('/static_images/vista-icons/explorer/image-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/image-16.png') 1x, url('/static_images/vista-icons/explorer/image-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/image-16.png') 1x, url('/static_images/vista-icons/explorer/image-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon:is(.fa-file-lines, .fa-file-code) {
-    --ex-icon-lg: url('/static_images/vista-icons/explorer/text-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/text-96.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/text-96.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/text-96.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/text-96.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/text-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-icons/explorer/text-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/text-48.png') 1x, url('/static_images/vista-icons/explorer/text-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/text-16.png') 1x, url('/static_images/vista-icons/explorer/text-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/text-16.png') 1x, url('/static_images/vista-icons/explorer/text-32.png') 2x);
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, [data-kind="folder"]:not(.fa-bin-recycle, .fa-trash-can)) {
-    --ex-icon-lg: url('/static_images/vista-icons/explorer/folder-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/folder-96.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/folder-96.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/folder-96.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/folder-96.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/folder-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-icons/explorer/folder-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/folder-48.png') 1x, url('/static_images/vista-icons/explorer/folder-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/folder-16.png') 1x, url('/static_images/vista-icons/explorer/folder-32.png') 2x);
@@ -2248,7 +2248,7 @@ body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .ex
 }
 
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon:is(.fa-bin-recycle, .fa-trash-can) {
-    --ex-icon-lg: url('/static_images/vista-icons/explorer/recycle-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/recycle-96.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/recycle-96.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/recycle-96.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/recycle-96.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/recycle-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-icons/explorer/recycle-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/recycle-48.png') 1x, url('/static_images/vista-icons/explorer/recycle-96.png') 2x);
     --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/recycle-16.png') 1x, url('/static_images/vista-icons/explorer/recycle-32.png') 2x);
@@ -2346,19 +2346,19 @@ body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="file"] 
     background-image: image-set(url('/static_images/vista-icons/explorer/file-48.png') 1x, url('/static_images/vista-icons/explorer/file-96.png') 2x);
 }
 body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="internet-shortcut"] {
-    background-image: url('/static_images/vista-icons/explorer/internet-shortcut-64.png');
+    background-image: image-set(url('/static_images/vista-icons/explorer/internet-shortcut-64.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/internet-shortcut-64.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/internet-shortcut-64.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/internet-shortcut-64.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/internet-shortcut-64.png') 2x);
 }
 body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="document"] {
-    background-image: url('/static_images/vista-icons/explorer/document-64.png');
+    background-image: image-set(url('/static_images/vista-icons/explorer/document-64.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/document-64.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/document-64.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/document-64.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/document-64.png') 2x);
 }
 /* Cartograph shows the same shortcut nodes. Each view swaps in the extract that matches the box. */
 body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-icon[data-vista-icon] {
     background-size: contain;
 }
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: url('/static_images/vista-icons/explorer/folder-96.png'); }
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="recycle"] { background-image: url('/static_images/vista-icons/explorer/recycle-96.png'); }
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="file"] { background-image: url('/static_images/vista-icons/explorer/file-96.png'); }
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="note"] { background-image: url('/static_images/vista-icons/explorer/text-96.png'); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: image-set(url('/static_images/vista-icons/explorer/folder-96.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/folder-96.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/folder-96.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/folder-96.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/folder-96.png') 2x); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="recycle"] { background-image: image-set(url('/static_images/vista-icons/explorer/recycle-96.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/recycle-96.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/recycle-96.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/recycle-96.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/recycle-96.png') 2x); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="file"] { background-image: image-set(url('/static_images/vista-icons/explorer/file-96.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/file-96.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/file-96.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/file-96.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/file-96.png') 2x); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="note"] { background-image: image-set(url('/static_images/vista-icons/explorer/text-96.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/text-96.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/text-96.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/text-96.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/text-96.png') 2x); }
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="internet-shortcut"],
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="document"] { background-size: 64px 64px; }
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: url('/static_images/vista-icons/explorer/folder-256.png'); }
@@ -2367,11 +2367,11 @@ body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desk
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="note"] { background-image: url('/static_images/vista-icons/explorer/text-256.png'); }
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="internet-shortcut"] { background-image: url('/static_images/vista-icons/explorer/internet-shortcut-256.png'); background-size: contain; }
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="document"] { background-image: url('/static_images/vista-icons/explorer/document-256.png'); background-size: contain; }
-body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: url('/static_images/vista-icons/explorer/folder-16.png'); }
-body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="recycle"] { background-image: url('/static_images/vista-icons/explorer/recycle-16.png'); }
-body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="file"] { background-image: url('/static_images/vista-icons/explorer/file-16.png'); }
-body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="note"] { background-image: url('/static_images/vista-icons/explorer/text-16.png'); }
-body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="internet-shortcut"] { background-image: url('/static_images/vista-icons/explorer/internet-shortcut-16.png'); }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: image-set(url('/static_images/vista-icons/explorer/folder-16.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/folder-16.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/folder-16.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/folder-16.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/folder-16.png') 2x); }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="recycle"] { background-image: image-set(url('/static_images/vista-icons/explorer/recycle-16.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/recycle-16.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/recycle-16.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/recycle-16.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/recycle-16.png') 2x); }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="file"] { background-image: image-set(url('/static_images/vista-icons/explorer/file-16.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/file-16.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/file-16.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/file-16.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/file-16.png') 2x); }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="note"] { background-image: image-set(url('/static_images/vista-icons/explorer/text-16.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/text-16.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/text-16.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/text-16.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/text-16.png') 2x); }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="internet-shortcut"] { background-image: image-set(url('/static_images/vista-icons/explorer/internet-shortcut-16.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/internet-shortcut-16.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/internet-shortcut-16.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/internet-shortcut-16.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/internet-shortcut-16.png') 2x); }
 
 /* Notes (Yukimi 2026-10-13): Vista's text document with the note's own glyph in the middle of
    the page and its colour as a chip in the corner, instead of a coloured glyph alone. */
@@ -2520,7 +2520,7 @@ body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desk
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
     width: 48px;
     height: 48px;
-    background-image: url('/static_images/vista-icons/explorer/shortcut-arrow-48.png');
+    background-image: image-set(url('/static_images/vista-icons/explorer/shortcut-arrow-48.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/shortcut-arrow-48.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/shortcut-arrow-48.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/shortcut-arrow-48.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/shortcut-arrow-48.png') 2x);
     background-size: 48px 48px;
 }
 body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
@@ -2888,10 +2888,10 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     z-index: -1;
     border-style: solid;
     border-width: 0 4px;
-    border-image: url('/static_images/vista-ie/tab.png') 0 4 fill / 0 4px stretch;
+    border-image: image-set(url('/static_images/vista-ie/tab.png') 1x, url('/static_images/hidpi/125/vista-ie/tab.png') 1.25x, url('/static_images/hidpi/150/vista-ie/tab.png') 1.5x, url('/static_images/hidpi/175/vista-ie/tab.png') 1.75x, url('/static_images/hidpi/200/vista-ie/tab.png') 2x) 0 4 fill / 0 4px stretch;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-ie-tab:not(.is-active), .grimoire-ie-tabtools > button, .grimoire-ie-tabstrip > .grimoire-ie-newtab):hover::before {
-    border-image-source: url('/static_images/vista-ie/tab-hot.png');
+    border-image-source: image-set(url('/static_images/vista-ie/tab-hot.png') 1x, url('/static_images/hidpi/125/vista-ie/tab-hot.png') 1.2222x, url('/static_images/hidpi/150/vista-ie/tab-hot.png') 1.5556x, url('/static_images/hidpi/175/vista-ie/tab-hot.png') 1.7778x, url('/static_images/hidpi/200/vista-ie/tab-hot.png') 2x);
 }
 /* hot new-tab stub: IE7 shows ieframe.dll icon index 58 (blank page, orange sparkle), centred, 6px down
    (VM: 30x26 stub at 869,167, icon at 876,173); the stub is empty otherwise */
@@ -2902,10 +2902,10 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     left: calc(50% - 8px);
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-ie/new-tab.png') no-repeat;
+    background: image-set(url('/static_images/vista-ie/new-tab.png') 1x, url('/static_images/hidpi/125/vista-ie/new-tab.png') 1.25x, url('/static_images/hidpi/150/vista-ie/new-tab.png') 1.5x, url('/static_images/hidpi/175/vista-ie/new-tab.png') 1.75x, url('/static_images/hidpi/200/vista-ie/new-tab.png') 2x) no-repeat;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabtools > button:is(:active, .is-pressed)::before {
-    border-image-source: url('/static_images/vista-ie/tab-pressed.png');
+    border-image-source: image-set(url('/static_images/vista-ie/tab-pressed.png') 1x, url('/static_images/hidpi/125/vista-ie/tab-pressed.png') 1.2222x, url('/static_images/hidpi/150/vista-ie/tab-pressed.png') 1.5556x, url('/static_images/hidpi/175/vista-ie/tab-pressed.png') 1.7778x, url('/static_images/hidpi/200/vista-ie/tab-pressed.png') 2x);
 }
 
 /* Quick Tabs: ieframe.dll 691 4px in, 7px down; Tab List ▾: IE's 5-3-1 triangle 5px in, 12px down */
@@ -2981,16 +2981,16 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     min-height: 0;
     margin: 6px 0 0;
     padding: 0;
-    background: url('/static_images/vista-ie/tab-close.png') no-repeat;
+    background: image-set(url('/static_images/vista-ie/tab-close.png') 1x, url('/static_images/hidpi/125/vista-ie/tab-close.png') 1.25x, url('/static_images/hidpi/150/vista-ie/tab-close.png') 1.5294x, url('/static_images/hidpi/175/vista-ie/tab-close.png') 1.75x, url('/static_images/hidpi/200/vista-ie/tab-close.png') 2x) no-repeat;
     border: 0;
     border-radius: 0;
     box-shadow: none;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-close:hover {
-    background-image: url('/static_images/vista-ie/tab-close-hot.png');
+    background-image: image-set(url('/static_images/vista-ie/tab-close-hot.png') 1x, url('/static_images/hidpi/125/vista-ie/tab-close-hot.png') 1.25x, url('/static_images/hidpi/150/vista-ie/tab-close-hot.png') 1.5294x, url('/static_images/hidpi/175/vista-ie/tab-close-hot.png') 1.75x, url('/static_images/hidpi/200/vista-ie/tab-close-hot.png') 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-close:active {
-    background-image: url('/static_images/vista-ie/tab-close-pressed.png');
+    background-image: image-set(url('/static_images/vista-ie/tab-close-pressed.png') 1x, url('/static_images/hidpi/125/vista-ie/tab-close-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-ie/tab-close-pressed.png') 1.5294x, url('/static_images/hidpi/175/vista-ie/tab-close-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-ie/tab-close-pressed.png') 2x);
 }
 
 /* ---- Quick Tabs (Ctrl+Q; VM with 2, 3, 5 and 9 tabs): over the page, 10px in, a rounded panel
@@ -3054,16 +3054,16 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     height: 16px;
     min-height: 0;
     padding: 0;
-    background: url('/static_images/vista-ie/tab-close.png') no-repeat;
+    background: image-set(url('/static_images/vista-ie/tab-close.png') 1x, url('/static_images/hidpi/125/vista-ie/tab-close.png') 1.25x, url('/static_images/hidpi/150/vista-ie/tab-close.png') 1.5294x, url('/static_images/hidpi/175/vista-ie/tab-close.png') 1.75x, url('/static_images/hidpi/200/vista-ie/tab-close.png') 2x) no-repeat;
     border: 0;
     border-radius: 0;
     box-shadow: none;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile-close:hover {
-    background-image: url('/static_images/vista-ie/tab-close-hot.png');
+    background-image: image-set(url('/static_images/vista-ie/tab-close-hot.png') 1x, url('/static_images/hidpi/125/vista-ie/tab-close-hot.png') 1.25x, url('/static_images/hidpi/150/vista-ie/tab-close-hot.png') 1.5294x, url('/static_images/hidpi/175/vista-ie/tab-close-hot.png') 1.75x, url('/static_images/hidpi/200/vista-ie/tab-close-hot.png') 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile-close:active {
-    background-image: url('/static_images/vista-ie/tab-close-pressed.png');
+    background-image: image-set(url('/static_images/vista-ie/tab-close-pressed.png') 1x, url('/static_images/hidpi/125/vista-ie/tab-close-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-ie/tab-close-pressed.png') 1.5294x, url('/static_images/hidpi/175/vista-ie/tab-close-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-ie/tab-close-pressed.png') 2x);
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile-shot {
     position: absolute;
@@ -3160,7 +3160,7 @@ body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .ex
     position: relative;
     isolation: isolate; /* the papers (z 1) under the front flap (z 2) */
     overflow: visible; /* the papers' shadows fall past the folder, as on the VM */
-    --ex-icon-lg: url('/static_images/vista-icons/explorer/folder-back-96.png');
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/folder-back-96.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/folder-back-96.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/folder-back-96.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/folder-back-96.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/folder-back-96.png') 2x);
     --ex-icon-xl: url('/static_images/vista-icons/explorer/folder-back-256.png');
     --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/folder-back-48.png') 1x, url('/static_images/vista-icons/explorer/folder-back-96.png') 2x);
 }
@@ -3213,7 +3213,7 @@ body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .ex
     inset: 0;
     z-index: 2;
     display: block;
-    background: url('/static_images/vista-icons/explorer/folder-front-96.png') no-repeat center / contain;
+    background: image-set(url('/static_images/vista-icons/explorer/folder-front-96.png') 1x, url('/static_images/hidpi/125/vista-icons/explorer/folder-front-96.png') 1.25x, url('/static_images/hidpi/150/vista-icons/explorer/folder-front-96.png') 1.5x, url('/static_images/hidpi/175/vista-icons/explorer/folder-front-96.png') 1.75x, url('/static_images/hidpi/200/vista-icons/explorer/folder-front-96.png') 2x) no-repeat center / contain;
     pointer-events: none;
 }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-icon-box-xl .explorer-live-folder .explorer-live-folder-front {

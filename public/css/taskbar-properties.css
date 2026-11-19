@@ -644,12 +644,12 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    background: url("/static_images/vista-controls/checkbox.png") 0 0 / 13px auto no-repeat;
+    background: image-set(url("/static_images/vista-controls/checkbox.png") 1x, url("/static_images/hidpi/125/vista-controls/checkbox.png") 1.25x, url("/static_images/hidpi/150/vista-controls/checkbox.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/checkbox.png") 1.75x, url("/static_images/hidpi/200/vista-controls/checkbox.png") 2x) 0 0 / 13px auto no-repeat;
     transition: none;
 }
 
 .tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row) input[type="radio"] + label::before {
-    background-image: url("/static_images/vista-controls/radio.png");
+    background-image: image-set(url("/static_images/vista-controls/radio.png") 1x, url("/static_images/hidpi/125/vista-controls/radio.png") 1.25x, url("/static_images/hidpi/150/vista-controls/radio.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/radio.png") 1.75x, url("/static_images/hidpi/200/vista-controls/radio.png") 2x);
 }
 
 /* hot and pressed: the shared ::after layer (vista-glass-controls.css) fades in and out over the

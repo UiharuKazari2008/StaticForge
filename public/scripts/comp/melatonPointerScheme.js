@@ -43,6 +43,14 @@
         'Melaton Aero (extra large) (system scheme)': { suffix: '_xl', scale: 2 }
     };
 
+    // the 1.25x ... 2x copies (#921, scripts/build-hidpi-assets.js): the browser takes the one for the
+    // screen's density; the hot spot stays in CSS px
+    const HIDPI = [[125, 1.25], [150, 1.5], [175, 1.75], [200, 2]];
+    function art(name) {
+        const sets = HIDPI.map(([t, d]) => `url("/static_images/hidpi/${t}/vista-cursors/${name}") ${d}x`);
+        return `image-set(url("${ART}/${name}") 1x, ${sets.join(', ')})`;
+    }
+
     function apply() {
         if (!doc) return;
         const reg = root.melatonRegistry;
@@ -56,7 +64,7 @@
             }
             const [hx, hy] = HOT[file];
             const s = scheme.scale;
-            html.style.setProperty(token, `url("${ART}/${file}${scheme.suffix}.png") ${Math.round(hx * s)} ${Math.round(hy * s)}, ${FALLBACK[token]}`);
+            html.style.setProperty(token, `${art(`${file}${scheme.suffix}.png`)} ${Math.round(hx * s)} ${Math.round(hy * s)}, ${FALLBACK[token]}`);
         });
         html.toggleAttribute('data-pointer-scheme', !!scheme);
     }

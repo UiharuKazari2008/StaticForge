@@ -232,7 +232,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
     padding: 0 6px 2px;
     border: 0;
     border-radius: 0;
-    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 2 0 1 fill / 0 2px 0 1px stretch;
+    border-image: image-set(url("/static_images/vista-controls/header-item-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/header-item-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/header-item-normal.png") 2x) 0 2 0 1 fill / 0 2px 0 1px stretch;
     background: none;
     box-shadow: none;
     min-width: 0;
@@ -249,19 +249,19 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-classic-header .cpl-col:hover {
-    border-image-source: url("/static_images/vista-controls/header-item-hot.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-hot.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-hot.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-hot.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-hot.png") 2x);
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-classic-header .cpl-col:active {
-    border-image-source: url("/static_images/vista-controls/header-item-pressed.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-pressed.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-pressed.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-pressed.png") 2x);
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-classic-header .cpl-col.is-sorted {
-    border-image-source: url("/static_images/vista-controls/header-item-sorted.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-sorted.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-sorted.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-sorted.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-sorted.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-sorted.png") 2x);
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-classic-header .cpl-col.is-sorted:hover {
-    border-image-source: url("/static_images/vista-controls/header-item-sorted-hot.png");
+    border-image-source: image-set(url("/static_images/vista-controls/header-item-sorted-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-sorted-hot.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-sorted-hot.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-sorted-hot.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-sorted-hot.png") 2x);
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-col-arrow {
@@ -270,7 +270,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
     left: calc(50% - 6px);
     width: 13px;
     height: 5px;
-    background: url("/static_images/vista-controls/header-sort-arrow.png") 0 0 no-repeat;
+    background: image-set(url("/static_images/vista-controls/header-sort-arrow.png") 1x, url("/static_images/hidpi/125/vista-controls/header-sort-arrow.png") 1.25x, url("/static_images/hidpi/150/vista-controls/header-sort-arrow.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/header-sort-arrow.png") 1.75x, url("/static_images/hidpi/200/vista-controls/header-sort-arrow.png") 2x) 0 0 no-repeat;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-col-arrow.is-down {
@@ -280,7 +280,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-col-rest {
     flex: 1;
     height: 23px;
-    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 0 0 1 fill / 0 0 0 1px stretch;
+    border-image: image-set(url("/static_images/vista-controls/header-item-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/header-item-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/header-item-normal.png") 2x) 0 0 0 1 fill / 0 0 0 1px stretch;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-classic-grid {

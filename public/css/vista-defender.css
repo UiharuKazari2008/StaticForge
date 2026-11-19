@@ -38,7 +38,7 @@
     width: 57px;
     height: 27px;
     margin-right: 6px;
-    background: url('/static_images/vista-defender/travel-gutter.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-defender/travel-gutter.png') 1x, url('/static_images/hidpi/125/vista-defender/travel-gutter.png') 1.25x, url('/static_images/hidpi/150/vista-defender/travel-gutter.png') 1.5x, url('/static_images/hidpi/175/vista-defender/travel-gutter.png') 1.75x, url('/static_images/hidpi/200/vista-defender/travel-gutter.png') 2x) no-repeat 0 0;
 }
 
 #defenderModal .defender-orb {
@@ -46,22 +46,22 @@
     height: 25px;
     margin: 1px 0 0 1px;
     padding: 0;
-    background: url('/static_images/vista-defender/back.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-defender/back.png') 1x, url('/static_images/hidpi/125/vista-defender/back.png') 1.25x, url('/static_images/hidpi/150/vista-defender/back.png') 1.5x, url('/static_images/hidpi/175/vista-defender/back.png') 1.75x, url('/static_images/hidpi/200/vista-defender/back.png') 2x) no-repeat 0 0;
     border: 0;
     border-radius: 50%;
 }
 
 #defenderModal .defender-forward {
     margin-left: 3px;
-    background-image: url('/static_images/vista-defender/forward.png');
+    background-image: image-set(url('/static_images/vista-defender/forward.png') 1x, url('/static_images/hidpi/125/vista-defender/forward.png') 1.25x, url('/static_images/hidpi/150/vista-defender/forward.png') 1.5x, url('/static_images/hidpi/175/vista-defender/forward.png') 1.75x, url('/static_images/hidpi/200/vista-defender/forward.png') 2x);
 }
 
-#defenderModal .defender-back:hover:not(:disabled) { background-image: url('/static_images/vista-defender/back-hot.png'); }
-#defenderModal .defender-back:active:not(:disabled) { background-image: url('/static_images/vista-defender/back-pressed.png'); }
-#defenderModal .defender-back:disabled { background-image: url('/static_images/vista-defender/back-disabled.png'); }
-#defenderModal .defender-forward:hover:not(:disabled) { background-image: url('/static_images/vista-defender/forward-hot.png'); }
-#defenderModal .defender-forward:active:not(:disabled) { background-image: url('/static_images/vista-defender/forward-pressed.png'); }
-#defenderModal .defender-forward:disabled { background-image: url('/static_images/vista-defender/forward-disabled.png'); }
+#defenderModal .defender-back:hover:not(:disabled) { background-image: image-set(url('/static_images/vista-defender/back-hot.png') 1x, url('/static_images/hidpi/125/vista-defender/back-hot.png') 1.25x, url('/static_images/hidpi/150/vista-defender/back-hot.png') 1.5x, url('/static_images/hidpi/175/vista-defender/back-hot.png') 1.75x, url('/static_images/hidpi/200/vista-defender/back-hot.png') 2x); }
+#defenderModal .defender-back:active:not(:disabled) { background-image: image-set(url('/static_images/vista-defender/back-pressed.png') 1x, url('/static_images/hidpi/125/vista-defender/back-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-defender/back-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-defender/back-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-defender/back-pressed.png') 2x); }
+#defenderModal .defender-back:disabled { background-image: image-set(url('/static_images/vista-defender/back-disabled.png') 1x, url('/static_images/hidpi/125/vista-defender/back-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-defender/back-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-defender/back-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-defender/back-disabled.png') 2x); }
+#defenderModal .defender-forward:hover:not(:disabled) { background-image: image-set(url('/static_images/vista-defender/forward-hot.png') 1x, url('/static_images/hidpi/125/vista-defender/forward-hot.png') 1.25x, url('/static_images/hidpi/150/vista-defender/forward-hot.png') 1.5x, url('/static_images/hidpi/175/vista-defender/forward-hot.png') 1.75x, url('/static_images/hidpi/200/vista-defender/forward-hot.png') 2x); }
+#defenderModal .defender-forward:active:not(:disabled) { background-image: image-set(url('/static_images/vista-defender/forward-pressed.png') 1x, url('/static_images/hidpi/125/vista-defender/forward-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-defender/forward-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-defender/forward-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-defender/forward-pressed.png') 2x); }
+#defenderModal .defender-forward:disabled { background-image: image-set(url('/static_images/vista-defender/forward-disabled.png') 1x, url('/static_images/hidpi/125/vista-defender/forward-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-defender/forward-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-defender/forward-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-defender/forward-disabled.png') 2x); }
 
 #defenderModal .defender-tool {
     display: inline-flex;

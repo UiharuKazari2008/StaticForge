@@ -125,7 +125,7 @@
     box-sizing: border-box;
     height: 24px;
     padding: 4px 6px 0 6px;
-    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 2 0 1 fill / 0 2px 0 1px stretch;
+    border-image: image-set(url("/static_images/vista-controls/header-item-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/header-item-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/header-item-normal.png") 2x) 0 2 0 1 fill / 0 2px 0 1px stretch;
     color: #000;
 }
 

@@ -106,7 +106,7 @@ body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-wizard-
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 0;
     box-shadow: none;
     text-shadow: none;
     opacity: 1;

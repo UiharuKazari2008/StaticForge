@@ -223,12 +223,12 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dia
     content: "";
     width: 32px;
     height: 32px;
-    background: url("/static_images/vista-icons/msgbox-info-32.png") no-repeat center / 32px 32px;
+    background: image-set(url("/static_images/vista-icons/msgbox-info-32.png") 1x, url("/static_images/hidpi/125/vista-icons/msgbox-info-32.png") 1.25x, url("/static_images/hidpi/150/vista-icons/msgbox-info-32.png") 1.5x, url("/static_images/hidpi/175/vista-icons/msgbox-info-32.png") 1.75x, url("/static_images/hidpi/200/vista-icons/msgbox-info-32.png") 2x) no-repeat center / 32px 32px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"][data-vista-icon="question"] > .modal-content > .confirmation-message::before { background-image: url("/static_images/vista-icons/msgbox-question-32.png"); }
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"][data-vista-icon="warning"] > .modal-content > .confirmation-message::before { background-image: url("/static_images/vista-icons/msgbox-warning-32.png"); }
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"][data-vista-icon="error"] > .modal-content > .confirmation-message::before { background-image: url("/static_images/vista-icons/msgbox-error-32.png"); }
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"][data-vista-icon="question"] > .modal-content > .confirmation-message::before { background-image: image-set(url("/static_images/vista-icons/msgbox-question-32.png") 1x, url("/static_images/hidpi/125/vista-icons/msgbox-question-32.png") 1.25x, url("/static_images/hidpi/150/vista-icons/msgbox-question-32.png") 1.5x, url("/static_images/hidpi/175/vista-icons/msgbox-question-32.png") 1.75x, url("/static_images/hidpi/200/vista-icons/msgbox-question-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"][data-vista-icon="warning"] > .modal-content > .confirmation-message::before { background-image: image-set(url("/static_images/vista-icons/msgbox-warning-32.png") 1x, url("/static_images/hidpi/125/vista-icons/msgbox-warning-32.png") 1.25x, url("/static_images/hidpi/150/vista-icons/msgbox-warning-32.png") 1.5x, url("/static_images/hidpi/175/vista-icons/msgbox-warning-32.png") 1.75x, url("/static_images/hidpi/200/vista-icons/msgbox-warning-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"][data-vista-icon="error"] > .modal-content > .confirmation-message::before { background-image: image-set(url("/static_images/vista-icons/msgbox-error-32.png") 1x, url("/static_images/hidpi/125/vista-icons/msgbox-error-32.png") 1.25x, url("/static_images/hidpi/150/vista-icons/msgbox-error-32.png") 1.5x, url("/static_images/hidpi/175/vista-icons/msgbox-error-32.png") 1.75x, url("/static_images/hidpi/200/vista-icons/msgbox-error-32.png") 2x); }
 
 /* the first text line sits on the icon's centre line (32 px icon, 15 px line) */
 body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message > * {
@@ -556,7 +556,7 @@ body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dial
     margin: 0;
     border: 0;
     border-image: none;
-    background: url("/static_images/vista-controls/checkbox.png") 0 0 / 13px auto no-repeat;
+    background: image-set(url("/static_images/vista-controls/checkbox.png") 1x, url("/static_images/hidpi/125/vista-controls/checkbox.png") 1.25x, url("/static_images/hidpi/150/vista-controls/checkbox.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/checkbox.png") 1.75x, url("/static_images/hidpi/200/vista-controls/checkbox.png") 2x) 0 0 / 13px auto no-repeat;
     opacity: 1;
     transition: none;
 }

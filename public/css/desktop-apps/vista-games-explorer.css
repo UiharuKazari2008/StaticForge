@@ -348,7 +348,7 @@ body.desktop-mode #vistaGamesExplorerModal > .modal-content.gx-content,
     box-sizing: border-box;
     border-top: 1px solid #a5b8cf;
     background:
-        url("/static_images/vista-explorer/details-swoosh.png") no-repeat right 2px bottom 0 / 140px 64px,
+        image-set(url("/static_images/vista-explorer/details-swoosh.png") 1x, url("/static_images/hidpi/125/vista-explorer/details-swoosh.png") 1.25x, url("/static_images/hidpi/150/vista-explorer/details-swoosh.png") 1.5x, url("/static_images/hidpi/175/vista-explorer/details-swoosh.png") 1.75x, url("/static_images/hidpi/200/vista-explorer/details-swoosh.png") 2x) no-repeat right 2px bottom 0 / 140px 64px,
         linear-gradient(#f2f8fd, #dbe8f4);
     background-image:
         image-set(url("/static_images/vista-explorer/details-swoosh.png") 1x, url("/static_images/vista-explorer/details-swoosh@2x.png") 2x),

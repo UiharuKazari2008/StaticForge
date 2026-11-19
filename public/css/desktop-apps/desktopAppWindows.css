@@ -929,17 +929,17 @@ body:not(.windows-classic-theme) #desktopGuacModal .modal-content {
 .desktop-guac-pinbar > button > i.fa-window-minimize {
     width: 12px;
     height: 5px;
-    background-image: url("/static_images/window-controls/vista-minimize.png");
+    background-image: image-set(url("/static_images/window-controls/vista-minimize.png") 1x, url("/static_images/hidpi/125/window-controls/vista-minimize.png") 1.25x, url("/static_images/hidpi/150/window-controls/vista-minimize.png") 1.5x, url("/static_images/hidpi/175/window-controls/vista-minimize.png") 1.75x, url("/static_images/hidpi/200/window-controls/vista-minimize.png") 2x);
 }
 
 .desktop-guac-pinbar > button > i.fa-window-restore {
     width: 12px;
     height: 12px;
-    background-image: url("/static_images/window-controls/vista-restore.png");
+    background-image: image-set(url("/static_images/window-controls/vista-restore.png") 1x, url("/static_images/hidpi/125/window-controls/vista-restore.png") 1.25x, url("/static_images/hidpi/150/window-controls/vista-restore.png") 1.5x, url("/static_images/hidpi/175/window-controls/vista-restore.png") 1.75x, url("/static_images/hidpi/200/window-controls/vista-restore.png") 2x);
 }
 
 .desktop-guac-pinbar > button > i.fa-xmark-large {
     width: 11px;
     height: 10px;
-    background-image: url("/static_images/window-controls/vista-close.png");
+    background-image: image-set(url("/static_images/window-controls/vista-close.png") 1x, url("/static_images/hidpi/125/window-controls/vista-close.png") 1.2727x, url("/static_images/hidpi/150/window-controls/vista-close.png") 1.5455x, url("/static_images/hidpi/175/window-controls/vista-close.png") 1.7273x, url("/static_images/hidpi/200/window-controls/vista-close.png") 2x);
 }

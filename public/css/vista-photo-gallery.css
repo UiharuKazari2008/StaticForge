@@ -52,7 +52,7 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     height: 36px;
     padding: 0 0 0 5px;
     overflow: hidden;
-    background: url("/static_images/vista-photo-gallery/toolbar-band.png") repeat-x 0 0 / 1px 36px;
+    background: image-set(url("/static_images/vista-photo-gallery/toolbar-band.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/toolbar-band.png") 1x, url("/static_images/hidpi/150/vista-photo-gallery/toolbar-band.png") 2x, url("/static_images/hidpi/175/vista-photo-gallery/toolbar-band.png") 2x, url("/static_images/hidpi/200/vista-photo-gallery/toolbar-band.png") 2x) repeat-x 0 0 / 1px 36px;
 }
 
 .wpg-viewer .wpg-toolbar button {
@@ -88,7 +88,7 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     flex: none;
     width: 30px;
     height: 29px;
-    background: url("/static_images/vista-photo-gallery/back.png") -30px 0 / 120px 29px no-repeat;
+    background: image-set(url("/static_images/vista-photo-gallery/back.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/back.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/back.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/back.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/back.png") 2x) -30px 0 / 120px 29px no-repeat;
 }
 
 .wpg-viewer .wpg-back:hover .wpg-back-orb {
@@ -108,11 +108,11 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
 }
 
 .wpg-viewer .wpg-toolbar button.wpg-cmd:is(:hover, :focus-visible, .context-open) {
-    border-image: url("/static_images/vista-photo-gallery/toolbar-hot.png") 5 fill / 5px stretch;
+    border-image: image-set(url("/static_images/vista-photo-gallery/toolbar-hot.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/toolbar-hot.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/toolbar-hot.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/toolbar-hot.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/toolbar-hot.png") 2x) 5 fill / 5px stretch;
 }
 
 .wpg-viewer .wpg-toolbar button.wpg-cmd[aria-pressed="true"] {
-    border-image: url("/static_images/vista-photo-gallery/toolbar-hot.png") 5 fill / 5px stretch;
+    border-image: image-set(url("/static_images/vista-photo-gallery/toolbar-hot.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/toolbar-hot.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/toolbar-hot.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/toolbar-hot.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/toolbar-hot.png") 2x) 5 fill / 5px stretch;
 }
 
 /* the icon frame 8 px under the face's top (VM) */
@@ -156,7 +156,7 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     top: 6px;
     width: 16px;
     height: 16px !important;
-    background: url("/static_images/vista-photo-gallery/help.png") -16px 0 / 64px 16px no-repeat !important;
+    background: image-set(url("/static_images/vista-photo-gallery/help.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/help.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/help.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/help.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/help.png") 2x) -16px 0 / 64px 16px no-repeat !important;
 }
 
 .wpg-viewer .wpg-help:hover {
@@ -202,11 +202,11 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     margin-top: 2px;
     border: solid transparent;
     border-width: 0 5px;
-    background: url("/static_images/vista-photo-gallery/more.png") -12px 8px / 48px 19px no-repeat;
+    background: image-set(url("/static_images/vista-photo-gallery/more.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/more.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/more.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/more.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/more.png") 2x) -12px 8px / 48px 19px no-repeat;
 }
 
 .wpg-viewer .wpg-toolbar button.wpg-more:is(:hover, :focus-visible, .context-open) {
-    border-image: url("/static_images/vista-photo-gallery/toolbar-hot.png") 5 fill / 5px stretch;
+    border-image: image-set(url("/static_images/vista-photo-gallery/toolbar-hot.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/toolbar-hot.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/toolbar-hot.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/toolbar-hot.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/toolbar-hot.png") 2x) 5 fill / 5px stretch;
     background-position: -24px 8px;
 }
 
@@ -381,9 +381,9 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     width: 405px;
     height: 33px;
     background:
-        url("/static_images/vista-photo-gallery/pill-left.png") left top / 16px 33px no-repeat,
-        url("/static_images/vista-photo-gallery/pill-right.png") right top / 16px 33px no-repeat,
-        url("/static_images/vista-photo-gallery/pill-middle.png") 16px 0 / calc(100% - 32px) 33px no-repeat;
+        image-set(url("/static_images/vista-photo-gallery/pill-left.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/pill-left.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/pill-left.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/pill-left.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/pill-left.png") 2x) left top / 16px 33px no-repeat,
+        image-set(url("/static_images/vista-photo-gallery/pill-right.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/pill-right.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/pill-right.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/pill-right.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/pill-right.png") 2x) right top / 16px 33px no-repeat,
+        image-set(url("/static_images/vista-photo-gallery/pill-middle.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/pill-middle.png") 1.2x, url("/static_images/hidpi/150/vista-photo-gallery/pill-middle.png") 1.6x, url("/static_images/hidpi/175/vista-photo-gallery/pill-middle.png") 1.8x, url("/static_images/hidpi/200/vista-photo-gallery/pill-middle.png") 2x) 16px 0 / calc(100% - 32px) 33px no-repeat;
 }
 
 .wpg-viewer .wpg-ctl {
@@ -414,15 +414,15 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     background-position-x: 0;
 }
 
-.wpg-viewer .wpg-zoom { --wpg-art: url("/static_images/vista-photo-gallery/zoom.png"); --wpg-w: 37px; left: 26px; width: 37px; }
-.wpg-viewer .wpg-fit { --wpg-art: url("/static_images/vista-photo-gallery/actual-size.png"); --wpg-w: 27px; left: 84px; width: 27px; }
-.wpg-viewer .wpg-fit.is-actual { --wpg-art: url("/static_images/vista-photo-gallery/fit.png"); }
-.wpg-viewer .wpg-prev { --wpg-art: url("/static_images/vista-photo-gallery/previous.png"); --wpg-w: 51px; left: 129px; width: 51px; }
-.wpg-viewer .wpg-next { --wpg-art: url("/static_images/vista-photo-gallery/next.png"); --wpg-w: 51px; left: 224px; width: 51px; }
-.wpg-viewer .wpg-show { --wpg-art: url("/static_images/vista-photo-gallery/slideshow.png"); --wpg-w: 44px; left: 180px; top: -9px; width: 44px; height: 48px; z-index: 1; }
-.wpg-viewer .wpg-rotl { --wpg-art: url("/static_images/vista-photo-gallery/rotate-left.png"); --wpg-w: 25px; left: 287px; width: 25px; }
-.wpg-viewer .wpg-rotr { --wpg-art: url("/static_images/vista-photo-gallery/rotate-right.png"); --wpg-w: 25px; left: 320px; width: 25px; }
-.wpg-viewer .wpg-delete { --wpg-art: url("/static_images/vista-photo-gallery/delete.png"); --wpg-w: 25px; left: 366px; width: 25px; }
+.wpg-viewer .wpg-zoom { --wpg-art: image-set(url("/static_images/vista-photo-gallery/zoom.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/zoom.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/zoom.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/zoom.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/zoom.png") 2x); --wpg-w: 37px; left: 26px; width: 37px; }
+.wpg-viewer .wpg-fit { --wpg-art: image-set(url("/static_images/vista-photo-gallery/actual-size.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/actual-size.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/actual-size.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/actual-size.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/actual-size.png") 2x); --wpg-w: 27px; left: 84px; width: 27px; }
+.wpg-viewer .wpg-fit.is-actual { --wpg-art: image-set(url("/static_images/vista-photo-gallery/fit.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/fit.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/fit.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/fit.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/fit.png") 2x); }
+.wpg-viewer .wpg-prev { --wpg-art: image-set(url("/static_images/vista-photo-gallery/previous.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/previous.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/previous.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/previous.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/previous.png") 2x); --wpg-w: 51px; left: 129px; width: 51px; }
+.wpg-viewer .wpg-next { --wpg-art: image-set(url("/static_images/vista-photo-gallery/next.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/next.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/next.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/next.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/next.png") 2x); --wpg-w: 51px; left: 224px; width: 51px; }
+.wpg-viewer .wpg-show { --wpg-art: image-set(url("/static_images/vista-photo-gallery/slideshow.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/slideshow.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/slideshow.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/slideshow.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/slideshow.png") 2x); --wpg-w: 44px; left: 180px; top: -9px; width: 44px; height: 48px; z-index: 1; }
+.wpg-viewer .wpg-rotl { --wpg-art: image-set(url("/static_images/vista-photo-gallery/rotate-left.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/rotate-left.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/rotate-left.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/rotate-left.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/rotate-left.png") 2x); --wpg-w: 25px; left: 287px; width: 25px; }
+.wpg-viewer .wpg-rotr { --wpg-art: image-set(url("/static_images/vista-photo-gallery/rotate-right.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/rotate-right.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/rotate-right.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/rotate-right.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/rotate-right.png") 2x); --wpg-w: 25px; left: 320px; width: 25px; }
+.wpg-viewer .wpg-delete { --wpg-art: image-set(url("/static_images/vista-photo-gallery/delete.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/delete.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/delete.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/delete.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/delete.png") 2x); --wpg-w: 25px; left: 366px; width: 25px; }
 
 .wpg-viewer .wpg-sep {
     position: absolute;
@@ -430,7 +430,7 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     top: 6px;
     width: 3px;
     height: 21px;
-    background: url("/static_images/vista-photo-gallery/separator.png") 0 0 / 3px 21px no-repeat;
+    background: image-set(url("/static_images/vista-photo-gallery/separator.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/separator.png") 1.3333x, url("/static_images/hidpi/150/vista-photo-gallery/separator.png") 1.6667x, url("/static_images/hidpi/175/vista-photo-gallery/separator.png") 1.6667x, url("/static_images/hidpi/200/vista-photo-gallery/separator.png") 2x) 0 0 / 3px 21px no-repeat;
 }
 
 /* Classic: the same layout in the Classic colours */
@@ -512,7 +512,7 @@ body.desktop-mode #photoSwipeWindow.wpg-glancewell .wpg-zoom-thumb {
     left: 5px;
     width: 20px;
     height: 11px;
-    background: url("/static_images/vista-photo-gallery/zoom-thumb.png") 0 0 / 20px 11px no-repeat;
+    background: image-set(url("/static_images/vista-photo-gallery/zoom-thumb.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/zoom-thumb.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/zoom-thumb.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/zoom-thumb.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/zoom-thumb.png") 2x) 0 0 / 20px 11px no-repeat;
     pointer-events: none;
 }
 
@@ -622,7 +622,7 @@ body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMoun
     margin: 0;
     padding: 0;
     border: 0;
-    background: url("/static_images/vista-photo-gallery/help.png") -16px 0 / 64px 16px no-repeat;
+    background: image-set(url("/static_images/vista-photo-gallery/help.png") 1x, url("/static_images/hidpi/125/vista-photo-gallery/help.png") 1.25x, url("/static_images/hidpi/150/vista-photo-gallery/help.png") 1.5x, url("/static_images/hidpi/175/vista-photo-gallery/help.png") 1.75x, url("/static_images/hidpi/200/vista-photo-gallery/help.png") 2x) -16px 0 / 64px 16px no-repeat;
 }
 
 .wpv-viewer .wpv-cmdbar button.wpv-help:hover {

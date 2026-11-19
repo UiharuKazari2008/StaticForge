@@ -218,27 +218,27 @@ body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-
     flex: none;
     width: 19px;
     height: 21px;
-    background: url("/static_images/vista-personalization/expando-down.png") no-repeat;
+    background: image-set(url("/static_images/vista-personalization/expando-down.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-down.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-down.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-down.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-down.png") 2x) no-repeat;
 }
 
 body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-expando:is(:hover, :focus-visible) .file-progress-expando-image {
-    background-image: url("/static_images/vista-personalization/expando-down-hot.png");
+    background-image: image-set(url("/static_images/vista-personalization/expando-down-hot.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-down-hot.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-down-hot.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-down-hot.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-down-hot.png") 2x);
 }
 
 body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-expando:active .file-progress-expando-image {
-    background-image: url("/static_images/vista-personalization/expando-down-pressed.png");
+    background-image: image-set(url("/static_images/vista-personalization/expando-down-pressed.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-down-pressed.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-down-pressed.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-down-pressed.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-down-pressed.png") 2x);
 }
 
 body.desktop-mode .modal.file-progress-dialog.file-progress-expanded[data-vista-dialog] .file-progress-expando-image {
-    background-image: url("/static_images/vista-personalization/expando-up.png");
+    background-image: image-set(url("/static_images/vista-personalization/expando-up.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-up.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-up.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-up.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-up.png") 2x);
 }
 
 body.desktop-mode .modal.file-progress-dialog.file-progress-expanded[data-vista-dialog] .file-progress-expando:is(:hover, :focus-visible) .file-progress-expando-image {
-    background-image: url("/static_images/vista-personalization/expando-up-hot.png");
+    background-image: image-set(url("/static_images/vista-personalization/expando-up-hot.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-up-hot.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-up-hot.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-up-hot.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-up-hot.png") 2x);
 }
 
 body.desktop-mode .modal.file-progress-dialog.file-progress-expanded[data-vista-dialog] .file-progress-expando:active .file-progress-expando-image {
-    background-image: url("/static_images/vista-personalization/expando-up-pressed.png");
+    background-image: image-set(url("/static_images/vista-personalization/expando-up-pressed.png") 1x, url("/static_images/hidpi/125/vista-personalization/expando-up-pressed.png") 1.25x, url("/static_images/hidpi/150/vista-personalization/expando-up-pressed.png") 1.5263x, url("/static_images/hidpi/175/vista-personalization/expando-up-pressed.png") 1.75x, url("/static_images/hidpi/200/vista-personalization/expando-up-pressed.png") 2x);
 }
 
 body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-expando-text {

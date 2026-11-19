@@ -139,13 +139,13 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rap-open
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    background: url("/static_images/vista-controls/checkbox.png") 0 0 / 13px auto no-repeat;
+    background: image-set(url("/static_images/vista-controls/checkbox.png") 1x, url("/static_images/hidpi/125/vista-controls/checkbox.png") 1.25x, url("/static_images/hidpi/150/vista-controls/checkbox.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/checkbox.png") 1.75x, url("/static_images/hidpi/200/vista-controls/checkbox.png") 2x) 0 0 / 13px auto no-repeat;
     transition: none;
 }
 
 .rap-window .tbp-client .tbp-check input[type="radio"] + label::before {
     top: 1px;
-    background-image: url("/static_images/vista-controls/radio.png");
+    background-image: image-set(url("/static_images/vista-controls/radio.png") 1x, url("/static_images/hidpi/125/vista-controls/radio.png") 1.25x, url("/static_images/hidpi/150/vista-controls/radio.png") 1.5385x, url("/static_images/hidpi/175/vista-controls/radio.png") 1.75x, url("/static_images/hidpi/200/vista-controls/radio.png") 2x);
 }
 
 .rap-window .tbp-client .tbp-check input:is([type="checkbox"], [type="radio"]) + label::after {
@@ -173,7 +173,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rap-open
    no class here can reach, hence !important) */
 .tbp-client input.tbp-edit.rap-readonly,
 .tbp-client.rap-template textarea.rap-tpl-edit:read-only {
-    border-image: var(--vista-edit-face, url("/static_images/vista-controls/edit-normal.png")) 2 / 2px stretch !important;
+    border-image: var(--vista-edit-face, image-set(url("/static_images/vista-controls/edit-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/edit-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/edit-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/edit-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/edit-normal.png") 2x)) 2 / 2px stretch !important;
     background: #f0f0f0 !important;
 }
 

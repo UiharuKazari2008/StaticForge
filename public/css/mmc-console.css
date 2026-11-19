@@ -29,7 +29,7 @@
     height: 23px;
     padding: 0 0 0 2px;
     border: 0;
-    background: url('/static_images/vista-mmc/menuband.png') 0 0 / 1px 23px repeat-x;
+    background: image-set(url('/static_images/vista-mmc/menuband.png') 1x, url('/static_images/hidpi/125/vista-mmc/menuband.png') 1x, url('/static_images/hidpi/150/vista-mmc/menuband.png') 2x, url('/static_images/hidpi/175/vista-mmc/menuband.png') 2x, url('/static_images/hidpi/200/vista-mmc/menuband.png') 2x) 0 0 / 1px 23px repeat-x;
     box-sizing: border-box;
 }
 
@@ -53,12 +53,12 @@
 }
 
 .mmc-window.mmc-window .win7 .mmc-menubar .naxt-menu-title:is(:hover, :focus-visible):not(#_) {
-    border-image: url('/static_images/vista-mmc/menu-hot.png') 0 4 fill / 0 4px stretch;
+    border-image: image-set(url('/static_images/vista-mmc/menu-hot.png') 1x, url('/static_images/hidpi/125/vista-mmc/menu-hot.png') 1.25x, url('/static_images/hidpi/150/vista-mmc/menu-hot.png') 1.5x, url('/static_images/hidpi/175/vista-mmc/menu-hot.png') 1.75x, url('/static_images/hidpi/200/vista-mmc/menu-hot.png') 2x) 0 4 fill / 0 4px stretch;
     outline: none;
 }
 
 .mmc-window.mmc-window .win7 .mmc-menubar .naxt-menu-title.context-open:not(#_) {
-    border-image: url('/static_images/vista-mmc/menu-open.png') 0 4 fill / 0 4px stretch;
+    border-image: image-set(url('/static_images/vista-mmc/menu-open.png') 1x, url('/static_images/hidpi/125/vista-mmc/menu-open.png') 1.25x, url('/static_images/hidpi/150/vista-mmc/menu-open.png') 1.5x, url('/static_images/hidpi/175/vista-mmc/menu-open.png') 1.75x, url('/static_images/hidpi/200/vista-mmc/menu-open.png') 2x) 0 4 fill / 0 4px stretch;
 }
 
 .mmc-window .mmc-menubar .naxt-menu-title::before,
@@ -73,7 +73,7 @@
     align-items: center;
     height: 23px;
     padding: 0 0 0 1px;
-    background: url('/static_images/vista-mmc/toolband.png') 0 0 / 1px 23px repeat-x;
+    background: image-set(url('/static_images/vista-mmc/toolband.png') 1x, url('/static_images/hidpi/125/vista-mmc/toolband.png') 1x, url('/static_images/hidpi/150/vista-mmc/toolband.png') 2x, url('/static_images/hidpi/175/vista-mmc/toolband.png') 2x, url('/static_images/hidpi/200/vista-mmc/toolband.png') 2x) 0 0 / 1px 23px repeat-x;
     box-sizing: border-box;
 }
 
@@ -111,7 +111,7 @@
     position: absolute;
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-mmc/toolbar-mmc.png') calc(var(--i) * -16px) 0 no-repeat;
+    background: image-set(url('/static_images/vista-mmc/toolbar-mmc.png') 1x, url('/static_images/hidpi/125/vista-mmc/toolbar-mmc.png') 1.25x, url('/static_images/hidpi/150/vista-mmc/toolbar-mmc.png') 1.5x, url('/static_images/hidpi/175/vista-mmc/toolbar-mmc.png') 1.75x, url('/static_images/hidpi/200/vista-mmc/toolbar-mmc.png') 2x) calc(var(--i) * -16px) 0 no-repeat;
 }
 
 .mmc-window .mmc-tb-icon {
@@ -560,7 +560,7 @@
     padding: 3px 0 0 6px;
     overflow: hidden;
     border: 0;
-    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 2 0 1 fill / 0 2px 0 1px stretch;
+    border-image: image-set(url('/static_images/vista-controls/header-item-normal.png') 1x, url('/static_images/hidpi/125/vista-controls/header-item-normal.png') 1.25x, url('/static_images/hidpi/150/vista-controls/header-item-normal.png') 1.5x, url('/static_images/hidpi/175/vista-controls/header-item-normal.png') 1.75x, url('/static_images/hidpi/200/vista-controls/header-item-normal.png') 2x) 0 2 0 1 fill / 0 2px 0 1px stretch;
     border-radius: 0;
     background: none;
     box-shadow: none;
@@ -571,11 +571,11 @@
     text-overflow: ellipsis;
 }
 
-.mmc-window.mmc-window .mmc-col:hover:not(.mmc-col-rest):not(#_) { border-image-source: url('/static_images/vista-controls/header-item-hot.png'); }
+.mmc-window.mmc-window .mmc-col:hover:not(.mmc-col-rest):not(#_) { border-image-source: image-set(url('/static_images/vista-controls/header-item-hot.png') 1x, url('/static_images/hidpi/125/vista-controls/header-item-hot.png') 1.3333x, url('/static_images/hidpi/150/vista-controls/header-item-hot.png') 1.5x, url('/static_images/hidpi/175/vista-controls/header-item-hot.png') 1.8333x, url('/static_images/hidpi/200/vista-controls/header-item-hot.png') 2x); }
 .mmc-window.mmc-window .mmc-col.is-num:not(#_) { text-align: right; padding-right: 6px; }
-.mmc-window.mmc-window .mmc-col.is-sorted:not(#_) { border-image-source: url('/static_images/vista-controls/header-item-sorted.png'); }
-.mmc-window.mmc-window .mmc-col.is-sorted:hover:not(#_) { border-image-source: url('/static_images/vista-controls/header-item-sorted-hot.png'); }
-.mmc-window.mmc-window .mmc-col.mmc-col-rest:not(#_) { border-image: url('/static_images/vista-controls/header-item-normal.png') 0 0 0 1 fill / 0 0 0 1px stretch; }
+.mmc-window.mmc-window .mmc-col.is-sorted:not(#_) { border-image-source: image-set(url('/static_images/vista-controls/header-item-sorted.png') 1x, url('/static_images/hidpi/125/vista-controls/header-item-sorted.png') 1.3333x, url('/static_images/hidpi/150/vista-controls/header-item-sorted.png') 1.5x, url('/static_images/hidpi/175/vista-controls/header-item-sorted.png') 1.8333x, url('/static_images/hidpi/200/vista-controls/header-item-sorted.png') 2x); }
+.mmc-window.mmc-window .mmc-col.is-sorted:hover:not(#_) { border-image-source: image-set(url('/static_images/vista-controls/header-item-sorted-hot.png') 1x, url('/static_images/hidpi/125/vista-controls/header-item-sorted-hot.png') 1.3333x, url('/static_images/hidpi/150/vista-controls/header-item-sorted-hot.png') 1.5x, url('/static_images/hidpi/175/vista-controls/header-item-sorted-hot.png') 1.8333x, url('/static_images/hidpi/200/vista-controls/header-item-sorted-hot.png') 2x); }
+.mmc-window.mmc-window .mmc-col.mmc-col-rest:not(#_) { border-image: image-set(url('/static_images/vista-controls/header-item-normal.png') 1x, url('/static_images/hidpi/125/vista-controls/header-item-normal.png') 1.25x, url('/static_images/hidpi/150/vista-controls/header-item-normal.png') 1.5x, url('/static_images/hidpi/175/vista-controls/header-item-normal.png') 1.75x, url('/static_images/hidpi/200/vista-controls/header-item-normal.png') 2x) 0 0 0 1 fill / 0 0 0 1px stretch; }
 
 .mmc-window .mmc-col::before,
 .mmc-window .mmc-col::after {
@@ -588,7 +588,7 @@
     top: 0;
     width: 13px;
     height: 5px;
-    background: url('/static_images/vista-controls/header-sort-arrow.png') 0 0 no-repeat;
+    background: image-set(url('/static_images/vista-controls/header-sort-arrow.png') 1x, url('/static_images/hidpi/125/vista-controls/header-sort-arrow.png') 1.25x, url('/static_images/hidpi/150/vista-controls/header-sort-arrow.png') 1.5385x, url('/static_images/hidpi/175/vista-controls/header-sort-arrow.png') 1.75x, url('/static_images/hidpi/200/vista-controls/header-sort-arrow.png') 2x) 0 0 no-repeat;
 }
 
 .mmc-window .mmc-arrow.is-down {

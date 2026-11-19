@@ -56,7 +56,7 @@
     width: 20px;
     height: 12px;
     margin-right: 2px;
-    background: url("/static_images/vista-charmap/font-types.png") -40px 0 no-repeat;
+    background: image-set(url("/static_images/vista-charmap/font-types.png") 1x, url("/static_images/hidpi/125/vista-charmap/font-types.png") 1.25x, url("/static_images/hidpi/150/vista-charmap/font-types.png") 1.5x, url("/static_images/hidpi/175/vista-charmap/font-types.png") 1.75x, url("/static_images/hidpi/200/vista-charmap/font-types.png") 2x) -40px 0 no-repeat;
 }
 
 #melatonCharmapModal .cm-font-name {

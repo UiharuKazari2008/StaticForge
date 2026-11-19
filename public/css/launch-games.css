@@ -221,7 +221,7 @@ body.melaton-games > .modal.modal > .modal-window-controls button {
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    background: url('/static_images/window-controls/basic/close.png') 0 0 / 28px 64px no-repeat;
+    background: image-set(url('/static_images/window-controls/basic/close.png') 1x, url('/static_images/hidpi/125/window-controls/basic/close.png') 1.25x, url('/static_images/hidpi/150/window-controls/basic/close.png') 1.5x, url('/static_images/hidpi/175/window-controls/basic/close.png') 1.75x, url('/static_images/hidpi/200/window-controls/basic/close.png') 2x) 0 0 / 28px 64px no-repeat;
     color: transparent;
     font-size: 0;
 }
@@ -231,11 +231,11 @@ body.melaton-games > .modal.modal > .modal-window-controls button > * {
 }
 
 body.melaton-games > .modal.modal > .modal-window-controls .minimize-btn {
-    background-image: url('/static_images/window-controls/basic/min.png');
+    background-image: image-set(url('/static_images/window-controls/basic/min.png') 1x, url('/static_images/hidpi/125/window-controls/basic/min.png') 1.25x, url('/static_images/hidpi/150/window-controls/basic/min.png') 1.5x, url('/static_images/hidpi/175/window-controls/basic/min.png') 1.75x, url('/static_images/hidpi/200/window-controls/basic/min.png') 2x);
 }
 
 body.melaton-games > .modal.modal > .modal-window-controls :is(.maximize-btn, .modal-work-area-maximize) {
-    background-image: url('/static_images/window-controls/basic/max.png');
+    background-image: image-set(url('/static_images/window-controls/basic/max.png') 1x, url('/static_images/hidpi/125/window-controls/basic/max.png') 1.25x, url('/static_images/hidpi/150/window-controls/basic/max.png') 1.5x, url('/static_images/hidpi/175/window-controls/basic/max.png') 1.75x, url('/static_images/hidpi/200/window-controls/basic/max.png') 2x);
 }
 
 body.melaton-games > .modal.modal > .modal-window-controls button:hover {
