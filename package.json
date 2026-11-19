@@ -162,6 +162,7 @@
     "test:status-stream": "node scripts/test-status-stream.js",
     "test:update-engine": "node scripts/test-update-engine.js",
     "test:wallet-tray": "node scripts/test-wallet-tray.js",
+    "test:claude-accounts": "node scripts/test-claude-accounts.js",
     "test:window-geometry": "node scripts/test-window-geometry.js",
     "test:frame-chrome": "node scripts/test-frame-chrome.js",
     "test:window-maximize": "node scripts/test-window-maximize.js",

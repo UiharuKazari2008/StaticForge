@@ -26,6 +26,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `get_account_pictures` | `get_account_pictures_response` | session | Administrator and Guest account pictures (Control Panel User Accounts, start menu). Handler `modules/ws/handlers/270-accountPicturesHandler.js` (owner `accountPictures`) |
 | `set_account_picture` | `set_account_picture_response` | admin | Change one account's picture: a default name or `custom` with a 128x128 PNG data URL (destructive) |
 | `set_account_name` | `set_account_name_response` | admin | Rename an account (User Accounts' Change the account name; destructive) |
+| `get_claude_accounts` | `get_claude_accounts_response` | admin | Claude accounts (CardSpace's Claude keys) and the host's Remote Control. Handler `modules/ws/handlers/313-claudeAccountsHandler.js` (owner `claudeAccounts`); [Claude accounts](#claude-accounts) |
+| `switch_claude_account` / `link_claude_account_login` / `unlink_claude_account_login` / `claude_remote_control` | `*_response` | admin | Switch the engine's account (reconnects Remote Control), link / unlink a Remote Control login, reconnect / start / stop Remote Control (destructive) |
 
 ## Server push (no request)
 
@@ -33,6 +35,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 |---|---|---|
 | `account_data_health_updated` | Account health fields change (including after balance/subscription sync) | `public/scripts/ws/handlers/40-appCoreInbound.js` |
 | `account_pictures_changed` | An administrator changed an account picture or name | `public/scripts/comp/cplUserAccounts.js` (`wsClient.on`) |
+| `claude_remote_control_status` | Claude Remote Control reconnecting / connected / error (admins) | `public/scripts/comp/wmClaudeAccounts.js` (`wsClient.on`) |
 
 Periodic **ping** payloads include `balance`, `opusUsage`, and `accountHealth` — see [infrastructure.md](./infrastructure.md#ping-server-push-fields).
 
@@ -290,6 +293,35 @@ Usage and balance of every connected account and API key except NovelAI, and the
 | `keys` | object | Read on every request (not cached): `{ locks: [{ service, label, failureCount, lastStatus, lastMessage, lockedAt }], failed: [{ service, label, slot, index, keyName, message, checkedAt }] }`. `locks` = services the key tripwire stopped calling (`apiKeyManager`; the wallet's Unlock sends `unlock_api_service`), `failed` = keys Security Center's check refused (`apiKeyHealth`, state `fail`). Grok is left out |
 
 **Response (session user):** `{ "success": true, "restricted": true }`; the wallet shows NovelAI and the RunPod pods only.
+
+---
+
+### Claude accounts
+
+The Claude accounts the Director's Claude engine signs in with (Wren, Xi, Rentan) and the Claude Remote Control on the server. The accounts are CardSpace's Claude service keys (`apiKeyManager` service `claude`, a `claude setup-token` OAuth token each); the desktop changes them in CardSpace, the phone in **Claude Accounts** (`public/scripts/comp/wmClaudeAccounts.js`, Programs; styles `wm-accounts.css` + `wm-claude-accounts.css`). One backend: `modules/claudeAccountHost.js`, handler `modules/ws/handlers/313-claudeAccountsHandler.js` (owner `claudeAccounts`). Admin only, as Security Center's Cursor accounts; the writes are destructive (refused to read-only clients) and have no application-key scope. There is no REST route (the Cursor accounts have none either).
+
+- **Engine account**: selecting a key (`update_api_key_selections` from CardSpace's *Use this account*, or `switch_claude_account`) writes the selected token to `.cache/secrets/claude.oauth` (`syncClaudeTokenFile`), which every Claude CLI launch reads first (`xiLaunch.resolveClaudeTokenFile`).
+- **Remote Control** (`claude remote-control --name Dreamscape`, systemd user unit `claude-remote.service`, tmux session `claude-rc`) needs the full claude.ai login of `~/.claude/.credentials.json` (+ `oauthAccount` in `~/.claude.json`), not the setup token. Each account can carry a **linked login**: a copy of the host's claude.ai login taken with `link_claude_account_login` (kept 0600 in `.cache/secrets/claude-accounts/<id>/`, `<id>` = 16 hex of the setup token's SHA-256; a login belongs to one account at a time).
+- **Every selection reconnects Remote Control** (CardSpace's too), in the background: stop the unit, save the live login back into the account it belongs to (its refresh token rotates), put the new account's linked login in place (an account without one leaves the host signed in as before and says so), start the unit, then wait up to 45 s for the pane to say *Connected*. Restarting Remote Control ends the sessions it is running (the phone asks first and shows how many).
+- No packet, push or log carries a token. The pane text is cut to its status line, `Capacity: n/m` and an error line, with links and long ids removed.
+
+| Request type | Typical response | Notes |
+|---|---|---|
+| `get_claude_accounts` | `get_claude_accounts_response` | `{ accounts, host }` (below) |
+| `switch_claude_account` | `switch_claude_account_response` | `{ index }`: make that key the engine's account (CardSpace's selection) and reconnect Remote Control; the active account again only reconnects. Answers at once with `{ accounts, host }` (status `reconnecting`); the end comes as `claude_remote_control_status` |
+| `link_claude_account_login` | `link_claude_account_login_response` | `{ index }`: link the host's current claude.ai login to that account (moved off any other account) |
+| `unlink_claude_account_login` | `unlink_claude_account_login_response` | `{ index }`: forget that account's linked login (the host login stays) |
+| `claude_remote_control` | `claude_remote_control_response` | `{ action: 'reconnect' \| 'start' \| 'stop' }`; reconnect / start put the active account's linked login in place first |
+
+Adding, renaming and deleting an account are CardSpace's own `add_api_key` / `update_api_key` / `delete_api_key` with `service: 'claude'`.
+
+**`accounts[]`:** `{ index, id, name, fingerprint, active, remoteLogin, onHost }`; `fingerprint` is the key manager's masked key, `remoteLogin` `null` or `{ email, displayName, organization, accountUuid, plan, rateLimitTier, expiresAt, remoteControlCapable, linkedAt }`, `onHost` true when the host is signed in with that linked login.
+
+**`host`:** `{ hostname, cliVersion, engine: { account: { index, name } | null, tokenFile }, login (as remoteLogin, the host's own, or null), remoteControl: { unit, installed, active, sub, pid, since, restarts, sessionName, pane: { state, statusLine, sessions, capacity, errorLine, tail, attached }, status } }`.
+
+**Push `claude_remote_control_status`** (admins; phone-only class, a sleeping phone keeps the last): `data: { state: 'reconnecting' | 'connected' | 'error' | 'stopped' | 'unknown', message, at, account: { index, name } | null, attempt }`.
+
+Test: `npm run test:claude-accounts` (sandboxed home, store and a fake systemctl / tmux; never touches the host's Remote Control). A dev or preview instance sets `DREAMSCAPE_CLAUDE_RC_READONLY=1` so it can show the unit but never stop or start it.
 
 ---
 

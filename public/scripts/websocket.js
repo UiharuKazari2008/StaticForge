@@ -599,6 +599,11 @@ class BannerManager {
             'logout_cursor_account_profile': 'Logout Cursor Profile',
             'delete_cursor_account': 'Delete Cursor Account',
             'set_cursor_account_api_key': 'Set Cursor API Key',
+            'get_claude_accounts': 'Get Claude Accounts',
+            'switch_claude_account': 'Switch Claude Account',
+            'link_claude_account_login': 'Link Claude Login',
+            'unlink_claude_account_login': 'Unlink Claude Login',
+            'claude_remote_control': 'Claude Remote Control',
 
             // Characters, memories, autofill
             'get_character_db': 'Get Characters',

@@ -12316,6 +12316,8 @@
         { id: 'gems', title: 'Gems', icon: 'app-gems', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmGems.js' },
         { id: 'doubles', title: 'Doubles', icon: 'app-doubles', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmDoubles.js' },
         { id: 'bintoss', title: 'Bin Toss', icon: 'app-bintoss', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmBinToss.js' },
+        // Claude Accounts (Nov 19): the engine's Claude account and the host's Remote Control (admin)
+        { id: 'claude-accounts', title: 'Claude Accounts', icon: 'svc-claude', inStart: 'programs', script: 'scripts/comp/wmClaudeAccounts.js', globals: [{ name: 'wmClaudeAccounts', methods: ['open', 'refresh'] }] },
         { id: 'paypass-mobile', title: 'PayPass', startLabel: 'PayPass Operator', icon: 'app-paypass', inStart: 'programs', script: 'scripts/comp/wmPayPass.js' },
         // Dreamscape suite programs that stand in for a desktop window through a global (globals: the
         // stand-ins until their script loads)

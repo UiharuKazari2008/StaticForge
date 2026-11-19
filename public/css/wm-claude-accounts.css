@@ -1,0 +1,73 @@
+/*
+ * Melaton Mobile: Claude Accounts (wmClaudeAccounts.js). The rows, dots, notes and tabs are the
+ * Accounts program's (wm-accounts.css, the page carries .wm-accounts too); this adds the Remote
+ * Control strip, the Active / On host badges and the Host tab's label / value rows.
+ */
+
+.wm-claude-accounts .wca-status {
+    display: grid;
+    grid-template-columns: calc(21 * var(--wm-px)) minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: calc(20 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(2 * var(--wm-px)) 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #848284;
+    background: #f3f3f3;
+    line-height: calc(15 * var(--wm-px));
+}
+
+.wm-claude-accounts .wca-status .wac-dot { margin-top: 0; }
+.wm-claude-accounts .wca-st-error { background: #fff0f0; }
+.wm-claude-accounts .wca-st-reconnecting { background: #fff8e0; }
+.wm-claude-accounts .wca-status-text { min-width: 0; overflow-wrap: anywhere; }
+.wm-claude-accounts .wca-status-msg { color: #525152; }
+
+.wm-claude-accounts .wca-retry,
+.wm-claude-accounts .wca-actions button {
+    min-height: calc(20 * var(--wm-px));
+    padding: 0 calc(8 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    color: #000;
+    font: inherit;
+}
+
+.wm-claude-accounts .wca-retry:active,
+.wm-claude-accounts .wca-actions button:active {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-claude-accounts .wca-badge {
+    display: inline-block;
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid currentColor;
+    font-size: 0.85em;
+    font-weight: normal;
+    line-height: calc(12 * var(--wm-px));
+    vertical-align: calc(1 * var(--wm-px));
+}
+
+.wm-claude-accounts .wca-badge-host { color: #00669a; }
+.wm-claude-accounts .wac-row.is-selected .wca-badge { color: inherit; }
+.wm-claude-accounts .wca-muted { color: #525152; }
+.wm-claude-accounts .wac-row.is-selected .wca-muted { color: inherit; }
+
+.wm-claude-accounts .wca-sub-hdr { margin-top: 0; }
+
+.wm-claude-accounts .wca-kvs { padding: calc(2 * var(--wm-px)) calc(5 * var(--wm-px)) calc(4 * var(--wm-px)); }
+
+.wm-claude-accounts .wca-kv {
+    display: grid;
+    grid-template-columns: calc(96 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(6 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
+}
+
+.wm-claude-accounts .wca-k { color: #525152; }
+.wm-claude-accounts .wca-v { font-weight: bold; overflow-wrap: anywhere; }
+
+.wm-claude-accounts .wca-actions {
+    display: flex;
+    gap: calc(6 * var(--wm-px));
+    padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(8 * var(--wm-px));
+}
