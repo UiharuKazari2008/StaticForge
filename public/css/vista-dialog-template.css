@@ -1313,3 +1313,132 @@ button.vdt-cmdlink:not(#_):focus-visible {
     width: 17px;
     height: 9px;
 }
+
+/* ---- the IP address control (SysIPAddress32, vistaDialogTemplate.js ipFields), measured on the VM's TCP/IPv4
+   Properties: the edit frame (the kit's edit art, hot and focused frames as a text box's), four borderless fields
+   with their digits centred, a dot between them; disabled, the normal frame with a 1 px white ring round the dialog
+   face and the dots in grey text. The fields take no text box face of their own (:not(#_) outranks the desktop's
+   text box rule). ---- */
+.vdt-client .vdt-ipaddr {
+    box-sizing: border-box;
+    border: 2px solid transparent;
+    border-image: image-set(url('/static_images/vista-controls/edit-normal.png') 1x, url('/static_images/hidpi/125/vista-controls/edit-normal.png') 1.25x, url('/static_images/hidpi/150/vista-controls/edit-normal.png') 1.5x, url('/static_images/hidpi/175/vista-controls/edit-normal.png') 1.75x, url('/static_images/hidpi/200/vista-controls/edit-normal.png') 2x) 2 fill / 2px stretch;
+    background: #fff;
+    color: #000;
+    cursor: text;
+    overflow: hidden;
+}
+
+.vdt-client .vdt-ipaddr:hover:not(.is-disabled) {
+    border-image-source: image-set(url('/static_images/vista-controls/edit-hot.png') 1x, url('/static_images/hidpi/125/vista-controls/edit-hot.png') 1.2x, url('/static_images/hidpi/150/vista-controls/edit-hot.png') 1.6x, url('/static_images/hidpi/175/vista-controls/edit-hot.png') 1.8x, url('/static_images/hidpi/200/vista-controls/edit-hot.png') 2x);
+}
+
+.vdt-client .vdt-ipaddr:focus-within:not(.is-disabled) {
+    border-image-source: image-set(url('/static_images/vista-controls/edit-focus.png') 1x, url('/static_images/hidpi/125/vista-controls/edit-focus.png') 1.2x, url('/static_images/hidpi/150/vista-controls/edit-focus.png') 1.6x, url('/static_images/hidpi/175/vista-controls/edit-focus.png') 1.8x, url('/static_images/hidpi/200/vista-controls/edit-focus.png') 2x);
+}
+
+.vdt-client .vdt-ipaddr.is-disabled {
+    border-image-slice: 2;
+    background: #f0f0f0;
+    color: #6d6d6d;
+    cursor: default;
+}
+
+.vdt-client .vdt-ipaddr input.vdt-ip-oct:not(#_) {
+    position: absolute;
+    top: -1px;
+    bottom: -1px;
+    box-sizing: border-box;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-image: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+    color: inherit;
+    font: inherit;
+    line-height: 15px;
+    text-align: center;
+    caret-color: #000;
+}
+
+/* the fields between the dots (the frame's outer edge is 2 px left of these positions; P = the pitch): the dots at
+   3 + P * n from that edge, each field from a dot to the next */
+.vdt-client .vdt-ipaddr input.vdt-ip-oct[data-field="0"]:not(#_) {
+    left: -1px;
+    width: calc(var(--vdt-ip-pitch) + 2px);
+}
+
+.vdt-client .vdt-ipaddr input.vdt-ip-oct[data-field="1"]:not(#_) {
+    left: calc(var(--vdt-ip-pitch) + 2px);
+    width: calc(var(--vdt-ip-pitch) - 1px);
+}
+
+.vdt-client .vdt-ipaddr input.vdt-ip-oct[data-field="2"]:not(#_) {
+    left: calc(var(--vdt-ip-pitch) * 2 + 2px);
+    width: calc(var(--vdt-ip-pitch) - 1px);
+}
+
+.vdt-client .vdt-ipaddr input.vdt-ip-oct[data-field="3"]:not(#_) {
+    left: calc(var(--vdt-ip-pitch) * 3 + 2px);
+    right: -1px;
+    width: auto;
+}
+
+.vdt-client .vdt-ip-dot[data-dot="1"] { left: calc(var(--vdt-ip-pitch) - 1px); }
+.vdt-client .vdt-ip-dot[data-dot="2"] { left: calc(var(--vdt-ip-pitch) * 2 - 1px); }
+.vdt-client .vdt-ip-dot[data-dot="3"] { left: calc(var(--vdt-ip-pitch) * 3 - 1px); }
+
+.vdt-client .vdt-ipaddr input.vdt-ip-oct:not(#_):disabled {
+    color: #6d6d6d;
+    background: transparent;
+    border-image: none;
+}
+
+.vdt-client .vdt-ipaddr input.vdt-ip-oct::selection {
+    background: #3399ff;
+    color: #fff;
+}
+
+.vdt-client .vdt-ip-dot {
+    position: absolute;
+    top: -1px;
+    width: 5px;
+    line-height: 15px;
+    text-align: center;
+    pointer-events: none;
+}
+
+/* ---- a plain (non-Explorer) list view in Tile view, as connect.dll's Choose a connection option draws it on the VM: no
+   row face, the selection #3399ff behind the label lines only (white text), the second line in grey text; a list's
+   own script lays out the rows ---- */
+.vdt-client .vdt-listview.is-tiles .vdt-lv-row,
+.vdt-client .vdt-listview.is-tiles .vdt-lv-row.is-selected,
+.vdt-client .vdt-listview.is-tiles:not(:focus-within) .vdt-lv-row.is-selected {
+    border-color: transparent;
+    background: none;
+    color: #000;
+}
+
+.vdt-client .vdt-listview.is-tiles .vdt-lv-row > span {
+    padding: 0;
+}
+
+.vdt-client .vdt-listview.is-tiles .vdt-lv-note {
+    color: #6d6d6d;
+}
+
+.vdt-client .vdt-listview.is-tiles .vdt-lv-row.is-selected .vdt-lv-label,
+.vdt-client .vdt-listview.is-tiles .vdt-lv-row.is-selected .vdt-lv-note {
+    background: #3399ff;
+    color: #fff;
+}
+
+/* grey text (COLOR_GRAYTEXT): an Explorer tile's second and third lines (Network Connections) */
+:is(.vdt-client, .cpl-instance) .vdt-graytext {
+    color: #6d6d6d;
+}
