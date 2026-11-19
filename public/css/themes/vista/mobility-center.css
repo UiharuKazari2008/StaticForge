@@ -1,0 +1,19 @@
+/* Melaton Mobility Center, Vista theme (#932): mblctr.exe's colours and art as measured on the VM. The layout is
+   css/mobility-center.css. */
+
+.mbl-window {
+    /* tile edges: light left / top, dark right / bottom */
+    --mbl-tile-edge-light: #dcdcdc;
+    --mbl-tile-edge-dark: #b4b4b4;
+    /* the tile's face: a white top line, then #f0f0f0 fading to white over 38 px */
+    --mbl-tile-face: linear-gradient(to bottom, #fff 0, #fff 1px, #f0f0f0 1px, #fff 39px, #fff 100%);
+    --mbl-rule: #dcdcdc;
+    --mbl-title-text: #000;
+    --mbl-status-text: #575757;
+    /* the icon button's faces (DirectUI, captured from the VM: 1 px rounded corners) */
+    --mbl-icon-hot: url("/static_images/vista-mblctr/box-hot.png");
+    --mbl-icon-pressed: url("/static_images/vista-mblctr/box-pressed.png");
+    --mbl-icon-focus: url("/static_images/vista-mblctr/box-focus.png");
+    /* the volume slider's wedge, ticks and groove */
+    --mbl-volume-wedge: url("/static_images/vista-mblctr/volume-wedge.png");
+}

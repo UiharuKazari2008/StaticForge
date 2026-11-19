@@ -271,7 +271,7 @@
         const f = frames(m);
         const active = activePlan();
         const extra = toFullText(m);
-        const mobility = root.melatonControlPanel && typeof root.melatonControlPanel.openItem === 'function' && hasItem('mobility-center');
+        const mobility = mobilityAvailable();
         return `
             <div class="network-flyout-body power-flyout-body">
                 ${m && Array.isArray(m.packs) && m.packs.length > 1 ? m.packs.map((b, i) => {
@@ -306,6 +306,23 @@
         try { return !!(cp && cp._test && Array.isArray(cp._test.items) && cp._test.items.some((i) => i.id === id)); } catch (_) { return false; }
     }
 
+    // Melaton Mobility Center (mobilityCenter.js) comes with the Control Panel feature: offered while that is not
+    // loaded yet (it registers the item when it loads), or once the item is there
+    function mobilityAvailable() {
+        const loader = root.featureLoader;
+        if (hasItem('mobility-center')) return true;
+        return !!(loader && typeof loader.isLoaded === 'function' && !loader.isLoaded('control_panel') && typeof loader.loadFeature === 'function');
+    }
+
+    function openMobility() {
+        const cp = root.melatonControlPanel;
+        if (cp && hasItem('mobility-center')) { cp.openItem('mobility-center'); return; }
+        const loader = root.featureLoader;
+        if (loader && typeof loader.loadFeature === 'function') {
+            Promise.resolve(loader.loadFeature('control_panel')).then(() => { if (root.melatonControlPanel) root.melatonControlPanel.openItem('mobility-center'); }).catch(() => { /* not available */ });
+        }
+    }
+
     function openOptions() {
         const cp = root.melatonControlPanel;
         if (cp && typeof cp.open === 'function') { cp.open('power-options'); return; }
@@ -328,7 +345,7 @@
             if (!link) return;
             hideFlyout();
             if (link.dataset.powerAction === 'options') openOptions();
-            else if (link.dataset.powerAction === 'mobility' && root.melatonControlPanel) root.melatonControlPanel.openItem('mobility-center');
+            else if (link.dataset.powerAction === 'mobility') openMobility();
         });
         flyout.addEventListener('change', (ev) => {
             const r = ev.target;
@@ -388,13 +405,13 @@
         if (!icon || icon.dataset.powerMenu === '1' || !cm || typeof cm.attachToElement !== 'function') return;
         icon.dataset.powerMenu = '1';
         const items = [{ text: 'Power Options', icon: 'fas fa-plug', action: 'power-options' }];
-        if (hasItem('mobility-center')) items.push({ text: 'Melaton Mobility Center', icon: 'fas fa-laptop', action: 'power-mobility' });
+        if (mobilityAvailable()) items.push({ text: 'Melaton Mobility Center', icon: 'fas fa-laptop', action: 'power-mobility' });
         cm.attachToElement(icon, {
             sections: [{ type: 'list', items }],
             onAction: (action) => {
                 hideFlyout();
                 if (action === 'power-options') openOptions();
-                else if (action === 'power-mobility' && root.melatonControlPanel) root.melatonControlPanel.openItem('mobility-center');
+                else if (action === 'power-mobility') openMobility();
             }
         });
     }

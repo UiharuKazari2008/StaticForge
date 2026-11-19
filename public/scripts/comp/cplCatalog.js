@@ -155,6 +155,9 @@
                     { t: 'Change what the power buttons do', a: 'page:power-options:buttons' },
                     { t: 'Require a password when the computer wakes', a: 'page:power-options:password' },
                     { t: 'Change when the computer sleeps', a: 'page:power-options:plan' }] },
+                // Vista's Mobile PC category (a laptop's) lists Mobility Center; Melaton has no Mobile PC category yet
+                { item: 'mobility-center', links: [
+                    { t: 'Adjust commonly used mobility settings', a: 'item:mobility-center' }] },
                 { item: 'personalization', links: [
                     { t: 'Change size of on-screen items', s: true, a: 'item:personalization' },
                     { t: 'Adjust screen resolution', a: 'item:personalization' },
@@ -363,6 +366,7 @@
         { id: 'firewall', name: 'Melaton Firewall', art: 'firewall', cats: ['network', 'security'], tip: 'Use a firewall to help prevent hackers or malicious software from gaining access to your computer.', open: 'page:firewall' },
         { id: 'sidebar-properties', name: 'Melaton Sidebar Properties', art: 'sidebar-properties', cats: ['appearance', 'programs'], tip: 'Configure Melaton Sidebar settings.', open: 'dialog:sidebar-properties' },
         { id: 'sideshow', name: 'Melaton SideShow', art: 'sideshow', cats: ['hardware', 'programs'], tip: 'Set up a secondary display to use with Melaton SideShow.', open: 'page:sideshow' },
+        { id: 'mobility-center', name: 'Melaton Mobility Center', art: 'mobility-center', cats: ['hardware'], tip: 'Adjust display brightness, volume, power options, and other commonly used mobile PC settings.' },
         { id: 'meleton-update', name: 'Melaton Update', art: 'update', cats: ['system', 'security'], tip: 'Check for updates and change update settings.' },
         // Vista's Programs page has "Get Programs Online" (Windows Marketplace): Melaton sends it
         // to Server Manager's Features (#831; was the old dashboard page). It is not a Classic View icon, as in Vista.
