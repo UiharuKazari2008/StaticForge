@@ -252,11 +252,17 @@
     // Animations that belong to the window having the keyboard: Vista pulses the default button of the
     // active window only, and with the browser window in the background no window of ours is active.
     // They are held while document.hasFocus() is false and run again on focus. Never reported for that.
+    // They also rest after INPUT_IDLE_MS with no mouse, key, touch or wheel input (Yukimi, Nov 19, #926: the
+    // pulse re-rendered live glass 21 times a second, ~15 W on the DreamOS MacBook, for a dialog nobody was
+    // looking at): held at their resting frame (currentTime 0: glow off) and running again on the next input or
+    // focus. The rest needs one timer, armed only while a pulse runs, at the moment the idle time would be up.
     const FOCUS_BOUND = {
         'vista-button-default-pulse': 'default push button glow (vista-glass-controls.css)',
         'vista-default-pulse': 'About box default button glow',
         'director-send-pulse': 'Director Send button default glow'
     };
+
+    const INPUT_IDLE_MS = 120000;
 
     const scopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
     const rootEl = document.documentElement;
@@ -266,10 +272,35 @@
     const startCounts = new Map(); // animation name -> starts since the last scan
     const reported = new Set();    // group keys sent this page load
     const keyframeSource = new Map(); // animation name -> stylesheet path ('' unknown)
-    const wd = { scans: 0, running: 0, lastScanAt: 0, lastScanMs: 0, dirty: true, timer: 0, queued: 0, queuedAt: 0, watch: null, inputBound: null };
+    const wd = { scans: 0, running: 0, lastScanAt: 0, lastScanMs: 0, dirty: true, timer: 0, queued: 0, queuedAt: 0, watch: null, inputBound: null, lastInput: Date.now(), idleTimer: 0, rested: false };
+
+    function inputIdle() {
+        return Date.now() - wd.lastInput >= INPUT_IDLE_MS;
+    }
+
+    /** One timer for the pulse rest, at the moment the idle time is up; a pulse rests then if no input came. */
+    function armIdleTimer() {
+        if (wd.idleTimer || document.hidden) return;
+        const wait = Math.max(1000, wd.lastInput + INPUT_IDLE_MS - Date.now());
+        wd.idleTimer = setTimeout(() => {
+            wd.idleTimer = 0;
+            if (inputIdle()) requestScan('input-idle', 0);
+            else armIdleTimer();
+        }, wait);
+    }
+
+    /** Input: the idle clock starts again; a resting pulse runs again at once. */
+    function noteInput() {
+        wd.lastInput = Date.now();
+        if (wd.rested) { wd.rested = false; requestScan('input', 0); }
+    }
+    ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'].forEach((type) => {
+        document.addEventListener(type, noteInput, { capture: true, passive: true, signal: scopeSignal });
+    });
 
     function watchdogNoteStart(name) {
         if (!name) return;
+        if (FOCUS_BOUND[name]) armIdleTimer();
         startCounts.set(name, (startCounts.get(name) || 0) + 1);
         if (!wd.dirty) { wd.dirty = true; armTimer(); }
     }
@@ -409,8 +440,9 @@
     /** Why a target cannot be seen ({ reason, cause: the element to watch for it changing }), or null when it can (or costs nothing). */
     function hiddenState(el, animation, keyframeProps) {
         if (!el.isConnected) return null;
-        if (FOCUS_BOUND[animation.animationName] && typeof document.hasFocus === 'function' && !document.hasFocus()) {
-            return { reason: 'window not focused', cause: null, quiet: true };
+        if (FOCUS_BOUND[animation.animationName]) {
+            if (typeof document.hasFocus === 'function' && !document.hasFocus()) return { reason: 'window not focused', cause: null, quiet: true };
+            if (inputIdle()) return { reason: 'no input', cause: null, quiet: true, rest: true };
         }
         if (typeof el.checkVisibility === 'function') {
             // display: none never gets here; visibility / content-visibility: hidden do not tick the compositor
@@ -586,6 +618,8 @@
         const stillHidden = new Set();
         const stillScript = new Set();
         let running = 0;
+        let pulses = 0;
+        let rested = false;
         const add = (g) => {
             const had = groups.get(g.key);
             if (had) { had.count += 1; had.runMs = Math.max(had.runMs, g.runMs); return had; }
@@ -628,7 +662,15 @@
             };
             if (state) {
                 let entry = null;
-                if (isCss) { entry = hold(el, state); stillHidden.add(el); }
+                if (isCss) {
+                    entry = hold(el, state);
+                    stillHidden.add(el);
+                    // the pulse rests at its first frame (the glow off), not wherever the pause caught it
+                    if (state.rest) {
+                        rested = true;
+                        try { if (animation.currentTime !== 0) animation.currentTime = 0; } catch (_) { /* finished meanwhile */ }
+                    }
+                }
                 else if (!isTransition) {
                     entry = heldScript.get(animation);
                     if (!entry) { entry = { reason: state.reason, cause: state.cause, target: el, seen: 0, since: Date.now() }; heldScript.set(animation, entry); try { animation.pause(); } catch (_) { /* finished meanwhile */ } }
@@ -644,6 +686,7 @@
                 }
                 continue;
             }
+            if (isCss && FOCUS_BOUND[name] && animation.playState === 'running') pulses += 1;
             if (asleep || animation.playState !== 'running' || isTransition) continue;
             if (now >= LONG_MS) {
                 const finding = Object.assign({ type: 'endless', allowed: ALLOW[name] || '' }, base);
@@ -714,6 +757,8 @@
         wd.restartSince = Date.now();
         wd.running = running;
         wd.dirty = false;
+        wd.rested = rested;
+        if (pulses > 0) armIdleTimer();
         syncHoldWatch();
         groups.forEach((g) => report(g));
         wd.lastScanMs = Math.round((performance.now() - t0) * 100) / 100;
@@ -725,7 +770,11 @@
 
     const onShowHide = (event) => requestScan(event && event.type, held.size || heldScript.size ? RECHECK_MS : undefined);
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) { if (wd.timer) { clearTimeout(wd.timer); wd.timer = 0; } return; }
+        if (document.hidden) {
+            if (wd.timer) { clearTimeout(wd.timer); wd.timer = 0; }
+            if (wd.idleTimer) { clearTimeout(wd.idleTimer); wd.idleTimer = 0; }
+            return;
+        }
         onShowHide({ type: 'visibilitychange' });
     }, { signal: scopeSignal });
     ['taskbarWindowsUpdated', 'wmAppChange', 'wmawake', 'wmBehind', 'melatoncover'].forEach((type) => {
@@ -747,7 +796,8 @@
         status() {
             return {
                 scans: wd.scans, running: wd.running, held: held.size + heldScript.size, reported: Array.from(reported),
-                lastScanMs: wd.lastScanMs, lastReason: wd.lastReason || '', timer: !!wd.timer
+                lastScanMs: wd.lastScanMs, lastReason: wd.lastReason || '', timer: !!wd.timer,
+                pulseRested: wd.rested, idleTimer: !!wd.idleTimer, inputIdleMs: INPUT_IDLE_MS
             };
         },
         allow: ALLOW,

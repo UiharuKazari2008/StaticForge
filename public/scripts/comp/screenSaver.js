@@ -28,6 +28,11 @@
  *
  * Never on the dedicated agent tab (/app?agent=1), while the workstation is locked or booting, or
  * while something is full screen.
+ *
+ * The screen going dark (html[data-screen-off] and a melatonscreen event: DreamOS' Power Options turning the
+ * display off, a phone's screen) ends a saver that started on idle, as if the user had come back, except that
+ * nothing more is drawn: with "On resume, display logon screen" the workstation locks then (#910). The screen
+ * coming back counts as input, so the saver does not start again at once.
  */
 (function (root) {
     'use strict';
@@ -1079,6 +1084,22 @@
         doc.addEventListener('desktopWorkstationLocked', () => hide(false));
     }
 
+    /** html[data-screen-off] / melatonscreen { on }: a dark screen ends an idle saver (and locks if asked). */
+    function onScreen(ev) {
+        const on = !!(ev && ev.detail && ev.detail.on);
+        if (on) { state.lastInput = Date.now(); return; }
+        const was = state.showing;
+        if (was === 'idle') {
+            hide(false);
+            lockOnResume();
+        } else if (was === 'idle-focus') {
+            const fc = focusCover();
+            if (fc && typeof fc.hide === 'function') fc.hide();
+            state.showing = null;
+            lockOnResume();
+        }
+    }
+
     function bind() {
         // Melaton Mobile never starts a saver on idle (blocked(): no desktop), yet the check ran every
         // 5 s and every touch went through the capture listeners for the life of the page (#890).
@@ -1090,6 +1111,7 @@
         watchFrames();
         if (!doc.hidden && !state.timer) state.timer = root.setInterval(tick, CHECK_MS);
         doc.addEventListener('visibilitychange', syncIdleTimer, { signal: appScopeSignal });
+        root.addEventListener('melatonscreen', onScreen, { signal: appScopeSignal });
     }
 
     const api = {
