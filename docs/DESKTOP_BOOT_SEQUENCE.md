@@ -130,6 +130,24 @@ Everything else installs **in place**:
   `window.DreamOSPower.shutdown()` or `.restart()` when the host provides it (returning `false` declines);
   otherwise it navigates to `/launch` as on a browser.
 
+- **A failed install switches nothing** (#924, after a DreamOS VM booted into a kept `/app` that named a
+  `desktopBoot.js` its cache did not hold and hung 334 s on an unreachable server):
+  - *The kept shell and its files switch together.* The worker holds a page the server sends as a candidate
+    (`/app.next`, `/launch.next` in `melaton-launch-shell-v1`) and makes it the kept shell only when every
+    script and stylesheet it names (`?sha=`) is in `static-cache-v2` under that hash (`sw.js` `keepShell` /
+    `promoteShell`). It is tried when it arrives and when a page reports the cache in sync (`SHELL_COMMIT`,
+    posted wherever the manifest digest is written: the boot check, the shutdown install, the installer).
+  - *An update that did not get all its files* ends the shutdown with cbsmsg's "Updates were not configured
+    correctly.  Reverting changes." instead of the stages: no digest, no mark, no shell switch; the failed
+    update stays waiting and is filed as Failed. A download still running when the shutdown starts is waited
+    for as one of its updates. A downloaded file replaces its row in one write.
+  - *A page file with no row* is answered from an earlier copy the worker still holds; with none, the
+    network gets 4 s on an installed client (10 s elsewhere), then the request fails at once. If the file is
+    one the copy cannot start without, the kept `/app` is dropped and the page goes to `/launch?repair=1`,
+    which does not hand an installed client straight back and takes the critical-missing route to the
+    installer. The boot's cache sample always includes the critical files.
+  Test: `node scripts/test-sw-shell-atomic.js`.
+
 Reference captures: `~/.cache/vista-vm/updates-ref/` on the Dreamscape host.
 
 ## Updates at boot and the installer (Yozora #419)

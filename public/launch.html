@@ -1201,6 +1201,8 @@
             // the Dreamscape app (phone, cover, DeX window) or an installed window, not only the phone's shell
             const inApp = !!(window.AndroidDevice || window.AndroidCaption || window.AndroidNotification);
             if (!document.documentElement.classList.contains('phone-launch') && !inApp) return false;
+            // ?repair=1 (sw.js reportMissingAsset, #924): the copy is missing a file it cannot start without
+            if (/[?&]repair=1(?:&|$)/.test(location.search)) return false;
             try {
                 if (!localStorage.getItem('melatonManifestHash')) return false;
                 if (!window.caches) return false;

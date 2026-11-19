@@ -250,6 +250,11 @@ function memoryStorage() {
     assert.strictEqual(engine.needsInstaller(s, lots), true, '2,400 files of an unknown total: large');
     engine.writeRecord(s, { completedAt: 1, stragglers: lots.slice(0, 10).map((f) => f.url) });
     assert.strictEqual(engine.needsInstaller(s, lots), false, 'known stragglers do not reopen Setup');
+    // the boot sample always looks at the files the copy cannot start without (#924)
+    const big = Array.from({ length: 5000 }, (_, i) => ({ url: `/static_images/i${i}.png` })).concat([{ url: '/scripts/comp/desktopBoot.js' }, { url: '/scripts/app.js' }]);
+    const sampled = engine.sampleFiles(big, 200, () => 0.5).map((f) => f.url);
+    assert.ok(sampled.includes('/scripts/comp/desktopBoot.js') && sampled.includes('/scripts/app.js'), 'critical files are in every sample');
+    assert.ok(sampled.length < 300, 'and it is still a sample');
     engine.writeState(s, { startedAt: 5, total: 25 });
     assert.deepStrictEqual(engine.readState(s), { startedAt: 5, total: 25, active: true });
     assert.strictEqual(engine.needsInstaller(s, many.slice(0, 2)), true, 'an interrupted install resumes in Setup');
