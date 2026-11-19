@@ -1889,15 +1889,26 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#
     box-shadow: var(--window-frame-shadow);
 }
 
+/* Inactive edge: set where it is drawn (the window's own box-shadow, the frame paint's ::before), not as
+   tokens on the window - a custom property changed on the window restyled its whole subtree at each focus
+   change (Nov 19 2026). Values as measured above. */
 body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) {
+    box-shadow: 1px 1px 7px 0 hsl(0 0% 0% / 88%), 1px 1px 8px -2px hsl(0 0% 0% / 24%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal)::before {
     --aero-frame-highlight: inset 0 0 0 1px hsl(0 0% 100% / 66%);
-    --window-frame-shadow: 1px 1px 7px 0 hsl(0 0% 0% / 88%), 1px 1px 8px -2px hsl(0 0% 0% / 24%);
 }
 
 /* Live glass has no ::before frame paint (aero-glass.css), so the inner line rides on the
    window's own box-shadow, which still carried app.css's 17 % white ring */
 html[data-glass="live"] body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) {
     box-shadow: var(--window-frame-shadow), var(--aero-frame-highlight);
+}
+
+/* live, inactive: the same edge, set on the window (see the inactive edge above) */
+html[data-glass="live"] body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) {
+    box-shadow: 1px 1px 7px 0 hsl(0 0% 0% / 88%), 1px 1px 8px -2px hsl(0 0% 0% / 24%), inset 0 0 0 1px hsl(0 0% 100% / 66%);
 }
 
 /* Caption icon and title: Vista draws the 16 px icon 8 px in from the window edge and the title

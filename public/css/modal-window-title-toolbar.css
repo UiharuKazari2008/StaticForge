@@ -34,8 +34,10 @@ body:not(.windows-classic-theme) #directorWindow {
     --window-body-bg: var(--glass-windows-semi-bg, var(--glass-layer-dark-bg));
 }
 
-/* Inactive: flat, no glow, close stays neutral until hovered (Vista) */
-.modal:not(.active-window) {
+/* Inactive: flat, no glow, close stays neutral until hovered (Vista). On the controls (window-inactive,
+   rootStateFlags.js), not the window: a custom property changed on the window is inherited by its whole
+   subtree, which restyled every element of the window at each focus change (Nov 19 2026). */
+.modal-window-controls.window-inactive {
     --window-control-bg: hsl(0deg 0% 0% / 16%);
     --window-control-fg: var(--text-muted);
     --window-control-border: #00000033;
