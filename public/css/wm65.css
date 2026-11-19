@@ -1355,7 +1355,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-splash65-art {
     top: 0;
     /* fitted to the height and left aligned on a screen wider than 3:4 (the Fold unfolded; Yukimi, Nov 18 2026);
        its parts are laid out in its own width (cqw), the splash's orange carries on to its right */
-    width: min(100%, calc(100cqh * 480 / 640));
+    /* (at most the phone's own portrait width for this height, the Fold's cover 1080 x 2520: the folded size) */
+    width: min(100%, calc(100cqh * 0.4286));
     container-type: inline-size;
     aspect-ratio: 480 / 640;
     /* the emulator's splash in CSS (Yukimi, Nov 11 2026): one radial glow measured on the 6.5
