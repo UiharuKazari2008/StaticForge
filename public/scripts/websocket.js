@@ -2593,6 +2593,9 @@ class WebSocketClient {
         if (this.winlogonPowerText) {
             const held = document.getElementById('desktopPreStartupStatus');
             if (held) held.textContent = this.winlogonPowerText;
+            // a power or update line always has its ring turning (winlogonPower.js); nothing else changes under it
+            const ring = held && held.closest('.modal') && held.closest('.modal').querySelector('.desktop-prestartup-progress');
+            if (ring) ring.classList.remove('paused');
             return;
         }
         if (this._deferPreStartupForTealHold()) {
