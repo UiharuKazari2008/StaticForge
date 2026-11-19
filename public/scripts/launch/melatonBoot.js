@@ -421,6 +421,9 @@
         function show(screen, data) {
             ctl.screen = screen;
             view.render(screen, data || {});
+            // DreamOS (#923): the machine's native boot screen is still over this page; the first screen
+            // shown here (the BIOS of a machine with nothing installed, Setup, the menu) takes over from it
+            if (screen !== 'black' && env.dreamosBoot && env.dreamosBoot.native) env.dreamosBoot.ready(`launch:${screen}`);
         }
 
         function menuData() {
@@ -565,9 +568,34 @@
          */
         function installedApp() {
             try {
-                const inApp = !!(root && (root.AndroidDevice || root.AndroidCaption || root.AndroidNotification));
-                return inApp && !!(root.localStorage && root.localStorage.getItem('melatonManifestHash'));
+                // the Dreamscape app's bridges, or a DreamOS laptop (#923: its kiosk adds " DreamOS/<version>" to the user agent)
+                const inApp = !!(root && (root.AndroidDevice || root.AndroidCaption || root.AndroidNotification))
+                    || / DreamOS\//.test(String((env.navigator && env.navigator.userAgent) || ''));
+                const local = (root && root.localStorage) || env.localStorage;
+                return inApp && !!(local && local.getItem('melatonManifestHash'));
             } catch (_) { return false; }
+        }
+
+        /**
+         * DreamOS (#923): the machine itself has shown the POST (its first-stage loader) and Vista's boot screen
+         * (dreamos-bootscreen), and that boot screen still covers this page (window.DreamOSBoot.native, from the
+         * kiosk's boot extension). An installed copy then shows neither again: straight to /app, which opens on
+         * the logon; the native boot screen leaves when the logon is painted (websocket.js). Nothing is asked of
+         * the server (the top rule), and nothing waits: no black for the mode switch, no teal hold.
+         * False when this boot goes the usual way (nothing installed, an install to resume, Safe Mode...).
+         */
+        async function nativeBootHandOff() {
+            const boot = env.dreamosBoot;
+            if (!boot || !boot.native || ctl.bootMode !== 'normal' || !installedApp()) return false;
+            if (readSetupResume(env) || (env.engine && env.engine.readState(env))) return false;
+            if (!(await installedCopy())) return false;
+            try {
+                env.sessionStorage.setItem('dreamscapeLaunchHandoff', 'teal');
+                env.sessionStorage.setItem('dreamscapeBootTealHoldUntil', String(env.now()));
+                env.sessionStorage.removeItem('melatonSafeMode');
+            } catch (_) { /* the logon dialog just shows */ }
+            env.location.replace('/app');
+            return true;
         }
 
         async function runBios(run) {
@@ -747,6 +775,8 @@
                 show('bios');
                 return 'design';
             }
+            // DreamOS, installed, its native POST and boot screen just shown: the logon directly (#923)
+            if (env.dreamosBoot && env.dreamosBoot.native && await nativeBootHandOff()) return run === ctl.runId ? 'teal' : 'cancelled';
             const device = await runBios(run);
             if (device === 'cancelled') return 'cancelled';
             if (ctl.biosF8) {
@@ -915,6 +945,10 @@
             // the installer's own pack. What is still not right after that (a 404, a body the
             // server's manifest does not match) the installer could not fix either: stragglers.
             if (!engine.needsInstaller(env, found.files)) {
+                // #924: an in-place update too big for the boot screen is not waited for here. The copy
+                // that is installed boots; the running app downloads it in the background and installs it
+                // at log off / shut down / restart (serviceWorkerManager.installUpdatesAtShutdown)
+                if (typeof engine.quietAtBoot === 'function' && !engine.quietAtBoot(env, found.files)) return 'handoff';
                 let left = found.files;
                 if (workerOk) {
                     const downloaded = await engine.download(env, found.files, { silent: true });
@@ -2152,6 +2186,8 @@
                 ? biosModule.createCanvasPainter(biosCanvas, biosFont, doc.querySelector('.melaton-bios-oem'), doc.querySelector('.melaton-bios-cafe'))
                 : null,
             location: win.location,
+            // DreamOS (#923): the kiosk's boot extension (native boot screen still up, ready())
+            dreamosBoot: win.DreamOSBoot || null,
             readProductKey: () => {
                 const input = doc.querySelector('#melatonInstall .mi-key-input');
                 return input ? input.value : '';
