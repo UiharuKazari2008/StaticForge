@@ -9,7 +9,7 @@
  *   vistaDialogTemplate.openSheet({ id, title, pages: [{ key, title?, tpl? }], start, owner, icon,
  *                                   init(ctx), apply(ctx) -> Promise?, close() })
  *       a property sheet: tabs, the pane, OK / Cancel / Apply. Apply turns on when a control
- *       changes; apply(ctx) runs on Apply and on OK.
+ *       changes; apply(ctx) runs on Apply and on OK (answering false keeps the sheet open).
  *   vistaDialogTemplate.openDialog({ id, key, title?, owner, init(ctx), ok(ctx) -> false keeps it open,
  *                                    cancel(ctx) })
  *       a plain dialog: the template's own buttons (IDOK 1, IDCANCEL 2)
@@ -19,6 +19,9 @@
  *   ctx.options(id, list, value)       fill a combo box or a list box ([{ value, text }] or strings)
  *   ctx.on(id, event, fn)     ctx.dirty()  ctx.close()  ctx.modal  ctx.content
  *   ctx.page(key) / ctx.selectPage(key)
+ *   ctx.setTitle(text)        the caption
+ *   ctx.ipRange(id, field, min, max) / ctx.ipFocus(id, field)   an IP address control (SysIPAddress32):
+ *       get / set take "a.b.c.d" ('' when every field is empty)
  *
  * Classes the template names but HTML has no control for (calendars, clocks, Mouse's button
  * picture) come out as an empty <div class="vdt-custom" data-class="..."> for the dialog's own
@@ -286,12 +289,155 @@
                 case 'RICHEDIT50W':
                     out.push(`<div class="tbp-ctl tbp-static vdt-static vdt-richedit" style="${style(r)}" ${dataId}${hid}>${esc(t)}</div>`);
                     break;
-                default:
-                    out.push(`<div class="tbp-ctl vdt-custom" data-class="${esc(cls)}" style="${style(r)}" ${dataId}${hid}></div>`);
+                default: {
+                    // SysIPAddress32 is the kit's IP address control (its fields' pitch goes to the stylesheet, which
+                    // places them); other classes are left empty for the dialog's own script
+                    const ip = cls === 'SysIPAddress32';
+                    const kind = ip ? `vdt-ipaddr${disabled ? ' is-disabled' : ''}` : 'vdt-custom';
+                    const extra = ip ? `--vdt-ip-pitch:${Math.floor((r.width - 5) / 4)}px;` : '';
+                    out.push(`<div class="tbp-ctl ${kind}" data-class="${esc(cls)}" style="${style(r)}${extra}" ${dataId}${hid}${ip ? ' role="group"' : ''}>${ip ? ipFields(domId, disabled) : ''}</div>`);
                     break;
+                }
             }
         });
         return out.join('');
+    }
+
+    // ---- the IP address control (SysIPAddress32, comctl32) --------------------------------------
+    //
+    // Measured on the VM (TCP/IPv4 Properties, a 125 x 19 box): an edit frame holding four fields
+    // with a dot between them, the dots 3 + 30 * n px from the frame's left edge (the pitch is
+    // (width - 5) / 4), each field's digits centred in its slot. Typing three digits or "." moves
+    // to the next field; Backspace in an empty field and the arrows at a field's ends move back
+    // and on. A field over its range raises Vista's message ("300 is not a valid entry.  Please
+    // specify a value between 1 and 223.", caption Error, the warning icon) and takes the maximum.
+    // The range is 0-255 unless the program sets one (ctx.ipRange). Values are "a.b.c.d" or ''
+    // with every field empty; the holder fires change when a field's value changes.
+
+    function ipFields(domId, disabled) {
+        const dis = disabled ? ' disabled' : '';
+        let html = '';
+        for (let i = 0; i < 4; i += 1) {
+            html += `<input type="text" class="vdt-ip-oct" id="${domId}${i ? `-${i}` : ''}" data-field="${i}" maxlength="3" inputmode="numeric" autocomplete="off" spellcheck="false"${dis}>`;
+            if (i < 3) html += `<span class="vdt-ip-dot" data-dot="${i + 1}" aria-hidden="true">.</span>`;
+        }
+        return html;
+    }
+
+    const ipOcts = (box) => Array.from(box.querySelectorAll('.vdt-ip-oct'));
+
+    function ipValue(box) {
+        const v = ipOcts(box).map((i) => i.value.trim());
+        return v.every((x) => x === '') ? '' : v.map((x) => (x === '' ? '0' : String(Number(x)))).join('.');
+    }
+
+    function ipSet(box, value) {
+        const parts = String(value == null ? '' : value).split('.');
+        const ok = parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p));
+        ipOcts(box).forEach((input, i) => { input.value = ok ? String(Number(parts[i])) : ''; });
+        box.dataset.ipLast = ipValue(box);
+    }
+
+    function ipRangeOf(box, i) {
+        const r = String(box.dataset[`ipRange${i}`] || '').split('-');
+        return r.length === 2 ? [Number(r[0]), Number(r[1])] : [0, 255];
+    }
+
+    function ipChanged(box) {
+        const v = ipValue(box);
+        if (box.dataset.ipLast === v) return;
+        box.dataset.ipLast = v;
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    /** A field left with a value out of its range: Vista's message, then the field holds the maximum. */
+    function ipCheck(box, input) {
+        const n = input.value === '' ? null : Number(input.value);
+        const [min, max] = ipRangeOf(box, Number(input.dataset.field));
+        if (n === null || (n >= min && n <= max)) return true;
+        input.value = String(n > max ? max : min);
+        // plain text (the message box shows text without tags as text)
+        const text = `${n} is not a valid entry.\u00a0 Please specify a value between ${min} and ${max}.`;
+        Promise.resolve(callGlobal('showConfirmationDialog', text, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null,
+            { title: 'Error', icon: 'fas fa-exclamation-triangle', sound: true })).then(() => {
+            try { input.focus(); input.select(); } catch (_) { /* closed */ }
+        });
+        ipChanged(box);
+        return false;
+    }
+
+    function ipMove(box, from, step, select) {
+        const list = ipOcts(box);
+        const to = list[Number(from.dataset.field) + step];
+        if (!to) return false;
+        if (step > 0 && !ipCheck(box, from)) return true;
+        to.focus();
+        if (select) to.select();
+        else { const at = step > 0 ? 0 : to.value.length; to.setSelectionRange(at, at); }
+        return true;
+    }
+
+    function ipWire(content) {
+        content.addEventListener('keydown', (ev) => {
+            const input = ev.target;
+            if (!input.classList || !input.classList.contains('vdt-ip-oct')) return;
+            const box = input.closest('.vdt-ipaddr');
+            const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
+            const atEnd = input.selectionStart === input.value.length;
+            if (ev.key === '.' || ev.key === ' ') {
+                ev.preventDefault();
+                if (input.value !== '') ipMove(box, input, 1, true);
+            } else if (ev.key === 'Backspace' && atStart) {
+                if (ipMove(box, input, -1, false)) ev.preventDefault();
+            } else if (ev.key === 'ArrowLeft' && atStart) {
+                if (ipMove(box, input, -1, false)) ev.preventDefault();
+            } else if (ev.key === 'ArrowRight' && atEnd) {
+                if (ipMove(box, input, 1, false)) ev.preventDefault();
+            } else if (ev.key === 'Home' && !ev.shiftKey) {
+                ev.preventDefault();
+                const f = ipOcts(box)[0];
+                f.focus();
+                f.setSelectionRange(0, 0);
+            } else if (ev.key === 'End' && !ev.shiftKey) {
+                ev.preventDefault();
+                const l = ipOcts(box)[3];
+                l.focus();
+                l.setSelectionRange(l.value.length, l.value.length);
+            } else if (ev.key.length === 1 && !/\d/.test(ev.key) && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+                ev.preventDefault();
+            }
+        });
+        content.addEventListener('input', (ev) => {
+            const input = ev.target;
+            if (!input.classList || !input.classList.contains('vdt-ip-oct')) return;
+            const box = input.closest('.vdt-ipaddr');
+            const digits = input.value.replace(/\D/g, '').slice(0, 3);
+            if (digits !== input.value) input.value = digits;
+            // the third digit (the caret at the end) goes on to the next field, as comctl32 does
+            if (digits.length === 3 && input.selectionStart === 3) {
+                if (Number(input.dataset.field) < 3) ipMove(box, input, 1, true);
+                else ipCheck(box, input);
+            }
+            ipChanged(box);
+        });
+        content.addEventListener('focusout', (ev) => {
+            const input = ev.target;
+            if (!input.classList || !input.classList.contains('vdt-ip-oct')) return;
+            const box = input.closest('.vdt-ipaddr');
+            ipCheck(box, input);
+            ipChanged(box);
+        });
+        // a click on the frame or a dot puts the caret in the nearest field
+        content.addEventListener('mousedown', (ev) => {
+            const box = ev.target.closest && ev.target.closest('.vdt-ipaddr');
+            if (!box || ev.target.classList.contains('vdt-ip-oct') || box.classList.contains('is-disabled')) return;
+            ev.preventDefault();
+            const r = box.getBoundingClientRect();
+            const x = ev.clientX - r.left;
+            const list = ipOcts(box);
+            const f = list.reduce((best, i) => (Math.abs(i.offsetLeft + i.offsetWidth / 2 - x) < Math.abs(best.offsetLeft + best.offsetWidth / 2 - x) ? i : best), list[0]);
+            f.focus();
+        });
     }
 
     // ---- the date picker (SysDateTimePick32) and its month calendar (SysMonthCal32) -------------
@@ -708,6 +854,8 @@
             const holder = scope.querySelector(`[data-vdt-id="${id}"]`);
             if (!holder) return null;
             if (holder.matches('input, select, textarea, button')) return holder;
+            // the IP address control answers as a whole (its four fields are its own)
+            if (holder.classList.contains('vdt-ipaddr')) return holder;
             return holder.querySelector('input, select, textarea') || holder;
         };
         const ctx = {
@@ -727,6 +875,7 @@
                 if (e.classList && e.classList.contains('vdt-listbox')) return e.dataset.value || '';
                 if (e.classList && e.classList.contains('vdt-dtp')) return dtpValue(e);
                 if (e.classList && e.classList.contains('vdt-pushlike')) return e.getAttribute('aria-pressed') === 'true';
+                if (e.classList && e.classList.contains('vdt-ipaddr')) return ipValue(e);
                 return e.value;
             },
             set(id, value, key) {
@@ -738,6 +887,7 @@
                     e.querySelectorAll('.vdt-lb-row').forEach((row) => row.classList.toggle('is-selected', row.dataset.value === String(value)));
                 } else if (e.classList && e.classList.contains('vdt-dtp')) dtpSet(e, value, true);
                 else if (e.classList && e.classList.contains('vdt-pushlike')) e.setAttribute('aria-pressed', value ? 'true' : 'false');
+                else if (e.classList && e.classList.contains('vdt-ipaddr')) ipSet(e, value);
                 else if (e.tagName === 'INPUT' && e.closest('.vdt-simple-combo')) simplePick(e, String(value), true);
                 else e.value = value;
             },
@@ -764,6 +914,7 @@
                 if (!h) return;
                 const e = find(id, key);
                 if (e && 'disabled' in e) e.disabled = !on;
+                if (h.classList.contains('vdt-ipaddr')) ipOcts(h).forEach((i) => { i.disabled = !on; });
                 if (h.classList.contains('vdt-dtp')) {
                     if (on) h.removeAttribute('aria-disabled'); else h.setAttribute('aria-disabled', 'true');
                     h.tabIndex = on ? 0 : -1;
@@ -790,6 +941,23 @@
                     e.innerHTML = items.map((o) => `<div class="vdt-lb-row" data-value="${esc(o.value)}" role="option">${o.icon ? `<img src="${esc(o.icon)}" alt="">` : ''}<span>${esc(o.text)}</span></div>`).join('');
                     if (value !== undefined) ctx.set(id, value, key);
                 }
+            },
+            /** The window's caption (a wizard whose pages belong to another flow names it, as connect.dll's do). */
+            setTitle(text) {
+                const t = state.modal.querySelector('.modal-window-title-main > span');
+                if (t && t.textContent !== text) t.textContent = text;
+                state.modal.setAttribute('aria-label', text);
+            },
+            /** An IP address control's field range (comctl32 IPM_SETRANGE): field 0-3, min, max. */
+            ipRange(id, field, min, max, key) {
+                const h = ctx.holder(id, key);
+                if (h && h.classList.contains('vdt-ipaddr')) h.dataset[`ipRange${field}`] = `${min}-${max}`;
+            },
+            /** Focus an IP address control's field (0-3), its text selected. */
+            ipFocus(id, field, key) {
+                const h = ctx.holder(id, key);
+                const f = h && h.classList.contains('vdt-ipaddr') ? ipOcts(h)[field || 0] : null;
+                if (f) { f.focus(); f.select(); }
             },
             range(id, min, max, value, key, ticks) {
                 const e = find(id, key);
@@ -1018,6 +1186,8 @@
             if (!input.closest || !input.closest('.vdt-combo-edit')) return;
             if (ev.key === 'F4' || (ev.altKey && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'))) { ev.preventDefault(); comboDrop(input.closest('.vdt-combo-edit'), state); }
         });
+        // IP address controls (SysIPAddress32)
+        ipWire(content);
         // date pickers start on today until the program sets them
         dtpWire();
         content.querySelectorAll('.vdt-dtp').forEach((el) => { if (!el._vdtDate) dtpSet(el, new Date(), true); });
@@ -1109,16 +1279,21 @@
             ${opts.noApply ? '' : `<button type="button" class="tbp-ctl tbp-button tbp-footer-button vdt-footer" style="left:${bx + 1}px;top:${ch - 29}px;" data-vdt-action="apply" disabled><u>A</u>pply</button>`}`;
         const state = { opts, modal, content, dirty: false, done: false, current: null, rows: rows.length > 1 ? rows : null };
         state.ctx = makeCtx(state);
+        // apply(ctx) answering false keeps the changes pending and the sheet open (a value its
+        // program refused, as TCP/IPv4 Properties' checks on OK)
         const apply = async () => {
             if (typeof opts.apply === 'function') {
-                try { await opts.apply(state.ctx); } catch (err) { console.error(`${opts.id}: apply failed`, err); }
+                let r;
+                try { r = await opts.apply(state.ctx); } catch (err) { console.error(`${opts.id}: apply failed`, err); }
+                if (r === false) return false;
             }
             state.dirty = false;
             const a = content.querySelector('[data-vdt-action="apply"]');
             if (a) a.disabled = true;
+            return true;
         };
         state.ok = async () => {
-            if (state.dirty) await apply();
+            if (state.dirty && (await apply()) === false) return;
             finish(state);
         };
         state.cancel = () => finish(state);
