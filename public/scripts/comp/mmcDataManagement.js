@@ -42,20 +42,20 @@
     const VI = '/static_images/vista-icons';
     const APPS = '/static_images/app_icons';
     const DEV = '/static_images/vista-devmgr';
-    const ICON16 = `${APPS}/16/vista-computer-management.png`;
-    const ICON32 = `${APPS}/32/vista-computer-management.png`;
+    const ICON16 = `${APPS}/16/vista-computer-management.webp`;
+    const ICON32 = `${APPS}/32/vista-computer-management.webp`;
     const DISK16 = `${DEV}/disk-drives-16.png`;
     const SERVER16 = '/static_images/melaton/net-server-16.png';
     const ISPY_URL = 'dsap://ispy.dreamscape.jp/';
 
     // the snap-ins hosted under Storage: [node / embed key, name, global with def() and open(), icon, description]
     const EMBEDS = [
-        ['spellbook', 'Spellbook', 'mmcSpellbook', `${APPS}/presetbook.png`, 'Presets and spells'],
-        ['expanders', 'Text Expanders', 'mmcExpanders', `${APPS}/expanders.png`, 'Global text expanders'],
-        ['enshutsuka', 'Enshutsuka', 'mmcEnshutsuka', `${APPS}/16/vista-enshutsuka-2.png`, 'Director\'s memories, rules and persona'],
-        ['quips', 'Dynamic Quips', 'mmcQuips', `${APPS}/16/vista-dynamic-quips.png`, 'The lines shown while pictures are generated'],
-        ['characters', 'Character Database', 'mmcCharacterDb', `${APPS}/16/vista-character-database.png`, 'Characters, their copyrights and prompts'],
-        ['wiki', 'Wiki Caches', 'mmcWikiManager', `${APPS}/16/vista-wiki-caches.png`, 'Offline copies of Fandom, NovelAI and MediaWiki wikis']
+        ['spellbook', 'Spellbook', 'mmcSpellbook', `${APPS}/presetbook.webp`, 'Presets and spells'],
+        ['expanders', 'Text Expanders', 'mmcExpanders', `${APPS}/expanders.webp`, 'Global text expanders'],
+        ['enshutsuka', 'Enshutsuka', 'mmcEnshutsuka', `${APPS}/16/vista-enshutsuka-2.webp`, 'Director\'s memories, rules and persona'],
+        ['quips', 'Dynamic Quips', 'mmcQuips', `${APPS}/16/vista-dynamic-quips.webp`, 'The lines shown while pictures are generated'],
+        ['characters', 'Character Database', 'mmcCharacterDb', `${APPS}/16/vista-character-database.webp`, 'Characters, their copyrights and prompts'],
+        ['wiki', 'Wiki Caches', 'mmcWikiManager', `${APPS}/16/vista-wiki-caches.webp`, 'Offline copies of Fandom, NovelAI and MediaWiki wikis']
     ];
     const embedded = new Set(); // the EMBEDS keys hosted in the open console
 
@@ -304,7 +304,7 @@
     function storageItems() {
         return [
             { id: 'workspaces', name: 'Workspace Management', icon: DISK16, desc: 'Workspaces as partitions of one disk: create, change, order and remove them' },
-            { id: 'favorites', name: 'Favorites', icon: `${APPS}/vista-favorites.png`, desc: 'Favorite tags and text expanders' }
+            { id: 'favorites', name: 'Favorites', icon: `${APPS}/vista-favorites.webp`, desc: 'Favorite tags and text expanders' }
         ].concat(EMBEDS.map(([key, name, , icon, desc]) => (embedded.has(key) ? { embed: key, name, desc } : { id: key, name, icon, desc })));
     }
 

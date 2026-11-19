@@ -30,8 +30,8 @@
     const TITLE = 'Autofill Ranking';
     const ITEMS = '/static_images/vista-cpl/items';
     const VI = '/static_images/vista-icons';
-    const ICON16 = '/static_images/app_icons/16/vista-autofill-ranking.png';
-    const ICON32 = '/static_images/app_icons/32/vista-autofill-ranking.png';
+    const ICON16 = '/static_images/app_icons/16/vista-autofill-ranking.webp';
+    const ICON32 = '/static_images/app_icons/32/vista-autofill-ranking.webp';
     const ICON_TEST = `${VI}/search-16.png`;
     const ICON_SCORING = `${ITEMS}/performance-information-and-tools-16.png`;
     const ICON_TYPES = '/static_images/vista-sideshow/reorder-16.png';

@@ -35,8 +35,8 @@
     const ID = 'characterDb';
     const TITLE = 'Character Database';
     const APP = '/static_images/app_icons';
-    const ICON16 = `${APP}/16/vista-character-database.png`;
-    const ICON32 = `${APP}/32/vista-character-database.png`;
+    const ICON16 = `${APP}/16/vista-character-database.webp`;
+    const ICON32 = `${APP}/32/vista-character-database.webp`;
     const FOLDER16 = '/static_images/vista-icons/explorer/folder-16.png';
     const CMD = '/static_images/vista-cmdbar';
 

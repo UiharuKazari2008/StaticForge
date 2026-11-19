@@ -43,9 +43,9 @@
     const ITEMS = '/static_images/vista-cpl/items';
     const VI = '/static_images/vista-icons';
     const DEV = '/static_images/vista-devmgr';
-    const ICON16 = `${APPS}/16/vista-server-manager.png`;
-    const ICON32 = `${APPS}/32/vista-server-manager.png`;
-    const ICON48 = `${APPS}/48/vista-server-manager.png`;
+    const ICON16 = `${APPS}/16/vista-server-manager.webp`;
+    const ICON32 = `${APPS}/32/vista-server-manager.webp`;
+    const ICON48 = `${APPS}/48/vista-server-manager.webp`;
     const SERVER16 = '/static_images/melaton/net-server-16.png';
     const SERVER32 = '/static_images/melaton/net-server-32.png';
     const GLOBE16 = `${VI}/internet-globe-16.png`;
@@ -91,18 +91,18 @@
 
     // Windows of their own: [id, name, icon16, icon32, description, open]
     const FEATURES = [
-        ['ispy', 'Image Search', `${APPS}/16/vista-search.png`, `${APPS}/32/vista-search.png`, 'Search prompts and metadata across the workspaces.', () => launch('ispy') || call('openDsapInGrimoire', 'dsap://ispy.dreamscape.jp/')],
+        ['ispy', 'Image Search', `${APPS}/16/vista-search.webp`, `${APPS}/32/vista-search.webp`, 'Search prompts and metadata across the workspaces.', () => launch('ispy') || call('openDsapInGrimoire', 'dsap://ispy.dreamscape.jp/')],
         ['msgbridge', 'Messaging Bridge', '/melaton-apps/msgbridge/assets/msgbridge-16.png', '/melaton-apps/msgbridge/assets/msgbridge-32.png', 'Relays messages between the mail server and the messaging services.', pkg('msgbridge')],
-        ['mdc', 'Melaton Mobile Device Center', `${APPS}/16/mobile-device-center.png`, `${APPS}/32/mobile-device-center.png`, 'Phones running the Dreamscape app: partnerships, sync and files.', pkg('activesync')],
-        ['messenger', 'Melaton Messenger', `${APPS}/16/melaton-messenger.png`, `${APPS}/32/melaton-messenger.png`, 'Text Messaging accounts: iMessage through BlueBubbles, and RCS.', pkg('messenger')],
+        ['mdc', 'Melaton Mobile Device Center', `${APPS}/16/mobile-device-center.webp`, `${APPS}/32/mobile-device-center.webp`, 'Phones running the Dreamscape app: partnerships, sync and files.', pkg('activesync')],
+        ['messenger', 'Melaton Messenger', `${APPS}/16/melaton-messenger.webp`, `${APPS}/32/melaton-messenger.webp`, 'Text Messaging accounts: iMessage through BlueBubbles, and RCS.', pkg('messenger')],
         ['pantry', 'Pantry', GLOBE16, GLOBE32, 'Cake ledger, work pile, and breakfast before and after.', dsap('dsap://pantry.dyna.dreamscape.jp/status')],
         ['zanzou', 'Zanzou', GLOBE16, GLOBE32, 'Afterimages. Keep the shot, scrap the ghosts.', dsap('dsap://zanzou.dyna.dreamscape.jp/')]
     ];
 
     const DIAGNOSTICS = [
-        ['eventvwr', 'Event Viewer', `${APPS}/16/vista-event-viewer.png`, `${APPS}/32/vista-event-viewer.png`, 'The server\'s logs: Dreamscape, the services and the agents.', () => launch('event-viewer')],
-        ['perfmon', 'Reliability and Performance', `${APPS}/16/vista-reliability-performance.png`, `${APPS}/32/vista-reliability-performance.png`, 'The server\'s processor, memory, disk and network, live and over time.', () => launch('perfmon')],
-        ['devmgmt', 'Device Manager', `${ITEMS}/device-manager-16.png`, `${APPS}/32/vista-device-manager.png`, 'View and update your hardware settings and driver software.', async () => {
+        ['eventvwr', 'Event Viewer', `${APPS}/16/vista-event-viewer.webp`, `${APPS}/32/vista-event-viewer.webp`, 'The server\'s logs: Dreamscape, the services and the agents.', () => launch('event-viewer')],
+        ['perfmon', 'Reliability and Performance', `${APPS}/16/vista-reliability-performance.webp`, `${APPS}/32/vista-reliability-performance.webp`, 'The server\'s processor, memory, disk and network, live and over time.', () => launch('perfmon')],
+        ['devmgmt', 'Device Manager', `${ITEMS}/device-manager-16.png`, `${APPS}/32/vista-device-manager.webp`, 'View and update your hardware settings and driver software.', async () => {
             if (root.featureLoader) await root.featureLoader.loadFeature('control_panel');
             call('openDeviceManager');
         }]
@@ -113,7 +113,7 @@
             if (root.featureLoader) await root.featureLoader.loadFeature('control_panel');
             if (root.cplAuthentication) root.cplAuthentication.open();
         }],
-        ['defender', 'Melaton Defender', `${APPS}/16/vista-defender.png`, `${APPS}/32/vista-defender.png`, 'Blocked clients, honeypot addresses, allowed clients and the sign-in history.', async () => {
+        ['defender', 'Melaton Defender', `${APPS}/16/vista-defender.webp`, `${APPS}/32/vista-defender.webp`, 'Blocked clients, honeypot addresses, allowed clients and the sign-in history.', async () => {
             if (root.featureLoader) await root.featureLoader.loadFeature('control_panel');
             if (root.windowsDefender) root.windowsDefender.open('home');
         }],
@@ -121,7 +121,7 @@
             if (root.remoteAccessProperties) root.remoteAccessProperties.open();
             else call('openRemoteAccessSettingsModal');
         }],
-        ['runes', 'Runes', `${APPS}/16/vista-regedit.png`, `${APPS}/32/vista-regedit.png`, 'The server configuration, edited directly.', () => launch('config-editor')]
+        ['runes', 'Runes', `${APPS}/16/vista-regedit.webp`, `${APPS}/32/vista-regedit.webp`, 'The server configuration, edited directly.', () => launch('config-editor')]
     ];
 
     const TOOLS = new Map(FEATURES.concat(DIAGNOSTICS, CONFIGURATION).map((t) => [t[0], t]));
@@ -358,7 +358,7 @@
                 link('ns:reconnect', 'Reconnect This Computer', NS16),
                 link('cpl:network', 'View Network Connections', `${ITEMS}/network-and-sharing-center-16.png`)
             ]) },
-            { id: 'sm-ns-dc', title: 'Domain Controller', body: block('', dc, [link('tool:eventvwr', 'Go to Event Viewer', `${APPS}/16/vista-event-viewer.png`)]) }
+            { id: 'sm-ns-dc', title: 'Domain Controller', body: block('', dc, [link('tool:eventvwr', 'Go to Event Viewer', `${APPS}/16/vista-event-viewer.webp`)]) }
         ];
         return withIntro(c.page('Nightshade Network', '', sections), NS32, 'View the Nightshade Network service as this server runs it: this computer\u2019s connection, the domain controller\u2019s services and the signed-in clients.');
     }

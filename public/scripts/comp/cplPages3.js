@@ -169,7 +169,7 @@
 
     const TOOLS = [
         { id: 'autofill-ranking', name: 'Autofill Ranking', icon: '/static_images/app_icons/16/vista-autofill-ranking.webp', open: () => callGlobal('openAutofillRankingSnapin') },
-        { id: 'character-database', name: 'Character Database', icon: '/static_images/app_icons/16/vista-character-database.png', open: () => callGlobal('openCharacterDbSnapin') },
+        { id: 'character-database', name: 'Character Database', icon: '/static_images/app_icons/16/vista-character-database.webp', open: () => callGlobal('openCharacterDbSnapin') },
         // Data Management stands in for Computer Management (#828); Device Manager has its own shortcut
         { id: 'computer-management', name: 'Computer Management', icon: '/static_images/app_icons/16/vista-computer-management.webp', open: () => callGlobal('openDataManagementSnapin') },
         { id: 'odbc', name: 'Data Sources (ODBC)', icon: `${ITEMS}/administrative-tools-16.png`, open: () => msg('No ODBC data sources are configured. Dreamscape keeps its data in the server\'s own databases.', 'ODBC Data Source Administrator') },

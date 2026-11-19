@@ -34,8 +34,8 @@
     const ID = 'spellbook';
     const TITLE = 'Spellbook';
     const APP = '/static_images/app_icons';
-    const ICON16 = `${APP}/16/presetbook.png`;
-    const ICON32 = `${APP}/32/presetbook.png`;
+    const ICON16 = `${APP}/16/presetbook.webp`;
+    const ICON32 = `${APP}/32/presetbook.webp`;
     const CMD = '/static_images/vista-cmdbar';
     const VI = '/static_images/vista-icons';
     const FOLDER16 = `${VI}/explorer/folder-16.png`;

@@ -34,8 +34,8 @@
     const VI = '/static_images/vista-icons';
     const CPL = '/static_images/vista-cpl';
     const CON = '/static_images/vista-contacts';
-    const ICON16 = `${APPS}/16/vista-exchange-management-console.png`;
-    const ICON32 = `${APPS}/32/vista-exchange-management-console.png`;
+    const ICON16 = `${APPS}/16/vista-exchange-management-console.webp`;
+    const ICON32 = `${APPS}/32/vista-exchange-management-console.webp`;
     const DOMAIN = 'dream.737.jp.net';
     const DEPTS = ['ops', 'dev', 'lab'];
 

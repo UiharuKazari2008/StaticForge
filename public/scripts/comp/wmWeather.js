@@ -2910,7 +2910,7 @@
         win.dataset.windowMinWidth = '620';
         win.dataset.windowMinHeight = '460';
         win.innerHTML = `
-            <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="/static_images/app_icons/melaton-weather-16.png" srcset="/static_images/app_icons/melaton-weather-16.png 1x, /static_images/app_icons/melaton-weather-32.png 2x" alt=""><span class="wxd-caption">Melaton Weather</span></div></div>
+            <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="/static_images/app_icons/16/melaton-weather.webp" srcset="/static_images/app_icons/16/melaton-weather.webp 1x, /static_images/app_icons/32/melaton-weather.webp 2x" alt=""><span class="wxd-caption">Melaton Weather</span></div></div>
             <div class="modal-focus-overlay"></div>
             <div class="modal-window-controls">
                 <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>

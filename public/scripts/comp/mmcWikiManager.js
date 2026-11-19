@@ -29,9 +29,9 @@
     const TITLE = 'Wiki Caches';
     const APPS = '/static_images/app_icons';
     const VI = '/static_images/vista-icons';
-    const ICON16 = `${APPS}/16/vista-wiki-caches.png`;
-    const ICON32 = `${APPS}/32/vista-wiki-caches.png`;
-    const ICON48 = `${APPS}/48/vista-wiki-caches.png`;
+    const ICON16 = `${APPS}/16/vista-wiki-caches.webp`;
+    const ICON32 = `${APPS}/32/vista-wiki-caches.webp`;
+    const ICON48 = `${APPS}/48/vista-wiki-caches.webp`;
     const SITE16 = `${VI}/internet-globe-16.png`;
     const SITE32 = `${VI}/internet-globe-32.png`;
     const PAGE16 = `${VI}/explorer/text-16.png`;

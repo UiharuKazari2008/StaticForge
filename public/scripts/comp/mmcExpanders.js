@@ -35,9 +35,9 @@
     const ID = 'textExpanders';
     const TITLE = 'Text Expanders';
     const APP = '/static_images/app_icons';
-    const ICON16 = `${APP}/16/expanders.png`;
-    const ICON32 = `${APP}/32/expanders.png`;
-    const FAV16 = `${APP}/16/vista-favorites.png`;
+    const ICON16 = `${APP}/16/expanders.webp`;
+    const ICON32 = `${APP}/32/expanders.webp`;
+    const FAV16 = `${APP}/16/vista-favorites.webp`;
     const CMD = '/static_images/vista-cmdbar';
 
     const SS = 0x50020000;

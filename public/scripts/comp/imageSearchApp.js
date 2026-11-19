@@ -228,7 +228,7 @@
             m.dataset.windowDefaultHeight = '600';
             m.dataset.windowMinWidth = '520';
             m.dataset.windowMinHeight = '380';
-            m.dataset.taskbarIcon = '/static_images/app_icons/vista-search.png';
+            m.dataset.taskbarIcon = '/static_images/app_icons/32/vista-search.webp';
             m.setAttribute('role', 'dialog');
             m.setAttribute('aria-label', 'Image Search');
             m.innerHTML = `
