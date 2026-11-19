@@ -260,11 +260,23 @@ html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme
     background-repeat: no-repeat;
 }
 
-/* Inactive windows keep faint glass: same image, calmer tint and sheen (Vista inactive frame) */
-html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window),
-html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) {
-    --aero-tint: var(--aero-tint-inactive);
+/* Inactive windows keep faint glass: same image, calmer tint and sheen (Vista inactive frame). Set where
+   they are drawn - the frame paint (::before) and the glass surfaces / round buttons inside - not as tokens
+   on the window: a custom property changed on the window is inherited by its whole subtree, which restyled
+   every element of the window at each focus change (848 in Studio on Modernia, Nov 19 2026). A maximized
+   window keeps its dark tint (below) and its sheen goes calm, as before. */
+html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window)::before,
+html[data-glass="basic"] body.desktop-mode .modal:not(.active-window)::before,
+html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window) :is([data-aero-surface], .round-button),
+html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) :is([data-aero-surface], .round-button) {
     --aero-sheen: var(--aero-sheen-inactive);
+}
+
+html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window):not(.modal-maximized)::before,
+html[data-glass="basic"] body.desktop-mode .modal:not(.active-window):not(.modal-maximized)::before,
+html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window):not(.modal-maximized) :is([data-aero-surface], .round-button),
+html[data-glass="basic"] body.desktop-mode .modal:not(.active-window):not(.modal-maximized) :is([data-aero-surface], .round-button) {
+    --aero-tint: var(--aero-tint-inactive);
 }
 
 /* Inactive caption: a touch dimmer, still light on the tinted frame */
@@ -363,11 +375,9 @@ html[data-glass="frosted"] #galleryWindow [data-aero-surface] {
 
 /* ---------- maximized: Vista dark frame, every mode ---------- */
 
-/* Outranks the inactive tint above: a maximized frame stays dark whether or not it has focus */
+/* A maximized frame stays dark whether or not it has focus (the inactive tint above skips it) */
 html[data-glass="frosted"] body .modal.modal-maximized,
-html[data-glass="basic"] body .modal.modal-maximized,
-html[data-glass="frosted"] body.desktop-mode .modal.modal-maximized:not(.active-window),
-html[data-glass="basic"] body.desktop-mode .modal.modal-maximized:not(.active-window) {
+html[data-glass="basic"] body .modal.modal-maximized {
     --aero-tint: var(--aero-tint-maximized);
 }
 
