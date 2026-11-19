@@ -47,11 +47,35 @@
     color: var(--text-primary);
 }
 
-.nsc-window .nsc-bars {
-    width: 32px;
-    height: 32px;
+/* the connection as a traffic light (#945): red not connected, yellow slow (high latency) or on its way,
+   green all good. One lamp lit; the colours are the theme's (css/themes/vista/nightshade-client.css). */
+.nsc-window .nsc-light {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
     flex: none;
+    box-sizing: border-box;
+    width: 20px;
+    padding: 3px;
+    border: 1px solid var(--nsc-light-edge);
+    border-radius: 5px;
+    background: var(--nsc-light-housing);
+    box-shadow: inset 0 1px 0 var(--nsc-light-shine);
 }
+
+.nsc-window .nsc-lamp {
+    display: block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.nsc-window .nsc-lamp.is-red { background: var(--nsc-lamp-red-off); }
+.nsc-window .nsc-lamp.is-yellow { background: var(--nsc-lamp-yellow-off); }
+.nsc-window .nsc-lamp.is-green { background: var(--nsc-lamp-green-off); }
+.nsc-window .nsc-light[data-lit="red"] .nsc-lamp.is-red { background: var(--nsc-lamp-red); box-shadow: 0 0 5px var(--nsc-lamp-red-glow); }
+.nsc-window .nsc-light[data-lit="yellow"] .nsc-lamp.is-yellow { background: var(--nsc-lamp-yellow); box-shadow: 0 0 5px var(--nsc-lamp-yellow-glow); }
+.nsc-window .nsc-light[data-lit="green"] .nsc-lamp.is-green { background: var(--nsc-lamp-green); box-shadow: 0 0 5px var(--nsc-lamp-green-glow); }
 
 /* label | value rows, indented under the name */
 .nsc-window .nsc-rows {

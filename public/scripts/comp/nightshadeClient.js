@@ -24,7 +24,6 @@
     const ICON32 = `${VI}/nightshade-32.png`;
     const ICON48 = `${VI}/nightshade-48.png`;
     const CAFE_LOGO = '/static_images/melaton/cafe-ready-dark.png';
-    const BARS = '/static_images/vista-explorer/signal-'; // Vista's 0-5 bar art
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -55,17 +54,20 @@
         return { internet: online ? 'online' : 'offline', service: online ? 'unavailable' : 'no-internet', problem: true, cafeReady: false, connectedAt: null, rtt: null };
     }
 
-    /** Connection quality from the round trip to the server (what it really measures), shown with
-     *  Vista's bars as a broadband card does: [bars 0-5, word]. */
+    /**
+     * Connection quality from the round trip to the server (what it really measures): [light, word]. The light
+     * (Yukimi, #945): red not connected, yellow connected but slow (300 ms or more) or still connecting, green all good.
+     */
     function quality(s) {
-        if (s.service !== 'connected') return [0, 'Not connected'];
+        if (s.service === 'connecting' || s.service === 'restarting') return ['yellow', STATUS[s.service]];
+        if (s.service !== 'connected') return ['red', 'Not connected'];
         const rtt = s.rtt;
-        if (rtt == null) return [3, 'Good'];
-        if (rtt < 80) return [5, 'Excellent'];
-        if (rtt < 160) return [4, 'Very good'];
-        if (rtt < 300) return [3, 'Good'];
-        if (rtt < 600) return [2, 'Fair'];
-        return [1, 'Poor'];
+        if (rtt == null) return ['green', 'Good'];
+        if (rtt < 80) return ['green', 'Excellent'];
+        if (rtt < 160) return ['green', 'Very good'];
+        if (rtt < 300) return ['green', 'Good'];
+        if (rtt < 600) return ['yellow', 'Fair (high latency)'];
+        return ['yellow', 'Poor (high latency)'];
     }
 
     function clock(ms) {
@@ -184,7 +186,7 @@
                         <div class="nsc-name">Nightshade Network</div>
                         <div class="nsc-status" data-f="status"></div>
                     </div>
-                    <img class="nsc-bars" data-f="bars" src="/static_images/vista-explorer/signal-0-32.png" alt="" draggable="false">
+                    <span class="nsc-light" data-f="light" data-lit="red" role="img" aria-label="Connection quality"><span class="nsc-lamp is-red"></span><span class="nsc-lamp is-yellow"></span><span class="nsc-lamp is-green"></span></span>
                 </div>
                 <div class="nsc-rows">
                     <span>Connection quality:</span><span data-f="quality"></span>
@@ -232,12 +234,12 @@
         setText(f('status'), connected && s.cafeReady ? 'Connected (with CaféReady)' : STATUS[s.service] || 'Unavailable');
         win.dataset.nscState = s.service;
         win.classList.toggle('nsc-problem', !!s.problem);
-        const [bars, word] = quality(s);
-        // connection quality on Vista's 0-5 bar art, as a broadband card's manager shows its link
-        const barsEl = f('bars');
-        const src = `${BARS}${bars}-32.png`;
-        if (barsEl.getAttribute('src') !== src) barsEl.setAttribute('src', src);
-        barsEl.setAttribute('alt', `Connection quality: ${word}`);
+        const [lit, word] = quality(s);
+        // connection quality as a traffic light: one lamp lit
+        const light = f('light');
+        if (light.dataset.lit !== lit) light.dataset.lit = lit;
+        const lightLabel = `Connection quality: ${word}`;
+        if (light.getAttribute('aria-label') !== lightLabel) { light.setAttribute('aria-label', lightLabel); light.title = word; }
         setText(f('quality'), word);
         setText(f('time'), connected && s.connectedAt ? clock(Date.now() - s.connectedAt) : '—');
         setText(f('cafe'), cafeText(s));
