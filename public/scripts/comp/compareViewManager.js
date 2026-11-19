@@ -706,7 +706,7 @@ function compareReplaceSourceFromPreview() {
 
 function compareSourcePrimaryClick(showToast = false) {
     if (!compareSourceImageData || !compareSourceImageData.url) {
-        let ok = setCompareSourceFromCurrentPreview();
+        let ok = setCompareSourceFromCurrentPreview(false);
         if (!ok) {
             ok = setCompareSourceData(comparePreGenerationBaselineData);
         }
@@ -749,10 +749,11 @@ function compareSourcePrimaryClick(showToast = false) {
 
 function compareSourceAltF8Hotkey() {
     if (!compareSourceImageData || !compareSourceImageData.url) {
-        let ok = setCompareSourceFromCurrentPreview();
+        let ok = setCompareSourceFromCurrentPreview(false);
         if (!ok) {
             ok = setCompareSourceData(comparePreGenerationBaselineData);
         }
+        if (!ok) showGlassToast('error', 'Source Not Set', 'No preview image available', false, undefined, '<i class="fas fa-image-slash"></i>');
         updateCompareDisplayState();
         updateCompareControlsState();
         return ok ? 'set' : 'none';
@@ -1169,10 +1170,13 @@ function handleCompareContextMenuAction(action, target, item) {
     }
 }
 
-function setCompareSourceFromCurrentPreview() {
+// showToast false: a call that falls back or runs on its own (before a generation, a size match) says
+// nothing when there is no preview; the error toast came up when the Director's first Studio print
+// found none yet (Nov 19 2026)
+function setCompareSourceFromCurrentPreview(showToast = true) {
     const previewData = buildCompareDataFromPreview();
     if (!previewData) {
-        showGlassToast('error', 'Source Not Set', 'No preview image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+        if (showToast) showGlassToast('error', 'Source Not Set', 'No preview image available', false, undefined, '<i class="fas fa-image-slash"></i>');
         return false;
     }
 
@@ -1306,7 +1310,7 @@ function maybeReplaceCompareSourceAfterResultDimensions(width, height) {
     if (compareSourceImageData.width === width && compareSourceImageData.height === height) {
         return;
     }
-    if (setCompareSourceFromCurrentPreview()) {
+    if (setCompareSourceFromCurrentPreview(false)) {
         showGlassToast('info', null, 'Compare source updated to match result size', false, 2600, '<i class="fas fa-ruler-combined"></i>');
     }
 }
@@ -1461,7 +1465,7 @@ function syncCompareSourceBeforeGeneration(requestBody) {
 
     const lockedSeedBtn = document.getElementById('sproutSeedBtn');
     if (lockedSeedBtn && lockedSeedBtn.getAttribute('data-state') === 'on' && !compareSourceImageData) {
-        setCompareSourceFromCurrentPreview();
+        setCompareSourceFromCurrentPreview(false);
     }
     if (!compareSourceImageData) {
         return;
@@ -1487,7 +1491,7 @@ function syncCompareSourceBeforeGeneration(requestBody) {
         updateCompareControlsState();
         return;
     }
-    setCompareSourceFromCurrentPreview();
+    setCompareSourceFromCurrentPreview(false);
     comparePresentationInhibited = false;
     updateCompareDisplayState();
     updateCompareControlsState();

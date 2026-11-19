@@ -681,7 +681,8 @@ class Director {
             // openDirectorWindow asks at once.
             isHosted: () => this.mascotHostOnScreen(),
             // her log came into view (Log peek, the log view): a live paint held while it was hidden draws now
-            onLogShown: () => this.wakeLivePaint(),
+            onLogShown: () => { this.flushStaleLog(); this.wakeLivePaint(); },
+            onLogSight: () => this.syncStreamWatch(),
             renderResult: (message) => this.createMascotResult(message),
             actions: {
                 prints: () => this.togglePrintsPane(),
@@ -710,14 +711,21 @@ class Director {
         // a phone with its screen off, or behind an Android program, shows nothing either (the page is
         // not hidden then); seen again it watches again and is sent the whole update (#890)
         const onScreen = !!(chat && chat.isConnected && !document.hidden && !this.phoneAsleep() && !chat.closest('.hidden, .hidden-alt, .closing, [hidden]'));
-        const want = onScreen && s && s.id && !s.draft ? String(s.id) : '';
+        const id = onScreen && s && s.id && !s.draft ? String(s.id) : '';
+        // lite: her view with the log closed draws no rows, only her bubbles; the server sends rows cut
+        // to what they read (cursorDirector.js liteStreamRow) until the log shows (Yukimi Nov 19 2026)
+        const lite = !!id && this.logHiddenBehindMascot();
+        const want = id ? `${id}${lite ? '|lite' : ''}` : '';
         if (want === this._streamWatch) return;
         if (!window.wsClient || !window.wsClient.isConnected()) return;
+        const wasLite = typeof this._streamWatch === 'string' && this._streamWatch.endsWith('|lite');
         this._streamWatch = want;
         // the rows kept for putting deltas together belong to the chat watched until now
         this._streamState = null;
+        // a held paint from the lite watch has cut rows: the full update the server sends now replaces it
+        if (wasLite && !lite) this._livePayload = null;
         // liveDelta: the growing live row comes as its new tail (textAppend from textFrom), #890
-        window.wsClient.send({ type: 'director_stream_watch', sessionId: want, delta: 1, liveDelta: 1 });
+        window.wsClient.send({ type: 'director_stream_watch', sessionId: id, delta: 1, liveDelta: 1, lite: lite ? 1 : 0 });
     }
 
     // A phone page that cannot be seen though it is not hidden: the screen off (html[data-screen-off],
@@ -5542,6 +5550,19 @@ class Director {
             }
         }
 
+        // The log under her scene is hidden (her view with the log closed, not peeking): its rows are not
+        // drawn now. A settled turn rebuilt the whole hidden log and scrollToBottom forced its layout
+        // (~140 ms at each turn end on Modernia, Nov 19 2026). The log is drawn whole once it shows
+        // (onLogShown -> flushStaleLog); the mascot and the HUD above were told already.
+        if (this.logHiddenBehindMascot()) {
+            this._logStale = { follow: !!(follow || (this._logStale && this._logStale.follow)) };
+            this._settleTurn = false;
+            // the context meter sits outside the log
+            this.paintContext();
+            return;
+        }
+        this._logStale = null;
+
         const units = this.flattenDirectorUnits(messages);
         const start = Math.max(0, units.length - this._visibleRowCount);
         this._hiddenOlderRows = start;
@@ -8161,6 +8182,21 @@ class Director {
 
     // The log came into view (sight back, her Log peek, the log view): a live paint held meanwhile
     // draws now instead of at the next look.
+    // Her view with the log closed (not peeking): the rows are visibility: hidden under her scene.
+    logHiddenBehindMascot() {
+        const host = this.directorChatMessages && this.directorChatMessages.closest('#directorSessionChat');
+        return !!(host && host.classList.contains('dm-log-hidden') && !host.classList.contains('dm-log-peek'));
+    }
+
+    // The log came into view: draw what was held while it was hidden (_doRenderSessionMessages), once.
+    flushStaleLog() {
+        const stale = this._logStale;
+        if (!stale || this.logHiddenBehindMascot()) return;
+        this._logStale = null;
+        const messages = this._renderedMessages || (this.currentSession && this.currentSession.messages) || [];
+        this._doRenderSessionMessages(messages, stale.follow ? { scroll: true } : undefined);
+    }
+
     wakeLivePaint() {
         if (!this._livePayload) return;
         if (this._livePaintTimer) clearTimeout(this._livePaintTimer);
