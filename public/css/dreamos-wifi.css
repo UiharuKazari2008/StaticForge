@@ -68,12 +68,8 @@
     height: 48px;
 }
 
-/* the status sheet: values right-aligned in their column (the VM's), the 48 px activity picture (two images, as
+/* the status sheet: the 48 px activity picture (two images, as
    netshell draws them), the UAC shield in front of a button's label */
-.vdt-client .dwf-right {
-    text-align: right;
-}
-
 .vdt-client .dwf-activity {
     position: relative;
     display: block;
@@ -89,7 +85,12 @@
     height: 48px;
 }
 
-.vdt-client .dwf-shield {
+#dreamosWifiStatusModal .vdt-client button {
+    white-space: nowrap;
+}
+
+.vdt-client button > img.dwf-shield {
+    display: inline-block;
     width: 16px;
     height: 16px;
     margin: 0 3px 0 -2px;
@@ -119,13 +120,8 @@
     display: none;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-head {
-    padding: 12px 16px 8px;
-}
-
-:is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-head .cpl-vtext {
-    max-width: 640px;
-    margin: 6px 0 0;
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vpage.dwf-mwn-head {
+    padding-bottom: 10px;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .dwf-mwn-tile {

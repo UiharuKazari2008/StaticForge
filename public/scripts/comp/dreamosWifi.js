@@ -48,6 +48,7 @@
         selectNetwork: 'Select a network to connect to', // VAN 700
         disconnectOr: 'Disconnect or connect to another network', // 701
         connectedTo: 'This computer is connected to a network', // 703
+        connectedName: 'This computer is connected to %1', // 704
         noNetworks: 'Melaton cannot find any networks.', // 710
         noMore: 'Melaton cannot find any additional networks.', // 711
         diagNone: 'Diagnose why Melaton can’t find any networks', // 717
@@ -273,7 +274,8 @@
         wifi.sort((a, b) => (b.connected ? 1 : 0) - (a.connected ? 1 : 0));
         const ns = nightshade();
         const vpn = [{ kind: 'vpn', key: 'v:nightshade', name: ns.name, connected: ns.connected }];
-        return { wifi: state().wifi && state().wifi.radio === false ? [] : wifi, vpn };
+        // no adapter (no host, or none present) or its radio off: no wireless networks to list
+        return { wifi: !available() || state().wifi.radio === false ? [] : wifi, vpn };
     }
 
     function vanRowHtml(r) {
@@ -306,10 +308,13 @@
         const wired = (state().ethernet || []).some((l) => l && l.carrier && Array.isArray(l.ip) && l.ip.length);
         ctx.show(1012, !any, 'van:7111');
         ctx.show(1013, !any, 'van:7111');
-        ctx.text(1012, (wired || rows.vpn.some((r) => r.connected) || current()) ? S.noMore : S.noNetworks, 'van:7111');
-        ctx.html(1008, `<button type="button" class="tbp-link vdt-link" data-link="diag">${esc(any ? S.diagMore : S.diagNone)}</button>`, 'van:7111');
+        // something is connected (shown or not): Vista's "additional" wording, and the instruction names it
+        const elsewhere = rows.wifi.concat(rows.vpn).find((r) => r.connected) || null;
+        const more = any || wired || !!elsewhere;
+        ctx.text(1012, more ? S.noMore : S.noNetworks, 'van:7111');
+        ctx.html(1008, `<button type="button" class="tbp-link vdt-link" data-link="diag">${esc(more ? S.diagMore : S.diagNone)}</button>`, 'van:7111');
         const instruction = page.querySelector('.vdt-wizard-instruction');
-        const text = someConnected ? S.disconnectOr : !any && wired ? S.connectedTo : S.selectNetwork;
+        const text = someConnected ? S.disconnectOr : !any && elsewhere ? fill(S.connectedName, elsewhere.name) : !any && wired ? S.connectedTo : S.selectNetwork;
         if (instruction && instruction.textContent !== text) instruction.textContent = text;
         vanButton();
     }
@@ -535,7 +540,9 @@
                     instruction: S.success,
                     finish: true,
                     noBack: true,
-                    overrides: { 340: { skip: true }, 3327: { skip: true }, 3336: { skip: true }, 3337: { skip: true }, 3338: { skip: true } },
+                    // one profile type (all users): the radios go and Start this connection automatically sits under Save this
+                    // network where they were
+                    overrides: { 340: { skip: true }, 3327: { skip: true }, 3336: { skip: true }, 3337: { skip: true }, 3338: { skip: true }, 3339: { nudge: [0, -75, 0, 0] } },
                     show: (c) => {
                         shown('wlanconn:103')();
                         const p = van.pending || {};
@@ -678,6 +685,8 @@
             pages: [{ key: 'netshell:16004', overrides: { 16006: { skip: true }, 15031: { disabled: true }, 15008: { disabled: true }, 15012: { disabled: true }, 15011: { disabled: true } } }],
             init: (c) => {
                 c.set(15003, w.device || ADAPTER, 'netshell:16004');
+                // GDI fits "Connect using:" in its 48 DLU; the browser's Tahoma is a little wider: keep it on one line
+                c.content.querySelectorAll('.vdt-static').forEach((st) => { if (/^Connect using:/.test(st.textContent)) st.style.whiteSpace = 'nowrap'; });
                 const lv = c.holder(15007, 'netshell:16004');
                 const body = lv && lv.querySelector('.vdt-lv-body');
                 if (!body) return;
@@ -838,7 +847,7 @@
         }
         const V = await kit();
         const k = 'netshell:24050';
-        const right = [23502, 23504, 1007, 24018, 1008, 1009];
+        const right = [23502, 23504, 1007, 24018, 1008, 1009, 1003, 1005];
         const ctx = V.openSheet({
             id: 'dreamosWifiStatusModal',
             title: S.statusTitle,
@@ -857,7 +866,8 @@
                 }
             }],
             init: (c) => {
-                right.forEach((id) => { const h = c.holder(id, k); if (h) h.classList.add('dwf-right'); });
+                // the VM's values sit right-aligned in their column (the template's statics are left-aligned)
+                right.forEach((id) => { const h = c.holder(id, k); if (h) h.style.textAlign = 'right'; });
                 // Properties and Disable carry the UAC shield, as on the VM
                 [1026, 1025].forEach((id) => {
                     const b = c.el(id, k);
@@ -903,14 +913,11 @@
         });
     }
 
-    function mwnBody() {
-        const list = mwnList();
-        if (!list.some((x) => x.name === mwn.sel)) mwn.sel = null;
-        const sel = !!mwn.sel;
+    function mwnBar(list) {
+        const sel = list.some((x) => x.name === mwn.sel);
         const i = list.findIndex((x) => x.name === mwn.sel);
         const btn = (v, icon, t, on = true) => `<button type="button" class="cpl-fbar-btn" data-cpl-vpage="${v}"${on ? '' : ' disabled'}>${icon ? img(icon) : ''}${esc(t)}</button>`;
-        const w = state().wifi || {};
-        const bar = `<div class="cpl-fbar" role="toolbar">
+        return `<div class="cpl-fbar" role="toolbar">
             ${btn('add', 'wlanpref-add-16', 'Add')}
             ${sel ? btn('remove', 'wlanpref-remove-16', 'Remove') : ''}
             ${sel ? btn('up', 'wlanpref-up-16', 'Move up', i > 0) : ''}
@@ -920,9 +927,16 @@
             ${btn('nsc', 'netcenter-16', 'Network and Sharing Center')}
             <button type="button" class="cpl-fbar-help" data-cpl-vpage="help" data-topic="manage-wireless-networks"><img src="/static_images/vista-explorer/help-16.png" alt=""></button>
         </div>`;
+    }
+
+    function mwnBody() {
+        const list = mwnList();
+        if (!list.some((x) => x.name === mwn.sel)) mwn.sel = null;
+        const w = state().wifi || {};
+        const bar = mwnBar(list);
         const tiles = list.map((x) => `<div class="cpl-ficon dwf-mwn-tile${x.name === mwn.sel ? ' is-selected' : ''}" data-cpl-vpage="pick" data-id="${esc(x.name)}" tabindex="0">${img('wlanpref-profile-32')}<span><b>${esc(x.name)}</b><br>Security: ${esc(SEC_MANAGE[x.security] || SEC_MANAGE.psk)}&nbsp;&nbsp;&nbsp;Type: ${esc(S.anySupported)}<br>${esc(x.auto ? S.automatic : S.manual)}</span></div>`).join('');
         const off = w.radio === false;
-        const head = `<div class="dwf-mwn-head"><div class="cpl-vtitle">${esc(fill(S.manageThat, ADAPTER))}</div><p class="cpl-vtext">${esc(off ? S.wirelessOff : S.manageText)}</p></div>`;
+        const head = `<div class="cpl-vpage dwf-mwn-head"><h1 class="cpl-vtitle">${esc(fill(S.manageThat, ADAPTER))}</h1><p class="cpl-vtext">${esc(off ? S.wirelessOff : S.manageText)}</p></div>`;
         return `${bar}<div class="cpl-flist dwf-mwn-list">${head}<div class="vdt-lv-group">${esc(S.canModify)} (${list.length})</div><div class="cpl-flist-icons">${tiles}</div></div>`
             + `<div class="cpl-fstatus">${list.length} item${list.length === 1 ? '' : 's'}</div>`;
     }
@@ -988,8 +1002,17 @@
             id: 'dreamosWifiProfileTypes',
             key: 'wlanpref:20068',
             bareCaption: true,
-            overrides: { '-1': { image: `${NET}/wlanpref-profiles-16.png` }, 20076: { disabled: true } },
-            init: (c) => c.set(20075, true)
+            overrides: { '-1': { image: `${NET}/wlanpref-profiletype-32.png` }, 20076: { disabled: true } },
+            init: (c) => {
+                c.set(20075, true);
+                // the two icons have no ids (-1): wlanpref 20073, then the warning 20061, in template order
+                const icons = c.content.querySelectorAll('.vdt-image img');
+                ['wlanpref-profiletype-32', 'wlanpref-warning-32'].forEach((name, i) => {
+                    if (!icons[i]) return;
+                    icons[i].src = `${NET}/${name}.png`;
+                    icons[i].srcset = `${NET}/${name}@2x.png 2x`;
+                });
+            }
         });
     }
 
@@ -997,12 +1020,20 @@
         const cp = root.melatonControlPanel;
         const K = root.cplPages;
         if (!cp || typeof cp.registerPage !== 'function') return false;
-        cp.registerPage(MWN, { kind: 'folder', title: () => S.manage, icon16: `${NET}/wlanpref-manage-16.png`, tasks: () => '', body: mwnBody });
+        // Control Panel keeps the first registration of a page id: its body asks this file's current copy (a live
+        // update of this file replaces window.dreamosWifi), so the page and the handlers below never part
+        cp.registerPage(MWN, { kind: 'folder', title: () => S.manage, icon16: `${NET}/wlanpref-manage-16.png`, tasks: () => '', body: () => (root.dreamosWifi && root.dreamosWifi._manageBody ? root.dreamosWifi._manageBody() : '') });
         if (K && K.handlers) {
             K.handlers[MWN] = {
                 pick(t) {
+                    // select in place (a re-render between the two clicks would swallow a double-click) and
+                    // redraw only the command bar, whose Remove / Move up / Move down follow the selection
                     mwn.sel = t.dataset.id;
-                    mwnRerender();
+                    t.parentElement.querySelectorAll('.is-selected').forEach((n) => n.classList.remove('is-selected'));
+                    t.classList.add('is-selected');
+                    const win = t.closest('.cpl-instance');
+                    const bar = win && win.querySelector('.cpl-fbar');
+                    if (bar) bar.outerHTML = mwnBar(mwnList());
                 },
                 open(id) { void networkProperties(id); },
                 add() { void mwnAdd(); },
@@ -1047,5 +1078,5 @@
     root.addEventListener('nightshade:state', vanPaint, { signal: appScopeSignal });
     noteConnection();
 
-    root.dreamosWifi = { openConnect, openManage, openStatus, available, signalLevel };
+    root.dreamosWifi = { openConnect, openManage, openStatus, available, signalLevel, _manageBody: mwnBody };
 })(typeof window !== 'undefined' ? window : globalThis);
