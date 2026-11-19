@@ -189,6 +189,12 @@ Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants o
 
 List via WS `get_application_auth_scopes` (admin).
 
+### Client certificates (installed clients)
+
+The Android app and DreamOS sign in with a certificate Key Manager's client CA issued to them after a PIN sign-in:
+the certificate signs a server challenge and the server opens an ordinary session. Protocol:
+[`docs/client-certificates.md`](../client-certificates.md); Key Manager's packets: [`ws/clientCertificates.md`](./ws/clientCertificates.md).
+
 ### Admin management (Key Manager / WS)
 
 | Packet | Auth | Description |

@@ -91,6 +91,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | VisionCaster (video mixer remote, was QuickCast) | [ws/quickcast.md](./ws/quickcast.md) | 8 |
 | Print queue (generations as Vista printing) | [ws/printQueue.md](./ws/printQueue.md) | 3 |
 | Server Manager (root page summary) | [ws/serverManager.md](./ws/serverManager.md) | 1 |
+| Client certificates (Key Manager's store; protocol in [../client-certificates.md](../client-certificates.md)) | [ws/clientCertificates.md](./ws/clientCertificates.md) | 2 |
 | Status hub (server-push status feeds, boot notes) | [ws/statusHub.md](./ws/statusHub.md) | 4 (+ feed pushes) |
 | ActiveSync (Melaton Mobile Device Center) | [ws/activeSync.md](./ws/activeSync.md) | 10 (+ `as_request`, `as_event`, `as_peers_updated` push) |
 | NAX | [ws/nax.md](./ws/nax.md) | 11 |

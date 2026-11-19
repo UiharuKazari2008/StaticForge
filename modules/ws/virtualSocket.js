@@ -217,4 +217,9 @@ function acceptMiniport(ws, req, info, connect) {
     try { ws.send(JSON.stringify({ type: 'miniport_ready', at: Date.now() })); } catch (_) { /* gone */ }
 }
 
-module.exports = { VirtualSocket, handle, closeAll, sendCoalesced, acceptMiniport };
+/** Every live Miniport carrier (clientCertificates.js tells a revoked client's carrier and closes it, #922). */
+function forEachMiniport(fn) {
+    for (const ws of miniports) { try { fn(ws); } catch (_) { /* one carrier's failure is not the others' */ } }
+}
+
+module.exports = { VirtualSocket, handle, closeAll, sendCoalesced, acceptMiniport, forEachMiniport };
