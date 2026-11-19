@@ -874,8 +874,10 @@ class WebSocketClient {
     };
     static NIGHTSHADE_BALLOON_MS = 5000; // a quiet reconnect inside this shows no balloon
     static OFFLINE_LOGON_AFTER_MS = 10000; // no server this long at boot: the offline logon (#899)
-    static AUTO_LOGON_BEAT_MS = 1500; // an installed app that signs in by itself gives the server this long, then logs on offline
-    static NIGHTSHADE_QUEUE_MAX = 64;    // requests that may wait for the reconnection at once (#895)
+    static NIGHTSHADE_QUEUE_MAX = 64;
+    // the user's own settings and desktop: written only by a desktop that loaded them from the server (_userSettingsWritable)
+    static USER_SETTINGS_WRITES = new Set(['update_user_global_settings', 'workspace_update_settings', 'workspace_update_window_positions',
+        'workspace_update_textarea_font', 'desktop_add_shortcut', 'desktop_remove_shortcut', 'desktop_update_shortcut']);    // requests that may wait for the reconnection at once (#895)
     static NIGHTSHADE_QUEUE_MS = 600000; // how long one waits before it fails (10 minutes)
     static TIMEOUT_PING = 20000; // Ping timeout (20 seconds; cellular/WireGuard pongs)
     static TIMEOUT_CONNECTION_STABILITY = 2000; // Connection stability check timeout
@@ -1534,20 +1536,12 @@ class WebSocketClient {
         this._offlineLogonTimer = setTimeout(() => {
             this._offlineLogonTimer = null;
             if (this.socketAuthenticated === true || this.connectionPhase === 'auth' || !this._offlineLogonEligible()) return;
-            // signs in by itself (no "Users must enter a user name and password", not logged off, not locked): the
-            // desktop opens on this computer's own word, as Windows' automatic logon does - no password box. The
-            // installed app gives the server the Welcome screen's own beat to answer first; never longer
-            if (!this._logonPolicyAsks() && !(window.workstationLock && window.workstationLock.isLockPending())) {
-                const auto = () => {
-                    if (this.socketAuthenticated === true || this.connectionPhase === 'auth' || this._offlineBoot || this.initializationCompleted || !this._offlineLogonEligible()) return;
-                    console.log('🔑 Automatic logon: the server has not answered, this computer signs in by itself');
-                    this._completeOfflineLogon().catch((err) => console.warn('automatic logon', err));
-                };
-                if (installedApp) this._offlineLogonTimer = setTimeout(() => { this._offlineLogonTimer = null; auto(); }, WebSocketClient.AUTO_LOGON_BEAT_MS);
-                else auto();
-                return;
-            }
+            // Never a desktop without the server's word on its own (Nov 19 2026: an automatic offline desktop on the
+            // Mac came up with none of the user's settings - they live on the server - and stayed that way): the
+            // offline logon is the password box. A computer that signs in by itself still does when its session
+            // answers (_offlinePasswordBoxShown: the socket's welcome takes it on past the box, see ws.onopen)
             this._offlineLogonReady = true;
+            this._offlinePasswordBoxShown = true;
             console.log('🔑 Offline logon: the server has not answered, the cached password is accepted');
             this._setConnectionPhase('auth', { beat: 'establishing', message: 'The Nightshade Network is not available. Log on with your password to use this computer.' });
         }, installedApp ? 0 : offlineStart ? 2500 : WebSocketClient.OFFLINE_LOGON_AFTER_MS);
@@ -2915,6 +2909,11 @@ class WebSocketClient {
             return true;
         }
         return false;
+    }
+
+    /** Signed in, out of an offline boot, and the server's copy of the user's settings has loaded. */
+    _userSettingsWritable() {
+        return this.socketAuthenticated === true && !this._offlineBoot && window.userGlobalSettingsHydrated === true;
     }
 
     /** The logon policy wants the password on this start, and it has not been given yet (cachedLogon.mustSignIn). */
@@ -5271,9 +5270,22 @@ class WebSocketClient {
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
                     return;
                 }
+                // the offline password box was up (the installed app shows it at once, #899) and the server has
+                // now signed this computer in: a computer that signs in by itself goes on to the desktop with the
+                // session - unless the password is being typed, or a policy / lock wants it anyway
+                if (this.connectionPhase === 'auth' && this._offlinePasswordBoxShown && this.socketAuthenticated === true
+                    && !this.preStartupAuthBusy && !this._logonPolicyAsks()
+                    && !(window.workstationLock && window.workstationLock.isLockPending())) {
+                    const typed = document.getElementById('desktopPreStartupPassword');
+                    if (!typed || !typed.value) {
+                        this._offlinePasswordBoxShown = false;
+                        this._setConnectionPhase('connected', { beat: 'connected', message: 'Welcome' });
+                    }
+                }
                 if (this.connectionPhase === 'auth' || this.socketAuthenticated !== true) {
                     return;
                 }
+                this._offlinePasswordBoxShown = false;
 
                 // A workstation that was locked before this boot logs on again first
                 if (this._requireLogonAfterLock()) {
@@ -9650,6 +9662,12 @@ class WebSocketClient {
     sendMessage(type, data = {}, showBanner = true) {
         if (type !== 'ping') {
             this.recordUserActivity();
+        }
+        // a desktop that is not signed in with the server's copy of the user's settings never writes them (Nov 19
+        // 2026): an offline boot or a desktop on defaults would push those defaults over the real ones
+        if (WebSocketClient.USER_SETTINGS_WRITES.has(type) && !this._userSettingsWritable()) {
+            console.warn(`[settings] ${type} held back: this desktop does not have the server's settings yet`);
+            return Promise.resolve({ success: false, heldBack: true });
         }
         // boot trace: the round trip of each request before the desktop is up
         if (!this.initializationCompleted && type !== 'ping') {
