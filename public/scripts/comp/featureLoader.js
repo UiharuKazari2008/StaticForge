@@ -372,9 +372,14 @@ const FEATURE_MANIFEST = {
         styles: ['css/expander-make-global.css'],
         scripts: ['scripts/comp/expanderMakeGlobalWizard.js']
     },
+    // DreamOS firmware updates (#910): the OS base and CaféReady's components - Melaton Update, Control Panel >
+    // Firmware and the shut down screen (serviceWorkerManager.installUpdatesAtShutdown) load it
+    dreamos_firmware: {
+        scripts: ['scripts/comp/dreamosFirmware.js']
+    },
     control_panel: {
         hot: true,
-        depends: ['vista_dialog_templates'],
+        depends: ['vista_dialog_templates', 'dreamos_firmware'],
         // Remote Access Properties draws with Taskbar Properties' Vista controls (tbp-*)
         styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
             'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css',
@@ -389,6 +394,8 @@ const FEATURE_MANIFEST = {
             'scripts/comp/remoteAccessProperties.js',
             'scripts/comp/cplAuthentication.js',
             'scripts/comp/cplUpdate.js',
+            // Firmware (DreamOS, #910): the system agent, the OS base and its A/B slots, the machine's firmware
+            'scripts/comp/cplFirmware.js',
             'scripts/comp/cplUserAccounts.js',
             'scripts/comp/windowsDefender.js',
             'scripts/comp/cplSearch.js',

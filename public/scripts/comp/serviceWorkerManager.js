@@ -4810,7 +4810,29 @@ class ServiceWorkerManager {
     /** How many updates a shut down installs now (the power buttons' "install updates" look). */
     updatesWaitingCount() {
         const queued = (this._pendingCacheUpdateQueue || []).some((entry) => entry && entry.files && entry.files.length);
-        return (this._updateBatches ? this._updateBatches.length : 0) + (queued ? 1 : 0);
+        return (this._updateBatches ? this._updateBatches.length : 0) + (queued ? 1 : 0) + this._firmwareWaiting().length;
+    }
+
+    /**
+     * DreamOS (#910): the machine's firmware updates (the OS base, CaféReady's components) that its system agent has
+     * downloaded and staged; they install on the same shut down / restart screen (dreamosFirmware.js). Read from the
+     * shell bridge's pushed state, nothing asked.
+     */
+    _firmwareWaiting() {
+        const fw = window.DreamOSUpdates;
+        if (!fw || typeof fw.get !== 'function' || this.agentSession) return [];
+        try {
+            const s = fw.get() || {};
+            if (s.stagedForPowerOff === false || !Array.isArray(s.staged)) return [];
+            if (!this._firmwareWatch) {
+                this._firmwareWatch = true;
+                // app-scope: allow page-lifetime shell runtime: the power buttons' "install updates" look follows the host's pushes
+                window.addEventListener('dreamosupdates', () => this._syncUpdatesWaitingMark());
+            }
+            return s.staged.filter((u) => u && typeof u.id === 'string');
+        } catch (_) {
+            return [];
+        }
     }
 
     _noteUpdateBatch(files) {
@@ -4847,10 +4869,12 @@ class ServiceWorkerManager {
      */
     planShutdownInstall(options = {}) {
         if (this._shutdownPlan) return this._shutdownPlan;
-        const plan = { updates: [], manifest: null, hash: '', installer: false };
+        const plan = { updates: [], manifest: null, hash: '', installer: false, firmware: [] };
         this._shutdownPlan = (async () => {
             // the phone's updater owns the shared cache (Continuity); agent tabs have no worker
             if (this.agentSession || this._isContinuityDexWindow()) return plan;
+            // the machine's own firmware updates, staged by its system agent (DreamOS): installed after Melaton's
+            plan.firmware = this._firmwareWaiting().slice();
             (this._updateBatches || []).forEach((batch) => plan.updates.push({ files: batch.files.slice(), downloaded: true }));
             const worker = this.swRegistration && this.swRegistration.active;
             const online = navigator.onLine !== false && window.wsClient && typeof window.wsClient.isConnected === 'function' && window.wsClient.isConnected();
@@ -4899,7 +4923,9 @@ class ServiceWorkerManager {
         const plain = options.plain === true;
         const pause = (ms) => (plain ? Promise.resolve() : new Promise((resolve) => setTimeout(resolve, ms)));
         const updates = (plan && plan.updates) || [];
-        if (!updates.length) return { installed: 0, failed: 0 };
+        const firmware = (plan && Array.isArray(plan.firmware)) ? plan.firmware : [];
+        const total = updates.length + firmware.length;
+        if (!total) return { installed: 0, failed: 0 };
         // wuaueng.dll.mui: the line under "Installing update n of N..."
         const second = options.kind === 'shutdown'
             ? 'Do not turn off or unplug your computer; it will turn off automatically.'
@@ -4910,7 +4936,7 @@ class ServiceWorkerManager {
         try {
             for (let i = 0; i < updates.length; i++) {
                 const update = updates[i];
-                say(plain ? `Installing update ${i + 1} of ${updates.length}...` : `Installing update ${i + 1} of ${updates.length}...\n${second}`);
+                say(plain ? `Installing update ${i + 1} of ${total}...` : `Installing update ${i + 1} of ${total}...\n${second}`);
                 const started = Date.now();
                 const hashed = update.files.filter((f) => f && f.url && f.hash);
                 let left = [];
@@ -4934,6 +4960,40 @@ class ServiceWorkerManager {
                     importance: 'Important'
                 });
                 // each update is on screen long enough to read (the boot screens keep their own time too)
+                const rest = 1400 - (Date.now() - started);
+                if (rest > 0) await pause(rest);
+            }
+            // DreamOS (#910): the firmware updates, numbered after Melaton's ("Installing update 3 of 4..."). The system
+            // agent installs them in its own job and reports which one it is on; a base update lands in the other
+            // slot and boots at the next start (the power-off that follows: DreamOSPower)
+            if (firmware.length) {
+                const started = Date.now();
+                let shown = -1;
+                const show = (n) => {
+                    if (n === shown) return;
+                    shown = n;
+                    say(plain ? `Installing update ${n} of ${total}...` : `Installing update ${n} of ${total}...\n${second}`);
+                };
+                show(updates.length + 1);
+                let result = null;
+                try {
+                    if (!window.melatonFirmware && window.featureLoader) await window.featureLoader.loadFeature('dreamos_firmware');
+                    if (window.melatonFirmware) {
+                        result = await window.melatonFirmware.install({
+                            onProgress: (p) => { if (p && p.step === 'install' && p.index > 0) show(updates.length + Math.min(firmware.length, p.index)); }
+                        });
+                    }
+                } catch (error) {
+                    console.warn('[update] firmware updates did not install at shutdown', error);
+                }
+                const ok = !!(result && result.ok);
+                if (!ok) failed += 1;
+                firmware.forEach((u) => this.recordUpdateHistory({
+                    key: `firmware|${started}|${u.id}|${u.version}`,
+                    name: `${window.melatonFirmware ? window.melatonFirmware.label(u) : u.id} (firmware)`,
+                    status: ok ? 'Successful' : (result && result.message ? 'Pending' : 'Failed'),
+                    importance: 'Important'
+                }));
                 const rest = 1400 - (Date.now() - started);
                 if (rest > 0) await pause(rest);
             }
@@ -4970,7 +5030,7 @@ class ServiceWorkerManager {
             const files = [];
             done.forEach((d) => { if (d.ok) d.update.files.forEach((f) => { if (f.hash && files.length < 400) files.push({ url: f.url, hash: f.hash }); }); });
             try {
-                localStorage.setItem('melatonUpdateConfigure', JSON.stringify({ at: Date.now(), updates: updates.length - failed, failed, files }));
+                localStorage.setItem('melatonUpdateConfigure', JSON.stringify({ at: Date.now(), updates: total - failed, failed, files }));
             } catch (_) { /* no configuring stage at the next start */ }
             stage(2, 60);
             this._updateBatches = [];
@@ -4982,7 +5042,7 @@ class ServiceWorkerManager {
         } catch (error) {
             console.warn('[update] installing at shutdown stopped early', error);
         }
-        return { installed: updates.length - failed, failed };
+        return { installed: total - failed, failed };
     }
 
     /**

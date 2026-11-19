@@ -36,3 +36,15 @@ registerWsInboundHandler({
         wsClient.handleKeepAlive(message);
     }
 });
+
+// DreamOS (#910): a release was published to an update channel (modules/ws/handlers/312-dreamosUpdatesHandler.js,
+// only to DreamOS desktops that asked): the machine's system agent checks it now (CaféReady firmware.rs)
+registerWsInboundHandler({
+    id: 'infrastructure.dreamos_channel',
+    type: 'dreamos_channel',
+    phase: 'only',
+    handler() {
+        const updates = window.DreamOSUpdates;
+        if (updates && typeof updates.check === 'function') Promise.resolve().then(() => updates.check()).catch(() => { /* the host checks at its next link-up */ });
+    }
+});

@@ -22,6 +22,12 @@
  *   failed        red, "Melaton could not search for new updates", Try again
  *
  * Balloon wording for the tray (Vista's: only when something needs you) is balloonFor(state).
+ *
+ * DreamOS (#910): the machine's firmware updates - the OS base and CaféReady's components, which its system agent
+ * checks, downloads and installs (dreamosFirmware.js) - get a second box of the same make under Melaton's: checking,
+ * downloading (n of N, MB, %), installing, ready (components: Install updates, they need no restart; a base update:
+ * Restart now), restart pending (installed, the next start boots it), up to date, failed. Their progress is pushed
+ * by the host ('dreamosupdates'); they install at shut down / restart with Melaton's (installUpdatesAtShutdown).
  */
 (function (root) {
     'use strict';
@@ -187,13 +193,92 @@
             ['You have Melaton set to:', 'Download updates in the background and install them when Melaton restarts (recommended)'],
             ['You receive updates:', `From the ${domain} domain controller (${root.location ? root.location.hostname : 'this server'})`]
         ];
+        const f = fw();
+        if (f) {
+            const s = f.state();
+            rows.push(['Most recent check for firmware updates:', fwStamp(s.lastCheck)]);
+            rows.push(['Firmware updates were installed:', fwStamp(s.lastInstall)]);
+            rows.push(['You receive firmware updates:', `From the ${String(s.channel || '').replace(/^https?:\/\//, '') || 'DreamOS'} channel, checked by CaféReady`]);
+        }
         return `<table class="cpl-wu-facts">${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>`;
+    }
+
+    // ---- firmware (DreamOS) ----------------------------------------------------------------------------------
+    function fw() {
+        const f = root.melatonFirmware;
+        return f && f.available() ? f : null;
+    }
+
+    const mb = (b) => `${(Math.max(0, Number(b) || 0) / 1048576).toFixed(1)} MB`;
+
+    function fwItems(list) {
+        const f = fw();
+        return `<ul class="cpl-wu-fw-list">${list.map((u) => `<li>${esc(f.label(u))}${u.restart ? ' (restart required)' : ''}${u.size ? ` - ${esc(mb(u.size))}` : ''}</li>`).join('')}</ul>`;
+    }
+
+    /** The firmware box: one state from the host's picture (see the header). */
+    function fwBox() {
+        const f = fw();
+        if (!f) return '';
+        const s = f.state();
+        const p = s.progress || {};
+        const running = s.busy && p.state === 'running';
+        const available = Array.isArray(s.available) ? s.available : [];
+        const staged = f.waiting();
+        let k;
+        if (running && p.step === 'check') {
+            k = { band: 'blue', title: 'Checking for firmware updates…', body: `<p>Asking ${esc(String(s.channel || 'the update channel').replace(/^https?:\/\//, ''))} for new versions of DreamOS and CaféReady.</p>${bar(null)}` };
+        } else if (running && (p.step === 'download' || p.step === 'verify')) {
+            const pct = p.total > 0 ? (p.done / p.total) * 100 : 0;
+            const what = p.step === 'verify' ? `Verifying ${esc(p.item || 'the update')}` : `Downloading ${esc(p.item || 'updates')}`;
+            k = { band: 'blue', title: 'Downloading firmware updates…', body: `<p>${what} (${p.index || 1} of ${p.count || 1}, ${esc(mb(p.done))} of ${esc(mb(p.total))}, ${Math.round(pct)}% complete)</p>${bar(pct)}` };
+        } else if (running && p.step === 'install') {
+            const pct = p.total > 0 ? (p.done / p.total) * 100 : null;
+            k = { band: 'blue', title: 'Installing firmware updates…', body: `<p>${esc(p.message || 'Installing')} (${p.index || 1} of ${p.count || 1}). Melaton keeps running while it installs.</p>${bar(pct)}` };
+        } else if (staged.length && staged.some((u) => u.restart)) {
+            k = { band: 'yellow', shield: 'shield-warning', title: 'Restart your computer to install firmware updates',
+                body: `<p>These updates are downloaded and install when the computer shuts down or restarts:</p>${fwItems(staged)}<p>Please save your work and close your windows before restarting.</p>`, button: ['Restart now', 'fw-restart'] };
+        } else if (staged.length) {
+            k = { band: 'yellow', shield: 'shield-warning', title: 'Install firmware updates for your computer',
+                body: `<p>These updates are downloaded. They install without restarting the computer (CaféReady starts again for a moment), or when it shuts down or restarts:</p>${fwItems(staged)}`, button: ['Install updates', 'fw-install'] };
+        } else if (f.needsRestart()) {
+            k = { band: 'yellow', shield: 'shield-warning', title: 'Restart your computer to finish installing firmware updates',
+                body: `<p>DreamOS ${esc(s.nextBoot)} is installed and starts the next time the computer starts. This computer runs ${esc(s.running)} until then.</p>`, button: ['Restart now', 'fw-restart'] };
+        } else if (p.state === 'failed' || (s.lastCheckOk === false) || (s.lastError && !(s.lastCheck > (s.lastErrorAt || 0)))) {
+            k = { band: 'red', shield: 'shield-error', title: p.phase === 'staged' ? 'Firmware updates could not be installed' : 'DreamOS could not search for new firmware updates',
+                body: `<p class="cpl-wu-error"><em>Error(s) found:</em></p><p>${esc(p.message || s.lastError || 'The update channel did not answer.')}</p>`, button: ['Try again', 'fw-check'] };
+        } else if (available.length) {
+            k = { band: 'yellow', shield: 'shield-warning', title: 'Download firmware updates for your computer', body: fwItems(available), button: ['Download updates', 'fw-check'] };
+        } else {
+            k = { band: 'green', shield: 'shield-ok', title: 'DreamOS firmware is up to date', body: `<p>There are no firmware updates for this computer. It runs DreamOS ${esc(s.running || '')}.</p>`, button: ['Check for updates', 'fw-check'] };
+        }
+        return `
+            <div class="cpl-wu-box cpl-wu-box--firmware">
+                <div class="cpl-wu-band cpl-wu-band--${k.band}">
+                    ${k.shield ? `<img class="cpl-wu-shield" src="${ART}/${k.shield}.png" alt="">` : ''}
+                    <span class="cpl-wu-title">${esc(k.title)}</span>
+                </div>
+                <div class="cpl-wu-body">
+                    <div class="cpl-wu-text">${k.body}</div>
+                    ${k.button ? `<button type="button" class="cpl-wu-button" data-cpl-wu="${k.button[1]}">${esc(k.button[0])}</button>` : ''}
+                </div>
+            </div>`;
+    }
+
+    function fwStamp(sec) {
+        const n = Number(sec);
+        if (!Number.isFinite(n) || n <= 0) return 'Never';
+        const d = new Date(n * 1000);
+        const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        return d.toDateString() === new Date().toDateString() ? `Today at ${time}` : `${d.toLocaleDateString()} at ${time}`;
     }
 
     function paint() {
         if (!main || !main.isConnected) return;
         const host = main.querySelector('.cpl-wu-status');
         if (host) host.innerHTML = box();
+        const fh = main.querySelector('.cpl-wu-fw');
+        if (fh) fh.innerHTML = fwBox();
         const f = main.querySelector('.cpl-wu-facts-host');
         if (f) f.innerHTML = facts();
     }
@@ -223,7 +308,19 @@
     function act(what) {
         const manager = sw();
         if (!manager) return;
+        if (what === 'fw-check' || what === 'fw-install' || what === 'fw-restart') {
+            const f = fw();
+            if (!f) return;
+            if (what === 'fw-check') void f.check().then(paint);
+            else if (what === 'fw-install') void f.install({ componentsOnly: true }).then(paint);
+            // the restart installs what is staged on the way down (winlogonPower.js / installUpdatesAtShutdown)
+            else if (typeof root.runWinlogonPower === 'function') void root.runWinlogonPower('restart');
+            paint();
+            return;
+        }
         if (what === 'check' || what === 'install') {
+            // Check for updates looks for firmware too (the host pushes what it finds)
+            if (what === 'check' && fw()) void fw().check();
             if (typeof manager.refreshServerCacheAndCheck === 'function') {
                 manager.refreshServerCacheAndCheck();
                 return;
@@ -242,8 +339,12 @@
         }
     }
 
+    let fwWatch = null;
     function mount(el) {
         main = el;
+        if (fwWatch) fwWatch.abort();
+        fwWatch = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        if (fw()) fw().onChange(() => paint(), fwWatch ? fwWatch.signal : null);
         const manager = sw();
         if (manager) {
             manager.foregroundUpdateView = (state, info) => {
@@ -269,6 +370,7 @@
     function unmount() {
         const manager = sw();
         if (manager && manager.foregroundUpdateView) manager.foregroundUpdateView = null;
+        if (fwWatch) { fwWatch.abort(); fwWatch = null; }
         main = null;
     }
 
@@ -305,6 +407,7 @@
                 <div class="cpl-wu-page">
                     <h1 class="cpl-page-title">Melaton Update</h1>
                     <div class="cpl-wu-status"></div>
+                    <div class="cpl-wu-fw"></div>
                     <div class="cpl-wu-facts-host"></div>
                 </div>`,
             mount,
@@ -320,7 +423,14 @@
     let historyCtl = null;
     function historyBody() {
         const manager = sw();
-        const rows = manager && typeof manager.updateHistory === 'function' ? manager.updateHistory() : [];
+        let rows = manager && typeof manager.updateHistory === 'function' ? manager.updateHistory() : [];
+        // DreamOS: what the system agent installed itself (its components live, a base on the way down)
+        const f = fw();
+        if (f) {
+            const own = (Array.isArray(f.state().history) ? f.state().history : []).map((h) => ({ name: `${h.name} (firmware)`, status: h.status, importance: 'Important', at: Number(h.at) * 1000 }));
+            rows = rows.concat(own.filter((h) => !rows.some((r) => r.name === h.name && Math.abs((Number(r.at) || 0) - h.at) < 15 * 60 * 1000)))
+                .sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0));
+        }
         const date = (at) => { const d = new Date(Number(at) || 0); return Number.isFinite(d.getTime()) && d.getTime() > 0 ? d.toLocaleDateString() : ''; };
         // fixed table layout (cpl-vtable): every cell carries its full text as a tooltip
         const cell = (v) => `<td title="${esc(v)}">${esc(v)}</td>`;
