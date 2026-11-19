@@ -1160,6 +1160,7 @@
                     <div class="cpl-row">
                         <span class="cpl-row-label">Signal strength</span>
                         <span class="cpl-row-value">${esc(dos.strength)}</span>
+                        <img class="cpl-row-action cpl-signal-bars" src="/static_images/vista-net/tray-wifi-${dos.bars}-16.png" srcset="/static_images/vista-net/tray-wifi-${dos.bars}-32.png 2x" alt="" width="16" height="16" draggable="false">
                     </div>` : ''}
                 </div>` : ''}` : `
                 <div class="cpl-map">
@@ -1699,10 +1700,11 @@
             : `<div class="network-flyout-item">
                     <img src="${pic}" alt="" draggable="false">
                     <div class="network-flyout-text">
-                        <span class="network-flyout-name">${esc(l.name)}${l.kind === 'wifi' || l.kind === 'mobile' ? `<img class="network-flyout-bars" src="/static_images/vista-net/tray-wifi-${l.bars}-16.png" srcset="/static_images/vista-net/tray-wifi-${l.bars}-32.png 2x" alt="" width="16" height="16" draggable="false">` : ''}</span>
+                        <span class="network-flyout-name">${esc(l.name)}</span>
                         <span class="network-flyout-sub">Access: ${esc(l.access)}</span>
                         ${l.kind === 'wifi' || l.kind === 'mobile' ? `<span class="network-flyout-sub">Signal strength:  ${esc(l.strength)}</span>` : ''}
                     </div>
+                    ${l.kind === 'wifi' || l.kind === 'mobile' ? `<img class="network-flyout-bars" src="/static_images/vista-net/tray-wifi-${l.bars}-16.png" srcset="/static_images/vista-net/tray-wifi-${l.bars}-32.png 2x" alt="" width="16" height="16" draggable="false">` : ''}
                 </div>`;
         return `
             <div class="network-flyout-body">
