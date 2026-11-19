@@ -2544,6 +2544,24 @@ class WebSocketClient {
         return true;
     }
 
+    /**
+     * winlogon is on screen: its dialog is open and, with Use Vista Logon, the Welcome screen's art has loaded
+     * (until then it is invisible). The pointer is back (app.html hides it from the boot's cut to teal), and on
+     * DreamOS the machine's native boot screen, still covering the page, leaves (#923): two frames from here,
+     * one to lay the logon out and one that has it on screen. Once per start.
+     */
+    _logonPainted() {
+        if (this._logonPaintedOnce) return;
+        const modal = document.getElementById('desktopPreStartupModal');
+        if (!modal || !modal.dataset.prestartupOpened) return;
+        if (this.vistaLogon && !modal.classList.contains('vista-logon-art-ready')) return;
+        this._logonPaintedOnce = true;
+        if (window.dreamscapeShowBootPointer) window.dreamscapeShowBootPointer();
+        if (window.DreamOSBoot && window.DreamOSBoot.native) {
+            requestAnimationFrame(() => requestAnimationFrame(() => window.DreamOSBoot.ready('logon')));
+        }
+    }
+
     _waitForTealHold() {
         const wait = (Number(window.dreamscapeTealHoldUntil) || 0) - Date.now();
         return wait > 0 ? new Promise((resolve) => setTimeout(resolve, wait)) : Promise.resolve();
@@ -2617,13 +2635,7 @@ class WebSocketClient {
         if (!modal.dataset.prestartupOpened) {
             this.preStartupMarqueeManualPause = false;
             modal.dataset.prestartupOpened = 'true';
-            // winlogon is up: the pointer is back (app.html hides it from the boot's cut to teal)
-            if (window.dreamscapeShowBootPointer) window.dreamscapeShowBootPointer();
-            // DreamOS (#923): the machine's native boot screen covers the page until the logon is painted
-            // (two frames from here: this one lays it out, the next has it on screen)
-            if (window.DreamOSBoot && window.DreamOSBoot.native) {
-                requestAnimationFrame(() => requestAnimationFrame(() => window.DreamOSBoot.ready('logon')));
-            }
+            this._logonPainted();
         }
 
         const phase = this.connectionPhase;
@@ -3961,6 +3973,7 @@ class WebSocketClient {
         // holdImage: public/scripts/comp/assetPreload.js (per-image timeout, never rejects)
         this._vistaLogonArtPromise = Promise.all(urls.map((url) => assetPreload.holdImage(url))).then(() => {
             if (modal) modal.classList.add('vista-logon-art-ready');
+            this._logonPainted();
             // The password field could not take the focus while the screen was invisible
             if (this._shouldUsePreStartupDialog()) this._renderConnectionDial();
         });
