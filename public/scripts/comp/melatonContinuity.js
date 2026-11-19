@@ -842,6 +842,12 @@
 
     /** Cold boot / Restart from the phone: the Miniport ("the driver") clears and starts fresh too. */
     api.resetMiniport = () => { if (isPhone() && miniport.available()) miniport.post({ op: 'reset' }); };
+    /**
+     * The server accepted a sign-in but this page's port came back unauthenticated: the server signs a port in as
+     * the Miniport's link, which still held the session the sign-in replaced (a CaféReady from before the Nov 19 fix
+     * kept its link on the old session). The link starts again on the browser's new one. True when asked.
+     */
+    api.relinkMiniport = () => miniport.available() && miniport.post({ op: 'reset' });
     api.miniport = () => ({ present: miniport.present(), available: miniport.available(), enabled: miniport.enabled !== false, up: miniport.up, authFailed: !!miniport.authFailed, transport: lastTransport });
 
     // ================================================================ the page asleep (#890)
