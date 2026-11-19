@@ -379,7 +379,7 @@ const FEATURE_MANIFEST = {
         styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
             'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css',
             'css/cpl-catalog.css', 'css/cpl-dialogs.css', 'css/cpl-pages.css', 'css/cpl-pages2.css',
-            'css/welcome-center.css', 'css/cpl-cardspace.css', 'css/cpl-indexing.css'],
+            'css/welcome-center.css', 'css/cpl-cardspace.css', 'css/cpl-indexing.css', 'css/dpi-scaling.css'],
         scripts: [
             // Vista's items, categories and task links (Yozora #632), read by melatonControlPanel.js
             'scripts/comp/cplCatalog.js',
@@ -396,6 +396,8 @@ const FEATURE_MANIFEST = {
             // the photo galleries' list and credits, read by Desktop Background
             'scripts/comp/wallpaperGalleries.js',
             'scripts/comp/cplDesktopBackground.js',
+            // DPI Scaling (DreamOS, #910): Personalization's "Adjust font size (DPI)"
+            'scripts/comp/dpiScalingDialog.js',
             // Personalization's hub and Window Color page, then the Screen Saver and Sound dialogs
             'scripts/comp/cplPersonalization.js',
             'scripts/comp/personalizationDialogs.js',

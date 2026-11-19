@@ -1,0 +1,85 @@
+/* DPI Scaling (public/scripts/comp/dpiScalingDialog.js, #910): Vista's DpiScaling.exe sheet and its Custom DPI
+   Setting, measured on the Vista Aero VM at 96 DPI (2026-11-19). Controls, tabs, pane and buttons are Taskbar
+   Properties' (taskbar-properties.css, tbp-*); this file has only the geometry:
+     sheet client 462x480: pane 448x413 at 6,27; intro text 23,44 (425 wide, two lines with the link);
+       Default radio 46,97 (9 pt); Larger radio 46,126 in the larger 12 pt face (Vista previews it);
+       Custom DPI... 105x23 at 334,403 inside the pane's grid; OK / Cancel / Apply 75x23 at y 450, x 220 / 301 / 382
+     Custom DPI Setting client 379x247: intro 20,10 (two lines); label 20,55; combo 56x21 at 219,45;
+       ruler 320x54 at 25,68; sample 20,141; XP check box 23,221; OK 72x23 at 213,211; Cancel 72x23 at 293,211 */
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.dpi-sheet {
+    width: 462px;
+    height: 480px;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.dpi-custom {
+    width: 379px;
+    height: 247px;
+}
+
+.dpi-sheet .tbp-pane {
+    width: 448px;
+    height: 413px;
+}
+
+.dpi-sheet .tbp-footer {
+    left: 221px;
+    top: 451px;
+}
+
+.dpi-sheet .dpi-intro {
+    left: 17px;
+    top: 17px;
+    width: 425px;
+    line-height: 15px;
+    white-space: normal;
+}
+
+.dpi-sheet .dpi-intro .tbp-link {
+    display: inline;
+}
+
+.dpi-sheet .dpi-r1 { left: 40px; top: 70px; width: 380px; height: 16px; }
+.dpi-sheet .dpi-r2 { left: 40px; top: 99px; width: 400px; height: 22px; }
+.dpi-sheet .dpi-r3 { left: 40px; top: 132px; width: 380px; height: 16px; }
+
+/* Vista draws the "Larger scale" choice in the larger face it would give */
+.dpi-sheet .dpi-r2 label span {
+    font-size: 15px;
+}
+
+.dpi-sheet .dpi-custom-btn {
+    left: 328px;
+    top: 376px;
+    width: 105px;
+    height: 23px;
+}
+
+.dpi-custom .dpi-c-intro { left: 20px; top: 10px; width: 340px; line-height: 15px; white-space: normal; }
+.dpi-custom .dpi-c-label { left: 20px; top: 55px; width: 195px; }
+
+.tbp-client select.tbp-select.dpi-c-combo {
+    position: absolute;
+    left: 219px;
+    top: 45px;
+    width: 56px;
+}
+
+.dpi-custom .dpi-c-ruler {
+    position: absolute;
+    left: 25px;
+    top: 68px;
+    width: 320px;
+    height: 54px;
+    cursor: ew-resize;
+    outline: none;
+}
+
+.dpi-custom .dpi-c-ruler canvas {
+    display: block;
+}
+
+.dpi-custom .dpi-c-sample { left: 20px; top: 141px; width: 340px; }
+.dpi-custom .dpi-c-xp { left: 23px; top: 216px; width: 185px; height: 23px; padding-top: 5px; }
+.dpi-custom .dpi-c-ok { left: 213px; top: 211px; width: 72px; height: 23px; }
+.dpi-custom .dpi-c-cancel { left: 293px; top: 211px; width: 72px; height: 23px; }
