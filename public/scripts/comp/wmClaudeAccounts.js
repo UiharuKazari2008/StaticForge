@@ -14,8 +14,18 @@
  *             (Copy, Open in Alchemy: openGrimoireUrl) and a Paste code field for the code claude.ai shows
  *             back. The account (CardSpace key + linked login) is made when both are done. A sign-in
  *             keeps running when the page is left; the list offers Resume.
+ *   Bring over  Switch / Reconnect first lists the Remote Control sessions running now (title, folder,
+ *             last activity) with a Bring over box each; the confirm says which come over and which end.
+ *             Picked ones start again under the new login (a copy with the whole history), the rest end.
+ *             CardSpace's "Use this account" brings none over.
+ *   Sessions  every Claude session on the host (get_claude_sessions, transcripts in ~/.claude/projects):
+ *             title or first prompt, last prompt and its time, folder, message count, Live / Remote
+ *             Control. Reconnect resumes it into Remote Control (no copy) and shows its claude.ai link;
+ *             live already: Open. Disconnect ends its rc-* tmux session (claude_session_action).
  *   Host      the server: host name, Claude CLI version, Remote Control (systemd unit state, since,
- *             restarts, session name, what its tmux pane says, sessions / capacity), the claude.ai login
+ *             restarts, session name, what its tmux pane says, sessions / capacity), Permissions (one set shared
+ *             by every account: mode, allow / deny / ask rule counts, trusted folders), the last
+ *             switch's Bring over results, the claude.ai login
  *             signed in on the host, the engine's account and token file. Reconnect / Start / Stop.
  *   status    a strip over both tabs: Remote Control Connected / Reconnecting... / Error (Retry) from
  *             claude_remote_control_status pushes and the packets' answers.
@@ -46,6 +56,10 @@
     let pollTimer = null;
     let adding = false; // the Add Account page is up (Accounts tab)
     let lg = { state: 'idle' }; // claude_account_login state (never a token or code)
+    let picking = null; // the Bring over page: { verb, run(carry), picks: Set of session ids }
+    let sx = { total: 0, sessions: [], loaded: false, error: '', limit: 30 }; // Sessions tab
+    const sxBusy = new Set(); // session ids with an action running
+    const sxNote = {}; // id -> last action's answer (message, link)
     const LG_ACTIVE = new Set(['starting', 'waiting_code', 'verifying']);
 
     const esc = (s) => sh.escapeHtml(s == null ? '' : String(s));
@@ -68,6 +82,7 @@
 
     function take(d) {
         if (!d) return;
+        if (Array.isArray(d.sessions) && typeof d.total === 'number') { sx.sessions = d.sessions; sx.total = d.total; sx.loaded = true; sx.error = ''; }
         if (d.login) lg = d.login;
         if (Array.isArray(d.accounts)) data.accounts = d.accounts;
         if (d.host) {
@@ -83,6 +98,12 @@
     async function load() {
         if (!connected()) { error = 'Not connected to Dreamscape'; render(); return; }
         try { take(await send('get_claude_accounts')); } catch (e) { error = errText(e); }
+        render();
+        if (tab === 'sessions') void loadSessions();
+    }
+    async function loadSessions() {
+        if (!connected()) return;
+        try { take(await send('get_claude_sessions', { limit: sx.limit })); } catch (e) { sx.error = errText(e); sx.loaded = true; }
         render();
     }
     function userRefresh() { return sh.busy(() => load(), { paint: true }); }
@@ -104,9 +125,40 @@
         watchSettle();
     }
 
+    const liveRc = () => ((data.host && Array.isArray(data.host.sessions)) ? data.host.sessions : []);
+    const sessLabel = (x) => `${x.title || x.id.slice(0, 8)}${x.folder ? ` (${x.folder})` : ''}`;
+
+    /** Switch / Reconnect: pick the sessions to bring over first (when any run), then confirm. */
+    async function withCarry(verb, run) {
+        const list = liveRc();
+        if (!list.length) {
+            if (!(await confirmEndSessions(verb))) return;
+            return run([]);
+        }
+        picking = { verb, run, picks: new Set() };
+        adding = false;
+        if (tab !== 'accounts') tab = 'accounts';
+        render();
+    }
+    async function pickDone() {
+        const p = picking;
+        if (!p) return;
+        const list = liveRc();
+        const come = list.filter((x) => p.picks.has(x.id));
+        const end = list.filter((x) => !p.picks.has(x.id));
+        const lines = [`${p.verb} restarts Remote Control on ${(data.host && data.host.hostname) || 'the host'}.`];
+        if (come.length) lines.push(`Comes over (${come.length}): ${come.map(sessLabel).join(', ')}`);
+        if (end.length) lines.push(`Ends (${end.length}): ${end.map(sessLabel).join(', ')}`);
+        const v = await sh.messageBox({ title: 'Claude Accounts', icon: end.length ? 'warning' : 'question', text: lines.join('\n\n'), buttons: [{ text: 'Continue', value: true, default: true }, { text: 'Cancel', value: false }] });
+        if (v !== true) return;
+        picking = null;
+        await p.run(come.map((x) => x.id));
+    }
+    function pickCancel() { picking = null; render(); }
+
     async function confirmEndSessions(verb) {
         const rc = data.host && data.host.remoteControl;
-        const n = rc && rc.pane && rc.pane.sessions;
+        const n = (rc && rc.pane && rc.pane.sessions) || liveRc().length;
         if (!n) return true;
         const v = await sh.messageBox({
             title: 'Claude Accounts',
@@ -119,17 +171,55 @@
 
     async function switchTo(acc) {
         if (!acc) return;
-        if (!(await confirmEndSessions(acc.active ? 'Reconnecting' : `Switching to ${acc.name}`))) return;
-        status = { state: 'reconnecting', message: `Switching to ${acc.name}` };
-        render();
-        await act(() => send('switch_claude_account', { index: acc.index }));
+        await withCarry(acc.active ? 'Reconnecting' : `Switching to ${acc.name}`, async (carry) => {
+            status = { state: 'reconnecting', message: `Switching to ${acc.name}` };
+            render();
+            await act(() => send('switch_claude_account', { index: acc.index, carry }));
+        });
     }
 
     async function remote(action) {
-        if (action !== 'stop' && !(await confirmEndSessions(action === 'start' ? 'Starting' : 'Reconnecting'))) return;
-        if (action === 'stop' && !(await confirmEndSessions('Stopping'))) return;
-        if (action !== 'stop') { status = { state: 'reconnecting', message: 'Reconnecting Remote Control' }; render(); }
-        await act(() => send('claude_remote_control', { action }));
+        if (action === 'stop') {
+            if (!(await confirmEndSessions('Stopping'))) return;
+            await act(() => send('claude_remote_control', { action }));
+            return;
+        }
+        await withCarry(action === 'start' ? 'Starting' : 'Reconnecting', async (carry) => {
+            status = { state: 'reconnecting', message: 'Reconnecting Remote Control' };
+            render();
+            await act(() => send('claude_remote_control', { action, carry }));
+        });
+    }
+
+    // ---------------------------------------------------------------- Sessions tab
+
+    function openLink(url) {
+        if (!url) return;
+        const go = window.openGrimoireUrl;
+        if (typeof go === 'function') Promise.resolve().then(() => go(url)).catch(() => window.open(url, '_blank', 'noopener'));
+        else window.open(url, '_blank', 'noopener');
+    }
+    async function sessionAct(action, id) {
+        const row = sx.sessions.find((x) => x.id === id);
+        if (!row || sxBusy.has(id)) return;
+        if (action === 'open') { openLink(row.link || (sxNote[id] && sxNote[id].link)); return; }
+        if (action === 'disconnect') {
+            const v = await sh.messageBox({ title: 'Disconnect', icon: 'warning', text: `End ${row.title}? Its tmux session ${row.tmuxSession || ''} is closed; the conversation is kept and Reconnect brings it back.`, buttons: [{ text: 'Disconnect', value: true }, { text: 'Cancel', value: false, default: true }] });
+            if (v !== true) return;
+        }
+        sxBusy.add(id);
+        sxNote[id] = { message: action === 'reconnect' ? 'Starting it in Remote Control...' : 'Disconnecting...' };
+        render();
+        try {
+            const d = await send('claude_session_action', { action, id, limit: sx.limit });
+            take(d);
+            const r = d.result || {};
+            sxNote[id] = { message: r.message || (r.state === 'disconnected' ? 'Disconnected' : r.state || ''), link: r.link || '', state: r.state };
+        } catch (e) {
+            sxNote[id] = { message: errText(e), state: 'failed' };
+        }
+        sxBusy.delete(id);
+        render();
     }
 
     async function link(acc) {
@@ -361,12 +451,92 @@
         return `<div class="wm-form-hdr wca-sub-hdr">${esc(head)}</div><div class="wca-add">${body}</div>`;
     }
 
+    const ago = (isoText) => {
+        const t = Date.parse(isoText || '');
+        if (!t) return '';
+        const m = Math.round((Date.now() - t) / 60000);
+        if (m < 1) return 'just now';
+        if (m < 60) return `${m} min ago`;
+        if (m < 24 * 60) return `${Math.round(m / 60)} h ago`;
+        return when(isoText);
+    };
+
+    function pickHtml() {
+        const p = picking;
+        const list = liveRc();
+        const rows = list.map((x) => {
+            const on = p.picks.has(x.id);
+            return `<label class="wac-row wca-pick${on ? ' is-picked' : ''}" data-pick="${esc(x.id)}">
+                <input type="checkbox" class="wca-check" data-pick="${esc(x.id)}"${on ? ' checked' : ''}${x.resumable ? '' : ' disabled'} aria-label="Bring over ${esc(x.title)}">
+                <div class="wac-main">
+                    <div class="wac-name">${esc(x.title)}${x.status === 'busy' ? ' <span class="wca-badge">Working</span>' : ''}</div>
+                    <div class="wac-line wca-muted">${esc([x.folder, x.origin === 'server' ? 'Remote Control' : x.tmuxSession, ago(x.lastActivity)].filter(Boolean).join(' · '))}</div>
+                    <div class="wac-line">${on ? 'Comes over' : 'Ends'}</div>
+                </div>
+            </label>`;
+        }).join('');
+        const n = p.picks.size;
+        return `<div class="wm-form-hdr wca-sub-hdr">${esc(p.verb)}: bring sessions over?</div>
+            <div class="wca-add-text wca-pick-intro">${esc(`${list.length} Remote Control session${list.length === 1 ? '' : 's'} running. Ticked ones start again under the new login with their history; the rest end.`)}</div>
+            ${rows}
+            <div class="wca-pick-sum">${esc(`${n} come${n === 1 ? 's' : ''} over · ${list.length - n} end${list.length - n === 1 ? 's' : ''}`)}</div>
+            <div class="wca-actions">
+                <button type="button" data-wca-pick="all">${n === list.length ? 'None' : 'All'}</button>
+                <button type="button" data-wca-pick="go">Continue</button>
+                <button type="button" data-wca-pick="cancel">Cancel</button>
+            </div>`;
+    }
+
+    function sessionRow(x) {
+        const busyNow = sxBusy.has(x.id);
+        const note = sxNote[x.id];
+        const link = x.link || (note && note.link) || '';
+        const badges = [x.remoteControl ? '<span class="wca-badge wca-badge-rc">Remote Control</span>' : x.live ? '<span class="wca-badge">Running</span>' : '', x.status === 'busy' ? '<span class="wca-badge">Working</span>' : ''].filter(Boolean).join(' ');
+        const buttons = [];
+        if (link) buttons.push(`<button type="button" data-wca-sess="open" data-id="${esc(x.id)}">Open</button>`);
+        if (!x.remoteControl && !(x.live && !x.canDisconnect)) buttons.push(`<button type="button" data-wca-sess="reconnect" data-id="${esc(x.id)}"${busyNow ? ' disabled' : ''}>${busyNow ? 'Starting...' : 'Reconnect'}</button>`);
+        if (x.canDisconnect) buttons.push(`<button type="button" data-wca-sess="disconnect" data-id="${esc(x.id)}"${busyNow ? ' disabled' : ''}>Disconnect</button>`);
+        return `<div class="wac-row wca-sess" data-id="${esc(x.id)}">
+            <span class="wac-dot wac-dot-${x.remoteControl ? 'ok' : x.live ? 'warn' : 'off'}"></span>
+            <div class="wac-main">
+                <div class="wac-name">${esc(x.title)} ${badges}</div>
+                ${x.lastPrompt ? `<div class="wac-line wca-last">“${esc(x.lastPrompt)}”</div>` : ''}
+                <div class="wac-line wca-muted">${esc([x.folder, `${x.messages} message${x.messages === 1 ? '' : 's'}`, ago(x.lastPromptAt || x.lastActivity)].filter(Boolean).join(' · '))}</div>
+                ${note && note.message ? `<div class="wac-line wca-sess-note${note.state === 'failed' ? ' is-bad' : ''}">${esc(note.message)}</div>` : ''}
+                ${link ? `<div class="wac-line wca-sess-link"><a href="${esc(link)}" target="_blank" rel="noopener" data-wca-sess="open" data-id="${esc(x.id)}">${esc(link.replace(/^https:\/\//, ''))}</a></div>` : ''}
+                ${buttons.length ? `<div class="wca-actions wca-sess-actions">${buttons.join('')}</div>` : ''}
+            </div>
+        </div>`;
+    }
+
+    function sessionsHtml() {
+        if (!sx.loaded) return '<div class="wac-empty">Loading sessions...</div>';
+        if (sx.error && !sx.sessions.length) return `<div class="wac-note">${esc(sx.error)}</div>`;
+        if (!sx.sessions.length) return '<div class="wac-empty">No Claude sessions on the host.</div>';
+        const live = sx.sessions.filter((x) => x.remoteControl).length;
+        return `<div class="wm-form-hdr wca-sub-hdr">${esc(`${sx.total} session${sx.total === 1 ? '' : 's'} · ${live} in Remote Control`)}</div>
+            ${sx.sessions.map(sessionRow).join('')}
+            ${sx.error ? `<div class="wac-note">${esc(sx.error)}</div>` : ''}
+            ${sx.total > sx.sessions.length ? `<div class="wca-actions"><button type="button" data-wca-sess="more">Show ${Math.min(30, sx.total - sx.sessions.length)} more</button></div>` : ''}`;
+    }
+
     function listFooter() {
         if (LG_ACTIVE.has(lg.state)) {
             return `<div class="wac-note wca-add-pending">A sign-in for a new account is waiting (step ${esc(lg.stepNumber || 1)} of 2).</div>
                 <div class="wca-actions"><button type="button" data-wca-add="open">Resume Sign-in</button><button type="button" data-wca-add="cancel">Cancel It</button></div>`;
         }
         return '<div class="wca-actions"><button type="button" data-wca-add="open">Add Account</button></div>';
+    }
+
+    function carryHtml(row) {
+        const c = status && status.carry;
+        if (!c || (!c.selected.length && !c.results.length)) return '';
+        const lines = c.selected.map((x) => {
+            const r = c.results.find((y) => y.id === x.id);
+            const st = r ? (r.state === 'carried' ? 'Brought over' : r.state === 'started' ? 'Started' : `Failed: ${r.message || ''}`) : 'Waiting...';
+            return row(x.title || x.id.slice(0, 8), st);
+        }).join('');
+        return `<div class="wm-form-hdr wca-sub-hdr">Last switch: brought over</div><div class="wca-kvs">${lines}${c.ending && c.ending.length ? row('Ended', c.ending.length) : ''}</div>`;
     }
 
     function hostHtml() {
@@ -377,6 +547,7 @@
         const row = (label, value) => `<div class="wca-kv"><span class="wca-k">${esc(label)}</span><span class="wca-v">${esc(value == null || value === '' ? '-' : value)}</span></div>`;
         const login = h.login;
         const eng = h.engine || {};
+        const perm = h.permissions || null;
         return `<div class="wm-form-hdr wca-sub-hdr">${esc(h.hostname || 'Host')}</div>
             <div class="wca-kvs">
                 ${row('Claude CLI', h.cliVersion || 'unknown')}
@@ -392,6 +563,12 @@
                 ${row('Says', pane.statusLine || (pane.attached === false ? 'No tmux session' : ''))}
                 ${row('Sessions', pane.sessions != null ? `${pane.sessions} of ${pane.capacity}` : '')}
                 ${pane.errorLine && pane.state !== 'connected' ? row('Last error', pane.errorLine) : ''}
+                ${row('Live sessions', liveRc().length ? liveRc().map((x) => x.title).join(', ') : 'none')}
+            </div>
+            ${carryHtml(row)}
+            <div class="wm-form-hdr wca-sub-hdr">Permissions (shared by every account)</div>
+            <div class="wca-kvs">
+                ${perm ? `${row('Mode', perm.mode)}${row('Remote Control', perm.remoteControlMode ? `--permission-mode ${perm.remoteControlMode}` : 'settings')}${row('Allow rules', `${perm.allow}${perm.projectAllow ? ` + ${perm.projectAllow} in ${perm.project}` : ''}`)}${row('Deny / ask', `${perm.deny} / ${perm.ask}`)}${row('Trusted folders', perm.trustedFolders)}${row('Kept on switch', status.permissionsKept === false ? 'Changed during the last switch' : 'Yes: only the login changes')}` : row('Settings', 'Not readable')}
             </div>
             <div class="wm-form-hdr wca-sub-hdr">Signed in on the host</div>
             <div class="wca-kvs">
@@ -420,22 +597,27 @@
         setHtml(page.querySelector('.wca-status-slot'), statusStrip());
         const accountsPanel = page.querySelector('.wca-panel-accounts');
         const hostPanel = page.querySelector('.wca-panel-host');
+        const sessionsPanel = page.querySelector('.wca-panel-sessions');
         accountsPanel.hidden = tab !== 'accounts';
         hostPanel.hidden = tab !== 'host';
+        sessionsPanel.hidden = tab !== 'sessions';
         let list;
         if (error && !loaded) list = `<div class="wac-note">${esc(error)}</div>`;
         else if (!loaded) list = '<div class="wac-empty">Loading...</div>';
         else if (!data.accounts.length) list = `<div class="wac-empty">No Claude accounts yet.</div>${listFooter()}`;
         else list = data.accounts.map(accountRow).join('') + (error ? `<div class="wac-note">${esc(error)}</div>` : '') + listFooter();
-        if (adding) setHtmlKeep(accountsPanel, addHtml());
+        if (picking) setHtml(accountsPanel, pickHtml());
+        else if (adding) setHtmlKeep(accountsPanel, addHtml());
         else setHtml(accountsPanel, list);
         setHtml(hostPanel, hostHtml());
+        if (tab === 'sessions') setHtml(sessionsPanel, sessionsHtml());
         page.querySelectorAll('.wm-tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === tab)));
         sh.refreshSoftKeys();
     }
 
     function setTab(next) {
-        tab = next === 'host' ? 'host' : 'accounts';
+        tab = next === 'host' || next === 'sessions' ? next : 'accounts';
+        if (tab === 'sessions') void loadSessions();
         const sc = page && page.querySelector('.wac-scroll');
         if (sc) sc.scrollTop = 0;
         render();
@@ -467,6 +649,7 @@
     function menuItems() {
         const items = [
             { label: 'Accounts', checked: tab === 'accounts', action: () => setTab('accounts') },
+            { label: 'Sessions', checked: tab === 'sessions', action: () => setTab('sessions') },
             { label: 'Host', checked: tab === 'host', action: () => setTab('host') },
             '-'
         ];
@@ -477,6 +660,14 @@
             if (LG_ACTIVE.has(lg.state)) items.push({ label: 'Cancel Sign-in', action: cancelAdd });
             if (lg.state === 'error') items.push({ label: 'Try Again', action: () => loginAct('retry') });
             items.push({ label: 'Back to Accounts', action: () => { adding = false; render(); } });
+            return items;
+        }
+        if (tab === 'accounts' && picking) {
+            items.push({ label: 'Continue', action: pickDone }, { label: 'Cancel', action: pickCancel });
+            return items;
+        }
+        if (tab === 'sessions') {
+            items.push({ label: 'Refresh', action: () => loadSessions() });
             return items;
         }
         if (tab === 'accounts') {
@@ -501,10 +692,12 @@
             <div class="wca-status-slot"></div>
             <div class="wac-scroll wm-set-scroll" role="listbox" aria-label="Claude accounts">
                 <div class="wac-panel wca-panel-accounts"></div>
+                <div class="wac-panel wca-panel-sessions" hidden></div>
                 <div class="wac-panel wca-panel-host" hidden></div>
             </div>
             <div class="wm-tabs" role="tablist">
                 <button type="button" class="wm-tab" role="tab" data-tab="accounts">Accounts</button>
+                <button type="button" class="wm-tab" role="tab" data-tab="sessions">Sessions</button>
                 <button type="button" class="wm-tab" role="tab" data-tab="host">Host</button>
             </div>`;
         p.querySelector('.wm-tabs').addEventListener('click', (e) => {
@@ -512,20 +705,41 @@
             if (t) setTab(t.dataset.tab);
         });
         p.addEventListener('click', (e) => {
+            const pk = e.target.closest('[data-wca-pick]');
+            if (pk && picking) {
+                const list = liveRc();
+                if (pk.dataset.wcaPick === 'go') void pickDone();
+                else if (pk.dataset.wcaPick === 'cancel') pickCancel();
+                else if (pk.dataset.wcaPick === 'all') { picking.picks = picking.picks.size === list.length ? new Set() : new Set(list.filter((x) => x.resumable).map((x) => x.id)); render(); }
+                return;
+            }
+            const ss = e.target.closest('[data-wca-sess]');
+            if (ss) {
+                e.preventDefault();
+                if (ss.dataset.wcaSess === 'more') { sx.limit += 30; void loadSessions(); return; }
+                if (!ss.disabled) void sessionAct(ss.dataset.wcaSess, ss.dataset.id);
+                return;
+            }
             const add = e.target.closest('[data-wca-add]');
             if (add) { if (!add.disabled) void addClick(add.dataset.wcaAdd, add); return; }
             if (e.target.closest('.wca-link-field')) { e.target.select(); return; }
             const b = e.target.closest('[data-wca]');
             if (b) { void remote(b.dataset.wca); return; }
             const row = e.target.closest('.wca-panel-accounts .wac-row');
-            if (row && !held) select(Number(row.dataset.index));
+            if (row && !held && !picking) select(Number(row.dataset.index));
+        });
+        p.addEventListener('change', (e) => {
+            const c = e.target.closest('.wca-check');
+            if (!c || !picking) return;
+            if (c.checked) picking.picks.add(c.dataset.pick); else picking.picks.delete(c.dataset.pick);
+            render();
         });
         const list = p.querySelector('.wac-scroll');
         let holdTimer = null;
         let held = false;
         list.addEventListener('pointerdown', (e) => {
             const row = e.target.closest('.wca-panel-accounts .wac-row');
-            if (!row) return;
+            if (!row || picking) return;
             held = false;
             const { clientX: x, clientY: y } = e;
             clearTimeout(holdTimer);
@@ -571,6 +785,8 @@
             hide() { clearTimeout(pollTimer); },
             onEnd() { clearTimeout(pollTimer); page = null; },
             softKeys() {
+                if (tab === 'accounts' && picking) return { left: { label: 'Continue', action: pickDone }, right: { label: 'Menu', menu: menuItems } };
+                if (tab === 'sessions') return { left: { label: 'Refresh', action: () => loadSessions() }, right: { label: 'Menu', menu: menuItems } };
                 if (tab === 'accounts' && adding) {
                     const st = lg.state;
                     const left = st === 'waiting_code' ? { label: 'Continue', action: submitCode }
@@ -595,7 +811,7 @@
     }
 
     window.wmClaudeAccounts = {
-        open: (t) => { if (t) tab = t === 'host' ? 'host' : 'accounts'; sh.open(APP_ID, { fromStart: true }); },
+        open: (t) => { if (t) tab = t === 'host' || t === 'sessions' ? t : 'accounts'; sh.open(APP_ID, { fromStart: true }); },
         refresh: load,
         addAccount: () => { sh.open(APP_ID, { fromStart: true }); return startAdd(); }
     };
