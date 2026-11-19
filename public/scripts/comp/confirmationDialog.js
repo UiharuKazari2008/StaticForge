@@ -188,10 +188,13 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         // Store resolve for escape key handling
         currentResolve = resolve;
 
-        // Create dialog if it doesn't exist
+        // Create dialog if it doesn't exist (or something took it out of the page: it is built again)
+        if (confirmationDialog && !confirmationDialog.isConnected) confirmationDialog = null;
         if (!confirmationDialog) {
             confirmationDialog = document.createElement('div');
             confirmationDialog.id = 'confirmationDialog';
+            // the shell's, whichever program asked first (melatonSegments, #949)
+            confirmationDialog.setAttribute('data-melaton-shell', '');
             confirmationDialog.className = 'modal hidden transient owned-window on-top';
             confirmationDialog.innerHTML = `
                 <div class="modal-window-title">
@@ -575,10 +578,13 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         // Store resolve for escape key handling
         currentResolve = resolve;
 
-        // Create dialog if it doesn't exist
+        // Create dialog if it doesn't exist (or something took it out of the page: it is built again)
+        if (confirmationDialog && !confirmationDialog.isConnected) confirmationDialog = null;
         if (!confirmationDialog) {
             confirmationDialog = document.createElement('div');
             confirmationDialog.id = 'confirmationDialog';
+            // the shell's, whichever program asked first (melatonSegments, #949)
+            confirmationDialog.setAttribute('data-melaton-shell', '');
             confirmationDialog.className = 'modal hidden transient owned-window on-top';
             confirmationDialog.innerHTML = `
                 <div class="modal-window-title">

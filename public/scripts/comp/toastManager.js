@@ -1201,6 +1201,8 @@ function createToastContainer() {
     const container = document.createElement('div');
     container.id = 'toastContainer';
     container.className = 'toast-container';
+    // the shell's for the page's life, whichever program toasted first (melatonSegments, #949)
+    container.setAttribute('data-melaton-shell', '');
     document.body.appendChild(container);
     return container;
 }

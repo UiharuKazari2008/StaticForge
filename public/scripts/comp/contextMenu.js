@@ -961,7 +961,9 @@ class ContextMenuController {
             e.preventDefault();
         });
 
-        // Add overlay and menu to document
+        // Add overlay and menu to document (the shell's for the page's life: no app's update removes them, #949)
+        this.overlay.setAttribute('data-melaton-shell', '');
+        this.menu.setAttribute('data-melaton-shell', '');
         document.body.appendChild(this.overlay);
         document.body.appendChild(this.menu);
     }

@@ -231,6 +231,9 @@
             // <body> children a segment appends are its own (its windows, overlays, popups)
             const own = (node) => {
                 if (!segments.size || !node || node.nodeType !== 1) return;
+                // the shell's own singletons (the message box, ...) are made lazily by whichever code needs
+                // them first: never an app's, or the app's next live update removed them page-wide (#949)
+                if (isShellNode(node)) return;
                 const isWindow = node.classList.contains('modal') || !!(node.querySelector && node.querySelector('.modal'));
                 // a window belongs to the segment that asked for it (a shared helper or engine may build
                 // and append it); anything else to the segment whose code appended it
@@ -473,6 +476,11 @@
         }
     }
 
+    /** A node the shell owns for the whole page (data-melaton-shell): no segment adopts or removes it (#949). */
+    function isShellNode(node) {
+        return !!(node && node.nodeType === 1 && node.hasAttribute && node.hasAttribute('data-melaton-shell'));
+    }
+
     function removeNode(node) {
         try {
             if (root.contextMenu) {
@@ -528,6 +536,8 @@
             try { doc.querySelectorAll(sel).forEach((n) => nodes.add(n)); } catch (_) { /* bad selector */ }
         }
         nodes.forEach((n) => {
+            // a shell singleton adopted before it was marked (or matched by a segment's selector) stays
+            if (isShellNode(n)) return;
             if (n.isConnected) released.nodes++;
             removeNode(n);
         });
@@ -625,6 +635,8 @@
         ensureHooks,
         windowsOf,
         adopt,
+        /** Marks a node the shell owns for the page's life (a lazily made singleton host): no app adopts it. */
+        shell: (node) => { if (node && node.setAttribute) node.setAttribute('data-melaton-shell', ''); return node; },
         /**
          * For shared helpers that make things on an app's behalf (the Vista games engine's document
          * key listeners for a game's window): the AbortSignal of the segment that called into the helper
