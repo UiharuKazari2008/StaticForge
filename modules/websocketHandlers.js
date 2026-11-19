@@ -612,6 +612,7 @@ class WebSocketMessageHandlers {
             'unlink_claude_account_login',
             'claude_remote_control',
             'claude_account_login',
+            'claude_session_action',
             'director_abort',
             'director_cleanup',
             'director_computer_size',

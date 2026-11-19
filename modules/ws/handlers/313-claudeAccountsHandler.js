@@ -9,12 +9,18 @@
  * (modules/claudeAccountHost.js). Add Account by signing in (a claude.ai link to copy / open in Alchemy and
  * the code it shows back) is claude_account_login (modules/claudeAccountLogin.js): the host's `claude`
  * CLI in an isolated config dir; the result is a CardSpace Claude key + its linked Remote Control login.
+ * switch_claude_account / claude_remote_control reconnect take carry: [session ids] (the Host status'
+ * sessions): those Remote Control sessions are started again under the new login, the rest end.
+ * Sessions tab: get_claude_sessions (every transcript on the host, paged) and claude_session_action
+ * (reconnect: resume into Remote Control, no fork, or its link when it is live already; disconnect: end
+ * its rc-* tmux session). modules/claudeSessions.js.
  * docs/client-api/ws/account.md#claude-accounts
  */
 
 const wsPacketRegistry = require('../wsPacketRegistry');
 const claudeHost = require('../../claudeAccountHost');
 const claudeLogin = require('../../claudeAccountLogin');
+const claudeSessions = require('../../claudeSessions');
 
 const ADMIN_DESTRUCTIVE = { destructive: true };
 
@@ -48,17 +54,21 @@ function guard(type, fn) {
 
 const handleGet = guard('get_claude_accounts', (gr) => snapshot(gr));
 
+const carryOf = (message) => (Array.isArray(message.carry) ? message.carry.filter((id) => typeof id === 'string').slice(0, 32) : []);
+
 const handleSwitch = guard('switch_claude_account', async (gr, message) => {
     const index = Number(message.index);
+    const carry = carryOf(message);
     const accounts = claudeHost.listAccounts(gr);
     const target = accounts.find((a) => a.index === index);
     if (!target) throw new Error('No such Claude account');
     if (target.active) {
         // already the engine's account: the switch still reconnects (Yukimi: "on each switch")
-        claudeHost.reconnect(gr, { index, account: { index, name: target.name }, reason: `Reconnecting as ${target.name}` }).catch(() => {});
+        claudeHost.reconnect(gr, { index, carry, account: { index, name: target.name }, reason: `Reconnecting as ${target.name}` }).catch(() => {});
     } else {
-        // CardSpace's own path: engine token file, then claudeAccountHost.onSelectionChanged
-        await gr.getApiKeyManager().applySelectionUpdates([{ service: 'claude', index }]);
+        // CardSpace's own path: engine token file, then claudeAccountHost.onSelectionChanged (which takes the picks)
+        claudeHost.setPendingCarry(carry);
+        try { await gr.getApiKeyManager().applySelectionUpdates([{ service: 'claude', index }]); } finally { claudeHost.setPendingCarry(null); }
     }
     return snapshot(gr);
 });
@@ -81,6 +91,7 @@ const handleRemoteControl = guard('claude_remote_control', async (gr, message) =
         const active = claudeHost.listAccounts(gr).find((a) => a.active);
         claudeHost.reconnect(gr, {
             index: active ? active.index : undefined,
+            carry: carryOf(message),
             account: active ? { index: active.index, name: active.name } : null,
             reason: action === 'start' ? 'Starting Remote Control' : 'Reconnecting Remote Control'
         }).catch(() => {});
@@ -104,6 +115,24 @@ const handleLogin = guard('claude_account_login', async (gr, message) => {
     return { login, accounts: claudeHost.listAccounts(gr) };
 });
 
+const handleSessions = guard('get_claude_sessions', async (gr, message) => claudeSessions.listAll({ offset: message.offset, limit: message.limit }));
+
+const handleSessionAction = guard('claude_session_action', async (gr, message) => {
+    const action = String(message.action || '');
+    const id = String(message.id || '');
+    let result;
+    if (action === 'reconnect') {
+        const unit = (await claudeHost.hostStatus(gr)).remoteControl;
+        result = await claudeSessions.resume(id, { mode: claudeHost.carryMode(unit) });
+    } else if (action === 'disconnect') {
+        result = await claudeSessions.disconnect(id);
+    } else {
+        throw new Error('action must be reconnect or disconnect');
+    }
+    const list = await claudeSessions.listAll({ offset: message.offset, limit: message.limit });
+    return Object.assign({ result }, list);
+});
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) return;
     // CardSpace's "Use this account" reconnects Remote Control from here on (apiKeyManager -> onSelectionChanged)
@@ -119,6 +148,8 @@ function registerPackets(handlersCtx) {
     reg('unlink_claude_account_login', handleUnlink, ADMIN_DESTRUCTIVE);
     reg('claude_remote_control', handleRemoteControl, ADMIN_DESTRUCTIVE);
     reg('claude_account_login', handleLogin, ADMIN_DESTRUCTIVE);
+    reg('get_claude_sessions', handleSessions);
+    reg('claude_session_action', handleSessionAction, ADMIN_DESTRUCTIVE);
 }
 
-module.exports = { registerPackets, _handlers: { handleGet, handleSwitch, handleLink, handleUnlink, handleRemoteControl, handleLogin } };
+module.exports = { registerPackets, _handlers: { handleGet, handleSwitch, handleLink, handleUnlink, handleRemoteControl, handleLogin, handleSessions, handleSessionAction } };

@@ -108,3 +108,34 @@
 .wm-claude-accounts .wca-input:disabled { background: #f3f3f3; color: #525152; }
 .wm-claude-accounts .wca-actions button:disabled { border-color: #848284; color: #848284; }
 .wm-claude-accounts .wca-add-pending { margin-top: calc(4 * var(--wm-px)); }
+
+/* Bring over (Switch / Reconnect): one box per running Remote Control session */
+.wm-claude-accounts .wca-pick { cursor: pointer; }
+.wm-claude-accounts .wca-pick .wca-check {
+    /* WM's check box (wm-programs.css .wm-check): 13 px, 1 px black, the 2 px tick when checked */
+    appearance: none;
+    -webkit-appearance: none;
+    box-sizing: border-box;
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) auto 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff center / 100% 100% no-repeat;
+    outline: none;
+}
+.wm-claude-accounts .wca-pick .wca-check:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11'%3E%3Cpath d='M2 5.2 4.3 7.5 9 2.8' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
+}
+.wm-claude-accounts .wca-pick .wca-check:disabled { border-color: #848284; background-color: #f3f3f3; }
+.wm-claude-accounts .wca-pick.is-picked { background: #eef6ff; }
+.wm-claude-accounts .wca-pick-intro { padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) 0; }
+.wm-claude-accounts .wca-pick-sum { padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) 0; font-weight: bold; }
+
+/* Sessions tab */
+.wm-claude-accounts .wca-sess .wca-last { font-style: italic; overflow-wrap: anywhere; }
+.wm-claude-accounts .wca-sess .wca-sess-actions { padding: calc(3 * var(--wm-px)) 0 calc(2 * var(--wm-px)); flex-wrap: wrap; }
+.wm-claude-accounts .wca-sess-note { color: #00669a; }
+.wm-claude-accounts .wca-sess-note.is-bad { color: #b00000; }
+.wm-claude-accounts .wca-sess-link a { color: #00669a; word-break: break-all; }
+.wm-claude-accounts .wca-badge-rc { color: #007a33; }

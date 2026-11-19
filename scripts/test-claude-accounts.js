@@ -188,6 +188,9 @@ async function main() {
     noSecrets(hs, 'hostStatus');
     console.log('✓ host status');
 
+    // 7b. shared permissions + Bring over + Sessions tab (modules/claudeSessions.js), all in the sandbox
+    await sharedPermissionsAndSessions(handler, ctx, sent);
+
     // 8. read-only instances never stop or start the unit
     host._setRunner(null);
     process.env.DREAMSCAPE_CLAUDE_RC_READONLY = '1';
@@ -208,6 +211,268 @@ async function main() {
     await addAccountBySignIn(handler, src);
 
     console.log('\nClaude accounts tests passed');
+}
+
+// ---- shared permissions, Bring over on a switch, the Sessions tab: fake ~/.claude/sessions + transcripts,
+// fake tmux (Remote Control's default socket and claudeSessions' own -L socket)
+const SOCK = 'ds-claude-carry-test';
+process.env.DREAMSCAPE_CLAUDE_CARRY_SOCKET = SOCK;
+process.env.DREAMSCAPE_CLAUDE_CLI = '/opt/fake/claude';
+const sessions = require('../modules/claudeSessions');
+const uuid = (n) => `${String(n).repeat(8).slice(0, 8)}-1111-4111-8111-${String(n).repeat(12).slice(0, 12)}`;
+
+async function sharedPermissionsAndSessions(handler, ctx, sent) {
+    const H = process.env.DREAMSCAPE_CLAUDE_HOME;
+    const PROJ = path.join(H, 'proj');
+    const OTHER = path.join(H, 'other');
+    fs.mkdirSync(path.join(PROJ, '.claude'), { recursive: true });
+    fs.mkdirSync(OTHER, { recursive: true });
+    // A linked again (5. unlinked it), B on the host
+    putHost(login(ACCESS_A2, 'a@example.com', 'uuid-a', 'max'));
+    host.linkHostLogin(gr, 0);
+    putHost(login(ACCESS_B, 'b@example.com', 'uuid-b', 'pro'));
+    const settings = { permissions: { allow: ['Bash(ssh ruiko:*)', 'Bash(curl http://127.0.0.1:18791/*)', 'Read(//x/**)'], deny: ['Bash(rm -rf /*)'], defaultMode: 'bypassPermissions' }, skipDangerousModePermissionPrompt: true, theme: 'dark' };
+    const settingsText = JSON.stringify(settings, null, 2);
+    fs.writeFileSync(path.join(H, '.claude', 'settings.json'), settingsText);
+    const localText = JSON.stringify({ permissions: { allow: ['Bash(node /p/*)', 'Bash(bash /p/*)'] } });
+    fs.writeFileSync(path.join(PROJ, '.claude', 'settings.local.json'), localText);
+    const cj = hostJson();
+    cj.projects = { [PROJ]: { allowedTools: ['Edit'], hasTrustDialogAccepted: true }, [OTHER]: { allowedTools: [], hasTrustDialogAccepted: true } };
+    fs.writeFileSync(paths.claudeJson, JSON.stringify(cj));
+    const projectsBefore = JSON.stringify(hostJson().projects);
+    // the host's credentials file keeps more than the login (MCP logins): a switch keeps those
+    const hc = hostCreds();
+    hc.mcpOAuth = { 'srv|1': { accessToken: 'sk-ant-oat01-MCP-eeeeeeeeeeeeeeeeeeeeeeeeeee' } };
+    fs.writeFileSync(paths.credentials, JSON.stringify(hc));
+    // a linked login from before Nov 19 that carries extra state: stripped to the login
+    const listed = host.listAccounts(gr);
+    const dirB = path.join(paths.store, listed[1].id);
+    const sb = JSON.parse(fs.readFileSync(path.join(dirB, 'credentials.json'), 'utf8'));
+    sb.mcpOAuth = { stale: true };
+    fs.writeFileSync(path.join(dirB, 'credentials.json'), JSON.stringify(sb), { mode: 0o600 });
+    fs.writeFileSync(path.join(dirB, 'account.json'), JSON.stringify(Object.assign(JSON.parse(fs.readFileSync(path.join(dirB, 'account.json'), 'utf8')), { permissions: { allow: ['Bash(*)'] } })), { mode: 0o600 });
+    assert.strictEqual(host._normalizeStore(), 2, 'old linked login normalized');
+    assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(dirB, 'credentials.json'), 'utf8'))), ['claudeAiOauth']);
+    assert.ok(!('permissions' in JSON.parse(fs.readFileSync(path.join(dirB, 'account.json'), 'utf8'))), 'no permission state in a linked login');
+
+    // ---- live sessions: two of Remote Control's children, one rc- session started by hand, one dead, one terminal
+    const S1 = uuid(1); const S2 = uuid(2); const S3 = uuid(3); const S4 = uuid(4); const S5 = uuid(5); const S6 = uuid(6);
+    const alive = new Set([101, 102, 103, 105]);
+    host._setPidAlive((pid) => alive.has(pid));
+    const slug = (cwd) => cwd.replace(/[^A-Za-z0-9]/g, '-');
+    const writeTranscript = (cwd, id, prompts) => {
+        const dir = path.join(H, '.claude', 'projects', slug(cwd));
+        fs.mkdirSync(dir, { recursive: true });
+        const lines = [];
+        prompts.forEach((p, i) => {
+            lines.push(JSON.stringify({ type: 'user', cwd, sessionId: id, timestamp: `2026-11-19T1${i}:00:00.000Z`, message: { role: 'user', content: p } }));
+            lines.push(JSON.stringify({ type: 'user', cwd, sessionId: id, timestamp: `2026-11-19T1${i}:00:01.000Z`, message: { role: 'user', content: [{ type: 'tool_result', content: 'x' }] } }));
+            lines.push(JSON.stringify({ type: 'assistant', cwd, sessionId: id, timestamp: `2026-11-19T1${i}:00:02.000Z`, message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] } }));
+        });
+        fs.writeFileSync(path.join(dir, `${id}.jsonl`), `${lines.join('\n')}\n`);
+    };
+    writeTranscript(PROJ, S1, ['Fix the phone tap menu', `then ship it ${SECRET_A}`]);
+    writeTranscript(PROJ, S2, ['Studio settings parity']);
+    writeTranscript(OTHER, S3, ['Mobile IE pass-through', 'and the 6.5 bars']);
+    writeTranscript(PROJ, S4, ['An old finished one']);
+    writeTranscript(PROJ, S5, ['Running in a terminal']);
+    writeTranscript(PROJ, S6, ['Idle, not running']);
+    const sdir = path.join(H, '.claude', 'sessions');
+    fs.mkdirSync(sdir, { recursive: true });
+    const rec = (pid, id, cwd, tmux, bridge, extra) => fs.writeFileSync(path.join(sdir, `${pid}.json`), JSON.stringify(Object.assign({ pid, sessionId: id, cwd, tmux, bridgeSessionId: bridge, name: 'staticforge-2b', nameSource: 'derived', status: 'idle', updatedAt: Date.now(), startedAt: Date.now() - 60000 }, extra || {})));
+    rec(101, S1, PROJ, 'claude-rc-test:@0.%0', 'session_01AAAAAAAAAAAAAAAAAAAAAAAA', { status: 'busy' });
+    rec(102, S2, PROJ, 'claude-rc-test:@0.%0', 'session_01BBBBBBBBBBBBBBBBBBBBBBBB');
+    rec(103, S3, OTHER, 'rc-mobileie:@0.%0', 'session_01CCCCCCCCCCCCCCCCCCCCCCCC', { name: 'mobile ie', nameSource: 'user' });
+    rec(104, S4, PROJ, 'claude-rc-test:@0.%0', 'session_01DDDDDDDDDDDDDDDDDDDDDDDD');
+    rec(105, S5, PROJ, '', null);
+
+    // fake tmux: own socket sessions with scripted panes; default socket rc-* sessions; Remote Control's pane
+    const own = new Map();
+    const panes = {}; // name -> [texts...] (the last one repeats)
+    const ACTIVE = (bridge) => `❯ \n  /remote-control is active · Continue here, on your phone, or at https://claude.ai/code/${bridge}?x=1\n  ⏵⏵ bypass permissions on`;
+    const defaultRc = new Set(['rc-mobileie']);
+    let execStart = "{ path=/usr/bin/tmux ; argv[]=/usr/bin/tmux new-session -d -s claude-rc -c /home/k/staticforge \"/home/k/.local/bin/claude remote-control --name Dreamscape --permission-mode bypassPermissions; sleep 2\" ; }";
+    const log = [];
+    host._setRunner(async (cmd, args) => {
+        log.push(`${cmd} ${args.join(' ')}`);
+        if (cmd === 'systemctl' && args[1] === 'show') return { code: 0, stderr: '', stdout: `ActiveState=${unit.active}\nSubState=${unit.sub}\nMainPID=4242\nNRestarts=0\nDescription=Claude Code Remote Control server\nExecStart=${execStart}\nWorkingDirectory=${PROJ}\n` };
+        if (cmd === 'systemctl' && args[1] === 'stop') { unit = { active: 'inactive', sub: 'dead' }; [101, 102, 104].forEach((p) => alive.delete(p)); return { code: 0, stdout: '', stderr: '' }; }
+        if (cmd === 'systemctl' && args[1] === 'start') { unit = { active: 'active', sub: 'running' }; return { code: 0, stdout: '', stderr: '' }; }
+        if (cmd !== 'tmux') return { code: 1, stdout: '', stderr: 'unexpected' };
+        if (args[0] === '-L') {
+            assert.strictEqual(args[1], SOCK, 'own socket only');
+            const a = args.slice(2);
+            const name = (t) => String(t || '').replace(/^=/, '').replace(/:.*$/, '');
+            const ti = a.indexOf('-t'); const si = a.indexOf('-s');
+            if (a[0] === 'has-session') return { code: own.has(name(a[ti + 1])) ? 0 : 1, stdout: '', stderr: '' };
+            if (a[0] === 'new-session') { const n = a[si + 1]; own.set(n, { cwd: a[a.indexOf('-c') + 1], cmd: a[a.length - 1] }); return { code: 0, stdout: '', stderr: '' }; }
+            if (a[0] === 'capture-pane') { const n = name(a[ti + 1]); if (!own.has(n)) return { code: 1, stdout: '', stderr: 'no' }; const q = panes[n] || [ACTIVE('session_01NEWNEWNEWNEWNEWNEWNEWNEW')]; return { code: 0, stdout: q.length > 1 ? q.shift() : q[0], stderr: '' }; }
+            if (a[0] === 'send-keys') return { code: 0, stdout: '', stderr: '' };
+            if (a[0] === 'kill-session') { const n = name(a[ti + 1]); return { code: own.delete(n) ? 0 : 1, stdout: '', stderr: '' }; }
+            return { code: 1, stdout: '', stderr: 'unexpected own tmux' };
+        }
+        if (args[0] === 'kill-session') {
+            const n = String(args[args.indexOf('-t') + 1]).replace(/^=/, '');
+            assert.notStrictEqual(n, 'claude-rc-test', 'never kills Remote Control\'s own tmux');
+            if (defaultRc.delete(n)) { if (n === 'rc-mobileie') alive.delete(103); return { code: 0, stdout: '', stderr: '' }; }
+            return { code: 1, stdout: '', stderr: 'no' };
+        }
+        if (args[0] === 'capture-pane') return { code: 0, stdout: '·✔︎· Connected · proj · main\n    Capacity: 2/32\n', stderr: '' };
+        return { code: 1, stdout: '', stderr: 'unexpected tmux' };
+    });
+
+    // Host tab: live Remote Control sessions (Bring over list) + the shared permission line
+    let hs = await host.hostStatus(gr);
+    assert.deepStrictEqual(hs.sessions.map((x) => x.id).sort(), [S1, S2, S3].sort(), 'live Remote Control sessions only (no dead pid, no terminal)');
+    const s3row = hs.sessions.find((x) => x.id === S3);
+    assert.strictEqual(s3row.title, 'mobile ie', 'a given name wins');
+    assert.strictEqual(s3row.origin, 'rc');
+    assert.strictEqual(hs.sessions.find((x) => x.id === S1).title, 'Fix the phone tap menu', 'else the first prompt');
+    assert.strictEqual(hs.permissions.mode, 'bypassPermissions');
+    assert.strictEqual(hs.permissions.remoteControlMode, 'bypassPermissions', "the unit's --permission-mode");
+    assert.strictEqual(hs.permissions.allow, 3);
+    assert.strictEqual(hs.permissions.deny, 1);
+    assert.strictEqual(hs.permissions.projectAllow, 2);
+    assert.strictEqual(hs.permissions.trustedFolders, 2);
+    assert.ok(hs.permissions.skipBypassPrompt);
+    assert.strictEqual(hs.remoteControl.sessionName, 'Dreamscape');
+    noSecrets(hs, 'hostStatus with sessions');
+    console.log('✓ Host tab: live Remote Control sessions + shared permission summary');
+
+    // ---- switch B -> A from the phone, bringing over S1 (server child) and S3 (rc- by hand); S2 ends
+    log.length = 0;
+    await handler.handleSwitch(ctx, {}, { index: 0, carry: [S1, S3, 'not-an-id; rm -rf /'], requestId: 'c1' }, { userType: 'admin' });
+    assert.strictEqual(sent.pop().type, 'switch_claude_account_response');
+    let st = await host.reconnect(gr, {});
+    assert.strictEqual(st.state, 'connected', `connected (${st.message})`);
+    assert.strictEqual(hostCreds().claudeAiOauth.accessToken.startsWith('sk-ant-oat01-ACCESS-A'), true, 'A signed in');
+    assert.ok(hostCreds().mcpOAuth && hostCreds().mcpOAuth['srv|1'], "the host's other credentials (MCP logins) stay");
+    assert.strictEqual(fs.readFileSync(path.join(H, '.claude', 'settings.json'), 'utf8'), settingsText, 'settings.json untouched');
+    assert.strictEqual(fs.readFileSync(path.join(PROJ, '.claude', 'settings.local.json'), 'utf8'), localText, 'project allow rules untouched');
+    assert.strictEqual(JSON.stringify(hostJson().projects), projectsBefore, "~/.claude.json projects' trust + allowedTools untouched");
+    assert.strictEqual(st.permissionsKept, true);
+    fs.readdirSync(paths.store).forEach((d) => {
+        const f = path.join(paths.store, d, 'credentials.json');
+        if (fs.existsSync(f)) assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(f, 'utf8'))), ['claudeAiOauth'], `${d}: linked login holds the login only`);
+    });
+    assert.ok(log.some((l) => l === 'tmux kill-session -t =rc-mobileie'), 'the rc- session (old login) ended before the switch');
+    const started = [...own.entries()];
+    assert.deepStrictEqual(started.map(([n]) => n).sort(), [`rc-${S1.slice(0, 8)}`, `rc-${S3.slice(0, 8)}`].sort(), 'only the picked ones start again');
+    const c1 = own.get(`rc-${S1.slice(0, 8)}`);
+    assert.strictEqual(c1.cwd, PROJ, 'in its own folder');
+    assert.ok(c1.cmd.startsWith(`'/opt/fake/claude' --resume ${S1} --fork-session --remote-control 'Fix the phone tap menu' --permission-mode bypassPermissions`), c1.cmd);
+    assert.strictEqual(own.get(`rc-${S3.slice(0, 8)}`).cwd, OTHER);
+    assert.ok(!log.some((l) => l.includes(S2) && l.includes('--resume')), 'S2 not brought over');
+    assert.ok(!log.some((l) => l.includes('rm -rf')), 'a bad id never reaches a command');
+    assert.deepStrictEqual(st.carry.results.map((r) => r.state), ['carried', 'carried']);
+    assert.ok(st.carry.results.every((r) => r.link === 'https://claude.ai/code/session_01NEWNEWNEWNEWNEWNEWNEWNEW'), 'link read back from the pane');
+    assert.deepStrictEqual(st.carry.ending.map((x) => x.id), [S2]);
+    assert.ok(/2 of 2 sessions brought over/.test(st.message), st.message);
+    assert.ok(log.indexOf('systemctl --user start claude-remote-test.service') < log.findIndex((l) => l.includes('new-session')), 'resumed after Remote Control is back');
+    noSecrets(st, 'switch status with carry');
+    console.log('✓ switch: picked sessions brought over (fork, own folder, bypassPermissions), the rest end; permissions + trust + MCP logins kept');
+
+    // ---- CardSpace's "Use this account": brings none over
+    own.clear();
+    alive.add(101); alive.add(102);
+    log.length = 0;
+    await fakeAkm.applySelectionUpdates([{ service: 'claude', index: 1 }]);
+    st = await host.reconnect(gr, {});
+    assert.strictEqual(st.state, 'connected');
+    assert.strictEqual(own.size, 0, 'CardSpace switch: nothing brought over');
+    assert.strictEqual(st.carry.selected.length, 0);
+    console.log('✓ CardSpace switch brings none over');
+
+    // ---- the CLI could not reattach: nudged with /remote-control once
+    alive.add(101);
+    rec(101, S1, PROJ, 'claude-rc-test:@0.%0', 'session_01AAAAAAAAAAAAAAAAAAAAAAAA');
+    panes[`rc-${S1.slice(0, 8)}`] = ['Resuming…', 'Previous session is unavailable — run /remote-control to start a new one', ACTIVE('session_01NUDGEDNUDGEDNUDGEDNUDGE')];
+    log.length = 0;
+    st = await host.reconnect(gr, { index: 1, carry: [S1], pollMs: 5 });
+    assert.ok(log.includes(`tmux -L ${SOCK} send-keys -t =rc-${S1.slice(0, 8)}: /remote-control Enter`), 'nudged');
+    assert.strictEqual(st.carry.results[0].state, 'carried');
+    assert.ok(/reconnected with \/remote-control/.test(st.carry.results[0].message));
+    console.log('✓ resume nudges /remote-control when the CLI could not reattach');
+
+    // ---- Sessions tab: every transcript, counts, last prompt, live flags, links
+    own.clear();
+    alive.clear(); [102, 103, 105].forEach((p) => alive.add(p));
+    defaultRc.add('rc-mobileie');
+    fs.rmSync(path.join(sdir, '101.json'));
+    await handler.handleSessions(ctx, {}, { requestId: 's1' }, { userType: 'user' });
+    assert.strictEqual(sent.pop().code, 'INSUFFICIENT_PERMISSIONS');
+    await handler.handleSessions(ctx, {}, { requestId: 's2', limit: 50 }, { userType: 'admin' });
+    let r = sent.pop();
+    assert.strictEqual(r.type, 'get_claude_sessions_response');
+    const all = r.data;
+    const forked = all.sessions.filter((x) => ![S1, S2, S3, S4, S5, S6].includes(x.id));
+    assert.strictEqual(forked.length, 0);
+    assert.strictEqual(all.total, 6);
+    const row1 = all.sessions.find((x) => x.id === S1);
+    assert.strictEqual(row1.messages, 4, 'two prompts + two replies (tool results are not messages)');
+    assert.strictEqual(row1.userMessages, 2);
+    assert.ok(row1.lastPrompt.startsWith('then ship it'), row1.lastPrompt);
+    assert.strictEqual(row1.lastPromptAt, '2026-11-19T11:00:00.000Z');
+    assert.strictEqual(row1.folder, 'proj');
+    assert.strictEqual(row1.live, false);
+    noSecrets(all, 'Sessions list');
+    const row2 = all.sessions.find((x) => x.id === S2);
+    assert.ok(row2.live && row2.remoteControl && row2.origin === 'server');
+    assert.strictEqual(row2.link, 'https://claude.ai/code/session_01BBBBBBBBBBBBBBBBBBBBBBBB');
+    assert.strictEqual(row2.canDisconnect, false, "Remote Control's own children are not disconnected from here");
+    const row3 = all.sessions.find((x) => x.id === S3);
+    assert.ok(row3.remoteControl && row3.canDisconnect && row3.tmuxSession === 'rc-mobileie');
+    const row5 = all.sessions.find((x) => x.id === S5);
+    assert.ok(row5.live && !row5.remoteControl);
+    const page = await sessions.listAll({ limit: 2 });
+    assert.strictEqual(page.sessions.length, 2);
+    assert.strictEqual(page.total, 6);
+    console.log('✓ Sessions tab list: all transcripts, counts, last prompt + time, live / Remote Control / link');
+
+    // Reconnect a session that is not running: no fork, own socket, its folder, the link read back
+    log.length = 0;
+    await handler.handleSessionAction(ctx, {}, { action: 'reconnect', id: S6, requestId: 'a1' }, { userType: 'admin' });
+    r = sent.pop();
+    assert.strictEqual(r.type, 'claude_session_action_response', JSON.stringify(r));
+    assert.strictEqual(r.data.result.state, 'connected');
+    assert.strictEqual(r.data.result.link, 'https://claude.ai/code/session_01NEWNEWNEWNEWNEWNEWNEWNEW');
+    const c6 = own.get(`rc-${S6.slice(0, 8)}`);
+    assert.ok(c6 && c6.cmd.startsWith(`'/opt/fake/claude' --resume ${S6} --remote-control 'Idle, not running' --permission-mode bypassPermissions; sleep 3600`), c6 && c6.cmd);
+    assert.ok(!c6.cmd.includes('--fork-session'), 'Reconnect does not fork');
+    // already live in Remote Control: its link, no second copy
+    const before = own.size;
+    const live = await sessions.resume(S3, { mode: 'bypassPermissions' });
+    assert.strictEqual(live.state, 'live');
+    assert.strictEqual(live.link, 'https://claude.ai/code/session_01CCCCCCCCCCCCCCCCCCCCCCCC');
+    assert.strictEqual(own.size, before, 'no second copy');
+    // running in a terminal without Remote Control: refused, nothing started
+    await assert.rejects(() => sessions.resume(S5, {}), /running already/);
+    await assert.rejects(() => sessions.resume('../../etc', {}), /No such Claude session/);
+    // Disconnect: rc- on the own socket, an rc- started by hand on the default socket; never Remote Control's own
+    rec(106, S6, PROJ, `rc-${S6.slice(0, 8)}:@0.%0`, 'session_01NEWNEWNEWNEWNEWNEWNEWNEW');
+    alive.add(106);
+    let d = await sessions.disconnect(S6);
+    assert.strictEqual(d.state, 'disconnected');
+    assert.ok(!own.has(`rc-${S6.slice(0, 8)}`));
+    await handler.handleSessionAction(ctx, {}, { action: 'disconnect', id: S3, requestId: 'a2' }, { userType: 'admin' });
+    r = sent.pop();
+    assert.strictEqual(r.data.result.tmuxSession, 'rc-mobileie');
+    assert.ok(!defaultRc.has('rc-mobileie'));
+    await assert.rejects(() => sessions.disconnect(S2), /inside Remote Control itself/);
+    // read-only instance: no resume / disconnect
+    process.env.DREAMSCAPE_CLAUDE_RC_READONLY = '1';
+    await assert.rejects(() => sessions.resume(S4, {}), /read-only/);
+    delete process.env.DREAMSCAPE_CLAUDE_RC_READONLY;
+    console.log('✓ Sessions tab: Reconnect (no fork, link back, live = link only), Disconnect rc- only');
+
+    // Add Account's isolated sign-in links the login only (no settings / permission state from its config dir)
+    host.linkLogin(gr, 1, { claudeAiOauth: login(ACCESS_B, 'b@example.com', 'uuid-b', 'pro').creds.claudeAiOauth, mcpOAuth: { x: 1 } }, login(ACCESS_B, 'b@example.com', 'uuid-b', 'pro').oauthAccount);
+    assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(dirB, 'credentials.json'), 'utf8'))), ['claudeAiOauth']);
+    const ui = fs.readFileSync(path.join(ROOT, 'public/scripts/comp/wmClaudeAccounts.js'), 'utf8');
+    assert.ok(ui.includes("'get_claude_sessions'") && ui.includes("'claude_session_action'") && ui.includes('data-tab="sessions"') && ui.includes('Bring over') && ui.includes('Permissions (shared by every account)'), 'phone UI wired');
+    assert.ok(fs.readFileSync(path.join(ROOT, 'modules/websocketHandlers.js'), 'utf8').includes("'claude_session_action'"), 'claude_session_action is destructive for read-only clients');
+    host._setPidAlive(null);
+    console.log('✓ linked logins hold the login only; UI wiring');
 }
 
 // ---- Add Account by signing in (modules/claudeAccountLogin.js) with a fake `claude` CLI in a pty
