@@ -1,8 +1,8 @@
 /**
  * Tab volume. One slider for every sound in this tab (media elements and
- * Web Audio), saved on this computer. The tray icon sits left of the network
- * icon. The popup is Vista's volume flyout (SndVolSSO on the VM): vertical
- * slider, speaker button, Mixer footer.
+ * Web Audio), saved on this computer. The tray icon is the last system icon,
+ * right of the network icon (#932). The popup is Vista's volume flyout
+ * (SndVolSSO on the VM): vertical slider, speaker button, Mixer footer.
  *
  * localStorage desktop-tab-volume (0-100) and desktop-tab-muted (`1`).
  *
@@ -12,23 +12,74 @@
  * id, label, icon, isActive(), getVolume(), setVolume(v, final), isMuted(), setMuted(m),
  * menuItems(), onMenuAction(action, item) }). tabVolume.onChange(fn) hears the master level (an
  * app scales its own stream by masterGain(), which an iframe's audio would otherwise escape).
+ *
+ * DreamOS (#932): the slider and the speaker button are the computer's own volume and mute
+ * (window.DreamOSAudio, the CaféReady host through PipeWire), and the volume keys' changes come
+ * back as 'dreamosaudio' events. The tab's own level then stays at full (the hardware turns it
+ * down), and nothing is kept in localStorage. Elsewhere it is the tab's volume, as before.
  */
 (function () {
     const VOLUME_KEY = 'desktop-tab-volume';
     const MUTE_KEY = 'desktop-tab-muted';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     let level = 100;
     let muted = false;
     let flyout = null;
     const sources = [];
     const changeListeners = [];
+    // the computer's volume (DreamOS), or null: the tab's own
+    const hwAudio = (() => {
+        const a = window.DreamOSAudio;
+        return a && typeof a.get === 'function' && typeof a.set === 'function' && window.uiShell !== 'mobile' ? a : null;
+    })();
+    let hwSending = false;
+    let hwWanted = null;
 
     function masterGain() {
+        if (hwAudio) return 1;
         if (muted || level <= 0) return 0;
         return level / 100;
     }
 
+    /** Sends the newest wanted level / mute to the host, one request at a time (a drag sends many). */
+    function hwSend(patch) {
+        hwWanted = Object.assign(hwWanted || {}, patch);
+        if (hwSending) return;
+        const next = hwWanted;
+        hwWanted = null;
+        hwSending = true;
+        Promise.resolve(hwAudio.set(next)).catch(() => { /* the host answers with its state event anyway */ }).then(() => {
+            hwSending = false;
+            if (hwWanted) { hwSend({}); return; }
+            paintIcon();
+            paintFlyout();
+        });
+    }
+
+    /** The host's state (at start and on each 'dreamosaudio'): the keys, another program, or our own set. */
+    function hwApply(st) {
+        if (!st || st.present === false) return;
+        const v = Number(st.volume);
+        if (Number.isFinite(v)) level = Math.max(0, Math.min(100, Math.round(v)));
+        muted = !!st.muted;
+        // a drag in progress keeps its own value until it ends
+        if (hwSending || hwWanted) return;
+        paintIcon();
+        paintFlyout();
+        notifyChange();
+    }
+
     function readStored() {
+        if (hwAudio) {
+            let st = null;
+            try { st = hwAudio.get(); } catch (_err) { st = null; }
+            if (st && st.present !== false && Number.isFinite(Number(st.volume))) {
+                level = Math.max(0, Math.min(100, Math.round(Number(st.volume))));
+                muted = !!st.muted;
+            }
+            return;
+        }
         try {
             const raw = localStorage.getItem(VOLUME_KEY);
             if (raw != null && raw !== '') {
@@ -43,6 +94,7 @@
     }
 
     function writeStored() {
+        if (hwAudio) return;
         try {
             localStorage.setItem(VOLUME_KEY, String(level));
             if (muted) localStorage.setItem(MUTE_KEY, '1');
@@ -200,6 +252,7 @@
         if (!opts || !opts.keepMute) muted = level <= 0 ? muted : false;
         // keepMute: the level alone (Melaton Mobile's media slider; Off is its own radio button)
         if (level <= 0 && !(opts && opts.keepMute)) muted = true;
+        if (hwAudio) hwSend({ volume: level, muted });
         writeStored();
         applyMaster();
         paintIcon();
@@ -210,6 +263,7 @@
     function setMuted(next) {
         muted = !!next;
         if (!muted && level <= 0) level = 50;
+        if (hwAudio) hwSend({ volume: level, muted });
         writeStored();
         applyMaster();
         paintIcon();
@@ -385,6 +439,7 @@
     readStored();
     writeStored();
     applyMaster();
+    if (hwAudio) window.addEventListener('dreamosaudio', (e) => hwApply(e && e.detail), { signal: appScopeSignal });
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', wireIcon);
     } else {

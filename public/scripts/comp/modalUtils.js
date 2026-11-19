@@ -9931,6 +9931,10 @@ function applyUserGlobalSettingsToClient(settings) {
             desktopSettingsPersistedUseApplicationImageIcon = desktop.useApplicationImageIcon;
             applyUseApplicationImageIcon(desktop.useApplicationImageIcon);
         }
+        if (Array.isArray(desktop.trayOrder) && window.trayOrder) {
+            // the notification area's icon order (#932): public/scripts/comp/trayOrder.js
+            window.trayOrder.apply(desktop.trayOrder);
+        }
         if (Array.isArray(desktop.startMenuPinned)) {
             applyStartMenuPinnedLaunchIds(desktop.startMenuPinned);
             if (startMenuItems) {

@@ -17,7 +17,7 @@
  *   quickLaunch     Show Quick Launch (also the Toolbars tab's Quick Launch)
  *   thumbnails      Show window previews (thumbnails) over taskbar buttons; off, the title tooltip
  *   hideInactive    Hide inactive icons (trayRegistry.js)
- *   clock / volume / network
+ *   clock / volume / network / power
  *                   the Notification Area tab's system icons
  *   recentFiles / recentPrograms / recentProgramCount / places
  *                   the Start Menu tab's Privacy and Customize Start Menu (modalUtils.js start menu)
@@ -60,6 +60,7 @@
         clock: true,
         volume: true,
         network: true,
+        power: true,
         recentFiles: true,
         recentPrograms: true,
         recentProgramCount: 8,
@@ -171,6 +172,7 @@
         toggle(tb, 'tray-no-clock', !settings.clock);
         toggle(tb, 'tray-no-volume', !settings.volume);
         toggle(tb, 'tray-no-network', !settings.network);
+        toggle(tb, 'tray-no-power', !settings.power);
         // the Start menu's icon sizes (desktop-shell.css #startMenu[data-start-size], [data-programs-size])
         const start = doc.getElementById('startMenu');
         if (start) {

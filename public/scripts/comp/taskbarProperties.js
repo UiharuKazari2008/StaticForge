@@ -236,7 +236,7 @@
             ${check('sys-clock', 13, 126, 200, 'Cloc<u>k</u>', 'clock')}
             ${check('sys-volume', 13, 139, 200, '<u>V</u>olume', 'volume')}
             ${check('sys-network', 13, 152, 200, '<u>N</u>etwork', 'network')}
-            ${check('sys-power', 13, 164, 200, '<u>P</u>ower', 'power', { disabled: true })}
+            ${check('sys-power', 13, 164, 200, '<u>P</u>ower', 'power', { disabled: !(root.trayPower && root.trayPower.present()) })}
             ${group(6, 186, 240, 30, 'Notifications')}
             ${text(13, 200, 112, 8, 'Show notifications for at <u>l</u>east:')}
             <select class="tbp-ctl tbp-select" id="tbp-mintime" data-key="x:trayMinMs" style="${dlu(126, 198, 56, 12)}">
@@ -322,6 +322,7 @@
             else icons.push(el);
         });
         const sys = [];
+        if (c.power !== false) { const b = doc.getElementById('powerTrayIcon'); if (b && !b.classList.contains('hidden')) sys.push(b); }
         if (c.network) { const n = doc.getElementById('modemTrayIcon'); if (n && !n.classList.contains('hidden')) sys.push(n); }
         if (c.volume) { const v = doc.getElementById('volumeTrayIcon'); if (v && !v.classList.contains('hidden')) sys.push(v); }
         // Copies keep their ids: the Vista pictures (network, volume, the update shield ...) are
@@ -370,7 +371,8 @@
     function readKey(key) {
         const p = dlg.pending;
         if (key.startsWith('x:')) return p[key.slice(2)];
-        if (key === 'power') return false;
+        // Vista greys Power out on a computer without a battery (trayPower.js)
+        if (key === 'power' && !(root.trayPower && root.trayPower.present())) return false;
         return p.core[key];
     }
 
