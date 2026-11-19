@@ -350,6 +350,9 @@ function showWinlogonPowerScreen(text) {
     }
     const status = document.getElementById('desktopPreStartupStatus');
     if (status) status.textContent = text;
+    // the wait ring turns for as long as a power or update line is up (websocket.js pauses it on the password box)
+    const ring = modal.querySelector('.desktop-prestartup-progress');
+    if (ring) ring.classList.remove('paused');
     document.body.classList.add('winlogon-power');
     modal.classList.add('power-status-only', 'vista-logon-art-ready');
     modal.classList.remove('auth-active', 'auth-busy', 'closing');
@@ -496,7 +499,7 @@ function forgetDirectorReopen() {
         const modal = document.getElementById('desktopPreStartupModal');
         if (!modal) return false;
         if (!statusHeld) {
-            statusHeld = { wasHidden: modal.classList.contains('hidden'), hadArt: modal.classList.contains('vista-logon-art-ready') };
+            statusHeld = { wasHidden: modal.classList.contains('hidden') || modal.classList.contains('closing'), hadArt: modal.classList.contains('vista-logon-art-ready') };
             showWinlogonPowerScreen(text);
             setWinlogonPowerText(text);
             document.body.classList.add('winlogon-configuring');
@@ -510,19 +513,28 @@ function forgetDirectorReopen() {
         const held = statusHeld;
         if (!held) return;
         statusHeld = null;
+        const ws = window.wsClient;
+        // Vista goes on from "Configuring updates" to the logon (Yukimi, Nov 19: after an update it jumped to the
+        // desktop and the ring stopped). While the logon is still to come, the Welcome screen stays up with its art and
+        // the boot's own logon dialog takes it over at once - the password box, or "Please wait..." / "Welcome" with
+        // the ring turning - whatever the connection reached while the stage held the screen (its renders were held).
+        const logonAhead = !!(ws && window.isDesktop && typeof ws._shouldUsePreStartupDialog === 'function'
+            && ws._shouldUsePreStartupDialog() && !ws.initializationCompleted);
         document.body.classList.remove('winlogon-power', 'winlogon-configuring');
         const modal = document.getElementById('desktopPreStartupModal');
         if (modal) {
             modal.classList.remove('power-status-only');
-            if (!held.hadArt) modal.classList.remove('vista-logon-art-ready');
-            if (held.wasHidden) modal.classList.add('hidden');
+            if (!logonAhead) {
+                if (!held.hadArt) modal.classList.remove('vista-logon-art-ready');
+                if (held.wasHidden) modal.classList.add('hidden');
+            }
         }
         const status = document.getElementById('desktopPreStartupStatus');
         if (status) delete status.dataset.lines;
-        if (window.wsClient) {
-            window.wsClient.winlogonPowerText = '';
+        if (ws) {
+            ws.winlogonPowerText = '';
             // the boot's own logon dialog takes the screen back (public/scripts/websocket.js)
-            if (!held.wasHidden && typeof window.wsClient._renderPreStartupDialog === 'function') window.wsClient._renderPreStartupDialog();
+            if ((logonAhead || !held.wasHidden) && typeof ws._renderPreStartupDialog === 'function') ws._renderPreStartupDialog();
         }
     }
 
