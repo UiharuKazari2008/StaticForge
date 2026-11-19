@@ -577,7 +577,9 @@ function forgetDirectorReopen() {
         }, 400);
         try {
             // waiting updates only: a phone restart does not wait on the server for more
-            const plan = await winlogonUpdatePlan(updater, updater.planShutdownInstall({ checkServer: false }));
+            // the server's newer files join this restart (#951): it is a shut down, not a start, so the list may be
+            // asked (bounded); before, a phone restart installed only what was waiting and the next start found more
+            const plan = await winlogonUpdatePlan(updater, updater.planShutdownInstall());
             if (plan) {
                 // Windows Mobile installs before the restart, under its own box: no Welcome screen, no
                 // servicing stages (those are the desktop's)
@@ -592,7 +594,26 @@ function forgetDirectorReopen() {
         if (box) box.close();
     }
 
+    /**
+     * Before the page goes (#951): a download still running finishes (it may hold a later set of updates), then the
+     * worker takes the server's newest /app and /launch and keeps them once their files are here - an installed
+     * client starts on the kept /app, so the restart runs what was just installed instead of the old page that then
+     * asked for a second restart. Only after updates this session; bounded, never throws.
+     */
+    async function commitShellBeforeLeaving(kind) {
+        if (kind === 'server') return;
+        const m = window.serviceWorkerManager;
+        if (!m || typeof m.commitShellAndWait !== 'function' || !(m._shellCommitWanted || m.pendingUpdateFuse || m.isUpdating)) return;
+        try {
+            if (m.isUpdating && typeof m.attachToDownloadProgress === 'function') {
+                await Promise.race([m.attachToDownloadProgress({ stallMs: 20000 }), winlogonDelay(60000)]);
+            }
+        } catch (_) { /* the commit below keeps the old shell if files are missing */ }
+        await m.commitShellAndWait({ refresh: true, timeoutMs: 2500 });
+    }
+
     window.winlogonUpdates = {
+        commitShell: commitShellBeforeLeaving,
         setText: setWinlogonPowerText,
         updater: winlogonUpdater,
         plan: winlogonUpdatePlan,
@@ -673,6 +694,7 @@ async function runWinlogonPower(kind, options) {
     const opts = options || {};
     if (!window.isDesktop) {
         await winlogonUpdates.installNarrow(kind);
+        await winlogonUpdates.commitShell(kind);
         await commitWinlogonPower(kind, opts.onCommit);
         return true;
     }
@@ -715,6 +737,8 @@ async function runWinlogonPower(kind, options) {
         if (kind === 'shutdown' || kind === 'logoff') forgetDirectorReopen();
         // a hook once this computer has shut down (Continuity, Yukimi Nov 18 2026: the DeX window shuts down first,
         // then the phone restarts and both start together): awaited, at most 3 s
+        // the kept shell switches with the files just installed before the restart (#951)
+        await winlogonUpdates.commitShell(kind);
         if (typeof opts.beforeNavigate === 'function') {
             try { await Promise.race([Promise.resolve().then(opts.beforeNavigate), winlogonDelay(3000)]); } catch (_) { /* restart anyway */ }
         }

@@ -436,10 +436,13 @@
         if (!isDw() || !sw || !state) return;
         const wasPending = !!sw.pendingUpdateFuse;
         sw.updateProgress = state.progress || 0;
-        sw.pendingUpdateUrls = new Set(Array.isArray(state.urls) ? state.urls : []);
-        sw.pendingUpdateFilesTotal = state.files || sw.pendingUpdateUrls.size;
-        sw.pendingUpdateKind = state.kind || null;
-        sw.pendingUpdateFuse = !!state.pending;
+        // this window's own needs (files the phone applied live that this window runs an older copy of, or a reload
+        // kept) stay beside the phone's state instead of being overwritten by it (#951)
+        const local = sw._localPending instanceof Set ? sw._localPending : new Set();
+        sw.pendingUpdateUrls = new Set((Array.isArray(state.urls) ? state.urls : []).concat(Array.from(local)));
+        sw.pendingUpdateFilesTotal = Math.max(state.files || 0, sw.pendingUpdateUrls.size);
+        sw.pendingUpdateKind = state.kind || (local.size ? 'restart' : null);
+        sw.pendingUpdateFuse = !!state.pending || local.size > 0;
         if (typeof sw._notifyTrayIconUpdate === 'function') sw._notifyTrayIconUpdate();
         // the update page, if open, shows the phone's progress
         if (typeof sw.foregroundUpdateView === 'function') {
@@ -525,6 +528,11 @@
         const kind = typeof sw.classifyStaticCacheUpdate === 'function' ? sw.classifyStaticCacheUpdate(m.files) : 'apply-safe';
         if (kind === 'restart') {
             sw.pendingUpdateKind = 'restart';
+            // this window's own (#951): the phone's next state push must not clear it
+            if (!(sw._localPending instanceof Set)) sw._localPending = new Set();
+            if (!sw.pendingUpdateUrls) sw.pendingUpdateUrls = new Set();
+            m.files.forEach((f) => { if (f && f.url) { sw._localPending.add(f.url); sw.pendingUpdateUrls.add(f.url); } });
+            if (typeof sw._pendingMerge === 'function') sw._pendingMerge(m.files);
             sw.tripPendingUpdateFuse(m.files.length);
             if (typeof sw._scheduleUpdateCompleteToast === 'function') sw._scheduleUpdateCompleteToast('restart');
             return;

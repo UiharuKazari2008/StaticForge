@@ -118,7 +118,8 @@ function makeManager(overrides) {
     // a file is missing: the whole set goes again (restart vs apply is classified from all of it)
     m = makeManager({ missing: ['/css/b.css'] });
     await m._recoverLostDownload();
-    assert.deepStrictEqual(m.calls.posted, [{ type: 'CACHE_STATIC_FILES', files: FILES }], 'the set is sent again');
+    // (tagged with the page that asks, #951: the worker names a download's pages in its completion)
+    assert.deepStrictEqual(m.calls.posted, [{ type: 'CACHE_STATIC_FILES', files: FILES, requester: m._pageTag }], 'the set is sent again');
     assert.strictEqual(m.isUpdating, true, 'and watched');
     assert.strictEqual(m.calls.periodic, 1);
     assert.strictEqual(m._downloadRecoveries, 1);
@@ -152,7 +153,7 @@ function makeManager(overrides) {
     assert.strictEqual(m.calls.completed.length, 1, 'periodic check: worker lost it, the page finishes it');
 
     // the foreground check watches from the moment it posts
-    assert.ok(/this\._activeDownloadFiles = filesToUpdate;[\s\S]{0,400}type: 'CACHE_STATIC_FILES',\s*files: filesToUpdate\s*\}\);[\s\S]{0,300}this\.isUpdating = true;\s*this\.startPeriodicStateCheck\(\);/.test(src), 'updateStaticCache remembers the set and watches it');
+    assert.ok(/this\._activeDownloadFiles = filesToUpdate;[\s\S]{0,400}type: 'CACHE_STATIC_FILES',\s*files: filesToUpdate,\s*requester: this\._pageTag\s*\}\);[\s\S]{0,300}this\.isUpdating = true;\s*this\.startPeriodicStateCheck\(\);/.test(src), 'updateStaticCache remembers the set and watches it');
 
     console.log('test-sw-lost-download: ok');
 })().catch((err) => { console.error(err); process.exit(1); });

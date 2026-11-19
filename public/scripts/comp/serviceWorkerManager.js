@@ -251,6 +251,9 @@ function servicePackFromFiles(files, now) {
 class ServiceWorkerManager {
     constructor() {
         this.swRegistration = null;
+        // this page's tag on its download requests (#951): the worker names the pages that asked for or joined a
+        // download in STATIC_CACHE_COMPLETE, so a page tells its own downloads from another page's
+        this._pageTag = `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
         this.updateAvailable = false;
         // Blown when updates are downloaded but not yet applied via restart.
         this.pendingUpdateFuse = false;
@@ -348,16 +351,23 @@ class ServiceWorkerManager {
     tripPendingUpdateFuse(filesCount = null) {
         this.pendingUpdateFuse = true;
         this.updateAvailable = true;
-        if (filesCount != null && filesCount > 0) {
-            this.pendingUpdateFilesTotal = filesCount;
-            this.trayPopup.filesTotal = filesCount;
-            this.lastUpdateFilesTotal = filesCount;
+        // the count is every file waiting (#951): a later batch adds to it, it never replaces the earlier one's
+        const union = this.pendingUpdateUrls ? this.pendingUpdateUrls.size : 0;
+        const count = Math.max(union, filesCount != null && filesCount > 0 && !union ? filesCount : 0);
+        if (count > 0) {
+            this.pendingUpdateFilesTotal = count;
+            this.trayPopup.filesTotal = count;
+            this.lastUpdateFilesTotal = count;
         }
         this._notifyTrayIconUpdate();
     }
 
     resetPendingUpdateFuse() {
+        // a restart that follows must commit the shell to the files installed (winlogonPower commitShellBeforeLeaving)
+        if (this.pendingUpdateFuse || (this.pendingUpdateUrls && this.pendingUpdateUrls.size)) this._shellCommitWanted = true;
         if (this.pendingUpdateUrls) this.pendingUpdateUrls.clear();
+        if (this._localPending instanceof Set) this._localPending.clear();
+        this._pendingClear();
         this.pendingUpdateFuse = false;
         this.updateAvailable = false;
         this.pendingUpdateFilesTotal = 0;
@@ -726,6 +736,8 @@ class ServiceWorkerManager {
     _resolveBootComplete() {
         this.bootComplete = true;
         this.bootPhase = 'complete';
+        // the updates a reload or the other Continuity window left waiting, once the page is up (#951)
+        setTimeout(() => { void this._restorePendingUpdates().catch(() => {}); }, 4000);
         document.body.classList.remove('initializing');
         // The logon is still up. A queued download paints progress on it if flushed here.
         // _skipBootFlush: the hash re-fetch is deferred to idle (scheduleAfterFirstPaint).
@@ -951,6 +963,17 @@ class ServiceWorkerManager {
      */
     async hashForStaticPath(pathname) {
         const path = normalizeStaticFilePath(pathname);
+        // the copy the cache holds names it (#950, #951): one exact lookup of the static row's own hash. The stored
+        // list could be older than the cache (a live install patched only this page's memory), so a feature loaded
+        // after a restart asked for an old ?sha= and the worker answered the old compiled copy
+        if (!this.agentSession && typeof caches !== 'undefined') {
+            try {
+                const cache = await caches.open('static-cache-v2');
+                const row = await cache.match(path, { ignoreVary: true });
+                const held = row && row.headers.get('x-file-hash');
+                if (held) return held;
+            } catch (_) { /* the list below */ }
+        }
         if (!this._staticHashByPath) {
             if (!this._staticHashBuild) {
                 const gen = this._staticHashGen;
@@ -1052,6 +1075,106 @@ class ServiceWorkerManager {
         } catch (_) { /* the next start's check commits it */ }
     }
 
+    /**
+     * Before a restart (#951): the worker takes the server's newest /app and /launch as candidates (opts.refresh) and
+     * makes them the kept shells if their files are in the cache, and this resolves once it has answered (at most
+     * opts.timeoutMs). An installed client boots the kept /app, so the restart then runs the files just installed;
+     * before, it booted the old /app (old ?sha=) and asked for a second restart. Never throws.
+     */
+    commitShellAndWait(opts = {}) {
+        const timeoutMs = Number(opts.timeoutMs) || 2500;
+        return new Promise((resolve) => {
+            let worker = null;
+            try { worker = navigator.serviceWorker && navigator.serviceWorker.controller; } catch (_) { worker = null; }
+            if (!worker) { resolve(null); return; }
+            const requestId = `shell-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+            let done = false;
+            const finish = (v) => {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                try { navigator.serviceWorker.removeEventListener('message', onMsg); } catch (_) { /* gone */ }
+                resolve(v);
+            };
+            const onMsg = (ev) => { if (ev && ev.data && ev.data.type === 'SHELL_COMMITTED' && ev.data.requestId === requestId) finish(ev.data); };
+            const timer = setTimeout(() => finish(null), timeoutMs);
+            try {
+                navigator.serviceWorker.addEventListener('message', onMsg);
+                worker.postMessage({ type: 'SHELL_COMMIT', requestId, refresh: opts.refresh === true });
+            } catch (_) { finish(null); }
+        });
+    }
+
+    // ---- the updates waiting for a restart, kept across reloads (#951) ----
+    // One record in the verified database ('pending': { rows: { url: hash }, at }), merged with every finished
+    // restart batch. The count is the union (a later set adds to it, never replaces it), and a page loaded later (a
+    // reload, the other Continuity window) finds what it still runs old copies of and owes the restart for those.
+    async _pendingRecord() {
+        const db = await this._verifiedDb();
+        if (!db) return null;
+        return new Promise((resolve) => {
+            try {
+                const g = db.transaction('v').objectStore('v').get('pending');
+                g.onsuccess = () => resolve(g.result && typeof g.result === 'object' ? g.result : null);
+                g.onerror = () => resolve(null);
+            } catch (_) { resolve(null); }
+        });
+    }
+
+    async _pendingWrite(record) {
+        const db = await this._verifiedDb();
+        if (!db) return;
+        await new Promise((resolve) => {
+            try {
+                const tx = db.transaction('v', 'readwrite');
+                if (record) tx.objectStore('v').put(record, 'pending'); else tx.objectStore('v').delete('pending');
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => resolve();
+                tx.onabort = () => resolve();
+            } catch (_) { resolve(); }
+        });
+    }
+
+    _pendingMerge(files) {
+        const list = (Array.isArray(files) ? files : []).filter((f) => f && typeof f === 'object' && f.url && f.hash);
+        if (!list.length) return;
+        this._pendingChain = (this._pendingChain || Promise.resolve()).then(async () => {
+            const rec = (await this._pendingRecord()) || { rows: {}, at: Date.now() };
+            list.forEach((f) => { rec.rows[f.url] = f.hash; });
+            rec.at = Date.now();
+            await this._pendingWrite(rec);
+        }).catch(() => {});
+    }
+
+    _pendingClear() {
+        this._pendingChain = (this._pendingChain || Promise.resolve()).then(() => this._pendingWrite(null)).catch(() => {});
+    }
+
+    /**
+     * A page start: the updates the record keeps that this page still runs an older copy of are its pending restart
+     * (a reload kept them; the other Continuity window installed them). The rest are what it runs already: dropped.
+     */
+    async _restorePendingUpdates() {
+        if (this.agentSession || this._pendingRestored) return;
+        this._pendingRestored = true;
+        const rec = await this._pendingRecord();
+        const rows = rec && rec.rows ? Object.keys(rec.rows).map((url) => ({ url, hash: rec.rows[url] })) : [];
+        if (!rows.length) return;
+        const stale = this._filesNewerThanLoaded(rows);
+        if (!stale.length) { if (!this.pendingUpdateFuse) this._pendingClear(); return; }
+        if (!this.pendingUpdateUrls) this.pendingUpdateUrls = new Set();
+        stale.forEach((f) => this.pendingUpdateUrls.add(f.url));
+        // a Continuity DeX window keeps these as its own beside the phone's mirrored state (melatonContinuity.js)
+        if (this._isContinuityDexWindow()) {
+            if (!(this._localPending instanceof Set)) this._localPending = new Set();
+            stale.forEach((f) => this._localPending.add(f.url));
+        }
+        this.pendingUpdateKind = 'restart';
+        this._noteUpdateBatch(stale);
+        this.tripPendingUpdateFuse(stale.length);
+        this._scheduleUpdateCompleteToast('restart');
+    }
+
     /** Critical files of a list that are not in the cache under their hash (looked up, never taken from the verified record). */
     async _criticalFilesStale(files) {
         const policy = window.melatonUpdatePolicy;
@@ -1151,7 +1274,7 @@ class ServiceWorkerManager {
                 const needing = this._filesCountingTowardInstaller(await this.getFilesNeedingUpdate(snapshot));
                 if (needing.length && navigator.serviceWorker && navigator.serviceWorker.controller) {
                     console.log(`Offline cache: ${needing.length} file(s) missing, downloading them quietly`);
-                    navigator.serviceWorker.controller.postMessage({ type: 'CACHE_STATIC_FILES', files: needing, silent: true });
+                    navigator.serviceWorker.controller.postMessage({ type: 'CACHE_STATIC_FILES', files: needing, silent: true, requester: this._pageTag });
                 }
                 try { localStorage.setItem(FULL_CACHE_CHECK_KEY, String(Date.now())); } catch (_) { /* storage off */ }
             } catch (error) {
@@ -2405,7 +2528,8 @@ class ServiceWorkerManager {
                 this._downloadRecoveries = 0;
                 this.swRegistration.active.postMessage({
                     type: 'CACHE_STATIC_FILES',
-                    files: filesToUpdate
+                    files: filesToUpdate,
+                    requester: this._pageTag
                 });
                 // watched from here, not only from STATIC_CACHE_STARTED: a worker replaced before it
                 // started would otherwise leave the page on "Downloading" with nothing running
@@ -2883,6 +3007,9 @@ class ServiceWorkerManager {
         if (Array.isArray(data.updatedFiles) && data.updatedFiles.length > 0) {
             return data.updatedFiles;
         }
+        // a worker that reports exactly (#951): nothing updated means nothing to restart for - a download whose files
+        // all failed, were missing or came back with other bytes than the manifest's is not "N files, restart"
+        if (data && data.v >= 2) return [];
         const fromFiles = Array.isArray(data.files) ? data.files : [];
         if (fromFiles.length > 0 && fromFiles[0] && fromFiles[0].url) {
             return fromFiles;
@@ -3050,6 +3177,8 @@ class ServiceWorkerManager {
         }
 
         this._noteUpdateBatch(updatedFiles);
+        // kept across reloads and counted as one set with any earlier batch (#951)
+        this._pendingMerge(updatedFiles);
         this.tripPendingUpdateFuse(filesCount);
         this.trayPopup.dismissedUntilComplete = false;
         this._scheduleUpdateCompleteToast('restart');
@@ -3100,7 +3229,8 @@ class ServiceWorkerManager {
             this.swRegistration.active.postMessage({
                 type: 'CACHE_STATIC_FILES',
                 files: filesToUpdate,
-                silent: true
+                silent: true,
+                requester: this._pageTag
             });
 
             setTimeout(() => finish({ cached: 0, skipped: false, timedOut: true }), 60000);
@@ -3728,8 +3858,16 @@ class ServiceWorkerManager {
                 // check the restart cut short) is not news here: this page started on the cache it left, and its
                 // boot check found anything still missing. Taking it as an update showed "N files, restart"
                 // straight after a restart, for files already installed and running (Continuity, #945)
-                const leftover = Number(event.data.startedAt) > 0 && typeof performance !== 'undefined'
+                // a worker that names the pages of a download (#951): this page's own, or one it joined, is never a
+                // leftover; another page's download that began before this page loaded is (a restart's tail). Without
+                // the names (an older worker), the start time alone decides
+                const requesters = Array.isArray(event.data.requesters) ? event.data.requesters : null;
+                const mine = !!(requesters && requesters.includes(this._pageTag));
+                const leftover = !mine && Number(event.data.startedAt) > 0 && typeof performance !== 'undefined'
                     && Number(event.data.startedAt) < performance.timeOrigin;
+                if (Array.isArray(event.data.mismatched) && event.data.mismatched.length) {
+                    console.warn(`[update] ${event.data.mismatched.length} file(s) arrived with other bytes than the manifest's; not counted as updates`, event.data.mismatched.slice(0, 5));
+                }
                 if (leftover && !attached) {
                     console.log('Download completed: it began before this page loaded; not an update for it', event.data.total);
                 } else if (filesCount > 0) {
@@ -4225,7 +4363,7 @@ class ServiceWorkerManager {
             }
             this._downloadRecoveries = (this._downloadRecoveries || 0) + 1;
             console.warn(`Lost download: ${missing.length} of ${files.length} file(s) not cached, sending the set again`);
-            worker.postMessage({ type: 'CACHE_STATIC_FILES', files });
+            worker.postMessage({ type: 'CACHE_STATIC_FILES', files, requester: this._pageTag });
             this.isUpdating = true;
             this.startPeriodicStateCheck();
         } catch (error) {
@@ -4351,28 +4489,11 @@ class ServiceWorkerManager {
     
     async checkForWaiting() {
         if (this.swRegistration && this.swRegistration.waiting) {
-            console.log('Service worker update waiting, activating...');
-
-            // Show notification about update being available
-            if (typeof showGlassToast === 'function') {
-                showGlassToast(
-                    'info',
-                    'Update Ready',
-                    'A new version is ready. Activating update...',
-                    false,
-                    3000,
-                    '<i class="fas fa-sync"></i>'
-                );
-            }
-
-            // Send skip waiting message
-            this.swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
-
-            // Wait a moment for the new service worker to activate, then the winlogon restart
-            setTimeout(() => {
-                console.log('Restarting through the Welcome screen to activate the new service worker');
-                this.forceRestart();
-            }, 1000);
+            // a new worker takes over in place (#951): it answers this page's requests from now on and the files the
+            // page runs are unchanged, so nothing restarts here; files that did change wait in the pending set for
+            // the one restart the person chooses (it was a restart of its own one second later, beside the files')
+            console.log('Service worker update waiting, activating it in place');
+            try { this.swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch (_) { /* it activates when the pages close */ }
         }
     }
     
@@ -4728,10 +4849,26 @@ class ServiceWorkerManager {
                 return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'apply' };
             }
 
-            // Boot init downloads: script updates must reload to execute — same as a finished install.
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            this.forceRestart();
-            return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'restart' };
+            // Boot init downloads (#951): the start never restarts by itself (it was an unasked second restart, and
+            // with files nothing on the page runs yet it was no restart at all). Files no page code has loaded
+            // ('unused') or that swap live ('segments') are in place now; files this page runs an older copy of wait
+            // for the restart the person chooses, as any other update.
+            if (updateKind === 'unused' || updateKind === 'segments') {
+                this._noteStaticHashUpdate(files);
+                if (updateKind === 'segments' && typeof this.applySegmentUpdate === 'function') await this.applySegmentUpdate(files);
+                else this.applyStaticCacheUpdate(files, { silent: true });
+                return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'apply' };
+            }
+            const loadedStale = this._filesNewerThanLoaded(files);
+            const owed = loadedStale.length ? loadedStale : files.filter((f) => f && f.url && f.hash);
+            if (!this.pendingUpdateUrls) this.pendingUpdateUrls = new Set();
+            owed.forEach((f) => this.pendingUpdateUrls.add(f.url));
+            this.pendingUpdateKind = 'restart';
+            this._noteUpdateBatch(owed);
+            this._pendingMerge(owed);
+            this.tripPendingUpdateFuse(owed.length);
+            this._scheduleUpdateCompleteToast('restart');
+            return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'later' };
         }
 
         if (result.stalled) {
@@ -4920,7 +5057,9 @@ class ServiceWorkerManager {
             }
             const worker = this.swRegistration && this.swRegistration.active;
             const online = navigator.onLine !== false && window.wsClient && typeof window.wsClient.isConnected === 'function' && window.wsClient.isConnected();
-            if (options.checkServer === false || !worker || !online || !window.melatonUpdatePolicy || this.isUpdating) return plan;
+            // a running download no longer skips the list (#951): what the server published since joins this shutdown
+            // (the running download's files are waited for and merged by the worker, never fetched twice)
+            if (options.checkServer === false || !worker || !online || !window.melatonUpdatePolicy) return plan;
             try {
                 const result = await this._fetchManifestResult({ timeoutMs: 5000 });
                 if (result.outcome !== 'list') return plan;
@@ -4973,6 +5112,8 @@ class ServiceWorkerManager {
             ? 'Do not turn off or unplug your computer; it will turn off automatically.'
             : 'Please do not power off or unplug your machine.';
         this._shutdownInstalling = true;
+        // what this installs is what the restart must start on (winlogonPower commitShellBeforeLeaving, #951)
+        this._shellCommitWanted = true;
         let failed = 0;
         const done = [];
         try {
@@ -5534,7 +5675,8 @@ class ServiceWorkerManager {
 
             this.swRegistration.active.postMessage({
                 type: 'CACHE_STATIC_FILES',
-                files
+                files,
+                requester: this._pageTag
             });
             resetStallTimer();
 
