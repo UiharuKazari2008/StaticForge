@@ -295,6 +295,8 @@
             type: systemType(PHONE_ARCH[arch] || arch),
             storage: internal && internal.totalBytes ? formatMemory(internal.totalBytes) : '',
             android: dev.androidRelease ? `Android ${dev.androidRelease}${dev.securityPatch ? ` (security patch ${dev.securityPatch})` : ''}` : '',
+            // a DreamOS laptop (#910): its CaféReady host reports the machine the same way, with the OS release
+            dreamos: dev.platform === 'dreamos' && dev.osVersion ? `Version ${dev.osVersion}` : '',
             name: (me && me.name) || '',
             description: (me && me.description) || ''
         };
@@ -379,6 +381,7 @@
                 ${phone.screen ? row('Screen:', esc(phone.screen)) : ''}
                 ${row('System type:', value(phone.type))}
                 ${phone.android ? row('Android:', esc(phone.android)) : ''}
+                ${phone.dreamos ? row('DreamOS:', esc(phone.dreamos)) : ''}
             </div>` : '';
         const serverBody = `
             <div class="cpl-sys-rows cpl-sys-rows--system">

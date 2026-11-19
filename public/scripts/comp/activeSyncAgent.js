@@ -218,8 +218,11 @@
             if (app && typeof app.getDeviceName === 'function') phoneName = String(app.getDeviceName() || '').slice(0, 64);
         } catch (_) { /* older app */ }
         const model = friendlyModel();
-        const defaultName = phoneName || model || 'Melaton_Mobile';
-        const defaultDescription = model ? `${model}, Melaton Mobile` : 'Melaton Mobile';
+        // a DreamOS laptop (its CaféReady host's report says so, #910): the computer's own name, and no "Melaton Mobile"
+        const dev = deviceHw();
+        const dreamos = !!(dev && dev.platform === 'dreamos');
+        const defaultName = phoneName || (dreamos && dev.hostName ? String(dev.hostName).slice(0, 64) : '') || model || 'Melaton_Mobile';
+        const defaultDescription = dreamos ? (model ? `${model}, DreamOS` : 'DreamOS') : model ? `${model}, Melaton Mobile` : 'Melaton Mobile';
         const name = lsRead(NAME_KEY);
         const description = lsRead(DESC_KEY);
         return { name: name || defaultName, description: description || defaultDescription, nameSet: !!name, defaultName, defaultDescription };
@@ -242,7 +245,7 @@
         const app = /\b(Dreamscape|DSApp)\/([\w.]+)/.exec(ua);
         const dev = deviceHw();
         return {
-            os: dev && dev.androidRelease ? `Android ${dev.androidRelease}` : m ? `Android ${m[1]}` : 'Android',
+            os: dev && dev.androidRelease ? `Android ${dev.androidRelease}` : dev && dev.os ? [dev.os, dev.osVersion].filter(Boolean).join(' ') : m ? `Android ${m[1]}` : 'Android',
             // Chrome's reduced user agent says "K" for the model: the app's report knows it
             model: (dev && dev.model) || (m && m[2].trim() !== 'K' ? m[2].trim() : ''),
             app: app ? `${app[1]}/${app[2]}` : 'Dreamscape'
