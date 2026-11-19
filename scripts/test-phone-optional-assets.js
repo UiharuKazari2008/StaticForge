@@ -96,7 +96,20 @@ p = pageWorld(null, { navigator: { userAgent: DESKTOP_UA }, AndroidDisplay: { is
 p.api.noteBoot({ shell: 'mobile', version: '6.1', touch: false });
 assert.strictEqual(cookieOf(p), 'mobile,wm61,wm61-2x,wmc,wmc-2x', 'the Android app: the flag');
 p.api.noteBoot({ shell: 'desktop' });
-assert.strictEqual(cookieOf(p), 'mobile,wm61,wm61-2x,wmc,wmc-2x', 'its DeX window (a desktop boot) keeps it');
+assert.strictEqual(cookieOf(p), 'hidpi-200,mobile,wm61,wm61-2x,wmc,wmc-2x', 'its DeX window (a desktop boot) keeps it, and adds the desktop art for its density (#921)');
+// the desktop's HiDPI art (#921): one tier per density, never in a cookie-less client's manifest
+{
+    const d = pageWorld(null, { devicePixelRatio: 1.25, navigator: { userAgent: DESKTOP_UA } });
+    d.api.noteBoot({ shell: 'desktop' });
+    assert.strictEqual(cookieOf(d), 'hidpi-125', 'a 125 % desktop keeps the 1.25x art');
+    const hd = [{ url: '/static_images/hidpi/125/vista-cpl/a.png' }, { url: '/static_images/hidpi/200/vista-cpl/a.png' }, { url: '/static_images/vista-cpl/a.png' }];
+    assert.deepStrictEqual(urls(d.api.filterRows(hd)), ['/static_images/hidpi/125/vista-cpl/a.png', '/static_images/vista-cpl/a.png'], 'only its tier');
+    assert.deepStrictEqual(urls(d.api.legacyRows(hd)), ['/static_images/vista-cpl/a.png'], 'a client from before packages: none');
+    assert.deepStrictEqual([1, 1.25, 1.5, 1.75, 2, 3].map(d.api.hidpiTierFor), [1, 125, 150, 175, 200, 200]);
+    const one = pageWorld(null, { devicePixelRatio: 1, navigator: { userAgent: DESKTOP_UA } });
+    one.api.noteBoot({ shell: 'desktop' });
+    assert.strictEqual(cookieOf(one), 'none', 'a 100 % desktop: core only');
+}
 p = pageWorld(null, { navigator: { userAgent: DESKTOP_UA, userAgentData: { mobile: true } } });
 p.api.noteBoot({ shell: 'mobile', version: '6.1' });
 assert.ok(cookieOf(p).startsWith('mobile,'), 'a browser whose client hints say phone');

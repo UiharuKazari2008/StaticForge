@@ -303,7 +303,10 @@ runtimeAssetService.init({
         const silent = options.silent === true;
         const updateMessage = options.message || 'Runtime assets recompiled';
         invalidateServiceWorkerManifest();
-        const files = buildServiceWorkerCacheManifest();
+        // the desktop's HiDPI art (#921) never rides a broadcast: a page running code from before its
+        // packages would count it as core and fetch every density; clients with a tier get theirs
+        // from their own update check (manifestForPackages)
+        const files = melatonPackages.legacyRows(buildServiceWorkerCacheManifest());
         const plumbing = globalResources.getDataPlumbing();
         plumbing.publish('ws:broadcast:serviceWorkerCacheUpdate', {
             files,
@@ -1015,7 +1018,7 @@ function buildServiceWorkerCacheManifest() {
 /**
  * The client's asset package set (Yozora #774, public/scripts/launch/assetPackages.js): the
  * X-Melaton-Packages header, else the melaton_pkgs cookie its pages keep. null = a client from
- * before packages (no cookie): it gets everything, as before.
+ * before packages (no cookie): it gets everything but the HiDPI art (manifestForPackages).
  */
 function requestPackageSet(req) {
     let raw = req.get('X-Melaton-Packages');
@@ -1029,11 +1032,11 @@ function requestPackageSet(req) {
 const swVariantMemo = new Map();
 function manifestForPackages(set) {
     const full = buildServiceWorkerCacheManifest();
-    if (set == null) return full;
-    const key = set.join(',') || 'none';
+    // a client from before packages gets everything but the desktop's HiDPI art (#921)
+    const key = set == null ? '(legacy)' : (set.join(',') || 'none');
     const memo = swVariantMemo.get(key);
     if (memo && memo.full === full) return memo.manifest;
-    const manifest = melatonPackages.filterRows(full, set);
+    const manifest = set == null ? melatonPackages.legacyRows(full) : melatonPackages.filterRows(full, set);
     swVariantMemo.set(key, { full, manifest });
     return manifest;
 }
@@ -2586,7 +2589,8 @@ function startInstallPackRebuild() {
         return installPackRefresh;
     }
     installPackRefresh = meletonInstallPack.rebuild({
-        manifest: buildServiceWorkerCacheManifest(),
+        // the cookie-less clients' manifest: everything but the HiDPI art (#921)
+        manifest: manifestForPackages(null),
         resolveFile: resolveInstallPackFile
     }).then((built) => {
         const verb = built.rebuilt ? 'Built' : 'Reused';
@@ -2610,7 +2614,7 @@ const installPackHashes = new WeakMap();
 function refreshInstallPackIfStale() {
     const pack = meletonInstallPack.status();
     if (pack.building || installPackRefresh) return true;
-    const manifest = buildServiceWorkerCacheManifest();
+    const manifest = manifestForPackages(null);
     let want = installPackHashes.get(manifest);
     if (!want) {
         want = meletonInstallPack.hashManifest(manifest);
