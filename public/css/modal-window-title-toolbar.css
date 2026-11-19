@@ -167,7 +167,7 @@ body:not(.windows-classic-theme) #directorWindow {
     box-shadow: 0 1px 0 hsl(0 0% 100% / 14%) inset;
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment) {
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     color: var(--text-secondary);
@@ -367,7 +367,7 @@ body:not(.windows-classic-theme) #directorWindow {
     overflow: visible;
 }
 
-.modal:not(.active-window) .modal-window-title {
+.modal .modal-window-title.window-inactive {
     box-shadow: inset 0px -2px 10px transparent;
 }
 
@@ -538,15 +538,15 @@ body:not(.windows-classic-theme) #directorWindow {
     border-right-color: transparent;
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning) {
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning) {
     background: transparent;
     color: var(--text-secondary);
     box-shadow: none;
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment:hover:not(:disabled),
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment.active,
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) input.toolbar-input-segment:focus {
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment:hover:not(:disabled),
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .toolbar-input-segment.active,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) input.toolbar-input-segment:focus {
     color: var(--text-primary);
 }
 
@@ -651,43 +651,43 @@ body:not(.windows-classic-theme) #directorWindow {
     color: var(--text-primary);
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) {
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     box-shadow: inset var(--glass-shadow-2);
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment {
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment {
     background: transparent;
     color: var(--text-secondary);
     box-shadow: none;
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment:hover:not(:disabled),
-.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment.active,
-.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment.context-open {
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment:hover:not(:disabled),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment.active,
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment) > .toolbar-input-segment.context-open {
     color: var(--text-primary);
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar>:is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.btn-toggle),
-.modal:not(.active-window) .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
-.modal:not(.active-window) .modal-window-title-toolbar .custom-dropdown :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning) {
+.modal .modal-window-title-toolbar.window-inactive > :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive .custom-dropdown :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     color: var(--text-secondary);
     box-shadow: inset var(--glass-shadow-1);
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar > .btn-primary,
-.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary {
+.modal .modal-window-title-toolbar.window-inactive > .btn-primary,
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary {
     background: var(--primary-glass-color);
     border-color: var(--primary-glass-border);
     color: var(--text-accent-tinted);
     box-shadow: var(--glass-shadow-2), inset 0 0 10px var(--glass-inset-bg-3);
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar > .btn-danger,
-.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger {
+.modal .modal-window-title-toolbar.window-inactive > .btn-danger,
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger {
     background: var(--danger-glass-color);
     border-color: var(--danger-glass-border);
     color: hsl(0 100% 85%);
@@ -695,23 +695,23 @@ body:not(.windows-classic-theme) #directorWindow {
 }
 
 
-.modal:not(.active-window) .modal-window-title-toolbar>.form-control,
-.modal:not(.active-window) .modal-window-title-toolbar>input.form-control:not([type="hidden"]) {
+.modal .modal-window-title-toolbar.window-inactive > .form-control,
+.modal .modal-window-title-toolbar.window-inactive > input.form-control:not([type="hidden"]) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     color: var(--text-secondary);
     box-shadow: inset var(--glass-shadow-2);
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar>.button-group:has(.form-control, input:not([type="hidden"])) {
+.modal .modal-window-title-toolbar.window-inactive > .button-group:has(.form-control, input:not([type="hidden"])) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     box-shadow: inset var(--glass-shadow-2);
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) .form-control,
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"]))>input:not([type="hidden"]),
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning) {
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .form-control,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) > input:not([type="hidden"]),
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning) {
     background: transparent;
     color: var(--text-secondary);
     box-shadow: none;
@@ -775,7 +775,7 @@ body:not(.windows-classic-theme) #directorWindow {
         box-shadow: none;
     }
 
-    .modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(
+    .modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])):has(
         .toolbar-input-segment:hover:not(:disabled),
         .toolbar-input-segment.active,
         input.toolbar-input-segment:focus
@@ -785,32 +785,32 @@ body:not(.windows-classic-theme) #directorWindow {
         box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
     }
 
-    .modal:not(.active-window) .modal-window-title-toolbar>:is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
-    .modal:not(.active-window) .modal-window-title-toolbar>.button-group:not(:has(.form-control, input:not([type="hidden"]))) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
-    .modal:not(.active-window) .modal-window-title-toolbar .custom-dropdown :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):hover:not(:disabled) {
+    .modal .modal-window-title-toolbar.window-inactive > :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive .custom-dropdown :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):hover:not(:disabled) {
         background: var(--glass-layer-dark-3);
         border-color: var(--glass-border-3);
         box-shadow: inset var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-3);
     }
 
-    .modal:not(.active-window) .modal-window-title-toolbar > .btn-primary:hover:not(:disabled),
-    .modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary:hover:not(:disabled) {
+    .modal .modal-window-title-toolbar.window-inactive > .btn-primary:hover:not(:disabled),
+    .modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary:hover:not(:disabled) {
         background: var(--btn-hover-bg-primary);
         border-color: var(--btn-hover-border-primary);
         color: var(--btn-hover-text-primary);
         box-shadow: var(--btn-shadow-primary-glow), inset 0 0 12px var(--glass-inset-bg-3);
     }
 
-    .modal:not(.active-window) .modal-window-title-toolbar > .btn-danger:hover:not(:disabled),
-    .modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger:hover:not(:disabled) {
+    .modal .modal-window-title-toolbar.window-inactive > .btn-danger:hover:not(:disabled),
+    .modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger:hover:not(:disabled) {
         background: var(--btn-hover-bg-danger);
         border-color: var(--btn-hover-border-danger);
         color: var(--btn-hover-text-danger);
         box-shadow: var(--btn-shadow-danger-glow), inset 0 0 12px var(--glass-inset-bg-3);
     }
 
-    .modal:not(.active-window) .modal-window-title-toolbar>.form-control:hover:not(:disabled):not(:focus),
-    .modal:not(.active-window) .modal-window-title-toolbar>input.form-control:hover:not(:disabled):not(:focus) {
+    .modal .modal-window-title-toolbar.window-inactive > .form-control:hover:not(:disabled):not(:focus),
+    .modal .modal-window-title-toolbar.window-inactive > input.form-control:hover:not(:disabled):not(:focus) {
         border-color: var(--glass-border-3);
         box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
     }
@@ -886,7 +886,7 @@ body:not(.windows-classic-theme) #directorWindow {
     box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
 }
 
-.modal:not(.active-window).toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment):has(> .toolbar-input-segment:disabled:hover):not(:has(> .toolbar-input-segment:hover:not(:disabled))) {
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment):has(> .toolbar-input-segment:disabled:hover):not(:has(> .toolbar-input-segment:hover:not(:disabled))) {
     border-color: var(--glass-border-2);
     background: var(--glass-layer-dark-2);
     box-shadow: inset var(--glass-shadow-2);
@@ -899,8 +899,8 @@ body:not(.windows-classic-theme) #directorWindow {
     box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(:is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):disabled:hover):not(:has(.toolbar-input-segment:hover:not(:disabled))):not(:has(input.toolbar-input-segment:focus)),
-.modal:not(.active-window) .modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment):has(> .toolbar-input-segment:disabled:hover):not(:has(> .toolbar-input-segment:hover:not(:disabled))) {
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])):has(:is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):disabled:hover):not(:has(.toolbar-input-segment:hover:not(:disabled))):not(:has(input.toolbar-input-segment:focus)),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment):has(> .toolbar-input-segment:disabled:hover):not(:has(> .toolbar-input-segment:hover:not(:disabled))) {
     border-color: var(--glass-border-2);
     background: var(--glass-layer-dark-2);
     box-shadow: inset var(--glass-shadow-2);
@@ -954,14 +954,14 @@ body:not(.windows-classic-theme) #directorWindow {
     outline: none;
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(input.toolbar-input-segment:focus) input.toolbar-input-segment {
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])):has(input.toolbar-input-segment:focus) input.toolbar-input-segment {
     background: transparent;
     color: var(--text-primary);
     box-shadow: none;
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar>.form-control:focus,
-.modal:not(.active-window) .modal-window-title-toolbar>input.form-control:focus {
+.modal .modal-window-title-toolbar.window-inactive > .form-control:focus,
+.modal .modal-window-title-toolbar.window-inactive > input.form-control:focus {
     background: var(--glass-layer-dark-3);
     border-color: var(--glass-border-3);
     color: var(--text-primary);
@@ -984,8 +984,8 @@ body:not(.windows-classic-theme) #directorWindow {
     box-shadow: none;
 }
 
-.modal:not(.active-window) .modal-window-title-toolbar>.form-control:focus:hover,
-.modal:not(.active-window) .modal-window-title-toolbar>input.form-control:focus:hover {
+.modal .modal-window-title-toolbar.window-inactive > .form-control:focus:hover,
+.modal .modal-window-title-toolbar.window-inactive > input.form-control:focus:hover {
     background: var(--glass-layer-dark-3);
     border-color: var(--glass-border-3);
     color: var(--text-primary);
@@ -1149,19 +1149,19 @@ body:not(.windows-classic-theme) #directorWindow {
         1px 0 0 rgba(0, 0, 0, 0.45);
 }
 
-.modal:not(.active-window).toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) {
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     box-shadow: inset var(--glass-shadow-2);
 }
 
-.modal:not(.active-window).toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment,
-.modal:not(.active-window).toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning).toolbar-input-segment {
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment,
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) > :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning).toolbar-input-segment {
     color: var(--text-secondary);
 }
 
-.modal:not(.active-window).toolbar-visible .modal-window-title-toolbar > :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment),
-.modal:not(.active-window).toolbar-visible .modal-window-title-toolbar > input.form-control.toolbar-input-segment:not([type="hidden"]) {
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment),
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > input.form-control.toolbar-input-segment:not([type="hidden"]) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     box-shadow: inset var(--glass-shadow-2);
@@ -1349,7 +1349,7 @@ body.user-icons .icon-image {
 
 /* Inactive caption: softer outline, glow in text-shadow like the active caption (a
    drop-shadow filter composited every resting caption, #400 / #404) */
-.modal:not(.active-window) .modal-window-title-main {
+.modal .modal-window-title-main.window-inactive {
     text-shadow: 0 0 5px rgba(0, 0, 0, 0.2),
         -1px -1px 0 rgba(0, 0, 0, 0.25),
         1px -1px 0 rgba(0, 0, 0, 0.25),
@@ -1361,9 +1361,9 @@ body.user-icons .icon-image {
         1px 0 0 rgba(0, 0, 0, 0.25);
 }
 
-.modal:not(.active-window) .modal-window-title-main span,
-.modal:not(.active-window) .modal-window-title-main i,
-.modal:not(.active-window) .modal-window-title-main img {
+.modal .modal-window-title-main.window-inactive span,
+.modal .modal-window-title-main.window-inactive i,
+.modal .modal-window-title-main.window-inactive img {
     opacity: var(--window-caption-inactive-opacity);
 }
 
@@ -1467,7 +1467,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
     opacity: 0.55;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::before {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title.window-inactive::before {
     opacity: 0;
 }
 
@@ -1538,7 +1538,7 @@ body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn,
     box-shadow: 0 1px 0 var(--vista-ctl-hairline), 1px 0 0 var(--vista-ctl-hairline), -1px 0 0 var(--vista-ctl-hairline);
 }
 
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) {
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) {
     border-color: #000000b3;
 }
 
@@ -1554,8 +1554,8 @@ body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn,
     color: #f4f4f4;
 }
 
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button,
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button,
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > .custom-dropdown > button {
     border-right-color: #000000b3;
     box-shadow: inset 0 0 0 1px var(--vista-ctl-inner);
 }
@@ -1571,12 +1571,12 @@ body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn,
     border-bottom-right-radius: 5px;
 }
 
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:not(:is(.close-btn, .modal-close)),
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button:not(:is(.close-btn, .modal-close)),
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > .custom-dropdown > button {
     background: var(--vista-ctl-fold);
 }
 
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close) {
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close) {
     background:
         var(--vista-ctl-fold),
         radial-gradient(circle at -60% 50%, #0007 5% 10%, #0000 50%),
@@ -1640,8 +1640,8 @@ body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed)))
 }
 
 /* The bloom layer (7.css button:before): under the glyph, active windows only */
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button::before,
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button::before {
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button::before,
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > .custom-dropdown > button::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -1656,7 +1656,7 @@ body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has
     box-shadow: 0 0 7px 3px #5dc4f0, inset 0 0 0 1px var(--vista-ctl-inner);
 }
 
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close)::before {
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close)::before {
     background:
         var(--vista-ctl-fold),
         radial-gradient(circle at 50% 170%, #f4e676 10% 20%, #0000 60%),
@@ -1667,15 +1667,15 @@ body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has
 }
 
 @media (hover: hover) {
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:hover:not(:disabled)::before,
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:hover:not(:disabled)::before {
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button:hover:not(:disabled)::before,
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > .custom-dropdown > button:hover:not(:disabled)::before {
         opacity: 1;
         transition: opacity 0.1s linear;
     }
 }
 
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:not(:is(.close-btn, .modal-close)):active:not(:disabled)::before,
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:active:not(:disabled)::before {
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button:not(:is(.close-btn, .modal-close)):active:not(:disabled)::before,
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > .custom-dropdown > button:active:not(:disabled)::before {
     opacity: 1;
     transition: none;
     background:
@@ -1683,7 +1683,7 @@ body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has
         linear-gradient(#86a7bc var(--window-caption-edge), #092747 var(--window-caption-edge));
 }
 
-body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):active:not(:disabled)::before {
+body:not(.windows-classic-theme) .modal .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):active:not(:disabled)::before {
     opacity: 1;
     transition: none;
     background:
@@ -1729,60 +1729,60 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
 }
 
 /* the piece and window state pick the face; the paint rule below reads these */
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown),
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown),
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > .custom-dropdown > button {
     --caption-face-normal: url("/static_images/window-controls/faces/mid-active-normal.png");
     --caption-face-hot: url("/static_images/window-controls/faces/mid-active-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/faces/mid-active-pressed.png");
     --caption-face-disabled: url("/static_images/window-controls/faces/mid-active-disabled.png");
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown),
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown),
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
     --caption-face-normal: url("/static_images/window-controls/faces/mid-inactive-normal.png");
     --caption-face-hot: url("/static_images/window-controls/faces/mid-inactive-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/faces/mid-inactive-pressed.png");
     --caption-face-disabled: url("/static_images/window-controls/faces/mid-inactive-disabled.png");
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown):is(:first-child, .indicator + :not(.indicator)):not(:last-child),
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown:first-child:not(:last-child) > button {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown):is(:first-child, .indicator + :not(.indicator)):not(:last-child),
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > .custom-dropdown:first-child:not(:last-child) > button {
     --caption-face-normal: url("/static_images/window-controls/faces/left-active-normal.png");
     --caption-face-hot: url("/static_images/window-controls/faces/left-active-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/faces/left-active-pressed.png");
     --caption-face-disabled: url("/static_images/window-controls/faces/left-active-disabled.png");
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown):is(:first-child, .indicator + :not(.indicator)):not(:last-child),
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown:first-child:not(:last-child) > button {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > :where(button, .custom-dropdown):is(:first-child, .indicator + :not(.indicator)):not(:last-child),
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > .custom-dropdown:first-child:not(:last-child) > button {
     --caption-face-normal: url("/static_images/window-controls/faces/left-inactive-normal.png");
     --caption-face-hot: url("/static_images/window-controls/faces/left-inactive-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/faces/left-inactive-pressed.png");
     --caption-face-disabled: url("/static_images/window-controls/faces/left-inactive-disabled.png");
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):not(:first-child, .indicator + *) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):not(:first-child, .indicator + *) {
     --caption-face-normal: url("/static_images/window-controls/faces/right-active-normal.png");
     --caption-face-hot: url("/static_images/window-controls/faces/right-active-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/faces/right-active-pressed.png");
     --caption-face-disabled: url("/static_images/window-controls/faces/right-active-disabled.png");
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):not(:first-child, .indicator + *) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):not(:first-child, .indicator + *) {
     --caption-face-normal: url("/static_images/window-controls/faces/right-inactive-normal.png");
     --caption-face-hot: url("/static_images/window-controls/faces/right-inactive-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/faces/right-inactive-pressed.png");
     --caption-face-disabled: url("/static_images/window-controls/faces/right-inactive-disabled.png");
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):is(:first-child, .indicator + *) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:not(.window-inactive):has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):is(:first-child, .indicator + *) {
     --caption-face-normal: url("/static_images/window-controls/faces/single-active-normal.png");
     --caption-face-hot: url("/static_images/window-controls/faces/single-active-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/faces/single-active-pressed.png");
     --caption-face-disabled: url("/static_images/window-controls/faces/single-active-disabled.png");
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):is(:first-child, .indicator + *) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls.window-inactive:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):is(:first-child, .indicator + *) {
     --caption-face-normal: url("/static_images/window-controls/faces/single-inactive-normal.png");
     --caption-face-hot: url("/static_images/window-controls/faces/single-inactive-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/faces/single-inactive-pressed.png");
@@ -1790,8 +1790,8 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
 }
 
 /* The face: a horizontal 9-slice over 5 px caps, so wider app buttons stretch only the middle. The .modal.active-window / :not() pair outranks the 7.css rules above. */
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button,
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
     display: inline-flex;
     align-items: flex-end;
     justify-content: center;
@@ -1806,8 +1806,8 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
     border-image: var(--caption-face-normal) 0 5 fill / 0 5px / 0 stretch;
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:disabled,
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:disabled {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button:disabled,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:disabled {
     border-image-source: var(--caption-face-disabled);
     /* the disabled face and the greyed glyph are the whole disabled look: a window without a
        maximize box (WMDC on the VM) keeps the full glass button, not app.css's 40 % fade */
@@ -1815,8 +1815,8 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
 }
 
 /* hot / pressed: the same 9-slice on ::before, faded in 0.1 s and out 0.3 s */
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button::before,
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button::before {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button::before,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button::before {
     content: '';
     position: absolute;
     inset: 0 -5px;
@@ -1834,15 +1834,15 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
 }
 
 @media (hover: hover) {
-    html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:hover:not(:disabled)::before,
-    html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:hover:not(:disabled)::before {
+    html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button:hover:not(:disabled)::before,
+    html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:hover:not(:disabled)::before {
         opacity: 1;
         transition: opacity 0.1s linear;
     }
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:active:not(:disabled)::before,
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:active:not(:disabled)::before {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button:active:not(:disabled)::before,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:active:not(:disabled)::before {
     opacity: 1;
     transition: none;
     border-image-source: var(--caption-face-pressed);
@@ -1854,7 +1854,7 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
    on the glass at rest, a glass face on hover, and a latched (pushed-in, back-lit) face while
    on, as Studio's latching toolbar buttons do. The lamp moves to the lower right corner, clear
    of the icon. The first window button after them takes the left cap. */
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator {
     align-items: center;
     justify-content: center;
     width: 24px;
@@ -1870,15 +1870,15 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
     box-shadow: none;
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator > i {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator > i {
     font-size: 12px;
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .indicator + :where(button, .custom-dropdown):not(.indicator) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > .indicator + :where(button, .custom-dropdown):not(.indicator) {
     margin-left: 5px;
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator::before {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator::before {
     inset: -1px;
     border: 1px solid hsl(0 0% 0% / 45%);
     border-image: none;
@@ -1887,8 +1887,8 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 60%);
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:is([data-state="on"], [data-state="onhigh"], [data-state="partial"], [data-state="open"], [data-state="armed"], [data-state="compiled"]),
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:active:not(:disabled) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:is([data-state="on"], [data-state="onhigh"], [data-state="partial"], [data-state="open"], [data-state="armed"], [data-state="compiled"]),
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:active:not(:disabled) {
     border-color: hsl(0 0% 0% / 55%);
     background:
         linear-gradient(hsl(0 0% 0% / 20%), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 20%) 50%, hsl(0 0% 100% / 8%)),
@@ -1896,11 +1896,11 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
     box-shadow: inset 0 1px 3px hsl(0 0% 0% / 55%), 0 1px 0 hsl(0 0% 100% / 35%);
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:active:not(:disabled)::before {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:active:not(:disabled)::before {
     opacity: 0;
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator::after {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator::after {
     top: auto;
     right: 1px;
     bottom: 1px;
@@ -1909,37 +1909,37 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
 }
 
 /* a lit lamp keeps a small halo; the toolbar's 15 px one spilled under the frame */
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:is([data-state="on"], [data-state="onhigh"], [data-state="partial"], [data-state="open"], [data-state="armed"], [data-state="compiled"], [data-state="asc"], [data-state="desc"])::after {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:is([data-state="on"], [data-state="onhigh"], [data-state="partial"], [data-state="open"], [data-state="armed"], [data-state="compiled"], [data-state="asc"], [data-state="desc"])::after {
     box-shadow: 0 0 4px rgb(var(--lit) / 80%);
 }
 
 /* an indicator with a text label (Text Expander's Extend) takes the label's width; the right
    padding keeps the label clear of the lamp in the lower right corner */
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:has(> span) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:has(> span) {
     gap: 4px;
     width: auto;
     padding: 0 8px 0 6px;
 }
 
 /* widths and glyph places for the window buttons (border 5 px + padding = the VM offset) */
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):has(> i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large)) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):has(> i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large)) {
     justify-content: flex-start;
     min-width: 26px;
     width: 26px;
     padding-left: 2px;
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(:first-child, .indicator + *):has(> i.fa-window-minimize) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(:first-child, .indicator + *):has(> i.fa-window-minimize) {
     padding-left: 3px;
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):has(> i.fa-xmark-large) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):has(> i.fa-xmark-large) {
     min-width: 44px;
     width: 44px;
     padding-left: 11px;
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:not(:first-child, .indicator + *):not(.close-btn, .modal-close):has(> i:is(.fa-window-maximize, .fa-window-restore)) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.aw-any) .modal-window-controls:has(> .close-btn, > .modal-close) > button:not(:first-child, .indicator + *):not(.close-btn, .modal-close):has(> i:is(.fa-window-maximize, .fa-window-restore)) {
     min-width: 25px;
     width: 25px;
 }
@@ -2004,28 +2004,28 @@ html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert
     border-image: var(--caption-face-hot) 0 fill / 0 / 0 stretch;
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal).active-window > .modal-window-controls > button {
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls:not(.window-inactive) > button {
     --caption-face-normal: url("/static_images/window-controls/tool/button-active-normal.png");
     --caption-face-hot: url("/static_images/window-controls/tool/button-active-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/tool/button-active-pressed.png");
     --caption-face-disabled: url("/static_images/window-controls/tool/button-active-disabled.png");
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal):not(.active-window) > .modal-window-controls > button {
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls.window-inactive > button {
     --caption-face-normal: url("/static_images/window-controls/tool/button-inactive-normal.png");
     --caption-face-hot: url("/static_images/window-controls/tool/button-inactive-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/tool/button-inactive-pressed.png");
     --caption-face-disabled: url("/static_images/window-controls/tool/button-inactive-disabled.png");
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal).active-window > .modal-window-controls > button:is(.close-btn, .modal-close) {
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls:not(.window-inactive) > button:is(.close-btn, .modal-close) {
     --caption-face-normal: url("/static_images/window-controls/tool/close-active-normal.png");
     --caption-face-hot: url("/static_images/window-controls/tool/close-active-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/tool/close-active-pressed.png");
     --caption-face-disabled: url("/static_images/window-controls/tool/close-active-disabled.png");
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal):not(.active-window) > .modal-window-controls > button:is(.close-btn, .modal-close) {
+html body.desktop-mode:not(.windows-classic-theme) .modal.tool-window:not(.alert-theme):not(.boot-dialog):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) > .modal-window-controls.window-inactive > button:is(.close-btn, .modal-close) {
     --caption-face-normal: url("/static_images/window-controls/tool/close-inactive-normal.png");
     --caption-face-hot: url("/static_images/window-controls/tool/close-inactive-hot.png");
     --caption-face-pressed: url("/static_images/window-controls/tool/close-inactive-pressed.png");
