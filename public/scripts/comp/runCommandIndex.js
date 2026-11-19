@@ -649,6 +649,18 @@ function buildRunSystemCommandEntries() {
             try { if (window.featureLoader) await window.featureLoader.loadFeature('control_panel'); } catch (_) { /* opened below if it loaded */ }
             if (window.cplUserAccounts && typeof window.cplUserAccounts.openUserPasswords2 === 'function') window.cplUserAccounts.openUserPasswords2();
         }
+    }, {
+        // Vista's mblctr: Melaton Mobility Center (mobilityCenter.js, in the Control Panel feature)
+        id: 'system-mblctr',
+        category: 'app',
+        label: 'mblctr',
+        subtitle: 'Melaton Mobility Center',
+        icon: 'fa-light fa-laptop',
+        keywords: ['mblctr', 'mobility center', 'windows mobility center', 'melaton mobility center', 'brightness', 'presentation settings'],
+        execute: async () => {
+            try { if (window.featureLoader) await window.featureLoader.loadFeature('control_panel'); } catch (_) { /* opened below if it loaded */ }
+            if (window.melatonControlPanel) window.melatonControlPanel.openItem('mobility-center');
+        }
     }];
 }
 

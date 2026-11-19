@@ -1,0 +1,203 @@
+/* Melaton Mobility Center (#932; public/scripts/comp/mobilityCenter.js): Vista's mblctr.exe, measured on the VM.
+   Layout only: the colours and art are the theme's (css/themes/vista/mobility-center.css, --mbl-*).
+
+   Window   a sheet of frame glass: 15 px of glass round the tiles, 35 px from the window's top to the first row,
+            30 px under the last (the help button sits there). 146 x 120 tiles, at most four to a row.
+   Tile     1 px light edge left and top, 1 px dark edge right and bottom; a 38 x 38 icon button 6 px / 8 px in,
+            the status beside it (centred on the button), the control at 64 px, the rule at 95 px and the title
+            under it. */
+
+.mbl-window.mbl-window {
+    --mbl-cols: 4;
+    --mbl-rows: 1;
+    width: calc(var(--mbl-cols) * 146px + 30px);
+    /* the whole client is frame glass (mblctr extends the frame over its client) */
+    --window-frame-bottom: calc(var(--mbl-rows) * 120px + 63px - var(--modal-title-chrome-height, 27px) - var(--window-frame-inset, 0px));
+}
+
+/* no client edge: the glass runs on under the tiles */
+body.desktop-mode .modal.mbl-window.mbl-window.mbl-window::after {
+    display: none;
+}
+
+.mbl-window .mbl-client.mbl-client {
+    position: relative;
+    box-sizing: border-box;
+    height: calc(var(--mbl-rows) * 120px + 63px - var(--modal-title-chrome-height, 27px) - var(--window-frame-inset, 0px));
+    /* the window's 1 px edge, the caption and the frame inset come before the client */
+    padding: calc(34px - var(--modal-title-chrome-height, 27px)) 0 0 calc(14px - var(--window-frame-inset, 0px)) !important;
+    overflow: hidden;
+    background: transparent !important;
+}
+
+.mbl-window .mbl-tiles {
+    display: grid;
+    grid-template-columns: repeat(var(--mbl-cols), 146px);
+    grid-auto-rows: 120px;
+}
+
+.mbl-window .mbl-tile {
+    position: relative;
+    box-sizing: border-box;
+    width: 146px;
+    height: 120px;
+    border-style: solid;
+    border-width: 1px;
+    border-color: var(--mbl-tile-edge-light) var(--mbl-tile-edge-dark) var(--mbl-tile-edge-dark) var(--mbl-tile-edge-light);
+    background: var(--mbl-tile-face);
+    color: var(--mbl-title-text);
+}
+
+/* the icon: a flat button that lights on hover, darkens while pressed and shows the focus face */
+.mbl-window .mbl-tile .mbl-tile-icon {
+    position: absolute;
+    left: 5px;
+    top: 7px;
+    display: block;
+    box-sizing: border-box;
+    width: 38px;
+    height: 38px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 3px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    outline: none;
+}
+
+.mbl-window .mbl-tile .mbl-tile-icon > img,
+.mbl-window .mbl-tile .mbl-tile-icon > .mbl-battery {
+    display: block;
+    width: 32px;
+    height: 32px;
+    pointer-events: none;
+}
+
+/* the kit paints push-button faces on ::before / ::after: not on these flat buttons */
+.mbl-window .mbl-tile button.mbl-tile-icon.mbl-tile-icon::before,
+.mbl-window .mbl-tile button.mbl-tile-icon.mbl-tile-icon::after,
+.mbl-window .mbl-client button.mbl-help.mbl-help::before,
+.mbl-window .mbl-client button.mbl-help.mbl-help::after {
+    display: none;
+}
+
+.mbl-window .mbl-tile .mbl-tile-icon:focus { background: var(--mbl-icon-focus) 0 0 / 38px 38px no-repeat; }
+.mbl-window .mbl-tile .mbl-tile-icon:hover:not(:disabled) { background: var(--mbl-icon-hot) 0 0 / 38px 38px no-repeat; }
+.mbl-window .mbl-tile .mbl-tile-icon:active:not(:disabled) { background: var(--mbl-icon-pressed) 0 0 / 38px 38px no-repeat; }
+
+/* the status: beside the icon, centred on it, two lines at most */
+.mbl-window .mbl-tile .mbl-tile-status {
+    position: absolute;
+    left: 50px;
+    top: 7px;
+    display: flex;
+    align-items: center;
+    width: 88px;
+    height: 38px;
+    line-height: 15px;
+    color: var(--mbl-status-text);
+}
+
+.mbl-window .mbl-tile .mbl-tile-status > label { color: var(--mbl-title-text); }
+
+/* the Mute box sits at the status's left edge (the input itself takes no room) */
+.mbl-window .mbl-tile .mbl-tile-status > input[type="checkbox"] {
+    position: absolute;
+    left: 0;
+    width: 0;
+    height: 0;
+    margin: 0;
+}
+
+/* the caption runs straight into the glass: no client edge under it */
+body.desktop-mode .modal.mbl-window.mbl-window.mbl-window > .modal-window-title::before,
+body.desktop-mode .modal.mbl-window.mbl-window.mbl-window > .modal-window-title::after {
+    display: none;
+}
+
+/* the control: a combo box or a push button 129 px wide, or the slider */
+.mbl-window .mbl-tile .mbl-tile-control {
+    position: absolute;
+    left: 8px;
+    top: 63px;
+    width: 128px;
+}
+
+.mbl-window .mbl-tile .mbl-tile-control > button {
+    width: 100%;
+    min-width: 0;
+    height: 23px;
+    margin: 0;
+}
+
+.mbl-window .mbl-tile .mbl-tile-control > .custom-dropdown-btn {
+    display: flex;
+    align-items: center;
+    height: 21px;
+}
+
+/* the slider: Vista's top-pointing trackbar thumb; the volume's wedge behind it */
+.mbl-window .mbl-tile .mbl-slider {
+    left: 16px;
+    top: 61px;
+    width: 112px;
+    height: 22px;
+}
+
+.mbl-window .mbl-tile .mbl-slider.mbl-volume { background: var(--mbl-volume-wedge) 0 0 / 112px 20px no-repeat; }
+
+.mbl-window .mbl-tile .mbl-slider > input {
+    display: block;
+    width: 112px;
+    margin: 3px 0 0;
+}
+
+/* the volume's groove is part of the wedge */
+body.desktop-mode .mbl-window.mbl-window.modal[data-window-client="light"] .mbl-tile .mbl-tile-control.mbl-volume > input[type="range"].vista-trackbar-top::-webkit-slider-runnable-track {
+    border-image: none;
+}
+
+/* the rule over the title: fades in and out over its first and last 5 px */
+.mbl-window .mbl-tile .mbl-tile-rule {
+    position: absolute;
+    left: 10px;
+    top: 94px;
+    width: 125px;
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--mbl-rule) 5px, var(--mbl-rule) calc(100% - 5px), transparent);
+}
+
+.mbl-window .mbl-tile .mbl-tile-title {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 98px;
+    height: 17px;
+    line-height: 17px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* a tile whose hardware is missing (Vista dims its icon; the control is disabled) */
+.mbl-window .mbl-tile.is-unavailable .mbl-tile-icon > img { filter: grayscale(1) opacity(0.5); }
+
+/* the help button at the bottom right of the glass */
+.mbl-window .mbl-help {
+    position: absolute;
+    right: 1px;
+    bottom: 2px;
+    width: 16px;
+    height: 16px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+}
+
+.mbl-window .mbl-help > img { display: block; width: 16px; height: 16px; }

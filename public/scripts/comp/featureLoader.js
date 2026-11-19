@@ -384,7 +384,9 @@ const FEATURE_MANIFEST = {
         styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
             'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css',
             'css/cpl-catalog.css', 'css/cpl-dialogs.css', 'css/cpl-pages.css', 'css/cpl-pages2.css',
-            'css/welcome-center.css', 'css/cpl-cardspace.css', 'css/cpl-indexing.css', 'css/dpi-scaling.css'],
+            'css/welcome-center.css', 'css/cpl-cardspace.css', 'css/cpl-indexing.css', 'css/dpi-scaling.css',
+            // Melaton Mobility Center (#932): the Vista theme's colours and art, then the layout
+            'css/themes/vista/mobility-center.css', 'css/mobility-center.css'],
         scripts: [
             // Vista's items, categories and task links (Yozora #632), read by melatonControlPanel.js
             'scripts/comp/cplCatalog.js',
@@ -416,7 +418,9 @@ const FEATURE_MANIFEST = {
             'scripts/comp/cplPages.js',
             'scripts/comp/cplPages2.js',
             'scripts/comp/cplPages3.js',
-            'scripts/comp/cplDeviceManager.js'
+            'scripts/comp/cplDeviceManager.js',
+            // Melaton Mobility Center (#932): Vista's mblctr, the Control Panel item 'mobility-center'
+            'scripts/comp/mobilityCenter.js'
         ]
     },
     // Image Search's search library (#831): the retired Global Search DSAP's helpers and sessions

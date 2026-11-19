@@ -11,6 +11,7 @@
  *   Win+F           Start Search               Win+L         Lock computer (workstationLock.js)
  *   Win+F1          Help and Support           Win+Pause     System (Control Panel)
  *   Win+Space       Melaton Sidebar            Win+1 … Win+9 the Quick Launch button at that place
+ *   Win+X           Melaton Mobility Center (mobilityCenter.js, in the Control Panel feature)
  *   Alt+F4          close the window in front (with none, the browser closes the app as before)
  *   Ctrl+Shift+Esc  Melaton Task Manager (apps/taskmgr)
  *
@@ -117,6 +118,13 @@
         });
     }
 
+    function openMobilityCenter() {
+        // melatonControlPanel.openItem: public/scripts/comp/melatonControlPanel.js; the item is mobilityCenter.js
+        void root.featureLoader.loadFeature('control_panel').then(() => {
+            if (root.melatonControlPanel) root.melatonControlPanel.openItem('mobility-center');
+        });
+    }
+
     function launchQuickLaunch(n) {
         const settings = root.taskbarSettings && root.taskbarSettings.get();
         if (settings && settings.quickLaunch === false) return false;
@@ -149,7 +157,8 @@
         KeyL: () => root.workstationLock && root.workstationLock.lock(),
         F1: openHelp,
         Pause: openSystem,
-        Space: () => callGlobal('openVistaSidebar')
+        Space: () => callGlobal('openVistaSidebar'),
+        KeyX: openMobilityCenter
     };
 
     function winComboAction(ev) {
