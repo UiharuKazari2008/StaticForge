@@ -23,6 +23,7 @@
     let els = null;
     let anchor = null; // the element menus are opened on
     let loading = null;
+    let shownTitle = ''; // a channel's or a video's name while one is open
 
     /** The program's menu rows ({ label, action, checked, radio, disabled, submenu }, '-') as the desktop menu's. */
     function menuConfig(items) {
@@ -67,6 +68,13 @@
     function renderBar() {
         if (!els || !APP) return;
         const keys = APP.softKeys() || {};
+        // one bar (Yukimi, Nov 18 2026: "dont have 2 top bars"): the program's own header line is not drawn on the
+        // desktop; what it says (the tab's name, its note) is this bar's text
+        const head = page ? [page.querySelector('.yt-title'), page.querySelector('.yt-note')].map((e) => (e ? e.textContent.trim() : '')) : ['', ''];
+        const text = shownTitle || head[0];
+        if (els.title.textContent !== text) els.title.textContent = text;
+        const note = shownTitle ? '' : head[1];
+        if (els.note.textContent !== note) els.note.textContent = note;
         const back = APP.titleKind() === 'ok';
         if (els.back.hidden === back) els.back.hidden = !back;
         ['left', 'right'].forEach((side) => {
@@ -96,7 +104,7 @@
         syncHistory() {},
         currentApp: () => (win ? APP_ID : ''),
         open(id) { if (id === APP_ID && win) call('bringModalToFront', win.modal); },
-        setTitle(t) { if (win) win.setTitle(!t || t === 'Videos' ? NAME : `${t} - ${NAME}`); if (els) els.title.textContent = !t || t === 'Videos' ? '' : t; },
+        setTitle(t) { shownTitle = !t || t === 'Videos' ? '' : t; if (win) win.setTitle(shownTitle ? `${shownTitle} - ${NAME}` : NAME); renderBar(); },
         refreshSoftKeys: renderBar,
         refreshTitleAction: renderBar,
         menuAt,
@@ -131,26 +139,29 @@
 
     async function start(app) {
         if (win) { call('bringModalToFront', win.modal); app.exit(); return; }
-        const w = app.openWindow({ title: NAME, width: 1080, minWidth: 520 });
+        const w = app.openWindow({ title: NAME, width: 1120, minWidth: 520 });
         win = w;
         const m = w.modal;
         m.classList.add('videos-window');
-        // its size: 1080 x 740, less on a small screen; in the middle of the desktop unless the user placed it before
-        m.dataset.windowDefaultHeight = '740';
-        m.dataset.windowMinHeight = '420';
-        m.style.width = `${Math.min(1080, root.innerWidth - 40)}px`;
-        m.style.height = `${Math.min(740, root.innerHeight - 80)}px`;
+        // its size; in the middle of the desktop unless the user placed it before
+        // 16:9 (Yukimi, Nov 18 2026): 1120 x 630, smaller in the same shape on a small screen
+        const wide = Math.max(520, Math.min(1120, root.innerWidth - 40, Math.round((root.innerHeight - 80) * 16 / 9)));
+        m.dataset.windowDefaultWidth = '1120';
+        m.dataset.windowDefaultHeight = '630';
+        m.dataset.windowMinHeight = '360';
+        m.style.width = `${wide}px`;
+        m.style.height = `${Math.round(wide * 9 / 16)}px`;
         root.requestAnimationFrame(() => {
             if (win !== w || m.hasAttribute('data-window-position-restored')) return;
             const r = m.getBoundingClientRect();
             call('setModalOffsetsFromViewportTopLeft', m, Math.max(0, Math.round((root.innerWidth - r.width) / 2)), Math.max(0, Math.round((root.innerHeight - 35 - r.height) / 2)));
         });
         w.body.innerHTML = `<div class="vd-root">
-            <div class="vd-bar"><button type="button" class="vd-key is-back" hidden>Back</button><span class="vd-title"></span><span class="vd-gap"></span><button type="button" class="vd-key" data-side="left" hidden></button><button type="button" class="vd-key" data-side="right" hidden></button></div>
+            <div class="vd-bar"><button type="button" class="vd-key is-back" hidden>Back</button><span class="vd-title"></span><span class="vd-note"></span><span class="vd-gap"></span><button type="button" class="vd-key" data-side="left" hidden></button><button type="button" class="vd-key" data-side="right" hidden></button></div>
             <div class="vd-host"></div><div class="vd-anchor" aria-hidden="true"></div>
         </div>`;
         const q = (s) => w.body.querySelector(s);
-        els = { root: q('.vd-root'), back: q('.is-back'), title: q('.vd-title'), left: q('[data-side="left"]'), right: q('[data-side="right"]'), host: q('.vd-host') };
+        els = { root: q('.vd-root'), back: q('.is-back'), title: q('.vd-title'), note: q('.vd-note'), left: q('[data-side="left"]'), right: q('[data-side="right"]'), host: q('.vd-host') };
         anchor = q('.vd-anchor');
         const sig = { signal: app.signal };
         els.back.addEventListener('click', () => { if (APP) { APP.onTitleOk(); renderBar(); } }, sig);

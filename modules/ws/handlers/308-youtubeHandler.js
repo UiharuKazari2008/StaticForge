@@ -19,6 +19,7 @@ const kickChat = require('../../videosKickChat');
 //   youtube_feed             { fresh? }                { videos[], at, channels, partial }: newest uploads of the subscriptions
 //   youtube_watch_later      { fresh? }                { videos[], unavailable, why }: read in the server's Alchemy browser; why: browser-signin | browser-offline
 //   youtube_mark             { id, watched }           admins; Mark as Watched / Unwatched in the account's own YouTube history -> { id, watched, youtube }
+//   youtube_progress         { id, pct, pos }          admins; how far the program's own player is in a video (percent, seconds) -> { id, progress, resume }
 //   youtube_later            { id, on }                admins; add to / remove from Watch Later -> { id, later, youtube }
 //                                                      youtube: done | failed | browser-signin | browser-offline (the account's own list)
 //   youtube_live_modes       {}                        { modes[{ id, label, note, kbit, heavy }] }: the qualities a Kick stream can be watched in
@@ -106,6 +107,7 @@ function registerPackets(handlersCtx) {
     reg('youtube_feed', packet(false, 'The subscriptions could not be read', async (m) => youtubeService.feed({ fresh: !!m.fresh })));
     reg('youtube_watch_later', packet(false, 'Watch Later could not be read', async (m) => youtubeService.watchLater({ fresh: !!m.fresh })));
     reg('youtube_mark', packet(true, 'The mark could not be saved', async (m) => youtubeService.markWatched(String(m.id || ''), m.watched !== false)));
+    reg('youtube_progress', packet(true, 'The place could not be saved', async (m) => youtubeService.setProgress(String(m.id || ''), m.pct, m.pos)));
     reg('youtube_later', packet(true, 'Watch Later could not be changed', async (m) => youtubeService.setLater(String(m.id || ''), m.on !== false)));
     // Kick live streams played in the program through the server (#918): only channels on the program's list
     kickRelay.bind({ allowed: (slug) => sources.view().kick.some((c) => c.slug === slug) });

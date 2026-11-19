@@ -739,14 +739,39 @@ function laterList() {
     return acct.later;
 }
 const inLater = (id) => laterList().some((x) => x.id === id) || !!(ytLater && ytLater.ids.has(id));
-const playedPct = (id) => (cache.history && cache.history.map && typeof cache.history.map[id] === 'number' ? cache.history.map[id] : 0);
+const MAX_PLAYED = 500;
+/** How far videos were played in the program itself (its embedded player is not signed in): id -> { pct, pos (s), at }. */
+function playedMap() {
+    if (!acct.played || typeof acct.played !== 'object') acct.played = {};
+    return acct.played;
+}
+const playedHere = (id) => { const p = acct.played && acct.played[id]; return p && typeof p.pct === 'number' ? p : null; };
+const playedPct = (id) => Math.max(cache.history && cache.history.map && typeof cache.history.map[id] === 'number' ? cache.history.map[id] : 0, playedHere(id) ? playedHere(id).pct : 0);
+
+/**
+ * The program's player reports where a video is (every half minute, and when it is left): the rows' progress
+ * line, and where Play Here carries on. Kept with the account; no push (the player's own client draws it).
+ * Reaching the watched mark is the caller's to send as a mark (markWatched puts it in the account's history).
+ */
+function setProgress(id, pct, pos) {
+    if (!VIDEO_ID.test(String(id || ''))) throw fail('That is not a video', 'YOUTUBE_BAD_VIDEO');
+    const m = playedMap();
+    const p = Math.max(0, Math.min(100, Number(pct) || 0));
+    const at = Math.max(0, Math.floor(Number(pos) || 0));
+    if (p < 1 || p >= 97) delete m[id]; else m[id] = { pct: Math.round(p * 10) / 10, pos: at, at: Date.now() };
+    const ids = Object.keys(m);
+    if (ids.length > MAX_PLAYED) ids.sort((a, b) => m[a].at - m[b].at).slice(0, ids.length - MAX_PLAYED).forEach((x) => { delete m[x]; });
+    saveAccount();
+    return { id, progress: m[id] ? m[id].pct : 0, resume: m[id] ? m[id].pos : 0 };
+}
 const isWatched = (id) => !!watchedMap()[id] || playedPct(id) >= WATCHED_PCT;
 
 /** Copies of these videos with `watched`, `progress` (percent played when started but not watched) and `later`. */
 function marked(videos) {
     return (videos || []).map((v) => {
         const watched = isWatched(v.id);
-        return Object.assign({}, v, { watched, progress: watched ? 0 : playedPct(v.id), later: inLater(v.id) });
+        const here = playedHere(v.id);
+        return Object.assign({}, v, { watched, progress: watched ? 0 : playedPct(v.id), later: inLater(v.id) }, here && !watched ? { resume: here.pos } : {});
     });
 }
 /** Marked, and the watched ones after the rest (each part keeps its order). */
@@ -1184,6 +1209,7 @@ module.exports = {
     markWatched,
     setLater,
     sources: () => sources,
+    setProgress,
     importBellFavourites,
     search,
     channelPage,

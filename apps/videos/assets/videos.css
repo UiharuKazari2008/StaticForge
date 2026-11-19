@@ -19,7 +19,10 @@
     background: linear-gradient(color-mix(in srgb, white 20%, black), color-mix(in srgb, white 7%, black) 50%, black 51%, color-mix(in srgb, white 6%, black));
 }
 .videos-window .vd-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: bold; font-size: 13px; }
+.videos-window .vd-note { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: color-mix(in srgb, white 60%, transparent); font-size: 11px; }
 .videos-window .vd-gap { flex: 1 1 auto; }
+/* the program's own header line is this bar on the desktop */
+.videos-window .wm-page.wm-youtube.is-desktop .yt-head { display: none; }
 .videos-window .vd-key {
     appearance: none;
     flex: 0 0 auto;
