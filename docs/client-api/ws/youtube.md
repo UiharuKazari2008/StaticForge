@@ -106,6 +106,16 @@ The status feed's `sources.chat` is `{ enabled, linked }`. With chat on, channel
 
 ## The desktop program and YouTube playback (Yozora #920)
 
+A YouTube video goes through the server first (`modules/videosYoutubeRelay.js`, Yukimi: "use yt-dlp with autoupdate"):
+yt-dlp (its release program in `.cache/yt-dlp`, updated by itself once a day and when YouTube changed under it) names
+and downloads the files at the chosen size, ffmpeg joins them into HLS (H.264 + AAC taken as they are).
+
+| Packet | |
+| --- | --- |
+| `youtube_video_start` | `{ id, mode, at }` -> `{ id, url, mode, state, at, duration, title, height, kbit, copied, modes[] }`. Admin. Modes `v1080` `v720` `v480` `v360` `v144` `vaudio`; `at` is the start place in seconds; `url` is HLS under `/api/videos/yt/<id>/` (signed-in session). Public videos only, no account: a members' video, an age gate, a live stream or a refusal fails (`YT_REFUSED`, `YT_LIVE`, `YT_TOO_LONG`, `YT_STREAM`) and the program plays it in YouTube's embedded player instead. |
+| `youtube_video_state` | `{ id }` -> `{ state: live \| done \| error \| gone, error }`. Admin. |
+| `youtube_video_stop` | `{ id }` -> `{ stopped }`. Admin. Files also go 20 minutes after the last request. |
+
 `apps/videos` is the same program in a desktop window (`client/videos.js` answers the shell calls
 `wmYouTube.js` makes; the two soft keys are the keys of a bar at the top). A YouTube video plays in the window
 (on the phone: hold a video, Play Here) in YouTube's embedded player (`youtube-nocookie.com/embed`, driven by

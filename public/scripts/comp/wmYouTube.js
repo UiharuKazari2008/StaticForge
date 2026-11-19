@@ -1006,7 +1006,7 @@
         if (v) {
             const item = seen.get(v.dataset.v) || { id: v.dataset.v };
             // in the player's "more to watch" list the next video plays here too
-            if (player && player.kind === 'yt' && v.closest('.yt-more') && srcOf(item) === 'youtube') watchVideo(item); else openItem(item);
+            if (player && player.vod && v.closest('.yt-more') && srcOf(item) === 'youtube') watchVideo(item); else openItem(item);
             return;
         }
         const ch = e.target.closest('[data-ch]');
@@ -1107,7 +1107,7 @@
         const nv = nativePlayer();
         if (!nv) return;
         const p = player;
-        const on = !!(p && p.kind !== 'yt' && p.state === 'live' && p.url && (p.handed || p.popped || (shown && !p.suspended && els && !els.video.paused)));
+        const on = !!(p && !p.vod && p.state === 'live' && p.url && (p.handed || p.popped || (shown && !p.suspended && els && !els.video.paused)));
         const said = on ? JSON.stringify({ url: new URL(p.url, location.origin).toString(), title: p.title, subtitle: modeLabel(p.mode), audioOnly: p.mode === 'audio' }) : '';
         if (said === plTold) return;
         plTold = said;
@@ -1136,7 +1136,7 @@
     function plPop() {
         const p = player;
         const nv = nativePlayer();
-        if (!p || p.kind === 'yt' || p.state !== 'live' || !canPop()) return;
+        if (!p || p.vod || p.state !== 'live' || !canPop()) return;
         if (els.video.paused) { box('Start the stream first, then pop it out.', 'info'); return; }
         plTell();
         let ok = false;
@@ -1194,9 +1194,9 @@
     function plHold(on) {
         if (!player) return;
         const mc = window.melatonContinuity;
-        const wantPage = on && player.mode === 'audio';
+        const wantPage = on && /audio$/.test(player.mode || '');
         if (mc && typeof mc.holdAwake === 'function' && !!player.held !== wantPage) { player.held = wantPage; mc.holdAwake('videos-live', wantPage); }
-        const wantScreen = on && player.mode !== 'audio';
+        const wantScreen = on && !/audio$/.test(player.mode || '');
         if (wantScreen && !player.lock && navigator.wakeLock && typeof navigator.wakeLock.request === 'function') {
             navigator.wakeLock.request('screen').then((l) => { if (player && !player.lock) player.lock = l; else l.release().catch(() => {}); }).catch(() => {});
         } else if (!wantScreen && player.lock) {
@@ -1260,7 +1260,7 @@
     /** The stream stopped arriving: ask the server what became of it, then start again or say it ended. */
     async function plLost() {
         const p = player;
-        if (!p || p.kind === 'yt' || p.state === 'starting') return;
+        if (!p || p.vod || p.state === 'starting') return;
         plDetach();
         plStatus('Reconnecting...', true);
         let st = null;
@@ -1337,10 +1337,10 @@
         clearInterval(p.clock);
         chatDrop(p);
         if (page) page.classList.remove('is-full');
-        if (p.kind === 'yt') ytClose(p);
+        if (p.vod) ytClose(p);
         plDetach();
         plHold(false);
-        if (p.id) ask('youtube_live_stop', { id: p.id }, 8000).catch(() => {});
+        if (p.id) ask(p.kind === 'ytr' ? 'youtube_video_stop' : 'youtube_live_stop', { id: p.id }, 8000).catch(() => {});
         player = null;
         plTell();
         const nv = nativePlayer();
@@ -1354,6 +1354,7 @@
     function plSuspend(off) {
         const p = player;
         if (p && p.kind === 'yt') { if (off && !p.paused) ytCmd('pauseVideo'); return; }
+        if (p && p.kind === 'ytr') { if (off && els && !els.video.paused) els.video.pause(); return; }
         if (!p || p.state !== 'live') return;
         if (off && !p.suspended) { p.suspended = true; clearTimeout(p.retry); plClock(false); plDetach(); plHold(false); } else if (!off && p.suspended) { p.suspended = false; plHold(true); plClock(true); plLost(); }
         chatSync();
@@ -1373,7 +1374,7 @@
     function plSide() {
         const p = player;
         if (!els || !p) return;
-        if (p.kind === 'yt') { ytSide(); return; }
+        if (p.vod) { ytSide(); return; }
         const now = liveNow().find((x) => x.id === `kick:${p.slug}`) || (hub.live && hub.live.items || []).find((x) => x.id === `kick:${p.slug}`);
         if (now) { if (now.title) p.streamTitle = now.title; if (now.at) p.startedAt = now.at; p.viewers = now.viewers; p.note = now.note; }
         const up = upText();
@@ -1386,7 +1387,7 @@
     /** The minute tick of "live for": only while the player is on screen. */
     function plClock(on) {
         const p = player;
-        if (!p || p.kind === 'yt') return;
+        if (!p || p.vod) return;
         clearInterval(p.clock);
         p.clock = null;
         if (on && shown && p.state === 'live') p.clock = setInterval(plSide, 60000); // perf: allow a clock while it shows (stopped with the player and when it is not in front)
@@ -1409,7 +1410,7 @@
         const muted = player.kind === 'yt' ? !!player.muted : !!els.video.muted;
         if (m.dataset.g !== (muted ? 'mute' : 'sound')) { m.dataset.g = muted ? 'mute' : 'sound'; m.innerHTML = muted ? I.mute : I.sound; m.setAttribute('aria-label', muted ? 'Sound on' : 'Sound off'); }
         const pk = els.hud.querySelector('[data-pl="pop"]');
-        const popOk = player.kind !== 'yt' && canPop();
+        const popOk = !player.vod && canPop();
         if (pk.hidden === popOk) pk.hidden = !popOk;
         if (show) { plSide(); if (!paused) player.keyTimer = setTimeout(() => { if (els && player) els.hud.hidden = true; }, 4000); }
     }
@@ -1442,6 +1443,7 @@
     function plToggle() {
         if (!player || player.state !== 'live' || !els) return;
         if (player.kind === 'yt') { ytToggle(); return; }
+        if (player.kind === 'ytr') { if (els.video.paused) els.video.play().catch(() => {}); else els.video.pause(); return; }
         const v = els.video;
         if (v.paused) {
             // a live stream carries on without us: back at the newest picture, not where it was paused
@@ -1467,7 +1469,21 @@
     }
     const plPaused = () => (player && player.kind === 'yt' ? player.paused !== false : !!(els && els.video.paused));
     function ytToggle() { ytCmd(player.paused === false ? 'pauseVideo' : 'playVideo'); }
-    function ytSeek(to) { const p = player; const t = Math.max(0, Math.min(to, (p.len || to) - 1)); p.pos = t; ytCmd('seekTo', [t, true]); ytSide(); }
+    function ytSeek(to) {
+        const p = player;
+        const t = Math.max(0, Math.min(to, (p.len || to) - 1));
+        if (p.kind === 'ytr') {
+            // inside what the server has written: the player moves; outside it: the server starts from there
+            const v = els.video;
+            const local = t - (p.offset || 0);
+            const end = v.seekable && v.seekable.length ? v.seekable.end(v.seekable.length - 1) : 0;
+            if (p.state === 'live' && local >= 0 && local <= end) { p.pos = t; try { v.currentTime = local; } catch (_) { /* not ready */ } ytSide(); } else if (p.state !== 'starting') ytrStart(p.mode, t);
+            return;
+        }
+        p.pos = t;
+        ytCmd('seekTo', [t, true]);
+        ytSide();
+    }
     function ytSide() {
         const p = player;
         if (!els || !p) return;
@@ -1476,7 +1492,7 @@
         setText(els.sideSub, p.channel || '');
         setText(els.sideUp, at);
         setText(els.plUp, at);
-        setText(els.plMode, '');
+        setText(els.plMode, p.kind === 'ytr' ? modeLabel(p.mode) : '');
     }
     /** What the frame says: it is ready, its state, where it is. */
     function ytHear(e) {
@@ -1533,24 +1549,131 @@
     }
     function ytClose(p) {
         if ((p.best || 0) < 60 && (p.pos || 0) > 5) ytProgress(p);
+        // the rows show the new place at once
+        redraw();
         els.more.hidden = true;
         els.more.textContent = '';
         if (p.frame) { p.frame.remove(); p.frame = null; }
         clearTimeout(p.ytTimer);
-        if (els) { els.frame.hidden = true; els.player.classList.remove('is-yt'); els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = true; }); els.hud.querySelector('[data-pl="chat"]').hidden = false; }
+        if (els) { els.frame.hidden = true; els.player.classList.remove('is-yt', 'is-vod'); els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = true; }); els.hud.querySelector('[data-pl="chat"]').hidden = false; }
         // played most of the way: watched, in the account's own history
         const v = seen.get(p.vid);
         if ((p.best || 0) >= 60 && isAdmin() && !(v && v.watched)) setWatched(p.vid, true);
     }
 
+    // ---------------------------------------------------------------- a YouTube video through the server
+    //
+    // Yukimi, Nov 18 2026: "for youtube are you performing the transcording on the server like we should" / "yes use
+    // yt-dlp with autoupdate". The server (modules/videosYoutubeRelay.js) pulls the video at the chosen size and
+    // hands it over as HLS, played by the program's own <video> like a Kick stream. What a server is not given (a
+    // members' video, an age gate, a refusal) falls back to YouTube's embedded player below.
+
+    const LS_VMODE = 'wmVideosVideoMode';
+    const vodMode = () => { const first = HOST.desktop ? 'v720' : 'v480'; try { return localStorage.getItem(LS_VMODE) || first; } catch (_) { return first; } };
+
     function watchVideo(v) {
         const id = String((v && v.id) || '');
         if (!/^[\w-]{6,20}$/.test(id) || !els) { if (id) openVideo(id); return; }
+        if (!isAdmin() || v.live === 'live' || v.live === 'upcoming') { watchEmbed(v); return; }
         if (player) stopPlayer();
-        player = { kind: 'yt', vid: id, slug: '', channel: v.channel || 'YouTube', streamTitle: v.title || '', title: v.title || '', state: 'live', paused: true, muted: false, pos: 0, len: v.length || 0, modes: [], id: '', url: '', tries: 0 };
+        const at = v.resume > 5 && v.progress > 0 && v.progress < 95 && !v.watched ? Math.floor(v.resume) : 0;
+        player = { kind: 'ytr', vod: true, item: v, vid: id, slug: '', channel: v.channel || 'YouTube', streamTitle: v.title || '', title: v.title || '', state: 'starting', mode: vodMode(), modes: [], id: '', url: '', hls: null, tries: 0, offset: at, pos: at, len: v.length || 0 };
         const p = player;
         els.player.hidden = false;
-        els.player.classList.add('is-yt');
+        els.player.classList.add('is-vod');
+        els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = false; });
+        els.hud.querySelector('[data-pl="chat"]').hidden = true;
+        ytMore(p);
+        plChrome();
+        ytSide();
+        syncPlayer();
+        ytrStart(p.mode, at);
+    }
+
+    async function ytrStart(mode, at) {
+        const p = player;
+        if (!p || p.kind !== 'ytr') return;
+        plDetach();
+        p.mode = mode;
+        p.state = 'starting';
+        try { localStorage.setItem(LS_VMODE, mode); } catch (_) { /* private mode */ }
+        plStatus('Starting the video...', true);
+        refreshKeys();
+        try {
+            const d = await ask('youtube_video_start', { id: p.vid, mode, at: Math.max(0, Math.floor(at || 0)) }, 90000);
+            if (player !== p || p.mode !== mode) return;
+            p.id = d.id;
+            p.url = d.url;
+            p.offset = d.at || 0;
+            p.pos = Math.max(p.offset, at || 0);
+            p.len = d.duration || p.len;
+            p.modes = d.modes || p.modes;
+            p.mode = d.mode || mode;
+            p.state = 'live';
+            plHold(true);
+            ytSide();
+            refreshKeys();
+            if (shown) await ytrAttach();
+        } catch (e) {
+            if (player !== p) return;
+            // not for a server (members, an age gate, a refusal, a live stream): YouTube's own player
+            const item = p.item;
+            stopPlayer();
+            watchEmbed(item);
+        }
+    }
+
+    async function ytrAttach() {
+        const p = player;
+        if (!p || p.kind !== 'ytr' || !p.url || !els) return;
+        const video = els.video;
+        let Hls = null;
+        try { Hls = await loadHls(); } catch (_) { Hls = null; }
+        if (player !== p) return;
+        plDetach();
+        if (Hls && Hls.isSupported()) {
+            // the list grows while the server writes: start at its beginning, not at its newest end
+            const hls = new Hls({ startPosition: 0, lowLatencyMode: false, maxBufferLength: 40, maxMaxBufferLength: 90, backBufferLength: 30, fragLoadingMaxRetry: 8, levelLoadingMaxRetry: 8 });
+            p.hls = hls;
+            hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(plNeedsTap); });
+            hls.on(Hls.Events.ERROR, (_e, d) => {
+                if (!d || !d.fatal || player !== p) return;
+                if (d.type === Hls.ErrorTypes.MEDIA_ERROR && p.tries < 4) { p.tries++; hls.recoverMediaError(); return; }
+                // the server's files went (a long pause) or the pull broke: from where it was, a few times
+                if (p.tries < 8) { p.tries++; ytrStart(p.mode, p.pos || 0); } else { const item = p.item; stopPlayer(); watchEmbed(item); }
+            });
+            hls.loadSource(p.url);
+            hls.attachMedia(video);
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = p.url;
+            video.play().catch(plNeedsTap);
+        } else {
+            const item = p.item;
+            stopPlayer();
+            watchEmbed(item);
+        }
+    }
+    /** The <video>'s clock for a video through the server: its place, the progress line, the end. */
+    function ytrTime() {
+        const p = player;
+        if (!p || p.kind !== 'ytr' || p.state !== 'live') return;
+        p.pos = (p.offset || 0) + els.video.currentTime;
+        if (p.len) p.best = Math.max(p.best || 0, (p.pos / p.len) * 100);
+        const sec = Math.floor(p.pos);
+        if (sec === p.sec) return;
+        p.sec = sec;
+        if (shown && (!els.hud.hidden || !p.full)) ytSide();
+        if (sec > 0 && sec % 30 === 0) ytProgress(p);
+    }
+
+    function watchEmbed(v) {
+        const id = String((v && v.id) || '');
+        if (!/^[\w-]{6,20}$/.test(id) || !els) { if (id) openVideo(id); return; }
+        if (player) stopPlayer();
+        player = { kind: 'yt', vod: true, vid: id, slug: '', channel: v.channel || 'YouTube', streamTitle: v.title || '', title: v.title || '', state: 'live', paused: true, muted: false, pos: 0, len: v.length || 0, modes: [], id: '', url: '', tries: 0 };
+        const p = player;
+        els.player.hidden = false;
+        els.player.classList.add('is-yt', 'is-vod');
         els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = false; });
         els.hud.querySelector('[data-pl="chat"]').hidden = true;
         const f = document.createElement('iframe');
@@ -1667,7 +1790,7 @@
     }
 
     /** Should the server be sending chat right now? Only while its panel can be seen. */
-    const chatWanted = () => { const p = player; return !!(p && p.kind !== 'yt' && p.chatOn && shown && !p.full && (p.popped || (!p.suspended && !p.handed)) && p.state === 'live' && screenOn()); };
+    const chatWanted = () => { const p = player; return !!(p && !p.vod && p.chatOn && shown && !p.full && (p.popped || (!p.suspended && !p.handed)) && p.state === 'live' && screenOn()); };
 
     function chatLayout() {
         const p = player;
@@ -1714,7 +1837,7 @@
     function chatToggle() {
         const p = player;
         if (!p) return;
-        if (p.kind === 'yt') return;
+        if (p.vod) return;
         if (!p.chatOn && !chatOn()) { box('Chat is switched off. Switch it on under Channels > Kick > Chat.', 'info'); return; }
         p.chatOn = !p.chatOn;
         if (p.chatOn && p.full) plFull(false);
@@ -1788,9 +1911,9 @@
             const act = k.dataset.pl;
             if (act === 'toggle') plToggle();
             else if (act === 'mute') { if (p.kind === 'yt') { p.muted = !p.muted; ytCmd(p.muted ? 'mute' : 'unMute'); } else els.video.muted = !els.video.muted; plHud(true); }
-            else if (act === 'back' || act === 'fwd') { if (p.kind === 'yt') { ytSeek((p.pos || 0) + (act === 'back' ? -10 : 10)); plHud(true); } }
+            else if (act === 'back' || act === 'fwd') { if (p.vod) { ytSeek((p.pos || 0) + (act === 'back' ? -10 : 10)); plHud(true); } }
             else if (act === 'stop') stopPlayer();
-            else if (act === 'kick') { if (p.kind === 'yt') { const id = p.vid; stopPlayer(); openVideo(id); } else { const u = p.kickUrl; stopPlayer(); openUrl(u, true, KICK_PACKAGE); } }
+            else if (act === 'kick') { if (p.vod) { const id = p.vid; stopPlayer(); openVideo(id); } else { const u = p.kickUrl; stopPlayer(); openUrl(u, true, KICK_PACKAGE); } }
             else if (act === 'full') { plFull(!p.full); plHud(true); }
             else if (act === 'chat') { chatToggle(); plHud(true); }
             else if (act === 'pop') plPop();
@@ -1799,6 +1922,8 @@
         window.addEventListener('resize', plTurned, { signal: appScopeSignal });
         v.addEventListener('playing', () => { if (player && player.state === 'live') { player.tries = 0; plStatus('', false); } plHud(!els.hud.hidden); plTell(); });
         v.addEventListener('pause', () => { plHud(true); plTell(); });
+        v.addEventListener('timeupdate', ytrTime);
+        v.addEventListener('ended', () => { const p = player; if (p && p.kind === 'ytr') { p.best = 100; stopPlayer(); } });
         v.addEventListener('waiting', () => { if (player && player.state === 'live') plStatus('Buffering...', true); });
         v.addEventListener('error', () => { if (player && !player.hls && player.state === 'live') plLost(); });
         // news from the app's native player: it took the stream (another Android app came up), its floating
@@ -1856,9 +1981,11 @@
 
     function playerKeys() {
         const p = player;
-        if (p.kind === 'yt') {
+        if (p.vod) {
+            // through the server: its quality list; in YouTube's own player: Stop (the desktop) or YouTube's app
+            const quality = () => (p.modes || []).map((m) => ({ label: m.label, radio: m.id === p.mode, action: () => { if (player === p && m.id !== p.mode) ytrStart(m.id, p.pos || 0); } }));
             return {
-                left: { label: HOST.desktop ? 'Stop' : 'YouTube', action: () => { const id = p.vid; stopPlayer(); if (!HOST.desktop) openVideo(id); } },
+                left: p.kind === 'ytr' ? { label: 'Quality', disabled: p.state === 'starting', menu: quality } : { label: HOST.desktop ? 'Stop' : 'YouTube', action: () => { const id = p.vid; stopPlayer(); if (!HOST.desktop) openVideo(id); } },
                 right: { label: 'Menu', menu: () => [
                     { label: 'Full Screen', checked: !!p.full, action: () => plFull(!p.full) },
                     { label: 'Mark as Watched', disabled: !isAdmin(), action: () => { const id = p.vid; stopPlayer(); setWatched(id, true); } },
@@ -1965,7 +2092,7 @@
             if (els) els.q.blur();
             // the program is left with a stream playing: the app's native player carries it on (a floating window, or sound)
             const nv = nativePlayer();
-            if (player && player.kind !== 'yt' && player.state === 'live' && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } }
+            if (player && !player.vod && player.state === 'live' && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } }
             if (!(player && player.popped)) plSuspend(true);
             chatSync();
             plTell();
