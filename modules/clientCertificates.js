@@ -602,14 +602,21 @@ function mount(app, authMiddleware, globalResources, options = {}) {
     app.get('/api/client-cert/mine', authMiddleware, async (req, res) => {
         noStore(res);
         try {
-            const serial = req.session ? await service.sessionSerial(req.session.id) : null;
+            const bound = req.session ? await service.sessionSerial(req.session.id) : null;
+            // ?serial=: the certificate the device says it holds (Nightshade > Authentication), when this session
+            // was opened another way (PIN, approved address); the record carries no key material
+            const asked = (req.query && req.query.serial && normalSerial(String(req.query.serial))) || null;
+            const serial = asked || bound;
             const record = serial ? await service.get(serial) : null;
             res.json({
                 success: true,
+                session: bound ? (asked && asked !== bound ? 'other' : 'certificate') : 'other',
                 certificate: record ? {
                     serial: record.serial, deviceId: record.deviceId, deviceName: record.deviceName, kind: record.kind,
                     notBefore: record.notBefore, notAfter: record.notAfter, renew: record.renew, status: record.status,
-                    fingerprint: record.fingerprint, issuer: 'Dreamscape Client CA'
+                    fingerprint: record.fingerprint, issuer: 'Dreamscape Client CA', keyStore: record.keyStore,
+                    userType: record.userType, issuedAt: record.issuedAt, lastUsedAt: record.lastUsedAt,
+                    revokedAt: record.revokedAt, revokeReason: record.revokeReason
                 } : null
             });
         } catch (e) { fail(res, e); }
