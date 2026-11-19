@@ -1,0 +1,48 @@
+/*
+ * Melaton Videos on the desktop (apps/videos, Yozora #920): the phone program's page in a window, larger.
+ * The page keeps its own look (css/wm-youtube.css: black glass, the red accent); this sheet gives it its size
+ * on the desktop and draws the bar that carries the phone's two soft keys.
+ */
+.videos-window .modal-content.modal-padding { padding: 0; }
+.videos-window .modal-content { display: flex; flex-direction: column; min-height: 0; }
+.videos-window .modal-body { flex: 1 1 auto; min-height: 0; height: auto; }
+.videos-window .vd-root { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; background: black; color: white; }
+.videos-window .vd-root.is-busy, .videos-window .vd-root.is-busy * { cursor: progress; }
+.videos-window .vd-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 8px;
+    border-bottom: 1px solid color-mix(in srgb, white 14%, transparent);
+    background: linear-gradient(color-mix(in srgb, white 20%, black), color-mix(in srgb, white 7%, black) 50%, black 51%, color-mix(in srgb, white 6%, black));
+}
+.videos-window .vd-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: bold; font-size: 13px; }
+.videos-window .vd-gap { flex: 1 1 auto; }
+.videos-window .vd-key {
+    appearance: none;
+    flex: 0 0 auto;
+    min-width: 76px;
+    height: 24px;
+    padding: 0 12px;
+    border: 1px solid color-mix(in srgb, white 30%, transparent);
+    border-radius: 4px;
+    background: linear-gradient(color-mix(in srgb, white 24%, black), color-mix(in srgb, white 9%, black) 50%, color-mix(in srgb, white 3%, black) 51%, color-mix(in srgb, white 12%, black));
+    color: white;
+    font: inherit;
+    font-size: 12px;
+}
+.videos-window .vd-key:hover:not(:disabled) { border-color: color-mix(in srgb, white 55%, transparent); }
+.videos-window .vd-key:active:not(:disabled) { background: linear-gradient(darkred, crimson); }
+.videos-window .vd-key:disabled { opacity: 0.45; }
+.videos-window .vd-key.has-menu::after { content: ''; display: inline-block; margin-left: 6px; border: 4px solid transparent; border-top-color: currentColor; border-bottom: 0; vertical-align: middle; }
+.videos-window .vd-key[hidden] { display: none; }
+.videos-window .vd-host { position: relative; flex: 1 1 auto; min-height: 0; }
+.videos-window .vd-anchor { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+/* the program's unit: a third larger than a phone's point, so its rows and keys suit a mouse */
+.videos-window .wm-page.wm-youtube.is-desktop { --u: 1.3px; cursor: default; }
+.videos-window .wm-page.wm-youtube.is-desktop .yt-row, .videos-window .wm-page.wm-youtube.is-desktop .yt-tab, .videos-window .wm-page.wm-youtube.is-desktop .yt-hud-key { cursor: pointer; }
+/* full screen is the browser's on the desktop: the player fills the display */
+.videos-window .yt-player:fullscreen .yt-stage { flex: 1 1 auto; aspect-ratio: auto; height: 100%; }
+.videos-window .yt-player:fullscreen .yt-side { display: none; }
