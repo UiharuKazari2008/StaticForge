@@ -21,6 +21,12 @@ const fs = require('fs');
 let db = null;
 let logWrites = 0;
 
+// change listeners (the Ingest Controller console's statusHub feed, modules/ws/handlers/314-ingestControllerHandler.js):
+// told the kind of write ('account' | 'log'), never the row
+const listeners = new Set();
+function onChange(fn) { if (typeof fn === 'function') listeners.add(fn); return () => listeners.delete(fn); }
+function changed(kind) { for (const fn of listeners) { try { fn(kind); } catch (_) { /* a listener's own problem */ } } }
+
 function open(cacheDir) {
     if (db) return db;
     const Database = require('better-sqlite3');
@@ -90,6 +96,7 @@ function putAccount(a) {
             source: a.source, account: a.account, mode: a.mode === 'process' ? 'process' : 'bypass', applying: a.applying ? 1 : 0,
             pipeline: JSON.stringify(a.pipeline || []), created: prev ? prev.created : now, updated: now, updated_by: a.updatedBy || null
         });
+    changed('account');
     return getAccount(a.source, a.account);
 }
 
@@ -97,14 +104,17 @@ function addLog(e) {
     d().prepare('INSERT INTO ingest_log (ts, source, account, ref, dry, sender, subject, actions, stopped_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(Date.now(), e.source, e.account, e.ref || null, e.dry ? 1 : 0, String(e.sender || '').slice(0, 200), String(e.subject || '').slice(0, 200), JSON.stringify(e.actions || []).slice(0, 4000), e.stoppedBy || null);
     if (++logWrites % 50 === 0) d().prepare('DELETE FROM ingest_log WHERE id < (SELECT MAX(id) FROM ingest_log) - 1000').run();
+    changed('log');
 }
 
-function listLog({ source = null, account = null, limit = 50 } = {}) {
+/** Newest first. before: an entry id, for the next page (entries older than it). extra: rows past limit (for "more"). */
+function listLog({ source = null, account = null, limit = 50, before = null, extra = 0 } = {}) {
     const where = [];
     const args = [];
     if (source) { where.push('source = ?'); args.push(source); }
     if (account) { where.push('account = ?'); args.push(account); }
-    args.push(Math.max(1, Math.min(Number(limit) || 50, 200)));
+    if (before != null && Number(before) > 0) { where.push('id < ?'); args.push(Math.floor(Number(before))); }
+    args.push(Math.max(1, Math.min(Number(limit) || 50, 200)) + (extra > 0 ? 1 : 0));
     return d().prepare(`SELECT * FROM ingest_log ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`).all(...args)
         .map((r) => ({ id: r.id, ts: r.ts, source: r.source, account: r.account, ref: r.ref, dry: r.dry === 1, sender: r.sender, subject: r.subject, actions: parse(r.actions, []), stoppedBy: r.stopped_by }));
 }
@@ -179,4 +189,4 @@ function pruneExpiry(olderThanMs) {
 
 function _close() { if (db) { db.close(); db = null; } }
 
-module.exports = { open, getAccount, listAccounts, putAccount, addLog, listLog, expiryMap, getExpiry, putExpiry, putExpiryMany, expiryCounts, listExpiry, pruneExpiry, _close };
+module.exports = { open, onChange, getAccount, listAccounts, putAccount, addLog, listLog, expiryMap, getExpiry, putExpiry, putExpiryMany, expiryCounts, listExpiry, pruneExpiry, _close };

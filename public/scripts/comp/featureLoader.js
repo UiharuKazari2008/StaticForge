@@ -553,6 +553,7 @@ const FEATURE_MANIFEST = {
             'scripts/comp/mmcCharacterDb.js',
             'scripts/comp/mmcWikiManager.js',
             'scripts/comp/mmcExchange.js',
+            'scripts/comp/mmcIngest.js',
             'scripts/comp/mmcAppKeys.js',
             'scripts/comp/mmcDataManagement.js',
             'scripts/comp/mmcPrintManagement.js',

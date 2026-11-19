@@ -8,7 +8,7 @@ One pipeline between the places mail and texts arrive and Yukimi's inboxes (Yuki
 | `exchange` | each DS Exchange (Dovecote) mailbox | `mailGateway.js` `deliver` → `exchangeInbound(msg)` **before** `dovecoteMail.deliverInboundMail` writes the row, then `after(result)` |
 | `sms` | each text account (BlueBubbles / iMessage, RCS, Android), `modules/textMessaging.js` | `onProviderEvent` → `textInbound(account, event)` before the `tm_event` broadcast (1.5 s cap) |
 
-Everything is on MCP (`ingest_*`, scope `sfapp_messaging_bridge`, Tsubame / Yukimi only; see [mcp-connector.md](mcp-connector.md)). There is no WebSocket surface.
+Everything is on MCP (`ingest_*`, scope `sfapp_messaging_bridge`, Tsubame / Yukimi only; see [mcp-connector.md](mcp-connector.md)). The Ingest Controller console (Server Manager > Roles > Ingest Controller, `public/scripts/comp/mmcIngest.js`) uses the same tools as admin-only WebSocket packets of the same names, plus a pushed feed: [ws/ingestController.md](ws/ingestController.md).
 
 ## Modes
 
@@ -77,9 +77,11 @@ MCP: `ingest_configure_module { module: "expiry" }`, `ingest_expiry_status { sou
 `.cache/ingest.db`, created the first time an account is configured (nothing is created while every account is in bypass):
 
 * `ingest_accounts (source, account, mode, applying, pipeline JSON, created, updated, updated_by)`
-* `ingest_log (id, ts, source, account, ref, dry, sender, subject, actions, stopped_by)` - sender and subject with codes redacted; last ~1000 rows kept.
+* `ingest_log (id, ts, source, account, ref, dry, sender, subject, actions, stopped_by)` - sender and subject with codes redacted; last ~1000 rows kept. `ingest_log { before }` pages back (newest first, `more` while older entries remain).
 * `ingest_expiry (source, account, key, folder, uid, message_id, ref, sender, subject, arrived, expires_at, after_read_ms, rule, route_expires_at, route_after_read_ms, route_rule, first_read_at, flagged, due_at, state, dry_logged_at, last_seen, created, updated, done_at, error)` - key `m:<Message-ID>` / `u:<uidvalidity>:<uid>` (e-mail) / `x:<row id>` (Exchange); state `tagged | flagged | due | expired | gone | error`; finished rows (`expired`, `gone`) are forgotten after 30 days.
 
 ## Tests
 
 `node scripts/test-ingest-controller.js` (`npm run test:ingest-controller`): a fake spamd on a real socket (score, ham, hang, garbage, error, refused), routing negation and groups, OTP extraction and redaction across logs / audit / activity / hand-offs, fail-open, dry-run by default, confirms, and all three sources (the Exchange part uses the real Dovecote store). Expiry, on a fake clock: the 40-day payment rule, 7 days after first read (stamped once), flagged exempt including flagged-later (server re-check) and un-flagged, backfill, dry-run vs apply and its confirms, routing-set expiry, rule changes re-tagging, no-Trash safety, the UID-move Message-ID fallback, and the Exchange path. `scripts/test-messaging-bridge-mcp.js` keeps passing.
+
+`node scripts/test-ingest-mmc.js` (`npm run test:ingest-mmc`): the console's WS packets through the real registry (administrators only, a key needs the bridge scope, refusals as responses, the destructive list, confirms, audit, unknown fields dropped), log paging, a routing rule with an expiry surviving later routing changes, the `ingest_controller` feed (snapshot, change-only pushes, nothing while nothing changes), and `mmcIngest.js` in a VM (its tree, ask-then-confirm, No sends nothing, bypass unasked, the feed only while a page shows).
