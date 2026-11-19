@@ -698,7 +698,13 @@ function start(globalResources) {
     if (inboundServer) return inboundServer;
     const deliver = async (msg) => {
         const dovecoteMail = require('./dovecoteMail');
-        return dovecoteMail.deliverInboundMail(msg);
+        // Ingest Controller (modules/ingestController.js): a mailbox in process mode may file / filter the mail at
+        // delivery. Bypass (the default) and any failure deliver the mail exactly as before.
+        let pre = null;
+        try { pre = await require('./ingestController').exchangeInbound(msg); } catch (err) { logError(`ingest: ${redact(err.message)}`); }
+        const result = dovecoteMail.deliverInboundMail(pre && pre.ingest ? Object.assign({}, msg, { ingest: pre.ingest }) : msg);
+        if (pre && pre.after) pre.after(result).catch((err) => logError(`ingest after: ${redact(err.message)}`));
+        return result;
     };
     const pending = startInbound({
         config: cfg,

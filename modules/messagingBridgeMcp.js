@@ -13,6 +13,8 @@
  * Writes that send or delete need confirm:true. Every call is audit-logged to the Exchange audit
  * (actor, tool, target, ok/failed; never bodies or secrets) and to MCP activity by the facade.
  * Account credentials (add / edit / delete an account) are not exposed here.
+ * Ingest Controller tools (ingest_*; modules/ingestMcp.js) ride on the same scope: switching an account to process mode,
+ * enabling applying, or enabling a module that deletes / forwards needs confirm:true.
  */
 
 'use strict';
@@ -95,6 +97,11 @@ const TOOLS = [
     tool('bridge_text_delete_chat', 'Delete a conversation on the Mac / phone. Requires confirm:true.', { accountId: str, chatGuid: str, confirm: bool }, ['accountId', 'chatGuid', 'confirm'])
 ];
 
+// Ingest Controller (modules/ingestController.js): per-account bypass / process pipeline over bridge mail,
+// texts and DS Exchange mailboxes. Same scope, same gates, same audit.
+const ingestMcp = require('./ingestMcp');
+ingestMcp.buildTools(SCOPE, ROLE).forEach((t) => TOOLS.push(t));
+
 const TOOL_NAMES = new Set(TOOLS.map((t) => t.name));
 
 function mcpTextResult(obj, isError) {
@@ -132,7 +139,7 @@ function audit(actor, action, target, success, detail) {
 }
 
 function targetOf(input) {
-    const parts = [input.accountId, input.folder, input.chatGuid, input.id || input.ruleId];
+    const parts = [input.source, input.accountId, input.folder, input.chatGuid, input.id || input.ruleId, input.module, input.mode];
     if (Array.isArray(input.uids)) parts.push(`uids:${input.uids.length}`);
     return parts.filter((x) => x != null && x !== '').join('|') || null;
 }
@@ -143,7 +150,7 @@ function needConfirm(input, what) {
 
 function list(v) { return Array.isArray(v) ? v.map(Number).filter((u) => u > 0) : []; }
 
-async function dispatch(name, input) {
+async function dispatch(name, input, actor) {
     const ma = () => mailAccounts();
     const folder = String(input.folder || 'INBOX');
     switch (name) {
@@ -204,7 +211,9 @@ async function dispatch(name, input) {
             }));
         }
         case 'bridge_text_delete_chat': needConfirm(input, 'Deleting a conversation'); return textMessaging().deleteChat(String(input.accountId || ''), { chatGuid: String(input.chatGuid || '') });
-        default: throw bridgeError('Unknown messaging bridge tool', 'UNKNOWN_TOOL');
+        default:
+            if (ingestMcp.isIngestTool(name)) return ingestMcp.dispatch(name, input, actor);
+            throw bridgeError('Unknown messaging bridge tool', 'UNKNOWN_TOOL');
     }
 }
 
@@ -222,7 +231,7 @@ async function handleBridgeTool(req, name, args) {
         return mcpTextResult({ success: false, error: `Application key does not have ${SCOPE}`, code: 'INSUFFICIENT_SCOPE' }, true);
     }
     try {
-        const out = await dispatch(name, input);
+        const out = await dispatch(name, input, owner);
         audit(owner, name, target, true, null);
         return mcpTextResult(Object.assign({ success: true }, out || {}));
     } catch (error) {

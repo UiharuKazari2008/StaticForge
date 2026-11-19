@@ -37,7 +37,12 @@ const MCP_RATE_GROUP_LIMITS = {
     studio: { max: 60, windowMs: MCP_RATE_WINDOW_MS },
     generate: { max: 20, windowMs: MCP_RATE_WINDOW_MS },
     rpc: { max: 300, windowMs: MCP_RATE_WINDOW_MS },
-    mail: { max: 120, windowMs: MCP_RATE_WINDOW_MS }
+    mail: { max: 120, windowMs: MCP_RATE_WINDOW_MS },
+    // Messaging Bridge + Ingest Controller (Tsubame's inbox cleanups, Nov 19 2026): the 120 / 60 per 15 min of
+    // mail / write were hit by one rules run plus a folder list. Only Tsubame and Yukimi reach these tools.
+    // A rules run, a mode switch and an accountId "*" configure are each ONE call.
+    bridge: { max: 1200, windowMs: MCP_RATE_WINDOW_MS },
+    bridge_write: { max: 600, windowMs: MCP_RATE_WINDOW_MS }
 };
 
 const TOOL_RATE_GROUPS = {
@@ -219,31 +224,37 @@ const TOOL_RATE_GROUPS = {
     exchange_resync_recipients: 'write',
     exchange_spam: 'mail',
     // Messaging Bridge (modules/messagingBridgeMcp.js)
-    bridge_mail_accounts: 'mail',
-    bridge_mail_folders: 'mail',
-    bridge_mail_messages: 'mail',
-    bridge_mail_message: 'mail',
-    bridge_mail_search: 'mail',
-    bridge_mail_sync_status: 'mail',
-    bridge_mail_list_rules: 'mail',
-    bridge_text_accounts: 'mail',
-    bridge_text_chats: 'mail',
-    bridge_text_chat: 'mail',
-    bridge_text_messages: 'mail',
-    bridge_text_search: 'mail',
-    bridge_mail_flags: 'write',
-    bridge_mail_move: 'write',
-    bridge_mail_delete: 'write',
-    bridge_mail_send: 'write',
-    bridge_mail_save_draft: 'write',
-    bridge_mail_resync: 'write',
-    bridge_mail_save_rule: 'write',
-    bridge_mail_delete_rule: 'write',
-    bridge_mail_run_rules: 'write',
-    bridge_text_mark_read: 'write',
-    bridge_text_mark_unread: 'write',
-    bridge_text_send: 'write',
-    bridge_text_delete_chat: 'write'
+    bridge_mail_accounts: 'bridge',
+    bridge_mail_folders: 'bridge',
+    bridge_mail_messages: 'bridge',
+    bridge_mail_message: 'bridge',
+    bridge_mail_search: 'bridge',
+    bridge_mail_sync_status: 'bridge',
+    bridge_mail_list_rules: 'bridge',
+    bridge_text_accounts: 'bridge',
+    bridge_text_chats: 'bridge',
+    bridge_text_chat: 'bridge',
+    bridge_text_messages: 'bridge',
+    bridge_text_search: 'bridge',
+    bridge_mail_flags: 'bridge_write',
+    bridge_mail_move: 'bridge_write',
+    bridge_mail_delete: 'bridge_write',
+    bridge_mail_send: 'bridge_write',
+    bridge_mail_save_draft: 'bridge_write',
+    bridge_mail_resync: 'bridge_write',
+    bridge_mail_save_rule: 'bridge_write',
+    bridge_mail_delete_rule: 'bridge_write',
+    bridge_mail_run_rules: 'bridge_write',
+    bridge_text_mark_read: 'bridge_write',
+    bridge_text_mark_unread: 'bridge_write',
+    bridge_text_send: 'bridge_write',
+    bridge_text_delete_chat: 'bridge_write',
+    ingest_list_accounts: 'bridge',
+    ingest_list_modules: 'bridge',
+    ingest_dry_run: 'bridge',
+    ingest_log: 'bridge',
+    ingest_set_mode: 'bridge_write',
+    ingest_configure_module: 'bridge_write'
 };
 
 const rateGroupHits = new Map();
