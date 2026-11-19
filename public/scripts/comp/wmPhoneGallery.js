@@ -370,7 +370,7 @@
         const chk = picked && picked.has(e.path) ? ' is-picked' : '';
         // an app without media.list gives no length: none is shown rather than 0:00
         const dur = e.video && Number(e.duration) > 0 ? `<i class="wm-pv-dur">${esc(duration(e.duration))}</i>` : '';
-        return `<button type="button" class="wm-pv-cell wm-photo${e.video ? ' is-video' : ''}${sel}${chk}" data-path="${esc(e.path)}" aria-label="${esc(e.name)}"><img src="${esc(thumbUrl(e))}" alt="" loading="lazy" decoding="async" draggable="false">${dur}</button>`;
+        return `<button type="button" class="wm-pv-cell wm-photo${e.video ? ' is-video' : ''}${sel}${chk}" data-path="${esc(e.path)}" aria-label="${esc(e.name)}"><img data-src="${esc(thumbUrl(e))}" alt="" decoding="async" draggable="false">${dur}</button>`;
     }
 
     /**
@@ -418,6 +418,39 @@
         });
     }
 
+    /*
+     * Thumbnails as they come into view (#957). The app makes a missing thumbnail in ~40 ms (about 14 ms each with
+     * several at once) and answers a burst of them together, and loading="lazy" still asked for nearly every cell
+     * drawn (240 on a first open), so the first row waited 2-2.5 s for all of them on a cold folder. Now only the rows
+     * on screen and one screen ahead are asked for, more as the list scrolls; a hidden page asks for none.
+     */
+    let thumbObs = null;
+    let thumbRoot = null;
+    function loadThumb(img) {
+        const src = img.dataset.src;
+        if (!src) return;
+        delete img.dataset.src;
+        img.src = src;
+    }
+    function lazyThumbs(page) {
+        const scroller = page.querySelector('.wm-pv-scroll');
+        if (thumbRoot !== scroller) {
+            if (thumbObs) thumbObs.disconnect();
+            thumbObs = null;
+            thumbRoot = scroller;
+            if (scroller && typeof IntersectionObserver === 'function') {
+                thumbObs = new IntersectionObserver((list) => {
+                    for (const o of list) {
+                        if (!o.isIntersecting) continue;
+                        thumbObs.unobserve(o.target);
+                        loadThumb(o.target);
+                    }
+                }, { root: scroller, rootMargin: '0px 0px 100% 0px' });
+            }
+        }
+        page.querySelectorAll('.wm-pv-phone img[data-src]').forEach((img) => { if (thumbObs) thumbObs.observe(img); else loadThumb(img); });
+    }
+
     /** Draw the card folder into the page (wmShell's own grid is hidden meanwhile). */
     function render(page, force) {
         const box = host(page);
@@ -461,6 +494,7 @@
         let next = 0;
         for (; next < Math.min(cells.length, 2 * size); next += size) html += chunk(next);
         box.innerHTML = html;
+        lazyThumbs(page);
         if (gridMore) { gridMore.disconnect(); gridMore = null; }
         if (next < cells.length && typeof IntersectionObserver === 'function') {
             const scroller = page.querySelector('.wm-pv-scroll');
@@ -469,12 +503,14 @@
                 let add = '';
                 for (let n = 0; n < 2 && next < cells.length; n++, next += size) add += chunk(next);
                 box.insertAdjacentHTML('beforeend', add);
+                lazyThumbs(page);
                 gridMore.disconnect();
                 if (next < cells.length) gridMore.observe(box.lastElementChild); else gridMore = null;
             }, { root: scroller, rootMargin: '0px 0px 1500px 0px' });
             gridMore.observe(box.lastElementChild);
         } else if (next < cells.length) {
             for (; next < cells.length; next += size) box.insertAdjacentHTML('beforeend', chunk(next));
+            lazyThumbs(page);
         }
         empty.textContent = listError || (loading ? 'Loading...' : (query ? 'No matches' : 'No pictures or videos'));
         empty.hidden = cells.length > 0;
@@ -491,6 +527,7 @@
         const box = host(page);
         const dirs = query ? [] : subfoldersOf(loc.root, loc.path);
         box.innerHTML = `<div class="wm-pv-chunk">${dirs.map(dirHtml).join('')}${listNow().map(cellHtml).join('')}</div>`;
+        lazyThumbs(page);
     }
 
     function select(page, path) {
@@ -585,6 +622,20 @@
             const nw = img && img.naturalWidth;
             const nh = img && img.naturalHeight;
             if (nw && nh) { const k = 2048 / Math.max(nw, nh); w = Math.round(nw * k); h = Math.round(nh * k); } else { w = 1536; h = 2048; }
+        }
+        // (#957) a camera photo opened at full size was a several-MB download and a 12-50 MP decode per picture (and
+        // for HEIC a whole-picture JPEG conversion first), for every neighbour PhotoSwipe preloads too, with a blank
+        // slide meanwhile. Now: the grid's thumbnail at once (msrc, already in the memory cache), then the app's
+        // screen-sized rendition (thumb 1024, made once and kept), and the original only when zoomed past it
+        // (srcset: PhotoSwipe raises sizes as it zooms). The rendition's width is declared up to 1600 device px so the
+        // fit view keeps it on a phone screen.
+        const ps = PS();
+        const long = Math.max(w, h);
+        if (ps && typeof ps.fileUrl === 'function' && long > 1024) {
+            const view1024 = ps.fileUrl(root, e.path, { thumb: 1024 });
+            const grid = ps.fileUrl(root, e.path, { thumb: 256 });
+            const asW = Math.max(1, Math.round(w * Math.min(1600, long) / long));
+            return { src: view1024, srcset: `${view1024} ${asW}w, ${src} ${w}w`, msrc: grid, width: w, height: h, data: meta };
         }
         return { src, width: w, height: h, data: meta };
     }
