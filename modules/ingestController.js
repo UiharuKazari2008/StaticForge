@@ -5,7 +5,8 @@
  *
  *   bypass   as before: nothing here touches the message (the older mail rules still run for e-mail)
  *   process  the account's ordered pipeline of modules (modules/ingestModules.js) runs on every NEW message:
- *              spamFilter -> codeExtraction -> routing        (reorder / toggle per account)
+ *              spamFilter -> codeExtraction -> routing -> expiry   (reorder / toggle per account)
+ *            expiry (mail only) tags Inbox mail; its sweep (modules/ingestExpiry.js, every 20 min) moves due mail to Trash
  *
  * Switching an account to process starts DRY-RUN: the intended actions are only logged (ingest_log, never a
  * body or a code) until `applying` is switched on (confirm:true). Modules only decide; the actions are applied
@@ -31,14 +32,15 @@ const fs = require('fs');
 const path = require('path');
 const store = require('./ingestStore');
 const M = require('./ingestModules');
+const expiry = require('./ingestExpiry');
 const { redactCodes } = require('./ingestCodeRedact');
 
 const SOURCES = Object.freeze(['email', 'sms', 'exchange']);
 const HANDOFF_FROM = 'ingest-controller@dream.737.jp.net';
 const HANDOFF_LABEL = 'Ingest Controller <ingest-controller@dream.737.jp.net>';
 const TERMINAL = new Set(['move', 'delete']);
-const ORDER = ['markRead', 'flag', 'silence', 'forward', 'handToAgent', 'notify', 'move', 'delete'];
-const MODULE_TIMEOUT = { spamFilter: 7000, codeExtraction: 2000, routing: 3000 };
+const ORDER = ['markRead', 'flag', 'silence', 'forward', 'handToAgent', 'notify', 'expire', 'move', 'delete'];
+const MODULE_TIMEOUT = { spamFilter: 7000, codeExtraction: 2000, routing: 3000, expiry: 2000 };
 
 function fail(code, message) { return Object.assign(new Error(message), { code }); }
 function log(m) { console.log(`[ingest] ${m}`); }
@@ -119,7 +121,8 @@ function defaultPipeline() {
     return [
         { id: 'spamFilter', enabled: false, settings: {} },
         { id: 'codeExtraction', enabled: false, settings: {} },
-        { id: 'routing', enabled: true, settings: {} }
+        { id: 'routing', enabled: true, settings: {} },
+        { id: 'expiry', enabled: false, settings: {} }
     ];
 }
 
@@ -210,6 +213,7 @@ function setMode({ source, accountId, mode, applying, confirm, actor } = {}) {
             pipeline: effectivePipeline(prev), updatedBy: actor || null
         });
         if (t.source === 'email' && was !== m) markers(t.account, m === 'process');
+        if (m === 'process' && was !== m && ['email', 'exchange'].includes(t.source) && effectivePipeline(row).some((e) => e.id === 'expiry' && e.enabled)) expiry.backfillSoon(t.source, t.account);
         log(`${t.source}/${t.account}: ${was} -> ${row.mode}${row.mode === 'process' ? (row.applying ? ' (applying)' : ' (dry-run)') : ''}`);
         out.push(accountView(t.source, t.account, t.label, row));
     }
@@ -272,6 +276,8 @@ function configureModule({ source, accountId, module: moduleId, enabled, setting
             pipeline: pipe, updatedBy: actor || null
         });
         out.push({ account: accountView(p.t.source, p.t.account, p.t.label, row), module: moduleView(mod, entry, p.t.source), order: pipe.map((e) => e.id) });
+        // expiry: tag what is already in the Inbox (dry: tags and "would expire" only)
+        if (mod.id === 'expiry' && entry.enabled && row.mode === 'process' && mod.sources.includes(p.t.source)) expiry.backfillSoon(p.t.source, p.t.account);
     }
     return targets.length === 1 && accountId !== '*' ? out[0] : { accounts: out };
 }
@@ -587,6 +593,7 @@ async function processNewMail(id, row) {
 
 async function processOne(msg, row) {
     const res = await runPipeline(msg, { row });
+    expiry.tagArrival(msg, row, row.applying ? res : Object.assign({}, res, { stoppedBy: null }));
     if (!res.actions.length) return null;
     const dry = !row.applying;
     let applied = null;
@@ -649,10 +656,17 @@ async function exchangeInbound(delivery) {
     const msg = fromExchange(delivery);
     if (delivery.fromAddress === HANDOFF_FROM) return null; // our own hand-off: never loop
     const res = await runPipeline(msg, { row });
-    if (!res.actions.length) return null;
+    // expiry tags need the row id: after(result) of the insert
+    const wantsTag = res.actions.some((a) => a.type === 'expire') || effectivePipeline(row).some((e) => e.id === 'expiry' && e.enabled);
+    const tagAfter = (result, r) => { if (result && result.id) { msg.id = result.id; expiry.tagArrival(msg, row, r); } };
+    if (!res.actions.length) return wantsTag ? { ingest: null, after: async (result) => tagAfter(result, res) } : null;
     const dry = !row.applying;
     msg.ref = 'pending';
-    if (dry) { logDecision(msg, res, true, null); log(`exchange/${msg.account}: ${res.actions.map((a) => a.type).join(',')} (dry-run)`); return null; }
+    if (dry) {
+        logDecision(msg, res, true, null); log(`exchange/${msg.account}: ${res.actions.map((a) => a.type).join(',')} (dry-run)`);
+        // dry-run: delivered as before (Inbox); only the tag is kept (the sweep is dry too)
+        return wantsTag ? { ingest: null, after: async (result) => tagAfter(result, Object.assign({}, res, { stoppedBy: null })) } : null;
+    }
     const ingest = {};
     const later = [];
     for (const a of res.actions) {
@@ -666,6 +680,7 @@ async function exchangeInbound(delivery) {
         ingest,
         after: async (result) => {
             msg.id = result && result.id; msg.ref = (result && result.id) || msg.ref;
+            if (wantsTag && !(ingest.folder && ingest.folder !== 'inbox')) { msg.read = ingest.read === true; msg.flagged = ingest.flagged === true; tagAfter(result, Object.assign({}, res, { stoppedBy: null })); }
             const applied = await appliers.exchange(msg, later);
             logDecision(msg, res, false, [...res.actions.filter((a) => !later.includes(a)).map(() => ({ ok: true, type: 'insert' })), ...applied]);
             log(`exchange/${msg.account}: ${res.actions.map((a) => a.type + (a.to ? `:${a.to}` : '')).join(',')}`);
@@ -767,13 +782,53 @@ function recentLog(opts = {}) {
     return { entries: s1.listLog({ source: opts.source ? validSource(opts.source) : null, account: opts.accountId || null, limit: opts.limit }) };
 }
 
+// ---------------------------------------------------------------- expiry (modules/ingestExpiry.js)
+
+expiry.bind({ be: (n) => be(n), st, accountRow, effectivePipeline, log });
+
+function mailSource(source) {
+    const s = validSource(source);
+    if (s === 'sms') throw fail('BAD_SOURCE', 'Expiry is for mail: source email or exchange.');
+    return s;
+}
+
+/** Counts, the next messages due (subject / sender only) and the last sweep of one account. */
+function expiryStatus({ source, accountId, limit } = {}) {
+    const s = mailSource(source);
+    const a = requireAccount(s, accountId);
+    return expiry.status(a.source, a.account, { limit: Math.max(1, Math.min(Number(limit) || 25, 200)) });
+}
+
+/**
+ * Run the sweep now. dryRun (default true): tag / backfill and list what would expire. dryRun:false moves due mail to
+ * Trash and needs confirm:true and the account applying. accountId "*": every account of the source with the module on.
+ */
+async function expirySweep({ source, accountId, dryRun, confirm } = {}) {
+    const s = mailSource(source);
+    const apply = dryRun === false;
+    if (apply) needConfirm(confirm, 'Expiring mail now (dryRun:false)');
+    const targets = accountId === '*'
+        ? availableAccounts(s).filter((a) => { const r = accountRow(a.source, a.account); return r && r.mode === 'process' && effectivePipeline(r).some((e) => e.id === 'expiry' && e.enabled); })
+        : [requireAccount(s, accountId)];
+    const out = [];
+    for (const t of targets) {
+        try { out.push(await expiry.sweepAccount(t.source, t.account, { apply, reason: apply ? 'manual apply' : 'manual dry-run' })); } catch (e) {
+            if (accountId !== '*') throw e;
+            out.push({ source: t.source, accountId: t.account, error: e.message, code: e.code });
+        }
+    }
+    return accountId === '*' ? { accounts: out } : out[0];
+}
+
+function startExpirySweep() { return expiry.start(); }
+
 function _test_setBackends(b) { backends = b || null; budget.clear(); }
 function _test_reset() { try { store._close(); } catch (_) { /* closed */ } opened = false; }
 function _test_open(dir) { store.open(dir); opened = true; }
 
 module.exports = {
     SOURCES, HANDOFF_FROM,
-    listAccounts, setMode, listModules, configureModule, dryRun, recentLog,
+    listAccounts, setMode, listModules, configureModule, dryRun, recentLog, expiryStatus, expirySweep, startExpirySweep,
     onMailArrived, exchangeInbound, textInbound,
     runPipeline, effectivePipeline, availableAccounts, fromMailRow, fromExchange, fromText, exchangeFolder,
     _test: { setBackends: _test_setBackends, reset: _test_reset, open: _test_open, appliers }

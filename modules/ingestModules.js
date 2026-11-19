@@ -11,12 +11,15 @@
  * actions: { type: 'move', to } | { type: 'delete' } | { type: 'markRead' } | { type: 'flag' }
  *          | { type: 'forward', to } | { type: 'handToAgent', mailbox } | { type: 'silence' }   (texts: no notification, read)
  *          | { type: 'notify', kind, title, _text }       (_text never leaves the process: logs show [redacted])
+ *          | { type: 'expire', afterMs?, afterReadMs? }  (routing only: tags the mail for the expiry sweep; never moves it now)
  * Folders: 'move' to '@junk' = the account's Junk (Exchange: Spam); email folder paths as the account has them;
  * Exchange: inbox, spam, archive, archive:<name> (any other name is an Archive subfolder), deleted.
  *   1. spamFilter    SpamAssassin spamd score (mail), known-number list + heuristic (texts); drops over the threshold.
  *   2. codeExtraction 4-8 digit codes / verification links -> a notification on Yukimi's devices only.
  *   3. routing       richer rules: from/to/subject/header/body, regex, negation, allowlist groups; plus the older
  *                    mail rules (mailAccountsRules) for e-mail so nothing regresses.
+ *   4. expiry        tags Inbox mail with an expiry (N days after arrival, or N days after it was first read);
+ *                    the periodic sweep (modules/ingestExpiry.js) moves due mail to Trash. Flagged mail never expires.
  */
 'use strict';
 
@@ -224,10 +227,19 @@ function normalizeActions(a, source) {
     if (x.handTo != null && String(x.handTo).trim()) out.handTo = clip(x.handTo, 60).toLowerCase();
     if (x.notify === true || (typeof x.notify === 'string' && x.notify.trim())) out.notify = x.notify === true ? true : clip(x.notify, 80);
     if (x.silence === true) out.silence = true;
+    if (x.expire != null) {
+        if (source === 'sms') throw bad('expire is for mail (email / exchange), not texts.');
+        const e = isObj(x.expire) ? x.expire : {};
+        const ex = {};
+        if (e.after != null) ex.afterMs = parseDuration(e.after, 'expire.after');
+        if (e.afterRead != null) ex.afterReadMs = parseDuration(e.afterRead, 'expire.afterRead');
+        if (!ex.afterMs && !ex.afterReadMs) throw bad('expire needs after ("40d") and / or afterRead ("7d")');
+        out.expire = ex;
+    }
     if (out.moveTo && out.delete) throw bad('Pick moveTo or delete, not both.');
     if (out.moveTo && source === 'sms') throw bad('Texts have no folders: use delete, silence, markRead, handTo, notify or forwardTo.');
     if (out.flag && source === 'sms') throw bad('flag is not available for texts.');
-    if (!Object.keys(out).length) throw bad('A rule needs an action: markRead, flag, moveTo, delete, forwardTo, handTo, notify or silence.');
+    if (!Object.keys(out).length) throw bad('A rule needs an action: markRead, flag, moveTo, delete, forwardTo, handTo, notify, silence or expire.');
     return out;
 }
 
@@ -306,6 +318,7 @@ function actionsOf(a, msg, rule) {
     if (a.notify) out.push({ type: 'notify', kind: 'rule', title: typeof a.notify === 'string' ? a.notify : 'Mail rule', _text: redactCodes(`From ${msg.fromName || msg.from}: ${msg.subject || String(msg.text || '').slice(0, 100)}`) });
     if (a.forwardTo) out.push({ type: 'forward', to: a.forwardTo });
     if (a.handTo) out.push({ type: 'handToAgent', mailbox: a.handTo });
+    if (a.expire) out.push(Object.assign({ type: 'expire' }, a.expire));
     if (a.delete) out.push({ type: 'delete' });
     else if (a.moveTo) out.push({ type: 'move', to: a.moveTo });
     out.forEach((x) => { x.rule = rule; });
@@ -323,7 +336,7 @@ function pseudoRow(msg) {
 const routing = {
     id: 'routing',
     label: 'Routing rules',
-    description: 'Rules over from / to / subject / header / body (contains, equals, regex, in an allowlist group), with negation. Actions: moveTo a folder, delete (Trash), markRead, flag, forwardTo, handTo an agent mailbox, notify, silence (texts). For e-mail the older mail rules still run first (includeLegacyRules).',
+    description: 'Rules over from / to / subject / header / body (contains, equals, regex, in an allowlist group), with negation. Actions: moveTo a folder, delete (Trash), markRead, flag, forwardTo, handTo an agent mailbox, notify, silence (texts), expire { after, afterRead } (mail: the expiry sweep moves it to Trash later). For e-mail the older mail rules still run first (includeLegacyRules).',
     sources: ['email', 'exchange', 'sms'],
     defaults: { rules: [], groups: {}, includeLegacyRules: true },
     validate(s, source) {
@@ -373,7 +386,133 @@ const routing = {
     }
 };
 
-const MODULES = [spamFilter, codeExtraction, routing];
+// ---------------------------------------------------------------- 4. expiry
+
+const DAY = 24 * 60 * 60 * 1000;
+const UNITS = { m: 60 * 1000, h: 60 * 60 * 1000, d: DAY, w: 7 * DAY };
+/** '40d' / '12h' / '90m' / '2w' / a number of ms -> ms (1 hour .. 10 years). */
+function parseDuration(v, what) {
+    let ms = null;
+    if (typeof v === 'number') ms = v;
+    else {
+        const m = /^\s*(\d+(?:\.\d+)?)\s*([mhdw])\s*$/i.exec(String(v == null ? '' : v));
+        if (m) ms = Number(m[1]) * UNITS[m[2].toLowerCase()];
+    }
+    if (!Number.isFinite(ms) || ms < UNITS.h || ms > 3650 * DAY) throw bad(`${what || 'duration'} is like "40d", "12h" or "2w" (1 hour to 10 years)`);
+    return Math.round(ms);
+}
+
+/** Yukimi's payment-failure notices (from Tsubame's inbox janitor, Nov 19 2026). */
+const PAYMENT_FAILURE_SUBJECT = "missed (a |your )?(\\w+ )*payment|late payment|payment isn.?t made|problem receiving your payment|didn.?t go through|was unsuccessful|payment alert|autopay failed|payment (failed|declined|didn.?t go through|problem)|couldn.?t process payment|past due|missed payment|on hold|failed payment|payment was declined|collections";
+const EXPIRY_SUBJECT_MAX = 300; // subjects are clipped before matching: a bounded input for any pattern
+const MAX_EXPIRY_RULES = 50;
+
+/**
+ * Subject patterns for expiry rules: longer than routing's (the default is ~330 chars). Rejected: a group that ends in a
+ * quantifier and is quantified again ((a+)+, (\w*)*), and anything slow on worst-case probes (run under a vm timeout,
+ * so a catastrophic pattern cannot hang the server while it is checked). Subjects are clipped to 300 chars when matched.
+ */
+const vm = require('vm');
+const probeScript = new vm.Script('for (const p of probes) re.test(p)');
+function expiryRegex(src) {
+    const s = String(src == null ? '' : src).trim();
+    if (!s) throw bad('subjectRegex is empty');
+    if (s.length > 1000) throw bad('subjectRegex: at most 1000 characters');
+    if (/\((?:[^()\\]|\\.)*[+*}]\)[+*{]/.test(s)) throw bad('subjectRegex too expensive (a quantified group ending in a quantifier); simplify it');
+    let re;
+    try { re = new RegExp(s, 'i'); } catch (e) { throw bad(`bad subjectRegex: ${e.message}`); }
+    const probes = [];
+    for (const c of ['a', '1', ' ', 'ab', 'a ', 'aaaa ', '- ', '.']) probes.push(`${c.repeat(Math.floor(EXPIRY_SUBJECT_MAX / c.length) - 1)}!`);
+    try { probeScript.runInNewContext({ re, probes }, { timeout: 100 }); } catch (e) { throw bad('subjectRegex too expensive; simplify it'); }
+    return re;
+}
+
+function normalizeExpiryRules(rules) {
+    if (!Array.isArray(rules)) throw bad('expiry rules must be a list');
+    if (rules.length > MAX_EXPIRY_RULES) throw bad(`At most ${MAX_EXPIRY_RULES} expiry rules.`);
+    const ids = new Set();
+    return rules.map((r, i) => {
+        if (!isObj(r)) throw bad(`expiry rule ${i + 1} must be an object`);
+        const out = { id: clip(r.id, 40) || `x-${randomUUID().slice(0, 8)}`, name: clip(r.name, 120), enabled: r.enabled !== false };
+        if (ids.has(out.id)) throw bad(`expiry rule id "${out.id}" is used twice`);
+        ids.add(out.id);
+        if (r.subjectRegex != null && String(r.subjectRegex).trim()) { expiryRegex(r.subjectRegex); out.subjectRegex = String(r.subjectRegex).trim(); }
+        const m = isObj(r.match) ? r.match : null;
+        if (m) {
+            const all = (Array.isArray(m.all) ? m.all : []).map((c) => normalizeCond(c, {}));
+            const any = (Array.isArray(m.any) ? m.any : []).map((c) => normalizeCond(c, {}));
+            const none = (Array.isArray(m.none) ? m.none : []).map((c) => normalizeCond(c, {}));
+            if (all.length || any.length || none.length) out.match = { all, any, none };
+        }
+        if (r.after != null) out.afterMs = parseDuration(r.after, `expiry rule ${i + 1} after`);
+        else if (r.afterMs != null) out.afterMs = parseDuration(Number(r.afterMs), `expiry rule ${i + 1} afterMs`);
+        if (r.afterRead != null) out.afterReadMs = parseDuration(r.afterRead, `expiry rule ${i + 1} afterRead`);
+        else if (r.afterReadMs != null) out.afterReadMs = parseDuration(Number(r.afterReadMs), `expiry rule ${i + 1} afterReadMs`);
+        if (!out.afterMs && !out.afterReadMs) throw bad(`expiry rule ${i + 1} needs after ("40d") and / or afterRead ("7d")`);
+        return out;
+    });
+}
+
+const DEFAULT_EXPIRY_RULES = Object.freeze(normalizeExpiryRules([
+    { id: 'payment-failure', name: 'Payment-failure notices: 40 days after they arrive', subjectRegex: PAYMENT_FAILURE_SUBJECT, after: '40d' },
+    { id: 'read-7d', name: 'Any mail: 7 days after it was first read', afterRead: '7d' }
+]).map((r) => Object.freeze(r)));
+
+const regexCache = new Map();
+function cachedRegex(src) {
+    let re = regexCache.get(src);
+    if (!re) { re = new RegExp(src, 'i'); if (regexCache.size > 200) regexCache.clear(); regexCache.set(src, re); }
+    return re;
+}
+
+/**
+ * The rule expiry of one message (pure): { afterMs, afterReadMs, rules: [ids] } or null.
+ * afterMs: the shortest "after arrival" of the matching rules; afterReadMs: the shortest "after read".
+ */
+function expiryFor(msg, rules) {
+    let afterMs = null;
+    let afterReadMs = null;
+    const hit = [];
+    const subj = { subject: String(msg.subject || '').slice(0, EXPIRY_SUBJECT_MAX) };
+    const m2 = Object.assign({}, msg, subj);
+    for (const r of rules || []) {
+        if (!r || r.enabled === false) continue;
+        if (r.subjectRegex && !cachedRegex(r.subjectRegex).test(subj.subject)) continue;
+        if (r.match && !ruleMatches(m2, { match: r.match }, {})) continue;
+        hit.push(r.id);
+        if (r.afterMs) afterMs = afterMs == null ? r.afterMs : Math.min(afterMs, r.afterMs);
+        if (r.afterReadMs) afterReadMs = afterReadMs == null ? r.afterReadMs : Math.min(afterReadMs, r.afterReadMs);
+    }
+    return hit.length ? { afterMs, afterReadMs, rules: hit } : null;
+}
+
+const expiry = {
+    id: 'expiry',
+    label: 'Expiry',
+    description: 'Tags Inbox mail with an expiry when it arrives (and backfills what is already there): a rule matches the subject (regex) / from / to / header and expires the mail `after` arrival (e.g. "40d") or `afterRead` (e.g. "7d" after it was first seen read). Routing rules can also set expire { after, afterRead }. A sweep (every 20 minutes, or ingest_expiry_sweep) moves due mail to Trash (Deleted Messages); dry-run only logs "would expire". Flagged mail never expires (checked again right before the move).',
+    sources: ['email', 'exchange'],
+    defaults: { rules: DEFAULT_EXPIRY_RULES, maxPerSweep: 200 },
+    validate(s) {
+        const x = isObj(s) ? s : {};
+        const out = {};
+        if (x.rules != null) out.rules = normalizeExpiryRules(x.rules);
+        if (x.maxPerSweep != null) { out.maxPerSweep = Number(x.maxPerSweep); if (!Number.isInteger(out.maxPerSweep) || out.maxPerSweep < 1 || out.maxPerSweep > 2000) throw bad('maxPerSweep must be 1-2000'); }
+        return out;
+    },
+    // it moves mail to Trash: enabling it needs confirm:true
+    isDestructive() { return true; },
+    async run(msg, ctx) {
+        const t = expiryFor(msg, ctx.settings.rules);
+        if (!t) return { actions: [] };
+        const now = Date.now();
+        const note = { rules: t.rules };
+        if (t.afterMs) note.expiresAt = new Date(Math.min(Number(msg.date) || now, now) + t.afterMs).toISOString();
+        if (t.afterReadMs) note.afterReadDays = Math.round((t.afterReadMs / DAY) * 100) / 100;
+        return { actions: [], note };
+    }
+};
+
+const MODULES = [spamFilter, codeExtraction, routing, expiry];
 const BY_ID = new Map(MODULES.map((m) => [m.id, m]));
 
-module.exports = { MODULES, BY_ID, spamFilter, codeExtraction, routing, globMatch, textSpamScore, numberListed, ruleMatches, normalizeRules, normalizeActions, bad, SPAMD_DEFAULTS };
+module.exports = { MODULES, BY_ID, spamFilter, codeExtraction, routing, expiry, expiryFor, parseDuration, normalizeExpiryRules, DEFAULT_EXPIRY_RULES, PAYMENT_FAILURE_SUBJECT, globMatch, textSpamScore, numberListed, ruleMatches, normalizeRules, normalizeActions, bad, SPAMD_DEFAULTS };

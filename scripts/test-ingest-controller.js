@@ -161,7 +161,7 @@ const mailRow = (uid, from, subject, text, extra) => Object.assign({
     assert.strictEqual(bySrc('email').length, 2); assert.strictEqual(bySrc('sms').length, 1);
     assert.ok(bySrc('exchange').some((a) => a.accountId === 'tsubame') && bySrc('exchange').some((a) => a.accountId === 'yukimi'));
     assert.ok(r.accounts.every((a) => a.mode === 'bypass' && a.applying === false), 'default is bypass everywhere');
-    assert.deepStrictEqual(bySrc('email')[0].pipeline.map((m) => m.id), ['spamFilter', 'codeExtraction', 'routing']);
+    assert.deepStrictEqual(bySrc('email')[0].pipeline.map((m) => m.id), ['spamFilter', 'codeExtraction', 'routing', 'expiry']);
     let noScope = out(await bridge.handleBridgeTool({ applicationAuth: { appName: 'Tsubame', applicationScopes: ['universal'], applicationKeyId: 'k' } }, 'ingest_list_accounts', {}));
     assert.strictEqual(noScope.code, 'INSUFFICIENT_SCOPE');
     noScope = out(await bridge.handleBridgeTool({ applicationAuth: { appName: 'Menma', applicationScopes: ['sfapp_messaging_bridge'], applicationKeyId: 'k' } }, 'ingest_list_accounts', {}));
@@ -444,6 +444,225 @@ const mailRow = (uid, from, subject, text, extra) => Object.assign({
     assert.ok(mods.globMatch('*@bank.example', 'Alice@Bank.Example') && mods.globMatch('@x.com', 'a@x.com') && !mods.globMatch('@x.com', 'a@y.com'));
     assert.ok(mods.textSpamScore({ text: 'Unpaid toll balance: pay at https://bit.ly/x', known: false }).score >= 3);
     assert.strictEqual(mods.textSpamScore({ text: 'Your code is 123456' }).score, 0);
+
+    // ================= expiry module =================
+    const expiryMod = require('../modules/ingestExpiry');
+    const DAY = 86400000;
+    let clock = Date.now();
+    expiryMod._test.setNow(() => clock);
+    legacyRules = [];
+    calls.splice(0);
+    const serverFlags = new Map(); // uid -> flags at the "mail server" (setFlags({}) refreshes the copy from it)
+    const otherRow = (uid, subject, ageDays, flags, msgid) => {
+        const row = mailRow(uid, 'billing@bank.example', subject, 'x', { account: 'other', date: clock - ageDays * DAY, msgid: msgid === undefined ? `<o${uid}@x>` : msgid });
+        row.flags = JSON.stringify(flags || []); row.seen = (flags || []).includes('\\Seen') ? 1 : 0; row.flagged = (flags || []).includes('\\Flagged') ? 1 : 0;
+        serverFlags.set(uid, flags || []);
+        mailRows.push(row);
+        return row;
+    };
+    const setRowFlags = (uid, flags, serverOnly) => {
+        serverFlags.set(uid, flags);
+        if (serverOnly) return;
+        const row = mailRows.find((x) => x.account === 'other' && x.uid === uid);
+        row.flags = JSON.stringify(flags); row.seen = flags.includes('\\Seen') ? 1 : 0; row.flagged = flags.includes('\\Flagged') ? 1 : 0;
+    };
+    const inboxUids = () => mailRows.filter((x) => x.account === 'other').map((x) => x.uid).sort((a, b) => a - b);
+    fake.mailStore.listForExpiry = (id) => mailRows.filter((x) => x.account === id).slice().sort((a, b) => a.uid - b.uid);
+    const fmSet = fake.mailAccounts.setFlags;
+    fake.mailAccounts.setFlags = async (id, f, uids, o) => {
+        if (id === 'other' && !(o.add || []).length && !(o.remove || []).length) {
+            calls.push(['flagCheck', id, f, uids.slice()]);
+            for (const u of uids) if (serverFlags.has(u) && mailRows.some((x) => x.account === 'other' && x.uid === u)) setRowFlags(u, serverFlags.get(u));
+            return { ok: true };
+        }
+        return fmSet(id, f, uids, o);
+    };
+    const fmMove = fake.mailAccounts.move;
+    fake.mailAccounts.move = async (id, f, uids, to) => {
+        if (id === 'other') { for (const u of uids) { const i = mailRows.findIndex((x) => x.account === 'other' && x.uid === u); if (i >= 0) mailRows.splice(i, 1); } }
+        return fmMove(id, f, uids, to);
+    };
+
+    otherRow(1, 'Your payment failed', 41);                       // due: 40 days after arrival
+    otherRow(2, 'Payment declined - action needed', 10);          // 30 days to go
+    otherRow(3, 'Hello from a friend', 100);                      // unread: waits for read
+    otherRow(4, 'Read this', 3, ['\\Seen']);                      // read: 7 days from the first sweep
+    otherRow(5, 'Your account is past due', 50, ['\\Flagged']);   // flagged: never
+    otherRow(6, 'We noticed you missed your credit card payment', 45); // due, will move UID
+    otherRow(7, 'no message id', 2, ['\\Seen'], null);            // key falls back to the UID
+
+    // the module: catalog, defaults (payment-failure regex 40d, read 7d), validation
+    r = await call('ingest_list_modules', {});
+    assert.ok(r.modules.some((m) => m.id === 'expiry' && m.sources.join() === 'email,exchange'));
+    assert.strictEqual(mods.expiryFor({ subject: 'Problem receiving your payment' }, mods.DEFAULT_EXPIRY_RULES).afterMs, 40 * DAY);
+    assert.strictEqual(mods.expiryFor({ subject: 'Missed a payment?' }, mods.DEFAULT_EXPIRY_RULES).afterMs, 40 * DAY);
+    assert.strictEqual(mods.expiryFor({ subject: 'Lunch on Friday' }, mods.DEFAULT_EXPIRY_RULES).afterMs, null, 'only payment notices get the 40d clock');
+    assert.strictEqual(mods.expiryFor({ subject: 'Lunch on Friday' }, mods.DEFAULT_EXPIRY_RULES).afterReadMs, 7 * DAY, 'any mail: 7 days after read');
+    assert.strictEqual(mods.parseDuration('40d'), 40 * DAY); assert.strictEqual(mods.parseDuration('12h'), 12 * 3600000);
+    assert.throws(() => mods.parseDuration('5'), /like/); assert.throws(() => mods.parseDuration('10m'), /1 hour/);
+    assert.throws(() => mods.normalizeExpiryRules([{ subjectRegex: 'x' }]), /after/);
+    assert.throws(() => mods.normalizeExpiryRules([{ subjectRegex: '(a+)+$', after: '1d' }]), /expensive/);
+
+    // enabling it moves mail to Trash: confirm:true
+    r = await call('ingest_configure_module', { source: 'email', accountId: 'other', module: 'expiry', enabled: true });
+    assert.strictEqual(r.code, 'CONFIRM_REQUIRED', JSON.stringify(r));
+    r = await call('ingest_configure_module', { source: 'email', accountId: 'other', module: 'expiry', enabled: true, confirm: true });
+    assert.strictEqual(r.success, true, JSON.stringify(r)); assert.deepStrictEqual(r.order, ['spamFilter', 'codeExtraction', 'routing', 'expiry']);
+    r = await call('ingest_expiry_sweep', { source: 'email', accountId: 'other' });
+    assert.strictEqual(r.code, 'NOT_ENABLED', 'bypass: no sweep');
+    r = await call('ingest_expiry_sweep', { source: 'sms', accountId: 'bb' });
+    assert.strictEqual(r.success, false, 'texts have no expiry');
+    r = await call('ingest_set_mode', { source: 'email', accountId: 'other', mode: 'process', confirm: true });
+    assert.strictEqual(r.account.dryRun, true);
+    await new Promise((r2) => setTimeout(r2, 1700)); // the backfill (dry) after entering process mode
+
+    // dry-run backfill: tags the whole Inbox, stamps first reads, moves nothing
+    r = await call('ingest_expiry_sweep', { source: 'email', accountId: 'other' });
+    assert.strictEqual(r.success, true, JSON.stringify(r));
+    assert.strictEqual(r.dryRun, true); assert.strictEqual(r.scanned, 7); assert.strictEqual(r.due, 2);
+    assert.deepStrictEqual(r.wouldExpire.map((w) => w.ref).sort(), ['INBOX:1', 'INBOX:6']);
+    assert.ok(r.wouldExpire.every((w) => w.reason === 'after arrival'));
+    assert.ok(!calls.some((x) => x[0] === 'move' || x[0] === 'remove'), 'dry-run moves nothing');
+    assert.deepStrictEqual(inboxUids(), [1, 2, 3, 4, 5, 6, 7]);
+    let lg = (await call('ingest_log', { source: 'email', accountId: 'other', limit: 50 })).entries.filter((e) => e.actions.some((a) => a.type === 'expire'));
+    assert.strictEqual(lg.length, 2, 'would expire: logged once each'); assert.ok(lg.every((e) => e.dry));
+    let stt = await call('ingest_expiry_status', { source: 'email', accountId: 'other' });
+    assert.strictEqual(stt.success, true, JSON.stringify(stt));
+    assert.strictEqual(stt.enabled, true); assert.strictEqual(stt.dryRun, true);
+    assert.deepStrictEqual([stt.counts.due, stt.counts.flagged, stt.counts.tagged], [2, 1, 4]);
+    assert.ok(stt.upcoming.find((u) => u.ref === 'INBOX:3').waitingForRead, 'unread mail waits for its first read');
+    assert.strictEqual(Math.round(stt.upcoming.find((u) => u.ref === 'INBOX:4').dueInHours), 7 * 24, 'read: 7 days from the first sweep that saw it read');
+    assert.ok(!JSON.stringify(stt).includes('"text"') && !JSON.stringify(stt).includes('body'), 'no bodies');
+    await call('ingest_expiry_sweep', { source: 'email', accountId: 'other' });
+    lg = (await call('ingest_log', { source: 'email', accountId: 'other', limit: 50 })).entries.filter((e) => e.actions.some((a) => a.type === 'expire'));
+    assert.strictEqual(lg.length, 2, 'not logged again on the next dry sweep');
+
+    // UID move: the Message-ID keeps the tag (and its clocks)
+    const before6 = require('../modules/ingestStore').getExpiry('email', 'other', 'm:<o6@x>');
+    assert.ok(before6 && before6.uid === 6);
+    const row6 = mailRows.find((x) => x.account === 'other' && x.uid === 6); row6.uid = 16; serverFlags.set(16, []);
+    const before4 = require('../modules/ingestStore').getExpiry('email', 'other', 'm:<o4@x>');
+    await call('ingest_expiry_sweep', { source: 'email', accountId: 'other' });
+    const after6 = require('../modules/ingestStore').getExpiry('email', 'other', 'm:<o6@x>');
+    assert.strictEqual(after6.uid, 16); assert.strictEqual(after6.arrived, before6.arrived); assert.strictEqual(after6.state, 'due');
+    assert.strictEqual(require('../modules/ingestStore').getExpiry('email', 'other', 'm:<o4@x>').firstReadAt, before4.firstReadAt, 'first read is stamped once');
+    assert.ok(require('../modules/ingestStore').getExpiry('email', 'other', 'u:1:7'), 'no Message-ID: keyed by UIDVALIDITY + UID');
+
+    // applying: confirm:true and the account applying
+    r = await call('ingest_expiry_sweep', { source: 'email', accountId: 'other', dryRun: false });
+    assert.strictEqual(r.code, 'CONFIRM_REQUIRED');
+    r = await call('ingest_expiry_sweep', { source: 'email', accountId: 'other', dryRun: false, confirm: true });
+    assert.strictEqual(r.code, 'NOT_APPLYING');
+    await call('ingest_set_mode', { source: 'email', accountId: 'other', mode: 'process', applying: true, confirm: true });
+    setRowFlags(16, ['\\Flagged'], true); // flagged on the phone since the last sync: only the server knows
+    calls.splice(0);
+    r = await call('ingest_expiry_sweep', { source: 'email', accountId: 'other', dryRun: false, confirm: true });
+    assert.strictEqual(r.success, true, JSON.stringify(r));
+    assert.strictEqual(r.expired, 1); assert.strictEqual(r.dryRun, false);
+    assert.deepStrictEqual(calls.filter((x) => x[0] === 'flagCheck').map((x) => x[3].slice().sort((a, b) => a - b)), [[1, 16]], 'flags re-read from the server before the move');
+    assert.deepStrictEqual(calls.filter((x) => x[0] === 'move'), [['move', 'other', 'INBOX', [1], 'Trash']], 'to Trash, the one flagged later stays');
+    assert.ok(!calls.some((x) => x[0] === 'remove'), 'never a permanent delete');
+    assert.deepStrictEqual(inboxUids(), [2, 3, 4, 5, 7, 16]);
+    assert.strictEqual(require('../modules/ingestStore').getExpiry('email', 'other', 'm:<o1@x>').state, 'expired');
+    assert.strictEqual(require('../modules/ingestStore').getExpiry('email', 'other', 'm:<o6@x>').state, 'flagged');
+    lg = (await call('ingest_log', { source: 'email', accountId: 'other', limit: 50 })).entries.filter((e) => !e.dry && e.actions.some((a) => a.type === 'expire'));
+    assert.strictEqual(lg.length, 1); assert.deepStrictEqual(lg[0].actions[1], { applied: ['expire:ok'] });
+
+    // the periodic sweep applies on its own for an applying account; 7 days after read
+    clock += 7 * DAY + 60000;
+    calls.splice(0);
+    r = await expiryMod.sweepAll({ reason: 'test' });
+    assert.ok(r.accounts.some((a) => a.accountId === 'other' && a.expired === 2), JSON.stringify(r));
+    assert.deepStrictEqual(inboxUids(), [2, 3, 5, 16], 'read 7+ days ago: Trash (4 and 7)');
+    // unread mail: the clock starts when it is first seen read
+    setRowFlags(3, ['\\Seen']);
+    await expiryMod.sweepAll({ reason: 'test' });
+    assert.deepStrictEqual(inboxUids(), [2, 3, 5, 16], 'just read: 7 days to go even though it is 100+ days old');
+    clock += 7 * DAY + 60000;
+    // un-flagging brings the clock back: 16 is long past its 40 days
+    setRowFlags(16, []);
+    await expiryMod.sweepAll({ reason: 'test' });
+    assert.deepStrictEqual(inboxUids(), [2, 5], 'read 7 days ago and an un-flagged payment notice go');
+    clock += 30 * DAY;
+    await expiryMod.sweepAll({ reason: 'test' });
+    assert.deepStrictEqual(inboxUids(), [5], 'payment notice: 40 days after arrival; flagged mail never expires');
+    clock += 400 * DAY;
+    await expiryMod.sweepAll({ reason: 'test' });
+    assert.deepStrictEqual(inboxUids(), [5], 'flagged: still there after a year');
+
+    // tagged on arrival; a routing rule can set its own expiry
+    r = await call('ingest_configure_module', { source: 'email', accountId: 'other', module: 'routing', settings: { rules: [{ name: 'news', stop: false, match: { all: [{ field: 'subject', op: 'contains', value: 'newsletter' }] }, actions: { expire: { after: '2d' } } }] } });
+    assert.strictEqual(r.success, true, JSON.stringify(r));
+    r = await call('ingest_configure_module', { source: 'sms', accountId: 'bb', module: 'routing', confirm: true, settings: { rules: [{ match: { all: [{ field: 'body', op: 'contains', value: 'x' }] }, actions: { expire: { after: '2d' } } }] } });
+    assert.strictEqual(r.code, 'BAD_SETTINGS', 'no expire for texts');
+    otherRow(20, 'Weekly newsletter', 0);
+    otherRow(21, 'Autopay failed', 0);
+    calls.splice(0);
+    await ctl.onMailArrived('other');
+    const t20 = require('../modules/ingestStore').getExpiry('email', 'other', 'm:<o20@x>');
+    const t21 = require('../modules/ingestStore').getExpiry('email', 'other', 'm:<o21@x>');
+    assert.ok(t20 && t20.routeExpiresAt - t20.arrived === 2 * DAY && t20.routeRule, 'routing expire: tagged at arrival');
+    assert.ok(t21 && t21.expiresAt - t21.arrived === 40 * DAY && t21.rule === 'payment-failure,read-7d', 'payment notice tagged at arrival');
+    assert.ok(!calls.some((x) => x[0] === 'move'), 'arrival only tags');
+    clock += 2 * DAY + 60000;
+    await expiryMod.sweepAll({ reason: 'test' });
+    assert.deepStrictEqual(inboxUids(), [5, 21], 'routing-set 2 days');
+    // custom rules replace the list; changed rules re-tag on the next sweep
+    r = await call('ingest_configure_module', { source: 'email', accountId: 'other', module: 'expiry', settings: { rules: [{ id: 'pay', subjectRegex: mods.PAYMENT_FAILURE_SUBJECT, after: '1d' }] } });
+    assert.strictEqual(r.code, 'CONFIRM_REQUIRED', 'changing a live expiry module needs confirm');
+    r = await call('ingest_configure_module', { source: 'email', accountId: 'other', module: 'expiry', confirm: true, settings: { rules: [{ id: 'pay', subjectRegex: mods.PAYMENT_FAILURE_SUBJECT, after: '1d' }] } });
+    assert.strictEqual(r.success, true, JSON.stringify(r));
+    await expiryMod.sweepAll({ reason: 'test' });
+    assert.deepStrictEqual(inboxUids(), [5], 'the new 1-day rule applied to mail already tagged');
+    // no Trash folder: nothing is moved (never a permanent delete)
+    otherRow(30, 'Payment alert', 5);
+    const lf = fake.mailAccounts.listFolders;
+    fake.mailAccounts.listFolders = () => ({ folders: [{ path: 'INBOX', special: '\\Inbox' }] });
+    calls.splice(0);
+    r = await call('ingest_expiry_sweep', { source: 'email', accountId: 'other', dryRun: false, confirm: true });
+    assert.strictEqual(r.failed, 1); assert.ok(/Trash/.test(r.errors[0])); assert.ok(!calls.some((x) => x[0] === 'move' || x[0] === 'remove'));
+    fake.mailAccounts.listFolders = lf;
+    r = await call('ingest_expiry_sweep', { source: 'email', accountId: 'other', dryRun: false, confirm: true });
+    assert.strictEqual(r.expired, 1);
+    stt = await call('ingest_expiry_status', { source: 'email', accountId: 'other' });
+    assert.ok(stt.lastSweep && stt.lastSweep.expired === 1 && stt.counts.flagged === 1);
+
+    // ---- Exchange path (real Dovecote store)
+    fake.dovecote.listMail = dovecote.listMail; fake.dovecote.markMailBatch = dovecote.markMailBatch; fake.dovecote.MAX_LIST = dovecote.MAX_LIST;
+    const dvdb = require('../modules/dovecoteDatabase').getDb();
+    await call('ingest_set_mode', { source: 'exchange', accountId: 'ivory', mode: 'process', confirm: true });
+    r = await call('ingest_configure_module', { source: 'exchange', accountId: 'ivory', module: 'expiry', enabled: true, confirm: true });
+    assert.strictEqual(r.success, true, JSON.stringify(r));
+    const exI = (subject) => ex({ toOwner: 'ivory', to: ['ivory@dream.737.jp.net'], subject });
+    const e1 = await deliver(exI('Your payment was declined'));
+    const e2 = await deliver(exI('Just saying hi'));
+    const e3 = await deliver(exI('Late payment reminder'));
+    assert.strictEqual(e1.folder, 'inbox');
+    const x1 = require('../modules/ingestStore').getExpiry('exchange', 'ivory', `x:${e1.id}`);
+    assert.ok(x1 && x1.expiresAt - x1.arrived === 40 * DAY, 'Exchange: tagged at delivery');
+    dovecote.markMail('ivory', { id: e2.id, read: true });
+    dvdb.prepare('UPDATE dovecote_message SET flagged = 1 WHERE id = ?').run(e3.id);
+    clock += 41 * DAY;
+    r = await call('ingest_expiry_sweep', { source: 'exchange', accountId: 'ivory' });
+    assert.strictEqual(r.success, true, JSON.stringify(r));
+    assert.ok(r.wouldExpire.some((w) => w.ref === e1.id) && !r.wouldExpire.some((w) => w.ref === e3.id), 'dry: the flagged one is exempt');
+    assert.strictEqual(dovecote.getMessageRow('ivory', e1.id).folder, 'inbox', 'dry: nothing moved');
+    await call('ingest_set_mode', { source: 'exchange', accountId: 'ivory', mode: 'process', applying: true, confirm: true });
+    r = await call('ingest_expiry_sweep', { source: 'exchange', accountId: 'ivory', dryRun: false, confirm: true });
+    assert.strictEqual(r.success, true, JSON.stringify(r));
+    assert.strictEqual(dovecote.getMessageRow('ivory', e1.id).folder, 'deleted', 'Exchange: Deleted folder');
+    assert.strictEqual(dovecote.getMessageRow('ivory', e3.id).folder, 'inbox', 'flagged stays');
+    assert.strictEqual(dovecote.getMessageRow('ivory', e2.id).folder, 'inbox', 'read: first seen now, 7 days to go');
+    clock += 7 * DAY + 60000;
+    await expiryMod.sweepAll({ reason: 'test' });
+    assert.strictEqual(dovecote.getMessageRow('ivory', e2.id).folder, 'deleted', 'Exchange: 7 days after read');
+    assert.ok(dovecote.getMessageRow('ivory', e2.id), 'moved to Deleted, not purged');
+    assert.strictEqual(limiter.rateGroupForTool('ingest_expiry_sweep'), 'bridge_write');
+    assert.strictEqual(limiter.rateGroupForTool('ingest_expiry_status'), 'bridge');
+    const audit2 = require('../modules/mailExchangeDatabase').getDb().prepare('SELECT * FROM exchange_audit').all();
+    assert.ok(audit2.some((a) => a.action === 'ingest_expiry_sweep' && a.actor === 'tsubame'), 'audited');
+    expiryMod._test.setNow(null);
+    console.log('ok: expiry');
 
     ctl._test.reset();
     server.close();

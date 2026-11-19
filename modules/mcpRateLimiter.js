@@ -253,8 +253,10 @@ const TOOL_RATE_GROUPS = {
     ingest_list_modules: 'bridge',
     ingest_dry_run: 'bridge',
     ingest_log: 'bridge',
+    ingest_expiry_status: 'bridge',
     ingest_set_mode: 'bridge_write',
-    ingest_configure_module: 'bridge_write'
+    ingest_configure_module: 'bridge_write',
+    ingest_expiry_sweep: 'bridge_write'
 };
 
 const rateGroupHits = new Map();

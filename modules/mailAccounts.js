@@ -256,6 +256,8 @@ function init(globalResources) {
     started = true;
     try { store.open(cacheDir()); } catch (error) { log(`store unavailable: ${error.message}`); return; }
     for (const a of readConfig().accounts) startAccount(a);
+    // the Ingest Controller's expiry sweep (modules/ingestExpiry.js): every 20 min, accounts with expiry on only
+    try { require('./ingestController').startExpirySweep(); } catch (error) { log(`ingest expiry: ${error.message}`); }
     const t = setInterval(() => { const now = Date.now(); for (const [k, u] of uploads) if (now - u.at > 3600000) { fs.promises.unlink(u.file).catch(() => {}); uploads.delete(k); } }, 600000);
     if (t.unref) t.unref();
 }

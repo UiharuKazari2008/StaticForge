@@ -6,6 +6,12 @@
  *                    (text accounts), 'exchange' (DS Exchange mailboxes). No row = bypass.
  *   ingest_log       what the pipeline decided (intended when dry, applied when live). Subject and
  *                    sender only, verification codes redacted; never a body, never a code.
+ *   ingest_expiry    the expiry module's tags (modules/ingestExpiry.js), one row per Inbox message it tracks:
+ *                    key = 'm:<Message-ID>' (survives UID moves / UIDVALIDITY resets) or 'u:<validity>:<uid>'
+ *                    (e-mail without a Message-ID) or 'x:<row id>' (Exchange). arrived, rule expiry
+ *                    (expires_at / after_read_ms, recomputed from the current rules every sweep), routing-set
+ *                    expiry (route_*), first_read_at (the first sweep / sync that saw it read), flagged, due_at,
+ *                    state tagged|flagged|due|expired|gone|error. Subject and sender only (codes redacted).
  */
 'use strict';
 
@@ -37,6 +43,17 @@ function open(cacheDir) {
             id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, source TEXT NOT NULL, account TEXT NOT NULL,
             ref TEXT, dry INTEGER NOT NULL DEFAULT 0, sender TEXT, subject TEXT, actions TEXT, stopped_by TEXT);
         CREATE INDEX IF NOT EXISTS ingest_log_by_ts ON ingest_log (ts DESC);
+        CREATE TABLE IF NOT EXISTS ingest_expiry (
+            source TEXT NOT NULL, account TEXT NOT NULL, key TEXT NOT NULL,
+            folder TEXT, uid INTEGER, message_id TEXT, ref TEXT, sender TEXT, subject TEXT,
+            arrived INTEGER NOT NULL DEFAULT 0, expires_at INTEGER, after_read_ms INTEGER, rule TEXT,
+            route_expires_at INTEGER, route_after_read_ms INTEGER, route_rule TEXT,
+            first_read_at INTEGER, flagged INTEGER NOT NULL DEFAULT 0, due_at INTEGER,
+            state TEXT NOT NULL DEFAULT 'tagged', dry_logged_at INTEGER, last_seen INTEGER,
+            created INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL DEFAULT 0, done_at INTEGER, error TEXT,
+            PRIMARY KEY (source, account, key));
+        CREATE INDEX IF NOT EXISTS ingest_expiry_by_due ON ingest_expiry (source, account, state, due_at);
+        CREATE INDEX IF NOT EXISTS ingest_expiry_by_uid ON ingest_expiry (source, account, folder, uid);
     `);
     return db;
 }
@@ -92,6 +109,74 @@ function listLog({ source = null, account = null, limit = 50 } = {}) {
         .map((r) => ({ id: r.id, ts: r.ts, source: r.source, account: r.account, ref: r.ref, dry: r.dry === 1, sender: r.sender, subject: r.subject, actions: parse(r.actions, []), stoppedBy: r.stopped_by }));
 }
 
+// ---------------------------------------------------------------- expiry tags
+
+const EXPIRY_COLS = ['source', 'account', 'key', 'folder', 'uid', 'message_id', 'ref', 'sender', 'subject', 'arrived', 'expires_at', 'after_read_ms', 'rule',
+    'route_expires_at', 'route_after_read_ms', 'route_rule', 'first_read_at', 'flagged', 'due_at', 'state', 'dry_logged_at', 'last_seen', 'created', 'updated', 'done_at', 'error'];
+const EXPIRY_CAMEL = {
+    message_id: 'messageId', expires_at: 'expiresAt', after_read_ms: 'afterReadMs', route_expires_at: 'routeExpiresAt', route_after_read_ms: 'routeAfterReadMs',
+    route_rule: 'routeRule', first_read_at: 'firstReadAt', due_at: 'dueAt', dry_logged_at: 'dryLoggedAt', last_seen: 'lastSeen', done_at: 'doneAt'
+};
+
+function expiryOut(r) {
+    if (!r) return null;
+    const o = {};
+    for (const c of EXPIRY_COLS) o[EXPIRY_CAMEL[c] || c] = r[c] == null ? null : r[c];
+    o.flagged = r.flagged === 1;
+    return o;
+}
+
+/** All tracked rows of one account (the sweep loads them once): Map key -> row. */
+function expiryMap(source, account) {
+    const out = new Map();
+    for (const r of d().prepare('SELECT * FROM ingest_expiry WHERE source = ? AND account = ?').all(source, account)) out.set(r.key, expiryOut(r));
+    return out;
+}
+
+function getExpiry(source, account, key) {
+    return expiryOut(d().prepare('SELECT * FROM ingest_expiry WHERE source = ? AND account = ? AND key = ?').get(source, account, key));
+}
+
+/** Upsert one row (camelCase fields as expiryOut gives them). */
+function putExpiry(e) {
+    const now = Date.now();
+    const row = {};
+    for (const c of EXPIRY_COLS) {
+        const v = e[EXPIRY_CAMEL[c] || c];
+        row[c] = v === undefined ? null : v;
+    }
+    row.flagged = e.flagged ? 1 : 0;
+    row.state = row.state || 'tagged';
+    row.arrived = Number(row.arrived) || now;
+    row.sender = String(row.sender || '').slice(0, 200);
+    row.subject = String(row.subject || '').slice(0, 200);
+    row.created = Number(row.created) || now;
+    row.updated = now;
+    d().prepare(`INSERT INTO ingest_expiry (${EXPIRY_COLS.join(', ')}) VALUES (${EXPIRY_COLS.map((c) => `@${c}`).join(', ')})
+        ON CONFLICT (source, account, key) DO UPDATE SET ${EXPIRY_COLS.filter((c) => !['source', 'account', 'key', 'created'].includes(c)).map((c) => `${c} = excluded.${c}`).join(', ')}`).run(row);
+}
+
+/** Many upserts in one transaction. */
+function putExpiryMany(list) { d().transaction((l) => { for (const e of l) putExpiry(e); })(list || []); }
+
+function expiryCounts(source, account) {
+    const out = {};
+    for (const r of d().prepare('SELECT state, COUNT(*) AS n FROM ingest_expiry WHERE source = ? AND account = ? GROUP BY state').all(source, account)) out[r.state] = r.n;
+    return out;
+}
+
+/** Upcoming (state tagged / due) by due time; dueAt null (waiting to be read) last. */
+function listExpiry(source, account, { states = ['due', 'tagged'], limit = 50 } = {}) {
+    const st = (Array.isArray(states) && states.length ? states : ['due', 'tagged']).map(String);
+    return d().prepare(`SELECT * FROM ingest_expiry WHERE source = ? AND account = ? AND state IN (${st.map(() => '?').join(', ')})
+        ORDER BY due_at IS NULL, due_at ASC, arrived ASC LIMIT ?`).all(source, account, ...st, Math.max(1, Math.min(Number(limit) || 50, 500))).map(expiryOut);
+}
+
+/** Forget finished rows (expired / gone) older than `olderThanMs`. */
+function pruneExpiry(olderThanMs) {
+    return d().prepare("DELETE FROM ingest_expiry WHERE state IN ('expired', 'gone') AND updated < ?").run(Date.now() - (Number(olderThanMs) || 0)).changes;
+}
+
 function _close() { if (db) { db.close(); db = null; } }
 
-module.exports = { open, getAccount, listAccounts, putAccount, addLog, listLog, _close };
+module.exports = { open, getAccount, listAccounts, putAccount, addLog, listLog, expiryMap, getExpiry, putExpiry, putExpiryMany, expiryCounts, listExpiry, pruneExpiry, _close };
