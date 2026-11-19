@@ -429,6 +429,10 @@
             case 'rename': openCustomizeDialog('connection'); break;
             case 'diagnose': diagnose(); break;
             case 'portal': if (portal()) void portal().openBrowser(); break;
+            // DreamOS Wi-Fi (#932): dreamosWifi.js
+            case 'wifi-connect': if (root.dreamosWifi) root.dreamosWifi.openConnect(); break;
+            case 'wifi-manage': if (root.dreamosWifi) root.dreamosWifi.openManage(); break;
+            case 'wifi-status': if (root.dreamosWifi) root.dreamosWifi.openStatus(); break;
             default: break;
         }
     }
@@ -1033,6 +1037,12 @@
         return p && typeof p.captive === 'function' && p.captive() ? p : null;
     }
 
+    /** DreamOS's Wi-Fi windows (dreamosWifi.js) are there and the host has a wireless adapter */
+    function wifiUi() {
+        const w = root.dreamosWifi;
+        return !!(w && typeof w.available === 'function' && w.available());
+    }
+
     function accessText(state) {
         // Vista's word for a network without the Internet behind it
         if (portal()) return 'Local only';
@@ -1089,6 +1099,7 @@
             <div class="cpl-task-group">
                 <h3 class="cpl-task-heading">Tasks</h3>
                 <ul class="cpl-task-list">
+                    ${wifiUi() ? `${taskLink('Connect to a network', 'wifi-connect')}${taskLink('Manage wireless networks', 'wifi-manage')}` : ''}
                     ${state === 'connected' || state === 'connecting'
                         ? taskLink(`Disconnect ${i.connectionName}`, 'disconnect')
                         : taskLink(`Connect ${i.connectionName}`, 'connect')}
@@ -1112,6 +1123,8 @@
             const reachable = !!lastStatus && !statusError;
             const clientLink = state === 'connected' ? 'ok' : (state === 'disconnected' || portal()) ? 'down' : 'busy';
             const serverLink = reachable ? 'ok' : 'unknown';
+            // DreamOS (#932): the laptop's own network on the map, the domain in its box below
+            const dos = root.dreamosNetTray && root.dreamosNetTray.look();
             const dots = serverRows().map((r) => `
                 <div class="cpl-row">
                     <span class="cpl-row-label">${esc(r.label)}</span>
@@ -1120,16 +1133,45 @@
             return `
             <div class="cpl-page cpl-network">
                 <h1 class="cpl-page-title">Network and Server Center</h1>
+                ${dos ? `
                 <div class="cpl-map">
-                    ${mapNode('/static_images/melaton/net-laptop.png', 'This computer')}
-                    ${mapLink(clientLink, state === 'connected' && !portal() ? `Connected through ${i.connectionName}` : accessText(state))}
-                    ${mapNode('/static_images/melaton/net-server.png', i.domain, 'Domain controller')}
-                    ${mapLink(serverLink, reachable ? 'Connected' : 'Unknown')}
-                    ${mapNode('/static_images/melaton/net-globe.png', 'Internet')}
+                    ${mapNode('/static_images/vista-net/pnidui-22-48.png', 'This computer')}
+                    ${mapLink(dos.kind === 'none' ? 'down' : 'ok', dos.kind === 'none' ? 'Not connected' : `Connected through ${dos.kind === 'wifi' ? 'Wireless Network Connection' : 'Local Area Connection'}`)}
+                    ${mapNode(dos.kind === 'none' ? '/static_images/vista-net/pnidui-19-48.png' : '/static_images/vista-net/pnidui-0-48.png', dos.kind === 'none' ? 'Not connected' : dos.name, dos.kind === 'wifi' ? 'Wireless network' : dos.kind === 'wired' ? 'Network' : '')}
+                    ${mapLink(dos.kind === 'none' || dos.limited ? 'down' : 'ok', dos.kind === 'none' || dos.limited ? 'Local only' : 'Local and Internet')}
+                    ${mapNode('/static_images/vista-net/pnidui-20-48.png', 'Internet')}
                 </div>
+                ${dos.kind !== 'none' ? `
                 <div class="cpl-box">
                     <div class="cpl-box-head">
-                        <img src="/static_images/melaton/net-server.png" alt="" class="cpl-box-icon" draggable="false">
+                        <img src="/static_images/vista-net/pnidui-0-16.png" alt="" class="cpl-box-icon" draggable="false">
+                        <span class="cpl-box-title">${esc(dos.name)} <span class="cpl-box-kind">(Private network)</span></span>
+                    </div>
+                    <div class="cpl-row">
+                        <span class="cpl-row-label">Access</span>
+                        <span class="cpl-row-value">${esc(dos.access)}</span>
+                    </div>
+                    <div class="cpl-row">
+                        <span class="cpl-row-label">Connection</span>
+                        <span class="cpl-row-value">${dos.kind === 'wifi' ? `Wireless Network Connection (${esc(dos.name)})` : 'Local Area Connection'}</span>
+                        ${dos.kind === 'wifi' && wifiUi() ? '<button type="button" class="cpl-link cpl-row-action" data-cpl-action="wifi-status">View status</button>' : ''}
+                    </div>
+                    ${dos.kind === 'wifi' ? `
+                    <div class="cpl-row">
+                        <span class="cpl-row-label">Signal strength</span>
+                        <span class="cpl-row-value">${esc(dos.strength)}</span>
+                    </div>` : ''}
+                </div>` : ''}` : `
+                <div class="cpl-map">
+                    ${mapNode('/static_images/vista-net/pnidui-22-48.png', 'This computer')}
+                    ${mapLink(clientLink, state === 'connected' && !portal() ? `Connected through ${i.connectionName}` : accessText(state))}
+                    ${mapNode('/static_images/vista-net/pnidui-38-48.png', i.domain, 'Domain controller')}
+                    ${mapLink(serverLink, reachable ? 'Connected' : 'Unknown')}
+                    ${mapNode('/static_images/vista-net/pnidui-20-48.png', 'Internet')}
+                </div>`}
+                <div class="cpl-box">
+                    <div class="cpl-box-head">
+                        <img src="/static_images/vista-net/pnidui-38-16.png" alt="" class="cpl-box-icon" draggable="false">
                         <span class="cpl-box-title">${esc(i.domain)} <span class="cpl-box-kind">(Domain network)</span></span>
                         <button type="button" class="cpl-link cpl-box-action" data-cpl-action="customize">Customize</button>
                     </div>
@@ -1594,6 +1636,7 @@
             hideFlyout();
             if (action === 'center') open('network');
             else if (action === 'portal' && portal()) void portal().openBrowser();
+            else if (action === 'wifi-connect' && root.dreamosWifi) root.dreamosWifi.openConnect();
         });
         doc.body.appendChild(flyout);
         // Outside click / Escape closes it, like Vista's flyouts
@@ -1614,8 +1657,10 @@
         if (flyout.innerHTML !== html) flyout.innerHTML = html;
     }
 
-    /** The globe's flyout: the computer's own link (#895), as Vista's network flyout shows it. */
+    /** The globe's flyout: the computer's own link (#895), as Vista's network flyout shows it (pnidui.dll.mui). */
     function networkFlyoutHtml() {
+        const dos = root.dreamosNetTray && root.dreamosNetTray.look();
+        if (dos) return dreamosFlyoutHtml(dos);
         const online = !root.navigator || root.navigator.onLine !== false;
         const conn = ws() && ws().melatonConnection;
         const captive = online ? portal() : null;
@@ -1624,7 +1669,7 @@
             <div class="network-flyout-body">
                 <div class="network-flyout-heading">${online ? 'Currently connected to:' : 'Not connected'}</div>
                 <div class="network-flyout-item">
-                    <img src="/static_images/vista-icons/${captive ? 'net-limited' : online ? 'net-internet' : 'net-disconnected'}-32.png" alt="" draggable="false">
+                    <img src="/static_images/vista-net/pnidui-${online ? 38 : 19}-32.png" alt="" draggable="false">
                     <div class="network-flyout-text">
                         <span class="network-flyout-name">${online ? esc(name) : 'No connections are available'}</span>
                         <span class="network-flyout-sub">${captive ? 'Access: Local only' : online ? 'Access: Local and Internet' : 'Access: None'}</span>
@@ -1633,6 +1678,40 @@
             </div>
             <div class="network-flyout-links">
                 ${captive ? `<button type="button" class="network-flyout-link" data-flyout-action="portal">${esc(captive.title)} Open your browser</button>` : ''}
+                <button type="button" class="network-flyout-link" data-flyout-action="center">Network and Server Center</button>
+            </div>`;
+    }
+
+    /** DreamOS (#932): the laptop's own link from the CaféReady host (dreamosNetTray.js), Wi-Fi with its signal. */
+    function dreamosFlyoutHtml(l) {
+        const wifiUi = root.dreamosWifi && typeof root.dreamosWifi.openConnect === 'function';
+        const captive = portal();
+        // Vista's flyout shows the network's location icon (pnidui.dll 0, a private network), or 19 with nothing connected
+        const pic = l.kind === 'none' ? '/static_images/vista-net/pnidui-19-32.png' : '/static_images/vista-net/pnidui-0-32.png';
+        const item = l.kind === 'none'
+            ? `<div class="network-flyout-item">
+                    <img src="${pic}" alt="" draggable="false">
+                    <div class="network-flyout-text">
+                        <span class="network-flyout-sub">${l.connecting ? 'Connecting...' : 'You are currently not connected to any networks.'}</span>
+                        ${l.available && !l.connecting ? '<span class="network-flyout-sub">Wireless networks are available.</span>' : ''}
+                    </div>
+                </div>`
+            : `<div class="network-flyout-item">
+                    <img src="${pic}" alt="" draggable="false">
+                    <div class="network-flyout-text">
+                        <span class="network-flyout-name">${esc(l.name)}</span>
+                        <span class="network-flyout-sub">Access: ${esc(l.access)}</span>
+                        ${l.kind === 'wifi' ? `<span class="network-flyout-sub">Signal strength:  ${esc(l.strength)}</span>` : ''}
+                    </div>
+                </div>`;
+        return `
+            <div class="network-flyout-body">
+                <div class="network-flyout-heading">${l.kind === 'none' ? 'Not Connected' : 'Currently connected to:'}</div>
+                ${item}
+            </div>
+            <div class="network-flyout-links">
+                ${captive ? `<button type="button" class="network-flyout-link" data-flyout-action="portal">${esc(captive.title)} Open your browser</button>` : ''}
+                ${wifiUi ? `<button type="button" class="network-flyout-link" data-flyout-action="wifi-connect">${l.kind === 'none' ? 'Connect to a network' : 'Connect or disconnect...'}</button>` : ''}
                 <button type="button" class="network-flyout-link" data-flyout-action="center">Network and Server Center</button>
             </div>`;
     }
@@ -1725,6 +1804,8 @@
         diagnose,
         toggleTrayFlyout,
         hideTrayFlyout: hideFlyout,
+        // the network changed (dreamosNetTray.js): an open flyout and Center draw it now
+        refreshTrayFlyout: () => { renderFlyout(); eachOpen(() => { if (current === 'network') render(); }); },
         attachTrayMenu,
         isOpen: () => instances.some(isShown),
         goBack,

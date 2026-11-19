@@ -144,7 +144,9 @@ const DESKTOP_ONLY_TYPES = new Set([
     // #890 round 5: Windows Sidebar (vistaSidebar.js, desktop shell only)
     'sidebar_updated',
     // #922: the Key Manager console, Client Certificates store (mmcAppKeys.js, MMC: desktop only)
-    'client_cert_changed'
+    'client_cert_changed',
+    // #932: the order of the notification area icons (trayOrder.js, the desktop taskbar only)
+    'desktop_tray_order_changed'
 ]);
 
 // Broadcasts only Melaton Mobile reads (its programs load in the mobile shell only: app.html

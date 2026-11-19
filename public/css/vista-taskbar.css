@@ -560,9 +560,66 @@ body.desktop-mode:not(.windows-classic-theme) .tray-overflow-btn.is-open {
     50% { opacity: 0.45; }
 }
 
+/* Power (#932, scripts/comp/trayPower.js): batmeter.dll's bitmaps 303 (16 px) and 306 (32 px), 43 cells in a row,
+   the cell from --power-frame; the low warning (cell 16) or critical mark (cell 17) laid over it from --power-mark.
+   The flyout has Vista's own bigger set: bitmaps 301 (32 px) / 302 (40 px), 31 cells, --power-big / --power-big-mark. */
+#powerTrayIcon { position: relative; }
+#powerTrayIcon > .power-tray-glyph,
+#powerTrayIcon::after,
+.power-flyout-battery,
+.power-flyout-battery::after {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background-repeat: no-repeat;
+    background-size: 688px 16px;
+    background-image: image-set(url("/static_images/vista-power/battery-16.png") 1x, url("/static_images/vista-power/battery-32.png") 2x);
+    background-position: calc(var(--power-frame, 29) * -16px) 0;
+    pointer-events: none;
+}
+#powerTrayIcon::after,
+.power-flyout-battery::after {
+    content: none;
+    position: absolute;
+    left: 0;
+    top: 0;
+    background-position: calc(var(--power-mark, 16) * -16px) 0;
+}
+#powerTrayIcon[data-mark]::after,
+.power-flyout-battery[data-mark]::after { content: ''; }
+#powerTrayIcon::after { left: 50%; top: 50%; margin: -8px 0 0 -8px; }
+.power-flyout-battery {
+    position: relative;
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+    background-size: 992px 32px;
+    background-image: image-set(url("/static_images/vista-power/battery-flyout-32.png") 1x, url("/static_images/vista-power/battery-flyout-40.png") 1.25x);
+    background-position: calc(var(--power-big, 26) * -32px) 0;
+}
+.power-flyout-battery::after {
+    width: 32px;
+    height: 32px;
+    background-size: 992px 32px;
+    background-image: image-set(url("/static_images/vista-power/battery-flyout-32.png") 1x, url("/static_images/vista-power/battery-flyout-40.png") 1.25x);
+    background-position: calc(var(--power-big-mark, 30) * -32px) 0;
+}
+.power-flyout { width: 300px; }
+.power-flyout-status { display: flex; align-items: center; gap: 10px; padding-left: 6px; }
+.power-flyout-protect { color: #a01010; }
+.power-flyout-plans { display: flex; flex-direction: column; gap: 3px; padding-top: 2px; background: transparent; }
+.power-flyout-plan { display: flex; align-items: center; gap: 6px; padding-left: 14px; cursor: var(--c-default); }
+
+/* Dragging a tray icon to a new place (#932, scripts/comp/trayOrder.js): the icon being moved dims and a 2 px insertion
+   bar shows where it lands, as the Quick Launch toolbar shows it */
+.taskbar-tray-icons > .taskbar-tray-icon.tray-dragging { opacity: 0.45; }
+.taskbar-tray-icons > .taskbar-tray-icon.tray-drop-before { box-shadow: inset 2px 0 0 #fff; }
+.taskbar-tray-icons > .taskbar-tray-icon.tray-drop-after { box-shadow: inset -2px 0 0 #fff; }
+
 /* System icons turned off on the Notification Area tab */
 .desktop-taskbar.tray-no-volume #volumeTrayIcon,
 .desktop-taskbar.tray-no-network #modemTrayIcon,
+.desktop-taskbar.tray-no-power #powerTrayIcon,
 .desktop-taskbar.tray-no-clock #taskbarClock,
 .desktop-taskbar.taskbar-no-ticker .taskbar-ticker {
     display: none !important;

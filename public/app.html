@@ -7210,10 +7210,6 @@ Examples:
                 <div class="ping-warning-indicator taskbar-tray-icon hidden" id="pingWarningIndicator">
                     <i class="fas fa-satellite"></i>
                 </div>
-                <!-- Tab volume (tabVolume.js). Left of the network icon. Click opens the Vista slider. -->
-                <div class="taskbar-tray-icon hidden" id="volumeTrayIcon" title="Volume">
-                    <i class="fas fa-volume-high" id="volumeTrayIconGlyph"></i>
-                </div>
                 <!-- Nightshade Network (#895): the Dreamscape service, always shown; a red ! on a problem.
                      click = status panel, right-click = menu (melatonControlPanel.js), state from
                      websocket.js _updateNightshadeTrayIcon -->
@@ -7223,10 +7219,21 @@ Examples:
                         alt="" width="16" height="16" draggable="false">
                     <span class="nightshade-tray-alert" aria-hidden="true"></span>
                 </div>
-                <!-- Network (the computer's own link, #895): click = status flyout, right-click = menu (melatonControlPanel.js) -->
+                <!-- The system icons, in Vista's order next to the clock: Power, Network, Volume (#932, Yukimi Nov 19 2026;
+                     the user may drag any icon elsewhere: trayOrder.js) -->
+                <!-- Power: the battery meter (trayPower.js), shown on a computer with a battery -->
+                <div class="taskbar-tray-icon hidden" id="powerTrayIcon" title="Battery Meter">
+                    <span class="power-tray-glyph" aria-hidden="true"></span>
+                </div>
+                <!-- Network (the computer's own link, #895; Wi-Fi bars on DreamOS, dreamosNetTray.js): click = status flyout,
+                     right-click = menu (melatonControlPanel.js) -->
                 <div class="modem-tray-icon taskbar-tray-icon hidden" id="modemTrayIcon"
                     title="Network">
                     <i class="fa-regular fa-globe" id="modemTrayIconGlyph"></i>
+                </div>
+                <!-- Volume (tabVolume.js; the computer's own volume on DreamOS). Click opens the Vista slider. -->
+                <div class="taskbar-tray-icon hidden" id="volumeTrayIcon" title="Volume">
+                    <i class="fas fa-volume-high" id="volumeTrayIconGlyph"></i>
                 </div>
                 <!-- WebSocket Indicator -->
                 <div class="websocket-indicator taskbar-ws-indicator" id="taskbarWebsocketIndicator">
@@ -7455,6 +7462,10 @@ Examples:
     <script src="scripts/comp/activeSyncTray.js"></script>
     <!-- DreamOS (#910): a captive portal's sign-in - the network icon's balloon, Grimoire on the local Alchemy -->
     <script src="scripts/comp/dreamosPortal.js"></script>
+    <!-- The tray's system icons (#932): the battery meter, the network icon on DreamOS, the icon order and dragging -->
+    <script src="scripts/comp/trayPower.js"></script>
+    <script src="scripts/comp/dreamosNetTray.js"></script>
+    <script src="scripts/comp/trayOrder.js"></script>
     <script src="scripts/comp/activeSyncStudio.js"></script>
     <script src="scripts/comp/activeSyncRemoteStorage.js"></script>
     <script src="scripts/comp/activeSyncNotifications.js"></script>

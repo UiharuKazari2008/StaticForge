@@ -52,6 +52,16 @@ async function handleUpdateUserGlobalSettings(handlers, ws, message, clientInfo,
             generationQuipsSettings = { byWorkspace };
         }
 
+        // the tray icon order follows the user to their other desktops (#932, trayOrder.js): a desktop-only push,
+        // not to the desktop that moved it
+        if (patch.desktop && Array.isArray(patch.desktop.trayOrder) && wsServer && typeof wsServer.broadcast === 'function') {
+            wsServer.broadcast({
+                type: 'desktop_tray_order_changed',
+                data: { trayOrder: merged.desktop.trayOrder },
+                timestamp: new Date().toISOString()
+            }, (info) => !!(info && info.authenticated && info !== clientInfo));
+        }
+
         handlers.sendToClient(ws, {
             type: 'update_user_global_settings_response',
             requestId: message.requestId,

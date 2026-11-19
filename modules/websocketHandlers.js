@@ -658,6 +658,17 @@ class WebSocketMessageHandlers {
         return { preset, customText, style, logo };
     }
 
+    /** Tray icon ids (element ids in app.html's notification area), unique, at most 64. */
+    normalizeTrayOrderSetting(list) {
+        if (!Array.isArray(list)) return [];
+        const out = [];
+        for (const id of list) {
+            if (typeof id === 'string' && /^[A-Za-z][\w-]{0,63}$/.test(id) && !out.includes(id)) out.push(id);
+            if (out.length >= 64) break;
+        }
+        return out;
+    }
+
     normalizeUserGlobalSettings(raw) {
         const base = raw && typeof raw === 'object' ? raw : {};
         const naxt = base.naxt && typeof base.naxt === 'object' ? base.naxt : {};
@@ -678,6 +689,8 @@ class WebSocketMessageHandlers {
         if (pinned !== undefined) {
             desktopOut.startMenuPinned = pinned;
         }
+        // the notification area's icon order (#932, public/scripts/comp/trayOrder.js): [] = Vista's default order
+        desktopOut.trayOrder = this.normalizeTrayOrderSetting(desktop.trayOrder);
         return {
             desktop: desktopOut,
             naxt: {
@@ -731,6 +744,9 @@ class WebSocketMessageHandlers {
                         ...patch.desktop.startMenuButton
                     }
                 });
+            }
+            if (Array.isArray(patch.desktop.trayOrder)) {
+                out.desktop.trayOrder = this.normalizeTrayOrderSetting(patch.desktop.trayOrder);
             }
             if (Array.isArray(patch.desktop.startMenuPinned)) {
                 out.desktop.startMenuPinned = this.normalizeStartMenuPinnedSetting({

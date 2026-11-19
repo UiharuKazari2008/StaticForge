@@ -18,9 +18,10 @@ const TRAY_ICON_CATALOG = [
     { id: 'workspaceTrayIcon', label: 'Workspace' },
     { id: 'serviceWorkerTrayIcon', label: 'Melaton Update' },
     { id: 'pingWarningIndicator', label: 'Network latency' },
-    { id: 'volumeTrayIcon', label: 'Volume' },
     { id: 'nightshadeTrayIcon', label: 'Nightshade Network' },
+    { id: 'powerTrayIcon', label: 'Power' },
     { id: 'modemTrayIcon', label: 'Network' },
+    { id: 'volumeTrayIcon', label: 'Volume' },
     { id: 'generationQuipsTrayIcon', label: 'Generation quips' },
     { id: 'desktopSaveTrayIndicator', label: 'Saving' }
 ];
@@ -37,6 +38,7 @@ const TRAY_POPUP_CATALOG = [
     { id: 'high-latency', label: 'High Latency Detected' },
     { id: 'nightshade', label: 'Nightshade Network' },
     { id: 'network-portal', label: 'Network log on' },
+    { id: 'battery', label: 'Battery' },
     { id: 'operation-receipt', label: 'Operation Receipt' },
     { id: 'generation-receipt', label: 'Generation Receipt' },
     { id: 'upscale-receipt', label: 'Upscaling Receipt' },
@@ -105,12 +107,12 @@ function traySetPopupHidden(id, hidden) {
 // Tucked icons wait behind the chevron at the tray's left edge; the chevron expands the tray in
 // place (Vista slides them in left of the visible icons) and it folds again TRAY_COLLAPSE_MS after
 // the pointer leaves the notification area (measured on the Vista VM: 4-5 s). With "Hide inactive
-// icons" off every icon shows and the chevron goes. The system icons (Volume, Network) are not
+// icons" off every icon shows and the chevron goes. The system icons (Power, Network, Volume) are not
 // in this list: the Notification Area tab turns them on or off as a whole.
 const TRAY_ICON_BEHAVIOR_KEY = 'desktop-tray-icon-behavior';
 const TRAY_INACTIVE_MS = 10 * 60 * 1000;
 const TRAY_COLLAPSE_MS = 4500;
-const TRAY_SYSTEM_ICON_IDS = ['volumeTrayIcon', 'modemTrayIcon'];
+const TRAY_SYSTEM_ICON_IDS = ['powerTrayIcon', 'modemTrayIcon', 'volumeTrayIcon'];
 // state classes this file and the boot reveal set, which are not the icon's own activity
 const TRAY_OWN_CLASSES = new Set(['tray-overflow', 'tray-boot-in']);
 const TRAY_BEHAVIORS = ['inactive', 'hide', 'show'];

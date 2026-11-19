@@ -663,8 +663,9 @@
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-map-node img {
-    width: 56px;
-    height: 56px;
+    /* Vista's map icons are pnidui.dll's 48 px images (computer 22, network 0/38, Internet 20) */
+    width: 48px;
+    height: 48px;
     object-fit: contain;
     user-select: none;
 }
@@ -737,8 +738,8 @@
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-box-icon {
-    width: 24px;
-    height: 24px;
+    width: 16px;
+    height: 16px;
     object-fit: contain;
 }
 
@@ -1473,6 +1474,12 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
     width: 300px;
     max-width: 100%;
     margin-top: 6px;
+}
+
+/* DreamOS (#910): the machine's firmware updates, a second box of the same make under Melaton's */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-content .cpl-wu-fw-list {
+    margin: 2px 0 6px;
+    padding-left: 18px;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-wu-facts {
