@@ -1,0 +1,15 @@
+{
+    "id": "claudedesk",
+    "version": "1.0.0",
+    "title": "Claude Accounts",
+    "publisher": "Xyridian Corporation",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "claudedesk",
+    "icon": "assets/claudedesk-48.png",
+    "client": {
+        "entry": "client/claudedesk.js",
+        "styles": ["assets/claudedesk.css"],
+        "owns": ["#mmcConsole_claudedesk"]
+    }
+}
