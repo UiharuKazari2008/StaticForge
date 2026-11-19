@@ -16,6 +16,11 @@ registerWsInboundHandler({
         if (message.requestType === 'request_image_metadata') {
             return;
         }
+        // The link speed probe (#952, melatonNetworkDialogs.js) handles its own failure: a server without the packet
+        // just leaves the Café Miniport's Speed at Not Available.
+        if (message.requestType === 'link_speed_probe' || message.requestType === 'link_speed_report') {
+            return;
+        }
         // Desktop: a .NET-style "Unhandled exception" window in Windows wording instead of a toast
         // (public/scripts/comp/mainframeExceptionDialog.js). Logon / boot (auth errors, the desktop
         // not up yet) and narrow mode keep the banner.

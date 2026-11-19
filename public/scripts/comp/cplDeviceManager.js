@@ -448,10 +448,23 @@
         const std = list(wifi.standards);
         const best = std.length ? std[std.length - 1] : '';
         const nics = pc ? list(hw.network).map((n) => n && n.name).filter(Boolean) : [];
-        add('Network adapters', 'network-adapters', nics.concat([
+        // (#952) the phone's real interfaces through the app's shell (AndroidWifi.interfaces v2: Windows-style names, the
+        // modem's multiplexing / accelerator interfaces, Wi-Fi Direct, VPN tunnels), each with its kernel name and driver
+        let ifs = [];
+        try {
+            const w = root.AndroidWifi;
+            const r = w && typeof w.interfaces === 'function' ? JSON.parse(w.interfaces()) : null;
+            ifs = r && r.version >= 2 && Array.isArray(r.interfaces) ? r.interfaces.filter((x) => x && x.present !== false && x.label) : [];
+        } catch (_) { ifs = []; }
+        const rate = (n) => (Number(n) >= 0 ? Number(n).toLocaleString() : '');
+        const ifRows = ifs.map((x) => ({ name: x.label, info: { manufacturer: /^Qualcomm/.test(x.label) ? 'Qualcomm' : /^Broadcom/.test(x.label) ? 'Broadcom' : /^MediaTek/.test(x.label) ? 'MediaTek' : x.vpnApp || maker,
+            location: x.name, props: [['Interface', x.name], ['Driver', x.driver || ''], ['MAC address', x.mac ? String(x.mac).toUpperCase().replace(/:/g, '-') : ''], ['MTU', x.mtu || ''],
+                ['State', x.connected ? 'Connected' : x.up ? 'Up, no network' : 'Down'], ['Bytes received', rate(x.rx)], ['Bytes sent', rate(x.tx)], ['Network', x.netType || x.apn || x.vpnApp || '']] } }));
+        add('Network adapters', 'network-adapters', (ifRows.length ? ifRows : nics.concat([
             !nics.length && wifi.present && `Wireless Network Adapter${best ? ` (${best})` : ''}`,
-            tel.present && 'Mobile Broadband Adapter',
-            bt.present && 'Bluetooth Device (Personal Area Network)',
+            tel.present && 'Mobile Broadband Adapter'
+        ])).concat([
+            bt.present && !ifs.some((x) => x.kind === 'bluetooth') && 'Bluetooth Device (Personal Area Network)',
             extra.conn.miniport || `${extra.conn.connectionType || 'WAN'} Miniport (${extra.conn.device || 'L-PPoP'})`
         ]));
         // Vista lists removable media again under Portable Devices, by drive

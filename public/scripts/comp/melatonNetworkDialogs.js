@@ -54,7 +54,8 @@
     const CONTINUITY_MINIPORT = 'Windows Mobile-based Device Connectivity';
     // the app's own connection (DSApp MelatonMiniport, #815) carries this window: phone or DeX
     const MINIPORT_NAME = 'Melaton Caf\u00e9 Miniport';
-    const MINIPORT_ADAPTER = 'WAN Miniport (Melaton Caf\u00e9)';
+    // (#952) the Miniport is the Nightshade app's own virtual Ethernet adapter (VPNs are left for real VPN connections)
+    const MINIPORT_ADAPTER = 'Xyridian Nightshade Virtual Ethernet Adapter';
     function viaMiniport() {
         const mc = root.melatonContinuity;
         try { return !!(mc && typeof mc.miniport === 'function' && mc.miniport().transport === 'miniport'); } catch (_) { return false; }
@@ -480,6 +481,68 @@
             isOpen: () => !!(connectModal && !connectModal.classList.contains('hidden'))
         }
     };
+    // ---- the link's maximum data rate (#952): the Café Miniport / Nightshade adapter's Speed --------------------------
+    //
+    // At connect and every 30 minutes while connected (the only timer, and only on a desktop or DeX window that is
+    // shown), the page asks the server for a block of incompressible bytes and times it; the rate (minus the round
+    // trip) is the link's Speed, reported back so the server can space its pings and refreshes on a slow link. Under
+    // LINK_LIMITED_KBPS the adapter shows Limited. An older server does not answer: the Speed stays Not Available.
+    const LINK_PROBE_BYTES = 128 * 1024;
+    const LINK_PROBE_MS = 30 * 60 * 1000;
+    const LINK_LIMITED_KBPS = 256;
+    const link = { kbps: 0, rttMs: null, at: 0, limited: false, timer: 0, running: false, wired: false };
+    const linkSignal = (root && root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // app-scope: these listeners end with this file's segment
+    async function probeLink() {
+        const c = root.wsClient;
+        if (link.running || !c || typeof c.sendMessage !== 'function' || (typeof c.isConnected === 'function' && !c.isConnected())) return;
+        if (root.document && root.document.hidden) { link.due = true; return; }
+        link.running = true;
+        try {
+            const rtt = Number(c.currentRtt) || 0;
+            const t0 = root.performance.now();
+            const r = await Promise.race([c.sendMessage('link_speed_probe', { bytes: LINK_PROBE_BYTES }, false), new Promise((res) => setTimeout(() => res(null), 20000))]);
+            const ms = root.performance.now() - t0;
+            const got = r && typeof r.payload === 'string' ? r.payload.length : 0;
+            if (got > 0) {
+                const kbps = Math.round((got * 8) / Math.max(1, ms - rtt));
+                link.kbps = kbps;
+                link.rttMs = rtt || null;
+                link.at = Date.now();
+                link.limited = kbps < LINK_LIMITED_KBPS;
+                try { c.sendMessage('link_speed_report', { kbps, rttMs: rtt || null }, false).catch(() => {}); } catch (_) { /* older server */ }
+                try { root.dispatchEvent(new CustomEvent('melaton-link-speed', { detail: { kbps, limited: link.limited } })); } catch (_) { /* old engine */ }
+            }
+        } catch (_) { /* an older server: no figure */ }
+        link.running = false;
+    }
+    function wireLinkProbe() {
+        const c = root.wsClient;
+        if (link.wired || !c || typeof c.on !== 'function' || !root.isDesktop) return;
+        link.wired = true;
+        const schedule = () => {
+            clearInterval(link.timer);
+            // unseen (a hidden page, the screen off): no probe now; the page coming back runs the one that was due
+            link.timer = setInterval(() => {
+                const d = root.document;
+                if (!d || d.hidden || d.documentElement.dataset.screenOff !== undefined) { link.due = true; return; }
+                void probeLink();
+            }, LINK_PROBE_MS);
+            // a moment after the link settles (the desktop's own boot traffic first)
+            setTimeout(() => { void probeLink(); }, 15000);
+        };
+        c.on('connected', schedule);
+        c.on('disconnected', () => { clearInterval(link.timer); link.timer = 0; link.kbps = 0; link.limited = false; });
+        if (root.document) root.document.addEventListener('visibilitychange', () => { if (!root.document.hidden && link.due) { link.due = false; void probeLink(); } }, { signal: linkSignal });
+        if (typeof c.isConnected === 'function' && c.isConnected()) schedule();
+    }
+    if (root && root.document) {
+        // the desktop is known once its boot is over (a phone's Melaton Mobile never probes: its app keeps the link)
+        root.document.addEventListener('desktopBootDone', wireLinkProbe, { once: true, signal: linkSignal });
+        root.addEventListener('load', wireLinkProbe, { once: true, signal: linkSignal });
+    }
+    api.linkSpeed = () => ({ kbps: link.kbps, rttMs: link.rttMs, at: link.at, limited: link.limited });
+    api.probeLink = probeLink;
+
     if (root) root.melatonNetworkDialogs = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

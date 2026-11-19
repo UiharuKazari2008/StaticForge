@@ -753,11 +753,42 @@
         try { root.localStorage.setItem(NAMES_KEY, JSON.stringify(m)); } catch (_) { /* private window: the name lasts for the page */ }
     }
 
+    // (#952) Local Area Connection numbers, kept in the order this computer first saw each adapter (Vista numbers them
+    // as they are installed): adapter id -> n
+    const LAN_ORDER_KEY = 'dreamos.ncpa.lanorder';
+    function lanNumber(id) {
+        let m = {};
+        try { m = JSON.parse(root.localStorage.getItem(LAN_ORDER_KEY) || '{}') || {}; } catch (_) { m = {}; }
+        if (!m[id]) {
+            m[id] = Math.max(0, ...Object.values(m).map(Number).filter(Number.isFinite)) + 1;
+            try { root.localStorage.setItem(LAN_ORDER_KEY, JSON.stringify(m)); } catch (_) { /* private window */ }
+        }
+        return m[id];
+    }
+    // the app's kinds (interfaces() v2) that Network Connections shows as a Local Area Connection: the modem's interfaces
+    // in LAN mode (Vista / 7 show a phone's or a card's modem so; VZAccess Manager has its carrier and signal), the IP
+    // accelerator, cables, tethering, Bluetooth PAN
+    const LAN_KINDS = new Set(['ethernet', 'lan', 'mobile', 'ipa', 'usb', 'bluetooth', 'other', 'miniport']);
+
     /** The adapters, in Vista's order: { iface, kind: 'wifi' | 'ethernet' | 'mobile', label, mac, enabled, conn, base }. */
     function adapters() {
         const s = state();
         const w = s.wifi || {};
         let list;
+        if (ifaces && ifaces.some((x) => x && x.nc !== undefined)) {
+            // the app's v2 list (#952): every interface Network Connections shows, by its kernel name, with its
+            // Windows-style device name; tun VPNs go to the VPN group, the rest are Local Area Connections
+            const names = customNames();
+            let wifis = 0;
+            return ifaces.filter((x) => x.nc).map((x) => {
+                const id = String(x.alias || x.name);
+                const a = { iface: String(x.name), id, kind: x.kind, label: x.label || '', mac: x.mac || '', enabled: x.enabled !== false, row: x, present: x.present !== false };
+                let base;
+                if (x.kind === 'wifi') { wifis += 1; base = wifis > 1 ? `${ADAPTER} ${wifis}` : ADAPTER; } else if (x.kind === 'vpn') base = x.vpnApp || 'VPN Connection';
+                else { const k = lanNumber(id); base = k > 1 ? `${LAN} ${k}` : LAN; }
+                return { ...a, base, conn: names[id] || base };
+            }).concat(miniportAdapter() ? [miniportAdapter()] : []);
+        }
         if (ifaces) {
             // iface: the kernel name the app reads (rmnet_data1 changes between connections); id: the stable key
             // (the app's alias wlan0 / rmnet0) for renamed connections, open sheets and the selection (#945)
@@ -777,7 +808,17 @@
             if (a.kind === 'ethernet') { lans += 1; base = lans > 1 ? `${LAN} ${lans}` : LAN; }
             if (a.kind === 'mobile') base = MOBILE;
             return { ...a, base, conn: names[a.id] || base };
-        });
+        }).concat(miniportAdapter() ? [miniportAdapter()] : []);
+    }
+
+    /** The Café Miniport: the Nightshade app's virtual Ethernet adapter (#952), while this page rides on it. */
+    function miniportAdapter() {
+        const d = root.melatonNetworkDialogs;
+        let info = null;
+        try { info = d && typeof d.connectionInfo === 'function' ? d.connectionInfo() : null; } catch (_) { info = null; }
+        if (!info || !info.viaMiniport) return null;
+        const names = customNames();
+        return { iface: 'miniport', id: 'miniport', kind: 'miniport', label: info.miniport || 'Xyridian Nightshade Virtual Ethernet Adapter', mac: '', enabled: true, present: true, base: info.connectionName, conn: names.miniport || info.connectionName };
     }
 
     const wifiAdapter = () => adapters().find((a) => a.kind === 'wifi') || { iface: '', id: 'wlan0', kind: 'wifi', label: '', mac: '', enabled: true, base: ADAPTER, conn: ADAPTER };
@@ -789,6 +830,17 @@
     /** An adapter's live facts from the provider's state. */
     function adapterInfo(a) {
         const s = state();
+        if (a.kind === 'miniport') {
+            const f = vpnFacts();
+            return { enabled: true, carrier: f.connected, connected: f.connected, network: f.domain || f.name, ip: [], ip6: [], mac: '', speedMbps: f.speedKbps ? f.speedKbps / 1000 : null, config: null, net: null, vpn: f, intranet: true, limited: !!f.limited };
+        }
+        // the app's v2 rows (#952): a Local Area Connection or a VPN tunnel, from the interface itself
+        if (a.row && a.kind !== 'wifi') {
+            const r = a.row;
+            const m = s.mobile || {};
+            const name = r.kind === 'vpn' ? (r.vpnApp || 'VPN') : r.kind === 'mobile' && r.alias === 'rmnet0' ? (m.carrier || r.apn || N.network) : (r.apn || N.network);
+            return { enabled: a.enabled, present: r.present !== false, carrier: r.present !== false && !!r.up, connected: !!r.connected, network: name, ip: rowList(r, 'ip'), ip6: rowList(r, 'ip6'), mac: r.mac || '', speedMbps: null, config: null, net: null, connectedAt: Number(r.connectedAt) || 0, row: r, vpnTunnel: r.kind === 'vpn' };
+        }
         if (a.kind === 'wifi') {
             const w = s.wifi || {};
             const n = current();
@@ -836,6 +888,13 @@
     /** Network Connections' status line for an adapter (netshell 1039-1056). */
     function adapterStatus(a, info) {
         if (!info.enabled) return N.disabled;
+        // (#952) a remembered adapter that is not there now, or one with no link: Vista's "Network cable unplugged"
+        if (a.row && a.kind !== 'wifi') {
+            if (a.kind === 'vpn') return info.connected ? N.connected : N.disconnectedVpn;
+            if (info.present === false || !info.carrier) return N.unplugged;
+            return info.connected ? info.network : 'Unidentified network';
+        }
+        if (a.kind === 'miniport') return info.connected ? (info.limited ? N.limited : info.network) : N.unplugged;
         if (a.kind === 'ethernet') {
             if (!info.carrier) return N.unplugged;
             return info.ip.length ? N.network : N.limited;
@@ -846,12 +905,21 @@
     /** The tile picture: netshell's two screens (118, grey 117 when disabled) under the adapter's mark (107 cable,
      *  115 wireless bars, 110 broadband, 108 the VPN's server) and 122's red cross when nothing is connected. */
     function connPicture(kind, look) {
-        const mark = { wifi: 'ncpa-wireless-48', ethernet: 'ncpa-lan-48', mobile: 'ncpa-broadband-48', vpn: 'ncpa-vpn-48' }[kind] || 'ncpa-lan-48';
+        // (#952) the modem in LAN mode, the IP accelerator and the Café Miniport are Local Area Connections: the cable
+        const mark = { wifi: 'ncpa-wireless-48', vpn: 'ncpa-vpn-48' }[kind] || 'ncpa-lan-48';
         return `<span class="dwf-nc-pic">${img(look === 'off' ? 'ncpa-pc-off-48' : 'ncpa-pc-48')}${img(mark)}${look === 'x' ? img('ncpa-x-48') : ''}</span>`;
     }
 
     /** Turn an adapter on or off: provider.enable(iface, on), for Wi-Fi radio(on) (the contract's own mapping). */
     async function setEnabled(a, on) {
+        // the Café Miniport's Enable / Disable is the Nightshade connection itself (#952)
+        if (a && a.kind === 'miniport') {
+            const cp = root.melatonControlPanel;
+            const f = vpnFacts();
+            if (cp && typeof cp.toggleConnection === 'function' && (!!on !== !!f.connected)) cp.toggleConnection();
+            root.setTimeout(ncRerender, 50);
+            return;
+        }
         const h = host();
         if (!h) return;
         let r = null;
@@ -863,7 +931,7 @@
         ncRerender();
     }
 
-    const canSwitch = (a) => (can('enable') || (a.kind === 'wifi' && can('radio')));
+    const canSwitch = (a) => (!!a && a.kind === 'miniport') || (can('enable') || (a.kind === 'wifi' && can('radio')));
 
     // ---- an adapter's Properties (netshell 16004 "Networking") and TCP/IPv4 Properties (tcpipcfg 2323 / 2334) -------
 
@@ -873,7 +941,9 @@
         { id: 'ipv4', name: 'Internet Protocol Version 4 (TCP/IPv4)', text: 'Transmission Control Protocol/Internet Protocol. The default wide area network protocol that provides communication across diverse interconnected networks.' }
     ];
 
-    const adapterIcon = (a) => (a && a.kind === 'wifi' ? `${NET}/netshell-wireless-16.png` : a && a.kind === 'vpn' ? '/static_images/melaton/net-globe.png' : `${NET}/pnidui-0-16.png`);
+    // the status sheet's caption: the connection's own icon (#952: the house was the network location, not the adapter;
+    // a cable connection, the modem in LAN mode and the Café Miniport show netshell's LAN connection, a tunnel the VPN's)
+    const adapterIcon = (a) => (a && a.kind === 'wifi' ? `${NET}/netshell-wireless-16.png` : a && a.kind === 'vpn' ? `${NET}/ncpa-vpn-16.png` : `${NET}/ncpa-lan-16.png`);
 
     async function adapterProperties(owner, a) {
         const V = await kit();
@@ -1085,7 +1155,8 @@
     const VPN_DETAILS_TPL = { t: 'Details', w: 227, h: 215, f: ['MS Shell Dlg', 8], s: 1086849096, c: [[VPN_DETAILS_LIST, 'SysListView32', 7, 7, 213, 200, 1352728577, 'List1', 512]] };
 
     /** The Café Miniport / Nightshade connection's status (Network Connections' VPN tile, the Center's View status). */
-    function openVpnStatus() { return openStatus(vpnAdapter()); }
+    // the Café Miniport's adapter when this page rides on it (#952), else the Nightshade link as a VPN connection
+    function openVpnStatus() { return openStatus(miniportAdapter() || vpnAdapter()); }
 
     function duration(ms) {
         const t = Math.max(0, Math.floor(ms / 1000));
@@ -1139,15 +1210,19 @@
             if (t) { if (t.textContent !== text) t.textContent = text; } else c.text(id, text, k);
         };
         const kind = st.a.kind;
-        set(23502, ipv4Text(info, x));
-        set(23504, kind === 'vpn' ? S.notConnected : ipv6Text(info, x));
+        // the Café Miniport reaches the domain's intranet only (#952): Local, never Internet; Limited when its measured
+        // rate is too low
+        set(23502, kind === 'miniport' ? (info.connected ? (info.limited ? S.limited : S.local) : S.notConnected) : ipv4Text(info, x));
+        set(23504, kind === 'vpn' || kind === 'miniport' ? S.notConnected : ipv6Text(info, x));
         set(1007, info.connected || (info.enabled && info.carrier) ? S.enabled : info.enabled ? S.disconnected : N.disabled);
         // the wireless sheet's SSID; the mobile one names the provider there (the carrier, its data class, Roaming)
         if (kind === 'wifi') set(24018, info.connected ? info.network : '');
         if (kind === 'mobile') set(24018, info.enabled ? providerText(info.mobile) : '');
         // Duration from when the host says the link came up (connectedAt), else from when this page saw it
         const n = info.net || {};
-        const up = Number(x.connectedAt || n.connectedAt) || (kind === 'wifi' && info.connected ? connectedSince : 0) || (info.connected ? st.since : 0);
+        // (#952) the link's real start (the app's record, the network agent's creation, the socket's open), never the
+        // time this window opened
+        const up = Number(x.connectedAt || n.connectedAt || info.connectedAt) || (kind === 'wifi' && info.connected ? connectedSince : 0);
         set(1008, info.connected && up ? duration(Date.now() - up) : '00:00:00');
         // Speed: the link's bit rate (stats, or the network's rx / tx rates), else the adapter's speed
         const kbps = Math.max(Number(x.rxBitrateKbps) || 0, Number(x.txBitrateKbps) || 0, Number(n.rxBitrateKbps) || 0, Number(n.txBitrateKbps) || 0);
@@ -1170,6 +1245,10 @@
             if (meter && meter.style.visibility !== vis) meter.style.visibility = vis;
         }
         if (kind === 'wifi') c.enable(24020, info.connected, k);
+        if (kind === 'vpn' && st.a.row) {
+            vpnDetailsPaint(st);
+            return;
+        }
         if (kind === 'vpn') {
             // Disconnect / Connect with its access key (ctx.text writes plain text)
             const btn = info.connected || (info.vpn && info.vpn.state === 'connecting') ? 'Dis<u>c</u>onnect' : 'C<u>o</u>nnect';
@@ -1185,14 +1264,30 @@
     /** The VPN sheet's Details tab: RAS's Property / Value list (rasdlg's Details page), redrawn on a change only. */
     function vpnDetailsPaint(st) {
         const f = vpnFacts();
-        const rows = [
-            ['Device name', f.device],
-            ['Device type', 'vpn'],
-            ['Server type', 'Melaton Café'],
-            ['Transports', 'TCP/IP (WebSocket)'],
-            ['Authentication', 'Melaton domain logon'],
-            ['Encryption', f.encryption],
+        // a VPN app's tunnel (#952): what the interface and its app say
+        const r = st.a.row;
+        const x = st.stats || {};
+        const rows = r ? [
+            ['Device name', r.label || st.a.iface],
+            ['Device type', 'VPN'],
+            ['Server type', r.vpnApp || 'VPN'],
+            ['Transports', 'TCP/IP'],
+            ['Authentication', /wireguard/i.test(r.vpnPackage || '') ? 'Public key' : ''],
+            ['Encryption', /wireguard/i.test(r.vpnPackage || '') ? 'ChaCha20-Poly1305' : ''],
             ['Compression', '(none)'],
+            ['Client IPv4 address', (rowList(r, 'ip')[0] || '').split('/')[0]],
+            ['Interface', st.a.iface],
+            ['MTU', r.mtu || ''],
+            ['Bytes sent', bytes(x.txBytes != null ? x.txBytes : r.tx)],
+            ['Bytes received', bytes(x.rxBytes != null ? x.rxBytes : r.rx)]
+        ] : [
+            ['Device name', f.device],
+            ['Device type', 'VPN'],
+            ['Server type', 'Xyridian Nightshade'],
+            ['Transports', 'TCP/IP (WebSocket)'],
+            ['Authentication', f.authentication || 'User Password'],
+            ['Encryption', f.encryption],
+            ['Compression', f.compression || '(none)'],
             ['Domain', f.domain],
             ['Server name', f.server],
             ['Latency', f.latency || S.notAvailable],
@@ -1240,7 +1335,7 @@
     /** One read of the adapter's counters (provider.stats: never pushed, read when asked). */
     function readStats(st) {
         // the VPN: the page's own socket counts what the link carried
-        if (st.a.kind === 'vpn') {
+        if ((st.a.kind === 'vpn' && !st.a.row) || st.a.kind === 'miniport') {
             const f = vpnFacts();
             st.stats = { txBytes: f.bytesOut, rxBytes: f.bytesIn, connectedAt: f.connectedAt };
             return Promise.resolve(st.stats);
@@ -1297,6 +1392,16 @@
             .concat(many('Link-local IPv6 Address', v6.filter((p) => /^fe80:/i.test(String(p)))))
             .concat([['IPv6 Default Gateway', x.gateway6 || '']])
             .concat(many('IPv6 DNS Server', dns6));
+        // the Café Miniport (#952): the Nightshade link the virtual adapter carries, after Windows' own rows
+        if (ad.kind === 'miniport') {
+            const f = vpnFacts();
+            rows.splice(1, 1, ['Description', ad.label]);
+            rows.push(['Server type', 'Xyridian Nightshade'], ['Authentication', f.authentication || 'User Password'], ['Encryption', f.encryption || ''],
+                ['Compression', f.compression || '(none)'], ['Domain', f.domain || ''], ['Server name', f.server || ''],
+                ['Maximum data rate', f.speedKbps ? speed(f.speedKbps / 1000) : S.notAvailable], ['Latency', f.latency || S.notAvailable],
+                ['Messages sent', Number(f.messagesOut || 0).toLocaleString()], ['Messages received', Number(f.messagesIn || 0).toLocaleString()]);
+        }
+        if (ad.row && ad.row.driver) rows.splice(2, 0, ['Driver', ad.row.driver]);
         V.openDialog({
             id: 'dreamosNetDetails',
             key: 'netshell:24300',
@@ -1343,14 +1448,15 @@
         const V = await kit();
         const kind = ad.kind;
         const wifi = kind === 'wifi';
-        const meter = wifi || kind === 'mobile';
+        // (#952) the modem is a Local Area Connection with the app's v2 list: no signal meter (VZAccess Manager has it)
+        const meter = wifi || (kind === 'mobile' && !ad.row);
         const vpn = kind === 'vpn';
         const k = meter ? 'netshell:24050' : 'netshell:23500';
         const right = [23502, 23504, 1007, 24018, 1008, 1009, 1003, 1005];
         const icon = adapterIcon(ad);
         // the activity picture: the two screens (netshell 1915) under the adapter's mark, at 48 px (1913 wireless,
         // netshell 110 broadband, 108 the VPN's server)
-        const mark = { wifi: 'netshell-activity-wireless-48', mobile: 'ncpa-broadband-48', vpn: 'ncpa-vpn-48' }[kind];
+        const mark = { wifi: 'netshell-activity-wireless-48', vpn: 'ncpa-vpn-48' }[kind] || (kind === 'mobile' && meter ? 'ncpa-broadband-48' : null);
         const overrides = {
             1010: { html: `<span class="dwf-activity">${img1('netshell-activity-48')}${mark ? img1(mark) : ''}</span>` },
             // the VM's status sheet shows Bytes only (no Errors row), one short rule between the counts
@@ -1358,7 +1464,7 @@
         };
         // the signal quality meter: pnidui's bars at their own 32 px, where the static sits
         if (meter) overrides[1044] = { image: `${NET}/tray-wifi-0-32.png`, nudge: [0, 0, 2, 31] };
-        if (kind === 'mobile') {
+        if (kind === 'mobile' && meter) {
             overrides[24016] = { text: 'Provider:' };
             overrides[24020] = { skip: true };
         }
@@ -1385,6 +1491,14 @@
                     const b = c.el(id, k);
                     if (b) b.insertAdjacentHTML('afterbegin', `<img class="dwf-shield" src="${SHIELD}" alt="" draggable="false">`);
                 });
+                if (vpn && ad.row) {
+                    // a VPN app's tunnel (#952): Disconnect / Diagnose go to its app
+                    const h = host();
+                    const app = () => { if (h && typeof h.openVpnApp === 'function') h.openVpnApp(ad.iface); };
+                    c.on(1025, 'click', app, k);
+                    c.on(23505, 'click', app, k);
+                    return;
+                }
                 if (vpn) {
                     const cp = root.melatonControlPanel;
                     c.on(1025, 'click', () => {
@@ -1398,7 +1512,11 @@
                 if (wifi) c.on(24020, 'click', () => { const n = current(); if (n) void networkProperties(String(n.name), c.modal); }, k);
                 c.on(1026, 'click', () => { void adapterProperties(c.modal, ad); }, k);
                 c.on(1025, 'click', () => { void setEnabled(ad, false); c.close(); }, k);
-                c.on(23505, 'click', () => { void diagnoseAdapter(ad); }, k);
+                c.on(23505, 'click', () => {
+                    const cp = root.melatonControlPanel;
+                    if (ad.kind === 'miniport' && cp && typeof cp.diagnose === 'function') { void cp.diagnose(); return; }
+                    void diagnoseAdapter(ad);
+                }, k);
             },
             close: () => { stopStatusClock(st); if (statusWins.get(ad.id || ad.iface) === st) statusWins.delete(ad.id || ad.iface); }
         });
@@ -1411,7 +1529,7 @@
         if (cancel) { cancel.textContent = S.close; cancel.dataset.dialogPrimary = '1'; }
         // the caption shows the connection's icon on the VM (the wireless one; netshell's wired icons are the XP set)
         const main = ctx.modal.querySelector('.modal-window-title > div');
-        if ((wifi || vpn) && main && !main.querySelector('.icon-image')) main.insertAdjacentHTML('afterbegin', `<img class="icon-image" src="${icon}" alt="">`);
+        if (main && !main.querySelector('.icon-image')) main.insertAdjacentHTML('afterbegin', `<img class="icon-image" src="${icon}" alt="">`);
         statusWins.set(ad.id || ad.iface, st);
         statusPaint(st);
         void readStats(st).then(() => statusPaint(st));
@@ -1732,12 +1850,14 @@
     }
 
     function ncRows() {
-        const rows = adapters().map((a) => {
+        const list = adapters();
+        const rows = list.map((a) => {
             const info = adapterInfo(a);
-            const look = !info.enabled ? 'off' : (a.kind === 'ethernet' ? !info.carrier : !info.connected) ? 'x' : 'on';
-            return { key: `if:${a.id || a.iface}`, kind: a.kind, a, conn: a.conn, status: adapterStatus(a, info), device: a.label || a.iface, look, enabled: info.enabled };
+            const look = !info.enabled ? 'off' : (LAN_KINDS.has(a.kind) && a.kind !== 'miniport' && a.row ? !info.carrier : a.kind === 'ethernet' ? !info.carrier : !info.connected) ? 'x' : 'on';
+            return { key: `if:${a.id || a.iface}`, kind: a.kind, a, conn: a.conn, status: adapterStatus(a, info), device: a.label || a.iface, look, enabled: info.enabled, connected: info.connected };
         });
-        return rows.concat([vpnRow()]);
+        // the Café Miniport is an adapter now (#952); without it (a browser, Continuity) the Nightshade link stays a VPN
+        return list.some((a) => a.kind === 'miniport') ? rows : rows.concat([vpnRow()]);
     }
 
     function ncBar(rows) {
@@ -1780,7 +1900,10 @@
         const rows = ncRows();
         if (!rows.some((x) => x.key === nc.sel)) nc.sel = null;
         // Tiles, grouped by type as the VM shows them
-        const groups = [[N.lan, rows.filter((x) => x.kind === 'ethernet' || x.kind === 'wifi')], [N.broadband, rows.filter((x) => x.kind === 'mobile')], [N.vpnGroup, rows.filter((x) => x.kind === 'vpn')]].filter((g) => g[1].length);
+        // (#952) with the app's v2 list the modem is a Local Area Connection (LAN mode); an older app's mobile row stays Broadband
+        const v2 = rows.some((x) => x.a && x.a.row);
+        const lanLike = (x) => x.kind === 'wifi' || x.kind === 'ethernet' || (v2 || x.kind === 'miniport' ? LAN_KINDS.has(x.kind) : false);
+        const groups = [[N.lan, rows.filter(lanLike)], [N.broadband, rows.filter((x) => x.kind === 'mobile' && !lanLike(x))], [N.vpnGroup, rows.filter((x) => x.kind === 'vpn')]].filter((g) => g[1].length);
         const head = `<div class="cpl-flist-head dwf-nc-head">${N.cols.map((t, i) => `<span class="dwf-nc-col dwf-nc-col${i}">${esc(t)}</span>`).join('')}<span class="cpl-flist-rest"></span></div>`;
         const body = groups.map(([t, rs]) => `<div class="vdt-lv-group">${esc(t)} (${rs.length})</div><div class="cpl-flist-icons dwf-nc-tiles">${rs.map(ncTile).join('')}</div>`).join('');
         return `${ncBar(rows)}<div class="cpl-flist dwf-nc-list">${head}${body}</div><div class="cpl-fstatus">${rows.length} item${rows.length === 1 ? '' : 's'}</div>`;
@@ -1802,6 +1925,13 @@
         if (nc.renaming) return;
         const r = ncRows().find((x) => x.key === id);
         if (!r) return;
+        if (r.kind === 'vpn' && r.a && r.a.row) {
+            // a VPN app's tunnel (#952): its status while it is up, else its app (where the tunnel is switched)
+            if (r.connected) void openStatus(r.a);
+            else { const h = host(); if (h && typeof h.openVpnApp === 'function') h.openVpnApp(r.a.iface); }
+            return;
+        }
+        if (r.kind === 'miniport') { void openStatus(r.a); return; }
         if (r.kind === 'vpn') {
             // connected: its status; otherwise its client connects it (Vista's Connect dialog)
             const cp = root.melatonControlPanel;
@@ -1891,8 +2021,9 @@
                     if (r.kind === 'vpn') { if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open(); return; }
                     void adapterProperties(null, r.a);
                 }),
-                vpnstart() { if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open(); },
-                vpnstop() { if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open(); },
+                // a VPN app's tunnel (#952) is switched in its app; the Nightshade link in its client
+                vpnstart() { const r = ncRow(); const h = host(); if (r && r.a && r.a.row && h && typeof h.openVpnApp === 'function') { h.openVpnApp(r.a.iface); return; } if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open(); },
+                vpnstop() { const r = ncRow(); const h = host(); if (r && r.a && r.a.row && h && typeof h.openVpnApp === 'function') { h.openVpnApp(r.a.iface); return; } if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open(); },
                 organize() {}, views() {}
             };
             if (root.cplSort && typeof root.cplSort.columns === 'function') root.cplSort.columns(NC, N.cols);
@@ -2275,7 +2406,9 @@
     root.dreamosWifi = {
         openConnect, openManage, openStatus: () => openStatus(), openVpnStatus, available, signalLevel,
         /** the Mobile Broadband Connection's status sheet (null without a mobile adapter) */
-        openMobileStatus: () => { const m = adapters().find((x) => x.kind === 'mobile'); return m ? openStatus(m) : Promise.resolve(null); },
+        // (#952) a connection's name in Network Connections: the modem's data interface ("Local Area Connection 2"), Wi-Fi
+        connectionOf: (kind) => { const list = adapters(); const a = (kind === 'mobile' && list.find((x) => x.kind === 'mobile' && x.row && x.row.alias === 'rmnet0')) || list.find((x) => x.kind === kind); return a ? a.conn : ''; },
+        openMobileStatus: () => { const list = adapters(); const m = list.find((x) => x.kind === 'mobile' && x.row && x.row.alias === 'rmnet0') || list.find((x) => x.kind === 'mobile'); return m ? openStatus(m) : Promise.resolve(null); },
         openConnections, openSetup, setRadio,
         /** the Wi-Fi adapter is there but switched off (the flyout offers to turn it on) */
         radioOff: () => { const w = state().wifi || {}; return !!(host() && w.present && (w.radio === false || w.state === 'off')); },

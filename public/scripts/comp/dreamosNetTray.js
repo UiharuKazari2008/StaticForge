@@ -101,10 +101,11 @@
             : out.kind === 'mobile' ? 'public'
                 : privateAddress(out.kind === 'wired' ? wired.ip : wifi.ip) ? 'private' : 'public';
         // a mobile link reads "<carrier> <data class>" (Verizon 5G, as the carrier's own connection manager names it)
-        const head = out.kind === 'mobile' ? `${out.name}${out.generation ? ` ${out.generation}` : ''}${out.roaming ? ' (Roaming)' : ''}` : out.name;
+        // (#952) a wired-style name for the modem: the network (the carrier), no data class
+        const head = out.name;
         out.title = out.kind === 'none'
             ? (out.connecting ? 'Connecting...' : 'Not Connected')
-            : `${head}\nAccess: ${out.access}${out.kind === 'wifi' || out.kind === 'mobile' ? `\nSignal strength:  ${out.strength}` : ''}`;
+            : `${head}\nAccess: ${out.access}${out.kind === 'wifi' ? `\nSignal strength:  ${out.strength}` : ''}`;
         return out;
     }
 
@@ -121,8 +122,10 @@
         const icon = doc && doc.getElementById('modemTrayIcon');
         if (!icon) return;
         const l = look();
-        setData(icon, 'link', l ? l.kind : null);
-        setData(icon, 'bars', l && (l.kind === 'wifi' || l.kind === 'mobile') ? l.bars : null);
+        // (#952) the phone's modem in LAN mode is a wired connection to Melaton, as Vista / 7 show a card or phone; its
+        // carrier and signal are VZAccess Manager's (#953)
+        setData(icon, 'link', l ? (l.kind === 'mobile' ? 'wired' : l.kind) : null);
+        setData(icon, 'bars', l && l.kind === 'wifi' ? l.bars : null);
         setData(icon, 'limited', l && l.limited ? '1' : null);
         setData(icon, 'radio', l && l.radio ? l.radio : null);
         const ws = root.wsClient;

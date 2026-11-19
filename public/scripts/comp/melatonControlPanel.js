@@ -1173,6 +1173,14 @@
     }
 
     let hostAsked = false;
+    /** The phone's data link in LAN mode (#952): its Local Area Connection's name in Network Connections. */
+    function mobileConnectionName() {
+        const w = root.dreamosWifi;
+        let n = '';
+        try { n = w && typeof w.connectionOf === 'function' ? w.connectionOf('mobile') : ''; } catch (_) { n = ''; }
+        return n || 'Local Area Connection';
+    }
+
     /** The map's first node: the computer's name over "(This computer)", as on the VM. */
     function thisComputer() {
         // a device (phone, DeX, DreamOS) is named by its Device ID, as Control Panel > System names it; a browser by the server
@@ -1270,11 +1278,11 @@
                     </div>
                     <div class="cpl-row">
                         <span class="cpl-row-label">Connection</span>
-                        <span class="cpl-row-value">${dos.kind === 'wifi' ? `Wireless Network Connection (${esc(dos.name)})` : dos.kind === 'mobile' ? `Mobile Broadband Connection (${esc(dos.name)})` : 'Local Area Connection'}</span>
+                        <span class="cpl-row-value">${dos.kind === 'wifi' ? `Wireless Network Connection (${esc(dos.name)})` : dos.kind === 'mobile' ? esc(mobileConnectionName()) : 'Local Area Connection'}</span>
                         ${dos.kind === 'wifi' && wifiUi() ? '<button type="button" class="cpl-link cpl-row-action" data-cpl-action="wifi-status">View status</button>' : ''}
                         ${dos.kind === 'mobile' && root.dreamosWifi && root.dreamosWifi.openMobileStatus ? '<button type="button" class="cpl-link cpl-row-action" data-cpl-action="mobile-status">View status</button>' : ''}
                     </div>
-                    ${dos.kind === 'wifi' || dos.kind === 'mobile' ? `
+                    ${dos.kind === 'wifi' ? `
                     <div class="cpl-row">
                         <span class="cpl-row-label">Signal strength</span>
                         <span class="cpl-row-value">${esc(dos.strength)}</span>
@@ -1620,8 +1628,27 @@
             bytesIn: Number(stats.bytesIn) || 0,
             bytesOut: Number(stats.bytesOut) || 0,
             messagesIn: Number(stats.messagesIn) || 0,
-            messagesOut: Number(stats.messagesOut) || 0
+            messagesOut: Number(stats.messagesOut) || 0,
+            // (#952) how the link signs in: CaféReady's client certificate (the app's enrolled key) or the user's password
+            authentication: clientCertificate() ? 'Client Certificate' : 'User Password',
+            // the socket's negotiated compression (permessage-deflate), else none
+            compression: (() => { const e = client && client.ws && client.ws.extensions; return e && /deflate/i.test(String(e)) ? 'Deflate (permessage-deflate)' : '(none)'; })(),
+            // the measured maximum data rate (melatonNetworkDialogs.linkSpeed: at connect and every 30 min); Limited when low
+            speedKbps: linkSpeed().kbps || 0,
+            limited: !!linkSpeed().limited
         };
+    }
+
+    function linkSpeed() {
+        const n = net();
+        try { return n && typeof n.linkSpeed === 'function' ? n.linkSpeed() : {}; } catch (_) { return {}; }
+    }
+
+    /** The app has its client certificate (DSApp AndroidClientCert, docs/client-certificates.md) and rides the Miniport. */
+    function clientCertificate() {
+        const b = root.AndroidClientCert;
+        if (!b || typeof b.getState !== 'function') return false;
+        try { const v = b.getState(); const st = typeof v === 'string' ? JSON.parse(v) : v; return !!(st && st.enrolled) && !!info().viaMiniport; } catch (_) { return false; }
     }
 
     /** The status sheet's Connect / Disconnect button. */
@@ -1875,12 +1902,10 @@
                     <img src="${pic}" alt="" draggable="false">
                     <div class="network-flyout-text">
                         <span class="network-flyout-name">${esc(l.name)}</span>
-                        ${l.kind === 'mobile' ? `<span class="network-flyout-sub">Mobile Broadband Connection${l.generation ? ` (${esc(l.generation)})` : ''}</span>` : ''}
                         <span class="network-flyout-sub">Access: ${esc(l.access)}</span>
-                        ${l.kind === 'wifi' || l.kind === 'mobile' ? `<span class="network-flyout-sub">Signal strength:  ${esc(l.strength)}</span>` : ''}
-                        ${l.kind === 'mobile' && l.roaming ? '<span class="network-flyout-sub">Roaming</span>' : ''}
+                        ${l.kind === 'wifi' ? `<span class="network-flyout-sub">Signal strength:  ${esc(l.strength)}</span>` : ''}
                     </div>
-                    ${l.kind === 'wifi' || l.kind === 'mobile' ? `<img class="network-flyout-bars" src="/static_images/vista-net/tray-wifi-${l.bars}-16.png" srcset="/static_images/vista-net/tray-wifi-${l.bars}-32.png 2x" alt="" width="16" height="16" draggable="false">` : ''}
+                    ${l.kind === 'wifi' ? `<img class="network-flyout-bars" src="/static_images/vista-net/tray-wifi-${l.bars}-16.png" srcset="/static_images/vista-net/tray-wifi-${l.bars}-32.png 2x" alt="" width="16" height="16" draggable="false">` : ''}
                 </div>`;
         return `
             <div class="network-flyout-body">
