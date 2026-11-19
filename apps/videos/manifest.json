@@ -1,0 +1,14 @@
+{
+    "id": "videos",
+    "version": "1.0.0",
+    "title": "Melaton Videos",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "videos",
+    "icon": "assets/videos-48.png",
+    "client": {
+        "entry": "client/videos.js",
+        "styles": ["assets/videos.css"]
+    }
+}

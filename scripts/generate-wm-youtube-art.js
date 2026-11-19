@@ -87,6 +87,9 @@ async function panel(k, file) {
     await icon(32, 'app-youtube-lg.png');
     await icon(64, 'app-youtube-lg@2x.png');
     await icon(128, 'app-youtube-lg@4x.png');
+    // the desktop program (apps/videos, #920): its window icon and its Start menu picture
+    await icon(48, 'videos-48.png', path.join(__dirname, '..', 'apps', 'videos', 'assets'));
+    await icon(512, 'videos.png', path.join(__dirname, '..', 'public', 'static_images', 'app_icons'));
     await icon(45, 'start-youtube.png', OUT65);
     await icon(90, 'start-youtube@2x.png', OUT65);
     await icon(180, 'start-youtube@4x.png', OUT65);

@@ -77,6 +77,41 @@ bitrate (about two processor threads each); `audio` is one picture a second with
 The stream's address is only on the channel's Kick page: the Alchemy browser reads it in a hidden tab (nothing
 is played there). Yukimi allowed that step herself; `scripts/kick-stream-probe.js` is the same read for tests.
 
+## A Kick stream's chat (Yozora #919)
+
+`modules/videosKickChat.js`. Off until switched on, and read only while a chat panel is open: the server subscribes
+to Kick's `chat.message.sent` event for the channel when the first panel opens and removes the subscription a
+minute after the last one closed. Kick delivers by webhook (`POST /api/videos/kick/webhook`, public only while chat
+is on; each delivery's signature is checked against Kick's public key, anything else gets the cover's 404).
+
+| Packet | |
+| --- | --- |
+| `youtube_chat_status` | `{}` -> `{ chat: { enabled, linked, ready, webhookUrl, redirectUrl } }`. The two addresses are what the Kick developer app needs. |
+| `youtube_chat_setup` | `{ on }` -> `{ chat }`. Admin. Off removes every subscription. |
+| `youtube_chat_link` | `{}` -> `{ url, redirectUrl }`. Admin. Kick's sign-in page (OAuth 2.1 with PKCE, scope `chat:write`), opened in a browser; the answer comes to `GET /api/videos/kick/oauth` (public only for a state given out in the last 10 minutes). |
+| `youtube_chat_unlink` | `{}` -> `{ chat }`. Admin. Forgets (and revokes) the linked account. |
+| `youtube_chat_open` | `{ slug }` -> `{ slug, messages[], canSend }` (the newest 40 held). Admin. From then on this socket is pushed `youtube_chat`. |
+| `youtube_chat_close` | `{ slug }` -> `{ closed }`. Admin. A closed socket counts as closed. |
+| `youtube_chat_send` | `{ slug, text }` -> `{ sent, id }`. Admin. 500 characters. Codes: `KICK_NOT_LINKED`, `KICK_FORBIDDEN`, `KICK_SLOW`, `KICK_TOO_LONG`. |
+
+Push: `youtube_chat` `{ slug, messages[], skipped }`, at most one every 2 seconds per open panel, 30 messages at
+most (a faster chat is thinned; `skipped` counts what was left out). A message is
+`{ id, at (ms), name, color ('' or #rrggbb), badges[] (Kick's badge types), text }`. `text` carries emotes as
+`[emote:<id>:<NAME>]`; the picture is `GET /api/videos/kick/emote/<id>` (signed-in session, immutable; the
+program keeps it in its own cache, `videos-cache-v1`).
+
+The status feed's `sources.chat` is `{ enabled, linked }`. With chat on, channels with the bell also get a
+`livestream.status.updated` subscription: Kick tells the moment a stream starts and the 2-minute look becomes a
+10-minute safety net.
+
+## The desktop program and YouTube playback (Yozora #920)
+
+`apps/videos` is the same program in a desktop window (`client/videos.js` answers the shell calls
+`wmYouTube.js` makes; the two soft keys are the keys of a bar at the top). A YouTube video plays in the window
+(on the phone: hold a video, Play Here) in YouTube's embedded player (`youtube-nocookie.com/embed`, driven by
+messages; none of its script runs in the page). No packets of its own: a video played 60 % or more is marked with
+`youtube_mark`.
+
 ## Status feed (pushed, never polled)
 
 `status_subscribe { feed: 'youtube' }` while the Today item or the program is on screen answers

@@ -617,6 +617,39 @@
 .wm-youtube.is-full .yt-stage { flex: 1 1 auto; aspect-ratio: auto; height: 100%; }
 .wm-youtube.is-full .yt-side { display: none; }
 
+/* a YouTube video played here: its frame under the program's own keys (a tap goes to the stage, not into the frame) */
+.wm-youtube .yt-frame { position: absolute; inset: 0; background: black; }
+.wm-youtube .yt-frame[hidden] { display: none; }
+.wm-youtube .yt-frame-el { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+.wm-youtube .yt-player.is-yt .yt-video, .wm-youtube .yt-player.is-yt .is-livetag { display: none; }
+
+/* ---------------------------------------------------------------- a stream's chat (off until asked for, #919) */
+
+.wm-youtube .yt-hud-key.is-on { background: linear-gradient(var(--yt-accent), var(--yt-accent-deep)); }
+/* with chat open the panel is the chat's: the stream's details fold to their first line */
+.wm-youtube .yt-player.has-chat .yt-side { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+.wm-youtube .yt-player.has-chat .yt-side-title { flex: 0 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wm-youtube .yt-player.has-chat .yt-side-sub { display: none; }
+.wm-youtube .yt-chat { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-top: calc(5 * var(--u)); border-top: 1px solid color-mix(in srgb, white 12%, transparent); }
+.wm-youtube .yt-chat[hidden] { display: none; }
+.wm-youtube .yt-chat-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-width: none; contain: content; padding: calc(4 * var(--u)) 0; font-size: calc(10 * var(--u)); line-height: 1.35; }
+.wm-youtube .yt-chat-row { padding: calc(1.5 * var(--u)) 0; overflow-wrap: anywhere; color: color-mix(in srgb, white 88%, transparent); }
+.wm-youtube .yt-chat-row b { color: white; }
+.wm-youtube .yt-chat-row.is-note { color: var(--yt-dim); font-size: calc(9 * var(--u)); }
+.wm-youtube .yt-chat-tag { display: inline-block; margin-right: calc(3 * var(--u)); padding: 0 calc(3 * var(--u)); border-radius: calc(2 * var(--u)); background: color-mix(in srgb, white 16%, transparent); color: color-mix(in srgb, white 80%, transparent); font-style: normal; font-size: calc(7.5 * var(--u)); text-transform: uppercase; vertical-align: 0.1em; }
+.wm-youtube .yt-emote { width: 1.6em; height: 1.6em; margin: -0.35em 0.05em; vertical-align: middle; object-fit: contain; }
+.wm-youtube .yt-emote-t { color: var(--yt-dim); }
+.wm-youtube .yt-chat-form { flex: 0 0 auto; margin: 0; padding: calc(4 * var(--u)) 0 calc(5 * var(--u)); }
+.wm-youtube .yt-chat-form[hidden] { display: none; }
+
+/* wider than tall with chat open (the unfolded screen): the chat is a column beside the picture */
+@container yt (min-aspect-ratio: 13 / 10) {
+    .wm-youtube .yt-player.has-chat { flex-direction: row; }
+    .wm-youtube .yt-player.has-chat .yt-stage { flex: 1 1 0; width: auto; min-width: 0; }
+    .wm-youtube .yt-player.has-chat .yt-side { flex: 0 0 34%; max-width: calc(260 * var(--u)); border-top: 0; border-left: 1px solid color-mix(in srgb, white 14%, transparent); }
+}
+.wm-youtube.is-full .yt-player.has-chat .yt-side { display: none; }
+
 /* the keys over the foot of the picture: pause, sound, stop | Kick's app, full screen */
 .wm-youtube .yt-hud {
     position: absolute;

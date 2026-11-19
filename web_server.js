@@ -92,7 +92,8 @@ const {
     registerDynamicManifestRoute,
     mountSiteHomepagePreview,
     gateStatusForRequest,
-    handleGatewayUnlock
+    handleGatewayUnlock,
+    sendNginxError
 } = require('./modules/siteGate');
 const siteAccessPublic = require('./modules/siteAccess');
 
@@ -1555,6 +1556,8 @@ app.use(compression({
 // Setup's product key (#611) takes a small body: its own parser runs before the 100 MB one
 // below (which skips a body that is already parsed), so a bigger body is refused with 413
 app.use('/install/product-key', express.json({ limit: '4kb' }));
+// Melaton Videos' Kick chat (#919): the webhook's signature is over the exact bytes, so it is read raw, ahead of the JSON parser
+require('./modules/videosKickChat').mountRaw(app, express, (res) => sendNginxError(res, 404));
 // Body parsing middleware with optimized limits
 app.use(express.json({limit: '100mb'}));
 
@@ -2323,6 +2326,8 @@ require('./modules/slideshowDevices').mountPreviewRoutes(app, authMiddleware, gl
 require('./modules/activeSyncTransfers').mount(app, authMiddleware, globalResources);
 // modules/videosKickRelay.js — Melaton Videos: a Kick live stream's HLS pieces for the program's player (Yozora #918)
 require('./modules/videosKickRelay').mount(app, authMiddleware);
+// modules/videosKickChat.js — Melaton Videos: the Kick sign-in answer and emote pictures (Yozora #919)
+require('./modules/videosKickChat').mount(app, authMiddleware, (res) => sendNginxError(res, 404));
 // modules/activeSyncScreen.js — ActiveSync remote viewer: a phone's screen frames for the desktop (Yozora #747)
 require('./modules/activeSyncScreen').mount(app, authMiddleware, globalResources);
 // modules/deviceAdb.js — ADB on 5555 from this server: phone screenshots, displays, installs (Yozora #818)

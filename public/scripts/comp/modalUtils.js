@@ -6803,6 +6803,8 @@ function buildToolsSubmenuItems(opts) {
         // XLink Operator Console: the arcade cabinets' control menu, admins (Yozora #719; apps/xlink, a system package)
         // VisionCaster (was QuickCast): video mixer remote for the cabinet mixers and the satellite encoder, and one-touch YouTube live, admins (Yozora #734; apps/quickcast, a system package)
         { launchId: 'quickcast', icon: 'fas fa-tower-broadcast', imageIcon: 'quickcast.png', text: 'VisionCaster', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'quickcast' }) },
+        // Melaton Videos on the desktop (apps/videos, Yozora #920): the phone's Videos program in a window
+        { launchId: 'videos', icon: 'fas fa-tv', imageIcon: 'videos.png', text: 'Melaton Videos', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'videos' }) },
         { launchId: 'xlink', icon: 'fas fa-joystick', imageIcon: 'xlink.png', text: 'XLink Operator Console', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'xlink' }) },
         // Nightshade Network Client (#895): the service's connection manager (nightshadeClient.js, loaded with
         // the desktop so it opens while the server is out of reach); its own program folder, as a broadband
@@ -8096,6 +8098,7 @@ function getStartMenuPackageItems(apps = START_MENU_PACKAGE_APPS) {
 // Accessories. 'top' = the top level of All Programs; a folder id = that folder; label = the VM's name.
 const START_MENU_SYSTEM_PLACES = {
     'mobile-device-center': { at: 'top' },         // Windows Mobile Device Center
+    'videos': { at: 'top' },                       // beside Windows Media Player's place: Melaton Videos (#920)
     'melaton-messenger': { at: 'top' },            // Windows Live Messenger / Windows Mail sit at the top level
     calendar: { at: 'top' },                       // Windows Calendar
     weather: { at: 'top' },                        // Melaton Weather (#792): beside Calendar and Contacts

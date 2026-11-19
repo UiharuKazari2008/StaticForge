@@ -208,6 +208,17 @@ const WATCH_MS = 2 * MIN;
 let watchTimer = null;
 let watchFails = 0;
 let onLive = null; // (channel, item) => the notification (set by the handler)
+let chatView = () => ({ enabled: false, linked: false }); // videosKickChat's state for the Channels page
+let pushed = () => false; // does Kick tell this server about go-lives? (videosKickChat.pushesLive)
+
+/** Kick said a channel's stream changed (its webhook): look now, whatever the age of what is held. */
+function kickLook() {
+    Object.values(live).forEach((x) => { x.tried = 0; });
+    return kickRefresh();
+}
+/** A listed channel as Kick knows it: { slug, name, userId } (the id is asked for once when an older entry lacks it). */
+const kickChannel = (slug) => load().kick.find((c) => c.slug === String(slug || '').toLowerCase()) || null;
+const kickBells = () => load().kick.filter((c) => c.notify);
 
 function watchKick() {
     const want = load().kick.some((c) => c.notify) && kickReady();
@@ -219,7 +230,8 @@ function watchKick() {
         try { await kickRefresh(); } catch (_e) { /* counted below */ }
         watchFails = kickError ? Math.min(watchFails + 1, 3) : 0;
         if (load().kick.some((c) => c.notify)) {
-            watchTimer = setTimeout(tick, WATCH_MS * 2 ** watchFails);
+            // Kick tells by itself when chat's webhook is on (videosKickChat): the look is then only a safety net
+            watchTimer = setTimeout(tick, (pushed() ? 5 : 1) * WATCH_MS * 2 ** watchFails);
             if (watchTimer.unref) watchTimer.unref();
         }
     };
@@ -269,7 +281,7 @@ function kickRefresh() {
                 if (!r) { if (Date.now() - held.at > 4 * KICK_TTL) held.item = null; return; }
                 held.at = Date.now();
                 held.item = r.item;
-                if (r.channel.name !== c.name || r.channel.thumb !== c.thumb) { c.name = r.channel.name; c.thumb = r.channel.thumb; touched = true; }
+                if (r.channel.name !== c.name || r.channel.thumb !== c.thumb || (r.channel.userId && r.channel.userId !== c.userId)) { c.name = r.channel.name; c.thumb = r.channel.thumb; c.userId = r.channel.userId || c.userId; touched = true; }
             });
             if (touched) save();
             kickError = '';
@@ -370,6 +382,7 @@ function view() {
     return {
         kickReady: kickReady(),
         kickError,
+        chat: chatView(),
         kick: s.kick.map((c) => ({ slug: c.slug, name: c.name, thumb: c.thumb, live: !!(live[c.slug] && live[c.slug].item), notify: !!c.notify })),
         apps: s.apps.slice(),
         seenApps: Object.keys(s.seenApps).map((p) => ({ package: p, label: s.seenApps[p].label })).sort((a, b) => a.label.localeCompare(b.label))
@@ -377,6 +390,6 @@ function view() {
 }
 
 module.exports = {
-    bind, kickAdd, kickNotify, watchKick, setOnLive(fn) { onLive = typeof fn === 'function' ? fn : null; }, kickRemove, liveItems, takeNotification, noticeItems, noticeRemove, appsSave, view, onChange, SourceError,
-    _test: { reset() { state = null; live = {}; kickBusy = null; listeners.length = 0; kickToken = { value: '', until: 0, client: '' }; gr = null; clearTimeout(watchTimer); watchTimer = null; watchFails = 0; onLive = null; kickError = ''; }, busy: () => kickBusy, live: () => live, load }
+    bind, kickKey, kickAccess, kickLook, kickChannel, kickBells, touch: changed, setChatView(fn) { if (typeof fn === 'function') chatView = fn; }, setPushed(fn) { pushed = typeof fn === 'function' ? fn : () => false; }, kickAdd, kickNotify, watchKick, setOnLive(fn) { onLive = typeof fn === 'function' ? fn : null; }, kickRemove, liveItems, takeNotification, noticeItems, noticeRemove, appsSave, view, onChange, SourceError,
+    _test: { reset() { state = null; live = {}; kickBusy = null; listeners.length = 0; kickToken = { value: '', until: 0, client: '' }; gr = null; clearTimeout(watchTimer); watchTimer = null; watchFails = 0; onLive = null; kickError = ''; pushed = () => false; }, busy: () => kickBusy, live: () => live, load }
 };

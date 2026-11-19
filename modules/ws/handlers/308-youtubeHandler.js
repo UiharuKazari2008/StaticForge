@@ -3,6 +3,7 @@ const statusHub = require('../statusHub');
 const youtubeService = require('../../youtubeService');
 const activeSync = require('../../activeSync');
 const kickRelay = require('../../videosKickRelay');
+const kickChat = require('../../videosKickChat');
 
 // Melaton Videos, first Melaton Mobile YouTube (Yozora #839, #861): the phone's videos program and its Today item.
 // Beside YouTube it shows Kick live streams and the notifications of chosen Android apps (modules/videosSources.js). Everything
@@ -25,6 +26,16 @@ const kickRelay = require('../../videosKickRelay');
 //                                                      -> { id, url, mode, state, source, modes } (url: HLS under /api/videos/live/<id>/; modules/videosKickRelay.js)
 //   youtube_live_state       { id }                    admins -> { state: live | restarting | ended | error | gone, error }
 //   youtube_live_stop        { id }                    admins -> { stopped }
+//   youtube_chat_setup       { on }                    admins; switches Kick chat on or off (on: Kick's webhook is answered) -> { chat }
+//   youtube_chat_status      {}                        { chat: { enabled, linked, ready, webhookUrl, redirectUrl } }
+//   youtube_chat_link        {}                        admins; starts linking a Kick account for sending -> { url } (opened in a browser)
+//   youtube_chat_unlink      {}                        admins; forgets the linked Kick account -> { chat }
+//   youtube_chat_open        { slug }                  admins; the chat panel opened -> { slug, messages[], canSend }; from then on this
+//                                                      socket is pushed youtube_chat { slug, messages[], skipped } at most every 2 s
+//   youtube_chat_close       { slug }                  admins; the panel closed (a closed socket counts too) -> { closed }
+//   youtube_chat_send        { slug, text }            admins; says it in the channel's chat as the linked account -> { sent, id }
+//                                                      a chat message is { id, at (ms), name, color ('' | #rrggbb), badges[], text };
+//                                                      text carries emotes as [emote:<id>:<NAME>] (picture: /api/videos/kick/emote/<id>)
 //   youtube_kick_add         { name }                  admins; a Kick channel by its name -> { channel, live, channels[] } (needs Service key `kick`)
 //   youtube_kick_notify      { slug, on }              admins; the channel's bell: the server tells when it goes live -> { channels[] }
 //   youtube_kick_remove      { slug }                  admins -> { channels[] }
@@ -108,6 +119,32 @@ function registerPackets(handlersCtx) {
         });
     });
     sources.watchKick();
+    // Kick chat (#919): read by webhook only while a panel is open, sent as the linked account
+    kickChat.bind({
+        key: sources.kickKey, appToken: sources.kickAccess, channel: sources.kickChannel, bells: sources.kickBells, look: sources.kickLook,
+        origin: () => { const h = String(handlersCtx.globalResources.getConfig({ path: 'public_hostname' }) || '').trim(); return h ? `https://${h}` : ''; }
+    });
+    kickChat.onChanged(() => sources.touch());
+    sources.setChatView(() => { const c = kickChat.status(); return { enabled: c.enabled, linked: c.linked }; });
+    sources.setPushed(kickChat.pushesLive);
+    sources.onChange(() => { kickChat.syncBells(); });
+    const tidy = setTimeout(() => { kickChat.tidy(); }, 20000);
+    if (tidy.unref) tidy.unref();
+    const chatSockets = new WeakSet();
+    reg('youtube_chat_status', packet(false, 'Chat could not be read', async () => ({ chat: kickChat.status() })));
+    reg('youtube_chat_setup', packet(true, 'The setting could not be saved', async (m) => ({ chat: await kickChat.setEnabled(m.on !== false) })));
+    reg('youtube_chat_link', packet(true, 'The sign-in could not be started', async () => kickChat.linkStart()));
+    reg('youtube_chat_unlink', packet(true, 'The account could not be removed', async () => ({ chat: await kickChat.unlink() })), { destructive: true });
+    reg('youtube_chat_send', packet(true, 'The message could not be sent', async (m) => kickChat.say(String(m.slug || ''), m.text)));
+    wsPacketRegistry.registerWsPacket('youtube_chat_open', async ({ ws, message, clientInfo }) => {
+        await packet(true, 'Chat could not be opened', async (m) => {
+            if (!chatSockets.has(ws)) { chatSockets.add(ws); ws.once('close', () => kickChat.leave('', ws)); }
+            return kickChat.watch(String(m.slug || ''), ws, (batch) => handlersCtx.sendToClient(ws, { type: 'youtube_chat', data: batch, timestamp: new Date().toISOString() }));
+        })(handlersCtx, ws, message, clientInfo);
+    }, { owner: 'youtube' });
+    wsPacketRegistry.registerWsPacket('youtube_chat_close', async ({ ws, message, clientInfo }) => {
+        await packet(true, 'Chat could not be closed', async (m) => { kickChat.leave(String(m.slug || ''), ws); return { closed: true }; })(handlersCtx, ws, message, clientInfo);
+    }, { owner: 'youtube' });
     reg('youtube_live_modes', packet(false, 'The qualities could not be read', async () => ({ modes: kickRelay.modes() })));
     reg('youtube_live_start', packet(true, 'The stream could not be started', async (m) => Object.assign(await kickRelay.start(m.slug, m.mode), { modes: kickRelay.modes() })));
     reg('youtube_live_state', packet(true, 'The stream could not be read', async (m) => kickRelay.state(m.id)));

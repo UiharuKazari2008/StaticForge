@@ -43,7 +43,11 @@
     const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const MOBILE = window.uiShell === 'mobile' && document.documentElement.classList.contains('ui-mobile');
-    if (!MOBILE) return;
+    // On the desktop the same program runs in a window: videosDesktop.js is its shell there (window.videosDesktopShell,
+    // the handful of wmShell calls this file makes), and loads this file when its window is first opened (the desktop
+    // does not carry it otherwise: app.html lists it for the phone shell only).
+    const HOST = { desktop: !MOBILE && !!window.videosDesktopShell };
+    if (!MOBILE && !HOST.desktop) return;
 
     const APP_ID = 'youtube';
     const TITLE = 'Videos';
@@ -68,6 +72,10 @@
         stop: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3.2" y="3.2" width="9.6" height="9.6" rx="1"/></svg>',
         out: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2.5h4.5V7M13.3 2.7L7.5 8.5M11.5 9.5v3.3a.7.7 0 0 1-.7.7H3.2a.7.7 0 0 1-.7-.7V5.2a.7.7 0 0 1 .7-.7h3.3"/></svg>',
         full: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg>',
+        back: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 3.2v9.6L1.6 8zM14.4 3.2v9.6L8 8z"/></svg>',
+        fwd: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 3.2v9.6L14.4 8zM1.6 3.2v9.6L8 8z"/></svg>',
+        pop: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="10.5" rx="1"/><rect x="8" y="7.5" width="5" height="4" fill="currentColor" stroke="none"/></svg>',
+        chat: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M2.5 3h11a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1H8.2L5 14v-2.8H2.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/></svg>',
         bell: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.8a4 4 0 0 0-4 4v2.6L2.6 11h10.8L12 8.4V5.8a4 4 0 0 0-4-4z"/><path d="M6.5 13.2a1.6 1.6 0 0 0 3 0" stroke-linecap="round"/></svg>',
         clock: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.4V8l2.6 1.6"/></svg>',
         left: '<svg viewBox="0 0 7 11"><path d="M6 0.5L1 5.5l5 5z" fill="currentColor"/></svg>',
@@ -189,6 +197,8 @@
             } catch (_) { /* the app itself below */ }
             return launchApp(v.package, v.channel);
         }
+        // the desktop has no YouTube app: a video plays in the window; the phone hands it to YouTube's app (hold: Play Here)
+        if (HOST.desktop) { watchVideo(v); return true; }
         return openVideo(v.id);
     }
 
@@ -286,8 +296,9 @@
         if (wired || !c || typeof c.on !== 'function') return !!wired;
         wired = true;
         c.on('youtube_status', (msg) => { if (hubOn && msg) { hubSig = ''; applyHub(msg.changed || (msg.data && msg.data.changed)); } }, { signal: appScopeSignal });
+        c.on('youtube_chat', (msg) => { chatTake(msg && msg.data && msg.data.messages ? msg.data : msg); }, { signal: appScopeSignal });
         // the server forgets a dropped socket's subscriptions: subscribe again
-        c.on('connected', () => { hubOn = false; void syncHub(); }, { signal: appScopeSignal });
+        c.on('connected', () => { hubOn = false; void syncHub(); if (player && player.chatOpen) { player.chatOpen = false; chatSync(); } }, { signal: appScopeSignal });
         document.addEventListener('wmAppChange', () => { void syncHub(); }, { signal: appScopeSignal });
         document.addEventListener('visibilitychange', () => { void syncHub(); }, { signal: appScopeSignal });
         window.addEventListener('melatonscreen', () => { void syncHub(); }, { signal: appScopeSignal });
@@ -632,6 +643,15 @@
         return `<div class="yt-sec">Kick (${kick.length})</div>
             ${so.kickReady ? `<form class="yt-search yt-kick-form" action="#" autocomplete="off"><label class="yt-field"><input class="yt-q yt-kick-q" type="text" enterkeyhint="done" placeholder="Kick channel name" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="60"></label><button type="submit" class="yt-btn is-go">Add</button></form>` : '<div class="yt-empty">Kick needs a key first: the administrator adds one on the desktop under Service keys &gt; Kick.</div>'}
             ${kickRows}
+            ${so.kickReady ? `<div class="yt-row is-chan is-plain" role="button" tabindex="0" data-yt-chat="setup">
+                <span class="yt-th is-app is-small">${I.chat}</span>
+                <span class="yt-tx"><span class="yt-t">Chat</span><span class="yt-s">${chatOn() ? 'On: read only while a stream\'s chat is open' : 'Off: nothing is received from Kick'}</span></span>
+                <span class="yt-check${chatOn() ? ' is-on' : ''}" aria-hidden="true"></span>
+            </div>${chatOn() ? `<div class="yt-row is-chan is-plain" role="button" tabindex="0" data-yt-chat="link">
+                <span class="yt-th is-app is-small">${I.out}</span>
+                <span class="yt-tx"><span class="yt-t">Kick account</span><span class="yt-s">${chatLinked() ? 'Linked: you can write in chat. Tap to remove it' : 'Tap to link an account for writing in chat'}</span></span>
+                <span class="yt-check${chatLinked() ? ' is-on' : ''}" aria-hidden="true"></span>
+            </div>` : ''}` : ''}
             <div class="yt-sec">Apps in the feed (${apps.length})</div>
             ${appRows || '<div class="yt-empty">An app shows here once it has posted a notification while ActiveSync\'s Send notifications is on. Tap it to bring its notifications into the feed.</div>'}`;
     }
@@ -752,18 +772,25 @@
                     <div class="yt-player" hidden>
                         <div class="yt-stage">
                             <video class="yt-video" playsinline preload="none" disablepictureinpicture disableremoteplayback></video>
+                            <div class="yt-frame" hidden></div>
                             <div class="yt-pl-status" hidden><i></i><span></span></div>
                             <button type="button" class="yt-pl-key is-play" data-pl="toggle" aria-label="Play" hidden></button>
                             <div class="yt-hud" hidden>
                                 <button type="button" class="yt-hud-key" data-pl="toggle" aria-label="Pause">${I.pause}</button>
                                 <button type="button" class="yt-hud-key" data-pl="mute" aria-label="Sound off">${I.sound}</button>
                                 <button type="button" class="yt-hud-key" data-pl="stop" aria-label="Stop">${I.stop}</button>
+                                <button type="button" class="yt-hud-key is-seek" data-pl="back" aria-label="Back 10 seconds" hidden>${I.back}</button>
+                                <button type="button" class="yt-hud-key is-seek" data-pl="fwd" aria-label="Forward 10 seconds" hidden>${I.fwd}</button>
                                 <span class="yt-hud-live"><i class="yt-new is-livetag">LIVE</i><span class="yt-pl-up"></span><span class="yt-pl-mode"></span></span>
+                                <button type="button" class="yt-hud-key" data-pl="chat" aria-label="Chat" aria-pressed="false">${I.chat}</button>
+                                <button type="button" class="yt-hud-key" data-pl="pop" aria-label="Pop out" hidden>${I.pop}</button>
                                 <button type="button" class="yt-hud-key" data-pl="kick" aria-label="Watch in Kick's app">${I.out}</button>
                                 <button type="button" class="yt-hud-key" data-pl="full" aria-label="Full screen">${I.full}</button>
                             </div>
                         </div>
-                        <div class="yt-side"><div class="yt-side-title"></div><div class="yt-side-sub"></div><div class="yt-side-sub yt-side-live"><i class="yt-new is-livetag">LIVE</i><span class="yt-side-up"></span></div></div>
+                        <div class="yt-side"><div class="yt-side-title"></div><div class="yt-side-sub"></div><div class="yt-side-sub yt-side-live"><i class="yt-new is-livetag">LIVE</i><span class="yt-side-up"></span></div>
+                            <div class="yt-chat" hidden><div class="yt-chat-list" aria-live="off"></div><form class="yt-search yt-chat-form" action="#" autocomplete="off" hidden><label class="yt-field"><input class="yt-q yt-chat-q" type="text" enterkeyhint="send" placeholder="Say something" autocomplete="off" maxlength="500"></label><button type="submit" class="yt-btn is-go">Send</button></form></div>
+                        </div>
                     </div>
                     <div class="yt-sign" hidden></div>
                 </div>
@@ -773,7 +800,7 @@
         els = {
             root: q('.yt-root'), me: q('.yt-me'), title: q('.yt-title'), note: q('.yt-note'), panes: q('.yt-panes'),
             player: q('.yt-player'), video: q('.yt-video'), plMode: q('.yt-pl-mode'), plStatus: q('.yt-pl-status'), plKey: q('.yt-pl-key'),
-            plUp: q('.yt-pl-up'), hud: q('.yt-hud'), sideTitle: q('.yt-side-title'), sideSub: q('.yt-side-sub'), sideUp: q('.yt-side-up'),
+            plUp: q('.yt-pl-up'), hud: q('.yt-hud'), sideTitle: q('.yt-side-title'), sideSub: q('.yt-side-sub'), sideUp: q('.yt-side-up'), frame: q('.yt-frame'), chat: q('.yt-chat'), chatList: q('.yt-chat-list'), chatForm: q('.yt-chat-form'), chatQ: q('.yt-chat-q'),
             tabs: q('.yt-tabs'), slider: q('.yt-slider'), sign: q('.yt-sign'), layer: q('.yt-layer'), chan: q('.yt-chan'), layerList: q('.yt-layer .yt-list'),
             form: q('.yt-search'), q: q('.yt-q'), clear: q('.yt-clear'), lists: {}, paneEls: {}
         };
@@ -968,6 +995,8 @@
         if (kn) { notifyKick(kn.dataset.ytKickNotify); return; }
         const kx = e.target.closest('[data-yt-kick-remove]');
         if (kx) { removeKick(kx.dataset.ytKickRemove); return; }
+        const cs = e.target.closest('[data-yt-chat]');
+        if (cs) { if (cs.dataset.ytChat === 'setup') chatSetup(!chatOn()); else chatLink(); return; }
         const app = e.target.closest('[data-yt-app]');
         if (app) { toggleApp(app.dataset.ytApp, app.dataset.ytLabel); return; }
         const kc = e.target.closest('[data-yt-kick]');
@@ -1015,7 +1044,8 @@
             if (!v) return;
             const c = v.channelId ? { id: v.channelId, title: v.channel || 'Channel', thumb: (seen.get(v.channelId) || {}).thumb || '' } : null;
             items = [
-                { label: 'Play in YouTube', action: () => openVideo(v.id) },
+                { label: 'Play Here', action: () => watchVideo(v) },
+                { label: HOST.desktop ? 'Open on youtube.com' : 'Play in YouTube', action: () => openVideo(v.id) },
                 { label: 'Open in Browser', action: () => openUrl(videoUrl(v.id), false) },
                 '-',
                 { label: v.watched ? 'Mark as Unwatched' : 'Mark as Watched', disabled: !isAdmin(), action: () => setWatched(v.id, !v.watched) },
@@ -1060,15 +1090,26 @@
     // The Dreamscape app's native player (DSApp videos/VideoPlayback.kt): when this program or the app is left,
     // the stream carries on there as a floating window or as sound, so it never depends on this page running.
     const nativePlayer = () => (window.AndroidVideos && typeof window.AndroidVideos.watching === 'function' ? window.AndroidVideos : null);
-    /** Tells the app what the page's player shows (or that it shows nothing): it takes over when the app is left. */
+    /**
+     * Tells the app what the page's player shows (or that it shows nothing): it takes over when the app is left.
+     * Only a stream that is on screen and playing counts (Yukimi, Nov 18 2026: "the pip also should only show if we
+     * are watching a video player not just randomly like it did"): paused, closed, left for the lists or the program
+     * ended, the app is told nothing plays, so another Android app coming up starts no player. A stream the app
+     * already carries (handed over, or popped out) stays told.
+     */
     function plTell() {
         const nv = nativePlayer();
         if (!nv) return;
         const p = player;
+        const on = !!(p && p.kind !== 'yt' && p.state === 'live' && p.url && (p.handed || p.popped || (shown && !p.suspended && els && !els.video.paused)));
+        const said = on ? JSON.stringify({ url: new URL(p.url, location.origin).toString(), title: p.title, subtitle: modeLabel(p.mode), audioOnly: p.mode === 'audio' }) : '';
+        if (said === plTold) return;
+        plTold = said;
         try {
-            nv.watching(p && p.state === 'live' && p.url ? JSON.stringify({ url: new URL(p.url, location.origin).toString(), title: p.title, subtitle: modeLabel(p.mode), audioOnly: p.mode === 'audio' }) : '');
+            nv.watching(said);
         } catch (_) { /* an older app build */ }
     }
+    let plTold = null;
     /** The native player gives the stream back to the page (Videos is in front again). */
     function plTakeBack() {
         const p = player;
@@ -1076,10 +1117,42 @@
         if (!p || !nv) return;
         let active = false;
         try { active = nv.isActive() === true; } catch (_) { active = false; }
-        if (p.handed || active) { p.handed = false; try { nv.stop(); } catch (_) { /* gone */ } }
+        if (p.handed || p.popped || active) { p.handed = false; p.popped = false; try { nv.stop(); } catch (_) { /* gone */ } }
     }
 
-    const liveMode = () => { try { return localStorage.getItem(LS_MODE) || '480'; } catch (_) { return '480'; } };
+    /**
+     * The pop-out key (Yukimi, Nov 18 2026: "add a button on the video hud to pop out and if the chat is shown it
+     * will stay in the app otherwise drop to the today screen"): the app's native player takes the stream into
+     * Android's picture-in-picture at once, the page's own video stops (one sound), and the program stays for the
+     * chat when it is shown, or else gives way to Today.
+     */
+    const canPop = () => { const nv = nativePlayer(); return !!(nv && typeof nv.popOut === 'function'); };
+    function plPop() {
+        const p = player;
+        const nv = nativePlayer();
+        if (!p || p.kind === 'yt' || p.state !== 'live' || !canPop()) return;
+        if (els.video.paused) { box('Start the stream first, then pop it out.', 'info'); return; }
+        plTell();
+        let ok = false;
+        try { ok = nv.popOut() === true; } catch (_) { ok = false; }
+        if (!ok) { box('The stream could not be popped out.', 'info'); return; }
+        p.handed = true;
+        p.popped = true;
+        if (p.full) plFull(false);
+        plSuspend(true);
+        plStatus('Playing in its own window. Tap here to bring it back.', false);
+        els.hud.hidden = true;
+        if (!p.chatOn && ws) ws.open('today');
+    }
+    /** A popped-out stream comes back into the page (its window was tapped, or the picture here was). */
+    function plPopBack() {
+        const p = player;
+        if (!p || !p.popped) return;
+        plTakeBack();
+        plSuspend(false);
+    }
+
+    const liveMode = () => { const first = HOST.desktop ? 'hw720' : '480'; try { return localStorage.getItem(LS_MODE) || first; } catch (_) { return first; } };
     const modeLabel = (id) => { const m = ((player && player.modes) || []).find((x) => x.id === id); return m ? m.label : ''; };
 
     function loadHls() {
@@ -1181,7 +1254,7 @@
     /** The stream stopped arriving: ask the server what became of it, then start again or say it ended. */
     async function plLost() {
         const p = player;
-        if (!p || p.state === 'starting') return;
+        if (!p || p.kind === 'yt' || p.state === 'starting') return;
         plDetach();
         plStatus('Reconnecting...', true);
         let st = null;
@@ -1256,7 +1329,9 @@
         clearTimeout(p.retry);
         clearTimeout(p.keyTimer);
         clearInterval(p.clock);
+        chatDrop(p);
         if (page) page.classList.remove('is-full');
+        if (p.kind === 'yt') ytClose(p);
         plDetach();
         plHold(false);
         if (p.id) ask('youtube_live_stop', { id: p.id }, 8000).catch(() => {});
@@ -1272,8 +1347,11 @@
     /** Not in front (or the screen off on a picture mode): stop fetching; back again: carry on at the live edge. */
     function plSuspend(off) {
         const p = player;
+        if (p && p.kind === 'yt') { if (off && !p.paused) ytCmd('pauseVideo'); return; }
         if (!p || p.state !== 'live') return;
         if (off && !p.suspended) { p.suspended = true; clearTimeout(p.retry); plClock(false); plDetach(); plHold(false); } else if (!off && p.suspended) { p.suspended = false; plHold(true); plClock(true); plLost(); }
+        chatSync();
+        plTell();
     }
 
     /** "4 h 27 min" since the stream began (its start time comes with the live item). */
@@ -1289,6 +1367,7 @@
     function plSide() {
         const p = player;
         if (!els || !p) return;
+        if (p.kind === 'yt') { ytSide(); return; }
         const now = liveNow().find((x) => x.id === `kick:${p.slug}`) || (hub.live && hub.live.items || []).find((x) => x.id === `kick:${p.slug}`);
         if (now) { if (now.title) p.streamTitle = now.title; if (now.at) p.startedAt = now.at; p.viewers = now.viewers; p.note = now.note; }
         const up = upText();
@@ -1301,7 +1380,7 @@
     /** The minute tick of "live for": only while the player is on screen. */
     function plClock(on) {
         const p = player;
-        if (!p) return;
+        if (!p || p.kind === 'yt') return;
         clearInterval(p.clock);
         p.clock = null;
         if (on && shown && p.state === 'live') p.clock = setInterval(plSide, 60000); // perf: allow a clock while it shows (stopped with the player and when it is not in front)
@@ -1310,7 +1389,7 @@
     /** The keys over the picture (pause, sound, stop, Kick's app, full screen): a tap shows them, they go by themselves. */
     function plHud(show) {
         if (!els || !player) return;
-        const paused = els.video.paused;
+        const paused = plPaused();
         const live = player.state === 'live';
         clearTimeout(player.keyTimer);
         if (els.hud.hidden === show) els.hud.hidden = !show;
@@ -1321,8 +1400,11 @@
         const tHtml = paused ? I.play : I.pause;
         if (t.dataset.g !== (paused ? 'play' : 'pause')) { t.dataset.g = paused ? 'play' : 'pause'; t.innerHTML = tHtml; t.setAttribute('aria-label', paused ? 'Play' : 'Pause'); }
         const m = els.hud.querySelector('[data-pl="mute"]');
-        const muted = !!els.video.muted;
+        const muted = player.kind === 'yt' ? !!player.muted : !!els.video.muted;
         if (m.dataset.g !== (muted ? 'mute' : 'sound')) { m.dataset.g = muted ? 'mute' : 'sound'; m.innerHTML = muted ? I.mute : I.sound; m.setAttribute('aria-label', muted ? 'Sound on' : 'Sound off'); }
+        const pk = els.hud.querySelector('[data-pl="pop"]');
+        const popOk = player.kind !== 'yt' && canPop();
+        if (pk.hidden === popOk) pk.hidden = !popOk;
         if (show) { plSide(); if (!paused) player.keyTimer = setTimeout(() => { if (els && player) els.hud.hidden = true; }, 4000); }
     }
     const plKey = (show) => plHud(show);
@@ -1330,9 +1412,17 @@
     /** Full screen: the picture over the whole display, bars and all. auto: it was the turn to landscape that asked. */
     function plFull(on, auto) {
         if (!page || !player) return;
+        if (HOST.desktop) {
+            // the desktop's full screen is the browser's (the player element over the whole display)
+            try { if (on && !document.fullscreenElement) els.player.requestFullscreen().catch(() => {}); else if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (_) { /* refused */ }
+            player.full = !!on;
+            chatSync();
+            return;
+        }
         player.full = !!on;
         player.fullAuto = !!on && !!auto;
         page.classList.toggle('is-full', !!on);
+        chatSync();
     }
     // a phone-sized screen turned on its side (the Fold's cover screen, a phone): the picture takes all of it
     function plTurned() {
@@ -1345,6 +1435,7 @@
 
     function plToggle() {
         if (!player || player.state !== 'live' || !els) return;
+        if (player.kind === 'yt') { ytToggle(); return; }
         const v = els.video;
         if (v.paused) {
             // a live stream carries on without us: back at the newest picture, not where it was paused
@@ -1353,24 +1444,329 @@
         } else v.pause();
     }
 
+    // ---------------------------------------------------------------- a YouTube video played here
+    //
+    // YouTube's own embedded player in a frame (youtube-nocookie.com/embed), driven over its message interface:
+    // none of its script runs in this page, and its own controls are off (the keys are the program's). A video
+    // its owner does not let play elsewhere, or one for members, is handed to YouTube itself. The frame is not
+    // signed in, so a video played most of the way here is marked as watched in the account's history
+    // (the same mark as the hold menu's).
+
+    const YT_EMBED = 'https://www.youtube-nocookie.com';
+    function ytCmd(func, args) {
+        const p = player;
+        const f = p && p.frame;
+        if (!f || !f.contentWindow) return;
+        try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args: args || [] }), YT_EMBED); } catch (_) { /* the frame went */ }
+    }
+    const plPaused = () => (player && player.kind === 'yt' ? player.paused !== false : !!(els && els.video.paused));
+    function ytToggle() { ytCmd(player.paused === false ? 'pauseVideo' : 'playVideo'); }
+    function ytSeek(to) { const p = player; const t = Math.max(0, Math.min(to, (p.len || to) - 1)); p.pos = t; ytCmd('seekTo', [t, true]); ytSide(); }
+    function ytSide() {
+        const p = player;
+        if (!els || !p) return;
+        const at = p.len ? `${clock(Math.floor(p.pos || 0))} / ${clock(Math.floor(p.len))}` : '';
+        setText(els.sideTitle, p.streamTitle || 'YouTube');
+        setText(els.sideSub, p.channel || '');
+        setText(els.sideUp, at);
+        setText(els.plUp, at);
+        setText(els.plMode, '');
+    }
+    /** What the frame says: it is ready, its state, where it is. */
+    function ytHear(e) {
+        const p = player;
+        if (!p || p.kind !== 'yt' || !p.frame || e.source !== p.frame.contentWindow || e.origin !== YT_EMBED) return;
+        let d = null;
+        try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (_) { d = null; }
+        if (!d || typeof d !== 'object') return;
+        if (d.event === 'onError') {
+            const id = p.vid;
+            stopPlayer();
+            if (HOST.desktop) box('YouTube does not let this video play outside its own pages (its owner\'s choice, or a video for members).', 'info');
+            else openVideo(id);
+            return;
+        }
+        const info = d.info && typeof d.info === 'object' ? d.info : null;
+        if (!info) return;
+        if (typeof info.duration === 'number' && info.duration > 0) p.len = info.duration;
+        if (typeof info.currentTime === 'number') {
+            const sec = Math.floor(info.currentTime);
+            p.pos = info.currentTime;
+            if (p.len) p.best = Math.max(p.best || 0, (p.pos / p.len) * 100);
+            // the clock is written when its second changes, and only while the keys or the panel show it
+            if (sec !== p.sec) { p.sec = sec; if (shown && (!els.hud.hidden || !p.full)) ytSide(); }
+        }
+        if (typeof info.playerState === 'number' && info.playerState !== p.ytState) {
+            p.ytState = info.playerState;
+            const was = p.paused;
+            p.paused = !(info.playerState === 1 || info.playerState === 3);
+            if (info.playerState === 1) { plStatus('', false); p.started = true; } else if (info.playerState === 3) plStatus('Buffering...', true);
+            if (info.playerState === 0) { p.best = 100; stopPlayer(); return; }
+            if (was !== p.paused) { plHold(!p.paused); plHud(p.paused ? true : !els.hud.hidden); }
+        }
+    }
+    function ytClose(p) {
+        if (p.frame) { p.frame.remove(); p.frame = null; }
+        clearTimeout(p.ytTimer);
+        if (els) { els.frame.hidden = true; els.player.classList.remove('is-yt'); els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = true; }); els.hud.querySelector('[data-pl="chat"]').hidden = false; }
+        // played most of the way: watched, in the account's own history
+        const v = seen.get(p.vid);
+        if ((p.best || 0) >= 60 && isAdmin() && !(v && v.watched)) setWatched(p.vid, true);
+    }
+
+    function watchVideo(v) {
+        const id = String((v && v.id) || '');
+        if (!/^[\w-]{6,20}$/.test(id) || !els) { if (id) openVideo(id); return; }
+        if (player) stopPlayer();
+        player = { kind: 'yt', vid: id, slug: '', channel: v.channel || 'YouTube', streamTitle: v.title || '', title: v.title || '', state: 'live', paused: true, muted: false, pos: 0, len: v.length || 0, modes: [], id: '', url: '', tries: 0 };
+        const p = player;
+        els.player.hidden = false;
+        els.player.classList.add('is-yt');
+        els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = false; });
+        els.hud.querySelector('[data-pl="chat"]').hidden = true;
+        const f = document.createElement('iframe');
+        f.className = 'yt-frame-el';
+        f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+        f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+        f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation');
+        f.title = 'YouTube';
+        f.tabIndex = -1;
+        f.addEventListener('load', () => {
+            // the frame tells its state once it knows somebody listens
+            try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), YT_EMBED); } catch (_) { /* gone */ }
+            ['onStateChange', 'onError'].forEach((name) => ytCmd('addEventListener', [name]));
+        }, { once: true });
+        f.src = `${YT_EMBED}/embed/${encodeURIComponent(id)}?${new URLSearchParams({ enablejsapi: '1', controls: '0', playsinline: '1', autoplay: '1', rel: '0', iv_load_policy: '3', fs: '0', disablekb: '1', origin: location.origin }).toString()}`;
+        p.frame = f;
+        els.frame.textContent = '';
+        els.frame.appendChild(f);
+        els.frame.hidden = false;
+        plStatus('Starting the video...', true);
+        // nothing after a while: the browser wants a touch first, so the play key shows
+        p.ytTimer = setTimeout(() => { if (player === p && !p.started) { plStatus('', false); plHud(true); } }, 6000); // perf: allow one wait for a video to start
+        plChrome();
+        ytSide();
+        syncPlayer();
+    }
+
+    // ---------------------------------------------------------------- a stream's chat (Kick, #919)
+    //
+    // Off until asked for (Yukimi: "we should not show the chat by default due to the data troughput"), and built
+    // not to cost battery: the server sends nothing unless this panel is open and in front (chatSync closes it
+    // with the program, full screen, the floating window and the screen), then one batch at most every 2 seconds;
+    // a batch is one write into a list that only grows at its foot and holds 150 rows; nothing animates. Emote
+    // pictures are fetched once and kept in the program's own cache (CACHE_NAME, which sw.js leaves alone).
+
+    const CACHE_NAME = 'videos-cache-v1';
+    const CHAT_ROWS = 150;
+    const emotes = new Map(); // emote id -> Promise<object URL | ''>
+    const chatOn = () => !!(hub.sources && hub.sources.chat && hub.sources.chat.enabled);
+    const chatLinked = () => !!(hub.sources && hub.sources.chat && hub.sources.chat.linked);
+
+    function emoteSrc(id) {
+        if (emotes.has(id)) return emotes.get(id);
+        const url = `/api/videos/kick/emote/${id}`;
+        const job = (async () => {
+            let res = null;
+            let cache = null;
+            try { cache = await caches.open(CACHE_NAME); res = await cache.match(url); } catch (_) { cache = null; }
+            if (!res) {
+                res = await fetch(url, { credentials: 'same-origin' });
+                if (!res.ok) return '';
+                if (cache) cache.put(url, res.clone()).catch(() => {});
+            }
+            return URL.createObjectURL(await res.blob());
+        })().catch(() => '');
+        emotes.set(id, job);
+        return job;
+    }
+
+    /** A message's text as markup: emotes ([emote:<id>:<NAME>]) become pictures, with the name until they arrive. */
+    function chatText(text) {
+        let out = '';
+        let at = 0;
+        const re = /\[emote:(\d{1,12}):([^\]\s]{1,40})\]/g;
+        let m;
+        while ((m = re.exec(text))) {
+            out += `${esc(text.slice(at, m.index))}<span class="yt-emote-w" data-e="${m[1]}">${esc(m[2])}</span>`;
+            at = m.index + m[0].length;
+        }
+        return out + esc(text.slice(at));
+    }
+    const BADGE = { broadcaster: 'host', moderator: 'mod', subscriber: 'sub', vip: 'vip', og: 'og', founder: 'founder', verified: 'verified', sub_gifter: 'gifter' };
+    function chatRow(m) {
+        const tags = (m.badges || []).map((b) => BADGE[b]).filter(Boolean).map((b) => `<i class="yt-chat-tag">${b}</i>`).join('');
+        // the name's own colour, lightened so a dark one still reads on the dark panel
+        const tint = /^#[0-9a-fA-F]{6}$/.test(m.color || '') ? ` data-c="${m.color}"` : '';
+        return `<div class="yt-chat-row">${tags}<b${tint}>${esc(m.name)}</b> ${chatText(String(m.text || ''))}</div>`;
+    }
+
+    function chatAppend(messages, skipped) {
+        const list = els.chatList;
+        const p = player;
+        let html = skipped > 0 ? `<div class="yt-chat-row is-note">${skipped} more went by</div>` : '';
+        html += messages.map(chatRow).join('');
+        if (!html) return;
+        list.insertAdjacentHTML('beforeend', html);
+        let over = list.childElementCount - CHAT_ROWS;
+        while (over-- > 0) list.firstElementChild.remove();
+        list.querySelectorAll('b[data-c]').forEach((b) => { b.style.color = `color-mix(in srgb, ${b.dataset.c} 72%, white)`; b.removeAttribute('data-c'); });
+        // the name stands in until the picture is there (from the program's cache after the first time)
+        list.querySelectorAll('span.yt-emote-w').forEach((w) => {
+            w.className = 'yt-emote-t';
+            emoteSrc(w.dataset.e).then((u) => {
+                if (!u || !w.isConnected) return;
+                const img = new Image();
+                img.className = 'yt-emote';
+                img.alt = w.textContent;
+                img.draggable = false;
+                img.decoding = 'async';
+                img.src = u;
+                w.replaceWith(img);
+            });
+        });
+        if (!p || p.chatStick !== false) list.scrollTop = list.scrollHeight;
+    }
+
+    function chatTake(batch) {
+        const p = player;
+        if (!els || !p || !p.chatOpen || !batch || batch.slug !== p.slug || !Array.isArray(batch.messages)) return;
+        chatAppend(batch.messages, Number(batch.skipped) || 0);
+    }
+
+    /** Should the server be sending chat right now? Only while its panel can be seen. */
+    const chatWanted = () => { const p = player; return !!(p && p.kind !== 'yt' && p.chatOn && shown && !p.full && (p.popped || (!p.suspended && !p.handed)) && p.state === 'live' && screenOn()); };
+
+    function chatLayout() {
+        const p = player;
+        const on = !!(p && p.chatOn);
+        if (!els) return;
+        els.player.classList.toggle('has-chat', on);
+        if (els.chat.hidden === on) els.chat.hidden = !on;
+        const canSend = on && chatLinked() && isAdmin();
+        if (els.chatForm.hidden === canSend) els.chatForm.hidden = !canSend;
+        const k = els.hud.querySelector('[data-pl="chat"]');
+        if (k) { k.classList.toggle('is-on', on); k.setAttribute('aria-pressed', String(on)); }
+    }
+
+    /** Opens or closes the server's sending to match what is on screen. */
+    async function chatSync() {
+        const p = player;
+        if (!p || !els) return;
+        chatLayout();
+        const want = chatWanted();
+        if (want === !!p.chatOpen || p.chatBusy) return;
+        p.chatBusy = true;
+        try {
+            if (want) {
+                const d = await ask('youtube_chat_open', { slug: p.slug }, 15000);
+                if (player !== p) { ask('youtube_chat_close', { slug: p.slug }, 8000).catch(() => {}); return; }
+                p.chatOpen = true;
+                els.chatList.textContent = '';
+                p.chatStick = true;
+                chatAppend(d.messages || [], 0);
+                if (!els.chatList.childElementCount) els.chatList.innerHTML = '<div class="yt-chat-row is-note">Chat shows here as people write.</div>';
+            } else {
+                p.chatOpen = false;
+                await ask('youtube_chat_close', { slug: p.slug }, 8000).catch(() => {});
+            }
+        } catch (e) {
+            if (player === p) { p.chatOn = false; chatLayout(); refreshKeys(); box(failText(e, 'Chat could not be opened'), 'info'); }
+        } finally {
+            p.chatBusy = false;
+        }
+        // what is wanted changed while the server was answering
+        if (player === p && chatWanted() !== !!p.chatOpen) chatSync();
+    }
+
+    function chatToggle() {
+        const p = player;
+        if (!p) return;
+        if (p.kind === 'yt') return;
+        if (!p.chatOn && !chatOn()) { box('Chat is switched off. Switch it on under Channels > Kick > Chat.', 'info'); return; }
+        p.chatOn = !p.chatOn;
+        if (p.chatOn && p.full) plFull(false);
+        refreshKeys();
+        chatSync();
+    }
+
+    /** The player is going: the server stops sending for it. */
+    function chatDrop(p) {
+        if (p.chatOpen) ask('youtube_chat_close', { slug: p.slug }, 8000).catch(() => {});
+        p.chatOpen = false;
+        p.chatOn = false;
+        if (els) { els.player.classList.remove('has-chat'); els.chat.hidden = true; els.chatList.textContent = ''; els.chatQ.value = ''; const k = els.hud.querySelector('[data-pl="chat"]'); if (k) k.classList.remove('is-on'); }
+    }
+
+    let chatSending = false;
+    async function chatSend() {
+        const p = player;
+        const text = els.chatQ.value.trim();
+        if (!p || !text || chatSending) return;
+        chatSending = true;
+        try {
+            await ask('youtube_chat_send', { slug: p.slug, text }, 15000);
+            if (els.chatQ.value.trim() === text) els.chatQ.value = '';
+        } catch (e) {
+            box(failText(e, 'The message could not be sent'), 'info');
+        } finally {
+            chatSending = false;
+        }
+    }
+
+    async function chatSetup(on) {
+        if (!isAdmin()) { box('Only the administrator can change chat.', 'info'); return; }
+        try {
+            const d = await ws.busy(ask('youtube_chat_setup', { on }), { delay: 250 });
+            hub.sources.chat = { enabled: !!d.chat.enabled, linked: !!d.chat.linked };
+            changed();
+            if (on && d.chat.webhookUrl) box(`Chat is on. Kick delivers it to this server, so the Kick developer app (the one whose key is under Service keys > Kick) needs:\n\nWebhooks: on\nWebhook URL: ${d.chat.webhookUrl}\nRedirect URL: ${d.chat.redirectUrl}\nScopes: events:subscribe, chat:write`, 'info');
+        } catch (e) {
+            box(failText(e, 'The setting could not be saved'));
+        }
+    }
+
+    async function chatLink() {
+        if (!isAdmin()) { box('Only the administrator can link an account.', 'info'); return; }
+        try {
+            if (chatLinked()) {
+                const d = await ws.busy(ask('youtube_chat_unlink', {}), { delay: 250 });
+                hub.sources.chat = { enabled: !!d.chat.enabled, linked: !!d.chat.linked };
+                changed();
+                return;
+            }
+            const d = await ws.busy(ask('youtube_chat_link', {}), { delay: 250 });
+            openUrl(d.url, false);
+        } catch (e) {
+            box(failText(e, 'The sign-in could not be started'));
+        }
+    }
+
     function wirePlayer() {
         const v = els.video;
+        window.addEventListener('message', ytHear, { signal: appScopeSignal });
+        if (HOST.desktop) document.addEventListener('fullscreenchange', () => { if (player) { player.full = document.fullscreenElement === els.player; chatSync(); refreshKeys(); } }, { signal: appScopeSignal });
+        els.chatForm.addEventListener('submit', (e) => { e.preventDefault(); chatSend(); });
+        els.chatList.addEventListener('scroll', () => { const l = els.chatList; if (player) player.chatStick = l.scrollHeight - l.scrollTop - l.clientHeight < 40; }, { passive: true });
         els.player.addEventListener('click', (e) => {
             const k = e.target.closest('[data-pl]');
-            if (!k) { if (e.target.closest('.yt-stage')) plHud(els.hud.hidden); return; }
+            if (!k) { if (e.target.closest('.yt-stage')) { if (player && player.popped) plPopBack(); else plHud(els.hud.hidden); } return; }
             const p = player;
             if (!p) return;
             const act = k.dataset.pl;
             if (act === 'toggle') plToggle();
-            else if (act === 'mute') { els.video.muted = !els.video.muted; plHud(true); }
+            else if (act === 'mute') { if (p.kind === 'yt') { p.muted = !p.muted; ytCmd(p.muted ? 'mute' : 'unMute'); } else els.video.muted = !els.video.muted; plHud(true); }
+            else if (act === 'back' || act === 'fwd') { if (p.kind === 'yt') { ytSeek((p.pos || 0) + (act === 'back' ? -10 : 10)); plHud(true); } }
             else if (act === 'stop') stopPlayer();
-            else if (act === 'kick') { const u = p.kickUrl; stopPlayer(); openUrl(u, true, KICK_PACKAGE); }
+            else if (act === 'kick') { if (p.kind === 'yt') { const id = p.vid; stopPlayer(); openVideo(id); } else { const u = p.kickUrl; stopPlayer(); openUrl(u, true, KICK_PACKAGE); } }
             else if (act === 'full') { plFull(!p.full); plHud(true); }
+            else if (act === 'chat') { chatToggle(); plHud(true); }
+            else if (act === 'pop') plPop();
         });
         try { if (window.screen && screen.orientation) screen.orientation.addEventListener('change', plTurned, { signal: appScopeSignal }); } catch (_) { /* no orientation API */ }
         window.addEventListener('resize', plTurned, { signal: appScopeSignal });
-        v.addEventListener('playing', () => { if (player && player.state === 'live') { player.tries = 0; plStatus('', false); } plHud(!els.hud.hidden); });
-        v.addEventListener('pause', () => plHud(true));
+        v.addEventListener('playing', () => { if (player && player.state === 'live') { player.tries = 0; plStatus('', false); } plHud(!els.hud.hidden); plTell(); });
+        v.addEventListener('pause', () => { plHud(true); plTell(); });
         v.addEventListener('waiting', () => { if (player && player.state === 'live') plStatus('Buffering...', true); });
         v.addEventListener('error', () => { if (player && !player.hls && player.state === 'live') plLost(); });
         // news from the app's native player: it took the stream (another Android app came up), its floating
@@ -1380,12 +1776,12 @@
             const st = e && e.detail && e.detail.state;
             if (!p || !st) return;
             if (st === 'handed') { p.handed = true; plSuspend(true); }
-            else if (st === 'open') { if (ws) ws.open(APP_ID); }
-            else if (p.handed) { p.handed = false; if (st === 'ended') { plStatus('The stream has ended.', false); p.state = 'ended'; plTell(); refreshKeys(); } else stopPlayer(); }
+            else if (st === 'open') { if (ws) ws.open(APP_ID); if (shown) plPopBack(); }
+            else if (p.handed) { p.handed = false; p.popped = false; if (st === 'ended') { plStatus('The stream has ended.', false); p.state = 'ended'; plTell(); refreshKeys(); } else stopPlayer(); }
         }, { signal: appScopeSignal });
         // back in the app with this program still in front (the app had handed the stream over when it was left)
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden || !shown || !player) return;
+            if (document.hidden || !shown || !player || player.popped) return;
             const nv = nativePlayer();
             let active = false;
             try { active = !!nv && nv.isActive() === true; } catch (_) { active = false; }
@@ -1428,10 +1824,24 @@
 
     function playerKeys() {
         const p = player;
+        if (p.kind === 'yt') {
+            return {
+                left: { label: HOST.desktop ? 'Stop' : 'YouTube', action: () => { const id = p.vid; stopPlayer(); if (!HOST.desktop) openVideo(id); } },
+                right: { label: 'Menu', menu: () => [
+                    { label: 'Full Screen', checked: !!p.full, action: () => plFull(!p.full) },
+                    { label: 'Mark as Watched', disabled: !isAdmin(), action: () => { const id = p.vid; stopPlayer(); setWatched(id, true); } },
+                    { label: 'Add to Watch Later', disabled: !isAdmin(), action: () => setLater(p.vid, true) },
+                    '-',
+                    { label: HOST.desktop ? 'Open on youtube.com' : 'Play in YouTube', action: () => { const id = p.vid; stopPlayer(); openVideo(id); } },
+                    { label: 'Stop', action: stopPlayer }
+                ] }
+            };
+        }
         const live = p.state === 'live';
         return {
             left: { label: 'Quality', disabled: p.state === 'starting', menu: qualityMenu },
             right: { label: 'Menu', menu: () => [
+                { label: 'Chat', checked: !!p.chatOn, action: chatToggle },
                 { label: 'Full Screen', checked: !!p.full, action: () => plFull(!p.full) },
                 { label: 'Try Again', disabled: p.state === 'starting', action: () => plStart(p.mode) },
                 '-',
@@ -1516,15 +1926,17 @@
             const t = data.subs;
             if (t.feedStale && signedIn() && t.videos && !t.loading) { t.feedStale = false; loadTab('subs', false, true); }
             if (pendingWatch) { const v = pendingWatch; pendingWatch = null; watchLive(v); }
-            if (player) { syncPlayer(); plTakeBack(); plSuspend(false); plClock(true); }
+            if (player) { syncPlayer(); plTakeBack(); plSuspend(false); plClock(true); chatSync(); }
         },
         hide() {
             shown = false;
             if (els) els.q.blur();
             // the program is left with a stream playing: the app's native player carries it on (a floating window, or sound)
             const nv = nativePlayer();
-            if (player && player.state === 'live' && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } }
-            plSuspend(true);
+            if (player && player.kind !== 'yt' && player.state === 'live' && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } }
+            if (!(player && player.popped)) plSuspend(true);
+            chatSync();
+            plTell();
             void syncHub();
         },
         historyDepth: () => (player ? 1 : 0) + (layer ? 1 : 0),
@@ -1671,7 +2083,7 @@
     // ---------------------------------------------------------------- register
 
     function register() {
-        ws = window.wmShell;
+        ws = HOST.desktop ? window.videosDesktopShell : window.wmShell;
         if (!ws) return;
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
@@ -1688,6 +2100,6 @@
         reload: () => loadTab(tab, true)
     };
 
-    if (window.wmShell) register();
+    if (HOST.desktop || window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });
 })();

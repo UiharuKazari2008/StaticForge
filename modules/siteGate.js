@@ -128,6 +128,10 @@ function isSiteGateExempt(req, globalResources) {
     if (method === 'POST' && p === '/') return hasClientKnock(req);
     if (method === 'GET' && p === '/sw.js') return hasClientKnock(req);
 
+    // Melaton Videos' Kick chat (#919): Kick's webhook while chat is switched on (every delivery's signature is
+    // checked there, anything else gets the cover's 404), and a Kick sign-in answer this server is waiting for
+    try { if (require('./videosKickChat').gateExempt(method, p, req.query)) return true; } catch (_e) { /* not loaded: the cover */ }
+
     // /site-homepage-preview is mounted ahead of the gate and answers only with its ticket or
     // preview cookie; anything else falls through to the cover (siteHomepagePreviewAccess).
 
@@ -711,5 +715,6 @@ module.exports = {
     CLIENT_HEADER,
     gateStatusForRequest,
     handleGatewayUnlock,
+    sendNginxError,
     doorFailByIp
 };
