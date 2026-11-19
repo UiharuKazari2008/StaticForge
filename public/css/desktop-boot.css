@@ -209,7 +209,10 @@ body.vista-logon #desktopPreStartupModal {
     padding: 0;
     border: 0;
     border-radius: 0;
-    box-shadow: none;
+    /* LogonUI has no frame: live glass gives every active window its inner highlight (white top / left, cyan right /
+       bottom: vista-glass-controls.css --aero-frame-highlight) on the box-shadow, with three ids in its selector; on
+       the full-screen Welcome screen that drew a 1 px frame round the whole screen (Yukimi, Nov 19) */
+    box-shadow: none !important;
     transform: none;
     animation: none;
     -webkit-backdrop-filter: none;
