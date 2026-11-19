@@ -3709,6 +3709,8 @@ class ServiceWorkerManager {
                 console.log('Download completed:', event.data);
                 
                 const filesCount = event.data.total > 0 ? event.data.total : (event.data.files ? event.data.files.length : 0);
+                // this page joined the download (attachToDownloadProgress): it is this page's, whenever it began
+                const attached = !!this._activeDownloadAttach;
                 if (this._activeDownloadAttach) {
                     this._activeDownloadAttach({
                         success: filesCount >= 0,
@@ -3718,7 +3720,15 @@ class ServiceWorkerManager {
                         hasErrors: false
                     });
                 }
-                if (filesCount > 0) {
+                // a download that began before this page loaded (the previous page's: a shutdown install or a
+                // check the restart cut short) is not news here: this page started on the cache it left, and its
+                // boot check found anything still missing. Taking it as an update showed "N files, restart"
+                // straight after a restart, for files already installed and running (Continuity, #945)
+                const leftover = Number(event.data.startedAt) > 0 && typeof performance !== 'undefined'
+                    && Number(event.data.startedAt) < performance.timeOrigin;
+                if (leftover && !attached) {
+                    console.log('Download completed: it began before this page loaded; not an update for it', event.data.total);
+                } else if (filesCount > 0) {
                     this._processStaticCacheComplete(event.data);
                 } else {
                     console.log('Download completed but no files were downloaded');

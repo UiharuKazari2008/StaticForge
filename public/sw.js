@@ -2800,6 +2800,9 @@ async function cacheStaticFiles(files, silent = false) {
         const totalCount = downloadState.total > 0 ? downloadState.total : files.length;
         const updatedFiles = downloadState.updatedFiles.slice();
         const wasSilent = downloadState.silent === true;
+        // when it began: a page that loaded after that (a restart that did not wait for the download, #945)
+        // knows it is not a new update for it - its own boot check judged the cache
+        const startedAt = downloadState.startTime || 0;
         const absent = (downloadState.absentFiles || [])
             .filter((entry) => entry.reason === '404')
             .map((entry) => entry.url);
@@ -2814,7 +2817,8 @@ async function cacheStaticFiles(files, silent = false) {
                     total: totalCount,
                     updatedFiles: updatedFiles,
                     silent: wasSilent,
-                    absent: absent
+                    absent: absent,
+                    startedAt: startedAt
                 });
             });
         });

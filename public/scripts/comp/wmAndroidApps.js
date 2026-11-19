@@ -646,8 +646,17 @@
     // have their icons on a boot with the server down (Yukimi, Nov 18 2026); one at a time, when the page is idle,
     // once per picture name per visit
     const warmed = new Set();
+    // a store icon is a set name (/static_images/wm-android/<name>, no extension, wmShell's WM_SET): the files the
+    // shell draws are <name>.png / @2x / @4x and the -lg sizes, by the srcset's density. Fetching the bare name was a
+    // 404 at every boot - never kept, so nothing showed offline (#945)
+    function drawnFiles(set) {
+        const dpr = window.devicePixelRatio || 1;
+        const tail = dpr > 2 ? '@4x.png' : dpr > 1 ? '@2x.png' : '.png';
+        return /^\/static_images\/wm-android\/[a-z0-9_-]+$/.test(set) ? [`${set}${tail}`, `${set}-lg${tail}`] : [set];
+    }
     function warmIcons() {
-        const urls = Object.values(store.icons || {}).map((v) => v && v.icon).filter((u) => u && !warmed.has(u));
+        const urls = Object.values(store.icons || {}).map((v) => v && v.icon).filter(Boolean)
+            .flatMap(drawnFiles).filter((u) => !warmed.has(u));
         if (!urls.length) return;
         const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500));
         const next = () => {
