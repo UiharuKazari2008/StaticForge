@@ -13,9 +13,9 @@
  * menuItems(), onMenuAction(action, item) }). tabVolume.onChange(fn) hears the master level (an
  * app scales its own stream by masterGain(), which an iframe's audio would otherwise escape).
  *
- * DreamOS (#932): the slider and the speaker button are the computer's own volume and mute
- * (window.DreamOSAudio, the CaféReady host through PipeWire), and the volume keys' changes come
- * back as 'dreamosaudio' events. The tab's own level then stays at full (the hardware turns it
+ * With a volume tray provider (#932, docs/client-api/tray-providers.md: DreamOS's CaféReady host
+ * through PipeWire, the Android app's desktop shell) the slider and the speaker button are the
+ * computer's own volume and mute, and changes made elsewhere (the volume keys) come back pushed. The tab's own level then stays at full (the hardware turns it
  * down), and nothing is kept in localStorage. Elsewhere it is the tab's volume, as before.
  */
 (function () {
@@ -28,11 +28,15 @@
     let flyout = null;
     const sources = [];
     const changeListeners = [];
-    // the computer's volume (DreamOS), or null: the tab's own
-    const hwAudio = (() => {
-        const a = window.DreamOSAudio;
-        return a && typeof a.get === 'function' && typeof a.set === 'function' && window.uiShell !== 'mobile' ? a : null;
-    })();
+    // the computer's volume (a tray provider: DreamOS, the Android app's desktop), or null: the tab's own.
+    // trayProviders.js loads before this file; a provider registered later takes over through onChange.
+    let hwAudio = null;
+    function volumeProvider() {
+        const t = window.melatonTray;
+        const p = t && window.uiShell !== 'mobile' ? t.provider('volume') : null;
+        return p && typeof p.get === 'function' && typeof p.set === 'function' ? p : null;
+    }
+    hwAudio = volumeProvider();
     let hwSending = false;
     let hwWanted = null;
 
@@ -439,7 +443,16 @@
     readStored();
     writeStored();
     applyMaster();
-    if (hwAudio) window.addEventListener('dreamosaudio', (e) => hwApply(e && e.detail), { signal: appScopeSignal });
+    if (window.melatonTray) {
+        const off = window.melatonTray.onChange('volume', (st) => {
+            const was = hwAudio;
+            hwAudio = volumeProvider();
+            if (!hwAudio) return;
+            if (!was) applyMaster();
+            hwApply(st);
+        });
+        if (appScopeSignal) appScopeSignal.addEventListener('abort', off, { once: true });
+    }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', wireIcon);
     } else {

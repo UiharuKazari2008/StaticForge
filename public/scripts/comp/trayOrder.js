@@ -25,6 +25,8 @@
     const LOCAL_KEY = 'desktop-tray-order';
     const DRAG_PX = 4;
     const ID_RE = /^[A-Za-z][\w-]{0,63}$/;
+    // the icons that stay at the right, next to the clock, by default: Nightshade, then Vista's Power, Network, Volume
+    const SYSTEM_RIGHT = ['nightshadeTrayIcon', 'powerTrayIcon', 'modemTrayIcon', 'volumeTrayIcon'];
 
     let defaults = null;   // app.html's order, read once
     let saved = null;      // the user's order (ids), or null for the default
@@ -71,7 +73,11 @@
         if (!b) return;
         if (!defaults) defaults = icons(b).map((el) => el.id);
         const known = icons(b).map((el) => el.id);
-        defaults = defaults.concat(known.filter((id) => !defaults.includes(id)));
+        // an icon a program adds later (appended at the end) takes its place left of the system icons, as on Vista
+        known.filter((id) => !defaults.includes(id)).forEach((id) => {
+            const at = defaults.findIndex((d) => SYSTEM_RIGHT.includes(d));
+            defaults.splice(at < 0 ? defaults.length : at, 0, id);
+        });
         const want = merged(saved || defaults, defaults).filter((id) => known.includes(id));
         const now = icons(b);
         if (now.map((el) => el.id).join('|') === want.join('|')) return;
@@ -177,6 +183,13 @@
         const b = box();
         if (!b || b.dataset.trayOrder === '1') return;
         b.dataset.trayOrder = '1';
+        // a tray icon added later goes to its place (only icons coming in count; the moves here are re-inserts)
+        let pending = false;
+        new MutationObserver((list) => {
+            if (pending || !list.some((m) => Array.from(m.addedNodes).some((n) => n.nodeType === 1 && n.classList.contains('taskbar-tray-icon') && n.id && !(defaults || []).includes(n.id)))) return;
+            pending = true;
+            Promise.resolve().then(() => { pending = false; layout(); });
+        }).observe(b, { childList: true });
         b.addEventListener('pointerdown', onDown);
         b.addEventListener('pointermove', onMove);
         b.addEventListener('pointerup', (ev) => end(ev, false));

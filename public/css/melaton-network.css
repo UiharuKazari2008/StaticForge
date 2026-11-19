@@ -685,40 +685,42 @@
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-map-line {
+    /* Vista's map link (netcenter, measured on the VM): two 1 px green lines, 1 px apart */
     width: 100%;
-    height: 0;
-    border-top: 3px solid #5aa55a;
+    height: 1px;
+    border: solid #7ebc5f;
+    border-width: 1px 0;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-map-link--unknown .cpl-map-line {
-    border-top: 3px dashed #b0b0b0;
+    border: dashed #b0b0b0;
+    border-width: 1px 0;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-map-link--busy .cpl-map-line {
-    border-top: 3px dashed #5aa55a;
+    border: dashed #7ebc5f;
+    border-width: 1px 0;
     /* perf: allow status: a network map link flashes only while traffic is busy on it (--busy) */
     animation: cpl-map-busy 1s linear infinite;
 }
 
 @keyframes cpl-map-busy {
-    50% { border-top-color: #b6d9b6; }
+    50% { border-color: #b6d9b6; }
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-map-link--down .cpl-map-line {
-    border-top: 3px solid #b0b0b0;
+    border: solid #b0b0b0;
+    border-width: 1px 0;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-map-x {
+    /* Vista's broken-link mark: netcenter.dll icon 16 (red X), 16 px; 17 (warning) for local only */
     position: absolute;
     left: 50%;
     top: 50%;
+    width: 16px;
+    height: 16px;
     transform: translate(-50%, -50%);
-    padding: 0 3px;
-    background: #ffffff;
-    color: #d01010;
-    font-size: 18px;
-    font-weight: 700;
-    line-height: 1;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-box {
@@ -995,6 +997,14 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.network-flyout-bars {
+    /* the wireless network's signal (pnidui.dll 13-18), beside its name */
+    width: 16px;
+    height: 16px;
+    margin-left: 6px;
+    vertical-align: -3px;
 }
 
 .network-flyout-sub {
