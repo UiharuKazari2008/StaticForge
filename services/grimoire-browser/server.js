@@ -1183,7 +1183,32 @@ const LOAD_STAGES = { commit: 0.3, DOMContentLoaded: 0.6, firstContentfulPaint: 
 function noteLoadProgress(session, value) {
     if (value <= (session.loadProgress || 0)) return;
     session.loadProgress = value;
-    broadcast(session, { type: 'progress', value });
+    broadcast(session, { type: 'progress', value, bytes: session.loadBytes || 0 });
+}
+
+// Bytes a page load has brought in, for Internet Explorer on the phone ("3688 KB" beside its meter, as the
+// device counts): the Network domain on this session only while the main frame loads, at most 4 reports a second
+function countLoadBytes(session, on) {
+    if (on === !!session.byteCount) return;
+    if (!on) {
+        session.byteCount = false;
+        clearTimeout(session.bytesTimer);
+        session.bytesTimer = 0;
+        session.cdp.send('Network.disable').catch(() => {});
+        return;
+    }
+    session.byteCount = true;
+    session.cdp.send('Network.enable', { maxTotalBufferSize: 0, maxResourceBufferSize: 0 }).catch(() => {});
+}
+
+function noteLoadBytes(session, n) {
+    if (!session.byteCount || !(n > 0)) return;
+    session.loadBytes = (session.loadBytes || 0) + n;
+    if (session.bytesTimer) return;
+    session.bytesTimer = setTimeout(() => {
+        session.bytesTimer = 0;
+        if (session.byteCount && sessions.get(session.id)) broadcast(session, { type: 'progress', value: session.loadProgress || 0, bytes: session.loadBytes });
+    }, 250);
 }
 
 function endNavigating(session) {
@@ -2556,6 +2581,8 @@ async function createSession(body, adoptedPage) {
     cdp.on('Page.frameStartedLoading', (ev) => {
         if (!sessions.get(id) || !mainFrameEvent(ev)) return;
         session.loadProgress = 0;
+        session.loadBytes = 0;
+        countLoadBytes(session, true);
         noteLoadProgress(session, 0.1);
         beginNavigating(session, false);
     });
@@ -2569,8 +2596,11 @@ async function createSession(body, adoptedPage) {
         if (ev.name === 'DOMContentLoaded' || ev.name === 'load') publishFeeds(session).catch(() => {});
     });
 
+    cdp.on('Network.dataReceived', (ev) => noteLoadBytes(session, Number(ev.encodedDataLength) || Number(ev.dataLength) || 0));
+
     cdp.on('Page.frameStoppedLoading', async (ev) => {
         if (!sessions.get(id) || !mainFrameEvent(ev)) return;
+        countLoadBytes(session, false);
         noteLoadProgress(session, 1);
         try { session.title = await page.title(); } catch (_) {}
         endNavigating(session);
@@ -2657,7 +2687,7 @@ async function onViewerMessage(session, raw) {
     const page = session.page;
     // A mobile page with no viewport meta is drawn smaller (pageScaleFactor under 1): the viewer's positions are
     // the picture's, Chromium's pointer positions are in the page's own CSS pixels (wheel distances are not).
-    if (session.viewKind === 'mobile' && (msg.type === 'mouse' || msg.type === 'wheel' || msg.type === 'inspect')) {
+    if (session.viewKind === 'mobile' && (msg.type === 'mouse' || msg.type === 'wheel' || msg.type === 'inspect' || msg.type === 'touch')) {
         const pageScale = Number(session.meta && session.meta.pageScaleFactor) || 1;
         if (Math.abs(pageScale - 1) > 0.001) {
             for (const key of ['x', 'y']) {
@@ -2851,6 +2881,31 @@ async function onViewerMessage(session, raw) {
         await session.cdp.send('Page.navigateToHistoryEntry', { entryId: entry.id }).catch((err) => {
             console.error('[grimoire-browser] history', err && err.message);
         });
+        return;
+    }
+    // A finger on the phone's page (Internet Explorer on the phone, mobile view): real touches, so the page gets
+    // its own drags, holds and swipes and Chromium scrolls and flings it as a phone would. Device times from the
+    // viewer keep a burst that arrived late from flinging too hard: each event keeps its gap from the touch start.
+    if (msg.type === 'touch') {
+        const x = Number(msg.x);
+        const y = Number(msg.y);
+        const kinds = { start: 'touchStart', move: 'touchMove', end: 'touchEnd', cancel: 'touchCancel' };
+        const type = kinds[msg.kind];
+        if (!type || !Number.isFinite(x) || !Number.isFinite(y)) return;
+        if (session.viewKind !== 'mobile') return;
+        const t = Number(msg.t) || 0;
+        if (msg.kind === 'start') session.touchBase = { at: Date.now() / 1000, t, last: 0 };
+        const base = session.touchBase || (session.touchBase = { at: Date.now() / 1000, t, last: 0 });
+        const timestamp = Math.max(base.last + 0.001, base.at + Math.max(0, t - base.t) / 1000);
+        base.last = timestamp;
+        session.wheelAt = null;
+        const points = type === 'touchEnd' || type === 'touchCancel' ? [] : [{ x, y, id: 0, radiusX: 4, radiusY: 4, force: 1 }];
+        await session.cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points, modifiers: 0, timestamp });
+        if (type === 'touchEnd' && msg.tap) {
+            followChromeLink(session, x, y).catch(() => {});
+            checkClipboardSoon(session);
+        }
+        if (type === 'touchEnd' || type === 'touchCancel') session.touchBase = null;
         return;
     }
     if (msg.type === 'mouse') {
@@ -3374,6 +3429,7 @@ function attachViewer(ws, session) {
             (preview.type === 'mouse' && (preview.kind === 'down' || preview.kind === 'up' || preview.kind === 'click'))
             || (preview.type === 'key' && preview.kind === 'down')
             || preview.type === 'wheel'
+            || (preview.type === 'touch' && preview.kind !== 'move')
         );
         if (gesture) releaseFramePace(session);
         // the person did something: the next still comes soon again, however busy the page was
@@ -3383,6 +3439,22 @@ function attachViewer(ws, session) {
         }
         if (preview && (preview.type === 'dialog-reply' || preview.type === 'file-chooser-reply' || preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'still-ack' || preview.type === 'inspect' || preview.type === 'copy')) {
             onViewerMessage(session, raw).catch((err) => {
+                console.error('[grimoire-browser] input', err && err.message);
+            });
+            return;
+        }
+        if (preview && preview.type === 'touch' && preview.kind === 'move') {
+            // a finger's moves: only the newest waits its turn (each carries its own device time)
+            session.pendingTouch = raw;
+            if (session.touchQueued) return;
+            session.touchQueued = true;
+            session.inputChain = session.inputChain.then(() => {
+                session.touchQueued = false;
+                const pending = session.pendingTouch;
+                session.pendingTouch = null;
+                if (pending) return onViewerMessage(session, pending);
+            }).catch((err) => {
+                session.touchQueued = false;
                 console.error('[grimoire-browser] input', err && err.message);
             });
             return;

@@ -84,7 +84,8 @@
   var moveTimer = 0;
 
   function isGesture(obj) {
-    return obj && obj.type === 'mouse' && (obj.kind === 'down' || obj.kind === 'up' || obj.kind === 'click');
+    return obj && ((obj.type === 'mouse' && (obj.kind === 'down' || obj.kind === 'up' || obj.kind === 'click'))
+      || (obj.type === 'touch' && obj.kind !== 'move'));
   }
 
   function dropQueuedMoves() {
@@ -130,6 +131,14 @@
           pumpOutbound();
           return;
         }
+      }
+    }
+    if (obj.type === 'touch' && obj.kind === 'move') {
+      var last = outbound[outbound.length - 1];
+      if (last && last.type === 'touch' && last.kind === 'move') {
+        outbound[outbound.length - 1] = obj;
+        pumpOutbound();
+        return;
       }
     }
     if (obj.type === 'wheel' || obj.type === 'scroll-to') {
@@ -426,7 +435,7 @@
     } else if (msg.type === 'download-progress') {
       postParent({ type: 'grimoire-browser-download-progress', id: msg.id || '', filename: msg.filename || 'download', received: msg.received || 0, total: msg.total || 0, canceled: !!msg.canceled });
     } else if (msg.type === 'progress') {
-      postParent({ type: 'grimoire-browser-progress', value: Number(msg.value) || 0 });
+      postParent({ type: 'grimoire-browser-progress', value: Number(msg.value) || 0, bytes: Number(msg.bytes) || 0 });
     } else if (msg.type === 'download' && window.parent && window.parent !== window) {
       window.parent.postMessage({
         type: 'grimoire-browser-download',
@@ -956,6 +965,15 @@
       });
     } else if (data.type === 'grimoire-browser-scroll-to' && typeof data.y === 'number') {
       send(typeof data.x === 'number' ? { type: 'scroll-to', y: data.y, x: data.x } : { type: 'scroll-to', y: data.y });
+    } else if (data.type === 'grimoire-browser-touch' && /^(start|move|end|cancel)$/.test(data.kind)
+      && typeof data.x === 'number' && typeof data.y === 'number') {
+      // a finger on the phone's page (Internet Explorer on the phone): x, y in this window's CSS pixels
+      if (data.kind === 'start') {
+        playAudio();
+        if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'grimoire-browser-focus' }, '*');
+      }
+      var tp = mapPoint({ clientX: data.x, clientY: data.y });
+      send({ type: 'touch', kind: data.kind, x: tp.x, y: tp.y, t: Number(data.t) || 0, tap: !!data.tap });
     } else if (data.type === 'grimoire-browser-history' && (data.dir === 1 || data.dir === -1)) {
       historyGo(data.dir);
     } else if (data.type === 'grimoire-browser-file-chooser-reply' && typeof data.id === 'string') {

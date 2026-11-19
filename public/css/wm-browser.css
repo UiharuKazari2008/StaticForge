@@ -1072,26 +1072,101 @@
     user-select: none;
 }
 
-/* busy ring: browsres bitmap 4597, 18 frames of 22 px (44 at 2x), top right of the page */
-.wm-browser .wmb-busy {
+/* loading (6.1): the device's status strip (MSPIE Status, 46 px of the VGA screen) over the page's bottom,
+ * measured on the Device Emulator loading a 3.7 MB page: a 1 px black rule, the button face colour,
+ * "Connecting..." until the first bytes, then "<n> KB" at x 10 and a meter at x 145 .. 424, y 9 .. 38 (2 px
+ * black frame, 3 px white, the fill in the highlight colour), a 2 px black line at x 433 and the busy ring in
+ * the white 44 px cell at the right. Gone when the page has loaded. */
+.wm-browser .wmb-status {
     display: none;
     position: absolute;
     z-index: 2;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(23 * var(--wm-px));
+    box-sizing: border-box;
+    border-top: calc(0.5 * var(--wm-px)) solid #000;
+    background: var(--wm-tint);
+    color: #000;
+    /* the device draws it a size up from the system text: digits 18 px tall of the VGA screen (12 units) */
+    font: calc(12 * var(--wm-px)) var(--wm-font);
+    pointer-events: none;
+    --wmb-load: 0.03;
+}
+
+.wm-browser.is-loading .wmb-status {
+    display: block;
+}
+
+.wm-browser .wmb-status-text {
+    position: absolute;
+    left: calc(5 * var(--wm-px));
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+.wm-browser .wmb-status-meter {
+    display: none;
+    position: absolute;
+    left: calc(72.5 * var(--wm-px));
+    right: calc(27.5 * var(--wm-px));
     top: calc(4 * var(--wm-px));
-    right: calc(4 * var(--wm-px));
+    height: calc(15 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    padding: calc(1.5 * var(--wm-px));
+    background: #fff;
+}
+
+.wm-browser .wmb-status.has-bytes .wmb-status-meter {
+    display: block;
+}
+
+/* the fill: drawn whole and scaled from its left edge on the compositor (no layout per step) */
+.wm-browser .wmb-status-fill {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: var(--wm-highlight);
+    transform: scaleX(var(--wmb-load));
+    transform-origin: 0 50%;
+    transition: transform 0.2s linear;
+}
+
+/* the line before the ring's cell */
+.wm-browser .wmb-status::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: calc(22.5 * var(--wm-px));
+    width: calc(1 * var(--wm-px));
+    background: #000;
+}
+
+/* busy ring: browsres bitmap 4597, 18 frames of 22 px (44 at 2x), in the strip's right cell */
+.wm-browser .wmb-busy {
+    display: block;
+    position: absolute;
+    top: 0;
+    right: 0;
     width: calc(22 * var(--wm-px));
     height: calc(22 * var(--wm-px));
+    background-color: #fff;
     background-image: image-set(url('/static_images/wm61/ie-busy.png') 1x, url('/static_images/wm61/ie-busy@2x.png') 2x, url('/static_images/wm61/ie-busy@4x.png') 4x);
     background-size: calc(396 * var(--wm-px)) 100%;
     background-repeat: no-repeat;
-    border-radius: 50%;
     pointer-events: none;
-    /* perf: allow busy indicator: the globe shows only while a page loads (.wm-browser.is-loading) */
-    animation: wmb-busy 0.9s steps(18) infinite;
 }
 
+/* the ring turns only while a page loads (the strip is display: none otherwise) */
 .wm-browser.is-loading .wmb-busy {
-    display: block;
+    /* perf: allow busy indicator: only while a page loads (.wm-browser.is-loading) */
+    animation: wmb-busy 0.9s steps(18) infinite;
 }
 
 /* perf: allow frames of a sprite strip: background-position lands each of the 18 frames on whole device pixels; a transform of a wider layer would draw frames between pixels */
@@ -1406,27 +1481,73 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-go {
 
 /* loading: a light blue band (173, 203, 239) grows behind the address, 16.5 px tall, from x 3 of
  * the box; the part of the address past it is grey (107, 105, 132) */
+/* the band follows the load (wmBrowser.js renderProgress sets --wmb-load from Alchemy's progress; device: a
+ * sliver of about 3 % of the box before anything has come in, then as the page comes): drawn whole and scaled
+ * from its left edge on the compositor, no layout per step (#890) */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-addr-box {
+    --wmb-load: 0.03;
+}
+
 html.ui-mobile[data-wm-version="6.5"] .wm-browser.is-loading .wmb-addr-box::before {
     content: '';
     position: absolute;
     left: calc(2 * var(--wm-px));
+    right: calc(2 * var(--wm-px));
     top: calc(3 * var(--wm-px));
     bottom: calc(3 * var(--wm-px));
-    /* grows from 10 % to 90 % of the box: drawn at its full 90 % and scaled from its left edge on the
-       compositor, the same band each frame without a layout per frame (#890) */
-    width: 90%;
+    transform: scaleX(var(--wmb-load));
     transform-origin: 0 50%;
     background: #adcbef;
-    animation: wmb65-load 8s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
+    transition: transform 0.2s linear;
 }
 
+/* the address past the band is grey (107, 105, 132); over it dark blue (24, 52, 115): a copy of the address
+ * in that colour, cut where the band ends */
 html.ui-mobile[data-wm-version="6.5"] .wm-browser.is-loading .wmb-addr:not(:focus) {
     color: #6b6984;
 }
 
-@keyframes wmb65-load {
-    from { transform: scaleX(calc(1 / 9)); }
-    to { transform: none; }
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-addr-ink {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-browser.is-loading .wmb-addr-box:not(:focus-within) .wmb-addr-ink {
+    display: flex;
+    align-items: center;
+    position: absolute;
+    z-index: 1;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    padding: 0 calc(2 * var(--wm-px));
+    overflow: hidden;
+    white-space: pre;
+    color: #183473;
+    font: var(--wm-fs) var(--wm-font);
+    font-size: calc(12 * var(--wm-px));
+    pointer-events: none;
+    /* the band's right end (it spans the box less 2 units each side), never past the drop-down's 13 units */
+    clip-path: inset(0 max(calc(13 * var(--wm-px)), calc(100% - 2 * var(--wm-px) - (100% - 4 * var(--wm-px)) * var(--wmb-load))) 0 0);
+    transition: clip-path 0.2s linear;
+}
+
+/* the 6.1 status strip is not 6.5's */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-status {
+    display: none;
+}
+
+/* the page under the header at its top (wmBrowser.js head65): moved down with the finger, settling with
+ * the bars' own fade */
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-view.is-head-anim {
+    transition: transform 0.3s ease-out;
+}
+
+/* the moved page's bottom runs past the program's box: clipped, never scrollable (an overflow: hidden box
+ * is still scrolled by focus and scrollIntoView, which lifted the whole program, bars and all, by the
+ * header's height) */
+html.ui-mobile[data-wm-version="6.5"] .wm-page.wm-browser {
+    overflow: clip !important;
 }
 
 /* bottom bar: 45 px cells of browsres.192.dll bitmap 4599 at x 1.5 + 48 n (of 240) over a 15 px grey band

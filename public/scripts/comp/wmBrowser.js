@@ -222,6 +222,7 @@
     const ZOOM65_REST = 0.13; // device: the thumb rests 184 of 212 px down its travel on a page at 100%
     let bars65 = true;
     let barsTimer65 = 0;
+    const HEAD65 = 55; // title bar 26 + address bar 28 + its 1 unit rule: the page's own top sits below them
     let zoomOpen65 = false;
     let zoomTimer65 = 0;
     let pageZoom65 = 1;
@@ -874,15 +875,44 @@
         for (const w of wins) if (w.dom) w.dom.deskPage.style.zoom = z === 1 ? '' : String(z);
     }
 
+    /**
+     * How far the page has come (Alchemy's load stages, the bytes it has brought in).
+     * 6.1: the status strip at the page's bottom: "Connecting..." until the first bytes, then "<n> KB" and a
+     *      meter in the highlight colour, the busy ring at the right (device: MSPIE Status, 46 px tall).
+     * 6.5: the light blue band behind the address grows with the load; the address is dark blue over it.
+     */
+    function renderProgress() {
+        if (!page || W !== cur || !els.status) return;
+        const web = W.loading && !onHome();
+        const v = web ? Math.max(0, Math.min(1, W.progress || 0)) : 0;
+        const bytes = web ? W.loadBytes || 0 : 0;
+        // device: a sliver (about 3 % of the box) before anything has come in
+        const frac = String(Math.round(Math.max(0.03, v > 0.1 ? v : 0) * 1000) / 1000);
+        if (v65) {
+            if (els.addrBox.style.getPropertyValue('--wmb-load') !== frac) els.addrBox.style.setProperty('--wmb-load', frac);
+            const ink = page.classList.contains('is-loading') ? els.addr.value : '';
+            if (els.ink.textContent !== ink) els.ink.textContent = ink;
+            return;
+        }
+        const text = bytes > 0 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : 'Connecting...';
+        if (els.statusText.textContent !== text) els.statusText.textContent = text;
+        els.status.classList.toggle('has-bytes', bytes > 0);
+        if (els.status.style.getPropertyValue('--wmb-load') !== frac) els.status.style.setProperty('--wmb-load', frac);
+    }
+
     function setGrimLoading(on) {
         W.grimLoading = !!on;
         if (page && W === cur) page.classList.toggle('is-loading', (W.loading && !onHome()) || (W.grimLoading && onHome()));
+        renderProgress();
     }
 
     function setLoading(on) {
+        if (on && !W.loading) { W.progress = 0; W.loadBytes = 0; }
+        if (on && !W.loading) W.remoteY = 0;
         W.loading = !!on;
         if (!page || W !== cur) return;
         page.classList.toggle('is-loading', (W.loading && !onHome()) || (W.grimLoading && onHome()));
+        renderProgress();
         renderGoButton();
         if (isCurrent()) ws.refreshSoftKeys();
     }
@@ -921,7 +951,10 @@
                 W.remoteY = Number(data.y) || 0;
                 break;
             case 'grimoire-browser-progress':
+                W.progress = Math.max(W.progress || 0, Number(data.value) || 0);
+                if (Number(data.bytes) > 0) W.loadBytes = Number(data.bytes);
                 if (Number(data.value) >= 1) setLoading(false);
+                else renderProgress();
                 break;
             case 'grimoire-browser-menu':
                 onInspect(data);
@@ -1260,13 +1293,31 @@
         fling = requestAnimationFrame(tick);
     }
 
+    /**
+     * A page in the mobile view (Alchemy emulates a touch screen) gets the finger itself: real touches, so its
+     * own drags, swipes, sliders and holds work and Chromium scrolls and flings it as a phone does. A page in the
+     * desktop view has a mouse: a drag is a scroll, a tap a click (the old way, below).
+     */
+    function realTouch() { return !!(W.session && W.session.kind === 'mobile' && W.ready); }
+
+    function sendTouch(t, kind, p, extra) {
+        post(Object.assign({ type: 'grimoire-browser-touch', kind, x: p.x * t.s, y: p.y * t.s, t: performance.now() }, extra || {}));
+    }
+
+    /** The finger's touch leaves the page (6.5's header took the drag, or the device's menu the hold). */
+    function cancelRealTouch(t) {
+        if (!t || !t.real || t.cancelled) return;
+        t.cancelled = true;
+        sendTouch(t, 'cancel', { x: t.x, y: t.y });
+    }
+
     function onTouchDown(e) {
         if (e.button > 0 || touch) return;
         stopFling();
         const p = localPoint(e);
-        // atTop: the remote page is at its top (the viewer's grimoire-browser-scroll), for 6.5's pull
-        touch = { id: e.pointerId, x0: p.x, y0: p.y, x: p.x, y: p.y, drag: false, held: false, atTop: !(W.remoteY > 0), samples: [{ t: performance.now(), x: p.x, y: p.y }] };
+        touch = { id: e.pointerId, x0: p.x, y0: p.y, x: p.x, y: p.y, drag: false, held: false, real: realTouch(), s: geometry().s, samples: [{ t: performance.now(), x: p.x, y: p.y }] };
         try { els.touch.setPointerCapture(e.pointerId); } catch (_) { /* gone */ }
+        if (touch.real) sendTouch(touch, 'start', p);
         touch.timer = setTimeout(() => {
             if (!touch || touch.drag) return;
             touch.held = true;
@@ -1282,8 +1333,16 @@
             touch.drag = true;
             clearTimeout(touch.timer);
         }
-        if (touch.drag && v65 && touch.atTop && p.y - touch.y0 > pull65()) { touch.atTop = false; if (!bars65) showBars65(); }
-        if (touch.drag) {
+        const dy = p.y - touch.y;
+        // 6.5: at the top of the page the header (title and address bars) is above the page: pulling down
+        // brings it in and moves the page down, pushing up takes it away before the page scrolls
+        if (touch.drag && !touch.scrolling && headDrag65(touch, dy, !(W.remoteY > 0))) {
+            cancelRealTouch(touch);
+        } else if (touch.real && !touch.cancelled) {
+            sendTouch(touch, 'move', p);
+        } else if (touch.drag) {
+            // the mouse way (desktop view), or the rest of a drag the header gave back
+            touch.scrolling = true;
             scrollBy(touch.x - p.x, touch.y - p.y, { x: touch.x0, y: touch.y0 });
             touch.samples.push({ t: performance.now(), x: p.x, y: p.y });
             if (touch.samples.length > 6) touch.samples.shift();
@@ -1298,7 +1357,16 @@
         const t = touch;
         touch = null;
         clearTimeout(t.timer);
+        if (headHeld65 === t) settleHead65();
+        if (t.real && !t.cancelled) {
+            const tap = e.type !== 'pointercancel' && !t.drag && !t.held;
+            sendTouch(t, e.type === 'pointercancel' ? 'cancel' : 'end', { x: t.x, y: t.y }, tap ? { tap: true } : null);
+            // is it an edit field? the viewer's inspect answers; a tap there raises the keyboard
+            if (tap) { W.lastInputAt = Date.now(); askInspect('tap'); fire('contextmenu', { x: t.x0, y: t.y0 }, { buttons: 0, button: 2 }); }
+            return;
+        }
         if (e.type === 'pointercancel' || t.held) return;
+        if ((t.real || t.headed) && !t.scrolling) return;
         if (t.drag) {
             const a = t.samples[0];
             const b = t.samples[t.samples.length - 1];
@@ -1326,7 +1394,8 @@
     }
 
     function longPress(x, y, cx, cy) {
-        askInspect({ x: cx, y: cy });
+        // real: the finger is the page's (mobile view); a hold on nothing of IE's stays the page's own
+        askInspect({ x: cx, y: cy, real: !!(touch && touch.real) });
         fire('contextmenu', { x, y }, { buttons: 0, button: 2 });
     }
 
@@ -1366,6 +1435,9 @@
             if (data.selection) items.push({ label: 'Copy', action: () => copyText(data.selection) });
             if (data.editable) items.push({ label: 'Paste', action: pasteFromClipboard });
         }
+        // the page's own hold (mobile view: the finger is still the page's): nothing of IE's to offer here
+        if (!items.length && purpose.real) return;
+        if (items.length) cancelRealTouch(touch);
         if (!items.length && v65) {
             // device (tap and hold on the page): Zoom, Make Selection, Back, Refresh, Add to Favorites, Favorites
             items.push({ label: 'Zoom', action: openZoom65 });
@@ -3405,6 +3477,7 @@
         if (ws && isCurrent()) ws.setTitle(title65());
         const back = els.bar65 && els.bar65.querySelector('[data-act="back"]');
         if (back) back.disabled = W.idx < 1;
+        syncHead65();
     }
 
     function armBars65() {
@@ -3413,6 +3486,9 @@
             barsTimer65 = 0;
             if (!visible || sub || !bars65) return;
             // in use: the wait starts over
+            // the page sits under the header at its top: the header is part of the page there, and goes
+            // when the page is pushed up
+            if (head65 > 0) return;
             if (addrEditing || zoomOpen65 || menuOpen65() || kbd65()) { armBars65(); return; }
             bars65 = false;
             chrome65();
@@ -3425,9 +3501,82 @@
         armBars65();
     }
 
-    /** How far a page at its top is pulled down before the bars come back: 24 units. */
-    function pull65() {
-        return 24 * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1);
+    /**
+     * The header (title bar 26 + address bar 29 units) at the top of a page: the page sits under it, not
+     * behind it. head65 is how far the page is moved down (0 .. HEAD65 units): a pull at the page's top brings
+     * the header in with the finger, a push up takes it away before the page scrolls; let go, it settles
+     * whole or gone. With the page scrolled down the bars lie over it (the round button, a page loading).
+     */
+    let head65 = 0;
+    let headPx65 = 0;
+    let headHeld65 = null; // the touch moving the header (chrome65 leaves it where the finger has it)
+
+    function headMax65() {
+        if (!headPx65) headPx65 = HEAD65 * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1);
+        return headPx65;
+    }
+
+    function applyHead65(animate) {
+        if (!v65 || !els.view) return;
+        const y = sub || kbd65() ? 0 : Math.round(head65 * 100) / 100;
+        const v = y ? `translateY(${y}px)` : '';
+        if (els.view.style.transform === v) return;
+        els.view.classList.toggle('is-head-anim', !!animate);
+        els.view.style.transform = v;
+    }
+
+    /** The page on screen is at its top (a Grimoire page's box, or Alchemy's page by its scroll). */
+    function atTop65() {
+        if (!W.dom) return true;
+        if (!onHome()) return !(W.remoteY > 0);
+        const box = ['home', 'gpage', 'dsap', 'core', 'desk'].map((k) => W.dom[k]).find((b) => b && !b.hidden);
+        return !box || box.scrollTop <= 0;
+    }
+
+    /** A drag's step on the page: true when the header took it (dy = finger's move, + down). */
+    function headDrag65(t, dy, top) {
+        if (!v65 || sub || !dy) return false;
+        const max = headMax65();
+        if (!t.head) {
+            if (!((dy > 0 && top && head65 < max) || (dy < 0 && head65 > 0))) return false;
+            t.head = true;
+            t.headed = true;
+            headHeld65 = t;
+        }
+        head65 = Math.max(0, Math.min(max, head65 + dy));
+        if (head65 > 0 && !bars65) { bars65 = true; chrome65(); }
+        applyHead65(false);
+        if (head65 === 0 && dy < 0) {
+            // all gone: the rest of the push scrolls the page
+            t.head = false;
+            headHeld65 = null;
+            bars65 = false;
+            chrome65();
+            return false;
+        }
+        return true;
+    }
+
+    /** The finger let go of the header: it settles whole (more than a third out) or goes. */
+    function settleHead65() {
+        headHeld65 = null;
+        const max = headMax65();
+        if (head65 <= 0 || head65 >= max) return;
+        head65 = head65 > max / 3 ? max : 0;
+        bars65 = head65 > 0;
+        chrome65();
+        applyHead65(true);
+    }
+
+    /** The bars came or went: at the page's top the page moves with them. */
+    function syncHead65() {
+        if (!v65 || headHeld65) return;
+        // bars that came at the page's top bring the header (the page moves down); bars called up over a
+        // page scrolled down lie over it; bars going take the header with them
+        const want = !bars65 || sub ? 0 : head65 > 0 || atTop65() ? headMax65() : 0;
+        const moved = want !== head65;
+        head65 = want;
+        applyHead65(moved);
     }
 
     // zoom: the slider's place p (0 at the bottom, 1 at the top) and the page's scale; 100 % at the
@@ -3747,7 +3896,7 @@
         els.fs65.addEventListener('click', showBars65);
         // a touch on the page puts the bars away
         els.view.addEventListener('pointerdown', () => {
-            if (sub || !bars65 || zoomOpen65) return;
+            if (sub || !bars65 || zoomOpen65 || head65 > 0) return;
             bars65 = false;
             chrome65();
         }, true);
@@ -3755,18 +3904,25 @@
         // owner; the device itself stops dead at the top and only its round button shows them). The
         // page boxes keep overscroll-behavior: contain, so the browser's own pull to refresh and the
         // shell's gestures are not in play; nothing moves, the pull is only measured.
+        // Dreamscape's own pages (Grimoire pages, the start page, applets) scroll in their own boxes: at a
+        // box's top the header comes and goes with the finger as on Alchemy's pages (onTouchMove)
         let pull = null;
         els.view.addEventListener('touchstart', (e) => {
             pull = null;
             if (sub || e.touches.length !== 1 || !W.dom) return;
             const box = ['home', 'gpage', 'dsap', 'core', 'desk'].map((k) => W.dom[k]).find((b) => !b.hidden && b.contains(e.target));
-            if (box && box.scrollTop <= 0) pull = { y: e.touches[0].clientY, box };
+            if (box) pull = { y: e.touches[0].clientY, box, head: false };
         }, { passive: true });
         els.view.addEventListener('touchmove', (e) => {
-            if (!pull) return;
-            if (pull.box.scrollTop > 0) { pull = null; return; }
-            if (e.touches[0].clientY - pull.y > pull65()) { pull = null; if (!bars65) showBars65(); }
-        }, { passive: true });
+            if (!pull || e.touches.length !== 1) return;
+            const y = e.touches[0].clientY;
+            const dy = y - pull.y;
+            pull.y = y;
+            if (headDrag65(pull, dy, pull.box.scrollTop <= 0) && e.cancelable) e.preventDefault();
+        }, { passive: false });
+        const endPull = () => { if (pull && headHeld65 === pull) settleHead65(); pull = null; };
+        els.view.addEventListener('touchend', endPull, { passive: true });
+        els.view.addEventListener('touchcancel', endPull, { passive: true });
         page.addEventListener('focusin', chrome65);
         page.addEventListener('focusout', () => setTimeout(chrome65, 0));
 
@@ -3863,6 +4019,7 @@
         els.frameWrap.hidden = home;
         if (!home || (entry().grim.kind === 'home' && !desk)) W.grimLoading = false;
         page.classList.toggle('is-loading', (W.loading && !home) || (W.grimLoading && home));
+        renderProgress();
         if (home) renderLocal(false);
         renderAddress();
         if (!home) requestAnimationFrame(layoutFrame);
@@ -3920,7 +4077,7 @@
         const q = (sel) => t.content.querySelector(sel);
         const d = { home: q('.wmb-home'), gpage: q('.wmb-gpage'), dsap: q('.wmb-dsap'), dsapArea: q('.wmb-dsap-area'), core: q('.wmb-core'), desk: q('.wmb-desk'), deskPage: q('.wmb-desk-page'), deskDsap: q('.wmb-desk-dsap'), frameWrap: q('.wmb-frame-wrap'), touch: q('.wmb-touch') };
         w.dom = d;
-        els.view.insertBefore(t.content, els.busy);
+        els.view.insertBefore(t.content, els.status);
         w.dsapShell = makeDsapShell(w);
         // what the boxes hear is their own window's
         const on = (el, type, fn, opts) => el.addEventListener(type, (e) => inWin(w, () => fn(e)), opts);
@@ -4103,6 +4260,7 @@
                 <button type="button" class="wmb-back" aria-label="Back" hidden>${img4('ie-back2')}</button>
                 <span class="wmb-lock" aria-hidden="true"></span>
                 <div class="wmb-addr-box">
+                    <span class="wmb-addr-ink" aria-hidden="true"></span>
                     <input type="url" class="wmb-addr" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Address">
                     <button type="button" class="wmb-addr-drop" aria-label="Recent addresses" aria-haspopup="menu"></button>
                 </div>
@@ -4110,7 +4268,7 @@
                 <button type="button" class="wmb-go" aria-label="Go"></button>
             </div>
             <div class="wmb-view">
-                <div class="wmb-busy" aria-hidden="true"></div>
+                <div class="wmb-status" aria-hidden="true"><span class="wmb-status-text"></span><span class="wmb-status-meter"><span class="wmb-status-fill"></span></span><span class="wmb-busy"></span></div>
                 <div class="wmb-sub" hidden></div>
                 <textarea class="wmb-ime" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Type into the page"></textarea>
             </div>`;
@@ -4123,7 +4281,10 @@
             drop: page.querySelector('.wmb-addr-drop'),
             go: page.querySelector('.wmb-go'),
             view: page.querySelector('.wmb-view'),
-            busy: page.querySelector('.wmb-busy'),
+            status: page.querySelector('.wmb-status'),
+            statusText: page.querySelector('.wmb-status-text'),
+            addrBox: page.querySelector('.wmb-addr-box'),
+            ink: page.querySelector('.wmb-addr-ink'),
             sub: page.querySelector('.wmb-sub'),
             ime: page.querySelector('.wmb-ime')
         };
@@ -4213,7 +4374,7 @@
 
         if (typeof ResizeObserver === 'function') {
             let t = 0;
-            viewObserver = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(layoutFrame, 60); });
+            viewObserver = new ResizeObserver(() => { headPx65 = 0; clearTimeout(t); t = setTimeout(layoutFrame, 60); });
             viewObserver.observe(els.view);
         }
         // the document's and the window's own listeners are set once: the page is made again after the program ended
