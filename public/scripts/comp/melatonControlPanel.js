@@ -1178,7 +1178,7 @@
         // a device (phone, DeX, DreamOS) is named by its Device ID, as Control Panel > System names it; a browser by the server
         try {
             const id = root.AndroidHardware && root.melatonDeviceIdentity && typeof root.melatonDeviceIdentity.get === 'function' ? root.melatonDeviceIdentity.get() : null;
-            if (id && id.name) return String(id.name);
+            if (id && id.name) return typeof root.melatonHostName === 'function' ? root.melatonHostName(String(id.name)) : String(id.name);
         } catch (_) { /* no Device ID */ }
         let host = '';
         try {

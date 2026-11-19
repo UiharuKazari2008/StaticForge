@@ -546,7 +546,8 @@
     function computerName() {
         // the phone (or its DeX desktop): the name its owner gave it in Device ID (#829)
         const id = root.melatonDeviceIdentity;
-        if (id && root.AndroidHardware) { try { const me = id.get(); if (me && me.name) return me.name; } catch (_) { /* host name */ } }
+        // (as a host name: melatonHostName, modalUtils.js, #945)
+        if (id && root.AndroidHardware) { try { const me = id.get(); if (me && me.name) return typeof root.melatonHostName === 'function' ? root.melatonHostName(me.name) : me.name; } catch (_) { /* host name */ } }
         const n = root.melatonNetworkDialogs ? root.melatonNetworkDialogs.connectionInfo() : null;
         const host = (root.location && root.location.hostname) || 'melaton';
         return `${(n && n.domain) || 'DREAMSCAPE'}-${host.split('.')[0].toUpperCase()}`.slice(0, 15);

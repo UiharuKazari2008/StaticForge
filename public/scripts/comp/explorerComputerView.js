@@ -128,7 +128,8 @@
         try { me = root.melatonDeviceIdentity && typeof root.melatonDeviceIdentity.get === 'function' ? root.melatonDeviceIdentity.get() : null; } catch (_) { me = null; }
         const soc = (hw && hw.soc) || {};
         const total = hw && hw.memory && hw.memory.totalBytes;
-        return { name: (me && me.name) || '', processor: soc.name || soc.model || '', memory: total ? formatSize(total) : '' };
+        const name = (me && me.name) || '';
+        return { name: name && typeof root.melatonHostName === 'function' ? root.melatonHostName(name) : name, processor: soc.name || soc.model || '', memory: total ? formatSize(total) : '' };
     }
 
     /** The computer's name, processor and memory: the device on a device client, else the server (get_system_info). */

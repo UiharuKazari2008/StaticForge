@@ -302,8 +302,11 @@
             android: dev.androidRelease ? `Android ${dev.androidRelease}${dev.securityPatch ? ` (security patch ${dev.securityPatch})` : ''}` : '',
             // a DreamOS laptop (#910): its CaféReady host reports the machine the same way, with the OS release
             dreamos: dev.platform === 'dreamos' && dev.osVersion ? `Version ${dev.osVersion}` : '',
-            name: (me && me.name) || '',
-            description: (me && me.description) || ''
+            // the computer name is a valid host name made from the Device ID's name; the long name is the description
+            // (the owner's own description when one was set) (#945)
+            name: me && me.name ? (typeof root.melatonHostName === 'function' ? root.melatonHostName(me.name) : me.name) : '',
+            longName: (me && me.name) || '',
+            description: (me && (me.description && me.description !== me.defaultDescription ? me.description : me.name)) || ''
         };
     }
 

@@ -1608,3 +1608,9 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     padding: 2px 12px 2px 0;
     vertical-align: top;
 }
+
+/* the list's bottom edge (#945): with border-collapse a cell's own transparent bottom border beat the table's at the
+   last row, so the table had no bottom line; the last row draws none and the table's edge shows */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vtable tr:last-child:not(.is-head) td {
+    border-bottom: 0;
+}

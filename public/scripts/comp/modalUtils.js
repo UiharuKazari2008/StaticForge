@@ -8085,6 +8085,21 @@ const START_MENU_VENDOR_FOLDERS = [
 const START_MENU_PACKAGE_IDS = new Set(START_MENU_PACKAGE_APPS.concat(...START_MENU_VENDOR_FOLDERS.map((f) => f.apps)).map((pair) => pair[0]));
 
 /**
+ * A computer name Windows would take (#945): the Device ID's long name ("Sony Ericsson® Xperia XV7") as a NetBIOS /
+ * DNS host name - A-Z, 0-9 and hyphens, at most 15 characters, not all digits, upper case as Vista shows it. A long
+ * name keeps its last words (the model: XPERIA-XV7), as a computer's name names the machine, not its maker.
+ */
+function melatonHostName(longName) {
+    const words = String(longName || '').normalize('NFKD').replace(/[^\x20-\x7E]/g, '').replace(/'/g, '').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+    if (!words.length) return 'MELATON-PC';
+    while (words.length > 1 && words.join('-').length > 15) words.shift();
+    let host = words.join('-').slice(0, 15).replace(/-+$/, '');
+    if (/^[0-9]+$/.test(host)) host = `PC-${host}`.slice(0, 15);
+    return host;
+}
+window.melatonHostName = melatonHostName;
+
+/**
  * VZAccess Manager is in the Start menu once this computer has connected through Verizon (#947): a local mark the
  * desktop's network provider sets on the first Verizon data connection (androidTrayProviders.js onVerizon).
  */
