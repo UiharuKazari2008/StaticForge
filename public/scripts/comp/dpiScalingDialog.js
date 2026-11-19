@@ -4,9 +4,9 @@
  * the CaféReady host (window.DreamOSSettings.display, injected by the DreamOS shell bridge) and kept on /data:
  *   Default scale = the panel's own (200% on a Retina panel), Larger scale = that x 1.25, Custom = any 100-300%.
  * The DPI figures in the labels follow (96 x scale). On the Android app's desktop shell (DeX / Continuity PC, #798) the
- * same shape comes from window.melatonDisplayScale (androidTrayProviders.js): the density of the display the desktop is
- * on, set by the app (wm density through its own shell), kept per display; 160 dpi is 100% (96 DPI), and the page's
- * devicePixelRatio follows live. Elsewhere (no DreamOS host, no app) the dialog is not offered.
+ * same shape comes from window.melatonDisplayScale (androidTrayProviders.js): the page's own scale for the display the
+ * desktop is on (the viewport's page scale, app.html melatonPageScale), kept per display and applied live; Android's
+ * display density is never changed (Yukimi, Nov 19). 100% = 96 DPI. Elsewhere (no DreamOS host, no app) the dialog is not offered.
  */
 (function (root) {
     'use strict';

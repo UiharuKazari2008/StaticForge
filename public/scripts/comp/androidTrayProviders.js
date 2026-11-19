@@ -8,11 +8,14 @@
  *              (read only when a push comes, never on a timer); plans Balanced / Power saver = Android's battery saver
  *              (AndroidDevice.setRadio('saver'))
  *   network    AndroidWifi ('androidwifi', 'androidwifiscan', results 'androidwifiresult') + AndroidDeviceStatus.cellular
- *              as Mobile broadband (mobileData(on) = AndroidDevice.setRadio('data'))
+ *              as Mobile broadband (mobileData(on) = AndroidDevice.setRadio('data')); joins, leaves, forget, the radio and
+ *              auto-connect go through the app's own shell (Localhost ADB / Shizuku), the panels only without one
  *   volume     AndroidVolume media level / mute ('androidvolume'), set with setMedia
  *   bluetooth  AndroidBluetooth ('dreamscape:bluetooth'), power through AndroidDevice.setRadio('bluetooth')
- *   display    window.melatonDisplayScale = { get(), set(scale | null) } in DreamOSSettings.display's shape
- *              (AndroidDisplay.getScale / setScale, answer 'androiddisplayscale'); the page's devicePixelRatio follows
+ *   display    window.melatonDisplayScale = { get(), set(scale | null) } in DreamOSSettings.display's shape: the page's
+ *              own scale per display (window.melatonPageScale, app.html: the viewport's page scale), never Android's
+ *              display density (Yukimi, Nov 19); the HiDPI art follows melatonPageScale.effective() and
+ *              'melaton-page-scale'
  *
  * Only on the app's desktop shell (AndroidDisplay.isDesktop(), not the phone shell, not DreamOS - which gives no
  * AndroidDisplay). Everything is pushed by the app; bridges are read once at start and again only on their push.
@@ -66,7 +69,6 @@
         });
     }
     answered('androidwifiresult');
-    answered('androiddisplayscale');
 
     // ---- the phone's status (battery, cellular): one source for power and network ---------------------------------
     let status = parse(call('AndroidDeviceStatus', 'getState')) || null;
@@ -186,11 +188,18 @@
             connect: (ssid, pass) => wifiAsk('connect', String(ssid), pass ? String(pass) : null),
             disconnect: () => wifiAsk('disconnect'),
             forget: (ssid) => wifiAsk('forget', String(ssid)),
-            // Android keeps no per-network auto-connect switch an app can reach: a saved network always joins
-            autoConnect: () => Promise.resolve({ error: 'Android joins saved networks by itself.' }),
+            autoConnect: (ssid, on) => (typeof root.AndroidWifi.autoConnect === 'function' ? wifiAsk('autoConnect', String(ssid), !!on) : Promise.resolve({ error: 'This app version cannot change it.' })),
             radio: (on) => wifiAsk('radio', !!on),
             mobileData: (on) => Promise.resolve(parse(call('AndroidDevice', 'setRadio', 'data', !!on)) || { error: 'No mobile data.' }),
-            can: () => (wifi && wifi.can) || {}
+            // round 2 (docs/client-api/tray-providers.md): read when asked, never pushed
+            known: () => Promise.resolve(parse(call('AndroidWifi', 'known')) || { networks: [] }),
+            stats: () => Promise.resolve(parse(call('AndroidWifi', 'stats')) || { error: 'No figures.' }),
+            interfaces: () => Promise.resolve(parse(call('AndroidWifi', 'interfaces')) || { interfaces: [] }),
+            enable: (iface, on) => (String(iface).startsWith('rmnet') || iface === 'mobile'
+                ? Promise.resolve(parse(call('AndroidDevice', 'setRadio', 'data', !!on)) || { error: 'No mobile data.' })
+                : wifiAsk('radio', !!on)),
+            // older app builds have no shell path for these (their can() lacks the keys): greyed out
+            can: () => Object.assign({ disconnect: false, autoConnect: false, order: false, ipConfig: false, enable: false }, (wifi && wifi.can) || {})
         });
     }
 
@@ -265,13 +274,22 @@
         });
     }
 
-    // ---- the display: DPI Scaling ---------------------------------------------------------------------------------
-    if (root.AndroidDisplay && typeof root.AndroidDisplay.getScale === 'function') {
-        const read = () => parse(call('AndroidDisplay', 'getScale')) || { error: 'The display scale could not be read.' };
+    // ---- the display: DPI Scaling - the page's own scale (app.html melatonPageScale), per display ---------------------
+    const ps = root.melatonPageScale;
+    if (ps && ps.available) {
+        const state = () => ({ scale: ps.get(), default: 1, auto: ps.get() === 1, can: true, platform: 'android-page' });
         root.melatonDisplayScale = Object.freeze({
-            platform: 'android',
-            get: () => Promise.resolve(read()),
-            set: (scale) => ask('androiddisplayscale', (id) => root.AndroidDisplay.setScale(scale === null || scale === undefined ? 0 : Number(scale), id), 20000)
+            platform: 'android-page',
+            get: () => Promise.resolve(state()),
+            set: (scale) => Promise.resolve(ps.set(scale) ? state() : { error: 'The page scale could not be changed.' })
         });
+        // the window moved to another display (a different monitor size): that display's own scale
+        let screenKey = ps.key();
+        root.addEventListener('resize', () => {
+            const k = ps.key();
+            if (k === screenKey) return;
+            screenKey = k;
+            ps.follow();
+        }, { signal: appScopeSignal });
     }
 })(typeof window !== 'undefined' ? window : globalThis);

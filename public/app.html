@@ -11,6 +11,50 @@
     try { window.__melatonFetched = new Set(); new PerformanceObserver(function (list) { list.getEntries().forEach(function (e) { if (e.name.indexOf(location.origin + '/') === 0) { try { window.__melatonFetched.add(new URL(e.name).pathname); } catch (_) {} } }); }).observe({ type: 'resource', buffered: true }); } catch (_) { window.__melatonFetched = null; }</script>
     <meta name="viewport"
         content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <script>
+        // DPI Scaling on the Android app's desktop shell (DeX / Continuity PC, #934; Yukimi, Nov 19: in-app scaling only,
+        // never Android's display density): the page's own scale, per display, applied as the viewport's page scale before
+        // anything lays out - Chromium draws the page at devicePixelRatio x this scale, crisp at fractional steps, and the
+        // page sees a smaller screen (1920 px at 125% = 1536 CSS px). Kept in localStorage melatonPageScale
+        // { "<screen w>x<h>@<dpr>": scale }; window.melatonPageScale.set() changes it live (androidTrayProviders.js).
+        (function () {
+            var desk = false;
+            try { desk = !!(window.AndroidDisplay && window.AndroidDisplay.isDesktop()); } catch (_) { desk = false; }
+            var STORE = 'melatonPageScale';
+            var meta = document.querySelector('meta[name="viewport"]');
+            var base = meta ? meta.getAttribute('content') : '';
+            var key = function () { return screen.width + 'x' + screen.height + '@' + (window.devicePixelRatio || 1); };
+            var read = function () { try { return JSON.parse(localStorage.getItem(STORE) || '{}') || {}; } catch (_) { return {}; } };
+            var current = 1;
+            var apply = function (s) {
+                current = s;
+                if (!meta) return;
+                var v = s === 1 ? base : 'width=device-width, height=device-height, initial-scale=' + s + ', minimum-scale=' + s + ', maximum-scale=' + s + ', user-scalable=no, viewport-fit=cover';
+                if (meta.getAttribute('content') !== v) meta.setAttribute('content', v);
+            };
+            var saved = function () { var s = Number(read()[key()]); return s >= 1 && s <= 3 ? Math.round(s * 100) / 100 : 1; };
+            window.melatonPageScale = {
+                available: desk,
+                key: key,
+                get: function () { return current; },
+                /** the art density the page needs: devicePixelRatio x the page scale (the HiDPI tiers, #921) */
+                effective: function () { return (window.devicePixelRatio || 1) * current; },
+                set: function (s) {
+                    if (!desk) return false;
+                    var v = s === null || s === undefined ? 1 : Math.max(1, Math.min(3, Math.round(Number(s) * 100) / 100 || 1));
+                    var all = read();
+                    if (v === 1) delete all[key()]; else all[key()] = v;
+                    try { localStorage.setItem(STORE, JSON.stringify(all)); } catch (_) { /* private storage: this session only */ }
+                    apply(v);
+                    try { window.dispatchEvent(new CustomEvent('melaton-page-scale', { detail: { scale: v, effective: (window.devicePixelRatio || 1) * v } })); } catch (_) { /* old engine */ }
+                    return true;
+                },
+                /** another display (the window moved): its own scale */
+                follow: function () { if (desk && saved() !== current) window.melatonPageScale.set(saved()); }
+            };
+            if (desk) apply(saved());
+        })();
+    </script>
 
     <title>Dreamscape Workspace</title>
     <script>
