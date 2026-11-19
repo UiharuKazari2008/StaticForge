@@ -30,7 +30,23 @@
  *
  * Every app that posted a notification lately is remembered (recentApps(): package, label, icon) so an
  * account can be added from a list. State beside the store: .cache/textmessaging-android.json and
- * .cache/textmessaging-android/<package>.png (app icons), <account>/<chat>.png (conversation pictures).
+ * .cache/textmessaging-android/<package>.png (app icons), <account>/<chat>.png (conversation pictures),
+ * <account>/img/<chat>/<message>.jpg (message pictures).
+ *
+ * Channels (Yukimi, Nov 18: "separate server messages and direct messages ... via their notification channel"):
+ * an account can be limited to some of the app's notification channels (account.channels, the channel ids the
+ * phone sends with each notification). A notification goes to the account of its package that lists its channel,
+ * else to the one with no list, else to the first (its id sorts first). Discord is split by default: "Discord"
+ * = directMessages, "Discord servers" = its server channels (DEFAULT_SPLITS, ids read off the Fold's
+ * dumpsys notification on Nov 18). The channels each app used are remembered (channelsOf) for the settings page.
+ *
+ * Pictures (Yukimi, Nov 18: "an image like for 'Sent a video' ... show it inline"): a MessagingStyle line's
+ * picture (line.image) or the notification's big picture (d.picture) comes once from the phone as a small JPEG;
+ * it is kept as the message's attachment and served by downloadAttachment.
+ *
+ * Username (Yukimi, Nov 18: "allow setting the account's username ... so that you can identify multiple
+ * accounts"): account.username, else the app's signed-in user from the notification (MessagingStyle's user,
+ * conv.me), names the account beside the app.
  */
 'use strict';
 
@@ -44,6 +60,33 @@ const RECENT_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 const LOCAL_MATCH_MS = 10 * 60 * 1000;
 const SEMANTIC_MARK_AS_READ = 2;
 const CALL_MS = 15000;
+const MAX_CHANNELS = 40;
+const CHANNEL_RE = /^[^\u0000-\u001f]{1,200}$/;
+const GENERIC_ME = /^(you|me|myself|自分)$/i;
+
+/** Apps split into accounts by notification channel unless the user chose otherwise (one account each). */
+const DEFAULT_SPLITS = {
+    'com.discord': [
+        { suffix: '', label: 'Discord', channels: ['directMessages'] },
+        { suffix: '-servers', label: 'Discord servers', channels: ['messages', 'forumThreadCreated', 'guildEventLive', 'stageLive', 'polls', 'other'] }
+    ]
+};
+
+/** Channel names where the phone cannot send them (a listener reads names only as a companion device). */
+const CHANNEL_NAMES = {
+    'com.discord': {
+        directMessages: 'Direct messages', messages: 'Messages', forumThreadCreated: 'Forum notifications', guildEventLive: 'Event notifications',
+        stageLive: 'Stage notifications', polls: 'Polls', other: 'Other server notifications', reactions: 'Reaction Notifications',
+        missed_messages_default: 'Missed Messages', missed_messages_low: 'Missed Messages', friendRequests: 'Friend requests', calls: 'Incoming calls',
+        social: 'Friend Activity', systemMessages: 'Discord system messages', default: 'Other'
+    }
+};
+
+/** An account's channel list: unique channel ids, or [] (every channel no other account of the app lists). */
+function cleanChannels(list) {
+    if (!Array.isArray(list)) return [];
+    return [...new Set(list.map((c) => String(c == null ? '' : c).trim()).filter((c) => CHANNEL_RE.test(c)))].slice(0, MAX_CHANNELS);
+}
 
 const providers = new Set();
 const caughtUp = new Set(); // device ids read with notify.list since this server started
@@ -118,8 +161,19 @@ function noteApp(d) {
     const was = r[pkg];
     let icon = !!(was && was.icon);
     if (d.icon) { const buf = dataUrlBytes(d.icon); if (buf && writeFileQuiet(iconFile(pkg), buf)) icon = true; }
-    if (was && was.label === label && was.icon === icon && Date.now() - was.at < 60 * 60 * 1000) return;
-    r[pkg] = { label, at: Date.now(), icon };
+    // the channels it posts on (for an account's channel list) and its signed-in user (the account's default name)
+    const channels = Object.assign({}, (was && was.channels) || {});
+    const ch = typeof d.channel === 'string' && CHANNEL_RE.test(d.channel) ? d.channel : '';
+    const newChannel = !!ch && !channels[ch];
+    if (newChannel) {
+        channels[ch] = Date.now();
+        const ids = Object.keys(channels).sort((a, b) => channels[b] - channels[a]);
+        ids.slice(MAX_CHANNELS).forEach((k) => delete channels[k]);
+    }
+    const meRaw = d.conv && typeof d.conv === 'object' ? str(d.conv.me, 80).trim() : '';
+    const me = meRaw && !GENERIC_ME.test(meRaw) ? meRaw : ((was && was.me) || '');
+    if (!newChannel && was && was.label === label && was.icon === icon && (was.me || '') === me && Date.now() - was.at < 60 * 60 * 1000) return;
+    r[pkg] = { label, at: Date.now(), icon, channels, me };
     const keys = Object.keys(r);
     const now = Date.now();
     keys.forEach((k) => { if (now - r[k].at > RECENT_KEEP_MS) delete r[k]; });
@@ -154,6 +208,28 @@ function learnApp({ package: pkg, label, icon } = {}) {
     noteApp({ package: pkg, app: l || (was && realLabel(was.label, pkg)) || pkg, icon: icon || undefined });
 }
 function appLabel(pkg) { const r = loadRecent()[pkg]; return r ? realLabel(r.label, pkg) : ''; }
+/** The app's signed-in user as its notifications name it (MessagingStyle's user), or ''. */
+function appUser(pkg) { const r = loadRecent()[pkg]; return (r && r.me) || ''; }
+/** The app's notification channels: the ones it posted on lately and the known ones, [{ id, name, seen }]. */
+function channelsOf(pkg) {
+    const r = loadRecent()[pkg];
+    const seen = (r && r.channels) || {};
+    const names = CHANNEL_NAMES[pkg] || {};
+    const ids = [...new Set(Object.keys(seen).concat(Object.keys(names)))];
+    return ids.map((id) => ({ id, name: names[id] || id, seen: !!seen[id] }))
+        .sort((a, b) => (b.seen - a.seen) || a.name.localeCompare(b.name));
+}
+
+/**
+ * The provider a notification of [pkg] on [channel] belongs to: the one listing the channel, else the one with
+ * no list, else the first by id (the account made first: app-discord before app-discord-servers).
+ */
+function routeOf(pkg, channel) {
+    const mine = [...providers].filter((p) => p.pkg === pkg).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    if (!mine.length) return null;
+    const ch = String(channel || '');
+    return (ch && mine.find((p) => p.channels.includes(ch))) || mine.find((p) => !p.channels.length) || mine[0];
+}
 
 /** Whether the phone has sent the app's icon. */
 function hasAppIcon(pkg) { return PACKAGE_RE.test(String(pkg || '')) && fs.existsSync(iconFile(pkg)); }
@@ -194,7 +270,8 @@ function tap() {
         if (!detail || typeof detail !== 'object') return;
         if (name === 'notify.posted' && PACKAGE_RE.test(String(detail.package || ''))) {
             noteApp(detail);
-            for (const p of providers) if (p.pkg === detail.package) p.take(detail, device && device.id, device && device.name);
+            const p = routeOf(detail.package, detail.channel);
+            if (p) p.take(detail, device && device.id, device && device.name);
         } else if (name === 'notify.removed' && detail.key) {
             for (const p of providers) p.removed(String(detail.key));
         }
@@ -208,6 +285,8 @@ class AndroidAppProvider {
         this.id = account.id;
         this.pkg = String(account.package || '');
         this.ownLabel = realLabel(account.label, this.pkg);
+        this.channels = cleanChannels(account.channels);
+        this.ownUsername = str(account.username, 80).trim();
         this.learnedLabel = '';
         this.hooks = hooks || {};
         this.status = 'connecting';
@@ -224,6 +303,9 @@ class AndroidAppProvider {
     get kind() { return 'android'; }
 
     identity() { return this.deviceName || ''; }
+
+    /** Who is signed in to the app: the account's own name for it, else what the app's notifications say. */
+    get username() { return this.ownUsername || appUser(this.pkg); }
 
     features() {
         // reply = a reply to one message (threads); quickReply = the notification's own reply
@@ -266,7 +348,7 @@ class AndroidAppProvider {
         if (!providers.has(this)) return;
         try {
             const res = await activeSync().serverCall(resources(), null, deviceId, 'notify.list', {}, { timeoutMs: CALL_MS });
-            for (const n of (res && res.notifications) || []) if (n && n.package === this.pkg) this.take(n, deviceId, deviceName);
+            for (const n of (res && res.notifications) || []) if (n && n.package === this.pkg && routeOf(this.pkg, n.channel) === this) this.take(n, deviceId, deviceName);
         } catch (_) { /* that phone does not send notifications */ }
         await this.learnFrom(deviceId);
     }
@@ -312,15 +394,16 @@ class AndroidAppProvider {
             for (const m of d.messages.slice(-25)) {
                 if (!m || typeof m !== 'object') continue;
                 const text = str(m.text, 2000).trim();
-                if (!text) continue;
-                out.push({ text, time: Number(m.time) || Number(d.time) || Date.now(), sender: str(m.sender, 120), senderKey: str(m.senderKey || m.sender, 200), me: m.me === true, styled: true });
+                const image = typeof m.image === 'string' ? m.image : '';
+                if (!text && !image) continue;
+                out.push({ text, time: Number(m.time) || Number(d.time) || Date.now(), sender: str(m.sender, 120), senderKey: str(m.senderKey || m.sender, 200), me: m.me === true, styled: true, image });
             }
         }
         if (!out.length) {
             const text = str(d.text, 2000).trim();
             const title = str(d.title, 200).trim();
             if (!text && !title) return out;
-            out.push({ text: text || title, time: Number(d.time) || Date.now(), sender: text ? title : '', senderKey: text ? title : '', me: false, styled: false, key: String(d.key || '') });
+            out.push({ text: text || title, time: Number(d.time) || Date.now(), sender: text ? title : '', senderKey: text ? title : '', me: false, styled: false, key: String(d.key || ''), image: typeof d.picture === 'string' ? d.picture : '' });
         }
         return out;
     }
@@ -376,14 +459,20 @@ class AndroidAppProvider {
             }
             kept.push(r);
         }
-        const msgs = kept.map((r) => ({ guid: r.guid, chatGuid: guid, text: r.text, date: r.time, fromMe: r.me, sender: r.me ? 'Me' : r.sender, senderKey: r.me ? '' : r.senderKey }));
+        const msgs = kept.map((r) => {
+            const m = { guid: r.guid, chatGuid: guid, text: r.text, date: r.time, fromMe: r.me, sender: r.me ? 'Me' : r.sender, senderKey: r.me ? '' : r.senderKey };
+            // its picture, sent once by the phone: kept beside the store as the message's attachment
+            const pic = r.image ? this.keepImage(guid, r.guid, r.image) : null;
+            if (pic) m.images = [pic];
+            return m;
+        });
         if (msgs.length) {
             try { this.store.putMessages(this.id, msgs.map((m) => ({ guid: m.guid, chatGuid: guid, date: m.date, text: m.text, raw: m }))); } catch (error) { this.log(`store write failed: ${error.message}`); }
         }
         const newest = msgs.reduce((a, m) => (!a || m.date >= a.date ? m : a), null);
         if (newest && newest.date >= (chat.lastDate || 0)) {
             chat.lastDate = newest.date;
-            chat.lastText = newest.text;
+            chat.lastText = newest.text || (newest.images ? 'Picture' : '');
             chat.lastFromMe = newest.fromMe;
             chat.lastSender = newest.sender;
             chat.lastGuid = newest.guid;
@@ -423,6 +512,24 @@ class AndroidAppProvider {
 
     avatarFile(chatGuid) { return path.join(dir(), 'textmessaging-android', this.id, `${String(chatGuid).replace(/[^a-z0-9]/gi, '')}.png`); }
 
+    imageDir(chatGuid) { return path.join(dir(), 'textmessaging-android', this.id, 'img', String(chatGuid).replace(/[^a-z0-9]/gi, '')); }
+
+    /** A message's picture (a JPEG / PNG / WEBP data URL from the phone) written once: { id, mime, size } or null. */
+    keepImage(chatGuid, msgGuid, url) {
+        const m = /^data:image\/(png|jpeg|webp);/.exec(String(url || ''));
+        const buf = m ? dataUrlBytes(url) : null;
+        if (!buf) return null;
+        const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+        const id = `${String(chatGuid).replace(/[^a-z0-9]/gi, '')}.${String(msgGuid).replace(/[^a-z0-9]/gi, '')}.${ext}`;
+        if (!writeFileQuiet(path.join(this.imageDir(chatGuid), id.slice(id.indexOf('.') + 1)), buf)) return null;
+        return { id, mime: `image/${m[1]}`, size: buf.length };
+    }
+
+    attachmentOf(img) {
+        const base = `/api/textmessaging/${encodeURIComponent(this.id)}/attachment/${encodeURIComponent(img.id)}`;
+        return { guid: img.id, name: 'Picture', mime: img.mime, size: img.size || 0, width: null, height: null, sticker: false, url: base, thumbUrl: null };
+    }
+
     contactAvatar(key) {
         if (key === 'app') return appIcon(this.pkg);
         try { return fs.readFileSync(this.avatarFile(key)); } catch (_) { return null; }
@@ -448,7 +555,7 @@ class AndroidAppProvider {
             replyTo: null,
             effect: null,
             groupEvent: null,
-            attachments: [],
+            attachments: Array.isArray(m.images) ? m.images.map((x) => this.attachmentOf(x)) : [],
             reactions: []
         };
     }
@@ -612,14 +719,31 @@ class AndroidAppProvider {
     async deleteChat({ chatGuid }) {
         if (this.store) this.store.deleteChat(this.id, chatGuid);
         try { fs.unlinkSync(this.avatarFile(chatGuid)); } catch (_) { /* none */ }
+        fs.promises.rm(this.imageDir(chatGuid), { recursive: true, force: true }).catch(() => {});
         return { ok: true };
     }
 
-    async downloadAttachment() { throw Object.assign(new Error('Unknown attachment.'), { code: 'NOT_FOUND', status: 404 }); }
+    /** The account is deleted: its pictures go with it. */
+    forget() { fs.promises.rm(path.join(dir(), 'textmessaging-android', this.id), { recursive: true, force: true }).catch(() => {}); }
+
+    /** A message's picture (attachment guid <chat>.<message>.<ext>), the face of a fetch Response. */
+    async downloadAttachment(guid) {
+        const m = /^([a-z0-9]+)\.([a-z0-9]+)\.(jpg|png|webp)$/i.exec(String(guid || ''));
+        if (!m) throw Object.assign(new Error('Unknown attachment.'), { code: 'NOT_FOUND', status: 404 });
+        let buf;
+        try { buf = await fs.promises.readFile(path.join(this.imageDir(m[1]), `${m[2]}.${m[3]}`)); } catch (_) {
+            throw Object.assign(new Error('Unknown attachment.'), { code: 'NOT_FOUND', status: 404 });
+        }
+        const type = m[3] === 'jpg' ? 'image/jpeg' : `image/${m[3]}`;
+        return {
+            headers: { get: (h) => (String(h).toLowerCase() === 'content-type' ? type : null) },
+            arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length)
+        };
+    }
 
     async test() { return { ok: true }; }
 }
 
 function _reset() { providers.clear(); caughtUp.clear(); recent = null; cacheDir = null; tapped = false; }
 
-module.exports = { AndroidAppProvider, recentApps, appIcon, hasAppIcon, appLabel, realLabel, learnApp, PACKAGE_RE, _reset, _setCacheDir: (d) => { cacheDir = d; } };
+module.exports = { AndroidAppProvider, recentApps, appIcon, hasAppIcon, appLabel, appUser, channelsOf, cleanChannels, DEFAULT_SPLITS, realLabel, learnApp, PACKAGE_RE, _reset, _setCacheDir: (d) => { cacheDir = d; } };

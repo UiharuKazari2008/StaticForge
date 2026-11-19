@@ -181,7 +181,61 @@ const post = (d) => tap('notify.posted', Object.assign({ package: 'com.discord',
     assert.ok(sora && sora.unread && sora.canReply, 'the catch-up after a reconnect');
     assert.ok(tm.avatar('app-discord', 'app'), 'the app icon from the catch-up list');
 
+    // Discord is split by notification channel (Yukimi, Nov 18): direct messages and servers are two accounts
+    {
+        const list = tm.listAccounts().accounts.filter((a) => a.package === 'com.discord');
+        assert.deepStrictEqual(list.map((a) => [a.id, a.label, a.channels.includes('directMessages'), a.channels.includes('messages')]),
+            [['app-discord', 'Discord', true, false], ['app-discord-servers', 'Discord servers', false, true]]);
+        post({ key: 'g1', channel: 'messages', title: 'Aki', text: 'server hi', time: Date.now() + 50, sub: 'Night Owls',
+            conv: { title: '#lobby', group: true, shortcut: 'ch-lobby', me: 'kanmi' }, messages: [{ text: 'server hi', time: Date.now() + 50, sender: 'Aki', senderKey: 'u1' }] });
+        post({ key: 'd1', channel: 'directMessages', title: 'Ren', text: 'dm hi', time: Date.now() + 51,
+            conv: { title: 'Ren', shortcut: 'dm-ren2', me: 'kanmi' }, messages: [{ text: 'dm hi', time: Date.now() + 51, sender: 'Ren', senderKey: 'u3' }] });
+        await wait(30);
+        const servers = (await tm.listChats('app-discord-servers')).chats;
+        assert.ok(servers.some((c) => c.title === '#lobby') && !servers.some((c) => c.title === 'Ren'), 'server channel -> Discord servers');
+        const dms = (await tm.listChats('app-discord')).chats;
+        assert.ok(dms.some((c) => c.last && c.last.text === 'dm hi') && !dms.some((c) => c.title === '#lobby'), 'DM channel -> Discord');
+        // the signed-in user from the notification names the account; the user's own name wins
+        assert.strictEqual(tm.listAccounts().accounts.find((a) => a.id === 'app-discord').name, 'Discord (kanmi)');
+        tm.saveAccount({ id: 'app-discord-servers', kind: 'android', username: 'alt-acct' });
+        assert.strictEqual(tm.listAccounts().accounts.find((a) => a.id === 'app-discord-servers').name, 'Discord servers (alt-acct)');
+        tm.saveAccount({ id: 'app-discord-servers', kind: 'android', username: '' });
+        assert.strictEqual(tm.listAccounts().accounts.find((a) => a.id === 'app-discord-servers').name, 'Discord servers (kanmi)');
+        // a channel cannot belong to two accounts of the app
+        await assert.rejects(async () => tm.saveAccount({ id: 'app-discord-servers', kind: 'android', channels: ['directMessages'] }), (e) => e.code === 'CHANNEL_TAKEN');
+        assert.ok(tm.listAccounts().accounts.find((a) => a.id === 'app-discord').channelChoices.some((c) => c.id === 'messages' && c.seen));
+
+        // a picture in a line ("Sent a video") is kept once and shown inline as an attachment
+        const JPG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
+        const vt = Date.now() + 60;
+        post({ key: 'd2', channel: 'directMessages', title: 'Ren', text: 'Sent a video', time: vt, conv: { title: 'Ren', shortcut: 'dm-ren2' },
+            messages: [{ text: 'Sent a video', time: vt, sender: 'Ren', senderKey: 'u3', image: JPG }] });
+        post({ key: 'd2', channel: 'directMessages', title: 'Ren', text: 'Sent a video', time: vt, conv: { title: 'Ren', shortcut: 'dm-ren2' },
+            messages: [{ text: 'Sent a video', time: vt, sender: 'Ren', senderKey: 'u3' }] });
+        await wait(30);
+        const ren = (await tm.listChats('app-discord')).chats.find((c) => c.last && c.last.text === 'Sent a video');
+        const rp = await tm.listMessages('app-discord', ren.guid);
+        const vid = rp.messages.filter((m) => m.text === 'Sent a video');
+        assert.strictEqual(vid.length, 1);
+        assert.strictEqual(vid[0].attachments.length, 1);
+        assert.strictEqual(vid[0].attachments[0].mime, 'image/jpeg');
+        const dl = await tm.downloadAttachment('app-discord', vid[0].attachments[0].guid);
+        assert.strictEqual(dl.headers.get('content-type'), 'image/jpeg');
+        assert.ok((await dl.arrayBuffer()).byteLength > 100);
+        await assert.rejects(tm.downloadAttachment('app-discord', '../x.jpg'), (e) => e.code === 'NOT_FOUND');
+        tm.deleteAccount('app-discord-servers');
+    }
+
     tm.deleteAccount('app-discord');
+    tm._reset();
+    // an account made before the split (no channel list) is split once at start; a list cleared later stays
+    config.textMessaging = { accounts: [{ id: 'app-discord', kind: 'android', url: '', package: 'com.discord', label: 'Discord', enabled: true, settings: {} }] };
+    tm.init(require('../modules/globalResources'));
+    assert.deepStrictEqual(config.textMessaging.accounts.map((a) => [a.id, a.channels.length > 0]), [['app-discord', true], ['app-discord-servers', true]]);
+    tm.saveAccount({ id: 'app-discord-servers', kind: 'android', channels: [] });
+    tm._reset();
+    tm.init(require('../modules/globalResources'));
+    assert.strictEqual(config.textMessaging.accounts.length, 2);
     tm._reset();
     fs.rmSync(tmp, { recursive: true, force: true });
     // #892: a label that is only the package name (an app in the Work profile) is no name
