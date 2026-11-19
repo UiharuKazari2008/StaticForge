@@ -548,6 +548,11 @@ function forgetDirectorReopen() {
      */
     function winlogonHostPower(kind) {
         if (kind !== 'shutdown' && kind !== 'restart') return false;
+        // a Continuity desktop (the phone's DeX window) shut down: the window closes, the phone stays on (#945)
+        const mc = window.melatonContinuity;
+        if (kind === 'shutdown' && mc && typeof mc.hostShutdown === 'function' && typeof mc.isDexWindow === 'function' && mc.isDexWindow()) {
+            try { if (mc.hostShutdown()) return true; } catch (_) { /* restart into /launch instead */ }
+        }
         const host = window.DreamOSPower;
         try {
             if (!host || typeof host[kind] !== 'function') return false;

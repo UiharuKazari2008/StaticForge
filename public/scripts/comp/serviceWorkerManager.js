@@ -5256,7 +5256,9 @@ class ServiceWorkerManager {
         // Continuity (#900): who restarts is decided per window - each judges the pending files against what
         // it runs (restartPlan); the warning then names exactly the windows that restart. Cancel keeps the
         // updates waiting.
-        if (bonded && this.pendingUpdateFuse && !opts.plan) {
+        // the DeX window plans even with no files of its own: its mirror of the phone's state can miss a push, and
+        // without a plan the phone restarted both at once, skipping this desktop's shutdown (#945)
+        if (bonded && (this.pendingUpdateFuse || this._isContinuityDexWindow()) && !opts.plan) {
             mcw.restartPlan(Array.from(this.pendingUpdateUrls || [])).then(async (plan) => {
                 if (!opts.confirmed && !(await mcw.confirmUpdateRestart(plan))) return;
                 this.forceRestart({ confirmed: true, plan });
@@ -5276,9 +5278,14 @@ class ServiceWorkerManager {
             this.resetPendingUpdateFuse();
             if (mcw.syncedRestart()) { console.log('🔄 Restart for updates: this DeX window shuts down, then the phone, then both start'); return; }
         }
-        // the phone restarting both: the DeX window's shutdown sequence runs first (it then waits at its BIOS for the phone)
-        if (!this._isContinuityDexWindow() && plan && plan.other && !opts.dexDone && mcw && typeof mcw.dexShutdownFirst === 'function') {
-            mcw.dexShutdownFirst().then(() => this.forceRestart(Object.assign({}, opts, { dexDone: true }))).catch(() => this.forceRestart(Object.assign({}, opts, { dexDone: true })));
+        // the phone restarting both: the DeX window's shutdown sequence runs first (it then waits at its BIOS for the
+        // phone), the phone showing "Shutting down..." meanwhile; with no plan, the file rule says whether both restart
+        const phoneBoth = !this._isContinuityDexWindow() && (plan ? plan.other
+            : !!(mcw && typeof mcw.updateScope === 'function' && this.pendingUpdateFuse && mcw.updateScope(Array.from(this.pendingUpdateUrls || [])) === 'both'));
+        if (phoneBoth && !opts.dexDone && mcw && typeof mcw.dexShutdownFirst === 'function' && typeof mcw.peers === 'function' && mcw.peers().includes('desktop')) {
+            const go = () => this.forceRestart(Object.assign({}, opts, { dexDone: true }));
+            // a program kept open on the desktop ("programs still running", Cancel): nothing restarts
+            mcw.dexShutdownFirst('restart').then((ans) => { if (ans !== 'cancelled') go(); }).catch(go);
             return;
         }
         if (this._isContinuityDexWindow()) {

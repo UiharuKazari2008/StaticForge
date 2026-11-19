@@ -371,7 +371,13 @@
         if (!files.length) return 'live';
         return sw.classifyStaticCacheUpdate(files) === 'restart' ? 'restart' : 'live';
     }
-    api.on('update-needs?', (m) => answer(m, localNeed(m.urls)));
+    // the DeX window's list can be empty (its mirror of the phone's update state missed a push): the phone then judges
+    // its own waiting files, so a restart for updates is still planned for both windows (#945)
+    api.on('update-needs?', (m) => {
+        const sw = root.serviceWorkerManager;
+        const own = sw && sw.pendingUpdateFuse && sw.pendingUpdateUrls ? Array.from(sw.pendingUpdateUrls) : [];
+        answer(m, localNeed(Array.isArray(m.urls) && m.urls.length ? m.urls : own));
+    });
 
     // ---- the bonded desktop's Melaton Update is an interface to the phone's updater (#900) ----------
     //
@@ -599,21 +605,75 @@
     api.syncedRestart = () => {
         if (!isDw() || !api.peers().includes('phone') || typeof root.runWinlogonPower !== 'function') return false;
         ownRestart = true;
+        // the phone shows "Shutting down..." while this computer shuts down (#945)
+        api.post({ type: 'dex-shutting-down', kind: 'restart' });
         root.runWinlogonPower('restart', { beforeNavigate: () => api.post({ type: 'restart-request', why: 'updates', restartDex: true, dexDone: true }) })
+            .then((ok) => { if (ok === false) { ownRestart = false; api.post({ type: 'dex-shutdown-cancelled' }); } })
             .catch(() => { ownRestart = false; coldBootDw(); });
         return true;
     };
-    // the phone asks this window to shut down first (a restart of both it started): the sequence, then the answer
+    /**
+     * The phone asks this window to shut down: first, for a restart of both it started (kind 'restart', the phone
+     * restarts once this answers), or on its own from the phone's Continuity bubble (alone: this window only -
+     * 'restart' starts it again and its BIOS waits for the phone, 'shutdown' closes it). Answers 'done', or
+     * 'cancelled' when the person kept a program open at the "programs still running" screen.
+     */
     api.on('dex-shutdown', (m) => {
         if (!isDw() || !inApp() || typeof root.runWinlogonPower !== 'function') { answer(m, 'skipped'); return; }
+        const kind = m && m.kind === 'shutdown' ? 'shutdown' : 'restart';
         ownRestart = true;
-        root.runWinlogonPower('restart', { beforeNavigate: () => answer(m, 'done') }).catch(() => { answer(m, 'done'); ownRestart = false; coldBootDw(); });
+        if (kind === 'shutdown') dexClosing = true;
+        root.runWinlogonPower(kind, { beforeNavigate: () => answer(m, 'done') })
+            .then((ok) => { if (ok === false) { ownRestart = false; dexClosing = false; answer(m, 'cancelled'); } })
+            .catch(() => { answer(m, 'done'); ownRestart = false; dexClosing = false; coldBootDw(); });
     });
-    /** The phone: before its own restart of both, the DeX window's shutdown sequence (at most 25 s). */
-    api.dexShutdownFirst = async () => {
-        if (!isPhone() || !api.peers().includes('desktop')) return null;
-        return api.ask('dex-shutdown', {}, 25000);
+    // a shut down of this DeX window (the phone's Continuity bubble, the Start menu): the window closes once the
+    // sequence has gone dark instead of starting again (winlogonPower asks hostShutdown)
+    let dexClosing = false;
+    api.hostShutdown = () => {
+        if (!isDw()) return false;
+        const B = bridge();
+        if (!B || typeof B.closeWindow !== 'function') return false;
+        try { B.closeWindow(); return true; } catch (_) { return false; }
     };
+
+    // ---- the phone: "Shutting down..." while its Continuity desktop shuts down (#945) ----------------------------
+    let shutBox = null;
+    let shutTimer = 0;
+    function showShuttingDown() {
+        if (!isPhone()) return;
+        clearTimeout(shutTimer);
+        // at most the DeX window's longest sequence (its updates install on the way down): then it is gone anyway
+        shutTimer = setTimeout(hideShuttingDown, 60000);
+        if (shutBox) return;
+        const wm = root.wmShell;
+        if (wm && typeof wm.progressBox === 'function') shutBox = wm.progressBox({ title: 'Continuity PC', text: 'Shutting down...', pct: null });
+    }
+    function hideShuttingDown() {
+        clearTimeout(shutTimer);
+        if (shutBox) { try { shutBox.close(); } catch (_) { /* gone */ } }
+        shutBox = null;
+    }
+    api.on('dex-shutting-down', () => showShuttingDown());
+    api.on('dex-shutdown-cancelled', () => hideShuttingDown());
+    api.on('peer', (m) => { if (m.role === 'desktop' && m.state === 'joined') hideShuttingDown(); });
+
+    /**
+     * The phone: the DeX window's shutdown sequence, with "Shutting down..." on the phone meanwhile. kind 'restart'
+     * (default) before the phone's own restart of both; alone: the DeX window only (the Continuity bubble).
+     * Resolves 'done' | 'cancelled' | 'skipped' | null (no DeX window, or no answer in time).
+     */
+    api.dexShutdownFirst = async (kind, opts) => {
+        if (!isPhone() || !api.peers().includes('desktop')) return null;
+        showShuttingDown();
+        const ans = await api.ask('dex-shutdown', { kind: kind === 'shutdown' ? 'shutdown' : 'restart', alone: !!(opts && opts.alone) }, 60000);
+        // the phone restarting next keeps the box up until its page goes; anything else ends it here
+        if (ans !== 'done' || (opts && opts.alone)) hideShuttingDown();
+        return ans;
+    };
+    /** The phone's Continuity bubble: shut down or restart the Continuity desktop alone. */
+    api.dexPower = (kind) => api.dexShutdownFirst(kind === 'shutdown' ? 'shutdown' : 'restart', { alone: true });
+    api.dexClosing = () => dexClosing;
     api.on('phone-restarting', (m) => {
         phoneReadyNow = false;
         if (!isDw() || !inApp() || ownRestart) return;

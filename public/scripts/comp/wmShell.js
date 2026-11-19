@@ -7057,7 +7057,11 @@
             const batHtml = bat ? `<span class="wm-cty-bat">${imgTag(bat.charging ? 'status-battery-charging' : Number(bat.level) >= 80 ? 'status-battery-full' : Number(bat.level) >= 50 ? 'status-battery-3' : Number(bat.level) >= 25 ? 'status-battery-2' : 'status-battery-1')}<span>${Math.round(Number(bat.level))}%</span></span>` : '';
             const sections = [lines.join(' ')];
             if (res || batHtml) sections.push({ rule: true }, { html: `<div class="wm-cty-row"><span>${escapeHtml(res)}</span>${batHtml}</div>` });
-            bubble({ title: 'Continuity PC', role, anchor, sections, buttons: [{ text: 'Hide' }] });
+            // the desktop's power (#945): its own shutdown sequence runs on the connected display ("Shutting down..."
+            // here meanwhile); Shut Down closes the desktop, Restart starts it again. This phone stays on.
+            const live = !!(mc && typeof mc.dexPower === 'function' && typeof mc.peers === 'function' && mc.peers().includes('desktop'));
+            const power = live ? [{ text: 'Shut Down', action: () => { void mc.dexPower('shutdown'); } }, { text: 'Restart', action: () => { void mc.dexPower('restart'); } }] : [];
+            bubble({ title: 'Continuity PC', role, anchor, sections, buttons: [...power, { text: 'Hide' }] });
         } else if (role === 'lapis') {
             // Lapis Remote (#835): the time left as a countdown and a bar, what the start set, fuel and the lock
             const l = window.wmLapis;
