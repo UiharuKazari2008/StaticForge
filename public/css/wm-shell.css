@@ -2547,7 +2547,9 @@ html.ui-mobile[data-wm-boot="splash"] .wm-splash {
        the ROM's 640 rows did not have (the gradients carry on, the rings continue) */
     /* a screen wider than the ROM's 3:4 (the Fold unfolded): the picture is fitted to the height and left aligned
        instead of filling the width (Yukimi, Nov 18 2026); its field and rings carry on to the right */
-    --u: min(calc(100cqw / 480), calc(100cqh / 640));
+    /* at most as large as on the phone's own portrait screen (the Fold's cover, 1080 x 2520: width = 0.4286 of the
+       height), so the unfolded splash is the folded one's size (Yukimi, Nov 18 2026) */
+    --u: min(calc(100cqw / 480), calc(100cqh * 0.4286 / 480));
     position: absolute;
     left: 0;
     top: 0;

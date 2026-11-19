@@ -3076,6 +3076,36 @@
     const STATUS_QUIET_WS = new Set(['ping', 'pong', 'sidebar_live', 'sidebar_live_subscribe', 'sidebar_live_subscribe_response', 'report_client_perf', 'report_client_perf_response']);
     let bubbleEl = null;
     const bubbleOpen = () => { if (!bubbleEl && shell) bubbleEl = shell.querySelector('.wm-bubble'); return !!(bubbleEl && !bubbleEl.hidden); };
+    /*
+     * Which exchanges raise the arrows (Yukimi, Nov 18 2026): a meaningful one with the server - what the person just
+     * asked for in the program in front, or the content of a program they opened (messages, chat, mail, prints, files,
+     * the Director). Never the check-ins, status loads, subscriptions, counts and small refreshes the shell and its
+     * background work trade all the time, and never CaféReady's own cache (above).
+     *   out: a request sent within USER_MS of a tap or a key (the reply to it counts too)
+     *   in:  that reply, or a program's content arriving (a message, a print, a file)
+     */
+    const USER_MS = 4000;
+    const DATA_MIN_BYTES = 4096;
+    let userActAt = 0;
+    const markUser = () => { userActAt = Date.now(); };
+    document.addEventListener('pointerdown', markUser, { capture: true, passive: true, signal: appScopeSignal });
+    document.addEventListener('keydown', markUser, { capture: true, passive: true, signal: appScopeSignal });
+    const userRecent = () => Date.now() - userActAt < USER_MS;
+    const HOUSEKEEPING = /(^|_)(ping|pong|status|statuses|heartbeat|presence|perf|state|snapshot|subscribe|unsubscribe|ack|count|counts|list|check|poll|sync|time|rtt|hello|config|settings|prefs|layout|cache|manifest|catalog|ticker|live|watch)(_|$)/;
+    const CONTENT = /(message|chat|mail|sms|text|reply|generat|print|image|upload|download|file|director|turn|video|note|document|send)/;
+    const askedIds = new Map();
+    function meaningful(direction, message) {
+        const type = String((message && message.type) || '');
+        if (!type || HOUSEKEEPING.test(type)) return false;
+        const id = message.requestId;
+        if (direction === 'out') {
+            if (!userRecent()) return false;
+            if (id) { askedIds.set(id, Date.now()); if (askedIds.size > 64) askedIds.delete(askedIds.keys().next().value); }
+            return true;
+        }
+        if (id && askedIds.has(id)) { askedIds.delete(id); return true; }
+        return CONTENT.test(type);
+    }
     let dataWatchWs = null;
     let dataWatchFetch = false;
     function watchDataUse() {
@@ -3093,7 +3123,7 @@
                 // CaféReady (the Miniport's cache, #815) answers a flagged request on the phone: neither the
                 // request nor its cached reply reaches the server (Yukimi, Nov 14: the arrows only for that)
                 const cafe = message && ((direction === 'out' && message._mpCache) || (direction === 'in' && message._mpCached));
-                if (after !== before && !cafe && !(message && QUIET_WS.has(message.type))) dataUsed();
+                if (after !== before && !cafe && !(message && QUIET_WS.has(message.type)) && meaningful(direction, message)) dataUsed();
             };
         }
         // requests count by the bytes that came over the network (resource timing): a service worker,
@@ -3103,7 +3133,9 @@
             dataWatchFetch = 'observed';
             try {
                 // bytes that came over the network (a service worker or HTTP cache answer has none)
-                new PerformanceObserver((list) => { if (list.getEntries().some((e) => e.transferSize > 0)) dataUsed(); })
+                // and only a real load the user asked for: something that just happened on screen, of some size (a
+                // small refresh or a check-in in the background is no exchange, Yukimi Nov 18)
+                new PerformanceObserver((list) => { if (userRecent() && list.getEntries().some((e) => e.transferSize > DATA_MIN_BYTES)) dataUsed(); })
                     .observe({ type: 'resource', buffered: false });
             } catch (_) { /* no resource timing */ }
         }
