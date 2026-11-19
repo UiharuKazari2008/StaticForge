@@ -4527,7 +4527,9 @@ class ServiceWorkerManager {
                 if (this._rebootIntoInstaller(count)) {
                     return { rebooted: true };
                 }
-                return { ask: 'A large update must be installed before Melaton can start. Click Restart to install it.', install: true };
+                // The installer ran minutes ago (the server moved on while it worked): install the rest right here
+                // instead of the "needs to restart" box (Yukimi, Nov 19: "it should just install it right there").
+                console.log(`[boot] ${count} files changed since the installer ran: installing them in place`);
             }
 
             const fresh = this._filesCountingTowardInstaller(filesToUpdate);
@@ -5257,7 +5259,8 @@ class ServiceWorkerManager {
                     if (this._rebootIntoInstaller(this._installerFileCount(filesToUpdate))) {
                         return { rebooted: true };
                     }
-                    return { ask: 'A large update must be installed before Melaton can start. Click Restart to install it.', install: true };
+                    // the installer ran minutes ago: the rest installs right here (no restart box, Yukimi, Nov 19)
+                    console.log('[boot] files changed since the installer ran: installing them in place');
                 }
 
                 const outcome = await this.checkAndDownloadUpdatesForInit(fresh);
