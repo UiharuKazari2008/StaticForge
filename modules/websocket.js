@@ -142,7 +142,9 @@ const DESKTOP_ONLY_TYPES = new Set([
     'config_checkpoint_restored',
     'packages_updated',
     // #890 round 5: Windows Sidebar (vistaSidebar.js, desktop shell only)
-    'sidebar_updated'
+    'sidebar_updated',
+    // #922: the Key Manager console, Client Certificates store (mmcAppKeys.js, MMC: desktop only)
+    'client_cert_changed'
 ]);
 
 // Broadcasts only Melaton Mobile reads (its programs load in the mobile shell only: app.html
@@ -184,9 +186,12 @@ const BROADCAST_ALL = new Set([
     'tm_event', 'ma_event',
     // location_places_changed (#907): Home / Work for wmLocation, which desktop pages (Weather, backgrounds) load too
     'location_places_changed',
-    // novelManager.js loads in both shells: the desktop Novel window and the phone's Dream Studio Rentan
+    // novelManager.js loads in both shells: the desktop Novel window and the phone Dream Studio Rentan
     // novel view (studioModelRentan.js watchNovel) refresh an open note from it
-    'novel_updated'
+    'novel_updated',
+    // #922: the CRL moved, sent only to sessions a client certificate opened (the filter at the source);
+    // a revoked phone must hear it asleep too, so it is not held
+    'client_cert_crl'
 ]);
 void BROADCAST_ALL;
 

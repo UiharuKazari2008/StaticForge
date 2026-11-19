@@ -12,7 +12,8 @@
  *   intermediate  the CA certificates between the site certificate and its root in the chain the
  *                 phone's own host (the request's Host, a DNS name) serves on port 443: one TLS
  *                 handshake, nothing sent, cached 6 hours per host
- *   personal      certificates that identify this phone: there are none (no client certificates)
+ *   personal      the certificate that identifies this client: the one Key Manager's client CA issued to it
+ *                 (modules/clientCertificates.js, Yozora #922), when this session enrolled or signed in with one
  */
 const tls = require('tls');
 const crypto = require('crypto');
@@ -105,13 +106,26 @@ async function intermediates(host) {
     return pending;
 }
 
-function mount(app, authMiddleware) {
+/** The client certificate this session signed in with or enrolled (Yozora #922), as the Personal list's one entry. */
+async function personal(req, globalResources) {
+    if (!globalResources || !req.session || !req.session.id) return [];
+    try {
+        const service = require('./clientCertificates').live(globalResources);
+        const serial = await service.sessionSerial(req.session.id);
+        const pem = serial ? await service.certificatePem(serial) : null;
+        return pem ? [fromX509(new crypto.X509Certificate(pem))] : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function mount(app, authMiddleware, globalResources) {
     const auth = authMiddleware || ((req, res, next) => next());
     app.get('/api/wm-certificates', auth, async (req, res) => {
         res.set('Cache-Control', 'no-store');
         try {
             const host = hostOf(req);
-            res.json({ success: true, host, personal: [], intermediate: await intermediates(host), root: roots() });
+            res.json({ success: true, host, personal: await personal(req, globalResources), intermediate: await intermediates(host), root: roots() });
         } catch (err) {
             res.status(500).json({ success: false, error: err && err.message ? err.message : String(err) });
         }

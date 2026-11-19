@@ -12,6 +12,8 @@
  *       Pending Requests           programs that asked for a key: Approve / Deny
  *       Failed Requests            denied requests
  *       Request Log                the requests programs made with their keys, 25 to a page
+ *     Client Certificates          installed clients' sign-in certificates (Yozora #922, docs/client-certificates.md)
+ *       Revoked Certificates       on the CRL; Issued Certificates: Revoke Certificate... (certsrv's reason box)
  *     Service Keys                 the keys Dreamscape uses for outside services, one folder each:
  *       <service>                  its keys: Use This Key, Edit Key..., Delete Key, Add Key...,
  *                                  Unlock Service (after repeated errors), health from apiKeyHealth
@@ -75,6 +77,9 @@
         scopes: [],
         services: [],
         svcError: '',
+        certs: [],
+        certError: '',
+        certHandler: null,
         log: { page: 1, items: [], meta: null, loading: false, loaded: false, error: '' },
         statusHandler: null,
         lastList: null
@@ -96,13 +101,20 @@
     async function load(c) {
         if (!isAdmin()) { S.denied = true; if (c) c.refresh(); return; }
         S.denied = false;
-        const [keys, pending, failed, scopes, services] = await Promise.allSettled([
+        const [keys, pending, failed, scopes, services, certs] = await Promise.allSettled([
             send('list_application_keys', {}),
             send('list_application_auth_requests', { status: 'pending' }),
             send('list_application_auth_requests', { status: 'denied' }),
             send('get_application_auth_scopes', {}),
-            send('get_api_key_services', {})
+            send('get_api_key_services', {}),
+            send('client_cert_list', {})
         ]);
+        if (certs.status === 'fulfilled' && certs.value && Array.isArray(certs.value.certificates)) {
+            S.certs = certs.value.certificates;
+            S.certError = '';
+        } else {
+            S.certError = (certs.reason && certs.reason.message) || (certs.value && certs.value.error) || 'The client certificates could not be read.';
+        }
         if (keys.status === 'fulfilled' && keys.value && Array.isArray(keys.value.keys)) {
             S.keys = keys.value.keys;
             S.error = '';
@@ -146,6 +158,17 @@
     const revoked = () => S.keys.filter(isRevoked);
     const keyById = (id) => S.keys.find((k) => String(k.id) === String(id)) || null;
     const service = (id) => S.services.find((s) => s.id === id) || null;
+
+    // client certificates (Yozora #922, docs/client-certificates.md): installed clients' sign-in certificates
+    const certIssued = () => S.certs.filter((k) => !k.revokedAt);
+    const certRevoked = () => S.certs.filter((k) => !!k.revokedAt);
+    const certBySerial = (key) => S.certs.find((k) => `cert:${k.serial}` === String(key)) || null;
+    const CERT_KIND = { android: 'Android app', dreamos: 'DreamOS' };
+    const CERT_STORE = { strongbox: 'StrongBox', tee: 'Hardware (TEE)', software: 'Software', file: 'Key file', tpm: 'TPM' };
+    // certsrv's reason codes, the four this CA writes
+    const CERT_REASONS = [['revoked', 'Unspecified'], ['key_compromise', 'Key Compromise'], ['superseded', 'Superseded'], ['cessation', 'Cease of Operation']];
+    const certReason = (k) => (CERT_REASONS.find(([id]) => id === k.revokeReason) || ['', 'Unspecified'])[1];
+    const certStatus = (k) => (k.revokedAt ? 'Revoked' : k.status === 'expired' ? 'Expired' : k.renew ? 'Renewal due' : 'Valid');
 
     function date(t) {
         if (!t) return '';
@@ -231,6 +254,15 @@
                         { id: 'log', name: 'Request Log', icon: FOLDER }
                     ]
                 },
+                {
+                    id: 'cc',
+                    name: 'Client Certificates',
+                    icon: FOLDER,
+                    children: [
+                        { id: 'cc-revoked', name: 'Revoked Certificates', icon: FOLDER },
+                        { id: 'cc-issued', name: 'Issued Certificates', icon: FOLDER }
+                    ]
+                },
                 { id: 'svc', name: 'Service Keys', icon: FOLDER, children: svcs }
             ]
         }];
@@ -283,6 +315,25 @@
             { t: 'Address', w: 120, key: 'ip', text: (r) => r.ip || '' },
             { t: 'Client', w: 170, key: 'ua', text: (r) => shortUa(r.userAgent) }
         ],
+        ccIssued: [
+            { t: 'Issued To', w: 170, key: 'to', text: (k) => k.deviceName || '' },
+            { t: 'Issued By', w: 140, key: 'by', text: () => 'Dreamscape Client CA' },
+            { t: 'Expiration Date', w: 100, key: 'exp', text: (k) => date(k.notAfter), value: (k) => k.notAfter || 0 },
+            { t: 'Client', w: 90, key: 'kind', text: (k) => CERT_KIND[k.kind] || k.kind || '' },
+            { t: 'Status', w: 90, key: 'st', text: certStatus },
+            { t: 'Signs In As', w: 100, key: 'as', text: signsInAs },
+            { t: 'Key Storage', w: 100, key: 'ks', text: (k) => CERT_STORE[k.keyStore] || k.keyStore || '' },
+            { t: 'Last Used', w: 130, key: 'used', text: (k) => when(k.lastUsedAt), value: (k) => k.lastUsedAt || 0 },
+            { t: 'Serial Number', w: 230, key: 'sn', text: (k) => k.serial || '' }
+        ],
+        ccRevoked: [
+            { t: 'Issued To', w: 170, key: 'to', text: (k) => k.deviceName || '' },
+            { t: 'Revocation Date', w: 130, key: 'rd', text: (k) => when(k.revokedAt), value: (k) => k.revokedAt || 0 },
+            { t: 'Revocation Reason', w: 130, key: 'rr', text: certReason },
+            { t: 'Client', w: 90, key: 'kind', text: (k) => CERT_KIND[k.kind] || k.kind || '' },
+            { t: 'Expiration Date', w: 100, key: 'exp', text: (k) => date(k.notAfter), value: (k) => k.notAfter || 0 },
+            { t: 'Serial Number', w: 230, key: 'sn', text: (k) => k.serial || '' }
+        ],
         svc: [
             { t: 'Service', w: 160, key: 'n', text: (s) => s.label || s.id },
             { t: 'Key in Use', w: 150, key: 'k', text: (s) => (s.missingKeys ? '' : keyName(svcKey(s, inUse(s)))) },
@@ -330,7 +381,13 @@
         if (S.denied) return deniedPage(c);
         if (!S.loaded) return c.page(TITLE, 'Reading data, please wait...', [{ id: 'akm-load', title: TITLE, body: '<p>Reading data, please wait...</p>' }]);
         const id = node.id;
-        if (id === 'root' || id === 'app') return folders(c, id, (node.children || []));
+        if (id === 'root' || id === 'app' || id === 'cc') return folders(c, id, (node.children || []));
+        if (id === 'cc-issued' || id === 'cc-revoked') {
+            const title = id === 'cc-issued' ? 'Issued Certificates' : 'Revoked Certificates';
+            if (S.certError) return c.page(title, '', [{ id: 'akm-err', title, body: `<p>${c.state(false, S.certError)}</p>` }]);
+            if (id === 'cc-issued') return list(c, id, COLS.ccIssued, certIssued(), (k) => `cert:${k.serial}`, `${ART}/cert-16.png`, 'There are no items to show in this view.', { name: title, sort: { key: 'to', dir: 1 } });
+            return list(c, id, COLS.ccRevoked, certRevoked(), (k) => `cert:${k.serial}`, `${ART}/revoked-16.png`, 'There are no items to show in this view.', { name: title, sort: { key: 'rd', dir: -1 } });
+        }
         if (id === 'issued') {
             if (S.error) return c.page('Issued Keys', '', [{ id: 'akm-err', title: 'Issued Keys', body: `<p>${c.state(false, S.error)}</p>` }]);
             return list(c, id, COLS.issued, issued(), (k) => k.id, (k) => (k.status === 'active' ? `${ART}/key-16.png` : `${ART}/cert-16.png`), 'There are no items to show in this view.', { name: 'Issued Keys', sort: { key: 'to', dir: 1 } });
@@ -362,6 +419,8 @@
         switch (node.id) {
             case 'issued': return `Issued Keys contains ${plural(issued().length, 'key', 'keys')}.`;
             case 'revoked': return `Revoked Keys contains ${plural(revoked().length, 'key', 'keys')}.`;
+            case 'cc-issued': return `Issued Certificates contains ${plural(certIssued().length, 'certificate', 'certificates')}.`;
+            case 'cc-revoked': return `Revoked Certificates contains ${plural(certRevoked().length, 'certificate', 'certificates')}.`;
             case 'pending': return `Pending Requests contains ${plural(S.pending.length, 'request', 'requests')}.`;
             case 'failed': return `Failed Requests contains ${plural(S.failed.length, 'request', 'requests')}.`;
             case 'log': {
@@ -382,7 +441,7 @@
 
     // ---- commands -------------------------------------------------------------------------------
 
-    const isList = (id) => ['issued', 'revoked', 'pending', 'failed', 'log', 'svc'].includes(id) || String(id).startsWith('svc:');
+    const isList = (id) => ['issued', 'revoked', 'pending', 'failed', 'log', 'svc', 'cc-issued', 'cc-revoked'].includes(id) || String(id).startsWith('svc:');
 
     function commands(node) {
         if (S.denied) return [];
@@ -419,6 +478,13 @@
                 items.push({ separator: true }, { text: 'Revoke Key...', action: 'revoke', disabled: !canRevoke });
             }
             return { title: k.appName || 'Key', items };
+        }
+        if (id === 'cc-issued' || id === 'cc-revoked') {
+            const k = certBySerial(key);
+            if (!k) return null;
+            const items = [{ text: 'Open', action: 'open' }];
+            if (!k.revokedAt) items.push({ separator: true }, { text: 'Revoke Certificate...', action: 'cc-revoke' });
+            return { title: k.deviceName || 'Certificate', items };
         }
         if (id === 'pending' || id === 'failed') {
             const r = request(key);
@@ -469,10 +535,12 @@
             case 'open': openSelected(c); return true;
             case 'edit-key': { const k = keyById(c.sel); if (k) editKey(c, k); return true; }
             case 'revoke': await revokeKey(c, keyById(c.sel)); return true;
+            case 'cc-revoke': revokeCert(c, certBySerial(c.sel)); return true;
             case 'approve': await approve(c, request(c.sel)); return true;
             case 'deny': await deny(c, request(c.sel)); return true;
             case 'delete':
                 if (node === 'issued') await revokeKey(c, keyById(c.sel));
+                else if (node === 'cc-issued') revokeCert(c, certBySerial(c.sel));
                 else if (node === 'pending') await deny(c, request(c.sel));
                 else if (String(node).startsWith('svc:')) await svcDelete(c);
                 return true;
@@ -492,6 +560,7 @@
     function openSelected(c) {
         const node = c.node;
         if (node === 'issued' || node === 'revoked') { const k = keyById(c.sel); if (k) keySheet(c, k); return; }
+        if (node === 'cc-issued' || node === 'cc-revoked') { const k = certBySerial(c.sel); if (k) certBox(c, k); return; }
         if (node === 'pending' || node === 'failed') { const r = request(c.sel); if (r) requestBox(c, r, node); return; }
         if (node === 'log') {
             const r = S.log.items.find((x) => `log:${x.id}` === String(c.sel));
@@ -537,6 +606,57 @@
         }
         c.sel = null;
         await load(c);
+    }
+
+    function certBox(c, k) {
+        const rows = [
+            ['Issued to', k.deviceName], ['Issued by', 'Dreamscape Client CA'], ['Client', CERT_KIND[k.kind] || k.kind],
+            ['Device ID', k.deviceId], ['Signs in as', signsInAs(k)], ['Key storage', CERT_STORE[k.keyStore] || k.keyStore],
+            ['Valid from', longDate(k.notBefore)], ['Valid to', longDate(k.notAfter)], ['Status', certStatus(k)],
+            ['Serial number', k.serial], ['Thumbprint (SHA-256)', k.fingerprint],
+            ['Issued', `${when(k.issuedAt)}${k.issuedIp ? ` from ${k.issuedIp}` : ''}`],
+            ['Last used', k.lastUsedAt ? `${when(k.lastUsedAt)}${k.lastUsedIp ? ` from ${k.lastUsedIp}` : ''}` : 'Never'],
+            k.replacesSerial ? ['Renewal of', k.replacesSerial] : null,
+            k.revokedAt ? ['Revoked', `${when(k.revokedAt)} (${certReason(k)})`] : null
+        ].filter(Boolean);
+        void c.box(`<table class="akm-req-props">${rows.map(([n, v]) => `<tr><td>${esc(n)}:</td><td>${esc(v || '')}</td></tr>`).join('')}</table>`, null, { icon: 'info', title: 'Certificate', width: 520 });
+    }
+
+    /** certsrv's Certificate Revocation box: the question, a reason code, Yes / No. */
+    function revokeCert(c, k) {
+        if (!k || k.revokedAt) return;
+        const tpl = { t: '', w: 252, h: 96, f: ['MS Shell Dlg', 8], s: 0, c: [
+            [851, 'S', 7, 7, 238, 34, SS_NOPREFIX, '', 0],
+            [-1, 'S', 7, 47, 60, 8, SS, '&Reason code:', 0],
+            [852, 'C', 70, 45, 110, 80, COMBO, '', 0],
+            [853, 'S', 7, 62, 130, 24, SS, '', 0],
+            [1, 'B', 141, 75, 50, 14, DEFBTN, '&Yes', 0],
+            [2, 'B', 195, 75, 50, 14, BTN, '&No', 0]
+        ] };
+        api().openDialog({
+            id: 'akmCertRevoke',
+            tpl,
+            title: 'Certificate Revocation',
+            owner: c.modal,
+            bareCaption: true,
+            init: (ctx) => {
+                ctx.text(851, `Are you sure you want to revoke the certificate of ${k.deviceName}? The client is signed out at once and must sign in again to get a new certificate.`);
+                ctx.options(852, CERT_REASONS.map(([value, text]) => ({ value, text })), 'revoked');
+            },
+            ok: async (ctx) => {
+                try {
+                    const r = await send('client_cert_revoke', { serial: k.serial, reason: ctx.get(852) || 'revoked' });
+                    if (!r || r.success === false) throw new Error((r && r.error) || 'The certificate could not be revoked.');
+                    c.note(`The certificate of ${k.deviceName} was revoked.`);
+                } catch (err) {
+                    ctx.html(853, `<span class="akm-wiz-error"><img src="/static_images/vista-icons/error-16.png" alt="">${esc((err && err.message) || 'The certificate could not be revoked.')}</span>`);
+                    return false;
+                }
+                c.sel = null;
+                void load(c);
+                return true;
+            }
+        });
     }
 
     async function approve(c, r) {
@@ -1213,11 +1333,18 @@
                     S.statusHandler = onStatus(c);
                     ws().on('api_key_status_changed', S.statusHandler);
                 }
+                // client_cert_changed (modules/clientCertificates.js, to admins): a certificate was issued or revoked
+                if (ws() && typeof ws().on === 'function' && !S.certHandler) {
+                    S.certHandler = () => { void load(c); };
+                    ws().on('client_cert_changed', S.certHandler);
+                }
                 void load(c);
             },
             onClose: () => {
                 if (S.statusHandler && ws() && typeof ws().off === 'function') ws().off('api_key_status_changed', S.statusHandler);
                 S.statusHandler = null;
+                if (S.certHandler && ws() && typeof ws().off === 'function') ws().off('client_cert_changed', S.certHandler);
+                S.certHandler = null;
                 S.log.loaded = false;
             }
         };

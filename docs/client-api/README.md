@@ -91,6 +91,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | VisionCaster (video mixer remote, was QuickCast) | [ws/quickcast.md](./ws/quickcast.md) | 8 |
 | Print queue (generations as Vista printing) | [ws/printQueue.md](./ws/printQueue.md) | 3 |
 | Server Manager (root page summary) | [ws/serverManager.md](./ws/serverManager.md) | 1 |
+| Client certificates (Key Manager's store; protocol in [../client-certificates.md](../client-certificates.md)) | [ws/clientCertificates.md](./ws/clientCertificates.md) | 2 |
 | Status hub (server-push status feeds, boot notes) | [ws/statusHub.md](./ws/statusHub.md) | 4 (+ feed pushes) |
 | Ledge desks (images an agent put on a desk; owner client only) | [ws/ledge.md](./ws/ledge.md) | 7 (+ `ledge_state` push) |
 | Location (Home / Work, place lookup and reverse lookup) | [ws/location.md](./ws/location.md) | 4 (+ `location_places_changed` broadcast) |
