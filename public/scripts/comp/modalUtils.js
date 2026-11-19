@@ -7061,6 +7061,8 @@ function buildToolsSubmenuItems(opts) {
         { launchId: 'paypass', icon: 'fas fa-credit-card', imageIcon: 'paypass.png', text: 'PayPass Operator', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'paypass' }) },
         // Melaton Mobile Device Center: phones running the Dreamscape app (Yozora #747; apps/activesync, a system package)
         { launchId: 'mobile-device-center', icon: 'fas fa-mobile-screen', imageIcon: 'mobile-device-center.png', text: 'Melaton Mobile Device Center', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'activesync' }) },
+        // Administrative Tools > Claude Accounts: the host's Claude accounts, Remote Control, sessions and agents (apps/claudedesk, a system package; the phone has wmClaudeAccounts.js)
+        { launchId: 'claudedesk', icon: 'fas fa-users-gear', imageIcon: '/melaton-apps/claudedesk/assets/claudedesk-48.png', text: 'Claude Accounts', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'claudedesk' }) },
         // Melaton Messenger: the Text Messaging accounts (iMessage through BlueBubbles, RCS), admins (Yozora #779; apps/messenger, a system package)
         { launchId: 'melaton-messenger', icon: 'fas fa-comments', imageIcon: 'melaton-messenger.png', text: 'Melaton Messenger', desktopOnly: true, adminOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'messenger' }) },
         // XLink Operator Console: the arcade cabinets' control menu, admins (Yozora #719; apps/xlink, a system package)

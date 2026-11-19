@@ -1,0 +1,282 @@
+/* Claude Accounts (desktop; apps/claudedesk/client/claudedesk.js): the MMC console shell's look
+   (public/css/mmc-console.css) plus the session chat, the "Show More" bar under the session list and the
+   console's dialogs. Scoped to the console window (#mmcConsole_claudedesk) and to its dialog forms
+   (.cd-form inside the shared confirmation box). */
+
+/* ---- the session list and its Show More bar ---- */
+
+#mmcConsole_claudedesk .cd-list-wrap {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* the shell scrolls a list that is the result pane's own child; this one sits in the wrap */
+#mmcConsole_claudedesk .cd-list-wrap > .mmc-list {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+}
+
+#mmcConsole_claudedesk .cd-more {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 6px;
+    border-top: 1px solid #d5d5d5;
+    background: #f0f0f0;
+    color: #444;
+}
+
+#mmcConsole_claudedesk .mmc-row.cd-busy .mmc-col:nth-child(3),
+#mmcConsole_claudedesk .mmc-row.cd-live .mmc-col:nth-child(3) {
+    font-weight: 600;
+}
+
+/* ---- the chat: title band, links, the log (its own scroller), the message box ---- */
+
+#mmcConsole_claudedesk .cd-chat {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    background: #fff;
+}
+
+#mmcConsole_claudedesk .cd-chat > .mmc-page-title {
+    flex: none;
+}
+
+#mmcConsole_claudedesk .cd-chat-links {
+    flex: none;
+    display: flex;
+    gap: 12px;
+    padding: 3px 10px 4px;
+    border-bottom: 1px solid #e3e3e3;
+}
+
+#mmcConsole_claudedesk .cd-chat-log {
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 6px 10px 10px;
+    overflow-wrap: anywhere;
+}
+
+#mmcConsole_claudedesk .cd-earlier {
+    display: flex;
+    justify-content: center;
+    padding: 2px 0 8px;
+}
+
+#mmcConsole_claudedesk .cd-day {
+    margin: 10px 0 4px;
+    color: #6d6d6d;
+    font-size: 11px;
+    text-align: center;
+}
+
+#mmcConsole_claudedesk .cd-msg {
+    margin: 0 0 6px;
+}
+
+#mmcConsole_claudedesk .cd-msg-head {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    margin: 0 0 1px;
+}
+
+#mmcConsole_claudedesk .cd-msg-head > span {
+    color: #6d6d6d;
+    font-size: 11px;
+}
+
+#mmcConsole_claudedesk .cd-user .cd-msg-head > b {
+    color: #1e4e8c;
+}
+
+#mmcConsole_claudedesk .cd-claude .cd-msg-head > b {
+    color: #7a3e00;
+}
+
+#mmcConsole_claudedesk .cd-msg-text {
+    white-space: pre-wrap;
+    line-height: 1.4;
+}
+
+#mmcConsole_claudedesk .cd-user .cd-msg-text {
+    padding: 4px 7px;
+    border: 1px solid #c5d5ea;
+    border-radius: 3px;
+    background: #eef4fc;
+}
+
+#mmcConsole_claudedesk .cd-msg.is-side {
+    margin-left: 18px;
+    opacity: 0.8;
+}
+
+/* a tool call and its result: Vista's grey group look, monospaced */
+#mmcConsole_claudedesk .cd-tool,
+#mmcConsole_claudedesk .cd-result {
+    margin-left: 12px;
+    border-left: 2px solid #d0d0d0;
+    padding: 1px 0 1px 7px;
+}
+
+#mmcConsole_claudedesk .cd-tool-head {
+    color: #444;
+    font-size: 11px;
+}
+
+#mmcConsole_claudedesk .cd-pre {
+    margin: 0;
+    font: 11px Consolas, "Lucida Console", monospace;
+    white-space: pre-wrap;
+    color: #333;
+}
+
+#mmcConsole_claudedesk .cd-result .cd-pre {
+    color: #555;
+}
+
+#mmcConsole_claudedesk .cd-result.is-error .cd-pre {
+    color: #a00000;
+}
+
+#mmcConsole_claudedesk .cd-result.is-folded .cd-pre {
+    max-height: 6.2em;
+    overflow: hidden;
+}
+
+#mmcConsole_claudedesk .cd-unfold {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #0066cc;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+#mmcConsole_claudedesk .cd-unfold:hover {
+    text-decoration: underline;
+}
+
+#mmcConsole_claudedesk .cd-note {
+    margin-left: 12px;
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+#mmcConsole_claudedesk .cd-err {
+    color: #a00000;
+}
+
+#mmcConsole_claudedesk .cd-compose {
+    display: flex;
+    flex: none;
+    gap: 6px;
+    align-items: stretch;
+    padding: 6px;
+    border-top: 1px solid #d5d5d5;
+    background: #f0f0f0;
+}
+
+#mmcConsole_claudedesk .cd-compose .cd-input {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    height: 58px;
+    resize: none;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+#mmcConsole_claudedesk .cd-compose-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#mmcConsole_claudedesk .cd-compose.cd-ended {
+    align-items: center;
+    justify-content: space-between;
+    color: #444;
+}
+
+/* ---- dialogs (inside the shared confirmation box) ---- */
+
+.cd-form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.cd-form > p {
+    margin: 0 0 4px;
+}
+
+.cd-form label {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 6px;
+    align-items: center;
+}
+
+.cd-form label.cd-top {
+    align-items: start;
+}
+
+.cd-form label > span {
+    overflow-wrap: anywhere;
+}
+
+.cd-form input[type="text"],
+.cd-form select,
+.cd-form textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.cd-form > textarea,
+.cd-form textarea {
+    resize: vertical;
+}
+
+.cd-form .cd-link-line,
+.cd-link-line {
+    padding: 4px 6px;
+    border: 1px solid #c5c5c5;
+    background: #fff;
+    font: 11px Consolas, "Lucida Console", monospace;
+    word-break: break-all;
+    max-height: 64px;
+    overflow: auto;
+}
+
+.cd-form .cd-err {
+    color: #a00000;
+}
+
+.cd-props td:first-child {
+    padding-right: 10px;
+    white-space: nowrap;
+    vertical-align: top;
+}
+
+.cd-read {
+    white-space: pre-wrap;
+    max-height: 50vh;
+    overflow: auto;
+}
