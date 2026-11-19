@@ -776,6 +776,7 @@
                             <div class="yt-pl-status" hidden><i></i><span></span></div>
                             <button type="button" class="yt-pl-key is-play" data-pl="toggle" aria-label="Play" hidden></button>
                             <div class="yt-hud" hidden>
+                                <div class="yt-seek" role="slider" tabindex="0" aria-label="Place in the video" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" hidden><div class="yt-seek-track"><i class="yt-seek-buf"></i><i class="yt-seek-fill"></i><span class="yt-seek-marks"></span><i class="yt-seek-thumb"></i></div></div>
                                 <button type="button" class="yt-hud-key" data-pl="toggle" aria-label="Pause">${I.pause}</button>
                                 <button type="button" class="yt-hud-key" data-pl="mute" aria-label="Sound off">${I.sound}</button>
                                 <button type="button" class="yt-hud-key" data-pl="stop" aria-label="Stop">${I.stop}</button>
@@ -801,7 +802,7 @@
         els = {
             root: q('.yt-root'), me: q('.yt-me'), title: q('.yt-title'), note: q('.yt-note'), panes: q('.yt-panes'),
             player: q('.yt-player'), video: q('.yt-video'), plMode: q('.yt-pl-mode'), plStatus: q('.yt-pl-status'), plKey: q('.yt-pl-key'),
-            plUp: q('.yt-pl-up'), hud: q('.yt-hud'), sideTitle: q('.yt-side-title'), sideSub: q('.yt-side-sub'), sideUp: q('.yt-side-up'), frame: q('.yt-frame'), more: q('.yt-more'), chat: q('.yt-chat'), chatList: q('.yt-chat-list'), chatForm: q('.yt-chat-form'), chatQ: q('.yt-chat-q'),
+            plUp: q('.yt-pl-up'), hud: q('.yt-hud'), sideTitle: q('.yt-side-title'), sideSub: q('.yt-side-sub'), sideUp: q('.yt-side-up'), frame: q('.yt-frame'), seek: q('.yt-seek'), seekMarks: q('.yt-seek-marks'), more: q('.yt-more'), chat: q('.yt-chat'), chatList: q('.yt-chat-list'), chatForm: q('.yt-chat-form'), chatQ: q('.yt-chat-q'),
             tabs: q('.yt-tabs'), slider: q('.yt-slider'), sign: q('.yt-sign'), layer: q('.yt-layer'), chan: q('.yt-chan'), layerList: q('.yt-layer .yt-list'),
             form: q('.yt-search'), q: q('.yt-q'), clear: q('.yt-clear'), lists: {}, paneEls: {}
         };
@@ -1207,7 +1208,14 @@
 
     function plDetach() {
         if (!player) return;
-        if (player.hls) { try { player.hls.destroy(); } catch (_) { /* gone */ } player.hls = null; }
+        if (player.hls) {
+            // hls.js finishes a piece it was unpacking after destroy() and then throws inside itself (seen as "Melaton
+            // Desktop has stopped working" when a video was left while it loaded): stop and let go first, end it a moment later
+            const h = player.hls;
+            player.hls = null;
+            try { h.stopLoad(); h.detachMedia(); } catch (_) { /* gone */ }
+            setTimeout(() => { try { h.destroy(); } catch (_) { /* gone */ } }, 2000); // perf: allow one deferred clean-up of a closed player
+        }
         if (els) { els.video.removeAttribute('src'); try { els.video.load(); } catch (_) { /* nothing loaded */ } }
     }
 
@@ -1469,9 +1477,11 @@
     }
     const plPaused = () => (player && player.kind === 'yt' ? player.paused !== false : !!(els && els.video.paused));
     function ytToggle() { ytCmd(player.paused === false ? 'pauseVideo' : 'playVideo'); }
-    function ytSeek(to) {
+    function ytSeek(to, auto) {
         const p = player;
         const t = Math.max(0, Math.min(to, (p.len || to) - 1));
+        // the viewer moved into a marked part on purpose: that one plays
+        if (!auto) p.segKept = (p.segs || []).find((x) => t >= x.start && t < x.end) || null;
         if (p.kind === 'ytr') {
             // inside what the server has written: the player moves; outside it: the server starts from there
             const v = els.video;
@@ -1493,6 +1503,97 @@
         setText(els.sideUp, at);
         setText(els.plUp, at);
         setText(els.plMode, p.kind === 'ytr' ? modeLabel(p.mode) : '');
+        seekDraw();
+    }
+
+    // ---------------------------------------------------------------- the seek bar, and SponsorBlock's marked parts
+    //
+    // The program's own slider (rule sliders-platform: a drawn one for a drawn player, never the browser's): a
+    // track with what is written so far, what is played, SponsorBlock's parts as marks, and a thumb. Drag or tap
+    // moves; Left / Right step 5 seconds, Home / End go to the ends. It is drawn only while the keys show.
+
+    const SKIPPED = { sponsor: 'sponsor', selfpromo: 'self-promotion', interaction: 'reminder' };
+    const skipOn = () => !hub.settings || hub.settings.skipSegments !== false;
+    function seekDraw(at) {
+        const p = player;
+        if (!els || !p || !p.vod || els.seek.hidden || (p.dragging && at === undefined)) return;
+        const len = p.len || 0;
+        const pos = at === undefined ? (p.pos || 0) : at;
+        const f = len ? Math.max(0, Math.min(1, pos / len)) : 0;
+        let b = f;
+        if (p.kind === 'ytr') { const v = els.video; const end = v.seekable && v.seekable.length ? v.seekable.end(v.seekable.length - 1) : 0; b = len ? Math.max(f, Math.min(1, ((p.offset || 0) + end) / len)) : f; }
+        els.seek.style.setProperty('--p', f.toFixed(4));
+        els.seek.style.setProperty('--b', b.toFixed(4));
+        els.seek.setAttribute('aria-valuemax', String(Math.floor(len)));
+        els.seek.setAttribute('aria-valuenow', String(Math.floor(pos)));
+        els.seek.setAttribute('aria-valuetext', `${clock(Math.floor(pos))} of ${clock(Math.floor(len))}`);
+    }
+    function seekMarks() {
+        const p = player;
+        if (!els) return;
+        els.seekMarks.textContent = '';
+        if (!p || !p.vod || !p.len || !p.segs) return;
+        p.segs.forEach((s) => {
+            const m = document.createElement('i');
+            m.className = SKIPPED[s.category] ? 'is-skip' : '';
+            m.style.left = `${Math.min(100, (s.start / p.len) * 100)}%`;
+            m.style.width = `${Math.max(0.4, ((Math.min(s.end, p.len) - s.start) / p.len) * 100)}%`;
+            els.seekMarks.appendChild(m);
+        });
+    }
+    /** Asks for SponsorBlock's parts of the video being played (the server asks SponsorBlock, privately). */
+    function segsLoad(p) {
+        p.segs = [];
+        seekMarks();
+        ask('youtube_segments', { id: p.vid }, 12000).then((d) => { if (player === p && d && Array.isArray(d.segments)) { p.segs = d.segments; seekMarks(); } }).catch(() => {});
+    }
+    /** Playing has come into a marked part: on to its end (unless the viewer moved into it on purpose). */
+    function segSkip(p) {
+        if (!p.segs || !p.segs.length || !skipOn() || p.dragging) return;
+        const pos = p.pos || 0;
+        const s = p.segs.find((x) => SKIPPED[x.category] && pos >= x.start && pos < x.end - 1 && x !== p.segKept);
+        if (!s) return;
+        const to = Math.min(s.end, (p.len || s.end) - 1);
+        ytSeek(to, true);
+        plStatus(`Skipped a ${SKIPPED[s.category]}`, false);
+        clearTimeout(p.skipNote);
+        p.skipNote = setTimeout(() => { if (player === p && els.plStatus.lastElementChild.textContent.startsWith('Skipped')) plStatus('', false); }, 2500); // perf: allow one note that clears itself
+    }
+    function wireSeek() {
+        const bar = els.seek;
+        const at = (e) => { const r = bar.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / Math.max(1, r.width))) * ((player && player.len) || 0); };
+        const show = (t) => { seekDraw(t); setText(els.plUp, `${clock(Math.floor(t))} / ${clock(Math.floor(player.len || 0))}`); };
+        bar.addEventListener('pointerdown', (e) => {
+            const p = player;
+            if (!p || !p.vod || !p.len) return;
+            e.preventDefault();
+            try { bar.setPointerCapture(e.pointerId); } catch (_) { /* no capture */ }
+            p.dragging = true;
+            p.dragTo = at(e);
+            clearTimeout(p.keyTimer);
+            show(p.dragTo);
+        });
+        bar.addEventListener('pointermove', (e) => { const p = player; if (p && p.dragging) { p.dragTo = at(e); show(p.dragTo); } });
+        const done = (e) => {
+            const p = player;
+            if (!p || !p.dragging) return;
+            p.dragging = false;
+            try { bar.releasePointerCapture(e.pointerId); } catch (_) { /* gone */ }
+            if (e.type === 'pointerup') ytSeek(p.dragTo); else seekDraw();
+            plHud(true);
+        };
+        bar.addEventListener('pointerup', done);
+        bar.addEventListener('pointercancel', done);
+        bar.addEventListener('keydown', (e) => {
+            const p = player;
+            if (!p || !p.vod || !p.len) return;
+            const step = { ArrowLeft: -5, ArrowRight: 5, ArrowDown: -30, ArrowUp: 30 }[e.key];
+            const to = step ? (p.pos || 0) + step : e.key === 'Home' ? 0 : e.key === 'End' ? p.len - 5 : null;
+            if (to === null) return;
+            e.preventDefault();
+            ytSeek(to);
+            plHud(true);
+        });
     }
     /** What the frame says: it is ready, its state, where it is. */
     function ytHear(e) {
@@ -1521,6 +1622,7 @@
                 if (shown && (!els.hud.hidden || !p.full)) ytSide();
                 // where it is, every half minute of playing: the rows' progress line and where it carries on
                 if (sec > 0 && sec % 30 === 0) ytProgress(p);
+                segSkip(p);
             }
         }
         if (typeof info.playerState === 'number' && info.playerState !== p.ytState) {
@@ -1553,6 +1655,8 @@
         redraw();
         els.more.hidden = true;
         els.more.textContent = '';
+        els.seek.hidden = true;
+        clearTimeout(p.skipNote);
         if (p.frame) { p.frame.remove(); p.frame = null; }
         clearTimeout(p.ytTimer);
         if (els) { els.frame.hidden = true; els.player.classList.remove('is-yt', 'is-vod'); els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = true; }); els.hud.querySelector('[data-pl="chat"]').hidden = false; }
@@ -1583,7 +1687,9 @@
         els.player.classList.add('is-vod');
         els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = false; });
         els.hud.querySelector('[data-pl="chat"]').hidden = true;
+        els.seek.hidden = false;
         ytMore(p);
+        segsLoad(p);
         plChrome();
         ytSide();
         syncPlayer();
@@ -1664,6 +1770,7 @@
         p.sec = sec;
         if (shown && (!els.hud.hidden || !p.full)) ytSide();
         if (sec > 0 && sec % 30 === 0) ytProgress(p);
+        segSkip(p);
     }
 
     function watchEmbed(v) {
@@ -1690,7 +1797,9 @@
         }, { once: true });
         // a video left part way carries on where it was
         const from = v.resume > 5 && v.progress > 0 && v.progress < 95 && !v.watched ? { start: String(Math.floor(v.resume)) } : {};
+        els.seek.hidden = false;
         ytMore(p);
+        segsLoad(p);
         f.src = `${YT_EMBED}/embed/${encodeURIComponent(id)}?${new URLSearchParams({ ...from, enablejsapi: '1', controls: '0', playsinline: '1', autoplay: '1', rel: '0', iv_load_policy: '3', fs: '0', disablekb: '1', origin: location.origin }).toString()}`;
         p.frame = f;
         els.frame.textContent = '';
@@ -1899,12 +2008,14 @@
 
     function wirePlayer() {
         const v = els.video;
+        wireSeek();
         window.addEventListener('message', ytHear, { signal: appScopeSignal });
         if (HOST.desktop) document.addEventListener('fullscreenchange', () => { if (player) { player.full = document.fullscreenElement === els.player; chatSync(); refreshKeys(); } }, { signal: appScopeSignal });
         els.chatForm.addEventListener('submit', (e) => { e.preventDefault(); chatSend(); });
         els.chatList.addEventListener('scroll', () => { const l = els.chatList; if (player) player.chatStick = l.scrollHeight - l.scrollTop - l.clientHeight < 40; }, { passive: true });
         els.player.addEventListener('click', (e) => {
             const k = e.target.closest('[data-pl]');
+            if (e.target.closest('.yt-seek')) return;
             if (!k) { if (e.target.closest('.yt-stage')) { if (player && player.popped) plPopBack(); else plHud(els.hud.hidden); } return; }
             const p = player;
             if (!p) return;
@@ -1988,6 +2099,7 @@
                 left: p.kind === 'ytr' ? { label: 'Quality', disabled: p.state === 'starting', menu: quality } : { label: HOST.desktop ? 'Stop' : 'YouTube', action: () => { const id = p.vid; stopPlayer(); if (!HOST.desktop) openVideo(id); } },
                 right: { label: 'Menu', menu: () => [
                     { label: 'Full Screen', checked: !!p.full, action: () => plFull(!p.full) },
+                    { label: 'Skip Sponsors (SponsorBlock)', checked: skipOn(), disabled: !isAdmin(), action: () => saveSettings({ skipSegments: !skipOn() }) },
                     { label: 'Mark as Watched', disabled: !isAdmin(), action: () => { const id = p.vid; stopPlayer(); setWatched(id, true); } },
                     { label: 'Add to Watch Later', disabled: !isAdmin(), action: () => setLater(p.vid, true) },
                     '-',
@@ -2019,7 +2131,7 @@
         ws.messageBox({
             title: TITLE,
             icon: 'info',
-            text: `Melaton Videos\nVersion 2.0\n\nCopyright © 2026 Xyridian Corporation. All rights reserved.\n\nYouTube videos, channels and search: the YouTube Data API. Kick live streams: the Kick API. YouTube is a trademark of Google LLC and Kick of Kick Streaming Pty Ltd; videos and streams play in their own apps.${q ? `\n\nToday's use: ${q.used.toLocaleString()} of ${q.budget.toLocaleString()} units.` : ''}`
+            text: `Melaton Videos\nVersion 2.0\n\nCopyright © 2026 Xyridian Corporation. All rights reserved.\n\nYouTube videos, channels and search: the YouTube Data API. Skipped parts: SponsorBlock data (sponsor.ajay.app), CC BY-NC-SA 4.0. Kick live streams: the Kick API. YouTube is a trademark of Google LLC and Kick of Kick Streaming Pty Ltd; videos and streams play in their own apps.${q ? `\n\nToday's use: ${q.used.toLocaleString()} of ${q.budget.toLocaleString()} units.` : ''}`
         });
     }
 
@@ -2037,6 +2149,7 @@
             { label: 'Refresh', disabled: !signedIn(), action: refresh },
             '-',
             { label: 'Leave Out Shorts', checked: s.noShorts !== false, disabled: !admin || !signedIn(), action: () => saveSettings({ noShorts: s.noShorts === false }) },
+            { label: 'Skip Sponsors (SponsorBlock)', checked: s.skipSegments !== false, disabled: !admin || !signedIn(), action: () => saveSettings({ skipSegments: s.skipSegments === false }) },
             { label: 'Rare Uploads First on Today', checked: s.rareFirst !== false, disabled: !admin || !signedIn(), action: () => saveSettings({ rareFirst: s.rareFirst === false }) },
             { label: 'Videos on Today', disabled: !admin || !signedIn(), submenu: [6, 12, 20, 30].map((k) => ({ label: String(k), radio: n === k, action: () => saveSettings({ todayCount: k }) })) },
             { label: 'Favourite Channels...', disabled: !signedIn(), action: () => setTab('channels') },
