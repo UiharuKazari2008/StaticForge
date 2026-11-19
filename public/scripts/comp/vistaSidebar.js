@@ -238,21 +238,27 @@ const vsbLiveUnfocused = function () {
     return typeof document.hasFocus === 'function' && !document.hasFocus();
 };
 
-/** Hidden tab, or an unfocused window: no per-tick repaints. */
+/** An opaque screen saver covers the desktop (screenSaver.js, html[data-saver-cover]): nothing here is seen. */
+const vsbLiveCovered = function () {
+    return document.documentElement.dataset.saverCover !== undefined;
+};
+
+/** Hidden tab, an unfocused window, or the desktop under a screen saver: no per-tick repaints. */
 const vsbLivePaused = function () {
-    return document.hidden || vsbLiveUnfocused();
+    return document.hidden || vsbLiveCovered() || vsbLiveUnfocused();
 };
 
 const vsbLiveSend = function (force) {
     vsbLive.syncTimer = null;
     // the 5 s watch runs only while a gadget reads the feed and the page is seen (#890): it is looked at
     // here, on every use, release and visibility change
-    const watch = vsbLive.users.size > 0 && !document.hidden;
+    const unseen = document.hidden || vsbLiveCovered();
+    const watch = vsbLive.users.size > 0 && !unseen;
     if (watch && !vsbLive.watchTimer) vsbLive.watchTimer = setInterval(vsbLiveWatch, VSB_LIVE_WATCH_MS);
     else if (!watch && vsbLive.watchTimer) { clearInterval(vsbLive.watchTimer); vsbLive.watchTimer = null; }
     if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
-    let topics = document.hidden ? { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
-    if (!document.hidden && vsbLiveUnfocused()) topics = { ...topics, host: false, system: [] };
+    let topics = unseen ? { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
+    if (!unseen && vsbLiveUnfocused()) topics = { ...topics, host: false, system: [] };
     const key = JSON.stringify(topics);
     if (!force && key === vsbLive.sentKey && vsbLive.socket === wsClient.ws) return;
     vsbLive.sentKey = key;
@@ -523,31 +529,34 @@ const vsbClockApply = function (inst) {
     vsbClockTick(inst);
 };
 
-// The hands turn as CSS animations on the compositor (vsb-clock-turn, vista-sidebar.css), each stepping
-// once a second as the old JS tick moved them. A negative delay puts each at the
-// zone's time; JS only re-syncs on minute rollover (title, drift), focus and visibility changes, and
-// pauses the hands while the clock is not shown (idle perf pass 2026-11-04: the per-second inline
-// transform was 12 restyles in 6 s on the Fold7).
+// The hands are turned by this tick: one transform write per hand each second (the second boundary, as
+// Vista's gadget steps them), only while the clock is shown, the page is seen and focused and no screen
+// saver covers the desktop. Without the second hand the minute hand's creep is written every 10 s
+// (one degree: under a pixel at its tip). They were three infinite CSS steps() animations (Nov 4): those
+// drew only when a step landed, but an infinite animation keeps the compositor ticking on every display
+// refresh (DreamOS MacBook, #925: 361 BeginFrames in 6 s, ~260 thread wake-ups a second, on an idle
+// desktop). A timer and three writes cost one frame a second and nothing in between.
 const vsbClockTick = function (inst) {
     clearTimeout(inst.timer);
     inst.timer = null;
     if (inst.destroyed || !inst.parts) return;
+    const shown = !vsbLivePaused() && vsbIsShown(inst) && document.documentElement.dataset.screenOff === undefined;
+    if (!shown) return; // drawn again in full by vsbClockSyncAll when it shows (nothing redraws unseen)
     const set = inst.g.settings;
     const { h, m, s } = vsbZoneTime(set.timeZone);
     const p = inst.parts;
-    const sec = s + (Date.now() % 1000) / 1000;
-    const shown = !vsbLivePaused() && vsbIsShown(inst);
-    const run = (hand, period, at, timing) => {
-        hand.style.animation = `vsb-clock-turn ${period}s ${timing} ${-at}s infinite ${shown ? 'running' : 'paused'}`;
+    const turn = (hand, deg) => {
+        const t = `rotate(${deg.toFixed(2)}deg)`;
+        if (hand.style.transform !== t) hand.style.transform = t;
     };
-    // every hand steps on the same second boundary, as the old per-second tick moved them: a linear
-    // sweep redrew the minute and hour hands on every vsync (~58 frames/s on the compositor)
-    run(p.h, 43200, (h % 12) * 3600 + m * 60 + sec, 'steps(43200, end)');
-    run(p.m, 3600, m * 60 + sec, 'steps(3600, end)');
-    run(p.s, 60, sec, 'steps(60, end)');
+    turn(p.h, ((h % 12) * 3600 + m * 60 + s) / 120);
+    turn(p.m, (m * 60 + s) / 10);
+    if (set.seconds) turn(p.s, s * 6);
     const title = `${set.name ? set.name + ' - ' : ''}${vsbPad2(h % 12 || 12)}:${vsbPad2(m)} ${h < 12 ? 'AM' : 'PM'}`;
     if (p.face.title !== title) p.face.title = title;
-    if (shown) inst.timer = setTimeout(() => vsbClockTick(inst), (60 - sec) * 1000 + 20);
+    const ms = Date.now() % 1000;
+    const wait = set.seconds ? 1000 - ms : (10 - (s % 10)) * 1000 - ms;
+    inst.timer = setTimeout(() => vsbClockTick(inst), wait + 15);
 };
 
 /** Every clock: after a visibility / focus change, the Sidebar opening or closing, a page flip. */
@@ -4078,6 +4087,10 @@ const vsbStart = function () {
     // blur also fires when focus moves into a gadget iframe; hasFocus settles a task later
     window.addEventListener('blur', () => setTimeout(vsbClockSyncAll, 0));
     window.addEventListener('focus', vsbClockSyncAll);
+    // an opaque screen saver over the desktop (screenSaver.js), the phone's screen off or on (DeX window)
+    const scopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
+    document.addEventListener('melatoncover', () => { vsbClockSyncAll(); if (vsbLive.bound) vsbLiveSync(true); }, { signal: scopeSignal });
+    window.addEventListener('melatonscreen', vsbClockSyncAll, { signal: scopeSignal });
     window.addEventListener('pagehide', () => { if (vsb.saveTimer) vsbFlushSave(); });
     vsb.firstLoad = vsbLoad(activeWorkspace);
 };

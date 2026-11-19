@@ -11009,7 +11009,8 @@ class WebSocketClient {
     // Record WebSocket traffic for a deferred flash — no DOM work on the message path.
     flashWebSocketArrow(direction, duration = this._wsFlashDuration) {
         // a phone with its screen off draws nothing (html[data-screen-off], the page is not hidden, #890)
-        if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+        // ... and nothing under an opaque screen saver is seen (html[data-saver-cover], screenSaver.js)
+        if (document.hidden || document.documentElement.dataset.screenOff !== undefined || document.documentElement.dataset.saverCover !== undefined) return;
         // no arrow is on screen (the list _refreshWsFlashTargets keeps): nothing to light, so no
         // frame and no timers per message (#849; always so on Melaton Mobile outside its
         // connection dialogs)
@@ -11027,7 +11028,7 @@ class WebSocketClient {
 
     // Record non-WebSocket HTTP throughput — white pulse + sustained stream tint.
     flashHttpTrafficArrow(direction, duration = this._httpFlashDuration) {
-        if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+        if (document.hidden || document.documentElement.dataset.screenOff !== undefined || document.documentElement.dataset.saverCover !== undefined) return;
         if (Array.isArray(this._wsFlashTargets) && this._wsFlashTargets.length === 0) return;
         this._touchHttpStream(direction);
 

@@ -1192,6 +1192,7 @@ function exploreGearSvg(extraClass) {
     </svg>`;
 }
 
+// perf: allow busy spinner: .ex-refresh-btn.is-spinning turns only while a refresh is running (transform only)
 const exploreDsapScopedCss = `
 @import url('https://fonts.googleapis.com/css2?family=Eczar:wght@400;600;700&family=Exo:wght@300;400;500&display=swap');
 

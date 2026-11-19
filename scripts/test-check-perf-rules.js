@@ -20,6 +20,14 @@ put('public/scripts/comp/a.js', [
     '})();'
 ].join('\n'));
 put('public/css/a.css', '.a { animation: spin 1s linear infinite; will-change: transform; }\n/* perf: allow */ .b { animation: x 1s infinite; }\n\n@keyframes glow { to { box-shadow: 0 0 9px red; } }\n@keyframes ok { to { transform: scale(2); opacity: 0; } }\n');
+put('public/scripts/comp/anim.js', [
+    "el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 500, iterations: Infinity });",
+    "el.style.animation = `turn ${n}s linear infinite`;",
+    "const css = '.x { animation: spin 1s linear infinite; }';",
+    "// perf: allow the wobble while the switcher is open",
+    "el.animate(frames, { duration: 500, iterations: Infinity });",
+    "el.animate(frames, { duration: 500, iterations: 3 }); // infinite scroll is not an animation"
+].join('\n'));
 put('modules/route.js', [
     "app.get('/x', (req, res) => { const t = fs.readFileSync('a'); res.send(t); });",
     "const boot = fs.readFileSync('b');",
@@ -37,6 +45,9 @@ const a = count('public/scripts/comp/a.js');
 assert.deepStrictEqual(a, { 'ungated-timer': 1, 'polling-timer': 1, 'bridge-in-loop': 3, 'timer-html-rebuild': 1 }, JSON.stringify(a));
 const css = count('public/css/a.css');
 assert.deepStrictEqual(css, { 'infinite-animation': 1, 'will-change': 1, 'paint-keyframes': 1 }, JSON.stringify(css));
+// endless animations made in script (#930): iterations: Infinity, style.animation, CSS text in a string
+const anim = count('public/scripts/comp/anim.js');
+assert.deepStrictEqual(anim, { 'infinite-animation': 3 }, JSON.stringify(anim));
 const srv = count('modules/route.js');
 assert.deepStrictEqual(srv, { 'sync-io-in-handler': 1, 'unclassified-broadcast': 1 }, JSON.stringify(srv));
 

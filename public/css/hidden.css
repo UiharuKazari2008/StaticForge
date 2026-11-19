@@ -8,8 +8,12 @@
 }
 
 /* A looping animation outside the viewport (scripts/utils/offscreenAnimationPause.js): Chrome runs
-   those on the main thread every frame because nothing on screen changes. */
-.offscreen-paused {
+   those on the main thread every frame because nothing on screen changes. The animation watchdog in the
+   same file sets it too, on a looping animation that cannot be seen (under opacity 0, zero size, behind
+   another window), with the element's ::before / ::after. */
+.offscreen-paused,
+.offscreen-paused::before,
+.offscreen-paused::after {
     animation-play-state: paused !important;
 }
 
@@ -21,6 +25,17 @@
 html[data-screen-off] *,
 html[data-screen-off] *::before,
 html[data-screen-off] *::after {
+    animation-play-state: paused !important;
+}
+
+/* An opaque screen saver covers the whole desktop (screenSaver.js sets html[data-saver-cover]): nothing
+   under it is seen, so nothing under it keeps animating (#925). The saver's own cover is left alone. */
+html[data-saver-cover] body > :not(#screenSaverCover),
+html[data-saver-cover] body > :not(#screenSaverCover) *,
+html[data-saver-cover] body > :not(#screenSaverCover)::before,
+html[data-saver-cover] body > :not(#screenSaverCover)::after,
+html[data-saver-cover] body > :not(#screenSaverCover) *::before,
+html[data-saver-cover] body > :not(#screenSaverCover) *::after {
     animation-play-state: paused !important;
 }
 

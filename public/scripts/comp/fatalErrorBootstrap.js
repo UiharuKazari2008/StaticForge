@@ -510,6 +510,8 @@
     //   swallowed  errors a catch block handed over (programFaults.report, init steps)
     //   resource   one of our scripts / stylesheets failed to load (online only)
     //   logged     console.error(...) with an Error that has a frame of ours
+    //   animation  an animation that runs unseen or without end (the animation watchdog in
+    //              scripts/utils/offscreenAnimationPause.js, #930): not an error, a cost to fix
     // One fault (program + error + message + top frame) is posted once per page load; repeats
     // are counted and posted again with the same occurrenceId at most every REPEAT_MS, so the
     // server folds them into that occurrence. At most MAX_FAULTS distinct faults per page load.
@@ -648,7 +650,7 @@
                 var surf = surface();
                 var program = o.program || programFor(stack, surf);
                 var frames = ownFrames(stack);
-                var errorName = errorNameOf(message, err);
+                var errorName = o.errorName || errorNameOf(message, err);
                 var sig = [program.key, errorName, message.replace(/\d+/g, '#').slice(0, 200), frames[0] || d.fileLine || ''].join('|');
                 var entry = faults[sig];
                 if (entry) {
@@ -674,6 +676,8 @@
                         fileLine: d.fileLine && d.fileLine !== '(unknown)' ? d.fileLine : '',
                         source: o.source || d.source || '',
                         scripts: frames,
+                        // the animation watchdog's finding (offscreenAnimationPause.js, kind 'animation')
+                        animation: o.animation || undefined,
                         page: 'capture',
                         client: clientInfo(surf)
                     }
