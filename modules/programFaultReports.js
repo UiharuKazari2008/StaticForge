@@ -23,7 +23,11 @@
  *   kind     dialog (a "has stopped working" dialog), uncaught, rejection, swallowed (a catch block
  *            handed it over), resource (one of our scripts/styles failed to load), route (an Express
  *            route threw), logged (logger.error / console.error with an Error of ours), crash
- *            (the server died of it; spooled synchronously, read back on the next start)
+ *            (the server died of it; spooled synchronously, read back on the next start), animation
+ *            (not an error: the page's animation watchdog found an animation that runs unseen or
+ *            without end, public/scripts/utils/offscreenAnimationPause.js, #930; the finding is in
+ *            the occurrence's `animation` field: type hidden | endless | restarts, name, target,
+ *            reason, properties, runMs, shell, client, whether the page paused it, stylesheet)
  * public/scripts/comp/errorCapture.js posts the client ones, modules/serverFaultCapture.js the
  * server ones (in process, through upsert). modules/faultAutoFix.js listens for 'change' events
  * and records its runs on the report's `fix` field through patch().
@@ -60,9 +64,9 @@ const RATE_MAX = 30;
 const RATE_WINDOW_MS = 60 * 1000;
 const ID_RE = /^fault_[0-9a-f]{12}$/;
 const SURFACES = new Set(['desktop', 'mobile', 'server']);
-const KINDS = new Set(['dialog', 'uncaught', 'rejection', 'swallowed', 'resource', 'route', 'logged', 'crash']);
+const KINDS = new Set(['dialog', 'uncaught', 'rejection', 'swallowed', 'resource', 'route', 'logged', 'crash', 'animation']);
 const SPOOL_NAME = '.spool.ndjson';
-const KIND_RANK = ['crash', 'uncaught', 'rejection', 'route', 'dialog', 'swallowed', 'resource', 'logged'];
+const KIND_RANK = ['crash', 'uncaught', 'rejection', 'route', 'dialog', 'swallowed', 'resource', 'logged', 'animation'];
 
 function clip(value, max = MAX_TEXT) {
     if (value == null) return '';
@@ -141,6 +145,24 @@ function normalizeOccurrence(body, now) {
             node: clip(b.server.node, 40),
             commit: clip(b.server.commit, 60) || null
         } : null,
+        animation: kind === 'animation' && b.animation && typeof b.animation === 'object' ? {
+            type: clip(b.animation.type, 20),
+            name: clip(b.animation.name, 120),
+            kind: clip(b.animation.kind, 20),
+            target: clip(b.animation.target, 300),
+            window: clip(b.animation.window, 200),
+            reason: clip(b.animation.reason, 80),
+            properties: clip(b.animation.properties, 200),
+            iterations: clip(b.animation.iterations, 20),
+            durationMs: Number(b.animation.durationMs) || 0,
+            runMs: Number(b.animation.runMs) || 0,
+            targets: Number(b.animation.targets) || 1,
+            paused: !!b.animation.paused,
+            allowed: clip(b.animation.allowed, 200),
+            source: clip(b.animation.source, 300),
+            shell: clip(b.animation.shell, 20),
+            client: clip(b.animation.client, 20)
+        } : undefined,
         repeats: Math.max(1, Math.min(1e6, Number(b.repeats) || 1)),
         extraFaults: Array.isArray(b.extraFaults) ? b.extraFaults.slice(0, 3).map((f) => ({
             message: clip(f && f.message, 500),

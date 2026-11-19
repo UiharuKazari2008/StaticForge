@@ -109,6 +109,7 @@ const PopoverManager = {
      * @param {string} [options.position='top'] - Position: 'top', 'bottom', 'left', 'right'
      * @param {string} [options.arrowPosition] - Arrow position: 'bottom-right', etc.
      * @param {boolean} [options.hoverOnly=false] - Only show on hover
+     * @param {Function} [options.onClick] - A click on the balloon's text runs this and closes the balloon
      * @returns {HTMLElement} The popover element
      */
     showPopover(element, type, title, message, showProgress = false, timeout = 5000, customIcon = null, buttons = null, options = {}) {
@@ -187,6 +188,15 @@ const PopoverManager = {
             content.appendChild(body);
         }
         
+        // Vista's NIN_BALLOONUSERCLICK: a click on the balloon's text is its action, and the balloon closes
+        if (typeof options.onClick === 'function') {
+            content.classList.add('popover-clickable');
+            content.addEventListener('click', () => {
+                this.hide(element);
+                try { options.onClick(); } catch (_) { /* the balloon is gone either way */ }
+            });
+        }
+
         // Attach or update popover
         let popoverData = this.activePopovers.get(element);
         

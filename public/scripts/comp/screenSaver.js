@@ -141,13 +141,18 @@
 
     // ---- savers ----
     // Each is make(ctx, w, h, { preview }) -> { frame(t, dt), resize?(w, h), transparent? }
+    // frame() may return the seconds until its picture next changes (STILL for "not until something
+    // wakes it"): the engine then draws nothing in between. A saver in continuous motion returns
+    // nothing and is drawn on every display frame, as Vista's are. (#925: a held logo, a held photo
+    // and the black screen were redrawn 60 times a second.)
 
     const SAVERS = {};
+    const STILL = Infinity;
 
-    SAVERS.blank = () => ({ frame() {} });
+    SAVERS.blank = () => ({ frame() { return STILL; } });
 
     // the dialog's monitor for (None) and the focus cover: just the desktop (the engine's backdrop)
-    const PREVIEW_ONLY = { desktop: () => ({ transparent: true, frame() {} }) };
+    const PREVIEW_ONLY = { desktop: () => ({ transparent: true, frame() { return STILL; } }) };
 
     /* Bubbles: each size is drawn once to a sprite (clear middle, a rainbow film toward the rim, a
        window-shaped highlight and a faint lower reflection) and turned slowly as it drifts. */
@@ -693,10 +698,10 @@
                     ctx.font = `${Math.max(8, Math.round(16 * scale * 1.4))}px "Segoe UI", Tahoma, sans-serif`;
                     ctx.textAlign = 'center';
                     ctx.fillText(opts.preview ? 'No pictures' : 'There are no pictures or videos to play. Change your Photos Screen Saver settings.', w / 2, h / 2);
-                    return;
+                    return STILL;
                 }
                 if (!cur && next) { cur = next; cur.start = t; next = null; shownAt = t; fetchNext(); }
-                if (!cur) return;
+                if (!cur) return 0.25; // the first picture is still loading
                 if (cur.theme === 'stack' || (next && next.theme === 'stack')) {
                     pile.forEach((p) => framed(p, 0.55, 1, w * p.px, h * p.py, p.rot));
                 }
@@ -720,6 +725,10 @@
                 }
                 draw(cur, t, 1);
                 ctx.filter = 'none';
+                // a held picture that does not move (Classic, Fade, Frame, a Stack picture once it is
+                // down) stays as drawn until its time is up and the next one is loaded
+                const still = cur.theme === 'classic' || cur.theme === 'fade' || cur.theme === 'frame' || (cur.theme === 'stack' && t - cur.start >= 0.6);
+                if (still) return age < hold ? hold - age + 0.001 : 0.25;
             }
         };
     };
@@ -756,13 +765,14 @@
             frame(t) {
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, w, h);
-                if (!art.logo || !art.sheet) return;
+                if (!art.logo || !art.sheet) return 0.25;
                 if (!item) place(t + (small ? 0.3 : 1.5));
                 const age = t - item.start;
                 const life = FADE_IN + HOLD + FADE_OUT;
-                if (age < 0) return;
+                // black between two pictures: nothing to draw until the next one starts
+                if (age < 0) return -age;
                 if (age > life + GAP) { place(t); return; }
-                if (age > life) return;
+                if (age > life) return life + GAP - age + 0.001;
                 const a = age < FADE_IN ? age / FADE_IN : age > FADE_IN + HOLD ? (life - age) / FADE_OUT : 1;
                 ctx.globalAlpha = Math.max(0, Math.min(1, a));
                 if (item.kind === 'logo') {
@@ -772,6 +782,11 @@
                     ctx.drawImage(art.sheet, (f % 9) * FW, Math.floor(f / 9) * FH, FW, FH, item.x, item.y, FW, FH);
                 }
                 ctx.globalAlpha = 1;
+                // held at full strength: the logo does not change, the flare only at its 15 frames a second
+                if (age >= FADE_IN && age < FADE_IN + HOLD) {
+                    const flareNext = item.kind === 'glyph' && age * FLARE_FPS < 44 ? (Math.floor(age * FLARE_FPS) + 1) / FLARE_FPS - age : STILL;
+                    return Math.min(FADE_IN + HOLD - age, flareNext) + 0.001;
+                }
             }
         };
     };
@@ -799,7 +814,7 @@
         fit();
         const saver = make(ctx, w, h, opts);
         let backdrop = null;
-        if (opts.backdrop && saver.transparent) loadImage(opts.backdrop).then((img) => { backdrop = img; });
+        if (opts.backdrop && saver.transparent) loadImage(opts.backdrop).then((img) => { backdrop = img; wake(); });
         const drawBackdrop = () => {
             if (!backdrop) return;
             const iw = backdrop.naturalWidth;
@@ -808,16 +823,26 @@
             ctx.drawImage(backdrop, (w - iw * k) / 2, (h - ih * k) / 2, iw * k, ih * k);
         };
         let raf = 0;
+        let waitTimer = 0;
+        let waited = false; // the last frame asked for a pause: the saver's clock runs through it
         let last = 0;
         let t = 0;
         let stopped = false;
+        // the phone's screen is off (html[data-screen-off], DSApp; the page stays "visible"): nothing is
+        // drawn until it comes back (melatonscreen). A hidden page already gets no animation frames.
+        const dark = () => !!(doc && doc.documentElement.dataset.screenOff !== undefined);
         function loop(now) {
+            raf = 0;
             if (stopped) return;
-            const dt = last ? Math.min(0.1, (now - last) / 1000) : 0.016;
+            if (dark()) { last = 0; return; }
+            const real = last ? (now - last) / 1000 : 0.016;
+            const dt = Math.min(0.1, real);
             last = now;
-            t += dt;
+            t += waited ? real : dt;
+            waited = false;
+            let rest;
             try {
-                saver.frame(t, dt);
+                rest = saver.frame(t, dt);
                 if (backdrop) {
                     ctx.save();
                     ctx.globalCompositeOperation = 'destination-over';
@@ -825,19 +850,34 @@
                     ctx.restore();
                 }
             } catch (err) { console.error('screenSaver frame', err); stop(); return; }
+            if (typeof rest === 'number' && rest > 0.034) {
+                // the picture holds: no frames until it changes (or wake(): a resize, the screen back on)
+                waited = true;
+                if (rest !== STILL) waitTimer = root.setTimeout(() => { waitTimer = 0; wake(); }, Math.min(rest * 1000, 600000));
+                return;
+            }
+            raf = root.requestAnimationFrame(loop);
+        }
+        function wake() {
+            if (stopped || raf) return;
+            if (waitTimer) { root.clearTimeout(waitTimer); waitTimer = 0; }
             raf = root.requestAnimationFrame(loop);
         }
         function onResize() {
             fit();
             if (saver.resize) saver.resize(w, h);
+            wake();
         }
         function stop() {
             stopped = true;
             if (typeof saver.stop === 'function') saver.stop();
             root.cancelAnimationFrame(raf);
+            root.clearTimeout(waitTimer);
             root.removeEventListener('resize', onResize);
+            root.removeEventListener('melatonscreen', wake);
         }
         root.addEventListener('resize', onResize);
+        root.addEventListener('melatonscreen', wake);
         raf = root.requestAnimationFrame(loop);
         return { stop, transparent: !!saver.transparent };
     }
@@ -880,6 +920,12 @@
         state.startPoint = null;
         state.engine = makeEngine(canvas, id, extra || {});
         if (state.engine && state.engine.transparent) cover.classList.add('is-transparent');
+        // an opaque saver hides the whole desktop: its looping animations and clocks stop under it
+        // (html[data-saver-cover], hidden.css; animationWatchdog and the Sidebar clocks read it too)
+        else if (state.engine && !(extra && extra.preview)) {
+            doc.documentElement.dataset.saverCover = '';
+            doc.dispatchEvent(new CustomEvent('melatoncover', { detail: { covered: true } }));
+        }
         if (typeof root.closeAllContextMenus === 'function') {
             try { root.closeAllContextMenus(); } catch (_) { /* optional */ }
         }
@@ -894,6 +940,10 @@
         state.cover = null;
         state.canvas = null;
         state.showing = null;
+        if (doc && doc.documentElement.dataset.saverCover !== undefined) {
+            delete doc.documentElement.dataset.saverCover;
+            doc.dispatchEvent(new CustomEvent('melatoncover', { detail: { covered: false } }));
+        }
         if (fromInput && was === 'idle') lockOnResume();
     }
 

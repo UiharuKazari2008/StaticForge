@@ -428,6 +428,7 @@
             case 'customize': openCustomizeDialog('network'); break;
             case 'rename': openCustomizeDialog('connection'); break;
             case 'diagnose': diagnose(); break;
+            case 'portal': if (portal()) void portal().openBrowser(); break;
             default: break;
         }
     }
@@ -1026,7 +1027,15 @@
 
     // ---- Network and Server Center ---------------------------------------------------------
 
+    /** DreamOS behind a captive portal (dreamosPortal.js): the network wants a sign-in before it lets anything through. */
+    function portal() {
+        const p = root.dreamosPortal;
+        return p && typeof p.captive === 'function' && p.captive() ? p : null;
+    }
+
     function accessText(state) {
+        // Vista's word for a network without the Internet behind it
+        if (portal()) return 'Local only';
         switch (state) {
             case 'connected': return 'Local and Internet';
             case 'connecting': return 'Connecting...';
@@ -1101,7 +1110,7 @@
             const state = linkState();
             const i = info();
             const reachable = !!lastStatus && !statusError;
-            const clientLink = state === 'connected' ? 'ok' : state === 'disconnected' ? 'down' : 'busy';
+            const clientLink = state === 'connected' ? 'ok' : (state === 'disconnected' || portal()) ? 'down' : 'busy';
             const serverLink = reachable ? 'ok' : 'unknown';
             const dots = serverRows().map((r) => `
                 <div class="cpl-row">
@@ -1113,7 +1122,7 @@
                 <h1 class="cpl-page-title">Network and Server Center</h1>
                 <div class="cpl-map">
                     ${mapNode('/static_images/melaton/net-laptop.png', 'This computer')}
-                    ${mapLink(clientLink, state === 'connected' ? `Connected through ${i.connectionName}` : accessText(state))}
+                    ${mapLink(clientLink, state === 'connected' && !portal() ? `Connected through ${i.connectionName}` : accessText(state))}
                     ${mapNode('/static_images/melaton/net-server.png', i.domain, 'Domain controller')}
                     ${mapLink(serverLink, reachable ? 'Connected' : 'Unknown')}
                     ${mapNode('/static_images/melaton/net-globe.png', 'Internet')}
@@ -1141,6 +1150,12 @@
                     <div class="cpl-row">
                         <span class="cpl-row-label"></span>
                         <button type="button" class="cpl-link" data-cpl-action="connect">Log on to the domain...</button>
+                    </div>` : ''}
+                    ${portal() ? `
+                    <div class="cpl-row">
+                        <span class="cpl-row-label">Network</span>
+                        <span class="cpl-row-value">${esc(portal().title)}</span>
+                        <button type="button" class="cpl-link cpl-row-action" data-cpl-action="portal">Open your browser</button>
                     </div>` : ''}
                 </div>
                 <h2 class="cpl-section-title">Server status</h2>
@@ -1247,6 +1262,8 @@
         }, 0);
         doc.addEventListener('visibilitychange', seenAgain, { signal: appScopeSignal });
         if (typeof root.addEventListener === 'function') root.addEventListener('melatonscreen', seenAgain, { signal: appScopeSignal });
+        // a captive portal came or went (dreamosPortal.js): the page on show says so at once
+        if (typeof root.addEventListener === 'function') root.addEventListener('dreamosportal:change', () => { if (!unseen() && onNetworkPage()) render(); }, { signal: appScopeSignal });
     }
 
     function startTimers() {
@@ -1576,6 +1593,7 @@
             const action = link.dataset.flyoutAction;
             hideFlyout();
             if (action === 'center') open('network');
+            else if (action === 'portal' && portal()) void portal().openBrowser();
         });
         doc.body.appendChild(flyout);
         // Outside click / Escape closes it, like Vista's flyouts
@@ -1600,19 +1618,21 @@
     function networkFlyoutHtml() {
         const online = !root.navigator || root.navigator.onLine !== false;
         const conn = ws() && ws().melatonConnection;
-        const name = conn && conn.connectionType === 'Ethernet' ? 'Local Area Connection' : 'Network';
+        const captive = online ? portal() : null;
+        const name = captive ? captive.networkName() : conn && conn.connectionType === 'Ethernet' ? 'Local Area Connection' : 'Network';
         return `
             <div class="network-flyout-body">
                 <div class="network-flyout-heading">${online ? 'Currently connected to:' : 'Not connected'}</div>
                 <div class="network-flyout-item">
-                    <img src="/static_images/vista-icons/${online ? 'net-internet' : 'net-disconnected'}-32.png" alt="" draggable="false">
+                    <img src="/static_images/vista-icons/${captive ? 'net-limited' : online ? 'net-internet' : 'net-disconnected'}-32.png" alt="" draggable="false">
                     <div class="network-flyout-text">
                         <span class="network-flyout-name">${online ? esc(name) : 'No connections are available'}</span>
-                        <span class="network-flyout-sub">${online ? 'Access: Local and Internet' : 'Access: None'}</span>
+                        <span class="network-flyout-sub">${captive ? 'Access: Local only' : online ? 'Access: Local and Internet' : 'Access: None'}</span>
                     </div>
                 </div>
             </div>
             <div class="network-flyout-links">
+                ${captive ? `<button type="button" class="network-flyout-link" data-flyout-action="portal">${esc(captive.title)} Open your browser</button>` : ''}
                 <button type="button" class="network-flyout-link" data-flyout-action="center">Network and Server Center</button>
             </div>`;
     }

@@ -289,6 +289,8 @@
                 const top = shell.history && shell.history[shell.historyIndex];
                 const url = grimoireAddress(shell);
                 if (!url && !history.length) return;
+                // a captive portal's sign-in page (the local Alchemy, dreamosPortal.js) is this laptop's alone: not kept, not offered to other devices
+                if (shell._grimoireLocalAlchemy) return;
                 rows.push({
                     id: winId + ':' + tab.id,
                     alchemyId: shell._grimoireRemoteSessionId || '',
