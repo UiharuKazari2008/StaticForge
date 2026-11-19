@@ -786,15 +786,16 @@
                             <video class="yt-video" playsinline preload="none" disablepictureinpicture disableremoteplayback></video>
                             <div class="yt-frame" hidden></div>
                             <div class="yt-pl-status" hidden><i></i><span></span></div>
-                            <button type="button" class="yt-pl-key is-play" data-pl="toggle" aria-label="Play" hidden></button>
+                            <div class="yt-mid" hidden>
+                                <button type="button" class="yt-mid-key is-seek" data-pl="back" aria-label="Back 10 seconds" hidden>${I.back}</button>
+                                <button type="button" class="yt-mid-key is-main" data-pl="toggle" aria-label="Play">${I.play}</button>
+                                <button type="button" class="yt-mid-key is-seek" data-pl="fwd" aria-label="Forward 10 seconds" hidden>${I.fwd}</button>
+                            </div>
                             <div class="yt-hud" hidden>
                                 <div class="yt-seek" role="slider" tabindex="0" aria-label="Place in the video" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" hidden><div class="yt-seek-track"><i class="yt-seek-buf"></i><i class="yt-seek-fill"></i><span class="yt-seek-marks"></span><i class="yt-seek-thumb"></i></div></div>
                                 <div class="yt-hud-keys">
-                                <button type="button" class="yt-hud-key" data-pl="toggle" aria-label="Pause">${I.pause}</button>
                                 <button type="button" class="yt-hud-key" data-pl="mute" aria-label="Sound off">${I.sound}</button>
                                 <button type="button" class="yt-hud-key" data-pl="stop" aria-label="Stop">${I.stop}</button>
-                                <button type="button" class="yt-hud-key is-seek" data-pl="back" aria-label="Back 10 seconds" hidden>${I.back}</button>
-                                <button type="button" class="yt-hud-key is-seek" data-pl="fwd" aria-label="Forward 10 seconds" hidden>${I.fwd}</button>
                                 <span class="yt-hud-live"><i class="yt-new is-livetag">LIVE</i><span class="yt-pl-up"></span><span class="yt-pl-mode"></span></span>
                                 <button type="button" class="yt-hud-key" data-pl="chat" aria-label="Chat" aria-pressed="false">${I.chat}</button>
                                 <button type="button" class="yt-hud-key" data-pl="pop" aria-label="Pop out" hidden>${I.pop}</button>
@@ -815,7 +816,7 @@
         const q = (s) => page.querySelector(s);
         els = {
             root: q('.yt-root'), me: q('.yt-me'), title: q('.yt-title'), note: q('.yt-note'), panes: q('.yt-panes'),
-            player: q('.yt-player'), video: q('.yt-video'), plMode: q('.yt-pl-mode'), plStatus: q('.yt-pl-status'), plKey: q('.yt-pl-key'),
+            player: q('.yt-player'), video: q('.yt-video'), plMode: q('.yt-pl-mode'), plStatus: q('.yt-pl-status'), plKey: q('.yt-mid'),
             plUp: q('.yt-pl-up'), hud: q('.yt-hud'), sideTitle: q('.yt-side-title'), sideSub: q('.yt-side-sub'), sideUp: q('.yt-side-up'), frame: q('.yt-frame'), seek: q('.yt-seek'), seekMarks: q('.yt-seek-marks'), more: q('.yt-more'), chat: q('.yt-chat'), chatList: q('.yt-chat-list'), chatForm: q('.yt-chat-form'), chatQ: q('.yt-chat-q'),
             tabs: q('.yt-tabs'), slider: q('.yt-slider'), sign: q('.yt-sign'), layer: q('.yt-layer'), chan: q('.yt-chan'), layerList: q('.yt-layer .yt-list'),
             form: q('.yt-search'), q: q('.yt-q'), clear: q('.yt-clear'), lists: {}, paneEls: {}
@@ -1424,8 +1425,11 @@
         if (els.hud.hidden === show) els.hud.hidden = !show;
         // the big key in the middle only while paused (or when the browser wants a touch before it plays)
         const big = live && paused;
-        if (els.plKey.hidden === big) els.plKey.hidden = !big;
-        const t = els.hud.querySelector('[data-pl="toggle"]');
+        // play / pause (and back / forward for a video) are round keys in the middle of the picture (Yukimi, Nov 19
+        // 2026: the bottom row overflowed): there with the other keys, and whenever it is paused
+        const mid = show || big;
+        if (els.plKey.hidden === mid) els.plKey.hidden = !mid;
+        const t = els.plKey.querySelector('[data-pl="toggle"]');
         const tHtml = paused ? I.play : I.pause;
         if (t.dataset.g !== (paused ? 'play' : 'pause')) { t.dataset.g = paused ? 'play' : 'pause'; t.innerHTML = tHtml; t.setAttribute('aria-label', paused ? 'Play' : 'Pause'); }
         const m = els.hud.querySelector('[data-pl="mute"]');
@@ -1434,7 +1438,7 @@
         const pk = els.hud.querySelector('[data-pl="pop"]');
         const popOk = !player.vod && canPop();
         if (pk.hidden === popOk) pk.hidden = !popOk;
-        if (show) { plSide(); if (!paused) player.keyTimer = setTimeout(() => { if (els && player) els.hud.hidden = true; }, 4000); }
+        if (show) { plSide(); if (!paused) player.keyTimer = setTimeout(() => { if (els && player) { els.hud.hidden = true; els.plKey.hidden = true; } }, 4000); }
     }
     const plKey = (show) => plHud(show);
 
@@ -1673,7 +1677,7 @@
         clearTimeout(p.skipNote);
         if (p.frame) { p.frame.remove(); p.frame = null; }
         clearTimeout(p.ytTimer);
-        if (els) { els.frame.hidden = true; els.player.classList.remove('is-yt', 'is-vod'); els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = true; }); els.hud.querySelector('[data-pl="chat"]').hidden = false; }
+        if (els) { els.frame.hidden = true; els.player.classList.remove('is-yt', 'is-vod'); els.plKey.querySelectorAll('.is-seek').forEach((k) => { k.hidden = true; }); els.hud.querySelector('[data-pl="chat"]').hidden = false; }
         // played most of the way: watched, in the account's own history
         const v = seen.get(p.vid);
         if ((p.best || 0) >= 60 && isAdmin() && !(v && v.watched)) setWatched(p.vid, true);
@@ -1699,7 +1703,7 @@
         const p = player;
         els.player.hidden = false;
         els.player.classList.add('is-vod');
-        els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = false; });
+        els.plKey.querySelectorAll('.is-seek').forEach((k) => { k.hidden = false; });
         els.hud.querySelector('[data-pl="chat"]').hidden = true;
         els.seek.hidden = false;
         ytMore(p);
@@ -1795,7 +1799,7 @@
         const p = player;
         els.player.hidden = false;
         els.player.classList.add('is-yt', 'is-vod');
-        els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = false; });
+        els.plKey.querySelectorAll('.is-seek').forEach((k) => { k.hidden = false; });
         els.hud.querySelector('[data-pl="chat"]').hidden = true;
         const f = document.createElement('iframe');
         f.className = 'yt-frame-el';

@@ -744,44 +744,28 @@
 /* perf: allow the wait ring turns only while a stream is starting or buffering (the status is hidden otherwise) */
 .wm-youtube .yt-pl-status.is-busy i { display: block; animation: yt-spin 0.9s linear infinite; }
 
-/* the program's own play / pause key, shown on a tap and gone again while playing */
-.wm-youtube .yt-pl-key {
+/* in the middle of the picture: play / pause, with back and forward 10 seconds for a video; round keys */
+.wm-youtube .yt-mid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: calc(16 * var(--u)); }
+.wm-youtube .yt-mid-key {
     appearance: none;
     -webkit-appearance: none;
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: calc(46 * var(--u));
-    height: calc(46 * var(--u));
-    margin: calc(-23 * var(--u)) 0 0 calc(-23 * var(--u));
+    flex: 0 0 auto;
+    width: calc(34 * var(--u));
+    height: calc(34 * var(--u));
     padding: 0;
     border-radius: 50%;
-    border: 1px solid color-mix(in srgb, white 50%, transparent);
-    background: color-mix(in srgb, black 62%, transparent);
-    box-shadow: inset 0 1px color-mix(in srgb, white 35%, transparent), 0 calc(2 * var(--u)) calc(6 * var(--u)) color-mix(in srgb, black 70%, transparent);
+    border: 1px solid color-mix(in srgb, white 40%, transparent);
+    background: color-mix(in srgb, black 58%, transparent);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px calc(4 * var(--u)) color-mix(in srgb, black 60%, transparent);
 }
-.wm-youtube .yt-pl-key::before {
-    content: '';
-    position: absolute;
-    left: 34%;
-    top: 30%;
-    width: 32%;
-    height: 40%;
-    border-left: calc(5 * var(--u)) solid white;
-    border-right: calc(5 * var(--u)) solid white;
-    box-sizing: border-box;
-}
-.wm-youtube .yt-pl-key.is-play::before {
-    left: 40%;
-    top: 28%;
-    width: 0;
-    height: 0;
-    border: 0;
-    border-top: calc(10 * var(--u)) solid transparent;
-    border-bottom: calc(10 * var(--u)) solid transparent;
-    border-left: calc(15 * var(--u)) solid white;
-}
-.wm-youtube .yt-pl-key:active { background: linear-gradient(var(--yt-accent), var(--yt-accent-deep)); }
+.wm-youtube .yt-mid-key.is-main { width: calc(46 * var(--u)); height: calc(46 * var(--u)); }
+.wm-youtube .yt-mid-key svg { width: calc(15 * var(--u)); height: calc(15 * var(--u)); }
+.wm-youtube .yt-mid-key.is-main svg { width: calc(20 * var(--u)); height: calc(20 * var(--u)); }
+.wm-youtube .yt-mid-key:active { background: linear-gradient(var(--yt-accent), var(--yt-accent-deep)); }
 
 /* ---------------------------------------------------------------- sign-in */
 
