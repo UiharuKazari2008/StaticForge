@@ -11,7 +11,7 @@
  *                             Resync and Disconnect on the selected one (#898)
  *     Roles                   the role consoles, each a hosted snap-in (mmcConsole.compose):
  *                             Autofill Ranking, Dynamic Quips, Enshutsuka, Exchange, Front Gate,
- *                             Key Manager, Print Management
+ *                             Ingest Controller (mmcIngest.js), Key Manager, Print Management
  *     Features                the programs and pages that are not consoles (Image Search, Messaging
  *                             Bridge, Melaton Mobile Device Center, Melaton Messenger, Pantry, Zanzou)
  *     Diagnostics             Event Viewer, Reliability and Performance, Device Manager (windows of
@@ -85,6 +85,7 @@
         ['enshutsuka', 'Enshutsuka', 'mmcEnshutsuka', 'openEnshutsukaSnapin', 'Director\'s memories, static rules, feedback and persona.'],
         ['exchange', 'Exchange', 'mmcExchange', 'openExchangeConsole', 'Mailboxes, aliases, distribution groups and the mail relay.'],
         ['frontgate', 'Front Gate', 'mmcFrontGate', 'openFrontGateConsole', 'The cover site in front of this server, and its access phrase.'],
+        ['ingest', 'Ingest Controller', 'mmcIngest', 'openIngestController', 'The pipeline between the places mail and texts arrive and the inboxes: modes, modules, rules and expiry.'],
         ['keys', 'Key Manager', 'mmcAppKeys', 'openKeyManagerConsole', 'Application keys and service keys.'],
         ['print', 'Print Management', 'mmcPrintManagement', 'openPrintManagementSnapin', 'The generation backends as printers, and their queues.']
     ];

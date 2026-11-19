@@ -231,8 +231,12 @@ function normalizeActions(a, source) {
         if (source === 'sms') throw bad('expire is for mail (email / exchange), not texts.');
         const e = isObj(x.expire) ? x.expire : {};
         const ex = {};
+        // the stored form ({ afterMs, afterReadMs }) validates again: configureModule merges the stored rules
+        // into every later change, so a rule with an expiry blocked any routing change after it
         if (e.after != null) ex.afterMs = parseDuration(e.after, 'expire.after');
+        else if (e.afterMs != null) ex.afterMs = parseDuration(Number(e.afterMs), 'expire.afterMs');
         if (e.afterRead != null) ex.afterReadMs = parseDuration(e.afterRead, 'expire.afterRead');
+        else if (e.afterReadMs != null) ex.afterReadMs = parseDuration(Number(e.afterReadMs), 'expire.afterReadMs');
         if (!ex.afterMs && !ex.afterReadMs) throw bad('expire needs after ("40d") and / or afterRead ("7d")');
         out.expire = ex;
     }

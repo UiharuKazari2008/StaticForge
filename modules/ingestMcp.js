@@ -46,7 +46,7 @@ function buildTools(scope, role) {
         t('ingest_dry_run', 'Run one message through the account\'s pipeline and show every module\'s decision and the actions that would be applied. Nothing is applied. Give ref (email { folder, uid }, exchange { id }, sms { chatGuid, guid }) for a stored message, or message { from, fromName, to, cc, subject, text, headers, known, isGroup } to try one (keep real verification codes out of supplied text). allModules:true also runs disabled modules; scoreSpam:false skips spamd.', {
             source: SOURCE, accountId: str, ref: { type: 'object' }, message: { type: 'object' }, allModules: bool, scoreSpam: bool
         }, ['source', 'accountId']),
-        t('ingest_log', 'Recent pipeline decisions (intended when dry-run, applied when live): sender, subject (codes redacted), actions. Expiry sweeps log type expire (dry: "would expire", once a day per message).', { source: SOURCE, accountId: str, limit: num }),
+        t('ingest_log', 'Recent pipeline decisions (intended when dry-run, applied when live): sender, subject (codes redacted), actions. Expiry sweeps log type expire (dry: "would expire", once a day per message). Newest first; before (an entry id) pages back, more says older entries remain.', { source: SOURCE, accountId: str, limit: num, before: num }),
         t('ingest_expiry_status', 'Expiry module of one mail account (source email or exchange): enabled, dryRun, rules, counts (tagged, due, flagged, expired, gone, error), the next messages due (subject / sender, expiresAt, reason; never a body), messages waiting to be read, last sweep. The sweep runs every 20 minutes.', {
             source: { type: 'string', enum: ['email', 'exchange'] }, accountId: str, limit: num
         }, ['source', 'accountId']),

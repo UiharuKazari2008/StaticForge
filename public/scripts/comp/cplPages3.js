@@ -178,6 +178,7 @@
         { id: 'event-viewer', name: 'Event Viewer', icon: '/static_images/app_icons/16/vista-event-viewer.webp', open: () => launch('event-viewer') },
         { id: 'exchange', name: 'Exchange Management Console', icon: '/static_images/app_icons/16/vista-exchange-management-console.webp', open: () => callGlobal('openExchangeConsole') },
         { id: 'front-gate', name: 'Front Gate', icon: `${ITEMS}/firewall-16.png`, open: () => callGlobal('openFrontGateConsole') },
+        { id: 'ingest-controller', name: 'Ingest Controller', icon: '/static_images/vista-exchange/transport-16.png', open: async () => { if (root.featureLoader) await root.featureLoader.loadFeature('mmc_snapins'); callGlobal('openIngestController'); } },
         { id: 'iscsi', name: 'iSCSI Initiator', icon: `${ITEMS}/iscsi-initiator-16.png`, open: () => root.cplDialogs && root.cplDialogs.open('iscsi') },
         { id: 'key-manager', name: 'Key Manager', icon: '/static_images/vista-certmgr/keymgr-16.png', open: () => callGlobal('openKeyManagerConsole') },
         { id: 'memory', name: 'Memory Diagnostics Tool', icon: `${ITEMS}/administrative-tools-16.png`, open: () => memoryDiagnostics() },

@@ -143,6 +143,7 @@
     "test:mail-exchange": "node scripts/test-mail-exchange.js",
     "test:messaging-bridge-mcp": "node scripts/test-messaging-bridge-mcp.js",
     "test:ingest-controller": "node scripts/test-ingest-controller.js",
+    "test:ingest-mmc": "node scripts/test-ingest-mmc.js",
     "test:mail-report": "node scripts/test-mail-report.js",
     "test:cpl-mail": "node scripts/test-cpl-mail.js",
     "test:cpl-system": "node scripts/test-cpl-system.js",

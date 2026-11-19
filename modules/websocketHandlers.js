@@ -629,6 +629,14 @@ class WebSocketMessageHandlers {
             'director_learned_rule_edit',
             'director_learned_rule_remove',
             'director_settings_set',
+            // Ingest Controller console (Server Manager; 314-ingestControllerHandler.js): mode, modules,
+            // the expiry sweep and the older mail rules
+            'ingest_set_mode',
+            'ingest_configure_module',
+            'ingest_expiry_sweep',
+            'bridge_mail_save_rule',
+            'bridge_mail_delete_rule',
+            'bridge_mail_run_rules',
         ];
         return destructiveOperations.includes(messageType) || isReplicationDestructivePacket(messageType);
     }

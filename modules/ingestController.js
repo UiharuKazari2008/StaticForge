@@ -776,10 +776,13 @@ async function dryRun(input = {}) {
     };
 }
 
+/** Newest first, opts.limit (default 50, at most 200) a page; opts.before (an entry id) pages back. more: older entries remain. */
 function recentLog(opts = {}) {
     const s1 = st(false);
-    if (!s1) return { entries: [] };
-    return { entries: s1.listLog({ source: opts.source ? validSource(opts.source) : null, account: opts.accountId || null, limit: opts.limit }) };
+    if (!s1) return { entries: [], more: false };
+    const limit = Math.max(1, Math.min(Number(opts.limit) || 50, 200));
+    const rows = s1.listLog({ source: opts.source ? validSource(opts.source) : null, account: opts.accountId || null, limit, before: opts.before || null, extra: 1 });
+    return { entries: rows.slice(0, limit), more: rows.length > limit };
 }
 
 // ---------------------------------------------------------------- expiry (modules/ingestExpiry.js)
