@@ -789,6 +789,7 @@
                             </div>
                         </div>
                         <div class="yt-side"><div class="yt-side-title"></div><div class="yt-side-sub"></div><div class="yt-side-sub yt-side-live"><i class="yt-new is-livetag">LIVE</i><span class="yt-side-up"></span></div>
+                            <div class="yt-more" hidden></div>
                             <div class="yt-chat" hidden><div class="yt-chat-list" aria-live="off"></div><form class="yt-search yt-chat-form" action="#" autocomplete="off" hidden><label class="yt-field"><input class="yt-q yt-chat-q" type="text" enterkeyhint="send" placeholder="Say something" autocomplete="off" maxlength="500"></label><button type="submit" class="yt-btn is-go">Send</button></form></div>
                         </div>
                     </div>
@@ -800,7 +801,7 @@
         els = {
             root: q('.yt-root'), me: q('.yt-me'), title: q('.yt-title'), note: q('.yt-note'), panes: q('.yt-panes'),
             player: q('.yt-player'), video: q('.yt-video'), plMode: q('.yt-pl-mode'), plStatus: q('.yt-pl-status'), plKey: q('.yt-pl-key'),
-            plUp: q('.yt-pl-up'), hud: q('.yt-hud'), sideTitle: q('.yt-side-title'), sideSub: q('.yt-side-sub'), sideUp: q('.yt-side-up'), frame: q('.yt-frame'), chat: q('.yt-chat'), chatList: q('.yt-chat-list'), chatForm: q('.yt-chat-form'), chatQ: q('.yt-chat-q'),
+            plUp: q('.yt-pl-up'), hud: q('.yt-hud'), sideTitle: q('.yt-side-title'), sideSub: q('.yt-side-sub'), sideUp: q('.yt-side-up'), frame: q('.yt-frame'), more: q('.yt-more'), chat: q('.yt-chat'), chatList: q('.yt-chat-list'), chatForm: q('.yt-chat-form'), chatQ: q('.yt-chat-q'),
             tabs: q('.yt-tabs'), slider: q('.yt-slider'), sign: q('.yt-sign'), layer: q('.yt-layer'), chan: q('.yt-chan'), layerList: q('.yt-layer .yt-list'),
             form: q('.yt-search'), q: q('.yt-q'), clear: q('.yt-clear'), lists: {}, paneEls: {}
         };
@@ -1002,7 +1003,12 @@
         const kc = e.target.closest('[data-yt-kick]');
         if (kc) { openUrl(`https://kick.com/${kc.dataset.ytKick}`, true, KICK_PACKAGE); return; }
         const v = e.target.closest('[data-v]');
-        if (v) { openItem(seen.get(v.dataset.v) || { id: v.dataset.v }); return; }
+        if (v) {
+            const item = seen.get(v.dataset.v) || { id: v.dataset.v };
+            // in the player's "more to watch" list the next video plays here too
+            if (player && player.kind === 'yt' && v.closest('.yt-more') && srcOf(item) === 'youtube') watchVideo(item); else openItem(item);
+            return;
+        }
         const ch = e.target.closest('[data-ch]');
         if (ch) openChannel(ch.dataset.ch);
     }
@@ -1494,7 +1500,12 @@
             p.pos = info.currentTime;
             if (p.len) p.best = Math.max(p.best || 0, (p.pos / p.len) * 100);
             // the clock is written when its second changes, and only while the keys or the panel show it
-            if (sec !== p.sec) { p.sec = sec; if (shown && (!els.hud.hidden || !p.full)) ytSide(); }
+            if (sec !== p.sec) {
+                p.sec = sec;
+                if (shown && (!els.hud.hidden || !p.full)) ytSide();
+                // where it is, every half minute of playing: the rows' progress line and where it carries on
+                if (sec > 0 && sec % 30 === 0) ytProgress(p);
+            }
         }
         if (typeof info.playerState === 'number' && info.playerState !== p.ytState) {
             p.ytState = info.playerState;
@@ -1505,7 +1516,25 @@
             if (was !== p.paused) { plHold(!p.paused); plHud(p.paused ? true : !els.hud.hidden); }
         }
     }
+    function ytProgress(p) {
+        if (!p.len || !isAdmin()) return;
+        const pct = Math.round(((p.pos || 0) / p.len) * 1000) / 10;
+        if (pct === p.sentPct) return;
+        p.sentPct = pct;
+        eachVideo(p.vid, (v) => { if (!v.watched) { v.progress = pct; v.resume = Math.floor(p.pos || 0); } });
+        stale = true;
+        ask('youtube_progress', { id: p.vid, pct, pos: Math.floor(p.pos || 0) }, 10000).catch(() => {});
+    }
+    /** Under the picture: more to watch, the feed's unwatched videos (a tap plays the next one here). */
+    function ytMore(p) {
+        const list = (data.subs.videos || []).filter((v) => srcOf(v) === 'youtube' && v.id !== p.vid && !v.watched && v.live !== 'upcoming').slice(0, 12);
+        els.more.innerHTML = list.length ? `<div class="yt-sec">More from your subscriptions</div>${list.map((v) => videoRow(v, false)).join('')}` : '';
+        els.more.hidden = !list.length;
+    }
     function ytClose(p) {
+        if ((p.best || 0) < 60 && (p.pos || 0) > 5) ytProgress(p);
+        els.more.hidden = true;
+        els.more.textContent = '';
         if (p.frame) { p.frame.remove(); p.frame = null; }
         clearTimeout(p.ytTimer);
         if (els) { els.frame.hidden = true; els.player.classList.remove('is-yt'); els.hud.querySelectorAll('.is-seek').forEach((k) => { k.hidden = true; }); els.hud.querySelector('[data-pl="chat"]').hidden = false; }
@@ -1536,7 +1565,10 @@
             try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), YT_EMBED); } catch (_) { /* gone */ }
             ['onStateChange', 'onError'].forEach((name) => ytCmd('addEventListener', [name]));
         }, { once: true });
-        f.src = `${YT_EMBED}/embed/${encodeURIComponent(id)}?${new URLSearchParams({ enablejsapi: '1', controls: '0', playsinline: '1', autoplay: '1', rel: '0', iv_load_policy: '3', fs: '0', disablekb: '1', origin: location.origin }).toString()}`;
+        // a video left part way carries on where it was
+        const from = v.resume > 5 && v.progress > 0 && v.progress < 95 && !v.watched ? { start: String(Math.floor(v.resume)) } : {};
+        ytMore(p);
+        f.src = `${YT_EMBED}/embed/${encodeURIComponent(id)}?${new URLSearchParams({ ...from, enablejsapi: '1', controls: '0', playsinline: '1', autoplay: '1', rel: '0', iv_load_policy: '3', fs: '0', disablekb: '1', origin: location.origin }).toString()}`;
         p.frame = f;
         els.frame.textContent = '';
         els.frame.appendChild(f);

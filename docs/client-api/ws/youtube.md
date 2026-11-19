@@ -109,8 +109,10 @@ The status feed's `sources.chat` is `{ enabled, linked }`. With chat on, channel
 `apps/videos` is the same program in a desktop window (`client/videos.js` answers the shell calls
 `wmYouTube.js` makes; the two soft keys are the keys of a bar at the top). A YouTube video plays in the window
 (on the phone: hold a video, Play Here) in YouTube's embedded player (`youtube-nocookie.com/embed`, driven by
-messages; none of its script runs in the page). No packets of its own: a video played 60 % or more is marked with
-`youtube_mark`.
+messages; none of its script runs in the page). `youtube_progress` `{ id, pct, pos }` -> `{ id, progress, resume }`
+(admin) keeps how far it was played (sent every half minute and on leaving): videos then carry `progress` and
+`resume` (seconds, where Play Here carries on). A video played 60 % or more is marked with `youtube_mark`.
+Under the picture (upright) the player lists more unwatched videos from the feed.
 
 ## Status feed (pushed, never polled)
 
