@@ -1697,7 +1697,7 @@
                 els.chatList.textContent = '';
                 p.chatStick = true;
                 chatAppend(d.messages || [], 0);
-                if (!els.chatList.childElementCount) els.chatList.innerHTML = '<div class="yt-chat-row is-note">Chat shows here as people write.</div>';
+                if (!els.chatList.childElementCount) els.chatList.innerHTML = '<div class="yt-chat-row is-note">Chat shows here as people write. If a busy chat stays empty, Kick is not delivering: check that Webhooks is on, with this server\'s Webhook URL, in the Kick developer app.</div>';
             } else {
                 p.chatOpen = false;
                 await ask('youtube_chat_close', { slug: p.slug }, 8000).catch(() => {});
