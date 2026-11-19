@@ -126,7 +126,9 @@
         if (!state || !state.baseUrl) return '';
         let url = `${state.baseUrl.replace(/\/+$/, '')}/${encodeURIComponent(rootId)}/${encodePath(path)}`;
         const q = [];
-        if (opts.thumb) q.push(`thumb=${Math.max(32, Math.min(1024, Math.round(opts.thumb)))}`);
+        // up to 2048: Pictures & Videos' screen-sized view of a HEIC / very large picture (#957); an app before
+        // DSApp claude/media-thumbs answers at most 1024
+        if (opts.thumb) q.push(`thumb=${Math.max(32, Math.min(2048, Math.round(opts.thumb)))}`);
         if (opts.download) q.push('download=1');
         if (q.length) url += `?${q.join('&')}`;
         return url;
