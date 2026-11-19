@@ -472,7 +472,8 @@ function forgetDirectorReopen() {
     const WINLOGON_UPDATE_PLAN_MAX_MS = 8000;
 
     function winlogonUpdater(kind) {
-        if (kind === 'server') return null;
+        // updates install at shut down and restart only, as in Vista; log off leaves them waiting (Yukimi, Nov 19)
+        if (kind === 'server' || kind === 'logoff') return null;
         // serviceWorkerManager: public/scripts/comp/serviceWorkerManager.js
         const m = window.serviceWorkerManager;
         return m && typeof m.planShutdownInstall === 'function' && typeof m.installUpdatesAtShutdown === 'function' ? m : null;
