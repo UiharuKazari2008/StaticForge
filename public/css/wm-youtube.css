@@ -664,6 +664,19 @@
     padding: calc(14 * var(--u)) calc(6 * var(--u)) calc(5 * var(--u));
     background: linear-gradient(transparent, color-mix(in srgb, black 82%, transparent));
 }
+/* a video's seek bar, over the keys: what is written (pale), what is played (the accent), SponsorBlock's parts, the thumb */
+.wm-youtube .yt-hud { flex-wrap: wrap; }
+.wm-youtube .yt-seek { flex: 0 0 100%; --p: 0; --b: 0; padding: calc(7 * var(--u)) calc(6 * var(--u)); margin: 0 0 calc(2 * var(--u)); touch-action: none; cursor: pointer; outline: none; }
+.wm-youtube .yt-seek[hidden] { display: none; }
+.wm-youtube .yt-seek-track { position: relative; height: calc(4 * var(--u)); border-radius: calc(2 * var(--u)); background: color-mix(in srgb, white 24%, transparent); }
+.wm-youtube .yt-seek-buf, .wm-youtube .yt-seek-fill { position: absolute; inset: 0; border-radius: inherit; transform-origin: 0 50%; }
+.wm-youtube .yt-seek-buf { background: color-mix(in srgb, white 34%, transparent); transform: scaleX(var(--b)); }
+.wm-youtube .yt-seek-fill { background: var(--yt-accent); transform: scaleX(var(--p)); }
+.wm-youtube .yt-seek-marks i { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, white 55%, transparent); }
+.wm-youtube .yt-seek-marks i.is-skip { background: limegreen; }
+.wm-youtube .yt-seek-thumb { position: absolute; top: 50%; left: calc(var(--p) * 100%); width: calc(12 * var(--u)); height: calc(12 * var(--u)); margin: calc(-6 * var(--u)) 0 0 calc(-6 * var(--u)); border-radius: 50%; background: white; border: calc(2 * var(--u)) solid var(--yt-accent); box-shadow: 0 1px calc(3 * var(--u)) black; }
+.wm-youtube .yt-seek:focus-visible .yt-seek-thumb { box-shadow: 0 0 0 calc(2 * var(--u)) white; }
+.wm-youtube .yt-seek:active .yt-seek-thumb { background: var(--yt-accent); border-color: white; }
 /* between the keys: LIVE, how long the stream has run, the quality */
 .wm-youtube .yt-hud-live { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: calc(4 * var(--u)); overflow: hidden; white-space: nowrap; color: white; font-size: calc(9 * var(--u)); text-shadow: 0 1px black; }
 .wm-youtube .yt-hud-live .yt-new { margin: 0; flex: 0 0 auto; }

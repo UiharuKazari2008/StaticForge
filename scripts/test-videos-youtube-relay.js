@@ -97,6 +97,30 @@ ok('ffmpeg finishing closes the session as done; breaking off marks it an error'
     assert.strictEqual(relay.state(b.id).state, 'error');
 });
 
+ok('SponsorBlock: only a hash prefix is sent, the wanted video is picked from the answer, whole-skip parts in order, kept for later', async () => {
+    const sb = require('../modules/videosSponsorBlock');
+    const crypto = require('crypto');
+    sb._test.reset();
+    const asked = [];
+    sb._test.setFetch(async (url) => {
+        asked.push(String(url));
+        return { status: 200, json: async () => [
+            { videoID: 'otherVideo1', segments: [{ segment: [1, 2], category: 'sponsor', actionType: 'skip' }] },
+            { videoID: 'abcdefghijk', segments: [{ segment: [300.04, 360.5], category: 'sponsor', actionType: 'skip' }, { segment: [10, 20], category: 'intro', actionType: 'skip' }, { segment: [50, 60], category: 'sponsor', actionType: 'mute' }, { segment: [5, 5], category: 'sponsor', actionType: 'skip' }] }
+        ] };
+    });
+    const r = await sb.segments('abcdefghijk');
+    assert.deepStrictEqual(r, [{ start: 10, end: 20, category: 'intro' }, { start: 300, end: 360.5, category: 'sponsor' }]);
+    assert.ok(asked[0].includes(`/api/skipSegments/${crypto.createHash('sha256').update('abcdefghijk').digest('hex').slice(0, 4)}?`));
+    assert.ok(!asked[0].includes('abcdefghijk'), 'the video id itself is not sent');
+    await sb.segments('abcdefghijk');
+    assert.strictEqual(asked.length, 1);
+    sb._test.setFetch(async () => { throw new Error('down'); });
+    assert.deepStrictEqual(await sb.segments('lmnopqrstuv'), []);
+    assert.deepStrictEqual(await sb.segments('bad id'), []);
+    sb._test.setFetch(null);
+});
+
 (async () => {
     let pass = 0; let failed = 0;
     for (const [name, fn] of tests) { try { await fn(); pass++; console.log(`  ok  ${name}`); } catch (e) { failed++; console.error(`  FAIL ${name}\n${e.stack}`); } }

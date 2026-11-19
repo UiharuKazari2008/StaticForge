@@ -42,6 +42,7 @@ const ytRelay = require('../../videosYoutubeRelay');
 //   youtube_video_start      { id, mode, at }          admins; a YouTube video through the server from `at` seconds (modules/videosYoutubeRelay.js)
 //                                                      -> { id, url, mode, state, at, duration, title, height, kbit, copied, modes } (url: HLS under /api/videos/yt/<id>/)
 //                                                      fails (YT_REFUSED, YT_LIVE, YT_TOO_LONG...) for what a server cannot be given: the program then uses YouTube's embedded player
+//   youtube_segments         { id }                    { id, segments[{ start, end, category }] }: SponsorBlock's marked parts (modules/videosSponsorBlock.js); [] when none or unreachable
 //   youtube_video_state      { id }                    admins -> { state: live | done | error | gone, error }
 //   youtube_video_stop       { id }                    admins -> { stopped }
 //   youtube_kick_add         { name }                  admins; a Kick channel by its name -> { channel, live, channels[] } (needs Service key `kick`)
@@ -54,7 +55,7 @@ const ytRelay = require('../../videosYoutubeRelay');
 //   youtube_channel          { id }                    { channel, videos[], favourite, subscribed }
 //   youtube_favourite        { channel, on }           admins; adds or removes a Today favourite -> { favourites[] }
 //   youtube_favourites_order { ids[] }                 admins -> { favourites[] }
-//   youtube_settings_save    { settings }              admins; { noShorts, rareFirst, todayCount } -> { settings }
+//   youtube_settings_save    { settings }              admins; { noShorts, rareFirst, skipSegments, todayCount } -> { settings }
 //
 // Status is pushed, never polled: statusHub feed `youtube` (status_subscribe { feed: 'youtube' } while the
 // Today item or the program is on screen) answers { account, favourites, latest, settings } once and then
@@ -157,6 +158,7 @@ function registerPackets(handlersCtx) {
     // a YouTube video through the server (yt-dlp + ffmpeg, #920): public videos; anything else fails and the program uses YouTube's embedded player
     ytRelay.sweep();
     reg('youtube_video_start', packet(true, 'The video could not be started', async (m) => Object.assign(await ytRelay.start(String(m.id || ''), m.mode, m.at), { modes: ytRelay.modes() })));
+    reg('youtube_segments', packet(false, 'The marked parts could not be read', async (m) => ({ id: String(m.id || ''), segments: await require('../../videosSponsorBlock').segments(String(m.id || '')) })));
     reg('youtube_video_state', packet(true, 'The video could not be read', async (m) => ytRelay.state(m.id)));
     reg('youtube_video_stop', packet(true, 'The video could not be stopped', async (m) => ({ stopped: await ytRelay.stop(m.id) })));
     reg('youtube_live_modes', packet(false, 'The qualities could not be read', async () => ({ modes: kickRelay.modes() })));

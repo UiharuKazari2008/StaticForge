@@ -167,6 +167,8 @@ function settings() {
     return {
         noShorts: s.noShorts === undefined ? DEFAULTS.noShorts : !!s.noShorts,
         rareFirst: s.rareFirst === undefined ? DEFAULTS.rareFirst : !!s.rareFirst,
+        // SponsorBlock's marked parts are skipped in the program's player (on unless switched off)
+        skipSegments: s.skipSegments === undefined ? true : !!s.skipSegments,
         todayCount: Number.isFinite(n) ? Math.max(3, Math.min(30, Math.round(n))) : DEFAULTS.todayCount,
         budget: Number.isFinite(b) ? Math.max(500, Math.min(10000, Math.round(b))) : DEFAULTS.budget
     };
@@ -187,6 +189,7 @@ async function saveSettings(next) {
     acct.settings = Object.assign({}, acct.settings, {
         noShorts: next && next.noShorts !== undefined ? !!next.noShorts : cur.noShorts,
         rareFirst: next && next.rareFirst !== undefined ? !!next.rareFirst : cur.rareFirst,
+        skipSegments: next && next.skipSegments !== undefined ? !!next.skipSegments : cur.skipSegments,
         todayCount: next && next.todayCount !== undefined ? next.todayCount : cur.todayCount
     });
     saveAccount();
