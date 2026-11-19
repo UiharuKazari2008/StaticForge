@@ -1094,6 +1094,84 @@
         return look && look.category === 'private' ? 'pnidui-0' : 'pnidui-1';
     }
 
+    // ---- the map's devices (#945): what kind of computer this is, and the phone between it and the network
+    const NET_ART = '/static_images/vista-net';
+    // Vista's own pictures: Network and Sharing Center's computer (netcenter.dll 1), imageres.dll 112 (a laptop),
+    // TabletPC.cpl 0 (a Tablet PC with its pen), imageres.dll 87 (a Pocket PC: the phone, as Continuity names it)
+    const DEVICE_ART = {
+        desktop: { src: `${NET_ART}/netcenter-1-48.png` },
+        laptop: { src: `${NET_ART}/imageres-112-48.png`, hi: `${NET_ART}/imageres-112-96.png` },
+        tablet: { src: `${NET_ART}/tabletpc-0-48.png`, hi: `${NET_ART}/tabletpc-0-96.png` },
+        phone: { src: `${NET_ART}/imageres-87-48.png`, hi: `${NET_ART}/imageres-87-96.png` }
+    };
+
+    const continuity = () => root.melatonContinuity || null;
+    function continuityDesktop() {
+        const mc = continuity();
+        try { return !!(mc && typeof mc.isDexWindow === 'function' && mc.isDexWindow()); } catch (_) { return false; }
+    }
+
+    /** The app's hardware report (cached by activeSyncAgent: no bridge call per paint), or null. */
+    function deviceHardware() {
+        const id = root.melatonDeviceIdentity;
+        try { return id && typeof id.hardware === 'function' ? id.hardware() : null; } catch (_) { return null; }
+    }
+
+    /**
+     * This computer's kind: 'tablet' (its screen takes touch), 'laptop' (a battery or a touchpad of its own),
+     * 'desktop', or 'phone' (Melaton on a phone's own screen). A Continuity desktop is the display and input the
+     * phone is docked to: an external touchscreen makes it a Tablet PC, an external touchpad or a dock battery a
+     * laptop (a lapdock), anything else a desktop.
+     */
+    function deviceKind() {
+        const hw = deviceHardware();
+        const inputs = hw && Array.isArray(hw.input) ? hw.input : [];
+        const has = (src, external) => inputs.some((d) => d && Array.isArray(d.sources) && d.sources.includes(src) && (external === undefined || !!d.external === external));
+        let docked = continuityDesktop();
+        if (!docked) { try { docked = !!(root.AndroidDisplay && typeof root.AndroidDisplay.isDesktop === 'function' && root.AndroidDisplay.isDesktop()); } catch (_) { docked = false; } }
+        if (docked) {
+            if (has('touchscreen', true)) return 'tablet';
+            const pc = (() => { try { const mc = continuity(); return mc && typeof mc.continuityPc === 'function' ? mc.continuityPc() : null; } catch (_) { return null; } })();
+            if (has('touchpad', true) || (pc && pc.dockBattery)) return 'laptop';
+            return 'desktop';
+        }
+        if (root.AndroidHardware && !root.DreamOSHardware) return 'phone';
+        // DreamOS and browsers: a battery is a laptop's, a touch screen as the main pointer a Tablet PC's
+        let coarse = false;
+        try { coarse = !!(root.matchMedia && root.matchMedia('(pointer: coarse)').matches) && (root.navigator.maxTouchPoints || 0) > 0; } catch (_) { coarse = false; }
+        if (coarse || (root.DreamOSHardware && has('touchscreen'))) return 'tablet';
+        let battery = false;
+        try { battery = !!(root.trayPower && typeof root.trayPower.present === 'function' && root.trayPower.present()); } catch (_) { battery = false; }
+        return battery || root.DreamOSHardware ? 'laptop' : 'desktop';
+    }
+
+    /** A device's map node: its picture (and the 2x copy), its name and the line under it. */
+    function deviceNode(kind, label, sub) {
+        const a = DEVICE_ART[kind] || DEVICE_ART.desktop;
+        return mapNode(a.src, label, sub, a.hi);
+    }
+
+    /** Continuity: the phone this desktop runs from, named as Mobile Device Center names it. */
+    function continuityPhone() {
+        if (!continuityDesktop()) return null;
+        let name = '';
+        try {
+            const H = root.AndroidHome;
+            const c = H && typeof H.getContinuity === 'function' ? JSON.parse(H.getContinuity()) : null;
+            const id = c && c.deviceId ? String(c.deviceId).toLowerCase() : '';
+            const as = root.activeSync && typeof root.activeSync.state === 'function' ? root.activeSync.state() : null;
+            const dev = id && as ? (as.devices || []).find((d) => String(d.deviceId).toLowerCase() === id) : null;
+            if (dev && dev.name) name = String(dev.name);
+        } catch (_) { name = ''; }
+        if (!name) {
+            const hw = deviceHardware();
+            name = (hw && hw.device && (hw.device.marketName || hw.device.model)) || 'Pocket PC';
+        }
+        let via = '';
+        try { const pc = continuity().continuityPc(); via = pc && pc.attach === 'wireless' ? 'Wi-Fi Direct' : 'USB-C'; } catch (_) { via = 'USB-C'; }
+        return { name, via };
+    }
+
     let hostAsked = false;
     /** The map's first node: the computer's name over "(This computer)", as on the VM. */
     function thisComputer() {
@@ -1116,8 +1194,8 @@
         return host ? host.toUpperCase() : 'This computer';
     }
 
-    function mapNode(image, label, sub) {
-        return `<div class="cpl-map-node"><img src="${image}" alt="" draggable="false"><span class="cpl-map-label">${esc(label)}</span>${sub ? `<span class="cpl-map-sub">${esc(sub)}</span>` : ''}</div>`;
+    function mapNode(image, label, sub, hi) {
+        return `<div class="cpl-map-node"><img src="${image}"${hi ? ` srcset="${hi} 2x"` : ''} alt="" draggable="false"><span class="cpl-map-label">${esc(label)}</span>${sub ? `<span class="cpl-map-sub">${esc(sub)}</span>` : ''}</div>`;
     }
 
     function mapLink(state, title) {
@@ -1160,6 +1238,9 @@
             const serverLink = reachable ? 'ok' : 'unknown';
             // DreamOS (#932): the laptop's own network on the map, the domain in its box below
             const dos = root.dreamosNetTray && root.dreamosNetTray.look();
+            // this computer's kind, and in Continuity the phone it runs from between it and the network (#945)
+            const kind = deviceKind();
+            const phone = continuityPhone();
             const dots = serverRows().map((r) => `
                 <div class="cpl-row">
                     <span class="cpl-row-label">${esc(r.label)}</span>
@@ -1169,8 +1250,9 @@
             <div class="cpl-page cpl-network">
                 <h1 class="cpl-page-title">Network and Server Center</h1>
                 ${dos ? `
-                <div class="cpl-map">
-                    ${mapNode('/static_images/vista-net/netcenter-1-48.png', thisComputer(), '(This computer)')}
+                <div class="cpl-map${phone ? ' cpl-map--4' : ''}">
+                    ${deviceNode(kind, thisComputer(), '(This computer)')}
+                    ${phone ? `${mapLink('ok', `Connected to ${phone.name} through ${phone.via}`)}${deviceNode('phone', phone.name, '(Pocket PC)')}` : ''}
                     ${mapLink(dos.kind === 'none' ? 'down' : 'ok', dos.kind === 'none' ? 'Not connected' : `Connected through ${dos.kind === 'wifi' ? 'Wireless Network Connection' : dos.kind === 'mobile' ? 'Mobile Broadband Connection' : 'Local Area Connection'}`)}
                     ${mapNode(dos.kind === 'none' ? '/static_images/vista-net/pnidui-19-48.png' : `/static_images/vista-net/${locationArt(dos)}-48.png`, dos.kind === 'none' ? 'Not connected' : dos.name)}
                     ${mapLink(dos.kind === 'none' ? 'down' : dos.limited ? 'limited' : 'ok', dos.kind === 'none' || dos.limited ? 'Local only' : 'Local and Internet')}
@@ -1199,8 +1281,9 @@
                         <img class="cpl-row-action cpl-signal-bars" src="/static_images/vista-net/tray-wifi-${dos.bars}-16.png" srcset="/static_images/vista-net/tray-wifi-${dos.bars}-32.png 2x" alt="" width="16" height="16" draggable="false">
                     </div>` : ''}
                 </div>` : ''}` : `
-                <div class="cpl-map">
-                    ${mapNode('/static_images/vista-net/netcenter-1-48.png', thisComputer(), '(This computer)')}
+                <div class="cpl-map${phone ? ' cpl-map--4' : ''}">
+                    ${deviceNode(kind, thisComputer(), '(This computer)')}
+                    ${phone ? `${mapLink('ok', `Connected to ${phone.name} through ${phone.via}`)}${deviceNode('phone', phone.name, '(Pocket PC)')}` : ''}
                     ${mapLink(clientLink, state === 'connected' && !portal() ? `Connected through ${i.connectionName}` : accessText(state))}
                     ${mapNode('/static_images/vista-net/pnidui-2-48.png', i.domain)}
                     ${mapLink(serverLink, reachable ? 'Connected' : 'Unknown')}

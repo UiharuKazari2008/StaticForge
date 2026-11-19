@@ -215,10 +215,10 @@ body.desktop-mode .mbl-window.mbl-window.modal[data-window-client="light"] .mbl-
     display: inline-block;
     margin-left: 2px;
     padding: 0 3px;
-    border: 1px solid var(--mbl-badge-edge, #1f4f86);
+    border: 1px solid var(--mbl-badge-edge);
     border-radius: 2px;
-    background: var(--mbl-badge-face, linear-gradient(#4f8fd3, #2563a8));
-    color: #fff;
+    background: var(--mbl-badge-face);
+    color: var(--mbl-badge-text);
     font-size: 9px;
     font-weight: bold;
     line-height: 11px;

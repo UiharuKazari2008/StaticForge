@@ -2293,3 +2293,8 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-db-footer .cpl-wu-button {
     min-width: 75px;
 }
+
+/* Continuity (#945): the phone sits between this computer and the network - four nodes, a little narrower */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-map--4 .cpl-map-node {
+    flex-basis: 104px;
+}

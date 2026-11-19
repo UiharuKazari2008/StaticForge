@@ -16,4 +16,8 @@
     --mbl-icon-focus: url("/static_images/vista-mblctr/box-focus.png");
     /* the volume slider's wedge, ticks and groove */
     --mbl-volume-wedge: url("/static_images/vista-mblctr/volume-wedge.png");
+    /* Mobile Broadband's data class badge (#945): Aero blue, white text */
+    --mbl-badge-edge: #1f4f86;
+    --mbl-badge-face: linear-gradient(#4f8fd3, #2563a8);
+    --mbl-badge-text: #fff;
 }
