@@ -234,3 +234,71 @@
 .vdt-client .cpl-inet-swatch button.vdt-colorwell:not(#_) {
     height: 100%;
 }
+
+/* Power Options > Advanced settings (DreamOS, cplPages.js openAdvancedPower): Vista's settings tree as measured on the
+   VM - 18 px rows, the classic 9 px plus / minus boxes (treeview-plus / -minus, cut from the VM), 19 px per level, the
+   value rows ("Setting:", "On battery:", "Plugged in:") with their combo or "%" box after the label */
+.vdt-client .cpl-pwr-tree {
+    overflow: auto;
+    padding: 2px 0;
+}
+
+.vdt-client .cpl-pwr-tree .tbp-tree-row {
+    height: 18px;
+    padding: 0;
+}
+
+.vdt-client .cpl-pwr-kids {
+    display: none;
+    padding-left: 19px;
+}
+
+.vdt-client .cpl-pwr-node[data-open] > .cpl-pwr-kids {
+    display: block;
+}
+
+.vdt-client .cpl-pwr-exp {
+    display: block;
+    flex: none;
+    min-width: 0;
+    width: 9px;
+    height: 9px;
+    margin: 0 7px 0 9px;
+    padding: 0;
+    border: 0;
+    background: url('/static_images/vista-controls/treeview-plus.png') no-repeat;
+}
+
+.vdt-client .cpl-pwr-node[data-open] > .tbp-tree-row > .cpl-pwr-exp {
+    background-image: url('/static_images/vista-controls/treeview-minus.png');
+}
+
+.vdt-client .cpl-pwr-leaf {
+    padding-left: 25px;
+    height: 22px;
+}
+
+.vdt-client .cpl-pwr-tree .cpl-pwr-leaf {
+    height: 22px;
+}
+
+.vdt-client .cpl-pwr-leaf > span:first-child {
+    margin-right: 4px;
+}
+
+.vdt-client .cpl-pwr-tree .cpl-pwr-leaf select.cpl-pwr-value {
+    position: static;
+    width: 120px;
+    height: 20px;
+}
+
+.vdt-client .cpl-pwr-tree .cpl-pwr-leaf input.cpl-pwr-pct {
+    position: static;
+    width: 40px;
+    height: 20px;
+    text-align: right;
+}
+
+.vdt-client .cpl-pwr-unit {
+    margin-left: 3px;
+}
