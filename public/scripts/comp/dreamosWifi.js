@@ -759,14 +759,16 @@
         const w = s.wifi || {};
         let list;
         if (ifaces) {
-            list = ifaces.map((x) => ({ iface: String(x.name), kind: x.kind, label: x.label || '', mac: x.mac || '', enabled: x.enabled !== false }));
+            // iface: the kernel name the app reads (rmnet_data1 changes between connections); id: the stable key
+            // (the app's alias wlan0 / rmnet0) for renamed connections, open sheets and the selection (#945)
+            list = ifaces.map((x) => ({ iface: String(x.name), id: String(x.alias || x.name), kind: x.kind, label: x.label || '', mac: x.mac || '', enabled: x.enabled !== false }));
         } else {
             list = [];
-            if (host() && w.present) list.push({ iface: w.device || 'wlan0', kind: 'wifi', label: '', mac: w.mac || '', enabled: w.radio !== false });
+            if (host() && w.present) list.push({ iface: w.device || 'wlan0', id: w.device || 'wlan0', kind: 'wifi', label: '', mac: w.mac || '', enabled: w.radio !== false });
             (Array.isArray(s.ethernet) ? s.ethernet : []).forEach((e, i) => {
-                if (e) list.push({ iface: e.name || `eth${i}`, kind: 'ethernet', label: '', mac: e.mac || '', enabled: e.state !== 'disabled' });
+                if (e) list.push({ iface: e.name || `eth${i}`, id: e.name || `eth${i}`, kind: 'ethernet', label: '', mac: e.mac || '', enabled: e.state !== 'disabled' });
             });
-            if (s.mobile && s.mobile.present) list.push({ iface: 'mobile', kind: 'mobile', label: '', mac: '', enabled: s.mobile.on !== false });
+            if (s.mobile && s.mobile.present) list.push({ iface: 'mobile', id: 'rmnet0', kind: 'mobile', label: '', mac: '', enabled: s.mobile.on !== false });
         }
         const names = customNames();
         let lans = 0;
@@ -774,11 +776,15 @@
             let base = ADAPTER;
             if (a.kind === 'ethernet') { lans += 1; base = lans > 1 ? `${LAN} ${lans}` : LAN; }
             if (a.kind === 'mobile') base = MOBILE;
-            return { ...a, base, conn: names[a.iface] || base };
+            return { ...a, base, conn: names[a.id] || base };
         });
     }
 
-    const wifiAdapter = () => adapters().find((a) => a.kind === 'wifi') || { iface: '', kind: 'wifi', label: '', mac: '', enabled: true, base: ADAPTER, conn: ADAPTER };
+    const wifiAdapter = () => adapters().find((a) => a.kind === 'wifi') || { iface: '', id: 'wlan0', kind: 'wifi', label: '', mac: '', enabled: true, base: ADAPTER, conn: ADAPTER };
+
+    /** The provider's interfaces() row of an adapter (the app reads the real interfaces, #945), or null. */
+    const ifaceRow = (a) => (ifaces && ifaces.find((x) => String(x.name) === a.iface || (a.id && String(x.alias || '') === a.id))) || null;
+    const rowList = (row, k) => (row && Array.isArray(row[k]) ? row[k] : []);
 
     /** An adapter's live facts from the provider's state. */
     function adapterInfo(a) {
@@ -787,7 +793,9 @@
             const w = s.wifi || {};
             const n = current();
             const enabled = a.enabled && w.radio !== false && w.state !== 'off';
-            return { enabled, carrier: !!n, connected: enabled && !!n, network: n ? String(n.name) : '', ip: w.ip || [], ip6: w.ip6 || [], mac: w.mac || a.mac, speedMbps: n ? (n.speedMbps !== undefined ? n.speedMbps : w.speedMbps) : null, config: w.config || null, net: n };
+            const row = ifaceRow(a);
+            const ip = Array.isArray(w.ip) && w.ip.length ? w.ip : rowList(row, 'ip');
+            return { enabled, carrier: !!n, connected: enabled && !!n, network: n ? String(n.name) : '', ip, ip6: w.ip6 && w.ip6.length ? w.ip6 : rowList(row, 'ip6'), mac: w.mac || a.mac, speedMbps: n ? (n.speedMbps !== undefined ? n.speedMbps : w.speedMbps) : null, config: w.config || null, net: n };
         }
         if (a.kind === 'ethernet') {
             const e = (Array.isArray(s.ethernet) ? s.ethernet : []).find((x) => x && x.name === a.iface) || {};
@@ -801,7 +809,8 @@
         const m = s.mobile || {};
         const on = a.enabled && m.on !== false;
         // the carrier's signal is there with data on or off (the radio is up); data flows only when connected
-        return { enabled: on, carrier: !!m.connected, connected: on && !!m.connected, network: m.carrier || '', ip: [], ip6: [], mac: '', speedMbps: null, config: null, net: null, mobile: m };
+        const row = ifaceRow(a);
+        return { enabled: on, carrier: !!m.connected, connected: on && !!m.connected, network: m.carrier || '', ip: rowList(row, 'ip'), ip6: rowList(row, 'ip6'), mac: (row && row.mac) || '', speedMbps: null, config: null, net: null, mobile: m };
     }
 
     /** The Nightshade / Café Miniport link (melatonControlPanel.connectionFacts), as a VPN adapter's facts. */
@@ -815,7 +824,7 @@
     }
 
     /** The VPN connection as an adapter for the status sheet (Network Connections' third group). */
-    const vpnAdapter = () => ({ iface: 'vpn', kind: 'vpn', label: '', mac: '', enabled: true, base: vpnFacts().name, conn: vpnFacts().name });
+    const vpnAdapter = () => ({ iface: 'vpn', id: 'vpn', kind: 'vpn', label: '', mac: '', enabled: true, base: vpnFacts().name, conn: vpnFacts().name });
 
     /** A mobile link's provider line: the carrier with its data class (5G, LTE), and Roaming. */
     function providerText(m) {
@@ -1268,12 +1277,14 @@
         const V = await kit();
         const ad = a || wifiAdapter();
         const info = adapterInfo(ad);
-        const st = statusWins.get(ad.iface) || { a: ad, stats: null };
+        const st = statusWins.get(ad.id || ad.iface) || { a: ad, stats: null };
         const x = (await readStats(st)) || {};
         const cfg = info.config || {};
         const v4 = ((Array.isArray(x.ip) && x.ip.length ? x.ip : info.ip) || []).map(splitCidr).filter((p) => p.address);
-        const v6 = (Array.isArray(x.ip6) && x.ip6.length ? x.ip6 : info.ip6) || [];
-        const dns = Array.isArray(x.dns) && x.dns.length ? x.dns : (Array.isArray(cfg.dns) ? cfg.dns : []);
+        const v6 = ((Array.isArray(x.ip6) && x.ip6.length ? x.ip6 : info.ip6) || []).map((v) => String(v).split('/')[0]);
+        const dnsAll = Array.isArray(x.dns) && x.dns.length ? x.dns : (Array.isArray(cfg.dns) ? cfg.dns : []);
+        const dns = dnsAll.filter((d) => !String(d).includes(':'));
+        const dns6 = dnsAll.filter((d) => String(d).includes(':'));
         const dhcp = x.dhcp !== undefined ? !!x.dhcp : cfg.mode !== 'static';
         const prefix = v4.length && v4[0].prefix !== null ? v4[0].prefix : (Number.isFinite(Number(cfg.prefix)) && cfg.prefix !== null && cfg.prefix !== undefined ? Number(cfg.prefix) : null);
         const many = (label, list) => (list.length ? list.map((v, i) => [i ? '' : label, v]) : [[label, '']]);
@@ -1284,7 +1295,8 @@
             .concat(many('IPv4 DNS Server', dns))
             .concat([['IPv4 WINS Server', ''], ['NetBIOS over Tcpip Enabled', 'Yes']])
             .concat(many('Link-local IPv6 Address', v6.filter((p) => /^fe80:/i.test(String(p)))))
-            .concat([['IPv6 Default Gateway', ''], ['IPv6 DNS Server', '']]);
+            .concat([['IPv6 Default Gateway', x.gateway6 || '']])
+            .concat(many('IPv6 DNS Server', dns6));
         V.openDialog({
             id: 'dreamosNetDetails',
             key: 'netshell:24300',
@@ -1321,7 +1333,7 @@
     async function openStatus(a) {
         const ad = a || (available() ? wifiAdapter() : null);
         if (!ad) { await message(S.noInterfaces, S.statusTitle, 'warning'); return null; }
-        const open = statusWins.get(ad.iface);
+        const open = statusWins.get(ad.id || ad.iface);
         if (open && live(open.ctx.modal)) {
             if (open.ctx.modal.classList.contains('minimised')) call('restoreMinimizedModal', open.ctx.modal, call('getOrCreateTaskbarItem', open.ctx.modal) || null);
             call('bringModalToFront', open.ctx.modal);
@@ -1360,7 +1372,7 @@
         if (vpn) pages.push({ key: VPN_DETAILS, tpl: VPN_DETAILS_TPL });
         const st = { ctx: null, a: ad, key: k, timer: null, stats: null, since: Date.now(), reading: false, detailsKey: '' };
         const ctx = V.openSheet({
-            id: `dreamosNetStatus-${String(ad.iface || 'wifi').replace(/[^a-z0-9]/gi, '_')}`,
+            id: `dreamosNetStatus-${String(ad.id || ad.iface || 'wifi').replace(/[^a-z0-9]/gi, '_')}`,
             title: fill(N.statusOf, ad.conn),
             icon,
             noApply: true,
@@ -1388,7 +1400,7 @@
                 c.on(1025, 'click', () => { void setEnabled(ad, false); c.close(); }, k);
                 c.on(23505, 'click', () => { void diagnoseAdapter(ad); }, k);
             },
-            close: () => { stopStatusClock(st); if (statusWins.get(ad.iface) === st) statusWins.delete(ad.iface); }
+            close: () => { stopStatusClock(st); if (statusWins.get(ad.id || ad.iface) === st) statusWins.delete(ad.id || ad.iface); }
         });
         if (!ctx) return null;
         st.ctx = ctx;
@@ -1400,7 +1412,7 @@
         // the caption shows the connection's icon on the VM (the wireless one; netshell's wired icons are the XP set)
         const main = ctx.modal.querySelector('.modal-window-title > div');
         if ((wifi || vpn) && main && !main.querySelector('.icon-image')) main.insertAdjacentHTML('afterbegin', `<img class="icon-image" src="${icon}" alt="">`);
-        statusWins.set(ad.iface, st);
+        statusWins.set(ad.id || ad.iface, st);
         statusPaint(st);
         void readStats(st).then(() => statusPaint(st));
         startStatusClock(st);
@@ -1723,7 +1735,7 @@
         const rows = adapters().map((a) => {
             const info = adapterInfo(a);
             const look = !info.enabled ? 'off' : (a.kind === 'ethernet' ? !info.carrier : !info.connected) ? 'x' : 'on';
-            return { key: `if:${a.iface}`, kind: a.kind, a, conn: a.conn, status: adapterStatus(a, info), device: a.label || a.iface, look, enabled: info.enabled };
+            return { key: `if:${a.id || a.iface}`, kind: a.kind, a, conn: a.conn, status: adapterStatus(a, info), device: a.label || a.iface, look, enabled: info.enabled };
         });
         return rows.concat([vpnRow()]);
     }
@@ -1834,7 +1846,7 @@
                 // tcpipcfg-style checks are netshell's: no tabs, not only spaces, none of \/:*?<>|"
                 if (!v.trim() || /[\\/:*?<>|"\t]/.test(v)) { done = true; await message(N.renameChars, N.renameTitle, 'error'); done = false; input.focus(); input.select(); return; }
                 if (ncRows().some((x) => x.key !== r.key && x.conn.toLowerCase() === v.toLowerCase())) { done = true; await message(N.renameExists, N.renameTitle, 'error'); done = false; input.focus(); input.select(); return; }
-                storeName(r.a.iface, v === r.a.base ? '' : v);
+                storeName(r.a.id || r.a.iface, v === r.a.base ? '' : v);
             }
             done = true;
             nc.renaming = null;
@@ -2221,6 +2233,21 @@
         // Network Connections on screen: its adapters' enabled state is the host's list (interfaces())
         const cp = root.melatonControlPanel;
         if (cp && typeof cp.currentPage === 'function' && cp.currentPage() === NC) void readIfaces().then(ncRerender);
+    }
+
+    // the Android app's fresh read of the real interfaces (DSApp NetIfaces, 'androidnetifaces', #945): only while
+    // Network Connections or a status sheet is on screen is the list read again (the push itself is rare: a read
+    // that differs from the last)
+    if (root.addEventListener) {
+        root.addEventListener('androidnetifaces', () => {
+            const cp = root.melatonControlPanel;
+            const ncOn = !!(cp && typeof cp.currentPage === 'function' && cp.currentPage() === NC);
+            if (!ncOn && !statusWins.size) return;
+            void readIfaces().then(() => {
+                if (ncOn) ncRerender();
+                statusWins.forEach((st) => statusPaint(st));
+            });
+        }, { signal: appScopeSignal });
     }
 
     // the provider's pushes: its state, and a finished scan's list (provider.onScan); a provider registered later is
