@@ -116,6 +116,45 @@ var assetPreload = (function () {
     ];
 
     var URL_RE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
+
+    // image-set() / -webkit-image-set() down to the one url() this screen draws, as the browser picks it: the
+    // smallest density at or above devicePixelRatio, else the largest. A rule lists every hidpi tier
+    // (static_images/hidpi/<tier>/, #921) and a client installs only its own; reading every url() in the text
+    // fetched the other three tiers from the server at each boot, never from the cache (#945)
+    function flattenImageSets(css) {
+        if (css.indexOf('image-set(') === -1) return css;
+        var dpr = window.devicePixelRatio || 1;
+        var out = '';
+        var i = 0;
+        var re = /(?:-webkit-)?image-set\(/g;
+        for (;;) {
+            re.lastIndex = i;
+            var hit = re.exec(css);
+            if (!hit) break;
+            var depth = 1;
+            var j = hit.index + hit[0].length;
+            for (; j < css.length && depth; j++) {
+                if (css[j] === '(') depth++;
+                else if (css[j] === ')') depth--;
+            }
+            var parts = css.slice(hit.index + hit[0].length, j - 1).split(/,(?![^(]*\))/);
+            var above = null;
+            var top = null;
+            for (var k = 0; k < parts.length; k++) {
+                var u = /url\(\s*(['"]?)([^'")]+)\1\s*\)|(['"])([^'"]+)\3/.exec(parts[k]);
+                if (!u) continue;
+                var x = /([\d.]+)(x|dppx)\s*$/.exec(parts[k].trim());
+                var r = x ? Number(x[1]) : 1;
+                var c = { r: r, url: u[2] || u[4] };
+                if (r >= dpr - 0.001 && (!above || r < above.r)) above = c;
+                if (!top || r > top.r) top = c;
+            }
+            var best = above || top;
+            out += css.slice(i, hit.index) + (best ? 'url("' + best.url + '")' : 'none');
+            i = j;
+        }
+        return out + css.slice(i);
+    }
     var kept = new Map();
     var pinned = [];
     var fontSpecsStarted = new Set();
@@ -484,6 +523,7 @@ var assetPreload = (function () {
             var text = rule.cssText || '';
             if (text.indexOf('url(') === -1) continue;
             if (skipLogonRule(rule)) continue;
+            text = flattenImageSets(text);
             URL_RE.lastIndex = 0;
             var match;
             while ((match = URL_RE.exec(text))) {
@@ -822,6 +862,7 @@ var assetPreload = (function () {
                 var bg = '';
                 try { bg = getComputedStyle(nodes[i], pseudo[p]).backgroundImage || ''; } catch (e) { bg = ''; }
                 if (bg.indexOf('url(') === -1) continue;
+                bg = flattenImageSets(bg);
                 URL_RE.lastIndex = 0;
                 var match;
                 while ((match = URL_RE.exec(bg))) {
