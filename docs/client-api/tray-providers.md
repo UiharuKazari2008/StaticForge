@@ -108,6 +108,20 @@ Actions (each returns a Promise; `{ error }` when refused):
 - `can()` (optional) returns `{ connect, disconnect, forget, radio, scan }`. A `false` disables that action in the Wi-Fi
   windows, as Vista greys out what an adapter does not support. When `can()` is missing, every action the provider has is allowed.
 
+Round 2 (#932, Nov 19; DreamOS host branch `tray2`). All optional: the UI hides or greys what a provider lacks.
+
+- State additions:
+  - `wifi.mac`, `wifi.ip6: []`;
+  - `wifi.network.connectedAt` (ms since the epoch, when this connection came up), `wifi.network.rxBitrateKbps`, `wifi.network.txBitrateKbps`;
+  - each `ethernet[]` entry: `mac`, `ip6: []`, and `config: { mode: 'dhcp' | 'static', address, prefix, gateway, dns: [] }` (what is set, not what DHCP gave).
+- `stats(iface?)` returns `{ iface, rxBytes, txBytes, rxBitrateKbps, txBitrateKbps, connectedAt, ip: [], ip6: [], gateway, dns: [], dhcp: bool, mac }` for the Wi-Fi adapter (no argument) or a named interface. It is read when asked, never pushed: counters change all the time. The status window reads it once a second, only while it is open and visible (a live view, `server-push-not-polling` "Allowed").
+- `known()` returns `{ networks: [{ name, security, autoConnect, lastConnected }] }`: the saved networks in priority order, highest first.
+- `order(names)` sets that priority order. The host applies it: it chooses among saved networks in range in this order when it connects by itself.
+- `ipConfig(iface, { mode: 'dhcp' } | { mode: 'static', address, prefix, gateway, dns: [] })` sets an interface's IPv4 configuration. DreamOS applies it through systemd-networkd and keeps it on /data. Answers the new state, or `{ error }`.
+- `interfaces()` returns `{ interfaces: [{ name, kind: 'wifi' | 'ethernet' | 'mobile', label, mac, enabled }] }`, for Network Connections.
+- `enable(iface, on)` turns an adapter on or off (Network Connections' Enable / Disable; for Wi-Fi this is `radio(on)`).
+- `can()` gains `order`, `ipConfig`, `enable`.
+
 The UI:
 
 - `dreamosNetTray.js` draws the icon and the tooltip.
@@ -126,7 +140,7 @@ While a volume provider is in use, `tabVolume.js` works as follows:
 - The tab's own gain stays at 1, so audio is not turned down twice.
 - Changes made elsewhere, such as the volume keys, come back through `subscribe`.
 
-## bluetooth (reserved; no UI yet)
+## bluetooth (trayBluetooth.js: one icon for every provider)
 
 Vista shows Bluetooth as a notification icon of its own, left of the system icons, with a right-click menu. The planned state:
 
@@ -152,3 +166,4 @@ The icon is placed before the system icons (Power, Network, Volume, then the clo
 | power | `window.DreamOSHardware` + `dreamoshw`, `AndroidHardware.getBattery()` for time left | `navigator.getBattery()` (trayPower.js fallback). A desktop without a battery shows no icon |
 | network | `window.DreamOSNetwork` + `dreamosnet` / `dreamosnetscan` | none: websocket.js's globe |
 | volume | `window.DreamOSAudio` + `dreamosaudio` (CaféReady `tray` branch) | none: the tab's own volume |
+| bluetooth | `window.DreamOSBluetooth` + `dreamosbt` (CaféReady `tray2`, BlueZ): `get`, `power(on)`, `connect(id)`, `disconnect(id)` | none |
