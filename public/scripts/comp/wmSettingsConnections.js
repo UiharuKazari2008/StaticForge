@@ -464,12 +464,99 @@
         try { return root.localStorage.getItem('username') || '\u2014'; } catch (_) { return '\u2014'; }
     }
 
+    // Authentication: the device's client certificate (docs/client-certificates.md) - what the server says of
+    // it (accepted, valid until, renewal) and how well the device keeps its key. Read when the tab opens.
+    const NS_KEY_PROTECTION = {
+        strongbox: { kind: 'Hardware-backed', where: 'StrongBox secure element', level: 4,
+            text: 'The private key was made in a separate security chip and can never leave it.' },
+        tee: { kind: 'Hardware-backed', where: 'Trusted Execution Environment', level: 3,
+            text: "The private key was made in the processor's secure area and can never leave it." },
+        software: { kind: 'Software-backed', where: 'Android Keystore (software)', level: 2,
+            text: 'The private key is protected by the operating system only.' },
+        file: { kind: 'Unprotected', where: 'Key file on the data disk', level: 1,
+            text: 'Anyone with access to the disk could copy the private key.' }
+    };
+    const NS_RATING = ['', 'Weak', 'Moderate', 'Strong', 'Very strong'];
+    function nsDeviceCert() {
+        const b = root.AndroidClientCert;
+        if (!b || typeof b.getState !== 'function') return null;
+        try { const v = b.getState(); return typeof v === 'string' ? JSON.parse(v) : v; } catch (_) { return null; }
+    }
+    function nsDate(ms) {
+        if (!ms) return '—';
+        try { return new Date(Number(ms)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch (_) { return '—'; }
+    }
+    function nsServerStatus(info) {
+        if (!info) return 'Unknown (server not reachable)';
+        if (info.session === undefined) return 'Unknown (server update pending)';
+        const c = info.certificate;
+        if (!c) return 'Not recognised';
+        if (c.status === 'revoked') return `Revoked${c.revokeReason ? ` (${c.revokeReason})` : ''}`;
+        if (c.status === 'expired') return 'Expired';
+        return c.renew ? 'Accepted (renewal due)' : 'Accepted';
+    }
+    function renderNsAuth(el, d) {
+        const dev = nsDeviceCert();
+        const serial = dev && dev.enrolled ? String(dev.serial || '') : '';
+        const paint = () => {
+            const info = d.authInfo && d.authInfo.serial === serial ? d.authInfo.data : null;
+            const c = info && info.certificate;
+            if (!dev && !c) {
+                el.innerHTML = ui.note(root.AndroidClientCert === undefined
+                    ? 'This device has no client certificate. Certificates are issued to the Dreamscape app and DreamOS.'
+                    : 'Checking this device’s certificate...');
+                return;
+            }
+            if (dev && !dev.enrolled && !c) {
+                el.innerHTML = `${ui.note('This device has no client certificate yet. It gets one the next time you sign in with your PIN.')}${dev.last ? ui.facts([['Last event:', dev.last]]) : ''}`;
+                return;
+            }
+            const ks = (dev && dev.keyStore) || (c && c.keyStore) || '';
+            const prot = NS_KEY_PROTECTION[ks] || null;
+            const algoLevel = 4; // ECDSA P-256 / SHA-256: 128-bit security, as RSA 3072
+            const overall = prot ? Math.min(algoLevel, prot.level) : 0;
+            const rows = [
+                ['Issued to:', (c && c.deviceName) || '—'],
+                ['Issued by:', (c && c.issuer) || 'Dreamscape Client CA'],
+                ['Valid from:', nsDate(c && c.notBefore)],
+                ['Valid to:', nsDate((c && c.notAfter) || (dev && dev.notAfter))],
+                ['Serial number:', String((c && c.serial) || serial).replace(/(.{4})(?=.)/g, '$1 ')]
+            ];
+            const server = [
+                ['Status:', nsServerStatus(d.authInfo ? info : null)],
+                ['This session:', info && info.session !== undefined ? (info.session === 'certificate' ? 'Signed in with this certificate' : 'Signed in another way') : '—']
+            ];
+            if (c && c.renew && c.status === 'issued') server.push(['Renewal:', 'Renews automatically on the next connection']);
+            if (c && c.lastUsedAt) server.push(['Last used:', nsDate(c.lastUsedAt)]);
+            const protection = [
+                ['Protection:', prot ? prot.kind : 'Unknown'],
+                ['Key storage:', prot ? prot.where : '—'],
+                ['Key type:', 'ECDSA P-256, SHA-256'],
+                ['Key strength:', '128-bit (as RSA 3072)'],
+                ['Security:', overall ? NS_RATING[overall] : 'Unknown']
+            ];
+            el.innerHTML = `${ui.sub('Client certificate')}${ui.facts(rows)}${ui.sub('Server')}${ui.facts(server)}${ui.sub('Key protection')}${ui.facts(protection)}${prot ? `<p>${esc(prot.text)}</p>` : ''}`;
+        };
+        paint();
+        // one read when the tab opens (a minute's grace between tab switches); no polling
+        if (!d.authInfo || d.authInfo.serial !== serial || Date.now() - d.authInfo.at > 60000) {
+            const url = '/api/client-cert/mine' + (serial ? `?serial=${encodeURIComponent(serial)}` : '');
+            fetch(url, { credentials: 'same-origin', cache: 'no-store' })
+                .then((r) => (r.ok ? r.json() : null))
+                .catch(() => null)
+                .then((data) => {
+                    d.authInfo = { serial, at: Date.now(), data: data && data.success ? data : null };
+                    if (el.isConnected) paint();
+                });
+        }
+    }
+
     wmSettings.registerPage({
         id: 'nightshade',
         tab: 'connections',
         label: 'Nightshade',
         icon: 'set-nightshade',
-        tabs: [['ns-general', 'General'], ['ns-cafe', 'Caf\u00e9Ready'], ['ns-advanced', 'Advanced']],
+        tabs: [['ns-general', 'General'], ['ns-cafe', 'Caf\u00e9Ready'], ['ns-auth', 'Authentication'], ['ns-advanced', 'Advanced']],
         init() {
             const mcx = root.melatonContinuity;
             const cfg = mcx && mcx.miniportConfig ? mcx.miniportConfig() : null;
@@ -498,6 +585,10 @@
                 if (on) on.addEventListener('change', () => { d.cafeOn = on.checked; d.cafeTouched = true; });
                 const combo = el.querySelector('[data-act="ns-idle"]');
                 if (combo) ui.bindCombo(combo, IDLE_CHOICES, d.idle, (v) => { d.idle = v; d.cafeTouched = true; });
+                return;
+            }
+            if (tab === 'ns-auth') {
+                renderNsAuth(el, d);
                 return;
             }
             if (tab === 'ns-advanced') {
