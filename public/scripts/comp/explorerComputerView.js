@@ -289,7 +289,8 @@
             return internal.concat(others).map((d) => {
                 if (d.block) return d;
                 const letter = String.fromCharCode(code++);
-                return Object.assign({}, d, { letter, hdd: d.kind === 'internal', icon: d.kind === 'internal' ? 'drive-fixed' : d.icon });
+                // name: the drive's own name; the tile and the details add "(D:)" (explorerPhoneDrive's name has it already)
+                return Object.assign({}, d, { letter, name: d.label || String(d.name || '').replace(/\s*\([A-Z]:\)$/, ''), hdd: d.kind === 'internal', icon: d.kind === 'internal' ? 'drive-fixed' : d.icon });
             });
         }
 
@@ -756,9 +757,10 @@
                     icon.innerHTML = this.deviceIcon(phone, 64).replace('explorer-computer-tile-icon', 'explorer-details-shell-icon');
                 }
                 const used = phone.total ? Math.max(0, Math.min(1, 1 - phone.free / phone.total)) : 0;
+                const pname = phone.letter ? `${phone.name} (${phone.letter}:)` : phone.name;
                 info.innerHTML = phone.block
-                    ? grid(phone.name, [['Status', esc(phone.block.text)]])
-                    : grid(phone.name, [
+                    ? grid(pname, [['Status', esc(phone.block.text)]])
+                    : grid(pname, [
                         ['Space used', phone.total ? `<span class="explorer-drive-bar"><span class="explorer-drive-bar-fill" style="--used:${used.toFixed(4)}"></span></span>` : ''],
                         ['Space free', phone.total ? esc(formatSize(phone.free)) : ''],
                         ['Total size', phone.total ? esc(formatSize(phone.total)) : '']

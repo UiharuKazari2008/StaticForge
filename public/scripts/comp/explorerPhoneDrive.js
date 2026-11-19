@@ -1635,6 +1635,8 @@
         return rootsOf(st).map((r) => ({
             key: `phone:${r.id}`,
             name: rootName(r.id),
+            // the name without its drive letter: Computer letters the drives itself (#945: "(D:) (D:)")
+            label: r.name || r.id,
             icon: 'drive-removable',
             total: Number(r.total) || 0,
             free: Number(r.free) || 0,
