@@ -187,6 +187,11 @@ function messagesAfterUid(account, folder, uid, limit = 500) {
         .all(account, folder, Number(uid) || 0, Math.max(1, Math.min(Number(limit) || 500, 5000)));
 }
 
+/** Every message of a folder, flags and envelope only (the Ingest Controller's expiry sweep, modules/ingestExpiry.js). */
+function listForExpiry(account, folder) {
+    return d().prepare('SELECT uid, msgid, date, sender, subject, flags, seen, flagged, env FROM messages WHERE account = ? AND folder = ? ORDER BY uid ASC').all(account, folder);
+}
+
 // ---- mail rules (modules/mailAccountsRules.js) ----
 
 function listRules() {
@@ -271,5 +276,5 @@ function _close() { statsKept.clear(); if (db) { db.close(); db = null; } }
 module.exports = {
     open, getState, setState, putFolder, listFolders, getFolder, setFolderSynced, recount, removeFolder, clearFolder,
     putMessages, setFlags, uids, flagMap, deleteMessages, listMessages, getMessage, maxUid,
-    messagesAfterUid, listRules, getRule, putRule, deleteRule, countRuleHits, search, stats, forgetAccount, sizeOnDisk, _close
+    messagesAfterUid, listForExpiry, listRules, getRule, putRule, deleteRule, countRuleHits, search, stats, forgetAccount, sizeOnDisk, _close
 };
