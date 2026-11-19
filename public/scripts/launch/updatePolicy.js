@@ -9,7 +9,7 @@
  *   route(input) -> { route: 'installer' | 'inplace', reason }
  *
  * 'installer' is /launch's installation media (melatonBoot.js + updateEngine.js). 'inplace' downloads
- * in the background while the app runs and installs at log off / shut down / restart
+ * in the background while the app runs and installs at shut down / restart (not at log off: Yukimi, Nov 19)
  * (serviceWorkerManager.installUpdatesAtShutdown, winlogonPower.js), or live where segments allow.
  *
  * The installer only when
@@ -27,7 +27,8 @@
 
     const LARGE_FILE_SHARE = 0.25;
     const LARGE_CODE_SHARE = 1 / 3;
-    const LARGE_BYTES = 150 * 1024 * 1024;
+    // Yukimi, Nov 19: "around the 100MB mark"
+    const LARGE_BYTES = 100 * 1024 * 1024;
     // when the client does not know how many files it keeps (no stored list yet)
     const LARGE_FILES_FALLBACK = 2400;
     const LARGE_CODE_FALLBACK = 250;
