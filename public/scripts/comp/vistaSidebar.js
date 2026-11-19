@@ -238,21 +238,27 @@ const vsbLiveUnfocused = function () {
     return typeof document.hasFocus === 'function' && !document.hasFocus();
 };
 
-/** Hidden tab, or an unfocused window: no per-tick repaints. */
+/** An opaque screen saver covers the desktop (screenSaver.js, html[data-saver-cover]): nothing here is seen. */
+const vsbLiveCovered = function () {
+    return document.documentElement.dataset.saverCover !== undefined;
+};
+
+/** Hidden tab, an unfocused window, or the desktop under a screen saver: no per-tick repaints. */
 const vsbLivePaused = function () {
-    return document.hidden || vsbLiveUnfocused();
+    return document.hidden || vsbLiveCovered() || vsbLiveUnfocused();
 };
 
 const vsbLiveSend = function (force) {
     vsbLive.syncTimer = null;
     // the 5 s watch runs only while a gadget reads the feed and the page is seen (#890): it is looked at
     // here, on every use, release and visibility change
-    const watch = vsbLive.users.size > 0 && !document.hidden;
+    const unseen = document.hidden || vsbLiveCovered();
+    const watch = vsbLive.users.size > 0 && !unseen;
     if (watch && !vsbLive.watchTimer) vsbLive.watchTimer = setInterval(vsbLiveWatch, VSB_LIVE_WATCH_MS);
     else if (!watch && vsbLive.watchTimer) { clearInterval(vsbLive.watchTimer); vsbLive.watchTimer = null; }
     if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
-    let topics = document.hidden ? { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
-    if (!document.hidden && vsbLiveUnfocused()) topics = { ...topics, host: false, system: [] };
+    let topics = unseen ? { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
+    if (!unseen && vsbLiveUnfocused()) topics = { ...topics, host: false, system: [] };
     const key = JSON.stringify(topics);
     if (!force && key === vsbLive.sentKey && vsbLive.socket === wsClient.ws) return;
     vsbLive.sentKey = key;
@@ -534,8 +540,7 @@ const vsbClockTick = function (inst) {
     clearTimeout(inst.timer);
     inst.timer = null;
     if (inst.destroyed || !inst.parts) return;
-    const shown = !vsbLivePaused() && vsbIsShown(inst) && document.documentElement.dataset.saverCover === undefined
-        && document.documentElement.dataset.screenOff === undefined;
+    const shown = !vsbLivePaused() && vsbIsShown(inst) && document.documentElement.dataset.screenOff === undefined;
     if (!shown) return; // drawn again in full by vsbClockSyncAll when it shows (nothing redraws unseen)
     const set = inst.g.settings;
     const { h, m, s } = vsbZoneTime(set.timeZone);
@@ -4084,7 +4089,7 @@ const vsbStart = function () {
     window.addEventListener('focus', vsbClockSyncAll);
     // an opaque screen saver over the desktop (screenSaver.js), the phone's screen off or on (DeX window)
     const scopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
-    document.addEventListener('melatoncover', vsbClockSyncAll, { signal: scopeSignal });
+    document.addEventListener('melatoncover', () => { vsbClockSyncAll(); if (vsbLive.bound) vsbLiveSync(true); }, { signal: scopeSignal });
     window.addEventListener('melatonscreen', vsbClockSyncAll, { signal: scopeSignal });
     window.addEventListener('pagehide', () => { if (vsb.saveTimer) vsbFlushSave(); });
     vsb.firstLoad = vsbLoad(activeWorkspace);

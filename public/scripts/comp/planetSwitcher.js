@@ -1023,6 +1023,7 @@ class PlanetSwitcher {
             if (p.wobbleAnim) p.wobbleAnim.cancel();
             p.wobbleAnim = p.orbit.animate(
                 [{ transform: `translate3d(${(-dx).toFixed(2)}px, ${(-dy).toFixed(2)}px, 0)` }, { transform: `translate3d(${dx.toFixed(2)}px, ${dy.toFixed(2)}px, 0)` }],
+                // perf: allow design motion: the ring's idle wobble, only while the switcher is open (stopWobble cancels it on selection and teardown); transform only
                 { duration: PLANET_SWITCHER_WOBBLE_MS, direction: 'alternate', iterations: Infinity, easing: 'ease-in-out' }
             );
             if (phaseMs != null) {

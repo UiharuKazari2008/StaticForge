@@ -46,7 +46,7 @@ const RULES = {
     'bridge-in-loop': 'a synchronous Android bridge call (Android*.x()) inside a timer or animation-frame callback: each blocks the page until the app answers; cache it behind its change event',
     'timer-html-rebuild': 'innerHTML rebuilt inside a timer callback: write only what changed, only while it shows',
     // CSS
-    'infinite-animation': 'an infinite CSS animation: it keeps the phone at full refresh rate (120 fps idle on the A53) while it is in the page',
+    'infinite-animation': 'an infinite animation (CSS, or made in script: iterations: Infinity, style.animation = "... infinite"): it keeps the compositor at full refresh rate (120 fps idle on the A53, 60 Hz ticks on the DreamOS Mac) while it is in the page, whatever it shows; run it only while its work runs and it is seen, or tick from a timer. The page\'s animation watchdog (public/scripts/utils/offscreenAnimationPause.js) reports the ones that slip through',
     'will-change': 'will-change in a stylesheet rule: a permanent compositor layer for every match; promote only while it moves (a class added for the transition)',
     'paint-keyframes': 'keyframes that animate a paint / layout property (box-shadow, filter, width, height, top, left, margin, background-position...): every frame restyles on the main thread; animate transform / opacity of a pre-drawn layer',
     // server JS (modules, web_server.js)
@@ -69,6 +69,7 @@ const SKIP = /(^|\/)(node_modules|vendor|graphify-out|\.cache|dist|workers?|buil
 const allowRe = /perf:\s*allow/;
 const GATE_RE = /document\.hidden|visibilityState|screenOff|data-screen-off|onScreen\s*\(|\.awake\s*\(|wmawake|offsetParent|checkVisibility|isShown\s*\(|\bisVisible\b|\.hidden\b|isOnScreen|viewShown|shownNow/;
 const ASK_RE = /\b(wsClient|ws|client|socket)\s*\.\s*(send|sendMessage|request)\s*\(|\bsendMessage\s*\(|\bfetch\s*\(/;
+const INFINITE_CSS_RE = /animation(?:-iteration-count)?\s*:[^;}]*\binfinite\b/;
 const BRIDGE_RE = /\b(?:window\.|root\.|globalThis\.)?Android[A-Z]\w*\s*\.\s*[a-zA-Z_]\w*\s*\(/;
 
 function rel(p) { return path.relative(root, p).split(path.sep).join('/'); }
@@ -183,6 +184,23 @@ function scanFile(r) {
                     const fn = bodyOf(n.arguments[0]);
                     if (fn && BRIDGE_RE.test(textOf(fn))) add('bridge-in-loop', n.loc.start.line);
                 }
+            },
+            // an endless animation made in script (#930): el.animate(..., { iterations: Infinity }),
+            // el.style.animation = '... infinite', or CSS text with one in a string / template
+            Property(n) {
+                if (n.computed || !n.value) return;
+                const key = n.key.type === 'Identifier' ? n.key.name : n.key.type === 'Literal' ? n.key.value : null;
+                if (key === 'iterations' && n.value.type === 'Identifier' && n.value.name === 'Infinity') add('infinite-animation', n.loc.start.line);
+            },
+            AssignmentExpression(n) {
+                const left = dotted(n.left) || '';
+                if (/\.(animation|animationIterationCount)$/.test(left) && /\binfinite\b/.test(textOf(n.right))) add('infinite-animation', n.loc.start.line);
+            },
+            Literal(n) {
+                if (typeof n.value === 'string' && INFINITE_CSS_RE.test(n.value)) add('infinite-animation', n.loc.start.line);
+            },
+            TemplateLiteral(n) {
+                if (INFINITE_CSS_RE.test(n.quasis.map((q) => q.value.raw).join('x'))) add('infinite-animation', n.loc.start.line);
             }
         });
     }

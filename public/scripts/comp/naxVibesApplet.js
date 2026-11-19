@@ -232,6 +232,7 @@ function naxVibesBuildDsapHtml() {
 }
 
 /* ---------- Early 2010s Web 2.0 scoped CSS (glossy, beveled, embossed) ---------- */
+// perf: allow progress marquee: nv-marquee runs only while a vibe job is in progress
 const naxVibesDsapScopedCss = `
 .naxvibes-dsap {
   --nv-bg: #0f1116;

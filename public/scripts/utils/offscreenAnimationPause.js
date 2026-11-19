@@ -151,8 +151,8 @@
     // What it does, for every shell (desktop, phone, DreamOS), each scan:
     //   (a) hidden   a looping or long animation whose target cannot be seen (an ancestor at opacity 0,
     //                off screen, zero size, behind another window's opaque content, or a script-driven
-    //                animation while the page sleeps) is PAUSED here and reported when a second scan
-    //                still finds it hidden. A looping script animation whose element was taken out of
+    //                animation while the page sleeps) is PAUSED here at once and reported when it has
+    //                stayed hidden for REPORT_AFTER_MS. A looping script animation whose element was taken out of
     //                the page without cancel() keeps ticking for good (the timeline keeps it alive and
     //                document.getAnimations() no longer lists it): the ones a scan saw are remembered,
     //                paused when their element is gone, and cancelled after DETACHED_SCANS scans;
@@ -202,6 +202,7 @@
     const RESTART_MAX = 60;       // starts of one animation name between two scans
     const MAX_GROUPS = 8;         // report groups per page load (the fault capture keeps 25 for everything)
     const EDGE = 64;              // px outside the viewport before a target counts as off screen
+    const REPORT_AFTER_MS = 10000; // a target must stay unseen this long before it is reported (fades in and out are not faults)
     const DETACHED_SCANS = 5;     // scans a paused animation's element may stay out of the page before cancel()
 
     // Animations that are meant to run for as long as they show, and show rarely: (b) never reports them.
@@ -231,6 +232,8 @@
         'wmb-busy': 'phone browser busy ring while the page loads',
         'was-sync': 'ActiveSync sync arrows while a sync runs',
         'yt-spin': 'Videos busy ring while a list loads',
+        'ex-spin': 'Explore refresh button while a refresh runs',
+        'nv-marquee': 'Vibes progress bar while a vibe job runs',
         'vpn-spin': 'Nightshade connecting ring while it connects',
         'cpl-map-busy': 'Network map busy ring while it scans',
         // a job the user started and watches
@@ -242,6 +245,15 @@
         'vistaNetConnecting': 'network tray icon while the link connects',
         'nightshadeTrayConnecting': 'Nightshade tray icon while it connects',
         'mp-ants': 'Paint selection marquee: marching ants are the selection, while one exists'
+    };
+
+    // Animations that belong to the window having the keyboard: Vista pulses the default button of the
+    // active window only, and with the browser window in the background no window of ours is active.
+    // They are held while document.hasFocus() is false and run again on focus. Never reported for that.
+    const FOCUS_BOUND = {
+        'vista-button-default-pulse': 'default push button glow (vista-glass-controls.css)',
+        'vista-default-pulse': 'About box default button glow',
+        'director-send-pulse': 'Director Send button default glow'
     };
 
     const scopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
@@ -390,16 +402,21 @@
     /** Why a target cannot be seen ({ reason, cause: the element to watch for it changing }), or null when it can (or costs nothing). */
     function hiddenState(el, animation, keyframeProps) {
         if (!el.isConnected) return null;
+        if (FOCUS_BOUND[animation.animationName] && typeof document.hasFocus === 'function' && !document.hasFocus()) {
+            return { reason: 'window not focused', cause: null, quiet: true };
+        }
         if (typeof el.checkVisibility === 'function') {
             // display: none never gets here; visibility / content-visibility: hidden do not tick the compositor
             if (!el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true })) return null;
-            const parent = el.parentElement;
+            // the nearest ancestor with a box: checkVisibility() is false for a display: contents element
+            // whatever its opacity (the Welcome screen's wait ring was reported and paused in view, #931)
+            let parent = el.parentElement;
+            while (parent && getComputedStyle(parent).display === 'contents') parent = parent.parentElement;
             if (parent && !parent.checkVisibility({ opacityProperty: true })) {
-                let cause = parent;
+                // only when an ancestor really is at opacity 0
                 for (let node = parent, depth = 0; node && depth < 40; node = node.parentElement, depth++) {
-                    if (Number(getComputedStyle(node).opacity) === 0) { cause = node; break; }
+                    if (Number(getComputedStyle(node).opacity) === 0) return { reason: 'under opacity 0', cause: node };
                 }
-                return { reason: 'under opacity 0', cause };
             }
         }
         const rect = el.getBoundingClientRect();
@@ -458,7 +475,7 @@
     function hold(el, state) {
         const was = held.get(el);
         if (was) { was.reason = state.reason; was.cause = state.cause; was.seen += 1; return was; }
-        const entry = { reason: state.reason, cause: state.cause, seen: 1 };
+        const entry = { reason: state.reason, cause: state.cause, seen: 1, since: Date.now() };
         held.set(el, entry);
         if (!el.classList.contains(PAUSED_CLASS)) el.classList.add(PAUSED_CLASS);
         return entry;
@@ -604,14 +621,14 @@
                 if (isCss) { entry = hold(el, state); stillHidden.add(el); }
                 else if (!isTransition) {
                     entry = heldScript.get(animation);
-                    if (!entry) { entry = { reason: state.reason, cause: state.cause, target: el, seen: 0 }; heldScript.set(animation, entry); try { animation.pause(); } catch (_) { /* finished meanwhile */ } }
+                    if (!entry) { entry = { reason: state.reason, cause: state.cause, target: el, seen: 0, since: Date.now() }; heldScript.set(animation, entry); try { animation.pause(); } catch (_) { /* finished meanwhile */ } }
                     entry.seen += 1;
                     stillScript.add(animation);
                 }
                 const finding = Object.assign({ type: 'hidden', reason: state.reason, paused: !!entry, seen: entry ? entry.seen : 1 }, base);
                 findings.push(finding);
-                // reported once a second scan still finds it hidden: a target on its way in or out is not a fault
-                if (!entry || entry.seen >= 2) {
+                // reported once it has stayed hidden for a while: a target on its way in or out is not a fault
+                if (entry && !state.quiet && entry.seen >= 2 && Date.now() - entry.since >= REPORT_AFTER_MS) {
                     const owner = ownerOf(el);
                     add(Object.assign({ key: [owner.key, 'hidden', name, base.target.replace(/\d+/g, '#'), state.reason].join('|'), owner }, finding));
                 }
@@ -638,7 +655,7 @@
                 if (listed.has(animation) || target.isConnected) return;
                 let entry = heldScript.get(animation);
                 if (!entry) {
-                    entry = { reason: 'its element left the page', cause: null, target: null, seen: 0, detached: true };
+                    entry = { reason: 'its element left the page', cause: null, target: null, seen: 0, since: Date.now() };
                     heldScript.set(animation, entry);
                     try { animation.pause(); } catch (_) { /* gone */ }
                 }
@@ -650,7 +667,7 @@
                     durationMs: 0, runMs: Math.round(Number(animation.currentTime) || 0)
                 };
                 findings.push(finding);
-                if (entry.seen >= 2) {
+                if (entry.seen >= 2 && Date.now() - entry.since >= REPORT_AFTER_MS) {
                     const owner = shellKind() === 'mobile' ? { key: 'shell:mobile', name: 'Melaton Mobile', core: true } : { key: 'shell:desktop', name: 'Melaton Desktop', core: true };
                     add(Object.assign({ key: [owner.key, 'hidden', finding.name, finding.target.replace(/\d+/g, '#'), entry.reason].join('|'), owner }, finding));
                 }
@@ -704,6 +721,10 @@
         document.addEventListener(type, onShowHide, { signal: scopeSignal });
     });
     window.addEventListener('melatonscreen', onShowHide, { signal: scopeSignal });
+    // the browser window losing or getting the keyboard (FOCUS_BOUND); blur also fires when focus moves
+    // into an iframe of ours, and hasFocus() is read in the scan, a task later
+    window.addEventListener('blur', onShowHide, { signal: scopeSignal });
+    window.addEventListener('focus', onShowHide, { signal: scopeSignal });
     wd.restartSince = Date.now();
     // the first look, once the boot is over (the boot's own animations are short-lived)
     armTimer();
@@ -718,6 +739,7 @@
                 lastScanMs: wd.lastScanMs, lastReason: wd.lastReason || '', timer: !!wd.timer
             };
         },
-        allow: ALLOW
+        allow: ALLOW,
+        focusBound: FOCUS_BOUND
     };
 })();

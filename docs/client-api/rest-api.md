@@ -946,11 +946,13 @@ Claude Code run can fix each new one (see [Fault auto-fix](#fault-auto-fix) belo
 | `desktop`, `mobile` | `uncaught`, `rejection`, `swallowed`, `resource`, `logged` | `dreamscapeErrorCapture` in `public/scripts/comp/fatalErrorBootstrap.js`: errors no dialog took, `programFaults.report()` / init-step errors, our scripts or stylesheets failing to load (online only), `console.error(…, error)` with a frame of ours |
 | `server` | `crash`, `rejection`, `route`, `logged` | `modules/serverFaultCapture.js`: `uncaughtException` (spooled synchronously to `data/fault-reports/.spool.ndjson`, read back on the next start), `unhandledRejection`, the final Express error handler (500s), `logger.error` / `console.error` with an Error whose top frame is ours (not `node_modules`) |
 
+| `desktop`, `mobile` | `animation` | The animation watchdog in `public/scripts/utils/offscreenAnimationPause.js` (`window.animationWatchdog`, Yozora #930), through `dreamscapeErrorCapture`. Not an error: an animation that costs frames for nothing. The occurrence carries `animation`: `{ type: "hidden" \| "endless" \| "restarts", name, kind: "css" \| "script" \| "transition", target, window, reason, properties, iterations, durationMs, runMs, targets, paused, allowed, source, shell, client }`. `hidden` = a looping animation whose target cannot be seen (under opacity 0, off screen, zero size, behind another window, its element removed); the page has already paused it (`paused: true`). `endless` = a looping animation that ran two minutes in view and is not on the watchdog's allow-list. `restarts` = one animation name started 60+ times between two scans. `source` is the stylesheet that declares the keyframes; the stack names it as a frame so the report points at the file. At most 8 groups per page load. Off in the auto-fix kinds by default; `POST /api/fault-reports/:id/fix` runs one by hand. |
+
 The client posts one fault once per page load and later repeats again with the same
 `occurrenceId` (at most every 30 s, and on `pagehide` via `sendBeacon`), at most 25 distinct
 faults per page load. The server writes a fault at once and counts its repeats for 30 s. A report
 keeps its most serious kind (`crash` > `uncaught` > `rejection` > `route` > `dialog` > `swallowed` >
-`resource` > `logged`); `surface` and `kind` are not part of the signature.
+`resource` > `logged` > `animation`); `surface` and `kind` are not part of the signature.
 
 ### `POST /api/fault-reports`
 
