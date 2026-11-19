@@ -12,6 +12,8 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { decodeRfc2047, needsRfc2047Decode } = require('./mailHeaderDecode');
 
 let dbPath = null;
 let db = null;
@@ -29,6 +31,7 @@ function initializeDovecoteDatabase(databasesPath) {
         attachmentsRoot = path.join(databasesPath, 'dovecote', 'attachments');
         createDovecoteTables();
         migrateBlobAttachmentsToFiles();
+        backfillDecodedHeaders();
         return true;
     } catch (error) {
         console.error('Error initializing dovecote database:', error.message);
@@ -187,6 +190,57 @@ function createDovecoteTables() {
     `);
 }
 
+
+function isTempDatabasePath(filePath) {
+    const resolved = path.resolve(String(filePath || ''));
+    const tmp = path.resolve(os.tmpdir());
+    if (resolved === tmp || resolved.startsWith(tmp + path.sep)) return true;
+    // Test helpers use mkdtemp under /tmp or a work folder named *test*
+    const base = path.basename(path.dirname(resolved)).toLowerCase();
+    if (base.includes('dovecote-headers-') || base.includes('dovecote-mailroom') || base.startsWith('dovecote-')) {
+        // Only skip clearly temporary dirs (mkdtemp prefixes), not the live .cache folder
+        if (!resolved.includes(path.join('.cache', 'dovecote.db'))) return true;
+    }
+    return false;
+}
+
+/**
+ * Rewrite stored Subject / From display values that still contain RFC 2047
+ * encoded-words. Idempotent. Live dovecote.db is snapshotted first (VACUUM INTO)
+ * unless a backup for this pass already exists; temp test databases are not copied.
+ */
+function backfillDecodedHeaders() {
+    if (!db || !dbPath) return { updated: 0, skipped: true };
+    const rows = db.prepare('SELECT id, subject, from_label FROM dovecote_message').all();
+    const updates = [];
+    for (const row of rows) {
+        const subject = decodeRfc2047(row.subject || '');
+        const label = row.from_label == null ? null : decodeRfc2047(row.from_label);
+        if (subject !== (row.subject || '') || label !== row.from_label) {
+            updates.push({ id: row.id, subject, from_label: label });
+        }
+    }
+    if (!updates.length) return { updated: 0 };
+    if (!isTempDatabasePath(dbPath)) {
+        const backupPath = dbPath + '.bak-headers-n19';
+        if (!fs.existsSync(backupPath)) {
+            try {
+                db.exec(`VACUUM INTO '${backupPath.replace(/'/g, "''")}'`);
+            } catch (err) {
+                console.error('Dovecote header backup failed:', err.message);
+                throw err;
+            }
+        }
+    }
+    const upd = db.prepare('UPDATE dovecote_message SET subject = @subject, from_label = @from_label WHERE id = @id');
+    const tx = db.transaction((items) => {
+        for (const item of items) upd.run(item);
+    });
+    tx(updates);
+    console.log(`Dovecote: decoded RFC 2047 headers on ${updates.length} stored message(s)`);
+    return { updated: updates.length };
+}
+
 function getDb() {
     if (!db) throw new Error('Dovecote database not initialized');
     return db;
@@ -208,5 +262,6 @@ module.exports = {
     initializeDovecoteDatabase,
     getDb,
     getAttachmentsRoot,
-    resetForTests
+    resetForTests,
+    backfillDecodedHeaders
 };

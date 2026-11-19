@@ -20,6 +20,7 @@
 'use strict';
 
 const fs = require('fs');
+const { decodeRfc2047, decodeAddressNames } = require('./mailHeaderDecode');
 const path = require('path');
 const { fork } = require('child_process');
 const { randomUUID } = require('crypto');
@@ -274,8 +275,8 @@ function rowToItem(r) {
     const flags = Array.isArray(r.flags) ? r.flags : (() => { try { return JSON.parse(r.flags || '[]'); } catch (_) { return []; } })();
     const env = typeof r.env === 'string' ? (() => { try { return JSON.parse(r.env); } catch (_) { return {}; } })() : (r.env || {});
     return {
-        uid: r.uid, msgid: r.msgid || null, date: r.date, subject: r.subject || '', sender: r.sender || '', recipients: r.recipients || '',
-        from: env.from || [], to: env.to || [], cc: env.cc || [], flags, seen: flags.includes('\\Seen'), flagged: flags.includes('\\Flagged'),
+        uid: r.uid, msgid: r.msgid || null, date: r.date, subject: decodeRfc2047(r.subject || ''), sender: decodeRfc2047(r.sender || ''), recipients: r.recipients || '',
+        from: decodeAddressNames(env.from || []), to: decodeAddressNames(env.to || []), cc: decodeAddressNames(env.cc || []), flags, seen: flags.includes('\\Seen'), flagged: flags.includes('\\Flagged'),
         answered: flags.includes('\\Answered'), size: r.size || 0, snippet: r.snippet || '', hasAttachments: !!(r.has_att || (r.att && r.att.some && r.att.some((a) => !a.inline)))
     };
 }

@@ -8,6 +8,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { decodeRfc2047 } = require('./mailHeaderDecode');
 const fs = require('fs');
 const path = require('path');
 const { getDb, getAttachmentsRoot } = require('./dovecoteDatabase');
@@ -258,13 +259,13 @@ function toSummary(row) {
         archiveSubfolder: row.archive_subfolder || null,
         threadId: row.thread_id,
         from: row.from_owner,
-        fromLabel: row.from_label || null,
+        fromLabel: row.from_label ? decodeRfc2047(row.from_label) : null,
         labelSuspicious: !!row.label_suspicious,
         route: storedRoute(row.route),
         external: storedRoute(row.route) !== 'internal',
         to: ownerList(row.to_list, row.to_owner),
         cc: ownerList(row.cc_list, null),
-        subject: row.subject,
+        subject: decodeRfc2047(row.subject || ''),
         snippet: snippetOf(row.body),
         format: row.format,
         read: !!row.read,
@@ -813,11 +814,12 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
     }
     const createdAt = nowIso();
     const id = crypto.randomUUID();
-    const subjectText = String(subject || '').slice(0, 300);
+    const decodedLabel = decodeRfc2047(fromLabel || '');
+    const subjectText = decodeRfc2047(String(subject || '')).slice(0, 300);
     const bodyText = String(body || '');
     const toList = Array.isArray(to) && to.length ? to : [toOwner];
     const ccList = Array.isArray(cc) ? cc : [];
-    const inspected = addresses.inspectFromLabel(fromLabel, {
+    const inspected = addresses.inspectFromLabel(decodedLabel, {
         mapping: addresses.createMapping(),
         owners: Array.from(liveOwners())
     });
