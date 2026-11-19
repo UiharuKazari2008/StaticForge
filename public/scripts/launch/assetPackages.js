@@ -241,7 +241,7 @@
         // keeps the one a desktop boot set (a hybrid phone's DeX window)
         if (opts.shell !== 'mobile') startHidpi();
         return change((s) => {
-            if (opts.shell !== 'mobile') s.hidpi = hidpiTierFor(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1);
+            if (opts.shell !== 'mobile') s.hidpi = hidpiTierFor(effectiveDpr());
             if (opts.shell === 'mobile') {
                 s.mobile = true;
                 if (!s.handheld && handheldNow()) s.handheld = true;
@@ -425,22 +425,44 @@
         };
         go();
     }
+    /**
+     * The art density the desktop needs: devicePixelRatio x the page's own scale (the Android app's desktop DPI
+     * Scaling is a page scale, app.html melatonPageScale, #934: a 1.25 scale on a 1.0 monitor takes the 125 tier).
+     */
+    function effectiveDpr() {
+        const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
+        const ps = typeof window !== 'undefined' ? window.melatonPageScale : null;
+        const k = ps && ps.available && typeof ps.get === 'function' ? Number(ps.get()) || 1 : 1;
+        return dpr * k;
+    }
     function startHidpi() {
         if (hidpiStarted || typeof window === 'undefined' || typeof document === 'undefined' || typeof window.matchMedia !== 'function') return;
         hidpiStarted = true;
+        let tier = 0;
+        const recheck = () => {
+            const next = hidpiTierFor(effectiveDpr());
+            if (next === tier) return;
+            tier = next;
+            linkHidpiSheet(next);
+            const change = noteHidpi(next);
+            if (change && change.added && change.added.length) hidpiPackageAdded(change);
+        };
+        // the page's own scale changed (DPI Scaling on the Android app's desktop)
+        // app-scope: allow page-lifetime display scale watch (launch code, not an app segment)
+        window.addEventListener('melaton-page-scale', recheck);
         const watch = () => {
             const dpr = window.devicePixelRatio || 1;
-            const tier = hidpiTierFor(dpr);
+            tier = hidpiTierFor(effectiveDpr());
             linkHidpiSheet(tier);
             let mq = null;
             try { mq = window.matchMedia(`(resolution: ${dpr}dppx)`); } catch (_) { mq = null; }
             if (!mq || typeof mq.addEventListener !== 'function') return;
             // app-scope: allow page-lifetime display scale watch (launch code, not an app segment)
             mq.addEventListener('change', () => {
+                const before = tier;
                 watch();
-                const next = hidpiTierFor(window.devicePixelRatio || 1);
-                if (next === tier) return;
-                const change = noteHidpi(next);
+                if (tier === before) return;
+                const change = noteHidpi(tier);
                 if (change && change.added && change.added.length) hidpiPackageAdded(change);
             }, { once: true });
         };
