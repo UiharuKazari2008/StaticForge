@@ -248,6 +248,63 @@ const doveCreateButton = function (className, title, iconClass) {
 // Display-only address style: mailboxes are stored/sent as bare names (yukimi, menma);
 // the UI shows them as name@dream.co.jp. doveBareAddress strips the suffix back off input.
 const DOVE_ADDRESS_DOMAIN = '@dream.co.jp';
+
+const doveDecodeRfc2047 = function (value) {
+    const text = String(value == null ? '' : value);
+    if (text.indexOf('=?') === -1) return text;
+    const re = /=\?([A-Za-z0-9][A-Za-z0-9_.:-]*)(?:\*[^\?]*)?\?([BQbq])\?([^?]*)\?=/g;
+    let out = '';
+    let last = 0;
+    let lastWasWord = false;
+    let match;
+    const decodeBytes = function (buf, charset) {
+        const cs = String(charset || 'utf-8').toLowerCase();
+        const alias = { utf8: 'utf-8', 'us-ascii': 'utf-8', ascii: 'utf-8', latin1: 'windows-1252', 'iso-8859-1': 'windows-1252', cp1252: 'windows-1252' };
+        const enc = alias[cs] || cs;
+        try {
+            return new TextDecoder(enc).decode(buf);
+        } catch (_err) {
+            try { return new TextDecoder('utf-8').decode(buf); } catch (_err2) {
+                return typeof TextDecoder === 'function' ? new TextDecoder().decode(buf) : text;
+            }
+        }
+    };
+    const decodeWord = function (charset, encoding, encoded) {
+        try {
+            if (String(encoding).toUpperCase() === 'B') {
+                const compact = String(encoded || '').replace(/\s+/g, '');
+                const binary = atob(compact);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                return decodeBytes(bytes, charset);
+            }
+            const raw = String(encoded || '').replace(/_/g, ' ');
+            const bytes = [];
+            for (let i = 0; i < raw.length; i++) {
+                if (raw[i] === '=' && /^[0-9A-Fa-f]{2}/.test(raw.slice(i + 1, i + 3))) {
+                    bytes.push(parseInt(raw.slice(i + 1, i + 3), 16));
+                    i += 2;
+                } else bytes.push(raw.charCodeAt(i) & 0xff);
+            }
+            return decodeBytes(new Uint8Array(bytes), charset);
+        } catch (_err) {
+            return null;
+        }
+    };
+    while ((match = re.exec(text)) !== null) {
+        const gap = text.slice(last, match.index);
+        if (!(lastWasWord && /^[ \t\r\n]*$/.test(gap))) out += gap;
+        const decoded = decodeWord(match[1], match[2], match[3]);
+        if (decoded === null) { out += match[0]; lastWasWord = false; }
+        else { out += decoded; lastWasWord = true; }
+        last = re.lastIndex;
+    }
+    return out + text.slice(last);
+};
+const doveSubjectText = function (mail) {
+    const subject = doveDecodeRfc2047(mail && mail.subject ? mail.subject : '');
+    return subject || '(no subject)';
+};
 const doveDisplayAddress = function (name) {
     const bare = String(name || '').trim();
     if (!bare) return '';
@@ -262,7 +319,8 @@ const doveFormatAddressList = function (value) {
 // flagged it as impersonating one of ours, else the address. The message list's From column too.
 const doveSenderText = function (mail) {
     if (!mail) return '';
-    return mail.fromLabel && !mail.labelSuspicious ? mail.fromLabel : doveDisplayAddress(mail.from);
+    const label = doveDecodeRfc2047(mail.fromLabel || '');
+    return label && !mail.labelSuspicious ? label : doveDisplayAddress(mail.from);
 };
 const DOVE_ROUTE_TOOLTIP = {
     internal: 'Internal and trusted. Delivered inside the Dreamscape network and never left it.',
@@ -1205,9 +1263,9 @@ const doveBuildForwardDigest = function (mails) {
     return mails.map((mail, index) => {
         const heading = [
             '-------- Original Message ' + (index + 1) + ' --------',
-            'From: ' + doveDisplayAddress(mail.from),
+            'From: ' + doveSenderText(mail),
             'To: ' + doveFormatAddressList(mail.to),
-            'Subject: ' + (mail.subject || '(no subject)'),
+            'Subject: ' + doveSubjectText(mail),
             'Date: ' + doveFormatDate(mail.createdAt)
         ].join('\n');
         return heading + '\n\n' + (mail.body || '');
@@ -1938,7 +1996,7 @@ const doveRenderMessageList = function () {
 
         const subjectCell = document.createElement('span');
         subjectCell.className = 'dovecote-col-subject';
-        subjectCell.textContent = mail.subject || '(no subject)';
+        subjectCell.textContent = doveSubjectText(mail);
 
         const dateCell = document.createElement('span');
         dateCell.className = 'dovecote-col-createdAt';
@@ -2193,7 +2251,7 @@ const doveRenderOeHeaderInto = function (els, mail) {
     els.oeTo.textContent = mail ? doveFormatAddressList(mail.to) : '';
     if (els.oeOriginalTo) els.oeOriginalTo.textContent = mail && mail.originalTo ? mail.originalTo : '';
     if (els.oeCc) els.oeCc.textContent = mail ? doveFormatAddressList(mail.cc) : '';
-    els.oeSubject.textContent = mail ? (mail.subject || '(no subject)') : '';
+    els.oeSubject.textContent = mail ? doveSubjectText(mail) : '';
     els.oeDate.textContent = mail ? doveFormatDate(mail.createdAt) : '';
     doveFillRouteSlot(els.oeRoute, mail ? mail.route : 'internal');
     // the route mark is Dreamscape Mail's (internal / gateway); an e-mail account's mail has none
@@ -2887,7 +2945,7 @@ const doveOpenCompose = function (mode, mail, presetTo) {
     let body = '';
     let replyTo = null;
     if (mode === 'reply' || mode === 'replyAll') {
-        subject = /^re:/i.test(mail.subject || '') ? mail.subject : 'Re: ' + (mail.subject || '');
+        subject = (function () { const s = doveDecodeRfc2047(mail.subject || ''); return /^re:/i.test(s) ? s : 'Re: ' + s; }());
         replyTo = mail.id;
         if (mode === 'reply') {
             to = mail.from || '';
@@ -2908,7 +2966,7 @@ const doveOpenCompose = function (mode, mail, presetTo) {
         }
     } else if (mode === 'forward') {
         to = presetTo || '';
-        subject = /^fwd:/i.test(mail.subject || '') ? mail.subject : 'Fwd: ' + (mail.subject || '');
+        subject = (function () { const s = doveDecodeRfc2047(mail.subject || ''); return /^fwd:/i.test(s) ? s : 'Fwd: ' + s; }());
         body = mail.body || '';
     }
 
@@ -3499,7 +3557,7 @@ const doveLoadReaderMail = async function (state, id, options) {
 const doveRenderReaderWindow = function (state) {
     const mail = state.mail;
     if (!mail) return;
-    doveSetWindowTitle(state.modal, mail.subject || '(no subject)', 'fas fa-envelope-open');
+    doveSetWindowTitle(state.modal, doveSubjectText(mail), 'fas fa-envelope-open');
     doveRenderOeHeaderInto(state.els, mail);
     doveRenderAttachmentsInto(state.els, mail, desktopDovecote.viewAsOwner);
     state.els.loadingHint.remove();
@@ -4750,8 +4808,8 @@ function dovePresentNewMail(mail, count) {
         countEl.textContent = '';
         countEl.classList.add('hidden');
     }
-    fromEl.textContent = 'From: ' + (doveDisplayAddress(mail.from) || '');
-    subjectEl.textContent = 'Subject: ' + (mail.subject || '(no subject)');
+    fromEl.textContent = 'From: ' + (doveSenderText(mail) || '');
+    subjectEl.textContent = 'Subject: ' + doveSubjectText(mail);
     const snippet = String(mail.snippet || '').trim();
     previewEl.textContent = snippet;
     previewEl.classList.toggle('hidden', !snippet);
@@ -4797,8 +4855,8 @@ const doveShowNewMail = async function (count) {
         const mail = result && result.mail && result.mail[0];
         if (!mail) return;
         if (!doveMailOptions.notifyOn()) return;
-        const from = doveDisplayAddress(mail.from) || '';
-        const subject = mail.subject || '(no subject)';
+        const from = doveSenderText(mail) || '';
+        const subject = doveSubjectText(mail);
         const body = count > 1
             ? 'You have ' + count + ' new messages.'
             : (from ? 'From: ' + from + '. ' : '') + subject;
@@ -5027,10 +5085,10 @@ const doveFillInboxFlyout = async function (preloaded) {
         clip.className = 'dove-inbox-flyout-clip';
         const subject = document.createElement('span');
         subject.className = 'dove-inbox-flyout-subject';
-        subject.textContent = item.subject || '(no subject)';
+        subject.textContent = doveSubjectText(item);
         const from = document.createElement('span');
         from.className = 'dove-inbox-flyout-from';
-        from.textContent = item.imap ? doveSenderText(item) : (doveDisplayAddress(item.from) || '');
+        from.textContent = doveSenderText(item) || '';
         if (item.imapAccountLabel) {
             const account = document.createElement('span');
             account.className = 'dove-inbox-flyout-account';

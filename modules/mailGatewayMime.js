@@ -6,6 +6,8 @@
 
 'use strict';
 
+const { decodeTextHeaders } = require('./mailHeaderDecode');
+
 function headerParam(value, name) {
     const match = String(value || '').match(new RegExp(`${name}\\s*=\\s*"?([^";\\s]+)"?`, 'i'));
     return match ? match[1] : '';
@@ -74,7 +76,7 @@ function parseHeaderBlock(headerBlock) {
         current = line.slice(0, colon).trim().toLowerCase();
         headers[current] = line.slice(colon + 1).trim();
     }
-    return headers;
+    return decodeTextHeaders(headers);
 }
 
 function splitMultipart(body, boundary) {
