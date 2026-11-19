@@ -42,6 +42,8 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.dpi-cust
 .dpi-sheet .dpi-r1 { left: 40px; top: 70px; width: 380px; height: 16px; }
 .dpi-sheet .dpi-r2 { left: 40px; top: 99px; width: 400px; height: 22px; }
 .dpi-sheet .dpi-r3 { left: 40px; top: 132px; width: 380px; height: 16px; }
+/* the Custom scale row shows only while a custom scale is chosen (a .tbp-ctl display rule outranks [hidden]) */
+.dpi-sheet .dpi-r3[hidden] { display: none; }
 
 /* Vista draws the "Larger scale" choice in the larger face it would give */
 .dpi-sheet .dpi-r2 label span {
