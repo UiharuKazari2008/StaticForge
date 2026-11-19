@@ -311,7 +311,7 @@
         if (cp && typeof cp.open === 'function') { cp.open('power-options'); return; }
         const loader = root.featureLoader;
         if (loader && typeof loader.loadFeature === 'function') {
-            Promise.resolve(loader.loadFeature('controlPanel')).then(() => { if (root.melatonControlPanel) root.melatonControlPanel.open('power-options'); }).catch(() => { /* not available */ });
+            Promise.resolve(loader.loadFeature('control_panel')).then(() => { if (root.melatonControlPanel) root.melatonControlPanel.open('power-options'); }).catch(() => { /* not available */ });
         }
     }
 
@@ -476,6 +476,12 @@
         state: () => model,
         source: () => source,
         statusText: () => statusText(model),
+        // the model's batmeter cells and the plans, for Melaton Mobility Center's Battery Status tile
+        frames: (m) => frames(m === undefined ? model : m),
+        plans,
+        activePlan,
+        planName,
+        setPlan,
         showFlyout,
         hideFlyout,
         _test: { fromDreamOS, fromBrowser, fromProvider, statusText, frames, setModel }

@@ -422,8 +422,11 @@
                 positionFlyout();
             }
         },
+        // returns an unsubscribe function (a window that listens while it is open: Melaton Mobility Center)
         onChange(fn) {
-            if (typeof fn === 'function') changeListeners.push(fn);
+            if (typeof fn !== 'function') return () => {};
+            changeListeners.push(fn);
+            return () => { const i = changeListeners.indexOf(fn); if (i >= 0) changeListeners.splice(i, 1); };
         },
         // the tab's master level (0-100) and mute, for surfaces without the tray flyout
         // (Melaton Mobile's volume bubble, #709)
