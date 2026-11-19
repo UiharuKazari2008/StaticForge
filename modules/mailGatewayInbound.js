@@ -447,7 +447,8 @@ function handleInboundConnection(plainSocket, options) {
                 trustedOwnSender: ownDomainFrom && !divertOwnDomain && !spamMark.spam && !spamMark.forgedOurs,
                 // isNotifyLoopHeader: modules/dovecoteMailboxNotify.js
                 notifyLoop: require('./dovecoteMailboxNotify').isNotifyLoopHeader(parsed.headers),
-                headers: parsed.headers
+                headers: parsed.headers,
+                rawHeaders: headerBlock
             })).then(() => ({ owner, ok: true }));
         }).catch((err) => ({ owner: rcpt.owner, ok: false, error: err })));
 

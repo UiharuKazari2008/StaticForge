@@ -63,3 +63,7 @@ Who gets which (#890 round 5, W5):
 ## MCP (Messaging Bridge)
 
 The Tsubame (mailroom) key reaches these conversations through the Messaging Bridge MCP module (`sfapp_messaging_bridge`, `modules/messagingBridgeMcp.js`): `bridge_text_accounts`, `bridge_text_chats`, `bridge_text_chat`, `bridge_text_messages`, `bridge_text_search`, `bridge_text_mark_read`, `bridge_text_mark_unread`, `bridge_text_send` (`confirm: true`), `bridge_text_delete_chat` (`confirm: true`). They call the same `textMessaging.js` functions as the packets above; the packets stay admin-only. See [mcp-connector.md](../mcp-connector.md#messaging-bridge-module-sfapp_messaging_bridge).
+
+## Ingest Controller (new texts)
+
+`onProviderEvent` (`modules/textMessaging.js`) asks the Ingest Controller about each new incoming text before the `tm_event` broadcast (`ingestController.textInbound`, 1.5 s cap, fails open). A text account in **process** mode runs its pipeline: the spam filter (known-spam numbers and a light heuristic) can silence a text (mark read, `notify: false`), and code extraction announces a verification code through the notification inbox instead of the usual New Text Message notice. Accounts default to **bypass**: nothing changes. See [ingest-controller.md](../ingest-controller.md).

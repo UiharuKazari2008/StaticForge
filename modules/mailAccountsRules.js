@@ -219,4 +219,4 @@ async function runRules({ accountId, folder = 'INBOX', limit = 500, ruleId = nul
     return { dryRun: false, matched, applied: await execute(id, String(folder || 'INBOX'), groups) };
 }
 
-module.exports = { listRules, saveRule, deleteRule, matches, plan, applyNew, runRules, _test: { normalizeMatch, normalizeActions, setMail: (m) => { mailOverride = m || null; } } };
+module.exports = { listRules, saveRule, deleteRule, matches, plan, applyNew, runRules, rulesFor, _test: { normalizeMatch, normalizeActions, setMail: (m) => { mailOverride = m || null; } } };

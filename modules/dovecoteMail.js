@@ -802,7 +802,7 @@ function sanitizeOriginalTo(value) {
     return text || null;
 }
 
-function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta, originalTo, ownDomainFrom, trustedOwnSender, notifyLoop, headers }) {
+function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta, originalTo, ownDomainFrom, trustedOwnSender, notifyLoop, headers, ingest }) {
     if (!isValidOwner(toOwner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const from = String(fromAddress || '').trim();
     if (!from || (from !== NULL_SENDER && !from.includes('@'))) {
@@ -829,12 +829,22 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         inspected.suspicious = false;
     }
     const storedLabel = inspected.suspicious ? from : (inspected.label || '').slice(0, 300);
-    const folder = spam === true ? 'spam' : 'inbox';
+    // The Ingest Controller (modules/ingestController.js exchangeInbound) may file the mail at delivery:
+    // { folder: inbox|spam|archive|deleted, archiveSubfolder, deleted, read, flagged }
+    const ing = ingest && typeof ingest === 'object' ? ingest : null;
+    let folder = spam === true ? 'spam' : 'inbox';
+    let archiveSubfolder = null;
+    let deletedAt = null;
+    if (ing && FOLDERS.includes(ing.folder) && ['inbox', 'spam', 'archive', 'deleted'].includes(ing.folder)) {
+        folder = ing.folder;
+        if (folder === 'archive' && ing.archiveSubfolder) archiveSubfolder = String(ing.archiveSubfolder).slice(0, 80);
+        if (folder === 'deleted') deletedAt = createdAt;
+    }
     const storedSpamMeta = encodeSpamMeta(spamMeta);
     const displaySpam = spamMetaOf(storedSpamMeta);
     const storedOriginalTo = sanitizeOriginalTo(originalTo);
     insertRow({
-        id, owner: toOwner, folder, archive_subfolder: null,
+        id, owner: toOwner, folder, archive_subfolder: archiveSubfolder,
         thread_id: threadId || crypto.randomUUID(),
         from_owner: from, to_owner: toOwner,
         to_list: JSON.stringify(toList), cc_list: JSON.stringify(ccList),
@@ -846,12 +856,12 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         own_domain_from: ownDomainFrom ? 1 : 0,
         subject: subjectText, body: bodyText, format: sanitizeFormat(format),
         reply_to_id: null, fwd_from_owner: null, fwd_from_message_id: null,
-        read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
+        read: ing && ing.read === true ? 1 : 0, flagged: ing && ing.flagged === true ? 1 : 0, created_at: createdAt, updated_at: createdAt, deleted_at: deletedAt,
         paired_message_id: null, attachments: null
     });
     audit(toOwner, 'receive_external_mail', id, true, `from=${from}`);
     emitMailboxChanged([toOwner]);
-    if (folder === 'inbox') {
+    if (folder === 'inbox' && !(ing && ing.read === true)) {
         emitMailDelivered([{
             mailbox: toOwner,
             id,
@@ -880,6 +890,12 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         originalTo: storedOriginalTo,
         ownDomainFrom: !!ownDomainFrom
     };
+}
+
+/** One stored row of a mailbox (the Ingest Controller's dry run reads it). */
+function getMessageRow(owner, id) {
+    if (!isValidOwner(owner)) return null;
+    return getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(String(id || ''), owner) || null;
 }
 
 function listMail(owner, { folder, unreadOnly, limit, cursor, silent } = {}) {
@@ -1354,6 +1370,7 @@ module.exports = {
     setMailboxChangedListener,
     sendMail,
     deliverInboundMail,
+    getMessageRow,
     listMail,
     readMail,
     markMail,

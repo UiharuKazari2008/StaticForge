@@ -3,6 +3,8 @@
  * Broadcasts mcp_activity so the tray (2 min) and Periscope (Event Viewer) can show the last call.
  */
 
+const { redactCodes } = require('./ingestCodeRedact');
+
 const MCP_ACTIVITY_TTL_MS = 2 * 60 * 1000;
 const MAX_LOG = 80;
 const LONG_STRING = 160;
@@ -27,8 +29,10 @@ function summarizeValue(value, depth) {
     if (value == null) return value;
     if (typeof value === 'string') {
         if (value.length > 200000) return `[omitted ${value.length} chars]`;
-        if (value.length > LONG_STRING) return `${value.slice(0, LONG_STRING)}…`;
-        return value;
+        // a verification code is a secret: never in the activity ring (Ingest Controller)
+        const shown = redactCodes(value.length > 4000 ? value.slice(0, 4000) : value);
+        if (shown.length > LONG_STRING) return `${shown.slice(0, LONG_STRING)}…`;
+        return shown;
     }
     if (typeof value === 'number' || typeof value === 'boolean') return value;
     if (Buffer.isBuffer(value)) return `[buffer ${value.length}]`;

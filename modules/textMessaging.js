@@ -489,6 +489,17 @@ async function onProviderEvent(accountId, event, payload) {
     } catch (error) {
         log(`event ${event} failed: ${error.message}`);
     }
+    // Ingest Controller (modules/ingestController.js textInbound): an account in process mode filters / routes /
+    // announces the new text before it is shown. Bypass (default) and any failure leave it as it is.
+    if (event === 'message' && out.message && !out.message.fromMe && !out.message.groupEvent) {
+        try {
+            const verdict = await Promise.race([
+                require('./ingestController').textInbound(accountId, out),
+                new Promise((resolve) => { const t = setTimeout(() => resolve(null), 1500); if (t.unref) t.unref(); })
+            ]);
+            if (verdict && verdict.suppressNotify) out.notify = false;
+        } catch (error) { log(`ingest ${accountId}: ${error.message}`); }
+    }
     broadcast(out, { phones });
 }
 

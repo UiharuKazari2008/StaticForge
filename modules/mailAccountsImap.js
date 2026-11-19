@@ -80,7 +80,7 @@ async function fetchRows(c, uidList) {
     const { simpleParser } = require('mailparser');
     const rows = [];
     const meta = [];
-    for await (const m of c.fetch(uidList.join(','), { uid: true, envelope: true, flags: true, bodyStructure: true, size: true, internalDate: true, headers: ['references', 'in-reply-to', 'reply-to', 'list-unsubscribe'] }, { uid: true })) {
+    for await (const m of c.fetch(uidList.join(','), { uid: true, envelope: true, flags: true, bodyStructure: true, size: true, internalDate: true, headers: ['references', 'in-reply-to', 'reply-to', 'list-unsubscribe', 'list-unsubscribe-post'] }, { uid: true })) {
         meta.push(m);
     }
     for (const m of meta) {
@@ -89,6 +89,8 @@ async function fetchRows(c, uidList) {
         let text = '';
         let html = '';
         let headers = {};
+        // List-Unsubscribe(-Post): from the fetched header fields (any size of message), else the parsed source
+        let listHeaderText = m.headers ? Buffer.from(m.headers).toString('utf8') : '';
         try {
             if ((m.size || 0) <= SMALL_SOURCE) {
                 const one = await c.fetchOne(String(m.uid), { source: true }, { uid: true });
@@ -96,7 +98,8 @@ async function fetchRows(c, uidList) {
                     const parsed = await simpleParser(one.source, { skipImageLinks: true, skipTextToHtml: true, skipTextLinks: true });
                     text = parsed.text || '';
                     html = typeof parsed.html === 'string' ? parsed.html : '';
-                    headers = { references: parsed.references || null, inReplyTo: parsed.inReplyTo || null, replyTo: parsed.replyTo ? parsed.replyTo.text : null, listUnsubscribe: parsed.headers && parsed.headers.get('list-unsubscribe') ? String(parsed.headers.get('list-unsubscribe').url || parsed.headers.get('list-unsubscribe')) : null };
+                    headers = { references: parsed.references || null, inReplyTo: parsed.inReplyTo || null, replyTo: parsed.replyTo ? parsed.replyTo.text : null };
+                    if (!listHeaderText) listHeaderText = (parsed.headerLines || []).filter((l) => /^list-unsubscribe/i.test(l.key)).map((l) => l.line).join('\n');
                 }
             } else {
                 for (const [key, p] of [['text', st.text], ['html', st.html]]) {
@@ -109,6 +112,7 @@ async function fetchRows(c, uidList) {
                 }
             }
         } catch (_) { /* the envelope is kept; the body comes on open */ }
+        const listHeaders = require('./mailListHeaders').envFields(listHeaderText);
         rows.push({
             uid: m.uid,
             msgid: env.messageId || null,
@@ -120,7 +124,7 @@ async function fetchRows(c, uidList) {
             size: m.size || 0,
             snippet: snippetOf(text || String(html).replace(/<[^>]+>/g, ' ')),
             att: st.att,
-            env: { from: addrList(env.from), to: addrList(env.to), cc: addrList(env.cc), bcc: addrList(env.bcc), replyTo: addrList(env.replyTo), inReplyTo: env.inReplyTo || headers.inReplyTo || null, references: headers.references || null, listUnsubscribe: headers.listUnsubscribe || null },
+            env: Object.assign({ from: addrList(env.from), to: addrList(env.to), cc: addrList(env.cc), bcc: addrList(env.bcc), replyTo: addrList(env.replyTo), inReplyTo: env.inReplyTo || headers.inReplyTo || null, references: headers.references || null }, listHeaders),
             text,
             html,
             body: !!(text || html)

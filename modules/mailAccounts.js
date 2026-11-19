@@ -172,9 +172,13 @@ async function onNewMail(rt) {
     rulesSoon(id);
 }
 
-/** Mail rules (modules/mailAccountsRules.js) on the Inbox's new mail; never fails the caller. */
+/**
+ * The Inbox's new mail: the Ingest Controller (modules/ingestController.js). An account in bypass gets the
+ * mail rules (modules/mailAccountsRules.js) exactly as before; one in process mode gets its pipeline.
+ * Never fails the caller.
+ */
 function rulesSoon(accountId) {
-    try { require('./mailAccountsRules').applyNew(accountId).catch((e) => log(`${accountId} rules: ${e.message}`)); } catch (e) { log(`${accountId} rules: ${e.message}`); }
+    try { require('./ingestController').onMailArrived(accountId).catch((e) => log(`${accountId} ingest: ${e.message}`)); } catch (e) { log(`${accountId} ingest: ${e.message}`); }
 }
 
 let syncTimers = new Map();
@@ -387,8 +391,10 @@ async function getMessage(accountId, folder, uid, { markSeen = true } = {}) {
     const r0 = rt(accountId);
     let row = store.getMessage(accountId, folder, Number(uid));
     if (!row) throw fail('NOT_FOUND', 'That message is not in this folder any more.');
-    if (!row.body) {
-        // a body the sync could not read yet: from the mail server now
+    let envNow = {};
+    try { envNow = JSON.parse(row.env || '{}'); } catch (_) { envNow = {}; }
+    if (!row.body || !envNow.listHeadersChecked) {
+        // a body the sync could not read yet (or a copy from before List-Unsubscribe was read): from the mail server now
         try {
             const c = await opsClient(r0);
             const lock = await c.getMailboxLock(folder);
@@ -407,6 +413,9 @@ async function getMessage(accountId, folder, uid, { markSeen = true } = {}) {
     item.inReplyTo = env.inReplyTo || null;
     item.references = env.references || null;
     item.listUnsubscribe = env.listUnsubscribe || null;
+    item.listUnsubscribeMail = env.listUnsubscribeMail || null;
+    item.listUnsubscribePost = env.listUnsubscribePost || null;
+    item.listUnsubscribeOneClick = env.listUnsubscribeOneClick === true;
     let html = row.html || '';
     if (html) {
         for (const a of att) if (a.cid) html = html.split(`cid:${a.cid}`).join(base + encodeURIComponent(a.part));
@@ -421,6 +430,33 @@ async function getMessage(accountId, folder, uid, { markSeen = true } = {}) {
         item.seen = true;
     }
     return { message: item };
+}
+
+/** The message source as the mail server has it (the Ingest Controller's spam filter), cut at maxBytes. */
+async function fetchRaw(accountId, folder, uid, maxBytes = 200 * 1024) {
+    const r0 = rt(accountId);
+    const c = await opsClient(r0);
+    const lock = await c.getMailboxLock(folder);
+    try {
+        const dl = await c.download(String(Number(uid)), undefined, { uid: true });
+        if (!dl || !dl.content) return null;
+        const chunks = [];
+        let n = 0;
+        for await (const chunk of dl.content) {
+            chunks.push(chunk);
+            n += chunk.length;
+            if (n >= maxBytes) { try { dl.content.destroy(); } catch (_) { /* done */ } break; }
+        }
+        return Buffer.concat(chunks).subarray(0, maxBytes);
+    } finally { lock.release(); }
+}
+
+/** A folder the Ingest Controller moves mail into ("Later"): created when the account does not have it. */
+async function ensureFolder(accountId, folderPath) {
+    const r0 = rt(accountId);
+    const c = await opsClient(r0);
+    try { await c.mailboxCreate(folderPath); } catch (error) { if (!/exist|already/i.test(String((error && (error.serverResponseCode || error.message)) || ''))) throw error; }
+    return { ok: true };
 }
 
 /** Flags at the mail server first, then the copy. */
@@ -645,7 +681,7 @@ function unreadSummary() {
 }
 
 module.exports = {
-    init, listAccounts, testAccount, saveAccount, deleteAccount, listFolders, listMessages, getMessage, setFlags, move, remove, send,
+    init, listAccounts, testAccount, saveAccount, deleteAccount, listFolders, listMessages, getMessage, setFlags, move, remove, send, fetchRaw, ensureFolder,
     attachment, addUpload, search, syncStatus, resync, unreadSummary, presetFor, PRESETS, saveDraft,
     // tests (scripts/test-ws-phone-round5.js): a sync's events and who gets them
     _test: { runSync, setResources: (r) => { gr = r; } }

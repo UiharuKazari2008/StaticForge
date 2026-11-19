@@ -448,6 +448,23 @@ Yukimi's own external mail (IMAP accounts, iCloud included), her mail rules, and
 
 **Mail rules.** `match` fields are case-insensitive "contains" (`from` checks the sender name and address, `to` checks To and Cc, `subject` the subject); every field given must match, and at least one is required. `actions`: `markRead`, `flag`, then `moveTo` (a folder path) or `delete` (into Trash), not both. Rules run in the server on each account's Inbox as mail arrives (after the IDLE fetch and after a sync pass that fetched Inbox mail). First matching rule wins, by `position` then age. A new rule only touches mail that arrives after it; use `bridge_mail_run_rules` (dry run first) for mail already there. Rules live in `.cache/mailaccounts.db` (table `rules`) with hit counts.
 
+**Rate limits.** The bridge and ingest tools have their own groups (`bridge` 1200 and `bridge_write` 600 calls per 15 minutes per key), above the general `mail` (120) and `write` (60): Tsubame's bulk cleanups hit those. A rules run, a mode switch and an `accountId: "*"` configure are each one call. Only the Tsubame / Yukimi identities reach these tools anyway.
+
+**List-Unsubscribe.** `bridge_mail_message` returns `listUnsubscribe` (the https link, else `mailto:…`), `listUnsubscribeMail` (the mailto target), `listUnsubscribePost` (the `List-Unsubscribe-Post` header) and `listUnsubscribeOneClick` (RFC 8058). The first open of a message synced before this fix re-reads it from the mail server once to fill them in.
+
+##### Ingest Controller (same scope, same gates, same audit)
+
+One pipeline in front of Yukimi's inboxes (Yukimi, Nov 19 2026; design agreed with Tsubame): per account, mode **bypass** (as before) or **process**, with an ordered pipeline of toggleable modules. Code: `modules/ingestController.js`, `ingestModules.js`, `ingestSpamd.js`, `ingestStore.js` (`.cache/ingest.db`), `ingestMcp.js`. Details: [ingest-controller.md](ingest-controller.md).
+
+| Tool | Description |
+|------|-------------|
+| `ingest_list_accounts` | `{ source? }` → every account (`email` = IMAP bridge accounts, `sms` = text accounts, `exchange` = DS Exchange mailboxes): `mode`, `applying`, `dryRun`, ordered `pipeline`. |
+| `ingest_set_mode` | `{ source, accountId \| "*", mode: bypass\|process, applying?, confirm }`. `process` starts in **dry-run** (intended actions only logged). `applying: true` makes them real. `process` and `applying` need `confirm: true`; `bypass` does not. |
+| `ingest_list_modules` | No args: the catalog with defaults. `{ source, accountId, probe? }`: that account's pipeline and settings; `probe: true` pings spamd. |
+| `ingest_configure_module` | `{ source, accountId \| "*", module: spamFilter\|codeExtraction\|routing, enabled?, settings?, position?, reset?, confirm? }`. Settings merge into the current ones. Enabling a module that deletes or forwards (`delete`, `forwardTo`, spam `action: trash`, text `textAction: delete`), or any module on an account that is applying, needs `confirm: true`. |
+| `ingest_dry_run` | `{ source, accountId, ref \| message, allModules?, scoreSpam? }` → every module's decision and the actions that would apply; nothing is applied. `ref`: email `{ folder, uid }`, exchange `{ id }`, sms `{ chatGuid, guid }`. A supplied `message` is `{ from, fromName, to, cc, subject, text, headers, known, isGroup }` (keep real codes out of it). |
+| `ingest_log` | `{ source?, accountId?, limit }` → recent decisions: sender, subject and actions, codes redacted, never a body. |
+
 #### Apocrypha Module (`sfapp_apocrypha`)
 
 Hoshino (and Rook/Menma) live-publish the zine. Grok web is hard-denied this scope, same as cake pantry.
