@@ -151,6 +151,71 @@ gate = push([], { type: 'assistant', name: null, text: 'AB' });
 assert.strictEqual(byName('desk')[0].live.textAppend, 'B');
 director._test.dropDirectorStream(SID);
 
+// ---- lite watchers (log closed behind her scene, Nov 19 2026): rows cut to what her bubbles read
+{
+    const LSID = 'chat-lite';
+    for (const ws of [...clients.keys()]) clients.delete(ws);
+    const full = client('full', {});
+    const vn = client('vn', {});
+    director.watchDirectorStream(handler, full, clients.get(full), LSID, 1, 1);
+    director.watchDirectorStream(handler, vn, clients.get(vn), LSID, 1, 1, 1);
+    assert.strictEqual(clients.get(vn).directorLite, true, 'lite with delta');
+    const longDetail = 'x'.repeat(600);
+    const rowsA = [
+        { type: 'tool', name: 'generate_image', detail: longDetail, result: 'R'.repeat(5000), images: ['/images/a.png'], input: { prompt: 'secret prompt' } },
+        { type: 'tool', name: 'say', detail: 'y'.repeat(600) },
+        { type: 'assistant', text: 'reply text' },
+        { type: 'tool', name: 'edit', diffKind: 'diff', detail: 'file.txt', diff: 'D'.repeat(3000) }
+    ];
+    const lpush = (rows, live) => {
+        director.queueDirectorStream(gr, { sessionId: LSID, persona: 'wren', rows, live, fullContent: '', context: null, model: null }, handler, full);
+        const g = t.streamGates.get(LSID);
+        if (g.timer) { clearTimeout(g.timer); g.timer = null; }
+        g.lastSent = 0;
+        if (g.inflight) g.inflight.acked = true;
+        sent = [];
+        t.flushDirectorStream(LSID);
+        return g;
+    };
+    const by = (n) => sent.filter((m) => m.ws.name === n).map((m) => m.data);
+    lpush(rowsA, { type: 'thinking', text: 'hmm' });
+    const f = by('full')[0];
+    const l = by('vn')[0];
+    assert.ok(f && l, 'both get the update');
+    assert.strictEqual(f.rows[0].result.length, 5000, 'the full watcher gets the rows whole');
+    assert.ok(!f.lite, 'no lite mark on a full update');
+    assert.strictEqual(l.lite, 1, 'marked lite');
+    assert.strictEqual(l.rows.length, 4);
+    assert.ok(!('result' in l.rows[0]) && !('images' in l.rows[0]) && !('input' in l.rows[0]), 'results, pictures, arguments stay on the server');
+    assert.strictEqual(l.rows[0].name, 'generate_image');
+    assert.ok(l.rows[0].detail.length <= 241, 'a tool detail is cut to a bubble line');
+    assert.strictEqual(l.rows[1].detail.length, 600, 'what she says is whole');
+    assert.strictEqual(l.rows[2].text, 'reply text');
+    assert.strictEqual(l.rows[3].diffKind, 'diff');
+    assert.ok(!('diff' in l.rows[3]));
+    assert.strictEqual(l.live.text, 'hmm', 'live text as for any watcher');
+    assert.strictEqual(l.rowsFrom, f.rowsFrom, 'same delta position');
+    // a later update: the same row deltas, cut
+    lpush(rowsA.concat([{ type: 'tool', name: 'get_studio_state', detail: 'ok', result: 'big' }]), { type: 'thinking', text: 'hmm, yes' });
+    const l2 = by('vn')[0];
+    assert.strictEqual(l2.rowsFrom, 4, 'only the new row');
+    assert.strictEqual(l2.rows.length, 1);
+    assert.ok(!('result' in l2.rows[0]));
+    assert.strictEqual(l2.live.textAppend, ', yes', 'live text deltas still work');
+    // the log opened: it watches in full and is sent the whole newest update with every field
+    handlerSent.length = 0;
+    director.watchDirectorStream(handler, vn, clients.get(vn), LSID, 1, 1, 0);
+    assert.strictEqual(clients.get(vn).directorLite, false);
+    assert.strictEqual(handlerSent.length, 1, 'the whole update on watching in full');
+    assert.strictEqual(handlerSent[0].data.rows[4].result, 'big', 'whole rows now');
+    assert.ok(!handlerSent[0].data.lite);
+    // and back to lite: the whole update it is sent is cut
+    handlerSent.length = 0;
+    director.watchDirectorStream(handler, vn, clients.get(vn), LSID, 1, 1, 1);
+    assert.ok(!('result' in handlerSent[0].data.rows[0]) && handlerSent[0].data.lite === 1, 'a lite watcher\'s whole update is cut too');
+    director._test.dropDirectorStream(LSID);
+}
+
 // streamWireData / liveTextAppend
 assert.deepStrictEqual(t.streamWireData({ rows: [], fullContent: 'x' }), { rows: [] });
 assert.deepStrictEqual(t.streamWireData({ fullContent: 'x' }), { fullContent: 'x' }, 'kept without rows or live');

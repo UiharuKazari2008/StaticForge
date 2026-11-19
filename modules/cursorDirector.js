@@ -4994,11 +4994,37 @@ function watchesDirectorStream(info, sessionId) {
     return !info || info.directorWatch === undefined || info.directorWatch === String(sessionId);
 }
 
+// Lite watchers (director_stream_watch lite, Yukimi Nov 19 2026): a page whose log is closed behind her
+// scene draws no rows, only her bubbles: tool names and their short detail, what she says, her reply
+// and thinking text, document edits. It is sent the same updates and row deltas with each row cut to
+// those fields; tool results, pictures and arguments stay on the server until it opens the log and
+// watches in full again (sent the whole newest update then, as any new watcher).
+const LITE_DETAIL_CHARS = 240;
+function liteStreamRow(row) {
+    if (!row || typeof row !== 'object') return row;
+    const out = { type: row.type };
+    if (row.name != null) out.name = row.name;
+    if (row.label != null) out.label = row.label;
+    if (row.diffKind != null) out.diffKind = row.diffKind;
+    if (typeof row.text === 'string') out.text = row.text;
+    if (typeof row.detail === 'string') {
+        // a spoken line is her words in full; any other tool's detail is a bubble's line
+        out.detail = row.name === 'say' || row.detail.length <= LITE_DETAIL_CHARS ? row.detail : `${row.detail.slice(0, LITE_DETAIL_CHARS)}\u2026`;
+    }
+    return out;
+}
+
+function liteStreamData(data) {
+    if (!data || !Array.isArray(data.rows)) return data;
+    return Object.assign({}, data, { rows: data.rows.map(liteStreamRow), lite: 1 });
+}
+
 /** The whole newest update of a gate to one socket: its new base for row and live text deltas. */
 function sendWholeStream(handler, ws, clientInfo, sessionId, gate) {
     if (!gate || !gate.last || !handler || !ws) return false;
     try {
-        handler.sendToClient(ws, { type: 'director_streaming_update', data: gate.last, timestamp: new Date().toISOString() });
+        const data = clientInfo && clientInfo.directorLite ? liteStreamData(gate.last) : gate.last;
+        handler.sendToClient(ws, { type: 'director_streaming_update', data, timestamp: new Date().toISOString() });
     } catch (_) { return false; /* the next update reaches it */ }
     noteStreamSent(clientInfo, sessionId, gate.last.seq, gate);
     return true;
@@ -5018,10 +5044,12 @@ function noteStreamSent(info, sessionId, seq, gate) {
 // A page opened a chat (or closed it: sessionId ''). A chat whose turn is running sends its newest
 // update at once, so the page does not wait for the next one. delta: the page puts row deltas
 // together (#843); liveDelta: it also appends the live row's text (textAppend / textFrom, #890 P11).
-function watchDirectorStream(handler, ws, clientInfo, sessionId, delta, liveDelta) {
+function watchDirectorStream(handler, ws, clientInfo, sessionId, delta, liveDelta, lite) {
     if (!clientInfo) return;
     const id = String(sessionId || '');
     clientInfo.directorWatch = id;
+    // lite: only the fields her bubbles read (liteStreamRow); a page that puts deltas together only
+    clientInfo.directorLite = (lite === true || lite === 1) && (delta === true || delta === 1);
     // this page puts row deltas together (flushDirectorStream); the full update below is its base
     clientInfo.directorDelta = delta === true || delta === 1;
     clientInfo.directorLiveDelta = liveDelta === true || liveDelta === 1;
@@ -5146,12 +5174,26 @@ function flushDirectorStream(sessionId) {
     let wsServer = null;
     try { wsServer = gate.gr && gate.gr.getWebSocketServer && gate.gr.getWebSocketServer(); } catch (_) { wsServer = null; }
     if (wsServer && typeof wsServer.broadcast === 'function') {
+        const lite = (info) => !!(info && info.directorLite);
+        // the cut rows are made once, only when a lite watcher is there to take them
+        let liteMade = null;
+        const liteOf = (p) => {
+            if (!liteMade) liteMade = new Map();
+            if (!liteMade.has(p)) liteMade.set(p, Object.assign({}, p, { data: liteStreamData(p.data) }));
+            return liteMade.get(p);
+        };
+        const anyLite = (() => { let found = false; try { wsServer.clients && wsServer.clients.forEach((info) => { if (!found && lite(info) && watchesDirectorStream(info, sessionId)) found = true; }); } catch (_) { found = true; } return found; })();
         wsServer.broadcast(payload, (info) => watchesDirectorStream(info, sessionId) && !(info && info.directorDelta) && sent(info));
         if (livePayload) {
-            wsServer.broadcast(livePayload, (info) => !!(info && info.directorDelta && info.directorLiveDelta) && watchesDirectorStream(info, sessionId) && hasPrev(info) && sent(info));
-            wsServer.broadcast(deltaPayload, (info) => !!(info && info.directorDelta) && !(info.directorLiveDelta && hasPrev(info)) && watchesDirectorStream(info, sessionId) && sent(info));
+            wsServer.broadcast(livePayload, (info) => !!(info && info.directorDelta && info.directorLiveDelta) && !lite(info) && watchesDirectorStream(info, sessionId) && hasPrev(info) && sent(info));
+            wsServer.broadcast(deltaPayload, (info) => !!(info && info.directorDelta) && !lite(info) && !(info.directorLiveDelta && hasPrev(info)) && watchesDirectorStream(info, sessionId) && sent(info));
+            if (anyLite) {
+                wsServer.broadcast(liteOf(livePayload), (info) => lite(info) && !!info.directorLiveDelta && watchesDirectorStream(info, sessionId) && hasPrev(info) && sent(info));
+                wsServer.broadcast(liteOf(deltaPayload), (info) => lite(info) && !(info.directorLiveDelta && hasPrev(info)) && watchesDirectorStream(info, sessionId) && sent(info));
+            }
         } else {
-            wsServer.broadcast(deltaPayload, (info) => !!(info && info.directorDelta) && watchesDirectorStream(info, sessionId) && sent(info));
+            wsServer.broadcast(deltaPayload, (info) => !!(info && info.directorDelta) && !lite(info) && watchesDirectorStream(info, sessionId) && sent(info));
+            if (anyLite) wsServer.broadcast(liteOf(deltaPayload), (info) => lite(info) && watchesDirectorStream(info, sessionId) && sent(info));
         }
     }
     else if (gate.handler && gate.ws) gate.handler.sendToClient(gate.ws, payload);
@@ -9242,7 +9284,7 @@ module.exports = {
         usesClaudeCli, publicTokenRouterCatalog, resolveTokenRouterRun, tokenRouterCliEnv, tokenRouterJail, requireTokenRouterKey, spawnClaude,
         sanitizeRentanAgent, rentanAgentFor, saveRentanAgentDefault, rentanAgentPath, claimDynagenChat, rentanFallback,
         publicSession, publicMessage, publicTraceRow, roundModelRecord, watchGeneratedPrints, rememberGeneratedPrint,
-        flushDirectorStream, dropDirectorStream, watchesDirectorStream, streamWireData, liveTextAppend, streamGates,
+        flushDirectorStream, dropDirectorStream, watchesDirectorStream, streamWireData, liveTextAppend, streamGates, liteStreamRow, liteStreamData,
         messagesSince, noteDraftHandout, handedDrafts,
         isLinkDrop, continuationPrompt,
         normalizeSessionTasks, readProcStat, directorState, computerReadiness,

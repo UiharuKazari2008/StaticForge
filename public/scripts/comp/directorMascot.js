@@ -861,6 +861,8 @@ class DirectorMascot {
         this.isHosted = typeof options.isHosted === 'function' ? options.isHosted : () => true;
         // options.onLogShown(): her log came into view (the director paints a live turn it held meanwhile)
         this.onLogShown = typeof options.onLogShown === 'function' ? options.onLogShown : null;
+        // the log went hidden or shown (either way): the director watches the stream lite while hidden
+        this.onLogSight = typeof options.onLogSight === 'function' ? options.onLogSight : null;
         this.manifests = new Map();      // persona -> normalized manifest (or null when missing)
         this.persona = null;
         this.manifest = null;
@@ -1173,6 +1175,7 @@ class DirectorMascot {
         const hidden = this.vnBubbles() && !this.peek;
         const was = this._logHidden === true;
         this._logHidden = hidden;
+        if (hidden !== was && this.onLogSight) this.onLogSight(hidden);
         if (!was || hidden || !this.onLogShown) return;
         if (now) this.onLogShown();
         else setTimeout(() => { if (this.onLogShown) this.onLogShown(); }, 0);
