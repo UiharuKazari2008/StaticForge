@@ -565,7 +565,8 @@ function grimoireRemoteScrollbars(found) {
     const send = () => {
         raf = 0;
         const frame = grimoireRemoteFrame(shell);
-        if (frame && frame.contentWindow && want) frame.contentWindow.postMessage(Object.assign({ type: 'grimoire-browser-scroll-to' }, want), location.origin);
+        // the local Alchemy's viewer is the laptop host's page (another origin)
+        if (frame && frame.contentWindow && want) frame.contentWindow.postMessage(Object.assign({ type: 'grimoire-browser-scroll-to' }, want), shell._grimoireLocalAlchemy ? '*' : location.origin);
         want = null;
     };
     const onScroll = (bar, vertical) => () => {
@@ -1668,6 +1669,9 @@ async function grimoireShowSiteMenu(ev, win) {
 function grimoireCloseRemoteBrowser(shell) {
     if (!shell) return;
     const id = shell._grimoireRemoteSessionId;
+    // the local Alchemy (DreamOS, a captive portal's sign-in page: dreamosPortal.js) is the laptop's own host's
+    const local = shell._grimoireLocalAlchemy === true;
+    shell._grimoireLocalAlchemy = false;
     shell._grimoireRemoteSessionId = '';
     shell._grimoireRemoteViewQuery = '';
     if (grimoireAudioShell === shell) grimoireAudioShell = null;
@@ -1681,6 +1685,11 @@ function grimoireCloseRemoteBrowser(shell) {
     shell._alchemyScroll = null;
     grimoireSyncAudio();
     if (!id) return Promise.resolve();
+    // not the service's session: the laptop's host ends it
+    if (local) {
+        if (window.dreamosPortal) window.dreamosPortal.sessionClosed(id);
+        return Promise.resolve();
+    }
     // resolves once the service has let the session go (grimoireTabs.js freeSession waits for it)
     return fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id), {
         method: 'DELETE',
@@ -1688,6 +1697,28 @@ function grimoireCloseRemoteBrowser(shell) {
         keepalive: true
     }).catch(() => {});
 }
+
+// The local Alchemy's session ended by itself (the network let the laptop through): its tab goes, and with a
+// window's last tab the window, as closing that tab by hand would.
+function grimoireCloseLocalAlchemy(shell) {
+    if (!shell || !shell._grimoireLocalAlchemy) return;
+    // WikiWindowInstance.close: public/scripts/comp/tagWikiSearchModal.js
+    if (shell.manager) { shell.close(); return; }
+    const host = grimoireHostOf(shell);
+    const tabs = host && host.tabs;
+    const tab = tabs ? tabs.backgroundTabOf(shell) : null;
+    if (tab) { tabs.close(tab); return; }
+    if (tabs && tabs.count() > 1 && (shell === host || shell === host.rightPane)) { tabs.close(); return; }
+    grimoireCloseRemoteBrowser(shell);
+    // TagWikiSearchModal.close: public/scripts/comp/tagWikiSearchModal.js
+    if (host && shell === host && typeof host.close === 'function') host.close();
+    else if (host && typeof host.goHome === 'function') host.goHome();
+    else if (shell.displayArea) shell.displayArea.innerHTML = '';
+}
+
+// The shells that show the local Alchemy (a session, or its frame once the host ended the session).
+grimoireCloseLocalAlchemy.shells = () => grimoireRemoteShells()
+    .filter((shell) => shell && shell._grimoireLocalAlchemy && (shell._grimoireRemoteSessionId || grimoireRemoteFrame(shell)));
 
 function grimoireRemoteBrowserReload(shell) {
     const frame = grimoireRemoteFrame(shell);
@@ -2043,6 +2074,8 @@ async function grimoireOpenRemoteBrowser(shell, url, options) {
     }
 
     shell._grimoireRemoteSessionId = payload.sessionId || '';
+    // a session the laptop's own host runs (DreamOS, dreamosPortal.js): same viewer, served by the host
+    shell._grimoireLocalAlchemy = payload.local === true;
     shell._grimoireRemoteViewQuery = String(payload.viewUrl || '').split('?')[1] || '';
     shell.displayArea.innerHTML = '';
     const frame = document.createElement('iframe');

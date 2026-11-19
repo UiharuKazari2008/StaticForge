@@ -36,6 +36,7 @@ const TRAY_POPUP_CATALOG = [
     { id: 'remote-access', label: 'Remote Access' },
     { id: 'high-latency', label: 'High Latency Detected' },
     { id: 'nightshade', label: 'Nightshade Network' },
+    { id: 'network-portal', label: 'Network log on' },
     { id: 'operation-receipt', label: 'Operation Receipt' },
     { id: 'generation-receipt', label: 'Generation Receipt' },
     { id: 'upscale-receipt', label: 'Upscaling Receipt' },

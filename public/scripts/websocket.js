@@ -10919,9 +10919,8 @@ class WebSocketClient {
             send: upOn,
             recv: downOn,
             // a slow or silent server is the Nightshade Network's (its tooltip and balloon, #895), not
-            // the computer's network: the globe shows limited no more. Limited is the network itself: a captive portal
-            // that wants a sign-in first (DreamOS, dreamosPortal.js)
-            limited: !!(window.dreamosPortal && window.dreamosPortal.captive())
+            // the computer's network: the globe shows limited no more
+            limited: false
         });
     }
 

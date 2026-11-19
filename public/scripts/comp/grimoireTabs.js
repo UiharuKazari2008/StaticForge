@@ -24,7 +24,7 @@
         'currentAddress', '_currentAddress',
         '_searchPageMode', 'currentSearchResults', '_searchResultIndex', 'lastOnlineSectionCount', 'lastOnlineTagOnlyCount',
         '_dsapState', '_dsapActive',
-        '_grimoireRemoteSessionId', '_grimoireRemoteViewQuery', '_grimoireRemoteTitle', '_grimoireDialogId',
+        '_grimoireRemoteSessionId', '_grimoireRemoteViewQuery', '_grimoireRemoteTitle', '_grimoireDialogId', '_grimoireLocalAlchemy',
         '_alchemyScroll', '_alchemyHistoryDir', '_alchemyHistoryAt',
         '_grimoireIeFeeds', '_grimoireIeZoom', '_grimoireIeZoomSent',
         '_recentItemsKey', '_grimoireNavStartedAt', '_grimoireLastFailedNavUrl',
