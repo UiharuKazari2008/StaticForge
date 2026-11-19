@@ -656,7 +656,7 @@
             const bios = ensureBios();
             // a CaféReady PC (the app's Melaton Café Miniport, #815): the BIOS splash shows its badge
             if (bios && bios.screen) bios.screen.cafeReady = !!(mcMini && mcMini.miniport().present);
-            // and the processor maker's logo, as a PC's splash shows it (Intel / AMD: their own logos; a phone's chip: its badge)
+            // and the processor maker's logo, as a PC's splash shows it (Intel Inside / AMD's red arrow; a phone's chip: its badge)
             const bootDoc = env.window && env.window.document;
             if (bios && bios.screen && !bios.screen.cpuBadge && bootDoc) {
                 const id = cpuBadgeId(bootDoc, env.navigator);
