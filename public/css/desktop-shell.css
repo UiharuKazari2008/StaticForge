@@ -2047,6 +2047,11 @@ html[data-glass="basic"] #startMenu.start-menu {
     cursor: var(--c-default);
 }
 
+/* updates wait to install (#924): Vista's shut down cell with the update shield */
+.start-menu-power-button.is-shutdown-update {
+    background-image: url('/static_images/vista-start/shutdown-update.png');
+}
+
 .start-menu-power-button.is-lock {
     background-image: url('/static_images/vista-start/lock.png');
 }

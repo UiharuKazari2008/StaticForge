@@ -37,7 +37,8 @@ const OUT = path.join(ROOT, 'public/static_images/vista-start');
 
 const CELL_W = 70;
 const CELL_H = 30;
-const CELLS = { shutdown: 1, lock: 5, disconnect: 0 };
+// shutdownUpdate (#924): the shut down cell with the update shield, shown while updates wait to install
+const CELLS = { shutdown: 1, shutdownUpdate: 2, lock: 5, disconnect: 0 };
 const STATES = ['rest', 'hover', 'pressed'];
 const ARROW_W = 28; // Vista's 22 px arrow button at 120 DPI
 const CAP_W = 6; // leading-cell columns that form the rounded end cap (mirrored onto the arrow)

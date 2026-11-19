@@ -521,6 +521,19 @@
 
     /** { files, bytes } to install, { unchanged } when the cache still holds that list, { skipped } while compiling, or { failed }. */
     async function check(env) {
+        const found = await checkFiles(env);
+        // what the install route needs beside the files (updatePolicy.js, #924)
+        if (found && Array.isArray(found.files) && found.files.length) {
+            try {
+                found.total = found.manifest ? rememberManifestStats(env, found.manifest) : readManifestStats(env);
+                found.criticalMissing = await criticalMissing(env, found.files);
+            } catch (_) { /* the route then judges by size alone */ }
+        }
+        lastFound = found;
+        return found;
+    }
+
+    async function checkFiles(env) {
         if (!env.caches) return { skipped: 'no-cache-storage' };
         const fetched = await fetchManifestConditional(env);
         if (fetched.failed) return { failed: true };
@@ -934,16 +947,93 @@
         }
     }
 
+    // ---- where an update installs (updatePolicy.js, Yozora #924) ----
+
+    const MANIFEST_STATS_KEY = 'melatonManifestStats';
+    let lastFound = null;
+
+    function policy() {
+        if (root && root.melatonUpdatePolicy) return root.melatonUpdatePolicy;
+        if (typeof module !== 'undefined' && module.exports && typeof require === 'function') {
+            try { return require('./updatePolicy.js'); } catch (_) { return null; }
+        }
+        return null;
+    }
+
+    /** { n, code } of the list this client keeps, stored so a delta or a 304 can still be judged. */
+    function rememberManifestStats(env, manifest) {
+        const p = policy();
+        if (!p || !Array.isArray(manifest) || !manifest.length) return null;
+        const s = p.stats(manifest);
+        const total = { n: s.n, code: s.code };
+        try { env.localStorage.setItem(MANIFEST_STATS_KEY, JSON.stringify(total)); } catch (_) { /* judged by the fallbacks */ }
+        return total;
+    }
+
+    function readManifestStats(env) {
+        try {
+            const raw = env.localStorage && env.localStorage.getItem(MANIFEST_STATS_KEY);
+            const total = raw ? JSON.parse(raw) : null;
+            return total && Number(total.n) > 0 ? total : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /** The installed mark: the desktop's last boot step, Melaton Mobile's, or a cache once proven in sync. */
+    function isInstalled(env) {
+        try {
+            const ls = env.localStorage;
+            return !!(ls && (ls.getItem('melatonInstalled') || ls.getItem('melatonMobileInstalled') || ls.getItem(SYNCED_MANIFEST_KEY)));
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /** How many critical files of the update have no row in the cache at all (changed ones do not count). */
+    async function criticalMissing(env, files) {
+        const p = policy();
+        if (!p || !env.caches) return 0;
+        const critical = (files || []).filter((file) => p.isCritical(file));
+        if (!critical.length) return 0;
+        const origin = (env.location && env.location.origin) || '';
+        const cache = await env.caches.open(STATIC_CACHE);
+        let missing = 0;
+        for (const file of critical) {
+            const hit = await cache.match(normalizePath(file.url, origin), { ignoreVary: true });
+            if (!hit) missing += 1;
+        }
+        return missing;
+    }
+
     /**
-     * Large enough for the installer (or an install already in progress)? Files the last install
-     * could not keep (its stragglers) never count: they would open Setup on every start.
+     * The installer, or in place? An install already in progress, a client that never finished one,
+     * a critical file missing from the cache, or an update that replaces large parts of the OS go to
+     * the installer; everything else installs in place (at shutdown / restart, or live). Files the
+     * last install could not keep (its stragglers) never count: they would open Setup on every
+     * start. Without updatePolicy.js (a page kept from before #924): the old 20-file cutoff.
      */
-    function needsInstaller(env, files) {
+    function needsInstaller(env, files, found) {
         if (readState(env)) return true;
         const record = readRecord(env);
         const known = new Set((record && record.stragglers) || []);
-        const fresh = files.filter((f) => !known.has(f.url));
-        return fresh.length > config.silentMax;
+        const fresh = (files || []).filter((f) => f && !known.has(f.url));
+        const p = policy();
+        if (!p) return fresh.length > config.silentMax;
+        const facts = found || (lastFound && lastFound.files === files ? lastFound : null) || {};
+        return p.route({
+            files: fresh,
+            total: facts.total || readManifestStats(env),
+            installed: isInstalled(env),
+            criticalMissing: facts.criticalMissing || 0
+        }).route === 'installer';
+    }
+
+    /** An in-place update small enough to land behind the boot screen (more waits for the running app). */
+    function quietAtBoot(env, files) {
+        const p = policy();
+        const max = p ? p.QUIET_BOOT_FILES : config.silentMax;
+        return requiredFiles(env, files).length <= max;
     }
 
     const api = {
@@ -973,7 +1063,12 @@
         forgetManifest,
         writeRecord,
         readRecord,
-        needsInstaller
+        needsInstaller,
+        quietAtBoot,
+        isInstalled,
+        criticalMissing,
+        rememberManifestStats,
+        readManifestStats
     };
     if (root) root.melatonUpdateEngine = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;

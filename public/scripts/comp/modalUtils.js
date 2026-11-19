@@ -8706,7 +8706,11 @@ function buildStartMenuPower() {
     // what the two buttons do: Customize Start Menu (public/scripts/comp/taskbarSettings.js)
     const prefs = startMenuTaskbarSettings() || {};
     const power = START_MENU_POWER_BUTTONS[prefs.powerButton] || START_MENU_POWER_BUTTONS.shutdown;
-    button(power.className, power.title, power.run);
+    // updates waiting to install (serviceWorkerManager.js, #924): Vista's shut down cell with the
+    // update shield and authui's tip; the button then installs them on the way down
+    const updates = power.updateTitle && document.documentElement.dataset.updatesWaiting === '1';
+    const powerBtn = button(updates ? `${power.className} is-shutdown-update` : power.className, updates ? power.updateTitle : power.title, power.run);
+    if (updates) powerBtn.setAttribute('aria-label', power.updateLabel);
     if (isDesktopStartMenuEnvironment()) {
         const lock = START_MENU_LOCK_BUTTONS[prefs.lockButton] || START_MENU_LOCK_BUTTONS.lock;
         button(lock.className, lock.title, lock.run);
@@ -8717,8 +8721,14 @@ function buildStartMenuPower() {
 // The power button's choices, drawn with Vista's own cells (scripts/build-vista-start-menu-art.js):
 // shut down and restart the red power cell, log off the amber disconnect cell
 const START_MENU_POWER_BUTTONS = {
-    shutdown: { className: 'is-shutdown', title: 'Shut down', run: () => runClientShutdownDirect() },
-    restart: { className: 'is-shutdown is-restart', title: 'Restart', run: () => runClientRestartDirect() },
+    shutdown: {
+        className: 'is-shutdown', title: 'Shut down', run: () => runClientShutdownDirect(),
+        updateLabel: 'Install Updates and Shut Down', updateTitle: 'Installs updates and then shuts down your computer.'
+    },
+    restart: {
+        className: 'is-shutdown is-restart', title: 'Restart', run: () => runClientRestartDirect(),
+        updateLabel: 'Install Updates and Restart', updateTitle: 'Installs updates and then restarts your computer.'
+    },
     logoff: { className: 'is-disconnect', title: 'Log off', run: () => runLogoutDirect() }
 };
 
@@ -8777,6 +8787,12 @@ function ensureStartMenuElements() {
     });
     return startMenuEls;
 }
+
+/** The power button follows html[data-updates-waiting] (serviceWorkerManager._syncUpdatesWaitingMark calls this). */
+function refreshStartMenuPower() {
+    if (startMenuEls) buildStartMenuPower();
+}
+window.refreshStartMenuPower = refreshStartMenuPower;
 
 function buildStartMenu() {
     if (!ensureStartMenuElements()) return;

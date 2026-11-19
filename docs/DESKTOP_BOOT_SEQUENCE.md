@@ -9,7 +9,7 @@ sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417, #42
 |---|--------------------|-------|
 | 1 | Melaton boot on `/launch` (every desktop start, PWA and tabs): the Phoenix BIOS POST (F2 Setup Utility, ESC Boot Menu), then Vista's boot screen (no logo) while the server and session are checked; on failure the boot menu; on success a cut to teal and `/app`. A device with nothing installed, or Melaton Recovery from the boot menu, boots the installation media instead: "Melaton is loading files..." and Windows Setup | `public/launch.html`, `public/scripts/launch/phoenixBios.js`, `public/scripts/launch/melatonBoot.js` (see below) |
 | 2 | Teal (`body.windows-startup`); after max(2 s from the cut, `/app`'s own startup) the logon dialog `#desktopPreStartupModal`: dial beats (Initializing → Dialing → Negotiation → Establishing), password form when the socket is not authenticated | `app.html` teal handoff, `websocket.js` (`_deferPreStartupForTealHold`, `connect`, `pingHost`, `_renderPreStartupDialog`), `serviceWorkerManager.js` (`_waitForServerReady`, `_showBootUiEarly`) |
-| 3 | No update progress on the logon. More than 20 fresh files, or an install `/launch` already started, reboots to `/launch` before any update dialog so Install Melaton handles it. Up to 20 files download with no dialog | `serviceWorkerManager.js` (`runBootSequence`, `_rebootIntoInstaller`) |
+| 3 | No update progress on the logon. An update only the installer takes (#924: an install `/launch` already started, never installed, a critical file missing, large parts of the OS) reboots to `/launch` before any update dialog so Install Melaton handles it. Up to 20 files download with no dialog; more wait for the desktop and install at shutdown | `serviceWorkerManager.js` (`runBootSequence`, `_rebootIntoInstaller`) |
 | 3b | Logon-phase init steps in the logon dialog (desktop first boot): user global settings and **Loading Application Data** (`{ logon: true }`), one status line, no progress bar. A critical failure keeps the dialog on its line and opens a Windows message box (Retry / Restart); the desktop never starts | `websocket.js` `_runLogonInitSteps`, `bootMessageBox.js` (see below) |
 | 4 | Connection complete ("Connected"), still on the logon dialog | `websocket.js` `_runConnectionBeat('connected')`, wrapped from `assetPreload.js` before `_startAfterLogon` |
 | 5 | Logon dialog says "Preparing your desktop..." and keeps the marquee (not a progress bar) while the active workspace's wallpaper is decoded and kept. Nothing else loads here (Yozora #512). The desktop stays hidden | `assetPreload.js` `preloadBeforeDesktopTransition` |
@@ -64,6 +64,64 @@ preset per screen and `/launch?design=1&screen=menu` (`bios`, `bios-setup`, `bio
 opens one directly at any window size; `&hud=0` hides the HUD (clean screenshots). Format in
 design mode never wipes and nothing navigates. Tests: `npm run test:melaton-boot`,
 `npm run test:phoenix-bios`.
+
+## Updates install at shutdown; the installer only when it must (Yozora #924)
+
+Yukimi, Nov 19 2026: "handle update download and install at the shutdown phase of the winlogon like real
+Windows; we can also add it at winlogon and restart. We would only jump to install if the update is so large
+that it would replace large parts of the OS, or the client has never flipped the installed bit, or is missing
+critical files in the cache."
+
+**Where an update installs** is one rule, `public/scripts/launch/updatePolicy.js` (`route()`), used by
+`/launch` (`updateEngine.needsInstaller`) and `/app` (`serviceWorkerManager._needsLaunchInstaller`). It
+supersedes the 20-file cutoff described under #419 below (kept only for a page stored from before #924,
+which has no policy loaded). The installer (`/launch`'s installation media) runs only when:
+
+| Reason | Test |
+| --- | --- |
+| An install is already running | `localStorage.melatonInstall` (survives a reload) |
+| Never installed | none of `melatonInstalled` (the desktop's last boot step), `melatonMobileInstalled`, `melatonManifestHash` (a cache once proven in sync), `melatonInstallRecord.completedAt` |
+| A critical file is missing | a file of `CRITICAL_PATHS` (and, in `/app`, of the page's own script and stylesheet tags) has **no row** in `static-cache-v2`. A changed one is only an update |
+| Large parts of the OS | the update is a quarter of the client's files, a third of its code (js / css / html), or 150 MB. Totals come from `localStorage.melatonManifestStats` (`{ n, code }`, written whenever a whole list is stored); unknown totals fall back to 2,400 files / 250 code files |
+
+Everything else installs **in place**:
+
+- **Download**: in the background while the app runs, as before (`service_worker_cache_update` push →
+  `CACHE_STATIC_FILES`; no polling), now for any size the rule leaves in place. At a boot check, up to 20
+  files still land before the desktop; a bigger in-place set is not waited for: the installed copy starts
+  and the files download once the desktop is up.
+- **Live** where it already could: unused files, hot segments, CSS / assets (#872). Unchanged.
+- **Install at log off / shut down / restart** (`runWinlogonPower`, `winlogonPower.js`, with
+  `serviceWorkerManager.planShutdownInstall` / `installUpdatesAtShutdown`): each finished restart-kind
+  download is one waiting update (`_updateBatches`). The sequence, in Vista's order and wording (measured
+  on the Vista VM with a pending servicing restart; strings from `wuaueng.dll.mui`, `cbsmsg.dll.mui`,
+  `authui.dll.mui`):
+  1. `Logging off...`
+  2. `Installing update n of N...` over `Do not turn off or unplug your computer; it will turn off
+     automatically.` (shut down) or `Please do not power off or unplug your machine.` (restart, log off):
+     each update's files are checked in the cache by hash and fetched when missing; what the server has
+     published since (one `OPTIONS /`, 5 s at most, skipped offline) comes down as one more update, unless
+     only the installer takes it.
+  3. `Shutting down...` (or `Logging off...`)
+  4. `Configuring updates: Stage 1 of 3 - x% complete.` over `Do not turn off your computer.`: a waiting
+     service worker takes over, the proven file list and its digest are stored.
+  5. `Stage 2 of 3`: the mark for the next start (`localStorage.melatonUpdateConfigure`), update history.
+  6. Black, then `/launch` (or the host's power switch, below).
+  7. Next start, before the logon: `Configuring updates: Stage 3 of 3 - x% complete.` on the Welcome
+     screen (`_configureUpdatesAtBoot`): the installed files are checked in the cache. No request to the
+     server (the zero-wait rule); nothing waits on the network.
+  Two-line status layout: lines 32 px apart, centred on each other, the wait ring centred beside the pair.
+- **Power buttons** while updates wait (`html[data-updates-waiting]`): the Start menu's shut down button is
+  Vista's cell with the update shield (`vista-start/shutdown-update.png`, explorer.exe strip cell 2), tip
+  "Installs updates and then shuts down your computer."; the logon screen's shut down button carries
+  authui's bitmap 11130, named "Shut down and install updates".
+- **Melaton Mobile** (no Welcome screen): a restart installs the waiting updates first under a progress
+  box ("Melaton Update"), then the app's cold boot. It does not ask the server for more on the way.
+- **DreamOS / a host that owns the power** : after the screen goes dark the page calls
+  `window.DreamOSPower.shutdown()` or `.restart()` when the host provides it (returning `false` declines);
+  otherwise it navigates to `/launch` as on a browser.
+
+Reference captures: `~/.cache/vista-vm/updates-ref/` on the Dreamscape host.
 
 ## Updates at boot and the installer (Yozora #419)
 

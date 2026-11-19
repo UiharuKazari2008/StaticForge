@@ -233,13 +233,23 @@ function memoryStorage() {
     env.fetch = async () => ({ ok: false, status: 503 });
     assert.deepStrictEqual(await engine.check(env), { skipped: 'no-manifest' }, 'runtime compile 503: skip, boot on');
 
-    // ---- installer threshold, stragglers, state ----
+    // ---- where an update installs (updatePolicy.js, #924): stragglers, state ----
     const s = { localStorage: memoryStorage() };
     const many = Array.from({ length: 25 }, (_, i) => ({ url: `/f${i}.js` }));
-    assert.strictEqual(engine.needsInstaller(s, many.slice(0, 20)), false, '20 files: silent');
-    assert.strictEqual(engine.needsInstaller(s, many), true, '21+: installer');
-    engine.writeRecord(s, { completedAt: 1, stragglers: many.slice(0, 10).map((f) => f.url) });
-    assert.strictEqual(engine.needsInstaller(s, many), false, 'known stragglers do not reopen Setup');
+    assert.strictEqual(engine.needsInstaller(s, many.slice(0, 2)), true, 'never installed: the installer, whatever the size');
+    s.localStorage.setItem('melatonInstalled', '1');
+    assert.strictEqual(engine.needsInstaller(s, many), false, 'installed, 25 files of an unknown total: in place');
+    assert.strictEqual(engine.quietAtBoot(s, many.slice(0, 20)), true, '20 files land behind the boot screen');
+    assert.strictEqual(engine.quietAtBoot(s, many), false, '21+ wait for the running app');
+    assert.strictEqual(engine.needsInstaller(s, many, { total: { n: 1000, code: 60 } }), true, '25 of 60 code files: large parts of the OS');
+    assert.strictEqual(engine.needsInstaller(s, many, { total: { n: 1000, code: 600 } }), false, '25 of 600 code files: in place');
+    assert.strictEqual(engine.needsInstaller(s, many, { total: { n: 80, code: 600 } }), true, '25 of 80 files: large');
+    assert.strictEqual(engine.needsInstaller(s, many.slice(0, 3), { total: { n: 1000, code: 600 }, criticalMissing: 1 }), true, 'a critical file missing: the installer');
+    assert.strictEqual(engine.needsInstaller(s, [{ url: '/big.bin', size: 200 * 1024 * 1024 }], { total: { n: 1000, code: 600 } }), true, '200 MB: large');
+    const lots = Array.from({ length: 2400 }, (_, i) => ({ url: `/img${i}.png` }));
+    assert.strictEqual(engine.needsInstaller(s, lots), true, '2,400 files of an unknown total: large');
+    engine.writeRecord(s, { completedAt: 1, stragglers: lots.slice(0, 10).map((f) => f.url) });
+    assert.strictEqual(engine.needsInstaller(s, lots), false, 'known stragglers do not reopen Setup');
     engine.writeState(s, { startedAt: 5, total: 25 });
     assert.deepStrictEqual(engine.readState(s), { startedAt: 5, total: 25, active: true });
     assert.strictEqual(engine.needsInstaller(s, many.slice(0, 2)), true, 'an interrupted install resumes in Setup');
