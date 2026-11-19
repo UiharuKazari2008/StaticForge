@@ -2617,6 +2617,8 @@ class WebSocketClient {
         if (!modal.dataset.prestartupOpened) {
             this.preStartupMarqueeManualPause = false;
             modal.dataset.prestartupOpened = 'true';
+            // winlogon is up: the pointer is back (app.html hides it from the boot's cut to teal)
+            if (window.dreamscapeShowBootPointer) window.dreamscapeShowBootPointer();
             // DreamOS (#923): the machine's native boot screen covers the page until the logon is painted
             // (two frames from here: this one lays it out, the next has it on screen)
             if (window.DreamOSBoot && window.DreamOSBoot.native) {
