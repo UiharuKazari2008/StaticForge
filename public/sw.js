@@ -1577,8 +1577,11 @@ workbox.routing.registerRoute(
 // Opening / or /app: only a page the Dreamscape server itself sent may load. A front proxy's
 // error page (nginx 502 / 504 while the server is down or stalled) never carries the server's
 // X-Melaton-Shell mark; then, or with no answer at all, the installed boot shell (/launch) takes
-// over and waits for the server (Yukimi, Nov 13). Other answers pass as sent (the site gate's
-// cover and a logged-out redirect stay what the server decided).
+// over and waits for the server (Yukimi, Nov 13). On a device that keeps the boot shell, any other
+// unmarked answer is the proxy's too: nginx answers 404 while the server is down (a DreamOS laptop
+// booted into "404 Not Found nginx/1.16.1", Nov 19), so only a redirect (the gate's way to
+// /launch) or a marked page passes there. A device with nothing kept still gets what the server
+// sent (the site gate's cover for a stranger).
 workbox.routing.registerRoute(
   ({ url, request }) => request.mode === 'navigate' && url.origin === self.location.origin
     && (url.pathname === '/' || url.pathname === '/app' || url.pathname === '/index.html'),
@@ -1596,7 +1599,11 @@ workbox.routing.registerRoute(
     } catch (_err) {
       response = null;
     }
-    if (response && (response.status < 500 || response.headers.get('x-melaton-shell'))) {
+    let unmarkedWithShell = false;
+    if (response && response.type !== 'opaqueredirect' && !response.headers.get('x-melaton-shell')) {
+      try { unmarkedWithShell = !!(await (await caches.open(LAUNCH_SHELL_CACHE)).match(LAUNCH_SHELL_KEY)); } catch (_err) { unmarkedWithShell = false; }
+    }
+    if (response && (response.status < 500 || response.headers.get('x-melaton-shell')) && !unmarkedWithShell) {
       // the app page itself, kept so an installed phone starts without the server (launch.html
       // startOfflineIfInstalled; Melaton Mobile as Android's launcher must always reach Today)
       if (response.status === 200 && response.headers.get('x-melaton-shell') === 'app') {
