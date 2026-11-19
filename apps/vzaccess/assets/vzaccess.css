@@ -34,7 +34,7 @@
 /* ---- the tabs ---- */
 /* the kit's tabs at 7.6's size (27 px, a bold selected tab); by the window's id, as the kit's own rules are long chains */
 #vzAccessManagerModal .vz-root > menu[role="tablist"] { flex: none; margin: 9px 0 0 9px; }
-#vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"] { display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 14px 0 9px; font-size: 12px; }
+#vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"] { display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 14px 0 9px; font-size: 12px; flex: none; min-width: max-content; white-space: nowrap; }
 #vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"] img { width: auto; height: 16px; flex: none; }
 #vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"][aria-selected="true"] { font-weight: bold; }
 .vz-root .vz-panel {

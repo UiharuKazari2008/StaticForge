@@ -166,8 +166,14 @@
             const running = typeof apps.running === 'function' && apps.running().some((a) => a.packageId === 'vzaccess');
             if (!running) void Promise.resolve(apps.launch({ packageId: 'vzaccess', args: { tray: true } })).catch(() => { /* no package: no tray icon */ });
         };
-        if (root.wsClient && root.wsClient.initializationCompleted) vzTimer = setTimeout(go, 1500);
-        else doc.addEventListener('desktopBootDone', () => { vzTimer = setTimeout(go, 3000); }, { once: true, signal: appScopeSignal });
+        const booted = () => !!(root.wsClient && root.wsClient.initializationCompleted && root.melatonApps);
+        if (booted()) { vzTimer = setTimeout(go, 1500); return; }
+        // the boot's end: its event, or (the DeX window can pass desktopBootDone before this first runs, and then it
+        // never came - VZAccess Manager stayed out of the tray) one look 20 s on; whichever comes first starts it
+        let started = false;
+        const once = () => { if (started || !booted()) return; started = true; clearTimeout(vzTimer); vzTimer = setTimeout(go, 3000); };
+        doc.addEventListener('desktopBootDone', () => setTimeout(once, 0), { once: true, signal: appScopeSignal });
+        vzTimer = setTimeout(() => { once(); if (!started) vzTimer = setTimeout(once, 40000); }, 20000);
     }
 
     // ---- network: Wi-Fi + mobile broadband ------------------------------------------------------------------------
