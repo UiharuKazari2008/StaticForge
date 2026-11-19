@@ -883,14 +883,8 @@ function selectTransformation(value) {
             break;
         case 'reroll':
         case 'variation':
-            // Update button display for immediate actions
-            const options = {
-                'reroll': undefined,
-                'variation': undefined
-            };
-            const displayText = options[value] || 'Reference';
-            updateTransformationDropdownState(value, displayText);
-
+            // (the transformation dropdown's button label, updateTransformationDropdownState, went with the
+            // dropdown: calling it threw before the work below started)
             // Handle reroll/variation logic
             handleTransformationTypeChange(value);
             break;

@@ -89,18 +89,45 @@
      * Used for windows only (rare): a window a shared helper builds for a segment (the Vista games
      * engine builds each game's window) is that segment's, though the helper appends it.
      */
-    function ownerInStack() {
-        if (!segments.size) return null;
+    function segmentsInStack() {
+        const found = [];
+        if (!segments.size) return found;
         const lines = stackLines(40);
         for (let i = 3; i < lines.length; i++) {
             const line = lines[i];
             for (const seg of segments.values()) {
-                for (const prefix of seg.urlPrefixes) {
-                    if (line.indexOf(prefix) >= 0) return seg;
-                }
+                if (!found.includes(seg) && seg.urlPrefixes.some((p) => line.indexOf(p) >= 0)) found.push(seg);
             }
         }
-        return null;
+        return found; // innermost first
+    }
+
+    function ownerInStack() {
+        return segmentsInStack()[0] || null;
+    }
+
+    /** Whether seg depends (directly or through others) on the segment with key dep. */
+    function dependsOn(seg, dep, seen = new Set()) {
+        if (!seg || seen.has(seg.key)) return false;
+        seen.add(seg.key);
+        for (const k of seg.dependsOn) {
+            if (k === dep) return true;
+            if (dependsOn(segments.get(k), dep, seen)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * The owner of a window: the segment that asked for it. When the innermost segment in the stack
+     * is a shared engine another segment in the stack depends on (the Vista games engine building
+     * Minesweeper's window), the dependent is the owner.
+     */
+    function windowOwnerInStack() {
+        const chain = segmentsInStack();
+        if (!chain.length) return null;
+        let owner = chain[0];
+        for (const seg of chain.slice(1)) if (dependsOn(seg, owner.key)) owner = seg;
+        return owner;
     }
 
     // ---- global hooks (installed once, on the first load) ----------------------------------------
@@ -204,9 +231,10 @@
             // <body> children a segment appends are its own (its windows, overlays, popups)
             const own = (node) => {
                 if (!segments.size || !node || node.nodeType !== 1) return;
-                let seg = ownerOfCaller(2);
-                // a window built for a segment by a shared helper is the segment's too
-                if (!seg && (node.classList.contains('modal') || (node.querySelector && node.querySelector('.modal')))) seg = ownerInStack();
+                const isWindow = node.classList.contains('modal') || !!(node.querySelector && node.querySelector('.modal'));
+                // a window belongs to the segment that asked for it (a shared helper or engine may build
+                // and append it); anything else to the segment whose code appended it
+                const seg = isWindow ? windowOwnerInStack() : ownerOfCaller(2);
                 if (seg) seg.nodes.add(node);
             };
             for (const name of ['appendChild', 'insertBefore', 'append', 'prepend']) {
@@ -407,6 +435,8 @@
             styles: new Set(),
             nodes: new Set(),
             owns: Array.isArray(s.owns) ? s.owns.slice() : [],
+            // keys of the segments this one is built on (featureLoader depends), for window ownership
+            dependsOn: new Set(Array.isArray(s.dependsOn) ? s.dependsOn : []),
             undo: [],
             // stack frames of these URLs belong to the segment (the package folder, or each script)
             urlPrefixes: (s.urlPrefixes && s.urlPrefixes.length ? s.urlPrefixes.map(absolute) : scripts)
