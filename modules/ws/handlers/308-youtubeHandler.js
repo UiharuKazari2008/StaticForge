@@ -28,7 +28,8 @@ const kickChat = require('../../videosKickChat');
 //   youtube_live_state       { id }                    admins -> { state: live | restarting | ended | error | gone, error }
 //   youtube_live_stop        { id }                    admins -> { stopped }
 //   youtube_chat_setup       { on }                    admins; switches Kick chat on or off (on: Kick's webhook is answered) -> { chat }
-//   youtube_chat_status      {}                        { chat: { enabled, linked, ready, webhookUrl, redirectUrl } }
+//   youtube_chat_status      { check? }                { chat: { enabled, linked, ready, deliveries, watching[], webhookUrl, redirectUrl } };
+//                                                      check: also { kick[] }, the subscriptions Kick has on record for the app
 //   youtube_chat_link        {}                        admins; starts linking a Kick account for sending -> { url } (opened in a browser)
 //   youtube_chat_unlink      {}                        admins; forgets the linked Kick account -> { chat }
 //   youtube_chat_open        { slug }                  admins; the chat panel opened -> { slug, messages[], canSend }; from then on this
@@ -133,7 +134,7 @@ function registerPackets(handlersCtx) {
     const tidy = setTimeout(() => { kickChat.tidy(); }, 20000);
     if (tidy.unref) tidy.unref();
     const chatSockets = new WeakSet();
-    reg('youtube_chat_status', packet(false, 'Chat could not be read', async () => ({ chat: kickChat.status() })));
+    reg('youtube_chat_status', packet(false, 'Chat could not be read', async (m) => Object.assign({ chat: kickChat.status() }, m.check ? { kick: await kickChat.remote() } : {})));
     reg('youtube_chat_setup', packet(true, 'The setting could not be saved', async (m) => ({ chat: await kickChat.setEnabled(m.on !== false) })));
     reg('youtube_chat_link', packet(true, 'The sign-in could not be started', async () => kickChat.linkStart()));
     reg('youtube_chat_unlink', packet(true, 'The account could not be removed', async () => ({ chat: await kickChat.unlink() })), { destructive: true });

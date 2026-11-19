@@ -62,6 +62,8 @@ let batchTimer = null;
 const linking = new Map(); // state -> { verifier, redirect, until }
 let statusSubs = new Map(); // slug -> subscription id (livestream.status.updated)
 let onChanged = null;
+// what reached the webhook since the server started (for finding out why chat stays empty): no message text
+const seenStats = { posts: 0, taken: 0, refused: 0, lastAt: 0, lastRefusal: '', lastType: '', dropped: 0 };
 
 function load() {
     if (state) return state;
@@ -92,7 +94,7 @@ const origin = () => String(deps.origin() || '').replace(/\/+$/, '');
 
 function status() {
     const o = origin();
-    return { enabled: enabled(), linked: linked(), ready: !!deps.key(), webhookUrl: o ? `${o}${WEBHOOK_PATH}` : '', redirectUrl: o ? `${o}${OAUTH_PATH}` : '' };
+    return { enabled: enabled(), linked: linked(), ready: !!deps.key(), deliveries: Object.assign({}, seenStats), watching: [...rooms.values()].map((r) => ({ slug: r.slug, viewers: r.viewers.size, subscribed: !!r.sub, held: r.messages.length })), webhookUrl: o ? `${o}${WEBHOOK_PATH}` : '', redirectUrl: o ? `${o}${OAUTH_PATH}` : '' };
 }
 
 // ------------------------------------------------------------------------------------------ Kick calls
@@ -160,6 +162,14 @@ async function unsubscribe(ids) {
     } catch (e) {
         console.warn(`[videos] Kick subscription not removed: ${e.message}`);
     }
+}
+
+/** What Kick itself has on record for this app (a check when chat stays empty): [{ id, event, broadcaster, method, created }]. */
+async function remote() {
+    const token = await deps.appToken();
+    const r = await call('GET', `${KICK}/events/subscriptions`, { token });
+    if (r.status !== 200) throw new ChatError(`Kick answered ${r.status} to the list of subscriptions`, 'KICK_REFUSED');
+    return (r.body && Array.isArray(r.body.data) ? r.body.data : []).map((x) => ({ id: String(x.id || ''), event: x.event, broadcaster: x.broadcaster_user_id, method: x.method, created: x.created_at }));
 }
 
 /** After a start: subscriptions left from a run that ended without tidying are removed (chat nobody reads). */
@@ -270,7 +280,7 @@ function leave(slug, key) {
 function takeMessage(d) {
     const slug = String((d.broadcaster && d.broadcaster.channel_slug) || '').toLowerCase();
     const r = rooms.get(slug) || [...rooms.values()].find((x) => x.userId && d.broadcaster && Number(x.userId) === Number(d.broadcaster.user_id));
-    if (!r) return;
+    if (!r) { seenStats.dropped += 1; return; }
     const sender = d.sender || {};
     const ident = sender.identity || {};
     const color = /^#[0-9a-fA-F]{6}$/.test(String(ident.username_color || '')) ? String(ident.username_color) : '';
@@ -451,7 +461,12 @@ function mountRaw(app, express, notFound) {
     app.post(WEBHOOK_PATH, express.raw({ type: () => true, limit: '256kb' }), async (req, res) => {
         const raw = Buffer.isBuffer(req.body) ? req.body : null;
         const id = String(req.get('Kick-Event-Message-Id') || '');
-        if (!enabled() || !raw || !(await verify(id, String(req.get('Kick-Event-Message-Timestamp') || ''), raw, String(req.get('Kick-Event-Signature') || '')))) { notFound(res); return; }
+        seenStats.posts += 1;
+        seenStats.lastAt = Date.now();
+        const why = !enabled() ? 'chat is off' : !raw || !raw.length ? `no body (${typeof req.body})` : !id ? 'no Kick headers' : !(await verify(id, String(req.get('Kick-Event-Message-Timestamp') || ''), raw, String(req.get('Kick-Event-Signature') || ''))) ? 'signature not Kick\'s (or stale)' : '';
+        if (why) { seenStats.refused += 1; seenStats.lastRefusal = why; notFound(res); return; }
+        seenStats.taken += 1;
+        seenStats.lastType = String(req.get('Kick-Event-Type') || '');
         res.status(200).end();
         if (seenIds.has(id)) return;
         seenIds.add(id);
@@ -484,7 +499,7 @@ function mount(app, authMiddleware, notFound) {
 }
 
 module.exports = {
-    bind, status, enabled, setEnabled, watch, leave, say, linkStart, unlink, gateExempt, mountRaw, mount, syncBells, tidy, pushesLive, ChatError,
+    bind, status, remote, enabled, setEnabled, watch, leave, say, linkStart, unlink, gateExempt, mountRaw, mount, syncBells, tidy, pushesLive, ChatError,
     onChanged(fn) { onChanged = typeof fn === 'function' ? fn : null; },
     WEBHOOK_PATH, OAUTH_PATH, EMOTE_PATH,
     _test: {

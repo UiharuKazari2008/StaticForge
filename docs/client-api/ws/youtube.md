@@ -86,7 +86,7 @@ is on; each delivery's signature is checked against Kick's public key, anything 
 
 | Packet | |
 | --- | --- |
-| `youtube_chat_status` | `{}` -> `{ chat: { enabled, linked, ready, webhookUrl, redirectUrl } }`. The two addresses are what the Kick developer app needs. |
+| `youtube_chat_status` | `{ check? }` -> `{ chat: { enabled, linked, ready, deliveries, watching[], webhookUrl, redirectUrl } }`. The two addresses are what the Kick developer app needs. `deliveries` counts what reached the webhook since the server started (`posts`, `taken`, `refused`, `lastRefusal`, `dropped`); `check: true` adds `kick[]`, the subscriptions Kick has on record. |
 | `youtube_chat_setup` | `{ on }` -> `{ chat }`. Admin. Off removes every subscription. |
 | `youtube_chat_link` | `{}` -> `{ url, redirectUrl }`. Admin. Kick's sign-in page (OAuth 2.1 with PKCE, scope `chat:write`), opened in a browser; the answer comes to `GET /api/videos/kick/oauth` (public only for a state given out in the last 10 minutes). |
 | `youtube_chat_unlink` | `{}` -> `{ chat }`. Admin. Forgets (and revokes) the linked account. |
