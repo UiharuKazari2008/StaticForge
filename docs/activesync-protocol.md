@@ -67,7 +67,7 @@ notification is closed.
 ## Rules
 
 - Never guess a status field: leave it out when the platform does not say.
-- File contents never travel in `as_call` arguments (1 MB cap): they go through the HTTP endpoints in [client-api/ws/activeSync.md](./client-api/ws/activeSync.md#file-bodies-http). A service answers `stream.send` by posting the file in ordered chunks of about 1 MB and stops on a 410; it answers `stream.receive` by fetching `.../data` in ranges and writing them.
+- File contents never travel in `as_call` arguments (1 MB cap): they go through the HTTP endpoints in [client-api/ws/activeSync.md](./client-api/ws/activeSync.md#file-bodies-http). A service answers `stream.send` by posting the file in ordered chunks of about 1 MB and stops on a 410; it answers `stream.receive` by fetching `.../data` in ranges and writing them. `mkdirs: true` makes `dir` first when it is missing (files sent to the phone go to `/ActiveSync` at the root of internal storage); `temp: true` (a program to install) writes the file to the app's own temporary folder (`externalCacheDir/activesync-install/<transferId>/<name>`) instead of `root` / `dir`, needs only the `control` permission and answers `{ temp: true, name, size }`.
 - A guest connection ends with the last socket of the device; only a partnership survives a reconnect.
 
 ## Clipboard and links
@@ -147,7 +147,7 @@ the user to confirm; the app only opens that prompt.
 
 | Operation (to the service) | Arguments | Does |
 | --- | --- | --- |
-| `apps.install` | `{ root, path }` (an `.apk` in shared storage) | opens the installer when the app is on screen, else posts "<app> <version> is ready to install" (tap opens it); without permission to install from Dreamscape, the same path opens Android's Install unknown apps page first. Answers `{ state: prompted \| notified \| needs_permission, package, version, label }`. Needs the `control` and `files` permissions; queueable for a partner that is away (after its `stream.receive`). |
+| `apps.install` | `{ temp, name, root, path }` (a program in the app's temporary folder, `temp` = the transfer id of its `stream.receive`) or `{ root, path }` (an `.apk` in shared storage) | local ADB or Shizuku when allowed; else a PackageInstaller session whose confirmation opens when the app is on screen, else posts "<app> <version> is ready to install" (tap opens it); without permission to install from Dreamscape, Android's Install unknown apps page first. A temporary file is deleted once the install ended (installed, failed or the prompt dismissed); one left behind (the app updated itself) goes at the next link start, as does any older than a day. Answers `{ state: prompted \| notified \| needs_permission \| installing \| installed, package, version, label, via? }`. Needs `control` (and `files` for a `path` in shared storage); queueable for a partner that is away (after its `stream.receive`). |
 
 From the desktop: Melaton Mobile Device Center > Programs and Services > Install a program on your device. From
 an agent (application key, admin): upload as for any file (`POST /api/activesync/upload/:deviceId/begin`, chunks,

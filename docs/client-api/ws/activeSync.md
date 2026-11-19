@@ -74,9 +74,10 @@ requests must come from the session of one of its open sockets.
 | --- | --- | --- |
 | `GET /api/activesync/file/:deviceId/:root/<path>[?thumb=N][&download=1]` | administrator | The phone is asked `stream.send { transferId, root, path, thumb, range }` and the response stays open. `Range` is passed on (206 when the phone answers with one). Served with `Content-Security-Policy: sandbox`. 6 streams per device at a time, the rest wait |
 | `POST /api/activesync/transfer/:id/chunk?seq=N[&end=1]` | the device | The file in order, at most 8 MB a chunk; `seq=0` carries `x-as-status`, `x-as-type`, `x-as-length`, `x-as-range`, `x-as-mtime`. Answered once the desktop took the chunk. 409 `OUT_OF_ORDER { expected }`, 410 when the desktop went away |
-| `POST /api/activesync/upload/:deviceId/begin` | administrator | `{ root, dir, name, size, conflict, mtime, id? }` -> `{ id, chunkSize }` |
+| `POST /api/activesync/upload/:deviceId/begin` | administrator | `{ root, dir, name, size, conflict, mtime, id?, mkdirs? }` -> `{ id, chunkSize }`. `mkdirs`: the phone makes `dir` when it is missing (a queued copy cannot make it ahead) |
 | `POST /api/activesync/upload/:id/chunk?offset=N` | administrator | Raw bytes in order -> `{ received }`; a wrong offset answers 409 with `received` (resume from there) |
-| `POST /api/activesync/upload/:id/commit` | administrator | `{ queue? }`. The phone is asked `stream.receive { transferId, root, dir, name, size, conflict, mtime }` and pulls the file; answers `{ entry }`, or `{ queued: true }` for an offline partner with `queue` (kept up to 7 days, removed when delivered, refused or the partnership ends) |
+| `POST /api/activesync/upload/:id/commit` | administrator | `{ queue?, install? }`. The phone is asked `stream.receive { transferId, root, dir, name, size, conflict, mtime, mkdirs?, temp? }` and pulls the file; answers `{ entry }`, or `{ queued: true }` for an offline partner with `queue` (kept up to 7 days, removed when delivered, refused or the partnership ends). `install` (an `.apk`): the server's ADB first; else `temp: true` puts the file in the app's temporary folder under the transfer id, `apps.install { temp, name, root, path }` follows and the app deletes the file once the install ended (never left in Download or the received folder). An app build without the temporary folder saves it in `root` / `dir` and installs from `path` |
+| `POST /api/activesync/install/:deviceId` | administrator | `{ root, path }` (an `.apk` on the phone's storage) or `{ temp, name }` (a program still in the app's temporary folder: Received Items' Install), `queue?` -> `{ install }` |
 | `GET /api/activesync/transfer/:id/data` | the device | The committed file, with `Range` |
 | `DELETE /api/activesync/upload/:id` | administrator | Gives up an upload that was not committed |
 
@@ -105,7 +106,10 @@ Computer: `studio.getSession`, `studio.setSession { session }`.
 
 On a desktop `window.phoneStorage` is `public/scripts/comp/activeSyncRemoteStorage.js`: the bridge's interface over these
 operations and the file endpoints, so Explorer's phone drive (`explorerPhoneDrive.js`) shows a connected device's
-storage unchanged, and Send To copies files into its Download folder.
+storage unchanged, and Send To copies files into its received folder: `ActiveSync` at the root of internal storage
+(`phoneStorage.receivedDir`, made when missing; Yukimi, Nov 18). Device Center's File Management ("Open the folder of
+files sent to your device"), the tray icon's menu (Open Received Files) and the phone's ActiveSync Menu (Received Files)
+open it in Explorer / File Explorer (`phoneStorage.openReceived(deviceId)` on a desktop).
 
 ## Wallpapers kept for Device Center (#827)
 

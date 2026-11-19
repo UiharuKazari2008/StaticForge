@@ -6,8 +6,8 @@
  * Melaton Mobile Device Center (apps/activesync). Measured on the Device Emulator (WM 6.1 VGA
  * halved; ~/.cache/wm61/ref/activesync-*.png): a white page of 4 px margins, the status picture
  * (\Windows\Syncconnected.bmp / Syncnotconnect.bmp / Syncyellow.bmp, SyncAnimation.gif while
- * something is in flight), soft keys Sync | Menu (Options..., Status..., Send Clipboard,
- * Send Link...: activeSyncClipboard.js).
+ * something is in flight), soft keys Sync | Menu (Options..., Status..., Received Items...,
+ * Received Files, Send Clipboard, Send Link...: activeSyncClipboard.js).
  *
  *   no computer yet    the device's own text for a device without a partnership
  *   waiting            a computer has to choose how to connect (its Device Center shows the choice)
@@ -19,6 +19,9 @@
  *                      pictures, programs to install, clipboard text, notifications), newest first;
  *                      the selected one's action on the left soft key (Open / Install / View / Copy),
  *                      Menu: Remove, Clear All. Opened from the title bar's ActiveSync icon too.
+ *   Received Files     File Explorer at \ActiveSync, the folder at the root of internal storage that
+ *                      files sent from the computer go to (Yukimi, Nov 18; made when missing).
+ *                      Programs never stay there: the app installs them from its temporary folder.
  *
  * Only inside the Dreamscape app (activeSync.kind === 'device') and only on phones.
  * Styles: public/css/wm-activesync.css.
@@ -32,6 +35,8 @@
     if (!as || as.kind !== 'device') return;
 
     const APP_ID = 'activesync';
+    // files sent from the computer (activeSyncRemoteStorage.js RECEIVED_DIR, on internal storage)
+    const RECEIVED_DIR = '/ActiveSync';
     // the permission names of modules/activeSync.js, as this program words them
     const PERMISSIONS = [
         ['files', 'Files on this device'],
@@ -342,9 +347,10 @@
         }
         if (it.kind === 'program') {
             // the app opens Android's installer (or installs through Shizuku): the same way a push installs
+            // temp: the program is still in the app's temporary folder (it goes once installed)
             const st = as.state();
             await run(async () => {
-                const r = await fetch(`/api/activesync/install/${encodeURIComponent(st.id)}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ root: d.root, path: d.path }) });
+                const r = await fetch(`/api/activesync/install/${encodeURIComponent(st.id)}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ root: d.root, path: d.path, temp: d.temp, name: it.title }) });
                 const j = await r.json().catch(() => ({}));
                 if (!r.ok || j.success === false) throw new Error(j.error || 'The program could not be installed.');
             });
@@ -360,6 +366,23 @@
         }
         if (it.kind === 'note') { await ws.messageBox({ title: it.title || 'Notification', icon: 'info', text: d.text || it.title }); return; }
         if (it.kind === 'studio') ws.open('studio');
+    }
+
+    /** Received Files: File Explorer at the received folder on internal storage (made when missing). */
+    async function openReceivedFiles() {
+        const ps = window.phoneStorage;
+        const E = window.wmFileExplorer;
+        if (!ps || !E || typeof E.openFolder !== 'function') return;
+        let st = null;
+        try { st = await ps.hello(); } catch (_) { st = null; }
+        const roots = st && Array.isArray(st.roots) ? st.roots : [];
+        const r = roots.find((x) => x.id === 'internal') || roots[0];
+        if (!st || !st.enabled || !st.access || !r) {
+            await ws.messageBox({ title: 'ActiveSync', icon: 'warning', text: 'Files sent from the computer are kept in the ActiveSync folder on this phone. Turn on phone storage in the app settings to open it.' });
+            return;
+        }
+        try { await ps.call('mkdir', { root: r.id, path: RECEIVED_DIR }); } catch (_) { /* it is there */ }
+        E.openFolder(`phone://${r.id}${RECEIVED_DIR}`, RECEIVED_DIR.slice(1));
     }
 
     async function removeReceived(all) {
@@ -446,6 +469,7 @@
             { label: 'Options...', action: () => { optsBegin(); view = 'options'; render(); ws.syncHistory(); }, disabled: !optsAvailable(st) },
             { label: 'Status...', action: showStatus, disabled: !st.online },
             { label: `Received Items${as.receivedUnseen && as.receivedUnseen() ? ` (${as.receivedUnseen()})` : ''}...`, action: openReceived },
+            { label: 'Received Files', action: () => void openReceivedFiles(), disabled: !window.phoneStorage || !window.wmFileExplorer },
             '-',
             // activeSyncClipboard.js: to the computer this phone is connected to
             { label: 'Send Clipboard', action: () => { const c = window.activeSyncClipboard; const t = c && c.targets()[0]; if (t) void c.sendClipboard(t.id); }, disabled: !canSend(st) },

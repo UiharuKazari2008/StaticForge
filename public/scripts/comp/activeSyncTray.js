@@ -62,6 +62,11 @@
                         const devices = a.state().devices.filter((d) => d.online || d.partner);
                         s.items = [{ text: 'Open Melaton Mobile Device Center', action: 'open', default: true }];
                         if (devices.length) s.items.push({ separator: true }, ...devices.map((d) => ({ text: line(d), action: `dev:${d.deviceId}` })));
+                        // the folder files sent to a phone go to (activeSyncRemoteStorage.js openReceived)
+                        const sharing = devices.filter((d) => d.online && (d.permissions || []).includes('files'));
+                        if (sharing.length && root.phoneStorage && typeof root.phoneStorage.openReceived === 'function') {
+                            s.items.push({ separator: true }, ...sharing.map((d) => ({ text: sharing.length > 1 ? `Open Received Files on ${d.name}` : 'Open Received Files folder', action: `rx:${d.deviceId}` })));
+                        }
                         // what this icon does on its own (Device Center's Connection Settings is WMDC's dialog and has no place for these)
                         s.items.push({ separator: true },
                             { text: 'Open Device Center when a new device connects', action: 'opt:OpenOnConnect', showIndicator: true, indicatorMark: 'check', checked: setting('OpenOnConnect') },
@@ -76,6 +81,7 @@
                         if (root.melatonRegistry) void root.melatonRegistry.set(REG, { [name]: setting(name) ? 0 : 1 });
                         return;
                     }
+                    if (action.startsWith('rx:')) { void root.phoneStorage.openReceived(action.slice(3)); return; }
                     openCenter(action.startsWith('dev:') ? action.slice(4) : null);
                 }
             });

@@ -1100,7 +1100,10 @@
         return { text: 'Send To', optionsfn: () => devices.map((d) => ({ text: d.name, action: `${ACTION}sendto:${d.deviceId}` })) };
     }
 
-    /** Copies the selection into the device's Download folder, under the usual progress dialog. */
+    /**
+     * Copies the selection into the device's ActiveSync folder (Yukimi, Nov 18: ActiveSync's own folder
+     * at the root of internal storage, not Download), under the usual progress dialog.
+     */
     async function sendTo(app, items, deviceId) {
         const ps = PS();
         if (!ps || !ps.remote || !items.length) return;
@@ -1109,9 +1112,11 @@
         try { st = await ps.hello(); } catch (err) { toast('error', errText(err)); return; }
         const block = blocker(st);
         if (block) { toast('warning', block.text); return; }
-        const rootId = rootsOf(st)[0].id;
-        try { await ps.call('mkdir', { root: rootId, path: '/Download' }); } catch (_err) { /* it is there */ }
-        await app.deliverItemsToPath(app._itemRefs(items), pathFor(rootId, '/Download'), 'copy', { sourcePath: app.currentPath });
+        // activeSyncRemoteStorage.js: internal storage, else the first shared folder
+        const dir = ps.receivedDir || '/ActiveSync';
+        const rootId = (typeof ps.receivedRoot === 'function' && ps.receivedRoot(st) || rootsOf(st)[0]).id;
+        try { await ps.call('mkdir', { root: rootId, path: dir }); } catch (_err) { /* it is there */ }
+        await app.deliverItemsToPath(app._itemRefs(items), pathFor(rootId, dir), 'copy', { sourcePath: app.currentPath });
     }
 
     async function handleAction(action, item, app) {

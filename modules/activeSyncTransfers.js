@@ -13,11 +13,13 @@
  *        never runs ahead of the desktop. 410: the desktop went away, stop.
  *
  * Desktop -> phone (Explorer paste and drops, Send To, a file for a partner that is away):
- *   POST   /api/activesync/upload/:deviceId/begin   { root, dir, name, size, conflict, mtime, id? }
+ *   POST   /api/activesync/upload/:deviceId/begin   { root, dir, name, size, conflict, mtime, id?, mkdirs? }
+ *          mkdirs: the phone makes dir first when it is missing (Send To's /ActiveSync folder, which a
+ *          queued copy cannot create ahead)
  *   POST   /api/activesync/upload/:id/chunk?offset=N        raw bytes, in order; resumable: the
  *                                                           answer says how much is here
  *   POST   /api/activesync/upload/:id/commit  { queue?, install? }    the phone is asked to take it
- *          (stream.receive { transferId, root, dir, name, size, conflict, mtime }) and pulls it:
+ *          (stream.receive { transferId, root, dir, name, size, conflict, mtime, mkdirs?, temp? }) and pulls it:
  *   GET    /api/activesync/transfer/:id/data                the device, with Range
  *          commit answers with the phone's entry, or { queued: true } when the device is an offline
  *          partner and queue was asked: the file waits here until its next hello;
@@ -26,7 +28,11 @@
  * Programs (#795): commit with install: true sends an .apk and then asks the phone to install it
  * (apps.install: Android's installer opens, or a tap-to-install notification when the app is in the
  * background; the user always confirms). A phone that is away gets both queued, in order.
- *   POST   /api/activesync/install/:deviceId  { root, path }   an .apk already on the phone
+ * The .apk is not left on the phone (Yukimi, Nov 18): stream.receive carries temp: true and the app
+ * keeps the file in its own temporary folder under the transfer id, apps.install { temp: <id> } installs
+ * it from there and the app deletes it once the install ended. root / dir stay in both calls for an app
+ * build that predates the temporary folder (it saves into /ActiveSync as before).
+ *   POST   /api/activesync/install/:deviceId  { root, path } | { temp, name }   an .apk already on the phone
  *
  * Files in flight to a phone live in <databases>/activesync-transfers/<id> (+ .json); what nobody
  * collected in 7 days is swept. A device's requests must come from the session of one of its open
@@ -464,7 +470,8 @@ function mount(app, authMiddleware, globalResources) {
             id, deviceId, name, size, received: 0, created: Date.now(), committed: false,
             root: String(b.root || '').slice(0, 64), dir: String(b.dir || '/').slice(0, 2048),
             conflict: ['fail', 'replace', 'rename'].includes(b.conflict) ? b.conflict : 'fail',
-            mtime: Number.isFinite(Number(b.mtime)) && Number(b.mtime) > 0 ? Number(b.mtime) : null
+            mtime: Number.isFinite(Number(b.mtime)) && Number(b.mtime) > 0 ? Number(b.mtime) : null,
+            mkdirs: b.mkdirs === true
         };
         // known before its files exist, so a sweep running now leaves them be
         metas.set(id, meta);
@@ -530,12 +537,15 @@ function mount(app, authMiddleware, globalResources) {
             return;
         }
         const args = { transferId: meta.id, root: meta.root, dir: meta.dir, name: meta.name, size: meta.size, conflict: meta.conflict, mtime: meta.mtime };
+        if (meta.mkdirs) args.mkdirs = true;
         const wantQueue = !!(req.body && req.body.queue);
         const wantInstall = !!(req.body && req.body.install);
         if (wantInstall && !/\.apk$/i.test(meta.name)) { refuse(res, 400, 'NOT_APK', 'Only an .apk can be installed'); return; }
-        // a program lands under its own name (a newer build replaces the last one sent), so the queued
-        // install finds it where the queued copy put it
-        if (wantInstall) args.conflict = 'replace';
+        // a program goes to the app's temporary folder under this transfer's id and is deleted after the
+        // install; an older app build ignores temp and saves it under its own name in root / dir (a newer
+        // build replaces the last one sent), where the queued install finds it
+        if (wantInstall) { args.conflict = 'replace'; args.temp = true; }
+        const installArgs = (at) => ({ temp: meta.id, name: meta.name, root: meta.root, path: at });
         if (wantInstall) {
             // the program straight from here over ADB; adb install wants a name ending in .apk
             const src = dataPath(globalResources, meta.id);
@@ -556,7 +566,7 @@ function mount(app, authMiddleware, globalResources) {
         try {
             if (!online && wantQueue) {
                 activeSync.queueFor(globalResources, wsServer(), meta.deviceId, 'stream.receive', args);
-                if (wantInstall) activeSync.queueFor(globalResources, wsServer(), meta.deviceId, 'apps.install', { root: meta.root, path: filePath });
+                if (wantInstall) activeSync.queueFor(globalResources, wsServer(), meta.deviceId, 'apps.install', installArgs(filePath));
                 res.json({ success: true, queued: true, install: wantInstall ? 'queued' : undefined });
                 return;
             }
@@ -574,7 +584,7 @@ function mount(app, authMiddleware, globalResources) {
             if (wantInstall) {
                 const at = (entry && entry.path) || filePath;
                 try {
-                    install = await activeSync.serverCall(globalResources, wsServer(), meta.deviceId, 'apps.install', { root: meta.root, path: at }, { timeoutMs: 30000 });
+                    install = await activeSync.serverCall(globalResources, wsServer(), meta.deviceId, 'apps.install', installArgs(at), { timeoutMs: 30000 });
                 } catch (error) {
                     install = { state: 'failed', code: error.code || 'ERROR', error: error.message };
                 }
@@ -586,23 +596,28 @@ function mount(app, authMiddleware, globalResources) {
         }
     });
 
-    // an .apk already on the phone: Android's installer, or a tap-to-install notification (#795)
+    // an .apk already on the phone: Android's installer, or a tap-to-install notification (#795); temp: a
+    // program still in the app's temporary folder (Received Items' Install after a prompt was dismissed)
     app.post('/api/activesync/install/:deviceId', auth, async (req, res) => {
         if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         const deviceId = String(req.params.deviceId || '').toLowerCase();
         const root = String((req.body && req.body.root) || 'internal');
         const p = String((req.body && req.body.path) || '');
-        if (!/\.apk$/i.test(p)) { refuse(res, 400, 'NOT_APK', 'Only an .apk can be installed'); return; }
-        const viaAdb = await adbInstall(globalResources, deviceId, (deviceAdb) => deviceAdb.installOnPhone(globalResources, deviceId, root, p));
+        const temp = req.body && isId(req.body.temp) ? req.body.temp : null;
+        const name = cleanName(req.body && req.body.name) || (p.split('/').pop() || '');
+        if (!/\.apk$/i.test(temp ? name : p)) { refuse(res, 400, 'NOT_APK', 'Only an .apk can be installed'); return; }
+        const args = temp ? { temp, name, root, path: p } : { root, path: p };
+        // the temporary folder is the app's own: only its local ADB or installer reach it
+        const viaAdb = temp ? null : await adbInstall(globalResources, deviceId, (deviceAdb) => deviceAdb.installOnPhone(globalResources, deviceId, root, p));
         if (viaAdb) { res.json({ success: true, install: viaAdb }); return; }
         try {
             const online = activeSync.deviceOnline(globalResources, wsServer(), deviceId);
             if (!online && req.body && req.body.queue) {
-                activeSync.queueFor(globalResources, wsServer(), deviceId, 'apps.install', { root, path: p });
+                activeSync.queueFor(globalResources, wsServer(), deviceId, 'apps.install', args);
                 res.json({ success: true, queued: true });
                 return;
             }
-            res.json({ success: true, install: await activeSync.serverCall(globalResources, wsServer(), deviceId, 'apps.install', { root, path: p }, { timeoutMs: 30000 }) });
+            res.json({ success: true, install: await activeSync.serverCall(globalResources, wsServer(), deviceId, 'apps.install', args, { timeoutMs: 30000 }) });
         } catch (error) {
             refuse(res, statusOf(error.code), error.code || 'ERROR', error.message);
         }
