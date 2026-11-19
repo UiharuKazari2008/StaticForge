@@ -7,7 +7,13 @@
  *             the linked claude.ai login (email, plan) Remote Control signs in with, or "No Remote
  *             Control login linked". Tap selects; Switch (left soft key) makes it the engine's account
  *             and reconnects Remote Control (switch_claude_account). Menu: Switch, Reconnect, Link Host
- *             Login, Unlink Login, Add Account..., Rename..., Delete, Refresh.
+ *             Login, Unlink Login, Add Account..., Add with Token..., Rename..., Delete, Refresh.
+ *   Add       (Add Account button under the list, or Menu) signs a new account in on the host
+ *             (claude_account_login, modules/claudeAccountLogin.js): step 1 the claude.ai login Remote
+ *             Control uses, step 2 the engine's long-lived token. Each step shows its sign-in link
+ *             (Copy, Open in Alchemy: openGrimoireUrl) and a Paste code field for the code claude.ai shows
+ *             back. The account (CardSpace key + linked login) is made when both are done. A sign-in
+ *             keeps running when the page is left; the list offers Resume.
  *   Host      the server: host name, Claude CLI version, Remote Control (systemd unit state, since,
  *             restarts, session name, what its tmux pane says, sessions / capacity), the claude.ai login
  *             signed in on the host, the engine's account and token file. Reconnect / Start / Stop.
@@ -38,6 +44,9 @@
     let error = '';
     let loaded = false;
     let pollTimer = null;
+    let adding = false; // the Add Account page is up (Accounts tab)
+    let lg = { state: 'idle' }; // claude_account_login state (never a token or code)
+    const LG_ACTIVE = new Set(['starting', 'waiting_code', 'verifying']);
 
     const esc = (s) => sh.escapeHtml(s == null ? '' : String(s));
 
@@ -59,6 +68,7 @@
 
     function take(d) {
         if (!d) return;
+        if (d.login) lg = d.login;
         if (Array.isArray(d.accounts)) data.accounts = d.accounts;
         if (d.host) {
             data.host = d.host;
@@ -148,6 +158,100 @@
         await act(async () => { await send('add_api_key', { service: 'claude', name, apiKey: String(token).trim() }); return send('get_claude_accounts'); });
     }
 
+    // ---------------------------------------------------------------- Add Account (sign in on the host)
+
+    async function loginAct(action, payload, quiet) {
+        try {
+            const d = await send('claude_account_login', Object.assign({ action }, payload || {}));
+            if (d.login) lg = d.login;
+            if (Array.isArray(d.accounts)) data.accounts = d.accounts;
+        } catch (e) {
+            if (!quiet) await sh.messageBox({ title: 'Add Claude Account', icon: 'error', text: errText(e) });
+        }
+        render();
+    }
+
+    function startAdd() {
+        adding = true;
+        tab = 'accounts';
+        render();
+        // a sign-in already running is picked back up; a finished one makes way for a new one
+        return loginAct(LG_ACTIVE.has(lg.state) ? 'status' : 'start');
+    }
+
+    function closeAdd() {
+        adding = false;
+        if (lg.state === 'done' || lg.state === 'error') lg = { state: 'idle' };
+        render();
+        void load();
+    }
+
+    async function cancelAdd() {
+        if (LG_ACTIVE.has(lg.state)) await loginAct('cancel');
+        closeAdd();
+    }
+
+    const field = (cls) => (page && page.querySelector(cls)) || null;
+
+    function submitCode() {
+        const input = field('.wca-code');
+        const code = input ? input.value.trim() : '';
+        if (!code) { if (input) input.focus(); return; }
+        const name = field('.wca-name-input');
+        input.value = '';
+        return loginAct('code', { code, name: name ? name.value.trim() : undefined });
+    }
+
+    async function copyLink(btn) {
+        const url = lg.url;
+        if (!url) return;
+        let ok = false;
+        try { await navigator.clipboard.writeText(url); ok = true; } catch (_) { /* older WebView: select + copy */ }
+        if (!ok) {
+            const f = field('.wca-link-field');
+            if (f) { f.focus(); f.select(); try { f.setSelectionRange(0, url.length); } catch (_) { /* textarea */ } try { ok = document.execCommand('copy'); } catch (_) { ok = false; } }
+        }
+        const b = btn || (page && page.querySelector('[data-wca-add="copy"]'));
+        if (b) { b.textContent = ok ? 'Copied' : 'Select + copy'; setTimeout(() => { if (b.isConnected) b.textContent = 'Copy'; }, 2000); }
+    }
+
+    function openInAlchemy() {
+        const url = lg.url;
+        if (!url) return;
+        // Alchemy (the phone's browser, wmBrowser.js; Grimoire on the desktop): featureLoader's openGrimoireUrl
+        const go = window.openGrimoireUrl;
+        if (typeof go === 'function') Promise.resolve().then(() => go(url)).catch(() => window.open(url, '_blank', 'noopener'));
+        else window.open(url, '_blank', 'noopener');
+    }
+
+    async function switchToAdded() {
+        const a = lg.account;
+        closeAdd();
+        await load();
+        const acc = a && data.accounts.find((x) => x.index === a.index);
+        if (acc) { select(acc.index); await switchTo(acc); }
+    }
+
+    function addClick(what, btn) {
+        if (what === 'open') return startAdd();
+        if (what === 'copy') return copyLink(btn);
+        if (what === 'alchemy') return openInAlchemy();
+        if (what === 'code') return submitCode();
+        if (what === 'retry') return loginAct('retry');
+        if (what === 'cancel') return cancelAdd();
+        if (what === 'done') return closeAdd();
+        if (what === 'switch') return switchToAdded();
+        return null;
+    }
+
+    function onLoginStatus(msg) {
+        const d = (msg && (msg.data || msg)) || null;
+        if (!d || !d.state) return;
+        lg = d;
+        if (d.state === 'done' && page && !page.hidden) void load();
+        render();
+    }
+
     async function rename(acc) {
         if (!acc) return;
         const name = await sh.messageBox({ title: 'Rename', text: 'Account name:', input: { value: acc.name }, buttons: [{ text: 'Save', value: true, default: true }, { text: 'Cancel', value: false }] });
@@ -206,6 +310,65 @@
         </div>`;
     }
 
+    function addHtml() {
+        const st = lg.state;
+        const head = lg.stepNumber ? `Step ${lg.stepNumber} of ${lg.steps || 2}: ${lg.stepTitle || ''}` : 'Add Claude Account';
+        const who = lg.signedInAs ? `${lg.signedInAs.email || lg.signedInAs.displayName || 'claude.ai'}${lg.signedInAs.plan ? ` (${planText(lg.signedInAs)})` : ''}` : '';
+        let body;
+        if (st === 'waiting_code' || st === 'verifying') {
+            const checking = st === 'verifying';
+            const intro = lg.step === 'token'
+                ? `Signed in${who ? ` as ${who}` : ''}. Open the link once more and press Authorize with the same account: this is the long-lived token the Claude engine uses.`
+                : 'Open this link and sign in with the Claude account to add. claude.ai then shows a code to paste below.';
+            body = `<div class="wca-add-text">${esc(intro)}</div>
+                <div class="wca-add-label">Sign-in link</div>
+                <textarea class="wca-link-field" readonly rows="4" aria-label="Sign-in link">${esc(lg.url)}</textarea>
+                <div class="wca-actions wca-add-row">
+                    <button type="button" data-wca-add="copy">Copy</button>
+                    <button type="button" data-wca-add="alchemy">Open in Alchemy</button>
+                </div>
+                ${lg.step === 'login' ? `<label class="wca-add-label" for="wca-name">Account name (optional)</label>
+                <input id="wca-name" class="wca-name-input wca-input" type="text" autocomplete="off" placeholder="Its email when blank" value="${esc(lg.name || '')}">` : ''}
+                <label class="wca-add-label" for="wca-code">Paste code</label>
+                <input id="wca-code" class="wca-code wca-input" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Code from claude.ai"${checking ? ' disabled' : ''}>
+                <div class="wca-actions">
+                    <button type="button" data-wca-add="code"${checking ? ' disabled' : ''}>${checking ? 'Checking...' : 'Continue'}</button>
+                    <button type="button" data-wca-add="cancel">Cancel</button>
+                </div>`;
+        } else if (st === 'done') {
+            const a = lg.account || {};
+            body = `<div class="wca-add-text"><b>Added ${esc(a.name || 'the account')}</b></div>
+                <div class="wca-kvs">
+                    <div class="wca-kv"><span class="wca-k">Account</span><span class="wca-v">${esc(a.email || '-')}</span></div>
+                    <div class="wca-kv"><span class="wca-k">Plan</span><span class="wca-v">${esc(a.plan ? a.plan.replace(/^\w/, (c) => c.toUpperCase()) : '-')}</span></div>
+                    <div class="wca-kv"><span class="wca-k">Remote Control</span><span class="wca-v">${a.linked ? 'Login linked' : 'Not linked'}</span></div>
+                </div>
+                ${lg.message ? `<div class="wac-note">${esc(lg.message)}</div>` : ''}
+                <div class="wca-actions">
+                    ${a.index != null ? '<button type="button" data-wca-add="switch">Switch to it</button>' : ''}
+                    <button type="button" data-wca-add="done">Done</button>
+                </div>`;
+        } else if (st === 'error') {
+            body = `<div class="wac-note">${esc(lg.message || 'The sign-in failed')}</div>
+                <div class="wca-actions">
+                    <button type="button" data-wca-add="retry">Try Again</button>
+                    <button type="button" data-wca-add="cancel">Cancel</button>
+                </div>`;
+        } else {
+            body = `<div class="wac-empty">${esc(lg.message || 'Starting the sign-in on the host...')}</div>
+                <div class="wca-actions"><button type="button" data-wca-add="cancel">Cancel</button></div>`;
+        }
+        return `<div class="wm-form-hdr wca-sub-hdr">${esc(head)}</div><div class="wca-add">${body}</div>`;
+    }
+
+    function listFooter() {
+        if (LG_ACTIVE.has(lg.state)) {
+            return `<div class="wac-note wca-add-pending">A sign-in for a new account is waiting (step ${esc(lg.stepNumber || 1)} of 2).</div>
+                <div class="wca-actions"><button type="button" data-wca-add="open">Resume Sign-in</button><button type="button" data-wca-add="cancel">Cancel It</button></div>`;
+        }
+        return '<div class="wca-actions"><button type="button" data-wca-add="open">Add Account</button></div>';
+    }
+
     function hostHtml() {
         const h = data.host;
         if (!h) return '<div class="wac-empty">No host information.</div>';
@@ -241,6 +404,16 @@
     }
 
     function setHtml(el, html) { if (el && el.innerHTML !== html) el.innerHTML = html; }
+    // the Add page's fields keep what is typed (and focus) across pushes
+    function setHtmlKeep(el, html) {
+        if (!el || el.innerHTML === html) return;
+        const kept = {};
+        el.querySelectorAll('input.wca-input').forEach((i) => { kept[i.id] = i.value; });
+        const focused = document.activeElement && el.contains(document.activeElement) ? document.activeElement.id : '';
+        el.innerHTML = html;
+        Object.keys(kept).forEach((id) => { const i = el.querySelector(`#${id}`); if (i && !i.disabled && kept[id]) i.value = kept[id]; });
+        if (focused) { const f = el.querySelector(`#${focused}`); if (f && !f.disabled) f.focus(); }
+    }
 
     function render() {
         if (!page || page.hidden) return;
@@ -252,9 +425,10 @@
         let list;
         if (error && !loaded) list = `<div class="wac-note">${esc(error)}</div>`;
         else if (!loaded) list = '<div class="wac-empty">Loading...</div>';
-        else if (!data.accounts.length) list = '<div class="wac-empty">No Claude accounts. Menu &gt; Add Account...</div>';
-        else list = data.accounts.map(accountRow).join('') + (error ? `<div class="wac-note">${esc(error)}</div>` : '');
-        setHtml(accountsPanel, list);
+        else if (!data.accounts.length) list = `<div class="wac-empty">No Claude accounts yet.</div>${listFooter()}`;
+        else list = data.accounts.map(accountRow).join('') + (error ? `<div class="wac-note">${esc(error)}</div>` : '') + listFooter();
+        if (adding) setHtmlKeep(accountsPanel, addHtml());
+        else setHtml(accountsPanel, list);
         setHtml(hostPanel, hostHtml());
         page.querySelectorAll('.wm-tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === tab)));
         sh.refreshSoftKeys();
@@ -296,10 +470,20 @@
             { label: 'Host', checked: tab === 'host', action: () => setTab('host') },
             '-'
         ];
+        if (tab === 'accounts' && adding) {
+            items.push({ label: 'Copy Link', disabled: !lg.url, action: () => copyLink() });
+            items.push({ label: 'Open in Alchemy', disabled: !lg.url, action: openInAlchemy });
+            items.push('-');
+            if (LG_ACTIVE.has(lg.state)) items.push({ label: 'Cancel Sign-in', action: cancelAdd });
+            if (lg.state === 'error') items.push({ label: 'Try Again', action: () => loginAct('retry') });
+            items.push({ label: 'Back to Accounts', action: () => { adding = false; render(); } });
+            return items;
+        }
         if (tab === 'accounts') {
             const acc = selected();
             if (acc) items.push(...accountItems(acc), '-');
-            items.push({ label: 'Add Account...', action: addAccount });
+            items.push({ label: LG_ACTIVE.has(lg.state) ? 'Resume Sign-in...' : 'Add Account...', action: startAdd });
+            items.push({ label: 'Add with Token...', action: addAccount });
         } else {
             const rc = data.host && data.host.remoteControl;
             items.push({ label: 'Reconnect', action: () => remote('reconnect') });
@@ -328,6 +512,9 @@
             if (t) setTab(t.dataset.tab);
         });
         p.addEventListener('click', (e) => {
+            const add = e.target.closest('[data-wca-add]');
+            if (add) { if (!add.disabled) void addClick(add.dataset.wcaAdd, add); return; }
+            if (e.target.closest('.wca-link-field')) { e.target.select(); return; }
             const b = e.target.closest('[data-wca]');
             if (b) { void remote(b.dataset.wca); return; }
             const row = e.target.closest('.wca-panel-accounts .wac-row');
@@ -352,12 +539,16 @@
         list.addEventListener('pointerup', cancel);
         list.addEventListener('pointercancel', cancel);
         list.addEventListener('scroll', cancel, { passive: true });
-        list.addEventListener('contextmenu', (e) => e.preventDefault());
+        list.addEventListener('contextmenu', (e) => { if (!e.target.closest('.wca-add')) e.preventDefault(); });
+        p.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target.closest('.wca-code, .wca-name-input')) { e.preventDefault(); void submitCode(); }
+        });
     }
 
     function show() {
         render();
         if (!loaded) userRefresh(); else void load();
+        void loginAct('status', null, true); // a sign-in left running shows as Resume
     }
 
     function onStatus(msg) {
@@ -380,6 +571,15 @@
             hide() { clearTimeout(pollTimer); },
             onEnd() { clearTimeout(pollTimer); page = null; },
             softKeys() {
+                if (tab === 'accounts' && adding) {
+                    const st = lg.state;
+                    const left = st === 'waiting_code' ? { label: 'Continue', action: submitCode }
+                        : st === 'done' ? { label: 'Done', action: closeAdd }
+                            : st === 'error' ? { label: 'Try Again', action: () => loginAct('retry') }
+                                : st === 'verifying' ? { label: 'Checking...', action: () => {} }
+                                    : { label: 'Cancel', action: cancelAdd };
+                    return { left, right: { label: 'Menu', menu: menuItems } };
+                }
                 const acc = selected();
                 const left = tab === 'host'
                     ? { label: 'Reconnect', action: () => remote('reconnect') }
@@ -388,10 +588,17 @@
             }
         });
         const c = ws();
-        if (c && typeof c.on === 'function') c.on('claude_remote_control_status', onStatus, { signal: appScopeSignal });
+        if (c && typeof c.on === 'function') {
+            c.on('claude_remote_control_status', onStatus, { signal: appScopeSignal });
+            c.on('claude_account_login_status', onLoginStatus, { signal: appScopeSignal });
+        }
     }
 
-    window.wmClaudeAccounts = { open: (t) => { if (t) tab = t === 'host' ? 'host' : 'accounts'; sh.open(APP_ID, { fromStart: true }); }, refresh: load };
+    window.wmClaudeAccounts = {
+        open: (t) => { if (t) tab = t === 'host' ? 'host' : 'accounts'; sh.open(APP_ID, { fromStart: true }); },
+        refresh: load,
+        addAccount: () => { sh.open(APP_ID, { fromStart: true }); return startAdd(); }
+    };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

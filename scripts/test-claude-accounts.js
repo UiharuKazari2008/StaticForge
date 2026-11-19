@@ -56,6 +56,11 @@ const keys = [{ name: 'Claude Max', apiKey: SECRET_A }, { name: 'Claude Work', a
 let selectedIndex = 0;
 const fakeAkm = {
     getServiceKeys: (s) => (s === 'claude' ? keys : []),
+    addApiKey(service, name, apiKey) {
+        if (service !== 'claude' || keys.some((k) => k.name === name)) throw new Error('name taken');
+        keys.push({ name, apiKey });
+        return { success: true, index: keys.length - 1 };
+    },
     getSelectedIndex: () => selectedIndex,
     keyFingerprint: (s, k) => `${k.apiKey.slice(0, 8)}...${k.apiKey.slice(-4)}`,
     async applySelectionUpdates(list) {
@@ -200,7 +205,193 @@ async function main() {
     assert.ok(!/applicationAuthManager/.test(src('modules/ws/handlers/313-claudeAccountsHandler.js')), 'no application-key scope changes');
     console.log('✓ wiring');
 
+    await addAccountBySignIn(handler, src);
+
     console.log('\nClaude accounts tests passed');
+}
+
+// ---- Add Account by signing in (modules/claudeAccountLogin.js) with a fake `claude` CLI in a pty
+const NEW_TOKEN = 'sk-ant-oat01-NEWENGINE-cccccccccccccccccccccccccccccc';
+const NEW_ACCESS = 'sk-ant-oat01-NEWACCESS-dddddddddddddddddddddddddddddd';
+const LOGIN_CODE = 'LoginCodeAbcdefghijklmnopqrstuvwxyz0123#state1';
+const TOKEN_CODE = 'TokenCodeAbcdefghijklmnopqrstuvwxyz0123#state2';
+const FAKE_DIR = path.join(SANDBOX, 'fakecli');
+const FAKE_CLI = path.join(FAKE_DIR, 'claude');
+const FAKE_SRC = `#!/usr/bin/env node
+const fs = require('fs'); const path = require('path');
+const dir = ${JSON.stringify(FAKE_DIR)};
+const mode = (() => { try { return fs.readFileSync(path.join(dir, 'mode'), 'utf8').trim(); } catch (_) { return 'ok'; } })();
+const args = process.argv.slice(2).join(' ');
+const leaked = Object.keys(process.env).filter((k) => /TOKEN|API_KEY|DREAMSCAPE|XDG_|DISPLAY|DBUS/.test(k));
+fs.appendFileSync(path.join(dir, 'calls.log'), JSON.stringify({ args, home: process.env.HOME, cfg: process.env.CLAUDE_CONFIG_DIR, browser: process.env.BROWSER, leaked, tty: process.stdin.isTTY === true }) + '\\n');
+const out = (t) => process.stdout.write(t);
+let buf = '';
+const onCode = (fn) => process.stdin.on('data', (d) => { buf += d.toString(); const m = /^([^\\r\\n]*)[\\r\\n]/.exec(buf); if (m) { process.stdin.pause(); fn(m[1].trim()); } });
+if (mode === 'nolink') { out('Starting...\\r\\n'); setInterval(() => {}, 1000); }
+else if (args === 'auth login --claudeai') {
+    out('Opening browser to sign in…\\r\\nIf the browser didn\\'t open, visit: https://claude.com/cai/oauth/authorize?code=true&client_id=x&response_type=code&scope=user%3Ainference+user%3Asessions%3Aclaude_code&state=state1\\r\\nPaste code here if prompted > ');
+    onCode((code) => {
+        if (code !== ${JSON.stringify(LOGIN_CODE)}) { out('\\r\\nOAuth error: Invalid code ' + code + '\\r\\n'); process.exit(1); }
+        const cfg = process.env.CLAUDE_CONFIG_DIR;
+        fs.writeFileSync(path.join(cfg, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: ${JSON.stringify(NEW_ACCESS)}, refreshToken: ${JSON.stringify(NEW_ACCESS + '-r')}, expiresAt: 1795115747356, scopes: ['user:inference', 'user:profile', 'user:sessions:claude_code'], subscriptionType: 'max', rateLimitTier: 'default_claude_max_20x' } }));
+        fs.writeFileSync(path.join(cfg, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'new@example.com', accountUuid: 'uuid-new', displayName: 'new' } }));
+        out('\\r\\nLogin successful.\\r\\n');
+        process.exit(0);
+    });
+} else if (args === 'setup-token') {
+    out('\\x1b[?2004h\\x1b[2GThis\\x1b[7Gwill guide you\\r\\n\\x1b]8;id=1;https://claude.com/cai/oauth/authorize?code=true&scope=user%3Ainference&state=state2\\x07https://claude.com/cai/oauth/authorize?code=true&scope=user%3Ainference&state=state2\\x1b]8;;\\x07\\r\\n\\x1b[2GPaste\\x1b[8Gcode\\x1b[13Ghere\\x1b[18Gif\\x1b[21Gprompted\\r\\n> ');
+    onCode((code) => {
+        if (code !== ${JSON.stringify(TOKEN_CODE)}) { out('\\r\\nError: invalid code\\r\\n'); process.exit(1); }
+        out('\\r\\n\\x1b[32m✓\\x1b[39m Long-lived authentication token created successfully!\\r\\n\\r\\nYour OAuth token (valid for 1 year):\\r\\n\\r\\n\\x1b[33m' + ${JSON.stringify(NEW_TOKEN)} + '\\x1b[39m\\r\\n\\r\\nStore this token securely.\\r\\n');
+        if (mode === 'hang') setInterval(() => {}, 1000); else process.exit(0);
+    });
+} else { out('unknown ' + args); process.exit(2); }
+`;
+
+async function waitFor(fn, what, ms) {
+    const until = Date.now() + (ms || 15000);
+    for (;;) {
+        const v = fn();
+        if (v) return v;
+        if (Date.now() > until) throw new Error(`timed out waiting for ${what} (${JSON.stringify(require('../modules/claudeAccountLogin').status())})`);
+        await new Promise((r) => setTimeout(r, 50));
+    }
+}
+
+async function addAccountBySignIn(handler, src) {
+    const signIn = require('../modules/claudeAccountLogin');
+    fs.mkdirSync(FAKE_DIR, { recursive: true });
+    fs.writeFileSync(FAKE_CLI, FAKE_SRC, { mode: 0o755 });
+    process.env.DREAMSCAPE_CLAUDE_LOGIN_CLI = FAKE_CLI;
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'sk-ant-oat01-SERVER-ENV-eeeeeeeeeeeeeeeeeeeeeeee'; // must not reach the CLI
+    const setMode = (m) => fs.writeFileSync(path.join(FAKE_DIR, 'mode'), m);
+    const calls = () => fs.readFileSync(path.join(FAKE_DIR, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const secrets = [NEW_TOKEN, NEW_ACCESS, LOGIN_CODE, TOKEN_CODE, LOGIN_CODE.split('#')[0], TOKEN_CODE.split('#')[0], process.env.CLAUDE_CODE_OAUTH_TOKEN];
+    const clean = (v, what) => { const t = JSON.stringify(v); secrets.forEach((x) => assert.ok(!t.includes(x), `${what} must not carry a token or code`)); };
+    const pendingDirs = () => fs.readdirSync(paths.store).filter((n) => n.startsWith('pending-'));
+    const hostBefore = fs.readFileSync(paths.credentials, 'utf8');
+    const sent = [];
+    const ctx = { globalResources: gr, sendToClient: (ws, m) => sent.push(m), sendError: (ws, msg, code) => sent.push({ type: 'error', msg, code }) };
+    const ask = async (payload, who) => { await handler.handleLogin(ctx, {}, Object.assign({ requestId: 'x' }, payload), { userType: who || 'admin' }); return sent.pop(); };
+    const st = () => signIn.status();
+    setMode('ok');
+    broadcasts.length = 0;
+
+    // non-admins are refused
+    assert.strictEqual((await ask({ action: 'start' }, 'user')).code, 'INSUFFICIENT_PERMISSIONS');
+    assert.strictEqual(st().state, 'idle');
+
+    // step 1: the login link, isolated dir, one at a time
+    const first = await ask({ action: 'start', name: '' });
+    assert.strictEqual(first.type, 'claude_account_login_response');
+    const id = first.data.login.id;
+    await waitFor(() => st().state === 'waiting_code', 'login link');
+    assert.ok(/^https:\/\/claude\.com\/cai\/oauth\/authorize\?code=true&.*state=state1$/.test(st().url), `login link (${st().url})`);
+    assert.strictEqual(st().stepNumber, 1);
+    assert.strictEqual((await ask({ action: 'start' })).data.login.id, id, 'a second Add picks the running sign-in back up');
+    const dirs = pendingDirs();
+    assert.strictEqual(dirs.length, 1);
+    assert.strictEqual(fs.statSync(path.join(paths.store, dirs[0])).mode & 0o777, 0o700, 'pending dir 0700');
+    const c1 = calls()[0];
+    assert.strictEqual(c1.args, 'auth login --claudeai');
+    assert.ok(c1.home.startsWith(path.join(paths.store, dirs[0])) && c1.cfg === path.join(c1.home, '.claude'), 'CLI runs in the pending dir');
+    assert.deepStrictEqual(c1.leaked, [], 'no server token / session env reaches the CLI');
+    assert.strictEqual(c1.browser, 'true');
+    assert.ok(c1.tty, 'the CLI gets a terminal');
+
+    // a wrong code: error without the code, Try Again redoes the step
+    await ask({ action: 'code', code: 'WrongCodeAbcdefghijklmnopqrstuvwxyz#state1' });
+    await waitFor(() => st().state === 'error', 'bad code error');
+    assert.ok(/did not accept/.test(st().message) && !st().message.includes('WrongCode'), `bad code message cleaned (${st().message})`);
+    assert.strictEqual(pendingDirs().length, 0, 'error cleans the pending dir');
+    await ask({ action: 'retry' });
+    await waitFor(() => st().state === 'waiting_code', 'login link again');
+    assert.strictEqual(st().stepNumber, 1);
+    assert.strictEqual((await ask({ action: 'code', code: 'x' })).code, 'CLAUDE_ACCOUNTS_FAILED', 'junk code refused');
+
+    // step 1 code -> step 2 link -> code -> account
+    await ask({ action: 'code', code: `  ${LOGIN_CODE} ` });
+    await waitFor(() => st().step === 'token' && st().state === 'waiting_code', 'token link');
+    assert.ok(/scope=user%3Ainference&state=state2$/.test(st().url), `token link from the OSC 8 / Ink output (${st().url})`);
+    assert.strictEqual(st().signedInAs.email, 'new@example.com');
+    const before = keys.length;
+    await ask({ action: 'code', code: TOKEN_CODE });
+    await waitFor(() => st().state === 'done', 'account added');
+    assert.strictEqual(keys.length, before + 1, 'one CardSpace key added');
+    const added = keys[keys.length - 1];
+    assert.strictEqual(added.apiKey, NEW_TOKEN, 'the setup token is the engine key');
+    assert.strictEqual(added.name, 'new@example.com', 'named after the email when no name was given');
+    assert.deepStrictEqual(Object.assign({}, st().account), { index: keys.length - 1, name: 'new@example.com', email: 'new@example.com', plan: 'max', linked: true });
+    const row = host.listAccounts(gr).find((a) => a.index === keys.length - 1);
+    assert.strictEqual(row.remoteLogin.email, 'new@example.com', 'its Remote Control login is linked');
+    assert.strictEqual(fs.statSync(path.join(paths.store, row.id, 'credentials.json')).mode & 0o777, 0o600);
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(paths.store, row.id, 'credentials.json'), 'utf8')).claudeAiOauth.accessToken, NEW_ACCESS);
+    assert.strictEqual(fs.readFileSync(paths.credentials, 'utf8'), hostBefore, "the host's own login is untouched");
+    assert.strictEqual(pendingDirs().length, 0, 'pending dir removed');
+    assert.ok(calls().every((c) => c.leaked.length === 0 && c.home.includes(`${path.sep}pending-`)), 'every CLI run isolated');
+    clean(sent, 'responses'); clean(broadcasts, 'broadcasts'); clean(st(), 'status');
+    assert.ok(broadcasts.some((b) => b.msg.type === signIn.STATUS_TYPE) && broadcasts.filter((b) => b.msg.type === signIn.STATUS_TYPE).every((b) => b.admin && !b.user), 'sign-in status to admins only');
+    console.log('✓ add account by sign-in: link, isolated CLI, code, CardSpace key + linked login, no tokens out');
+
+    // a CLI that shows the token and then waits is finished anyway; cancel kills and cleans
+    keys.pop();
+    setMode('hang');
+    await ask({ action: 'start', name: 'Claude New' });
+    await waitFor(() => st().state === 'waiting_code', 'link (hang)');
+    await ask({ action: 'code', code: LOGIN_CODE });
+    await waitFor(() => st().step === 'token' && st().state === 'waiting_code', 'token link (hang)');
+    await ask({ action: 'code', code: TOKEN_CODE });
+    await waitFor(() => st().state === 'done', 'done (hang)');
+    assert.strictEqual(keys[keys.length - 1].name, 'Claude New', 'given name kept');
+    assert.strictEqual(pendingDirs().length, 0);
+    keys.pop();
+    setMode('ok');
+    await ask({ action: 'start' });
+    await waitFor(() => st().state === 'waiting_code', 'link (cancel)');
+    assert.strictEqual(pendingDirs().length, 1);
+    assert.strictEqual((await ask({ action: 'cancel' })).data.login.state, 'idle');
+    assert.strictEqual(pendingDirs().length, 0, 'cancel removes the pending dir');
+    console.log('✓ token-then-wait CLI, cancel');
+
+    // timeouts: no link, no code
+    setMode('nolink');
+    process.env.DREAMSCAPE_CLAUDE_LOGIN_STEP_MS = '800';
+    await ask({ action: 'start' });
+    await waitFor(() => st().state === 'error', 'no-link error');
+    assert.ok(/no sign-in link/.test(st().message));
+    setMode('ok');
+    await ask({ action: 'start' });
+    await waitFor(() => st().state === 'error', 'step timeout', 8000);
+    assert.ok(/timed out/.test(st().message), st().message);
+    assert.strictEqual(pendingDirs().length, 0, 'timeout cleans up');
+    delete process.env.DREAMSCAPE_CLAUDE_LOGIN_STEP_MS;
+    console.log('✓ timeouts');
+
+    // a read-only (preview) instance runs the flow but saves nothing
+    process.env.DREAMSCAPE_CLAUDE_RC_READONLY = '1';
+    const n = keys.length;
+    await ask({ action: 'start' });
+    await waitFor(() => st().state === 'waiting_code', 'link (read-only)');
+    await ask({ action: 'code', code: LOGIN_CODE });
+    await waitFor(() => st().step === 'token' && st().state === 'waiting_code', 'token (read-only)');
+    await ask({ action: 'code', code: TOKEN_CODE });
+    await waitFor(() => st().state === 'done', 'done (read-only)');
+    assert.strictEqual(keys.length, n, 'read-only: no key added');
+    assert.ok(/not saved/.test(st().message));
+    delete process.env.DREAMSCAPE_CLAUDE_RC_READONLY;
+    signIn.cancel();
+    console.log('✓ read-only instance saves nothing');
+
+    // text helpers + wiring
+    const t = signIn._text;
+    assert.strictEqual(t.cleanMessage(`> ${LOGIN_CODE}\nOAuth error: Invalid code ${LOGIN_CODE}`, LOGIN_CODE).includes('LoginCode'), false);
+    assert.ok(!t.cleanMessage(`token ${NEW_TOKEN} https://claude.com/x?y=z`).includes('sk-ant'));
+    assert.ok(src('modules/websocketHandlers.js').includes("'claude_account_login'"), 'claude_account_login is destructive for read-only clients');
+    assert.ok(/PHONE_ONLY_TYPES = new Set\(\[[^\]]*'claude_account_login_status'/.test(src('modules/websocket.js')), 'sign-in push classified');
+    const ui = src('public/scripts/comp/wmClaudeAccounts.js');
+    assert.ok(ui.includes('Open in Alchemy') && ui.includes('openGrimoireUrl') && ui.includes('data-wca-add="open"') && ui.includes("'claude_account_login_status'"), 'phone Add Account wired');
+    assert.ok(!/applicationAuthManager/.test(src('modules/claudeAccountLogin.js')), 'no application-key scope changes');
+    console.log('✓ sign-in wiring');
 }
 
 main().catch((error) => { console.error(error); process.exit(1); });

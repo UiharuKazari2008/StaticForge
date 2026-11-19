@@ -18,6 +18,7 @@ const {
 const DORMANT_HOLD = new Map([
     ['ping', 'last'],
     ['claude_remote_control_status', 'last'],
+    ['claude_account_login_status', 'last'],
     ['dovecote_mailbox_updated', 'last'],
     ['as_peers_updated', 'last'],
     ['runpod_pods_status_update', 'last'],
@@ -160,7 +161,7 @@ const PHONE_ONLY_TYPES = new Set([
     'traffic_settings_changed', 'traffic_report',
     'inbox_updated', 'msg_new_state',
     // Claude Accounts (wmClaudeAccounts.js): Remote Control reconnecting / connected / error, admins only
-    'claude_remote_control_status'
+    'claude_remote_control_status', 'claude_account_login_status'
 ]);
 // Broadcasts every socket gets on purpose (#890, rule phone-power-server.mdc): a new broadcast type goes in
 // exactly one of DESKTOP_ONLY_TYPES / PHONE_ONLY_TYPES / BROADCAST_ALL (and in DORMANT_HOLD when a sleeping

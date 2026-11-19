@@ -71,3 +71,40 @@
     gap: calc(6 * var(--wm-px));
     padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(8 * var(--wm-px));
 }
+
+/* Add Account: sign-in link (copy / Open in Alchemy) and the code claude.ai shows back */
+.wm-claude-accounts .wca-add { padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(6 * var(--wm-px)); }
+.wm-claude-accounts .wca-add .wca-kvs { padding-left: 0; padding-right: 0; }
+.wm-claude-accounts .wca-add .wca-actions { padding-left: 0; padding-right: 0; flex-wrap: wrap; }
+.wm-claude-accounts .wca-add-text { line-height: calc(15 * var(--wm-px)); margin-bottom: calc(4 * var(--wm-px)); overflow-wrap: anywhere; }
+.wm-claude-accounts .wca-add-label { display: block; margin-top: calc(4 * var(--wm-px)); color: #525152; line-height: calc(15 * var(--wm-px)); }
+
+.wm-claude-accounts .wca-link-field,
+.wm-claude-accounts .wca-input {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    margin: calc(2 * var(--wm-px)) 0 0;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: inherit;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.wm-claude-accounts .wca-link-field {
+    resize: none;
+    font-family: monospace;
+    font-size: 0.85em;
+    line-height: 1.25;
+    word-break: break-all;
+    background: #f3f3f3;
+}
+
+.wm-claude-accounts .wca-input { min-height: calc(22 * var(--wm-px)); }
+.wm-claude-accounts .wca-input:disabled { background: #f3f3f3; color: #525152; }
+.wm-claude-accounts .wca-actions button:disabled { border-color: #848284; color: #848284; }
+.wm-claude-accounts .wca-add-pending { margin-top: calc(4 * var(--wm-px)); }
