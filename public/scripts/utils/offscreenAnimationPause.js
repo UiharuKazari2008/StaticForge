@@ -115,6 +115,7 @@
     }
     function onAnimationEvent(event) {
         if (event.type === 'animationstart') watchdogNoteStart(event.animationName);
+        else watchdogNoteEnd();
         checkLater(event);
     }
     document.addEventListener('animationstart', onAnimationEvent, true);
@@ -183,8 +184,9 @@
     //   - transitions are never touched;
     //   - while anything is held, a MutationObserver watches the attributes of the held element's
     //     ancestors and of the window that covers it, and pointerup / keyup / transitionrun are heard: any
-    //     of them rescans within RECHECK_MS, so a spinner that comes into view does not stay frozen. The
-    //     observer and the listeners exist only while something is held.
+    //     of them rescans within RECHECK_MS, as does any animation ending (a fade-in that hid it), so a
+    //     spinner that comes into view does not stay frozen. The observer and the listeners exist only
+    //     while something is held. A target under an ancestor that is itself animating is left alone.
     //
     // Reports go through the fault pipeline (window.dreamscapeErrorCapture, kind 'animation' ->
     // POST /api/fault-reports -> data/fault-reports, modules/programFaultReports.js), grouped by owner +
@@ -270,6 +272,11 @@
         if (!name) return;
         startCounts.set(name, (startCounts.get(name) || 0) + 1);
         if (!wd.dirty) { wd.dirty = true; armTimer(); }
+    }
+
+    /** An animation ended while something is held: a fade-in that was hiding it may just have finished. */
+    function watchdogNoteEnd() {
+        if (held.size > 0 || heldScript.size > 0) requestScan('held-animation-end', RECHECK_MS);
     }
 
     /** The page is not seen at all: hidden, the phone's screen off, behind an Android program, or under an opaque screen saver. */
@@ -415,7 +422,10 @@
             if (parent && !parent.checkVisibility({ opacityProperty: true })) {
                 // only when an ancestor really is at opacity 0
                 for (let node = parent, depth = 0; node && depth < 40; node = node.parentElement, depth++) {
-                    if (Number(getComputedStyle(node).opacity) === 0) return { reason: 'under opacity 0', cause: node };
+                    if (Number(getComputedStyle(node).opacity) !== 0) continue;
+                    // an ancestor that is itself animating is fading in or out: not parked, leave it
+                    if (typeof node.getAnimations === 'function' && node.getAnimations().some((a) => a.playState === 'running')) return null;
+                    return { reason: 'under opacity 0', cause: node };
                 }
             }
         }
@@ -680,9 +690,10 @@
                 }
             });
         }
-        // what was held and is in view again (or gone): let it run
+        // what was held and is in view again (or gone): let it run. Not while the page sleeps: CSS has
+        // everything paused then, and nothing was looked at
         if (!document.hidden) {
-            Array.from(held.keys()).forEach((el) => { if (!stillHidden.has(el)) release(el); });
+            if (!asleep) Array.from(held.keys()).forEach((el) => { if (!stillHidden.has(el)) release(el); });
             Array.from(heldScript.keys()).forEach((animation) => {
                 if (stillScript.has(animation)) return;
                 heldScript.delete(animation);
