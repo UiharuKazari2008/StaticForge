@@ -39,6 +39,8 @@
     const WS_BORDER = 0x00800000;
     const WS_EX_CLIENTEDGE = 0x200;
     const WS_EX_STATICEDGE = 0x20000;
+    // right-aligned text on a left static (netshell's status values: IPv4 / Media State / Bytes end on one edge, #945)
+    const WS_EX_RIGHT = 0x1000;
 
     const SYSTEM_ICONS = {
         '#32513': '/static_images/vista-icons/msgbox-error-32.png',
@@ -190,7 +192,7 @@
                     } else if (type >= 4 && type <= 9 || type === 0x12) {
                         out.push(`<div class="tbp-ctl vdt-frame vdt-frame-${type}" style="${style(r)}" ${dataId}${hid}></div>`);
                     } else {
-                        const align = type === 1 ? 'center' : type === 2 ? 'right' : 'left';
+                        const align = type === 1 ? 'center' : type === 2 || (ex & WS_EX_RIGHT) ? 'right' : 'left';
                         const nowrap = type === 0xB || type === 0xC ? ' vdt-nowrap' : '';
                         const sunken = (st & 0x1000) || (ex & WS_EX_STATICEDGE) ? ' vdt-sunken' : '';
                         // SS_CENTERIMAGE centres a one-line label in its height (WinCal Import's labels)
