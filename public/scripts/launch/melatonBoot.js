@@ -572,6 +572,9 @@
                 const inApp = !!(root && (root.AndroidDevice || root.AndroidCaption || root.AndroidNotification))
                     || / DreamOS\//.test(String((env.navigator && env.navigator.userAgent) || ''));
                 const local = (root && root.localStorage) || env.localStorage;
+                // /launch?repair=1 (sw.js reportMissingAsset, #924): a file the copy cannot start without is
+                // not in the cache, so this start runs the checks and the update pass instead of handing over
+                if (/[?&]repair=1(?:&|$)/.test(String((env.location && env.location.search) || ''))) return false;
                 return inApp && !!(local && local.getItem('melatonManifestHash'));
             } catch (_) { return false; }
         }

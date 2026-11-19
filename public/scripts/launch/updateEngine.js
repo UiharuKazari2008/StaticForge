@@ -221,6 +221,10 @@
             const file = list[Math.floor(offset + i * step)];
             if (file && !picked.includes(file)) picked.push(file);
         }
+        // the files the copy cannot start without are always looked at (#924): a sample that
+        // skipped a missing one let an installed client boot into a page that could not load
+        const p = policy();
+        if (p) list.forEach((file) => { if (file && p.isCritical(file) && !picked.includes(file)) picked.push(file); });
         return picked;
     }
 
@@ -484,6 +488,20 @@
         try {
             if (hash && env.localStorage) env.localStorage.setItem(SYNCED_MANIFEST_KEY, hash);
         } catch (_) { /* storage off */ }
+        commitShell(env);
+    }
+
+    /**
+     * The cache is proven in sync: the worker may now make the page it holds as a candidate the
+     * kept shell (sw.js keepShell / SHELL_COMMIT, #924). The kept /app and its files switch
+     * together; a shell is never kept ahead of the files it names.
+     */
+    function commitShell(env) {
+        try {
+            const container = workerContainer(env);
+            const worker = container && container.controller;
+            if (worker) worker.postMessage({ type: 'SHELL_COMMIT' });
+        } catch (_) { /* the next start's check commits it */ }
     }
 
     /** OPTIONS / with the synced digest: { unchanged } on 304, { compile } on 503, { failed } on any other miss, else { manifest, hash }. */
@@ -1068,7 +1086,8 @@
         isInstalled,
         criticalMissing,
         rememberManifestStats,
-        readManifestStats
+        readManifestStats,
+        commitShell
     };
     if (root) root.melatonUpdateEngine = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;

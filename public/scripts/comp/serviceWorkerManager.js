@@ -1034,6 +1034,27 @@ class ServiceWorkerManager {
         try {
             if (hash) localStorage.setItem('melatonManifestHash', hash);
         } catch (_) { /* storage off: every boot fetches the full manifest */ }
+        this._commitShell();
+    }
+
+    /**
+     * The cache is proven in sync: the worker may make the page it holds as a candidate the kept
+     * shell (sw.js keepShell / SHELL_COMMIT, #924). The kept /app and its files switch together.
+     */
+    _commitShell() {
+        try {
+            const worker = navigator.serviceWorker && navigator.serviceWorker.controller;
+            if (worker) worker.postMessage({ type: 'SHELL_COMMIT' });
+        } catch (_) { /* the next start's check commits it */ }
+    }
+
+    /** Critical files of a list that are not in the cache under their hash (looked up, never taken from the verified record). */
+    async _criticalFilesStale(files) {
+        const policy = window.melatonUpdatePolicy;
+        if (!policy) return [];
+        const critical = (files || []).filter((file) => file && policy.isCritical(file));
+        if (!critical.length) return [];
+        return this.getFilesNeedingUpdate(critical, { full: true });
     }
 
     // The file list lives in IndexedDB beside the verified record (#849). In localStorage it was
@@ -1104,7 +1125,9 @@ class ServiceWorkerManager {
         if (!snapshot) return false;
         try {
             const needing = await this.getFilesNeedingUpdate(sampleManifestFiles(snapshot, BOOT_CACHE_SAMPLE));
-            const ok = this._filesCountingTowardInstaller(needing).length === 0;
+            // the files the copy cannot start without are looked up at every start (#924)
+            const critical = await this._criticalFilesStale(snapshot);
+            const ok = this._filesCountingTowardInstaller(needing).length === 0 && critical.length === 0;
             if (ok) this._verifyFullCacheLater(snapshot);
             return ok;
         } catch (error) {
@@ -4875,7 +4898,12 @@ class ServiceWorkerManager {
             if (this.agentSession || this._isContinuityDexWindow()) return plan;
             // the machine's own firmware updates, staged by its system agent (DreamOS): installed after Melaton's
             plan.firmware = this._firmwareWaiting().slice();
-            (this._updateBatches || []).forEach((batch) => plan.updates.push({ files: batch.files.slice(), downloaded: true }));
+            (this._updateBatches || []).forEach((batch) => plan.updates.push({ files: batch.files.slice(), downloaded: true, batch }));
+            // a download still running is this shutdown's too: it is waited for, never cut off half way
+            // (a restart in the middle of one left a client with part of an update, #924)
+            if (this.isUpdating && Array.isArray(this._activeDownloadFiles) && this._activeDownloadFiles.length) {
+                plan.updates.push({ files: this._activeDownloadFiles.map((f) => ({ url: f.url, hash: f.hash })), downloaded: false, running: true });
+            }
             const worker = this.swRegistration && this.swRegistration.active;
             const online = navigator.onLine !== false && window.wsClient && typeof window.wsClient.isConnected === 'function' && window.wsClient.isConnected();
             if (options.checkServer === false || !worker || !online || !window.melatonUpdatePolicy || this.isUpdating) return plan;
@@ -4941,6 +4969,8 @@ class ServiceWorkerManager {
                 const hashed = update.files.filter((f) => f && f.url && f.hash);
                 let left = [];
                 try {
+                    // a download that was running when the shutdown began: joined until it ends or stalls
+                    if (update.running) await this.attachToDownloadProgress({ stallMs: 20000 });
                     left = hashed.length ? await this.getFilesNeedingUpdate(hashed, { full: true }) : [];
                     if (left.length) {
                         await this.attachToDownloadProgress({ files: left, stallMs: 20000 });
@@ -5005,6 +5035,20 @@ class ServiceWorkerManager {
             }
             // cbsmsg.dll.mui: "Configuring updates: Stage %d of %d - %d%% complete." / "Do not turn off your computer."
             const stage = (n, pct) => { if (!plain) say(`Configuring updates: Stage ${n} of 3 - ${pct}% complete.\nDo not turn off your computer.`); };
+            if (failed) {
+                // An update did not get all of its files. Nothing is switched: the file list is not
+                // stored as proven and the worker's kept /app stays the one whose files this cache
+                // holds, so the copy that ran before starts again; the updates that failed stay
+                // waiting for the next shutdown or the next start's check. cbsmsg.dll.mui's own line.
+                console.warn(`[update] ${failed} of ${updates.length} update(s) did not install; the previous version stays`);
+                if (!plain) say('Updates were not configured correctly.  Reverting changes.\nDo not turn off your computer.');
+                const keep = done.filter((d) => !d.ok && d.update.batch).map((d) => d.update.batch);
+                this._updateBatches = keep;
+                this._syncUpdatesWaitingMark();
+                try { localStorage.removeItem('melatonUpdateConfigure'); } catch (_) { /* storage off */ }
+                await pause(2500);
+                return { installed: updates.length - failed, failed };
+            }
             stage(1, 0);
             await pause(350);
             // a new service worker that waited for the pages to go takes over with this restart
@@ -5080,9 +5124,17 @@ class ServiceWorkerManager {
                     stage(Math.min(99, Math.round(((i + step) / files.length) * 100)));
                 }
             }
-            if (missing) console.warn(`[update] ${missing} installed file(s) are not in the cache; the update check fetches them`);
-            stage(100);
-            if (screen) await pause(900);
+            if (missing) {
+                // not what was installed: said so, filed, and left to the update check (or the installer,
+                // when the missing file is one the copy cannot start without)
+                console.warn(`[update] ${missing} installed file(s) are not in the cache; the update check fetches them`);
+                if (screen) showWinlogonStatus('Updates were not configured correctly.  Reverting changes.\nDo not turn off your computer.');
+                this.recordUpdateHistory({ name: `Melaton update (${missing} ${missing === 1 ? 'file' : 'files'} missing after the restart)`, status: 'Failed', importance: 'Important' });
+                if (screen) await pause(2500);
+            } else {
+                stage(100);
+                if (screen) await pause(900);
+            }
         } catch (error) {
             console.warn('[update] configuring updates stopped early', error);
         }

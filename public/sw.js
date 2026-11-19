@@ -36,8 +36,85 @@ async function answerHashedAsset(event, request, url, key) {
     // the kept file is another version than the page asked for: what the router answered before
     const shellHit = await matchStaticShell(url.pathname);
     if (shellHit) return respondWithSavedAsset(request, shellHit, SHELL_ASSET_CACHE_CONTROL);
+    // no row at all (#924): an earlier version this worker still holds a copy of boots the page;
+    // the update check that follows the start fetches the right one
+    const earlier = await earlierScriptCopy(cache, url);
+    if (earlier) return earlier;
   } catch (_err) { /* the network below */ }
-  return fetch(request);
+  return fetchMissingHashedAsset(event, request, url);
+}
+
+/** Any copy SCRIPT_CODE_CACHE holds of this path under another hash (the version the page ran before). */
+async function earlierScriptCopy(cache, url) {
+  const byPath = await scriptCodeKeys(cache);
+  const keys = byPath.get(url.origin + url.pathname);
+  if (!keys) return null;
+  for (const key of keys) {
+    const copy = await cache.match(key);
+    if (copy) return copy;
+  }
+  return null;
+}
+
+// A page file with no copy in any cache goes to the network, but never without a limit (#924): an
+// installed client's kept /app once named a desktopBoot.js this cache did not have, the server was
+// unreachable, and the request hung for 334 s before the page died. The answer's headers must come
+// within MISSING_ASSET_WAIT_MS (shorter on an installed client, which must start without the
+// server); past it the request fails at once, the pages are told (STATIC_FILE_MISSING), and when
+// the file is one the copy cannot start without, the page is sent to /launch?repair=1, whose
+// update check takes the critical-missing route to the installer.
+const MISSING_ASSET_WAIT_MS = 10000;
+const MISSING_ASSET_WAIT_INSTALLED_MS = 4000;
+const SHELL_REPAIR_EVERY_MS = 3 * 60 * 1000;
+// public/scripts/launch/updatePolicy.js CRITICAL_PATHS (kept in step by scripts/test-sw-shell-atomic.js)
+const SHELL_CRITICAL_PATHS = new Set([
+  '/scripts/comp/serviceWorkerManager.js',
+  '/scripts/comp/fatalErrorBootstrap.js',
+  '/scripts/comp/modalUtils.js',
+  '/scripts/comp/winlogonPower.js',
+  '/scripts/comp/desktopBoot.js',
+  '/scripts/comp/featureLoader.js',
+  '/scripts/websocket.js',
+  '/scripts/app.js',
+  '/scripts/launch/updatePolicy.js',
+  '/scripts/launch/updateEngine.js',
+  '/scripts/launch/melatonBoot.js',
+  '/scripts/launch/assetPackages.js',
+  '/css/desktop-boot.css'
+]);
+let shellRepairAt = 0;
+
+async function fetchMissingHashedAsset(event, request, url) {
+  const waitMs = isAppWebView(request) ? MISSING_ASSET_WAIT_INSTALLED_MS : MISSING_ASSET_WAIT_MS;
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), waitMs);
+  try {
+    const response = await fetch(request, { signal: abort.signal });
+    // the front proxy's error page is not the file
+    if (response && response.status < 500) return response;
+  } catch (_err) { /* no answer in time */ } finally {
+    clearTimeout(timer);
+  }
+  const told = reportMissingAsset(event, url.pathname).catch(() => {});
+  if (event && typeof event.waitUntil === 'function') event.waitUntil(told);
+  return Response.error();
+}
+
+async function reportMissingAsset(event, pathname) {
+  const all = await self.clients.matchAll({ type: 'window' });
+  all.forEach((client) => client.postMessage({ type: 'STATIC_FILE_MISSING', path: pathname, critical: SHELL_CRITICAL_PATHS.has(pathname) }));
+  if (!SHELL_CRITICAL_PATHS.has(pathname)) return;
+  // the kept shell asked for it: that shell is not this cache's, so it goes (the next start takes
+  // the server's page, or the installed boot shell when the server is away)
+  try { await (await caches.open(LAUNCH_SHELL_CACHE)).delete(APP_SHELL_KEY); } catch (_err) { /* kept */ }
+  const now = Date.now();
+  if (now - shellRepairAt < SHELL_REPAIR_EVERY_MS) return;
+  shellRepairAt = now;
+  const id = event && (event.clientId || event.resultingClientId);
+  const client = id ? await self.clients.get(id) : null;
+  if (client && typeof client.navigate === 'function' && new URL(client.url).pathname === '/app') {
+    await client.navigate('/launch?repair=1').catch(() => {});
+  }
 }
 
 self.addEventListener('fetch', (event) => {
@@ -1529,6 +1606,73 @@ function perfRoute(handler) {
 // A DreamOS laptop is an installed client too (#923): its kiosk adds " DreamOS/<version>" to Chromium's user agent.
 const INSTALLED_CLIENT_UA = /(?: wv\)| DreamOS\/)/;
 const isAppWebView = (request) => INSTALLED_CLIENT_UA.test((request && request.headers && request.headers.get('user-agent')) || '') || INSTALLED_CLIENT_UA.test(self.navigator && self.navigator.userAgent || '');
+// The kept shell and its files switch together (#924). A page the server sends is first held as a
+// candidate (<key>.next); it becomes the kept shell only once every script and stylesheet it names
+// (src / href with ?sha=) is in the static cache under that hash. Until then the shell kept before
+// stays: its files are the ones this cache holds. The candidate is tried when it arrives and again
+// when the page reports the cache in sync (SHELL_COMMIT: the boot check, an install at shutdown,
+// /launch's installer). Before this, every start put the server's newest /app in place at once,
+// whether or not its files had been downloaded.
+const SHELL_NEXT_SUFFIX = '.next';
+const SHELL_REF = /(?:src|href)=["']([^"'?#]+)\?sha=([0-9a-f]{16,64})["']/g;
+
+/** [{ path, sha }] of the page's hashed scripts and stylesheets (the files the fast path serves). */
+function shellFileRefs(html) {
+  const seen = new Set();
+  const refs = [];
+  let m;
+  SHELL_REF.lastIndex = 0;
+  while ((m = SHELL_REF.exec(html))) {
+    const path = m[1].charAt(0) === '/' ? m[1] : `/${m[1]}`;
+    if (!HASHED_FAST_PREFIXES.some((prefix) => path.startsWith(prefix)) || isAuthGatedStaticPath(path)) continue;
+    const id = `${path}?${m[2]}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    refs.push({ path, sha: m[2] });
+  }
+  return refs;
+}
+
+/** The first file the page names that the static cache does not hold under that hash, or null. */
+async function shellFileMissing(html) {
+  for (const ref of shellFileRefs(html)) {
+    const row = await matchStaticShell(ref.path);
+    if (!row || row.headers.get('x-file-hash') !== ref.sha) return ref;
+  }
+  return null;
+}
+
+/** Hold the server's page as the candidate for key, and make it the kept shell if its files are here. */
+async function keepShell(key, response) {
+  const cache = await caches.open(LAUNCH_SHELL_CACHE);
+  const kept = await cache.match(key);
+  const html = await response.clone().text();
+  if (kept && (await kept.clone().text()) === html) {
+    await cache.delete(key + SHELL_NEXT_SUFFIX);
+    return true;
+  }
+  await cache.put(key + SHELL_NEXT_SUFFIX, response);
+  return promoteShell(key);
+}
+
+async function promoteShell(key) {
+  const cache = await caches.open(LAUNCH_SHELL_CACHE);
+  const next = await cache.match(key + SHELL_NEXT_SUFFIX);
+  if (!next) return false;
+  const missing = await shellFileMissing(await next.clone().text());
+  if (missing) return false;
+  await cache.put(key, next);
+  await cache.delete(key + SHELL_NEXT_SUFFIX);
+  return true;
+}
+
+/** SHELL_COMMIT from a page: the cache is in sync, so the candidates' files are here now. */
+async function commitShells() {
+  const app = await promoteShell(APP_SHELL_KEY).catch(() => false);
+  const launch = await promoteShell(LAUNCH_SHELL_KEY).catch(() => false);
+  return { app, launch };
+}
+
 async function keptFirst(event, key, refresh) {
   try {
     const cache = await caches.open(LAUNCH_SHELL_CACHE);
@@ -1549,7 +1693,7 @@ workbox.routing.registerRoute(
     if (isAppWebView(request)) {
       const kept = await keptFirst(event, LAUNCH_SHELL_KEY, async () => {
         const r = await fetch(request.url, { credentials: 'same-origin', cache: 'no-store' });
-        if (r && r.ok && r.headers.get('x-melaton-shell') === 'launch') await (await caches.open(LAUNCH_SHELL_CACHE)).put(LAUNCH_SHELL_KEY, r.clone());
+        if (r && r.ok && r.headers.get('x-melaton-shell') === 'launch') await keepShell(LAUNCH_SHELL_KEY, r.clone());
       });
       if (kept) return kept;
     }
@@ -1561,10 +1705,9 @@ workbox.routing.registerRoute(
       response = null;
     }
     if (response && response.ok && response.headers.get('x-melaton-shell') === 'launch') {
-      try {
-        const cache = await caches.open(LAUNCH_SHELL_CACHE);
-        await cache.put(LAUNCH_SHELL_KEY, response.clone());
-      } catch (_err) { /* the page still boots from the network copy */ }
+      // kept for the next start once its files are here (keepShell), never waited for
+      const keeping = keepShell(LAUNCH_SHELL_KEY, response.clone()).catch(() => false);
+      if (event && typeof event.waitUntil === 'function') event.waitUntil(keeping);
       return response;
     }
     try {
@@ -1591,7 +1734,7 @@ workbox.routing.registerRoute(
     if (isAppWebView(request) && new URL(request.url).pathname === '/app') {
       const kept = await keptFirst(event, APP_SHELL_KEY, async () => {
         const r = await fetch(request.url, { credentials: 'same-origin', cache: 'no-store' });
-        if (r && r.status === 200 && r.headers.get('x-melaton-shell') === 'app') await (await caches.open(LAUNCH_SHELL_CACHE)).put(APP_SHELL_KEY, r.clone());
+        if (r && r.status === 200 && r.headers.get('x-melaton-shell') === 'app') await keepShell(APP_SHELL_KEY, r.clone());
       });
       if (kept) return kept;
     }
@@ -1609,10 +1752,9 @@ workbox.routing.registerRoute(
       // the app page itself, kept so an installed phone starts without the server (launch.html
       // startOfflineIfInstalled; Melaton Mobile as Android's launcher must always reach Today)
       if (response.status === 200 && response.headers.get('x-melaton-shell') === 'app') {
-        try {
-          const cache = await caches.open(LAUNCH_SHELL_CACHE);
-          await cache.put(APP_SHELL_KEY, response.clone());
-        } catch (_err) { /* the page still loads from the network */ }
+        // kept for the next start once its files are here (keepShell), never waited for
+        const keeping = keepShell(APP_SHELL_KEY, response.clone()).catch(() => false);
+        if (event && typeof event.waitUntil === 'function') event.waitUntil(keeping);
       }
       return response;
     }
@@ -2043,6 +2185,12 @@ self.addEventListener('message', (event) => {
         event.waitUntil(deleteFromCache(event.data.url, event.data.requestId));
     } else if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
+    } else if (event.data && event.data.type === 'SHELL_COMMIT') {
+        // the page proved the cache in sync: the held shells switch with their files (#924)
+        const source = event.source;
+        event.waitUntil(commitShells().then((result) => {
+            if (source && event.data.requestId) source.postMessage({ type: 'SHELL_COMMITTED', requestId: event.data.requestId, app: result.app, launch: result.launch });
+        }));
     } else if (event.data && event.data.type === 'GET_DOWNLOAD_STATE') {
         getDownloadState(event.data.requestId, event.source);
     } else if (event.data && event.data.type === 'CANCEL_DOWNLOAD') {
@@ -2581,8 +2729,13 @@ async function cacheStaticFiles(files, silent = false) {
                                 console.warn(`${file.url}: the server sent ${storeHash.slice(0, 12)}, not the manifest's ${String(file.hash).slice(0, 12)}`);
                             }
                         }
-                        await purgeStaticCacheEntries(cache, file.url);
                         const cacheKey = new Request(file.url);
+                        // The new bytes replace the row in one write (#924). The purge first is only for
+                        // a row an old strategy stored with Vary, which put() would leave beside the new
+                        // one: every row this download writes has none, so nothing is deleted before the
+                        // put and a worker killed here (a power-off mid-install) still leaves a copy.
+                        const before = await cache.match(cacheKey, { ignoreVary: true });
+                        if (before && before.headers.get('vary')) await purgeStaticCacheEntries(cache, file.url);
                         await cache.put(cacheKey, staticCacheResponseWithHash(body, response, storeHash));
 
                         const cachedResponse = await cache.match(cacheKey, { ignoreVary: true });
