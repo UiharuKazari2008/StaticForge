@@ -120,6 +120,9 @@
     // WM's wait cursor (wmShell.busy) over work the user waits for: a message sending, a reply's original loading
     const busyOf = (fn, opts) => (ws && typeof ws.busy === 'function' ? ws.busy(fn, opts) : fn());
     let page = null;
+    // the page's resize watchers (the fold, the input panel): disconnected when the app ends, so a resize after that
+    // never reaches a page that is gone (fault_f582f35fe93e: null.classList in the observer at a restart)
+    let pageObservers = [];
     let mailboxes = []; // [{ owner, label, unread, spamUnread, address }]
     let acct = 'mail'; // the account on screen: 'mail' | 'imap' | 'dir'
     // #890: what a show reads again. Pushes keep the mailboxes, the IMAP and text accounts and their counts
@@ -3205,8 +3208,12 @@
         page = p;
         p.classList.add('wm-msg');
         // folding / unfolding (or the page first getting its size): list and message side by side or not
+        pageObservers.forEach((o) => o.disconnect());
+        pageObservers = [];
         if (typeof ResizeObserver === 'function') {
-            new ResizeObserver(() => { if (page.classList.contains('is-dual') !== isDual()) showLayer(); }).observe(p);
+            const ro = new ResizeObserver(() => { if (page === p && p.classList.contains('is-dual') !== isDual()) showLayer(); });
+            ro.observe(p);
+            pageObservers.push(ro);
         }
         p.innerHTML = `
             <div class="msg-view" data-view="list">
@@ -3309,7 +3316,11 @@
             if (att) { e.stopPropagation(); attachmentMenu(att); }
         });
         // the input panel opening / closing changes the page's height: the text fills it again
-        if (typeof ResizeObserver === 'function') new ResizeObserver(() => fitCompose()).observe(form);
+        if (typeof ResizeObserver === 'function') {
+            const ro = new ResizeObserver(() => { if (page) fitCompose(); });
+            ro.observe(form);
+            pageObservers.push(ro);
+        }
         form.querySelector('[name="body"]').addEventListener('input', () => fitCompose());
         form.addEventListener('keydown', (e) => {
             // up / down between the header's lines (the device: up from To scrolls Cc and Bcc into sight)
@@ -3599,6 +3610,8 @@
                 readToken++;
                 compose = null;
                 moveIds = [];
+                pageObservers.forEach((o) => o.disconnect());
+                pageObservers = [];
                 page = null;
             },
             // WM: X on the lists (Smart Minimize), ok on a message, a new message and the option pages;
