@@ -4551,8 +4551,10 @@
 
     function fitStatusNow() {
         if (!shell) return;
-        if (fitStatusMeasured(shell.querySelector('.wm-titlebar'))) return;
         const bar = shell.querySelector('.wm-titlebar');
+        // the corner's kept place as the X / ok is now, before anything is measured (syncNoAction)
+        syncNoAction(bar);
+        if (fitStatusMeasured(bar)) return;
         applyCornerInset(bar);
         const el = (r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
         // the children's own boxes, not scrollWidth: 6.5's corner button carries a pressed
@@ -4732,21 +4734,27 @@
         shell._wmMsgboxWatch = mo;
     }
 
+    /*
+     * The X / ok's kept place (wm-shell.css .wm-titlebar.wm-no-action): a class, not :has(> .wm-title-action[hidden]) -
+     * that rule made every hidden change anywhere in the shell restyle all of it (~22 ms each on the A53, three per
+     * back, #961). Set by the watcher below and at the start of every fit: a fit measured in the same task as the
+     * corner's change (barsStage showing the X over Today for the app's bar kit) ran before the observer, so Today's
+     * kept place and the X both took room and the native bar's icons ended ~70 px short of the X (Fold cover, Nov 20).
+     */
+    function syncNoAction(bar) {
+        if (!bar) return;
+        const a = bar.querySelector(':scope > .wm-title-action');
+        const on = !!(a && a.hidden);
+        if (bar.classList.contains('wm-no-action') !== on) bar.classList.toggle('wm-no-action', on);
+    }
+
     let statusFitting = false;
     function watchStatusIcons() {
         const status = shell && shell.querySelector('.wm-titlebar');
         if (!status || status._wmFitWatch) return;
-        // the X / ok's kept place (wm-shell.css .wm-titlebar.wm-no-action): a class, not :has(> .wm-title-action[hidden]) -
-        // that rule made every hidden change anywhere in the shell restyle all of it (~22 ms each on the A53, three per
-        // back, #961)
-        const syncNoAction = () => {
-            const a = status.querySelector(':scope > .wm-title-action');
-            const on = !!(a && a.hidden);
-            if (status.classList.contains('wm-no-action') !== on) status.classList.toggle('wm-no-action', on);
-        };
-        syncNoAction();
+        syncNoAction(status);
         const mo = new MutationObserver((list) => {
-            syncNoAction();
+            syncNoAction(status);
             if (statusFitting) return;
             // data-icon: only the battery's (charging or not); the data arrows change it with every packet
             // the X / ok showing or going (opening Start, an app): its room changes what fits, refitted before that
