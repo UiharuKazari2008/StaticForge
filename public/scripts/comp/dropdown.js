@@ -439,3 +439,155 @@ function updateSelectedOption(menu, selectedIndex) {
         }
     });
 }
+
+/**
+ * Drop-down lists (Yukimi, Nov 20 2026: "0 plain dropdowns"): every <select class="vdt-select"> in the app opens
+ * the platform's list, never the browser's or Android's picker. The desktop drops Vista's ComboLBox under the control
+ * (vistaDropList, the one implementation: vistaDialogTemplate.js uses it too); the phone shell hangs WM's drop-down
+ * from it (wmShell.dropdown). The <select> keeps the value and its events. Keys as Win32's CBS_DROPDOWNLIST: F4,
+ * Alt+Down / Alt+Up and Space drop the list; Up / Down / Left / Right / Home / End / Page keys step the value
+ * without it. A press already taken (a vdt dialog's own wiring, an app's handler) is left alone.
+ */
+(function vistaDropLists() {
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    /**
+     * A combo box's dropped list (the ComboLBox): Vista's list box under the control, over everything. opts:
+     * { items [{ value, text }], value, room (px the template allows, else comctl32 v6's 30 rows), pick(value),
+     * focus (the element that keeps the focus and hears the keys) }. A second open of the same box closes it.
+     */
+    function vistaDropList(box, opts) {
+        const old = document.querySelector('.vdt-combo-pop');
+        if (old) { const was = old._box; old._close(); if (was === box) return; }
+        const items = opts.items || [];
+        const focusEl = opts.focus;
+        const r = box.getBoundingClientRect();
+        const pop = document.createElement('div');
+        const cs = getComputedStyle(focusEl);
+        // MS Shell Dlg 8 (Tahoma, 11 px) rows are 13 px, Segoe UI 9 pt rows 15 (the VM's devmgr Property list: 13)
+        pop.className = `vdt-combo-pop vdt-listbox${parseFloat(cs.fontSize) <= 11 ? ' is-small' : ''}`;
+        pop.setAttribute('role', 'listbox');
+        pop.style.font = cs.font;
+        pop.innerHTML = items.length ? items.map((o) => `<div class="vdt-lb-row${String(o.value) === String(opts.value) ? ' is-selected' : ''}" data-value="${esc(o.value)}" role="option"><span>${esc(o.text)}</span></div>`).join('') : '<div class="vdt-lb-row" data-empty="1"><span>&nbsp;</span></div>';
+        const n = Math.max(1, items.length);
+        pop.style.left = `${Math.round(r.left)}px`;
+        pop.style.width = `${Math.round(r.width)}px`;
+        document.body.appendChild(pop);
+        const rowH = (pop.querySelector('.vdt-lb-row') || pop).getBoundingClientRect().height || 13;
+        const room = opts.room || rowH * 30 + 2;
+        const h = Math.round(Math.max(1, Math.min(n, Math.floor((room - 2) / rowH))) * rowH + 2);
+        const below = window.innerHeight - r.bottom;
+        pop.style.height = `${h}px`;
+        pop.style.top = `${Math.round(below >= h || below >= r.top ? r.bottom : r.top - h)}px`;
+        const sel = pop.querySelector('.is-selected');
+        if (sel) sel.scrollIntoView({ block: 'nearest' });
+        const pick = (row) => { if (row && !row.dataset.empty) opts.pick(row.dataset.value); };
+        const close = () => {
+            pop.remove();
+            document.removeEventListener('mousedown', outside, true);
+            document.removeEventListener('touchstart', outside, true);
+            focusEl.removeEventListener('keydown', keys, true);
+            focusEl.removeEventListener('blur', blurred);
+            window.removeEventListener('resize', close);
+            box.classList.remove('is-open');
+        };
+        // a press on the box itself is the box's own (it closes the list through its toggle)
+        const outside = (ev) => { if (!pop.contains(ev.target) && !box.contains(ev.target)) close(); };
+        const blurred = () => setTimeout(() => { if (pop.isConnected && document.activeElement !== focusEl) close(); }, 0);
+        const keys = (ev) => {
+            const list = Array.from(pop.querySelectorAll('.vdt-lb-row[data-value]'));
+            let i = list.findIndex((x) => x.classList.contains('is-selected'));
+            if (ev.key === 'Escape' || ev.key === 'Tab' || ev.key === 'F4' || (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown'))) { if (ev.key !== 'Tab') { ev.preventDefault(); ev.stopPropagation(); } close(); return; }
+            if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); pick(list[i]); close(); return; }
+            const page = Math.max(1, Math.floor(h / rowH) - 1);
+            const step = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page, Home: -1e6, End: 1e6 }[ev.key];
+            if (!step) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            i = Math.max(0, Math.min(list.length - 1, (i < 0 ? -1 : i) + step));
+            list.forEach((x, j) => x.classList.toggle('is-selected', j === i));
+            if (list[i]) { list[i].scrollIntoView({ block: 'nearest' }); pick(list[i]); }
+        };
+        pop.addEventListener('mousedown', (ev) => ev.preventDefault());
+        pop.addEventListener('mousemove', (ev) => {
+            const row = ev.target.closest('.vdt-lb-row[data-value]');
+            if (row && !row.classList.contains('is-selected')) { pop.querySelectorAll('.is-selected').forEach((x) => x.classList.remove('is-selected')); row.classList.add('is-selected'); }
+        });
+        pop.addEventListener('click', (ev) => { pick(ev.target.closest('.vdt-lb-row')); close(); focusEl.focus(); });
+        pop._box = box;
+        pop._close = close;
+        box.classList.add('is-open');
+        focusEl.focus();
+        document.addEventListener('mousedown', outside, true);
+        document.addEventListener('touchstart', outside, true);
+        focusEl.addEventListener('keydown', keys, true);
+        focusEl.addEventListener('blur', blurred);
+        window.addEventListener('resize', close);
+    }
+
+    const choices = (select) => Array.from(select.options).filter((o) => !o.hidden);
+    const setValue = (select, v) => {
+        if (select.value === v) return;
+        select.value = v;
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const phoneShell = () => document.documentElement.classList.contains('ui-mobile') && window.wmShell && typeof window.wmShell.dropdown === 'function' && document.getElementById('wmShell');
+
+    /** Drop a <select>'s list: Vista's ComboLBox, or WM's drop-down on the phone shell. pick(v) after the value is set. */
+    function vistaSelectDrop(select, pick) {
+        if (!select || select.disabled) return;
+        const done = (v) => { setValue(select, v); if (typeof pick === 'function') pick(v); };
+        if (phoneShell()) {
+            window.wmShell.dropdown(select, choices(select).map((o) => ({ label: o.text, radio: o.value === select.value, disabled: o.disabled, action: () => done(o.value) })));
+            return;
+        }
+        vistaDropList(select, {
+            items: choices(select).map((o) => ({ value: o.value, text: o.text })),
+            value: select.value,
+            focus: select,
+            pick: done
+        });
+    }
+
+    /** Up / Down / Home / End / Page keys on a closed drop-down list: the next choice, no list (Win32). */
+    function vistaSelectStep(select, key, pick) {
+        const opts = choices(select).filter((o) => !o.disabled);
+        if (!opts.length) return;
+        let i = opts.findIndex((o) => o.value === select.value);
+        const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1, PageDown: 10, PageUp: -10, Home: -1e6, End: 1e6 }[key];
+        i = Math.max(0, Math.min(opts.length - 1, (i < 0 ? 0 : i) + step));
+        if (opts[i].value === select.value) return;
+        setValue(select, opts[i].value);
+        if (typeof pick === 'function') pick(opts[i].value);
+    }
+
+    window.vistaDropList = vistaDropList;
+    window.vistaSelectDrop = vistaSelectDrop;
+    window.vistaSelectStep = vistaSelectStep;
+
+    const isDropList = (t) => t && t.matches && t.matches('select.vdt-select:not([multiple])');
+    // the press, the tap's touchend and the click are taken, so the browser's picker never opens
+    const takePress = (ev) => {
+        if (ev.defaultPrevented || !isDropList(ev.target)) return;
+        ev.preventDefault();
+        if (ev.type === 'click' || ev.target.disabled || (ev.type === 'mousedown' && ev.button !== 0)) return;
+        ev.target.focus();
+        vistaSelectDrop(ev.target);
+    };
+    // app-scope: allow page lifetime (the shell's drop-down lists: dropdown.js is loaded once from app.html)
+    document.addEventListener('mousedown', takePress);
+    // app-scope: allow page lifetime (as above)
+    document.addEventListener('touchend', takePress, { passive: false });
+    // app-scope: allow page lifetime (as above)
+    document.addEventListener('click', takePress);
+    // app-scope: allow page lifetime (as above)
+    document.addEventListener('keydown', (ev) => {
+        const sel = ev.target;
+        if (ev.defaultPrevented || !isDropList(sel) || sel.classList.contains('is-open')) return;
+        // Enter belongs to the window (its default button), never the browser's picker
+        if (ev.key === 'Enter') { ev.preventDefault(); return; }
+        if (ev.key === 'F4' || ev.key === ' ' || (ev.altKey && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'))) { ev.preventDefault(); vistaSelectDrop(sel); return; }
+        if (/^(Arrow(Up|Down|Left|Right)|Page(Up|Down)|Home|End)$/.test(ev.key) && !ev.altKey) { ev.preventDefault(); vistaSelectStep(sel, ev.key); }
+    });
+})();

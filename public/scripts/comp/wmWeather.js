@@ -2853,7 +2853,7 @@
             check: (name, label, checked, attrs = '') => { const id = `wxdC${++n}`; return `<div class="wxd-field"><input type="checkbox" id="${id}" name="${esc(name)}"${checked ? ' checked' : ''} ${attrs}><label for="${id}">${esc(label)}</label></div>`; },
             radio: (name, value, label, checked, attrs = '') => { const id = `wxdR${++n}`; return `<div class="wxd-field"><input type="radio" id="${id}" name="${esc(name)}" value="${esc(value)}"${checked ? ' checked' : ''} ${attrs}><label for="${id}">${esc(label)}</label></div>`; },
             row: (label, control) => `<div class="wxd-row"><span>${esc(label)}</span>${control}</div>`,
-            comboHtml: (act, label, disabled) => `<select data-act="${esc(act)}"${disabled ? ' disabled' : ''}><option>${esc(label)}</option></select>`,
+            comboHtml: (act, label, disabled) => `<select class="vdt-select" data-act="${esc(act)}"${disabled ? ' disabled' : ''}><option>${esc(label)}</option></select>`,
             bindCombo(sel, options, current, onPick) {
                 if (!sel) return;
                 sel.innerHTML = options.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(current) ? ' selected' : ''}>${esc(l)}</option>`).join('');

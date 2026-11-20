@@ -1211,7 +1211,7 @@
                 const many = this.accounts.length > 1;
                 const t = tm();
                 head.innerHTML = `<div class="mm-compose-head">
-                    ${many ? `<label class="mm-hlabel">From:</label><select class="mm-from">${this.accounts.map((x) => { const l = t.label(x); return `<option value="${esc(x.id)}"${x.id === a.id ? ' selected' : ''}>${esc(`${l.title} (${l.subline})`)}</option>`; }).join('')}</select>` : ''}
+                    ${many ? `<label class="mm-hlabel">From:</label><select class="vdt-select mm-from">${this.accounts.map((x) => { const l = t.label(x); return `<option value="${esc(x.id)}"${x.id === a.id ? ' selected' : ''}>${esc(`${l.title} (${l.subline})`)}</option>`; }).join('')}</select>` : ''}
                     <label class="mm-hlabel" for="mmTo">To:</label><input type="text" id="mmTo" class="mm-to" spellcheck="false" autocomplete="off" value="${esc(this.compose.to)}">
                 </div>`;
                 this.q('.mm-thread').innerHTML = '<div class="mm-thread-note">Type the phone numbers or e-mail addresses of the people the message is for, separated by semicolons.</div>';

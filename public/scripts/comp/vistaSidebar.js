@@ -586,7 +586,7 @@ const vsbClockOptions = {
             <div class="group"><label for="vsbClockName">Clock name:</label>
                 <input type="text" id="vsbClockName" maxlength="30" value="${escapeHtmlAttribute(set.name)}"></div>
             <div class="group"><label for="vsbClockZone">Time zone:</label>
-                <select id="vsbClockZone">${vsbOptions(zones, set.timeZone)}</select></div>
+                <select class="vdt-select" id="vsbClockZone">${vsbOptions(zones, set.timeZone)}</select></div>
             <div><input type="checkbox" id="vsbClockSeconds"${set.seconds ? ' checked' : ''}><label for="vsbClockSeconds">Show the second hand</label></div>
         </div>`;
     },
@@ -980,12 +980,12 @@ const vsbNotesOptions = {
             </div>
             <div class="vsb-options-count" id="vsbNotesColorCount"></div>
             <div class="group"><label for="vsbNotesFont">Font:</label>
-                <select id="vsbNotesFont">${vsbOptions(VSB_NOTE_FONTS.map((f) => [f, f]), set.font)}</select></div>
+                <select class="vdt-select" id="vsbNotesFont">${vsbOptions(VSB_NOTE_FONTS.map((f) => [f, f]), set.font)}</select></div>
             <div class="group"><label for="vsbNotesSize">Size:</label>
-                <select id="vsbNotesSize">${vsbOptions(sizes, set.size)}</select></div>
+                <select class="vdt-select" id="vsbNotesSize">${vsbOptions(sizes, set.size)}</select></div>
             <div><input type="checkbox" id="vsbNotesReadOnly"${set.readOnly ? ' checked' : ''}><label for="vsbNotesReadOnly">Read only</label></div>
             <div class="group"><label for="vsbNotesLink">Show a Melaton Journal note:</label>
-                <select id="vsbNotesLink"><option value="">None (notes kept in this gadget)</option>${set.noteId ? `<option value="${escapeHtmlAttribute(set.noteId)}" selected>Loading...</option>` : ''}</select></div>
+                <select class="vdt-select" id="vsbNotesLink"><option value="">None (notes kept in this gadget)</option>${set.noteId ? `<option value="${escapeHtmlAttribute(set.noteId)}" selected>Loading...</option>` : ''}</select></div>
         </div>`;
     },
     ready(dialog, set) {
@@ -1194,7 +1194,7 @@ const vsbSourceOptions = {
     html(set) {
         return `<div class="vsb-options">
             <div class="group"><label for="vsbImageSource">Pictures from this workspace:</label>
-                <select id="vsbImageSource">${vsbOptions(VSB_IMAGE_SOURCES, set.source)}</select></div>
+                <select class="vdt-select" id="vsbImageSource">${vsbOptions(VSB_IMAGE_SOURCES, set.source)}</select></div>
         </div>`;
     },
     read(dialog, set) {
@@ -1522,17 +1522,17 @@ const vsbSlideOptions = {
     html(set) {
         return `<div class="vsb-options">
             <div class="group"><label for="vsbSlideSource">Pictures from this workspace:</label>
-                <select id="vsbSlideSource"${set.search ? ' disabled' : ''}>${vsbOptions(VSB_IMAGE_SOURCES, set.source)}</select></div>
+                <select class="vdt-select" id="vsbSlideSource"${set.search ? ' disabled' : ''}>${vsbOptions(VSB_IMAGE_SOURCES, set.source)}</select></div>
             <div class="group"><label for="vsbSlideSearch">Or pictures from an Image Search:</label>
                 <input type="text" id="vsbSlideSearch" readonly placeholder="No search" value="${escapeHtmlAttribute(set.search ? set.search.label || 'Saved search' : '')}">
                 <div><button type="button" id="vsbSlideSearchOpen">Image Search...</button>
                 <button type="button" id="vsbSlideSearchClear"${set.search ? '' : ' disabled'}>Use workspace pictures</button></div></div>
             <div class="group"><label for="vsbSlideShape">Shape:</label>
-                <select id="vsbSlideShape">${vsbOptions(VSB_SLIDE_SHAPES, set.shape || 'landscape')}</select></div>
+                <select class="vdt-select" id="vsbSlideShape">${vsbOptions(VSB_SLIDE_SHAPES, set.shape || 'landscape')}</select></div>
             <div class="group"><label for="vsbSlideSeconds">Show each picture:</label>
-                <select id="vsbSlideSeconds">${vsbOptions(VSB_SLIDE_SECONDS, set.seconds)}</select></div>
+                <select class="vdt-select" id="vsbSlideSeconds">${vsbOptions(VSB_SLIDE_SECONDS, set.seconds)}</select></div>
             <div class="group"><label for="vsbSlideTransition">Transition between pictures:</label>
-                <select id="vsbSlideTransition">${vsbOptions(VSB_SLIDE_TRANSITIONS, set.transition)}</select></div>
+                <select class="vdt-select" id="vsbSlideTransition">${vsbOptions(VSB_SLIDE_TRANSITIONS, set.transition)}</select></div>
             <div><input type="checkbox" id="vsbSlideShuffle"${set.shuffle ? ' checked' : ''}><label for="vsbSlideShuffle">Shuffle pictures</label></div>
         </div>`;
     },
@@ -1705,7 +1705,7 @@ const vsbWeatherOptions = {
             <div><input type="checkbox" id="vsbWeatherFeels"${set.feelsLike ? ' checked' : ''}><label for="vsbWeatherFeels">Use feels-like temperature</label></div>
             <div><input type="checkbox" id="vsbWeatherHidePlace"${set.hidePlace ? ' checked' : ''}><label for="vsbWeatherHidePlace">Hide location name</label></div>
             <div class="group"><label for="vsbWeatherPlaceAlt">Show in its place:</label>
-                <select id="vsbWeatherPlaceAlt"${set.hidePlace ? '' : ' disabled'}>${vsbOptions(VSB_WEATHER_PLACE_ALTS, set.placeAlt || 'none')}</select></div>
+                <select class="vdt-select" id="vsbWeatherPlaceAlt"${set.hidePlace ? '' : ' disabled'}>${vsbOptions(VSB_WEATHER_PLACE_ALTS, set.placeAlt || 'none')}</select></div>
         </div>`;
     },
     ready(dialog) {
@@ -1867,7 +1867,7 @@ const vsbMailOptions = {
         const count = vsbMailCount(set);
         return `<div class="vsb-options">
             <div class="group"><label for="vsbMailCount">Messages to show:</label>
-                <select id="vsbMailCount">${vsbOptions([3, 4, 5, 6].map((n) => [n, String(n)]), count)}</select></div>
+                <select class="vdt-select" id="vsbMailCount">${vsbOptions([3, 4, 5, 6].map((n) => [n, String(n)]), count)}</select></div>
             <div class="group"><div>Show:</div>
                 <div><input type="radio" id="vsbMailShowAll" name="vsbMailShow" value="all"${set.unreadOnly ? '' : ' checked'}><label for="vsbMailShowAll">All Inbox messages</label></div>
                 <div><input type="radio" id="vsbMailShowUnread" name="vsbMailShow" value="unread"${set.unreadOnly ? ' checked' : ''}><label for="vsbMailShowUnread">Unread messages only</label></div></div>
@@ -2080,7 +2080,7 @@ const vsbCalcOptions = {
     html(set) {
         return `<div class="vsb-options">
             <div class="group"><label for="vsbCalcColor">Color:</label>
-                <select id="vsbCalcColor">${vsbOptions(VSB_CALC_COLORS, set.color || 'grey')}</select></div>
+                <select class="vdt-select" id="vsbCalcColor">${vsbOptions(VSB_CALC_COLORS, set.color || 'grey')}</select></div>
             <div><input type="checkbox" id="vsbCalcHistory"${set.historyOn !== false ? ' checked' : ''}><label for="vsbCalcHistory">Show history when undocked</label></div>
         </div>`;
     },
@@ -2250,9 +2250,9 @@ const vsbDeskOptions = {
         const current = VSB_DESK_COLORS.some(([id]) => id === set.color) ? set.color : 'plain';
         return `<div class="vsb-options">
             <div class="group"><label for="vsbDeskColor">Color:</label>
-                <select id="vsbDeskColor">${vsbOptions(VSB_DESK_COLORS.map(([id, label]) => [id, label]), current)}</select></div>
+                <select class="vdt-select" id="vsbDeskColor">${vsbOptions(VSB_DESK_COLORS.map(([id, label]) => [id, label]), current)}</select></div>
             <div class="group"><label for="vsbDeskAngles">Angles:</label>
-                <select id="vsbDeskAngles">${vsbOptions([['deg', 'Degrees'], ['rad', 'Radians']], set.angles === 'rad' ? 'rad' : 'deg')}</select></div>
+                <select class="vdt-select" id="vsbDeskAngles">${vsbOptions([['deg', 'Degrees'], ['rad', 'Radians']], set.angles === 'rad' ? 'rad' : 'deg')}</select></div>
             <p>Undock the calculator for scientific keys.</p>
         </div>`;
     },
@@ -2851,7 +2851,7 @@ const vsbFeedOptions = {
             <div class="group"><label for="vsbFeedUrl">Feed address:</label>
                 <input type="url" id="vsbFeedUrl" maxlength="300" value="${escapeHtmlAttribute(set.url || '')}"></div>
             <div class="group"><label for="vsbFeedCount">Headlines to show:</label>
-                <select id="vsbFeedCount">${vsbOptions([3, 4, 5, 6].map((n) => [n, String(n)]), count)}</select></div>
+                <select class="vdt-select" id="vsbFeedCount">${vsbOptions([3, 4, 5, 6].map((n) => [n, String(n)]), count)}</select></div>
         </div>`;
     },
     read(dialog, set) {
@@ -3069,10 +3069,10 @@ const vsbMobileOptions = {
         const opts = [['', 'The connected phone']].concat(list.map((d) => [d.deviceId, d.online ? d.name : `${d.name} (not connected)`]));
         // Mobile Notifications: how many rows, the apps' icons, a Dismiss button on each row (#827)
         const count = inst && inst.g.type === 'mobilenotify'
-            ? `<div class="group"><label for="vsbMobileCount">Notifications to show:</label><select id="vsbMobileCount">${vsbOptions(VSB_MNOT_COUNTS.map((n) => [n, String(n)]), vsbMnotCount(set))}</select></div>
+            ? `<div class="group"><label for="vsbMobileCount">Notifications to show:</label><select class="vdt-select" id="vsbMobileCount">${vsbOptions(VSB_MNOT_COUNTS.map((n) => [n, String(n)]), vsbMnotCount(set))}</select></div>
                <div class="group"><div><input type="checkbox" id="vsbMobileIcons"${set.icons !== false ? ' checked' : ''}><label for="vsbMobileIcons">Show notification icons</label></div>
                <div><input type="checkbox" id="vsbMobileDismiss"${set.dismiss ? ' checked' : ''}><label for="vsbMobileDismiss">Show a delete button on each notification</label></div></div>` : '';
-        return `<div class="vsb-options"><div class="group"><label for="vsbMobileDevice">Device:</label><select id="vsbMobileDevice">${vsbOptions(opts, set.deviceId || '')}</select></div>${count}</div>`;
+        return `<div class="vsb-options"><div class="group"><label for="vsbMobileDevice">Device:</label><select class="vdt-select" id="vsbMobileDevice">${vsbOptions(opts, set.deviceId || '')}</select></div>${count}</div>`;
     },
     read(dialog, set) {
         const out = { ...set, deviceId: dialog.querySelector('#vsbMobileDevice').value || '' };

@@ -79,7 +79,7 @@
                     <div class="pp-band">
                         <span class="pp-band-title"><img class="pp-wordmark" src="${A}/paypass-wordmark.png" alt="PayPass" width="156" height="36"><span class="pp-band-sub"><b>Manager</b><small class="pp-arcade">Connecting...</small></span></span>
                         <span class="pp-band-fill"></span>
-                        <label class="pp-term"><span>POS Terminal</span><select class="pp-pos"></select></label>
+                        <label class="pp-term"><span>POS Terminal</span><select class="vdt-select pp-pos"></select></label>
                         <span class="pp-online"><span class="pp-lamp"></span><span class="pp-online-text">OFFLINE</span></span>
                     </div>
                     <div class="pp-tabs">

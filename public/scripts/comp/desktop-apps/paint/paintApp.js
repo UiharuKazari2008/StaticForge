@@ -1638,8 +1638,8 @@
                 bar.className = 'mp-textbar';
                 bar.setAttribute('role', 'toolbar');
                 bar.innerHTML = `<div class="mp-textbar-cap">Fonts</div>
-                    <select class="mp-tb-face">${fonts.map((n) => `<option>${n}</option>`).join('')}</select>
-                    <select class="mp-tb-size">${[6, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 60, 72, 96, 120, 144].map((n) => `<option>${n}</option>`).join('')}</select>
+                    <select class="vdt-select mp-tb-face">${fonts.map((n) => `<option>${n}</option>`).join('')}</select>
+                    <select class="vdt-select mp-tb-size">${[6, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 60, 72, 96, 120, 144].map((n) => `<option>${n}</option>`).join('')}</select>
                     <button type="button" class="mp-tb-b" data-tb="TextBold" title="Bold"><span class="mp-tb-art" style="--x:0px"></span></button>
                     <button type="button" class="mp-tb-b" data-tb="TextItalic" title="Italic"><span class="mp-tb-art" style="--x:-16px"></span></button>
                     <button type="button" class="mp-tb-b" data-tb="TextUnderline" title="Underline"><span class="mp-tb-art" style="--x:-32px"></span></button>

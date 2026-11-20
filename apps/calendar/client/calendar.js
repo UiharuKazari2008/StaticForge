@@ -1113,7 +1113,7 @@
                     <div class="wcal-d-color-row"><span class="wcal-d-label">Color:</span><button type="button" class="wcal-d-color" title="Color"><span class="wcal-d-swatch" style="background:${c.color}"></span><span class="wcal-arrow"></span></button></div>
                     <div class="wcal-d-group">${c.source ? 'Subscription Information' : 'Sharing Information'}</div>
                     ${c.source
-                        ? `<div class="wcal-d-pair"><span class="wcal-d-label">Subscribed to:</span><span class="wcal-d-url">${esc(c.source)}</span></div><div class="wcal-d-pair"><span class="wcal-d-label">Update:</span><select class="wcal-d-refresh">${[[0, 'No update'], [15, 'Every 15 minutes'], [60, 'Every hour'], [1440, 'Every day'], [10080, 'Every week']].map(([v, t]) => `<option value="${v}"${v === (c.refresh || 0) ? ' selected' : ''}>${t}</option>`).join('')}</select></div>`
+                        ? `<div class="wcal-d-pair"><span class="wcal-d-label">Subscribed to:</span><span class="wcal-d-url">${esc(c.source)}</span></div><div class="wcal-d-pair"><span class="wcal-d-label">Update:</span><select class="vdt-select wcal-d-refresh">${[[0, 'No update'], [15, 'Every 15 minutes'], [60, 'Every hour'], [1440, 'Every day'], [10080, 'Every week']].map(([v, t]) => `<option value="${v}"${v === (c.refresh || 0) ? ' selected' : ''}>${t}</option>`).join('')}</select></div>`
                         : '<div class="wcal-d-pair"><span class="wcal-d-label">Published:</span><a href="#" class="wcal-d-link wcal-d-publish">Click here to publish</a></div>'}
                 </div>`;
                 const pub = host.querySelector('.wcal-d-publish');
@@ -1141,7 +1141,7 @@
             const lbl = (text, ink) => `<span class="wcal-d-lbl" style="top:${ink - 3 - T0}px">${text}</span>`;
             const grp = (text, ink) => `<div class="wcal-d-grp" style="top:${ink - 3 - T0}px"><span>${text}</span></div>`;
             const calBox = (y) => `<button type="button" class="wcal-d-calbox" style="${at(82, y, 216, 24)}"${dis}><span class="wcal-d-calsw" style="background:${s.cal.color}"></span><span class="wcal-d-calname">${esc(s.cal.name)}</span></button>`;
-            const select = (cls, y, w, h, items, value) => `<select class="${cls}" style="${at(82, y, w, h)}"${dis}>${items.map(([v, t]) => `<option value="${v}"${String(value) === String(v) ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+            const select = (cls, y, w, h, items, value) => `<select class="vdt-select ${cls}" style="${at(82, y, w, h)}"${dis}>${items.map(([v, t]) => `<option value="${v}"${String(value) === String(v) ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
             const picker = (slot, opts) => {
                 const ph = host.querySelector(`[data-dtp="${slot}"]`);
                 if (!ph || !V || !V.datePicker) return null;

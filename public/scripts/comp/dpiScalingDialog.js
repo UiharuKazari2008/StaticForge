@@ -147,7 +147,7 @@
         content.innerHTML = `
             <div class="tbp-ctl tbp-static dpi-c-intro">For a custom DPI setting, select a percentage from the list, or drag the ruler with your mouse.</div>
             <div class="tbp-ctl tbp-static dpi-c-label">Scale to this percentage of normal size:</div>
-            <select class="tbp-ctl tbp-select dpi-c-combo" aria-label="Scale to this percentage of normal size"></select>
+            <select class="vdt-select tbp-ctl tbp-select dpi-c-combo" aria-label="Scale to this percentage of normal size"></select>
             <div class="dpi-c-ruler" tabindex="0" aria-label="Ruler"><canvas width="320" height="54"></canvas></div>
             <div class="tbp-ctl tbp-static dpi-c-sample"></div>
             <div class="tbp-ctl tbp-check dpi-c-xp"><input type="checkbox" id="dpi-c-xp" checked disabled><label for="dpi-c-xp"><span>Use Windows XP style DPI scaling</span></label></div>

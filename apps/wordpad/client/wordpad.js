@@ -376,9 +376,9 @@
                             ${tb('datetime', 10, 268, 'Date/Time')}
                         </div>
                         <div class="wpad-bar wpad-formatbar" role="toolbar">
-                            <select class="wpad-font" title="Font">${FONTS.map((f) => `<option>${f}</option>`).join('')}</select>
-                            <select class="wpad-size" title="Font Size">${SIZES.map((s) => `<option>${s}</option>`).join('')}</select>
-                            <select class="wpad-script" title="Script">${SCRIPTS.map((s) => `<option>${s}</option>`).join('')}</select>
+                            <select class="vdt-select wpad-font" title="Font">${FONTS.map((f) => `<option>${f}</option>`).join('')}</select>
+                            <select class="vdt-select wpad-size" title="Font Size">${SIZES.map((s) => `<option>${s}</option>`).join('')}</select>
+                            <select class="vdt-select wpad-script" title="Script">${SCRIPTS.map((s) => `<option>${s}</option>`).join('')}</select>
                             ${fb('bold', 0, 359, 'Bold')}${fb('italic', 1, 382, 'Italic')}${fb('underline', 2, 405, 'Underline')}
                             <button type="button" class="wpad-tb is-format wpad-color" data-a="color" title="Color" style="left:428px"><span class="wpad-art" style="--i:3"></span></button>
                             ${fb('left', 4, 460, 'Align Left')}${fb('center', 5, 482, 'Center')}${fb('right', 6, 505, 'Align Right')}${fb('bullets', 7, 536, 'Bullets')}

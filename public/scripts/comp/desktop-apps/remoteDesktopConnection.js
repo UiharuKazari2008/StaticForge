@@ -459,7 +459,7 @@
 
     /** An inert drop-down list showing mstsc's default. */
     function combo(x, y, w, options, selected) {
-        return `<select class="tbp-ctl tbp-select rdc-opt-select" style="${px(x, y, w, 21)}" inert>${options.map((o) => `<option${o === selected ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+        return `<select class="vdt-select tbp-ctl tbp-select rdc-opt-select" style="${px(x, y, w, 21)}" inert>${options.map((o) => `<option${o === selected ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
     }
 
     function button(x, y, w, label) {
@@ -676,7 +676,7 @@
                 <div class="rdc-combo-list" id="rdcComputerList" role="listbox" hidden></div>
             </div>
             <label class="tbp-ctl tbp-static rdc-collapsed" style="${px(11, 91 + ROW, 66, 13)}" for="rdcProtocol"><u>P</u>rotocol:</label>
-            <select id="rdcProtocol" class="tbp-ctl tbp-select rdc-protocol" style="${px(81, 86 + ROW, 237, 22)}" aria-label="Protocol">
+            <select id="rdcProtocol" class="vdt-select tbp-ctl tbp-select rdc-protocol" style="${px(81, 86 + ROW, 237, 22)}" aria-label="Protocol">
                 ${PROTOCOLS.map((p) => `<option value="${p.id}">${p.label}</option>`).join('')}
             </select>
             <div class="tbp-ctl tbp-static rdc-collapsed" style="${px(11, 120 + ROW, 69, 13)}">User name:</div>

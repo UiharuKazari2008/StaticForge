@@ -243,52 +243,10 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.vdt-clie
     background-image: image-set(url("/static_images/vista-controls/combo-glyph-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-disabled.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-disabled.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-disabled.png") 2x);
 }
 
-/* its list: a bordered list box under the edit, over everything (the dropped ComboLBox) */
-/* (the ComboLBox's CS_DROPSHADOW: the VM's soft 4 px shadow right and below) */
-.vdt-combo-pop {
-    box-shadow: 1px 1px rgba(0, 0, 0, 0.17), 2px 2px rgba(0, 0, 0, 0.195), 3px 3px rgba(0, 0, 0, 0.12), 4px 4px rgba(0, 0, 0, 0.055);
-    position: fixed;
-    z-index: 2147483000;
-    box-sizing: border-box;
-    overflow-x: hidden;
-    overflow-y: auto;
-    border: 1px solid #646464;
-    background: #fff;
-    color: #000;
-    cursor: var(--c-default, default);
-}
-
-.vdt-combo-pop .vdt-lb-row {
-    display: flex;
-    align-items: center;
-    height: 15px;
-    padding: 0 2px;
-    white-space: nowrap;
-}
-
-.vdt-combo-pop .vdt-lb-row.is-selected {
-    background: #3399ff;
-    color: #fff;
-}
-
 /* a multi-line edit with WS_VSCROLL keeps its scroll bar while nothing scrolls (the VM's Device status box) */
 .vdt-client textarea.vdt-vscroll {
     overflow-y: scroll;
     resize: none;
-}
-
-/* MS Shell Dlg 8 (Tahoma) lists: 13 px rows, as the VM's Device Manager Property list */
-.vdt-combo-pop.is-small .vdt-lb-row {
-    height: 13px;
-}
-
-/* a drop-down list (CBS_DROPDOWNLIST) while its list is dropped: the pressed face (vistaDialogTemplate.js selectDrop
-   draws the list itself, so the select is never :open) */
-body.desktop-mode .vdt-client select.vdt-select.is-open:not(:disabled):not(#_) {
-    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-pressed.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-pressed.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-pressed.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-pressed.png") 2x);
-    --vista-combo-fill: image-set(url("/static_images/vista-controls/combo-pressed-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-pressed-fill.png") 1x, url("/static_images/hidpi/150/vista-controls/combo-pressed-fill.png") 2x, url("/static_images/hidpi/175/vista-controls/combo-pressed-fill.png") 2x, url("/static_images/hidpi/200/vista-controls/combo-pressed-fill.png") 2x);
-    --vista-combo-text: none;
-    color: inherit;
 }
 
 /* a simple combo box (CBS_SIMPLE): its 21 px edit, the list box right under it (ChooseFont's) */

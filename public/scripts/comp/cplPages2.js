@@ -231,7 +231,7 @@
                 <p class="cpl-vtext cpl-vgap">When a fix is ready:</p>
                 ${radio('live', 'Apply it right away')}
                 ${radio('worktree', 'Keep it aside until someone reviews it')}
-                <p class="cpl-vtext cpl-vgap"><label for="cpl-af-limit">Most fixes to start in one day:</label> <select class="cpl-vselect" id="cpl-af-limit"${dis}>${limits.map((n) => `<option value="${n}"${n === st.maxRunsPerDay ? ' selected' : ''}>${n === 0 ? 'None' : n}</option>`).join('')}</select></p>
+                <p class="cpl-vtext cpl-vgap"><label for="cpl-af-limit">Most fixes to start in one day:</label> <select class="vdt-select cpl-vselect" id="cpl-af-limit"${dis}>${limits.map((n) => `<option value="${n}"${n === st.maxRunsPerDay ? ' selected' : ''}>${n === 0 ? 'None' : n}</option>`).join('')}</select></p>
                 <p class="cpl-vtext">Today: ${used} of ${st.maxRunsPerDay} used. ${esc(now)}</p>
                 ${autofix.editable ? '' : '<p class="cpl-vtext"><img src="/static_images/vista-cpl/shield-uac-16.png" alt="" onerror="this.remove()"> Only an administrator can change these settings.</p>'}
                 <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="ok"${dis}>OK</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-action="nav" data-cpl-arg="problem-reports-settings">Cancel</button></div>
@@ -518,7 +518,7 @@
             <h1 class="cpl-vtitle">Choose what happens when you insert each type of media or device</h1>
             <div class="cpl-vcheck"><input type="checkbox" id="cpl-ap-all"${reg(AUTOPLAY, 'Enabled', true) ? ' checked' : ''}><label for="cpl-ap-all">Use AutoPlay for all media and devices</label></div>
             <div class="cpl-vsection"><span>Media</span></div>
-            <table class="cpl-ap">${MEDIA.map(([id, name, opts]) => `<tr><td><img src="/static_images/vista-cpl/items/autoplay-16.png" alt=""> ${esc(name)}</td><td><select class="cpl-vselect" data-ap="${id}">${opts.map((o) => `<option${reg(AUTOPLAY, id, 'Ask me every time') === o ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select></td></tr>`).join('')}</table>
+            <table class="cpl-ap">${MEDIA.map(([id, name, opts]) => `<tr><td><img src="/static_images/vista-cpl/items/autoplay-16.png" alt=""> ${esc(name)}</td><td><select class="vdt-select cpl-vselect" data-ap="${id}">${opts.map((o) => `<option${reg(AUTOPLAY, id, 'Ask me every time') === o ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select></td></tr>`).join('')}</table>
             <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="save">Save</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-action="nav" data-cpl-arg="home">Cancel</button></div>
         </div>`
     };
@@ -1174,7 +1174,7 @@
             case 'enum': {
                 // option values may be any JSON value: the <option> carries its index
                 const known = opts.some((o) => o.value === value);
-                return `<select class="cpl-vselect"${attrs}>${known ? '' : '<option value="" selected></option>'}${opts.map((o, i) => `<option value="${i}"${o.value === value ? ' selected' : ''}>${esc(o.label != null ? o.label : o.value)}</option>`).join('')}</select>`;
+                return `<select class="vdt-select cpl-vselect"${attrs}>${known ? '' : '<option value="" selected></option>'}${opts.map((o, i) => `<option value="${i}"${o.value === value ? ' selected' : ''}>${esc(o.label != null ? o.label : o.value)}</option>`).join('')}</select>`;
             }
             case 'int':
             case 'number':
@@ -1495,7 +1495,7 @@
             let n = 0;
             return `<div class="cpl-vpage cpl-ss-page cpl-ss-clock-page">${help('sideshow')}
                 <h1 class="cpl-vtitle">Clock settings</h1>
-                ${list.length > 1 ? `<p class="cpl-vtext">For which device do you want to change settings?</p><p class="cpl-ss-field"><select class="cpl-vselect" data-ss-device>${list.map((x) => `<option value="${esc(x.deviceId)}"${x.deviceId === d.deviceId ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></p>` : ''}
+                ${list.length > 1 ? `<p class="cpl-vtext">For which device do you want to change settings?</p><p class="cpl-ss-field"><select class="vdt-select cpl-vselect" data-ss-device>${list.map((x) => `<option value="${esc(x.deviceId)}"${x.deviceId === d.deviceId ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></p>` : ''}
                 <div class="cpl-ss-logo"><img src="${SS_CLOCK_ICON}-48.png" alt="" onerror="this.src='${SS_CLOCK_ICON}-32.png'"><div><b>${esc(d.name)}</b><br><span data-ss-live="gadget">${esc(ssGadgetText(d))}</span><br><span class="cpl-ss-dim" data-ss-live="frame"${ssFrameNote(d) ? '' : ' hidden'}>${esc(ssFrameNote(d))}</span></div></div>
                 <div class="cpl-vsection"><span>Clock face</span></div>
                 <div class="cpl-ss-faces">${kinds.map(([t, l]) => `<div class="cpl-ss-facegroup"><b>${t}</b>${l.map((f) => {
@@ -1745,7 +1745,7 @@
         const n = Math.max(5, Number(sec) || 45);
         const unit = n % 3600 === 0 ? 3600 : n % 60 === 0 ? 60 : 1;
         return `<input type="number" class="cpl-vedit cpl-ss-num" id="cpl-ss-interval" min="1" max="86400" value="${n / unit}">
-            <select class="cpl-vselect cpl-ss-unit" id="cpl-ss-interval-unit">${SS_UNITS.map(([v, t]) => `<option value="${v}"${v === unit ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+            <select class="vdt-select cpl-vselect cpl-ss-unit" id="cpl-ss-interval-unit">${SS_UNITS.map(([v, t]) => `<option value="${v}"${v === unit ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
     }
 
     pages['sideshow-gadget'] = {
@@ -1767,7 +1767,7 @@
             setTimeout(() => ssPreviewSoon(0), 0);
             return `<div class="cpl-vpage cpl-ss-page cpl-ss-gadget-page">${help('sideshow')}
                 <h1 class="cpl-vtitle">${esc(SS_GADGET)} settings</h1>
-                ${list.length > 1 ? `<p class="cpl-vtext">For which device do you want to change settings?</p><p class="cpl-ss-field"><select class="cpl-vselect" data-ss-device>${list.map((x) => `<option value="${esc(x.deviceId)}"${x.deviceId === d.deviceId ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></p>` : ''}
+                ${list.length > 1 ? `<p class="cpl-vtext">For which device do you want to change settings?</p><p class="cpl-ss-field"><select class="vdt-select cpl-vselect" data-ss-device>${list.map((x) => `<option value="${esc(x.deviceId)}"${x.deviceId === d.deviceId ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></p>` : ''}
                 <div class="cpl-ss-stage" data-ss-live="device">${ssDeviceHtml(d)}</div>
                 <p class="cpl-vtext cpl-ss-center" data-ss-live="status">${esc(ssStateText(d))}</p>
                 <div class="cpl-ss-remote">
@@ -1780,7 +1780,7 @@
                 <div class="cpl-ss-source">
                     <div class="cpl-ss-radio"><input type="radio" name="cpl-ss-src" id="cpl-ss-src-ws" value="ws"${search ? '' : ' checked'}><label for="cpl-ss-src-ws">Pictures from these workspaces:</label></div>
                     <div class="cpl-ss-indent">
-                        <p class="cpl-ss-field"><select class="cpl-vselect" id="cpl-ss-view">${ssOptions(SS_VIEWS, st.viewType || 'images')}</select></p>
+                        <p class="cpl-ss-field"><select class="vdt-select cpl-vselect" id="cpl-ss-view">${ssOptions(SS_VIEWS, st.viewType || 'images')}</select></p>
                         <div data-ss-live="wslist">${ssWorkspaceListHtml(ws)}</div>
                         <p class="cpl-vtext cpl-ss-dim">With no workspace ticked, the device shows the workspace its logon has open.</p>
                     </div>
@@ -1798,7 +1798,7 @@
                 <div class="cpl-vsection"><span>Slide show</span></div>
                 <table class="cpl-power-grid cpl-ss-settings">
                     <tr><td><label for="cpl-ss-interval">Show each picture for:</label></td><td>${ssIntervalHtml(st.intervalSec != null ? st.intervalSec : 45)}</td></tr>
-                    <tr><td><label for="cpl-ss-overlay">Picture information:</label></td><td><select class="cpl-vselect" id="cpl-ss-overlay">${ssOptions(SS_OVERLAYS, st.infoOverlay || 'minimal')}</select></td></tr>
+                    <tr><td><label for="cpl-ss-overlay">Picture information:</label></td><td><select class="vdt-select cpl-vselect" id="cpl-ss-overlay">${ssOptions(SS_OVERLAYS, st.infoOverlay || 'minimal')}</select></td></tr>
                 </table>
                 <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-shuffle"${st.shuffle !== false ? ' checked' : ''}><label for="cpl-ss-shuffle">Shuffle pictures</label></div>
                 <div class="cpl-vcheck cpl-ss-check"><input type="checkbox" id="cpl-ss-pair"${st.pairPortraits !== false ? ' checked' : ''}><label for="cpl-ss-pair">Show tall pictures side by side</label></div>

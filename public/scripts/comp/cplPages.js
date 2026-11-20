@@ -278,7 +278,7 @@
     function minuteSelect(name, value, side = 'ac') {
         const v = Number(value);
         const list = MINUTES.includes(v) ? MINUTES : [...MINUTES.slice(0, -1).filter((m) => m < v), v, ...MINUTES.filter((m) => m > v || m === 0)];
-        return `<select class="cpl-vselect cpl-pwr-combo" data-power="${name}" data-side="${side}" aria-label="${side === 'dc' ? 'On battery' : 'Plugged in'}">${list.map((m) => `<option value="${m}"${m === v ? ' selected' : ''}>${minuteText(m)}</option>`).join('')}</select>`;
+        return `<select class="vdt-select cpl-vselect cpl-pwr-combo" data-power="${name}" data-side="${side}" aria-label="${side === 'dc' ? 'On battery' : 'Plugged in'}">${list.map((m) => `<option value="${m}"${m === v ? ' selected' : ''}>${minuteText(m)}</option>`).join('')}</select>`;
     }
 
     /** Vista's power settings table (UIFILE 110 PowerTableHeader / SettingControl / SliderSettingControl): the label
@@ -453,7 +453,7 @@
         if (bool || type === 'action') {
             text.textContent = `${label}:`;
             const cur = bool ? (v === 'true' || v === '1' ? '1' : '0') : v;
-            val.innerHTML = `<select class="tbp-select vdt-stree-combo" aria-label="${esc(label)}">${advChoices(type, sleepOk).map(([k, t]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+            val.innerHTML = `<select class="vdt-select tbp-select vdt-stree-combo" aria-label="${esc(label)}">${advChoices(type, sleepOk).map(([k, t]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
             const sel = val.querySelector('select');
             sel.addEventListener('change', () => { row.dataset.value = bool ? String(sel.value === '1') : sel.value; onChange(); });
             return;
@@ -608,7 +608,7 @@
                 if (st) { const a = st.plans[st.active] || {}; return (a[side] && a[side][key]) || def; }
                 return reg(POWER, { power: 'PowerButtonAction', sleepButton: 'SleepButtonAction', lid: 'LidCloseAction' }[key], def);
             };
-            const cell = (key, def) => (side) => `<select class="cpl-vselect cpl-pwr-combo" data-power-sys="${key}" data-side="${side}" aria-label="${side === 'dc' ? 'On battery' : 'Plugged in'}">${actions(sysValue(key, side, def))}</select>`;
+            const cell = (key, def) => (side) => `<select class="vdt-select cpl-vselect cpl-pwr-combo" data-power-sys="${key}" data-side="${side}" aria-label="${side === 'dc' ? 'On battery' : 'Plugged in'}">${actions(sysValue(key, side, def))}</select>`;
             const rows = [{ big: true, icon: `${ART}/power-button-32.png`, label: 'When I press the power button:', cell: cell('power', 'shutdown') }];
             // Vista lists the buttons this computer has: a laptop's sleep key and lid
             if (two) {

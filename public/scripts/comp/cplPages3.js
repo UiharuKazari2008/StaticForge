@@ -666,11 +666,11 @@
         return `
             <div class="cpl-vsection"><span>Chat engine</span></div>
             <table class="cpl-power-grid cpl-chat-grid">
-                <tr><td><label for="cpl-chat-engine">Engine:</label></td><td><select class="cpl-vselect cpl-chat-wide" id="cpl-chat-engine" data-chat="provider">${engines.join('')}</select></td></tr>
-                <tr><td><label for="cpl-chat-model">Model:</label></td><td><select class="cpl-vselect cpl-chat-wide" id="cpl-chat-model" data-chat="model">${models.join('')}</select>
+                <tr><td><label for="cpl-chat-engine">Engine:</label></td><td><select class="vdt-select cpl-vselect cpl-chat-wide" id="cpl-chat-engine" data-chat="provider">${engines.join('')}</select></td></tr>
+                <tr><td><label for="cpl-chat-model">Model:</label></td><td><select class="vdt-select cpl-vselect cpl-chat-wide" id="cpl-chat-model" data-chat="model">${models.join('')}</select>
                     <button type="button" class="cpl-vlink cpl-chat-refresh" data-cpl-vpage="chatmodels">Refresh</button>
                     ${modelNote ? `<div class="cpl-chat-note">${esc(modelNote)}</div>` : ''}</td></tr>
-                <tr><td><label for="cpl-chat-effort">Effort:</label></td><td><select class="cpl-vselect" id="cpl-chat-effort" data-chat="effort">${(e.efforts || Object.keys(CHAT_EFFORT_NAMES)).map((x) => opt(x, CHAT_EFFORT_NAMES[x] || x, d.effort)).join('')}</select></td></tr>
+                <tr><td><label for="cpl-chat-effort">Effort:</label></td><td><select class="vdt-select cpl-vselect" id="cpl-chat-effort" data-chat="effort">${(e.efforts || Object.keys(CHAT_EFFORT_NAMES)).map((x) => opt(x, CHAT_EFFORT_NAMES[x] || x, d.effort)).join('')}</select></td></tr>
             </table>
             <p class="cpl-vtext cpl-vindent">New conversations use this engine and model. A conversation started on another engine moves to this one with its next message. Effort sets how long the model thinks before it answers; Default leaves it to the model.</p>`;
     }
@@ -693,7 +693,7 @@
                 <table class="cpl-power-grid cpl-chat-grid">
                     <tr><td><label for="cpl-chat-name">Name:</label></td><td><input type="text" class="tbp-edit cpl-vedit" id="cpl-chat-name" data-chat="userName" maxlength="80" spellcheck="false" value="${esc(d.userName)}"></td></tr>
                     <tr><td class="is-top"><label for="cpl-chat-backstory">About me:</label></td><td><textarea class="cpl-chat-backstory" id="cpl-chat-backstory" data-chat="backstory" rows="5" maxlength="4000">${esc(d.backstory)}</textarea></td></tr>
-                    <tr><td><label for="cpl-chat-verbosity">Default verbosity:</label></td><td><select class="cpl-vselect" id="cpl-chat-verbosity" data-chat="verbosity">${CHAT_VERBOSITY.map(([n, t]) => `<option value="${n}"${n === d.verbosity ? ' selected' : ''}>${n} ${esc(t)}</option>`).join('')}</select></td></tr>
+                    <tr><td><label for="cpl-chat-verbosity">Default verbosity:</label></td><td><select class="vdt-select cpl-vselect" id="cpl-chat-verbosity" data-chat="verbosity">${CHAT_VERBOSITY.map(([n, t]) => `<option value="${n}"${n === d.verbosity ? ' selected' : ''}>${n} ${esc(t)}</option>`).join('')}</select></td></tr>
                 </table>
             </div>`;
     }

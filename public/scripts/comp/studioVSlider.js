@@ -730,7 +730,7 @@ function studioVSliderRenderDropdown(widget) {
     `).join('');
     return `
         <div class="vslider-dropdown-row">
-            <select data-vslider-select="${studioVSliderEscape(widget.id)}" aria-label="${studioVSliderEscape(widget.title)}">${options}</select>
+            <select class="vdt-select" data-vslider-select="${studioVSliderEscape(widget.id)}" aria-label="${studioVSliderEscape(widget.title)}">${options}</select>
             <span class="vslider-dropdown-text selectable" data-vslider-dropdown-text>${studioVSliderEscape(studioVSliderDropdownText(widget))}</span>
         </div>
     `;
@@ -1345,7 +1345,7 @@ function studioVSliderRenderEditor() {
                 <div class="vslider-editor-actions">
                     <button type="button" class="btn-secondary" data-vslider-editor-add-option>Add Option</button>
                     <label class="vslider-editor-inline-label" for="studioVSliderEditorDefault">Default:</label>
-                    <select id="studioVSliderEditorDefault" data-vslider-editor-default>${defaultOptions}</select>
+                    <select class="vdt-select" id="studioVSliderEditorDefault" data-vslider-editor-default>${defaultOptions}</select>
                 </div>
             </fieldset>
         `;
@@ -1395,12 +1395,12 @@ function studioVSliderRenderEditor() {
     body.innerHTML = `
         <div class="vslider-editor-form">
             <label for="studioVSliderEditorKind">Kind:</label>
-            <select id="studioVSliderEditorKind" data-vslider-editor-kind>${kindOptions}</select>
+            <select class="vdt-select" id="studioVSliderEditorKind" data-vslider-editor-kind>${kindOptions}</select>
             <label for="studioVSliderEditorTitle">Title:</label>
             <input type="text" id="studioVSliderEditorTitle" data-vslider-editor-title value="${esc(draft.title)}"
                 autocomplete="off" autocapitalize="off" spellcheck="false">
             <label for="studioVSliderEditorTarget">Writes to:</label>
-            <select id="studioVSliderEditorTarget" data-vslider-editor-target>
+            <select class="vdt-select" id="studioVSliderEditorTarget" data-vslider-editor-target>
                 <option value="expander"${targetKind === 'expander' ? ' selected' : ''}>${perAxis ? 'An expander per axis' : 'An expander'}</option>
                 <option value="prompt"${targetKind === 'prompt' ? ' selected' : ''}>The prompt</option>
             </select>

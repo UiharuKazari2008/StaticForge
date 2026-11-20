@@ -317,7 +317,7 @@ function desktopGuacProtocolField() {
     label.textContent = 'Protocol';
     const select = document.createElement('select');
     select.id = 'desktopGuacAddProtocol';
-    select.className = 'form-control';
+    select.className = 'form-control vdt-select';
     ['rdp', 'vnc', 'ssh', 'telnet', 'kubernetes'].forEach((protocol) => {
         const option = document.createElement('option');
         option.value = protocol;
@@ -343,7 +343,7 @@ function desktopGuacGroupField() {
     label.textContent = 'Group';
     const select = document.createElement('select');
     select.id = 'desktopGuacAddGroup';
-    select.className = 'form-control';
+    select.className = 'form-control vdt-select';
     wrap.appendChild(label);
     wrap.appendChild(select);
     return wrap;

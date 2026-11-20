@@ -512,7 +512,7 @@
         const html = `<div class="mbk-page">
             <div class="mbk-bar">
                 <label class="mbk-find"><span>F<u>i</u>nd:</span><input type="text" class="mbk-search" data-field="mbk-sb-search" value="${esc(v.search)}" placeholder="Names and prompts" autocomplete="off" spellcheck="false"></label>
-                <label><span>Workspace:</span><select class="mbk-filter" data-field="mbk-sb-ws">${wsOpts.map((o) => `<option value="${esc(o.value)}"${o.value === v.ws ? ' selected' : ''}>${esc(o.text)}</option>`).join('')}</select></label>
+                <label><span>Workspace:</span><select class="vdt-select mbk-filter" data-field="mbk-sb-ws">${wsOpts.map((o) => `<option value="${esc(o.value)}"${o.value === v.ws ? ' selected' : ''}>${esc(o.text)}</option>`).join('')}</select></label>
             </div>
             ${presetList(c)}
         </div>`;

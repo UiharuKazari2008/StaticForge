@@ -307,7 +307,7 @@
         const vals = list.slice();
         if (cur != null && !vals.some((v) => String(v) === String(cur))) vals.push(Number(cur));
         vals.sort((a, b) => a - b);
-        return `<select id="dq-${name}" data-field="${name}" aria-label="${esc(label)}">${vals.map((v) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
+        return `<select class="vdt-select" id="dq-${name}" data-field="${name}" aria-label="${esc(label)}">${vals.map((v) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
     }
 
     function configPage(c, id) {
@@ -316,7 +316,7 @@
         const schedule = a.schedule || 'disabled';
         const groups = fn('buildQuipsAutoScheduleDropdownGroups') ? root.buildQuipsAutoScheduleDropdownGroups() : [{ group: 'Other', options: [{ value: 'disabled', label: 'Disable automatic updates' }] }];
         const known = groups.some((g) => (g.options || []).some((o) => o.value === schedule));
-        const sched = `<select id="dq-schedule" data-field="schedule" aria-label="Automatic updates">${groups.map((g) => `<optgroup label="${esc(g.group)}">${(g.options || []).map((o) => `<option value="${esc(o.value)}"${o.value === schedule ? ' selected' : ''}>${esc(o.label || o.value)}</option>`).join('')}</optgroup>`).join('')}${known ? '' : `<option value="${esc(schedule)}" selected>${esc(a.scheduleLabel || schedule)}</option>`}</select>`;
+        const sched = `<select class="vdt-select" id="dq-schedule" data-field="schedule" aria-label="Automatic updates">${groups.map((g) => `<optgroup label="${esc(g.group)}">${(g.options || []).map((o) => `<option value="${esc(o.value)}"${o.value === schedule ? ' selected' : ''}>${esc(o.label || o.value)}</option>`).join('')}</optgroup>`).join('')}${known ? '' : `<option value="${esc(schedule)}" selected>${esc(a.scheduleLabel || schedule)}</option>`}</select>`;
         const last = a.lastRunLabel && a.lastRunLabel !== 'Never' ? a.lastRunLabel : 'Never';
         const o = optionLists();
         const body = `<p>These settings are used by automatic updates and by Generate for this workspace. A change is saved as soon as it is made.</p>

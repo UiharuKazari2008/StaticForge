@@ -549,7 +549,7 @@
             const urlInput = customInput(row.baseUrl, 'https://host.example');
             const modelInput = customInput(row.defaultModel, 'model id');
             const preset = document.createElement('select');
-            preset.className = 'cpl-ua-input';
+            preset.className = 'cpl-ua-input vdt-select';
             const presetHosts = {};
             [{ id: '', name: 'Custom' }].concat(customProviderPresets).forEach((item) => {
                 const option = document.createElement('option');
@@ -1296,7 +1296,7 @@
 
     function maSelect(options, value) {
         const sel = document.createElement('select');
-        sel.className = 'cpl-ua-input';
+        sel.className = 'cpl-ua-input vdt-select';
         options.forEach(([v, text]) => {
             const o = document.createElement('option');
             o.value = v;

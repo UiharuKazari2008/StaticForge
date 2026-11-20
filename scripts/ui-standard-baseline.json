@@ -15,7 +15,7 @@
   "theme-test-copy": 19,
   "native-dialog": 1,
   "native-range": 2,
-  "native-select": 1
+  "native-select": 0
  },
  "files": {
   "apps/activesync/assets/activesync.css": {
@@ -1939,7 +1939,6 @@
   },
   "public/scripts/comp/wmWeather.js": {
    "native-range": 1,
-   "native-select": 1,
    "colour-in-script": 11,
    "inline-style": 4,
    "theme-art-path": 1,

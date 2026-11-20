@@ -146,7 +146,7 @@
 
     function printsSelect(cls, x, y, value, label) {
         // a combo box's height is the font's (21 px), not the template's
-        return `<select class="tbp-ctl tbp-select ${cls}" style="${dlu(x, y, 42)}" aria-label="${label}">${PRINTS.map((n) => `<option value="${n}"${n === value ? ' selected' : ''}>${n}</option>`).join('')}</select>`;
+        return `<select class="vdt-select tbp-ctl tbp-select ${cls}" style="${dlu(x, y, 42)}" aria-label="${label}">${PRINTS.map((n) => `<option value="${n}"${n === value ? ' selected' : ''}>${n}</option>`).join('')}</select>`;
     }
 
     /** The Remote tab, on dialog 9002's grid. */

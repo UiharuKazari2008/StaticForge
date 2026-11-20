@@ -265,7 +265,7 @@
     }
 
     function sel(cls, x, y, w, list, value, label) {
-        return `<select class="tbp-ctl tbp-select ${cls}" style="${dlu(x, y, w)}" aria-label="${esc(label)}">${options(list, value)}</select>`;
+        return `<select class="vdt-select tbp-ctl tbp-select ${cls}" style="${dlu(x, y, w)}" aria-label="${esc(label)}">${options(list, value)}</select>`;
     }
 
     function edit(cls, x, y, w, h, { password = false, value = '', label = '' } = {}) {
@@ -275,7 +275,7 @@
     /** CBS_DROPDOWN: an edit over a drop-down list's box; picking from the list fills the edit. */
     function ecombo(cls, x, y, w, list, value, label) {
         return `<div class="tbp-ctl sz-ecombo ${cls}" style="${dlu(x, y, w)}">
-            <select class="tbp-select sz-ecombo-list" tabindex="-1" aria-hidden="true"><option value=""></option>${list.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select>
+            <select class="vdt-select tbp-select sz-ecombo-list" tabindex="-1" aria-hidden="true"><option value=""></option>${list.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select>
             <input type="text" class="tbp-edit sz-ecombo-edit" value="${esc(value)}" aria-label="${esc(label)}" spellcheck="false" autocomplete="off">
         </div>`;
     }

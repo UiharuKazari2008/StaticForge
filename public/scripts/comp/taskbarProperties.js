@@ -171,15 +171,15 @@
             ${text(200, 125, 30, 8, '100%', 'tbp-opacity-value')}
             ${group(6, 142, 240, 58, 'Start button')}
             ${text(13, 157, 26, 8, 'St<u>y</u>le:')}
-            <select class="tbp-ctl tbp-select" id="tbp-sb-style" style="${dlu(40, 155, 86, 12)}" aria-label="Start button style">
+            <select class="vdt-select tbp-ctl tbp-select" id="tbp-sb-style" style="${dlu(40, 155, 86, 12)}" aria-label="Start button style">
                 <option value="orb">Orb</option><option value="luna">Media Center</option><option value="workspace">Workspace</option>
             </select>
             ${text(132, 157, 22, 8, 'L<u>o</u>go:', 'tbp-sb-dep')}
-            <select class="tbp-ctl tbp-select" id="tbp-sb-logo" style="${dlu(156, 155, 83, 12)}" aria-label="Melaton logo">
+            <select class="vdt-select tbp-ctl tbp-select" id="tbp-sb-logo" style="${dlu(156, 155, 83, 12)}" aria-label="Melaton logo">
                 <option value="royal">Royal</option><option value="vista">Vista</option><option value="dreamscape">Dreamscape</option>
             </select>
             ${text(13, 173, 26, 8, 'Te<u>x</u>t:', 'tbp-sb-dep')}
-            <select class="tbp-ctl tbp-select" id="tbp-sb-text" style="${dlu(40, 171, 110, 12)}" aria-label="Start button text">${startTextOptions()}</select>
+            <select class="vdt-select tbp-ctl tbp-select" id="tbp-sb-text" style="${dlu(40, 171, 110, 12)}" aria-label="Start button text">${startTextOptions()}</select>
             <input type="text" class="tbp-ctl tbp-edit" id="tbp-sb-custom" maxlength="24" style="${dlu(154, 171, 85, 12)}" placeholder="Custom text" aria-label="Custom start button text">
             ${check('appicons', 13, 187, 224, 'Show program pictures on taskbar buttons', 'x:useAppImageIcon')}
             ${link(7, 205, 238, 'How do I customize the taskbar?', 'help-taskbar')}`;
@@ -239,7 +239,7 @@
             ${check('sys-power', 13, 164, 200, '<u>P</u>ower', 'power', { disabled: !(root.trayPower && root.trayPower.present()) })}
             ${group(6, 186, 240, 30, 'Notifications')}
             ${text(13, 200, 112, 8, 'Show notifications for at <u>l</u>east:')}
-            <select class="tbp-ctl tbp-select" id="tbp-mintime" data-key="x:trayMinMs" style="${dlu(126, 198, 56, 12)}">
+            <select class="vdt-select tbp-ctl tbp-select" id="tbp-mintime" data-key="x:trayMinMs" style="${dlu(126, 198, 56, 12)}">
                 ${times.map((t) => `<option value="${esc(t.value)}"${Number(t.value) === state.trayMinMs ? ' selected' : ''}>${esc(t.text)}</option>`).join('')}
             </select>
             ${button(188, 197, 50, 14, 'C<u>u</u>stomize...', 'customize-popups')}`;
@@ -854,7 +854,7 @@
             return `<div class="tbp-list-row" data-id="${esc(r.id)}" tabindex="-1">
                 <span class="tbp-list-icon">${glyph ? glyph.outerHTML : ''}</span><span class="tbp-list-name">${esc(r.label)}</span>
                 <span class="tbp-list-behavior"><span class="tbp-list-behavior-text">${esc(BEHAVIOR_LABELS[b])}</span>
-                    <select class="tbp-list-select" aria-label="Behavior">${Object.keys(BEHAVIOR_LABELS).map((k) => `<option value="${k}"${k === b ? ' selected' : ''}>${BEHAVIOR_LABELS[k]}</option>`).join('')}</select></span>
+                    <select class="vdt-select tbp-list-select" aria-label="Behavior">${Object.keys(BEHAVIOR_LABELS).map((k) => `<option value="${k}"${k === b ? ' selected' : ''}>${BEHAVIOR_LABELS[k]}</option>`).join('')}</select></span>
             </div>`;
         };
         const current = catalog.filter((r) => { const e = doc.getElementById(r.id); return e && !e.classList.contains('hidden'); });
@@ -911,7 +911,7 @@
             return `<div class="tbp-list-row" data-id="${esc(r.id)}" tabindex="-1">
                 <span class="tbp-list-name is-wide">${esc(r.label)}</span>
                 <span class="tbp-list-behavior"><span class="tbp-list-behavior-text">${b === 'hide' ? 'Hide' : 'Show'}</span>
-                    <select class="tbp-list-select" aria-label="Behavior"><option value="show"${b === 'show' ? ' selected' : ''}>Show</option><option value="hide"${b === 'hide' ? ' selected' : ''}>Hide</option></select></span>
+                    <select class="vdt-select tbp-list-select" aria-label="Behavior"><option value="show"${b === 'show' ? ' selected' : ''}>Show</option><option value="hide"${b === 'hide' ? ' selected' : ''}>Hide</option></select></span>
             </div>`;
         };
         const html = `
@@ -1007,9 +1007,9 @@
             ${button(7, 183, 80, 14, 'Use <u>D</u>efault Settings', 'cs-default')}
             ${group(7, 199, 238, 56, 'Power buttons')}
             ${text(14, 213, 82, 10, '<u>P</u>ower button:')}
-            <select class="tbp-ctl tbp-select tbp-cs-power" style="${dlu(98, 211, 140, 12)}" aria-label="Power button">${choice([['shutdown', 'Shut down'], ['restart', 'Restart'], ['logoff', 'Log off']], p.core.powerButton)}</select>
+            <select class="vdt-select tbp-ctl tbp-select tbp-cs-power" style="${dlu(98, 211, 140, 12)}" aria-label="Power button">${choice([['shutdown', 'Shut down'], ['restart', 'Restart'], ['logoff', 'Log off']], p.core.powerButton)}</select>
             ${text(14, 230, 82, 10, '<u>L</u>ock button:')}
-            <select class="tbp-ctl tbp-select tbp-cs-lock" style="${dlu(98, 228, 140, 12)}" aria-label="Lock button">${choice([['lock', 'Lock'], ['logoff', 'Log off']], p.core.lockButton)}</select>
+            <select class="vdt-select tbp-ctl tbp-select tbp-cs-lock" style="${dlu(98, 228, 140, 12)}" aria-label="Lock button">${choice([['lock', 'Lock'], ['logoff', 'Log off']], p.core.lockButton)}</select>
             ${okCancel(131, 195, 257)}`;
         const sub = openSub('taskbarPropertiesStart', 'Customize Start Menu', 'tbp-start', html, (content) => {
             const val = (name) => {

@@ -209,7 +209,7 @@
         const html = `<div class="mbk-page">
             <div class="mbk-bar">
                 <label class="mbk-find"><span>F<u>i</u>nd:</span><input type="text" class="mbk-search" data-field="mbk-ex-search" value="${esc(v.search)}" placeholder="Names and texts" autocomplete="off" spellcheck="false"></label>
-                <label><span>Type:</span><select class="mbk-filter" data-field="mbk-ex-type">${types.map((o) => `<option value="${o.value}"${o.value === v.type ? ' selected' : ''}>${o.text}</option>`).join('')}</select></label>
+                <label><span>Type:</span><select class="vdt-select mbk-filter" data-field="mbk-ex-type">${types.map((o) => `<option value="${o.value}"${o.value === v.type ? ' selected' : ''}>${o.text}</option>`).join('')}</select></label>
             </div>
             ${list(c)}
         </div>`;

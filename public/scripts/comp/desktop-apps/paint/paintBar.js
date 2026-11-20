@@ -222,7 +222,7 @@
             case 'check':
                 return `<label class="mp-bar-item mp-bar-check"${title}><input type="checkbox" data-i="${i}"${v ? ' checked' : ''}><span>${it.label}</span></label>`;
             case 'select':
-                return `<label class="mp-bar-item"${title}>${label}<select class="mp-bar-select" data-i="${i}">${it.options.map(([ov, ot]) => `<option value="${esc(ov)}"${String(ov) === String(v) ? ' selected' : ''}>${esc(ot)}</option>`).join('')}</select></label>`;
+                return `<label class="mp-bar-item"${title}>${label}<select class="vdt-select mp-bar-select" data-i="${i}">${it.options.map(([ov, ot]) => `<option value="${esc(ov)}"${String(ov) === String(v) ? ' selected' : ''}>${esc(ot)}</option>`).join('')}</select></label>`;
             case 'seg':
                 return `<span class="mp-bar-seg" role="group">${it.options.map(([ov, ot, inner], k) => `<button type="button" class="mp-bar-btn${String(ov) === String(v) ? ' is-on' : ''}" data-i="${i}" data-k="${k}" title="${esc(ot)}">${inner}</button>`).join('')}</span>`;
             case 'toggle':

@@ -1188,9 +1188,9 @@
                     <label class="qc-field"><span>Title</span><input type="text" class="qc-s-title" maxlength="100" value="${esc(last.title)}"></label>
                     <label class="qc-field"><span>Description</span><textarea class="qc-s-desc" rows="5" maxlength="5000">${esc(last.description)}</textarea></label>
                     <div class="qc-grid">
-                        <label class="qc-field"><span>Privacy</span><select class="qc-s-priv">${opt([['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']], last.privacy)}</select></label>
-                        <label class="qc-field"><span>Category</span><select class="qc-s-cat">${opt(CATS, last.categoryId)}</select></label>
-                        <label class="qc-field"><span>Latency</span><select class="qc-s-lat">${opt([['normal', 'Normal'], ['low', 'Low'], ['ultraLow', 'Ultra-low']], last.latency)}</select></label>
+                        <label class="qc-field"><span>Privacy</span><select class="vdt-select qc-s-priv">${opt([['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']], last.privacy)}</select></label>
+                        <label class="qc-field"><span>Category</span><select class="vdt-select qc-s-cat">${opt(CATS, last.categoryId)}</select></label>
+                        <label class="qc-field"><span>Latency</span><select class="vdt-select qc-s-lat">${opt([['normal', 'Normal'], ['low', 'Low'], ['ultraLow', 'Ultra-low']], last.latency)}</select></label>
                     </div>
                     <label class="qc-check"><input type="checkbox" class="qc-s-dvr"${last.dvr ? ' checked' : ''}> DVR (viewers can rewind)</label>
                     <label class="qc-check"><input type="checkbox" class="qc-s-kids"${last.madeForKids ? ' checked' : ''}> Made for kids</label>
@@ -1246,10 +1246,10 @@
                     pane('encoder').innerHTML = `
                         <div class="qc-grid">
                             <label class="qc-field"><span>Video bitrate (kb/s)</span><input type="number" class="qc-e-br" min="500" max="51000" step="500" value="${e.bitrate}"></label>
-                            <label class="qc-field"><span>Rate control</span><select class="qc-e-rc">${opt([['CBR', 'CBR (constant)'], ['VBR', 'VBR (variable)']], e.rateControl)}</select></label>
-                            <label class="qc-field"><span>Audio bitrate (kb/s)</span><select class="qc-e-ab">${opt(e.audioRates.map((n) => [n, String(n)]), e.audioBitrate)}</select></label>
-                            <label class="qc-field"><span>Resolution</span><select class="qc-e-h">${opt(e.heights.map((h) => [h, `${h}p`]), e.height)}</select></label>
-                            <label class="qc-field"><span>Frame rate</span><select class="qc-e-fps">${opt([[30, '30 fps'], [60, '60 fps']], e.fps)}</select></label>
+                            <label class="qc-field"><span>Rate control</span><select class="vdt-select qc-e-rc">${opt([['CBR', 'CBR (constant)'], ['VBR', 'VBR (variable)']], e.rateControl)}</select></label>
+                            <label class="qc-field"><span>Audio bitrate (kb/s)</span><select class="vdt-select qc-e-ab">${opt(e.audioRates.map((n) => [n, String(n)]), e.audioBitrate)}</select></label>
+                            <label class="qc-field"><span>Resolution</span><select class="vdt-select qc-e-h">${opt(e.heights.map((h) => [h, `${h}p`]), e.height)}</select></label>
+                            <label class="qc-field"><span>Frame rate</span><select class="vdt-select qc-e-fps">${opt([[30, '30 fps'], [60, '60 fps']], e.fps)}</select></label>
                         </div>
                         <div class="qc-presets"><span class="qc-dim">YouTube suggests:</span>
                             <button type="button" class="qc-btn" data-preset="720,30,4000">720p30 4 Mb</button>

@@ -371,7 +371,7 @@
                 ${tog('TextAlign:center', '<span class="mp-al is-center"></span>', 'Center text', t.align === 'center')}
                 ${tog('TextAlign:right', '<span class="mp-al is-right"></span>', 'Right align text', t.align === 'right')}
             </div>
-            <div class="mp-char-row"><label>Anti-alias <select data-f="TextAA"><option value="smooth"${t.aa !== 'none' ? ' selected' : ''}>Smooth</option><option value="none"${t.aa === 'none' ? ' selected' : ''}>None</option></select></label></div>`;
+            <div class="mp-char-row"><label>Anti-alias <select class="vdt-select" data-f="TextAA"><option value="smooth"${t.aa !== 'none' ? ' selected' : ''}>Smooth</option><option value="none"${t.aa === 'none' ? ' selected' : ''}>None</option></select></label></div>`;
         fontPicker(w, p.querySelector('.mp-char-font'), () => w.textFont().face, (v) => w.setTextFont({ TextFace: v }));
         stylePicker(w, p.querySelector('.mp-char-style'), () => w.textFont(), (s) => w.setTextFont({ TextWeight: s.weight, TextItalic: s.italic, TextBold: s.weight >= 600 }));
         p.querySelectorAll('input[data-f]').forEach((i) => i.addEventListener('change', () => w.setTextFont({ [i.dataset.f]: Number(i.value) || 0 })));

@@ -3126,7 +3126,7 @@ const doveBuildComposeWindow = function (key, initial) {
         fromLabel.textContent = 'From:';
         fromSelect = document.createElement('select');
         // a plain select: 7.css paints Vista's combo box (.form-control would flatten it to an edit box)
-        fromSelect.className = 'dovecote-compose-from';
+        fromSelect.className = 'dovecote-compose-from vdt-select';
         const dream = document.createElement('option');
         dream.value = '';
         dream.textContent = doveDisplayAddress(DESKTOP_DOVECOTE_HUMAN_OWNER) + ' (Dreamscape Mail)';

@@ -324,33 +324,33 @@
             return `
                 <div class="isx-adv-grid">
                     <div class="isx-adv-col">
-                        <label class="isx-adv-row"><span class="isx-adv-label">Location</span><select class="isx-f-location isx-wide"></select></label>
+                        <label class="isx-adv-row"><span class="isx-adv-label">Location</span><select class="vdt-select isx-f-location isx-wide"></select></label>
                         <div class="isx-adv-row isx-adv-note"><span class="isx-adv-label"></span><span class="isx-corpus">0 pictures in this location</span></div>
-                        <label class="isx-adv-row"><span class="isx-adv-label">Date</span><select class="isx-f-datemode isx-wide"><option value="relative">Any time, or within</option><option value="exact">Between two dates</option></select></label>
+                        <label class="isx-adv-row"><span class="isx-adv-label">Date</span><select class="vdt-select isx-f-datemode isx-wide"><option value="relative">Any time, or within</option><option value="exact">Between two dates</option></select></label>
                         <div class="isx-date-relative">
-                            <label class="isx-adv-row"><span class="isx-adv-label">After</span><select class="isx-f-after isx-wide" title="Created after">${opt(RELATIVE_DATES, 'any')}</select></label>
-                            <label class="isx-adv-row"><span class="isx-adv-label">Before</span><select class="isx-f-before isx-wide" title="Created before">${opt(RELATIVE_DATES, 'any')}</select></label>
+                            <label class="isx-adv-row"><span class="isx-adv-label">After</span><select class="vdt-select isx-f-after isx-wide" title="Created after">${opt(RELATIVE_DATES, 'any')}</select></label>
+                            <label class="isx-adv-row"><span class="isx-adv-label">Before</span><select class="vdt-select isx-f-before isx-wide" title="Created before">${opt(RELATIVE_DATES, 'any')}</select></label>
                         </div>
                         <div class="isx-date-exact" hidden>
                             <div class="isx-adv-row"><span class="isx-adv-label">From</span>${root.vistaDialogTemplate.pickerHtml({ type: 'date', showNone: true, cls: 'isx-f-from isx-wide' })}</div>
                             <div class="isx-adv-row"><span class="isx-adv-label">To</span>${root.vistaDialogTemplate.pickerHtml({ type: 'date', showNone: true, cls: 'isx-f-to isx-wide' })}</div>
                         </div>
-                        <label class="isx-adv-row"><span class="isx-adv-label">Upscaled</span><select class="isx-f-upscaled isx-wide">${tri}</select></label>
-                        <label class="isx-adv-row"><span class="isx-adv-label">Replacements</span><select class="isx-f-dynRepl isx-wide" title="Dynamic replacements">${tri}</select></label>
+                        <label class="isx-adv-row"><span class="isx-adv-label">Upscaled</span><select class="vdt-select isx-f-upscaled isx-wide">${tri}</select></label>
+                        <label class="isx-adv-row"><span class="isx-adv-label">Replacements</span><select class="vdt-select isx-f-dynRepl isx-wide" title="Dynamic replacements">${tri}</select></label>
                     </div>
                     <div class="isx-adv-col">
                         <div class="isx-adv-row"><span class="isx-adv-label">Model</span><button type="button" class="isx-combo-btn isx-f-models isx-wide">All models</button></div>
                         <div class="isx-adv-row"><span class="isx-adv-label">Resolution</span><button type="button" class="isx-combo-btn isx-f-resolution isx-wide">All resolutions</button></div>
-                        <label class="isx-adv-row"><span class="isx-adv-label">Sampler</span><select class="isx-f-sampler isx-wide"></select></label>
-                        <label class="isx-adv-row"><span class="isx-adv-label">Scheduler</span><select class="isx-f-scheduler isx-wide" title="Noise scheduler"></select></label>
+                        <label class="isx-adv-row"><span class="isx-adv-label">Sampler</span><select class="vdt-select isx-f-sampler isx-wide"></select></label>
+                        <label class="isx-adv-row"><span class="isx-adv-label">Scheduler</span><select class="vdt-select isx-f-scheduler isx-wide" title="Noise scheduler"></select></label>
                         <div class="isx-adv-row"><span class="isx-adv-label">Steps</span><input type="number" class="isx-f-stepsMin isx-num" min="1" max="150" placeholder="any"><span class="isx-to">to</span><input type="number" class="isx-f-stepsMax isx-num" min="1" max="150" placeholder="any"></div>
                         <div class="isx-adv-row"><span class="isx-adv-label">Guidance</span><input type="number" class="isx-f-guidanceMin isx-num" min="0" max="30" step="0.1" placeholder="any"><span class="isx-to">to</span><input type="number" class="isx-f-guidanceMax isx-num" min="0" max="30" step="0.1" placeholder="any"></div>
                         <div class="isx-adv-row"><span class="isx-adv-label">Rescale</span><input type="number" class="isx-f-rescaleMin isx-num" min="0" max="1" step="0.01" placeholder="any"><span class="isx-to">to</span><input type="number" class="isx-f-rescaleMax isx-num" min="0" max="1" step="0.01" placeholder="any"></div>
                     </div>
                     <div class="isx-adv-col">
                         <div class="isx-adv-row"><span class="isx-adv-label">Prompt</span><label class="isx-check"><input type="checkbox" class="isx-f-compiled"> Compiled</label><label class="isx-check"><input type="checkbox" class="isx-f-input"> Input</label></div>
-                        <label class="isx-adv-row"><span class="isx-adv-label">Match</span><select class="isx-f-match isx-wide" title="Default match for new terms">${opt(MATCH_MODES)}</select></label>
-                        <label class="isx-adv-row"><span class="isx-adv-label">Quality tags</span><select class="isx-f-quality isx-wide">${tri}</select></label>
+                        <label class="isx-adv-row"><span class="isx-adv-label">Match</span><select class="vdt-select isx-f-match isx-wide" title="Default match for new terms">${opt(MATCH_MODES)}</select></label>
+                        <label class="isx-adv-row"><span class="isx-adv-label">Quality tags</span><select class="vdt-select isx-f-quality isx-wide">${tri}</select></label>
                         <div class="isx-adv-row"><span class="isx-adv-label">UC preset</span><label class="isx-check"><input type="checkbox" class="isx-f-ucAny"> Any</label><input type="range" class="isx-f-uc isx-track" min="0" max="8" step="1" value="0"><span class="isx-track-value isx-uc-value"></span></div>
                         <div class="isx-adv-row"><span class="isx-adv-label">NSFW level</span><label class="isx-check"><input type="checkbox" class="isx-f-nsfwAny"> Any</label><input type="range" class="isx-f-nsfw isx-track" min="-2" max="3" step="1" value="0"><span class="isx-track-value isx-nsfw-value"></span></div>
                         <div class="isx-adv-row"><span class="isx-adv-label"></span><label class="isx-check" title="The same seed within 24 hours"><input type="checkbox" class="isx-f-seeds"> Consecutive seeds only</label></div>

@@ -329,7 +329,7 @@ ${dsapSmfBuildHeader({
       <div class="sec-readonly-row"><span class="sec-dsap-setting-hint">Display name</span> <span id="secCursorAccountDisplayName" class="sec-readonly-value">—</span></div>
       <label>Badge color<span class="sec-color-row"><button type="button" id="secCursorAccountColorPicker" class="sec-color-swatch vdt-colorwell" data-color="#5b8def" data-color-title="Badge Color" aria-label="Badge color"><span class="vdt-colorwell-fill"></span></button><input type="text" id="secCursorAccountColorInput" class="sec-input" placeholder="#5b8def" maxlength="7" spellcheck="false"></span></label>
       <label>Email Address<input type="text" id="secCursorAccountEmailInput" class="sec-input" placeholder="user@example.com (auto-detected if token is pasted)"></label>
-      <label>Credential type<select id="secCursorAccountTokenKind" class="sec-input">
+      <label>Credential type<select id="secCursorAccountTokenKind" class="vdt-select sec-input">
         <option value="">Auto (API key or session token)</option>
         <option value="apiKey">API key</option>
         <option value="accessToken">Access token</option>
@@ -609,7 +609,7 @@ ${dsapSmfBuildHeader({
         <label>Label<input type="text" id="secApprovedLabelInput" class="sec-input" maxlength="80" placeholder="Home LAN"></label>
         <label>CIDR<input type="text" id="secApprovedCidrInput" class="sec-input" placeholder="203.0.113.10/32 or 2001:db8::/64" spellcheck="false"></label>
         <label>Signs in as
-          <select id="secApprovedUserType" class="sec-input">
+          <select id="secApprovedUserType" class="vdt-select sec-input">
             <option value="admin">Administrator</option>
             <option value="readonly">User</option>
           </select>

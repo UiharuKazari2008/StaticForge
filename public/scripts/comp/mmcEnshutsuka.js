@@ -282,7 +282,7 @@
         const html = `<div class="ens-mem" data-store="${esc(store)}">
             <div class="ens-bar">
                 <label class="ens-find"><span>F<u>i</u>nd:</span><span class="ens-find-box"><input type="text" class="ens-search" data-field="ens-search-${esc(node.id)}" value="${esc(L.search)}" placeholder="Search memories - Enter opens the top hit" autocomplete="off" spellcheck="false"><span class="ens-hits" hidden></span></span></label>
-                <label class="ens-cat"><span>Category:</span><select class="ens-category" data-field="ens-cat-${esc(node.id)}">${catOptions(cats, L.category)}</select></label>
+                <label class="ens-cat"><span>Category:</span><select class="vdt-select ens-category" data-field="ens-cat-${esc(node.id)}">${catOptions(cats, L.category)}</select></label>
             </div>
             <div class="ens-body" data-mmc-scroll></div>
             <div class="ens-pager"></div>
@@ -431,7 +431,7 @@
             const ph = view === 'map' ? `<span class="ens-pager-text">${esc(plural(((L.map && L.map.nodes) || []).filter((n) => n.kind === 'memory').length, 'memory', 'memories'))} drawn (up to 60)</span>`
                 : `<button type="button" class="ens-pg" data-act="page:prev" title="Previous page"${L.page <= 1 ? ' disabled' : ''}>&lt; Previous</button><button type="button" class="ens-pg" data-act="page:next" title="Next page"${L.page >= pages ? ' disabled' : ''}>Next &gt;</button>
                 <span class="ens-pager-text" title="Page ${L.page} of ${pages}">${start}-${end} of ${L.total.toLocaleString('en-US')}</span>
-                <label class="ens-per">Per page: <select class="ens-perpage">${PER_PAGE.map((n) => `<option value="${n}"${n === per ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`;
+                <label class="ens-per">Per page: <select class="vdt-select ens-perpage">${PER_PAGE.map((n) => `<option value="${n}"${n === per ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`;
             if (pager.dataset.html !== ph) { pager.innerHTML = ph; pager.dataset.html = ph; }
         }
     }
@@ -699,7 +699,7 @@
                 <label for="ensPersonaBackstory" class="ens-top">My <u>b</u>ackstory:</label>
                 <textarea id="ensPersonaBackstory" data-pfield="backstory" rows="6" spellcheck="true">${esc(p.backstory)}</textarea>
                 <label for="ensPersonaVerbosity">Default <u>v</u>erbosity:</label>
-                <select id="ensPersonaVerbosity" data-pfield="default_verbosity">${VERBOSITY.map((o) => `<option value="${o.value}"${o.value === p.default_verbosity ? ' selected' : ''}>${o.text}</option>`).join('')}</select>
+                <select class="vdt-select" id="ensPersonaVerbosity" data-pfield="default_verbosity">${VERBOSITY.map((o) => `<option value="${o.value}"${o.value === p.default_verbosity ? ' selected' : ''}>${o.text}</option>`).join('')}</select>
             </div>
             <div class="mmc-buttons"><button type="button" class="btn-standard" data-act="persona-save">Save Persona</button><button type="button" class="btn-standard" data-act="refresh">Revert</button></div>`;
         return {

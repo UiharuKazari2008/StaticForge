@@ -761,6 +761,7 @@
     function dtpWire() {
         if (doc._vdtDtpWired) return;
         doc._vdtDtpWired = true;
+        // app-scope: allow page lifetime (wired once per document, as the guard above says)
         doc.addEventListener('mousedown', (ev) => {
             const el = ev.target.closest && ev.target.closest('.vdt-dtp');
             if (dtpPopup && !(el && el === dtpPopup.el)) dtpClose(false);
@@ -795,6 +796,7 @@
             const el = ev.target;
             if (el.classList && el.classList.contains('vdt-dtp')) setTimeout(() => dtpDraw(el), 0);
         });
+        // app-scope: allow page lifetime (as above)
         doc.addEventListener('keydown', (ev) => {
             const el = ev.target;
             if (!el.classList || !el.classList.contains('vdt-dtp')) return;
@@ -1151,78 +1153,9 @@
         }
     }
 
-    /**
-     * A combo box's dropped list (the ComboLBox): Vista's list box under the control, over everything. opts:
-     * { items [{ value, text }], value, room (px the template allows, else comctl32 v6's 30 rows), pick(value),
-     * focus (the element that keeps the focus and hears the keys) }. A second open of the same box closes it.
-     */
+    /** A combo box's dropped list (the ComboLBox): the shell's one implementation (dropdown.js vistaDropList). */
     function dropList(box, opts) {
-        const old = doc.querySelector('.vdt-combo-pop');
-        if (old) { const was = old._box; old._close(); if (was === box) return; }
-        const items = opts.items || [];
-        const focusEl = opts.focus;
-        const r = box.getBoundingClientRect();
-        const pop = doc.createElement('div');
-        const cs = getComputedStyle(focusEl);
-        // MS Shell Dlg 8 (Tahoma, 11 px) rows are 13 px, Segoe UI 9 pt rows 15 (the VM's devmgr Property list: 13)
-        pop.className = `vdt-combo-pop vdt-listbox${parseFloat(cs.fontSize) <= 11 ? ' is-small' : ''}`;
-        pop.setAttribute('role', 'listbox');
-        pop.style.font = cs.font;
-        pop.innerHTML = items.length ? items.map((o) => `<div class="vdt-lb-row${String(o.value) === String(opts.value) ? ' is-selected' : ''}" data-value="${esc(o.value)}" role="option"><span>${esc(o.text)}</span></div>`).join('') : '<div class="vdt-lb-row" data-empty="1"><span>&nbsp;</span></div>';
-        const n = Math.max(1, items.length);
-        pop.style.left = `${Math.round(r.left)}px`;
-        pop.style.width = `${Math.round(r.width)}px`;
-        doc.body.appendChild(pop);
-        const rowH = (pop.querySelector('.vdt-lb-row') || pop).getBoundingClientRect().height || 13;
-        const room = opts.room || rowH * 30 + 2;
-        const h = Math.round(Math.max(1, Math.min(n, Math.floor((room - 2) / rowH))) * rowH + 2);
-        const below = window.innerHeight - r.bottom;
-        pop.style.height = `${h}px`;
-        pop.style.top = `${Math.round(below >= h || below >= r.top ? r.bottom : r.top - h)}px`;
-        const sel = pop.querySelector('.is-selected');
-        if (sel) sel.scrollIntoView({ block: 'nearest' });
-        const pick = (row) => { if (row && !row.dataset.empty) opts.pick(row.dataset.value); };
-        const close = () => {
-            pop.remove();
-            doc.removeEventListener('mousedown', outside, true);
-            doc.removeEventListener('touchstart', outside, true);
-            focusEl.removeEventListener('keydown', keys, true);
-            focusEl.removeEventListener('blur', blurred);
-            window.removeEventListener('resize', close);
-            box.classList.remove('is-open');
-        };
-        // a press on the box itself is the box's own (it closes the list through its toggle)
-        const outside = (ev) => { if (!pop.contains(ev.target) && !box.contains(ev.target)) close(); };
-        const blurred = () => setTimeout(() => { if (pop.isConnected && doc.activeElement !== focusEl) close(); }, 0);
-        const keys = (ev) => {
-            const list = Array.from(pop.querySelectorAll('.vdt-lb-row[data-value]'));
-            let i = list.findIndex((x) => x.classList.contains('is-selected'));
-            if (ev.key === 'Escape' || ev.key === 'Tab' || ev.key === 'F4' || (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown'))) { if (ev.key !== 'Tab') { ev.preventDefault(); ev.stopPropagation(); } close(); return; }
-            if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); pick(list[i]); close(); return; }
-            const page = Math.max(1, Math.floor(h / rowH) - 1);
-            const step = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page, Home: -1e6, End: 1e6 }[ev.key];
-            if (!step) return;
-            ev.preventDefault();
-            ev.stopPropagation();
-            i = Math.max(0, Math.min(list.length - 1, (i < 0 ? -1 : i) + step));
-            list.forEach((x, j) => x.classList.toggle('is-selected', j === i));
-            if (list[i]) { list[i].scrollIntoView({ block: 'nearest' }); pick(list[i]); }
-        };
-        pop.addEventListener('mousedown', (ev) => ev.preventDefault());
-        pop.addEventListener('mousemove', (ev) => {
-            const row = ev.target.closest('.vdt-lb-row[data-value]');
-            if (row && !row.classList.contains('is-selected')) { pop.querySelectorAll('.is-selected').forEach((x) => x.classList.remove('is-selected')); row.classList.add('is-selected'); }
-        });
-        pop.addEventListener('click', (ev) => { pick(ev.target.closest('.vdt-lb-row')); close(); focusEl.focus(); });
-        pop._box = box;
-        pop._close = close;
-        box.classList.add('is-open');
-        focusEl.focus();
-        doc.addEventListener('mousedown', outside, true);
-        doc.addEventListener('touchstart', outside, true);
-        focusEl.addEventListener('keydown', keys, true);
-        focusEl.addEventListener('blur', blurred);
-        window.addEventListener('resize', close);
+        return root.vistaDropList(box, opts);
     }
 
     /** A drop-down combo box's list: the datalist's choices under the edit, Vista's list box look. */
