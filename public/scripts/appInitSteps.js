@@ -711,11 +711,20 @@ if (window.wsClient) {
             const reads = Array.from(due.values());
             const revision = latest;
             due.clear();
+            // another computer's change: the cache follows it (the Sync Center sees it as source 'push'); the desktop
+            // itself already gets the live pushes of each piece (sidebar_updated, desktop shortcut pushes, ...)
+            const sync = typeof ws._profileSyncEvent === 'function' ? ws._profileSyncEvent.bind(ws) : () => {};
+            sync('checking', { source: 'push' });
             try {
                 // each reply goes into the cache through sendMessage (websocket.js)
-                for (const [type, data] of reads) await ws.sendMessage(type, data, false);
+                for (let i = 0; i < reads.length; i++) {
+                    const [type, data] = reads[i];
+                    sync('reading', { type, index: i, total: reads.length, source: 'push' });
+                    await ws.sendMessage(type, data, false);
+                }
                 window.cachedProfile.setRevision(revision);
-            } catch (_) { /* the next push or logon catches up */ }
+                sync('done', { source: 'push', applied: [] });
+            } catch (_) { sync('unknown', { source: 'push' }); /* the next push or logon catches up */ }
         };
         ws.on('profile_changed', (msg) => {
             const d = (msg && msg.data) || {};

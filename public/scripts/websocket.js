@@ -1630,89 +1630,182 @@ class WebSocketClient {
      *   saved, the next logon takes the server's profile.
      */
     /**
-     * Profile sync progress for the desktop (#910; a Sync Center window listens): window event 'melaton:profilesync'
-     * with detail { phase, ... } - 'checking'; 'applying' { pieces: [request types] }; 'done' { source: 'cache' |
-     * 'server', applied: [types] }; 'outofsync' { cached, server, held }; 'unknown' (the server's revision could not
-     * be read; asked again at the next reconnect).
+     * Profile sync progress for the desktop (#910; the Nightshade Sync Center window listens, nightshadeProfileSync.js):
+     * window event 'melaton:profilesync', detail { phase, at, source?, ... }:
+     *   'checking'                        the server's profile revision is being read
+     *   'reading'   { type, index, total } one piece read from the server (index 0-based)
+     *   'applying'  { pieces }            the pieces that differ, about to be applied
+     *   'applied'   { type }              one piece applied through its loader
+     *   'done'      { source, applied }   source: 'cache' (already the server's) | 'server' (applied at reconnect) |
+     *                                     'resolve' | 'manual' (Sync now) | 'push' (another computer's change, cached)
+     *   'outofsync' { cached, server, held, reason, pieces }  reason: 'held' | 'toomany' | 'noloader' | 'loaderfailed'
+     *   'unknown'                          the server's revision could not be read (asked again at the next reconnect)
+     * The last detail is wsClient._profileSyncLast.
      */
     _profileSyncEvent(phase, extra) {
-        try { window.dispatchEvent(new CustomEvent('melaton:profilesync', { detail: Object.assign({ phase, at: Date.now() }, extra || {}) })); } catch (_) { /* no listeners */ }
+        const detail = Object.assign({ phase, at: Date.now() }, extra || {});
+        this._profileSyncLast = detail;
+        try { window.dispatchEvent(new CustomEvent('melaton:profilesync', { detail })); } catch (_) { /* no listeners */ }
+        return detail;
     }
 
+    /**
+     * After a logon from the cached profile (fast logon or no server), at the first reconnect (#910, Yukimi Nov 20
+     * 2026): the cache's revision against the server's (profile_revision, modules/profileRevision.js).
+     * - The same, or nothing came from the cache: the session is the server's and writes again from now on.
+     * - Different: the server's profile is applied over the desktop, quietly, piece by piece (each read again and
+     *   compared with the cached copy; only what changed is applied, through its own loader).
+     * - Unless this session changed something itself (writes were held), more than PROFILE_LIVE_MAX pieces changed, or
+     *   a piece cannot be applied live: then "out of sync with the domain controller" - nothing from this session is
+     *   saved (never: Yukimi), the next logon takes the server's profile, or resolveProfileConflict('server') now.
+     */
     async _checkProfileSync() {
-        if (!this._profileHold || this._profileOutOfSync) return;
+        if (!this._profileHold || this._profileOutOfSync) return this._profileSyncLast || null;
         this._profileSyncEvent('checking');
-        let server = null;
-        try { server = ((await this.sendMessage('profile_revision', {}, false)) || {}).revision || null; } catch (_) { /* asked again at the next reconnect */ }
-        if (!server) { this._profileSyncEvent('unknown'); return; }
+        const server = await this._profileServerRevision();
+        if (!server) return this._profileSyncEvent('unknown');
         const profile = window.cachedProfile;
         const hits = Array.from(this._profileCacheHits || []);
         const meta = hits.length && profile ? await profile.meta() : null;
         if (!hits.length || (meta && meta.revision === server)) {
             this._profileHold = false;
             console.log(`👤 Profile: ${hits.length ? 'the cached profile is the domain controller\'s' : 'nothing came from the cache'} - this session writes again`);
-            this._profileSyncEvent('done', { source: hits.length ? 'cache' : 'server', applied: [] });
-            return;
+            return this._profileSyncEvent('done', { source: hits.length ? 'cache' : 'server', applied: [] });
         }
+        const changed = await this._readServerProfile(hits).catch(() => null);
+        let reason = null;
         let applied = null;
-        if (!this._profileHeldWrites && profile) applied = await this._applyServerProfile(hits).catch((e) => { console.warn('👤 Profile: live apply failed', e); return null; });
+        if (!changed) reason = 'loaderfailed';
+        else if (this._profileHeldWrites) reason = 'held';
+        else if (changed.length > WebSocketClient.PROFILE_LIVE_MAX) reason = 'toomany';
+        else {
+            const r = await this._applyProfilePieces(changed).catch(() => ({ ok: false, reason: 'loaderfailed' }));
+            if (r.ok) applied = r.applied; else reason = r.reason;
+        }
         if (applied) {
             profile.setRevision(server);
             this._profileHold = false;
             console.log(`👤 Profile: the domain controller's changes were applied (${applied.join(', ') || 'nothing differed'}) - this session writes again`);
-            this._profileSyncEvent('done', { source: 'server', applied });
-            return;
+            return this._profileSyncEvent('done', { source: 'server', applied });
         }
         this._profileOutOfSync = true;
-        this._profileSyncEvent('outofsync', { cached: meta ? meta.revision : null, server, held: this._profileHeldWrites || 0 });
-        console.warn(`👤 Profile: out of sync with the domain controller (cached ${meta ? meta.revision : 'none'}, server ${server}, ${this._profileHeldWrites || 0} change(s) held) - nothing from this session is saved`);
+        const detail = this._profileSyncEvent('outofsync', { cached: meta ? meta.revision : null, server, held: this._profileHeldWrites || 0, reason, pieces: changed || [] });
+        console.warn(`👤 Profile: out of sync with the domain controller (cached ${meta ? meta.revision : 'none'}, server ${server}, ${reason}) - nothing from this session is saved`);
+        // the Sync Center's conflict dialog takes it when loaded (nightshadeProfileSync.js); else the User Profile Service box
+        const owned = window.nightshadeProfileSync && window.nightshadeProfileSync.ownsConflict === true;
         // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
-        if (typeof showConfirmationDialog === 'function') {
+        if (!owned && typeof showConfirmationDialog === 'function') {
             showConfirmationDialog('Your user account is out of sync with the domain controller. Changes you make in this session will not be saved.\n\nLog off and log on again to update your profile.',
                 [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'User Profile Service', icon: 'fas fa-triangle-exclamation' });
         }
+        return detail;
     }
 
-    /**
-     * The server's copy of each piece the desktop was built from (types read from the cache); the ones that differ
-     * are applied through their loaders. Returns the names applied, or null when it cannot (too many, or a piece
-     * without a live loader or whose loader failed). The cache takes every copy read here.
-     */
-    async _applyServerProfile(types) {
-        const profile = window.cachedProfile;
+    async _profileServerRevision() {
+        try { return ((await this.sendMessage('profile_revision', {}, false)) || {}).revision || null; } catch (_) { return null; }
+    }
+
+    _profileReadData(type) {
         const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || window.currentWorkspace || 'default';
+        return (type === 'desktop_get_shortcuts' || type === 'sidebar_get') ? { workspaceId: ws } : {};
+    }
+
+    /** Each piece read from the server ('reading' events) and kept in the cache; the types whose copy differed. */
+    async _readServerProfile(types, source) {
+        const profile = window.cachedProfile;
         const changed = [];
-        for (const type of types) {
-            const data = (type === 'desktop_get_shortcuts' || type === 'sidebar_get') ? { workspaceId: ws } : {};
+        for (let i = 0; i < types.length; i++) {
+            const type = types[i];
+            const data = this._profileReadData(type);
+            this._profileSyncEvent('reading', { type, index: i, total: types.length, source });
             const [fresh, cached] = await Promise.all([this.sendMessage(type, data, false), profile.get(type, data)]);
             profile.put(type, data, fresh);
             if (JSON.stringify(fresh) !== JSON.stringify(cached)) changed.push(type);
         }
-        if (changed.length > WebSocketClient.PROFILE_LIVE_MAX) return null;
-        if (changed.length) this._profileSyncEvent('applying', { pieces: changed.slice() });
+        return changed;
+    }
+
+    /** The changed pieces applied through their loaders ('applying' / 'applied'): { ok, applied, reason }. */
+    async _applyProfilePieces(changed, source) {
+        const ws = this._profileReadData('desktop_get_shortcuts').workspaceId;
         const live = {
             // loadUserGlobalSettingsFromServer / fetchStartMenuCustomLayout: modalUtils.js; loadWorkspaces: workspaceUtils.js
-            get_user_global_settings: () => (typeof loadUserGlobalSettingsFromServer === 'function' ? loadUserGlobalSettingsFromServer().then((s) => !!s) : false),
-            start_menu_get_layout: () => (typeof fetchStartMenuCustomLayout === 'function' ? fetchStartMenuCustomLayout().then(() => true) : false),
-            workspace_list: () => (typeof loadWorkspaces === 'function' ? loadWorkspaces().then(() => true) : false),
-            desktop_get_settings: () => (typeof loadWorkspaces === 'function' ? loadWorkspaces().then(() => true) : false),
+            get_user_global_settings: () => (typeof loadUserGlobalSettingsFromServer === 'function' ? loadUserGlobalSettingsFromServer().then((s) => !!s) : null),
+            start_menu_get_layout: () => (typeof fetchStartMenuCustomLayout === 'function' ? fetchStartMenuCustomLayout().then(() => true) : null),
+            workspace_list: () => (typeof loadWorkspaces === 'function' ? loadWorkspaces().then(() => true) : null),
+            desktop_get_settings: () => (typeof loadWorkspaces === 'function' ? loadWorkspaces().then(() => true) : null),
             // desktopShortcuts: desktopShortcuts.js
             desktop_get_shortcuts: () => (typeof desktopShortcuts !== 'undefined' && desktopShortcuts
-                ? desktopShortcuts.loadShortcuts(ws).then((ok) => { if (ok) desktopShortcuts.renderShortcuts(); return ok; }) : false),
+                ? desktopShortcuts.loadShortcuts(ws).then((ok) => { if (ok) desktopShortcuts.renderShortcuts(); return ok; }) : null),
             // vsbLoad: vistaSidebar.js
-            sidebar_get: () => (typeof vsbLoad === 'function' ? vsbLoad(ws).then(() => true) : false)
+            sidebar_get: () => (typeof vsbLoad === 'function' ? vsbLoad(ws).then(() => true) : null)
         };
+        if (changed.length) this._profileSyncEvent('applying', { pieces: changed.slice(), source });
         const done = new Set();
+        const applied = [];
         for (const type of changed) {
-            const fn = live[type];
-            if (!fn) return null;
             // desktop settings and the workspace list share one loader
             const key = type === 'desktop_get_settings' ? 'workspace_list' : type;
-            if (done.has(key)) continue;
-            done.add(key);
-            if (!(await fn())) return null;
+            if (!done.has(key)) {
+                done.add(key);
+                const run = live[type] && live[type]();
+                if (run === null || run === undefined) return { ok: false, applied, reason: 'noloader' };
+                if (!(await run)) return { ok: false, applied, reason: 'loaderfailed' };
+            }
+            applied.push(type);
+            this._profileSyncEvent('applied', { type, source });
         }
-        return changed;
+        return { ok: true, applied };
+    }
+
+    /**
+     * The Sync Center's Resolve Conflict for an out-of-sync profile: 'server' keeps the domain controller's version - every
+     * changed piece applied live (no PROFILE_LIVE_MAX), the session's held changes dropped, the session writes again.
+     * 'local' is refused: a session from the cached profile never sends its changes to the domain controller (Yukimi,
+     * Nov 20 2026); log off and log on to take the server's profile instead.
+     * -> { ok, applied, needsLogoff, refused? }
+     */
+    async resolveProfileConflict(choice) {
+        if (choice !== 'server') return { ok: false, applied: [], needsLogoff: false, refused: 'local changes are never sent to the domain controller' };
+        if (!this._profileOutOfSync && !this._profileHold) return { ok: true, applied: [], needsLogoff: false };
+        this._profileSyncEvent('checking', { source: 'resolve' });
+        const server = await this._profileServerRevision();
+        if (!server) { this._profileSyncEvent('unknown', { source: 'resolve' }); return { ok: false, applied: [], needsLogoff: false }; }
+        const types = Array.from(this._profileCacheHits || []);
+        const changed = await this._readServerProfile(types, 'resolve').catch(() => null);
+        const r = changed ? await this._applyProfilePieces(changed, 'resolve').catch(() => ({ ok: false, applied: [], reason: 'loaderfailed' })) : { ok: false, applied: [], reason: 'loaderfailed' };
+        if (!r.ok) {
+            this._profileSyncEvent('outofsync', { server, held: this._profileHeldWrites || 0, reason: r.reason, pieces: changed || [], source: 'resolve' });
+            return { ok: false, applied: r.applied, needsLogoff: true };
+        }
+        if (window.cachedProfile) window.cachedProfile.setRevision(server);
+        this._profileHold = false;
+        this._profileOutOfSync = false;
+        this._profileHeldWrites = 0;
+        this._profileSyncEvent('done', { source: 'resolve', applied: r.applied });
+        return { ok: true, applied: r.applied, needsLogoff: false };
+    }
+
+    /**
+     * The Sync Center's Sync now. A session from the cached profile: its check (_checkProfileSync). A session that is the
+     * server's: the cached pieces read again, what differs applied live, the cache marked with the server's revision.
+     * -> the 'done' / 'outofsync' / 'unknown' detail.
+     */
+    async syncProfileNow() {
+        if (this._profileOutOfSync) return this._profileSyncLast;
+        if (this._profileHold) return this._checkProfileSync();
+        const profile = window.cachedProfile;
+        if (!profile || !this.isConnected()) return this._profileSyncEvent('unknown', { source: 'manual' });
+        this._profileSyncEvent('checking', { source: 'manual' });
+        const server = await this._profileServerRevision();
+        if (!server) return this._profileSyncEvent('unknown', { source: 'manual' });
+        const changed = await this._readServerProfile(Object.keys(profile.TYPES), 'manual').catch(() => null);
+        if (!changed) return this._profileSyncEvent('unknown', { source: 'manual' });
+        const r = await this._applyProfilePieces(changed, 'manual').catch(() => ({ ok: false, applied: [], reason: 'loaderfailed' }));
+        if (r.ok) profile.setRevision(server);
+        return r.ok
+            ? this._profileSyncEvent('done', { source: 'manual', applied: r.applied })
+            : this._profileSyncEvent('outofsync', { server, held: 0, reason: r.reason, pieces: changed, source: 'manual' });
     }
 
     _connectionTheaterSkipped() {
