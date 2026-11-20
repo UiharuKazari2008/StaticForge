@@ -882,7 +882,10 @@ class WebSocketClient {
     static NIGHTSHADE_QUEUE_MAX = 64;
     // the user's own settings and desktop: written only by a desktop that loaded them from the server (_userSettingsWritable)
     static USER_SETTINGS_WRITES = new Set(['update_user_global_settings', 'workspace_update_settings', 'workspace_update_window_positions',
-        'workspace_update_textarea_font', 'desktop_add_shortcut', 'desktop_remove_shortcut', 'desktop_update_shortcut']);    // requests that may wait for the reconnection at once (#895)
+        'workspace_update_textarea_font', 'desktop_add_shortcut', 'desktop_remove_shortcut', 'desktop_update_shortcut',
+        // desktop icons' places and folders, the workspace's colours / font, the Sidebar (a whole-state write) (#910)
+        'desktop_update_positions', 'desktop_update_shortcut_folders', 'desktop_create_folder_from_selection', 'desktop_create_empty_folder',
+        'workspace_update_color', 'workspace_update_background_color', 'workspace_update_primary_font', 'sidebar_save']);    // requests that may wait for the reconnection at once (#895)
     static NIGHTSHADE_QUEUE_MS = 600000; // how long one waits before it fails (10 minutes)
     static TIMEOUT_PING = 20000; // Ping timeout (20 seconds; cellular/WireGuard pongs)
     static TIMEOUT_CONNECTION_STABILITY = 2000; // Connection stability check timeout
