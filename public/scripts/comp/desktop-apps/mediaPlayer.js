@@ -224,7 +224,7 @@ function mediaPlayerCaptionHtml() {
         + '<div class="modal-window-title-main">'
         + '<i class="fas fa-play icon-fa"></i>'
         + '<img src="/static_images/app_icons/24/media_player.webp" srcset="/static_images/app_icons/24/media_player.webp 1x, /static_images/app_icons/48/media_player.webp 2x" alt="" class="icon-image">'
-        + '<span>Melaton Media Player</span>'
+        + '<span>' + mediaPlayerBar.CAPTION + '</span>'
         + '</div>'
         + '</div>'
         + '<div class="modal-focus-overlay"></div>'
@@ -310,9 +310,11 @@ function mediaPlayerBodyHtml() {
         + '</div>'
         // transport (the glass): WMP 11's full-mode bar, laid out in css/desktop-apps/mediaPlayer.css; tooltips as the VM's
         + '<div class="wmp-transport">'
-        + '<div class="wmp-seek" title="Seek" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><div class="wmp-seek-fill"></div><div class="wmp-seek-tip"></div><div class="wmp-seek-thumb"></div></div>'
-        + '<div class="wmp-now"><div class="wmp-now-thumb"><canvas width="33" height="22"></canvas><img src="' + WMP_ART + '/art-music.png" alt=""></div><span class="wmp-now-title"></span></div>'
-        + '<span class="wmp-time"></span>'
+        + '<div class="wmp-seek" title="Seek" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><div class="wmp-seek-fill"></div><div class="wmp-seek-tip"></div><div class="wmp-seek-thumb"></div></div>'
+        // the thumbnail, then the title and the elapsed time on one line (a click on the time shows "elapsed / length",
+        // the VM's toggle; the title gives way to it)
+        + '<div class="wmp-now"><div class="wmp-now-thumb" role="button" tabindex="0" aria-label="Now Playing"><canvas width="33" height="22"></canvas><img src="' + WMP_ART + '/art-music.png" alt=""></div>'
+        + '<div class="wmp-nowline"><span class="wmp-now-title"></span><span class="wmp-time" role="button" tabindex="0"></span></div></div>'
         + '<div class="wmp-pill">'
         + '<button type="button" class="wmp-tbtn wmp-shuffle" title="Turn shuffle on" aria-pressed="false"></button>'
         + '<button type="button" class="wmp-tbtn wmp-repeat" title="Turn repeat on" aria-pressed="false"></button>'
@@ -323,8 +325,11 @@ function mediaPlayerBodyHtml() {
         + '<button type="button" class="wmp-next" title="Press and hold to fast-forward" disabled></button>'
         + '</div>'
         + '<button type="button" class="wmp-tbtn wmp-mute" title="Mute" aria-pressed="false"></button>'
+        // the narrow pill's split button: the speaker mutes, the arrow opens the volume pop-up (wmploc 4616)
+        + '<button type="button" class="wmp-volarrow" title="Volume" aria-label="Volume" aria-haspopup="true" aria-expanded="false"></button>'
         + '<div class="wmp-volume" title="Volume" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div class="wmp-volume-track"></div><div class="wmp-volume-fill"></div><div class="wmp-volume-thumb"></div></div>'
         + '</div>'
+        + '<div class="wmp-volpop hidden"><div class="wmp-volume" title="Volume" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div class="wmp-volume-track"></div><div class="wmp-volume-fill"></div><div class="wmp-volume-thumb"></div></div></div>'
         + '<div class="wmp-stack">'
         + '<button type="button" class="wmp-fullscreen" title="View full screen" aria-label="View full screen" disabled></button>'
         // the VM shows no tooltip on this one
@@ -686,8 +691,8 @@ function mediaPlayerSyncTransport(player) {
     el.mute.setAttribute('aria-pressed', String(media.muted));
     el.mute.title = media.muted ? 'Sound' : 'Mute';
     const volumePct = Math.round(media.volume * 100);
-    el.volume.style.setProperty('--wmp-volume-frac', String(media.volume));
-    el.volume.setAttribute('aria-valuenow', String(volumePct));
+    el.transport.style.setProperty('--wmp-volume-frac', String(media.volume));
+    el.volumes.forEach((v) => v.setAttribute('aria-valuenow', String(volumePct)));
     mediaPlayerBar.syncNowLine(player);
     mediaPlayerSyncClock(player);
 }
@@ -708,8 +713,9 @@ function mediaPlayerSyncClock(player) {
     // the elapsed time as WMP 11 writes it (00:01, 1:02:05), only while a file is open
     let text = '';
     if (open && media.currentSrc && !player.changing) {
-        const shown = desktopMediaClock(now);
-        text = shown.length < 5 ? '0' + shown : shown;
+        const pad = (t) => { const c = desktopMediaClock(t); return c.length < 5 ? '0' + c : c; };
+        text = pad(now);
+        if (player.timeTotal && duration > 0) text += ' / ' + pad(duration);
     }
     if (player.el.time.textContent !== text) player.el.time.textContent = text;
 }
@@ -717,6 +723,8 @@ function mediaPlayerSyncClock(player) {
 // The bar's own helpers (#956), one namespace (app-scope): the rotating now-playing line, press-and-hold
 // previous / next, the seek groove's value.
 const mediaPlayerBar = (function () {
+    const CAPTION = 'Melaton Media Player';
+
     /** The title beside the thumbnail: "Media changing..." while a file opens, then its title, artist, composer and
         album in turn (3.25 s each on the VM) while it plays; nothing when stopped. */
     function mediaPlayerNowLines(item) {
@@ -739,6 +747,9 @@ const mediaPlayerBar = (function () {
         if (open && player.changing) text = 'Media changing...';
         else if (lines.length) text = lines[(player.nowLine || 0) % lines.length];
         if (player.el.nowTitle.textContent !== text) player.el.nowTitle.textContent = text;
+        // folded (compact mode), the caption carries the line instead of the program's name, as on the VM
+        const caption = player.compact && text ? text : CAPTION;
+        if (player.el.caption.textContent !== caption) player.el.caption.textContent = caption;
         player.el.now.classList.toggle('has-item', open && !player.changing);
         // the thumbnail's tooltip: the bit rate it plays at (the file's size over its length)
         const size = item && (item.size || (item.file && item.file.size)) || 0;
@@ -829,7 +840,57 @@ const mediaPlayerBar = (function () {
         return Math.max(0, Math.min(1, (clientX - rect.left - 15.5) / (rect.width - 31)));
     }
 
-    return { nowLines: mediaPlayerNowLines, syncNowLine: mediaPlayerSyncNowLine, wireSeekButtons: mediaPlayerWireSeekButtons, seekValue: mediaPlayerSeekValue };
+    function mediaPlayerSyncCompact(player, height) {
+        const folded = (height || player.modal.getBoundingClientRect().height) <= 96 + 0.5;
+        if (folded === player.compact) return;
+        player.compact = folded;
+        player.modal.classList.toggle('wmp-collapsed', folded);
+        if (folded) mediaPlayerSetVolumePopup(player, false);
+        mediaPlayerBar.syncNowLine(player);
+    }
+
+    /** The narrow pill's volume pop-up (wmploc 4616 under the split button's arrow). */
+    function mediaPlayerSetVolumePopup(player, open) {
+        const pop = player.el.volpop;
+        if (open === !pop.classList.contains('hidden')) return;
+        pop.classList.toggle('hidden', !open);
+        player.el.volarrow.setAttribute('aria-expanded', String(open));
+        player.el.volarrow.classList.toggle('is-open', open);
+        if (open) {
+            // any press outside the pop-up closes it (the listener lives only while it is open)
+            player.volpopClose = (e) => {
+                if (pop.contains(e.target) || player.el.volarrow.contains(e.target)) return;
+                mediaPlayerSetVolumePopup(player, false);
+            };
+            document.addEventListener('pointerdown', player.volpopClose, { capture: true, signal: mediaPlayerLibrary.signal });
+        } else if (player.volpopClose) {
+            document.removeEventListener('pointerdown', player.volpopClose, { capture: true });
+            player.volpopClose = null;
+        }
+    }
+
+    /** The focus rectangle's dots stay on the window's checkerboard (x + y odd from its corner), wherever the box sits. */
+    function mediaPlayerSyncFocus(player, el) {
+        const box = getComputedStyle(el, '::before');
+        if (box.content === 'none') return;
+        const m = player.modal.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        const x = Math.round(r.left + el.clientLeft + (parseFloat(box.left) || 0) - m.left);
+        const y = Math.round(r.top + el.clientTop + (parseFloat(box.top) || 0) - m.top);
+        const w = Math.round(parseFloat(box.width) || 0);
+        const h = Math.round(parseFloat(box.height) || 0);
+        const p = (x + y) & 1;
+        el.style.setProperty('--wmp-focus-t', p ? '1px' : '0px');
+        el.style.setProperty('--wmp-focus-b', (p + h - 1) & 1 ? '1px' : '0px');
+        el.style.setProperty('--wmp-focus-r', (p + w - 1) & 1 ? '1px' : '0px');
+    }
+
+    return {
+        nowLines: mediaPlayerNowLines, syncNowLine: mediaPlayerSyncNowLine, wireSeekButtons: mediaPlayerWireSeekButtons, seekValue: mediaPlayerSeekValue,
+        // WMP 11's window limits on the VM: 374 wide at least; under 201 high it folds to the transport (96)
+        syncCompact: mediaPlayerSyncCompact, setVolumePopup: mediaPlayerSetVolumePopup, syncFocus: mediaPlayerSyncFocus,
+        MIN_WIDTH: 374, FOLDED_HEIGHT: 96, UNFOLD_MIN: 201, CAPTION
+    };
 })();
 
 // ---- views and history ----
@@ -1540,11 +1601,23 @@ function mediaPlayerSetRepeat(player, on) {
     mediaPlayerSyncTransport(player);
 }
 
+/** Compact mode, as WMP 11 has it: the window folds to its transport (96px: caption, the 60px bar, the frame) and
+    back. Any resize below 201px folds it the same way (the VM snaps there), so the folded state follows the height;
+    the button and Ctrl+1 switch between the folded window and the last unfolded size. */
 function mediaPlayerSetCompact(player, on) {
-    player.compact = !!on;
-    player.modal.classList.toggle('wmp-compact', player.compact);
-    player.el.compact.title = player.compact ? 'Switch to Full Mode' : 'Switch to Compact Mode';
-    if (player.compact) mediaPlayerShowView(player, 'now-playing', false);
+    const modal = player.modal;
+    const rect = modal.getBoundingClientRect();
+    if (on) {
+        if (rect.height > mediaPlayerBar.FOLDED_HEIGHT) player.fullRect = { width: rect.width, height: rect.height };
+        modal.style.width = Math.max(mediaPlayerBar.MIN_WIDTH, player.compactWidth || mediaPlayerBar.MIN_WIDTH) + 'px';
+        modal.style.height = mediaPlayerBar.FOLDED_HEIGHT + 'px';
+    } else {
+        if (rect.height <= mediaPlayerBar.FOLDED_HEIGHT) player.compactWidth = rect.width;
+        const full = player.fullRect || { width: Number(modal.dataset.windowDefaultWidth), height: Number(modal.dataset.windowDefaultHeight) };
+        modal.style.width = full.width + 'px';
+        modal.style.height = full.height + 'px';
+    }
+    mediaPlayerBar.syncCompact(player);
 }
 
 function mediaPlayerFullScreen(player) {
@@ -1622,35 +1695,36 @@ function mediaPlayerWireSliders(player) {
         media.currentTime = Math.max(0, Math.min(media.duration, media.currentTime + step));
     });
 
-    const volume = player.el.volume;
-    const track = volume.querySelector('.wmp-volume-track');
-    let volDrag = false;
-    volume.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0) return;
-        e.preventDefault();
-        volume.setPointerCapture(e.pointerId);
-        volDrag = true;
-        volume.classList.add('is-dragging');
-        mediaPlayerSetVolume(player, mediaPlayerSliderValue(track, e.clientX));
+    player.el.volumes.forEach((volume) => {
+        const track = volume.querySelector('.wmp-volume-track');
+        let volDrag = false;
+        volume.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            volume.setPointerCapture(e.pointerId);
+            volDrag = true;
+            volume.classList.add('is-dragging');
+            mediaPlayerSetVolume(player, mediaPlayerSliderValue(track, e.clientX));
+        });
+        volume.addEventListener('pointermove', (e) => {
+            if (volDrag) mediaPlayerSetVolume(player, mediaPlayerSliderValue(track, e.clientX));
+        });
+        const endVol = () => { volDrag = false; volume.classList.remove('is-dragging'); };
+        volume.addEventListener('pointerup', endVol);
+        volume.addEventListener('pointercancel', endVol);
+        // a release the window never saw (another window took the pointer) must not leave the thumb pressed
+        volume.addEventListener('lostpointercapture', endVol);
+        volume.addEventListener('keydown', (e) => {
+            const step = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 0.05 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -0.05 : 0;
+            if (!step) return;
+            e.preventDefault();
+            mediaPlayerSetVolume(player, media.volume + step);
+        });
+        volume.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            mediaPlayerSetVolume(player, media.volume + (e.deltaY < 0 ? 0.05 : -0.05));
+        }, { passive: false });
     });
-    volume.addEventListener('pointermove', (e) => {
-        if (volDrag) mediaPlayerSetVolume(player, mediaPlayerSliderValue(track, e.clientX));
-    });
-    const endVol = () => { volDrag = false; volume.classList.remove('is-dragging'); };
-    volume.addEventListener('pointerup', endVol);
-    volume.addEventListener('pointercancel', endVol);
-    // a release the window never saw (another window took the pointer) must not leave the thumb pressed
-    volume.addEventListener('lostpointercapture', endVol);
-    volume.addEventListener('keydown', (e) => {
-        const step = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 0.05 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -0.05 : 0;
-        if (!step) return;
-        e.preventDefault();
-        mediaPlayerSetVolume(player, media.volume + step);
-    });
-    volume.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        mediaPlayerSetVolume(player, media.volume + (e.deltaY < 0 ? 0.05 : -0.05));
-    }, { passive: false });
 }
 
 // ---- keyboard (WMP's shortcuts, while the window has focus) ----
@@ -1666,9 +1740,10 @@ function mediaPlayerKeydown(player, e) {
             mediaPlayerRunAction(player, map[key]);
             return;
         }
-        if (key === '1' || key === '2') {
+        // Ctrl+1: full mode (unfolds a compact window). Ctrl+2 is WMP 11's skin mode (the Corporate skin), not built.
+        if (key === '1') {
             e.preventDefault();
-            mediaPlayerSetCompact(player, key === '2');
+            if (player.compact) mediaPlayerSetCompact(player, false);
             return;
         }
         return;
@@ -1702,8 +1777,9 @@ function createDesktopMediaPlayer() {
     modal.className = 'modal hidden resizeable-window wmp';
     modal.dataset.windowIdentifier = 'desktop-media-player';
     modal.dataset.windowClient = 'light';
-    modal.dataset.windowMinWidth = '640';
-    modal.dataset.windowMinHeight = '420';
+    // WMP 11's smallest window: 374 wide, and 96 high folded (anything under 201 folds)
+    modal.dataset.windowMinWidth = String(mediaPlayerBar.MIN_WIDTH);
+    modal.dataset.windowMinHeight = String(mediaPlayerBar.FOLDED_HEIGHT);
     modal.dataset.windowDefaultWidth = '1000';
     modal.dataset.windowDefaultHeight = '706';
     modal.dataset.windowMaxWidth = '2400';
@@ -1760,7 +1836,11 @@ function createDesktopMediaPlayer() {
         play: q('.wmp-play'),
         next: q('.wmp-next'),
         mute: q('.wmp-mute'),
-        volume: q('.wmp-volume'),
+        volume: q('.wmp-pill .wmp-volume'),
+        volumes: Array.from(content.querySelectorAll('.wmp-volume')),
+        volarrow: q('.wmp-volarrow'),
+        caption: modal.querySelector('.modal-window-title span'),
+        volpop: q('.wmp-volpop'),
         fullscreen: q('.wmp-fullscreen'),
         compact: q('.wmp-compact'),
         file: q('.wmp-file')
@@ -1841,6 +1921,24 @@ function createDesktopMediaPlayer() {
     });
     el.fullscreen.addEventListener('click', () => mediaPlayerFullScreen(player));
     el.compact.addEventListener('click', () => mediaPlayerSetCompact(player, !player.compact));
+    el.volarrow.addEventListener('click', () => mediaPlayerBar.setVolumePopup(player, el.volpop.classList.contains('hidden')));
+    el.volpop.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        e.stopPropagation();
+        mediaPlayerBar.setVolumePopup(player, false);
+        el.volarrow.focus();
+    });
+    el.time.addEventListener('click', () => { player.timeTotal = !player.timeTotal; mediaPlayerSyncClock(player); });
+    el.transport.addEventListener('focusin', (e) => mediaPlayerBar.syncFocus(player, e.target));
+    el.nowThumb.addEventListener('click', () => mediaPlayerShowView(player, 'now-playing'));
+    [el.time, el.nowThumb].forEach((node) => node.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        node.click();
+    }));
+    // the fold follows the window's height (a resize below 201px snaps to the folded 96px, as on the VM)
+    modal.windowResizeConstrain = (width, height) => ({ width, height: height < mediaPlayerBar.UNFOLD_MIN ? mediaPlayerBar.FOLDED_HEIGHT : height });
+    new ResizeObserver((entries) => mediaPlayerBar.syncCompact(player, entries[0] && entries[0].borderBoxSize && entries[0].borderBoxSize[0] ? entries[0].borderBoxSize[0].blockSize : 0)).observe(modal);
     el.listpaneArrow.addEventListener('click', () => mediaPlayerSetListPane(player, !player.listPane));
     el.listpaneClear.addEventListener('click', () => mediaPlayerClear(player));
     el.listpaneTitle.addEventListener('click', () => {

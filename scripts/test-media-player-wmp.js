@@ -92,10 +92,20 @@ assert.ok(css.includes('--window-frame-bottom: 60px;'), 'the frame extends 60px 
 assert.ok(read('public/css/aero-glass.css').includes('--window-frame-bottom: 0px;') && read('public/css/modal-window-title-toolbar.css').includes('bottom: calc(var(--window-frame-inset) + var(--window-frame-bottom, 0px) - 2px);'), 'the frame honours the extension');
 assert.ok(css.includes('height: 36px;') && css.includes('#7a8295 0, #7a8295 1px, #626c88 1px, #393f4d 16px, #151516 16px'), "the tab strip's measured gradient");
 // the bar (#956): wmploc's art placed where the VM draws it, around the client's centre
-assert.ok(css.includes('left: calc(50% - 279px);') && css.includes('width: 558px;'), 'the pill (2164) centred');
+assert.ok(css.includes('left: calc(round(down, 50%, 1px) - 279px);') && css.includes('width: 558px;'), 'the pill (2164) centred on the whole pixel left of the middle (the VM at odd widths)');
 assert.ok(css.includes('left: 171px;') && css.includes('width: 182px;'), 'the transport group (4153) at -108');
-assert.ok(css.includes('right: calc(50% + 217px);'), 'the elapsed time 217px left of the centre');
+assert.ok(css.includes('right: calc(round(up, 50%, 1px) + 217px);'), 'the elapsed time 217px left of the centre');
 const theme = read('public/css/themes/vista/media-player.css');
+// narrow and compact (#956 round 2): the narrow pill under a 614px client, the time 158px left of the centre and
+// gone under 544px, the window folding to 96px below 201px, the VM's minimum 374px
+assert.ok(css.includes('@container (max-width: 613.98px)') && css.includes('left: calc(round(down, 50%, 1px) - 137px);') && css.includes('right: calc(round(up, 50%, 1px) + 158px);') && css.includes('@container (max-width: 543.98px)'), 'the narrow layout');
+assert.ok(js.includes('MIN_WIDTH: 374, FOLDED_HEIGHT: 96, UNFOLD_MIN: 201'), "WMP 11's window limits");
+assert.ok(js.includes("modal.windowResizeConstrain = (width, height) => ({ width, height: height < mediaPlayerBar.UNFOLD_MIN ? mediaPlayerBar.FOLDED_HEIGHT : height });"), 'a resize below 201px folds the window');
+assert.ok(js.includes("if (key === '1') {") && !js.includes("mediaPlayerSetCompact(player, key === '2')"), 'Ctrl+1 is full mode; Ctrl+2 (skin mode) does not fold the window');
+assert.ok(html.includes('class="wmp-volarrow"') && html.includes('class="wmp-volpop hidden"'), 'the narrow volume split button and its pop-up');
+assert.ok(css.includes('--wmp-focus-t') && js.includes('function mediaPlayerSyncFocus(player, el)'), 'the dotted focus rectangle on the window checkerboard');
+['transport-pill-narrow', 'volume-popup', 'volume-split-arrow', 'volume-split-arrow-hot', 'volume-split-speaker-hot', 'volume-split-speaker-near']
+    .forEach((name) => assert.ok(theme.includes("url('/static_images/vista-wmp/" + name + ".png')"), name + ' in the theme'));
 ['transport-pill', 'transport-group', 'transport-orbface', 'transport-orbface-hot', 'transport-orbface-down', 'transport-prevbar-hot', 'transport-nextbar-down', 'transport-stop-hot', 'seek-groove', 'seek-fill', 'seek-tip', 'seek-thumb', 'volume-fill', 'button-hot', 'button-down', 'orb-halo']
     .forEach((name) => assert.ok(theme.includes("url('/static_images/vista-wmp/" + name + ".png')"), name + ' in the theme'));
 assert.ok(!/#[0-9a-f]{3,8}\b|rgb\(/i.test(css.slice(css.indexOf('/* ---- the transport'), css.indexOf('/* ---- compact mode')).replace(/\/\*[\s\S]*?\*\//g, '')), 'no colour literal in the bar layout (ui-standard)');

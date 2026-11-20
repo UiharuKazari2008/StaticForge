@@ -1077,34 +1077,54 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     object-fit: cover;
 }
 
+/* .wmp-now only groups (the thumbnail is placed on the bar); the line runs from 58px to the time's right edge,
+   217px left of the centre, the title shrinking with an ellipsis */
+#desktopMediaPlayer .wmp-now {
+    display: contents;
+}
+
+#desktopMediaPlayer .wmp-nowline {
+    position: absolute;
+    left: 58px;
+    right: calc(round(up, 50%, 1px) + 217px);
+    top: 28px;
+    display: flex;
+    justify-content: flex-end;
+    height: 15px;
+    min-width: 0;
+}
+
 #desktopMediaPlayer .wmp-now-title,
 #desktopMediaPlayer .wmp-time {
-    position: absolute;
-    top: 28px;
+    position: relative;
     height: 15px;
     font: var(--wmp-font);
     line-height: 15px;
     white-space: nowrap;
-    overflow: hidden;
 }
 
 #desktopMediaPlayer .wmp-now-title {
-    left: 58px;
-    right: calc(50% + 273px);
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
     text-overflow: ellipsis;
 }
 
 #desktopMediaPlayer .wmp-time {
-    right: calc(50% + 217px);
-    width: 56px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
+    flex: none;
+    margin-left: 28px;
+    outline: none;
+    cursor: var(--c-default);
+}
+
+#desktopMediaPlayer .wmp-time:empty {
+    margin-left: 0;
 }
 
 /* the pill and what it holds */
 #desktopMediaPlayer .wmp-pill {
     position: absolute;
-    left: calc(50% - 279px);
+    left: calc(round(down, 50%, 1px) - 279px);
     top: 0;
     width: 558px;
     height: 60px;
@@ -1230,10 +1250,114 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     top: 22px;
 }
 
-/* ---- compact mode (Ctrl+2): stage and transport only ---- */
-
-#desktopMediaPlayer.wmp-compact :is(.wmp-tabstrip, .wmp-listpane) {
+/* the narrow pill's arrow and the volume pop-up (shown below 614px, see the container query) */
+#desktopMediaPlayer .wmp-volarrow {
     display: none;
+    top: 22px;
+    left: 242px;
+    width: 15px;
+    height: 25px;
+}
+
+#desktopMediaPlayer .wmp-volpop {
+    position: absolute;
+    left: calc(round(down, 50%, 1px) + 66px);
+    top: 19px;
+    width: 102px;
+    height: 34px;
+    z-index: 2;
+}
+
+#desktopMediaPlayer .wmp-volpop .wmp-volume {
+    left: 8px;
+    top: 1px;
+}
+
+/* narrow (a client under 614px, the VM's switch at a 630px window): the narrow pill (2165) with stop, the group
+   and the volume split button; the time 158px left of the centre, gone under 544px with the title */
+#desktopMediaPlayer .wmp-transport {
+    container-type: inline-size;
+}
+
+@container (max-width: 613.98px) {
+    #desktopMediaPlayer .wmp-pill {
+        left: calc(round(down, 50%, 1px) - 137px);
+        width: 274px;
+    }
+
+    #desktopMediaPlayer .wmp-group {
+        left: 29px;
+    }
+
+    #desktopMediaPlayer :is(.wmp-shuffle, .wmp-repeat, .wmp-pill > .wmp-volume) {
+        display: none;
+    }
+
+    #desktopMediaPlayer .wmp-pill .wmp-mute {
+        left: 218px;
+        width: 24px;
+    }
+
+    #desktopMediaPlayer .wmp-volarrow {
+        display: block;
+    }
+
+    #desktopMediaPlayer .wmp-nowline {
+        right: calc(round(up, 50%, 1px) + 158px);
+    }
+}
+
+@container (max-width: 543.98px) {
+    #desktopMediaPlayer .wmp-nowline {
+        display: none;
+    }
+}
+
+/* ---- compact mode: the window folded to its transport (96px high; below 201px it folds itself) ---- */
+
+#desktopMediaPlayer.wmp-collapsed .wmp-content > :not(.wmp-transport) {
+    display: none;
+}
+
+/* folded, the whole client is glass: no client edge under the caption (the VM draws none) */
+#desktopMediaPlayer.wmp-collapsed::after,
+#desktopMediaPlayer.wmp-collapsed > .modal-window-title::after {
+    display: none;
+}
+
+/* ---- keyboard focus: the VM's 1px dotted rectangle, one checkerboard with the window (a dot where x + y from the
+   window's corner is odd, as DrawFocusRect lays it); mediaPlayerBar.syncFocus sets each edge's phase
+   (--wmp-focus-t top and left, -b bottom, -r right) when a control takes focus ---- */
+
+#desktopMediaPlayer .wmp-transport :is(button, .wmp-seek, .wmp-now-thumb, .wmp-time, .wmp-volume):focus {
+    outline: none;
+}
+
+#desktopMediaPlayer .wmp-transport :is(button, .wmp-seek, .wmp-now-thumb, .wmp-time, .wmp-volume):focus-visible::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background:
+        linear-gradient(90deg, transparent 1px, var(--wmp-focus) 1px) var(--wmp-focus-t, 0px) 0 / 2px 1px repeat-x,
+        linear-gradient(90deg, transparent 1px, var(--wmp-focus) 1px) var(--wmp-focus-b, 0px) 100% / 2px 1px repeat-x,
+        linear-gradient(transparent 1px, var(--wmp-focus) 1px) 0 var(--wmp-focus-t, 0px) / 1px 2px repeat-y,
+        linear-gradient(transparent 1px, var(--wmp-focus) 1px) 100% var(--wmp-focus-r, 0px) / 1px 2px repeat-y;
+    pointer-events: none;
+}
+
+/* the boxes the VM draws: the orb's 42x43 and the volume's 80x15 (even widths), the thumbnail 4px out (42x42),
+   the seek bar 3px past the groove's ends and a row down, the time 10px around its text */
+#desktopMediaPlayer .wmp-transport .wmp-volume.wmp-volume:focus-visible::before { inset: 5px auto auto -1px; width: 80px; height: 15px; }
+#desktopMediaPlayer .wmp-transport .wmp-now-thumb.wmp-now-thumb:focus-visible::before { inset: -4px auto auto -4px; width: 42px; height: 42px; }
+#desktopMediaPlayer .wmp-transport .wmp-seek.wmp-seek:focus-visible::before { inset: 1px -12px auto -12px; height: 9px; }
+#desktopMediaPlayer .wmp-transport .wmp-time.wmp-time:focus-visible::before { inset: -10px -10px auto -10px; height: 35px; }
+
+/* previous / next: the glyph and face on ::after (the focus rectangle on ::before, over them) */
+#desktopMediaPlayer .wmp-group :is(.wmp-prev, .wmp-next)::after {
+    content: '';
+    position: absolute;
+    inset: 0;
 }
 
 /* ---- full screen: the stage alone ---- */

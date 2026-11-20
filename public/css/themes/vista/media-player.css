@@ -24,6 +24,8 @@
 #desktopMediaPlayer {
     --wmp-now-text: #002963;
     --wmp-now-art-shadow: 1px 1px 0 rgb(0 0 0 / 35%);
+    /* the keyboard focus rectangle's dots */
+    --wmp-focus: #fff;
 }
 
 #desktopMediaPlayer :is(.wmp-now-title, .wmp-time) {
@@ -111,11 +113,11 @@
 #desktopMediaPlayer .wmp-prev:is(:hover:active, .is-seeking):not(:disabled) { --wmp-face: image-set(url('/static_images/vista-wmp/transport-prevbar-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-prevbar-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-prevbar-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-prevbar-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-prevbar-down.png') 2x); }
 #desktopMediaPlayer .wmp-next:is(:hover:active, .is-seeking):not(:disabled) { --wmp-face: image-set(url('/static_images/vista-wmp/transport-nextbar-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-nextbar-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-nextbar-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-nextbar-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-nextbar-down.png') 2x); }
 
-#desktopMediaPlayer .wmp-prev {
+#desktopMediaPlayer .wmp-prev::after {
     background: var(--wmp-glyph) no-repeat 2px -1px, var(--wmp-face) no-repeat 0 0;
 }
 
-#desktopMediaPlayer .wmp-next {
+#desktopMediaPlayer .wmp-next::after {
     background: var(--wmp-glyph) no-repeat -1px -1px, var(--wmp-face) no-repeat 0 0;
 }
 
@@ -146,11 +148,40 @@
 #desktopMediaPlayer .wmp-stack button:hover:active:not(:disabled) { background-image: image-set(url('/static_images/vista-wmp/view-stack-hot-top.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-stack-hot-top.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-stack-hot-top.png') 1.5238x, url('/static_images/hidpi/175/vista-wmp/view-stack-hot-top.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-stack-hot-top.png') 2x); }
 #desktopMediaPlayer .wmp-stack button:disabled { background-image: image-set(url('/static_images/vista-wmp/view-stack-disabled.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-stack-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-stack-disabled.png') 1.5238x, url('/static_images/hidpi/175/vista-wmp/view-stack-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-stack-disabled.png') 2x); }
 
-#desktopMediaPlayer :is(.wmp-pill, .wmp-group, .wmp-tbtn, .wmp-volume-fill, .wmp-volume-thumb, .wmp-orb-halo, .wmp-stack button),
+#desktopMediaPlayer :is(.wmp-pill, .wmp-group, .wmp-tbtn, .wmp-volarrow, .wmp-volume-fill, .wmp-volume-thumb, .wmp-orb-halo, .wmp-stack button),
 #desktopMediaPlayer .wmp-play::after {
     background-repeat: no-repeat;
 }
 
 #desktopMediaPlayer .wmp-compact {
     background-position: 0 -22px;
+}
+
+/* ---- the narrow pill (2165) and the volume split button / pop-up (4619 normal, 4621 hot, 4620 pressed, 4625 the
+   half beside a hot or pressed one; 4616 the pop-up) ---- */
+
+@container (max-width: 613.98px) {
+    #desktopMediaPlayer .wmp-pill { background-image: image-set(url('/static_images/vista-wmp/transport-pill-narrow.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-pill-narrow.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-pill-narrow.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-pill-narrow.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-pill-narrow.png') 2x); }
+
+    #desktopMediaPlayer .wmp-pill .wmp-mute:hover,
+    #desktopMediaPlayer .wmp-pill:has(.wmp-volarrow:is(:hover, :active, .is-open)) .wmp-mute {
+        background-image: var(--wmp-glyph), image-set(url('/static_images/vista-wmp/volume-split-speaker-near.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-split-speaker-near.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-split-speaker-near.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/volume-split-speaker-near.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-split-speaker-near.png') 2x);
+    }
+
+    #desktopMediaPlayer .wmp-pill .wmp-mute:hover:not(:active) {
+        background-image: var(--wmp-glyph), image-set(url('/static_images/vista-wmp/volume-split-speaker-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-split-speaker-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-split-speaker-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/volume-split-speaker-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-split-speaker-hot.png') 2x);
+    }
+
+    #desktopMediaPlayer .wmp-pill .wmp-mute:hover:active {
+        background-image: var(--wmp-glyph), image-set(url('/static_images/vista-wmp/volume-split-speaker-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-split-speaker-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-split-speaker-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/volume-split-speaker-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-split-speaker-down.png') 2x);
+    }
+}
+
+#desktopMediaPlayer .wmp-volarrow { background-image: image-set(url('/static_images/vista-wmp/volume-split-arrow.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-split-arrow.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-split-arrow.png') 1.5333x, url('/static_images/hidpi/175/vista-wmp/volume-split-arrow.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-split-arrow.png') 2x); }
+#desktopMediaPlayer .wmp-pill:has(.wmp-mute:hover) .wmp-volarrow { background-image: image-set(url('/static_images/vista-wmp/volume-split-arrow-near.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-split-arrow-near.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-split-arrow-near.png') 1.5333x, url('/static_images/hidpi/175/vista-wmp/volume-split-arrow-near.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-split-arrow-near.png') 2x); }
+#desktopMediaPlayer .wmp-volarrow:hover { background-image: image-set(url('/static_images/vista-wmp/volume-split-arrow-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-split-arrow-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-split-arrow-hot.png') 1.5333x, url('/static_images/hidpi/175/vista-wmp/volume-split-arrow-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-split-arrow-hot.png') 2x); }
+#desktopMediaPlayer .wmp-volarrow:is(:hover:active, .is-open) { background-image: image-set(url('/static_images/vista-wmp/volume-split-arrow-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-split-arrow-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-split-arrow-down.png') 1.5333x, url('/static_images/hidpi/175/vista-wmp/volume-split-arrow-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-split-arrow-down.png') 2x); }
+
+#desktopMediaPlayer .wmp-volpop {
+    background: image-set(url('/static_images/vista-wmp/volume-popup.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-popup.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-popup.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/volume-popup.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-popup.png') 2x) no-repeat;
 }
