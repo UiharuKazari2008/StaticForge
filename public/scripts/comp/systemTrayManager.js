@@ -192,8 +192,8 @@ function startPopoverAutoHideTimer(indicator, maxMs = TRAY_POPOVER_FALLBACK_MAX_
     const popoverData = window.PopoverManager?.activePopovers?.get(indicator);
     if (!popoverData?.popover?.classList.contains('show')) return;
 
-    // PopoverManager schedules hideTimeout for tray notifications; only backfill when missing.
-    if (popoverData.hideTimeout || popoverData.maxShowTimeout) {
+    // PopoverManager times tray balloons itself (in the user's presence: presenceTimer); only backfill when missing.
+    if (popoverData.presenceTimer || popoverData.hideTimeout || popoverData.maxShowTimeout) {
         return;
     }
 

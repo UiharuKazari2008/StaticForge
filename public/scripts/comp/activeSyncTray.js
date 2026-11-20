@@ -8,7 +8,7 @@
  *             Device Center for a new device, connect / disconnect balloons, the device's notifications)
  *   balloons  a device connected / disconnected (HKCU\...\Melaton Mobile Device Center\NotifyOnConnect),
  *             battery low (15% and under, not charging, once until it charges again), battery fully
- *             charged (100% while charging, once per charge)
+ *             charged (100% while charging, once per charge); a click opens Device Center at that device
  *   new device   one that waits for the choice opens Device Center (OpenOnConnect)
  */
 (function (root) {
@@ -37,9 +37,10 @@
     // the popup renders its text as HTML: a device's name is escaped, always
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-    function balloon(type, title, text) {
+    function balloon(type, title, text, deviceId) {
         if (!icon || !root.PopoverManager || typeof root.PopoverManager.showPopover !== 'function') return;
-        root.PopoverManager.showPopover(icon, type, esc(title), esc(text), false, 8000, `<img src="${ART}/activesync-32.png" alt="" width="32" height="32">`, null, { popupId: 'activesync', position: 'top', arrowPosition: 'bottom-right' });
+        root.PopoverManager.showPopover(icon, type, esc(title), esc(text), false, 8000, `<img src="${ART}/activesync-32.png" alt="" width="32" height="32">`, null,
+            { popupId: 'activesync', position: 'top', arrowPosition: 'bottom-right', onClick: () => openCenter(deviceId) });
     }
 
     function line(d) {
@@ -114,9 +115,9 @@
             if (!first) {
                 if (d.online && !(was && was.online)) {
                     if (d.session === 'pending') { if (setting('OpenOnConnect')) openCenter(d.deviceId); }
-                    else if (setting('NotifyOnConnect')) balloon('success', 'Device connected', `${d.name} is connected.`);
+                    else if (setting('NotifyOnConnect')) balloon('success', 'Device connected', `${d.name} is connected.`, d.deviceId);
                 } else if (!d.online && was && was.online && was.session !== 'pending') {
-                    if (setting('NotifyOnConnect')) balloon('info', 'Device disconnected', `${d.name} is no longer connected.`);
+                    if (setting('NotifyOnConnect')) balloon('info', 'Device disconnected', `${d.name} is no longer connected.`, d.deviceId);
                 }
             }
             const b = d.online && d.status && d.status.battery;
@@ -124,7 +125,7 @@
             if (b && b.level != null) {
                 if (b.level >= 100 && b.charging === true && !fullTold.has(d.deviceId)) {
                     fullTold.add(d.deviceId);
-                    if (!first && setting('NotifyBattery')) balloon('success', 'Battery fully charged', `${d.name} is fully charged.`);
+                    if (!first && setting('NotifyBattery')) balloon('success', 'Battery fully charged', `${d.name} is fully charged.`, d.deviceId);
                 } else if (b.charging === false || b.level < 95) {
                     fullTold.delete(d.deviceId);
                 }
@@ -132,7 +133,7 @@
             if (b && b.level != null) {
                 if (b.level <= LOW_BATTERY && b.charging === false && !lowWarned.has(d.deviceId)) {
                     lowWarned.add(d.deviceId);
-                    if (!first && setting('NotifyBattery')) balloon('warning', 'Battery low', `${d.name} has ${Math.round(b.level)}% battery left.`);
+                    if (!first && setting('NotifyBattery')) balloon('warning', 'Battery low', `${d.name} has ${Math.round(b.level)}% battery left.`, d.deviceId);
                 } else if (b.charging || b.level > LOW_BATTERY + 5) {
                     lowWarned.delete(d.deviceId);
                 }

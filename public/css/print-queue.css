@@ -201,11 +201,6 @@
     border-right: 0;
 }
 
-/* the tray balloon of a document that failed: "Click here to open the print queue" */
-.popover .print-balloon-link {
-    cursor: pointer;
-}
-
 /* ---- Print Management (mmcPrintManagement.js): Show Extended View, measured on the VM's console:
    the printer list over a 2 px splitter band, the printer's name on a #f0f0f0 band, a "Jobs" tab,
    and the jobs list with grid lines ---- */

@@ -114,18 +114,15 @@
         const target = { accountId: d.accountId, chatGuid: d.chatGuid };
         showing = target;
         // the balloon renders title and message as HTML: a message's words are escaped, always
+        // a click opens Melaton Messenger at that chat (PopoverManager's onClick: also when the balloon waited its turn)
         const pop = root.PopoverManager.showPopover(anchor, 'info', esc(title), esc(body), false, 8000,
             `<img src="${ICON32}" alt="" width="32" height="32">`, null,
-            { popupId: 'text-messages', position: 'top', arrowPosition: 'bottom-right', onHide: () => { if (showing === target) showing = null; } });
-        if (pop) {
-            pop.dataset.eventClass = EVENT_CLASS;
-            pop.style.cursor = 'pointer';
-            pop.onclick = () => {
-                const at = showing || target;
-                if (root.PopoverManager.hide) root.PopoverManager.hide(anchor);
-                open({ accountId: at.accountId, chatGuid: at.chatGuid });
-            };
-        }
+            {
+                popupId: 'text-messages', position: 'top', arrowPosition: 'bottom-right',
+                onClick: () => open({ accountId: target.accountId, chatGuid: target.chatGuid }),
+                onHide: () => { if (showing === target) showing = null; }
+            });
+        if (pop) pop.dataset.eventClass = EVENT_CLASS;
     }
 
     /**
@@ -145,15 +142,11 @@
         const body = d.reason === 'unpaired'
             ? 'Google Messages ended the pairing, so text messages are not arriving. Click here to pair again.'
             : 'Google signed Dreamscape out of Google Messages, so text messages are not arriving. Click here to pair again.';
-        const pop = root.PopoverManager.showPopover(anchor, 'warning', 'Text messages stopped', esc(body), false, false,
-            null, null, { popupId: 'text-messages', position: 'top', arrowPosition: 'bottom-right' });
-        if (pop) {
-            pop.style.cursor = 'pointer';
-            pop.onclick = () => {
-                if (root.PopoverManager.hide) root.PopoverManager.hide(anchor);
-                if (root.cplAuthentication && typeof root.cplAuthentication.open === 'function') root.cplAuthentication.open('messaging');
-            };
-        }
+        root.PopoverManager.showPopover(anchor, 'warning', 'Text messages stopped', esc(body), false, false,
+            null, null, {
+                popupId: 'text-messages', position: 'top', arrowPosition: 'bottom-right',
+                onClick: () => { if (root.cplAuthentication && typeof root.cplAuthentication.open === 'function') root.cplAuthentication.open('messaging'); }
+            });
     }
 
     /** Attach to the current window.textMessaging (a test can replace it; we follow). */

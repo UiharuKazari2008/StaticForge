@@ -20,7 +20,8 @@
  *               options" (193) and Melaton Mobility Center when it is installed.
  *   Balloons    the battery's own (popupId 'battery', tray-balloons): low (10 %, Vista's default) with Vista's
  *               words (stobject 407), critical (5 %), and DreamOS's battery protection (CaféReady freezes /data
- *               at 3 % on battery and thaws it on the charger above 5 %: files cannot be saved meanwhile).
+ *               at 3 % on battery and thaws it on the charger above 5 %: files cannot be saved meanwhile). A click on
+ *               one opens Power Options (tray balloon click actions, Nov 20 2026).
  *
  * Desktop shell only (the phone's battery is its status bar's). Notifications and the icon are never silenced to
  * save power: they follow the pushed state, nothing else.
@@ -232,7 +233,7 @@
         const art = kind === 'critical' || kind === 'protect' ? 'battery-critical-32.png' : kind === 'low' ? 'battery-low-32.png' : 'battery-full-32.png';
         pm.showPopover(icon, kind === 'info' ? 'info' : 'warning', esc(title), esc(text), false, kind === 'info' ? 8000 : 20000,
             `<img src="${ART}/${art}" alt="" width="32" height="32">`, null,
-            { popupId: POPUP_ID, position: 'top', arrowPosition: 'bottom-right', onClick: () => showFlyout() });
+            { popupId: POPUP_ID, position: 'top', arrowPosition: 'bottom-right', onClick: () => openOptions() });
     }
 
     function balloons(prev, m) {

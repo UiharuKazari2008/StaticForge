@@ -520,6 +520,48 @@ function _dismissNativeToastNotification(toastId) {
     }
 }
 
+/**
+ * What a click on a toast's tray balloon opens (Vista's NIN_BALLOONUSERCLICK, Yukimi Nov 20 2026): the program the
+ * balloon's icon belongs to, at the place the balloon is about. The toast's first button, when it has one, comes
+ * first (_showPolicyBalloon). null: nothing to open, a click only closes it.
+ */
+function _trayBalloonTarget(anchorId, title) {
+    const t = _toastPlain(title).toLowerCase();
+    const call = (fn) => { try { return fn(); } catch (err) { console.warn('[toast] balloon action failed:', err); return null; } };
+    const loadThen = (feature, fn) => Promise.resolve(window.featureLoader ? window.featureLoader.loadFeature(feature) : null).then(() => call(fn));
+    switch (anchorId) {
+        // Melaton Update: its page (cplUpdate.js)
+        case 'serviceWorkerTrayIcon':
+            return () => loadThen('control_panel', () => { if (window.cplUpdate) window.cplUpdate.open(); });
+        // Account Manager: the receipts and balance are its Status, the renewal and expiring Anlas its Alerts
+        case 'walletTrayIcon':
+            return () => {
+                const w = window.walletTray;
+                const icon = document.getElementById('walletTrayIcon');
+                if (w && typeof w.showFlyout === 'function') w.showFlyout(icon, /subscription|expiring/.test(t) ? 'alerts' : 'status');
+                else if (w && typeof w.isOpen === 'function' && !w.isOpen()) w.toggleFlyout(icon);
+            };
+        // the printer: its queues (printQueue.js)
+        case 'imageGenerationIndicator':
+            return () => { if (window.printQueue && typeof window.printQueue.openActive === 'function') void window.printQueue.openActive(); };
+        // the Dreamscape link (#895): Nightshade Network Client; the computer's own link: its Network Center page
+        case 'nightshadeTrayIcon':
+        case 'pingWarningIndicator':
+            return () => {
+                if (window.nightshadeClient && typeof window.nightshadeClient.open === 'function') window.nightshadeClient.open();
+                else if (window.wsClient && typeof window.wsClient.openConnectionDialStatus === 'function') window.wsClient.openConnectionDialStatus();
+            };
+        case 'modemTrayIcon':
+            return () => loadThen('control_panel', () => { if (window.melatonControlPanel) window.melatonControlPanel.open('network'); });
+        case 'activeSyncTrayIcon':
+            return () => { if (window.activeSyncTray && typeof window.activeSyncTray.open === 'function') window.activeSyncTray.open(); };
+        case 'directorTrayIcon':
+            return () => { if (window.directorInstance && typeof window.directorInstance.openDirectorWindow === 'function') void window.directorInstance.openDirectorWindow(); };
+        default:
+            return null;
+    }
+}
+
 function _showDesktopPopupForToast(toastId, type, title, message, timeout, customIcon) {
     const anchor = _getDesktopPopupAnchorForTitle(title);
     if (!anchor || !window.PopoverManager || typeof showPopover !== 'function') {
@@ -555,6 +597,7 @@ function _showDesktopPopupForToast(toastId, type, title, message, timeout, custo
             position: 'top',
             arrowPosition: 'bottom-right',
             popupId: _trayPopupIdForTitle(title),
+            onClick: _trayBalloonTarget(anchor.id, title),
             onHide: () => {
                 if (activeToasts.has(toastId)) {
                     activeToasts.delete(toastId);
@@ -844,24 +887,19 @@ function _showToastAsDialog(toastId, type, title, message, buttons) {
     return true;
 }
 
-/** A background event as a balloon on its tray icon; a click on it runs its first button. */
+/** A background event as a balloon on its tray icon; a click on it runs its first button, else opens its program. */
 function _showPolicyBalloon(toastId, route, type, title, message, timeout, customIcon, buttons) {
     const anchor = document.getElementById(route.anchorId);
     if (!anchor || !anchor.getClientRects().length || !window.PopoverManager || typeof showPopover !== 'function') return false;
-    const el = showPopover(anchor, type, title, message, false, timeout === false ? 8000 : timeout, customIcon, null, {
+    const first = Array.isArray(buttons) && buttons[0];
+    const firstFn = first && (first.onClick || first.callback);
+    showPopover(anchor, type, title, message, false, timeout === false ? 8000 : timeout, customIcon, null, {
         position: 'top',
         arrowPosition: 'bottom-right',
         popupId: route.popupId,
+        onClick: typeof firstFn === 'function' ? firstFn : _trayBalloonTarget(route.anchorId, title),
         onHide: () => { activeToasts.delete(toastId); }
     });
-    const first = Array.isArray(buttons) && buttons[0];
-    if (first && el && typeof el.addEventListener === 'function') {
-        el.style.cursor = 'pointer';
-        el.addEventListener('click', () => {
-            const fn = first.onClick || first.callback;
-            if (typeof fn === 'function') { try { fn(); } catch (err) { console.error('[toast] balloon action failed:', err); } }
-        }, { once: true });
-    }
     if (typeof startPopoverAutoHideTimer === 'function') startPopoverAutoHideTimer(anchor);
     const stored = activeToasts.get(toastId);
     if (stored) { stored.inAppOnly = true; stored.desktopPopoverAnchor = anchor; }

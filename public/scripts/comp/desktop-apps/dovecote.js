@@ -4609,7 +4609,12 @@ const doveImapAnnounce = function (list) {
     const body = list.length > 1
         ? 'You have ' + list.length + ' new messages.'
         : (from ? 'From: ' + from + '. ' : '') + (latest.subject || '(no subject)');
-    doveMailBalloon('New mail', body);
+    const accounts = new Set(list.map((m) => m.accountId));
+    // one message: the message; several in one account: its Inbox
+    const open = list.length === 1 && latest.accountId && latest.uid != null
+        ? () => { openDesktopDovecote(); doveOpenReaderWindow(doveImapId(latest.accountId, latest.folder || 'INBOX', latest.uid)); }
+        : (accounts.size === 1 && latest.accountId ? String(latest.accountId) : null);
+    doveMailBalloon('New mail', body, open);
 };
 
 // mailAccounts events: 'new' / 'flags' / 'removed' / 'folders' / 'sync' refresh the account's counts
@@ -4623,7 +4628,7 @@ const doveImapOnEvent = function (type, detail) {
     }
     // a sync pass that changed nothing (#890 W6): no counts to read, no list to reload
     if (type === 'sync' && d.changed === false) return;
-    if (type === 'new' && d.notify && d.message) doveImapQueueAnnounce(d.message);
+    if (type === 'new' && d.notify && d.message) doveImapQueueAnnounce(Object.assign({ accountId, folder: d.folder }, d.message));
     if (accountId) doveImapScheduleFolders(accountId);
     // the tray's Inbox flyout, when open, lists the accounts' unread too
     if ((type === 'new' || type === 'flags' || type === 'removed') && doveInboxFlyout && !doveInboxFlyout.classList.contains('hidden')) doveFillInboxFlyout();
@@ -4820,10 +4825,16 @@ function dovePresentNewMail(mail, count) {
     requestAnimationFrame(() => dovePlaceNewMail(modal));
 };
 
-// showPopover: public/scripts/comp/popoverManager.js
-function doveMailBalloon(title, body) {
+// showPopover: public/scripts/comp/popoverManager.js. A click opens what it is about (tray balloon click actions,
+// Nov 20 2026): `open` is the message's opener, or an e-mail account's id for its Inbox; none: Dreamscape Mail's Inbox
+function doveMailBalloon(title, body, open) {
     const icon = document.getElementById('dovecoteTrayIcon');
     if (!icon || icon.classList.contains('hidden')) return;
+    const openInbox = () => {
+        openDesktopDovecote();
+        if (typeof open === 'string') doveOpenImapFolder(open, 'INBOX');
+        else if (desktopDovecote.account || desktopDovecote.viewAsOwner || desktopDovecote.folder !== 'inbox') doveOpenTreeFolder(DESKTOP_DOVECOTE_HUMAN_OWNER, 'inbox');
+    };
     showPopover(
         icon,
         'info',
@@ -4833,7 +4844,7 @@ function doveMailBalloon(title, body) {
         8000,
         '<img src="/static_images/vista-icons/dovecote-32.png" alt="" width="32" height="32">',
         null,
-        { position: 'top', arrowPosition: 'bottom-right', popupId: 'mail' }
+        { position: 'top', arrowPosition: 'bottom-right', popupId: 'mail', onClick: typeof open === 'function' ? open : openInbox }
     );
 }
 
@@ -4860,7 +4871,7 @@ const doveShowNewMail = async function (count) {
         const body = count > 1
             ? 'You have ' + count + ' new messages.'
             : (from ? 'From: ' + from + '. ' : '') + subject;
-        doveMailBalloon('New mail', body);
+        doveMailBalloon('New mail', body, count > 1 ? null : () => { openDesktopDovecote(); doveOpenReaderWindow(mail.id); });
     } catch (_err) {
         // The tray badge already updated; the balloon is optional.
     }

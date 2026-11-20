@@ -39,6 +39,14 @@ function trayBalloonPolicy(anchor) {
   * at most TRAY_QUEUE_MAX_WAIT_MS, then the waiting one takes the place. Melaton Update's own balloon
   * (serviceWorkerManager) takes part through trayBusy / whenTrayFree / trayReleased.
   */
+/**
+ * A balloon's click (Vista's NIN_BALLOONUSERCLICK; Yukimi, Nov 20 2026: "popups from the tray should have click
+ * actions"): every tray balloon says what it is for with `onClick`, the function that takes the user there (the
+ * window, page, tab or item: a message, the device, the update page) or `null` when there is nothing to open. A click
+ * anywhere on the balloon closes it and runs onClick; its X (top right, as Vista draws it) only closes it. The
+ * pointer stays the arrow over the whole balloon, as on the Vista VM. A tray balloon shown without onClick at all
+ * logs a warning once: decide its target.
+ */
 const TRAY_QUEUE_MAX_WAIT_MS = 12000;
 const TRAY_QUEUE_GAP_MS = 250;
 const trayQueue = []; // { key, show, at }
@@ -50,6 +58,86 @@ const trayPresenting = () => !!(window.melatonPresentation && window.melatonPres
 
 const PopoverManager = {
     activePopovers: new Map(),
+    /**
+     * Presence (Yukimi, Nov 20 2026; Vista counts a balloon's time only while the user is at the computer): a tray balloon's
+     * close timer, and the queue's wait before a waiting balloon takes the place of the one up, run only while there has
+     * been mouse, keyboard or touch input in the last 30 s (IDLE_MS) and the page is visible. Away: the timer holds,
+     * and it goes on at the next input, so a balloon raised while she was away stays until she is back and has had it for
+     * its full time. One tracker for every balloon: passive input listeners that only note the time (no polling), and a
+     * timer that sleeps until the moment the user would count as away, then waits for input.
+     *   PopoverManager.presence.present()          input lately and the page visible
+     *   PopoverManager.presenceTimer(ms, fn)       { cancel(), hold(on) }: fn after ms of presence (hold: hovered)
+     */
+    presence: (() => {
+        const IDLE_MS = 30000;
+        let lastInput = 0;
+        const waiting = new Set();  // run at the next input
+        const running = new Set();  // timers counting now (stopped when the page hides)
+        const present = () => !document.hidden && Date.now() - lastInput < IDLE_MS;
+        const onInput = () => {
+            lastInput = Date.now();
+            if (!waiting.size || document.hidden) return;
+            const list = Array.from(waiting);
+            waiting.clear();
+            list.forEach((fn) => { try { fn(); } catch (err) { console.warn('[tray] presence wait failed', err); } });
+        };
+        for (const type of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) {
+            // app-scope: allow page lifetime (the tray's presence tracker: shell code loaded once from app.html)
+            window.addEventListener(type, onInput, { passive: true, capture: true });
+        }
+        // app-scope: allow page lifetime (as above)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) Array.from(running).forEach((t) => t.suspend());
+        });
+        const whenPresent = (fn) => {
+            if (present()) { fn(); return () => {}; }
+            waiting.add(fn);
+            return () => waiting.delete(fn);
+        };
+        function timer(ms, fn) {
+            let remaining = Math.max(0, Number(ms) || 0);
+            let handle = 0;
+            let startedAt = 0;
+            let offWait = null;
+            let done = false;
+            let held = false;
+            const tm = {};
+            const stop = () => {
+                if (handle) { clearTimeout(handle); handle = 0; remaining -= Date.now() - startedAt; }
+                if (offWait) { offWait(); offWait = null; }
+                running.delete(tm);
+            };
+            const run = () => {
+                offWait = null;
+                if (done || held || handle) return;
+                if (!present()) { offWait = whenPresent(run); return; }
+                startedAt = Date.now();
+                running.add(tm);
+                // count until the timeout, or until the user would count as away (then wait for input)
+                const slice = Math.min(remaining, Math.max(0, lastInput + IDLE_MS - startedAt));
+                handle = setTimeout(() => {
+                    handle = 0;
+                    running.delete(tm);
+                    remaining -= Date.now() - startedAt;
+                    if (remaining <= 0) { done = true; fn(); } else run();
+                }, slice);
+            };
+            tm.suspend = () => { if (!done && !held) { stop(); offWait = whenPresent(run); } };
+            tm.cancel = () => { done = true; stop(); };
+            tm.hold = (on) => {
+                if (done) return;
+                if (on) { held = true; stop(); } else if (held) { held = false; run(); }
+            };
+            tm.remaining = () => remaining - (handle ? Date.now() - startedAt : 0);
+            run();
+            return tm;
+        }
+        return { present, whenPresent, timer };
+    })(),
+    presenceTimer: (ms, fn) => PopoverManager.presence.timer(ms, fn),
+    _balloonFallbackMs: 15000,
+    _noTargetWarned: new Set(),
+    _trayWaitTimer: null,  // presence timer: the waiting balloon takes the place of the one up after TRAY_QUEUE_MAX_WAIT_MS
 
     /** A balloon on a tray icon other than `exceptKey` (an anchor element or a key) is showing. */
     trayBusy(exceptKey = null) {
@@ -67,7 +155,14 @@ const PopoverManager = {
         const at = trayQueue.findIndex((q) => q.key === key);
         const item = { key, show, at: Date.now() };
         if (at >= 0) trayQueue[at] = { ...item, at: trayQueue[at].at }; else trayQueue.push(item);
-        this._scheduleTrayDrain(TRAY_QUEUE_MAX_WAIT_MS);
+        this._startTrayWait();
+        this._scheduleTrayDrain(TRAY_QUEUE_GAP_MS);
+    },
+
+    /** The queue's wait counts only while the user is present (a balloon up while she was away is not replaced). */
+    _startTrayWait() {
+        if (this._trayWaitTimer || !trayQueue.length) return;
+        this._trayWaitTimer = this.presence.timer(TRAY_QUEUE_MAX_WAIT_MS, () => { this._trayWaitTimer = null; this._drainTray(true); });
     },
 
     /** A tray balloon closed: the next waiting one shows. */
@@ -81,13 +176,14 @@ const PopoverManager = {
         trayDrainTimer = setTimeout(() => this._drainTray(), ms);
     },
 
-    _drainTray() {
+    _drainTray(waitedOut = false) {
         trayDrainTimer = null;
         if (!trayQueue.length || trayPresenting()) return;
         const next = trayQueue[0];
         if (this.trayBusy()) {
-            // waited long enough: the waiting balloon takes the place of the one up now
-            if (Date.now() - next.at < TRAY_QUEUE_MAX_WAIT_MS) { this._scheduleTrayDrain(1000); return; }
+            // the one up closes (its timer, its X, a click) and trayReleased drains; once the wait has run out (in the
+            // user's presence) the waiting balloon takes its place
+            if (!waitedOut) { this._startTrayWait(); return; }
             for (const [el, data] of this.activePopovers) {
                 if (!data.hoverOnly && isTrayAnchor(el) && data.popover.classList.contains('show')) this.hide(el);
             }
@@ -95,8 +191,9 @@ const PopoverManager = {
             if (m && typeof m._hideServiceWorkerTrayPopup === 'function') m._hideServiceWorkerTrayPopup();
         }
         trayQueue.shift();
+        if (this._trayWaitTimer) { this._trayWaitTimer.cancel(); this._trayWaitTimer = null; }
         try { next.show(); } catch (err) { console.warn('[tray] queued balloon failed', err); }
-        if (trayQueue.length) this._scheduleTrayDrain(TRAY_QUEUE_MAX_WAIT_MS);
+        this._startTrayWait();
     },
     
     /**
@@ -113,7 +210,8 @@ const PopoverManager = {
      * @param {string} [options.position='top'] - Position: 'top', 'bottom', 'left', 'right'
      * @param {string} [options.arrowPosition] - Arrow position: 'bottom-right', etc.
      * @param {boolean} [options.hoverOnly=false] - Only show on hover
-     * @param {Function} [options.onClick] - A click on the balloon's text runs this and closes the balloon
+     * @param {Function|null} options.onClick - A tray balloon's action (required on a tray balloon; null = nothing
+     *   to open): a click on the balloon closes it and runs this, the balloon's X only closes it
      * @returns {HTMLElement} The popover element
      */
     showPopover(element, type, title, message, showProgress = false, timeout = 5000, customIcon = null, buttons = null, options = {}) {
@@ -127,6 +225,13 @@ const PopoverManager = {
             return null;
         }
         const trayBalloon = !options.hoverOnly && isTrayAnchor(element);
+        if (trayBalloon && options.onClick === undefined) {
+            const key = options.popupId || element.id || title;
+            if (!this._noTargetWarned.has(key)) {
+                this._noTargetWarned.add(key);
+                console.warn(`[tray] balloon "${key}" has no onClick: pass what a click opens, or onClick: null`);
+            }
+        }
         // the tray standard: one balloon at a time (this icon's own balloon may be replaced in place); none while presenting
         if (trayBalloon && (trayPresenting() || this.trayBusy(element))) {
             const args = [element, type, title, message, showProgress, timeout, customIcon, buttons, options];
@@ -192,14 +297,16 @@ const PopoverManager = {
             content.appendChild(body);
         }
         
-        // Vista's NIN_BALLOONUSERCLICK: a click on the balloon's text is its action, and the balloon closes
-        if (typeof options.onClick === 'function') {
-            content.classList.add('popover-clickable');
-            content.addEventListener('click', () => {
-                this.hide(element);
-                try { options.onClick(); } catch (_) { /* the balloon is gone either way */ }
-            });
+        // Vista's balloon X (tooltip TTP_CLOSE): closes without the action (the click itself: _setupBalloonClick)
+        if (trayBalloon) {
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'tray-balloon-close';
+            close.title = 'Close';
+            close.setAttribute('aria-label', 'Close');
+            content.appendChild(close);
         }
+        const onClick = trayBalloon && typeof options.onClick === 'function' ? options.onClick : null;
 
         // Attach or update popover
         let popoverData = this.activePopovers.get(element);
@@ -215,6 +322,8 @@ const PopoverManager = {
                 onHide: options.onHide || null,
                 className: options.className || null
             });
+            const added = this.activePopovers.get(element);
+            if (added) added.onClick = onClick;
         } else {
             // Update existing popover
             this.updateContent(element, content);
@@ -229,7 +338,10 @@ const PopoverManager = {
             if (options.onHide) {
                 popoverData.onHide = options.onHide;
             }
+            popoverData.onClick = onClick;
         }
+        const shownData = this.activePopovers.get(element);
+        if (shownData) shownData.popover.classList.toggle('tray-balloon', trayBalloon);
         
         // Show the popover (use requestAnimationFrame to ensure DOM is ready)
         requestAnimationFrame(() => {
@@ -328,10 +440,12 @@ const PopoverManager = {
             onShow,
             onHide,
             showTimeout: null,
-            hideTimeout: null
+            hideTimeout: null,
+            onClick: null
         };
         
         this.activePopovers.set(element, popoverData);
+        this._setupBalloonClick(popoverData);
         
         // Setup event listeners — tray popovers are notification-only (no hover tooltips, no click toggle)
         if (hoverOnly) {
@@ -372,8 +486,14 @@ const PopoverManager = {
             popoverData.onShow(popoverData.popover, element);
         }
         
-        // Auto-close timeout (notifications always honor timeout; hover tooltips cap max visible time)
-        if (popoverData.timeout) {
+        // A tray balloon closes after its time in the user's presence (PopoverManager.presence); others as before
+        if (popoverData.presenceTimer) { popoverData.presenceTimer.cancel(); popoverData.presenceTimer = null; }
+        if (!popoverData.hoverOnly && isTrayAnchor(element)) {
+            popoverData.presenceTimer = this.presence.timer(popoverData.timeout || this._balloonFallbackMs, () => {
+                popoverData.presenceTimer = null;
+                this.hide(element);
+            });
+        } else if (popoverData.timeout) {
             popoverData.hideTimeout = setTimeout(() => {
                 this.hide(element);
             }, popoverData.timeout);
@@ -407,6 +527,10 @@ const PopoverManager = {
         if (popoverData.maxShowTimeout) {
             clearTimeout(popoverData.maxShowTimeout);
             popoverData.maxShowTimeout = null;
+        }
+        if (popoverData.presenceTimer) {
+            popoverData.presenceTimer.cancel();
+            popoverData.presenceTimer = null;
         }
         
         // Hide popover
@@ -443,9 +567,11 @@ const PopoverManager = {
         if (popoverData.maxShowTimeout) {
             clearTimeout(popoverData.maxShowTimeout);
         }
+        if (popoverData.presenceTimer) popoverData.presenceTimer.cancel();
         
         this._teardownHoverListeners(popoverData);
         this._teardownNotificationDismissListeners(popoverData);
+        if (popoverData.balloonClick) popoverData.popover.removeEventListener('click', popoverData.balloonClick);
         if (popoverData.clickListeners) {
             element.removeEventListener('click', popoverData.clickListeners.toggle);
             document.removeEventListener('click', popoverData.clickListeners.outside);
@@ -623,6 +749,7 @@ const PopoverManager = {
         const { element, popover, notificationDismissListeners } = popoverData;
         notificationDismissListeners.cancelTimers();
         element.removeEventListener('mouseleave', notificationDismissListeners.elementLeave);
+        popover.removeEventListener('mouseenter', notificationDismissListeners.popoverEnter);
         popover.removeEventListener('mouseleave', notificationDismissListeners.popoverLeave);
         popoverData.notificationDismissListeners = null;
     },
@@ -653,6 +780,8 @@ const PopoverManager = {
         this._teardownNotificationDismissListeners(popoverData);
         popoverData.hoverOnly = true;
         popoverData.timeout = null;
+        popoverData.onClick = null;
+        popoverData.popover.classList.remove('tray-balloon');
         this.updateContent(element, popoverData._hoverTooltipSnapshot.content);
         this._setupHoverListeners(popoverData);
         delete popoverData._hoverTooltipSnapshot;
@@ -660,6 +789,35 @@ const PopoverManager = {
             popoverData.onHide = popoverData._savedOnHide;
             delete popoverData._savedOnHide;
         }
+    },
+
+    /**
+     * A tray balloon's click (NIN_BALLOONUSERCLICK): anywhere on it closes it and runs its onClick (after this
+     * click has finished, so a flyout it opens is not closed by the same click); its X only closes it. Hover
+     * tooltips ignore clicks.
+     * @private
+     */
+    _setupBalloonClick(popoverData) {
+        const { element, popover } = popoverData;
+        popoverData.balloonClick = (e) => {
+            if (popoverData.hoverOnly || !popover.classList.contains('show') || !popover.classList.contains('tray-balloon')) return;
+            const onClick = popoverData.onClick;
+            this.hide(element);
+            if (e.target && e.target.closest && e.target.closest('.tray-balloon-close')) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            if (typeof onClick === 'function') {
+                setTimeout(() => {
+                    try {
+                        const ran = onClick();
+                        if (ran && typeof ran.catch === 'function') ran.catch((err) => console.warn('[tray] balloon action failed', err));
+                    } catch (err) { console.warn('[tray] balloon action failed', err); }
+                }, 0);
+            }
+        };
+        popover.addEventListener('click', popoverData.balloonClick);
     },
 
     /**
@@ -674,6 +832,7 @@ const PopoverManager = {
 
         const scheduleHide = () => {
             if (hideTimeout) clearTimeout(hideTimeout);
+            if (popoverData.presenceTimer) popoverData.presenceTimer.hold(false);
             hideTimeout = setTimeout(() => {
                 PopoverManager.hide(element);
             }, HOVER_HIDE_DELAY_MS);
@@ -685,14 +844,19 @@ const PopoverManager = {
                 hideTimeout = null;
             }
         };
+        // the pointer on the balloon: it stays (Vista holds a hovered balloon)
+        const enterBalloon = () => {
+            cancelHide();
+            if (popoverData.presenceTimer) popoverData.presenceTimer.hold(true);
+        };
 
         element.addEventListener('mouseleave', scheduleHide);
-        popover.addEventListener('mouseenter', cancelHide);
+        popover.addEventListener('mouseenter', enterBalloon);
         popover.addEventListener('mouseleave', scheduleHide);
 
         popoverData.notificationDismissListeners = {
             elementLeave: scheduleHide,
-            popoverEnter: cancelHide,
+            popoverEnter: enterBalloon,
             popoverLeave: scheduleHide,
             cancelTimers: cancelHide
         };

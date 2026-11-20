@@ -133,7 +133,7 @@
             `Printer name: '${esc(p ? p.name : job.printer)}'`,
             `Time sent: ${esc(timeSent(job.submitted))}`
         ];
-        if (failed) lines.push(`<span class="print-balloon-link" data-print-queue-open="${esc(job.printer)}">Click here to open the print queue, and then for assistance, click Troubleshooter on the Help menu.</span>`);
+        if (failed) lines.push('Click here to open the print queue, and then for assistance, click Troubleshooter on the Help menu.');
         else lines.push(`Total pages: ${Number(job.pages) || 1}`);
         // the icon shows for the balloon (it may have hidden as the queue emptied)
         const wasHidden = icon.classList.contains('hidden');
@@ -145,6 +145,8 @@
                 popupId: 'generation-complete',
                 position: 'top',
                 arrowPosition: 'bottom-right',
+                // a click on either balloon opens the printer's queue (Vista's printui balloons)
+                onClick: () => open(job.printer),
                 onHide: () => syncIcon()
             });
     }
@@ -216,15 +218,6 @@
                 }]
             });
         }
-    }
-
-    // a failed document's balloon: "Click here to open the print queue"
-    if (root.document) {
-        root.document.addEventListener('click', (ev) => {
-            const link = ev.target && ev.target.closest && ev.target.closest('[data-print-queue-open]');
-            if (!link) return;
-            void open(link.dataset.printQueueOpen);
-        });
     }
 
     // ---- windows ----------------------------------------------------------------------------------

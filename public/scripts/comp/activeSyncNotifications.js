@@ -12,7 +12,8 @@
  *   activeSyncNotifications.dismiss(deviceId, key)
  *   activeSyncNotifications.on(fn)                fn(deviceId) after a device's list changed; returns an off()
  *
- * Popups: Taskbar properties lists them as "Phone notifications" (popup id activesync-notify);
+ * Popups: Taskbar properties lists them as "Phone notifications" (popup id activesync-notify); a click opens Device
+ * Center on the device's notifications (apps/activesync page 'notifications');
  * HKCU\...\Melaton Mobile Device Center\ShowNotifications = 0 keeps the list without popups.
  * Desktop tabs only (activeSync.kind === 'computer').
  */
@@ -75,6 +76,9 @@
         // the popup renders title and message as HTML: a notification's words are escaped, always
         root.PopoverManager.showPopover(anchor, 'info', esc(n.title || n.app), `${esc(n.text)}${n.text ? '<br>' : ''}<small>${esc(n.title ? `${n.app} • ${device.name}` : device.name)}</small>`, false, 8000, img, null, {
             popupId: 'activesync-notify', position: 'top', arrowPosition: 'bottom-right',
+            onClick: () => {
+                if (root.melatonApps && typeof root.melatonApps.launch === 'function') void root.melatonApps.launch({ packageId: 'activesync', args: { deviceId: device.deviceId, page: 'notifications' } });
+            },
             onHide: () => { if (showing === mine) showing = null; }
         });
     }

@@ -1590,6 +1590,7 @@ class ServiceWorkerManager {
     }
 
     _hideServiceWorkerTrayPopup() {
+        if (this.trayPopup.hideTimer) { this.trayPopup.hideTimer.cancel(); this.trayPopup.hideTimer = null; }
         if (!this.trayPopup.el) return;
         const wasShown = this.trayPopup.el.classList.contains('show');
         this.trayPopup.el.classList.remove('show');
@@ -1620,10 +1621,21 @@ class ServiceWorkerManager {
         popover.onclick = (e) => {
             if (e.target.closest('.vista-update-balloon-close')) return;
             this._hideServiceWorkerTrayPopup();
-            void featureLoader.loadFeature('control_panel').then(() => {
+            const openPage = () => void featureLoader.loadFeature('control_panel').then(() => {
                 // cplUpdate.open: public/scripts/comp/cplUpdate.js
                 if (window.cplUpdate) window.cplUpdate.open();
             });
+            // "Restart Melaton to finish installing updates": Vista's balloon opens the restart dialog (updateRestartPrompt.js);
+            // the page when the dialog cannot open (no restart pending any more)
+            const restart = window.cplUpdate && window.cplUpdate.balloonFor('restart').title === balloon.title;
+            if (restart && window.melatonRestartPrompt && typeof window.melatonRestartPrompt.show === 'function') {
+                Promise.resolve(window.melatonRestartPrompt.show()).then(() => {
+                    const box = document.getElementById('melatonUpdateRestartDialog');
+                    if (!box || box.classList.contains('hidden')) openPage();
+                }, openPage);
+                return;
+            }
+            openPage();
         };
     }
 
@@ -1918,6 +1930,21 @@ class ServiceWorkerManager {
         this._renderServiceWorkerTrayPopup();
         this._positionServiceWorkerTrayPopup();
         this.trayPopup.el.classList.add('show');
+        // closes by itself as Vista's balloon does, its time counted while the user is present (popoverManager.js
+        // presenceTimer); the download's progress popup stays while it runs
+        if (this.trayPopup.hideTimer) { this.trayPopup.hideTimer.cancel(); this.trayPopup.hideTimer = null; }
+        if (nextState !== 'downloading' && nextState !== 'checking' && pm && typeof pm.presenceTimer === 'function') {
+            const ms = typeof trayClampPopupTimeout === 'function' ? trayClampPopupTimeout(15000) : 15000;
+            const timer = pm.presenceTimer(ms, () => { if (this.trayPopup.hideTimer === timer) this._hideServiceWorkerTrayPopup(); });
+            this.trayPopup.hideTimer = timer;
+            const el = this.trayPopup.el;
+            if (!el.dataset.presenceHold) {
+                // the pointer on the balloon holds it, as on any tray balloon
+                el.dataset.presenceHold = '1';
+                el.addEventListener('mouseenter', () => { if (this.trayPopup.hideTimer) this.trayPopup.hideTimer.hold(true); });
+                el.addEventListener('mouseleave', () => { if (this.trayPopup.hideTimer) this.trayPopup.hideTimer.hold(false); });
+            }
+        }
         return true;
     }
     

@@ -194,7 +194,9 @@ function showAgentSessionTrayNotice(action, messageOrData) {
     showPopover(anchor, 'info', 'Remote Access', message, false, 8000, icon, null, {
         position: 'top',
         arrowPosition: 'bottom-right',
-        popupId: 'remote-access'
+        popupId: 'remote-access',
+        // the access log, as a click on the icon (openMcpActivityInPeriscope)
+        onClick: () => openMcpActivityInPeriscope()
     });
     // startPopoverAutoHideTimer: public/scripts/comp/systemTrayManager.js
     startPopoverAutoHideTimer(anchor);

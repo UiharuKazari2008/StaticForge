@@ -1213,6 +1213,8 @@
         update,
         refresh,
         toggleFlyout,
+        /** Open on a tab ('alerts' | 'status'), as a click on one of its balloons does (toastManager.js). */
+        showFlyout,
         hideFlyout,
         attachMenu,
         model,

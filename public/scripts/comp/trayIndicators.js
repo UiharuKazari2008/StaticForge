@@ -206,10 +206,13 @@ function testCreditsIndicatorPopover() {
 
     console.log('Testing credits indicator popover with generation receipt');
     const popoverMessage1 = `<i class="nai-anla"></i> -5 fixed<br>Free: ${fixedCredits}<br>Total: ${totalCredits}`;
+    // a click opens Account Manager's Status, as the wallet's own balloons do (toastManager.js _trayBalloonTarget)
+    const openWallet = () => { if (window.walletTray && typeof window.walletTray.showFlyout === 'function') window.walletTray.showFlyout(indicator, 'status'); };
     showPopover(indicator, 'success', 'Generation Complete', popoverMessage1, false, false, '<i class="fas fa-sparkles"></i>', null, {
         position: 'top',
         arrowPosition: 'bottom-right',
-        popupId: 'generation-complete'
+        popupId: 'generation-complete',
+        onClick: openWallet
     });
     startPopoverAutoHideTimer(indicator);
 
@@ -221,7 +224,8 @@ function testCreditsIndicatorPopover() {
         showPopover(indicator, 'info', 'Balance Updated', popoverMessage2, false, false, '<i class="fas fa-sync-alt"></i>', null, {
             position: 'top',
             arrowPosition: 'bottom-right',
-            popupId: 'balance-updated'
+            popupId: 'balance-updated',
+            onClick: openWallet
         });
         startPopoverAutoHideTimer(indicator);
     }, 4000);
