@@ -32,15 +32,15 @@
     const PREFS_KEY = 'xmradio.prefs';
     // the radios (Yukimi, Nov 20 2026): three docked receivers after hers (a glossy one, the Onyx Plus with its colour
     // screen and silver ring, the Onyx EZ with its blue LCD and pad), a car head unit and a tabletop set
-    const BODIES = [['gloss', 'Gloss Receiver'], ['onyxplus', 'Onyx Plus Receiver'], ['onyxez', 'Onyx EZ Receiver'], ['roady', 'Roady XT Receiver'], ['car', 'Car Radio'], ['table', 'Tabletop Radio']];
-    const DOCKED = new Set(['gloss', 'onyxplus', 'onyxez', 'roady']);
+    const BODIES = [['gloss', 'Gloss Receiver'], ['onyxplus', 'Onyx Plus Receiver'], ['onyxez', 'Onyx EZ Receiver'], ['stratus', 'Stratus Receiver'], ['roady', 'Roady XT Receiver'], ['car', 'Car Radio'], ['table', 'Tabletop Radio']];
+    const DOCKED = new Set(['gloss', 'onyxplus', 'onyxez', 'stratus', 'roady']);
     // the docked receivers' screens are their own: colour on the Gloss and the Onyx Plus, an LCD on the Onyx EZ
-    const MODEL_DISPLAY = { gloss: 'tft', onyxplus: 'tft', onyxez: 'lcd', roady: 'dotlcd' };
+    const MODEL_DISPLAY = { gloss: 'tft', onyxplus: 'tft', onyxez: 'lcd', stratus: 'lcd', roady: 'dotlcd' };
     // the faceplate's brand, by era (Yukimi, Nov 20 2026, her logos): each tints the display as its radios did, XM's
     // yellowish orange, Sirius' light blue, SiriusXM's blues before and after the 2023 rebrand
     const ERAS = [['xm', 'XM Satellite Radio'], ['sirius', 'Sirius Satellite Radio'], ['sxm2011', 'SiriusXM (2011)'], ['sxm2023', 'SiriusXM (2023)']];
     // the radio's own width per body (the window scales it: resizable, Yukimi Nov 20 2026)
-    const NATURAL_W = { gloss: 560, onyxplus: 560, onyxez: 560, roady: 520, car: 660, table: 620 };
+    const NATURAL_W = { gloss: 560, onyxplus: 560, onyxez: 560, stratus: 560, roady: 520, car: 660, table: 620 };
     const DISPLAYS = [['lcd', 'LCD'], ['dot', 'Dot Matrix'], ['tft', 'TFT']];
     const BANDS = ['A', 'B', 'C'];
     // the faceplate's quality switch (Yukimi, Nov 20 2026): SiriusXM's own 256k / 128k / 32k, then Opus re-encoded on the
@@ -70,6 +70,8 @@
             quality: QUALITIES.some((q) => q[0] === p.quality) ? p.quality : 'hi',
             era: ERAS.some((e) => e[0] === p.era) ? p.era : 'xm',
             zoom: Number(p.zoom) > 0 ? Number(p.zoom) : 1,
+            // what the keyboard's media keys do (Yukimi, Nov 20 2026): skip through the stream, or change channel
+            mediaKeys: p.mediaKeys === 'channel' ? 'channel' : 'transport',
             channel: typeof p.channel === 'string' ? p.channel : ''
         };
     }
@@ -167,7 +169,7 @@
         faceplateHtml(model) {
             const disp = this.displayHtml();
             const brand = '<div class="xr-brand" data-f="brand"></div>';
-            const dock = '<div class="xr-dock" aria-hidden="true"><i class="xr-dock-led"></i></div>';
+            const dock = '';
             const key = (b, label, sub, cls) => `<span class="xr-kw${cls ? ` ${cls}` : ''}"><button type="button" class="xr-sk" data-b="${b}" title="${esc(label)}">${label}</button>${sub ? `<i>${esc(sub)}</i>` : ''}</span>`;
             const transport = `<button type="button" class="xr-tk xr-glyph" data-b="back" title="Back 15 seconds">${SVG.back}</button><button type="button" class="xr-tk xr-glyph" data-b="play" title="Pause / Play">${SVG.play}</button><button type="button" class="xr-tk xr-glyph" data-b="fwd" title="Forward 15 seconds">${SVG.fwd}</button>`;
             if (model === 'gloss') {
@@ -177,6 +179,15 @@
                     <div class="xr-g-knob" data-k="tune" title="Tune (turn); press to select"><span class="xr-g-ring"></span><button type="button" class="xr-g-cap" data-nav="select" aria-label="Select"></button></div>
                     <div class="xr-g-bottom">${transport}<button type="button" class="xr-tk" data-b="jump" title="Jump to the last channel">jump</button><button type="button" class="xr-tk xr-g-arrow" data-nav="left" title="Back">&#x2039;</button><button type="button" class="xr-tk xr-g-arrow" data-nav="right" title="Forward">&#x203A;</button></div>
                     ${dock}`;
+            }
+            if (model === 'stratus') {
+                // the Stratus (Yukimi's photo, Nov 20 2026): glossy black, a blue LCD, the brand above it, paired number keys
+                const sk = (attr, html, title, cls) => `<button type="button" class="xr-stk${cls ? ` ${cls}` : ''}" ${attr} title="${esc(title)}">${html}</button>`;
+                const pair = (a, b) => `<span class="xr-st-pair">${this.numKey(a, 'xr-stn')}<i class="xr-st-screw"></i>${this.numKey(b, 'xr-stn')}</span>`;
+                return `<div class="xr-st-left">${sk('data-b="power"', '&#x23FB;', 'Power', 'is-power')}${sk('data-b="menu"', '<i class="xr-st-tape"></i><span>menu</span>', 'Menu', 'is-blue')}${sk('data-b="jump"', '&#x21B7;', 'Jump to the last channel', 'is-blue')}</div>
+                    <div class="xr-st-mid">${brand}${disp}<div class="xr-st-under">${sk('data-b="disp"', '', 'Display information', 'xr-st-square')}<span class="xr-st-rocker">${sk('data-nav="left"', '&#x25C0;', 'Back 15 seconds', 'is-blue')}${sk('data-nav="right"', '&#x25B6;', 'Forward 15 seconds', 'is-blue')}</span></div></div>
+                    <div class="xr-st-right">${sk('data-nav="up"', '&#x25B2;', 'Channel up', 'is-blue')}${sk('data-b="band"', '<i class="xr-st-dog"></i>', 'Preset bank', 'is-blue')}${sk('data-nav="down"', '&#x25BC;', 'Channel down', 'is-blue')}</div>
+                    <div class="xr-st-nums">${pair(1, 2)}${pair(3, 4)}${pair(5, 6)}${pair(7, 8)}${pair(9, 10)}</div>`;
             }
             if (model === 'roady') {
                 // the Roady XT (Yukimi's photo, Nov 20 2026): silver, a dot-matrix LCD, the maker's name rewritten
@@ -333,6 +344,15 @@
                 this.knobStep(k.dataset.k, e.deltaY < 0 ? 1 : -1);
             }, Object.assign({ passive: false }, sig));
             this.root.addEventListener('keydown', (e) => this.key(e), sig);
+            // the caption buttons fade a few seconds after the pointer stops (Yukimi, Nov 20 2026) and come back on a move
+            const showCaption = () => {
+                this.modal.classList.add('xr-caption-shown');
+                clearTimeout(this.captionTimer);
+                this.captionTimer = setTimeout(() => this.modal.classList.remove('xr-caption-shown'), 3000);
+            };
+            this.modal.addEventListener('pointermove', showCaption, sig);
+            this.modal.addEventListener('pointerdown', showCaption, sig);
+            showCaption();
             // the window's resize grip scales the radio (no polling: the browser says when the size changed)
             if (typeof root.ResizeObserver === 'function') {
                 const ro = new root.ResizeObserver(() => this.fit(true));
@@ -730,6 +750,7 @@
                 { label: 'Audio Quality', sub: () => radio([['hi', 'High 256k'], ['std', 'Standard 128k'], ['low', 'Low 32k'], ['eco24', 'Economy 24k'], ['eco16', 'Economy 16k']], this.prefs.quality, (id) => this.setQuality(id)) },
                 { label: 'Display Info', sub: () => radio([['song', 'Artist and Song'], ['channel', 'Channel'], ['show', 'Show']], this.prefs.info, (id) => { this.prefs.info = id; this.savePrefs(); this.paint(); }) },
                 { label: `Volume  ${Math.round(this.prefs.volume * 100)}`, adjust: (d) => this.knobStep('vol', d) },
+                { label: 'Media Keys', sub: () => radio([['transport', 'Skip Back / Forward'], ['channel', 'Channel Down / Up']], this.prefs.mediaKeys, (id) => { this.prefs.mediaKeys = id; this.savePrefs(); }) },
                 { label: 'Brand', sub: () => radio(ERAS, this.prefs.era, (id) => { this.prefs.era = id; this.savePrefs(); this.applyLook(); }) },
                 { label: 'Radio', sub: () => radio(BODIES, this.prefs.body, (id) => { this.prefs.body = id; this.prefs.zoom = 1; this.savePrefs(); this.applyLook(); }) }
             ];
@@ -953,8 +974,8 @@
             const h = (a, fn) => { try { ms.setActionHandler(a, fn); } catch (_) { /* not supported */ } };
             h('play', () => { if (this.on) void this.audio.play().catch(() => {}); });
             h('pause', () => this.audio.pause());
-            h('nexttrack', () => this.step(1));
-            h('previoustrack', () => this.step(-1));
+            h('nexttrack', () => { if (this.prefs.mediaKeys === 'channel') this.step(1); else this.seekBy(15); });
+            h('previoustrack', () => { if (this.prefs.mediaKeys === 'channel') this.step(-1); else this.seekBy(-15); });
             h('seekbackward', () => this.seekBy(-15));
             h('seekforward', () => this.seekBy(15));
             this.app.signal.addEventListener('abort', () => { for (const a of ['play', 'pause', 'nexttrack', 'previoustrack', 'seekbackward', 'seekforward']) h(a, null); });
@@ -1148,15 +1169,24 @@
             img.decoding = 'async';
             img.onload = () => {
                 if (this[keyName] !== key) return;
+                // drawn at the box's own size (a fixed canvas shape stretched the logos, Yukimi Nov 20 2026)
+                const box = canvas.getBoundingClientRect();
+                const scale = (root.devicePixelRatio || 1) * (this.zoom || 1);
+                if (box.width > 0 && box.height > 0) {
+                    canvas.width = Math.max(8, Math.round(box.width / (this.zoom || 1) * scale));
+                    canvas.height = Math.max(8, Math.round(box.height / (this.zoom || 1) * scale));
+                }
                 const W = canvas.width;
                 const H = canvas.height;
                 g.clearRect(0, 0, W, H);
-                const sc = Math.min(W / img.naturalWidth, H / img.naturalHeight);
-                const w = Math.round(img.naturalWidth * sc);
-                const h = Math.round(img.naturalHeight * sc);
+                // a logo's 5:4 picture is mostly clear margin round its lettering: fit what is drawn, not the margin
+                const src = this.inkBox(img);
+                const sc = Math.min(W / src.w, H / src.h);
+                const w = Math.round(src.w * sc);
+                const h = Math.round(src.h * sc);
                 const x = Math.round((W - w) / 2);
                 const y = Math.round((H - h) / 2);
-                g.drawImage(img, x, y, w, h);
+                g.drawImage(img, src.x, src.y, src.w, src.h, x, y, w, h);
                 if (dt === 'tft') return;
                 // the era's ink (the theme's --xr-ink-rgb: dark on the LCD's backlight, the dot matrix's glow)
                 const rgb = root.getComputedStyle(this.root.querySelector('.xr-display')).getPropertyValue('--xr-ink-rgb').split(',').map(Number);
@@ -1191,6 +1221,27 @@
             img.src = url;
         }
 
+        /** The part of a picture that is not transparent (a logo's lettering inside its clear margin). */
+        inkBox(img) {
+            const full = { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+            try {
+                const c = doc.createElement('canvas');
+                c.width = full.w;
+                c.height = full.h;
+                const g = c.getContext('2d', { willReadFrequently: true });
+                g.drawImage(img, 0, 0);
+                const d = g.getImageData(0, 0, full.w, full.h).data;
+                let x0 = full.w; let y0 = full.h; let x1 = -1; let y1 = -1;
+                for (let y = 0; y < full.h; y++) {
+                    for (let x = 0; x < full.w; x++) {
+                        if (d[(y * full.w + x) * 4 + 3] > 12) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+                    }
+                }
+                if (x1 < 0) return full;
+                return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+            } catch (_) { return full; }
+        }
+
         /** The colour screen's background: the channel's picture, covering, dimmed towards the text. */
         drawBg(url) {
             const c = this.f.bg;
@@ -1203,6 +1254,11 @@
             img.decoding = 'async';
             img.onload = () => {
                 if (this.bgKey !== url) return;
+                const box = c.getBoundingClientRect();
+                if (box.width > 0 && box.height > 0) {
+                    c.width = Math.round(box.width * (root.devicePixelRatio || 1));
+                    c.height = Math.round(box.height * (root.devicePixelRatio || 1));
+                }
                 const W = c.width;
                 const H = c.height;
                 const sc = Math.max(W / img.naturalWidth, H / img.naturalHeight);

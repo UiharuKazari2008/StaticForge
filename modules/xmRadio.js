@@ -506,9 +506,9 @@ function withPlan(list) {
     return list.map((c) => {
         const out = Object.assign({}, c);
         if (no.has(c.id)) out.sub = false;
-        if (logos[c.id]) out.logo = artPath(logos[c.id], 240, 'png');
+        if (logos[c.id]) { const l = artRef(logos[c.id], 1.25); out.logo = artPath(l.u, 240, 'png', l.a); }
         const bg = lineupCache.backgrounds && lineupCache.backgrounds[c.id];
-        if (bg) out.bg = artPath(bg, 480);
+        if (bg) { const g = artRef(bg, 4 / 3); out.bg = artPath(g.u, 480, 'jpeg', g.a); }
         return out;
     });
 }
@@ -542,13 +542,13 @@ async function logos(ids) {
                         const r = await api('GET', `/browse/v1/pages/channel-linear/${id}`, { bearer: tok, query: { entitlementHash: eh } });
                         const ims = (r.json && r.json.page && r.json.page.entity && r.json.page.entity.images) || {};
                         const pickI = (o) => o && (o.preferred || o.default || o.preferredImage || o.defaultImage);
-                        const img = pickI(ims.logo && ims.logo.aspect_5x4);
-                        lineupCache.logos[id] = img && img.url ? String(img.url) : '';
-                        // the channel's background picture (its genre's art), behind the colour screens' text
+                        lineupCache.logos[id] = imgRef(pickI(ims.logo && ims.logo.aspect_5x4), 1.25) || '';
+                        // the channel's background picture (its genre's art), behind the colour screens' text: the 4:3
+                        // one first (the receivers' screens are about that shape)
                         const bgObj = ims.background || ims.tile_background || {};
-                        const bg = pickI(bgObj.aspect_15x7) || pickI(bgObj.aspect_16x9) || pickI(Object.values(bgObj)[0]);
+                        const bg = pickI(bgObj.aspect_4x3) || pickI(bgObj.aspect_16x9) || pickI(bgObj.aspect_15x7) || pickI(Object.values(bgObj)[0]);
                         lineupCache.backgrounds = lineupCache.backgrounds || {};
-                        lineupCache.backgrounds[id] = bg && bg.url ? String(bg.url) : '';
+                        lineupCache.backgrounds[id] = imgRef(bg, 4 / 3) || '';
                         found++;
                     } catch (_) { /* asked again next time */ }
                 }
@@ -559,9 +559,9 @@ async function logos(ids) {
     const out = {};
     const bgs = {};
     for (const id of want) {
-        if (lineupCache.logos[id]) out[id] = artPath(lineupCache.logos[id], 240, 'png');
+        if (lineupCache.logos[id]) { const l = artRef(lineupCache.logos[id], 1.25); out[id] = artPath(l.u, 240, 'png', l.a); }
         const b = lineupCache.backgrounds && lineupCache.backgrounds[id];
-        if (b) bgs[id] = artPath(b, 480);
+        if (b) { const g = artRef(b, 4 / 3); bgs[id] = artPath(g.u, 480, 'jpeg', g.a); }
     }
     return { logos: out, backgrounds: bgs };
 }
@@ -655,17 +655,28 @@ function findStreamUrl(o) {
 
 const ART_KEY = /^(aem|live|if)\/[A-Za-z0-9_./-]{4,200}$/;
 /** Our address for a SiriusXM art key (same origin: the LCD and dot-matrix displays redraw it in a canvas). */
-function artPath(key, size = 240, format = 'jpeg') {
+/**
+ * Our address for a SiriusXM art key at a width, in the picture's own proportions (aspect = width / height of the
+ * original): the image service squashes a picture into whatever box it is asked for, it never letterboxes.
+ */
+function artPath(key, size = 240, format = 'jpeg', aspect = 1) {
     const k = String(key || '');
+    if (!ART_KEY.test(k)) return '';
+    const w = Math.max(32, Math.min(600, Math.round(size)));
+    const h = Math.max(16, Math.min(600, Math.round(w / (aspect > 0 ? aspect : 1))));
     // channel logos as PNG: their transparency kept (Yukimi, Nov 20 2026)
-    return ART_KEY.test(k) ? `/api/xmradio/art?k=${encodeURIComponent(k)}&s=${Math.max(32, Math.min(600, Math.round(size)))}${format === 'png' ? '&f=png' : ''}` : '';
+    return `/api/xmradio/art?k=${encodeURIComponent(k)}&s=${w}&h=${h}${format === 'png' ? '&f=png' : ''}`;
 }
 
+/** A stored art reference: { u, a } (key, aspect); an older plain key was a 5:4 logo. */
+const artRef = (v, fallbackAspect) => (v && typeof v === 'object' ? v : { u: String(v || ''), a: fallbackAspect });
+const imgRef = (im, fallbackAspect) => (im && im.url ? { u: String(im.url), a: im.width && im.height ? im.width / im.height : fallbackAspect } : null);
+
 /** SiriusXM's image service: a relative art key (aem/..., if/...) as a sized JPEG address. */
-function imageUrl(key, size = 300, format = 'jpeg') {
+function imageUrl(key, size = 300, format = 'jpeg', height = size) {
     if (!key) return '';
     if (/^https?:/.test(key)) return key;
-    const spec = { key, edits: [{ resize: { width: size, height: size } }, { format: { type: format === 'png' ? 'png' : 'jpeg' } }] };
+    const spec = { key, edits: [{ resize: { width: size, height } }, { format: { type: format === 'png' ? 'png' : 'jpeg' } }] };
     return `https://imgsrv-sxm-prod-device.streaming.siriusxm.com/${Buffer.from(JSON.stringify(spec)).toString('base64')}`;
 }
 
@@ -673,8 +684,9 @@ function describeTune(j) {
     const im = (j && j.images) || {};
     const pickImg = (o) => o && (o.preferredImage || o.defaultImage);
     const logo = pickImg(im.logo && im.logo.aspect_5x4) || pickImg(im.tile && im.tile.aspect_1x1);
-    if (logo && logo.url && lineupCache) { lineupCache.logos = lineupCache.logos || {}; if (lineupCache.logos[j.id] !== logo.url) { lineupCache.logos[j.id] = logo.url; saveLineup(); } }
-    return { id: j.id, type: j.type, logo: logo ? artPath(logo.url, 240, 'png') : '', skipLimits: j.skipLimits || null };
+    const ref = imgRef(logo, 1.25);
+    if (ref && lineupCache) { lineupCache.logos = lineupCache.logos || {}; const had = artRef(lineupCache.logos[j.id], 1.25); if (had.u !== ref.u) { lineupCache.logos[j.id] = ref; saveLineup(); } }
+    return { id: j.id, type: j.type, logo: ref ? artPath(ref.u, 240, 'png', ref.a) : '', skipLimits: j.skipLimits || null };
 }
 
 function sweepStreams() {
@@ -886,13 +898,14 @@ function mount(app, authMiddleware) {
     app.get('/api/xmradio/art', authMiddleware, admin, async (req, res) => {
         const k = String(req.query.k || '');
         const size = Math.max(32, Math.min(600, Number(req.query.s) || 240));
+        const height = Math.max(16, Math.min(600, Number(req.query.h) || size));
         const fmt = req.query.f === 'png' ? 'png' : 'jpeg';
         if (!ART_KEY.test(k)) { res.status(404).end(); return; }
-        const ck = `${k}|${size}|${fmt}`;
+        const ck = `${k}|${size}|${height}|${fmt}`;
         let hit = artCache.get(ck);
         if (!hit) {
             try {
-                const r = await fetch(imageUrl(k, size, fmt), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+                const r = await fetch(imageUrl(k, size, fmt, height), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
                 if (!r.ok) { res.status(404).end(); return; }
                 hit = { type: r.headers.get('content-type') || 'image/jpeg', body: Buffer.from(await r.arrayBuffer()) };
             } catch (_) { res.status(502).end(); return; }
