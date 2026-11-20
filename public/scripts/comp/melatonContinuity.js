@@ -824,7 +824,7 @@
     api.phoneReady = () => {
         const ready = phoneReadyRaw();
         if (ready) { phoneWaitSince = 0; return true; }
-        // the Miniport's own link still coming up is not the phone page's silence
+        // the Miniport's own link still coming up is not the phone page being silent
         if (miniport.available() && !miniport.up) return false;
         return isDw() && phoneSilent();
     };
