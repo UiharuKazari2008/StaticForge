@@ -20,6 +20,9 @@
  * The second half of this file is the animation watchdog (window.animationWatchdog, #930): it finds
  * animations that run unseen or without end, pauses the unseen ones and reports them to the server's
  * fault reports. It lives here, not in its own file, so a cached app.html gets it with a normal update.
+ *
+ * The last part is the screen-on truth (#910, Nov 20 2026): html[data-screen-off] is cleared, with the same
+ * melatonscreen { on: true } on window the setters send, as soon as the screen is shown to be on - see there.
  */
 (function () {
     'use strict';
@@ -803,4 +806,56 @@
         allow: ALLOW,
         focusBound: FOCUS_BOUND
     };
+})();
+
+/*
+ * The screen is on when someone uses it (#910, Nov 20 2026). html[data-screen-off] (a dark screen: every "no off-screen
+ * redraws" path pauses or hides on it) is set and cleared by the screen's owner: DSApp on a phone, the DreamOS shell
+ * bridge from CaféReady's power state on a laptop. A missed "on" left it set for good: Yukimi's DreamOS Mac woke from a
+ * closed lid while CaféReady restarted (12:23-12:24), the bridge's event stream to the host had ended and never came
+ * back, and the desktop stayed empty - no gallery pictures, tray flyouts that opened unseen - until it was cleared by
+ * hand. So, while it is set (and only then: no listener runs while the screen is on):
+ *   - a trusted press, key, wheel or touch proves the screen is on: it is cleared at once;
+ *   - on DreamOS, the shell bridge's power state saying the display is on (a 'dreamospower' push, or its state read when
+ *     the page is shown again) clears it too; the bridge alone sets it.
+ * The clear sends melatonscreen { on: true } on window, as DSApp and the bridge do. Event-driven, nothing polls.
+ */
+(function () {
+    'use strict';
+
+    const root = document.documentElement;
+    if (!root || typeof MutationObserver !== 'function') return;
+    // app-scope: allow page-lifetime shell runtime (app.html): the screen-on truth lives as long as the page
+    const INPUT = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+    let armed = null; // AbortController of the listeners while the screen reads as off
+
+    const isOff = () => root.dataset.screenOff !== undefined;
+    function screenOn() {
+        if (!isOff()) return;
+        delete root.dataset.screenOff;
+        window.dispatchEvent(new CustomEvent('melatonscreen', { detail: { on: true } }));
+    }
+    // the DreamOS bridge's display state: 'on' | 'off' | null (no bridge, or it does not know)
+    function hostDisplay(p) {
+        if (p === undefined) {
+            const po = window.DreamOSPowerOptions;
+            try { p = po && typeof po.get === 'function' ? po.get() : null; } catch (_) { p = null; }
+        }
+        return p && (p.display === 'on' || p.display === 'off') ? p.display : null;
+    }
+    function onInput(e) { if (e.isTrusted) screenOn(); }
+    function onPower(e) { if (hostDisplay(e && e.detail) === 'on') screenOn(); }
+    function onShown() { if (document.visibilityState === 'visible' && hostDisplay() === 'on') screenOn(); }
+
+    function sync() {
+        if (isOff() === !!armed) return;
+        if (armed) { armed.abort(); armed = null; return; }
+        armed = new AbortController();
+        const o = { capture: true, passive: true, signal: armed.signal };
+        INPUT.forEach((t) => window.addEventListener(t, onInput, o));
+        window.addEventListener('dreamospower', onPower, { signal: armed.signal });
+        document.addEventListener('visibilitychange', onShown, { signal: armed.signal });
+    }
+    new MutationObserver(sync).observe(root, { attributes: true, attributeFilter: ['data-screen-off'] });
+    sync();
 })();
