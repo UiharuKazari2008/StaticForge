@@ -10034,7 +10034,8 @@ function applyUserGlobalSettingsToClient(settings) {
 }
 
 async function loadUserGlobalSettingsFromServer() {
-    if (!window.wsClient || !window.wsClient.isConnected()) {
+    // a logon from the cached profile (#910) reads it through sendMessage (websocket.js, cachedLogon.js cachedProfile)
+    if (!window.wsClient || !(window.wsClient.isConnected() || window.wsClient._offlineBoot)) {
         return null;
     }
     try {

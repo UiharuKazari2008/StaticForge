@@ -2052,6 +2052,8 @@ async function dispatchAgentPacket(globalResources, req, message) {
         wsServer: sink.wsServer,
         handlers
     });
+    // an agent's write to the user's profile moves its revision on like a desktop's (modules/profileRevision.js)
+    require('./profileRevision').afterPacketOn(message.type, liveServer);
     return sink.replies;
 }
 

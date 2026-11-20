@@ -167,6 +167,19 @@ if (window.wsClient) {
     // { logon: true } steps run in the desktop logon dialog before the desktop starts (user
     // settings and application data, websocket.js _runLogonInitSteps); everything that builds
     // the desktop (start menu, desktop settings, icons, ...) runs in the startup window.
+    // Priority 0.44: the server's profile revision, taken before the profile's pieces are read (#910): the cached
+    // profile (cachedLogon.js cachedProfile) is marked with it when the boot is done (step 101). Read first, so a
+    // write between the two can only make a later check say "out of sync", never miss one.
+    window.wsClient.registerInitStep(0.44, 'Checking your profile', async () => {
+        const ws = window.wsClient;
+        if (!ws || ws._offlineBoot || !ws.isConnected() || !window.cachedProfile) return;
+        try {
+            // profile_revision: modules/ws/handlers/201-profileRevisionHandler.js
+            const r = await ws.sendMessage('profile_revision', {}, false);
+            ws._profileRevisionAtLogon = (r && r.revision) || null;
+        } catch (_) { ws._profileRevisionAtLogon = null; }
+    }, true, { logon: true });
+
     // Priority 0.45: User global settings (startup behaviour, Atelier, etc.) from server config
     window.wsClient.registerInitStep(0.45, 'Loading user global settings', async () => {
         if (typeof loadUserGlobalSettingsFromServer === 'function') {
@@ -185,7 +198,8 @@ if (window.wsClient) {
             await fetchStartMenuCustomLayout();
             // an offline boot (#899) read nothing and shows the default layout: fail, so the step runs again when the
             // server is back (fetchStartMenuCustomLayout swallows its own error and marks itself loaded) (#910)
-            if (window.wsClient && window.wsClient._offlineBoot && !window.wsClient.isConnected()) {
+            const ws = window.wsClient;
+            if (ws && ws._offlineBoot && !ws.isConnected() && !(ws._profileCacheHits && ws._profileCacheHits.has('start_menu_get_layout'))) {
                 fetchStartMenuCustomLayout.loaded = false;
                 throw new Error('the Start menu layout waits for the server');
             }
@@ -195,11 +209,10 @@ if (window.wsClient) {
     // Priority 0.5: Load desktop settings early (desktop mode only) - before other initialization
     if (window.isDesktop) {
         window.wsClient.registerInitStep(0.5, 'Loading Desktop Settings', async () => {
-            // an offline boot (#899): fail, so the step runs again on reconnect instead of the desktop keeping the
-            // defaults it started with (#910, Nov 20 2026)
-            if (window.wsClient && window.wsClient._offlineBoot && !window.wsClient.isConnected()) throw new Error('desktop settings wait for the server');
+            // an offline boot reads them from the cached profile (#910); without a cached copy the step fails, so it
+            // runs again on reconnect instead of the desktop keeping the defaults it started with (Nov 20 2026)
             try {
-                if (window.wsClient && window.wsClient.isConnected()) {
+                if (window.wsClient && (window.wsClient.isConnected() || window.wsClient._offlineBoot)) {
                     const settings = await window.wsClient.getDesktopSettings();
 
                     if (settings) {
@@ -220,6 +233,10 @@ if (window.wsClient) {
             } catch (error) {
                 console.warn('⚠️ Failed to load desktop settings early:', error);
                 // Non-critical, continue initialization
+            }
+            const ws = window.wsClient;
+            if (ws && ws._offlineBoot && !ws.isConnected() && !(ws._profileCacheHits && ws._profileCacheHits.has('desktop_get_settings'))) {
+                throw new Error('desktop settings wait for the server');
             }
         });
     }
@@ -665,5 +682,48 @@ if (window.wsClient) {
             window.initAndroidNotificationBridge();
         }
         registerAndroidBackgroundNotificationManifest();
+    });
+
+    // Priority 101: the cached profile (#910, cachedLogon.js cachedProfile) is marked with the revision read at logon
+    // (step 0.44) once the boot has read its pieces, and kept current afterwards: every profile write anywhere is
+    // pushed as profile_changed (modules/profileRevision.js) and the pieces it touched are read again, a few seconds
+    // after the last one. A session from the cache (or out of sync) refreshes nothing: its next online logon does.
+    window.wsClient.registerInitStep(101, 'Keeping your profile', async () => {
+        const ws = window.wsClient;
+        if (!ws || !window.cachedProfile) return;
+        if (!ws._offlineBoot && !ws._profileHold && ws._profileRevisionAtLogon) window.cachedProfile.setRevision(ws._profileRevisionAtLogon);
+        if (ws._profileChangedWired) return;
+        ws._profileChangedWired = true;
+        const due = new Map();
+        let latest = null;
+        let timer = null;
+        const readsFor = (type) => {
+            const active = { workspaceId: window.currentWorkspace || 'default' };
+            if (type === 'update_user_global_settings') return [['get_user_global_settings', {}]];
+            if (type.indexOf('start_menu_') === 0) return [['start_menu_get_layout', {}]];
+            if (type === 'sidebar_save') return [['sidebar_get', active]];
+            if (type.indexOf('desktop_') === 0 || type === 'workspace_update_window_positions') return [['desktop_get_shortcuts', active]];
+            return [['workspace_list', {}], ['desktop_get_settings', {}]];
+        };
+        const refresh = async () => {
+            timer = null;
+            if (ws._offlineBoot || ws._profileHold || !ws.isConnected()) { due.clear(); return; }
+            const reads = Array.from(due.values());
+            const revision = latest;
+            due.clear();
+            try {
+                // each reply goes into the cache through sendMessage (websocket.js)
+                for (const [type, data] of reads) await ws.sendMessage(type, data, false);
+                window.cachedProfile.setRevision(revision);
+            } catch (_) { /* the next push or logon catches up */ }
+        };
+        ws.on('profile_changed', (msg) => {
+            const d = (msg && msg.data) || {};
+            if (!d.revision) return;
+            latest = d.revision;
+            for (const r of readsFor(String(d.type || ''))) due.set(r[0] + JSON.stringify(r[1]), r);
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(refresh, 4000);
+        });
     });
 }

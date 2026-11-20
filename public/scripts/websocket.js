@@ -885,6 +885,9 @@ class WebSocketClient {
     static NIGHTSHADE_PROBE_EVERY_MS = 60000;
     static NIGHTSHADE_BALLOON_MS = 5000; // a quiet reconnect inside this shows no balloon
     static OFFLINE_LOGON_AFTER_MS = 10000; // no server this long at boot: the offline logon (#899)
+    // the installed app: "Please wait..." while the server is tried this long, then the logon from the cached profile
+    // (#910, Yukimi Nov 20 2026: the password box with nothing before it said nothing about what was going on)
+    static INSTALLED_LOGON_GRACE_MS = 2000;
     static NIGHTSHADE_QUEUE_MAX = 64;
     // the user's own settings and desktop: written only by a desktop that loaded them from the server (_userSettingsWritable)
     static USER_SETTINGS_WRITES = new Set(['update_user_global_settings', 'workspace_update_settings', 'workspace_update_window_positions',
@@ -1534,7 +1537,9 @@ class WebSocketClient {
      */
     _offlineLogonEligible() {
         if (!window.isDesktop || window.uiShell === 'mobile' || this.initializationCompleted || !this._shouldUsePreStartupDialog()) return false;
-        if (!window.cachedLogon || !window.cachedLogon.has()) return false;
+        // the cached password, or a computer that signs in by itself (#910: it must still reach a desktop - the network
+        // is joined from there)
+        if (!window.cachedLogon || !(window.cachedLogon.has() || !window.cachedLogon.mustSignIn())) return false;
         try { return !!localStorage.getItem('melatonManifestHash'); } catch (_) { return false; }
     }
 
@@ -1550,25 +1555,62 @@ class WebSocketClient {
         this._offlineLogonTimer = setTimeout(() => {
             this._offlineLogonTimer = null;
             if (this.socketAuthenticated === true || this.connectionPhase === 'auth' || !this._offlineLogonEligible()) return;
-            // Never a desktop without the server's word on its own (Nov 19 2026: an automatic offline desktop on the
-            // Mac came up with none of the user's settings - they live on the server - and stayed that way): the
-            // offline logon is the password box. A computer that signs in by itself still does when its session
-            // answers (_offlinePasswordBoxShown: the socket's welcome takes it on past the box, see ws.onopen)
+            // A computer that signs in by itself does so from its cached profile (#910, Yukimi Nov 20 2026: "if auto
+            // login is on it should auto login"): "Welcome", then the desktop built from the profile cached on this
+            // computer (cachedLogon.js cachedProfile); the reconnect checks it against the domain controller's.
+            if (window.cachedLogon && !window.cachedLogon.mustSignIn()) {
+                this._offlineLogonReady = true;
+                console.log('🔑 Offline logon: this computer signs in by itself - the cached profile');
+                this._completeOfflineLogon();
+                return;
+            }
+            // Otherwise the password box, checked against the cached verifier
             this._offlineLogonReady = true;
             this._offlinePasswordBoxShown = true;
             console.log('🔑 Offline logon: the server has not answered, the cached password is accepted');
             this._setConnectionPhase('auth', { beat: 'establishing', message: 'The Nightshade Network is not available. Log on with your password to use this computer.' });
-        }, installedApp ? 0 : offlineStart ? 2500 : WebSocketClient.OFFLINE_LOGON_AFTER_MS);
+        }, installedApp ? WebSocketClient.INSTALLED_LOGON_GRACE_MS : offlineStart ? 2500 : WebSocketClient.OFFLINE_LOGON_AFTER_MS);
     }
 
     async _completeOfflineLogon() {
         this._offlineBoot = true;
+        // a session from the cached profile writes nothing back (#910): the reconnect checks it (_checkProfileSync)
+        this._profileHold = true;
         this._offlineLogonReady = false;
         this.preStartupCredentialsAccepted = true;
         this.preStartupAuthBusy = false;
         if (window.workstationLock) window.workstationLock.clearPending();
         console.log('🔑 Offline logon accepted: the desktop opens without the server');
         await this._startAfterLogon();
+    }
+
+    /**
+     * After a logon from the cached profile, at the first reconnect (#910, Yukimi Nov 20 2026): the cache's revision
+     * against the server's (profile_revision, modules/profileRevision.js). The same: the session goes on as the
+     * server's and writes again from now on (what changed while out of reach is not sent). Different, or the desktop
+     * came from the cache with no revision: the account is out of sync with the domain controller - this session
+     * writes nothing, the next logon takes the server's profile. Nothing came from the cache at all: the put-off
+     * steps load the server's profile now and the session is the server's.
+     */
+    async _checkProfileSync() {
+        if (!this._profileHold || this._profileOutOfSync) return;
+        let server = null;
+        try { server = ((await this.sendMessage('profile_revision', {}, false)) || {}).revision || null; } catch (_) { /* asked again at the next reconnect */ }
+        if (!server) return;
+        const fromCache = !!(this._profileCacheHits && this._profileCacheHits.size);
+        const meta = fromCache && window.cachedProfile ? await window.cachedProfile.meta() : null;
+        if (!fromCache || (meta && meta.revision === server)) {
+            this._profileHold = false;
+            console.log(`👤 Profile: ${fromCache ? 'the cached profile is the domain controller\'s' : 'nothing came from the cache'} - this session writes again`);
+            return;
+        }
+        this._profileOutOfSync = true;
+        console.warn(`👤 Profile: out of sync with the domain controller (cached ${meta ? meta.revision : 'none'}, server ${server}) - nothing from this session is saved`);
+        // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+        if (typeof showConfirmationDialog === 'function') {
+            showConfirmationDialog('Your user account is out of sync with the domain controller. Changes you make in this session will not be saved.\n\nLog off and log on again to update your profile.',
+                [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'User Profile Service', icon: 'fas fa-triangle-exclamation' });
+        }
     }
 
     _connectionTheaterSkipped() {
@@ -3032,7 +3074,7 @@ class WebSocketClient {
 
     /** Signed in, out of an offline boot, and the server's copy of the user's settings has loaded. */
     _userSettingsWritable() {
-        return this.socketAuthenticated === true && !this._offlineBoot && window.userGlobalSettingsHydrated === true;
+        return this.socketAuthenticated === true && !this._offlineBoot && !this._profileHold && window.userGlobalSettingsHydrated === true;
     }
 
     /** The logon policy wants the password on this start, and it has not been given yet (cachedLogon.mustSignIn). */
@@ -5382,6 +5424,8 @@ class WebSocketClient {
                     }
                 }
 
+                // a logon from the cached profile (#910): is it still the domain controller's?
+                if (isReconnection && this._profileHold) await this._checkProfileSync();
                 // an offline boot (#899): the steps that needed the server run now, in their order
                 if (isReconnection && this._offlineFailedSteps && this._offlineFailedSteps.length) {
                     const steps = this._offlineFailedSteps;
@@ -9818,6 +9862,29 @@ class WebSocketClient {
             console.warn(`[settings] ${type} held back: this desktop does not have the server's settings yet`);
             return Promise.resolve({ success: false, heldBack: true });
         }
+        // the cached profile (#910, cachedLogon.js cachedProfile): a logon without the server reads the desktop from
+        // it; every reply from the server refreshes it
+        const profile = window.cachedProfile && window.cachedProfile.has(type) ? window.cachedProfile : null;
+        if (profile && this._offlineBoot && !this.isConnected()) {
+            return profile.get(type, data).then((reply) => {
+                if (reply == null) {
+                    const err = new Error(`${type}: not in the cached profile`);
+                    err.code = 'NOT_CONNECTED';
+                    throw err;
+                }
+                (this._profileCacheHits || (this._profileCacheHits = new Set())).add(type);
+                return reply;
+            });
+        }
+        if (profile) {
+            const p = this._sendMessageTraced(type, data, showBanner);
+            p.then((reply) => { if (this.socketAuthenticated === true && !this._offlineBoot) profile.put(type, data, reply); }, () => {});
+            return p;
+        }
+        return this._sendMessageTraced(type, data, showBanner);
+    }
+
+    _sendMessageTraced(type, data, showBanner) {
         // boot trace: the round trip of each request before the desktop is up
         if (!this.initializationCompleted && type !== 'ping') {
             const t0 = performance.now();

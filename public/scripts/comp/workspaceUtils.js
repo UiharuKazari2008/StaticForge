@@ -1265,8 +1265,9 @@ async function loadWorkspaces() {
         let isFirstLoad = false;
         let workspaceCssHash = null;
         
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
+        // Use WebSocket API if available, otherwise fall back to HTTP (a logon from the cached profile reads the
+        // cache through it, #910)
+        if (window.wsClient && (window.wsClient.isConnected() || window.wsClient._offlineBoot)) {
             const data = await window.wsClient.getWorkspaces();
             workspaceCssHash = data.workspaceCssHash || null;
             

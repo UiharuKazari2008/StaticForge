@@ -135,6 +135,9 @@ const PHONE_BATCH_MS = 10000;
 // progress and status only feed the desktop's tray icon and MMC page, whose runs only they start).
 const DESKTOP_ONLY_TYPES = new Set([
     'runtime_compile_logs',
+    // the user's profile moved on (modules/profileRevision.js, #910): desktops refresh their cached profile; a phone
+    // page has no desktop profile, and a sleeping one needs nothing held (its next logon reads the server's)
+    'profile_changed',
     // the Media Player library changed (modules/mediaLibrary.js, #956): only desktop pages run Media Player
     'media_library_changed',
     'generation_quips_progress', 'generation_quips_status',

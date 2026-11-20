@@ -420,7 +420,8 @@ class DesktopShortcutsManager {
     async loadShortcuts(workspaceId) {
         const loadGen = ++this._shortcutLoadGen;
         try {
-            if (!wsClient || !wsClient.isConnected()) {
+            // a logon from the cached profile reads the cache through sendMessage (#910)
+            if (!wsClient || !(wsClient.isConnected() || wsClient._offlineBoot)) {
                 console.warn('WebSocket not connected, cannot load shortcuts');
                 return false;
             }

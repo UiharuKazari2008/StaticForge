@@ -19,6 +19,7 @@ const {
     mergeAlchemySettingsPatch
 } = require('./grimoireBrowserBridge');
 const grimoireDomainRegistry = require('./grimoireDomainRegistry');
+const profileRevision = require('./profileRevision');
 const wsPacketRegistry = require('./ws/wsPacketRegistry');
 const wsMessageDispatcher = require('./ws/wsMessageDispatcher');
 const registerAllWsHandlers = require('./ws/registerAllWsHandlers');
@@ -837,6 +838,8 @@ class WebSocketMessageHandlers {
         if (registeredEntry) {
             wsMessageDispatcher.dispatch(ws, clientInfo, async () => {
                 await registeredEntry.handler({ ws, message, clientInfo, wsServer, handlers: this });
+                // a write to the user's profile moves its revision on and tells the desktops (modules/profileRevision.js)
+                profileRevision.afterPacketOn(message.type, wsServer);
             }, registeredEntry.meta, (err) => {
                 console.error('[WS] Registered packet handler error for', message.type, err);
                 this.sendError(ws, 'Packet handler failed', err.message, message.requestId);

@@ -142,3 +142,116 @@
         forget: () => { try { root.localStorage.removeItem(KEY); } catch (_) { /* private mode */ } }
     };
 })(typeof window !== 'undefined' ? window : globalThis);
+
+/**
+ * Cached profile (#910, Yukimi Nov 20 2026): like a domain-joined PC's locally cached copy of a roaming profile.
+ * The replies the desktop is built from (user settings, Desktop Settings, workspaces, desktop shortcuts, the Start
+ * menu layout, the Sidebar) are kept on this computer as they arrive from the server; a logon with the server out of
+ * reach builds the desktop from them (websocket.js sendMessage answers those reads from here when _offlineBoot).
+ *
+ * Where: CaféReady's store on DreamOS (window.AndroidSecureStore from the shell extension, files on the machine,
+ * namespaces "melaton-profile.*", 1 MB each), else IndexedDB "melatonProfile". Never sent anywhere.
+ *
+ * The cache carries the server's profile revision it was taken at (profile_revision, modules/profileRevision.js):
+ * after a logon from the cache, the reconnect compares it with the server's - different = the account is out of
+ * sync with the domain controller: nothing from that session is written, the next logon takes the server's profile.
+ *
+ *   cachedProfile.has(type)                  a read the cache keeps
+ *   cachedProfile.put(type, data, reply)     after a server reply (written behind, only when it changed)
+ *   cachedProfile.get(type, data) -> reply | null
+ *   cachedProfile.meta() -> { revision, at } | null      cachedProfile.setRevision(revision)
+ */
+(function (root) {
+    'use strict';
+
+    const TYPES = {
+        get_user_global_settings: 'settings',
+        desktop_get_settings: 'desktop',
+        workspace_list: 'workspaces',
+        start_menu_get_layout: 'startmenu',
+        desktop_get_shortcuts: 'shortcuts',
+        sidebar_get: 'sidebar'
+    };
+    const PER_WORKSPACE = new Set(['desktop_get_shortcuts', 'sidebar_get']);
+    const NS = 'melaton-profile.';
+    const MAX = 1000000;
+
+    function keyOf(type, data) {
+        const base = TYPES[type];
+        if (!base) return null;
+        if (!PER_WORKSPACE.has(type)) return base;
+        const ws = String((data && data.workspaceId) || 'default').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40);
+        return base + '.' + (ws || 'default');
+    }
+
+    // CaféReady's store on DreamOS (synchronous calls to the loopback host: small and only on change)
+    const host = () => (root.DreamOSSettings && root.AndroidSecureStore && typeof root.AndroidSecureStore.put === 'function') ? root.AndroidSecureStore : null;
+
+    let dbp = null;
+    const db = () => dbp || (dbp = new Promise((resolve, reject) => {
+        const r = root.indexedDB.open('melatonProfile', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('kv');
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => { dbp = null; reject(r.error); };
+    }));
+    const idb = async (mode, fn) => {
+        const d = await db();
+        return new Promise((resolve) => {
+            const t = d.transaction('kv', mode);
+            const q = fn(t.objectStore('kv'));
+            t.oncomplete = () => resolve(q && 'result' in q ? q.result : true);
+            t.onerror = t.onabort = () => resolve(null);
+        });
+    };
+
+    async function getText(k) {
+        const h = host();
+        if (h) { const t = h.get(NS + k); return !t || t.indexOf('!error:') === 0 ? null : t; }
+        try { const t = await idb('readonly', (st) => st.get(k)); return typeof t === 'string' ? t : null; } catch (_) { return null; }
+    }
+    async function putText(k, t) {
+        const h = host();
+        if (h) return h.put(NS + k, t);
+        try { return !!(await idb('readwrite', (st) => st.put(t, k))); } catch (_) { return false; }
+    }
+
+    // FNV-1a of what was written this page load: an unchanged reply is not written again
+    const hashOf = (t) => { let h = 0x811c9dc5; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(16) + ':' + t.length; };
+    const written = new Map();
+    const later = (fn) => (typeof root.requestIdleCallback === 'function' ? root.requestIdleCallback(fn, { timeout: 5000 }) : setTimeout(fn, 200));
+
+    function put(type, data, reply) {
+        const k = keyOf(type, data);
+        if (!k || reply == null || typeof reply !== 'object') return;
+        // written behind: the boot's own requests are not held up by the copy
+        later(() => {
+            let text;
+            try { text = JSON.stringify(reply); } catch (_) { return; }
+            if (text.length > MAX) return;
+            const h = hashOf(text);
+            if (written.get(k) === h) return;
+            written.set(k, h);
+            Promise.resolve(putText(k, text)).catch(() => {});
+        });
+    }
+
+    async function get(type, data) {
+        const k = keyOf(type, data);
+        if (!k) return null;
+        const t = await getText(k);
+        if (!t) return null;
+        try { return JSON.parse(t); } catch (_) { return null; }
+    }
+
+    async function meta() {
+        const t = await getText('meta');
+        try { return t ? JSON.parse(t) : null; } catch (_) { return null; }
+    }
+
+    function setRevision(revision) {
+        if (!revision) return Promise.resolve(false);
+        return Promise.resolve(putText('meta', JSON.stringify({ revision: String(revision), at: new Date().toISOString() })));
+    }
+
+    root.cachedProfile = { TYPES, keyOf, has: (type) => !!TYPES[type], put, get, meta, setRevision, _host: host };
+})(typeof window !== 'undefined' ? window : globalThis);
