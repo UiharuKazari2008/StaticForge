@@ -352,7 +352,7 @@ body.desktop-mode:not(.windows-classic-theme) .win7.sz-client .sz-progress[role=
     gap: 6px;
 }
 .sz-client .sz-bf-buttons .tbp-button {
-    position: static;
+    position: relative;
     width: 75px;
     height: 23px;
 }

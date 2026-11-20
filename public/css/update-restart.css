@@ -120,7 +120,11 @@
 }
 
 :is(#melatonUpdateRestartDialog, #melatonContinuityRestartDialog) .wur-footer > button {
-    position: static !important;
+    /* in the flow (the kit's .tbp-ctl is absolute), but still the containing block of the Vista face's hot and
+       default-pulse layers (::before / ::after, inset -1px): position: static let the pulse fill the whole
+       dialog (Yukimi, Nov 20) */
+    position: relative !important;
+    inset: auto !important;
     min-width: 90px;
     height: 23px;
     margin: 0;
