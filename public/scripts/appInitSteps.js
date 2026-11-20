@@ -183,12 +183,21 @@ if (window.wsClient) {
         if (window.uiShell === 'mobile') return;
         if (typeof fetchStartMenuCustomLayout === 'function') {
             await fetchStartMenuCustomLayout();
+            // an offline boot (#899) read nothing and shows the default layout: fail, so the step runs again when the
+            // server is back (fetchStartMenuCustomLayout swallows its own error and marks itself loaded) (#910)
+            if (window.wsClient && window.wsClient._offlineBoot && !window.wsClient.isConnected()) {
+                fetchStartMenuCustomLayout.loaded = false;
+                throw new Error('the Start menu layout waits for the server');
+            }
         }
     }, true);
 
     // Priority 0.5: Load desktop settings early (desktop mode only) - before other initialization
     if (window.isDesktop) {
         window.wsClient.registerInitStep(0.5, 'Loading Desktop Settings', async () => {
+            // an offline boot (#899): fail, so the step runs again on reconnect instead of the desktop keeping the
+            // defaults it started with (#910, Nov 20 2026)
+            if (window.wsClient && window.wsClient._offlineBoot && !window.wsClient.isConnected()) throw new Error('desktop settings wait for the server');
             try {
                 if (window.wsClient && window.wsClient.isConnected()) {
                     const settings = await window.wsClient.getDesktopSettings();

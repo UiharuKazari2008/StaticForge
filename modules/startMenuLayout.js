@@ -146,6 +146,12 @@ function saveLayout(owner, layout) {
     return normalized;
 }
 
+/** When the saved layout last changed (ISO), or null when none is saved: the revision a save must name (#910). */
+function getUpdatedAt(owner) {
+    const row = getDb().prepare('SELECT updated_at FROM start_menu_layout WHERE owner = ?').get(owner);
+    return row ? row.updated_at : null;
+}
+
 /** Reset to default just means "no saved customization" — deleting the row. */
 function resetLayout(owner) {
     getDb().prepare('DELETE FROM start_menu_layout WHERE owner = ?').run(owner);
@@ -156,6 +162,7 @@ module.exports = {
     StartMenuLayoutError,
     normalizeLayout,
     getLayout,
+    getUpdatedAt,
     saveLayout,
     resetLayout
 };

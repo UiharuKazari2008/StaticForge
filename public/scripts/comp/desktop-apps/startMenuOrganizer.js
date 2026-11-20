@@ -134,10 +134,11 @@ function smoRenameFolder(folderId, name) {
 }
 
 async function smoSaveLayout() {
-    if (!window.wsClient) return;
+    if (!window.wsClient || smoBaseUpdatedAt === undefined) return;
     try {
-        const result = await window.wsClient.sendMessage('start_menu_save_layout', { layout: smoWorkingLayout }, false);
+        const result = await window.wsClient.sendMessage('start_menu_save_layout', { layout: smoWorkingLayout, baseUpdatedAt: smoBaseUpdatedAt }, false);
         if (result && Array.isArray(result.layout)) smoWorkingLayout = result.layout;
+        if (result && 'updatedAt' in result) smoBaseUpdatedAt = result.updatedAt || null;
         // setStartMenuCustomLayoutCache: public/scripts/comp/modalUtils.js — keeps the live Start menu in sync
         if (typeof setStartMenuCustomLayoutCache === 'function') setStartMenuCustomLayoutCache(smoWorkingLayout);
     } catch (e) {
@@ -164,6 +165,7 @@ async function smoResetToDefault() {
         return;
     }
     if (typeof setStartMenuCustomLayoutCache === 'function') setStartMenuCustomLayoutCache(null);
+    smoBaseUpdatedAt = null;
     smoWorkingLayout = smoBuildWorkingLayout();
     smoRenderList();
     showGlassToast('success', null, 'Start menu reset to default', false, 3000, '<i class="fas fa-rotate-left"></i>');
@@ -534,13 +536,29 @@ function ensureStartMenuOrganizerModal() {
     return modal;
 }
 
+/**
+ * The saved layout's revision this window edits from (start_menu_get_layout's updatedAt; null = none saved).
+ * undefined = not read: the organizer never edits a layout it did not read from the server, or a computer that
+ * started offline (defaults on screen) would save the defaults over the real layout (#910, Nov 20 2026).
+ */
+let smoBaseUpdatedAt;
+
 function openStartMenuOrganizer() {
-    // Melaton Mobile skips the boot read of the saved layout (appInitSteps.js, #890): read it before editing
-    // fetchStartMenuCustomLayout: public/scripts/comp/modalUtils.js
-    if (typeof fetchStartMenuCustomLayout === 'function' && !fetchStartMenuCustomLayout.loaded && window.wsClient) {
-        fetchStartMenuCustomLayout().then(openStartMenuOrganizer, openStartMenuOrganizer);
-        return;
-    }
+    if (!window.wsClient) return;
+    // start_menu_get_layout: modules/ws/handlers/260-startMenuLayoutHandler.js
+    window.wsClient.sendMessage('start_menu_get_layout', {}, false).then((result) => {
+        if (!result || !('updatedAt' in result)) throw new Error('no layout answer');
+        smoBaseUpdatedAt = result.updatedAt || null;
+        // setStartMenuCustomLayoutCache: public/scripts/comp/modalUtils.js - the Start menu shows what was read
+        if (typeof setStartMenuCustomLayoutCache === 'function') setStartMenuCustomLayoutCache(Array.isArray(result.layout) ? result.layout : null);
+        showStartMenuOrganizer();
+    }).catch((e) => {
+        console.error('start_menu_get_layout', e);
+        showGlassToast('error', null, 'The Start menu layout cannot be read while Dreamscape is not connected. Try again later.', false, 5000, '<i class="fas fa-triangle-exclamation"></i>');
+    });
+}
+
+function showStartMenuOrganizer() {
     const modal = ensureStartMenuOrganizerModal();
     smoWorkingLayout = smoBuildWorkingLayout();
     smoRenderList();

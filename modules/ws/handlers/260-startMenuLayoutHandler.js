@@ -6,10 +6,11 @@ const START_MENU_LAYOUT_DESTRUCTIVE = { destructive: true };
 async function handleGetLayout(handlersCtx, ws, message) {
     try {
         const layout = startMenuLayout.getLayout(startMenuLayout.HUMAN_OWNER);
+        const updatedAt = startMenuLayout.getUpdatedAt(startMenuLayout.HUMAN_OWNER);
         handlersCtx.sendToClient(ws, {
             type: 'start_menu_get_layout_response',
             requestId: message.requestId,
-            data: { layout },
+            data: { layout, updatedAt },
             timestamp: new Date().toISOString()
         });
     } catch (error) {
@@ -23,11 +24,22 @@ async function handleSaveLayout(handlersCtx, ws, message) {
             handlersCtx.sendError(ws, 'Layout array is required', 'start_menu_save_layout', message.requestId);
             return;
         }
+        // A whole-layout write names the revision it was edited from (startMenuOrganizer.js reads it first): a client
+        // that never read the saved layout (an offline boot showed the default one) or read an older one cannot
+        // replace it. Clients from before the guard send no baseUpdatedAt and are let through (#910, Nov 20 2026).
+        if (Object.prototype.hasOwnProperty.call(message, 'baseUpdatedAt')) {
+            const current = startMenuLayout.getUpdatedAt(startMenuLayout.HUMAN_OWNER);
+            if ((message.baseUpdatedAt || null) !== current) {
+                handlersCtx.sendError(ws, 'The Start menu layout changed since it was read, or was never read', 'STALE_LAYOUT', message.requestId);
+                return;
+            }
+        }
         const layout = startMenuLayout.saveLayout(startMenuLayout.HUMAN_OWNER, message.layout);
+        const updatedAt = startMenuLayout.getUpdatedAt(startMenuLayout.HUMAN_OWNER);
         handlersCtx.sendToClient(ws, {
             type: 'start_menu_save_layout_response',
             requestId: message.requestId,
-            data: { success: true, layout },
+            data: { success: true, layout, updatedAt },
             timestamp: new Date().toISOString()
         });
     } catch (error) {
@@ -71,5 +83,7 @@ function registerPackets(handlersCtx) {
 }
 
 module.exports = {
-    registerPackets
+    registerPackets,
+    handleGetLayout,
+    handleSaveLayout
 };

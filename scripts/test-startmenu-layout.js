@@ -14,7 +14,7 @@ const { initializeStartMenuLayoutDatabase } = require('../modules/startMenuLayou
 assert.strictEqual(initializeStartMenuLayoutDatabase(tmpDir), true);
 const startMenuLayout = require('../modules/startMenuLayout');
 
-function main() {
+async function main() {
     // No customization yet.
     assert.strictEqual(startMenuLayout.getLayout(startMenuLayout.HUMAN_OWNER), null);
 
@@ -106,7 +106,33 @@ function main() {
     startMenuLayout.saveLayout('yukimi', [{ type: 'item', launchId: 'chat' }]);
     assert.strictEqual(startMenuLayout.getLayout('someone-else'), null);
 
+    // The save guard (#910): a whole-layout save names the revision it was edited from; a client that never read
+    // the layout (an offline boot with the defaults on screen) or read an older one cannot replace it.
+    const handler = require('../modules/ws/handlers/260-startMenuLayoutHandler');
+    const sent = [];
+    const ctx = { sendToClient: (ws, m) => sent.push(m), sendError: (ws, msg, code) => sent.push({ error: msg, code }) };
+    const owner = startMenuLayout.HUMAN_OWNER;
+    startMenuLayout.resetLayout(owner);
+    const real = [{ type: 'folder', id: 'f1', name: 'Mine', children: [{ type: 'item', launchId: 'studio' }] }];
+    await handler.handleSaveLayout(ctx, null, { layout: real, baseUpdatedAt: null });
+    assert.strictEqual(sent.pop().data.success, true, 'nothing saved yet: base null saves');
+    await handler.handleGetLayout(ctx, null, {});
+    const read = sent.pop().data;
+    assert.ok(read.updatedAt, 'the read carries the revision');
+    await handler.handleSaveLayout(ctx, null, { layout: [{ type: 'item', launchId: 'chat' }], baseUpdatedAt: null });
+    assert.strictEqual(sent.pop().code, 'STALE_LAYOUT', 'a client that never read the saved layout cannot replace it');
+    await handler.handleSaveLayout(ctx, null, { layout: [{ type: 'item', launchId: 'chat' }], baseUpdatedAt: '2000-01-01T00:00:00.000Z' });
+    assert.strictEqual(sent.pop().code, 'STALE_LAYOUT', 'an older revision cannot replace it');
+    assert.strictEqual(startMenuLayout.getLayout(owner)[0].name, 'Mine', 'the saved layout is untouched');
+    await new Promise((r) => setTimeout(r, 5));
+    await handler.handleSaveLayout(ctx, null, { layout: real, baseUpdatedAt: read.updatedAt });
+    const ok = sent.pop().data;
+    assert.strictEqual(ok.success, true, 'the current revision saves');
+    assert.ok(ok.updatedAt, 'and returns the next one');
+    await handler.handleSaveLayout(ctx, null, { layout: real });
+    assert.strictEqual(sent.pop().data.success, true, 'clients from before the guard (no baseUpdatedAt) still save');
+
     console.log('start menu layout tests passed');
 }
 
-main();
+main().catch((e) => { console.error(e); process.exit(1); });
