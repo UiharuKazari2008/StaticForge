@@ -166,10 +166,9 @@
         });
     }
 
-    // ---- VZAccess Manager (#947, #953): with a Verizon SIM in the phone the desktop has Verizon's connection manager
-    // in the notification area (7.x ran at startup into the tray; its Preferences > Application "Run VZAccess Manager
-    // at Startup", kept in the registry), and the Start menu lists it from then on (a local mark,
-    // 'melatonVzaccessSeen'). A SIM that is not Verizon's ends a copy that is only in the tray.
+    // ---- VZAccess Manager (#947): on a Verizon data connection the desktop has Verizon's connection manager in the
+    // notification area (7.x ran at startup into the tray), and the Start menu lists it from the first such
+    // connection on (a local mark, 'melatonVzaccessSeen'). Leaving Verizon ends a copy that is only in the tray.
     let vzOn = null;
     let vzTimer = 0;
     function onVerizon(on) {
@@ -182,12 +181,12 @@
             return;
         }
         try { if (root.localStorage.getItem('melatonVzaccessSeen') !== '1') root.localStorage.setItem('melatonVzaccessSeen', '1'); } catch (_) { /* private mode */ }
-        // after the desktop is up (the package comes from the server or the cache, the registry from the profile), once
+        let prefs = null;
+        try { prefs = JSON.parse(root.localStorage.getItem('vzaccess.prefs') || 'null'); } catch (_) { prefs = null; }
+        if (prefs && prefs.runAtStartup === false) return;
+        // after the desktop is up (the package comes from the server or the cache), once
         const go = () => {
             if (!vzOn) return;
-            const reg = root.melatonRegistry;
-            const atStartup = reg && typeof reg.get === 'function' ? reg.get('HKCU\\Software\\Verizon Wireless\\VZAccess Manager\\Preferences', 'RunAtStartup', 1) : 1;
-            if (Number(atStartup) === 0) return;
             const apps = root.melatonApps;
             if (!apps || typeof apps.launch !== 'function') return;
             const running = typeof apps.running === 'function' && apps.running().some((a) => a.packageId === 'vzaccess');
@@ -245,9 +244,7 @@
             netKey = key;
             net = next;
             h.emit(net);
-            // a Verizon SIM in the phone (its data on or not: on Wi-Fi the SIM is still Verizon's, as 7.x ran at startup
-            // whatever the connection), not only a live Verizon data link
-            onVerizon(!!(next.mobile && /verizon/i.test(String(next.mobile.carrier || ''))));
+            onVerizon(!!(next.mobile && next.mobile.connected && /^verizon/i.test(String(next.mobile.carrier || ''))));
         };
         listen('androidwifi', (d) => { if (d && typeof d === 'object') { wifi = d; update(); } });
         listen('androidwifiscan', (d) => scanHub.emit(d && Array.isArray(d.networks) ? d : { networks: [] }));

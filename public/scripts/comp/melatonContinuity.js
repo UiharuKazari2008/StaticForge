@@ -220,7 +220,12 @@
     const inApp = () => !!root.wsClient && !root.isLaunchPage;
 
     // ---- the phone window: readiness and the carrier
+    // the phone restarting both windows for updates (Yukimi, Nov 20 2026): from the moment its install window shows
+    // until this page goes, it is not "ready" - the DeX window shut down meanwhile waits at its BIOS and starts only
+    // when the phone is back up on the new set (it used to see the old page still up and boot on, then again)
+    let restartingForUpdates = false;
     function phoneReadyState() {
+        if (restartingForUpdates) return false;
         const c = root.wsClient;
         const booted = document.documentElement.dataset.wmBoot === 'done';
         return !!(booted && c && typeof c.isConnected === 'function' && c.isConnected() && c.ws && c.ws.readyState === 1);
@@ -736,11 +741,23 @@
      */
     api.dexShutdownFirst = async (kind, opts) => {
         if (!isPhone() || !api.peers().includes('desktop')) return null;
-        showShuttingDown();
+        // quiet: the phone's own install window is on screen already (a restart of both for updates), no second box
+        const quiet = !!(opts && opts.quiet);
+        if (!quiet) showShuttingDown();
         const ans = await api.ask('dex-shutdown', { kind: kind === 'shutdown' ? 'shutdown' : 'restart', alone: !!(opts && opts.alone) }, 60000);
         // the phone restarting next keeps the box up until its page goes; anything else ends it here
-        if (ans !== 'done' || (opts && opts.alone)) hideShuttingDown();
+        if (!quiet && (ans !== 'done' || (opts && opts.alone))) hideShuttingDown();
         return ans;
+    };
+    /**
+     * The phone: a restart of both windows for updates has begun (true: its install window is up) or was called off
+     * (false: the desktop kept a program open). While on, the DeX window is told the phone is not ready, so its BIOS
+     * waits ("Waiting for I/O message...") until this phone has started again.
+     */
+    api.holdDexForRestart = (on) => {
+        if (!isPhone()) return;
+        restartingForUpdates = !!on;
+        announceReady(true);
     };
     /** The phone's Continuity bubble: shut down or restart the Continuity desktop alone. */
     api.dexPower = (kind) => api.dexShutdownFirst(kind === 'shutdown' ? 'shutdown' : 'restart', { alone: true });
@@ -1412,7 +1429,9 @@
         // the restart itself (#900): if not, it stays up while the phone restarts
         if (msg && typeof msg.restartDex === 'boolean') {
             api.restartScope(msg.restartDex ? 'both' : 'mobile');
-            // dexDone: the DeX window has shut down already (syncedRestart): no second shutdown asked of it
+            // dexDone: the DeX window has shut down already (syncedRestart): no second shutdown asked of it; it waits
+            // at its BIOS until this phone is back (holdDexForRestart), not on the old page still up here
+            if (msg.dexDone && msg.restartDex) api.holdDexForRestart(true);
             if (m && typeof m.forceRestart === 'function') { m.forceRestart({ confirmed: true, dexDone: !!msg.dexDone, plan: { self: true, other: msg.restartDex } }); return; }
         }
         if (m && typeof m.forceRestart === 'function') m.forceRestart({ confirmed: true });

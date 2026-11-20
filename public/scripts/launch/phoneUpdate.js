@@ -179,12 +179,38 @@
         const v = view();
         if (!engine || !v || !root.caches) return { skipped: true };
         const e = env();
+        // #916: an install is proven by checking the cache against the list again before /app starts. That check
+        // (updateEngine checkFiles) is what stores the synced list and commits the kept /app when nothing is left,
+        // so an installed phone can start offline; before, "Software updated 100%" handed over unchecked and a first
+        // install whose rows did not hold sent /app to download all ~6,600 files a second time
+        let justInstalled = false;
         for (;;) {
             const { found, workerOk } = await findUpdates(engine, e);
             if (!found || found.skipped || !found.files || !found.files.length) {
                 if (engine.readState(e)) engine.writeState(e, null);
                 v.hide();
-                return { installed: false };
+                return { installed: justInstalled };
+            }
+            if (justInstalled) {
+                justInstalled = false;
+                let rows = -1;
+                try { rows = (await (await root.caches.open('static-cache-v2')).keys()).length; } catch (_) { /* unknown */ }
+                let est = null;
+                try { est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; } catch (_) { est = null; }
+                console.warn(`[install] ${found.files.length} file(s) still differ right after the install (cache rows ${rows}, storage ${est ? `${Math.round(est.usage / 1048576)}/${Math.round(est.quota / 1048576)} MB` : '?'})`, found.files.slice(0, 5).map((f) => f.url));
+                if (!engine.needsInstaller(e, found.files)) {
+                    // a few stragglers: the running app fetches them
+                    v.hide();
+                    return { installed: true };
+                }
+                v.set({ state: 'error', title: FAIL_TEXT.verify, time: '', button: 'RETRY' });
+                const canStart = await installedCopy();
+                const retry = await new Promise((resolve) => {
+                    const t = canStart ? setTimeout(() => { v.onButton(null); resolve(false); }, FALLBACK_START_MS) : null;
+                    v.onButton(() => { clearTimeout(t); v.onButton(null); resolve(true); });
+                });
+                if (!retry) { v.hide(); return { installed: false, failed: true }; }
+                continue;
             }
             if (!engine.needsInstaller(e, found.files)) {
                 // #924: more than a small set is not waited for behind the logo. The installed copy starts,
@@ -194,7 +220,7 @@
                 return { installed: false, silent: true };
             }
             const result = await install(engine, e, found, v);
-            if (result.ok) return { installed: true };
+            if (result.ok) { justInstalled = true; continue; }
             v.set({ state: 'error', title: FAIL_TEXT[result.why] || FAIL_TEXT.download, time: '', button: 'RETRY' });
             // an installed phone never stays on this card (it may be Android's launcher, Yukimi
             // Nov 13): with no tap on RETRY it starts the copy it has, and the update comes later

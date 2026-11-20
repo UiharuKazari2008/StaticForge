@@ -564,9 +564,17 @@ function forgetDirectorReopen() {
         }
     }
 
-    async function installWaitingUpdatesNarrow(kind) {
+    /**
+     * The phone's restart / shut down: its waiting updates install under wceload's package screen first. opts.beforeInstall
+     * (a restart of both Continuity windows, Yukimi Nov 20 2026): the screen shows at once, then the hook shuts the DeX
+     * window down (melatonContinuity.dexShutdownFirst) before anything installs; a hook that answers false (a program kept
+     * open on the desktop) closes the screen and nothing restarts - this then answers false.
+     */
+    async function installWaitingUpdatesNarrow(kind, opts = {}) {
         const updater = winlogonUpdater(kind);
-        if (!updater || kind === 'logoff' || !updater.updatesWaitingCount()) return;
+        const dexFirst = typeof opts.beforeInstall === 'function';
+        const waiting = !!(updater && kind !== 'logoff' && updater.updatesWaitingCount());
+        if (!waiting && !dexFirst) return true;
         // wmShell.progressBox: public/scripts/comp/wmShell.js (#806)
         // the box only when the install takes long enough to see (files already in the cache check in
         // an instant: a box that flashes says nothing)
@@ -577,19 +585,32 @@ function forgetDirectorReopen() {
         // (wmShell.packageInstall); the progress box stays for a shell without it
         const pkg = window.wmShell && typeof window.wmShell.packageInstall === 'function' ? window.wmShell.packageInstall : null;
         let installed = false;
-        const boxTimer = setTimeout(() => {
+        const openBox = () => {
+            if (box) return;
             if (pkg) {
                 const screen = pkg();
                 box = { update: (o) => { if (o && o.pct != null) screen.progress(o.pct); }, close: () => { if (installed) screen.restartNext(); else screen.cancel(); }, screen };
                 return;
             }
             if (window.wmShell && typeof window.wmShell.progressBox === 'function') box = window.wmShell.progressBox({ title: 'Melaton Update', text, pct: null });
-        }, 400);
+        };
+        let boxTimer = 0;
+        if (dexFirst) {
+            openBox();
+            let go = true;
+            try { go = (await opts.beforeInstall()) !== false; } catch (_) { go = true; }
+            if (!go) {
+                if (box) box.close();
+                return false;
+            }
+        } else {
+            boxTimer = setTimeout(openBox, 400);
+        }
         try {
             // waiting updates only: a phone restart does not wait on the server for more
             // the server's newer files join this restart (#951): it is a shut down, not a start, so the list may be
             // asked (bounded); before, a phone restart installed only what was waiting and the next start found more
-            const plan = await winlogonUpdatePlan(updater, updater.planShutdownInstall());
+            const plan = waiting ? await winlogonUpdatePlan(updater, updater.planShutdownInstall()) : null;
             if (plan) {
                 // Windows Mobile installs before the restart, under its own box: no Welcome screen, no
                 // servicing stages (those are the desktop's)
@@ -600,12 +621,15 @@ function forgetDirectorReopen() {
                     // the download's progress on the box's bar (#951: updates held as a count download here)
                     onPercent: (pct) => { if (box) box.update({ text, pct }); }
                 });
-                installed = true;
-                if (box && box.screen) box.screen.progress(100);
             }
+            // nothing to install and no restart of both: the screen goes back as it was (wceload's success page is for
+            // an install)
+            installed = !!plan || dexFirst;
+            if (installed && box && box.screen) box.screen.progress(100);
         } catch (_) { /* restart anyway: the files are in the cache */ }
         clearTimeout(boxTimer);
         if (box) box.close();
+        return true;
     }
 
     /**
@@ -707,7 +731,7 @@ async function runWinlogonPower(kind, options) {
     const copy = winlogonPowerCopy(kind);
     const opts = options || {};
     if (!window.isDesktop) {
-        await winlogonUpdates.installNarrow(kind);
+        if (await winlogonUpdates.installNarrow(kind, opts) === false) return false;
         await winlogonUpdates.commitShell(kind);
         await commitWinlogonPower(kind, opts.onCommit);
         return true;

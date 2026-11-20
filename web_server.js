@@ -3261,6 +3261,49 @@ function mountRuntimeAssetMiddleware(app) {
             next(err);
         }
     });
+    mountBootStaticBridge(app);
+}
+
+// public/'s own static handler and the 404 handler are mounted in the Finalizing step, after the routes the
+// boot registers, but the server listens ~30 s before that (Global Resources, Runtime Asset Compilation). A
+// file asked for in between got Express's bare 404 although it was on disk: a download that ran across a
+// restart (the Fold's update at 22:22, Nov 19) lost every picture it fetched then, and the worker took 404 as
+// "missing" (#951). Until Finalizing, a file in public/ is served here with the same headers, and anything
+// else (a route the boot has not registered yet, the gadget / sound / graphify paths it mounts itself) is
+// 503 + Retry-After instead of a 404 - never "not found" for something that will be there.
+let publicStaticMounted = false;
+const BOOT_STATIC_OWNED_LATER = ['/graphify-out', '/sounds/vista/', '/static_images/vista-gadgets', '/gadget-'];
+function mountBootStaticBridge(app) {
+    const serveEarly = express.static('public', {
+        etag: true,
+        lastModified: true,
+        fallthrough: true,
+        setHeaders: (res) => { agentAssetBundle.applyServedAssetCacheHeaders(res.req, res); }
+    });
+    const notYet = (req, res) => {
+        res.setHeader('Retry-After', '5');
+        res.setHeader('Cache-Control', 'no-store');
+        const status = serverStartupStatus.getPublicStatus();
+        res.status(503).json({
+            success: false,
+            error: 'Server is starting',
+            code: 'SERVER_STARTING',
+            stage: status.stage,
+            retryAfter: 5,
+            path: req.originalUrl
+        });
+    };
+    app.use((req, res, next) => {
+        if (publicStaticMounted || (req.method !== 'GET' && req.method !== 'HEAD')) return next();
+        const p = req.path || '';
+        // a compiled script / stylesheet the compiler did not answer for is never sent raw from here
+        if (BOOT_STATIC_OWNED_LATER.some((prefix) => p.startsWith(prefix))
+            || runtimeAssetService.isRuntimeManagedWebPath(p) || runtimeAssetService.isHtmlShaLinkWebPath(p)) return notYet(req, res);
+        serveEarly(req, res, (err) => {
+            if (err && !(err.code === 'ENOENT' || err.code === 'ENOTDIR' || err.status === 404 || err.statusCode === 404)) return next(err);
+            notYet(req, res);
+        });
+    });
 }
 
 app.get('/app', async (req, res, next) => {
@@ -4794,6 +4837,9 @@ async function handleAdminUnixSocketMessage(message, socket) {
                 agentAssetBundle.applyServedAssetCacheHeaders(res.req, res);
             }
         }));
+
+        // from here on a missing file is a real 404 (mountBootStaticBridge answered 503 until now)
+        publicStaticMounted = true;
 
         // 404 handler for invalid URL tracking (after routes and static files)
         app.use('*', invalidURLHandler, (req, res) => {

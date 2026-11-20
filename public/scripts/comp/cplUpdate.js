@@ -119,6 +119,9 @@
         if (manager.servicePack && manager.servicePack.label) return { state: 'upgrade', message: manager.servicePack.label };
         if (manager.pendingApplyFiles && manager.pendingApplyFiles.length) return { state: 'ready' };
         if (manager.hasPendingUpdates && manager.hasPendingUpdates()) return { state: 'restart' };
+        // files that still did not download after the background tries (#951): wucltux's red "Some updates were not
+        // installed", once, here only (never a notification); Try again downloads them now
+        if (manager.updateInstallFailure && manager.updateInstallFailure.count > 0) return { state: 'notinstalled', message: String(manager.updateInstallFailure.count) };
         // counted, not downloaded (#951, Check for updates but let me choose)
         const n = typeof manager.availableUpdateCount === 'function' ? manager.availableUpdateCount() : 0;
         if (n > 0) return { state: 'available', message: availableText(n) };
@@ -177,6 +180,11 @@
                 button: ['Restart now', 'restart']
             },
             uptodate: { band: 'green', shield: 'shield-ok', title: 'Melaton is up to date', body: '<p>There are no updates available for your computer.</p>', button: ['Check for updates', 'check'] },
+            notinstalled: {
+                band: 'red', shield: 'shield-error', title: 'Some updates were not installed',
+                body: `<p class="cpl-wu-error"><em>Failed updates:</em> ${esc(view.message || '1')}</p><p>Melaton tries them again with the next check. Check the connection to the server, then click Try again.</p>`,
+                button: ['Try again', 'install']
+            },
             failed: {
                 band: 'red', shield: 'shield-error', title: 'Melaton could not search for new updates',
                 body: `<p class="cpl-wu-error"><em>Error(s) found:</em></p><p>${esc(view.message || 'The server did not answer.')}</p>`,

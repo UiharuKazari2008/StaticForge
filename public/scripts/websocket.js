@@ -4401,11 +4401,8 @@ class WebSocketClient {
                             if (appData.serverVersion && appData.serverVersion !== this.clientVersion) {
                                 console.warn(`Version mismatch detected! Client: ${this.clientVersion}, Server: ${appData.serverVersion}`);
 
-                                if (typeof showGlassToast === 'function') {
-                                    showGlassToast('warning', 'Version Mismatch',
-                                        appData.versionMessage || 'A new version is available. Some features may not work correctly.',
-                                        false, 10000, '<i class="fas fa-exclamation-triangle"></i>');
-                                }
+                                // the update flow brings the new version (its icon / balloon); a reconnect is never a
+                                // notification of its own (#951)
                             }
                         }
                     } catch (versionError) {

@@ -1258,6 +1258,9 @@ class ServiceWorkerManager {
             return null;
         }
         const list = Array.isArray(this.availableUpdates) ? this.availableUpdates.slice() : [];
+        // Try again after "Some updates were not installed" (#951): a fresh set of tries
+        this.updateInstallFailure = null;
+        this._failedRetryRound = 0;
         if (!list.length) return this.checkStaticFileUpdates(false);
         this._installingAvailable = true;
         try {
@@ -2313,71 +2316,19 @@ class ServiceWorkerManager {
         // Mark service worker as unavailable but don't break the app
         this.swRegistration = null;
 
-        if (typeof showGlassToast === 'function') {
-            showGlassToast(
-                'warning',
-                'Service Worker Unavailable',
-                'Service worker failed to initialize. Some features are disabled.',
-                false,
-                5000,
-                '<i class="fas fa-exclamation-triangle"></i>'
-            );
-        }
+        // background, nothing the person can do about it: logged, never a notification (#951)
+        console.warn('[update] service worker unavailable', error && error.message);
     }
 
     handleServiceWorkerNotSupported() {
-        if (typeof showGlassToast === 'function') {
-            showGlassToast(
-                'warning',
-                'Service Worker Not Supported',
-                'Your browser doesn\'t support service workers. Cache updates are unavailable.',
-                false,
-                5000,
-                '<i class="fas fa-info-circle"></i>'
-            );
-        }
+        // background, nothing the person can do about it: logged, never a notification (#951)
+        console.warn('[update] service worker unavailable', 'not supported');
     }
 
     handleServiceWorkerTimeout() {
         console.log('ℹ️ Service Worker initialization completed (timeout reached)');
 
-        // Show toast with option to force update service worker
-        if (typeof showGlassToast === 'function') {
-            this.timeoutToastId = showGlassToast(
-                'warning',
-                'Service Worker Slow',
-                'Service worker took longer than expected to initialize.',
-                false,
-                10000, // Show for 10 seconds
-                '<i class="fas fa-clock"></i>'
-            );
-
-            // Add button to force update after a short delay
-            setTimeout(() => {
-                if (this.timeoutToastId && typeof updateGlassToastButtons === 'function') {
-                    const updateButton = {
-                        text: 'Force Restart',
-                        type: 'primary',
-                        onClick: () => {
-                            console.log('User requested service worker update');
-                            this.forceUpdateServiceWorker();
-                        },
-                        closeOnClick: false // Keep toast open during update
-                    };
-
-                    const dismissButton = {
-                        text: 'Dismiss',
-                        type: 'secondary',
-                        onClick: () => {
-                            console.log('User dismissed service worker timeout notification');
-                        },
-                        closeOnClick: true
-                    };
-
-                    updateGlassToastButtons(this.timeoutToastId, [updateButton, dismissButton]);
-                }
-            }, 1000); // Wait 1 second before adding buttons
-        }
+        // the page runs from the network meanwhile; nothing to ask the person (#951: no update notices that are not theirs to act on)
     }
     
     async checkStaticFileUpdates(noToast = false) {
@@ -3173,6 +3124,8 @@ class ServiceWorkerManager {
         if (updatedFiles.length > 0) {
             return updatedFiles.length;
         }
+        // an exact worker (#951): a download whose files all failed updated nothing, it is not "N files, restart"
+        if (data && data.v >= 2) return 0;
         if (data && data.total > 0) {
             return data.total;
         }
@@ -3351,6 +3304,66 @@ class ServiceWorkerManager {
         this.tripPendingUpdateFuse(filesCount);
         this.trayPopup.dismissedUntilComplete = false;
         this._scheduleUpdateCompleteToast('restart');
+    }
+
+    /**
+     * A download's files that failed after the worker's tries (#951: a restart raced by the download, a dropped link)
+     * stay owed: counted with the available updates (the update icon, Melaton Update, a restart installs them), never
+     * shown as installed, never a notification. They are tried again in the background after 1, 5 and 20 minutes and
+     * with every check; only when the last try fails too does Melaton Update say "Some updates were not installed".
+     */
+    _noteDownloadOutcome(data) {
+        if (!this._failedDownloads) this._failedDownloads = new Map();
+        const updated = this._resolveUpdatedFilesFromCacheComplete(data) || [];
+        updated.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this._failedDownloads.delete(u); });
+        const failed = (Array.isArray(data && data.failed) ? data.failed : [])
+            .filter((f) => f && f.url && f.hash && f.reason !== 'uncacheable')
+            .map((f) => ({ url: f.url, hash: f.hash }));
+        if (!failed.length) {
+            if (!this._failedDownloads.size && (this._failedRetryRound || this.updateInstallFailure)) {
+                this._failedRetryRound = 0;
+                this.updateInstallFailure = null;
+                this._notifyTrayIconUpdate();
+            }
+            return;
+        }
+        failed.forEach((f) => this._failedDownloads.set(f.url, f));
+        console.warn(`[update] ${failed.length} file(s) did not download; they stay pending and are tried again`, failed.slice(0, 5).map((f) => f.url));
+        this._noteAvailableUpdates(failed, true);
+        this._scheduleFailedDownloadRetry();
+    }
+
+    _scheduleFailedDownloadRetry() {
+        if (this._failedRetryTimer || !this._failedDownloads || !this._failedDownloads.size) return;
+        const DELAYS = [60000, 300000, 1200000];
+        const round = this._failedRetryRound || 0;
+        if (round >= DELAYS.length) {
+            if (!this.updateInstallFailure) {
+                this.updateInstallFailure = { count: this._failedDownloads.size, at: Date.now() };
+                this.recordUpdateHistory({ key: `failed|${Date.now()}`, name: `Melaton update (${this._failedDownloads.size} ${this._failedDownloads.size === 1 ? 'file' : 'files'})`, status: 'Failed', importance: 'Important' });
+                this._notifyTrayIconUpdate();
+                try { document.dispatchEvent(new CustomEvent('melaton:update-failed', { detail: { count: this._failedDownloads.size } })); } catch (_) { /* no listeners */ }
+            }
+            return;
+        }
+        // perf: one-shot, armed only while files are owed (no polling); the server's next push checks them too
+        this._failedRetryTimer = setTimeout(async () => {
+            this._failedRetryTimer = null;
+            this._failedRetryRound = round + 1;
+            const want = Array.from(this._failedDownloads.values());
+            let left = want;
+            // full: each row looked up (a few files), not the verified-rows record the failure may predate
+            try { left = await this.getFilesNeedingUpdate(want, { full: true }); } catch (_) { left = want; }
+            if (!left.length) {
+                // another download brought them meanwhile
+                this._clearAvailableUpdates(want);
+                this._noteDownloadOutcome({ updatedFiles: want, failed: [], v: 2 });
+                return;
+            }
+            const worker = this.swRegistration && this.swRegistration.active;
+            if (!worker) { this._scheduleFailedDownloadRetry(); return; }
+            worker.postMessage({ type: 'CACHE_STATIC_FILES', files: left, silent: true, requester: this._pageTag });
+        }, DELAYS[round]);
     }
 
     /**
@@ -4036,6 +4049,9 @@ class ServiceWorkerManager {
                 if (Array.isArray(event.data.mismatched) && event.data.mismatched.length) {
                     console.warn(`[update] ${event.data.mismatched.length} file(s) arrived with other bytes than the manifest's; not counted as updates`, event.data.mismatched.slice(0, 5));
                 }
+                // files that did not come down after the worker's own tries stay pending here (#951); the page that
+                // asked (or, from an older worker that names no pages, one that was loaded) keeps them
+                if (mine || attached || (!requesters && !leftover)) this._noteDownloadOutcome(event.data);
                 if (leftover && !attached) {
                     console.log('Download completed: it began before this page loaded; not an update for it', event.data.total);
                 } else if (filesCount > 0) {
@@ -4449,26 +4465,9 @@ class ServiceWorkerManager {
             this.updateProgress = progress;
             this.updateProgressToast(progress);
             
-            if (typeof showGlassToast === 'function') {
-                const message = timeSinceProgress > 0
-                    ? `Download stalled (no progress for ${Math.round(timeSinceProgress/1000)}s). Current: ${swState.completed}/${swState.total}. Click to retry.`
-                    : `Download appears stalled. Current: ${swState.completed}/${swState.total}. Click to retry.`;
-
-                if (this.stallToastId && typeof updateGlassToastMessage === 'function') {
-                    updateGlassToastMessage(this.stallToastId, message);
-                } else {
-                    this.stallToastId = showGlassToast(
-                        'warning',
-                        'Download Stalled',
-                        message,
-                        false,
-                        false,
-                        '<i class="fas fa-exclamation-triangle"></i>'
-                    );
-                    this._wireStallToastRetryButton();
-                }
-            }
-            
+            // never a notification (#951): a slow file is the worker's to try again (sw.js retryOrFailStaticFile), and
+            // what still fails stays pending for the next check; Melaton Update shows the download's own progress
+            this._clearStallToast();
             // Optionally offer to cancel and retry
             console.warn(`Stalled download state: ${swState.completed}/${swState.total}, last progress: ${swState.lastProgressTime ? new Date(swState.lastProgressTime).toISOString() : 'unknown'}`);
         } else {
@@ -4524,9 +4523,10 @@ class ServiceWorkerManager {
             }
             const worker = this.swRegistration && this.swRegistration.active;
             if (!worker || (this._downloadRecoveries || 0) >= 2) {
-                console.warn(`Lost download: ${missing.length} of ${files.length} file(s) not cached, giving up`);
+                // kept pending and tried again later (#951), not a pop-up nobody asked for
+                console.warn(`Lost download: ${missing.length} of ${files.length} file(s) not cached; they stay pending`);
                 this._activeDownloadFiles = null;
-                this._showServiceWorkerTrayPopup('checking', { kind: 'sw-update', message: 'Failed to download updates. Please try again.', progress: 0 });
+                this._noteDownloadOutcome({ updatedFiles: [], failed: missing.map((f) => ({ url: f.url, hash: f.hash, reason: 'lost' })), v: 2 });
                 return;
             }
             this._downloadRecoveries = (this._downloadRecoveries || 0) + 1;
@@ -5641,15 +5641,26 @@ class ServiceWorkerManager {
             this.resetPendingUpdateFuse();
             if (mcw.syncedRestart()) { console.log('🔄 Restart for updates: this DeX window shuts down, then the phone, then both start'); return; }
         }
-        // the phone restarting both: the DeX window's shutdown sequence runs first (it then waits at its BIOS for the
-        // phone), the phone showing "Shutting down..." meanwhile; with no plan, the file rule says whether both restart
+        // the phone restarting both (Yukimi, Nov 20 2026): (1) the phone's install window (wceload's "Installing Melaton
+        // Mobile update...") shows first, (2) only then the DeX window runs its shutdown sequence, (3) the DeX window
+        // waits at its BIOS until the phone has started again on the new set (holdDexForRestart). A program kept open
+        // on the desktop ("programs still running", Cancel): the install window closes and nothing restarts; with no
+        // plan, the file rule says whether both restart
         const phoneBoth = !this._isContinuityDexWindow() && (plan ? plan.other
             : !!(mcw && typeof mcw.updateScope === 'function' && restartUrls.length && mcw.updateScope(restartUrls) === 'both'));
+        let beforeInstall = null;
         if (phoneBoth && !opts.dexDone && mcw && typeof mcw.dexShutdownFirst === 'function' && typeof mcw.peers === 'function' && mcw.peers().includes('desktop')) {
-            const go = () => this.forceRestart(Object.assign({}, opts, { dexDone: true }));
-            // a program kept open on the desktop ("programs still running", Cancel): nothing restarts
-            mcw.dexShutdownFirst('restart').then((ans) => { if (ans !== 'cancelled') go(); }).catch(go);
-            return;
+            beforeInstall = async () => {
+                if (typeof mcw.holdDexForRestart === 'function') mcw.holdDexForRestart(true);
+                let ans = null;
+                try { ans = await mcw.dexShutdownFirst('restart', { quiet: true }); } catch (_) { ans = null; }
+                if (ans === 'cancelled') {
+                    if (typeof mcw.holdDexForRestart === 'function') mcw.holdDexForRestart(false);
+                    console.log('🔄 Restart for updates called off: a program was kept open on the Continuity PC');
+                    return false;
+                }
+                return true;
+            };
         }
         if (this._isContinuityDexWindow()) {
             // the phone needs the restart: it restarts, and this window with it only when it needs it too;
@@ -5670,16 +5681,23 @@ class ServiceWorkerManager {
             mc.restartScope(mc.updateScope(Array.from(this.pendingUpdateUrls || [])));
         }
         console.log('🔄 Force restarting application...');
-        // waiting updates install on the way down (installUpdatesAtShutdown), which files them one by one
-        if (this.pendingUpdateFuse && !this.updatesWaitingCount()) {
-            // the downloaded updates install with this restart (the update page's "Updates were installed")
-            const n = this.pendingUpdateFilesTotal || (this.pendingUpdateUrls ? this.pendingUpdateUrls.size : 0);
-            this.recordUpdateHistory({ name: n ? `Melaton update (${n} ${n === 1 ? 'file' : 'files'})` : 'Melaton update', status: 'Successful', importance: 'Important' });
-        }
-        this.resetPendingUpdateFuse();
+        const committed = () => {
+            // waiting updates install on the way down (installUpdatesAtShutdown), which files them one by one
+            if (this.pendingUpdateFuse && !this.updatesWaitingCount()) {
+                // the downloaded updates install with this restart (the update page's "Updates were installed")
+                const n = this.pendingUpdateFilesTotal || (this.pendingUpdateUrls ? this.pendingUpdateUrls.size : 0);
+                this.recordUpdateHistory({ name: n ? `Melaton update (${n} ${n === 1 ? 'file' : 'files'})` : 'Melaton update', status: 'Successful', importance: 'Important' });
+            }
+            this.resetPendingUpdateFuse();
+        };
+        // a restart of both waits for the Continuity PC's answer before anything counts as installed (a Cancel there
+        // keeps the updates waiting)
+        if (!beforeInstall) committed();
 
         // runWinlogonPower: public/scripts/comp/winlogonPower.js
-        runWinlogonPower('restart').catch((err) => {
+        runWinlogonPower('restart', beforeInstall ? {
+            beforeInstall: async () => { const go = await beforeInstall(); if (go) committed(); return go; }
+        } : undefined).catch((err) => {
             console.error('❌ Restart sequence failed:', err);
             // dreamscapeLastResortNotice: public/scripts/comp/fatalErrorBootstrap.js
             if (typeof dreamscapeLastResortNotice === 'function') {

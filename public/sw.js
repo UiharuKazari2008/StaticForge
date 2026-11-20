@@ -398,8 +398,53 @@ function scheduleImageCachePolicyEnforcement(delayMs = IMAGE_POLICY_ENFORCE_DEBO
   }, delayMs);
 }
 
-// One file must not hold the installer. A 404 is absent and is not fetched again.
+// One file must not hold the installer: each fetch has its own timeout.
 const STATIC_FILE_FETCH_TIMEOUT_MS = 20000;
+// A file that does not come down (a timeout, a dropped link, 5xx, the server's 503 while it starts, a 404 from a
+// server that was not serving yet) is tried again inside the same download after the others, with these waits
+// (a Retry-After from the server counts when longer, at most 30 s). A download across a server restart lost every
+// picture it fetched while the server started: 26 notifications on the Fold, Nov 19, and the art was missing (#951).
+// Only after the last try is it failed: reported in STATIC_CACHE_COMPLETE.failed, never as an updated file, never
+// a message per file; the page keeps it pending and its update flow fetches it again.
+const STATIC_FILE_RETRY_DELAYS_MS = [2000, 5000, 10000, 20000, 30000];
+// a 404 is real once the server is up (it answers 503 while it starts), so it gets fewer tries
+const STATIC_FILE_404_RETRIES = 3;
+
+function retryAfterMs(response) {
+    const raw = response && response.headers ? response.headers.get('Retry-After') : null;
+    const secs = Number(raw);
+    return Number.isFinite(secs) && secs > 0 ? Math.min(30000, secs * 1000) : 0;
+}
+
+/** Puts a file that did not come down back for a later try, or, after its last try, marks it failed (#951). */
+function retryOrFailStaticFile(file, reason, waitHintMs = 0) {
+    const attempts = (Number(file._attempts) || 0) + 1;
+    const max = reason === '404' ? STATIC_FILE_404_RETRIES : STATIC_FILE_RETRY_DELAYS_MS.length;
+    if (attempts <= max) {
+        const base = STATIC_FILE_RETRY_DELAYS_MS[Math.min(attempts, STATIC_FILE_RETRY_DELAYS_MS.length) - 1];
+        const wait = Math.min(30000, Math.max(base, waitHintMs || 0));
+        downloadState.retry.push(Object.assign({}, file, { _attempts: attempts, _nextAt: Date.now() + wait }));
+        console.warn(`[update] ${file.url}: ${reason}, trying again in ${Math.round(wait / 1000)} s (${attempts} of ${max})`);
+        return;
+    }
+    console.warn(`[update] ${file.url}: ${reason} after ${max} tries; it stays pending`);
+    downloadState.failedFiles.push({ url: file.url, hash: file.hash, reason });
+    noteInstallFileDone(file.url, reason === '404' ? '404' : 'failed');
+}
+
+/** The queue is empty and files wait for another try: wait for the first one due (the stall check sees progress). */
+async function nextStaticRetry(signal) {
+    const retry = downloadState.retry;
+    retry.sort((a, b) => a._nextAt - b._nextAt);
+    while (!(signal && signal.aborted) && Date.now() < retry[0]._nextAt) {
+        downloadState.lastProgressTime = Date.now();
+        await new Promise((resolve) => setTimeout(resolve, Math.min(1000, Math.max(0, retry[0]._nextAt - Date.now()))));
+    }
+    const now = Date.now();
+    for (let i = retry.length - 1; i >= 0; i--) {
+        if (retry[i]._nextAt <= now) downloadState.queue.unshift(retry.splice(i, 1)[0]);
+    }
+}
 
 function freshDownloadState() {
     return {
@@ -419,7 +464,10 @@ function freshDownloadState() {
         queue: [],
         doneHash: new Map(),
         mismatched: [],
-        requesters: new Set()
+        requesters: new Set(),
+        // #951: files waiting for another try, and those that failed after their last try
+        retry: [],
+        failedFiles: []
     };
 }
 
@@ -2651,7 +2699,8 @@ function mergeIntoRunningDownload(files, requester) {
     let added = 0;
     for (const file of files) {
         if (!file || !file.url) continue;
-        const queued = downloadState.queue.find((f) => f.url === file.url);
+        const queued = downloadState.queue.find((f) => f.url === file.url)
+            || (downloadState.retry || []).find((f) => f.url === file.url);
         if (queued) { queued.hash = file.hash; continue; }
         if (downloadState.doneHash.get(file.url) === file.hash) continue;
         downloadState.queue.push(Object.assign({}, file));
@@ -2717,6 +2766,8 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
         downloadState.silent = silent === true;
         downloadState.updatedFiles = [];
         downloadState.absentFiles = [];
+        downloadState.retry = [];
+        downloadState.failedFiles = [];
         
         // Start stall detection
         startStallDetection();
@@ -2735,7 +2786,15 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
         const signal = downloadAbort.signal;
         
         // Cache files one by one to track progress; the queue grows when a later request merges in (#951)
-        while (downloadState.queue.length) {
+        while (downloadState.queue.length || downloadState.retry.length) {
+            if (!downloadState.queue.length) {
+                await nextStaticRetry(signal);
+                if (signal.aborted) {
+                    console.log('Download cancelled by user');
+                    return;
+                }
+                continue;
+            }
             const file = downloadState.queue.shift();
             // Check if download was cancelled
             if (signal.aborted) {
@@ -2789,13 +2848,8 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
                         console.log('Download aborted');
                         return;
                     }
-                    if (error && error.name === 'AbortError') {
-                        console.warn(`Timed out fetching ${file.url} after ${STATIC_FILE_FETCH_TIMEOUT_MS}ms`);
-                        noteInstallFileDone(file.url, null);
-                    } else {
-                        console.error(`Failed to cache ${file.url}:`, error);
-                        noteInstallFileDone(file.url, null);
-                    }
+                    retryOrFailStaticFile(file, error && error.name === 'AbortError'
+                        ? `timed out after ${STATIC_FILE_FETCH_TIMEOUT_MS} ms` : `network error (${(error && error.message) || error})`);
                     continue;
                 } finally {
                     clearTimeout(timeoutId);
@@ -2806,17 +2860,7 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
                 downloadState.lastProgressTime = Date.now();
                 
                 if (response.status === 404) {
-                    console.warn(`Missing ${file.url}: HTTP 404 (not retried)`);
-                    self.clients.matchAll().then(clients => {
-                        clients.forEach(client => {
-                            client.postMessage({
-                                type: 'STATIC_CACHE_ERROR',
-                                file: file.url,
-                                error: 'HTTP 404: Not Found'
-                            });
-                        });
-                    });
-                    noteInstallFileDone(file.url, '404');
+                    retryOrFailStaticFile(file, '404');
                     continue;
                 }
 
@@ -2857,34 +2901,18 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
                         downloadState.lastProgressTime = Date.now();
                         postStaticCacheProgress(downloadState.completed, downloadState.total, file.url);
                     } catch (cacheError) {
-                        console.error(`Failed to cache ${file.url}:`, cacheError);
-                        // Notify client of cache error
-                        self.clients.matchAll().then(clients => {
-                            clients.forEach(client => {
-                                client.postMessage({
-                                    type: 'STATIC_CACHE_ERROR',
-                                    file: file.url,
-                                    error: cacheError.message
-                                });
-                            });
-                        });
-                        downloadState.completed++;
-                        downloadState.lastProgressTime = Date.now();
+                        // the body broke off or the cache write failed (storage): tried again like a fetch (#951)
+                        if (signal && signal.aborted) return;
+                        retryOrFailStaticFile(file, `not stored (${cacheError && cacheError.message})`);
                     }
+                } else if (response.ok) {
+                    // the server marked it uncacheable: not an update, and another try would not change it
+                    console.warn(`[update] ${file.url}: the server's copy is not cacheable`);
+                    downloadState.failedFiles.push({ url: file.url, hash: file.hash, reason: 'uncacheable' });
+                    noteInstallFileDone(file.url, 'failed');
                 } else {
-                    console.warn(`Failed to fetch ${file.url}: ${response.status} ${response.statusText}`);
-                    // Notify client of fetch error
-                    self.clients.matchAll().then(clients => {
-                        clients.forEach(client => {
-                            client.postMessage({
-                                type: 'STATIC_CACHE_ERROR',
-                                file: file.url,
-                                error: `HTTP ${response.status}: ${response.statusText}`
-                            });
-                        });
-                    });
-                    downloadState.completed++;
-                    downloadState.lastProgressTime = Date.now();
+                    // 5xx, the server's 503 while it starts, 408 / 429, the front proxy's error page: another try (#951)
+                    retryOrFailStaticFile(file, `HTTP ${response.status}`, retryAfterMs(response));
                 }
             } catch (error) {
                 // Check if error is due to abort
@@ -2892,9 +2920,7 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
                     console.log('Download aborted');
                     return;
                 }
-                console.error(`Failed to cache ${file.url}:`, error);
-                downloadState.completed++;
-                downloadState.lastProgressTime = Date.now();
+                retryOrFailStaticFile(file, `failed (${error && error.message})`);
             }
         }
         
@@ -2916,6 +2942,8 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
         const absent = (downloadState.absentFiles || [])
             .filter((entry) => entry.reason === '404')
             .map((entry) => entry.url);
+        // what did not come down after its last try (#951): pending, never updated
+        const failed = (downloadState.failedFiles || []).slice();
 
         // Notify client of completion
         self.clients.matchAll().then(clients => {
@@ -2933,6 +2961,7 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
                     // manifest's (not updates); 'v' tells a page this worker reports updatedFiles exactly
                     requesters: requesters,
                     mismatched: mismatched,
+                    failed: failed,
                     v: 2
                 });
             });
