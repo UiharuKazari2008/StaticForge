@@ -162,7 +162,16 @@
         if (!it.rev || !u) return u;
         return `${u}${u.includes('?') ? '&' : '?'}r=${it.rev}`;
     }
-    const dimsText = (it) => (it.width && it.height ? `${it.width} x ${it.height}` : '');
+    // a video's line is its length, "3.85 MB (00:00:12)" (PhotoLibraryResources); a picture's its pixels
+    const clockText = (sec) => {
+        const t = Math.max(0, Math.round(Number(sec) || 0));
+        const two = (n) => String(n).padStart(2, '0');
+        return `${two(Math.floor(t / 3600))}:${two(Math.floor(t / 60) % 60)}:${two(t % 60)}`;
+    };
+    const dimsText = (it) => {
+        if (it.video) return it.duration > 0 ? clockText(it.duration) : '';
+        return it.width && it.height ? `${it.width} x ${it.height}` : '';
+    };
     const countText = (n) => (n === 1 ? '1 item' : `${n} items`);
     const takenOf = (it) => {
         const ix = S.index.get(it.source);
@@ -958,7 +967,7 @@
         const sc = S.el.scroller;
         const top = sc.scrollTop - 200;
         const bottom = sc.scrollTop + sc.clientHeight + 200;
-        const frag = doc.createDocumentFragment();
+        const nodes = [];
         const { m, left, cols } = L;
         S.groups.forEach((g) => {
             if (g.bottom < top || g.top > bottom) return;
@@ -968,7 +977,7 @@
                 hd.style.cssText = `top:${g.top}px;left:${left - 3}px;right:12px`;
                 const sel = g.items.filter((it) => S.selected.has(it.id)).length;
                 hd.innerHTML = `<span class="wpg-lib-group-label">${esc(g.label)} - ${esc(countText(g.items.length))}${sel ? `, ${sel} selected` : ''}</span><span class="wpg-lib-group-rule"></span><button type="button" class="wpg-lib-group-arrow${g.collapsed ? ' is-collapsed' : ''}" title="${g.collapsed ? 'Expand Group' : 'Collapse Group'}"></button>`;
-                frag.appendChild(hd);
+                nodes.push(hd);
             }
             if (g.collapsed) return;
             const first = Math.max(0, Math.floor((top - g.bodyTop) / m.ch));
@@ -977,11 +986,16 @@
                 for (let c = 0; c < cols; c++) {
                     const it = g.items[r * cols + c];
                     if (!it) break;
-                    frag.appendChild(cellFor(it, left + c * m.cw, g.bodyTop + r * m.ch, m));
+                    nodes.push(cellFor(it, left + c * m.cw, g.bodyTop + r * m.ch, m));
                 }
             }
         });
-        S.el.canvas.replaceChildren(frag);
+        // cells still in view stay where they are: one taken out and put back between a press and its release loses
+        // the click, and with it a double-click's second click (a draw queued by the first press often lands there)
+        const canvas = S.el.canvas;
+        const keep = new Set(nodes);
+        for (const ch of [...canvas.children]) if (!keep.has(ch)) ch.remove();
+        for (const n of nodes) if (n.parentNode !== canvas) canvas.appendChild(n);
         if (prefs.toc) drawToc();
     }
 
@@ -999,9 +1013,11 @@
             img.decoding = 'async';
             img.loading = 'lazy';
             img.draggable = false;
-            img.src = thumbOf(it, m.box * (root.devicePixelRatio || 1));
             img.addEventListener('load', () => cell.classList.add('is-loaded'), { once: true });
             img.addEventListener('error', () => cell.classList.add('is-broken'), { once: true });
+            // no address (a video nothing has a frame of): the empty frame, not a request for the page itself
+            const src = thumbOf(it, m.box * (root.devicePixelRatio || 1));
+            if (src) img.src = src; else cell.classList.add('is-broken');
             fr.appendChild(img);
             if (it.video) fr.classList.add('is-video');
             cell.appendChild(fr);
@@ -1014,10 +1030,14 @@
         cell.classList.toggle('is-focus', S.focus === it.id);
         const tx = cell.querySelector('.wpg-lib-text');
         if (tx) {
-            if (prefs.view === 'text') tx.textContent = dateText(takenOf(it));
-            else {
+            // written only when it changed: a node replaced under the pointer loses its click
+            if (prefs.view === 'text') {
+                const t = dateText(takenOf(it));
+                if (tx.textContent !== t) tx.textContent = t;
+            } else {
                 const cap = captionOf(it);
-                tx.innerHTML = `<div class="wpg-lib-t-name">${esc(it.name)}</div><div>${esc(dateText(takenOf(it)))}</div><div class="wpg-lib-t-dim">${esc(sizeText(it.size))}</div><div class="wpg-lib-t-dim">${esc(dimsText(it))}</div><div class="wpg-lib-t-cap${cap ? '' : ' is-empty'}">${esc(cap || '<Add Caption>')}</div>`;
+                const html = `<div class="wpg-lib-t-name">${esc(it.name)}</div><div>${esc(dateText(takenOf(it)))}</div><div class="wpg-lib-t-dim">${esc(sizeText(it.size))}</div><div class="wpg-lib-t-dim">${esc(dimsText(it))}</div><div class="wpg-lib-t-cap${cap ? '' : ' is-empty'}">${esc(cap || '<Add Caption>')}</div>`;
+                if (tx.gwHtml !== html) { tx.innerHTML = html; tx.gwHtml = html; }
             }
         }
         return cell;
@@ -1513,10 +1533,7 @@
         try {
             if (it.source === 'folders') await quiet(() => vfs().renameFile(it.key, name));
             else if (it.source === 'refs') await SRC().get('refs').saveMeta(it, { displayName: next });
-            else {
-                const store = SRC().get(it.source).store();
-                await store.call('rename', { root: it.raw.root, path: it.raw.path, name });
-            }
+            else await SRC().get(it.source).call('rename', { root: it.raw.root, path: it.raw.path, name });
             it.name = name;
             cellCache.clear();
             refresh();
@@ -1566,8 +1583,15 @@
 
     /** Delete: prints go to Scraps (a scrap is deleted for good), references and files are removed after a question. */
     async function deleteSelection() {
-        const items = selectedItems();
-        if (!items.length) return;
+        await deleteItems(selectedItems());
+    }
+
+    /**
+     * Delete pictures and videos (prints to Scraps, the rest after WPG 980's question). Returns whether they went:
+     * false when the question was answered No.
+     */
+    async function deleteItems(items) {
+        if (!items.length) return false;
         const first = items[0];
         try {
             if (first.source === 'prints') {
@@ -1579,7 +1603,7 @@
             } else {
                 const what = items.length === 1 ? `"${first.name}"` : `these ${items.length} items`;
                 // WPG 980
-                if (!await confirmBox(`Are you sure you want to delete ${what}?`, items.length === 1 ? 'Delete File' : 'Delete Multiple Items')) return;
+                if (!await confirmBox(`Are you sure you want to delete ${what}?`, items.length === 1 ? 'Delete File' : 'Delete Multiple Items')) return false;
                 for (const it of items) {
                     // deleteReferenceImage: public/scripts/comp/referenceManager.js (a vibe alone is a standalone encoding)
                     if (it.source === 'refs' && typeof root.deleteReferenceImage === 'function') {
@@ -1592,18 +1616,27 @@
                         const trashed = await vfs().moveToTrash([{ id: it.key, targetKind: 'user-file', targetId: it.key, name: it.name, kind: 'file' }], it.parentPath || '/').then((r) => !(r && r.success === false), () => false);
                         if (!trashed) await send('vfs_delete_file', { fileId: it.key });
                     }
-                    else if (it.raw && it.raw.root && root.phoneStorage) await root.phoneStorage.call('delete', { root: it.raw.root, path: it.raw.path });
+                    // this phone, a partner device or a DreamOS drive: the item's own source picks its device
+                    else if (it.raw && it.raw.root) await SRC().get(it.source).call('delete', { root: it.raw.root, path: it.raw.path });
                 }
                 await send('glancewell_forget', { items: items.map(ref) });
             }
         } catch (err) {
             await message(errorText(err), 'error');
+            return false;
         }
         const ids = new Set(items.map((x) => x.id));
         for (const v of S.loaded.values()) v.items = (v.items || []).filter((x) => !ids.has(x.id));
         S.items = S.items.filter((x) => !ids.has(x.id));
-        S.selected.clear();
-        refresh();
+        ids.forEach((id) => S.selected.delete(id));
+        if (S.built) refresh();
+        return true;
+    }
+
+    /** The viewer's Delete for the shown item (lightbox.js): true when it was deleted. */
+    function deleteViewerItem(id) {
+        const it = id && itemsById.get(id);
+        return it ? deleteItems([it]) : Promise.resolve(false);
     }
 
     /** Change Time Taken (dialog 1472): hours -24..+24 from each picture's own date. */
@@ -1640,6 +1673,11 @@
 
     /** A viewer slide for a library item: prints keep the gallery's own slide shape (every viewer action works). */
     function slideFor(it) {
+        // a video plays in the viewer (glancewellVideo.js): the slide carries its aspect, the address is set when shown
+        if (it.video && root.glancewellVideo) {
+            const size = root.glancewellVideo.sizeFor(it.width && it.height ? it.width / it.height : 0);
+            return { type: 'video', videoSrc: it.full(), width: size.width, height: size.height, data: { isStandalone: true, title: it.name, gwItem: it.id, video: true } };
+        }
         if (it.source === 'prints') {
             const rec = printRecord(it);
             return {
@@ -1665,6 +1703,8 @@
     function playSlideShow() {
         const list = S.selected.size > 1 ? selectedItems() : S.shown;
         if (!list.length) return;
+        // PhotoViewer 11003
+        if (!list.some((it) => !it.video)) { void message('Slide Show can\u2019t start because your selection contains only videos.', 'info'); return; }
         const at = S.focus ? Math.max(0, list.findIndex((it) => it.id === S.focus)) : 0;
         S.owns = true;
         enterViewer();
@@ -2193,11 +2233,13 @@
         }
         return root.showConfirmationDialog(html, buttons, null, cfg);
     }
+    // always markup: confirmationDialog.js takes a message without a tag as text, so its &quot; would show as typed
+    const textHtml = (text) => `<div>${esc(text).replace(/\n/g, '<br>')}</div>`;
     function message(text, icon = 'info') {
-        return dialog(esc(text).replace(/\n/g, '<br>'), [{ text: 'OK', value: true }], { icon: ICONS[icon] || ICONS.info });
+        return dialog(textHtml(text), [{ text: 'OK', value: true }], { icon: ICONS[icon] || ICONS.info });
     }
     async function confirmBox(text, title) {
-        return (await dialog(esc(text).replace(/\n/g, '<br>'), [{ text: 'Yes', value: true }, { text: 'No', value: false }], { title: title || 'Glancewell', icon: ICONS.warning })) === true;
+        return (await dialog(textHtml(text), [{ text: 'Yes', value: true }, { text: 'No', value: false }], { title: title || 'Glancewell', icon: ICONS.warning })) === true;
     }
     const errorText = (err) => (err && (err.message || err.error)) || 'Something went wrong.';
 
@@ -2228,6 +2270,14 @@
             scrollIntoView(id);
         }
         S.el.scroller.focus({ preventScroll: true });
+    }
+
+    /** A video told its length (glancewellVideo.js): Info and the Details view show it from now on. */
+    function noteVideoLength(id, seconds) {
+        const it = id && itemsById.get(id);
+        if (!it || it.duration === seconds) return;
+        it.duration = seconds;
+        if (S.built && infoItem === it) renderInfo(it);
     }
 
     function itemForSlide(data) {
@@ -2316,6 +2366,8 @@
         renderInfo: (item) => renderInfo(item === undefined ? undefined : item),
         renderViewerInfo,
         itemForSlide,
+        noteVideoLength,
+        deleteViewerItem,
         handleControl,
         zoomFraction,
         setZoomFraction,

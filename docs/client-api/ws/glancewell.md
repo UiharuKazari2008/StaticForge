@@ -74,6 +74,14 @@ Tag names may not contain `/` or `;`; the error text is WPG's own.
 
 `glancewell_tag_edit` and `glancewell_forget` are marked destructive in the packet registry.
 
+## Videos (`public/scripts/comp/glancewellVideo.js`)
+
+Glancewell plays videos in its viewer with Photo Gallery's controls: Play / Pause, Stop, a seek bar, and the keys H, K and Home. It uses no packets of its own:
+
+- A **Folders** video has no VFS preview. When a listed folder holds videos, the client sends `media_library_get` once (Media Player's library, [mediaLibrary.md](./mediaLibrary.md)). Each video's `art` frame becomes the thumbnail, and its `width` / `height` / `duration` fill Info. The file plays from `<vfsPath>/media/file/<id>`, which answers HTTP Range so the viewer can seek. `/files/` streams without Range.
+- A **phone or partner device** video plays from its storage URL (`/api/activesync/file/...` passes the Range header to the device). The entry's `duration` (ms) is the length shown.
+- Only the video on screen has a source. Neighbouring slides make no requests, and a video left behind gives up its connection.
+
 ## `glancewell_changed` (server push, every signed-in client)
 
 `{ type: "glancewell_changed", data: { what, ... } }`

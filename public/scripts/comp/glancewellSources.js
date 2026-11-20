@@ -197,8 +197,28 @@
 
     // ------------------------------------------------------------------ Folders (watched VFS folders)
 
+    /*
+     * A VFS video has no preview: Media Player's library (modules/mediaLibrary.js, media_library_get) knows its frame at
+     * 10 % (art), size and length, and serves the file with HTTP Range so the viewer can seek (/files/ cannot).
+     */
+    const vfsBase = () => {
+        /* global vfsClient */
+        const uuid = typeof vfsClient !== 'undefined' && vfsClient.ensureVfsPathUuid ? vfsClient.ensureVfsPathUuid() : null;
+        return uuid ? `/${uuid}` : '';
+    };
+    let mediaVideos = new Map();
+
+    async function loadMediaVideos() {
+        try {
+            const r = await send('media_library_get', {});
+            mediaVideos = new Map(((r && r.video) || []).map((v) => [v.id, v]));
+        } catch (_) { /* Media Player's library is not available: no frames */ }
+    }
+
     function vfsItem(e, folderName, parentPath) {
         const video = isVideo(e.name, e.mimeType);
+        const id = e.id || e.targetId;
+        const media = () => (video ? mediaVideos.get(e.targetId || id) || mediaVideos.get(id) || null : null);
         return {
             id: itemId('folders', e.id || e.targetId),
             source: 'folders',
@@ -211,9 +231,17 @@
             taken: ms(e.createdAt || e.modifiedAt),
             modified: ms(e.modifiedAt),
             folder: folderName,
-            thumb: () => e.previewUrl || '',
-            // the file itself: /<vfs>/files/<id> beside /<vfs>/previews/<id> (web_server.js)
-            full: () => e.url || e.downloadUrl || e.fileUrl || String(e.previewUrl || '').replace('/previews/', '/files/'),
+            thumb: () => {
+                if (e.previewUrl) return e.previewUrl;
+                const m = media();
+                return m && m.art && vfsBase() ? `${vfsBase()}/media/art/${encodeURIComponent(m.hash)}` : '';
+            },
+            // the file itself: /<vfs>/files/<id> beside /<vfs>/previews/<id> (web_server.js); a video from
+            // /<vfs>/media/file/<id>, with Range
+            full: () => {
+                if (video && vfsBase()) return `${vfsBase()}/media/file/${encodeURIComponent(e.targetId || id)}`;
+                return e.url || e.downloadUrl || e.fileUrl || String(e.previewUrl || '').replace('/previews/', '/files/');
+            },
             parentPath,
             raw: e
         };
@@ -236,6 +264,7 @@
             if (typeof vfsClient === 'undefined') return [];
             const roots = scope.folders || (await folders.watched()).map((f) => ({ path: f.folder, name: f.name }));
             const out = [];
+            let videosLoaded = false;
             const queue = roots.map((f) => ({ path: f.path, name: f.name, depth: 0 }));
             while (queue.length && out.length < FOLDER_LIMIT) {
                 const at = queue.shift();
@@ -251,6 +280,16 @@
                         }
                         if (e.targetKind !== 'user-file' || !isMedia(e.name, e.mimeType)) continue;
                         page.push(vfsItem(e, at.name, at.path));
+                    }
+                    if (page.some((it) => it.video)) {
+                        if (!videosLoaded) { videosLoaded = true; await loadMediaVideos(); }
+                        for (const it of page) {
+                            const m = it.video && mediaVideos.get(it.raw.targetId || it.key);
+                            if (!m) continue;
+                            it.width = it.width || Number(m.width) || 0;
+                            it.height = it.height || Number(m.height) || 0;
+                            it.duration = Number(m.duration) || 0;
+                        }
                     }
                     out.push(...page);
                     if (onPage && page.length) onPage(page);
@@ -341,6 +380,8 @@
                 width: Number(e.width) || 0,
                 height: Number(e.height) || 0,
                 size: Number(e.size) || 0,
+                // the phone's media entries carry a video's length in ms
+                duration: Number(e.duration) > 0 ? Number(e.duration) / 1000 : 0,
                 taken: ms(e.taken || e.mtime),
                 modified: ms(e.mtime),
                 folder: folderName,
@@ -355,6 +396,12 @@
             deviceId: deviceId || null,
             // where this source's files are written back (Fix, rotation)
             store: () => ps(),
+            /** One storage call on this source's own device (a computer may have several partners). */
+            async call(op, args) {
+                const p = await ready();
+                if (!p) throw new Error('The device is not connected.');
+                return p.call(op, args);
+            },
             available: () => !!(ps() && (deviceId ? true : ps().available)),
             async albums(force) {
                 if (!albums || force) albums = await loadAlbums();

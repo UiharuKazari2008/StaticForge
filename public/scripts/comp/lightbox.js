@@ -453,7 +453,15 @@ function attachStandalonePhotoSwipeShellRestoreUi(pswp) {
 
 /** The gallery's hooks into the viewer (glancewellLibrary.js, glancewellFix.js, glancewellThemes.js), one object. */
 const GW = {
-    themesOn: () => !!(window.glancewellThemes && glancewellThemes.active())
+    themesOn: () => !!(window.glancewellThemes && glancewellThemes.active()),
+    // PhotoSwipe's paddingFn: a video keeps Photo Gallery's margins and the seek bar's strip (glancewellVideo.js)
+    noPadding: { top: 0, bottom: 0, left: 0, right: 0 },
+    // the gallery item the viewer shows (glancewellLibrary.js slideFor), when the gallery opened it
+    viewerItemId: (p) => {
+        const d = p && p.currSlide && p.currSlide.data && p.currSlide.data.data;
+        return d && d.gwItem && window.glancewellLibrary && glancewellLibrary.itemForSlide(d) ? d.gwItem : null;
+    },
+    slidePadding: (viewportSize, itemData) => (window.glancewellVideo ? glancewellVideo.padding(itemData) : GW.noPadding)
 };
 
 const GLANCEWELL_SLIDE_SHOW_SPEEDS = { slow: 10000, medium: 5000, fast: 3000 };
@@ -535,7 +543,7 @@ function syncGlancewellChrome() {
     if (prev) prev.disabled = p.currIndex <= 0;
     if (next) next.disabled = p.currIndex >= count - 1;
     const del = shell.querySelector('[data-gw="delete"]');
-    if (del) del.disabled = !pic.filename;
+    if (del) del.disabled = !pic.filename && !GW.viewerItemId(p);
     // Edit (DreamStudio) and Make a Movie work from the gallery file and its print parameters
     // Fix works on any picture (glancewellFix.js); Make a Movie animates prints only
     shell.querySelectorAll('.wpg-cmds > [data-gw="movie"]').forEach((btn) => { btn.disabled = !pic.filename; });
@@ -548,6 +556,8 @@ function syncGlancewellChrome() {
         fillGlancewellSlideShowSlide(p);
         if (glancewellShow.playing) scheduleGlancewellSlide();
     }
+    // a video: Play / Stop and the seek bar in place of the zoom controls, no rotation or Fix (glancewellVideo.js)
+    if (window.glancewellVideo) glancewellVideo.sync(p);
 }
 
 /** Actual Size / Fit to Window on the pill, and the zoom popup's thumb. */
@@ -1080,7 +1090,7 @@ function glancewellMenuItems(key) {
             { separator: true },
             scraps
                 ? { text: 'Restore from Scraps', action: 'gw-unscrap', disabled: !gallery }
-                : { text: 'Delete', action: 'gw-scrap', disabled: !gallery },
+                : { text: 'Delete', action: 'gw-scrap', disabled: !gallery && !GW.viewerItemId(getActivePhotoSwipe()) },
             { text: 'Delete Permanently', action: 'gw-incinerate', disabled: !gallery }
         ];
     }
@@ -1211,10 +1221,18 @@ async function runGlancewellAction(action, event) {
             // openImagePromptInspector: public/scripts/comp/imagePromptInspector.js
             void featureLoader.loadFeature('image_prompt_inspector').then(() => openImagePromptInspector(pic.metadata));
             break;
-        case 'gw-scrap':
+        case 'gw-scrap': {
+            // a gallery item that is not a print (a folder's, a phone's, a reference): the gallery deletes it
+            // (glancewellLibrary.js deleteViewerItem asks first, as Photo Gallery does)
+            const gwItem = GW.viewerItemId(p);
+            if (p && !pic.filename && gwItem) {
+                if (await glancewellLibrary.deleteViewerItem(gwItem) && getActivePhotoSwipe() === p) removeGlancewellCurrentSlide(p);
+                break;
+            }
             // moveToScraps: public/scripts/comp/galleryView.js (true once scrapped)
             if (p && pic.filename && typeof moveToScraps === 'function' && await moveToScraps(pic.metadata)) removeGlancewellCurrentSlide(p);
             break;
+        }
         case 'gw-unscrap':
             // removeFromScraps: public/scripts/comp/galleryView.js
             if (p && pic.filename && typeof removeFromScraps === 'function') {
@@ -1388,6 +1406,7 @@ function wireGlancewellChromeOnce() {
 function attachGlancewellChrome(pswp) {
     if (!pswp || !document.body.classList.contains('desktop-mode')) return;
     wireGlancewellChromeOnce();
+    if (window.glancewellVideo) glancewellVideo.attach(pswp);
     // PhotoSwipe listens for keys on the whole document: arrows, z and Tab only reach it while
     // the Glancewell window is the active window and the key is not typed into a field
     pswp.on('keydown', (ev) => {
@@ -2041,7 +2060,8 @@ async function openStandalonePhotoSwipe(dataSource, index, options) {
             preloaderDelay: 2000,
             // Melaton Mobile (#709): the picture sits between the WM title bar and soft-key bar
             // (26 px each, times --wm-px), as in WM 6.1's picture view; desktop options unchanged
-            ...(window.uiShell === 'mobile' ? { paddingFn: wmViewerPadding } : {}),
+            // Glancewell's videos (glancewellVideo.js) keep Photo Gallery's margins and the seek bar's strip
+            ...(window.uiShell === 'mobile' ? { paddingFn: wmViewerPadding } : { paddingFn: GW.slidePadding }),
             errorMsg: '<div class="pswp__error-msg">Image not found</div>',
             closeTitle: 'Close (Esc)',
             zoomTitle: 'Zoom in/out'

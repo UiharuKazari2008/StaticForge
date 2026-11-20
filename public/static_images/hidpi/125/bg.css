@@ -1076,6 +1076,9 @@ html:where([data-hidpi-tier="125"]) body.desktop-mode:not(.windows-classic-theme
 :where(html[data-hidpi-tier="125"]) body.theme-vista #photoSwipeWindow .wpg-lib-i-caption{background-image:none}
 :where(html[data-hidpi-tier="125"]) body.theme-vista #photoSwipeWindow .wpg-lib-i-caption-icon{background-image:url("/static_images/vista-photo-gallery/lib-caption.png")}
 :where(html[data-hidpi-tier="125"]) body.theme-vista #photoSwipeWindow .wpg-lib-node.is-drop .wpg-lib-node-label{background-image:linear-gradient(#e8f2fe, #c4ddfc)}
+:where(html[data-hidpi-tier="125"]) #photoSwipeWindow .pswp .wpg-video{background-image:none}
+:where(html[data-hidpi-tier="125"]) #photoSwipeWindow .pswp .wpg-seek{background-image:linear-gradient(#717171, #717171), linear-gradient(#e6e6e6, #e6e6e6), linear-gradient(#d2d2d2, #d2d2d2), linear-gradient(#838383, #838383), linear-gradient(#d2d2d2, #d2d2d2)}
+:where(html[data-hidpi-tier="125"]) #photoSwipeWindow .pswp .wpg-seek-thumb{background-image:url("/static_images/vista-photo-gallery/seek-thumb.png")}
 /* css/themes/vista/media-player.css */
 :where(html[data-hidpi-tier="125"]) #desktopMediaPlayer .wmp-orbs{background-image:image-set(url('/static_images/hidpi/125/vista-wmp/travel-gutter.png') 1.25x)}
 :where(html[data-hidpi-tier="125"]) #desktopMediaPlayer .wmp-orb-back{background-image:image-set(url('/static_images/hidpi/125/vista-wmp/travel-back.png') 1.25x)}
