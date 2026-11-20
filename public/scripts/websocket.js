@@ -1629,17 +1629,29 @@ class WebSocketClient {
      *   a piece cannot be applied live: then "out of sync with the domain controller" - nothing from this session is
      *   saved, the next logon takes the server's profile.
      */
+    /**
+     * Profile sync progress for the desktop (#910; a Sync Center window listens): window event 'melaton:profilesync'
+     * with detail { phase, ... } - 'checking'; 'applying' { pieces: [request types] }; 'done' { source: 'cache' |
+     * 'server', applied: [types] }; 'outofsync' { cached, server, held }; 'unknown' (the server's revision could not
+     * be read; asked again at the next reconnect).
+     */
+    _profileSyncEvent(phase, extra) {
+        try { window.dispatchEvent(new CustomEvent('melaton:profilesync', { detail: Object.assign({ phase, at: Date.now() }, extra || {}) })); } catch (_) { /* no listeners */ }
+    }
+
     async _checkProfileSync() {
         if (!this._profileHold || this._profileOutOfSync) return;
+        this._profileSyncEvent('checking');
         let server = null;
         try { server = ((await this.sendMessage('profile_revision', {}, false)) || {}).revision || null; } catch (_) { /* asked again at the next reconnect */ }
-        if (!server) return;
+        if (!server) { this._profileSyncEvent('unknown'); return; }
         const profile = window.cachedProfile;
         const hits = Array.from(this._profileCacheHits || []);
         const meta = hits.length && profile ? await profile.meta() : null;
         if (!hits.length || (meta && meta.revision === server)) {
             this._profileHold = false;
             console.log(`👤 Profile: ${hits.length ? 'the cached profile is the domain controller\'s' : 'nothing came from the cache'} - this session writes again`);
+            this._profileSyncEvent('done', { source: hits.length ? 'cache' : 'server', applied: [] });
             return;
         }
         let applied = null;
@@ -1648,9 +1660,11 @@ class WebSocketClient {
             profile.setRevision(server);
             this._profileHold = false;
             console.log(`👤 Profile: the domain controller's changes were applied (${applied.join(', ') || 'nothing differed'}) - this session writes again`);
+            this._profileSyncEvent('done', { source: 'server', applied });
             return;
         }
         this._profileOutOfSync = true;
+        this._profileSyncEvent('outofsync', { cached: meta ? meta.revision : null, server, held: this._profileHeldWrites || 0 });
         console.warn(`👤 Profile: out of sync with the domain controller (cached ${meta ? meta.revision : 'none'}, server ${server}, ${this._profileHeldWrites || 0} change(s) held) - nothing from this session is saved`);
         // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
         if (typeof showConfirmationDialog === 'function') {
@@ -1675,6 +1689,7 @@ class WebSocketClient {
             if (JSON.stringify(fresh) !== JSON.stringify(cached)) changed.push(type);
         }
         if (changed.length > WebSocketClient.PROFILE_LIVE_MAX) return null;
+        if (changed.length) this._profileSyncEvent('applying', { pieces: changed.slice() });
         const live = {
             // loadUserGlobalSettingsFromServer / fetchStartMenuCustomLayout: modalUtils.js; loadWorkspaces: workspaceUtils.js
             get_user_global_settings: () => (typeof loadUserGlobalSettingsFromServer === 'function' ? loadUserGlobalSettingsFromServer().then((s) => !!s) : false),
