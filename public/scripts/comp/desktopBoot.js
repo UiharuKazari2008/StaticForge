@@ -19,6 +19,14 @@
  * waits run under the Welcome screen (#desktopPreStartupModal, body.boot-welcome) instead of
  * the startup window, its status line takes the startup window's text, and fadeOutWelcome()
  * fades it straight to the finished desktop. The startup window never opens.
+ * Vista's auto-logon (Yukimi, Nov 20 2026: "so when we enter its 100% setup"): "Welcome" while
+ * the profile loads, "Preparing your desktop..." from the shell's first step (priority 11), and
+ * the screen fades out once the shell is built behind it - wallpaper, icons, taskbar and Sidebar
+ * decoded and drawn (the gadgets stage) - not at the end of every init step. Only local work is
+ * waited for; config.welcomeRevealCapMs after begin() it reveals anyway and a late piece
+ * finishes in place (installed-boot-zero-wait). Startup programs open after the reveal.
+ * The classic logon (Use Vista Logon off) does the same under its status box: "Loading your
+ * personal settings...", then "Applying your personal settings...", and a cut to the desktop.
  *
  * Hardening:
  *   watchStep(step)         after config.stepWatchdogMs the splash names the step and
@@ -88,7 +96,8 @@
         lockSwitchMs: 500,   // black hold after the fade, before the lock screen shows
         unlockSwitchMs: 1500, // black hold while the desktop comes back under it
         sessionFadeMs: 900,   // fade to black, same pace as the winlogon power cover
-        welcomeFadeMs: 900   // Welcome screen to the desktop (desktop-boot.css transition)
+        welcomeFadeMs: 900,  // Welcome screen to the desktop (desktop-boot.css transition)
+        welcomeRevealCapMs: 6000 // a shell piece not ready by then finishes behind the revealed desktop
     };
 
     const doc = typeof document !== 'undefined' ? document : null;
@@ -97,6 +106,12 @@
     const state = {
         active: false,
         welcome: false,       // boot under the Vista Welcome screen (begin({ welcome: true }))
+        welcomeShell: false,  // the shell's steps started: "Preparing your desktop..." (else "Welcome")
+        welcomeRevealed: false, // the Welcome screen faded out over the built shell; the boot goes on behind
+        welcomeReveal: null,  // the fade in flight (revealWelcome)
+        welcomeCap: null,     // config.welcomeRevealCapMs timer
+        welcomeRevealPending: false, // the shell was ready while winlogon's update stage held the screen
+        beforeReveal: [],     // beforeWelcomeReveal hooks
         stage: null,          // last stage shown
         stageShownAt: 0,
         requested: null,      // highest stage requested so far
@@ -150,7 +165,8 @@
     function setPrimaryText(text) {
         const el = byId('windowsStartupStatus');
         if (el && typeof text === 'string') el.textContent = text;
-        const welcome = state.welcome ? byId('desktopPreStartupStatus') : null;
+        // "Configuring updates: Stage 3 of 3" keeps the line while it runs (winlogonPower.js hideWinlogonStatus refreshes)
+        const welcome = state.welcome && !state.welcomeRevealed && !winlogonHeld() ? byId('desktopPreStartupStatus') : null;
         if (welcome && typeof text === 'string') welcome.textContent = text;
     }
 
@@ -177,6 +193,11 @@
             setPrimaryText(`Still working on: ${state.watchdogStep.message || 'this step'}`);
             return;
         }
+        if (state.welcome) {
+            // Vista: "Welcome" while the profile loads, "Preparing your desktop..." once the shell starts
+            setPrimaryText(welcomeText(state.welcomeShell));
+            return;
+        }
         // The Welcome screen said "Welcome" before the stages; it does not go back to it at done
         const stage = state.welcome && state.stage === 'done' ? 'windows' : state.stage;
         setPrimaryText(STAGE_TEXT[stage] || STAGE_TEXT.session);
@@ -192,6 +213,18 @@
             // Not staged (e.g. non-desktop or a reconnect after boot): behave like before
             setPrimaryText(message);
         }
+    }
+
+    /** The logon's status line while the desktop is built under it: Vista's Welcome screen, or the classic box. */
+    function welcomeText(shell) {
+        if (state.vistaLogon) return shell ? 'Preparing your desktop...' : 'Welcome';
+        return shell ? 'Applying your personal settings...' : 'Loading your personal settings...';
+    }
+
+    /** The status line again; after winlogon's update stage let go of the screen, a reveal it held back. */
+    function refresh() {
+        refreshPrimaryText();
+        if (state.welcomeRevealPending && !winlogonHeld()) revealWelcome();
     }
 
     // ---------- stage queue ----------
@@ -241,6 +274,8 @@
         applyStageClasses(next);
         refreshPrimaryText();
         dispatch('desktopBootStage', { stage: next });
+        // the whole shell is on the hidden desktop: the Welcome screen goes (startup programs come after)
+        if (state.welcome && stageIndex(next) >= stageIndex('gadgets')) revealWelcome();
         if (state.queue.length || next === 'done') {
             scheduleAdvance(dwellOf(next));
         }
@@ -270,6 +305,13 @@
         if (state.active) return true;
         state.active = true;
         state.welcome = !!options.welcome;
+        state.welcomeShell = false;
+        state.welcomeRevealed = false;
+        state.welcomeReveal = null;
+        state.welcomeRevealPending = false;
+        clearTimeout(state.welcomeCap);
+        state.welcomeCap = state.welcome && config.welcomeRevealCapMs > 0
+            ? setTimeout(welcomeCapReached, config.welcomeRevealCapMs) : null;
         state.stage = null;
         state.requested = 'logon';
         state.queue = [];
@@ -289,6 +331,8 @@
         const resolvers = state.finishResolvers.splice(0);
         state.active = false;
         clearWatchdog();
+        clearTimeout(state.welcomeCap);
+        state.welcomeCap = null;
         const b = body();
         if (b) {
             BOOT_CLASSES.forEach((cls) => b.classList.remove(cls));
@@ -346,6 +390,13 @@
 
     function endWelcome() {
         state.welcome = false;
+        state.welcomeShell = false;
+        state.welcomeRevealed = false;
+        state.welcomeReveal = null;
+        state.welcomeRevealPending = false;
+        state.beforeReveal.splice(0).forEach((fn) => { try { fn(); } catch (_) { /* best effort */ } });
+        clearTimeout(state.welcomeCap);
+        state.welcomeCap = null;
         const b = body();
         if (b) b.classList.remove(WELCOME_CLASS, WELCOME_FADE_CLASS);
     }
@@ -356,17 +407,91 @@
     }
 
     /**
-     * The desktop is up under the Welcome screen: fade the screen out over it, then close it
-     * (websocket.js hideWindowsStartupModal, after finish()). Resolves once it is gone.
+     * Run fn once the logon's screen or box has gone and before the built desktop shows (now when it is not
+     * up). For changes the logon must not show, like the classic box losing its Classic theme mid-boot.
+     */
+    function beforeWelcomeReveal(fn) {
+        if (typeof fn !== 'function') return;
+        if (state.welcome && !state.welcomeRevealed) state.beforeReveal.push(fn);
+        else fn();
+    }
+
+    /** The Welcome screen still covers the desktop being built (not yet revealed). */
+    function isWelcomeUp() {
+        return state.welcome && !state.welcomeRevealed;
+    }
+
+    /**
+     * The shell is built under the Welcome screen (the gadgets stage, or the cap): fade the screen out
+     * over it. The boot keeps its Welcome mode (no startup window) and its stages run on behind.
+     */
+    function winlogonHeld() {
+        return !!(win && win.wsClient && win.wsClient.winlogonPowerText);
+    }
+
+    function revealWelcome() {
+        if (!state.welcome) return Promise.resolve();
+        if (state.welcomeReveal) return state.welcomeReveal;
+        if (winlogonHeld()) {
+            // "Configuring updates: Stage 3 of 3" is on the screen: the reveal follows it (refresh, from hideWinlogonStatus)
+            state.welcomeRevealPending = true;
+            return Promise.resolve();
+        }
+        state.welcomeRevealPending = false;
+        clearTimeout(state.welcomeCap);
+        state.welcomeCap = null;
+        state.welcomeReveal = fadeWelcomeScreen().then(() => {
+            // work held for the reveal (workspaceUtils.js: the classic box's boot theme) runs before the layers show
+            const hooks = state.beforeReveal.splice(0);
+            return Promise.all(hooks.map((fn) => Promise.resolve().then(fn).catch((error) => {
+                if (typeof console !== 'undefined' && console.warn) console.warn('[boot] before-reveal hook failed:', error);
+            })));
+        }).then(() => {
+            if (!state.welcome) return;
+            state.welcomeRevealed = true;
+            const b = body();
+            if (b) b.classList.remove(WELCOME_CLASS, WELCOME_FADE_CLASS);
+            dispatch('desktopBootWelcomeRevealed', { stage: state.stage });
+        });
+        return state.welcomeReveal;
+    }
+
+    /** config.welcomeRevealCapMs passed under the Welcome screen: every shell layer shows now, ready or not. */
+    function welcomeCapReached() {
+        state.welcomeCap = null;
+        if (!state.active || !state.welcome || state.welcomeReveal) return;
+        if (typeof console !== 'undefined' && console.warn) {
+            console.warn(`[boot] the shell was not built within ${config.welcomeRevealCapMs} ms (at "${state.lastStepMessage}"): the desktop shows, the rest finishes behind`);
+        }
+        state.welcomeShell = true;
+        ['wallpaper', 'icons', 'taskbar', 'gadgets'].forEach((stage) => applyStageClasses(stage));
+        if (stageIndex(state.requested) < stageIndex('gadgets')) {
+            state.queue = [];
+            state.requested = 'gadgets';
+            state.stage = 'gadgets';
+            state.stageShownAt = Date.now();
+        }
+        revealWelcome();
+    }
+
+    /**
+     * The desktop is up under the Welcome screen: fade the screen out over it if it is still up, then
+     * close it (websocket.js hideWindowsStartupModal, after finish()). Resolves once it is gone.
      */
     async function fadeOutWelcome() {
         if (!state.welcome) return;
+        await revealWelcome();
+        endWelcome();
+    }
+
+    async function fadeWelcomeScreen() {
         const screen = byId('desktopPreStartupModal');
         const b = body();
         if (screen && b && !screen.classList.contains('hidden')) {
             void screen.offsetWidth;
-            b.classList.add(WELCOME_FADE_CLASS);
-            const fade = Math.max(0, config.welcomeFadeMs);
+            // the Welcome screen fades into the desktop; the classic status box just goes
+            const fade = state.vistaLogon ? Math.max(0, config.welcomeFadeMs) : 0;
+            if (fade > 0) b.classList.add(WELCOME_FADE_CLASS);
             if (fade > 0) await new Promise((resolve) => setTimeout(resolve, fade));
             delete screen.dataset.prestartupOpened;
             // closeModal: public/scripts/comp/modalUtils.js
@@ -376,13 +501,17 @@
                 screen.classList.add('hidden');
             }
         }
-        endWelcome();
     }
 
     // ---------- init step mapping ----------
 
     function onInitStep(step) {
         if (!step) return;
+        if (state.active && state.welcome && !state.welcomeShell && step.priority >= 11) {
+            // the shell's first step (workspaces, then wallpaper, icons, taskbar): "Preparing your desktop..."
+            state.welcomeShell = true;
+            refreshPrimaryText();
+        }
         if (state.active) {
             // Wallpaper, icons and the taskbar wait until their preload steps finish
             // (onStepDone). Revealing them from the priority alone painted empty art.
@@ -454,6 +583,8 @@
                 console.warn(`⏱️ Init step still running after ${config.stepWatchdogMs}ms: ${step && step.message}`);
             }
             dispatch('desktopBootStepStalled', { step: step && step.message });
+            // the Welcome screen has gone (its Skip with it): windows may open on the desktop meanwhile
+            if (state.welcomeRevealed) requestStage('windows');
         }, config.stepWatchdogMs);
         return {
             promise,
@@ -703,7 +834,7 @@
         const taskbar = byId('desktopTaskbar');
         const body = doc.body;
         if (!taskbar || taskbar.classList.contains('hidden')) return false;
-        if (state.welcome) return false; // under the Welcome screen until it has faded out
+        if (state.welcome && !state.welcomeRevealed) return false; // under the Welcome screen until it has faded out
         if (body.classList.contains('boot-staged') && !body.classList.contains(REVEAL_CLASS.taskbar)) return false;
         if (body.classList.contains('session-suspended') || body.classList.contains('workstation-locked')) return false;
         if (isSwitching()) return false;
@@ -850,11 +981,14 @@
         reset,
         isBooting,
         isWelcomeBoot,
+        isWelcomeUp,
+        beforeWelcomeReveal,
+        welcomeText,
         fadeOutWelcome,
         onInitStep,
         onStepDone,
         onStepMessage,
-        refresh: refreshPrimaryText,
+        refresh,
         watchStep,
         setConnectionState,
         suspend,

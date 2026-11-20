@@ -618,6 +618,15 @@ if (window.wsClient) {
         });
     }
 
+    // The notification area fills with the taskbar (after 18.4 Loading desktop assets), so the desktop that the
+    // Welcome screen reveals has its tray icons (Nov 20 2026); step 84 finds it done
+    // (desktop only: Melaton Mobile keeps its own order)
+    window.wsClient.registerInitStep(18.5, 'Starting the notification area', async () => {
+        if (!window.isDesktop) return;
+        // wireSystemTrayListeners: public/scripts/comp/systemTrayManager.js
+        await wireSystemTrayListeners();
+    });
+
     window.wsClient.registerInitStep(84, 'Starting Background Services', async () => {
         // wireSystemTrayListeners: public/scripts/comp/systemTrayManager.js
         await wireSystemTrayListeners();

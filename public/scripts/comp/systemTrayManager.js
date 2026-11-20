@@ -147,6 +147,10 @@ async function startBackgroundTrayServices() {
         }
     ];
 
+    // One after another only where it can be seen: on a taskbar still hidden by the boot (under the Welcome screen,
+    // before the staged taskbar reveal) the icons are all in place at once, ready for the reveal
+    // (desktopBoot.isTaskbarVisible: public/scripts/comp/desktopBoot.js)
+    const stagger = (window.desktopBoot && !window.desktopBoot.isTaskbarVisible()) ? 0 : SYSTEM_TRAY_BOOT_STAGGER_MS;
     let delay = 0;
     await new Promise((resolve) => {
         revealPlan.forEach((revealFn) => {
@@ -157,7 +161,7 @@ async function startBackgroundTrayServices() {
                     revealTrayIconElement(el);
                 }
             }, delay);
-            delay += SYSTEM_TRAY_BOOT_STAGGER_MS;
+            delay += stagger;
         });
 
         setTimeout(async () => {
@@ -169,7 +173,7 @@ async function startBackgroundTrayServices() {
             // updateWorkspaceTrayIcon: public/scripts/comp/trayIndicators.js
             updateWorkspaceTrayIcon();
             resolve();
-        }, delay + SYSTEM_TRAY_BOOT_STAGGER_MS);
+        }, delay + stagger);
     });
 }
 

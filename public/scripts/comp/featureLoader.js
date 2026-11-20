@@ -1095,6 +1095,15 @@ function registerAssetPreloadStepStub() {
     wsClient.registerInitStep(18.4, 'Loading desktop assets', function () {
         return assetPreload.preloadDesktopAssetsStage();
     });
+    // The Sidebar is drawn hidden here too, or it popped in after the Welcome screen had gone (Nov 20 2026): with this
+    // stub registered first, assetPreload.js returned before its own 18.6 / 18.8 (vistaSidebar.js vistaSidebarBoot)
+    wsClient.registerInitStep(18.6, 'Loading gadgets', function () {
+        if (window.assetPreload) return assetPreload.preloadGadgetsStage();
+        return window.vistaSidebarBoot ? window.vistaSidebarBoot.start() : null;
+    });
+    wsClient.registerInitStep(18.8, 'Loading splash screens', function () {
+        return window.assetPreload ? assetPreload.preloadSplashStage() : null;
+    });
 }
 
 registerAssetPreloadStepStub();

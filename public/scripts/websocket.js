@@ -888,6 +888,8 @@ class WebSocketClient {
     // the installed app: "Please wait..." while the server is tried this long, then the logon from the cached profile
     // (#910, Yukimi Nov 20 2026: the password box with nothing before it said nothing about what was going on)
     static INSTALLED_LOGON_GRACE_MS = 2000;
+    // msgina's wrong-password message (Windows' classic logon), in its Logon Message box
+    static CLASSIC_LOGON_FAILED = 'The system could not log you on. Make sure your User name and domain are correct, then type your password again. Letters in passwords must be typed using the correct case.';
     static PROFILE_LIVE_MAX = 3; // profile pieces a reconnect applies quietly; more is "out of sync" (#910)
     static OFFLINE_ART_WAIT_MS = 1500; // the Welcome screen's art on an offline boot (#910)
     static NIGHTSHADE_QUEUE_MAX = 64;
@@ -2916,6 +2918,8 @@ class WebSocketClient {
      * whatever state the connection reached. True while held.
      */
     _deferPreStartupForTealHold() {
+        // "Decrease Login Time" skips the teal's minimum like every other: "Please wait..." shows at once
+        if (this._skipMinimumLogon()) return false;
         const wait = (Number(window.dreamscapeTealHoldUntil) || 0) - Date.now();
         if (wait <= 0) return false;
         if (!this._tealHoldTimer) {
@@ -2966,7 +2970,10 @@ class WebSocketClient {
         // Use Vista Logon: Vista's Welcome screen says "Welcome" from the password check to the desktop
         if (this.vistaLogon && (this.preStartupAuthBusy || this.preStartupCredentialsAccepted)) return 'Welcome';
         if (phase === 'auth' || phase === 'failed') return statusMessage;
-        if (statusMessage === 'Preparing Melaton...' || statusMessage === 'Welcome') return 'Welcome';
+        // the classic logon: winlogon's "Loading your personal settings..." from the accepted logon to the shell
+        if (statusMessage === 'Preparing Melaton...' || statusMessage === 'Welcome') {
+            return this.vistaLogon ? 'Welcome' : 'Loading your personal settings...';
+        }
         // winlogon string 1009, kept when a stage already set it
         if (statusMessage === 'Preparing your desktop...' || statusMessage === 'Preparing your desktop......') {
             return 'Preparing your desktop...';
@@ -2974,7 +2981,7 @@ class WebSocketClient {
         return 'Please wait...';
     }
 
-    _renderPreStartupDialog() {
+    _renderPreStartupDialog(options = {}) {
         if (this.winlogonPowerText) {
             const held = document.getElementById('desktopPreStartupStatus');
             if (held) held.textContent = this.winlogonPowerText;
@@ -2983,7 +2990,7 @@ class WebSocketClient {
             if (ring) ring.classList.remove('paused');
             return;
         }
-        if (this._deferPreStartupForTealHold()) {
+        if (!options.force && this._deferPreStartupForTealHold()) {
             return;
         }
         // Connected (or a password / logon step / starting server): the connecting dialog on top goes
@@ -3105,6 +3112,16 @@ class WebSocketClient {
             loginBtn.textContent = this.preStartupAuthBusy ? 'Please wait...' : 'OK';
         }
 
+        if (!this.vistaLogon) {
+            // the classic dialog's caption: msgina's "Log On to Windows" while it asks, its status box's otherwise
+            const caption = modal.querySelector('.modal-window-title-main span');
+            const title = authVisible ? 'Log On to Melaton' : 'Please wait...';
+            if (caption && caption.textContent !== title) caption.textContent = title;
+            // the dialog that asks is the active window (boot steps had left a hidden tool window active, so its
+            // caption drew inactive), unless a message box is over it
+            const over = document.querySelector('#bootMessageBox:not(.hidden), #confirmationDialog:not(.hidden)');
+            if (authVisible && !over && !modal.classList.contains('active-window') && typeof setActiveWindow === 'function') setActiveWindow(modal.id);
+        }
         // placeWindowsLogonDialog: public/scripts/comp/modalUtils.js (the Vista Welcome screen is full screen)
         if (!this.vistaLogon) placeWindowsLogonDialog(modal);
     }
@@ -3203,6 +3220,23 @@ class WebSocketClient {
             this.forceReconnect();
         } catch (error) {
             this.preStartupAuthBusy = false;
+            if (!this.vistaLogon && window.bootMessageBox) {
+                // the classic logon: msgina's Logon Message box over the dialog, then the password again (Nov 20 2026;
+                // it said "Invalid PIN code" in red under the fields)
+                this._updatePreStartupAuthError('');
+                this._setConnectionPhase('auth', { beat: 'establishing', message: 'Type your password to log on.' });
+                if (passwordInput) passwordInput.value = '';
+                const text = /incorrect|invalid|wrong|denied|pin/i.test(error.message || '') || !error.message
+                    ? WebSocketClient.CLASSIC_LOGON_FAILED : error.message;
+                await window.bootMessageBox.show({ title: 'Logon Message', icon: 'info', message: text, buttons: [{ label: 'OK', value: 'ok', default: true, cancel: true }] });
+                if (this.connectionPhase === 'auth' && this._shouldUsePreStartupDialog()) {
+                    this._renderPreStartupDialog();
+                    // the box has gone (it may still be fading): the dialog is active again
+                    if (typeof setActiveWindow === 'function') setActiveWindow('desktopPreStartupModal');
+                    if (passwordInput) passwordInput.focus();
+                }
+                return;
+            }
             this._updatePreStartupAuthError(error.message || 'Authentication failed.');
             this._setConnectionPhase('auth', {
                 beat: 'establishing',
@@ -3512,11 +3546,14 @@ class WebSocketClient {
             // invisible until its art has decoded: the stages wait for it (holdImage caps each
             // image at 12 s), or wallpaper, icons and taskbar show before the Welcome screen
             // an offline boot (#910): art the server cannot send (the account picture) is not waited for past a moment
-            const art = this._whenVistaLogonArtReady();
+            const art = this.vistaLogon ? this._whenVistaLogonArtReady() : Promise.resolve();
             await (this._offlineBoot && !this.isConnected()
                 ? Promise.race([art, new Promise((r) => setTimeout(r, WebSocketClient.OFFLINE_ART_WAIT_MS))])
                 : art);
             if (!this._canCompletePreStartupHandoff()) return;
+            // A logon that never drew its screen (the cached-profile auto logon fires before the first connection beat,
+            // or the teal hold kept it back) opens it now, or the desktop assembled itself in plain sight (Nov 20 2026)
+            this._renderPreStartupDialog({ force: true });
             this.preStartupHandoffCompleted = true;
             window.desktopBoot.begin({ welcome: true });
             return;
@@ -3536,7 +3573,8 @@ class WebSocketClient {
      * and the boot UI debugger keep the startup window: their controls live in it.
      */
     _useWelcomeBoot() {
-        return Boolean(this.vistaLogon && window.isDesktop && window.desktopBoot
+        // the classic logon too (Nov 20 2026): its status box stays up until the desktop is built
+        return Boolean(window.isDesktop && window.desktopBoot
             && typeof window.desktopBoot.isWelcomeBoot === 'function'
             && !this.stepByStepMode && !(window.bootUiDebug && window.bootUiDebug.active));
     }

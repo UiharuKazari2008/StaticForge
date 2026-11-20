@@ -332,7 +332,24 @@ body.winlogon-power #desktopPreStartupModal {
     animation: none;
 }
 
-body.winlogon-power #desktopPreStartupStatus {
+/* The classic logon has no full-screen Welcome screen: its "Please wait..." box shows "Logging off..." and
+   the like as it is, banner and bar included, over the logon's teal, not over the desktop (Nov 20 2026) */
+body.desktop-mode.winlogon-power:not(.vista-logon)::after {
+    content: '';
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 2147483099;
+    background: teal;
+    pointer-events: none;
+}
+
+/* "Configuring updates: Stage 3 of 3 ..." over "Do not turn off your computer." in the box's status line */
+body.winlogon-power:not(.vista-logon) #desktopPreStartupStatus {
+    white-space: pre-line;
+}
+
+body.vista-logon.winlogon-power #desktopPreStartupStatus {
     top: 50%;
     height: auto;
     transform: translateY(-50%);
@@ -343,7 +360,7 @@ body.winlogon-power #desktopPreStartupStatus {
    turn off your computer." under it (#924), as measured on the Vista VM (1920x1200, a pending
    servicing restart): the lines 32 px apart and centred on each other, the wait ring centred
    beside the pair, the whole 2 px lower than the one-line status */
-body.winlogon-power #desktopPreStartupStatus[data-lines="2"] {
+body.vista-logon.winlogon-power #desktopPreStartupStatus[data-lines="2"] {
     display: flex !important;
     justify-content: center;
     align-items: center;
@@ -352,7 +369,8 @@ body.winlogon-power #desktopPreStartupStatus[data-lines="2"] {
     transform: translateY(calc(-50% + 2px));
 }
 
-body.winlogon-power #desktopPreStartupModal :is(
+body.winlogon-power #desktopPreStartupModal :is(.desktop-prestartup-auth-row, .desktop-prestartup-auth-actions),
+body.vista-logon.winlogon-power #desktopPreStartupModal :is(
     .desktop-prestartup-vista-tile,
     .desktop-prestartup-auth-row,
     .desktop-prestartup-auth-actions,
@@ -503,6 +521,19 @@ body.desktop-mode.boot-welcome #desktopPreStartupModal {
     z-index: 2147482001 !important;
     opacity: 1;
     transition: opacity 900ms ease;
+}
+
+/* The classic logon's status box is no full-screen screen: a cover in the logon's teal, just under it,
+   hides the desktop being built (drawn and decoded behind it, like under the Welcome screen) until the
+   box goes (desktopBoot.js revealWelcome drops boot-welcome) */
+body.desktop-mode.boot-welcome:not(.vista-logon)::after {
+    content: '';
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 2147482000;
+    background: teal;
+    pointer-events: none;
 }
 
 body.desktop-mode.boot-welcome #bootMessageBox {

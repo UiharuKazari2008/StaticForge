@@ -360,6 +360,12 @@ function showWinlogonPowerScreen(text) {
     const ring = modal.querySelector('.desktop-prestartup-progress');
     if (ring) ring.classList.remove('paused');
     document.body.classList.add('winlogon-power');
+    // the classic logon's box is in Windows Classic, as at the logon (uiTheme.setBootTheme: public/scripts/comp/uiTheme.js);
+    // the desktop is under the black cover by now
+    if (!document.body.classList.contains('vista-logon') && !document.body.classList.contains('windows-classic-theme') && window.uiTheme) {
+        window.uiTheme.setBootTheme('classic');
+        modal.dataset.powerClassic = '1';
+    }
     modal.classList.add('power-status-only', 'vista-logon-art-ready');
     modal.classList.remove('auth-active', 'auth-busy', 'closing');
     if (modal.classList.contains('hidden')) {
@@ -376,6 +382,10 @@ function hideWinlogonPowerScreen() {
     const modal = document.getElementById('desktopPreStartupModal');
     if (modal) {
         modal.classList.remove('winlogon-power-in', 'power-status-only');
+        if (modal.dataset.powerClassic && window.uiTheme) {
+            delete modal.dataset.powerClassic;
+            window.uiTheme.setBootTheme(null);
+        }
         if (window.wsClient && window.wsClient.initializationCompleted) {
             modal.classList.add('hidden');
         }
@@ -527,7 +537,11 @@ function forgetDirectorReopen() {
         // desktop and the ring stopped). While the logon is still to come, the Welcome screen stays up with its art and
         // the boot's own logon dialog takes it over at once - the password box, or "Please wait..." / "Welcome" with
         // the ring turning - whatever the connection reached while the stage held the screen (its renders were held).
-        const logonAhead = !!(ws && window.isDesktop && typeof ws._shouldUsePreStartupDialog === 'function'
+        // desktopBoot.isWelcomeUp: public/scripts/comp/desktopBoot.js - a logon that went on behind the stage is building
+        // the desktop under this screen; it keeps it until the desktop is complete (Nov 20 2026, the DreamOS Mac: hiding
+        // it here showed the wallpaper alone, then the icons, taskbar and Sidebar popping in)
+        const welcomeBoot = !!(window.desktopBoot && typeof window.desktopBoot.isWelcomeUp === 'function' && window.desktopBoot.isWelcomeUp());
+        const logonAhead = welcomeBoot || !!(ws && window.isDesktop && typeof ws._shouldUsePreStartupDialog === 'function'
             && ws._shouldUsePreStartupDialog() && !ws.initializationCompleted);
         document.body.classList.remove('winlogon-power', 'winlogon-configuring');
         const modal = document.getElementById('desktopPreStartupModal');
@@ -543,7 +557,9 @@ function forgetDirectorReopen() {
         if (ws) {
             ws.winlogonPowerText = '';
             // the boot's own logon dialog takes the screen back (public/scripts/websocket.js)
-            if ((logonAhead || !held.wasHidden) && typeof ws._renderPreStartupDialog === 'function') ws._renderPreStartupDialog();
+            // (the desktop being built under it: its own line, "Preparing your desktop...", and a reveal held back for this)
+            if (welcomeBoot) window.desktopBoot.refresh();
+            else if ((logonAhead || !held.wasHidden) && typeof ws._renderPreStartupDialog === 'function') ws._renderPreStartupDialog();
         }
     }
 

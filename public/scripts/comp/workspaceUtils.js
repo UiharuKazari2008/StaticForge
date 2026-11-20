@@ -1322,7 +1322,23 @@ async function loadWorkspaces() {
         // logon dialog and drops it on resume (desktopBoot.js)
         const sessionLocked = !!(window.desktopBoot && window.desktopBoot.isSuspended());
         const bootTheme = ['windows-classic-theme', 'vista-basic-theme'].find((cls) => document.body.classList.contains(cls));
-        if (bootTheme && !sessionLocked) {
+        // The classic logon box is still up over the desktop being built (desktopBoot.js): it keeps its Classic look,
+        // the desktop takes its theme as the box goes, before it shows
+        const classicBoxUp = bootTheme === 'windows-classic-theme' && window.desktopBoot
+            && typeof window.desktopBoot.isWelcomeUp === 'function' && window.desktopBoot.isWelcomeUp();
+        if (bootTheme && !sessionLocked && classicBoxUp) {
+            loadBlurPreference();
+            window.desktopBoot.beforeWelcomeReveal(() => {
+                if (!document.body.classList.contains('windows-classic-theme') || window.desktopBoot.isSuspended()) return;
+                window.uiTheme.setBootTheme(null);
+                if (!document.body.classList.contains('windows-startup')) document.body.classList.remove('no-animation');
+                // the re-skinned icons and taskbar decoded before the cover lifts (assetPreload.settlePainted, 1 s cap)
+                if (window.assetPreload && typeof window.assetPreload.settlePainted === 'function') {
+                    return window.assetPreload.settlePainted([document.querySelector('.desktop-icons'), document.getElementById('desktopTaskbar')], 1000);
+                }
+                return null;
+            });
+        } else if (bootTheme && !sessionLocked) {
             // runWithThemeSwitchOverlay: public/scripts/comp/themePreferences.js
             await runWithThemeSwitchOverlay(() => {
                 loadBlurPreference();

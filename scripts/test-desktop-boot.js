@@ -378,8 +378,10 @@ function liftMethod(src, name) {
     throw new Error(`unbalanced ${name}`);
 }
 
-// Use Vista Logon: the startup window's stages, waits and Skip run under the Welcome screen,
-// which keeps the text until the desktop is done, then fades out (no startup window)
+// Use Vista Logon: the startup window's stages, waits and Skip run under the Welcome screen: "Welcome" while the
+// profile loads, "Preparing your desktop..." from the shell's first step, and the screen fades out once the shell
+// (the gadgets stage) is built - or at config.welcomeRevealCapMs - while the rest of the boot goes on behind it.
+// The classic logon does the same under its box: "Loading / Applying your personal settings...".
 async function testWelcomeBoot(body, status) {
     ['desktopPreStartupStatus', 'desktopPreStartupSkipStepBtn', 'desktopPreStartupModal'].forEach((id) => { els[id] = new Element(id); });
     els.desktopPreStartupSkipStepBtn.classList.add('hidden');
@@ -387,48 +389,79 @@ async function testWelcomeBoot(body, status) {
     if (ownTaskbar) els.desktopTaskbar = new Element('desktopTaskbar');
     const welcome = els.desktopPreStartupStatus;
     const skip = els.desktopPreStartupSkipStepBtn;
+    const closed = [];
+    window.closeModal = async (m) => { closed.push(m.id); m.classList.add('hidden'); };
+    const fadeMs = boot.config.welcomeFadeMs;
+    const capMs = boot.config.welcomeRevealCapMs;
+    boot.config.welcomeFadeMs = 15;
+    const waitFor = async (fn, what) => {
+        for (let i = 0; i < 400 && !fn(); i++) await sleep(10);
+        assert.ok(fn(), what);
+    };
+    boot.setLogonTheme(true);
     welcome.textContent = 'Welcome';
     boot._test.state.skipWired = false; // the page wires both Skip buttons on the first watch
     assert.strictEqual(boot.begin({ welcome: true }), true);
-    assert.ok(boot.isWelcomeBoot() && body.classList.contains('boot-welcome'));
-    assert.strictEqual(welcome.textContent, 'Preparing your desktop...', 'the Welcome screen takes the stage text');
+    assert.ok(boot.isWelcomeBoot() && boot.isWelcomeUp() && body.classList.contains('boot-welcome'));
+    assert.strictEqual(welcome.textContent, 'Welcome', 'Welcome while the profile loads');
+    boot.onInitStep({ priority: 0.5, message: 'Loading Desktop Settings' });
+    assert.strictEqual(welcome.textContent, 'Welcome');
+    boot.onInitStep({ priority: 12, message: 'Loading Workspaces' });
+    assert.strictEqual(welcome.textContent, 'Preparing your desktop...', 'the shell starts: Preparing your desktop...');
     boot.onStepMessage('Loading wallpaper', 40);
     assert.strictEqual(welcome.textContent, 'Preparing your desktop...', 'the step stays on the detail line');
     boot.setConnectionState('dialing');
     assert.strictEqual(welcome.textContent, 'Please wait...', 'a connection wait shows on the Welcome screen');
     boot.setConnectionState('connected');
     assert.strictEqual(welcome.textContent, 'Preparing your desktop...');
-    const w = boot.watchStep({ message: 'Loading Gallery' });
+    const w = boot.watchStep({ message: 'Loading desktop icons' });
     await sleep(45);
-    assert.strictEqual(welcome.textContent, 'Still working on: Loading Gallery');
+    assert.strictEqual(welcome.textContent, 'Still working on: Loading desktop icons');
     assert.ok(!skip.classList.contains('hidden'), 'the Welcome screen offers Skip for a stalled step');
     skip.click();
     assert.deepStrictEqual(await w.promise, { skipped: true });
     w.clear();
     assert.ok(skip.classList.contains('hidden'));
-    boot.requestStage('windows');
     assert.strictEqual(boot.isTaskbarVisible(), false, 'no tray balloons under the Welcome screen');
+    boot.requestStage('taskbar');
+    await sleep(30);
+    assert.deepStrictEqual(closed, [], 'the taskbar alone does not reveal: the Sidebar is still to come');
+    boot.requestStage('gadgets');
+    await waitFor(() => closed.length === 1, 'the built shell (gadgets stage) fades the Welcome screen out');
+    assert.deepStrictEqual(closed, ['desktopPreStartupModal']);
+    await waitFor(() => !boot.isWelcomeUp(), 'revealed');
+    assert.ok(boot.isBooting() && boot.isWelcomeBoot(), 'the boot goes on behind, still with no startup window');
+    assert.ok(!body.classList.contains('boot-welcome') && !body.classList.contains('boot-welcome-fading'));
+    assert.strictEqual(boot.isTaskbarVisible(), true, 'tray balloons once the screen is gone');
+    boot.requestStage('windows');
     await boot.finish();
     assert.strictEqual(boot.isBooting(), false);
-    assert.ok(!body.classList.contains('boot-staged'), 'the desktop is complete under the screen');
-    assert.ok(boot.isWelcomeBoot(), 'the Welcome screen stays until it fades');
-    assert.strictEqual(welcome.textContent, 'Preparing your desktop...', 'done does not flip back to Welcome');
-    assert.strictEqual(status.textContent, 'Preparing your desktop...');
-    assert.strictEqual(boot.isTaskbarVisible(), false);
-    const closed = [];
-    window.closeModal = async (m) => { closed.push(m.id); m.classList.add('hidden'); };
-    const fadeMs = boot.config.welcomeFadeMs;
-    boot.config.welcomeFadeMs = 15;
-    const fading = boot.fadeOutWelcome();
-    assert.ok(body.classList.contains('boot-welcome-fading'), 'the fade starts at once');
-    assert.deepStrictEqual(closed, [], 'closed only after the fade');
-    await fading;
+    assert.ok(!body.classList.contains('boot-staged'), 'the desktop is complete');
+    await boot.fadeOutWelcome(); // the end of the boot: already revealed, nothing more to close
     assert.deepStrictEqual(closed, ['desktopPreStartupModal']);
-    assert.ok(!boot.isWelcomeBoot() && !body.classList.contains('boot-welcome') && !body.classList.contains('boot-welcome-fading'));
-    assert.strictEqual(boot.isTaskbarVisible(), true, 'tray balloons once the screen is gone');
+    assert.ok(!boot.isWelcomeBoot());
     await boot.fadeOutWelcome(); // no-op without a Welcome boot
-    assert.deepStrictEqual(closed, ['desktopPreStartupModal']);
-    // A plain begin() after it is the Classic boot again
+    // A piece that is never ready: the cap reveals every shell layer anyway
+    boot.config.welcomeRevealCapMs = 40;
+    els.desktopPreStartupModal.classList.remove('hidden'); // the logon put it up again
+    boot.begin({ welcome: true });
+    await waitFor(() => !boot.isWelcomeUp(), 'the cap reveals the desktop');
+    assert.ok(['boot-reveal-wallpaper', 'boot-reveal-icons', 'boot-reveal-taskbar', 'boot-reveal-gadgets'].every((c) => body.classList.contains(c)), 'every shell layer shows at the cap');
+    assert.strictEqual(closed.length, 2);
+    boot.reset();
+    boot.config.welcomeRevealCapMs = capMs;
+    // The classic logon's box: its own words, and no fade
+    boot.setLogonTheme(false);
+    els.desktopPreStartupModal.classList.remove('hidden');
+    boot.begin({ welcome: true });
+    assert.strictEqual(welcome.textContent, 'Loading your personal settings...');
+    boot.onInitStep({ priority: 12, message: 'Loading Workspaces' });
+    assert.strictEqual(welcome.textContent, 'Applying your personal settings...');
+    boot.requestStage('gadgets');
+    assert.ok(!body.classList.contains('boot-welcome-fading'), 'the classic box does not fade');
+    await waitFor(() => closed.length === 3, 'the classic box closes on the built shell');
+    boot.reset();
+    // A plain begin() is the staged boot with the startup window
     boot.begin();
     assert.ok(!boot.isWelcomeBoot() && !body.classList.contains('boot-welcome'));
     boot.reset();

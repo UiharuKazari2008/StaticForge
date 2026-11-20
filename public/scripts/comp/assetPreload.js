@@ -480,7 +480,9 @@ var assetPreload = (function () {
     // The logon marquee stays a marquee. This only changes the status sentence.
     function setLogonPrepareLine(on) {
         if (typeof wsClient === 'undefined' || !wsClient) return;
-        wsClient._desktopAssetPreloadMessage = on ? 'Preparing your desktop...' : '';
+        // the logon's own line from the logon until the shell starts: Vista's "Welcome", classic "Loading your personal
+        // settings..." (desktopBoot.js welcomeText; it goes on to "Preparing your desktop..." / "Applying ...")
+        wsClient._desktopAssetPreloadMessage = on ? (window.desktopBoot ? desktopBoot.welcomeText(false) : 'Welcome') : '';
         var fill = document.getElementById('desktopPreStartupProgressFill');
         if (fill) fill.style.width = '';
         if (wsClient._shouldUsePreStartupDialog && wsClient._shouldUsePreStartupDialog()) {
@@ -906,6 +908,19 @@ var assetPreload = (function () {
         });
     }
 
+    // What the given layers paint now (their <img>s and CSS backgrounds), loaded from the cache and decoded,
+    // capped at timeoutMs: the classic logon box's theme change re-skins the desktop just before it shows
+    // (workspaceUtils.js, desktopBoot.beforeWelcomeReveal), and its icons must not pop in after the reveal
+    function settlePainted(roots, timeoutMs) {
+        var jobs = [];
+        (roots || []).forEach(function (root) {
+            if (!root) return;
+            jobs.push(decodeImages(root.querySelectorAll('img')));
+            uniqueUrls(paintedBackgroundUrls(root)).forEach(function (url) { jobs.push(holdImage(url)); });
+        });
+        return whenSettled(Promise.all(jobs), timeoutMs || STAGE_TIMEOUT_MS);
+    }
+
     // Step 18.8: the DreamStudio and Workspaces splash screens (appSplash.js) show the moment
     // those windows open, so their art and faces are decoded during the boot, not on first open.
     // The splashes sit in app.html under display:none: their <img>s download but are not decoded,
@@ -1104,7 +1119,7 @@ var assetPreload = (function () {
         if (stepsRegistered || typeof wsClient === 'undefined' || !wsClient || !isDesktop) return;
         stepsRegistered = true;
         installBeforeTransition();
-        // Steps 12.2 / 18.2 / 18.4: featureLoader.js registerAssetPreloadStepStub, or here if this file won the race.
+        // Steps 12.2 - 18.8: featureLoader.js registerAssetPreloadStepStub, or here if this file won the race.
         if (wsClient._assetPreloadStepsStubbed) return;
         wsClient._assetPreloadStepsStubbed = true;
         wsClient.registerInitStep(12.2, 'Loading wallpaper', function () {
@@ -1133,6 +1148,7 @@ var assetPreload = (function () {
         preloadDesktopAssetsStage: preloadDesktopAssetsStage,
         preloadGadgetsStage: preloadGadgetsStage,
         preloadSplashStage: preloadSplashStage,
+        settlePainted: settlePainted,
         warmLaunch: warmLaunch,
         warmWindow: warmWindow,
         loadAppAssetManifest: loadAppAssetManifest,
