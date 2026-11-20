@@ -866,29 +866,6 @@ class ServiceWorkerManager {
         }
     }
 
-    // install: the fix is the /launch installer (Restart), so Restart is the default button.
-    // Otherwise the check itself failed and Retry is.
-    _askBootGateRetry(detail, { install = false } = {}) {
-        const message = install
-            ? 'Melaton needs to restart to install an update.'
-            : 'Melaton could not confirm the offline cache.';
-        const text = detail || 'The update check did not finish. Click Retry to check again.';
-        if (window.bootMessageBox && typeof window.bootMessageBox.show === 'function') {
-            return window.bootMessageBox.show({
-                title: 'Melaton',
-                icon: 'error',
-                message: message,
-                detail: 'DETAIL - ' + text,
-                buttons: [
-                    { label: 'Retry', value: 'retry', default: !install },
-                    { label: 'Restart', value: 'restart', default: install }
-                ]
-            });
-        }
-        this._showBootFatalError(new Error(text));
-        return Promise.resolve(null);
-    }
-
     _clearLegacyInstallWizardSession() {
         try {
             sessionStorage.removeItem(LEGACY_INSTALL_WIZARD_SESSION_KEY);
@@ -5979,24 +5956,15 @@ class ServiceWorkerManager {
         } finally {
             this._bootOrchestrating = false;
         }
-        if (outcome && outcome.ask && this._appClientStartsAtOnce()) {
-            // (only reachable on a path the early start above did not cover) the app client starts anyway; the
-            // update flow takes it from there
-            console.warn('[boot] update check could not settle; starting on the kept copy:', outcome.ask);
-            this.queueCacheUpdateUntilBoot(null, true);
-            return null;
-        }
+        // The boot never asks (Yukimi, Nov 19 2026, #951: the "offline cache still does not match" box is gone for good):
+        // an update check that could not settle never stops the start. A computer with an installed copy starts on it
+        // and leaves the files to the update flow (they join the pending set); one with no copy yet goes to the real
+        // installer (/launch); if the installer just ran, it starts on what it has and the update flow finishes it.
         if (outcome && outcome.ask) {
-            const choice = await this._askBootGateRetry(outcome.ask, { install: outcome.install === true });
-            if (choice === 'restart') {
-                // restartClientNavigate: public/scripts/comp/modalUtils.js
-                if (typeof restartClientNavigate === 'function') restartClientNavigate();
-                else location.replace((window.melatonHomeUrl ? window.melatonHomeUrl() : '/launch'));
-                return { blocked: true };
-            }
-            if (choice === 'retry') return this.runBootSequence();
-            if (window.bootMessageBox) this._showBootFatalError(new Error(outcome.ask));
-            return { blocked: true };
+            console.warn('[boot] update check could not settle; starting, the update flow finishes it:', outcome.ask);
+            if (!this._isInstalledClient() && this._rebootIntoInstaller(outcome.count || 0, outcome.ask)) return { rebooted: true };
+            this.queueCacheUpdateUntilBoot(Array.isArray(outcome.files) ? outcome.files : null, true);
+            return null;
         }
         return outcome;
     }
@@ -6098,10 +6066,11 @@ class ServiceWorkerManager {
                     lastPendingFingerprint = pendingFingerprint;
                 }
                 if (verifyPass > MAX_VERIFY_PASSES) {
-                    const mismatch = 'The offline cache still does not match the server after the update check. Click Restart to reinstall the changed files.';
-                    const sent = this._enterUpdater(mismatch, this._installerFileCount(pendingSource), { install: true });
-                    if (sent.rebooted) return sent;
-                    return { ask: mismatch, install: true };
+                    // files that did not land after several passes: the start goes on and the update flow keeps them
+                    // pending (no box, never a stop; #951)
+                    console.warn(`[boot] ${pendingSource.length} file(s) still differ after ${MAX_VERIFY_PASSES} passes: starting, they stay pending`);
+                    this.queueCacheUpdateUntilBoot(pendingSource, true);
+                    break;
                 }
 
                 // More than the cutoff, or an install /launch already started: leave before any dialog.
