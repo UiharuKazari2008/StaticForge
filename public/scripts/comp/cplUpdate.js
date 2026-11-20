@@ -566,13 +566,20 @@
     let pkgSel = null;
     let pkgAdding = null;
     const mbText = (b) => `${(Number(b || 0) / 1048576).toFixed(1)} MB`;
+    // open() on the page that is already showing only raises the window: repaint it in place
+    const repaintApplied = () => {
+        const cpl = root.melatonControlPanel;
+        if (!cpl) return;
+        if (typeof cpl.currentPage === 'function' && cpl.currentPage() === 'update-applied' && typeof cpl.navigate === 'function') cpl.navigate('update-applied', { replace: true });
+        else cpl.open('update-applied');
+    };
     function appliedBody() {
         const pk = root.melatonPackages;
         if (!pk) return '<div class="cpl-vpage"><h1 class="cpl-vtitle">Applied updates</h1><p class="cpl-vtext">Update packages are not available in this version of Melaton.</p></div>';
         if (!pkgInfo) {
             pkgInfo = [];
             fetch('/install/packages', { cache: 'no-store', credentials: 'same-origin' }).then((r) => r.json())
-                .then((j) => { pkgInfo = j && j.packages ? j.packages : []; if (root.melatonControlPanel) root.melatonControlPanel.open('update-applied'); })
+                .then((j) => { pkgInfo = j && j.packages ? j.packages : []; repaintApplied(); })
                 .catch(() => { /* sizes stay blank */ });
         }
         const info = new Map(pkgInfo.map((x) => [x.id, x]));
@@ -606,7 +613,7 @@
     }
     function appliedMount(el) {
         const cpl = root.melatonControlPanel;
-        const reopen = () => cpl.open('update-applied');
+        const reopen = repaintApplied;
         el.querySelectorAll('[data-pkg-row]').forEach((tr) => tr.addEventListener('click', () => { pkgSel = tr.dataset.pkgRow; reopen(); }));
         el.querySelectorAll('input[data-pkg]').forEach((cb) => cb.addEventListener('change', () => { if (cb.checked) pkgAdding.add(cb.dataset.pkg); else pkgAdding.delete(cb.dataset.pkg); }));
         el.querySelectorAll('[data-cpl-pkg]').forEach((b) => b.addEventListener('click', async () => {

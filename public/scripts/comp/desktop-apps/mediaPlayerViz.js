@@ -381,7 +381,7 @@
         }
     }
 
-    const mb = (b) => (Number(b || 0) / 1048576).toFixed(1) + ' MB';
+    const mb = (b) => (Number(b || 0) < 1048576 ? Math.max(1, Math.round(Number(b || 0) / 1024)) + ' KB' : (Number(b) / 1048576).toFixed(1) + ' MB');
 
     async function downloadVisualizations() {
         const ask = typeof window.showConfirmationDialog === 'function' ? window.showConfirmationDialog : null;
@@ -398,7 +398,7 @@
             const row = j && Array.isArray(j.packages) ? j.packages.find((p) => p.id === CLASSIC) : null;
             if (row && row.bytes > 0) size = ' (' + mb(row.bytes) + ')';
         } catch (_) { /* the size stays out */ }
-        const go = await ask('Melaton Update has the visualizations from Windows Media Player 9 Series and 10: Spikes (Spike, Amoeba)' + size + '. Download and install them now?', [{ text: 'Download', value: true }, { text: 'Cancel', value: false }]);
+        const go = await ask('Melaton Update has the visualizations from Windows Media Player 9 Series and 10: Ambience, Particle, Plenoptic and Spikes' + size + '. Download and install them now?', [{ text: 'Download', value: true }, { text: 'Cancel', value: false }]);
         if (!go) return;
         const change = pk.pin(CLASSIC);
         let done = null;
@@ -422,7 +422,7 @@
         const audio = player.audio;
         // the audio module's hooks: menu items after Enhancements, actions, play / pause
         const menuItems = audio.menuItems;
-        audio.menuItems = () => menuItems().concat([{ text: 'Visualizations', submenu: host.menuItems() }]);
+        audio.menuItems = () => menuItems().concat([{ text: 'Visualizations', submenu: host.menuItems() }, { separator: true }]);
         audio.state.runAction = (action) => host.runAction(action);
         audio.state.onPlay = () => host.sync();
         audio.state.onPause = () => host.sync();
