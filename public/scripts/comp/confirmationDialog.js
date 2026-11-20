@@ -197,24 +197,6 @@ function confirmationOnPhoneShell(message, options, config) {
     return wm.messageBox({ title: cfg.title || 'Melaton Mobile', text, icon, buttons, cancelValue: cancel ? cancel.value : buttons[buttons.length - 1].value, modal: buttons.length > 1 });
 }
 
-/**
- * The window a message box is modal to (#970), as MessageBox's hWnd: the caller's (config.owner), the window
- * the event came from, or - for a box the person's own click or key raised in the last seconds - the window
- * in use. A box raised by the server or a timer has no owner (MessageBox(NULL)) and disables nothing.
- */
-function confirmationModalOwner(event, config) {
-    const pick = (el) => (el && el.classList && el.classList.contains('modal') && el.id !== 'confirmationDialog'
-        && !el.classList.contains('hidden') && !el.classList.contains('closing') ? el : null);
-    const cfg = config || {};
-    if (cfg.owner) return pick(typeof cfg.owner === 'string' ? document.getElementById(cfg.owner) : cfg.owner);
-    const target = event && event.target && typeof event.target.closest === 'function' ? event.target : null;
-    const fromEvent = target ? pick(target.closest('.modal')) : null;
-    if (fromEvent) return fromEvent;
-    const ua = navigator.userActivation;
-    if (!ua || !ua.isActive || !window.modalDialogs) return null;
-    return pick(window.modalDialogs.mainActiveWindow());
-}
-
 function showConfirmationDialog(message, options = [], event = null, config = {}) {
     const onPhone = confirmationOnPhoneShell(message, typeof options === 'string' ? [{ text: options, value: true }, { text: arguments[2] || 'Cancel', value: false }] : options, typeof options === 'string' ? {} : config);
     if (onPhone) return onPhone;
@@ -428,7 +410,7 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         }
 
         // the window it is modal to, read before it takes the activation (#970)
-        const modalOwner = hasOptions ? confirmationModalOwner(event, config) : null;
+        const modalOwner = hasOptions && window.modalDialogs ? window.modalDialogs.ownerFor(event, config && config.owner, confirmationDialog) : null;
         openModal(confirmationDialog);
 
         if (typeof setActiveWindow === 'function') {
@@ -818,7 +800,7 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         }
 
         // the window it is modal to, read before it takes the activation (#970)
-        const modalOwner = hasOptions ? confirmationModalOwner(event, config) : null;
+        const modalOwner = hasOptions && window.modalDialogs ? window.modalDialogs.ownerFor(event, config && config.owner, confirmationDialog) : null;
         openModal(confirmationDialog);
 
         if (typeof setActiveWindow === 'function') {
