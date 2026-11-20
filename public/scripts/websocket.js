@@ -2075,7 +2075,7 @@ class WebSocketClient {
      * link (#815). Listen for 'nightshade:state' on window; it fires only when something changed.
      */
     nightshadeState() {
-        const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+        const online = this._internetUp();
         const startup = this.lastServerStartupStatus;
         let service;
         // signed out first (#899): a failed sign-in keeps the socket open, unauthenticated
@@ -2105,6 +2105,16 @@ class WebSocketClient {
         };
     }
 
+    /**
+     * The computer's own Internet link: the host's word when one reports (dreamosNetTray: DreamOS, the Android app,
+     * whose WebView keeps navigator.onLine false on a working Wi-Fi), else the browser's flag.
+     */
+    _internetUp() {
+        const t = typeof window !== 'undefined' ? window.dreamosNetTray : null;
+        try { if (t && typeof t.state === 'function' && t.state() && typeof t.internet === 'function') return t.internet(); } catch (_) { /* fall through */ }
+        return typeof navigator === 'undefined' || navigator.onLine !== false;
+    }
+
     /** Fire 'nightshade:state' when the internet / service / CaféReady state moved (#895). */
     _emitNightshadeState() {
         if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
@@ -2128,7 +2138,7 @@ class WebSocketClient {
         // Nightshade Network (#895): the network icon is the computer's own link (Vista's tooltip: the
         // network and its access); the Dreamscape service has its own icon (_updateNightshadeTrayIcon).
         // Ethernet / WAN: how this client reached the server (modules/melatonNetwork.js).
-        const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+        const online = this._internetUp();
         const lan = !!(this.melatonConnection && this.melatonConnection.connectionType === 'Ethernet');
         const iconClass = online ? 'fa-regular fa-globe' : 'fas fa-link-slash';
         // a network that wants a sign-in first (a captive portal; DreamOS, dreamosPortal.js): Vista's "Local only"

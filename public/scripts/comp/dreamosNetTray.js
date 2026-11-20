@@ -66,6 +66,21 @@
     const wiredLink = (s) => (Array.isArray(s.ethernet) ? s.ethernet : []).find((l) => l && l.carrier === true && Array.isArray(l.ip) && l.ip.length) || null;
 
     /**
+     * Whether the computer reaches the Internet (Vista's "Local and Internet"), for every network window: a sign-in page
+     * in the way says no; then the host's word (its 'online'); without one, a live link to the server or the browser's
+     * flag. The Android WebView's navigator.onLine stays false on a working Wi-Fi (the Fold, Nov 2026), so it never
+     * outvotes the host or the server socket - it made the Fold's Wi-Fi "Local only" everywhere.
+     */
+    function internet(s = state) {
+        const portal = root.dreamosPortal && typeof root.dreamosPortal.captive === 'function' && root.dreamosPortal.captive();
+        if (portal) return false;
+        if (s && typeof s.online === 'boolean') return s.online;
+        const ws = root.wsClient;
+        if (ws && typeof ws.isConnected === 'function' && ws.isConnected()) return true;
+        return !root.navigator || root.navigator.onLine !== false;
+    }
+
+    /**
      * What the icon shows now, or null when the host says nothing (not DreamOS, or before its first state):
      * { kind: 'wired' | 'wifi' | 'mobile' | 'none', name, bars, strength, limited, access, category ('private' | 'public'), title }
      */
@@ -74,8 +89,6 @@
         if (!s) return null;
         const wifi = s.wifi || {};
         const wired = wiredLink(s);
-        const portal = root.dreamosPortal && typeof root.dreamosPortal.captive === 'function' && root.dreamosPortal.captive();
-        const browserOffline = !!root.navigator && root.navigator.onLine === false;
         const net = wifi.present && wifi.state === 'connected' && wifi.network ? wifi.network : null;
         const mobile = s.mobile && s.mobile.present && s.mobile.connected ? s.mobile : null;
         let out;
@@ -95,7 +108,7 @@
         out.connecting = !wired && !net && wifi.present && /connecting|roaming/.test(String(wifi.state || ''));
         // the wireless adapter when nothing is connected: radio off, joining, or on and free
         out.radio = out.kind === 'none' && wifi.present ? (wifi.radio === false || wifi.state === 'off' ? 'off' : out.connecting ? 'connecting' : 'idle') : null;
-        out.limited = out.kind !== 'none' && (!!portal || browserOffline);
+        out.limited = out.kind !== 'none' && !internet(s);
         out.access = out.kind === 'none' ? '' : out.limited ? 'Local only' : 'Local and Internet';
         out.category = out.kind === 'none' ? null
             : out.kind === 'mobile' ? 'public'
@@ -147,6 +160,7 @@
     const api = {
         available: () => !!host(),
         look,
+        internet: () => internet(),
         bars,
         state: () => state,
         /** the signal bars (pnidui.dll 13-18) at 16 or 32 px, for the flyout and the windows */

@@ -2959,7 +2959,9 @@
         if (!transferWired && as && typeof as.on === 'function') { transferWired = true; as.on('transfer', () => statusDirty()); }
         const mode = !up || installing ? 'conn' : as && typeof as.transferring === 'function' && as.transferring() ? 'xfer' : null;
         if (!mode) return null;
-        if (dev.airplane || (dev.link && /-off$/.test(dev.link.icon)) || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
+        // the phone's own link decides; the browser's flag only without one (the Android WebView's navigator.onLine is
+        // false on a working Wi-Fi, which hid the connecting / syncing icon on the Fold)
+        if (dev.airplane || (dev.link && /-off$/.test(dev.link.icon)) || (!dev.link && typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
         if (dev.active === 'wifi' || (dev.link && dev.link.icon.startsWith('wifi'))) return `wifi-${mode}`;
         const t = dev.type && typeIcon(dev.type);
         return t ? `data-${t}-${mode}` : `data-${mode}`;

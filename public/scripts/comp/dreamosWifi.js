@@ -1175,9 +1175,17 @@
         return v >= 1000 ? `${(v / 1000).toFixed(1)} Gbps` : `${v.toFixed(1)} Mbps`; // netshell 23032 / 23033
     }
 
-    function internetWord() {
+    /** Internet behind the link: dreamosNetTray's one answer (sign-in page, the host's word, the server socket; the
+     *  Android WebView's navigator.onLine is false on a working Wi-Fi and never decides it) */
+    function reachesInternet() {
+        const t = root.dreamosNetTray;
+        if (t && typeof t.internet === 'function') return t.internet();
         const portal = root.dreamosPortal && typeof root.dreamosPortal.captive === 'function' && root.dreamosPortal.captive();
-        return !portal && (!root.navigator || root.navigator.onLine !== false) ? S.internet : S.local;
+        return !portal && (!root.navigator || root.navigator.onLine !== false);
+    }
+
+    function internetWord() {
+        return reachesInternet() ? S.internet : S.local;
     }
 
     function ipv4Text(info, x) {
@@ -2101,7 +2109,7 @@
         const s = state();
         const wired = (Array.isArray(s.ethernet) ? s.ethernet : []).some((l) => l && l.carrier && Array.isArray(l.ip) && l.ip.length);
         const any = wired || !!current() || !!(s.mobile && s.mobile.connected);
-        return host() ? any && (!root.navigator || root.navigator.onLine !== false) : !root.navigator || root.navigator.onLine !== false;
+        return host() ? any && reachesInternet() : !root.navigator || root.navigator.onLine !== false;
     };
     const firstLan = () => adapters().find((a) => a.kind === 'ethernet') || null;
 
