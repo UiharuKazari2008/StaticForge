@@ -23,7 +23,9 @@
  */
 (function (root) {
     'use strict';
+    // shell32.dll icon index 55 (the page with the magnifier), as the VM's Open With and "cannot open" boxes draw it
     const ICON = '/static_images/vista-dlg/openwith-32.png';
+    const ICON_2X = '/static_images/vista-dlg/openwith-64.png';
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
     const ANDROID_RUNTIME = {
@@ -35,11 +37,30 @@
     };
 
     function head(fileName, line) {
-        return `<div class="mow-head"><img class="mow-icon" src="${ICON}" alt="" draggable="false"><div class="mow-head-text"><div>${esc(line)}</div><div class="mow-file"><span>File:</span><span>${esc(fileName)}</span></div></div></div>`;
+        return `<div class="mow-head"><img class="mow-icon" src="${ICON}" srcset="${ICON} 1x, ${ICON_2X} 2x" width="32" height="32" alt="" draggable="false"><div class="mow-head-text"><div>${esc(line)}</div><div class="mow-file"><span>File:</span><span>${esc(fileName)}</span></div></div></div>`;
+    }
+
+    // Vista draws both boxes with a bare caption (no icon: the VM's openwith-grouped.png, cannot-crop.png), not the
+    // owner's icon the message box would inherit (modalUtils ensureModalApplicationIcon reads data-caption-icon)
+    function bareCaption(on) {
+        const dlg = document.getElementById('confirmationDialog');
+        if (!dlg) return;
+        if (!on) { if (dlg.dataset.captionIcon === 'none') delete dlg.dataset.captionIcon; return; }
+        dlg.dataset.captionIcon = 'none';
+        // the icon it already inherited goes (modalUtils.js; the caption's inherited image only)
+        if (typeof root.ensureModalApplicationIcon === 'function') root.ensureModalApplicationIcon(dlg);
+        else dlg.querySelectorAll('img[data-inherited-icon]').forEach((n) => n.remove());
     }
 
     function dialog(html, opts) {
         if (typeof root.showConfirmationDialog !== 'function') return Promise.resolve(null);
+        bareCaption(true);
+        const shown = showBox(html, opts);
+        bareCaption(true); // the box is made on its first use
+        return Promise.resolve(shown).finally(() => bareCaption(false));
+    }
+
+    function showBox(html, opts) {
         return root.showConfirmationDialog(html, [
             { text: 'OK', value: true, className: 'btn-standard primary' },
             { text: 'Cancel', value: false, className: 'btn-standard' }
@@ -56,7 +77,7 @@
         </div>`;
         return dialog(html, {
             title: 'Melaton',
-            width: 432,
+            width: 435,
             resolveValue: (v, dlg) => (v ? ((dlg.querySelector('input[name="mow-how"]:checked') || {}).value || 'web') : null)
         });
     }
@@ -153,7 +174,7 @@
         };
         const shown = dialog(html, {
             title: 'Open With',
-            width: 590,
+            width: 579,
             onDialogReady: wire,
             resolveValue: (v, dlg) => {
                 if (!v) return null;

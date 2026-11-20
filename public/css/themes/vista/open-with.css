@@ -14,3 +14,58 @@
     --mow-chevron-folded: image-set(url('/static_images/vista-dlg/openwith-group-collapsed.png') 1x, url('/static_images/vista-dlg/openwith-group-collapsed@2x.png') 2x);
     --mow-chevron-open: image-set(url('/static_images/vista-dlg/openwith-group-expanded.png') 1x, url('/static_images/vista-dlg/openwith-group-expanded@2x.png') 2x);
 }
+
+/* openwith.exe is a plain dialog, not a message box: its whole 563 px client is the dialog face (no white content
+   over a footer band), measured on the VM (openwith-grouped.png) from the client's top left: the icon (shell32 #55)
+   at 11,12, the question's capitals 13 px down and "File:" 26 px under them (text at x 54), the list at 9,59
+   (542 x 276; its tiles 3 px in), the check box and Browse... 8 px under it (check box level with the button's visible top), the web
+   line 7 px under them, OK / Cancel (75 x 23 boxes, 6 px apart) 5 px under it and 11 px in from the right, 9 px
+   above the client's bottom edge. */
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog] > .modal-content:has(> .confirmation-message > .mow) {
+    background: #f0f0f0;
+}
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog] > .modal-content > .confirmation-message:has(> .mow-choose) {
+    padding: 11px 12px 0 9px;
+}
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog] > .modal-content:has(> .confirmation-message > .mow-choose) > .vista-dialog-footer {
+    gap: 6px;
+    padding: 5px 11px 9px 9px;
+    background: transparent;
+}
+#confirmationDialog .mow-choose .mow-head { gap: 11px; margin-bottom: 8px; }
+#confirmationDialog .mow-choose .mow-icon { margin: 1px 0 0 2px; }
+#confirmationDialog .mow-choose .mow-head-text { gap: 11px; margin-top: -1px; padding-top: 0; }
+#confirmationDialog .mow-choose .mow-row { align-items: flex-start; margin-bottom: 7px; }
+#confirmationDialog .mow-choose .mow-check { margin-top: 1px; }
+/* the list view's own sunken edge (#828790), not the dialog template's field edge; grouped, the first header's rule
+   lands 11 px under the list's top edge (1 px less padding than the plain list) */
+#confirmationDialog .mow-choose .mow-list { border-color: #828790; }
+#confirmationDialog .mow-choose .mow-list { padding-left: 3px; }
+#confirmationDialog .mow-choose .mow-list.is-grouped { padding-top: 1px; }
+/* the bare caption (openWithDialog.js bareCaption): its title 8 px from the window's edge as the VM draws it, with no
+   room kept for the icon slot the message box leaves empty */
+#confirmationDialog[data-caption-icon="none"] > .modal-window-title > .modal-window-title-main > i.none { display: none; }
+/* the check box is the label's drawn box at the row's left edge (the kit's hidden input keeps no room here) */
+#confirmationDialog .mow-choose .mow-check input[type="checkbox"] { position: absolute; width: 0; height: 0; }
+
+/* shell32's "cannot open this file" box (cannot-crop.png): a 419 x 237 client on the dialog face; from its top left the
+   icon at 11,11, the question 54 px in, the explanation 13 px in on 13 px lines with its capitals at 65, "What do you
+   want to do?" at 119, the radio buttons' circles at 142 and 163 (text 16 px right of them), OK / Cancel boxes at y 197,
+   8 px apart, 27 px in from the right, 17 px above the bottom */
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog] > .modal-content > .confirmation-message:has(> .mow-cannot) {
+    padding: 11px 12px 0 11px;
+}
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog] > .modal-content:has(> .confirmation-message > .mow-cannot) > .vista-dialog-footer {
+    gap: 8px;
+    padding: 13px 27px 17px 11px;
+    background: transparent;
+}
+#confirmationDialog .mow-cannot .mow-head { gap: 10px; margin-bottom: 12px; }
+#confirmationDialog .mow-cannot .mow-head-text { gap: 11px; margin-top: -1px; padding-top: 0; }
+#confirmationDialog .mow-cannot .mow-text { margin: 0 0 15px 3px; line-height: 13px; }
+#confirmationDialog .mow-cannot .mow-ask { margin-bottom: 11px; }
+#confirmationDialog .mow-cannot .mow-radio { margin: 0 0 5px 3px; }
+#confirmationDialog .mow-cannot .mow-radio input[type="radio"] { position: absolute; width: 0; height: 0; }
+#confirmationDialog .mow-cannot .mow-radio label { margin-left: 16px; }
+#confirmationDialog .mow-cannot .mow-radio label::before,
+#confirmationDialog .mow-cannot .mow-radio label::after { left: -16px; }

@@ -2,8 +2,9 @@
    openwith.exe / shell32 on the Vista VM (~/.cache/vista-vm/openwith). Colours: css/themes/vista/open-with.css. */
 
 #confirmationDialog .mow { font-size: 12px; line-height: 15px; text-align: left; }
-/* openwith.exe is 590 px wide: the message box's own 500 px cap would wrap its lines and narrow the list (#954) */
-#confirmationDialog.modal:has(> .modal-content .mow-choose) { max-width: min(590px, calc(90vw - calc(2 * var(--spacing-md)))); }
+/* openwith.exe's window is 579 px outside (a 563 px client): the message box's own 500 px cap would wrap its lines
+   and narrow the list (#954). Its client and footer metrics are the theme's (themes/vista/open-with.css). */
+#confirmationDialog.modal:has(> .modal-content .mow-choose) { max-width: min(579px, calc(90vw - calc(2 * var(--spacing-md)))); }
 #confirmationDialog .mow-head { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 12px; }
 #confirmationDialog .mow-icon { width: 32px; height: 32px; flex: none; }
 #confirmationDialog .mow-head-text { display: flex; flex-direction: column; gap: 9px; padding-top: 1px; }

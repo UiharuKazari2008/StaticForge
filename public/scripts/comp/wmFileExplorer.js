@@ -775,6 +775,14 @@
      */
     function noApp(i, opts = {}) {
         const text = `There is no application associated with "${i.name}". Run the application first, then open the file from within the application.`;
+        // a Dreamscape file with the phone's app list (#954): Open With, its menu keeps Open Externally
+        if (!opts.noExternal && !isPhoneItem(i) && i.targetKind === 'user-file' && phoneTakes(i) && phoneOpenWith()) {
+            return ws.messageBox({
+                title: 'File Explorer', icon: 'warning', text,
+                buttons: [{ text: 'Open With...', value: 'with' }, { text: 'Cancel', value: false }],
+                cancelValue: false
+            }).then((v) => (v === 'with' ? openWithPage(i) : undefined));
+        }
         const ext = opts.noExternal ? null : externalOpener(i);
         if (!ext) return ws.messageBox({ title: 'File Explorer', icon: 'warning', text });
         return ws.messageBox({
@@ -840,6 +848,11 @@
         if (/\.vcf$/i.test(i.name || '') && i.targetKind === 'user-file' && !i.isShortcut && window.wmContactsApp) {
             window.wmContactsApp.openFile(i, pathNow());
             return;
+        }
+        // Open With's "Always Use" gave this kind of file to one of the phone's apps (#954): it goes there
+        if (i.targetKind === 'user-file' && phoneTakes(i) && phoneOpenWith()) {
+            const assoc = PD().programFor(i.name, i.mimeType);
+            if (PD().isAndroidPick(assoc)) { await sendAndOpen(i, assoc.slice('android:'.length)); return; }
         }
         if (typeof showLightbox !== 'function') { await noApp(i); return; }
         // only a same-site path goes to the viewer. previewUrl is the list's small thumbnail
@@ -928,24 +941,44 @@
     // ---------------------------------------------------------------- Open With (#954)
 
     /**
-     * Open With for a phone file: the phone's own apps that open it (explorerPhoneDrive.phoneApps, DSApp's
-     * OpenWithApps), as File Explorer's list rows with each app's icon drawn by Android at the row icon's device
-     * pixels. A tap opens the file in that app. Menu: Always Use This Program (Melaton remembers it for this kind of
-     * file; Android keeps its own defaults), Android's chooser, and Android's Default apps page for the phone's
-     * default app. An older app (no list): straight to Android's chooser, as before.
+     * Open With for a file: the phone's own apps that open it (explorerPhoneDrive.phoneApps, DSApp's OpenWithApps), as
+     * File Explorer's list rows with each app's icon drawn by Android at the row icon's device pixels. A tap opens the
+     * file in that app: a phone file where it is, a Dreamscape file sent to the phone's ActiveSync folder first (the
+     * usual copy notification). Menu: Always Use This Program (Melaton remembers it for this kind of file; Android
+     * keeps its own defaults), Android's chooser, Android's Default apps page for the phone's default app, and for a
+     * Dreamscape file Open Externally (the download). An older app (no list): Android's chooser for a phone file, the
+     * download for a Dreamscape file, as before.
      */
     const OW_ID = 'fe-open-with';
-    let ow = null; // { item, apps, always }
+    let ow = null; // { item, apps, always, onPhone }
+
+    /** The Android app lists the apps that open a type (DSApp features.openWith): Open With can be offered. */
+    function phoneOpenWith() {
+        const st = PD() && PS() && typeof PS().state === 'function' ? PS().state() : null;
+        return !!(st && st.features && st.features.openWith && PD().phoneApps && !phoneBlock());
+    }
+
+    /** A Dreamscape file copied to the phone and opened there (component: that app, else Android's chooser). */
+    function sendAndOpen(i, component) {
+        return PD().openOnPhone(phoneApp, [i], {
+            component,
+            refs: refsOf([i]),
+            onError: (text) => ws.messageBox({ title: 'File Explorer', icon: 'error', text: `Cannot open '${i.name}': ${text}` })
+        });
+    }
 
     async function openWithPage(i) {
-        if (!PD() || !PD().phoneApps) { await openInAndroid(i); return; }
+        const onPhone = isPhoneItem(i);
+        const fallback = () => (onPhone ? openInAndroid(i) : (externalOpener(i) ? externalOpener(i)() : noApp(i, { noExternal: true })));
+        if (!PD() || !PD().phoneApps) { await fallback(); return; }
         // the row icon's size on this screen (6.1 / 6.5 rows differ): the phone draws the icons at its device pixels
         const ico = page && page.querySelector('.fe-row .fe-ico');
         const cssPx = (ico && ico.getBoundingClientRect().width) || 16 * px();
-        const apps = await busyOf(() => PD().phoneApps({ root: i.phone.root, path: i.phone.path }, { ps: PS(), deviceId: null }, cssPx));
-        if (!apps.length) { await openInAndroid(i); return; }
+        const where = onPhone ? { root: i.phone.root, path: i.phone.path } : { name: i.name, mime: i.mimeType || '' };
+        const apps = await busyOf(() => PD().phoneApps(where, { ps: PS(), deviceId: null }, cssPx));
+        if (!apps.length) { await fallback(); return; }
         const current = PD().programFor(i.name, i.mimeType);
-        ow = { item: i, apps, always: apps.some((a) => a.id === current) };
+        ow = { item: i, apps, always: apps.some((a) => a.id === current), onPhone };
         ws.open(OW_ID);
     }
 
@@ -968,6 +1001,7 @@
         if (row) { row.classList.add('is-selected'); row.setAttribute('aria-selected', 'true'); }
         if (o.always) await PD().rememberProgram(o.item.name, a.id);
         ws.back();
+        if (!o.onPhone) { await sendAndOpen(o.item, a.component); return; }
         const ok = await busyOf(() => PD().openPhoneFileWith(o.item, a.component, { quiet: true }));
         if (!ok) await errorBox('File Explorer', 'open', o.item, { message: `${a.name} could not open it.` });
     }
@@ -976,12 +1010,15 @@
         const o = ow;
         if (!o) return [];
         const def = o.apps.find((a) => a.isDefault);
+        const it = o.item;
+        const ext = !o.onPhone ? externalOpener(it) : null;
         return [
             { label: 'Always Use This Program', checked: !!o.always, action: () => { o.always = !o.always; } },
             '-',
-            { label: 'Choose in Android...', action: () => { const it = o.item; ws.back(); openInAndroid(it); } },
+            { label: 'Choose in Android...', action: () => { ws.back(); if (o.onPhone) openInAndroid(it); else sendAndOpen(it, null); } },
             // Android lets no app set another's defaults: its own page, for the app that opens this now
-            { label: 'Android Default Apps...', action: () => { ws.back(); PD().phoneDefaults({ ps: PS(), deviceId: null }, def ? def.component.split('/')[0] : ''); } }
+            { label: 'Android Default Apps...', action: () => { ws.back(); PD().phoneDefaults({ ps: PS(), deviceId: null }, def ? def.component.split('/')[0] : ''); } },
+            ...(ext ? ['-', { label: 'Open Externally', action: () => { ws.back(); ext(); } }] : [])
         ];
     }
 
@@ -2068,7 +2105,9 @@
         // the phone's own items: Android's app for a file, and the bridge's facts
         const one = sel.length === 1 ? sel[0] : null;
         // a Dreamscape file out to Android (a download: the app's notification opens it)
-        if (one && one.targetKind === 'user-file' && one.kind !== 'folder' && externalOpener(one)) list.push('-', { label: 'Open Externally', action: () => externalOpener(one)() });
+        // with the phone's app list (#954) Open With (the file goes to the phone and opens in the app picked), else the download
+        if (one && one.targetKind === 'user-file' && one.kind !== 'folder' && phoneTakes(one) && phoneOpenWith()) list.push('-', { label: 'Open With...', action: () => openWithPage(one) });
+        else if (one && one.targetKind === 'user-file' && one.kind !== 'folder' && externalOpener(one)) list.push('-', { label: 'Open Externally', action: () => externalOpener(one)() });
         if (one && (isPhoneItem(one) || isPhoneRoot(one))) {
             list.push('-');
             // the phone's apps that open it (#954: Open With page), or Android's chooser from an older app

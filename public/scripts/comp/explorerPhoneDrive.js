@@ -794,20 +794,24 @@
             const have = [];
             phoneIcons.forEach((_v, k) => { if (k.endsWith(`|${px}`)) have.push(k.slice(0, k.length - String(px).length - 1)); });
             const res = await ps.call('handlers', Object.assign({ actions: ['view', 'edit'], iconData: px, have }, where));
-            const device = t.name || phoneName();
-            const here = !ps.remote;
+            // Vista's second line is the publisher. Android keeps no publisher for a package (its signing certificate
+            // names Google for every app Play signs), so the line names the phone the program runs on, the same for
+            // every phone app: "Galaxy Fold"
+            const device = (t.name && t.name !== 'Phone' ? t.name : '') || (ps.remote ? ps.deviceName : localDeviceName()) || phoneName();
+            const onPhone = device && device !== 'Phone' ? device : 'the phone';
             return (res && Array.isArray(res.apps) ? res.apps : []).filter((a) => a && a.id && a.label).map((a) => {
                 if (a.iconData) phoneIcons.set(`${a.iconKey}|${px}`, a.iconData);
                 const icon = phoneIcons.get(`${a.iconKey}|${px}`) || '';
-                const vendor = a.appLabel && a.appLabel !== a.label ? a.appLabel : 'Android';
+                // an entry the app labels apart from itself ("Save as" in Material Files) says whose it is
+                const own = !a.appLabel || a.appLabel === a.label || a.label.toLowerCase().includes(a.appLabel.toLowerCase());
                 return {
                     id: `${ANDROID_PICK}${a.id}`,
-                    name: a.label,
-                    publisher: here ? vendor : `${vendor} on ${device}`,
+                    name: own ? a.label : `${a.appLabel} - ${a.label}`,
+                    publisher: device,
                     icon: icon || null,
                     // the picture is px device pixels: shown at cssPx it is 1:1 on this screen
                     srcset: icon ? `${icon} ${px / cssPx}x` : '',
-                    note: `Melaton remembers this for files it opens. Android's own default apps are set on ${here ? 'the phone' : device}.`,
+                    note: `Melaton remembers this for files it opens. Android's own default apps are set on ${onPhone}.`,
                     component: a.id,
                     isDefault: !!a.default,
                     actions: Array.isArray(a.actions) ? a.actions : ['view']
@@ -822,6 +826,14 @@
         } finally {
             clearTimeout(timer);
         }
+    }
+
+    /** This phone's own name inside the app (Settings > About phone), or '' in a browser. */
+    function localDeviceName() {
+        try {
+            const b = root.AndroidActiveSync;
+            return (b && typeof b.getDeviceName === 'function' && String(b.getDeviceName() || '').trim()) || '';
+        } catch (_) { return ''; }
     }
 
     /** A phone file opened in one of the phone's apps (component 'package/activity'); false when that failed. */
@@ -1307,25 +1319,31 @@
      * chooser: the phone lists the apps that open its type (Android Runtime in Open With).
      */
     async function openOnPhone(app, items, opts = {}) {
+        // the phone shell says it in its own message box (opts.onError); the desktop in a toast
+        const fail = (type, text) => { if (typeof opts.onError === 'function') opts.onError(text); else toast(type, text); return false; };
         const target = phoneForOpen();
         const file = (items || []).find((i) => i && !isEntry(i) && i.kind !== 'folder');
-        if (!target || !file) { toast('warning', 'No phone is connected to open this file on.'); return; }
+        if (!target || !file) return fail('warning', 'No phone is connected to open this file on.');
         const { ps } = target;
         if (target.deviceId) ps.select(target.deviceId);
         let st = null;
-        try { st = ps.remote ? await ps.hello() : await ensureState(); } catch (err) { toast('error', errText(err)); return; }
+        try { st = ps.remote ? await ps.hello() : await ensureState(); } catch (err) { return fail('error', errText(err)); }
         const block = blocker(st);
-        if (block) { toast('warning', block.text); return; }
+        if (block) return fail('warning', block.text);
         const dir = ps.receivedDir || '/ActiveSync';
         const r = (typeof ps.receivedRoot === 'function' && ps.receivedRoot(st)) || rootsOf(st).find((x) => x.kind === 'internal') || rootsOf(st)[0];
-        if (!r) { toast('warning', 'The phone has no storage to open this file from.'); return; }
+        if (!r) return fail('warning', 'The phone has no storage to open this file from.');
         try { await ps.call('mkdir', { root: r.id, path: dir }); } catch (_err) { /* it is there */ }
-        await app.deliverItemsToPath(app._itemRefs([file]), pathFor(r.id, dir), 'copy', { sourcePath: app.currentPath });
+        // Explorer's own delivery on the desktop; the phone shell (no applet) hands its item refs to deliver()
+        const refs = opts.refs || app._itemRefs([file]);
+        if (typeof app.deliverItemsToPath === 'function') await app.deliverItemsToPath(refs, pathFor(r.id, dir), 'copy', { sourcePath: app.currentPath });
+        else await deliver(app, refs, pathFor(r.id, dir), 'copy', { sourcePath: app.currentPath });
         try {
             // a phone app picked in Open With (#954), else Android's chooser
             await ps.call('open', opts.component ? { root: r.id, path: `${dir}/${file.name}`, component: opts.component, action: 'view' } : { root: r.id, path: `${dir}/${file.name}`, chooser: true });
+            return true;
         } catch (err) {
-            toast('error', errText(err));
+            return fail('error', errText(err));
         }
     }
 
