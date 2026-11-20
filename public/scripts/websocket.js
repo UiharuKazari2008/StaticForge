@@ -2134,6 +2134,12 @@ class WebSocketClient {
     _internetUp() {
         const t = typeof window !== 'undefined' ? window.dreamosNetTray : null;
         try { if (t && typeof t.state === 'function' && t.state() && typeof t.internet === 'function') return t.internet(); } catch (_) { /* fall through */ }
+        // Melaton Mobile (#966): the phone shell has no network host, and its WebView's navigator.onLine stays false on a
+        // working link (the Fold, Nov 20); the app's own pushed device status names Android's active network instead
+        try {
+            const ds = window.wmShell && typeof window.wmShell.deviceStatus === 'function' ? window.wmShell.deviceStatus() : null;
+            if (ds && typeof ds.active === 'string' && ds.active) return ds.active !== 'none';
+        } catch (_) { /* fall through */ }
         return typeof navigator === 'undefined' || navigator.onLine !== false;
     }
 
