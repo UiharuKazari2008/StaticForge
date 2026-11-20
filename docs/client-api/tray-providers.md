@@ -159,6 +159,14 @@ Android (DSApp `AudioDevicesBridge`, `window.AndroidAudioDevices`):
   `androidaudiodevices` (detail = the same object), only when it changed. Off when the page is off screen (onStop).
 - `setCommunicationDevice(id)` (`-1` clears) returns a boolean; `setMedia(pct, muted)` (`-1` keeps) and
   `setMicMute(on)` return the new state.
+- Media output (Android 14+, DSApp `MediaOutputRouting`): the state also carries `routes: { allowed, canGrant, granting,
+  error, target, items: [{ id, name, type, description, system, selected, state }] }` from MediaRouter2's proxy router,
+  the API behind Samsung's Media output panel: the speaker, wired / USB, each connected Bluetooth device, HDMI /
+  DisplayPort and the playing app's cast routes. `selectRoute(id)` moves media playback there (transferTo);
+  `allowRouting()` allows MEDIA_ROUTING_CONTROL once through the app's shell (appops); `showOutputPanel()` opens the system
+  Output Switcher when there is no shell. The page lists connected Bluetooth devices not in use and cast routes (as
+  Vista's Remote Audio) beside the AudioManager outputs, puts the check on the selected route, and Set Default moves
+  playback there (allowing routing first when needed).
 
 DreamOS (CaféReady `audio.rs`, `window.DreamOSAudio`): the volume state gains `outputs` / `inputs`, PipeWire's sinks and
 sources read with `pw-dump`: `{ id, name, description, card, cardLongName, alsaCard, bus: 'pci' | 'usb' | 'bluetooth',
@@ -183,8 +191,8 @@ SPDIF), the hardware under it (the phone's marketing name for built-in devices, 
 PipeWire's description), the green check on the default, the level meter on the default output, Not plugged in (a jack
 port reports unavailable) and Disconnected (paired Bluetooth audio that is away, shown with the list's Show Disconnected
 Devices). Set Default: Android takes it for a headset microphone (setCommunicationDevice) and for a disconnected
-Bluetooth device (it connects, and Android plays media on it); where media plays is otherwise Android's choice, so the
-button is greyed with that reason. A plain browser keeps Built-In Sound Output / Input.
+Bluetooth device (it connects, and Android plays media on it); with Media output routes (above) Set Default moves
+playback to any output but the earpiece. An older app without routes greys it with the reason. A plain browser keeps Built-In Sound Output / Input.
 
 ## bluetooth (trayBluetooth.js: one icon for every provider)
 

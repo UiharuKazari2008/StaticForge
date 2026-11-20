@@ -107,6 +107,15 @@
     const COMM_PAIR = { bluetooth_sco: 'bluetooth_sco', ble_headset: 'ble_headset', wired_headset: 'wired_headset', usb_headset: 'usb_headset' };
     // where Android records from when no app asks: a plugged headset's mic first, else the phone's own
     const INPUT_ORDER = ['usb_headset', 'usb_device', 'usb_accessory', 'wired_headset', 'builtin_mic'];
+    // Media output route types (DSApp MediaOutputRouting.typeName) and the AudioManager device types each stands for
+    const ROUTE_FAMILY = {
+        hdmi: ['hdmi', 'hdmi_arc', 'hdmi_earc'], hdmi_arc: ['hdmi_arc', 'hdmi'], hdmi_earc: ['hdmi_earc', 'hdmi'],
+        ble_headset: ['ble_headset', 'ble_speaker', 'ble_broadcast'], dock: ['dock', 'dock_analog']
+    };
+    const REMOTE_NAMES = {
+        remote_tv: 'Cast to a television', remote_speaker: 'Cast to a speaker', remote_group: 'Cast to a speaker group',
+        remote_other: 'Cast to a device'
+    };
     // AudioFormat encodings: bits
     const ENC_BITS = { 2: 16, 3: 8, 4: 32, 21: 24, 22: 32 };
 
@@ -142,12 +151,49 @@
         const fns = [];
         let watching = false;
         let btOff = null;
+        // Media output (#963): a Set Default waiting for routing to be allowed, and the answers awaited after a move
+        let pendingRoute = null;
+        const routeWaiters = [];
         root.addEventListener('androidaudiodevices', (e) => {
             const next = parse(e && e.detail);
             if (!next) return;
             st = next;
+            const R = routing();
+            if (pendingRoute && R && !R.granting) {
+                const want = pendingRoute;
+                pendingRoute = null;
+                const dev = R.allowed === true ? list('playback').find((d) => d.routeKey === want.key && d.routeId) : null;
+                if (dev) selectRoute(dev).then(want.resolve);
+                else if (typeof B.showOutputPanel === 'function' && B.showOutputPanel()) want.resolve({});
+                else want.resolve({ error: (R && R.error) || 'Android did not allow Melaton to choose where media plays.' });
+            }
+            routeWaiters.splice(0).forEach((w) => w());
             fns.slice().forEach((fn) => { try { fn(); } catch (err) { console.error('[audioDevices]', err); } });
         }, { signal: appScopeSignal });
+        function routing() {
+            const r = st && st.routes;
+            return r && typeof r === 'object' ? r : null;
+        }
+        /** Moves media to a route and answers once Android has (the selected route changed, or an error came). */
+        function selectRoute(dev) {
+            let ok = false;
+            try { ok = !!B.selectRoute(String(dev.routeId)); } catch (_) { ok = false; }
+            if (!ok) return Promise.resolve({ error: 'This output is no longer offered.' });
+            return new Promise((resolve) => {
+                const end = Date.now() + 5000;
+                const check = () => {
+                    const R = routing();
+                    const sel = R && Array.isArray(R.items) ? R.items.find((x) => x.selected) : null;
+                    if (sel && sel.id === dev.routeId) return resolve({});
+                    if (R && R.error) return resolve({ error: R.error });
+                    if (Date.now() > end) return resolve({});
+                    routeWaiters.push(check);
+                };
+                routeWaiters.push(check);
+                // nothing pushed at all (the same route, or a quiet transfer): settle anyway
+                setTimeout(() => { const i = routeWaiters.indexOf(check); if (i >= 0) { routeWaiters.splice(i, 1); resolve({}); } }, 5000);
+            });
+        }
         const bt = () => {
             const t = root.melatonTray;
             const p = t && typeof t.provider === 'function' ? t.provider('bluetooth') : null;
@@ -231,8 +277,63 @@
                         jacks: [], format: null, formats: [], platform: 'android'
                     });
                 });
+                applyRoutes(out, here);
             }
             return out;
+        }
+
+        /*
+         * Media output (#963): the routes Samsung's Media output panel offers (DSApp MediaOutputRouting, MediaRouter2's
+         * proxy router) join the outputs: each device gets its route, connected Bluetooth devices Android is not playing
+         * on now and the playing app's cast routes are listed too, the route media plays on carries the check, and Set
+         * Default moves playback there. Routing not yet allowed: Set Default allows it through the app's shell first;
+         * without a shell it opens the system Output Switcher.
+         */
+        function applyRoutes(out, here) {
+            const R = routing();
+            if (!R || typeof B.selectRoute !== 'function') return;
+            const items = Array.isArray(R.items) ? R.items : [];
+            const used = new Set();
+            const sameFamily = (rt, dt) => (ROUTE_FAMILY[rt] || [rt]).includes(dt);
+            out.forEach((d) => {
+                if (d.state !== 'working') return;
+                if (d.type === 'builtin_earpiece') { d.setDefaultNote = 'Android plays on the earpiece during calls only.'; return; }
+                const bluetooth = BT_TYPES.includes(d.type);
+                const r = items.find((x) => x.system && !used.has(x.id) && sameFamily(x.type, d.type) && (!bluetooth || !x.name || x.name === d.description));
+                if (r) { used.add(r.id); d.routeId = r.id; }
+                d.routeKey = `${d.type}|${d.description}`;
+                d.canSetDefault = true;
+                d.setDefaultNote = '';
+            });
+            items.forEach((x) => {
+                if (used.has(x.id)) return;
+                if (x.system) {
+                    // a connected Bluetooth device Android is not playing on (one is active at a time); other system
+                    // routes always have their device above
+                    if (x.state === 'disconnected' || !/^(bluetooth_a2dp|ble_headset|hearing_aid)$/.test(x.type)) return;
+                    const t = ANDROID[x.type] || ANDROID.bluetooth_a2dp;
+                    out.push({
+                        id: `r${x.id}`, routeId: x.id, routeKey: `${x.type}|${x.name}`, type: x.type, address: '', flow: 'playback',
+                        kind: x.type === 'ble_headset' ? 'headset' : 'headphones', name: x.type === 'ble_headset' ? 'Headset Earphone' : 'Headphones',
+                        description: x.name || 'Bluetooth Audio', state: 'working', isDefault: false, canSetDefault: true, setDefaultNote: '',
+                        volume: null, muted: null, canSetVolume: false, canMute: false,
+                        controller: { name: t.ctl, vendor: 'Bluetooth (connected, not in use)' }, jacks: [], format: null, formats: [], platform: 'android'
+                    });
+                    return;
+                }
+                // the playing app's cast / Smart View routes: Vista's Remote Audio
+                out.push({
+                    id: `r${x.id}`, routeId: x.id, routeKey: `${x.type}|${x.name}`, type: x.type, address: '', flow: 'playback',
+                    kind: x.type === 'remote_tv' ? 'hdmi' : 'speakers', name: 'Remote Audio',
+                    description: x.name || 'Remote device', state: 'working', isDefault: false, canSetDefault: true, setDefaultNote: '',
+                    volume: null, muted: null, canSetVolume: false, canMute: false,
+                    controller: { name: REMOTE_NAMES[x.type] || 'Remote audio device', vendor: x.description || (R.target ? `Cast from ${R.target}` : here) },
+                    jacks: [], format: null, formats: [], platform: 'android'
+                });
+            });
+            // the route media plays on carries the check (the system session's, or the playing app's cast session)
+            const sel = R.allowed === true ? items.find((x) => x.selected) : null;
+            if (sel && out.some((d) => d.routeId === sel.id)) out.forEach((d) => { d.isDefault = d.routeId === sel.id; });
         }
 
         return {
@@ -257,7 +358,25 @@
                     const p = t && t.provider('bluetooth');
                     return p && typeof p.connect === 'function' ? Promise.resolve(p.connect(dev.btId)) : Promise.resolve({ error: 'Bluetooth is not available.' });
                 }
-                if (dev.flow !== 'recording' || dev.commPartner === null || dev.commPartner === undefined) return Promise.resolve({ error: dev.setDefaultNote || 'Android does not allow it.' });
+                if (dev.flow === 'playback') {
+                    const R = routing();
+                    if (!R || !dev.canSetDefault) return Promise.resolve({ error: dev.setDefaultNote || 'Android does not allow it.' });
+                    if (R.allowed === true && dev.routeId) return selectRoute(dev);
+                    if (R.allowed !== true && R.canGrant && typeof B.allowRouting === 'function') {
+                        // allowed once through the app's shell; the move follows when the app says it may
+                        return new Promise((resolve) => {
+                            pendingRoute = { key: dev.routeKey, resolve };
+                            let ok = false;
+                            try { ok = !!B.allowRouting(); } catch (_) { ok = false; }
+                            if (!ok) { pendingRoute = null; resolve({ error: 'Android did not allow Melaton to choose where media plays.' }); }
+                        });
+                    }
+                    // no way to choose from here: Android's own Media output panel
+                    let shown = false;
+                    try { shown = typeof B.showOutputPanel === 'function' && !!B.showOutputPanel(); } catch (_) { shown = false; }
+                    return Promise.resolve(shown ? {} : { error: R.error || 'Android did not allow Melaton to choose where media plays.' });
+                }
+                if (dev.commPartner === null || dev.commPartner === undefined) return Promise.resolve({ error: dev.setDefaultNote || 'Android does not allow it.' });
                 let ok = false;
                 try { ok = !!B.setCommunicationDevice(Number(dev.commPartner)); } catch (_) { ok = false; }
                 return Promise.resolve(ok ? {} : { error: 'Android refused to use this device.' });
