@@ -113,10 +113,24 @@
         return { html: '<b>Mobile Broadband</b>', tech: '' };
     }
 
-    /** VZAM's signal meter (its bracket and four bars, from the 7.6 capture): 0-4 bars lit. */
+    /**
+     * VZAM's signal meter, 0-4 bars lit: 7.6.3.1's own 25 x 20 drawing (the bracket with its flag, four capped bars),
+     * taken pixel for pixel from a capture of the program (bar 4 lit made from bar 3's columns). Pixel art: drawn at
+     * its size, nearest-neighbour on a scaled screen (vzaccess.css .vz-meter).
+     */
     function meterHtml(bars) {
         const n = Math.max(0, Math.min(4, Math.round(Number(bars) || 0)));
-        return `<img class="vz-meter" src="${A}/meter-${n}.png" alt="" draggable="false">`;
+        return `<img class="vz-meter" src="${A}/meter-${n}.png" width="25" height="20" alt="" draggable="false">`;
+    }
+
+    /**
+     * Verizon's 4G LTE / 5G / 5G Ultra Wideband marks (Yukimi's artwork) as tall as the meter (20 px) and on its base
+     * line; one bitmap per screen scale (1x, 1.5x, 2x, each a whole number of pixels) so none is resampled.
+     */
+    const MARK_W = { '4glte': 68, '5g': 34, '5guw': 76 };
+    function markHtml(mark, alt) {
+        const b = `${A}/tech-${mark}-20`;
+        return `<img class="vz-tech-mark" src="${b}.png" srcset="${b}.png 1x, ${b}@1.5x.png 1.5x, ${b}@2x.png 2x" width="${MARK_W[mark]}" height="20" alt="${esc(alt)}" draggable="false">`;
     }
 
     const barsOfPercent = (p) => { const v = Number(p); return !Number.isFinite(v) || v <= 0 ? 0 : v >= 80 ? 4 : v >= 60 ? 3 : v >= 35 ? 2 : 1; };
@@ -314,16 +328,18 @@
             w.content.classList.add('vz-client');
             w.content.innerHTML = `
                 <div class="vz-root">
-                    <div class="naxt-menubar" role="menubar" data-win32-menus>
-                        <button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="file"><u>F</u>ile</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="view"><u>V</u>iew</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="tools"><u>T</u>ools</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="options"><u>O</u>ptions</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="help"><u>H</u>elp</button>
+                    <div class="vz-band">
+                        <div class="naxt-menubar" role="menubar" data-win32-menus>
+                            <button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="file"><u>F</u>ile</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="view"><u>V</u>iew</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="tools"><u>T</u>ools</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="options"><u>O</u>ptions</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="help"><u>H</u>elp</button>
+                        </div>
+                        <img class="vz-logo" src="${A}/vzw-logo.png" width="173" height="25" alt="Verizon Wireless" draggable="false">
                     </div>
-                    <img class="vz-logo" src="${A}/vzw-logo.png" alt="Verizon Wireless" draggable="false">
-                    <menu role="tablist">
-                        <button type="button" role="tab" data-tab="networks" aria-selected="true"><img src="${A}/tab-networks.png" data-on="tab-networks" data-off="tab-networks-off" alt="" draggable="false">Networks</button>
-                        <button type="button" role="tab" data-tab="statistics" aria-selected="false"><img src="${A}/tab-statistics-off.png" data-on="tab-statistics" data-off="tab-statistics-off" alt="" draggable="false">Statistics</button>
-                        <button type="button" role="tab" data-tab="txt" aria-selected="false"><img src="${A}/tab-txt-off.png" data-on="tab-txt" data-off="tab-txt-off" alt="" draggable="false">TXT Messaging</button>
-                        <button type="button" role="tab" data-tab="wloc" aria-selected="false"><img src="${A}/tab-wifiloc.png" data-on="tab-wifiloc" data-off="tab-wifiloc" alt="" draggable="false">Wi-Fi Locations</button>
-                    </menu>
+                    <div class="vz-tabs" role="tablist">
+                        <button type="button" class="vz-tab" role="tab" data-tab="networks" aria-selected="true"><i class="vz-tab-l"></i><i class="vz-tab-m"></i><i class="vz-tab-r"></i><img src="${A}/tab-networks.png" data-on="tab-networks" data-off="tab-networks-off" width="17" height="17" alt="" draggable="false"><span class="vz-tab-t" data-t="Networks">Networks</span></button>
+                        <button type="button" class="vz-tab" role="tab" data-tab="statistics" aria-selected="false"><i class="vz-tab-l"></i><i class="vz-tab-m"></i><i class="vz-tab-r"></i><img src="${A}/tab-statistics-off.png" data-on="tab-statistics" data-off="tab-statistics-off" width="17" height="17" alt="" draggable="false"><span class="vz-tab-t" data-t="Statistics">Statistics</span></button>
+                        <button type="button" class="vz-tab" role="tab" data-tab="txt" aria-selected="false"><i class="vz-tab-l"></i><i class="vz-tab-m"></i><i class="vz-tab-r"></i><img src="${A}/tab-txt-off.png" data-on="tab-txt" data-off="tab-txt-off" width="18" height="17" alt="" draggable="false"><span class="vz-tab-t" data-t="TXT Messaging">TXT Messaging</span></button>
+                        <button type="button" class="vz-tab" role="tab" data-tab="wloc" aria-selected="false"><i class="vz-tab-l"></i><i class="vz-tab-m"></i><i class="vz-tab-r"></i><img src="${A}/tab-wifiloc.png" data-on="tab-wifiloc" data-off="tab-wifiloc" width="17" height="17" alt="" draggable="false"><span class="vz-tab-t" data-t="Wi-Fi Locations">Wi-Fi Locations</span></button>
+                    </div>
                     <article role="tabpanel" class="vz-panel">
                         <div class="vz-page is-shown" data-page="networks">
                             <div class="vz-bar">
@@ -657,7 +673,7 @@
             const cov = coverageOf(w.type, ci && ci.frequencyRange);
             const ext = w.roaming ? ' Extended Network' : '';
             // the Coverage Indicator: the network and its radio (strings 1363, 3061), roaming, the mark and the bars
-            const mark = cov.mark ? `<img class="vz-tech-mark" src="${A}/tech-${cov.mark}-15.png" srcset="${A}/tech-${cov.mark}-30.png 2x" alt="${esc(cov.tech)}" draggable="false">` : cov.tech ? `<span class="vz-tech">${esc(cov.tech)}</span>` : '';
+            const mark = cov.mark ? markHtml(cov.mark, cov.tech) : cov.tech ? `<span class="vz-tech">${esc(cov.tech)}</span>` : '';
             const roam = w.roaming ? `<img class="vz-roam" src="${A}/roam-extended.png" alt="" title="Extended Network" draggable="false">` : '';
             const meter = `<span class="vz-sig" title="${esc(this.signalTip(w))}">${meterHtml(w.bars)}</span>`;
             const covText = !w.present ? '' : w.searching ? '<span>Searching for network</span>' : `<span title="${esc(`Coverage - ${cov.html.replace(/<[^>]+>/g, '')}${ext}`)}">${cov.html}</span>`;
@@ -1150,6 +1166,9 @@
             const v = (id) => { const e = doc.getElementById(id); return !!(e && e.checked); };
             // runAtStartup: the desktop puts VZAccess Manager in the tray on a Verizon connection (androidTrayProviders.js)
             writeJson(PREFS_KEY, Object.assign(p, { runAtStartup: v('vzPrefStart'), popup: v('vzPrefPopup'), noConnectWarning: !v('vzPrefWarn') }));
+            // the desktop's Verizon watcher reads it from the registry (androidTrayProviders.js)
+            const reg = root.melatonRegistry;
+            if (reg && typeof reg.set === 'function') void reg.set('HKCU\\Software\\Verizon Wireless\\VZAccess Manager\\Preferences', { RunAtStartup: v('vzPrefStart') ? 1 : 0 });
         }
 
         /** The log's sessions that pass Session Log Filter. */

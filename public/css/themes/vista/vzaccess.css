@@ -16,6 +16,12 @@
     --vz-head-face: linear-gradient(#e9e9e9, #bebebe);
     --vz-head-edge: #d5d5d5;
     --vz-head-text: #222;
+    /* the header band (VM: plain #f2f2f2 to x 356, #b6b6b6 at 704, less the 2 px frame) and its line; the tabs */
+    --vz-band-face: linear-gradient(to right, #f2f2f2 354px, #b6b6b6 702px);
+    --vz-band-line: #787878;
+    --vz-tab-face: #ececec;
+    --vz-tab-edge: #b7d5ea;
+    --vz-tab-sel-face: #fff;
 
     --vz-btn-inner: rgba(255, 255, 255, .6);
 
