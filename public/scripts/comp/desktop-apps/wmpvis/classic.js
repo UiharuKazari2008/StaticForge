@@ -6,8 +6,11 @@
 // The collections and presets as WMP 10 (10.0.0.3802, the XP reference VM) lists them: Ambience (Random, Swirl,
 // Warp, Anon, Falloff, Water, Bubble, Dizzy, Windmill, Niagara, Blender, X Marks the Spot, Down the Drain,
 // Thingus), Particle (Particle, Rotating Particle), Plenoptic (Random, Smokey Circles, Smokey Lines, Vox, Flame,
-// Fountain, Spyro), Spikes (Spike, Amoeba). Drawn after the XP VM's frames (~/.cache/xp-vm/cap: c1-c56); the
-// effects' own code (WMP 10 wmp.dll) is not used, so motion is matched by eye.
+// Fountain, Spyro), Spikes (Spike, Amoeba). Particle is Battery's DotPlane, ported from WMP 11's wmp.dll, and
+// Ambience runs on the ported Battery palette engine (mediaPlayerVizBattery.js, handed over as the Battery collection's lib), which
+// WMP 10 shares; WMP 10's own Ambience presets, Plenoptic and Spikes have no symbols, so their shifts, lines
+// and particles are matched by eye to the XP VM (~/.cache/xp-vm/cap c1-c56, bursts in ~/.cache/claude-run/
+// wmpviz/seq).
 (function () {
     'use strict';
 
@@ -80,111 +83,94 @@
         };
     }
 
-    // ---- a small palette feedback engine (Ambience): warp the last frame, fade, draw the waveform ----
+    // ---- Ambience: WMP 10's Ambience runs on the same palette engine as Battery (mediaPlayerVizBattery.js,
+    // lib.battery): random palettes from a dark first colour (the VM's navy / black grounds), the
+    // 5-tap blur that takes one palette step a frame, a shift table, and the waveform drawn as bright lines.
+    // WMP 10's Ambience code is not in a build with symbols, so each preset's shift and lines are chosen to
+    // match the XP VM's frames (~/.cache/claude-run/wmpviz/seq/a-*); the engine itself is WMP's. Ambience
+    // draws smoother than Battery, so the picture is stretched with smoothing. ----
 
-    function feedback(canvas, opts) {
-        const ctx = canvas.getContext('2d', { alpha: false });
-        const off = document.createElement('canvas');
-        const octx = off.getContext('2d', { alpha: false });
-        let w = 0; let h = 0; let buf = null; let tmp = null; let map = null; let img = null; let px = null;
-        let t = 0;
-        const pal = opts.palette;
-        function size(cw, ch) {
-            const k = Math.min(1, MAXW / Math.max(1, cw));
-            w = Math.max(16, Math.round(cw * k));
-            h = Math.max(16, Math.round(ch * k));
-            off.width = w; off.height = h;
-            buf = new Uint8Array(w * h); tmp = new Uint8Array(w * h);
-            img = octx.createImageData(w, h); px = new Uint32Array(img.data.buffer);
-            map = new Int32Array(w * h);
-            const s = Math.min(w, h) / 2;
-            for (let y = 0; y < h; y++) {
-                for (let x = 0; x < w; x++) {
-                    const dx = (x - w / 2) / s; const dy = (y - h / 2) / s;
-                    const [sx, sy] = opts.warp(dx, dy, Math.hypot(dx, dy), Math.atan2(dy, dx));
-                    const ix = Math.round(w / 2 + sx * s); const iy = Math.round(h / 2 + sy * s);
-                    map[y * w + x] = ix < 0 || iy < 0 || ix >= w || iy >= h ? -1 : iy * w + ix;
-                }
-            }
-        }
-        const plot = (x, y, v) => { x |= 0; y |= 0; if (x >= 0 && y >= 0 && x < w && y < h && buf[y * w + x] < v) buf[y * w + x] = v; };
-        const line = (x0, y0, x1, y1, v) => {
-            const n = Math.max(1, Math.ceil(Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0))));
-            for (let i = 0; i <= n; i++) plot(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n, v);
-        };
-        // a waveform along a line through the middle (angle a, offset o of the half height)
-        const waveLine = (d, a, o) => {
-            const ca = Math.cos(a); const sa = Math.sin(a);
-            const len = Math.hypot(w, h) * 0.55;
-            let lx = 0; let ly = 0;
-            for (let i = 0; i <= 96; i++) {
-                const f = i / 96 * 2 - 1;
-                const j = wv(d, i * 8) * h * 0.06 + o * h / 2;
-                const x = w / 2 + ca * f * len - sa * j;
-                const y = h / 2 + sa * f * len + ca * j;
-                if (i) { line(lx, ly, x, y, 255); line(lx, ly + 1, x, y + 1, 230); line(lx, ly - 1, x, y - 1, 230); }
-                lx = x; ly = y;
-            }
-        };
+    // a waveform line through the picture: angle a, centre offset o (of the half height), length k (of the
+    // diagonal), or from the bottom up (rise) with the level setting its height
+    function waveDraw(eng, a, o, k, rise) {
         return {
-            frame(d) {
-                if (!buf) size(d.w, d.h);
-                t += 1;
-                const last = buf.length - w - 1;
-                // the warp samples a 2x2 average: the VM's Ambience smears into smooth fields
-                for (let i = 0; i < map.length; i++) {
-                    const s = map[i];
-                    const v = s < 0 || s > last ? 0 : (buf[s] + buf[s + 1] + buf[s + w] + buf[s + w + 1]) >> 2;
-                    tmp[i] = (v * opts.keep) >> 8;
+            flags: 2,
+            render(buf) {
+                const [W, H] = eng.size;
+                const A = eng.audio;
+                const put = (x, y) => { x |= 0; y |= 0; if (x >= 0 && y >= 1 && x < W && y < H - 1) { buf[y * W + x] = 255; buf[(y + 1) * W + x] = 250; buf[(y - 1) * W + x] = 250; } };
+                if (rise) {
+                    let lvl = 0;
+                    for (let i = 1; i < 24; i++) lvl += A[i];
+                    // three strands of the waveform up from the bottom middle, as tall as the bass is loud
+                    const top = H - 1 - Math.min(1, lvl / (23 * 200)) * H * 0.65;
+                    for (let k = 0; k < 3; k++) {
+                        let px = W / 2 + (k - 1) * 6; let py = H - 1;
+                        for (let y = H - 1; y > top; y -= 2) {
+                            const x = W / 2 + (k - 1) * 6 + (A[0x800 + ((H - y) * 3 + k * 170 & 1023)] - 128) / 128 * W * 0.05;
+                            const n = Math.max(1, Math.ceil(Math.max(Math.abs(x - px), Math.abs(y - py))));
+                            for (let j = 0; j <= n; j++) put(px + (x - px) * j / n, py + (y - py) * j / n);
+                            px = x; py = y;
+                        }
+                    }
+                    return;
                 }
-                const sw = buf; buf = tmp; tmp = sw;
-                opts.draw({ d, t, w, h, plot, line, waveLine, bass: band(d, 1, 24) });
-                for (let i = 0; i < px.length; i++) px[i] = pal[buf[i]];
-                octx.putImageData(img, 0, 0);
-                ctx.imageSmoothingEnabled = true;
-                ctx.drawImage(off, 0, 0, d.w, d.h);
-            },
-            resize(cw, ch) { size(cw, ch); },
-            dispose() { buf = tmp = map = null; }
+                const ca = Math.cos(a); const sa = Math.sin(a);
+                const len = Math.hypot(W, H) * 0.5 * k;
+                let lx = 0; let ly = 0;
+                for (let i = 0; i <= 128; i++) {
+                    const f = i / 64 - 1;
+                    const j = (A[0x800 + i * 6] - 128) / 128 * H * 0.08 + o * H / 2;
+                    const x = W / 2 + ca * f * len - sa * j;
+                    const y = H / 2 + sa * f * len + ca * j;
+                    if (i) { const n = Math.max(1, Math.ceil(Math.max(Math.abs(x - lx), Math.abs(y - ly)))); for (let m = 0; m <= n; m++) put(lx + (x - lx) * m / n, ly + (y - ly) * m / n); }
+                    lx = x; ly = y;
+                }
+            }
         };
     }
-
-    // Ambience's blue: black, #0000F0 at the middle, white at the top (the VM's frames)
-    const BLUE = (() => {
-        const p = new Uint32Array(256);
-        for (let i = 0; i < 256; i++) {
-            const a = Math.min(1, i / 110);
-            const b = Math.max(0, (i - 150) / 105);
-            p[i] = rgb(Math.round(30 * a + 225 * b), Math.round(30 * a + 225 * b), Math.round(60 + 180 * a + 15 * b));
-        }
-        return p;
-    })();
-
+    // a shift of its own: the source of each pixel in centred units (r, a about the middle)
+    function ownShift(fn, wrap) {
+        return {
+            wrap: !!wrap,
+            form(x, y, p, W, H) {
+                const s = Math.min(W, H) / 2;
+                const dx = (x - W / 2) / s; const dy = (y - H / 2) / s;
+                const [sx, sy] = fn(dx, dy, Math.hypot(dx, dy), Math.atan2(dy, dx));
+                // truncated toward the middle like WMP's own shifts (SetCenterData): the bias is what lets a
+                // small zoom move pixels at 384 x 288 at all
+                return [(W >> 1) + Math.trunc(sx * s), (H >> 1) + Math.trunc(sy * s)];
+            }
+        };
+    }
     const polar = (r, a) => [r * Math.cos(a), r * Math.sin(a)];
+    const line = (a, o, k) => (eng) => [waveDraw(eng, a, o || 0, k || 1)];
     const AMBIENCE = [
-        ['Swirl', { keep: 250, warp: (dx, dy, r, a) => polar(r * 0.99, a + 0.04), draw: (k) => { k.waveLine(k.d, 0, -0.5); k.waveLine(k.d, 0, 0.5); } }],
-        ['Warp', { keep: 254, warp: (dx, dy, r, a) => polar(r * 0.96 + 0.004, a + 0.01), draw: (k) => k.waveLine(k.d, k.t * 0.02, 0) }],
-        ['Anon', { keep: 254, warp: (dx, dy) => [dx * 0.99 + dy * 0.02, dy * 0.99], draw: (k) => k.waveLine(k.d, 0, 0) }],
-        ['Falloff', { keep: 255, warp: (dx, dy, r, a) => [dx * 1.02, dy * 0.97], draw: (k) => k.waveLine(k.d, 0, 0) }],
-        ['Water', { keep: 254, warp: (dx, dy, r, a) => polar(r * 0.97, a), draw: (k) => { k.waveLine(k.d, 0, 0); } }],
-        ['Bubble', { keep: 252, warp: (dx, dy, r, a) => polar(r < 0.8 ? r * 1.02 : r * 0.97, a + 0.02), draw: (k) => k.waveLine(k.d, k.t * 0.01, 0) }],
-        ['Dizzy', { keep: 254, warp: (dx, dy, r, a) => polar(r * 0.99, a + 0.06 * (1 - r)), draw: (k) => { k.waveLine(k.d, 0.2, -0.4); k.waveLine(k.d, 0.2, 0.4); } }],
-        ['Windmill', { keep: 254, warp: (dx, dy, r, a) => polar(r * 1.01, a + 0.03), draw: (k) => { k.waveLine(k.d, -0.3, -0.5); k.waveLine(k.d, -0.3, 0.5); } }],
-        ['Niagara', { keep: 244, warp: (dx, dy) => [dx, dy - 0.03], draw: (k) => { for (let i = 0; i < 6; i++) k.plot(k.w / 2 + (Math.random() - 0.5) * 6, k.h * 0.8 + i, 255 * k.bass); k.waveLine(k.d, Math.PI / 2, 0); } }],
-        ['Blender', { keep: 252, warp: (dx, dy, r, a) => polar(r * 0.985, a + 0.05 * r), draw: (k) => k.waveLine(k.d, 0, 0) }],
-        ['X Marks the Spot', { keep: 252, warp: (dx, dy, r, a) => polar(r * 1.015, a), draw: (k) => { k.waveLine(k.d, 0.35, 0); k.waveLine(k.d, -1.35, 0); } }],
-        ['Down the Drain', { keep: 254, warp: (dx, dy, r, a) => polar(r * 0.98, a + 0.05), draw: (k) => { k.waveLine(k.d, 1.1, -0.5); k.waveLine(k.d, 1.1, 0.5); } }],
-        ['Thingus', { keep: 254, warp: (dx, dy, r, a) => polar(r * 0.99, a + 0.08 * Math.max(0, 1 - r)), draw: (k) => k.waveLine(k.d, k.t * 0.015, 0) }]
+        ['Swirl', ['ZoomShift', [0.03, -0.008]], [line(0, -0.5), line(0, 0.5)]],
+        ['Warp', [ownShift((dx, dy, r, a) => polar(r * 0.96 + 0.004, a + 0.01), true)], [line(0, 0)]],
+        ['Anon', [ownShift((dx, dy) => [dx * 0.99 + dy * 0.02, dy * 0.99], true)], [line(0, 0)]],
+        ['Falloff', [ownShift((dx, dy) => [dx * 1.02, dy * 0.97], true)], [line(0, 0)]],
+        ['Water', [ownShift((dx, dy, r, a) => polar(r * 0.97, a), true)], [line(0, 0)]],
+        ['Bubble', [ownShift((dx, dy, r, a) => polar(r < 0.8 ? r * 1.02 : r * 0.97, a + 0.02), true)], [line(0, 0)]],
+        ['Dizzy', ['Twirlocity', [3, 0.06, 0]], [line(0, -0.45), line(0, 0.45)]],
+        ['Windmill', [ownShift((dx, dy, r, a) => polar(r * 1.01, a + 0.03), true)], [line(-0.7, 0)]],
+        ['Niagara', ['LinearShift', [0, 2]], [(eng) => [waveDraw(eng, 0, 0, 0, true)]]],
+        ['Blender', ['ZoomShift', [0.06, -0.004]], [line(0, 0)]],
+        ['X Marks the Spot', [ownShift((dx, dy, r, a) => polar(r * 1.015, a), true)], [line(0.6, 0), line(-0.6, 0)]],
+        ['Down the Drain', [ownShift((dx, dy, r, a) => polar(r * 1.02 + 0.004, a + 0.05), true)], [line(0, -0.6), line(0, 0.6)]],
+        ['Thingus', ['ThingusShift', [0.35, 0.05]], [line(0.8, 0)]]
     ];
+    const NONE = { frame() {}, resize() {}, dispose() {} };
+    const ambienceMakers = AMBIENCE.map(([, shift, draws]) => (c, o) => (o && o.lib ? o.lib.battery(c, { shift, post: draws.map((f) => (typeof f === 'function' ? f(o.lib) : f)), smooth: true }) : NONE));
 
     function randomOf(list, period) {
-        return (canvas) => {
+        return (canvas, opts) => {
             let cur = null; let since = 0;
             return {
                 frame(d, now) {
                     if (!cur || now - since > period) {
                         if (cur) cur.dispose();
-                        cur = list[Math.floor(Math.random() * list.length)](canvas);
+                        cur = list[Math.floor(Math.random() * list.length)](canvas, opts);
                         cur.resize(d.w, d.h);
                         since = now;
                     }
@@ -196,36 +182,46 @@
         };
     }
 
-    const ambienceMakers = AMBIENCE.map(([, o]) => (c) => feedback(c, Object.assign({ palette: BLUE }, o)));
 
-    // ---- Particle (WMP 10's Dotplane): a turning cloud of coloured dots; Rotating Particle: a line of them ----
+    // ---- Particle (WMP 10's Dotplane): Battery's DotPlane (wmp.dll CDotPlane, lib.dotPlane) drawn
+    // at the stage's size: a 37 x 37 spectrum waterfall of single-pixel dots, new rows at the far edge, the
+    // camera WMP's. Dots take their colour from their height as on the XP VM (~/.cache/claude-run/wmpviz/
+    // seq/particle): red on the floor, through magenta and violet to pale cyan and white on the peaks.
+    // Rotating Particle turns the plane about its vertical axis (CDotPlane's rotation bit 2, 300 frames a turn).
+    // WMP's 30 frames a second. ----
 
-    function createParticle(canvas, line) {
+    const DOT_RAMP = (() => {
+        const st = [[0, 255, 0, 0], [0.12, 255, 0, 200], [0.22, 240, 10, 255], [0.4, 150, 80, 255], [0.6, 160, 220, 255], [0.85, 255, 255, 255], [1, 255, 255, 255]];
+        const out = new Uint32Array(64);
+        for (let i = 0; i < 64; i++) {
+            const t = i / 63;
+            let k = 0;
+            while (k < st.length - 2 && t > st[k + 1][0]) k++;
+            const f = (t - st[k][0]) / (st[k + 1][0] - st[k][0]);
+            const c = [1, 2, 3].map((j) => Math.round(st[k][j] + (st[k + 1][j] - st[k][j]) * f));
+            out[i] = rgb(c[0], c[1], c[2]);
+        }
+        return out;
+    })();
+
+    function createParticle(canvas, rotating, lib) {
         const ctx = canvas.getContext('2d', { alpha: false });
-        const N = line ? 160 : 600;
-        const pts = Array.from({ length: N }, (_, i) => line ? [0, (i / N) * 2 - 1, 0] : [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1]);
-        let ax = 0; let ay = 0;
+        const core = lib ? lib.dotPlane() : null;
+        let img = null; let px = null; let due = 0;
         return {
-            frame(d) {
+            frame(d, now) {
+                if (!core) return;
+                if (now < due && due - now < 100) return;
+                due = (now - due > 100 ? now : due) + 1000 / 30;
+                lib.levels(d.freq);
                 const { w, h } = d;
-                ctx.fillStyle = 'rgba(0,0,0,0.5)';
-                ctx.fillRect(0, 0, w, h);
-                ax += 0.011; ay += 0.017;
-                const e = band(d, 1, 40);
-                const s = Math.min(w, h) * (0.18 + e * 0.12);
-                for (let i = 0; i < N; i++) {
-                    let [x, y, z] = pts[i];
-                    const c1 = Math.cos(ay); const s1 = Math.sin(ay);
-                    [x, z] = [x * c1 - z * s1, x * s1 + z * c1];
-                    const c2 = Math.cos(ax); const s2 = Math.sin(ax);
-                    [y, z] = [y * c2 - z * s2, y * s2 + z * c2];
-                    const p = 2.5 / (3 + z);
-                    const v = d.freq[1 + (i * 3) % 300] / 255;
-                    ctx.fillStyle = 'hsl(' + Math.round((i * 7 + ay * 40) % 360) + ',80%,' + Math.round(20 + v * 45) + '%)';
-                    ctx.fillRect(w / 2 + x * s * p, h / 2 + y * s * p, 2, 2);
-                }
+                if (!img || img.width !== w || img.height !== h) { img = ctx.createImageData(w, h); px = new Uint32Array(img.data.buffer); }
+                px.fill(0xff000000);
+                core.update(37, rotating ? 2 : 0, true);
+                core.project(37, w, h, (x, y, ht) => { px[y * w + x] = DOT_RAMP[Math.min(63, (ht / 60 * 63) | 0)]; });
+                ctx.putImageData(img, 0, 0);
             },
-            resize() {},
+            resize() { img = null; },
             dispose() {}
         };
     }
@@ -245,6 +241,180 @@
             dispose() {}
         };
     }
+
+    // ---- Plenoptic's particle scenes (Flame, Spyro): soft light sprites added together on a half-size picture
+    // that is stretched to the stage, so crowded sprites burn out to yellow / white as on the VM. Each particle is
+    // drawn at a few points along this frame's move: WMP's dotted streaks (~/.cache/xp-vm/cap c49/c51 and the
+    // ~110 ms bursts in ~/.cache/claude-run/wmpviz/seq/flame, seq/spyro). Motion is per elapsed time, so a phone's
+    // 30 frames a second moves as far as a desktop's 60. ----
+
+    const spriteCache = new Map();
+    function sprite(r, g, b) {
+        const key = (r << 16) | (g << 8) | b;
+        let s = spriteCache.get(key);
+        if (s) return s;
+        s = document.createElement('canvas');
+        s.width = s.height = 16;
+        const g2 = s.getContext('2d');
+        const gr = g2.createRadialGradient(8, 8, 0, 8, 8, 8);
+        gr.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',1)');
+        gr.addColorStop(0.45, 'rgba(' + r + ',' + g + ',' + b + ',0.55)');
+        gr.addColorStop(1, 'rgba(' + r + ',' + g + ',' + b + ',0)');
+        g2.fillStyle = gr;
+        g2.fillRect(0, 0, 16, 16);
+        if (spriteCache.size > 96) spriteCache.clear();
+        spriteCache.set(key, s);
+        return s;
+    }
+    // a colour ramp quantised to 24 sprites
+    const ramp = (stops) => {
+        const out = [];
+        for (let i = 0; i < 24; i++) {
+            const t = i / 23 * (stops.length - 1);
+            const k = Math.min(stops.length - 2, Math.floor(t));
+            const f = t - k;
+            const c = [0, 1, 2].map((j) => Math.round(stops[k][j] + (stops[k + 1][j] - stops[k][j]) * f));
+            out.push(c);
+        }
+        return out;
+    };
+    const rnd = (a, b) => a + Math.random() * (b - a);
+
+    function particleScene(canvas, scene) {
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const off = document.createElement('canvas');
+        const g = off.getContext('2d', { alpha: false });
+        let w = 0; let h = 0; let last = 0;
+        const parts = [];
+        const st = { t: 0 };
+        function size(cw, ch) {
+            const k = Math.min(0.5, MAXW / Math.max(1, cw));
+            w = off.width = Math.max(16, Math.round(cw * k));
+            h = off.height = Math.max(16, Math.round(ch * k));
+        }
+        // one sprite: centre (x, y) in 0..1 of the stage, radii in px of the half-size picture
+        const blob = (x, y, rx, ry, c, a) => {
+            if (a <= 0.01) return;
+            g.globalAlpha = a > 1 ? 1 : a;
+            g.drawImage(sprite(c[0], c[1], c[2]), x * w - rx, y * h - ry, rx * 2, ry * 2);
+        };
+        return {
+            frame(d, now) {
+                if (!w) size(d.w, d.h);
+                const dt = last ? Math.min(3, (now - last) / 33.3) : 1; // in WMP frames (~30 a second)
+                last = now;
+                st.t += dt;
+                g.globalCompositeOperation = 'source-over';
+                g.globalAlpha = 1;
+                g.fillStyle = '#000';
+                g.fillRect(0, 0, w, h);
+                const lv = { bass: band(d, 1, 12), mid: band(d, 12, 90), all: band(d, 1, 200) };
+                scene.spawn(parts, st, lv, dt, d);
+                g.globalCompositeOperation = 'lighter';
+                scene.under && scene.under(blob, st, lv, w, h, g);
+                for (let i = parts.length - 1; i >= 0; i--) {
+                    const p = parts[i];
+                    p.age += dt;
+                    if (p.age >= p.life) { parts[i] = parts[parts.length - 1]; parts.pop(); continue; }
+                    scene.move(p, dt, st);
+                    const f = p.age / p.life;
+                    const c = p.ramp[Math.min(23, Math.floor(f * 24))];
+                    const a = p.bright * (1 - f);
+                    // a dotted streak: the particle where it is and where it was the last few frames
+                    const n = p.trail || 1;
+                    for (let s = 0; s < n; s++) blob(p.x - p.vx * s * p.gap, p.y - p.vy * s * p.gap, p.rx, p.ry, c, a * (1 - s / (n + 1)));
+                }
+                scene.over && scene.over(blob, st, lv, w, h, g);
+                g.globalAlpha = 1;
+                g.globalCompositeOperation = 'source-over';
+                ctx.imageSmoothingEnabled = true;
+                ctx.drawImage(off, 0, 0, d.w, d.h);
+            },
+            resize(cw, ch) { size(cw, ch); },
+            dispose() { parts.length = 0; }
+        };
+    }
+
+    // Flame (VM, 698x498): a yellow core about 0.26 of the width wide from 0.6 to 0.8 of the height, tongues to
+    // red #BA0B00 above it and sparks in dotted columns to the top; a #0000F6 burner dome under it at 0.89-0.98
+    const FIRE = ramp([[255, 210, 0], [250, 150, 0], [220, 60, 0], [170, 10, 0], [60, 0, 0]]);
+    const SPARK = ramp([[240, 120, 0], [200, 50, 0], [150, 10, 0], [70, 0, 0]]);
+    const flameScene = {
+        spawn(parts, st, lv, dt) {
+            // the core: big short-lived sprites that pile up to yellow
+            const n = (10 + lv.all * 30 + lv.bass * 18) * dt;
+            for (let i = 0; i < n && parts.length < 700; i++) {
+                // a rounded bowl: wide at the top, curving in towards 0.8 of the height
+                const dx = (Math.random() + Math.random() - 1) * 0.16;
+                const q = dx / 0.16;
+                parts.push({
+                    x: 0.5 + dx, y: 0.8 - q * q * 0.08 - rnd(0, 0.16), vx: 0, vy: -rnd(0.002, 0.007) * (0.6 + lv.mid),
+                    age: 0, life: rnd(8, 20), ramp: FIRE, bright: 0.42, rx: 10, ry: 9, trail: 1, gap: 1
+                });
+            }
+            // tongues and sparks: smaller, from columns across the top of the core, rising in dotted lines
+            const m = (1 + lv.all * 7 + lv.bass * 5) * dt;
+            for (let i = 0; i < m && parts.length < 700; i++) {
+                const spark = Math.random() < 0.45;
+                parts.push({
+                    x: 0.5 + (Math.floor(rnd(0, 11)) - 5) * 0.026 + rnd(-0.006, 0.006), y: rnd(0.56, 0.64), vx: 0,
+                    vy: -(spark ? rnd(0.018, 0.026) : rnd(0.008, 0.014)), age: 0,
+                    life: spark ? rnd(22, 40) : rnd(14, 24), ramp: spark ? SPARK : FIRE.slice(9),
+                    bright: spark ? 0.75 : 0.6, rx: spark ? 3 : 5.5, ry: spark ? 2.6 : 6, trail: spark ? 3 : 2, gap: spark ? 1.6 : 1
+                });
+            }
+        },
+        move(p, dt) { p.x += p.vx * dt; p.y += p.vy * dt; },
+        over(blob, st, lv, w, h, g) {
+            // the burner: a solid blue dome under the flame, a little bigger on the beat
+            const k = 1 + lv.bass * 0.08;
+            g.globalCompositeOperation = 'source-over';
+            g.globalAlpha = 1;
+            g.fillStyle = '#0000f6';
+            g.beginPath();
+            g.ellipse(w * 0.5, h * 0.985, w * 0.09 * k, h * 0.095 * k, 0, Math.PI, TAU);
+            g.fill();
+        }
+    };
+
+    // Spyro (VM): a spinning ring of lights low in the picture (centre 0.5 / 0.86, about 0.8 x 0.3 of the stage)
+    // with a blue middle; the lights fling red and orange sparks sideways and up in dotted streaks
+    const RING = ramp([[255, 255, 255], [255, 220, 120], [120, 120, 255], [30, 30, 255]]);
+    const FLING = ramp([[255, 90, 10], [235, 35, 0], [215, 15, 0], [150, 0, 0], [60, 0, 0]]);
+    const SPIN = [1, 0.7, 0.42];
+    const spyroScene = {
+        spawn(parts, st, lv, dt) {
+            st.spin = (st.spin || 0) + (0.06 + lv.mid * 0.08) * dt;
+            const n = (0.4 + lv.all * 2.5 + lv.bass * 2) * dt;
+            for (let i = 0; i < n && parts.length < 400; i++) {
+                const ring = Math.floor(Math.random() * 3);
+                const dir = ring % 2 ? -1.3 : 1;
+                const a = st.spin * dir + Math.floor(Math.random() * 4) / 4 * TAU;
+                parts.push({
+                    x: 0.5 + Math.cos(a) * 0.42 * SPIN[ring], y: 0.85 + Math.sin(a) * 0.15 * SPIN[ring],
+                    vx: -Math.sin(a) * Math.sign(dir) * rnd(0.01, 0.02), vy: -rnd(0.003, 0.008) * (0.6 + lv.mid),
+                    age: 0, life: rnd(60, 130), ramp: FLING, bright: 0.95, rx: 5.5, ry: 4, trail: 4, gap: 1.8
+                });
+            }
+        },
+        move(p, dt) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= Math.pow(0.975, dt); },
+        under(blob, st, lv) {
+            // the blue body inside the ring
+            for (let i = 0; i < 7; i++) blob(0.5 + (i - 3) * 0.085 + Math.sin(st.t * 0.05 + i) * 0.02, 0.87 + (i % 2) * 0.05, 34, 20, [10, 10, 255], 0.5 + lv.bass * 0.4);
+            // the ring's lights, smeared into arcs along their turn
+            for (let ring = 0; ring < 3; ring++) {
+                const dir = ring % 2 ? -1.3 : 1;
+                for (let k = 0; k < 2; k++) {
+                    const a0 = st.spin * dir + k / 2 * TAU + ring;
+                    const e = Math.min(1, lv.all * 0.9 + (k % 2 ? lv.bass : lv.mid) * 0.7);
+                    for (let s = 0; s < 9; s++) {
+                        const a = a0 - Math.sign(dir) * s * 0.07;
+                        blob(0.5 + Math.cos(a) * 0.42 * SPIN[ring], 0.85 + Math.sin(a) * 0.15 * SPIN[ring], 8, 6, RING[Math.min(23, Math.floor((1 - e) * 12) + s)], (0.35 + e * 0.7) * (1 - s / 10));
+                    }
+                }
+            }
+        }
+    };
 
     const blob = (ctx, d, cx, cy, R, col) => {
         ctx.strokeStyle = col;
@@ -285,19 +455,7 @@
                 g.fillRect(w * 0.2 + x, h / 2 - v, 1, v * 2 + 1);
             }
         })],
-        ['Flame', (c) => smoky(c, (g, d, w, h) => {
-            g.drawImage(c, 0, -3);
-            g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(0, 0, w, h);
-            g.fillStyle = '#0000f0';
-            g.beginPath(); g.ellipse(w / 2, h * 0.88, w * 0.08, h * 0.04, 0, 0, TAU); g.fill();
-            for (let i = 0; i < 60; i++) {
-                const v = d.freq[1 + (i % 40) * 4] / 255;
-                const x = w / 2 + (Math.random() - 0.5) * w * 0.12;
-                const y = h * 0.82 - Math.random() * v * h * 0.12;
-                g.fillStyle = Math.random() < 0.5 ? 'rgb(240,' + Math.round(150 + v * 100) + ',0)' : 'rgb(230,40,0)';
-                g.fillRect(x, y, 5, 6);
-            }
-        })],
+        ['Flame', (c) => particleScene(c, flameScene)],
         ['Fountain', (c) => smoky(c, (g, d, w, h, t) => {
             g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(0, 0, w, h);
             for (let i = 0; i < 180; i++) {
@@ -312,17 +470,7 @@
             gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.5, 'rgba(255,60,200,0.5)'); gr.addColorStop(1, 'rgba(240,240,0,0)');
             g.fillStyle = gr; g.beginPath(); g.ellipse(w / 2, h * 0.62, w * 0.15, h * 0.08, 0, 0, TAU); g.fill();
         })],
-        ['Spyro', (c) => smoky(c, (g, d, w, h, t) => {
-            g.fillStyle = 'rgba(0,0,0,0.15)'; g.fillRect(0, 0, w, h);
-            for (let i = 0; i < 160; i++) {
-                const a = i / 160 * TAU + t * 0.03;
-                const v = d.freq[1 + (i * 2) % 200] / 255;
-                const x = w * 0.22 + Math.cos(a) * w * 0.1 * (0.3 + (i % 3) * 0.35 + v * 0.3);
-                const y = h * 0.82 + Math.sin(a) * h * 0.05 * (0.3 + (i % 3) * 0.35 + v * 0.3);
-                g.fillStyle = ['#fff', '#f00000', '#4040ff', '#f0f000'][i % 4];
-                g.fillRect(x, y, 5, 4);
-            }
-        })]
+        ['Spyro', (c) => particleScene(c, spyroScene)]
     ];
 
     const reg = (detail) => document.dispatchEvent(new CustomEvent('melaton:wmp-vis-register', { detail: Object.assign({ pkg: 'wmpvis-classic' }, detail) }));
@@ -331,7 +479,7 @@
         label: 'Ambience',
         presets: [{ name: 'Random', create: randomOf(ambienceMakers, 20000) }].concat(AMBIENCE.map(([name], i) => ({ name, create: ambienceMakers[i] })))
     });
-    reg({ id: 'particle', label: 'Particle', presets: [{ name: 'Particle', create: (c) => createParticle(c, false) }, { name: 'Rotating Particle', create: (c) => createParticle(c, true) }] });
+    reg({ id: 'particle', label: 'Particle', presets: [{ name: 'Particle', create: (c, o) => createParticle(c, false, o && o.lib) }, { name: 'Rotating Particle', create: (c, o) => createParticle(c, true, o && o.lib) }] });
     reg({
         id: 'plenoptic',
         label: 'Plenoptic',

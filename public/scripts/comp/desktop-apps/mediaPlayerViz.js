@@ -13,8 +13,8 @@
 // Collections register with the 'melaton:wmp-vis-register' event ({ id, label, presets: [{ name, create }] }):
 // Bars and Waves is in this file, Battery in mediaPlayerVizBattery.js, Alchemy in mediaPlayerVizAlchemy.js;
 // the older (WMP 9 / 10) collections arrive as downloadable packages (wmpvis/). A renderer is
-// create(canvas) -> { frame(data, now), resize(w, h), dispose() } where data = { freq: Uint8Array(1024),
-// wave: Uint8Array(1024), w, h }.
+// create(canvas, { phone, lib }) -> { frame(data, now), resize(w, h), dispose() } where data = { freq:
+// Uint8Array(1024), wave: Uint8Array(1024), w, h } and lib is Battery's engine (its registration's `lib`).
 (function () {
     'use strict';
 
@@ -243,7 +243,8 @@
             }
             if (rendererKey !== c.key) {
                 if (renderer) renderer.dispose();
-                renderer = c.preset.create(canvas, { phone });
+                const battery = collections.find((col) => col.id === 'battery');
+                renderer = c.preset.create(canvas, { phone, lib: battery && battery.lib });
                 rendererKey = c.key;
             }
             return renderer;
