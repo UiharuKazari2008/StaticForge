@@ -81,6 +81,9 @@
         }).join('');
     }
 
+    const SHIELD = '/static_images/vista-cpl/shield-uac-16.png';
+    const SHIELD_2X = '/static_images/hidpi/200/vista-cpl/shield-uac-16.png';
+
     // A template's font as Vista draws it at 96 dpi, lines GDI's tmHeight apart. "MS Shell Dlg" is Microsoft Sans Serif
     // (FontSubstitutes); a template with DS_SHELLFONT (DS_SETFONT | DS_FIXEDSYS) gets "MS Shell Dlg 2", Tahoma - the
     // VM's Mouse and Folder Options pages are Microsoft Sans Serif, Internet Options' and Taskbar's Tahoma. A template
@@ -132,6 +135,12 @@
         let lastEdit = null; // { r, at } the edit an auto-buddy up-down attaches to
         let radioGroup = 0;
         let inRadios = false;
+        // the horizontal rules (SS_ETCHEDHORZ, or a frame 1 DLU high: Date and Time's is SS_GRAYFRAME | SS_SUNKEN): a
+        // static lying across one labels it and paints its whole rect over it
+        const rules = tpl.c.filter((c) => {
+            const type = c[6] & 0x1F;
+            return c[1] === 'S' && (type === 0x10 || ((type >= 4 && type <= 9) || type === 0x12) && c[5] <= 1);
+        }).map((c) => rect(u, c[2], c[3], c[4], c[5]));
         tpl.c.forEach((c, index) => {
             const [id, cls, x, y, w, h, st, text, ex] = c;
             const o = over[id] || {};
@@ -192,7 +201,9 @@
                         const cmd = lowType === 0xE || lowType === 0xF;
                         const [main, ...rest] = String(t || '').split('\n');
                         const note = cmd ? rest.join(' ').trim() : '';
-                        const inner = cmd ? `<span class="vdt-cmdlink-main">${label(main)}</span>${note ? `<span class="vdt-cmdlink-note">${esc(note)}</span>` : ''}` : `${img}${img && !t ? '' : label(t)}`;
+                        // { shield: true }: the UAC shield a program sets at run time (BCM_SETSHIELD), before the label
+                        const shield = o.shield ? `<img class="vdt-shield" src="${SHIELD}" srcset="${SHIELD} 1x, ${SHIELD_2X} 2x" width="16" height="16" alt="" draggable="false">` : '';
+                        const inner = cmd ? `<span class="vdt-cmdlink-main">${label(main)}</span>${note ? `<span class="vdt-cmdlink-note">${esc(note)}</span>` : ''}` : `${shield}${img}${img && !t ? '' : label(t)}`;
                         out.push(`<button type="button" class="${cmd ? 'tbp-ctl vdt-cmdlink' : 'tbp-ctl tbp-button vdt-button'}" id="${domId}" style="${style(r, cmd ? 0 : 1)}" ${dataId}${primary}${hid}${dis}>${inner}</button>`);
                     }
                     break;
@@ -218,7 +229,11 @@
                         const sunken = (st & 0x1000) || (ex & WS_EX_STATICEDGE) ? ' vdt-sunken' : '';
                         // SS_CENTERIMAGE centres a one-line label in its height (WinCal Import's labels)
                         const middle = (st & 0x200) ? ' vdt-middle' : '';
-                        out.push(`<div class="tbp-ctl tbp-static vdt-static${nowrap}${sunken}${middle}${disabled ? ' is-disabled' : ''}" style="${style(r)}text-align:${align};" ${dataId}${hid}>${t ? `<span class="vdt-st-text">${label(t, noPrefix)}</span>` : ''}</div>`);
+                        // a rule's label paints its rect, so the rule stops short of the rect's end (the VM's Date and
+                        // Time: "Time zone" in a 61 px static, the rule from 6 px after the text); other statics paint
+                        // only behind their text (Tablet PC's "Right-handed" radio sits inside the rect above it)
+                        const labelsRule = rules.some((q) => q.top >= r.top && q.top < r.top + r.height && q.left < r.left + r.width && q.left + q.width > r.left) ? ' vdt-rule-label' : '';
+                        out.push(`<div class="tbp-ctl tbp-static vdt-static${nowrap}${sunken}${middle}${labelsRule}${disabled ? ' is-disabled' : ''}" style="${style(r)}text-align:${align};" ${dataId}${hid}>${t ? `<span class="vdt-st-text">${label(t, noPrefix)}</span>` : ''}</div>`);
                     }
                     break;
                 }
@@ -232,7 +247,10 @@
                     } else {
                         const type = (st & 0x20) ? 'password' : 'text';
                         lastEdit = { r, at: out.length, align };
-                        out.push(`<input type="${type}" class="tbp-ctl tbp-edit vdt-edit${edge}" id="${domId}" style="${style(r)}text-align:${align};" value="${esc(t)}" ${dataId}${ro}${dis}${hid} spellcheck="false" autocomplete="off">`);
+                        // a borderless edit draws its line at its top, not centred in a taller rect (Regional Options' samples
+                        // level with their labels on the VM): the room under the line goes to its bottom padding
+                        const under = edge ? '' : `--vdt-edit-under:${Math.max(0, r.height - (u.yu === 15 ? 15 : 13))}px;`;
+                        out.push(`<input type="${type}" class="tbp-ctl tbp-edit vdt-edit${edge}" id="${domId}" style="${style(r)}text-align:${align};${under}" value="${esc(t)}" ${dataId}${ro}${dis}${hid} spellcheck="false" autocomplete="off">`);
                         // an up-down the program attaches at run time (comdlg32's copies box): { spin: [min, max] }
                         if (o.spin) {
                             out[out.length - 1] = out[out.length - 1].replace('class="tbp-ctl tbp-edit vdt-edit', 'class="tbp-ctl tbp-edit vdt-edit vdt-buddy');

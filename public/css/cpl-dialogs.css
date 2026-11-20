@@ -73,12 +73,13 @@
     50% { visibility: hidden; }
 }
 
-/* Date and Time: Vista's clock (the taskbar flyout's art) scaled into the template's rect */
+/* Date and Time: Vista's clock (the taskbar flyout's art) scaled into the template's rect, its ring 1 px in from the
+   rect's left edge and at its top, as on the VM */
 .vdt-client .cpl-dt-clock {
     position: relative;
     width: 128px;
     height: 128px;
-    margin: 6px 0 0 5px;
+    margin: 0 0 0 1px;
 }
 
 .vdt-client .cpl-dt-date,

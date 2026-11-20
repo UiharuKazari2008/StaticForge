@@ -127,6 +127,10 @@
             id: def.windowId,
             title: def.title,
             icon: def.icon,
+            // a Control Panel applet's sheet draws the applet's icon in its caption (the VM's Date and Time, Mouse,
+            // Keyboard, Regional and Language Options, Internet Properties, Game Controllers, People Near Me, Tablet PC
+            // Settings); shell32's Folder Options and the Sidebar's own sheet have none
+            captionIcon: def.captionIcon !== false,
             owner,
             start: def.tabs && tab ? def.tabs[tab] : undefined,
             pages: def.pages,
@@ -617,7 +621,8 @@
         icon: itemIcon('date-and-time'),
         tabs: { clocks: 'timedate:350', internet: 'timedate:2' },
         pages: [
-            { key: 'timedate:1', overrides: { 113: { html: clockHtml() }, 118: { html: '<div class="cpl-dt-date"></div>' }, 114: { html: '<div class="cpl-dt-time"></div>' }, 122: { html: '<div class="cpl-dt-zone"></div>' } } },
+            // "Change date and time..." carries the UAC shield, as on the VM
+            { key: 'timedate:1', overrides: { 116: { shield: true }, 113: { html: clockHtml() }, 118: { html: '<div class="cpl-dt-date"></div>' }, 114: { html: '<div class="cpl-dt-time"></div>' }, 122: { html: '<div class="cpl-dt-zone"></div>' } } },
             { key: 'timedate:350' },
             { key: 'timedate:2' }
         ],
@@ -859,6 +864,7 @@
 
     DIALOGS['folder-options'] = {
         windowId: 'cplFolderOptions',
+        captionIcon: false,
         title: 'Folder Options',
         icon: itemIcon('folder-options'),
         tabs: { general: 'shell32:29959', view: 'shell32:29960', search: 'shell32:29961' },
@@ -1003,6 +1009,7 @@
 
     DIALOGS['sidebar-properties'] = {
         windowId: 'cplSidebarProperties',
+        captionIcon: false,
         title: 'Melaton Sidebar Properties',
         icon: itemIcon('sidebar-properties'),
         pages: [{ key: 'sidebar:9000', overrides: { 9003: { cls: '' } } }],

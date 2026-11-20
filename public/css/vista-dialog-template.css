@@ -67,6 +67,25 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.vdt-clie
     background: #f0f0f0;
 }
 
+/* the UAC shield before a button's label (vistaDialogTemplate.js { shield: true }; the VM's "Change date and time...":
+   16 px, 3 px before the text, the pair centred on the face) */
+.vdt-client button > img.vdt-shield {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin: 0 3px 0 -2px;
+    vertical-align: -4px;
+}
+
+/* a rule's label (vistaDialogTemplate.js vdt-rule-label) paints its whole rect, as GDI's static does */
+.vdt-client .tbp-page .vdt-static.vdt-rule-label {
+    background: #fff;
+}
+
+.vdt-client .vdt-plain-page .vdt-static.vdt-rule-label {
+    background: #f0f0f0;
+}
+
 .vdt-client button.vdt-button {
     white-space: nowrap;
 }
@@ -165,7 +184,9 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.vdt-clie
    have borders around them like text inputs") */
 .vdt-client input.vdt-edit:not(.vdt-edge)[readonly]:not(#_),
 .vdt-client input.tbp-edit.vdt-edit:not(.vdt-edge)[readonly]:not(#_) {
-    padding: 0 1px;
+    /* its line at the top of its rect, as GDI draws it (vistaDialogTemplate.js --vdt-edit-under) */
+    box-sizing: border-box;
+    padding: 0 1px var(--vdt-edit-under, 0);
     border: 0;
     border-image: none;
     background: transparent;

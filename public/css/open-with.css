@@ -1,7 +1,13 @@
 /* Open With and "Melaton cannot open this file" (#954; public/scripts/comp/openWithDialog.js), laid out as
    openwith.exe / shell32 on the Vista VM (~/.cache/vista-vm/openwith). Colours: css/themes/vista/open-with.css. */
 
-#confirmationDialog .mow { font-size: 12px; line-height: 15px; text-align: left; }
+/* openwith.exe and shell32's box are MS Shell Dlg 2 templates: every static, the check box, the radio buttons, the list's
+   items and OK / Cancel / Browse... are Tahoma 8 pt (11 px on 13 px lines; the VM's WM_GETFONT: MS Shell Dlg 2 -11); only
+   the list view's group headers are the theme's Segoe UI 9 pt (12 px) (#973) */
+#confirmationDialog .mow,
+#confirmationDialog .mow :is(button, input, label, span, p, div),
+#confirmationDialog:has(.mow) .vista-dialog-footer button { font: 11px/13px Tahoma, "Segoe UI", sans-serif; text-align: left; }
+#confirmationDialog .mow .mow-group-name { font: 12px/15px "Segoe UI", Tahoma, sans-serif; }
 /* openwith.exe's window is 579 px outside (a 563 px client): the message box's own 500 px cap would wrap its lines
    and narrow the list (#954). Its client and footer metrics are the theme's (themes/vista/open-with.css). */
 #confirmationDialog.modal:has(> .modal-content .mow-choose) { max-width: min(579px, calc(90vw - calc(2 * var(--spacing-md)))); }
@@ -30,7 +36,7 @@
 }
 #confirmationDialog .mow-prog {
     display: flex;
-    /* the icon 4 px and the name's line 5 px under the tile's top edge (VM), never centred onto half a pixel */
+    /* the icon 4 px and the name's 13 px line 7 px under the tile's top edge (VM), never centred onto half a pixel */
     align-items: flex-start;
     gap: 6px;
     box-sizing: border-box;
@@ -53,7 +59,7 @@
 #confirmationDialog .mow-prog:hover { background: var(--mow-hot-face); border-color: var(--mow-hot-edge); }
 #confirmationDialog .mow-prog.is-selected { background: var(--mow-sel-face); border-color: var(--mow-sel-edge); }
 #confirmationDialog .mow-prog > img { width: 32px; height: 32px; flex: none; margin-top: 3px; }
-#confirmationDialog .mow-prog-text { display: flex; flex-direction: column; min-width: 0; margin-top: 4px; }
+#confirmationDialog .mow-prog-text { display: flex; flex-direction: column; min-width: 0; margin-top: 6px; }
 #confirmationDialog .mow-prog-name,
 #confirmationDialog .mow-prog-pub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #confirmationDialog .mow-prog-pub { color: var(--mow-pub); }
@@ -85,7 +91,7 @@
     color: var(--mow-group-text);
     cursor: var(--c-default, default);
 }
-#confirmationDialog .mow-tiles + .mow-group { margin-top: 3px; }
+#confirmationDialog .mow-tiles + .mow-group { margin-top: 2px; }
 #confirmationDialog .mow-group-name { flex: none; white-space: nowrap; }
 #confirmationDialog .mow-group-rule { flex: 1 1 auto; align-self: flex-start; height: 1px; margin: 9px 0 0 5px; background: var(--mow-group-rule); }
 #confirmationDialog .mow-group.is-foldable .mow-group-rule { margin-right: 9px; background: var(--mow-group-rule-fold); }

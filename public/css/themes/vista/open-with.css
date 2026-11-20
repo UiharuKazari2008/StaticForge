@@ -32,10 +32,10 @@ body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog] > .modal-co
     padding: 5px 11px 9px 9px;
     background: transparent;
 }
-#confirmationDialog .mow-choose .mow-head { gap: 11px; margin-bottom: 8px; }
+#confirmationDialog .mow-choose .mow-head { gap: 11px; margin-bottom: 9px; }
 #confirmationDialog .mow-choose .mow-icon { margin: 1px 0 0 2px; }
-#confirmationDialog .mow-choose .mow-head-text { gap: 11px; margin-top: -1px; padding-top: 0; }
-#confirmationDialog .mow-choose .mow-row { align-items: flex-start; margin-bottom: 7px; }
+#confirmationDialog .mow-choose .mow-head-text { gap: 13px; margin-top: -1px; padding-top: 0; }
+#confirmationDialog .mow-choose .mow-row { align-items: flex-start; margin-bottom: 8px; }
 #confirmationDialog .mow-choose .mow-check { margin-top: 1px; }
 /* the list view's own sunken edge (#828790), not the dialog template's field edge; grouped, the first header's rule
    lands 11 px under the list's top edge (1 px less padding than the plain list) */
@@ -57,14 +57,14 @@ body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog] > .modal-co
 }
 body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog] > .modal-content:has(> .confirmation-message > .mow-cannot) > .vista-dialog-footer {
     gap: 8px;
-    padding: 13px 27px 17px 11px;
+    padding: 15px 27px 17px 11px;
     background: transparent;
 }
-#confirmationDialog .mow-cannot .mow-head { gap: 10px; margin-bottom: 12px; }
-#confirmationDialog .mow-cannot .mow-head-text { gap: 11px; margin-top: -1px; padding-top: 0; }
+#confirmationDialog .mow-cannot .mow-head { gap: 10px; margin-bottom: 13px; }
+#confirmationDialog .mow-cannot .mow-head-text { gap: 13px; margin-top: -1px; padding-top: 0; }
 #confirmationDialog .mow-cannot .mow-text { margin: 0 0 15px 3px; line-height: 13px; }
 #confirmationDialog .mow-cannot .mow-ask { margin-bottom: 11px; }
-#confirmationDialog .mow-cannot .mow-radio { margin: 0 0 5px 3px; }
+#confirmationDialog .mow-cannot .mow-radio { margin: 0 0 8px 3px; }
 #confirmationDialog .mow-cannot .mow-radio input[type="radio"] { position: absolute; width: 0; height: 0; }
 #confirmationDialog .mow-cannot .mow-radio label { margin-left: 16px; }
 #confirmationDialog .mow-cannot .mow-radio label::before,
