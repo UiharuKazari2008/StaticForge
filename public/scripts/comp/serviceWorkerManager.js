@@ -3478,19 +3478,18 @@ class ServiceWorkerManager {
         }
     }
 
+    /**
+     * A file the download could not fetch (404 while the server was starting, a timeout): never a notification
+     * (Yukimi, Nov 20 2026: 26 "Cache Error" notices on the phone, one per file, after a restart raced the server's
+     * start). The file stays out of the cache, so the next check finds it again and downloads it; Melaton Update keeps
+     * the list for its page.
+     */
     showCacheFileErrorToast(file, error) {
-        if (typeof showGlassToast === 'function') {
-            // Extract filename from URL for cleaner display
-            const filename = file.split('/').pop() || file;
-            showGlassToast(
-                'warning',
-                'Cache Error',
-                `Failed to cache ${filename}: ${error}`,
-                false,
-                3000,
-                '<i class="fas fa-exclamation-triangle"></i>'
-            );
-        }
+        const url = String(file || '');
+        console.warn(`[update] could not download ${url}: ${error}`);
+        if (!this.cacheFileErrors) this.cacheFileErrors = new Map();
+        this.cacheFileErrors.set(url, { error: String(error || ''), at: Date.now() });
+        if (this.cacheFileErrors.size > 200) this.cacheFileErrors.delete(this.cacheFileErrors.keys().next().value);
     }
 
     // Methods to update the existing checking toast instead of replacing it
