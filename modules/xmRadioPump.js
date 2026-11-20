@@ -5,7 +5,7 @@
  * It feeds the low-bandwidth relay (Opus through ffmpeg) and the cassette deck's recorder; neither needs a client.
  *
  *   const pump = createPump({ channelId, quality: 'hi' | 'std' | 'low', tune, keyBytes, log })
- *   pump.on('segment', ({ seq, pdt (ms), dur (s), adts (Buffer) }) => ...)
+ *   pump.on('segment', ({ seq, pdt (ms), dur (s), adts (Buffer), plain (Buffer: decrypted, its ID3 kept) }) => ...)
  *   pump.on('error', (err) => ...)        a fatal stop (signed out, the channel left the plan)
  *   pump.start({ back: 0 })               back: start this many seconds behind live
  *   pump.stop()
@@ -148,7 +148,7 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {} 
                 const k = s.keyUri ? await key(s.keyUri) : null;
                 const plain = k ? decrypt(data, k, s.iv, s.seq) : data;
                 lastEnd = s.pdt + s.dur * 1000;
-                ev.emit('segment', { seq: s.seq, pdt: s.pdt, dur: s.dur, adts: stripId3(plain) });
+                ev.emit('segment', { seq: s.seq, pdt: s.pdt, dur: s.dur, adts: stripId3(plain), plain });
             }
             failures = 0;
             wait = Math.max(2000, Math.min(10000, (live.dur || 6) * 1000));

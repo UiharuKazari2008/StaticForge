@@ -77,4 +77,46 @@ xm.signInPageCancel();
 assert.strictEqual(xm.account().browserSignIn, null);
 assert.ok(code.length === 48);
 
-console.log('xmradio: ok');
+// the cassette deck (modules/xmRadioRecorder.js): ADTS frames, cuts at whole frames on the stream's clock, timers,
+// alerts and search terms
+(async () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const { execFileSync } = require('child_process');
+    const R = require('../modules/xmRadioRecorder')._test;
+    const dir = fs.mkdtempSync(path.join(process.env.XMRADIO_TEST_TMP || os.tmpdir(), 'xmrec-'));
+    try {
+        // 30 s of AAC at 44.1 kHz as three 10 s segments, each opening with an ID3 tag as SiriusXM's do
+        execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=30:sample_rate=44100', '-c:a', 'aac', '-b:a', '64k', '-f', 'adts', path.join(dir, 'all.aac')]);
+        const all = fs.readFileSync(path.join(dir, 'all.aac'));
+        const frames = R.adtsFrames(all);
+        assert.ok(frames.length > 1280 && frames.every((f) => f.sr === 44100), `frames ${frames.length}`);
+        const per = Math.round(10 * 44100 / 1024);
+        const t0 = Date.parse('2026-11-20T21:00:00.000Z');
+        const rec = { dir, segs: [] };
+        for (let i = 0; i * per < frames.length; i++) {
+            const fr = frames.slice(i * per, (i + 1) * per);
+            const body = all.subarray(fr[0].off, fr[fr.length - 1].off + fr[fr.length - 1].len);
+            fs.writeFileSync(path.join(dir, `s${i}.aac`), Buffer.concat([id3, body]));
+            rec.segs.push({ seq: i, pdt: t0 + Math.round(i * per * 1024000 / 44100), dur: fr.length * 1024 / 44100, f: `s${i}.aac` });
+        }
+        // a cut from 4 s to 17.5 s: 13.5 s of frames, starting on the frame at or after 4 s
+        const out = path.join(dir, 'cut.aac');
+        const bytes = await R.sliceAac(rec, t0 + 4000, t0 + 17500, out);
+        const got = R.adtsFrames(fs.readFileSync(out));
+        assert.ok(bytes > 0 && Math.abs(got.length * 1024 / 44100 - 13.5) < 0.05, `cut ${got.length} frames`);
+        const dur = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', out]).toString().trim());
+        assert.ok(Math.abs(dur - 13.5) < 0.1, `cut lasts ${dur}`);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+
+    // timers: the next start on a chosen weekday, a dated one once
+    const fri = new Date(2026, 10, 20, 17, 0, 0).getTime(); // Friday Nov 20 2026, 17:00 local
+    assert.strictEqual(new Date(R.nextStart({ start: '18:30', days: [5] }, fri)).getHours(), 18);
+    assert.strictEqual(new Date(R.nextStart({ start: '08:00', days: [1] }, fri)).getDay(), 1);
+    assert.strictEqual(R.nextStart({ start: '08:00', date: '2026-11-19' }, fri), null);
+    assert.strictEqual(new Date(R.nextStart({ start: '08:00', date: '2026-11-21' }, fri)).getDate(), 21);
+
+    assert.strictEqual(R.norm('Beyoncé & JAY-Z'), 'beyonce jay z');
+    console.log('xmradio: ok');
+})().catch((err) => { console.error(err); process.exit(1); });

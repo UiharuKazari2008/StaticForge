@@ -1,6 +1,7 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const statusHub = require('../statusHub');
 const xmRadio = require('../../xmRadio');
+const recorder = require('../../xmRadioRecorder');
 
 // XM Radio (Yozora #989): the skeuomorphic SiriusXM radio. The account is the administrator's (admin and dev_admin
 // test tabs listen; only admins sign in or out). Everything goes through modules/xmRadio.js.
@@ -23,8 +24,21 @@ const xmRadio = require('../../xmRadio');
 //                                                 playlist (/api/xmradio/live/<sid>/index.m3u8; its key line points at
 //                                                 /api/xmradio/key/<sid>/<id>)
 //
+// The cassette deck (modules/xmRadioRecorder.js): recordings made on the server into the workspace's Recordings folder,
+// a folder per tape.
+//   xmradio_deck_get        { workspaceId? }      { deck: { tape, workspaceId, mode, recordings[], timers[], alerts[], terms[] }, tapes[] }
+//   xmradio_deck_set        { tape?, workspaceId?, mode? (song | long) }  admins -> { deck } (a new tape name makes the tape)
+//   xmradio_tape_tracks     { workspaceId, tape } { tracks[{ id, name, size, at }] } (played through vfs_download_file)
+//   xmradio_rec_start       { channelId }         admins -> { rid, channelId, kind, mode, tape, since, until, url, cut }
+//                                                 (url: the recording's own growing playlist, which the radio plays)
+//   xmradio_rec_stop        { rid }               admins -> { rid, filed }
+//   xmradio_timers_set      { timers[{ id?, channelId, start 'HH:MM', minutes, days[0-6], date?, mode?, off? }] }  admins
+//   xmradio_alert_add       { kind (artist | song), artist, title?, channelId? }  admins -> { alerts }
+//   xmradio_alert_remove    { id }                admins -> { alerts }
+//   xmradio_terms_set       { terms[{ id?, text, channelId? }] }  admins -> { terms }
+//
 // What is on is pushed, never polled: statusHub feed `xmradio` (status_subscribe { feed: 'xmradio' } while a radio is
-// on) answers { account, lineup { at, n }, 'ch:<channelId>': { a (artist), t (title), s (show), ad, i (art) } } once and then pushes
+// on) answers { account, lineup { at, n }, deck, 'ch:<channelId>': { a (artist), t (title), s (show), ad, i (art) } } once and then pushes
 // xmradio_status { changed } with only the channels whose cut changed.
 
 const canRead = (info) => !!(info && /^(admin|dev_admin)$/.test(String(info.userType || '')));
@@ -53,6 +67,7 @@ function registerPackets(handlersCtx) {
     if (!handlersCtx) return;
     xmRadio.bind(handlersCtx.globalResources);
     xmRadio.defineFeed(statusHub);
+    recorder.init(xmRadio, handlersCtx.globalResources, { changed: () => xmRadio.touch() });
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             await fn(handlersCtx, ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer);
@@ -73,6 +88,18 @@ function registerPackets(handlersCtx) {
     reg('xmradio_tune', packet(false, 'The channel could not be tuned', async (m) => xmRadio.tune(m.channelId, { quality: m.quality })));
     reg('xmradio_lineup', packet(false, 'The channels could not be read', async (m) => ({ channels: await xmRadio.lineup({ fresh: !!m.fresh }), presets: xmRadio.presets() })));
     reg('xmradio_logos', packet(false, 'The channel logos could not be read', async (m) => xmRadio.logos(Array.isArray(m.ids) ? m.ids : [])));
+    reg('xmradio_deck_get', packet(false, 'The cassette deck could not be read', async (m) => {
+        const deck = recorder.deck();
+        return { deck, tapes: await recorder.tapes(String(m.workspaceId || deck.workspaceId)) };
+    }));
+    reg('xmradio_deck_set', packet(true, 'The cassette deck could not be set', async (m) => ({ deck: recorder.setDeck(m) })));
+    reg('xmradio_tape_tracks', packet(false, 'The tape could not be read', async (m) => ({ tracks: await recorder.tracks(String(m.workspaceId || recorder.deck().workspaceId), String(m.tape || recorder.deck().tape)) })));
+    reg('xmradio_rec_start', packet(true, 'The recording could not be started', async (m) => recorder.start({ channelId: m.channelId, kind: 'manual' })));
+    reg('xmradio_rec_stop', packet(true, 'The recording could not be stopped', async (m) => (await recorder.stop(String(m.rid || ''))) || { rid: m.rid, filed: 0 }));
+    reg('xmradio_timers_set', packet(true, 'The timers could not be saved', async (m) => ({ timers: recorder.setTimers(m.timers) })));
+    reg('xmradio_alert_add', packet(true, 'The alert could not be set', async (m) => ({ alerts: recorder.addAlert(m) })));
+    reg('xmradio_alert_remove', packet(true, 'The alert could not be removed', async (m) => ({ alerts: recorder.removeAlert(String(m.id || '')) })));
+    reg('xmradio_terms_set', packet(true, 'The search terms could not be saved', async (m) => ({ terms: recorder.setTerms(m.terms) })));
     reg('xmradio_presets_set', packet(true, 'The presets could not be saved', async (m) => ({ presets: xmRadio.setPresets(m.presets) })));
 }
 

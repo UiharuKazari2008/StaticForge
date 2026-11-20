@@ -76,6 +76,22 @@
         };
     }
 
+    /**
+     * The radio (and the deck) is the window: its bare body moves it. The Melaton caption lies under the whole device,
+     * invisible and taking no clicks (it covered the Gloss's top-row keys, Yukimi Nov 20 2026); a press on the body,
+     * not on a key or knob, is handed to it as the press that starts a move.
+     */
+    const CONTROL = 'button, input, select, textarea, a, [data-b], [data-k], [data-nav], [data-dk], [data-ch], [role="button"], [role="switch"], .resize-handle, .modal-window-controls';
+    function dragByBody(modal, sig) {
+        modal.addEventListener('mousedown', (e) => {
+            if (e.button !== 0 || e.isTrusted === false || e.target.closest(CONTROL)) return;
+            const title = modal.querySelector(':scope > .modal-window-title');
+            if (!title || !e.target.closest('.modal-content')) return;
+            e.stopPropagation();
+            title.dispatchEvent(new root.MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY, screenX: e.screenX, screenY: e.screenY, button: 0, buttons: 1 }));
+        }, Object.assign({ capture: true }, sig));
+    }
+
     let hlsLoading = null;
     function loadHls() {
         if (root.Hls) return Promise.resolve(root.Hls);
@@ -350,6 +366,7 @@
                 clearTimeout(this.captionTimer);
                 this.captionTimer = setTimeout(() => this.modal.classList.remove('xr-caption-shown'), 3000);
             };
+            dragByBody(this.modal, sig);
             this.modal.addEventListener('pointermove', showCaption, sig);
             this.modal.addEventListener('pointerdown', showCaption, sig);
             showCaption();
@@ -429,7 +446,7 @@
 
         async syncHub() {
             // on, or waiting for a sign-in in Alchemy (the account item says when it is done)
-            const want = this.on || !!this.browserWait;
+            const want = this.on || !!this.browserWait || !!(this.deck && !this.deck.closed);
             const c = root.wsClient;
             if (want === this.hubOn || !c) return;
             this.hubOn = want;
@@ -458,6 +475,11 @@
                 } else if (k === 'lineup') {
                     // the server finished reading the lineup (the first read takes a few minutes)
                     if (v && v.at && v.at !== this.lineupAt && this.signedIn()) { this.lineupAt = v.at; void this.loadLineup().then(() => this.paint()); }
+                } else if (k === 'deck') {
+                    // the cassette deck's state (its tape, its switch, recordings, timers, alerts, terms)
+                    this.deckState = v;
+                    if (this.deck) this.deck.applyState(v);
+                    else if (this.recording && !(v && (v.recordings || []).some((x) => x.rid === this.recording.rid))) this.endRecording();
                 } else if (k.startsWith('ch:')) {
                     const id = k.slice(3);
                     this.now.set(id, v);
@@ -484,6 +506,8 @@
             if (!ch) return;
             if (!this.on) { this.on = true; void this.syncHub(); }
             if (this.channel && this.channel.id !== ch.id) this.prevChannel = this.channel.id;
+            // tuning leaves the recording (it goes on recording on the server)
+            this.recording = null;
             this.channel = ch;
             this.prefs.channel = ch.id;
             this.savePrefs();
@@ -532,6 +556,39 @@
             }
             this.retries = 0;
             try { await a.play(); } catch (_) { /* the user's press started it; a refusal shows as paused */ }
+        }
+
+        /** The deck's REC: the radio plays the recording (all of it can be paused and rewound) instead of live. */
+        playRecording(rec) {
+            this.recording = rec;
+            if (!this.on) { this.on = true; void this.syncHub(); }
+            this.state = 'acquiring';
+            this.paint();
+            void this.play(rec.url, ++this.tuneSeq);
+        }
+
+        /** The recording was filed (STOP, or its 8 hours): back to the channel, live. */
+        endRecording() {
+            if (!this.recording) return;
+            const ch = this.byId.get(this.recording.channelId) || this.channel;
+            this.recording = null;
+            if (this.on && ch) void this.tune(ch); else this.paint();
+        }
+
+        openDeck() {
+            if (this.deck && !this.deck.closed) { call('bringModalToFront', this.deck.modal); return; }
+            this.deck = new Deck(this);
+            void this.syncHub();
+        }
+
+        /** MENU > Alert: record this artist or this song whenever it starts on any channel in the plan. */
+        async addAlert(kind) {
+            const now = this.channel && this.now.get(this.channel.id);
+            if (!now || now.ad || !now.a) { this.say('NOTHING TO ALERT'); return; }
+            try {
+                await this.ask('xmradio_alert_add', { kind, artist: now.a, title: kind === 'song' ? now.t : '' });
+                this.say(kind === 'song' ? 'SONG ALERT SET' : 'ARTIST ALERT SET');
+            } catch (err) { this.say('ALERT NOT SET'); }
         }
 
         dropHls() {
@@ -747,6 +804,11 @@
             const items = [
                 { label: 'Channel Guide', run: () => { this.closeMenu(); this.openBooklet(); } },
                 { label: 'Direct Tune', run: () => { this.closeMenu(); this.button('direct'); } },
+                { label: 'Cassette Deck', run: () => { this.closeMenu(); this.openDeck(); } },
+                { label: 'Alert', off: !signed, sub: () => [
+                    { label: 'This Artist', run: () => { this.closeMenu(); void this.addAlert('artist'); } },
+                    { label: 'This Song', run: () => { this.closeMenu(); void this.addAlert('song'); } }
+                ] },
                 { label: 'Audio Quality', sub: () => radio([['hi', 'High 256k'], ['std', 'Standard 128k'], ['low', 'Low 32k'], ['eco24', 'Economy 24k'], ['eco16', 'Economy 16k']], this.prefs.quality, (id) => this.setQuality(id)) },
                 { label: 'Display Info', sub: () => radio([['song', 'Artist and Song'], ['channel', 'Channel'], ['show', 'Show']], this.prefs.info, (id) => { this.prefs.info = id; this.savePrefs(); this.paint(); }) },
                 { label: `Volume  ${Math.round(this.prefs.volume * 100)}`, adjust: (d) => this.knobStep('vol', d) },
@@ -1170,12 +1232,14 @@
             img.onload = () => {
                 if (this[keyName] !== key) return;
                 // drawn at the box's own size (a fixed canvas shape stretched the logos, Yukimi Nov 20 2026)
-                const box = canvas.getBoundingClientRect();
+                // the layout box (offset sizes ignore CSS zoom in every engine); none yet (hidden, not laid out):
+                // drawn when it has one, never into the canvas's default 300 x 150 (the stretch on the MacBook)
+                const bw = canvas.offsetWidth;
+                const bh = canvas.offsetHeight;
+                if (!bw || !bh) { this[keyName] = ''; this.redrawWhenSized(canvas); return; }
                 const scale = (root.devicePixelRatio || 1) * (this.zoom || 1);
-                if (box.width > 0 && box.height > 0) {
-                    canvas.width = Math.max(8, Math.round(box.width / (this.zoom || 1) * scale));
-                    canvas.height = Math.max(8, Math.round(box.height / (this.zoom || 1) * scale));
-                }
+                canvas.width = Math.max(8, Math.round(bw * scale));
+                canvas.height = Math.max(8, Math.round(bh * scale));
                 const W = canvas.width;
                 const H = canvas.height;
                 g.clearRect(0, 0, W, H);
@@ -1221,6 +1285,23 @@
             img.src = url;
         }
 
+        /** Paint again once a canvas has a size (one observer, dropped when it fires). */
+        redrawWhenSized(canvas) {
+            if (typeof root.ResizeObserver !== 'function' || canvas.dataset.waitSize) return;
+            canvas.dataset.waitSize = '1';
+            const ro = new root.ResizeObserver(() => {
+                if (!canvas.offsetWidth || !canvas.offsetHeight) return;
+                ro.disconnect();
+                delete canvas.dataset.waitSize;
+                this.artKey = '';
+                this.logoKey = '';
+                this.bgKey = '';
+                this.paint();
+            });
+            ro.observe(canvas);
+            this.app.signal.addEventListener('abort', () => ro.disconnect(), { once: true });
+        }
+
         /** The part of a picture that is not transparent (a logo's lettering inside its clear margin). */
         inkBox(img) {
             const full = { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
@@ -1254,11 +1335,10 @@
             img.decoding = 'async';
             img.onload = () => {
                 if (this.bgKey !== url) return;
-                const box = c.getBoundingClientRect();
-                if (box.width > 0 && box.height > 0) {
-                    c.width = Math.round(box.width * (root.devicePixelRatio || 1));
-                    c.height = Math.round(box.height * (root.devicePixelRatio || 1));
-                }
+                if (!c.offsetWidth || !c.offsetHeight) { this.bgKey = ''; this.redrawWhenSized(c); return; }
+                const scale = (root.devicePixelRatio || 1) * (this.zoom || 1);
+                c.width = Math.round(c.offsetWidth * scale);
+                c.height = Math.round(c.offsetHeight * scale);
                 const W = c.width;
                 const H = c.height;
                 const sc = Math.max(W / img.naturalWidth, H / img.naturalHeight);
@@ -1307,7 +1387,8 @@
             const f = this.f;
             if (!this.on || !this.channel || (this.state !== 'playing' && this.state !== 'paused')) { f.replay.textContent = ''; return; }
             const b = Math.round(this.behind());
-            const txt = this.audio.paused ? 'PAUSED' : b > 5 ? `REPLAY -${Math.floor(b / 60)}:${pad(b % 60, 2)}` : '';
+            const rec = this.recording ? 'REC ' : '';
+            const txt = this.audio.paused ? `${rec}PAUSED` : b > 5 ? `${rec || 'REPLAY '}-${Math.floor(b / 60)}:${pad(b % 60, 2)}` : rec.trim();
             if (f.replay.textContent !== txt) f.replay.textContent = txt;
         }
 
@@ -1342,6 +1423,7 @@
         }
 
         destroy() {
+            if (this.deck) this.deck.close(true);
             clearTimeout(this.clockTimer);
             clearTimeout(this.flashTimer);
             this.on = false;
@@ -1351,6 +1433,493 @@
                 const m = this.modal;
                 Promise.resolve(call('closeModal', m)).finally(() => { if (m.isConnected) m.remove(); });
             }
+        }
+    }
+
+    // ==================================================================== the cassette deck
+
+    const DECK_SVG = {
+        rec: '<svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4"/></svg>',
+        rew: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M8 0v10L1 5zM15 0v10L8 5z"/></svg>',
+        play: '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 0v10l8-5z"/></svg>',
+        ff: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 0v10l7-5zM8 0v10l7-5z"/></svg>',
+        stop: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 1h8v8H1z"/><path d="M11 6h4L13 2.5zM11 8h4v1.2h-4z"/></svg>',
+        pause: '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 0h3v10H1zM6 0h3v10H6z"/></svg>'
+    };
+    const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const LENGTHS = [[15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [90, '1.5 hours'], [120, '2 hours'], [180, '3 hours'], [240, '4 hours'], [360, '6 hours'], [480, '8 hours']];
+
+    /**
+     * The cassette deck (Yukimi, Nov 20 2026): its own window next to the radio. The recording is the server's
+     * (modules/xmRadioRecorder.js): REC records the channel the radio is on, and the radio then plays the recording
+     * (pause and rewind over all of it) instead of the live stream; STOP files it on the tape and the radio goes back
+     * to live. The tape is a folder in Recordings: STOP / EJECT while stopped swaps it. PLAY, REW and FF play the tape's
+     * recordings here (the radio pauses meanwhile); MUTE silences the radio while it records. The SPLIT switch: a file
+     * per song, or one continuous file. TIMER: scheduled recordings, the radio's alerts, search terms.
+     */
+    class Deck {
+        constructor(radio) {
+            this.r = radio;
+            this.state = radio.deckState || null; // the server's deck (status feed item `deck`)
+            this.tracks = [];
+            this.track = -1;
+            this.playing = false; // the tape plays here
+            this.build();
+            void this.load();
+        }
+
+        build() {
+            const r = this.r;
+            const w = root.desktopAppCreateWindow({ id: 'xmRadioDeckModal', identifier: 'xmRadioDeck', title: `${NAME} Cassette Deck`, icon16: `${A}/xmradio-16.png`, className: 'xr-window xr-deck-window', fixed: true, minimize: true });
+            const m = w.modal;
+            m.dataset.windowKind = 'custom';
+            m.dataset.xrFrame = 'radio';
+            m.dataset.windowNoMaximize = 'true';
+            m.dataset.parentModalId = r.modal.id;
+            this.modal = m;
+            w.content.classList.add('xr-client');
+            const key = (k, label, glyph) => `<button type="button" class="xr-dk-key" data-dk="${k}" aria-label="${label}">${glyph || ''}<span>${label}</span></button>`;
+            w.content.innerHTML = `<div class="xr-deck" tabindex="0" aria-label="${NAME} Cassette Deck">
+                <div class="xr-dk-top"><span class="xr-dk-brand">XYRIDIAN</span><span class="xr-dk-model">STEREO CASSETTE DECK &nbsp;XD-989</span></div>
+                <div class="xr-dk-main">
+                    <div class="xr-dk-door"><div class="xr-dk-tape">
+                        <div class="xr-dk-label"><span class="xr-dk-side">A</span><span class="xr-dk-name"></span></div>
+                        <div class="xr-dk-window"><i class="xr-dk-reel is-l"></i><i class="xr-dk-reel is-r"></i></div>
+                    </div><div class="xr-dk-empty">NO TAPE</div></div>
+                    <div class="xr-dk-panel">
+                        <div class="xr-dk-row"><div class="xr-dk-counter" aria-label="Counter"></div>
+                            <div class="xr-dk-leds"><span class="xr-dk-led is-rec"><i></i>REC</span><span class="xr-dk-led is-auto"><i></i>TIMER</span><span class="xr-dk-led is-mute"><i></i>MUTE</span></div></div>
+                        <div class="xr-dk-vfd"><div class="xr-dk-v1"></div><div class="xr-dk-v2"></div></div>
+                        <div class="xr-dk-row"><div class="xr-dk-switch" role="switch" tabindex="0" aria-label="Split"><span class="xr-dk-sw-cap">SPLIT</span><span class="xr-dk-sw-track"><i></i></span><span class="xr-dk-sw-pos"><b data-pos="song">SONG</b><b data-pos="long">CONT</b></span></div>
+                            <button type="button" class="xr-dk-small" data-dk="timer">TIMER</button><button type="button" class="xr-dk-small" data-dk="mute">MUTE</button></div>
+                    </div>
+                </div>
+                <div class="xr-dk-keys">${key('rec', 'REC', DECK_SVG.rec)}${key('rew', 'REW', DECK_SVG.rew)}${key('play', 'PLAY', DECK_SVG.play)}${key('ff', 'FF', DECK_SVG.ff)}${key('stop', 'STOP/EJECT', DECK_SVG.stop)}${key('pause', 'PAUSE', DECK_SVG.pause)}</div>
+                <audio class="xr-audio" preload="none"></audio>
+            </div>`;
+            this.el = w.content.querySelector('.xr-deck');
+            this.audio = w.content.querySelector('audio');
+            this.f = {
+                name: this.el.querySelector('.xr-dk-name'), counter: this.el.querySelector('.xr-dk-counter'),
+                v1: this.el.querySelector('.xr-dk-v1'), v2: this.el.querySelector('.xr-dk-v2'), sw: this.el.querySelector('.xr-dk-switch')
+            };
+            this.el.dataset.era = r.prefs.era;
+            const ac = new AbortController();
+            this.ac = ac;
+            const sig = { signal: AbortSignal.any ? AbortSignal.any([ac.signal, r.app.signal]) : ac.signal };
+            w.close.addEventListener('click', () => this.close(), sig);
+            r.app.signal.addEventListener('abort', () => this.close(true), { once: true });
+            this.el.addEventListener('click', (e) => {
+                const b = e.target.closest('[data-dk]');
+                if (b) void this.press(b.dataset.dk);
+            }, sig);
+            const flip = () => void this.setMode(this.mode() === 'song' ? 'long' : 'song');
+            this.f.sw.addEventListener('click', flip, sig);
+            this.f.sw.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); } }, sig);
+            this.el.addEventListener('keydown', (e) => {
+                const k = { r: 'rec', R: 'rec', ' ': 'pause', p: 'play', P: 'play', s: 'stop', S: 'stop', m: 'mute', M: 'mute', t: 'timer', T: 'timer', ArrowLeft: 'rew', ArrowRight: 'ff' }[e.key];
+                if (!k || e.target.closest('input, select, textarea')) return;
+                e.preventDefault();
+                void this.press(k);
+            }, sig);
+            for (const t of ['playing', 'pause', 'ended', 'timeupdate']) this.audio.addEventListener(t, () => this.onAudio(t), sig);
+            const showCaption = () => {
+                m.classList.add('xr-caption-shown');
+                clearTimeout(this.captionTimer);
+                this.captionTimer = setTimeout(() => m.classList.remove('xr-caption-shown'), 3000);
+            };
+            dragByBody(m, sig);
+            m.addEventListener('pointermove', showCaption, sig);
+            m.addEventListener('pointerdown', showCaption, sig);
+            showCaption();
+            doc.addEventListener('visibilitychange', () => this.paint(), sig);
+            doc.addEventListener('staticforge:modal-lifecycle', (e) => {
+                const d = e && e.detail;
+                if (!d || d.id !== m.id) return;
+                if (d.type === 'closed') this.close(true); else this.paint();
+            }, sig);
+            call('openModal', m);
+            m.classList.remove('hidden');
+            // beside the radio, under it when there is no room
+            const rb = r.modal.getBoundingClientRect();
+            const vw = root.innerWidth;
+            const x = rb.right + 12 + 540 < vw ? rb.right + 12 : Math.max(8, rb.left);
+            const y = rb.right + 12 + 540 < vw ? rb.top : Math.min(root.innerHeight - 280, rb.bottom + 12);
+            m.style.left = `${Math.round(x)}px`;
+            m.style.top = `${Math.round(Math.max(0, y))}px`;
+            this.paint();
+            this.el.focus();
+        }
+
+        close(gone) {
+            if (this.closed) return;
+            this.closed = true;
+            this.stopTape();
+            clearTimeout(this.tick);
+            clearTimeout(this.captionTimer);
+            this.ac.abort();
+            const m = this.modal;
+            if (!gone) Promise.resolve(call('closeModal', m)).finally(() => { if (m.isConnected) m.remove(); });
+            else if (m.isConnected) m.remove();
+            if (this.r.deck === this) { this.r.deck = null; void this.r.syncHub(); }
+        }
+
+        seen() { return !this.closed && !doc.hidden && !this.modal.classList.contains('minimised') && !this.modal.classList.contains('hidden'); }
+
+        async load() {
+            try {
+                const res = await this.r.ask('xmradio_deck_get', { workspaceId: this.workspace() });
+                if (res && res.deck) this.state = res.deck;
+                this.tapes = (res && res.tapes) || [];
+            } catch (_) { /* the feed brings it */ }
+            this.paint();
+        }
+
+        workspace() { return (this.state && this.state.workspaceId) || (typeof root.activeWorkspace === 'string' && root.activeWorkspace) || 'default'; }
+        mode() { return (this.state && this.state.mode) || 'song'; }
+        /** The deck's own recording (REC): the manual one; timers' and alerts' run beside it. */
+        mine() { const list = (this.state && this.state.recordings) || []; return list.find((x) => x.kind === 'manual') || null; }
+
+        applyState(deck) {
+            const was = this.mine();
+            this.state = deck;
+            const now = this.mine();
+            // the recording ended on the server (8 hours, the account): the radio goes back to the live stream
+            if (was && !now && this.r.recording && this.r.recording.rid === was.rid) this.r.endRecording();
+            this.paint();
+        }
+
+        async press(k) {
+            const r = this.r;
+            if (k === 'rec') {
+                if (this.mine()) return;
+                if (!r.channel || !r.signedIn()) { this.say('TUNE A CHANNEL'); return; }
+                this.stopTape();
+                try {
+                    const rec = await r.ask('xmradio_rec_start', { channelId: r.channel.id });
+                    this.state = Object.assign({}, this.state, { recordings: [...((this.state && this.state.recordings) || []).filter((x) => x.rid !== rec.rid), rec] });
+                    r.playRecording(rec);
+                } catch (err) { this.say((err && err.message) || 'NOT RECORDING'); }
+            } else if (k === 'stop') {
+                const rec = this.mine();
+                if (rec) {
+                    this.say('SAVING TO TAPE');
+                    try { await r.ask('xmradio_rec_stop', { rid: rec.rid }); } catch (_) { /* the feed tells */ }
+                    if (this.state) this.state = Object.assign({}, this.state, { recordings: this.state.recordings.filter((x) => x.rid !== rec.rid) });
+                    r.endRecording();
+                    this.tracks = [];
+                } else if (this.playing || this.track >= 0) {
+                    this.stopTape();
+                } else {
+                    this.eject();
+                }
+            } else if (k === 'play') {
+                if (this.mine()) { if (r.audio.paused) void r.audio.play().catch(() => {}); return; }
+                if (this.playing) return;
+                if (this.track >= 0 && this.audio.src) { void this.audio.play().catch(() => {}); return; }
+                await this.playTrack(0);
+            } else if (k === 'pause') {
+                if (this.mine()) { if (r.audio.paused) void r.audio.play().catch(() => {}); else r.audio.pause(); return; }
+                if (this.track < 0) return;
+                if (this.audio.paused) void this.audio.play().catch(() => {}); else this.audio.pause();
+            } else if (k === 'rew' || k === 'ff') {
+                const dir = k === 'ff' ? 1 : -1;
+                if (this.mine()) { r.seekBy(dir * 15); return; }
+                if (this.track < 0) return;
+                // back to the start of this recording first, then the one before (as a deck's music search)
+                if (dir < 0 && this.audio.currentTime > 4) { this.audio.currentTime = 0; return; }
+                await this.playTrack(this.track + dir);
+            } else if (k === 'mute') {
+                r.audio.muted = !r.audio.muted;
+            } else if (k === 'timer') {
+                this.timerDialog();
+            }
+            this.paint();
+        }
+
+        async setMode(mode) {
+            this.state = Object.assign({}, this.state, { mode });
+            this.paint();
+            try { const res = await this.r.ask('xmradio_deck_set', { mode }); if (res && res.deck) this.state = res.deck; } catch (_) { /* kept here */ }
+            this.paint();
+        }
+
+        async playTrack(i) {
+            if (!this.tracks.length || this.trackTape !== this.state.tape) {
+                try {
+                    const res = await this.r.ask('xmradio_tape_tracks', { workspaceId: this.workspace(), tape: this.state && this.state.tape });
+                    this.tracks = (res && res.tracks) || [];
+                    this.trackTape = this.state && this.state.tape;
+                } catch (_) { this.tracks = []; }
+            }
+            if (!this.tracks.length) { this.say('TAPE IS BLANK'); return; }
+            if (i < 0 || i >= this.tracks.length) { this.stopTape(); return; }
+            const t = this.tracks[i];
+            let url = '';
+            try {
+                const v = root.vfsClient;
+                const res = v && typeof v.downloadFile === 'function' ? await v.downloadFile(t.id) : null;
+                url = (res && res.downloadUrl) || '';
+            } catch (_) { url = ''; }
+            if (!url) { this.say('CANNOT PLAY'); return; }
+            this.track = i;
+            // one sound at a time: the radio waits while the tape plays
+            if (!this.r.audio.paused) { this.radioWasPlaying = true; this.r.audio.pause(); }
+            this.audio.src = url;
+            this.audio.volume = this.r.prefs.volume;
+            try { await this.audio.play(); } catch (_) { /* a refused play shows as paused */ }
+            this.paint();
+        }
+
+        stopTape() {
+            if (this.track < 0 && !this.playing) return;
+            this.audio.pause();
+            this.audio.removeAttribute('src');
+            try { this.audio.load(); } catch (_) { /* nothing loaded */ }
+            this.track = -1;
+            this.playing = false;
+            if (this.radioWasPlaying) { this.radioWasPlaying = false; if (this.r.on) this.r.goLive(); }
+            this.paint();
+        }
+
+        onAudio(t) {
+            if (t === 'playing') this.playing = true;
+            else if (t === 'pause') this.playing = false;
+            else if (t === 'ended') { void this.playTrack(this.track + 1); return; }
+            else if (t === 'timeupdate') { this.paintCounter(); return; }
+            this.paint();
+        }
+
+        say(text) {
+            this.flash = { text: String(text).toUpperCase().slice(0, 40), until: Date.now() + 2500 };
+            clearTimeout(this.flashTimer);
+            this.flashTimer = setTimeout(() => { this.flash = null; this.paint(); }, 2600);
+            this.paint();
+        }
+
+        /** The counter: the recording's length while it records, the place in the recording while the tape plays. */
+        paintCounter() {
+            const rec = this.mine();
+            let sec = 0;
+            if (rec) sec = Math.max(0, (Date.now() - rec.since) / 1000);
+            else if (this.track >= 0) sec = this.audio.currentTime || 0;
+            const s = Math.floor(sec);
+            const txt = `${pad(Math.floor(s / 3600), 1)}${pad(Math.floor(s / 60) % 60, 2)}${pad(s % 60, 2)}`.slice(-5);
+            if (this.f.counter.dataset.v !== txt) {
+                this.f.counter.dataset.v = txt;
+                this.f.counter.innerHTML = [...txt].map((d) => `<b>${d}</b>`).join('');
+            }
+        }
+
+        paint() {
+            if (this.closed) return;
+            const st = this.state || {};
+            const rec = this.mine();
+            const autos = (st.recordings || []).filter((x) => x.kind !== 'manual');
+            const ch = rec ? this.r.byId.get(rec.channelId) : null;
+            const e = this.el;
+            e.classList.toggle('has-tape', !!st.tape);
+            e.dataset.mode = this.mode();
+            e.dataset.era = this.r.prefs.era;
+            this.f.name.textContent = st.tape || '';
+            this.f.sw.setAttribute('aria-checked', this.mode() === 'long' ? 'true' : 'false');
+            e.querySelector('.xr-dk-led.is-rec').classList.toggle('is-on', !!rec || autos.length > 0);
+            e.querySelector('.xr-dk-led.is-auto').classList.toggle('is-on', !!((st.timers || []).some((t) => !t.off) || (st.alerts || []).length || (st.terms || []).length));
+            e.querySelector('.xr-dk-led.is-mute').classList.toggle('is-on', !!this.r.audio.muted);
+            const running = (!!rec || (this.track >= 0 && this.playing)) && this.seen();
+            // the reels turn only while the tape moves and the deck is seen (phone-power-client)
+            e.classList.toggle('is-running', running);
+            e.classList.toggle('is-recording', !!rec);
+            for (const k of ['rec', 'play', 'pause']) {
+                const down = k === 'rec' ? !!rec : k === 'play' ? (rec ? !this.r.audio.paused : this.playing) : (rec ? this.r.audio.paused : this.track >= 0 && !this.playing);
+                e.querySelector(`[data-dk="${k}"]`).classList.toggle('is-down', down);
+            }
+            let v1 = '';
+            let v2 = '';
+            if (this.flash && this.flash.until > Date.now()) { v1 = this.flash.text; }
+            else if (rec) {
+                v1 = `REC  ${ch ? `${ch.number} ${ch.name}` : ''}`;
+                v2 = rec.cut ? (rec.cut.ad ? (rec.cut.s || 'Commercial') : [rec.cut.a, rec.cut.t].filter(Boolean).join(' - ')) : (rec.mode === 'long' ? 'CONTINUOUS' : 'SONG BY SONG');
+            } else if (this.track >= 0) {
+                const t = this.tracks[this.track];
+                v1 = `${this.playing ? 'PLAY' : 'PAUSE'}  ${this.track + 1}/${this.tracks.length}`;
+                v2 = t ? t.name.replace(/\.m4a$/i, '') : '';
+            } else if (autos.length) {
+                const a = autos[0];
+                const c = this.r.byId.get(a.channelId);
+                v1 = `${a.kind === 'timer' ? 'TIMER' : a.kind === 'alert' ? 'ALERT' : 'MATCH'} REC  ${c ? c.number : ''}`;
+                v2 = a.cut ? [a.cut.a, a.cut.t].filter(Boolean).join(' - ') : (c ? c.name : '');
+            } else {
+                v1 = st.tape ? 'STOP' : 'NO TAPE';
+                v2 = st.tape ? `Tape: ${st.tape}` : 'STOP/EJECT: load a tape';
+            }
+            if (this.f.v1.textContent !== v1) this.f.v1.textContent = v1;
+            if (this.f.v2.textContent !== v2) this.f.v2.textContent = v2;
+            this.paintCounter();
+            // the counter moves once a second while it records and is seen; the tape's place comes from timeupdate
+            clearTimeout(this.tick);
+            if (rec && this.seen()) this.tick = setTimeout(() => this.paint(), 1000 - (Date.now() % 1000) + 20);
+        }
+
+        // ---------------------------------------------------------------- dialogs (Vista's, from inline templates)
+
+        /** STOP/EJECT with nothing running: choose the tape (a folder in Recordings) or name a new one. */
+        eject() {
+            const V = root.vistaDialogTemplate;
+            if (!V) return;
+            const S = 0x50020000;
+            const tapes = (this.tapes || []).slice();
+            const cur = this.state && this.state.tape;
+            if (cur && !tapes.includes(cur)) tapes.unshift(cur);
+            V.openDialog({
+                id: 'xmRadioTape', owner: this.modal, title: 'Change Tape',
+                tpl: { t: 'Change Tape', w: 200, h: 150, f: ['Segoe UI', 9], s: 0x80C800C8, c: [
+                    [-1, 'S', 7, 7, 186, 16, S, 'Each tape is a folder in Recordings. Choose one, or name a new tape.', 0],
+                    [-1, 'S', 7, 28, 186, 8, S, '&Tapes:', 0],
+                    [101, 'L', 7, 38, 186, 62, 0x50a10101, '', 0],
+                    [-1, 'S', 7, 108, 50, 8, S, '&New tape:', 0],
+                    [102, 'E', 58, 106, 135, 12, 0x50810080, '', 0],
+                    [1, 'B', 89, 129, 50, 14, 0x50010001, 'OK', 0],
+                    [2, 'B', 143, 129, 50, 14, 0x50010000, 'Cancel', 0]
+                ] },
+                init: (ctx) => { ctx.options(101, tapes.map((t) => ({ value: t, text: t })), cur || ''); },
+                ok: async (ctx) => {
+                    const name = String(ctx.get(102) || '').trim() || String(ctx.get(101) || '');
+                    if (!name) return false;
+                    try {
+                        const res = await this.r.ask('xmradio_deck_set', { tape: name, workspaceId: this.workspace() });
+                        if (res && res.deck) this.state = res.deck;
+                        if (!this.tapes.includes(name)) this.tapes.push(name);
+                        this.tracks = [];
+                    } catch (err) { this.say((err && err.message) || 'NO TAPE'); }
+                    this.paint();
+                    return true;
+                }
+            });
+        }
+
+        channelLabel(id) { const c = this.r.byId.get(id); return c ? `${c.number} ${c.name}` : 'A channel'; }
+
+        timerText(t) {
+            const days = t.date ? `Once on ${t.date}` : (!t.days || !t.days.length || t.days.length === 7) ? 'Every day' : t.days.map((d) => DAYS[d]).join(' ');
+            const len = (LENGTHS.find((x) => x[0] === t.minutes) || [0, `${t.minutes} minutes`])[1];
+            return `${t.off ? '(Off) ' : ''}${days} at ${t.start}, ${len}: ${this.channelLabel(t.channelId)}`;
+        }
+
+        /** TIMER: scheduled recordings, the alerts set on the radio, and search terms (Vista dialog; saved on OK). */
+        timerDialog() {
+            const V = root.vistaDialogTemplate;
+            if (!V) return;
+            const S = 0x50020000;
+            const GROUP = 0x50000007;
+            const LIST = 0x50a10101;
+            const PUSH = 0x50010000;
+            const st = this.state || {};
+            const work = { timers: (st.timers || []).map((t) => Object.assign({}, t)), alerts: (st.alerts || []).slice(), terms: (st.terms || []).map((t) => Object.assign({}, t)) };
+            const removedAlerts = [];
+            V.openDialog({
+                id: 'xmRadioTimer', owner: this.modal, title: 'Timer Recording',
+                tpl: { t: 'Timer Recording', w: 280, h: 262, f: ['Segoe UI', 9], s: 0x80C800C8, c: [
+                    [-1, 'B', 7, 4, 266, 78, GROUP, 'Scheduled recordings', 0],
+                    [101, 'L', 14, 16, 196, 60, LIST, '', 0],
+                    [102, 'B', 216, 16, 50, 14, PUSH, '&Add...', 0],
+                    [103, 'B', 216, 33, 50, 14, PUSH, '&Edit...', 0],
+                    [104, 'B', 216, 50, 50, 14, PUSH, '&Remove', 0],
+                    [-1, 'B', 7, 86, 266, 70, GROUP, 'Alerts (set on the radio: MENU > Alert)', 0],
+                    [201, 'L', 14, 98, 196, 52, LIST, '', 0],
+                    [202, 'B', 216, 98, 50, 14, PUSH, 'Re&move', 0],
+                    [-1, 'B', 7, 160, 266, 76, GROUP, 'Search terms (what is on: artist, song, show)', 0],
+                    [301, 'L', 14, 172, 196, 40, LIST, '', 0],
+                    [304, 'B', 216, 172, 50, 14, PUSH, 'Remo&ve', 0],
+                    [302, 'E', 14, 216, 196, 12, 0x50810080, '', 0],
+                    [303, 'B', 216, 215, 50, 14, PUSH, 'A&dd', 0],
+                    [1, 'B', 169, 242, 50, 14, 0x50010001, 'OK', 0],
+                    [2, 'B', 223, 242, 50, 14, PUSH, 'Cancel', 0]
+                ] },
+                init: (ctx) => {
+                    const fill = () => {
+                        ctx.options(101, work.timers.map((t) => ({ value: t.id || t.tmp, text: this.timerText(t) })));
+                        ctx.options(201, work.alerts.map((a) => ({ value: a.id, text: a.kind === 'song' ? `Song: ${a.artist} - ${a.title}` : `Artist: ${a.artist}` })));
+                        ctx.options(301, work.terms.map((t) => ({ value: t.id || t.tmp, text: t.text })));
+                    };
+                    fill();
+                    const pick = (list, id) => list.findIndex((x) => (x.id || x.tmp) === ctx.get(id));
+                    ctx.on(102, 'click', () => this.timerEdit(null, ctx.modal, (t) => { work.timers.push(Object.assign(t, { tmp: `n${Date.now()}` })); fill(); }));
+                    ctx.on(103, 'click', () => { const i = pick(work.timers, 101); if (i >= 0) this.timerEdit(work.timers[i], ctx.modal, (t) => { work.timers[i] = Object.assign(work.timers[i], t); fill(); }); });
+                    ctx.on(104, 'click', () => { const i = pick(work.timers, 101); if (i >= 0) { work.timers.splice(i, 1); fill(); } });
+                    ctx.on(202, 'click', () => { const i = pick(work.alerts, 201); if (i >= 0) { removedAlerts.push(work.alerts[i].id); work.alerts.splice(i, 1); fill(); } });
+                    ctx.on(303, 'click', () => {
+                        const text = String(ctx.get(302) || '').trim();
+                        if (!text) return;
+                        work.terms.push({ tmp: `n${Date.now()}`, text });
+                        ctx.set(302, '');
+                        fill();
+                    });
+                    ctx.on(304, 'click', () => { const i = pick(work.terms, 301); if (i >= 0) { work.terms.splice(i, 1); fill(); } });
+                },
+                ok: async () => {
+                    const r = this.r;
+                    const strip = (x) => { const o = Object.assign({}, x); delete o.tmp; return o; };
+                    try {
+                        await r.ask('xmradio_timers_set', { timers: work.timers.map(strip) });
+                        await r.ask('xmradio_terms_set', { terms: work.terms.map(strip) });
+                        for (const id of removedAlerts) await r.ask('xmradio_alert_remove', { id });
+                    } catch (err) { this.say((err && err.message) || 'NOT SAVED'); }
+                    void this.load();
+                    return true;
+                }
+            });
+        }
+
+        /** Add or edit one scheduled recording: the channel, when, how long, which days (none: once, on the date). */
+        timerEdit(t, owner, done) {
+            const V = root.vistaDialogTemplate;
+            const S = 0x50020000;
+            const COMBO = 0x50210003;
+            const DAY = 0x50011003; // a check box drawn as a push button (WinCal's S M T W T F S)
+            const r = this.r;
+            const chans = r.lineup.filter((c) => c.sub !== false).map((c) => ({ value: c.id, text: `${c.number} ${c.name}` }));
+            const cur = t || { channelId: (r.channel && r.channel.id) || (chans[0] && chans[0].value), start: '08:00', minutes: 60, days: [1, 2, 3, 4, 5], date: null, mode: null };
+            const dayBtns = DAYS.map((d, i) => [401 + i, 'B', 62 + i * 25, 60, 23, 14, DAY, d.slice(0, 2), 0]);
+            V.openDialog({
+                id: 'xmRadioTimerEdit', owner, title: t ? 'Edit Scheduled Recording' : 'Add Scheduled Recording',
+                tpl: { t: 'Scheduled Recording', w: 250, h: 150, f: ['Segoe UI', 9], s: 0x80C800C8, c: [
+                    [-1, 'S', 7, 9, 52, 8, S, '&Channel:', 0],
+                    [301, 'C', 62, 7, 181, 120, COMBO, '', 0],
+                    [-1, 'S', 7, 27, 52, 8, S, '&Start at:', 0],
+                    [302, 'E', 62, 25, 40, 12, 0x50810080, '', 0],
+                    [-1, 'S', 106, 27, 60, 8, S, '(24-hour, hh:mm)', 0],
+                    [-1, 'S', 7, 45, 52, 8, S, '&Length:', 0],
+                    [303, 'C', 62, 43, 80, 120, COMBO, '', 0],
+                    [-1, 'S', 7, 62, 52, 8, S, 'Repeat on:', 0],
+                    ...dayBtns,
+                    [-1, 'S', 7, 82, 52, 8, S, 'Or &once on:', 0],
+                    [304, 'E', 62, 80, 60, 12, 0x50810080, '', 0],
+                    [-1, 'S', 126, 82, 117, 8, S, '(yyyy-mm-dd; no days pressed)', 0],
+                    [-1, 'S', 7, 100, 52, 8, S, 'S&plit:', 0],
+                    [305, 'C', 62, 98, 120, 120, COMBO, '', 0],
+                    [1, 'B', 139, 129, 50, 14, 0x50010001, 'OK', 0],
+                    [2, 'B', 193, 129, 50, 14, 0x50010000, 'Cancel', 0]
+                ] },
+                init: (ctx) => {
+                    ctx.options(301, chans, cur.channelId);
+                    ctx.set(302, cur.start);
+                    ctx.options(303, LENGTHS.map(([v, x]) => ({ value: String(v), text: x })), String(cur.minutes));
+                    DAYS.forEach((d, i) => ctx.set(401 + i, !cur.date && (cur.days || []).includes(i)));
+                    ctx.set(304, cur.date || '');
+                    ctx.options(305, [{ value: '', text: "As the deck's switch" }, { value: 'song', text: 'Each song' }, { value: 'long', text: 'One continuous file' }], cur.mode || '');
+                },
+                ok: (ctx) => {
+                    const start = String(ctx.get(302) || '').trim();
+                    const m = /^(\d{1,2}):(\d{2})$/.exec(start);
+                    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) { const el = ctx.el(302); if (el) el.focus(); return false; }
+                    const days = DAYS.map((d, i) => (ctx.get(401 + i) ? i : -1)).filter((i) => i >= 0);
+                    const date = String(ctx.get(304) || '').trim();
+                    if (!days.length && !/^\d{4}-\d{2}-\d{2}$/.test(date)) { const el = ctx.el(304); if (el) el.focus(); return false; }
+                    done({ channelId: String(ctx.get(301)), start: `${pad(Number(m[1]), 2)}:${m[2]}`, minutes: Number(ctx.get(303)) || 60, days, date: days.length ? null : date, mode: String(ctx.get(305) || '') || null, off: false });
+                    return true;
+                }
+            });
         }
     }
 

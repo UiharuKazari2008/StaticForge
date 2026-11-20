@@ -37,6 +37,40 @@ pushes only the items that changed:
 
 It is read from SiriusXM's public lookAround every 20 s while subscribed. Nothing polls from the client.
 
+## The cassette deck
+
+Recordings are made on the server (`modules/xmRadioRecorder.js`), into the workspace's `Recordings` folder, one
+folder per tape. They run without a client, for up to 8 hours, at 256 kbit/s, and are finished into the tape when the
+server starts again. The deck's SPLIT switch picks the file layout:
+
+- `song`: one tagged `.m4a` per cut (title, artist, album = the channel, the cover), cut at the exact AAC frame where
+  lookAround says the cut changed. A cut the recording joined late is marked "(partial)".
+- `long`: one `.m4a` with a chapter per cut.
+
+| Packet | Who | Data | Reply |
+| --- | --- | --- | --- |
+| `xmradio_deck_get` | admin, dev_admin | `{ workspaceId? }` | `{ deck, tapes[] }` |
+| `xmradio_deck_set` | admin | `{ tape?, workspaceId?, mode? }` (`song` or `long`) | `{ deck }` |
+| `xmradio_tape_tracks` | admin, dev_admin | `{ workspaceId, tape }` | `{ tracks[{ id, name, size, at }] }`, played with `vfs_download_file` |
+| `xmradio_rec_start` | admin | `{ channelId }` | `{ rid, channelId, kind, mode, tape, since, until, url, cut }` |
+| `xmradio_rec_stop` | admin | `{ rid }` | `{ rid, filed }` |
+| `xmradio_timers_set` | admin | `{ timers[{ id?, channelId, start 'HH:MM', minutes, days[0-6], date?, mode?, off? }] }` | `{ timers }` |
+| `xmradio_alert_add` | admin | `{ kind: 'artist' \| 'song', artist, title?, channelId? }` | `{ alerts }` |
+| `xmradio_alert_remove` | admin | `{ id }` | `{ alerts }` |
+| `xmradio_terms_set` | admin | `{ terms[{ id?, text, channelId? }] }` | `{ terms }` |
+
+`deck` is `{ tape, workspaceId, mode, recordings[], timers[], alerts[], terms[] }` and is also the `deck` item of the
+`xmradio` status feed (pushed when it changes).
+
+Auto-record:
+
+- Timers start on a single `setTimeout` to the next start, re-armed at most a day ahead.
+- Alerts (an artist or a song, set from the radio's MENU > Alert) and search terms (every word must appear in the
+  artist, title or show) are matched on every lookAround read. A match records that cut from its first frame (the
+  stream keeps 5 hours) into the current tape.
+- The server reads lookAround through one timer, only while a recording, an alert or a term exists. It backs off when
+  SiriusXM does not answer.
+
 ## HTTP
 
 - `GET /api/xmradio/live/<sid>/m/<path>`: the tuned stream's folder on SiriusXM's server, mirrored. The playlists'
@@ -44,6 +78,9 @@ It is read from SiriusXM's public lookAround every 20 s while subscribed. Nothin
 - `GET /api/xmradio/key/<sid>/<keyId>`: the AES-128 key (16 bytes), fetched with the account's token.
 - `GET /api/xmradio/art?k=<key>&s=<px>[&f=png]`: SiriusXM art (covers, channel logos, backgrounds) at our own origin. `f=png` keeps a logo's transparency.
 - `GET /api/xmradio/eco/<rid>/<file>`: the ECO relay. The channel's 128k stream goes through the segment pump (`modules/xmRadioPump.js`: fetched, decrypted, ID3 stripped) into ffmpeg, which writes Opus at 24 or 16 kbit/s as fMP4 HLS (4 s pieces, an hour kept). One relay per channel and rate is shared, and it stops two minutes after nobody asks for it.
+- `GET /api/xmradio/rec/<rid>/index.m3u8` and `/api/xmradio/rec/<rid>/s<seq>.aac`: a recording in progress as an
+  EVENT playlist that grows, with its decrypted segments. Everything recorded so far can be paused and rewound; the
+  radio plays it while the deck records. It answers for 10 minutes after the recording stops.
 - `GET|POST /xmradio-signin/<code>`: the one-time sign-in page. It is mounted ahead of the site gate; any other code
   answers 404.
 

@@ -410,6 +410,7 @@ async function readLookAround() {
     } catch (_) { return false; }
     if (!j || !j.channels) return false;
     const now = Date.now();
+    const channelCuts = new Map(); // channelId -> [{ at, a, t, s, ad, ik }] oldest first (the cassette deck's splits)
     for (const [id, c] of Object.entries(j.channels)) {
         const cuts = (c.cuts || []).filter((x) => Date.parse(x.validFrom) <= now).sort((a, b) => Date.parse(b.validFrom) - Date.parse(a.validFrom));
         const shows = (c.shows || []).filter((x) => Date.parse(x.validFrom) <= now).sort((a, b) => Date.parse(b.validFrom) - Date.parse(a.validFrom));
@@ -417,11 +418,49 @@ async function readLookAround() {
         const show = shows[0];
         if (!cut && !show) continue;
         const art = (cut && cut.image && cut.image.url) || (show && show.image && show.image.url) || '';
-        nowPlaying.set(id, { a: cut ? String(cut.artistName || '') : '', t: cut ? String(cut.name || '') : '', ad: !!(cut && cut.isAd), s: show ? String(show.name || '') : '', i: art ? artPath(art, 300) : '', at: cut ? Date.parse(cut.validFrom) : now });
+        const showAt = (t) => { const sh = shows.find((x) => Date.parse(x.validFrom) <= t); return sh ? String(sh.name || '') : ''; };
+        const list = cuts.slice(0, 8).reverse().map((x) => ({ at: Date.parse(x.validFrom), a: String(x.artistName || ''), t: String(x.name || ''), ad: !!x.isAd, s: showAt(Date.parse(x.validFrom)), ik: (x.image && x.image.url) || '' }));
+        if (list.length) channelCuts.set(id, list);
+        nowPlaying.set(id, { a: cut ? String(cut.artistName || '') : '', t: cut ? String(cut.name || '') : '', ad: !!(cut && cut.isAd), s: show ? String(show.name || '') : '', i: art ? artPath(art, 300) : '', at: cut ? Date.parse(cut.validFrom) : now, cuts: list });
     }
     if (j.delta) lookDelta = j.delta;
     lookAt = now;
+    for (const fn of lookListeners) { try { fn(channelCuts); } catch (err) { console.warn(`[xmRadio] look listener: ${err.message}`); } }
     return true;
+}
+
+// The server's own reads of lookAround, for the cassette deck (recordings' splits, alerts, search terms): one timer,
+// running only while something wants it, backing off when SiriusXM does not answer (rule phone-power-server 7).
+const lookListeners = [];
+const watchers = new Set();
+let watchTimer = null;
+let watchFails = 0;
+function onLook(fn) { lookListeners.push(fn); }
+function watch(reason, on) {
+    if (on) watchers.add(reason); else watchers.delete(reason);
+    if (watchers.size && !watchTimer) watchTimer = setTimeout(watchTick, 1000);
+    if (!watchers.size && watchTimer) { clearTimeout(watchTimer); watchTimer = null; }
+}
+async function watchTick() {
+    watchTimer = null;
+    if (!watchers.size) return;
+    let ok = true;
+    // a radio's status feed reads it as well: no second read inside the same 15 s
+    if (Date.now() - lookAt > 15000) ok = await readLookAround();
+    if (ok) watchFails = 0;
+    else if ((watchFails += 1) <= 6) console.warn(`[xmRadio] lookAround did not answer (${watchFails})`);
+    if (!watchers.size) return;
+    watchTimer = setTimeout(watchTick, ok ? HUB_INTERVAL : Math.min(300000, HUB_INTERVAL * 2 ** Math.min(watchFails, 4)));
+    if (watchTimer.unref) watchTimer.unref();
+}
+/** A channel's recent cuts, oldest first. */
+function nowPlayingCuts(id) { const v = nowPlaying.get(id); return v && v.cuts ? v.cuts.slice() : []; }
+/** A channel of the lineup with its plan mark, or null. */
+function channelById(id) {
+    const c = lineupCache && lineupCache.channels && lineupCache.channels.find((x) => x.id === id);
+    if (!c) return null;
+    const no = new Set(lineupCache.notInPlan || []);
+    return no.has(id) ? Object.assign({}, c, { sub: false }) : c;
 }
 
 /** The status feed: the account, and each channel's current cut (pushed only when it changed). */
@@ -436,6 +475,8 @@ function defineFeed(statusHub) {
             await readLookAround();
             const items = { account: account(), lineup: lineupCache && lineupCache.at ? { at: lineupCache.at, n: lineupCache.channels.length } : null };
             for (const [id, v] of nowPlaying) items[`ch:${id}`] = { a: v.a, t: v.t, s: v.s, ad: v.ad, i: v.i };
+            // the cassette deck: its tape, its switch, what it is recording, the timers, alerts and terms
+            try { items.deck = require('./xmRadioRecorder').deck(); } catch (_) { /* not started */ }
             return items;
         }
     });
@@ -918,6 +959,24 @@ function mount(app, authMiddleware) {
     });
     app.get('/api/xmradio/eco/:rid/:file', authMiddleware, admin, (req, res) => { void ecoFile(String(req.params.rid), String(req.params.file), res); });
     app.get('/api/xmradio/key/:sid/:keyId', authMiddleware, admin, (req, res) => { void streamKey(String(req.params.sid), String(req.params.keyId), res); });
+    // a recording in progress (the cassette deck): its growing playlist and its segments, already decrypted
+    app.get('/api/xmradio/rec/:rid/:file', authMiddleware, admin, (req, res) => {
+        const rec = require('./xmRadioRecorder');
+        const rid = String(req.params.rid);
+        const f = String(req.params.file);
+        if (f === 'index.m3u8') {
+            const text = rec.playlist(rid);
+            if (!text) { res.status(404).end(); return; }
+            res.set('Cache-Control', 'no-store');
+            res.type('application/vnd.apple.mpegurl').send(text);
+            return;
+        }
+        const seg = rec.segPath(rid, f);
+        if (!seg) { res.status(404).end(); return; }
+        res.set('Cache-Control', 'private, max-age=3600');
+        res.type('audio/aac');
+        res.sendFile(seg.f, { root: seg.root });
+    });
 }
 
 module.exports = {
@@ -941,5 +1000,12 @@ module.exports = {
     presets,
     setPresets,
     nowPlaying: (id) => nowPlaying.get(id) || null,
+    nowPlayingCuts,
+    channelById,
+    watch,
+    onLook,
+    touch,
+    accountFilePath: () => accountFile(),
+    imageUrlFor: (key, size) => imageUrl(key, size, 'jpeg', size),
     _test: { rewritePlaylist, findStreamUrl, jwtExp, maskHandle, upstream, streams, imageUrl, artPath, onlyVariant, state: () => load() }
 };

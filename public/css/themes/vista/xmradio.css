@@ -321,7 +321,7 @@
    No Melaton frame: the radio body is the window. The caption stays, invisible, over the radio's top edge (it moves
    the window); Vista's own minimise and close sit in the radio's top-right corner. Its height follows the radio (the
    program scales the radio to the window's width). */
-#xmRadioModal.modal[data-xr-frame="radio"] {
+:is(#xmRadioModal, #xmRadioDeckModal).modal[data-xr-frame="radio"] {
     height: auto !important;
     padding: 0 !important;
     border: 0 !important;
@@ -330,10 +330,10 @@
     box-shadow: none !important;
     --window-frame-shadow: none;
 }
-#xmRadioModal.modal[data-xr-frame="radio"]::before,
-#xmRadioModal.modal[data-xr-frame="radio"]::after { display: none !important; }
-#xmRadioModal[data-xr-frame="radio"] > .modal-focus-overlay { display: none; }
-#xmRadioModal[data-xr-frame="radio"] > .modal-window-title {
+:is(#xmRadioModal, #xmRadioDeckModal).modal[data-xr-frame="radio"]::before,
+:is(#xmRadioModal, #xmRadioDeckModal).modal[data-xr-frame="radio"]::after { display: none !important; }
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"] > .modal-focus-overlay { display: none; }
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"] > .modal-window-title {
     position: absolute;
     z-index: 3;
     left: 0;
@@ -346,7 +346,7 @@
     border: 0;
     opacity: 0;
 }
-#xmRadioModal[data-xr-frame="radio"] > .modal-window-controls {
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"] > .modal-window-controls {
     position: absolute;
     z-index: 4;
     top: 0;
@@ -354,11 +354,11 @@
     opacity: 0.82;
     transition: opacity 0.15s;
 }
-#xmRadioModal[data-xr-frame="radio"]:hover > .modal-window-controls,
-#xmRadioModal[data-xr-frame="radio"].active-window > .modal-window-controls { opacity: 1; }
-#xmRadioModal[data-xr-frame="radio"][data-xr-body="car"] > .modal-window-controls { right: 6px; }
-#xmRadioModal[data-xr-frame="radio"][data-xr-body="table"] > .modal-window-controls { right: 14px; }
-#xmRadioModal[data-xr-frame="radio"] > .modal-content.xr-client { background: none; border-radius: 0; }
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"]:hover > .modal-window-controls,
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"].active-window > .modal-window-controls { opacity: 1; }
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"][data-xr-body="car"] > .modal-window-controls { right: 6px; }
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"][data-xr-body="table"] > .modal-window-controls { right: 14px; }
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"] > .modal-content.xr-client { background: none; border-radius: 0; }
 /* the bodies' own outer shape and shadow */
 #xmRadioModal .xr-radio[data-body="car"] { border-radius: 8px; box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55); }
 #xmRadioModal .xr-radio[data-body="table"] { border-radius: 18px; box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5); }
@@ -719,8 +719,8 @@
 #xmRadioModal .xr-radio[data-docked="true"][data-display="tft"] .xr-d-top :is([data-f="band"], [data-f="pre"]) { display: none; }
 
 /* the caption buttons: shown while the pointer moves over the radio, faded a few seconds after it stops */
-#xmRadioModal[data-xr-frame="radio"] > .modal-window-controls { opacity: 0; transition: opacity 0.35s; }
-#xmRadioModal[data-xr-frame="radio"].xr-caption-shown > .modal-window-controls { opacity: 1; transition-duration: 0.12s; }
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"] > .modal-window-controls { opacity: 0; transition: opacity 0.35s; }
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"].xr-caption-shown > .modal-window-controls { opacity: 1; transition-duration: 0.12s; }
 
 /* ---------------------------------------------------------------- the Stratus: glossy black, a blue LCD, paired keys */
 #xmRadioModal .xr-radio[data-body="stratus"] .xr-shell {
@@ -777,3 +777,308 @@
 /* the colour screen's layers: the channel's picture under everything else on it */
 #xmRadioModal .xr-display { isolation: isolate; }
 #xmRadioModal .xr-d-bg { z-index: -1; }
+
+/* ---------------------------------------------------------------- the cassette deck (Yukimi, Nov 20 2026)
+   Its own window beside the radio, frameless like it: a black brushed front, a smoked door over the tape (its label
+   is the tape's name, its reels turn only while the tape moves and the deck is seen), a drum counter, an amber
+   display, the SPLIT switch, and a row of piano keys. */
+#xmRadioDeckModal .xr-deck {
+    --dk-ink: #d9dde3;
+    --dk-amber: #ffb648;
+    position: relative;
+    width: 540px;
+    box-sizing: border-box;
+    padding: 10px 14px 12px;
+    border-radius: 6px;
+    background:
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px),
+        linear-gradient(#2a2c30, #17181b 60%, #101113);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -2px 0 rgba(0, 0, 0, 0.5), 0 6px 18px rgba(0, 0, 0, 0.55);
+    color: var(--dk-ink);
+    font: 11px/1.2 "Segoe UI", Tahoma, sans-serif;
+    user-select: none;
+    outline: none;
+}
+#xmRadioDeckModal .xr-dk-top { display: flex; justify-content: space-between; align-items: baseline; padding: 0 70px 6px 2px; }
+#xmRadioDeckModal .xr-dk-brand { font: 700 12px/1 "Segoe UI", Tahoma, sans-serif; letter-spacing: 0.32em; color: #c9ced6; }
+#xmRadioDeckModal .xr-dk-model { font-size: 9px; letter-spacing: 0.18em; color: #8b9099; }
+#xmRadioDeckModal .xr-dk-main { display: grid; grid-template-columns: 250px 1fr; gap: 14px; }
+
+/* the door and the tape */
+#xmRadioDeckModal .xr-dk-door {
+    position: relative;
+    height: 142px;
+    border-radius: 4px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0) 40%), #0b0c0e;
+    box-shadow: inset 0 0 0 1px #000, inset 0 2px 6px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+#xmRadioDeckModal .xr-dk-tape {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    top: 14px;
+    bottom: 10px;
+    border-radius: 5px;
+    background: linear-gradient(#3b3e44, #26282c);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.6);
+    opacity: 0.9;
+}
+#xmRadioDeckModal .xr-deck:not(.has-tape) .xr-dk-tape { display: none; }
+#xmRadioDeckModal .xr-dk-empty { position: absolute; inset: 0; display: grid; place-items: center; color: #4a4e55; letter-spacing: 0.2em; font-size: 10px; }
+#xmRadioDeckModal .xr-deck.has-tape .xr-dk-empty { display: none; }
+#xmRadioDeckModal .xr-dk-label {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 8px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    border-radius: 2px;
+    background: linear-gradient(#f3efe2 0 80%, #e2604a 80% 86%, #f3efe2 86%);
+    color: #1d2a6b;
+}
+#xmRadioDeckModal .xr-dk-side { font: 700 16px/1 "Segoe UI", Tahoma, sans-serif; color: #222; }
+#xmRadioDeckModal .xr-dk-name { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: italic 15px/1 "Segoe Print", "Comic Sans MS", cursive; transform: translateY(-3px); }
+#xmRadioDeckModal .xr-dk-window {
+    position: absolute;
+    left: 42px;
+    right: 42px;
+    top: 50px;
+    height: 46px;
+    border-radius: 23px;
+    background: linear-gradient(rgba(150, 120, 90, 0.35), rgba(60, 40, 30, 0.6)), #15110e;
+    box-shadow: inset 0 0 0 2px #0d0e10;
+}
+#xmRadioDeckModal .xr-dk-reel {
+    position: absolute;
+    top: 5px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle, #ddd 0 5px, transparent 5.5px),
+        conic-gradient(#e8e8e8 0 20deg, transparent 20deg 120deg, #e8e8e8 120deg 140deg, transparent 140deg 240deg, #e8e8e8 240deg 260deg, transparent 260deg),
+        radial-gradient(circle, transparent 0 9px, #e9e9e9 9.5px 11px, #3b2a20 11.5px);
+}
+#xmRadioDeckModal .xr-dk-reel.is-l { left: 8px; }
+#xmRadioDeckModal .xr-dk-reel.is-r { right: 8px; }
+@keyframes xr-dk-reel { to { transform: rotate(360deg); } }
+/* perf: allow - runs only while the tape moves and the deck is seen (.is-running, set by the program) */
+#xmRadioDeckModal .xr-deck.is-running .xr-dk-reel { animation: xr-dk-reel 1.8s linear infinite; }
+
+/* the panel: counter, lights, display, switch */
+#xmRadioDeckModal .xr-dk-panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#xmRadioDeckModal .xr-dk-row { display: flex; align-items: center; gap: 8px; }
+#xmRadioDeckModal .xr-dk-counter { display: flex; gap: 2px; padding: 3px; border-radius: 3px; background: #050506; box-shadow: inset 0 1px 3px #000, 0 1px 0 rgba(255, 255, 255, 0.08); }
+#xmRadioDeckModal .xr-dk-counter b {
+    display: block;
+    width: 15px;
+    height: 22px;
+    border-radius: 1px;
+    background: linear-gradient(#26282b, #3e4146 45%, #3e4146 55%, #222427);
+    color: #f1f1f1;
+    font: 600 16px/22px Consolas, "Lucida Console", monospace;
+    text-align: center;
+}
+#xmRadioDeckModal .xr-dk-leds { display: flex; gap: 9px; margin-left: auto; font-size: 8px; letter-spacing: 0.1em; color: #8b9099; }
+#xmRadioDeckModal .xr-dk-led { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+#xmRadioDeckModal .xr-dk-led i { width: 7px; height: 7px; border-radius: 50%; background: #2a1414; box-shadow: inset 0 1px 1px #000; }
+#xmRadioDeckModal .xr-dk-led.is-rec.is-on i { background: radial-gradient(circle at 35% 35%, #ffb0a0, #ff2b14 60%); box-shadow: 0 0 6px #ff3b1f; }
+#xmRadioDeckModal .xr-dk-led.is-auto i { background: #142a16; }
+#xmRadioDeckModal .xr-dk-led.is-auto.is-on i { background: radial-gradient(circle at 35% 35%, #c8ffb8, #3bdc2a 60%); box-shadow: 0 0 6px #3bdc2a; }
+#xmRadioDeckModal .xr-dk-led.is-mute i { background: #2a2210; }
+#xmRadioDeckModal .xr-dk-led.is-mute.is-on i { background: radial-gradient(circle at 35% 35%, #ffe7b0, #ffad14 60%); box-shadow: 0 0 6px #ffad14; }
+#xmRadioDeckModal .xr-dk-vfd {
+    padding: 6px 8px;
+    border-radius: 3px;
+    background: radial-gradient(ellipse at 50% 0, #1b1307, #070503 70%);
+    box-shadow: inset 0 1px 4px #000, 0 1px 0 rgba(255, 255, 255, 0.07);
+    color: var(--dk-amber);
+    text-shadow: 0 0 5px rgba(255, 170, 60, 0.55);
+    font: 13px/17px "DotGothic16", "Lucida Console", monospace;
+}
+#xmRadioDeckModal .xr-dk-v1,
+#xmRadioDeckModal .xr-dk-v2 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; height: 17px; }
+#xmRadioDeckModal .xr-dk-v2 { opacity: 0.85; }
+#xmRadioDeckModal .xr-deck.is-recording .xr-dk-v1 { color: #ff7a5c; text-shadow: 0 0 5px rgba(255, 90, 60, 0.55); }
+#xmRadioDeckModal .xr-dk-switch { display: flex; align-items: center; gap: 5px; cursor: pointer; outline: none; font-size: 8px; letter-spacing: 0.1em; color: #8b9099; }
+#xmRadioDeckModal .xr-dk-switch:focus-visible .xr-dk-sw-track { box-shadow: 0 0 0 1px #7fb2ff; }
+#xmRadioDeckModal .xr-dk-sw-track { position: relative; width: 30px; height: 12px; border-radius: 2px; background: #050506; box-shadow: inset 0 1px 2px #000; }
+#xmRadioDeckModal .xr-dk-sw-track i { position: absolute; top: 1px; left: 1px; width: 13px; height: 10px; border-radius: 1px; background: linear-gradient(#d8dbe0, #8d929a); transition: left 0.12s; }
+#xmRadioDeckModal .xr-deck[data-mode="long"] .xr-dk-sw-track i { left: 16px; }
+#xmRadioDeckModal .xr-dk-sw-pos { display: flex; flex-direction: column; gap: 1px; }
+#xmRadioDeckModal .xr-dk-sw-pos b { font-weight: 400; }
+#xmRadioDeckModal .xr-deck[data-mode="song"] .xr-dk-sw-pos b[data-pos="song"],
+#xmRadioDeckModal .xr-deck[data-mode="long"] .xr-dk-sw-pos b[data-pos="long"] { color: #e8ebf0; }
+#xmRadioDeckModal .xr-deck button { font: inherit; color: inherit; margin: 0; min-width: 0; min-height: 0; box-shadow: none; text-shadow: none; }
+#xmRadioDeckModal .xr-dk-small {
+    margin-left: auto;
+    padding: 3px 9px;
+    border: 1px solid #0b0c0e;
+    border-radius: 3px;
+    background: linear-gradient(#4a4e55, #2c2f34);
+    font-size: 9px !important;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+}
+#xmRadioDeckModal .xr-dk-small + .xr-dk-small { margin-left: 0; }
+#xmRadioDeckModal .xr-dk-small:active { background: linear-gradient(#2c2f34, #3a3d43); }
+
+/* the piano keys */
+#xmRadioDeckModal .xr-dk-keys { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 10px; }
+#xmRadioDeckModal .xr-dk-key {
+    position: relative;
+    height: 38px;
+    padding: 4px 0 0;
+    border: 1px solid #050506;
+    border-radius: 2px 2px 4px 4px;
+    background: linear-gradient(#b9bec6, #8e949d 70%, #6e737b);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 3px 0 #2a2c30, 0 4px 3px rgba(0, 0, 0, 0.5);
+    color: #1b1d21;
+    cursor: pointer;
+    transform: translateY(0);
+    transition: transform 0.05s, box-shadow 0.05s;
+}
+#xmRadioDeckModal .xr-dk-key svg { display: block; width: 16px; height: 10px; margin: 0 auto 3px; fill: currentColor; }
+#xmRadioDeckModal .xr-dk-key span { display: block; font-size: 8px; letter-spacing: 0.08em; }
+#xmRadioDeckModal .xr-dk-key[data-dk="rec"] svg { fill: #d0220e; }
+#xmRadioDeckModal .xr-dk-key:active,
+#xmRadioDeckModal .xr-dk-key.is-down {
+    transform: translateY(2px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1px 0 #2a2c30, 0 1px 2px rgba(0, 0, 0, 0.5);
+    background: linear-gradient(#a6abb3, #80868f 70%, #656a72);
+}
+#xmRadioDeckModal .xr-deck:focus-visible { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 0 1px #7fb2ff, 0 6px 18px rgba(0, 0, 0, 0.55); }
+#xmRadioDeckModal[data-xr-frame="radio"] > .modal-window-controls { right: 8px; }
+
+/* a picture never stretches, whatever size its canvas was drawn at */
+#xmRadioModal :is(.xr-d-art, .xr-d-logo) { object-fit: contain; }
+#xmRadioModal .xr-d-bg { object-fit: cover; }
+/* the caption lies under the whole device and takes no clicks: the body moves the window (the program hands a press on
+   it to the caption), so the keys along the top edge are free */
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"] > .modal-window-title { inset: 0; height: auto; right: 0; z-index: 0; pointer-events: none; }
+:is(#xmRadioModal, #xmRadioDeckModal)[data-xr-frame="radio"] > .modal-content { position: relative; z-index: 1; }
+
+/* ================================================================ proportions after Yukimi's photos (Nov 20 2026, round 4)
+   "compare the images i sent to the ones you made": the bodies were too wide and low and the screens too small. Each
+   receiver is now laid out from its photo, measured as fractions of the body (at the radio's own 560 px width):
+     Onyx Plus  1.91 : 1, screen 49 % x 66 % from the left edge, the silver ring 29 % wide at 73 %
+     Onyx EZ    1.91 : 1, screen 42 % x 61 %, the dark pad 29 % wide at 73 %
+     Gloss      1.69 : 1, screen 44 % x 56 %, the round keys from 60 %, the lit knob 18 % at 77 %, the bar at 79 %
+     Roady XT   1.72 : 1, the window 70 % wide and 61 % high between the button columns
+     Stratus    2.37 : 1, screen 58 % wide in its bezel, the key columns 9 % each
+   The docked receivers' LCDs are their own colour (the Onyx EZ's blue, the Stratus' cyan); the brand setting tints
+   the car and tabletop displays. */
+
+/* Onyx Plus */
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-shell {
+    grid-template-columns: 274px 1fr 36px;
+    grid-template-rows: 14px 194px 28px;
+    gap: 6px 14px;
+    padding: 10px 10px 14px 32px;
+}
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-keys, #xmRadioModal .xr-radio[data-body="onyxplus"] .xr-o-keys { margin-top: 12px; }
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-o-nav { justify-content: space-between; padding: 4px 0 0; gap: 0; }
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-o-ring { width: 160px; height: 160px; }
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-o-ring { background: radial-gradient(circle, #0a0a0b 0 41%, transparent 42%), conic-gradient(from 200deg, #fbfbfc, #c4c7cc, #f2f3f5, #b0b4ba, #fbfbfc, #c0c3c8, #fbfbfc); }
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-o-center { left: 31%; top: 31%; width: 38%; height: 38%; }
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-o-transport .xr-tk { width: 46px; height: 18px; }
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-o-side { padding: 4px 0 2px; }
+#xmRadioModal .xr-radio[data-body="onyxplus"] button.xr-sk { width: 32px; height: 18px; padding: 0; font-size: 10px; }
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-brand .xr-brand-img { height: 12px; }
+/* its screen as in the photo: number and logo top left, the song large along the bottom, no frame round the art */
+#xmRadioModal .xr-radio[data-body="onyxplus"][data-display="tft"] .xr-d-logo { left: 40px; top: 6px; width: 96px; height: 36px; }
+#xmRadioModal .xr-radio[data-body="onyxplus"][data-display="tft"] .xr-d-art { right: 10px; top: 44px; width: 86px; height: 86px; }
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-d-l2 { font-size: 22px; }
+
+/* Onyx EZ: the same chassis, a smaller blue LCD and the dark pad */
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-shell {
+    grid-template-columns: 236px 1fr 36px;
+    grid-template-rows: 14px 180px 26px;
+    gap: 8px 22px;
+    padding: 10px 10px 16px 40px;
+}
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-o-keys { margin-top: 18px; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-bezel { padding: 2px; border-radius: 2px; background: #0c2350; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-display { --xr-lit-1: #2f8dff; --xr-lit-2: #1872f2; --xr-lit-3: #0f5fd8; --xr-ink-rgb: 18, 40, 140; }
+#xmRadioModal .xr-radio[data-body="onyxez"] button.xr-sk { width: 30px; height: 16px; padding: 0; font-size: 9px; border-radius: 3px; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-o-side { padding: 0 0 4px; }
+/* the pad: a black donut cut in four (diagonal seams), small blue arrows, a large dark centre key */
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-o-pad {
+    width: 164px;
+    height: 164px;
+    background:
+        repeating-conic-gradient(from 45deg, #000 0 2deg, transparent 2deg 90deg),
+        radial-gradient(circle, transparent 0 34%, #000 34.5% 36%, #2a2c30 36.5%, #16171a 70%, #0b0c0d 98%, #3a3d42 99%);
+    box-shadow: 0 0 0 1px #000, 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-o-dir { background: none; box-shadow: none; border-radius: 0; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-o-dir.is-up { left: 30%; top: 0; width: 40%; height: 30%; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-o-dir.is-down { left: 30%; bottom: 0; width: 40%; height: 30%; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-o-dir.is-left { left: 0; top: 30%; width: 30%; height: 40%; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-o-dir.is-right { right: 0; top: 30%; width: 30%; height: 40%; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-o-arr { border-width: 4px; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .is-up > .xr-o-arr { margin: -6px 0 0 -4px; border-bottom-width: 6px; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .is-down > .xr-o-arr { margin: 0 0 0 -4px; border-top-width: 6px; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .is-left > .xr-o-arr { margin: -4px 0 0 -6px; border-right-width: 6px; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .is-right > .xr-o-arr { margin: -4px 0 0 0; border-left-width: 6px; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-o-pad .xr-o-center { left: 33%; top: 33%; width: 34%; height: 34%; background: radial-gradient(circle at 45% 35%, #303236, #111214 75%); box-shadow: 0 0 0 1px #000, inset 0 1px 1px rgba(255, 255, 255, 0.1); }
+
+/* Gloss: taller, the screen larger, round glossy keys, the lit knob low on the right, the bar along the bottom */
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-shell {
+    grid-template-columns: 246px 1fr;
+    grid-template-rows: 14px 184px 38px;
+    gap: 18px 22px;
+    padding: 4px 12px 26px 46px;
+}
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-bottom { margin: 0 -12px 0 -46px; grid-template-columns: repeat(4, 62px) 1fr 70px 70px; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-bottom .xr-tk { height: 38px; border-radius: 0; border-width: 1px 0; border-color: #000; background: linear-gradient(#1a1b1e, #070708); box-shadow: inset -1px 0 0 #2a2c30; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-bottom .xr-g-arrow { font-size: 32px; box-shadow: none; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-pad { grid-template-columns: repeat(5, 30px); grid-auto-rows: 30px; gap: 12px 9px; margin-top: 6px; }
+#xmRadioModal .xr-radio[data-body="gloss"] button.xr-rk { background: radial-gradient(circle at 50% 28%, #55585f, #16171a 55%, #050506 80%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 0 1px #000, 0 2px 3px rgba(0, 0, 0, 0.9); font-size: 10px; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-knob { width: 100px; height: 100px; margin: 0 40px -46px 0; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-ring { inset: 4px; background: repeating-conic-gradient(#30333a 0 3deg, #50545b 3deg 6deg); }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-cap { inset: 9px; background: conic-gradient(from 20deg, #f2f3f5, #4b4f56 25%, #e9ebee 50%, #3c4046 75%, #f2f3f5); }
+#xmRadioModal .xr-radio[data-body="gloss"][data-display="tft"] .xr-d-logo { left: 40px; top: 6px; width: 92px; height: 34px; }
+#xmRadioModal .xr-radio[data-body="gloss"][data-display="tft"] .xr-d-art { right: 10px; top: 42px; width: 80px; height: 80px; }
+
+/* Roady XT: taller window between its button columns */
+#xmRadioModal .xr-radio[data-body="roady"] .xr-shell {
+    grid-template-columns: 62px 1fr 62px;
+    grid-template-rows: 196px 30px 30px;
+    gap: 8px 4px;
+    padding: 20px 16px 22px;
+}
+#xmRadioModal .xr-radio[data-body="roady"] .xr-rd-row { margin-top: 0; }
+#xmRadioModal .xr-radio[data-body="roady"] .xr-rd-nums { margin-top: 6px; padding: 0 2px; }
+#xmRadioModal .xr-radio[data-body="roady"] .xr-rd-print { height: 34px; }
+#xmRadioModal .xr-radio[data-display="dotlcd"] .xr-d-l1, #xmRadioModal .xr-radio[data-display="dotlcd"] .xr-d-l2 { font-size: 40px; line-height: 46px; }
+
+/* Stratus: taller, the key columns wider, the LCD cyan */
+#xmRadioModal .xr-radio[data-body="stratus"] .xr-shell {
+    grid-template-columns: 54px 1fr 54px;
+    grid-template-rows: 172px 24px;
+    gap: 10px 22px;
+    padding: 18px 18px 14px;
+    border-radius: 22px 22px 12px 12px;
+}
+#xmRadioModal .xr-radio[data-body="stratus"] .xr-st-left, #xmRadioModal .xr-radio[data-body="stratus"] .xr-st-right { gap: 6px; }
+#xmRadioModal .xr-radio[data-body="stratus"] .xr-bezel { height: 94px; }
+#xmRadioModal .xr-radio[data-body="stratus"] .xr-st-under { gap: 40px; }
+#xmRadioModal .xr-radio[data-body="stratus"] button.xr-stn { height: 20px; font-size: 12px; }
+#xmRadioModal .xr-radio[data-body="stratus"] .xr-display { --xr-lit-1: #74d4ff; --xr-lit-2: #3cb6f0; --xr-lit-3: #2299d8; --xr-ink-rgb: 4, 20, 40; }
+#xmRadioModal .xr-radio[data-body="stratus"] .xr-d-l2, #xmRadioModal .xr-radio[data-body="stratus"] .xr-d-l3 { font-size: 26px; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-knob { z-index: 2; }
+/* the side keys start under the window's minimise and close (which show over the top edge) */
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-o-side, #xmRadioModal .xr-radio[data-body="onyxez"] .xr-o-side { padding-top: 22px; }
+/* the Gloss bar as in the photo: the transport and jump on the left, then ‹, the knob's place, › at the end */
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-bottom { grid-template-columns: repeat(4, 56px) 1fr 56px 118px 56px; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-bottom [data-nav="left"] { grid-column: 6; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-bottom [data-nav="right"] { grid-column: 8; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-bottom::after { content: ""; grid-column: 7; grid-row: 1; background: linear-gradient(#1a1b1e, #070708); border-block: 1px solid #000; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-bottom::before { content: ""; grid-column: 5; grid-row: 1; background: linear-gradient(#1a1b1e, #070708); border-block: 1px solid #000; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-knob { margin-bottom: -66px; }
