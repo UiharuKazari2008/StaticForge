@@ -5513,7 +5513,16 @@ class ServiceWorkerManager {
             const step = Math.max(1, Math.ceil(files.length / 4));
             for (let i = 0; i < files.length; i += step) {
                 const started = Date.now();
-                try { missing += (await this.getFilesNeedingUpdate(files.slice(i, i + step), { full: true })).length; } catch (_) { /* the update check finds it */ }
+                try {
+                    // a row the cache holds at another hash is a newer copy (published while the restart ran, or fetched
+                    // by the shell commit), not an install that did not hold: only an absent row counts (#951, the DreamOS
+                    // Mac: "Updates were not configured correctly. Reverting changes" at every start)
+                    const differ = await this.getFilesNeedingUpdate(files.slice(i, i + step), { full: true });
+                    if (differ.length) {
+                        const cache = await caches.open('static-cache-v2');
+                        for (const f of differ) { if (!(await this._matchCachedFile(cache, f))) missing += 1; }
+                    }
+                } catch (_) { /* the update check finds it */ }
                 if (screen) {
                     const rest = 450 - (Date.now() - started);
                     if (rest > 0) await pause(rest);

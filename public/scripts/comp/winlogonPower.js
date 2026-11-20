@@ -337,7 +337,13 @@ function cutShutdownCover() {
     overlay.style.transitionDuration = '0ms';
     overlay.classList.add('show');
     void overlay.offsetWidth;
-    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    // a frame or 200 ms, whichever comes first: with no frames drawn (the DreamOS Mac, Nov 20: its compositor stopped
+    // after "Configuring updates: Stage 2 of 3 - 100% complete", CDP screenshots timed out too) a bare
+    // requestAnimationFrame never resolved and the restart never reached DreamOSPower, every time (#951)
+    return new Promise((resolve) => {
+        const timer = setTimeout(resolve, 200);
+        requestAnimationFrame(() => { clearTimeout(timer); resolve(); });
+    });
 }
 
 function showWinlogonPowerScreen(text) {
