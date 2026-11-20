@@ -851,8 +851,10 @@
         });
 
         // phone storage: the app's bridge, the same operations File Explorer uses on the phone itself
-        // 'open' shows the file in an Android app on the phone; watch / unwatch keep a folder's changes coming
-        const STORAGE_OPS = ['hello', 'list', 'stat', 'mkdir', 'rename', 'delete', 'trash', 'trashList', 'restore', 'move', 'copy', 'open'];
+        // 'open' shows the file in an Android app on the phone (a chosen one with component); 'handlers' lists the apps
+        // that open a file and 'defaults' opens Android's default-apps page (Open With, #954; the app's service link
+        // answers these itself when it runs); watch / unwatch keep a folder's changes coming
+        const STORAGE_OPS = ['hello', 'list', 'stat', 'mkdir', 'rename', 'delete', 'trash', 'trashList', 'restore', 'move', 'copy', 'open', 'handlers', 'defaults'];
         // a computer follows the folder (remote): the app keeps its observer behind other programs and with
         // the screen off (phoneStorageBridge.js: local-only watches stop there, #890)
         registerOp('storage.watch', async (args) => (await storage()).watch(String(args.root || ''), String(args.path || '/'), { remote: true }));

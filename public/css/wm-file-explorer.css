@@ -375,3 +375,20 @@ html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-list.fe-grid .fe-tile.is-select
 html.ui-mobile[data-wm-version="6.5"] .wm-pic-props .wm-form-hdr {
     color: var(--wm65-navy, #00109c);
 }
+
+/* ---- Open With (#954; wmFileExplorer.js openWithPage): the phone's apps that open a file, as File
+ * Explorer's list rows under the form heading and one line of the program's question (Tahoma 8 pt, regular,
+ * the heading's 7 units in). The rows are File Explorer's, icons drawn by Android at their device pixels. ---- */
+.wm-fe-ow .wm-form-hdr {
+    flex: none;
+    padding-left: calc(9 * var(--wm-px));
+}
+
+.wm-fe-ow .fe-ow-text {
+    flex: none;
+    margin: 0;
+    padding: calc(5 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px));
+    font: calc(10.5 * var(--wm-px)) / calc(13 * var(--wm-px)) var(--wm-font);
+    font-weight: normal;
+    overflow-wrap: anywhere;
+}

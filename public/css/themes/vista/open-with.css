@@ -7,4 +7,10 @@
     --mow-hot-face: linear-gradient(#fafdfe, #e8f5fd);
     --mow-hot-edge: #b8e6fb;
     --mow-link: #0066cc;
+    /* group headers (openwith-grouped*.png): name #003399, Recommended's rule #d8e0ef, Other's #b2c1e0 */
+    --mow-group-text: #003399;
+    --mow-group-rule: #d8e0ef;
+    --mow-group-rule-fold: #b2c1e0;
+    --mow-chevron-folded: image-set(url('/static_images/vista-dlg/openwith-group-collapsed.png') 1x, url('/static_images/vista-dlg/openwith-group-collapsed@2x.png') 2x);
+    --mow-chevron-open: image-set(url('/static_images/vista-dlg/openwith-group-expanded.png') 1x, url('/static_images/vista-dlg/openwith-group-expanded@2x.png') 2x);
 }

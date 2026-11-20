@@ -900,6 +900,12 @@
         }
         if (phoneBlock()) { await blockedRoot(i.name); return; }
         const program = PD().programFor(i.name, i.mimeType);
+        // Open With's "Always Use" picked one of the phone's apps (android:<package>/<activity>, #954); gone: the page
+        if (PD().isAndroidPick && PD().isAndroidPick(program)) {
+            const ok = await busyOf(() => PD().openPhoneFileWith(i, program.slice('android:'.length), { quiet: true }));
+            if (!ok) await openWithPage(i);
+            return;
+        }
         if ((program === 'lumen' || PD().kindOf(i.name, i.mimeType) === 'image') && typeof showLightbox === 'function') {
             const url = PS().fileUrl(i.phone.root, i.phone.path);
             try {
@@ -917,6 +923,85 @@
             if (err && err.code === 'no_app') await noApp(i, { noExternal: true });
             else await errorBox('File Explorer', 'open', i, err);
         }
+    }
+
+    // ---------------------------------------------------------------- Open With (#954)
+
+    /**
+     * Open With for a phone file: the phone's own apps that open it (explorerPhoneDrive.phoneApps, DSApp's
+     * OpenWithApps), as File Explorer's list rows with each app's icon drawn by Android at the row icon's device
+     * pixels. A tap opens the file in that app. Menu: Always Use This Program (Melaton remembers it for this kind of
+     * file; Android keeps its own defaults), Android's chooser, and Android's Default apps page for the phone's
+     * default app. An older app (no list): straight to Android's chooser, as before.
+     */
+    const OW_ID = 'fe-open-with';
+    let ow = null; // { item, apps, always }
+
+    async function openWithPage(i) {
+        if (!PD() || !PD().phoneApps) { await openInAndroid(i); return; }
+        // the row icon's size on this screen (6.1 / 6.5 rows differ): the phone draws the icons at its device pixels
+        const ico = page && page.querySelector('.fe-row .fe-ico');
+        const cssPx = (ico && ico.getBoundingClientRect().width) || 16 * px();
+        const apps = await busyOf(() => PD().phoneApps({ root: i.phone.root, path: i.phone.path }, { ps: PS(), deviceId: null }, cssPx));
+        if (!apps.length) { await openInAndroid(i); return; }
+        const current = PD().programFor(i.name, i.mimeType);
+        ow = { item: i, apps, always: apps.some((a) => a.id === current) };
+        ws.open(OW_ID);
+    }
+
+    function renderOpenWith() {
+        const pg = ws.pageOf ? ws.pageOf(OW_ID) : null;
+        if (!pg || !ow) return;
+        const rows = ow.apps.map((a) => `<div class="fe-row" role="option" aria-selected="false" data-ow="${esc(a.id)}">`
+            + `<span class="fe-ico">${a.icon ? `<img src="${esc(a.icon)}" srcset="${esc(a.srcset)}" alt="" draggable="false">` : ''}</span>`
+            + `<span class="fe-name">${esc(a.name)}</span></div>`).join('');
+        pg.innerHTML = `<div class="wm-form-hdr">Open With</div><p class="fe-ow-text">Choose the program you want to use to open "${esc(ow.item.name)}":</p>`
+            + `<div class="fe-scroll wm-pg-scroll"><div class="fe-list" role="listbox" aria-label="Programs">${rows}</div></div>`;
+    }
+
+    async function openWithPick(id) {
+        const o = ow;
+        if (!o) return;
+        const a = o.apps.find((x) => x.id === id);
+        if (!a) return;
+        const row = (ws.pageOf(OW_ID) || document).querySelector(`.fe-row[data-ow="${CSS.escape(id)}"]`);
+        if (row) { row.classList.add('is-selected'); row.setAttribute('aria-selected', 'true'); }
+        if (o.always) await PD().rememberProgram(o.item.name, a.id);
+        ws.back();
+        const ok = await busyOf(() => PD().openPhoneFileWith(o.item, a.component, { quiet: true }));
+        if (!ok) await errorBox('File Explorer', 'open', o.item, { message: `${a.name} could not open it.` });
+    }
+
+    function openWithMenu() {
+        const o = ow;
+        if (!o) return [];
+        const def = o.apps.find((a) => a.isDefault);
+        return [
+            { label: 'Always Use This Program', checked: !!o.always, action: () => { o.always = !o.always; } },
+            '-',
+            { label: 'Choose in Android...', action: () => { const it = o.item; ws.back(); openInAndroid(it); } },
+            // Android lets no app set another's defaults: its own page, for the app that opens this now
+            { label: 'Android Default Apps...', action: () => { ws.back(); PD().phoneDefaults({ ps: PS(), deviceId: null }, def ? def.component.split('/')[0] : ''); } }
+        ];
+    }
+
+    function registerOpenWith() {
+        ws.registerApp({
+            id: OW_ID,
+            title: 'File Explorer',
+            icon: 'app-file-explorer',
+            inStart: false,
+            mount(pg) {
+                pg.classList.add('wm-fe', 'wm-fe-ow');
+                pg.addEventListener('click', (e) => {
+                    const row = e.target.closest('.fe-row[data-ow]');
+                    if (row) openWithPick(row.dataset.ow);
+                });
+            },
+            show() { renderOpenWith(); },
+            hide() { ow = null; },
+            softKeys() { return { left: { label: 'Cancel', action: () => ws.back() }, right: { label: 'Menu', menu: openWithMenu } }; }
+        });
     }
 
     /** WM-style Properties for a phone file, folder or volume (the bridge's facts). */
@@ -1986,7 +2071,8 @@
         if (one && one.targetKind === 'user-file' && one.kind !== 'folder' && externalOpener(one)) list.push('-', { label: 'Open Externally', action: () => externalOpener(one)() });
         if (one && (isPhoneItem(one) || isPhoneRoot(one))) {
             list.push('-');
-            if (isPhoneItem(one) && !one.phone.dir) list.push({ label: 'Open in Android app', disabled: !phoneCan('open') || !!phoneBlock(), action: () => openInAndroid(one) });
+            // the phone's apps that open it (#954: Open With page), or Android's chooser from an older app
+            if (isPhoneItem(one) && !one.phone.dir) list.push({ label: 'Open With...', disabled: !phoneCan('open') || !!phoneBlock(), action: () => openWithPage(one) });
             // a picture: Pictures & Videos' Properties page; anything else the bridge's facts
             list.push({ label: 'Properties', action: () => (isPictureItem(one) ? itemProperties(one) : phoneProperties(one)) });
         } else if (one && isPictureItem(one)) {
@@ -2283,6 +2369,6 @@
         });
     }
 
-    if (window.wmShell) { register(); registerProps(); }
-    else document.addEventListener('wmShellReady', () => { register(); registerProps(); }, { once: true });
+    if (window.wmShell) { register(); registerProps(); registerOpenWith(); }
+    else document.addEventListener('wmShellReady', () => { register(); registerProps(); registerOpenWith(); }, { once: true });
 })();

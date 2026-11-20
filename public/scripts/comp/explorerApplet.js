@@ -4699,8 +4699,17 @@ class ExplorerApplet {
         ];
         const onPhone = typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.openOnPhoneMenuItem && explorerPhoneDrive.openOnPhoneMenuItem(item);
         if (onPhone) programs.push(ow.ANDROID_RUNTIME);
-        // (Vista ticks "Always use..." when the type has no program yet)
-        const pick = await ow.choose({ fileName: item.name, programs, selected: onPhone ? 'android' : 'notepad', always: true });
+        // the phone's own apps for the type (#954): Recommended Programs, the rest under Other Programs; the file is
+        // copied to the phone when one is picked (explorerPhoneDrive.openOnPhone). An older app lists none.
+        const phone = onPhone && explorerPhoneDrive.phoneApps
+            ? await explorerPhoneDrive.phoneApps({ name: item.name, mime: item.mimeType || '' }, explorerPhoneDrive.phoneForOpen())
+            : [];
+        const all = phone.length
+            ? phone.map((p) => Object.assign({}, p, { group: 'recommended' })).concat(programs.map((p) => Object.assign({}, p, { group: 'other' })))
+            : programs;
+        const phoneDefault = phone.find((p) => p.isDefault) || phone[0];
+        // (Vista ticks "Always use..." when the type has no program yet; the description box stays: the type is new)
+        const pick = await ow.choose({ fileName: item.name, programs: all, selected: phoneDefault ? phoneDefault.id : (onPhone ? 'android' : 'notepad'), always: true, describe: true });
         if (!pick) return;
         if (pick.always && ext && reg) { try { await reg.set(ASSOC, { [ext]: pick.id }); } catch (_) { /* this time only */ } }
         await this._openFileWith(item, pick.id);
@@ -4735,6 +4744,12 @@ class ExplorerApplet {
                 await explorerPhoneDrive.openOnPhone(this, [item]);
                 return true;
             default:
+                // one of the phone's apps (android:<package>/<activity>, #954): the file is copied there and opens in it
+                if (typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.isAndroidPick && explorerPhoneDrive.isAndroidPick(id)
+                    && explorerPhoneDrive.openOnPhoneMenuItem(item)) {
+                    await explorerPhoneDrive.openOnPhone(this, [item], { component: id.slice('android:'.length) });
+                    return true;
+                }
                 return false;
         }
     }

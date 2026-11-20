@@ -2,6 +2,8 @@
    openwith.exe / shell32 on the Vista VM (~/.cache/vista-vm/openwith). Colours: css/themes/vista/open-with.css. */
 
 #confirmationDialog .mow { font-size: 12px; line-height: 15px; text-align: left; }
+/* openwith.exe is 590 px wide: the message box's own 500 px cap would wrap its lines and narrow the list (#954) */
+#confirmationDialog.modal:has(> .modal-content .mow-choose) { max-width: min(590px, calc(90vw - calc(2 * var(--spacing-md)))); }
 #confirmationDialog .mow-head { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 12px; }
 #confirmationDialog .mow-icon { width: 32px; height: 32px; flex: none; }
 #confirmationDialog .mow-head-text { display: flex; flex-direction: column; gap: 9px; padding-top: 1px; }
@@ -10,11 +12,14 @@
 #confirmationDialog .mow-ask { margin-bottom: 6px; }
 #confirmationDialog .mow-radio { margin: 0 0 4px; }
 
-/* the program list: two columns of 236 x 43 tiles in a sunken white box, scrolling */
+/* the program list: two columns of 234 x 43 tiles (a 236 px pitch, whole pixels: an icon never lands on half a
+   pixel) in a sunken white box, scrolling */
 #confirmationDialog .mow-list {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, 234px);
     grid-auto-rows: 43px;
+    justify-content: start;
+    align-content: start;
     gap: 0 2px;
     height: 222px;
     padding: 2px;
@@ -24,7 +29,8 @@
 }
 #confirmationDialog .mow-prog {
     display: flex;
-    align-items: center;
+    /* the icon 4 px and the name's line 5 px under the tile's top edge (VM), never centred onto half a pixel */
+    align-items: flex-start;
     gap: 6px;
     box-sizing: border-box;
     min-width: 0;
@@ -38,13 +44,15 @@
     font: inherit;
     color: inherit;
     cursor: default;
+    /* a list item, not a push button: selection moves at once (the kit's button fades its border over 1 s) */
+    transition: none;
 }
 #confirmationDialog .mow-prog::before,
 #confirmationDialog .mow-prog::after { display: none; }
 #confirmationDialog .mow-prog:hover { background: var(--mow-hot-face); border-color: var(--mow-hot-edge); }
 #confirmationDialog .mow-prog.is-selected { background: var(--mow-sel-face); border-color: var(--mow-sel-edge); }
-#confirmationDialog .mow-prog > img { width: 32px; height: 32px; flex: none; }
-#confirmationDialog .mow-prog-text { display: flex; flex-direction: column; min-width: 0; }
+#confirmationDialog .mow-prog > img { width: 32px; height: 32px; flex: none; margin-top: 3px; }
+#confirmationDialog .mow-prog-text { display: flex; flex-direction: column; min-width: 0; margin-top: 4px; }
 #confirmationDialog .mow-prog-name,
 #confirmationDialog .mow-prog-pub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 #confirmationDialog .mow-prog-pub { color: var(--mow-pub); }
@@ -54,3 +62,42 @@
 #confirmationDialog .mow-row { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px; }
 #confirmationDialog .mow-link { color: var(--mow-link); }
 #confirmationDialog .mow-web { margin: 0; }
+
+/* a known type (openwith-grouped*.png): no description box, the list takes its room (VM: 276 px outside) */
+#confirmationDialog .mow-list.is-tall { height: 276px; }
+/* grouped: a column of headers, each over its own grid of tiles */
+#confirmationDialog .mow-list.is-grouped { display: block; }
+#confirmationDialog .mow-tiles {
+    display: grid;
+    grid-template-columns: repeat(2, 234px);
+    grid-auto-rows: 43px;
+    gap: 0 2px;
+}
+#confirmationDialog .mow-tiles[hidden] { display: none; }
+/* a header: 21 px over the list's whole inside width, the name 10 px in, a 1 px rule from 5 px after it to 9 px from
+   the edge (before the scroll bar); Other Programs' chevron 9 px after its rule (folded: down, open: up) */
+#confirmationDialog .mow-group {
+    display: flex;
+    align-items: center;
+    height: 21px;
+    padding: 0 9px 0 10px;
+    color: var(--mow-group-text);
+    cursor: default;
+}
+#confirmationDialog .mow-tiles + .mow-group { margin-top: 3px; }
+#confirmationDialog .mow-group-name { flex: none; white-space: nowrap; }
+#confirmationDialog .mow-group-rule { flex: 1 1 auto; align-self: flex-start; height: 1px; margin: 9px 0 0 5px; background: var(--mow-group-rule); }
+#confirmationDialog .mow-group.is-foldable .mow-group-rule { margin-right: 9px; background: var(--mow-group-rule-fold); }
+#confirmationDialog .mow-group-chevron {
+    flex: none;
+    width: 7px;
+    height: 5px;
+    margin-top: 1px;
+    background: var(--mow-chevron-open) no-repeat 0 0 / 7px 5px;
+}
+#confirmationDialog .mow-group.is-folded .mow-group-chevron { background-image: var(--mow-chevron-folded); }
+/* a phone app selected: the web line says what "Always use" can do there (Android keeps its own defaults), in the
+   web line's own room (two lines), so the dialog never changes size */
+#confirmationDialog .mow-web { min-height: 30px; }
+#confirmationDialog .mow-web-note[hidden],
+#confirmationDialog .mow-web-text[hidden] { display: none; }

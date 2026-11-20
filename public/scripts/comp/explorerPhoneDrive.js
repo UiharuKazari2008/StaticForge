@@ -552,6 +552,11 @@
         const program = programFor(item.name, item.mimeType);
         // set to open with Android Runtime (Open With's "Always use"): the phone's own app (#954)
         if (program === 'android') { await open(app, item, 'android'); return; }
+        // set to one of the phone's apps (android:<package>/<activity>): that app, else Open With again (it is gone)
+        if (isAndroidPick(program)) {
+            if (!await openPhoneFileWith(item, program.slice(ANDROID_PICK.length), { quiet: true })) await openWith(app, item);
+            return;
+        }
         // no program for it: Vista's "cannot open this file" first, then Open With (openWithDialog.js)
         if (!program && root.melatonOpenWith) {
             const how = await root.melatonOpenWith.cannotOpen(item.name);
@@ -609,7 +614,7 @@
     function programFor(name, mime) {
         const reg = root.melatonRegistry;
         const assoc = reg ? reg.get(ASSOC, extOf(name), '') : '';
-        if (assoc && (PROGRAMS[assoc] || assoc === 'android')) return assoc;
+        if (assoc && (PROGRAMS[assoc] || assoc === 'android' || isAndroidPick(assoc))) return assoc;
         return { image: 'lumen', media: 'media-player', text: 'notepad', pdf: 'viewer' }[kindOf(name, mime)] || null;
     }
 
@@ -727,22 +732,122 @@
         }
     }
 
-    /** Open With: Dreamscape's programs, the type's own first; Android's app is the last choice. */
-    /** Vista's Open With (openWithDialog.js, #954): the desktop's programs and the phone's own (Android Runtime). */
+    /**
+     * Vista's Open With (openWithDialog.js, #954) for a phone file: Recommended Programs = the desktop's programs for
+     * its type and the phone's own apps that open it (phoneApps), Other Programs = the rest and Android Runtime (the
+     * phone's chooser). An app without the phone apps' query (an older DSApp) leaves them out.
+     */
     async function openWith(app, item) {
         const ow = root.melatonOpenWith;
         if (!ow) return;
         const kind = kindOf(item.name, item.mimeType);
-        const fits = { image: ['lumen', 'paint'], media: ['media-player'], text: ['notepad'], pdf: ['viewer'], other: ['notepad', 'viewer'] }[kind];
-        const order = [...new Set([programFor(item.name, item.mimeType), ...fits].filter(Boolean))];
-        const programs = order.map((id) => ({ id, name: PROGRAMS[id].name, publisher: 'Xyridian Corporation', icon: PROGRAMS[id].icon })).concat([ow.ANDROID_RUNTIME]);
+        const fits = { image: ['lumen', 'paint'], media: ['media-player'], text: ['notepad'], pdf: ['viewer'], other: [] }[kind];
+        const current = programFor(item.name, item.mimeType);
+        const desk = (id) => ({ id, name: PROGRAMS[id].name, publisher: 'Xyridian Corporation', icon: PROGRAMS[id].icon });
+        const phone = await phoneApps({ root: item.phone.root, path: item.phone.path }, { ps: PS(), deviceId: null, name: phoneName() });
+        const recommended = [...new Set([current, ...fits].filter((id) => PROGRAMS[id]))].map(desk).concat(phone);
+        const others = Object.keys(PROGRAMS).filter((id) => !recommended.some((p) => p.id === id)).map(desk).concat([ow.ANDROID_RUNTIME]);
+        const programs = recommended.length
+            ? recommended.map((p) => Object.assign({}, p, { group: 'recommended' })).concat(others.map((p) => Object.assign({}, p, { group: 'other' })))
+            : others;
+        const phoneDefault = phone.find((p) => p.isDefault);
+        const selected = (current && programs.some((p) => p.id === current) && current) || (phoneDefault && phoneDefault.id) || (recommended[0] && recommended[0].id) || 'android';
         // (Vista ticks "Always use..." when the type has no program yet)
-        const pick = await ow.choose({ fileName: item.name, programs, selected: programFor(item.name, item.mimeType) || 'android', always: !programFor(item.name, item.mimeType) });
+        const pick = await ow.choose({ fileName: item.name, programs, selected, always: !current, describe: !recommended.length });
         if (!pick) return;
         const ext = extOf(item.name);
         if (pick.always && ext && root.melatonRegistry) { try { await root.melatonRegistry.set(ASSOC, { [ext]: pick.id }); } catch (_) { /* this time only */ } }
         if (pick.id === 'android') await open(app, item, 'android');
+        else if (isAndroidPick(pick.id)) await openPhoneFileWith(item, pick.id.slice(ANDROID_PICK.length));
         else await openInApp(app, item, pick.id);
+    }
+
+    // ---- the phone's own apps (Open With, #954) --------------------------------------------------
+
+    // DSApp's OpenWithApps (bridge op 'handlers', hello features.openWith): the apps that open a file or a type, the
+    // phone's default first. Each icon is drawn by Android at the tile's device pixels (iconData), so it is never
+    // scaled; kept in memory by the package's update stamp (iconKey) for the page's life, and the phone is told
+    // which it need not send again (have). No storage, no timer.
+    const ANDROID_PICK = 'android:';
+    const phoneIcons = new Map(); // "<iconKey>|<px>" -> data URL
+    const PHONE_APPS_WAIT_MS = 4000;
+    function isAndroidPick(id) {
+        return typeof id === 'string' && id.length > ANDROID_PICK.length && id.startsWith(ANDROID_PICK) && id.includes('/');
+    }
+
+    /**
+     * Open With's entries for the phone's apps: [{ id: 'android:<package>/<activity>', name, publisher, icon, srcset,
+     * note, component, isDefault, actions }], [] when there is no phone, it is locked or off, its app is older, or it
+     * does not answer in 4 s. where: { root, path } (a file on the phone) or { name, mime } (a type, for a file that
+     * is copied there to open). target: { ps, deviceId, name } (phoneForOpen); cssPx: the icon's size on screen.
+     */
+    async function phoneApps(where, target, cssPx = 32) {
+        const t = target || phoneForOpen();
+        if (!t || !t.ps) return [];
+        const { ps } = t;
+        const query = async () => {
+            if (t.deviceId) ps.select(t.deviceId);
+            const st = ps.remote ? await ps.hello() : await ensureState();
+            if (!st || blocker(st) || !(st.features && st.features.openWith)) return [];
+            const px = Math.max(16, Math.min(128, Math.round(cssPx * (root.devicePixelRatio || 1))));
+            if (phoneIcons.size > 400) phoneIcons.clear();
+            const have = [];
+            phoneIcons.forEach((_v, k) => { if (k.endsWith(`|${px}`)) have.push(k.slice(0, k.length - String(px).length - 1)); });
+            const res = await ps.call('handlers', Object.assign({ actions: ['view', 'edit'], iconData: px, have }, where));
+            const device = t.name || phoneName();
+            const here = !ps.remote;
+            return (res && Array.isArray(res.apps) ? res.apps : []).filter((a) => a && a.id && a.label).map((a) => {
+                if (a.iconData) phoneIcons.set(`${a.iconKey}|${px}`, a.iconData);
+                const icon = phoneIcons.get(`${a.iconKey}|${px}`) || '';
+                const vendor = a.appLabel && a.appLabel !== a.label ? a.appLabel : 'Android';
+                return {
+                    id: `${ANDROID_PICK}${a.id}`,
+                    name: a.label,
+                    publisher: here ? vendor : `${vendor} on ${device}`,
+                    icon: icon || null,
+                    // the picture is px device pixels: shown at cssPx it is 1:1 on this screen
+                    srcset: icon ? `${icon} ${px / cssPx}x` : '',
+                    note: `Melaton remembers this for files it opens. Android's own default apps are set on ${here ? 'the phone' : device}.`,
+                    component: a.id,
+                    isDefault: !!a.default,
+                    actions: Array.isArray(a.actions) ? a.actions : ['view']
+                };
+            });
+        };
+        let timer = null;
+        try {
+            return await Promise.race([query(), new Promise((resolve) => { timer = setTimeout(() => resolve([]), PHONE_APPS_WAIT_MS); })]);
+        } catch (_err) {
+            return []; // an older app answers bad_op: Android Runtime (its chooser) stays
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    /** A phone file opened in one of the phone's apps (component 'package/activity'); false when that failed. */
+    async function openPhoneFileWith(item, component, opts = {}) {
+        try {
+            await PS().call('open', { root: item.phone.root, path: item.phone.path, component, action: 'view' });
+            return true;
+        } catch (err) {
+            if (!opts.quiet) toast('error', errText(err));
+            return false;
+        }
+    }
+
+    /** Open With's "Always use": the program for the file's type in Default Programs (FileExts); false when unsaved. */
+    async function rememberProgram(name, id) {
+        const ext = extOf(name);
+        if (!ext || !root.melatonRegistry) return false;
+        try { await root.melatonRegistry.set(ASSOC, { [ext]: id }); return true; } catch (_) { return false; }
+    }
+
+    /** Android's own place for default apps (an app may not set them): the app's App info, else Default apps. */
+    async function phoneDefaults(target, pkg) {
+        const t = target || phoneForOpen();
+        if (!t || !t.ps) return false;
+        if (t.deviceId) t.ps.select(t.deviceId);
+        try { await t.ps.call('defaults', pkg ? { package: pkg } : {}); return true; } catch (err) { toast('error', errText(err)); return false; }
     }
 
     /** PDFs (and anything a frame shows) in a Vista window of their own, read from the file URL. */
@@ -1201,7 +1306,7 @@
      * Copies the file into the phone's ActiveSync folder (as Send To does) and opens it there with Android's own
      * chooser: the phone lists the apps that open its type (Android Runtime in Open With).
      */
-    async function openOnPhone(app, items) {
+    async function openOnPhone(app, items, opts = {}) {
         const target = phoneForOpen();
         const file = (items || []).find((i) => i && !isEntry(i) && i.kind !== 'folder');
         if (!target || !file) { toast('warning', 'No phone is connected to open this file on.'); return; }
@@ -1217,10 +1322,33 @@
         try { await ps.call('mkdir', { root: r.id, path: dir }); } catch (_err) { /* it is there */ }
         await app.deliverItemsToPath(app._itemRefs([file]), pathFor(r.id, dir), 'copy', { sourcePath: app.currentPath });
         try {
-            await ps.call('open', { root: r.id, path: `${dir}/${file.name}`, chooser: true });
+            // a phone app picked in Open With (#954), else Android's chooser
+            await ps.call('open', opts.component ? { root: r.id, path: `${dir}/${file.name}`, component: opts.component, action: 'view' } : { root: r.id, path: `${dir}/${file.name}`, chooser: true });
         } catch (err) {
             toast('error', errText(err));
         }
+    }
+
+    /**
+     * "Open on phone" (#954): Open With with the phone's own apps for the file's type (Recommended Programs) and
+     * Android Runtime (its chooser) under Other Programs; the pick is copied there and opens in that app. With an
+     * older app (no apps listed) it goes straight to Android's chooser, as before.
+     */
+    async function openOnPhoneWith(app, items) {
+        const file = (items || []).find((i) => i && !isEntry(i) && i.kind !== 'folder');
+        const target = phoneForOpen();
+        const ow = root.melatonOpenWith;
+        const phone = file && target && ow ? await phoneApps({ name: file.name, mime: file.mimeType || '' }, target) : [];
+        if (!phone.length) { await openOnPhone(app, items); return; }
+        const programs = phone.map((p) => Object.assign({}, p, { group: 'recommended' })).concat([Object.assign({}, ow.ANDROID_RUNTIME, { group: 'other' })]);
+        const ext = extOf(file.name);
+        const reg = root.melatonRegistry;
+        const assoc = reg && ext ? reg.get(ASSOC, ext, '') : '';
+        const selected = (programs.some((p) => p.id === assoc) && assoc) || (phone.find((p) => p.isDefault) || phone[0]).id;
+        const pick = await ow.choose({ fileName: file.name, programs, selected, always: false, describe: false });
+        if (!pick) return;
+        if (pick.always && ext && reg) { try { await reg.set(ASSOC, { [ext]: pick.id }); } catch (_) { /* this time only */ } }
+        await openOnPhone(app, [file], isAndroidPick(pick.id) ? { component: pick.id.slice(ANDROID_PICK.length) } : {});
     }
 
     /**
@@ -1251,7 +1379,7 @@
             return;
         }
         if (what === 'open-on-phone') {
-            await openOnPhone(app, many);
+            await openOnPhoneWith(app, many);
             return;
         }
         try {
@@ -1814,6 +1942,12 @@
         webSearchFor,
         openOnPhone,
         openOnPhoneMenuItem,
+        phoneForOpen,
+        phoneApps,
+        phoneDefaults,
+        openPhoneFileWith,
+        rememberProgram,
+        isAndroidPick,
         readNai,
         openInStudio,
         openProperties,

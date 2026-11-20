@@ -30,7 +30,8 @@
     // files sent to a phone (Send To, programs for an app build without its temporary folder) land here;
     // explorerPhoneDrive.js and the menus that open it read it from phoneStorage.receivedDir
     const RECEIVED_DIR = '/ActiveSync';
-    const REMOTE_OPS = new Set(['hello', 'list', 'stat', 'mkdir', 'rename', 'delete', 'trash', 'trashList', 'restore', 'move', 'copy', 'open', 'watch', 'unwatch']);
+    // handlers / defaults: Open With's phone apps and Android's own defaults page (#954; DSApp features.openWith)
+    const REMOTE_OPS = new Set(['hello', 'list', 'stat', 'mkdir', 'rename', 'delete', 'trash', 'trashList', 'restore', 'move', 'copy', 'open', 'watch', 'unwatch', 'handlers', 'defaults']);
     const listeners = new Map();
     const progress = new Map(); // transfer id -> onProgress
     const watches = new Map(); // "root\npath" -> count
