@@ -1372,5 +1372,7 @@
     }
 
     root.openDeviceManager = openDeviceManager;
-    root.melatonDeviceManager = { open: openDeviceManager, openAdapter, categories, gpuName, computerName, deviceHardware, sizeText, processorRows, archOf, installedRam, screenSize };
+    // openProperties(d): a device's Properties sheet for a device that is not in the tree (Safely Remove Hardware's,
+    // hostDrivesShell.js: { name, cat, icon (16 px), info: { manufacturer, location, driver } })
+    root.melatonDeviceManager = { open: openDeviceManager, openAdapter, openProperties, categories, gpuName, computerName, deviceHardware, sizeText, processorRows, archOf, installedRam, screenSize };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1110,7 +1110,8 @@ class ExplorerApplet {
     }
 
     _canRenameItem(item) {
-        if (item?.targetKind === 'phone-entry' || item?.targetKind === 'host-entry') return true;
+        // a drive of this machine is renamed too (its .label, explorerHostDrive.js)
+        if (item?.targetKind === 'phone-entry' || item?.targetKind === 'host-entry' || item?.targetKind === 'host-drive') return true;
         if (!item || item.protected || this._isSystemItem(item)) return false;
         if (item.targetKind === 'vfs-folder' || item.targetKind === 'user-file') return true;
         if (item.shortcutType || this._isStoredShortcutItem(item) || this._isLiveDesktopShortcutItem(item)) return true;

@@ -246,9 +246,11 @@
                             type: 'list',
                             // a phone disk can be renamed (its .label file, #954), as Vista renames a drive
                             items: tile
-                                ? [{ text: 'Open', action: `computer-open:${tile.dataset.drive}`, className: 'context-menu-item-default' }].concat(String(tile.dataset.drive).startsWith('phone:') && root.explorerPhoneDrive && root.explorerPhoneDrive.setDiskLabel ? [{ separator: true }, { text: 'Rename', action: `computer-rename:${tile.dataset.drive}` }] : [])
-                                    // a removable disk of this machine (DreamOS): Vista's Eject
+                                ? [{ text: 'Open', action: `computer-open:${tile.dataset.drive}`, className: 'context-menu-item-default' }]
+                                    // a removable disk of this machine (DreamOS): Vista's Eject, above Rename as Vista has it
                                     .concat((this.phoneDrive(tile.dataset.drive) || {}).removable && String(tile.dataset.drive).startsWith('host:') ? [{ separator: true }, { text: 'Eject', action: `computer-eject:${tile.dataset.drive}` }] : [])
+                                    // a phone disk (its .label, #954) and this machine's own drives (.label kept by the host) are renamed
+                                    .concat((String(tile.dataset.drive).startsWith('phone:') && root.explorerPhoneDrive && root.explorerPhoneDrive.setDiskLabel) || (String(tile.dataset.drive).startsWith('host:') && root.explorerHostDrive) ? [{ separator: true }, { text: 'Rename', action: `computer-rename:${tile.dataset.drive}` }] : [])
                                 : [{ text: 'Refresh', action: 'computer-refresh' }]
                         }];
                     },
@@ -277,6 +279,11 @@
 
         /** Rename a phone disk: its label, kept in a .label file at its root (explorerPhoneDrive.setDiskLabel). */
         async renameDrive(key) {
+            // this machine's own drive (DreamOS): the host keeps its name as .label (explorerHostDrive.js)
+            if (String(key).startsWith('host:') && root.explorerHostDrive) {
+                if (await root.explorerHostDrive.renameDrive(String(key).slice(5))) this.show({ reload: true });
+                return;
+            }
             const d = this.phoneDrive(key);
             const pd = root.explorerPhoneDrive;
             if (!d || !pd || typeof root.showInputDialog !== 'function') return;

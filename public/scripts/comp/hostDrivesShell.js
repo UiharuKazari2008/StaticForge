@@ -4,9 +4,13 @@
  * kiosk's shell bridge). Without that bridge (a browser, the Android app) this file does nothing.
  *
  *   Safely Remove Hardware   the notification-area icon (hotplug.dll icon 0), shown only while a removable device is
- *                            in. Tooltip "Safely Remove Hardware" (stobject.dll 211). A click (either button) lists
- *                            each device as Vista's menu does: "Safely remove USB Mass Storage Device - Drive(E:)"
- *                            (stobject 216 + 219, "- Drives(E:, F:)" 220 for several volumes). Ejected: the balloon
+ *                            in. Tooltip "Safely Remove Hardware" (stobject.dll 211). A left click lists each device
+ *                            as Vista's menu does: "Safely remove USB Mass Storage Device - Drive(E:)" (stobject 216 +
+ *                            219, "- Drives(E:, F:)" 220 for several volumes); a right click is the icon's own menu,
+ *                            "Safely Remove Hardware" (stobject 215), which opens Vista's Safely Remove Hardware
+ *                            window (hotplug.dll dialog 300: the device tree, "<device> at Location 0", Properties,
+ *                            Stop, Display device components, Close) and its Stop a Hardware device confirm (320: the
+ *                            device and its components, OK / Cancel). Ejected: the balloon
  *                            "Safe To Remove Hardware" / "The 'USB Mass Storage Device' device can now be safely
  *                            removed from the computer." (hotplug.dll 2261 / 2260); in use: "Problem Ejecting <device>"
  *                            (hotplug 2254) with Vista's in-use words, and the programs that hold it.
@@ -63,7 +67,10 @@
         return [{ type: 'list', className: 'safely-remove-menu', items: list.length ? list.map((d) => ({ text: deviceLabel(d), action: `sr:${d.id}` })) : [{ text: '(Empty)', action: 'none', disabled: true }] }];
     }
 
+    // one handler for both menus: contextMenu.js hands a right-click's action to the click menu's config too when an
+    // element has both
     function onAction(action) {
+        if (action === 'sr-dialog') { void openDialog(); return; }
         if (!String(action).startsWith('sr:')) return;
         const dev = devices().find((d) => d.id === action.slice(3));
         const first = dev && (state.drives || []).find((d) => d.deviceId === dev.id);
@@ -110,9 +117,10 @@
         icon.tabIndex = 0;
         const cm = root.contextMenu;
         if (!cm) return;
-        // Vista opens the device list on a left click and on a right click
-        menuConfig = { sections: menuSections(), onAction, beforeShow: () => { menuConfig.sections = menuSections(); } };
+        // Vista: the right click is the icon's own menu (stobject 215), the left click the device list
+        menuConfig = { sections: [{ type: 'list', items: [{ text: 'Safely Remove Hardware', action: 'sr-dialog', className: 'context-menu-item-default' }] }], onAction };
         if (typeof cm.attachToElement === 'function') cm.attachToElement(icon, menuConfig);
+        icon.addEventListener('dblclick', (e) => { e.preventDefault(); void openDialog(); }, { signal: appScopeSignal });
         if (typeof cm.attachClickMenuToElement === 'function') {
             const clickConfig = { sections: menuSections(), onAction };
             cm.attachClickMenuToElement(icon, clickConfig);
@@ -125,6 +133,142 @@
                 if (typeof cm.showClickMenu === 'function') cm.showClickMenu({ clientX: r.left, clientY: r.top }, icon, false);
             }, { signal: appScopeSignal });
         }
+    }
+
+    // ---- the Safely Remove Hardware window (hotplug.dll 300) and Stop a Hardware device (320) ------------------------
+
+    const ICONS = '/static_images/vista-icons';
+    let dlg = null;           // { ctx, selected, components, render }
+
+    /** The tree's rows: each removable device, with "Display device components" its disk and volumes under it. */
+    function treeRows(components) {
+        const rows = [];
+        devices().forEach((dev) => {
+            rows.push({ key: `dev:${dev.id}`, dev, depth: 0, icon: 'hotplug-usb', text: dev.name });
+            if (!components) return;
+            rows.push({ key: `disk:${dev.id}`, dev, depth: 1, icon: 'hotplug-disk', text: dev.model || 'Disk drive' });
+            (state.drives || []).filter((d) => d.deviceId === dev.id).forEach((d) => {
+                rows.push({ key: `vol:${d.id}`, dev, depth: 2, icon: 'hotplug-volume', text: `Generic volume - (${d.letter}:)` });
+            });
+        });
+        return rows;
+    }
+
+    function rowHtml(r, selected) {
+        return `<div class="hp-row${r.key === selected ? ' is-selected' : ''}" data-key="${esc(r.key)}" style="--d:${r.depth}" role="treeitem"><img src="${ICONS}/${r.icon}-16.png" srcset="${ICONS}/${r.icon}-32.png 2x" alt="" draggable="false"><span>${esc(r.text)}</span></div>`;
+    }
+
+    function renderDialog() {
+        if (!dlg) return;
+        const { ctx } = dlg;
+        const rows = treeRows(dlg.components);
+        if (!rows.some((r) => r.key === dlg.selected)) dlg.selected = rows.length ? rows[0].key : null;
+        const tree = ctx.holder(301);
+        if (tree) tree.innerHTML = rows.map((r) => rowHtml(r, dlg.selected)).join('');
+        const sel = rows.find((r) => r.key === dlg.selected);
+        // hotplug 1006 "at %s" + 1011 "Location %1!u!": the device and where it is
+        ctx.text(309, sel ? `${sel.text} at Location 0` : '');
+        ctx.enable(311, !!sel);
+        ctx.enable(305, !!sel);
+    }
+
+    function selectedDevice() {
+        const rows = treeRows(dlg && dlg.components);
+        const r = rows.find((x) => x.key === (dlg && dlg.selected));
+        return r ? r.dev : null;
+    }
+
+    async function loadDialogs() {
+        const fl = root.featureLoader;
+        if (!root.vistaDialogTemplate && fl && typeof fl.loadFeature === 'function') await fl.loadFeature('vista_dialog_templates');
+        return root.vistaDialogTemplate || null;
+    }
+
+    /** Stop a Hardware device (hotplug 320): the device and its components; OK ejects it. */
+    async function confirmStop(dev, owner) {
+        const V = await loadDialogs();
+        if (!V) return;
+        V.openDialog({
+            id: 'safelyRemoveStopDialog',
+            captionIcon: true,
+            key: 'hotplug:320',
+            owner,
+            icon: `${ICONS}/safely-remove-tray-16.png`,
+            init(ctx) {
+                const lv = ctx.holder(321);
+                if (!lv) return;
+                lv.classList.add('hp-list');
+                const rows = [{ icon: 'hotplug-usb', text: dev.name }, { icon: 'hotplug-disk', text: dev.model || 'Disk drive' }]
+                    .concat((state.drives || []).filter((d) => d.deviceId === dev.id).map((d) => ({ icon: 'hotplug-volume', text: `Generic volume - (${d.letter}:)` })));
+                lv.querySelector('.vdt-lv-body').innerHTML = rows.map((r) => `<div class="vdt-lv-row hp-row"><img src="${ICONS}/${r.icon}-16.png" srcset="${ICONS}/${r.icon}-32.png 2x" alt="" draggable="false"><span>${esc(r.text)}</span></div>`).join('');
+            },
+            ok: () => {
+                const first = (state.drives || []).find((d) => d.deviceId === dev.id);
+                if (first) void eject(first.id);
+            }
+        });
+    }
+
+    function deviceProperties(dev) {
+        const fl = root.featureLoader;
+        Promise.resolve(fl && fl.loadFeature ? fl.loadFeature('control_panel') : null).then(() => {
+            const dm = root.melatonDeviceManager;
+            if (!dm || typeof dm.openProperties !== 'function') return;
+            dm.openProperties({
+                name: dev.name,
+                cat: 'Universal Serial Bus controllers',
+                icon: `${ICONS}/hotplug-usb-16.png`,
+                info: { manufacturer: '(Compatible USB storage device)', location: 'Location 0', driver: 'usb-storage' }
+            });
+        }).catch(() => {});
+    }
+
+    /** Vista's Safely Remove Hardware window; one at a time, live while devices come and go. */
+    async function openDialog() {
+        if (dlg && dlg.ctx && dlg.ctx.modal && dlg.ctx.modal.isConnected) { if (typeof root.setActiveWindow === 'function') root.setActiveWindow(dlg.ctx.modal); return; }
+        const V = await loadDialogs();
+        if (!V) return;
+        dlg = { ctx: null, selected: null, components: false };
+        const ctx = V.openDialog({
+            id: 'safelyRemoveHardwareDialog',
+            captionIcon: true,
+            key: 'hotplug:300',
+            modeless: true,
+            icon: `${ICONS}/safely-remove-tray-16.png`,
+            init(c) {
+                dlg.ctx = c;
+                const tree = c.holder(301);
+                if (tree) {
+                    tree.classList.add('hp-tree');
+                    tree.addEventListener('mousedown', (e) => {
+                        const row = e.target.closest('.hp-row');
+                        if (!row) return;
+                        dlg.selected = row.dataset.key;
+                        renderDialog();
+                    });
+                    tree.addEventListener('dblclick', (e) => { const dev = e.target.closest('.hp-row') && selectedDevice(); if (dev) deviceProperties(dev); });
+                    tree.addEventListener('keydown', (e) => {
+                        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+                        e.preventDefault();
+                        const rows = treeRows(dlg.components);
+                        const i = rows.findIndex((r) => r.key === dlg.selected);
+                        const next = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
+                        if (next) { dlg.selected = next.key; renderDialog(); }
+                    });
+                }
+                c.on(307, 'change', () => { dlg.components = !!c.get(307); renderDialog(); });
+                renderDialog();
+                // the tree has the focus when the window opens (its selection blue), as on the VM
+                if (tree) setTimeout(() => { try { tree.focus(); } catch (_) { /* gone */ } }, 0);
+            },
+            buttons: {
+                311: () => { const dev = selectedDevice(); if (dev) deviceProperties(dev); },
+                305: (c) => { const dev = selectedDevice(); if (dev) void confirmStop(dev, c.modal); },
+                8: (c) => c.close()
+            },
+            close: () => { dlg = null; }
+        });
+        if (!ctx) dlg = null;
     }
 
     // ---- AutoPlay -------------------------------------------------------------------------------------------------
@@ -270,6 +414,7 @@
     function onState(st) {
         state = st && Array.isArray(st.drives) ? st : { present: false, drives: [], devices: [] };
         paint();
+        if (dlg && dlg.ctx) renderDialog();
         const ids = new Set(state.drives.map((d) => d.id));
         if (known) {
             // a removable disk that came while the desktop runs (one per device: its first volume)
@@ -296,7 +441,7 @@
         }
     }
 
-    root.hostDrivesShell = { eject, autoplay, state: () => state };
+    root.hostDrivesShell = { eject, autoplay, openDialog, state: () => state };
     if (!doc) return;
     if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start, { once: true, signal: appScopeSignal });
     else start();

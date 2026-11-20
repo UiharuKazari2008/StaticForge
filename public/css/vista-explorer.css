@@ -3492,3 +3492,20 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-v
 /* Safely Remove Hardware's device list (hostDrivesShell.js): whole lines, as Vista's menu has them */
 .context-menu:has(> .context-menu-content > .safely-remove-menu) { max-width: none; }
 .safely-remove-menu .context-menu-item-text { max-width: none; }
+
+/* ---- Safely Remove Hardware (hotplug.dll dialogs 300 and 320, hostDrivesShell.js, DreamOS #910) ---------------------
+   The device tree and the Stop list as the VM draws them: rows of 16 px, the 16 px device icon 4 px in, its name 4 px
+   after it in the dialog's font; a component 19 px further in; the selection Vista's blue while the list has the focus,
+   grey when it does not. */
+.vdt-tree.hp-tree,
+.vdt-listview.hp-list .vdt-lv-body { overflow: auto; background: #fff; }
+.hp-tree .hp-row,
+.hp-list .hp-row { display: flex; align-items: center; height: 16px; padding-left: calc(4px + var(--d, 0) * 19px); white-space: nowrap; font: inherit; }
+.hp-tree .hp-row:first-child,
+.hp-list .hp-row:first-child { margin-top: 2px; }
+.hp-tree .hp-row img,
+.hp-list .hp-row img { flex: none; width: 16px; height: 16px; margin-right: 2px; }
+.hp-tree .hp-row > span,
+.hp-list .hp-row > span { padding: 0 2px; line-height: 15px; }
+.hp-tree .hp-row.is-selected > span { background: #3399ff; color: #fff; }
+.hp-tree:not(:focus) .hp-row.is-selected > span { background: #f0f0f0; color: #000; }

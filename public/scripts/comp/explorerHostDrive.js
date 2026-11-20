@@ -19,7 +19,13 @@
  *
  * Transfers (paste, drops, cut) run under Vista's progress dialog: drive <-> drive on the host (its own copy with
  * progress), drive <-> Cartograph's folders through the file URL and the VFS import, files from the desktop into a
- * drive by the bridge's write. Delete on a drive is permanent, as Vista's is on a removable disk.
+ * drive by the bridge's write, and a phone over ActiveSync <-> a drive streamed by the host itself (the phone drive's
+ * own file routes, never through the page or C:; Cancel ends the host's transfer). Delete on a drive is permanent,
+ * as Vista's is on a removable disk.
+ *
+ * A drive's name: "Local Disk" (this machine's own disk), its volume label or "Removable Disk" until the user renames
+ * it (Rename on the drive in Computer or Explorer); the name is then kept by the host as .label at the drive's root,
+ * a protected system file that never shows in a listing.
  */
 (function (root) {
     'use strict';
@@ -160,7 +166,8 @@
             throw new Error(r.error);
         }
         const hidden = typeof app.showHidden === 'boolean' ? app.showHidden : shownHidden();
-        const items = (r.entries || []).filter((e) => hidden || !e.hidden).map((e) => entryToItem(p.root, e));
+        // the drive's .label (its name) is a protected system file: never listed, as Vista hides those
+        const items = (r.entries || []).filter((e) => !e.system && (hidden || !e.hidden)).map((e) => entryToItem(p.root, e));
         return out(sortItems(items, app.sortField, app.sortDirection), 'This folder is empty.');
     }
 
@@ -291,7 +298,7 @@
     // ---- menus ----------------------------------------------------------------------------------------------------
 
     function entryMenuSections(app, item) {
-        if (item.targetKind === 'host-drive') return [{ type: 'list', items: [{ icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open', className: 'context-menu-item-default' }].concat(ejectItems(item.host.drive)) }];
+        if (item.targetKind === 'host-drive') return [{ type: 'list', items: [{ icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open', className: 'context-menu-item-default' }].concat(ejectItems(item.host.drive), [{ separator: true }, { icon: 'fas fa-i-cursor', text: 'Rename', action: 'explorer-rename' }]) }];
         const file = !item.host.dir;
         const writable = isWritable(pathFor(item.host.drive, '/'));
         const items = [{ icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open', className: 'context-menu-item-default' }];
@@ -374,7 +381,23 @@
         }
     }
 
+    /** Rename on a drive: its name kept as .label at its root by the host; an empty name gives back the default. */
+    async function setLabel(id, text) {
+        const r = await D().label(id, text);
+        if (failed(r)) { await message(r.code === 'read_only' ? 'The disk is write-protected.' : r.error, 'Rename'); return false; }
+        return true;
+    }
+
+    async function renameDrive(id) {
+        const d = driveInfo(id);
+        if (!d || typeof root.showInputDialog !== 'function') return false;
+        const next = await root.showInputDialog('Type a name for this disk:', d.name, '', null, null, { title: 'Rename' });
+        if (next == null || String(next).trim() === d.name) return false;
+        return setLabel(id, String(next).trim());
+    }
+
     async function rename(app, item) {
+        if (item && item.targetKind === 'host-drive') { if (await renameDrive(item.host.drive)) await app.softRefresh(); return; }
         if (!item || !item.host || item.targetKind !== 'host-entry') return;
         const name = typeof root.showInputDialog === 'function'
             ? await root.showInputDialog('Type a new name:', item.name, '', null, null, { title: 'Rename' })
@@ -427,7 +450,10 @@
         const ctl = new AbortController();
         return {
             app, progress, signal: ctl.signal, cancelled: false, bytesDone: 0, bytesTotal: 0,
-            cancel() { this.cancelled = true; ctl.abort(); },
+            hostJobs: new Set(),
+            /** a host-side transfer of this job (phone <-> drive): Cancel ends it on the host too */
+            hostJob() { const id = `x${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`; this.hostJobs.add(id); return id; },
+            cancel() { this.cancelled = true; ctl.abort(); this.hostJobs.forEach((id) => { if (D()) void D().cancel(id); }); },
             tick(n) { this.bytesDone += n; if (this.progress) this.progress.progress(this.bytesDone, this.bytesTotal || undefined); },
             check() { if (this.cancelled || (this.progress && this.progress.cancelled)) throw { code: 'aborted', message: 'Cancelled' }; }
         };
@@ -533,7 +559,7 @@
         const step = async (ref) => {
             try { return (await each(j, ref)) !== SKIPPED && !j.cancelled; } catch (err) {
                 if (err && err.code === 'aborted') { j.cancel(); return false; }
-                if (err && err.code === 'no_space') { j.cancel(); await message(`There is not enough space on ${typeof to === 'string' ? displayName(to) : 'the disk'}.`, 'Copy Item'); return false; }
+                if (err && err.code === 'no_space') { j.cancel(); await message(`There is not enough space on ${typeof to === 'string' && isPath(to) && parse(to).root ? rootName(parse(to).root) : 'the disk'}.`, 'Copy Item'); return false; }
                 throw err;
             }
         };
@@ -555,18 +581,111 @@
         return { done, cancelled: j.cancelled };
     }
 
+    // ---- a phone (ActiveSync) <-> a drive, streamed by the host ----------------------------------------------------
+
+    const PS = () => root.phoneStorage || null;
+    /** A phone folder as { root, path } (phone://<root>/<path>), else null. */
+    function phonePlace(navPath) {
+        const pd = root.__explorerPhoneDriveOwn;
+        if (!pd || !pd.isPath(navPath) || (pd.isTrashPath && pd.isTrashPath(navPath))) return null;
+        const p = pd.parse(navPath);
+        return p.root ? p : null;
+    }
+
+    async function phoneToDrive(j, ref, dst) {
+        j.check();
+        const ps = PS();
+        if (!ps || !ps.deviceId) throw { code: 'offline', message: 'The phone is not connected.' };
+        if (ref.phone.dir) {
+            const sub = joinPath(dst.path, ref.name);
+            const made = await D().mkdir(dst.root, sub);
+            if (failed(made) && made.code !== 'exists') throw fail(made);
+            const inner = await ps.call('list', { root: ref.phone.root, path: ref.phone.path });
+            let skipped = false;
+            for (const e of (inner && inner.entries) || []) {
+                const child = { name: e.name, size: Number(e.size) || 0, modifiedAt: Math.floor((Number(e.mtime) || 0) / (Number(e.mtime) > 1e12 ? 1000 : 1)), phone: { root: ref.phone.root, path: e.path, dir: !!e.dir } };
+                if ((await phoneToDrive(j, child, { root: dst.root, path: sub })) === SKIPPED) skipped = true;
+            }
+            return skipped ? SKIPPED : undefined;
+        }
+        let last = 0;
+        return withConflict(j, ref.name, false, (conflict) => {
+            j.tick(-last); last = 0;
+            return D().phoneGet({ device: ps.deviceId, root: ref.phone.root, path: ref.phone.path, size: Number(ref.size) || 0, mtime: ref.modifiedAt ? ref.modifiedAt * 1000 : undefined, drive: dst.root, dir: dst.path, name: ref.name, conflict },
+                (done) => { j.tick(done - last); last = done; }, j.hostJob());
+        });
+    }
+
+    async function driveToPhone(j, ref, dst) {
+        j.check();
+        const ps = PS();
+        if (!ps || !ps.deviceId) throw { code: 'offline', message: 'The phone is not connected.' };
+        if (ref.host.dir) {
+            const sub = joinPath(dst.path, ref.name);
+            try { await ps.call('mkdir', { root: dst.root, path: sub }); } catch (err) { if (!err || err.code !== 'exists') throw err; }
+            const inner = await ask(D().list(ref.host.drive, ref.host.path));
+            let skipped = false;
+            for (const e of inner.entries || []) {
+                if (e.system) continue;
+                const child = { name: e.name, size: Number(e.size) || 0, host: { drive: ref.host.drive, path: e.path, dir: !!e.dir } };
+                if ((await driveToPhone(j, child, { root: dst.root, path: sub })) === SKIPPED) skipped = true;
+            }
+            return skipped ? SKIPPED : undefined;
+        }
+        let last = 0;
+        return withConflict(j, ref.name, false, (conflict) => {
+            j.tick(-last); last = 0;
+            return D().phonePut({ drive: ref.host.drive, path: ref.host.path, device: ps.deviceId, root: dst.root, dir: dst.path, name: ref.name, conflict },
+                (done) => { j.tick(done - last); last = done; }, j.hostJob());
+        });
+    }
+
+    /** A cut from the phone: the originals go to the Phone trash once the drive has them. */
+    async function phoneSourcesGone(done) {
+        const ps = PS();
+        const rootId = done[0].phone.root;
+        try {
+            await ps.call('trash', { root: rootId, paths: done.filter((r) => r.phone.root === rootId).map((r) => r.phone.path) });
+        } catch (err) {
+            await message(`Copied, but the originals stayed on the phone: ${(err && err.message) || err}`, 'Move Item', 'info');
+        }
+    }
+
     /** Paste / drop into navPath of refs from a drive or the VFS; false when neither side is a host drive. */
     async function deliver(app, refs, navPath, operation, options = {}) {
         const fromDrive = refs.length && refs.every(isEntryRef);
         const toDrive = isPath(navPath);
         if (!fromDrive && !toDrive) return false;
         const phoneRef = (r) => !!(r && r.phone && r.phone.root);
-        if (refs.some(phoneRef) || (refs.some(isEntryRef) && !fromDrive)) {
-            await message('Copy the items to a folder on C: first, then from there to the drive.', 'Copy Item', 'info');
+        const fromPhone = refs.length && refs.every(phoneRef);
+        const toPhone = !toDrive && phonePlace(navPath);
+        if ((refs.some(phoneRef) && !fromPhone) || (refs.some(isEntryRef) && !fromDrive)) {
+            await message('Copy the phone\'s items and the drive\'s items separately.', 'Copy Item', 'info');
             return true;
         }
         const sourcePath = options.sourcePath || app.currentPath;
         const op = options.drag && fromDrive !== toDrive ? 'copy' : operation;
+        // a phone over ActiveSync <-> a drive: the host streams it (no round trip through the page or C:)
+        if (fromPhone && toDrive) {
+            const dst = parse(navPath);
+            if (!dst.root) return true;
+            if (!isWritable(navPath)) { await message('The disk is write-protected.\nRemove the write-protection or use another disk.', 'Copy Item'); return true; }
+            const res = await runJob(app, op, refs, sourcePath, navPath, (j, ref) => phoneToDrive(j, ref, dst));
+            if (op === 'cut' && res.done.length && !res.cancelled) await phoneSourcesGone(res.done);
+            await app.softRefresh();
+            return true;
+        }
+        if (fromDrive && toPhone) {
+            const dst = toPhone;
+            const res = await runJob(app, op, refs, sourcePath, navPath, (j, ref) => driveToPhone(j, ref, dst));
+            if (op === 'cut' && res.done.length && !res.cancelled) {
+                const id = res.done[0].host.drive;
+                await D().remove(id, res.done.filter((r) => r.host.drive === id).map((r) => r.host.path));
+            }
+            if (isPath(app.currentPath) || navPath === app.currentPath) await app.softRefresh();
+            return true;
+        }
+        if (fromPhone) return false;
         if (toDrive) {
             const dst = parse(navPath);
             if (!dst.root) return true;
@@ -628,7 +747,7 @@
         PREFIX, available, isPath, isEntry, isEntryRef, parse, pathFor, normalize, attach, leave, list, folders,
         rootName, displayName, displayPath, crumbs, crumbIcon, resolveInput, parentOf, isWritable, open,
         sourceOf, sourceLabel, sourceUrl, isSource, writeText, entryMenuSections, emptyMenuSections, handleAction,
-        download, eject, createFolder, rename, remove, deliver, uploadFiles, computerDrives, openComputerDrive,
+        download, eject, createFolder, rename, renameDrive, setLabel, remove, deliver, uploadFiles, computerDrives, openComputerDrive,
         syncPreview, programFor, kindOf, fileUrl, drives,
         driveLetter: (id) => (driveInfo(id) || {}).letter || '',
         _test: { entryToItem, sortItems }
