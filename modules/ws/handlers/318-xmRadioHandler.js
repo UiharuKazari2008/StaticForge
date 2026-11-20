@@ -15,11 +15,11 @@ const xmRadio = require('../../xmRadio');
 //                                                 item is pushed
 //   xmradio_signin_browser_cancel {}              admins -> { account }
 //   xmradio_signout         {}                    admins -> { account }
-//   xmradio_lineup          { fresh? }            { channels[{ id, number, name, sub?, logo? }], presets { A, B, C: [channelId|null] x6 } }
+//   xmradio_lineup          { fresh? }            { channels[{ id, number, name, sub?, logo? }], presets { A, B, C: [channelId|null] x10 } }
 //                                                 (read once a month; fresh: MENU > Refresh Lineup)
-//   xmradio_logos           { ids[] }             { logos { channelId: /api/xmradio/art?... } } (fetched when first asked, kept)
+//   xmradio_logos           { ids[] }             { logos, backgrounds: { channelId: /api/xmradio/art?... } } (read when first asked, kept)
 //   xmradio_presets_set     { presets }           admins -> { presets } (shared by every radio: desktop and phone)
-//   xmradio_tune            { channelId }         -> { sid, url, channel }: url is our copy of the channel's HLS
+//   xmradio_tune            { channelId, quality? } -> { sid, url, quality, channel } (quality hi | std | low | eco24 | eco16): url is our copy of the channel's HLS
 //                                                 playlist (/api/xmradio/live/<sid>/index.m3u8; its key line points at
 //                                                 /api/xmradio/key/<sid>/<id>)
 //
@@ -70,9 +70,9 @@ function registerPackets(handlersCtx) {
     reg('xmradio_signin_browser', packet(true, 'The browser sign-in could not be started', async () => xmRadio.signInPageStart()));
     reg('xmradio_signin_browser_cancel', packet(true, 'The browser sign-in could not be stopped', async () => ({ account: xmRadio.signInPageCancel() })));
     reg('xmradio_signout', packet(true, 'The sign-out failed', async () => ({ account: xmRadio.signOut() })), { destructive: true });
-    reg('xmradio_tune', packet(false, 'The channel could not be tuned', async (m) => xmRadio.tune(m.channelId)));
+    reg('xmradio_tune', packet(false, 'The channel could not be tuned', async (m) => xmRadio.tune(m.channelId, { quality: m.quality })));
     reg('xmradio_lineup', packet(false, 'The channels could not be read', async (m) => ({ channels: await xmRadio.lineup({ fresh: !!m.fresh }), presets: xmRadio.presets() })));
-    reg('xmradio_logos', packet(false, 'The channel logos could not be read', async (m) => ({ logos: await xmRadio.logos(Array.isArray(m.ids) ? m.ids : []) })));
+    reg('xmradio_logos', packet(false, 'The channel logos could not be read', async (m) => xmRadio.logos(Array.isArray(m.ids) ? m.ids : [])));
     reg('xmradio_presets_set', packet(true, 'The presets could not be saved', async (m) => ({ presets: xmRadio.setPresets(m.presets) })));
 }
 

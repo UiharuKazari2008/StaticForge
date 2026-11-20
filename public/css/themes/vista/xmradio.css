@@ -32,8 +32,8 @@
 
 /* ---------------------------------------------------------------- shared parts */
 
+#xmRadioModal .xr-top { grid-area: brand; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 #xmRadioModal .xr-brand {
-    grid-area: brand;
     align-self: center;
     font: 600 12px/1 "Segoe UI", Tahoma, sans-serif;
     letter-spacing: 0.08em;
@@ -164,7 +164,7 @@
 #xmRadioModal .xr-d-main { display: flex; flex: 1 1 auto; gap: 8px; min-height: 0; margin-top: 3px; }
 #xmRadioModal .xr-d-art { flex: none; width: 64px; height: 64px; align-self: center; image-rendering: pixelated; }
 #xmRadioModal .xr-d-art.is-empty, #xmRadioModal .xr-d-logo.is-empty { display: none; }
-#xmRadioModal .xr-d-logo { flex: none; width: 30px; height: 24px; align-self: center; image-rendering: pixelated; }
+#xmRadioModal .xr-d-logo { flex: none; width: 60px; height: 48px; align-self: center; margin-left: auto; image-rendering: pixelated; }
 #xmRadioModal .xr-d-text { display: flex; flex-direction: column; justify-content: center; flex: 1 1 auto; min-width: 0; }
 #xmRadioModal .xr-d-l1 { display: flex; gap: 7px; white-space: nowrap; overflow: hidden; }
 #xmRadioModal .xr-d-num { flex: none; }
@@ -182,26 +182,26 @@
 
 /* LCD: a backlit graphic LCD, dark pixels on amber-green, faint unlit pixels behind */
 #xmRadioModal .xr-radio[data-display="lcd"] .xr-display {
-    color: #1b2410;
+    color: rgb(var(--xr-ink-rgb));
     font-family: "Share Tech Mono", "Lucida Console", monospace;
     background:
         repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.045) 0 1px, transparent 1px 3px),
         repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.045) 0 1px, transparent 1px 3px),
-        radial-gradient(ellipse at 50% 40%, #c6e36a, #9fc23f 70%, #86a634);
+        radial-gradient(ellipse at 50% 40%, var(--xr-lit-1), var(--xr-lit-2) 70%, var(--xr-lit-3));
     text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.12);
 }
-#xmRadioModal .xr-radio[data-display="lcd"]:not(.is-on) .xr-display { background: radial-gradient(ellipse at 50% 40%, #6f7f45, #5a6838); color: rgba(20, 28, 10, 0.55); }
+#xmRadioModal .xr-radio[data-display="lcd"]:not(.is-on) .xr-display { background: radial-gradient(ellipse at 50% 40%, var(--xr-off-1), var(--xr-off-2)); color: rgba(var(--xr-ink-rgb), 0.55); }
 #xmRadioModal .xr-radio[data-display="lcd"] .xr-d-l1 { font-size: 20px; line-height: 22px; }
 #xmRadioModal .xr-radio[data-display="lcd"] .xr-d-l2,
 #xmRadioModal .xr-radio[data-display="lcd"] .xr-d-l3 { font-size: 15px; line-height: 18px; }
 
 /* Dot Matrix: a vacuum-fluorescent panel, cyan dots glowing on black behind a dot mask */
 #xmRadioModal .xr-radio[data-display="dot"] .xr-display {
-    color: #6ff3ff;
+    color: rgb(var(--xr-ink-rgb));
     font-family: "DotGothic16", "Lucida Console", monospace;
     text-transform: uppercase;
     background: radial-gradient(ellipse at 50% 50%, #071417, #020607 80%);
-    text-shadow: 0 0 3px rgba(111, 243, 255, 0.75), 0 0 8px rgba(111, 243, 255, 0.35);
+    text-shadow: 0 0 3px rgba(var(--xr-ink-rgb), 0.75), 0 0 8px rgba(var(--xr-ink-rgb), 0.35);
 }
 #xmRadioModal .xr-radio[data-display="dot"] .xr-display::before { /* the dot mask over the glyphs */
     content: "";
@@ -210,7 +210,7 @@
     pointer-events: none;
     background: radial-gradient(circle, transparent 0.9px, rgba(2, 6, 7, 0.55) 1.2px) 0 0 / 2px 2px;
 }
-#xmRadioModal .xr-radio[data-display="dot"]:not(.is-on) .xr-display { color: rgba(111, 243, 255, 0.3); text-shadow: none; }
+#xmRadioModal .xr-radio[data-display="dot"]:not(.is-on) .xr-display { color: rgba(var(--xr-ink-rgb), 0.3); text-shadow: none; }
 #xmRadioModal .xr-radio[data-display="dot"] .xr-d-l1 { font-size: 19px; line-height: 22px; letter-spacing: 0.06em; }
 #xmRadioModal .xr-radio[data-display="dot"] .xr-d-l2,
 #xmRadioModal .xr-radio[data-display="dot"] .xr-d-l3 { font-size: 14px; line-height: 18px; letter-spacing: 0.05em; }
@@ -219,10 +219,10 @@
 #xmRadioModal .xr-radio[data-display="tft"] .xr-display {
     color: #f4f7fb;
     font-family: "Segoe UI", Tahoma, sans-serif;
-    background: linear-gradient(#21437a, #0d1d3c 60%, #070f22);
+    background: linear-gradient(var(--xr-tft-1), var(--xr-tft-2) 60%, var(--xr-tft-3));
 }
 #xmRadioModal .xr-radio[data-display="tft"]:not(.is-on) .xr-display { background: #05080f; color: rgba(244, 247, 251, 0.45); }
-#xmRadioModal .xr-radio[data-display="tft"] .xr-d-top { color: #9fc4ff; }
+#xmRadioModal .xr-radio[data-display="tft"] .xr-d-top { color: var(--xr-tft-accent); }
 #xmRadioModal .xr-radio[data-display="tft"] .xr-d-l1 { font: 600 16px/20px "Segoe UI", Tahoma, sans-serif; }
 #xmRadioModal .xr-radio[data-display="tft"] .xr-d-num { padding: 0 4px; border-radius: 3px; background: rgba(255, 255, 255, 0.16); }
 #xmRadioModal .xr-radio[data-display="tft"] .xr-d-l2 { font: 600 13px/17px "Segoe UI", Tahoma, sans-serif; }
@@ -230,42 +230,12 @@
 #xmRadioModal .xr-radio[data-display="tft"] .xr-d-art { border-radius: 4px; image-rendering: auto; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
 #xmRadioModal .xr-radio[data-display="tft"] .xr-d-logo { image-rendering: auto; }
 
-/* ---------------------------------------------------------------- body: receiver on its dock */
-
-#xmRadioModal .xr-radio[data-body="dock"] { width: 440px; padding: 14px 18px 0; background: radial-gradient(ellipse at 50% 0%, #3a3d43, #24262a 70%); }
-#xmRadioModal .xr-radio[data-body="dock"] .xr-shell {
-    grid-template-columns: 70px 1fr 70px;
-    grid-template-rows: 18px 104px 26px 24px 24px;
-    grid-template-areas: "brand brand brand" "vol bezel tune" "pre pre pre" "fn fn fn" "replay replay replay";
-    padding: 12px 14px 14px;
-    border-radius: 22px 22px 16px 16px;
-    background: linear-gradient(#45494f, #2a2d32 30%, #1e2024);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(0, 0, 0, 0.5), 0 6px 10px rgba(0, 0, 0, 0.55);
-}
-#xmRadioModal .xr-radio[data-body="dock"] .xr-knob { width: 56px; height: 56px; }
-#xmRadioModal .xr-radio[data-body="dock"] .xr-dock {
-    display: block;
-    position: relative;
-    height: 30px;
-    margin: -6px -10px 0;
-    border-radius: 0 0 26px 26px;
-    background: linear-gradient(#17181b, #2c2f34 40%, #121315);
-    box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.8), 0 4px 8px rgba(0, 0, 0, 0.6);
-    grid-column: 1 / -1;
-}
-#xmRadioModal .xr-dock { display: none; }
-#xmRadioModal .xr-dock-led { position: absolute; right: 26px; top: 13px; width: 5px; height: 5px; border-radius: 50%; background: #3a1310; }
-#xmRadioModal .xr-dock-led.is-on { background: #59ff7a; box-shadow: 0 0 5px #59ff7a; }
-#xmRadioModal .xr-radio[data-body="dock"] .xr-shell > .xr-dock { position: absolute; left: -8px; right: -8px; bottom: -34px; margin: 0; }
-#xmRadioModal .xr-radio[data-body="dock"] { padding-bottom: 40px; }
-#xmRadioModal .xr-grille { display: none; }
-
 /* ---------------------------------------------------------------- body: double-DIN car radio */
 
 #xmRadioModal .xr-radio[data-body="car"] { width: 660px; padding: 14px; background: #0c0d0f; }
 #xmRadioModal .xr-radio[data-body="car"] .xr-shell {
     grid-template-columns: 104px 1fr 104px;
-    grid-template-rows: 16px 112px 28px 26px;
+    grid-template-rows: 28px 112px 28px 26px;
     grid-template-areas: "vol brand tune" "vol bezel tune" "pre pre pre" "fn fn replay";
     padding: 12px 16px;
     border-radius: 6px;
@@ -288,7 +258,7 @@
 #xmRadioModal .xr-radio[data-body="table"] { width: 620px; padding: 16px; background: #1c1712; }
 #xmRadioModal .xr-radio[data-body="table"] .xr-shell {
     grid-template-columns: 210px 1fr 1fr;
-    grid-template-rows: 18px 108px 26px 24px 24px 74px;
+    grid-template-rows: 28px 108px 26px 24px 24px 74px;
     grid-template-areas: "grille brand brand" "grille bezel bezel" "grille pre pre" "grille fn fn" "grille replay replay" "grille vol tune";
     padding: 16px 18px;
     border-radius: 14px;
@@ -379,61 +349,21 @@
 #xmRadioModal[data-xr-frame="radio"] > .modal-window-controls {
     position: absolute;
     z-index: 4;
-    top: 7px;
-    right: 12px;
+    top: 0;
+    right: 16px;
     opacity: 0.82;
     transition: opacity 0.15s;
 }
 #xmRadioModal[data-xr-frame="radio"]:hover > .modal-window-controls,
 #xmRadioModal[data-xr-frame="radio"].active-window > .modal-window-controls { opacity: 1; }
-#xmRadioModal[data-xr-frame="radio"][data-xr-body="car"] > .modal-window-controls { top: 5px; right: 6px; }
-#xmRadioModal[data-xr-frame="radio"][data-xr-body="table"] > .modal-window-controls { top: 9px; right: 14px; }
+#xmRadioModal[data-xr-frame="radio"][data-xr-body="car"] > .modal-window-controls { right: 6px; }
+#xmRadioModal[data-xr-frame="radio"][data-xr-body="table"] > .modal-window-controls { right: 14px; }
 #xmRadioModal[data-xr-frame="radio"] > .modal-content.xr-client { background: none; border-radius: 0; }
 /* the bodies' own outer shape and shadow */
-#xmRadioModal .xr-radio[data-body="dock"] { border-radius: 26px 26px 18px 18px; }
 #xmRadioModal .xr-radio[data-body="car"] { border-radius: 8px; box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55); }
 #xmRadioModal .xr-radio[data-body="table"] { border-radius: 18px; box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5); }
-#xmRadioModal .xr-radio[data-body="dock"] { background: none; padding: 0 0 34px; }
-#xmRadioModal .xr-radio[data-body="dock"] .xr-shell > .xr-dock { left: -10px; right: -10px; bottom: -34px; }
 #xmRadioModal .xr-radio[data-body="table"] { background: none; padding: 0; }
 #xmRadioModal .xr-radio[data-body="car"] { padding: 10px; }
-
-/* ---------------------------------------------------------------- wordmarks: one per body, ours */
-#xmRadioModal .xr-brand { display: flex; align-items: center; gap: 4px; height: 18px; }
-/* XM Radio: italic heavy XM on a blue tab, Radio beside it */
-#xmRadioModal .xr-wm-xm b {
-    font: italic 900 15px/1 "Segoe UI", Tahoma, sans-serif;
-    letter-spacing: -0.02em;
-    color: #fff;
-    padding: 1px 4px 1px 5px;
-    border-radius: 3px;
-    background: linear-gradient(#2f8ff0, #145fbd);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 1px rgba(0, 0, 0, 0.5);
-}
-#xmRadioModal .xr-wm-xm i { font: 600 12px/1 "Segoe UI", Tahoma, sans-serif; font-style: normal; margin-left: 4px; color: #d9dee6; letter-spacing: 0.06em; }
-/* Sirius: widely spaced chrome capitals with a small star */
-#xmRadioModal .xr-wm-sirius { display: inline-flex; align-items: center; gap: 5px; }
-#xmRadioModal .xr-wm-sirius b {
-    font: 700 13px/1 "Segoe UI", Tahoma, sans-serif;
-    letter-spacing: 0.32em;
-    background: linear-gradient(#ffffff, #b9c3cf 55%, #f1f4f8);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.7));
-}
-#xmRadioModal .xr-wm-star {
-    width: 11px;
-    height: 11px;
-    background: #6fb5ff;
-    clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
-    filter: drop-shadow(0 0 2px rgba(111, 181, 255, 0.9));
-}
-/* SiriusXM: one word, the XM part in a blue italic */
-#xmRadioModal .xr-wm-sxm b { font: 600 14px/1 "Segoe UI", Tahoma, sans-serif; color: #f6efe3; letter-spacing: 0.01em; }
-#xmRadioModal .xr-wm-sxm i { font: italic 800 14px/1 "Segoe UI", Tahoma, sans-serif; color: #59a9ff; letter-spacing: -0.02em; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45); }
-#xmRadioModal .xr-radio[data-body="table"] .xr-wm-sxm b { color: #2c1d0e; text-shadow: 0 1px 0 rgba(255, 230, 190, 0.5); }
-#xmRadioModal .xr-radio[data-body="table"] .xr-wm-sxm i { color: #1559b5; text-shadow: 0 1px 0 rgba(255, 230, 190, 0.4); }
 
 /* ---------------------------------------------------------------- preset keys with the channel's logo */
 #xmRadioModal .xr-pre { position: relative; display: flex; align-items: center; justify-content: center; gap: 4px; overflow: hidden; }
@@ -446,3 +376,356 @@
 #xmRadioModal .xr-radio.is-guide .xr-display { cursor: var(--c-pointer, pointer); }
 #xmRadioModal .xr-radio.is-guide [data-b="guide"] { background: var(--xr-key-down); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6); }
 #xmRadioModal .xr-fn .xr-key { padding: 0 4px; }
+
+/* transport glyphs: drawn, the key's own ink */
+#xmRadioModal .xr-key.xr-glyph svg { width: 18px; height: 10px; fill: currentColor; vertical-align: middle; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.45)); }
+#xmRadioModal .xr-radio[data-body="table"] .xr-key.xr-glyph svg { filter: drop-shadow(0 1px 0 rgba(255, 240, 220, 0.6)); }
+#xmRadioModal .xr-radio[data-body="car"] .xr-replay .xr-key.xr-glyph svg { width: 14px; }
+
+/* ---------------------------------------------------------------- the era: the faceplate's brand and the display's tint
+   (Yukimi, Nov 20 2026): XM's yellowish orange, Sirius' light blue, SiriusXM's blue (2011) and electric blue (2023) */
+#xmRadioModal .xr-radio[data-era="xm"] .xr-display { --xr-lit-1: #ffc566; --xr-lit-2: #f19a28; --xr-lit-3: #d27a12; --xr-off-1: #6f5427; --xr-off-2: #4f3a19; --xr-tft-1: #4a2f0a; --xr-tft-2: #1f1303; --xr-tft-3: #0d0801; --xr-tft-accent: #ffc04d; }
+#xmRadioModal .xr-radio[data-era="sirius"] .xr-display { --xr-lit-1: #b6ecff; --xr-lit-2: #63c9ef; --xr-lit-3: #3aaedc; --xr-off-1: #3d5f6c; --xr-off-2: #2b4652; --xr-tft-1: #0f5674; --xr-tft-2: #062636; --xr-tft-3: #02121a; --xr-tft-accent: #7fdcff; }
+#xmRadioModal .xr-radio[data-era="sxm2011"] .xr-display { --xr-lit-1: #9fd3ff; --xr-lit-2: #4c9de0; --xr-lit-3: #2a7cc4; --xr-off-1: #34506b; --xr-off-2: #233a50; --xr-tft-1: #0f4a7a; --xr-tft-2: #06223c; --xr-tft-3: #021120; --xr-tft-accent: #5cc0ff; }
+#xmRadioModal .xr-radio[data-era="sxm2023"] .xr-display { --xr-lit-1: #c9cbff; --xr-lit-2: #8588ff; --xr-lit-3: #5d61f2; --xr-off-1: #45467a; --xr-off-2: #303158; --xr-tft-1: #1d1fb0; --xr-tft-2: #090a4a; --xr-tft-3: #040424; --xr-tft-accent: #9c9eff; }
+/* the ink: dark on an LCD's backlight, the glow of a dot-matrix panel */
+#xmRadioModal .xr-radio[data-era="xm"][data-display="lcd"] .xr-display { --xr-ink-rgb: 42, 22, 0; }
+#xmRadioModal .xr-radio[data-era="sirius"][data-display="lcd"] .xr-display { --xr-ink-rgb: 3, 36, 54; }
+#xmRadioModal .xr-radio[data-era="sxm2011"][data-display="lcd"] .xr-display { --xr-ink-rgb: 2, 26, 50; }
+#xmRadioModal .xr-radio[data-era="sxm2023"][data-display="lcd"] .xr-display { --xr-ink-rgb: 8, 8, 60; }
+#xmRadioModal .xr-radio[data-era="xm"][data-display="dot"] .xr-display { --xr-ink-rgb: 255, 176, 46; }
+#xmRadioModal .xr-radio[data-era="sirius"][data-display="dot"] .xr-display { --xr-ink-rgb: 111, 220, 255; }
+#xmRadioModal .xr-radio[data-era="sxm2011"][data-display="dot"] .xr-display { --xr-ink-rgb: 64, 168, 255; }
+#xmRadioModal .xr-radio[data-era="sxm2023"][data-display="dot"] .xr-display { --xr-ink-rgb: 128, 130, 255; }
+#xmRadioModal .xr-radio[data-display="tft"] .xr-display { --xr-ink-rgb: 244, 247, 251; }
+
+/* the brand's logo on the faceplate (Yukimi's files); on the dark bodies the darkest marks get a printed light edge */
+#xmRadioModal .xr-brand-img { display: block; height: 15px; width: auto; max-width: 96px; object-fit: contain; }
+#xmRadioModal .xr-radio:not([data-body="table"]) .xr-brand[data-era="sirius"] .xr-brand-img,
+#xmRadioModal .xr-radio:not([data-body="table"]) .xr-brand[data-era="sxm2011"] .xr-brand-img { filter: drop-shadow(0 0 0.6px rgba(255, 255, 255, 0.85)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.4)); }
+
+/* ---------------------------------------------------------------- the channel guide booklet (its own window)
+   A printed receiver's guide: cream pages, a saddle-stitched spine, the era's colour on the headers and the cover. */
+#xmRadioGuideModal .modal-content.xr-guide-client { padding: 10px; background: #3a3d42; }
+#xmRadioGuideModal .xr-book { --xr-era: #f19a28; --xr-era-ink: #2a1600; position: relative; width: 700px; height: 470px; outline: none; }
+#xmRadioGuideModal .xr-book[data-era="sirius"] { --xr-era: #12a8de; --xr-era-ink: #032436; }
+#xmRadioGuideModal .xr-book[data-era="sxm2011"] { --xr-era: #0a5a92; --xr-era-ink: #021a32; }
+#xmRadioGuideModal .xr-book[data-era="sxm2023"] { --xr-era: #1b1ee6; --xr-era-ink: #08083c; }
+#xmRadioGuideModal .xr-book-spread {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-radius: 3px;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.55), 0 2px 4px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+#xmRadioGuideModal .xr-page {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 18px 10px;
+    color: #2b2620;
+    font: 11px/1.25 "Segoe UI", Tahoma, sans-serif;
+    background:
+        repeating-linear-gradient(0deg, rgba(120, 100, 70, 0.025) 0 1px, transparent 1px 3px),
+        linear-gradient(#fbf6ea, #f3ecdb);
+}
+/* the fold: shading towards the spine, the staples */
+#xmRadioGuideModal .xr-page-l { box-shadow: inset -18px 0 16px -14px rgba(60, 45, 25, 0.35); }
+#xmRadioGuideModal .xr-page-r { box-shadow: inset 18px 0 16px -14px rgba(60, 45, 25, 0.35); }
+#xmRadioGuideModal .xr-book-spread::after {
+    content: "";
+    position: absolute;
+    left: calc(50% - 1px);
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background:
+        linear-gradient(#a9adb3, #6f747b) 0 22% / 2px 34px no-repeat,
+        linear-gradient(#a9adb3, #6f747b) 0 76% / 2px 34px no-repeat,
+        linear-gradient(rgba(60, 45, 25, 0.25), rgba(60, 45, 25, 0.25));
+}
+#xmRadioGuideModal .xr-page-head {
+    margin: -16px -18px 8px;
+    padding: 7px 18px;
+    background: var(--xr-era);
+    color: #fff;
+    font: 700 11px/1 "Segoe UI", Tahoma, sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+#xmRadioGuideModal .xr-page-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; }
+#xmRadioGuideModal .xr-row { display: grid; grid-template-columns: 34px 30px 1fr; align-items: center; gap: 6px; height: 26px; padding: 0 4px; border-radius: 3px; cursor: var(--c-pointer, pointer); }
+#xmRadioGuideModal .xr-row:hover { background: rgba(0, 0, 0, 0.06); }
+#xmRadioGuideModal .xr-row.is-current { background: color-mix(in srgb, var(--xr-era) 18%, transparent); }
+#xmRadioGuideModal .xr-row-logo { display: flex; align-items: center; justify-content: center; width: 34px; height: 22px; border-radius: 2px; background: #22252a; }
+#xmRadioGuideModal .xr-row-logo img { max-width: 32px; max-height: 20px; object-fit: contain; }
+#xmRadioGuideModal .xr-row-num { font: 800 13px/1 "Segoe UI", Tahoma, sans-serif; color: var(--xr-era-ink); text-align: right; }
+#xmRadioGuideModal .xr-row-text { display: flex; flex-direction: column; min-width: 0; }
+#xmRadioGuideModal .xr-row-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#xmRadioGuideModal .xr-row-now { color: #77705f; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#xmRadioGuideModal .xr-page-foot { text-align: center; color: #9a917c; font-size: 9px; padding-top: 4px; }
+#xmRadioGuideModal .xr-page-r .xr-page-foot { text-align: right; }
+#xmRadioGuideModal .xr-page-l .xr-page-foot { text-align: left; }
+/* the cover */
+#xmRadioGuideModal .xr-cover { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: 100%; margin: -16px -18px -10px; background: linear-gradient(160deg, color-mix(in srgb, var(--xr-era) 85%, #000), color-mix(in srgb, var(--xr-era) 45%, #000)); color: #fff; }
+#xmRadioGuideModal .xr-book[data-era="xm"] .xr-cover { background: linear-gradient(160deg, #1d1d1d, #050505); }
+#xmRadioGuideModal .xr-cover-logo { max-width: 220px; max-height: 90px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)); }
+#xmRadioGuideModal .xr-book[data-era="sxm2011"] .xr-cover-logo, #xmRadioGuideModal .xr-book[data-era="sxm2023"] .xr-cover-logo { padding: 10px 14px; border-radius: 6px; background: rgba(255, 255, 255, 0.92); }
+#xmRadioGuideModal .xr-cover-title { font: 300 30px/1 "Segoe UI", Tahoma, sans-serif; letter-spacing: 0.04em; }
+#xmRadioGuideModal .xr-cover-sub { font: 600 12px/1 "Segoe UI", Tahoma, sans-serif; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.85; }
+#xmRadioGuideModal .xr-cover-count { font-size: 11px; opacity: 0.7; }
+#xmRadioGuideModal .xr-page-blank { flex: 1 1 auto; }
+/* the page corners turn the pages */
+#xmRadioGuideModal .xr-book .xr-book-turn {
+    position: absolute;
+    bottom: 0;
+    z-index: 2;
+    width: 34px;
+    height: 34px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: linear-gradient(135deg, transparent 50%, #e6dcc5 50%, #d3c6a8);
+    box-shadow: -2px -2px 3px rgba(0, 0, 0, 0.18);
+    cursor: var(--c-pointer, pointer);
+}
+#xmRadioGuideModal .xr-book .xr-book-turn.is-next { right: 0; }
+#xmRadioGuideModal .xr-book .xr-book-turn.is-prev { left: 0; transform: scaleX(-1); }
+#xmRadioGuideModal .xr-book .xr-book-turn:disabled { visibility: hidden; }
+#xmRadioGuideModal .xr-book.is-turning-next .xr-page-r,
+#xmRadioGuideModal .xr-book.is-turning-prev .xr-page-l { animation: xr-turn 0.22s ease-out; }
+@keyframes xr-turn { from { opacity: 0.2; transform: translateX(var(--xr-turn-from, 8px)); } to { opacity: 1; transform: none; } }
+#xmRadioGuideModal .xr-book.is-turning-prev .xr-page-l { --xr-turn-from: -8px; }
+
+/* ================================================================ the docked receivers (Yukimi's photos, Nov 20 2026) */
+#xmRadioModal .xr-radio[data-docked="true"] { padding: 0 0 46px; background: none; }
+#xmRadioModal .xr-radio[data-docked="true"] .xr-shell { position: relative; display: grid; box-sizing: border-box; }
+#xmRadioModal .xr-radio[data-docked="true"] .xr-dock {
+    display: block;
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    bottom: -46px;
+    height: 46px;
+    clip-path: polygon(4% 0, 96% 0, 100% 100%, 0 100%);
+    background: linear-gradient(#1b1d21, #2b2e34 30%, #1a1c20);
+    box-shadow: inset 0 3px 4px rgba(0, 0, 0, 0.8);
+}
+#xmRadioModal .xr-radio[data-docked="true"] .xr-dock::before { content: ""; position: absolute; left: 10%; right: 10%; top: 4px; height: 12px; border-radius: 2px; background: linear-gradient(#2e323a, #3a3f48); }
+#xmRadioModal .xr-radio[data-docked="true"] .xr-dock-led { display: none; }
+#xmRadioModal .xr-radio[data-docked="true"] .xr-bezel { grid-area: disp; padding: 0; border-radius: 3px; background: #050506; box-shadow: none; }
+#xmRadioModal .xr-radio[data-docked="true"] .xr-display { height: 100%; min-height: 0; border-radius: 2px; }
+#xmRadioModal .xr-radio[data-docked="true"] .xr-pre-logo { display: none; }
+
+/* small keys with a label under them (the Onyx side column) */
+#xmRadioModal .xr-kw { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+#xmRadioModal .xr-kw > i { font: 400 9px/1 "Segoe UI", Tahoma, sans-serif; font-style: normal; color: #b9bec6; }
+#xmRadioModal .xr-radio button.xr-sk, #xmRadioModal .xr-radio button.xr-bk, #xmRadioModal .xr-radio button.xr-tk {
+    height: 22px;
+    padding: 0 6px;
+    border: 1px solid #000;
+    border-radius: 4px;
+    background: linear-gradient(#3a3d43, #1d1f23 60%, #15171a);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 1px rgba(0, 0, 0, 0.7);
+    color: #f2f4f7;
+    font: 400 12px/1 "Segoe UI", Tahoma, sans-serif;
+    cursor: var(--c-default, default);
+}
+#xmRadioModal .xr-radio button.xr-sk:active, #xmRadioModal .xr-radio button.xr-bk:active, #xmRadioModal .xr-radio button.xr-tk:active { background: linear-gradient(#141518, #24262b); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8); }
+#xmRadioModal .xr-radio button.xr-sk { width: 38px; }
+#xmRadioModal .xr-radio .xr-kw.is-power button { color: #ff3b2f; }
+#xmRadioModal .xr-radio .xr-tk.xr-glyph svg, #xmRadioModal .xr-radio .xr-g-bottom .xr-glyph svg { width: 16px; height: 9px; fill: currentColor; }
+#xmRadioModal .xr-radio button.xr-bk { position: relative; height: 26px; padding: 0; font-size: 14px; }
+#xmRadioModal .xr-radio button.xr-bk::after { content: ""; position: absolute; left: 35%; right: 35%; bottom: 3px; height: 2px; border-radius: 1px; background: rgba(255, 255, 255, 0.28); }
+#xmRadioModal .xr-radio .xr-bk .xr-pre-n { font-size: 14px; opacity: 1; }
+
+/* ---------------------------------------------------------------- Onyx Plus / Onyx EZ: the same chassis */
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-shell,
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-shell {
+    grid-template-columns: 228px 1fr 52px;
+    grid-template-rows: 16px 186px 30px;
+    grid-template-areas: "brand . side" "disp nav side" "keys keys keys";
+    gap: 6px 14px;
+    padding: 12px 14px 10px 18px;
+    border-radius: 10px;
+    background: linear-gradient(#1c1d20, #101113 40%, #0b0c0e);
+    box-shadow: inset 0 0 0 1px #2b2d31, inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 6px 12px rgba(0, 0, 0, 0.6);
+}
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-shell { background: linear-gradient(160deg, #18191c, #050506 60%, #0e0f11); }
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-brand, #xmRadioModal .xr-radio[data-body="onyxez"] .xr-brand { grid-area: brand; align-self: end; margin-left: 6px; }
+#xmRadioModal .xr-radio[data-body="onyxplus"] .xr-brand .xr-brand-img { height: 11px; filter: grayscale(1) brightness(1.6); }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-brand .xr-brand-img { height: 12px; filter: grayscale(1) brightness(1.4); }
+#xmRadioModal .xr-o-nav { grid-area: nav; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+#xmRadioModal .xr-o-side { grid-area: side; display: flex; flex-direction: column; justify-content: space-between; padding: 22px 0 6px; }
+#xmRadioModal .xr-o-keys { grid-area: keys; display: grid; grid-template-columns: repeat(11, 1fr); gap: 2px; }
+#xmRadioModal .xr-o-transport { display: flex; gap: 2px; }
+#xmRadioModal .xr-radio .xr-o-transport .xr-tk { width: 44px; }
+/* the silver ring of the Onyx Plus */
+#xmRadioModal .xr-o-ring { position: relative; width: 132px; height: 132px; border-radius: 50%; background: radial-gradient(circle, #0a0a0b 0 40%, transparent 41%), conic-gradient(from 200deg, #f5f6f7, #a9adb3, #e7e9ec, #8d9198, #f2f3f5, #a4a8ae, #f5f6f7); box-shadow: 0 0 0 2px #050506, 0 2px 4px rgba(0, 0, 0, 0.8); }
+#xmRadioModal .xr-o-ring::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: linear-gradient(#fff, #fff) 50% 4px / 2px 9px no-repeat, linear-gradient(#fff, #fff) 50% calc(100% - 4px) / 2px 9px no-repeat, linear-gradient(#fff, #fff) 4px 50% / 9px 2px no-repeat, linear-gradient(#fff, #fff) calc(100% - 4px) 50% / 9px 2px no-repeat; opacity: 0.8; pointer-events: none; }
+#xmRadioModal .xr-radio .xr-o-zone { position: absolute; width: 40%; height: 40%; padding: 0; border: 0; background: none; cursor: var(--c-default, default); }
+#xmRadioModal .xr-o-zone.is-up { left: 30%; top: 0; } #xmRadioModal .xr-o-zone.is-down { left: 30%; bottom: 0; }
+#xmRadioModal .xr-o-zone.is-left { left: 0; top: 30%; } #xmRadioModal .xr-o-zone.is-right { right: 0; top: 30%; }
+#xmRadioModal .xr-radio .xr-o-center { position: absolute; left: 30%; top: 30%; width: 40%; height: 40%; padding: 0; border: 0; border-radius: 50%; background: radial-gradient(circle at 45% 35%, #2b2d31, #121315 70%); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12), 0 0 0 1px #000; cursor: var(--c-default, default); }
+#xmRadioModal .xr-o-center i { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; border: 1.5px solid #e7e9ec; }
+/* the Onyx EZ's pad: four segments with blue arrows round a centre key */
+#xmRadioModal .xr-o-pad { position: relative; width: 136px; height: 136px; border-radius: 50%; background: #050506; }
+#xmRadioModal .xr-radio .xr-o-dir { position: absolute; padding: 0; border: 0; background: linear-gradient(#2a2c31, #17181b); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1); cursor: var(--c-default, default); }
+#xmRadioModal .xr-o-dir.is-up { left: 26%; top: 2%; width: 48%; height: 24%; border-radius: 60px 60px 6px 6px; }
+#xmRadioModal .xr-o-dir.is-down { left: 26%; bottom: 2%; width: 48%; height: 24%; border-radius: 6px 6px 60px 60px; }
+#xmRadioModal .xr-o-dir.is-left { left: 2%; top: 26%; width: 24%; height: 48%; border-radius: 60px 6px 6px 60px; }
+#xmRadioModal .xr-o-dir.is-right { right: 2%; top: 26%; width: 24%; height: 48%; border-radius: 6px 60px 60px 6px; }
+#xmRadioModal .xr-o-arr { position: absolute; left: 50%; top: 50%; width: 0; height: 0; border: 6px solid transparent; }
+#xmRadioModal .is-up > .xr-o-arr { margin: -9px 0 0 -6px; border-bottom: 8px solid #1d8cff; border-top-width: 0; }
+#xmRadioModal .is-down > .xr-o-arr { margin: -3px 0 0 -6px; border-top: 8px solid #1d8cff; border-bottom-width: 0; }
+#xmRadioModal .is-left > .xr-o-arr { margin: -6px 0 0 -6px; border-right: 8px solid #1d8cff; border-left-width: 0; }
+#xmRadioModal .is-right > .xr-o-arr { margin: -6px 0 0 -2px; border-left: 8px solid #1d8cff; border-right-width: 0; }
+#xmRadioModal .xr-o-pad .xr-o-center { left: 29%; top: 29%; width: 42%; height: 42%; }
+#xmRadioModal .xr-radio[data-body="onyxez"] button.xr-sk, #xmRadioModal .xr-radio[data-body="onyxez"] button.xr-bk { color: #2a95ff; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-kw.is-power button { color: #2a95ff; }
+
+/* ---------------------------------------------------------------- the Gloss receiver: glass-black slab, round keys, a lit knob */
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-shell {
+    grid-template-columns: 236px 1fr;
+    grid-template-rows: 14px 150px 30px;
+    grid-template-areas: "edge edge" "disp right" "bottom bottom";
+    gap: 6px 16px;
+    padding: 6px 14px 10px;
+    border-radius: 12px 12px 8px 8px;
+    background:
+        linear-gradient(170deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 28%),
+        linear-gradient(#141518, #050506 55%, #0d0e10);
+    box-shadow: inset 0 0 0 1px #3a3d42, inset 0 2px 0 rgba(255, 255, 255, 0.18), 0 6px 14px rgba(0, 0, 0, 0.65);
+}
+#xmRadioModal .xr-g-edge { grid-area: edge; display: flex; align-items: center; gap: 8px; margin-right: 86px; }
+#xmRadioModal .xr-g-edge-fill { flex: 1 1 auto; }
+#xmRadioModal .xr-radio .xr-ek { height: 12px; padding: 0 8px; border: 0; border-radius: 3px; background: linear-gradient(#2c2e33, #111214); color: #aab2bd; font: 400 8px/12px "Segoe UI", Tahoma, sans-serif; cursor: var(--c-default, default); }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-brand .xr-brand-img { height: 10px; opacity: 0.85; }
+#xmRadioModal .xr-radio[data-body="gloss"] .xr-g-pad, #xmRadioModal .xr-radio[data-body="gloss"] .xr-g-knob { grid-area: right; }
+#xmRadioModal .xr-g-pad { display: grid; grid-template-columns: repeat(5, 30px); grid-auto-rows: 30px; gap: 8px; align-self: start; justify-self: end; margin-top: 4px; }
+#xmRadioModal .xr-radio button.xr-rk {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid #000;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 30%, #3b3e44, #0c0d0f 70%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 1px 2px rgba(0, 0, 0, 0.8);
+    color: #f4f6f9;
+    font: 600 11px/1 "Segoe UI", Tahoma, sans-serif;
+    cursor: var(--c-default, default);
+}
+#xmRadioModal .xr-radio button.xr-rk:active { background: radial-gradient(circle at 50% 60%, #2a2c31, #08090a 70%); }
+#xmRadioModal .xr-g-pad > :last-child { grid-column: 5; }
+#xmRadioModal .xr-g-knob { position: relative; align-self: end; justify-self: end; width: 74px; height: 74px; margin: 0 36px -4px 0; border-radius: 50%; background: #050607; box-shadow: 0 0 0 2px #1c6fe0, 0 0 10px 2px rgba(40, 140, 255, 0.55); cursor: var(--c-default, default); touch-action: none; }
+#xmRadioModal .xr-g-ring { position: absolute; inset: 6px; border-radius: 50%; background: repeating-conic-gradient(#6d727a 0 2deg, #9aa0a8 2deg 4deg); }
+#xmRadioModal .xr-radio .xr-g-cap { position: absolute; inset: 12px; padding: 0; border: 0; border-radius: 50%; background: conic-gradient(from 30deg, #d9dce0, #8a8f96, #e6e8eb, #7d8189, #d9dce0); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4); cursor: var(--c-default, default); }
+#xmRadioModal .xr-g-bottom { grid-area: bottom; display: grid; grid-template-columns: repeat(4, 50px) 1fr 70px 70px; gap: 2px; align-items: stretch; }
+#xmRadioModal .xr-radio .xr-g-bottom .xr-tk { height: 28px; border-radius: 3px; background: linear-gradient(#202226, #0a0b0c); color: #2f93ff; font-size: 10px; }
+#xmRadioModal .xr-radio .xr-g-bottom .xr-g-arrow { font: 300 26px/1 "Segoe UI", Tahoma, sans-serif; color: #2f93ff; }
+#xmRadioModal .xr-g-bottom [data-nav="left"] { grid-column: 6; }
+#xmRadioModal .xr-g-bottom [data-nav="right"] { grid-column: 7; }
+
+/* ---------------------------------------------------------------- the Roady XT: silver, a lavender dot-matrix LCD */
+#xmRadioModal .xr-radio[data-body="roady"] { padding: 0; }
+#xmRadioModal .xr-radio[data-body="roady"] .xr-shell {
+    grid-template-columns: 58px 1fr 58px;
+    grid-template-rows: 138px 26px 30px;
+    grid-template-areas: "left win right" "row row row" "nums nums nums";
+    gap: 8px 6px;
+    padding: 12px 12px 12px;
+    border-radius: 18px;
+    background: linear-gradient(#e2e4e7, #c8cbcf 45%, #b5b9be);
+    box-shadow: inset 0 0 0 1px #9da2a8, inset 0 2px 0 rgba(255, 255, 255, 0.8), 0 6px 12px rgba(0, 0, 0, 0.45);
+}
+#xmRadioModal .xr-rd-left { grid-area: left; } #xmRadioModal .xr-rd-right { grid-area: right; }
+#xmRadioModal .xr-rd-left, #xmRadioModal .xr-rd-right { display: flex; flex-direction: column; gap: 2px; }
+#xmRadioModal .xr-radio .xr-rdk {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
+    padding: 0 0 10px;
+    border: 1px solid #8e9399;
+    border-radius: 9px;
+    background: linear-gradient(#d4d7db, #bfc3c8);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    color: #222;
+    font: 400 12px/1 "Segoe UI", Tahoma, sans-serif;
+    cursor: var(--c-default, default);
+}
+#xmRadioModal .xr-rdk i { position: absolute; left: 35%; right: 35%; bottom: 6px; height: 2px; border-radius: 1px; background: #8e9399; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6); }
+#xmRadioModal .xr-radio .xr-rdk:active { background: linear-gradient(#b7bbc0, #c9ccd0); }
+#xmRadioModal .xr-rd-win { grid-area: win; display: flex; flex-direction: column; padding: 6px 8px 4px; border-radius: 6px; background: #0b0b0c; box-shadow: inset 0 0 0 1px #000; }
+#xmRadioModal .xr-rd-win .xr-bezel { flex: 1 1 auto; padding: 0; background: none; box-shadow: none; }
+#xmRadioModal .xr-rd-print { display: flex; align-items: center; justify-content: space-between; height: 22px; padding: 0 8px; }
+#xmRadioModal .xr-rd-maker { font: 800 11px/1 "Segoe UI", Tahoma, sans-serif; letter-spacing: 0.06em; color: #9ea3a9; }
+#xmRadioModal .xr-rd-model { font: 600 13px/1 "Segoe UI", Tahoma, sans-serif; color: #9ea3a9; }
+#xmRadioModal .xr-rd-model sup { font-size: 8px; }
+#xmRadioModal .xr-radio[data-body="roady"] .xr-brand .xr-brand-img { height: 14px; filter: grayscale(1) brightness(0.8); }
+#xmRadioModal .xr-rd-row { grid-area: row; display: grid; grid-template-columns: 22px repeat(4, 1fr); gap: 2px; padding: 0 40px 0 10px; }
+#xmRadioModal .xr-radio .xr-rd-row .xr-rdk { border-radius: 4px 4px 14px 14px; padding-bottom: 8px; }
+#xmRadioModal .xr-rd-led { align-self: center; justify-self: center; width: 6px; height: 14px; border-radius: 3px; background: #1d1f22; }
+#xmRadioModal .xr-rd-nums { grid-area: nums; display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+#xmRadioModal .xr-rd-pair { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid #8e9399; border-radius: 15px; background: linear-gradient(#d4d7db, #bfc3c8); overflow: hidden; }
+#xmRadioModal .xr-radio button.xr-rdn { height: 28px; padding: 0; border: 0; background: none; color: #222; font: 400 15px/1 "Segoe UI", Tahoma, sans-serif; cursor: var(--c-default, default); }
+#xmRadioModal .xr-radio button.xr-rdn:first-child { border-right: 1px solid #8e9399; }
+#xmRadioModal .xr-radio button.xr-rdn:active { background: rgba(0, 0, 0, 0.08); }
+
+/* ---------------------------------------------------------------- the docked receivers' screens */
+#xmRadioModal .xr-d-bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+#xmRadioModal .xr-d-bg.is-empty { display: none; }
+#xmRadioModal .xr-display > :not(.xr-d-bg, .xr-d-menu) { position: relative; }
+#xmRadioModal .xr-d-menu { z-index: 2; }
+/* the colour screen of the Onyx Plus and the Gloss: number and logo on top, the song big at the bottom */
+#xmRadioModal .xr-radio[data-docked="true"][data-display="tft"] .xr-display { padding: 8px 10px; background: linear-gradient(#123a6b, #061830 70%, #020a16); }
+#xmRadioModal .xr-radio[data-docked="true"][data-display="tft"] .xr-d-main { flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 4px; }
+#xmRadioModal .xr-radio[data-docked="true"][data-display="tft"] .xr-d-art { position: absolute; right: 0; top: 0; width: 70px; height: 70px; }
+#xmRadioModal .xr-radio[data-docked="true"][data-display="tft"] .xr-d-logo { position: absolute; left: 30px; top: -22px; width: 56px; height: 34px; margin: 0; }
+#xmRadioModal .xr-radio[data-docked="true"][data-display="tft"] .xr-d-text { width: 100%; }
+#xmRadioModal .xr-radio[data-docked="true"][data-display="tft"] .xr-d-l1 .xr-d-num { position: absolute; left: 0; top: -22px; font: 500 15px/1 "Segoe UI", Tahoma, sans-serif; background: none; padding: 0; }
+#xmRadioModal .xr-radio[data-docked="true"][data-display="tft"] .xr-d-l1 .xr-d-name { font: 500 12px/1 "Segoe UI", Tahoma, sans-serif; opacity: 0.8; }
+#xmRadioModal .xr-radio[data-docked="true"][data-display="tft"] .xr-d-l2 { font: 500 21px/1.15 "Segoe UI", Tahoma, sans-serif; }
+#xmRadioModal .xr-radio[data-docked="true"][data-display="tft"] .xr-d-l3 { font: 400 15px/1.2 "Segoe UI", Tahoma, sans-serif; color: #e8eef6; }
+/* the Onyx EZ's LCD: its era's backlight, artist big, no pictures */
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-display { padding: 10px 12px; }
+#xmRadioModal .xr-radio[data-body="onyxez"] :is(.xr-d-art, .xr-d-logo) { display: none; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-d-main { flex-direction: column; justify-content: center; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-d-l1 { position: absolute; left: 0; right: 0; top: -2px; display: flex; justify-content: space-between; font: 400 14px/1 "DotGothic16", "Lucida Console", monospace; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-d-text { padding-top: 22px; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-d-l2 { font: 700 24px/1.2 "Segoe UI", Tahoma, sans-serif; }
+#xmRadioModal .xr-radio[data-body="onyxez"] .xr-d-l3 { font: 400 18px/1.2 "DotGothic16", "Lucida Console", monospace; }
+/* the Roady's dot-matrix LCD: lavender backlight, black dots, the name and number big */
+#xmRadioModal .xr-radio[data-display="dotlcd"] .xr-display {
+    --xr-ink-rgb: 20, 20, 26;
+    padding: 4px 10px;
+    color: rgb(var(--xr-ink-rgb));
+    font-family: "DotGothic16", "Lucida Console", monospace;
+    background: radial-gradient(ellipse at 50% 40%, #c9cbf0, #a9acdf 80%);
+}
+#xmRadioModal .xr-radio[data-display="dotlcd"]:not(.is-on) .xr-display { background: #6d6f8f; }
+#xmRadioModal .xr-radio[data-display="dotlcd"] :is(.xr-d-art, .xr-d-logo) { display: none; }
+#xmRadioModal .xr-radio[data-display="dotlcd"] .xr-d-l1 { display: flex; justify-content: space-between; flex-direction: row-reverse; font-size: 34px; line-height: 38px; }
+#xmRadioModal .xr-radio[data-display="dotlcd"] .xr-d-l2 { text-align: right; font-size: 34px; line-height: 38px; text-transform: uppercase; }
+#xmRadioModal .xr-radio[data-display="dotlcd"] .xr-d-l3 { display: none; }
+#xmRadioModal .xr-radio[data-display="dotlcd"] .xr-d-top [data-f="band"] { padding: 1px 8px; border-radius: 9px; background: rgb(var(--xr-ink-rgb)); color: #c9cbf0; font: 600 12px/1.2 "Segoe UI", Tahoma, sans-serif; order: 9; }
+
+/* ---------------------------------------------------------------- the on-screen menu */
+#xmRadioModal .xr-radio.is-menu .xr-d-main { visibility: hidden; }
+#xmRadioModal .xr-d-menu { position: absolute; inset: 22px 6px 6px; display: flex; flex-direction: column; }
+#xmRadioModal .xr-d-menu[hidden] { display: none; }
+#xmRadioModal .xr-m-title { font-weight: 700; font-size: 12px; padding-bottom: 3px; border-bottom: 1px solid currentColor; margin-bottom: 3px; }
+#xmRadioModal .xr-m-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+#xmRadioModal .xr-m-item { display: flex; justify-content: space-between; align-items: center; padding: 1px 5px; border-radius: 2px; font-size: 13px; line-height: 17px; cursor: var(--c-pointer, pointer); }
+#xmRadioModal .xr-m-item.is-sel { background: rgb(var(--xr-ink-rgb)); color: var(--xr-lit-1, #000); }
+#xmRadioModal .xr-radio[data-display="tft"] .xr-m-item.is-sel { background: linear-gradient(#3c8cff, #155fd0); color: #fff; }
+#xmRadioModal .xr-radio[data-display="dotlcd"] .xr-m-item.is-sel { color: #c9cbf0; }
+#xmRadioModal .xr-m-more, #xmRadioModal .xr-m-mark { font-style: normal; opacity: 0.85; }
+
+/* Melaton's button focus edge and pressed glow stay off the receivers' keys */
+#xmRadioModal .xr-radio :is(.xr-o-zone, .xr-o-dir, .xr-o-center, .xr-g-cap, .xr-rdn) { outline: none; }
+#xmRadioModal .xr-radio .xr-o-zone { box-shadow: none; }
+#xmRadioModal .xr-radio[data-docked="true"] .xr-pre .xr-pre-n { font-size: inherit; opacity: 1; }
+/* the colour screens show the channel number alone at the top left (the bank letter and preset tag are the car's) */
+#xmRadioModal .xr-radio[data-docked="true"][data-display="tft"] .xr-d-top :is([data-f="band"], [data-f="pre"]) { display: none; }

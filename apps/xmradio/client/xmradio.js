@@ -30,19 +30,27 @@
     const A = '/melaton-apps/xmradio/assets';
     const NAME = 'XM Radio';
     const PREFS_KEY = 'xmradio.prefs';
-    const BODIES = [['dock', 'Receiver and Dock'], ['car', 'Car Radio'], ['table', 'Tabletop Radio']];
-    // each body wears one of the service's names of its era (Yukimi, Nov 20 2026): the portable receiver XM Radio, the
-    // car radio Sirius, the tabletop SiriusXM. Our own wordmarks in the brands' manner, not their artwork.
-    const BRAND = {
-        dock: '<span class="xr-wm-xm"><b>XM</b><i>Radio</i></span>',
-        car: '<span class="xr-wm-sirius"><b>SIRIUS</b><i class="xr-wm-star" aria-hidden="true"></i></span>',
-        table: '<span class="xr-wm-sxm"><b>Sirius</b><i>XM</i></span>'
-    };
-    const BRAND_NAME = { dock: 'XM Radio', car: 'Sirius', table: 'SiriusXM' };
+    // the radios (Yukimi, Nov 20 2026): three docked receivers after hers (a glossy one, the Onyx Plus with its colour
+    // screen and silver ring, the Onyx EZ with its blue LCD and pad), a car head unit and a tabletop set
+    const BODIES = [['gloss', 'Gloss Receiver'], ['onyxplus', 'Onyx Plus Receiver'], ['onyxez', 'Onyx EZ Receiver'], ['roady', 'Roady XT Receiver'], ['car', 'Car Radio'], ['table', 'Tabletop Radio']];
+    const DOCKED = new Set(['gloss', 'onyxplus', 'onyxez', 'roady']);
+    // the docked receivers' screens are their own: colour on the Gloss and the Onyx Plus, an LCD on the Onyx EZ
+    const MODEL_DISPLAY = { gloss: 'tft', onyxplus: 'tft', onyxez: 'lcd', roady: 'dotlcd' };
+    // the faceplate's brand, by era (Yukimi, Nov 20 2026, her logos): each tints the display as its radios did, XM's
+    // yellowish orange, Sirius' light blue, SiriusXM's blues before and after the 2023 rebrand
+    const ERAS = [['xm', 'XM Satellite Radio'], ['sirius', 'Sirius Satellite Radio'], ['sxm2011', 'SiriusXM (2011)'], ['sxm2023', 'SiriusXM (2023)']];
     // the radio's own width per body (the window scales it: resizable, Yukimi Nov 20 2026)
-    const NATURAL_W = { dock: 440, car: 660, table: 620 };
+    const NATURAL_W = { gloss: 560, onyxplus: 560, onyxez: 560, roady: 520, car: 660, table: 620 };
     const DISPLAYS = [['lcd', 'LCD'], ['dot', 'Dot Matrix'], ['tft', 'TFT']];
     const BANDS = ['A', 'B', 'C'];
+    // the faceplate's quality switch (Yukimi, Nov 20 2026): SiriusXM's own 256k / 128k / 32k, then Opus re-encoded on the
+    // server for a very slow connection
+    const QUALITIES = [['hi', '256', 'High: 256 kbit/s'], ['std', '128', 'Standard: 128 kbit/s'], ['low', '32', 'Low: 32 kbit/s'], ['eco24', 'E24', 'Economy: 24 kbit/s, re-encoded on the server'], ['eco16', 'E16', 'Economy: 16 kbit/s, re-encoded on the server']];
+    const SVG = {
+        back: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M8 0v10L1 5zM15 0v10L8 5z"/></svg>',
+        play: '<svg viewBox="0 0 20 10" aria-hidden="true"><path d="M1 0v10l7-5zM11 0h3v10h-3zM16 0h3v10h-3z"/></svg>',
+        fwd: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 0v10l7-5zM8 0v10l7-5z"/></svg>'
+    };
     const INFO_MODES = ['song', 'channel', 'show'];
     const HLS_SRC = '/dist/hlsjs/hls.light.min.js';
     const LONG_PRESS_MS = 900;
@@ -54,11 +62,14 @@
         let p = {};
         try { p = JSON.parse(root.localStorage.getItem(PREFS_KEY) || '{}') || {}; } catch (_) { p = {}; }
         return {
-            body: BODIES.some((b) => b[0] === p.body) ? p.body : 'dock',
+            body: BODIES.some((b) => b[0] === p.body) ? p.body : 'gloss',
             display: DISPLAYS.some((d) => d[0] === p.display) ? p.display : 'lcd',
             volume: Number.isFinite(p.volume) ? Math.max(0, Math.min(1, p.volume)) : 0.7,
             band: BANDS.includes(p.band) ? p.band : 'A',
             info: INFO_MODES.includes(p.info) ? p.info : 'song',
+            quality: QUALITIES.some((q) => q[0] === p.quality) ? p.quality : 'hi',
+            era: ERAS.some((e) => e[0] === p.era) ? p.era : 'xm',
+            zoom: Number(p.zoom) > 0 ? Number(p.zoom) : 1,
             channel: typeof p.channel === 'string' ? p.channel : ''
         };
     }
@@ -115,56 +126,116 @@
             m.dataset.windowNoMaximize = 'true';
             this.modal = m;
             w.content.classList.add('xr-client');
-            w.content.innerHTML = `
-                <div class="xr-radio" tabindex="0" aria-label="${NAME}">
-                    <div class="xr-shell">
-                        <div class="xr-grille" aria-hidden="true"></div>
-                        <div class="xr-brand" data-f="brand"></div>
-                        <button type="button" class="xr-knob xr-vol" data-k="vol" title="Volume" aria-label="Volume"><i class="xr-knob-cap"></i><i class="xr-knob-mark"></i></button>
-                        <div class="xr-bezel"><div class="xr-display" aria-live="polite">
-                            <div class="xr-d-top"><span data-f="band"></span><span data-f="pre"></span><span class="xr-d-fill"></span><span data-f="replay"></span><span class="xr-sig" data-f="sig"><i></i><i></i><i></i></span><span data-f="clock"></span></div>
-                            <div class="xr-d-main">
-                                <canvas class="xr-d-art" data-f="art" width="64" height="64" aria-hidden="true"></canvas>
-                                <div class="xr-d-text">
-                                    <div class="xr-d-l1"><canvas class="xr-d-logo" data-f="logo" width="40" height="32" aria-hidden="true"></canvas><span class="xr-d-num" data-f="num"></span><span class="xr-d-name" data-f="name"></span></div>
-                                    <div class="xr-d-l2"><span class="xr-run" data-f="l2"></span></div>
-                                    <div class="xr-d-l3"><span class="xr-run" data-f="l3"></span></div>
-                                </div>
-                            </div>
-                        </div></div>
-                        <button type="button" class="xr-knob xr-tune" data-k="tune" title="Tune (channel up / down)" aria-label="Tune"><i class="xr-knob-cap"></i><i class="xr-knob-mark"></i></button>
-                        <div class="xr-presets">${[1, 2, 3, 4, 5, 6].map((n) => `<button type="button" class="xr-key xr-pre" data-pre="${n}" title="Preset ${n} (hold to store)"><img class="xr-pre-logo" alt="" draggable="false" hidden><span class="xr-pre-n">${n}</span></button>`).join('')}</div>
-                        <div class="xr-fn">
-                            <button type="button" class="xr-key xr-power" data-b="power" title="Power">&#x23FB;</button>
-                            <button type="button" class="xr-key" data-b="band" title="Preset band">BAND</button>
-                            <button type="button" class="xr-key" data-b="disp" title="Display information">DISP</button>
-                            <button type="button" class="xr-key" data-b="guide" title="Channel guide">GUIDE</button>
-                            <button type="button" class="xr-key" data-b="direct" title="Direct tune">DIRECT</button>
-                            <button type="button" class="xr-key" data-b="menu" title="Menu">MENU</button>
-                        </div>
-                        <div class="xr-replay">
-                            <button type="button" class="xr-key" data-b="back" title="Back 15 seconds">&#x25C0;&#xFE0E;&#x25C0;&#xFE0E;</button>
-                            <button type="button" class="xr-key" data-b="play" title="Pause / Play">&#x25B6;&#xFE0E;&#x275A;&#x275A;</button>
-                            <button type="button" class="xr-key" data-b="fwd" title="Forward 15 seconds">&#x25B6;&#xFE0E;&#x25B6;&#xFE0E;</button>
-                            <button type="button" class="xr-key" data-b="live" title="Back to live">LIVE</button>
-                        </div>
-                        <div class="xr-dock" aria-hidden="true"><i class="xr-dock-led"></i></div>
-                    </div>
-                    <audio class="xr-audio" preload="none"></audio>
-                </div>`;
+            w.content.innerHTML = `<div class="xr-radio" tabindex="0" aria-label="${NAME}"><div class="xr-shell"></div><audio class="xr-audio" preload="none"></audio></div>`;
             this.root = m.querySelector('.xr-radio');
             this.audio = m.querySelector('.xr-audio');
-            this.f = {};
-            m.querySelectorAll('[data-f]').forEach((el) => { this.f[el.dataset.f] = el; });
+            this.mountFaceplate();
             this.applyLook();
             this.wire(w);
             this.paint();
-            this.paintPresets();
             call('openModal', m);
             m.classList.remove('hidden');
             this.place();
             void this.load();
         }
+
+        /** The display: the same on every radio (the menu is drawn on it). */
+        displayHtml() {
+            return `<div class="xr-bezel"><div class="xr-display" aria-live="polite">
+                <canvas class="xr-d-bg" data-f="bg" width="320" height="180" aria-hidden="true"></canvas>
+                <div class="xr-d-top"><span data-f="band"></span><span data-f="pre"></span><span class="xr-d-fill"></span><span data-f="replay"></span><span class="xr-sig" data-f="sig"><i></i><i></i><i></i></span><span data-f="clock"></span></div>
+                <div class="xr-d-main">
+                    <canvas class="xr-d-art" data-f="art" width="64" height="64" aria-hidden="true"></canvas>
+                    <div class="xr-d-text">
+                        <div class="xr-d-l1"><span class="xr-d-num" data-f="num"></span><span class="xr-d-name" data-f="name"></span></div>
+                        <div class="xr-d-l2"><span class="xr-run" data-f="l2"></span></div>
+                        <div class="xr-d-l3"><span class="xr-run" data-f="l3"></span></div>
+                    </div>
+                    <canvas class="xr-d-logo" data-f="logo" width="60" height="48" aria-hidden="true"></canvas>
+                </div>
+                <div class="xr-d-menu" data-f="menu" hidden><div class="xr-m-title" data-f="mtitle"></div><ol class="xr-m-list" data-f="mlist"></ol></div>
+            </div></div>`;
+        }
+
+        /** A preset / number key: a press tunes (or types a digit in Direct Tune), a long press stores. */
+        numKey(n, cls) {
+            const d = n === 10 ? 0 : n;
+            return `<button type="button" class="${cls} xr-pre" data-pre="${n}" title="${d} (hold to store a preset)"><img class="xr-pre-logo" alt="" draggable="false" hidden><span class="xr-pre-n">${d}</span></button>`;
+        }
+
+        /** The faceplate of a model: its own keys, the shared display. */
+        faceplateHtml(model) {
+            const disp = this.displayHtml();
+            const brand = '<div class="xr-brand" data-f="brand"></div>';
+            const dock = '<div class="xr-dock" aria-hidden="true"><i class="xr-dock-led"></i></div>';
+            const key = (b, label, sub, cls) => `<span class="xr-kw${cls ? ` ${cls}` : ''}"><button type="button" class="xr-sk" data-b="${b}" title="${esc(label)}">${label}</button>${sub ? `<i>${esc(sub)}</i>` : ''}</span>`;
+            const transport = `<button type="button" class="xr-tk xr-glyph" data-b="back" title="Back 15 seconds">${SVG.back}</button><button type="button" class="xr-tk xr-glyph" data-b="play" title="Pause / Play">${SVG.play}</button><button type="button" class="xr-tk xr-glyph" data-b="fwd" title="Forward 15 seconds">${SVG.fwd}</button>`;
+            if (model === 'gloss') {
+                return `<div class="xr-g-edge"><button type="button" class="xr-ek" data-b="power" title="Power">&#x23FB;</button>${brand}<span class="xr-g-edge-fill"></span><button type="button" class="xr-ek" data-b="menu" title="Menu">menu</button><button type="button" class="xr-ek" data-b="band" title="Preset bank">fav</button></div>
+                    ${disp}
+                    <div class="xr-g-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => this.numKey(n, 'xr-rk')).join('')}<button type="button" class="xr-rk" data-b="direct" title="Direct tune">#</button></div>
+                    <div class="xr-g-knob" data-k="tune" title="Tune (turn); press to select"><span class="xr-g-ring"></span><button type="button" class="xr-g-cap" data-nav="select" aria-label="Select"></button></div>
+                    <div class="xr-g-bottom">${transport}<button type="button" class="xr-tk" data-b="jump" title="Jump to the last channel">jump</button><button type="button" class="xr-tk xr-g-arrow" data-nav="left" title="Back">&#x2039;</button><button type="button" class="xr-tk xr-g-arrow" data-nav="right" title="Forward">&#x203A;</button></div>
+                    ${dock}`;
+            }
+            if (model === 'roady') {
+                // the Roady XT (Yukimi's photo, Nov 20 2026): silver, a dot-matrix LCD, the maker's name rewritten
+                const rk = (b, label, nav) => `<button type="button" class="xr-rdk"${nav ? ` data-nav="${nav}"` : ` data-b="${b}"`} title="${esc(label)}"><span>${label}</span><i></i></button>`;
+                const pair = (a, b) => `<span class="xr-rd-pair">${this.numKey(a, 'xr-rdn')}${this.numKey(b, 'xr-rdn')}</span>`;
+                return `<div class="xr-rd-left">${rk('power', '&#x23FC;')}${rk('menu', 'menu')}${rk('disp', 'disp')}</div>
+                    <div class="xr-rd-win">${disp}<div class="xr-rd-print"><b class="xr-rd-maker">XYRIDIAN</b>${brand}<b class="xr-rd-model">roady<sup>xt</sup></b></div></div>
+                    <div class="xr-rd-right">${rk('', '&#x25B2;', 'up')}${rk('', 'select', 'select')}${rk('', '&#x25BC;', 'down')}</div>
+                    <div class="xr-rd-row"><i class="xr-rd-led"></i>${rk('direct', 'pre/dir')}${rk('band', 'memory')}${rk('jump', 'jump')}${rk('guide', 'search')}</div>
+                    <div class="xr-rd-nums">${pair(1, 2)}${pair(3, 4)}${pair(5, 6)}${pair(7, 8)}${pair(9, 10)}</div>`;
+            }
+            if (model === 'onyxplus' || model === 'onyxez') {
+                const ez = model === 'onyxez';
+                const pad = ez
+                    ? '<div class="xr-o-pad" data-k="tune" title="Up / down: channel"><button type="button" class="xr-o-dir is-up" data-nav="up" aria-label="Up"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-right" data-nav="right" aria-label="Right"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-down" data-nav="down" aria-label="Down"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-left" data-nav="left" aria-label="Left"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-center" data-nav="select" aria-label="Select"></button></div>'
+                    : '<div class="xr-o-ring" data-k="tune" title="Up / down: channel"><button type="button" class="xr-o-zone is-up" data-nav="up" aria-label="Up"></button><button type="button" class="xr-o-zone is-right" data-nav="right" aria-label="Right"></button><button type="button" class="xr-o-zone is-down" data-nav="down" aria-label="Down"></button><button type="button" class="xr-o-zone is-left" data-nav="left" aria-label="Left"></button><button type="button" class="xr-o-center" data-nav="select" aria-label="Select"><i></i></button></div>';
+                const side = ez
+                    ? key('power', '&#x23FB;', '', 'is-power') + key('menu', 'menu', '', 'is-menu') + key('band', 'band', '') + key('jump', 'jump', '')
+                    : key('power', '&#x23FB;', 'power', 'is-power') + key('menu', 'menu', 'guide', 'is-menu') + key('disp', 'info', 'disp') + key('jump', '&#x21B6;', 'jump');
+                const last = ez ? '<button type="button" class="xr-bk" data-b="direct" title="Direct tune">direct</button>' : '<button type="button" class="xr-bk" data-b="band" title="Preset bank">b/#</button>';
+                return `${brand}${disp}<div class="xr-o-nav">${pad}${ez ? '' : `<div class="xr-o-transport">${transport}</div>`}</div>
+                    <div class="xr-o-side">${side}</div>
+                    <div class="xr-o-keys">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => this.numKey(n, 'xr-bk')).join('')}${last}</div>
+                    ${dock}`;
+            }
+            // the car radio and the tabletop set
+            return `<div class="xr-grille" aria-hidden="true"></div>
+                <div class="xr-top">${brand}</div>
+                <button type="button" class="xr-knob xr-vol" data-k="vol" title="Volume" aria-label="Volume"><i class="xr-knob-cap"></i><i class="xr-knob-mark"></i></button>
+                ${disp}
+                <button type="button" class="xr-knob xr-tune" data-k="tune" title="Tune (channel up / down)" aria-label="Tune"><i class="xr-knob-cap"></i><i class="xr-knob-mark"></i></button>
+                <div class="xr-presets">${[1, 2, 3, 4, 5, 6].map((n) => this.numKey(n, 'xr-key')).join('')}</div>
+                <div class="xr-fn">
+                    <button type="button" class="xr-key xr-power" data-b="power" title="Power">&#x23FB;</button>
+                    <button type="button" class="xr-key" data-b="band" title="Preset band">BAND</button>
+                    <button type="button" class="xr-key" data-b="disp" title="Display information">DISP</button>
+                    <button type="button" class="xr-key" data-b="direct" title="Direct tune">DIRECT</button>
+                    <button type="button" class="xr-key" data-b="menu" title="Menu">MENU</button>
+                </div>
+                <div class="xr-replay">${transport.replace(/xr-tk/g, 'xr-key')}<button type="button" class="xr-key" data-b="live" title="Back to live">LIVE</button></div>`;
+        }
+
+        /** Builds the model's faceplate (again when the radio changes) and finds its display fields. */
+        mountFaceplate() {
+            const model = this.prefs.body;
+            if (this.mounted === model) return;
+            this.mounted = model;
+            const shell = this.root.querySelector('.xr-shell');
+            shell.innerHTML = this.faceplateHtml(model);
+            this.f = {};
+            this.root.querySelectorAll('[data-f]').forEach((el) => { this.f[el.dataset.f] = el; });
+            this.artKey = null;
+            this.logoKey = null;
+            this.bgKey = null;
+            this.paintPresets();
+        }
+
+        /** The display type: the docked receivers' own, else the one chosen. */
+        displayType() { return MODEL_DISPLAY[this.prefs.body] || this.prefs.display; }
 
         place() {
             const m = this.modal;
@@ -179,11 +250,18 @@
         }
 
         applyLook() {
+            this.mountFaceplate();
             this.root.dataset.body = this.prefs.body;
-            this.root.dataset.display = this.prefs.display;
+            this.root.dataset.docked = String(DOCKED.has(this.prefs.body));
+            this.root.dataset.display = this.displayType();
             this.modal.dataset.xrBody = this.prefs.body;
-            this.f.brand.innerHTML = BRAND[this.prefs.body];
-            this.f.brand.title = BRAND_NAME[this.prefs.body];
+            const era = ERAS.find((e) => e[0] === this.prefs.era) || ERAS[0];
+            this.root.dataset.era = era[0];
+            if (!this.f.brand.firstElementChild || this.f.brand.dataset.era !== era[0]) {
+                this.f.brand.dataset.era = era[0];
+                this.f.brand.innerHTML = `<img class="xr-brand-img" src="${A}/brand-${era[0]}.png" alt="${esc(era[1])}" draggable="false">`;
+            }
+            this.f.brand.title = era[1];
             const nat = NATURAL_W[this.prefs.body];
             this.modal.dataset.windowMinWidth = String(Math.round(nat * 0.6));
             this.modal.dataset.windowMaxWidth = String(Math.round(nat * 2));
@@ -234,6 +312,8 @@
             }, sig);
             doc.addEventListener('visibilitychange', () => this.syncSeen(), sig);
             this.root.addEventListener('click', (e) => {
+                const n = e.target.closest('[data-nav]');
+                if (n) { this.nav(n.dataset.nav); return; }
                 const b = e.target.closest('[data-b]');
                 if (b) { this.button(b.dataset.b, b); return; }
                 const k = e.target.closest('[data-k]');
@@ -259,9 +339,16 @@
                 ro.observe(this.modal);
                 this.app.signal.addEventListener('abort', () => ro.disconnect());
             }
-            // in the guide, the display picks the channel shown
-            this.root.querySelector('.xr-display').addEventListener('click', () => { if (this.guide) this.guidePick(); }, sig);
-            this.root.addEventListener('contextmenu', (e) => { e.preventDefault(); this.menu(e.clientX, e.clientY); }, sig);
+            // the right button opens the on-screen menu too
+            this.root.addEventListener('contextmenu', (e) => { e.preventDefault(); if (!this.menu) this.openMenu(); }, sig);
+            // a click on a menu row picks it
+            this.root.addEventListener('click', (e) => {
+                const mi = e.target.closest('[data-mi]');
+                const lv = this.menuLevel();
+                if (!mi || !lv) return;
+                lv.i = Number(mi.dataset.mi);
+                this.nav('select');
+            }, sig);
             const a = this.audio;
             for (const t of ['playing', 'pause', 'waiting', 'error', 'timeupdate']) a.addEventListener(t, () => this.onAudio(t), sig);
             const c = root.wsClient;
@@ -307,15 +394,17 @@
         /** Channel logos the server has not given yet (the presets, the channel, the guide's channel): asked once. */
         async wantLogos(ids) {
             this.logoAsked = this.logoAsked || new Set();
-            const want = [...new Set(ids.filter((id) => id && this.byId.has(id) && !this.byId.get(id).logo && !this.logoAsked.has(id)))];
+            const want = [...new Set(ids.filter((id) => id && this.byId.has(id) && (!this.byId.get(id).logo || !this.byId.get(id).bg) && !this.logoAsked.has(id)))];
             if (!want.length) { this.paintPresets(); return; }
             want.forEach((id) => this.logoAsked.add(id));
             try {
                 const r = await this.ask('xmradio_logos', { ids: want });
                 for (const [id, url] of Object.entries((r && r.logos) || {})) { const c = this.byId.get(id); if (c) c.logo = url; }
+                for (const [id, url] of Object.entries((r && r.backgrounds) || {})) { const c = this.byId.get(id); if (c) c.bg = url; }
             } catch (_) { /* the number alone */ }
             this.paintPresets();
             this.paint();
+            if (this.booklet && this.booklet.open) this.paintBooklet();
         }
 
         async syncHub() {
@@ -374,6 +463,7 @@
         async tune(ch) {
             if (!ch) return;
             if (!this.on) { this.on = true; void this.syncHub(); }
+            if (this.channel && this.channel.id !== ch.id) this.prevChannel = this.channel.id;
             this.channel = ch;
             this.prefs.channel = ch.id;
             this.savePrefs();
@@ -382,7 +472,7 @@
             const seq = ++this.tuneSeq;
             let r;
             try {
-                r = await this.ask('xmradio_tune', { channelId: ch.id });
+                r = await this.ask('xmradio_tune', { channelId: ch.id, quality: this.prefs.quality });
             } catch (err) {
                 if (seq !== this.tuneSeq) return;
                 const code = err && err.code;
@@ -488,7 +578,8 @@
 
         button(b) {
             if (b === 'power') { this.power(); return; }
-            if (b === 'menu') { const r = this.root.querySelector('[data-b="menu"]').getBoundingClientRect(); this.menu(r.left, r.bottom); return; }
+            if (b === 'menu') { if (this.menu) this.closeMenu(); else this.openMenu(); return; }
+            if (b === 'jump') { this.jump(); return; }
             if (!this.on) return;
             if (b === 'band') {
                 this.prefs.band = BANDS[(BANDS.indexOf(this.prefs.band) + 1) % BANDS.length];
@@ -500,9 +591,7 @@
                 this.savePrefs();
                 this.paint();
             } else if (b === 'guide') {
-                if (this.guide) this.guide = null;
-                else this.guideOpen();
-                this.paint();
+                this.openBooklet();
             } else if (b === 'direct') {
                 this.direct = '';
                 this.directMode = true;
@@ -515,33 +604,216 @@
             else if (b === 'live') this.goLive();
         }
 
-        // ---------------------------------------------------------------- the channel guide (EPG)
+        // ---------------------------------------------------------------- the channel guide: a printed booklet
 
-        /** The guide: every channel in the plan with what is on it now; TUNE browses, the display or Enter picks. */
-        guideList() { return this.lineup.filter((c) => c.sub !== false); }
-
-        guideOpen() {
-            const list = this.guideList();
-            if (!list.length) { this.say('NO LINEUP'); return; }
-            const i = this.channel ? Math.max(0, list.findIndex((c) => c.id === this.channel.id)) : 0;
-            this.guide = { i };
-            this.directMode = false;
-            void this.wantLogos([list[i].id]);
-        }
-
-        guideMove(dir) {
-            const list = this.guideList();
-            if (!this.guide || !list.length) return;
-            this.guide.i = ((this.guide.i + dir) % list.length + list.length) % list.length;
-            void this.wantLogos([list[this.guide.i].id]);
+        /**
+         * GUIDE opens the channel guide as the booklet that came with a receiver (Yukimi, Nov 20 2026): a cover in the
+         * era's brand, then two-page spreads of the plan's channels (logo, number, name, what is on now). A row tunes the
+         * radio; the page corners, the arrow keys and the wheel turn pages. Its own window, owned by the radio.
+         */
+        openBooklet() {
+            if (this.booklet && this.booklet.modal.isConnected) { call('bringModalToFront', this.booklet.modal); return; }
+            const w = root.desktopAppCreateWindow({ id: 'xmRadioGuideModal', identifier: 'xmRadioGuide', title: `${NAME} Channel Guide`, icon16: `${A}/xmradio-16.png`, className: 'xr-guide-window', fixed: true, minimize: false });
+            const m = w.modal;
+            m.dataset.windowKind = 'custom';
+            m.dataset.parentModalId = this.modal.id;
+            w.content.classList.add('xr-guide-client');
+            w.content.innerHTML = `<div class="xr-book" data-era="${this.prefs.era}"><div class="xr-book-spread"><section class="xr-page xr-page-l"></section><section class="xr-page xr-page-r"></section></div>
+                <button type="button" class="xr-book-turn is-prev" aria-label="Previous pages"></button><button type="button" class="xr-book-turn is-next" aria-label="Next pages"></button></div>`;
+            const b = { modal: m, spread: 0, open: true, el: w.content.querySelector('.xr-book') };
+            this.booklet = b;
+            const ac = new AbortController();
+            const sig = { signal: AbortSignal.any ? AbortSignal.any([ac.signal, this.app.signal]) : ac.signal };
+            const close = () => { b.open = false; ac.abort(); Promise.resolve(call('closeModal', m)).finally(() => { if (m.isConnected) m.remove(); }); this.paint(); };
+            w.close.addEventListener('click', close, sig);
+            this.app.signal.addEventListener('abort', () => { if (m.isConnected) m.remove(); }, { once: true });
+            b.el.querySelector('.is-prev').addEventListener('click', () => this.turnBooklet(-1), sig);
+            b.el.querySelector('.is-next').addEventListener('click', () => this.turnBooklet(1), sig);
+            b.el.addEventListener('wheel', (e) => { e.preventDefault(); this.turnBooklet(e.deltaY > 0 ? 1 : -1); }, Object.assign({ passive: false }, sig));
+            m.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight' || e.key === 'PageDown') this.turnBooklet(1);
+                else if (e.key === 'ArrowLeft' || e.key === 'PageUp') this.turnBooklet(-1);
+                else if (e.key === 'Escape') close();
+                else return;
+                e.preventDefault();
+            }, sig);
+            b.el.addEventListener('click', (e) => {
+                const row = e.target.closest('[data-ch]');
+                if (!row) return;
+                const ch = this.byId.get(row.dataset.ch);
+                if (ch) void this.tune(ch);
+            }, sig);
+            doc.addEventListener('staticforge:modal-lifecycle', (e) => { if (e && e.detail && e.detail.id === m.id && e.detail.type === 'closed') { b.open = false; ac.abort(); this.paint(); } }, sig);
+            call('openModal', m);
+            m.classList.remove('hidden');
+            this.paintBooklet();
             this.paint();
         }
 
-        guidePick() {
-            const list = this.guideList();
-            const ch = this.guide && list[this.guide.i];
-            this.guide = null;
-            if (ch) void this.tune(ch); else this.paint();
+        /** The booklet's pages: the cover, then 14 channels a page. */
+        bookletPages() {
+            const list = this.lineup.filter((c) => c.sub !== false);
+            const pages = [{ cover: true }];
+            for (let i = 0; i < list.length; i += 14) pages.push({ rows: list.slice(i, i + 14) });
+            return pages;
+        }
+
+        turnBooklet(dir) {
+            const b = this.booklet;
+            if (!b || !b.open) return;
+            const spreads = Math.ceil(this.bookletPages().length / 2);
+            const next = Math.max(0, Math.min(spreads - 1, b.spread + dir));
+            if (next === b.spread) return;
+            b.spread = next;
+            b.el.classList.remove('is-turning-next', 'is-turning-prev');
+            void b.el.offsetWidth;
+            b.el.classList.add(dir > 0 ? 'is-turning-next' : 'is-turning-prev');
+            this.paintBooklet();
+        }
+
+        paintBooklet() {
+            const b = this.booklet;
+            if (!b || !b.open) return;
+            const pages = this.bookletPages();
+            const era = ERAS.find((e) => e[0] === this.prefs.era) || ERAS[0];
+            b.el.dataset.era = era[0];
+            const month = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            const pageHtml = (pg, n) => {
+                if (!pg) return '<div class="xr-page-blank"></div>';
+                if (pg.cover) {
+                    return `<div class="xr-cover"><img class="xr-cover-logo" src="${A}/brand-${era[0]}.png" alt="${esc(era[1])}" draggable="false">
+                        <div class="xr-cover-title">Channel Guide</div><div class="xr-cover-sub">${esc(month)}</div>
+                        <div class="xr-cover-count">${this.lineup.filter((c) => c.sub !== false).length} channels in your plan</div></div>`;
+                }
+                const first = pg.rows[0];
+                const last = pg.rows[pg.rows.length - 1];
+                return `<header class="xr-page-head"><span>Channels ${first.number}&ndash;${last.number}</span></header>
+                    <ol class="xr-page-rows">${pg.rows.map((c) => {
+                        const now = this.now.get(c.id);
+                        const line = now ? (now.ad ? (now.s || '') : [now.a, now.t].filter(Boolean).join(' \u2013 ')) : '';
+                        const cur = this.channel && this.channel.id === c.id ? ' is-current' : '';
+                        return `<li class="xr-row${cur}" data-ch="${esc(c.id)}" title="Tune ${c.number} ${esc(c.name)}"><span class="xr-row-logo">${c.logo ? `<img src="${esc(c.logo)}" alt="" draggable="false">` : ''}</span><b class="xr-row-num">${c.number}</b><span class="xr-row-text"><span class="xr-row-name">${esc(c.name)}</span><span class="xr-row-now">${esc(line)}</span></span></li>`;
+                    }).join('')}</ol>
+                    <footer class="xr-page-foot">${n}</footer>`;
+            };
+            const i = b.spread * 2;
+            b.el.querySelector('.xr-page-l').innerHTML = pageHtml(pages[i], i);
+            b.el.querySelector('.xr-page-r').innerHTML = pageHtml(pages[i + 1], i + 1);
+            b.el.querySelector('.is-prev').disabled = b.spread === 0;
+            b.el.querySelector('.is-next').disabled = i + 2 >= pages.length;
+            // the logos of the channels on these pages, asked once
+            void this.wantLogos([...(pages[i] && pages[i].rows ? pages[i].rows : []), ...(pages[i + 1] && pages[i + 1].rows ? pages[i + 1].rows : [])].map((c) => c.id));
+        }
+
+        /** The quality switch moved: remembered on this computer; a playing channel is tuned again at it. */
+        setQuality(q) {
+            if (!QUALITIES.some((x) => x[0] === q) || q === this.prefs.quality) return;
+            this.prefs.quality = q;
+            this.savePrefs();
+            const label = (QUALITIES.find((x) => x[0] === q) || [])[1];
+            if (this.on) this.say(`QUALITY ${label}`);
+            if (this.on && this.channel && this.state !== 'nosub') void this.tune(this.channel);
+        }
+
+        // ---------------------------------------------------------------- the on-screen menu and the pad
+
+        /**
+         * MENU is drawn on the display (Yukimi, Nov 20 2026): the pad, the knob and the keyboard move through it. Items:
+         * { label, run(), sub() -> items, mark (checked), hint }.
+         */
+        menuRoot() {
+            const radio = (list, cur, set) => list.map(([id, label]) => ({ label, mark: cur === id, run: () => { set(id); this.closeMenu(); } }));
+            const signed = this.signedIn();
+            const items = [
+                { label: 'Channel Guide', run: () => { this.closeMenu(); this.openBooklet(); } },
+                { label: 'Direct Tune', run: () => { this.closeMenu(); this.button('direct'); } },
+                { label: 'Audio Quality', sub: () => radio([['hi', 'High 256k'], ['std', 'Standard 128k'], ['low', 'Low 32k'], ['eco24', 'Economy 24k'], ['eco16', 'Economy 16k']], this.prefs.quality, (id) => this.setQuality(id)) },
+                { label: 'Display Info', sub: () => radio([['song', 'Artist and Song'], ['channel', 'Channel'], ['show', 'Show']], this.prefs.info, (id) => { this.prefs.info = id; this.savePrefs(); this.paint(); }) },
+                { label: `Volume  ${Math.round(this.prefs.volume * 100)}`, adjust: (d) => this.knobStep('vol', d) },
+                { label: 'Brand', sub: () => radio(ERAS, this.prefs.era, (id) => { this.prefs.era = id; this.savePrefs(); this.applyLook(); }) },
+                { label: 'Radio', sub: () => radio(BODIES, this.prefs.body, (id) => { this.prefs.body = id; this.prefs.zoom = 1; this.savePrefs(); this.applyLook(); }) }
+            ];
+            if (!DOCKED.has(this.prefs.body)) items.push({ label: 'Display', sub: () => radio(DISPLAYS, this.prefs.display, (id) => { this.prefs.display = id; this.savePrefs(); this.applyLook(); }) });
+            items.push(
+                { label: 'Refresh Lineup', run: () => { this.closeMenu(); void this.refreshLineup(); }, off: !signed },
+                signed
+                    ? { label: 'Sign Out', run: () => { this.closeMenu(); void this.signOut(); } }
+                    : { label: 'Sign In', sub: () => [
+                        ...(this.account && this.account.card ? [{ label: 'With CardSpace Card', run: () => { this.closeMenu(); void this.signInCard(); } }] : []),
+                        { label: 'In Alchemy', run: () => { this.closeMenu(); void this.signInBrowser(); } },
+                        { label: 'Type It Here', run: () => { this.closeMenu(); void this.signIn(); } }
+                    ] },
+                { label: 'About', run: () => { this.closeMenu(); this.about(); } }
+            );
+            return items.filter((x) => !x.off);
+        }
+
+        openMenu() {
+            this.menu = { stack: [{ title: 'Menu', items: () => this.menuRoot(), i: 0 }] };
+            this.directMode = false;
+            this.paintMenu();
+        }
+
+        closeMenu() {
+            this.menu = null;
+            this.paintMenu();
+            this.paint();
+        }
+
+        menuLevel() { return this.menu && this.menu.stack[this.menu.stack.length - 1]; }
+
+        /** The pad and the knob (and the arrow keys): the menu when it is open, else channels and replay. */
+        nav(dir) {
+            const lv = this.menuLevel();
+            if (lv) {
+                const items = lv.items();
+                const cur = items[lv.i];
+                if (dir === 'up' || dir === 'down') lv.i = (lv.i + (dir === 'down' ? 1 : -1) + items.length) % items.length;
+                else if (dir === 'left' && cur && cur.adjust) cur.adjust(-1);
+                else if (dir === 'right' && cur && cur.adjust) cur.adjust(1);
+                else if (dir === 'left' || dir === 'back') { if (this.menu.stack.length > 1) this.menu.stack.pop(); else { this.closeMenu(); return; } }
+                else if ((dir === 'select' || dir === 'right') && cur) {
+                    if (cur.sub) {
+                        const sub = cur.sub;
+                        const list = sub();
+                        this.menu.stack.push({ title: cur.label, items: sub, i: Math.max(0, list.findIndex((x) => x.mark)) });
+                    } else if (cur.run) { cur.run(); return; }
+                }
+                this.paintMenu();
+                return;
+            }
+            if (!this.on) { if (dir === 'select') this.power(); return; }
+            if (dir === 'up') this.knobStep('tune', 1);
+            else if (dir === 'down') this.knobStep('tune', -1);
+            else if (dir === 'left') this.seekBy(-15);
+            else if (dir === 'right') this.seekBy(15);
+            else if (dir === 'select') this.button('disp');
+        }
+
+        paintMenu() {
+            const f = this.f;
+            const open = !!this.menu;
+            this.root.classList.toggle('is-menu', open);
+            f.menu.hidden = !open;
+            if (!open) return;
+            const lv = this.menuLevel();
+            const items = lv.items();
+            if (lv.i >= items.length) lv.i = 0;
+            f.mtitle.textContent = lv.title;
+            // a window of rows around the highlighted one (the LCD shows fewer than the colour screens)
+            const rows = this.displayType() === 'tft' ? 6 : 4;
+            const start = Math.max(0, Math.min(items.length - rows, lv.i - Math.floor(rows / 2)));
+            f.mlist.innerHTML = items.slice(start, start + rows).map((it, k) => {
+                const idx = start + k;
+                const tail = it.sub ? '<i class="xr-m-more">&#x203A;</i>' : it.adjust ? '<i class="xr-m-more">&#x2039; &#x203A;</i>' : it.mark ? '<i class="xr-m-mark">&#x2713;</i>' : '';
+                return `<li class="xr-m-item${idx === lv.i ? ' is-sel' : ''}" data-mi="${idx}"><span>${esc(it.label)}</span>${tail}</li>`;
+            }).join('');
+        }
+
+        /** jump: back to the channel before this one. */
+        jump() {
+            const prev = this.prevChannel && this.byId.get(this.prevChannel);
+            if (prev && this.on) void this.tune(prev);
         }
 
         presetDown(n, el) {
@@ -565,6 +837,12 @@
                 clearTimeout(t);
                 press.abort();
                 if (stored) return;
+                // Direct Tune waiting: the number keys type the channel
+                if (this.directMode && this.on) {
+                    this.direct = (this.direct + String(n % 10)).slice(-3);
+                    this.paint();
+                    return;
+                }
                 if (!this.on) { this.power(); if (!this.on) return; }
                 const id = (this.presets[this.prefs.band] || [])[n - 1];
                 const ch = id && this.byId.get(id);
@@ -590,8 +868,7 @@
             }
             this.tuneTurn = (this.tuneTurn || 0) + dir * 15;
             this.setKnob('tune', this.tuneTurn);
-            if (this.on && this.guide) this.guideMove(dir);
-            else if (this.on) this.step(dir);
+            if (this.on) this.step(dir);
         }
 
         knobClick(k, e, el) {
@@ -623,18 +900,31 @@
             el.addEventListener('pointercancel', done, sig);
         }
 
+        /**
+         * The keyboard (Yukimi, Nov 20 2026: "make sure to accept keyboard keys"): with the on-screen menu open the arrows,
+         * Enter and Escape / Backspace move through it; otherwise digits tune (Enter), Up / Down change channel, Left /
+         * Right replay 15 s, Space pauses, End goes live, M menu, G guide, J jump, B preset bank, D display info, P power,
+         * + / - volume.
+         */
         key(e) {
             if (e.ctrlKey || e.altKey || e.metaKey) return;
             const k = e.key;
+            const NAV = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select' };
+            if (this.menu) {
+                if (NAV[k]) this.nav(NAV[k]);
+                else if (k === 'Escape' || k === 'Backspace') this.nav('back');
+                else if (k === 'm' || k === 'M') this.closeMenu();
+                else return;
+                e.preventDefault();
+                return;
+            }
             if (/^[0-9]$/.test(k) && this.on) {
                 this.directMode = true;
                 this.direct = (this.direct + k).slice(-3);
                 this.paint();
-            } else if (this.guide && (k === 'Enter' || k === 'Escape')) {
-                if (k === 'Enter') this.guidePick(); else { this.guide = null; this.paint(); }
             } else if (k === 'Enter' && this.directMode) {
                 const n = Number(this.direct);
-                const ch = this.lineup.find((c) => c.number === n);
+                const ch = this.lineup.find((c) => c.number === n && c.sub !== false) || this.lineup.find((c) => c.number === n);
                 this.directMode = false;
                 this.direct = '';
                 if (ch) void this.tune(ch); else this.say('INVALID CHANNEL');
@@ -642,12 +932,17 @@
                 this.directMode = false; this.direct = ''; this.paint();
             } else if (k === 'Backspace' && this.directMode) {
                 this.direct = this.direct.slice(0, -1); this.paint();
-            } else if (k === 'ArrowUp') this.knobStep('tune', 1);
-            else if (k === 'ArrowDown') this.knobStep('tune', -1);
-            else if (k === 'ArrowLeft' && this.on) this.seekBy(-15);
-            else if (k === 'ArrowRight' && this.on) this.seekBy(15);
+            } else if (NAV[k]) this.nav(NAV[k]);
             else if (k === 'End' && this.on) this.goLive();
             else if (k === ' ' && this.on) this.button('play');
+            else if (k === 'm' || k === 'M') this.openMenu();
+            else if (k === 'g' || k === 'G') this.openBooklet();
+            else if ((k === 'j' || k === 'J') && this.on) this.jump();
+            else if ((k === 'b' || k === 'B') && this.on) this.button('band');
+            else if ((k === 'd' || k === 'D') && this.on) this.button('disp');
+            else if (k === 'p' || k === 'P') this.power();
+            else if (k === '+' || k === '=') this.knobStep('vol', 1);
+            else if (k === '-' || k === '_') this.knobStep('vol', -1);
             else return;
             e.preventDefault();
         }
@@ -663,34 +958,6 @@
             h('seekbackward', () => this.seekBy(-15));
             h('seekforward', () => this.seekBy(15));
             this.app.signal.addEventListener('abort', () => { for (const a of ['play', 'pause', 'nexttrack', 'previoustrack', 'seekbackward', 'seekforward']) h(a, null); });
-        }
-
-        menu(x, y) {
-            const cm = root.contextMenu;
-            if (!cm) return;
-            const acts = {};
-            const item = (text, fn, extra) => { const id = `xr-${Object.keys(acts).length}`; acts[id] = fn; return Object.assign({ text, action: id }, extra || {}); };
-            const signed = this.signedIn();
-            const items = [
-                ...(signed
-                    ? [item(`Sign Out${this.account.handle ? ` (${this.account.handle})` : ''}`, () => void this.signOut())]
-                    : [
-                        ...(this.account && this.account.card ? [item('Sign In', () => void this.signInCard(), { className: 'context-menu-item-default' })] : []),
-                        item('Sign In in Alchemy...', () => void this.signInBrowser(), this.account && this.account.card ? null : { className: 'context-menu-item-default' }),
-                        item('Sign In Here...', () => void this.signIn())
-                    ]),
-                { separator: true },
-                { text: 'Body', submenu: BODIES.map(([id, label]) => item(label, () => { this.prefs.body = id; this.savePrefs(); this.applyLook(); }, { showIndicator: true, indicatorMark: 'radio', checked: this.prefs.body === id })) },
-                { text: 'Display', submenu: DISPLAYS.map(([id, label]) => item(label, () => { this.prefs.display = id; this.savePrefs(); this.applyLook(); this.paint(); }, { showIndicator: true, indicatorMark: 'radio', checked: this.prefs.display === id })) },
-                item('Channel Guide', () => this.button('guide'), { disabled: !this.on || !this.lineup.length }),
-                item('Direct Tune', () => this.button('direct'), { disabled: !this.on || !this.lineup.length }),
-                item('Refresh Lineup', () => void this.refreshLineup(), { disabled: !signed }),
-                { separator: true },
-                item(`About ${NAME}`, () => this.about())
-            ];
-            const anchor = this.root;
-            cm.attachToElement(anchor, { sections: [{ type: 'list', items }], onAction: (a) => { const fn = acts[a]; if (fn) fn(); } });
-            cm.showMenu({ clientX: Math.round(x), clientY: Math.round(y), preventDefault() {}, stopPropagation() {} }, anchor);
         }
 
         // ---------------------------------------------------------------- account
@@ -802,24 +1069,15 @@
             const ch = this.channel;
             const now = ch ? this.now.get(ch.id) : null;
             const preIdx = ch ? (this.presets[this.prefs.band] || []).indexOf(ch.id) : -1;
-            f.pre.textContent = this.on && !this.guide && preIdx >= 0 ? `P${preIdx + 1}` : '';
+            f.pre.textContent = this.on && preIdx >= 0 ? `P${preIdx + 1}` : '';
             let l1num = '';
             let l1name = '';
             let l2 = '';
             let l3 = '';
-            // the channel the art and logo slots show: the guide's, else the tuned one
-            let shown = ch;
-            let shownNow = now;
+            const shown = ch;
+            const shownNow = now;
             if (!this.on) {
                 l1name = '';
-            } else if (this.guide) {
-                const g = this.guideList()[this.guide.i];
-                shown = g || null;
-                shownNow = g ? this.now.get(g.id) : null;
-                l1num = g ? pad(g.number || 0, 3) : '';
-                l1name = g ? g.name : '';
-                l2 = shownNow ? (shownNow.ad ? 'SiriusXM' : shownNow.a || shownNow.s) : 'GUIDE';
-                l3 = shownNow ? (shownNow.ad ? 'Commercial' : shownNow.t) : 'Turn TUNE, press to tune';
             } else if (this.directMode) {
                 l1num = 'CH';
                 l1name = `${this.direct.padEnd(3, '_')}`;
@@ -841,7 +1099,8 @@
                 l1name = this.lineup.length ? 'XM RADIO' : 'UPDATING';
                 l2 = this.lineup.length ? 'Turn TUNE' : 'Channels loading';
             } else {
-                l1num = pad(ch.number || 0, 3);
+                // the receivers show the number as it is (31, 56); the car and tabletop sets pad it (008)
+                l1num = DOCKED.has(this.prefs.body) ? String(ch.number || 0) : pad(ch.number || 0, 3);
                 l1name = ch.name || '';
                 if (this.state === 'acquiring') { l2 = 'ACQUIRING SIGNAL'; l3 = ''; }
                 else if (this.state === 'nosignal') { l2 = 'NO SIGNAL'; l3 = 'Check connection'; }
@@ -855,13 +1114,15 @@
             f.name.textContent = l1name;
             this.setRun(f.l2, l2);
             this.setRun(f.l3, l3);
-            f.band.textContent = this.on ? (this.guide ? 'GUIDE' : this.prefs.band) : '';
-            r.classList.toggle('is-guide', !!this.guide);
+            f.band.textContent = this.on ? this.prefs.band : '';
+            r.classList.toggle('is-guide', !!(this.booklet && this.booklet.open));
             // the song's art (else the channel's logo) and the channel's logo, in the display's own manner
             const songArt = this.on && shown && shownNow && !shownNow.ad && shownNow.i ? shownNow.i : '';
             const logo = this.on && shown && shown.logo ? shown.logo : '';
             this.drawArt(f.art, songArt || logo, 'artKey');
             this.drawArt(f.logo, songArt ? logo : '', 'logoKey');
+            // the channel's background picture behind a colour screen's text (as the Onyx Plus shows its genre art)
+            this.drawBg(this.on && this.displayType() === 'tft' && shown && shown.bg ? shown.bg : '');
             if (this.on && shown && !shown.logo && shown.id) void this.wantLogos([shown.id]);
             f.sig.dataset.bars = !this.on ? '0' : this.state === 'playing' || this.state === 'paused' ? '3' : this.state === 'acquiring' ? '1' : '0';
             this.paintReplay();
@@ -876,7 +1137,8 @@
          * (Floyd-Steinberg dithered, as a graphic LCD shows a picture). Drawn once per picture, never on a timer.
          */
         drawArt(canvas, url, keyName) {
-            const key = url ? `${url}|${this.prefs.display}` : '';
+            const dt = this.displayType();
+            const key = url ? `${url}|${dt}|${this.prefs.era}` : '';
             if (this[keyName] === key) return;
             this[keyName] = key;
             canvas.classList.toggle('is-empty', !url);
@@ -895,8 +1157,10 @@
                 const x = Math.round((W - w) / 2);
                 const y = Math.round((H - h) / 2);
                 g.drawImage(img, x, y, w, h);
-                if (this.prefs.display === 'tft') return;
-                const ink = this.prefs.display === 'dot' ? [111, 243, 255] : [27, 36, 16];
+                if (dt === 'tft') return;
+                // the era's ink (the theme's --xr-ink-rgb: dark on the LCD's backlight, the dot matrix's glow)
+                const rgb = root.getComputedStyle(this.root.querySelector('.xr-display')).getPropertyValue('--xr-ink-rgb').split(',').map(Number);
+                const ink = rgb.length === 3 && rgb.every((v) => v >= 0) ? rgb : (dt === 'dot' ? [111, 243, 255] : [27, 36, 16]);
                 const data = g.getImageData(0, 0, W, H);
                 const d = data.data;
                 const lum = new Float32Array(W * H);
@@ -904,7 +1168,7 @@
                     const a = d[i * 4 + 3] / 255;
                     // transparent logo parts read as the panel's background
                     const v = (0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]) * a + 255 * (1 - a);
-                    lum[i] = this.prefs.display === 'dot' ? 255 - v : v;
+                    lum[i] = dt === 'dot' ? 255 - v : v;
                 }
                 for (let yy = 0; yy < H; yy++) {
                     for (let xx = 0; xx < W; xx++) {
@@ -923,6 +1187,33 @@
                     }
                 }
                 g.putImageData(data, 0, 0);
+            };
+            img.src = url;
+        }
+
+        /** The colour screen's background: the channel's picture, covering, dimmed towards the text. */
+        drawBg(url) {
+            const c = this.f.bg;
+            if (!c || this.bgKey === url) return;
+            this.bgKey = url;
+            c.classList.toggle('is-empty', !url);
+            const g = c.getContext('2d');
+            if (!url) { g.clearRect(0, 0, c.width, c.height); return; }
+            const img = new root.Image();
+            img.decoding = 'async';
+            img.onload = () => {
+                if (this.bgKey !== url) return;
+                const W = c.width;
+                const H = c.height;
+                const sc = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+                const w = img.naturalWidth * sc;
+                const h = img.naturalHeight * sc;
+                g.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+                const shade = g.createLinearGradient(0, 0, 0, H);
+                shade.addColorStop(0, 'rgba(0, 0, 0, 0.15)');
+                shade.addColorStop(1, 'rgba(0, 0, 0, 0.6)');
+                g.fillStyle = shade;
+                g.fillRect(0, 0, W, H);
             };
             img.src = url;
         }

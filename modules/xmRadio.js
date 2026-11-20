@@ -506,7 +506,9 @@ function withPlan(list) {
     return list.map((c) => {
         const out = Object.assign({}, c);
         if (no.has(c.id)) out.sub = false;
-        if (logos[c.id]) out.logo = artPath(logos[c.id], 240);
+        if (logos[c.id]) out.logo = artPath(logos[c.id], 240, 'png');
+        const bg = lineupCache.backgrounds && lineupCache.backgrounds[c.id];
+        if (bg) out.bg = artPath(bg, 480);
         return out;
     });
 }
@@ -521,10 +523,12 @@ function saveLineup() {
  */
 async function logos(ids) {
     if (!lineupCache) await lineup().catch(() => null);
-    if (!lineupCache) return {};
+    if (!lineupCache) return { logos: {}, backgrounds: {} };
     const want = [...new Set((ids || []).map(String))].filter((id) => /^[0-9a-f-]{20,64}$/i.test(id)).slice(0, 60);
     lineupCache.logos = lineupCache.logos || {};
-    const missing = want.filter((id) => !(id in lineupCache.logos));
+    lineupCache.backgrounds = lineupCache.backgrounds || {};
+    // a channel read before backgrounds were kept is read again once for its background
+    const missing = want.filter((id) => !(id in lineupCache.logos) || !(id in lineupCache.backgrounds));
     if (missing.length) {
         const tok = await authToken();
         if (tok) {
@@ -536,9 +540,15 @@ async function logos(ids) {
                     const id = missing[i++];
                     try {
                         const r = await api('GET', `/browse/v1/pages/channel-linear/${id}`, { bearer: tok, query: { entitlementHash: eh } });
-                        const l = r.json && r.json.page && r.json.page.entity && r.json.page.entity.images && r.json.page.entity.images.logo && r.json.page.entity.images.logo.aspect_5x4;
-                        const img = l && (l.preferred || l.default || l.preferredImage || l.defaultImage);
+                        const ims = (r.json && r.json.page && r.json.page.entity && r.json.page.entity.images) || {};
+                        const pickI = (o) => o && (o.preferred || o.default || o.preferredImage || o.defaultImage);
+                        const img = pickI(ims.logo && ims.logo.aspect_5x4);
                         lineupCache.logos[id] = img && img.url ? String(img.url) : '';
+                        // the channel's background picture (its genre's art), behind the colour screens' text
+                        const bgObj = ims.background || ims.tile_background || {};
+                        const bg = pickI(bgObj.aspect_15x7) || pickI(bgObj.aspect_16x9) || pickI(Object.values(bgObj)[0]);
+                        lineupCache.backgrounds = lineupCache.backgrounds || {};
+                        lineupCache.backgrounds[id] = bg && bg.url ? String(bg.url) : '';
                         found++;
                     } catch (_) { /* asked again next time */ }
                 }
@@ -547,8 +557,13 @@ async function logos(ids) {
         }
     }
     const out = {};
-    for (const id of want) if (lineupCache.logos[id]) out[id] = artPath(lineupCache.logos[id], 240);
-    return out;
+    const bgs = {};
+    for (const id of want) {
+        if (lineupCache.logos[id]) out[id] = artPath(lineupCache.logos[id], 240, 'png');
+        const b = lineupCache.backgrounds && lineupCache.backgrounds[id];
+        if (b) bgs[id] = artPath(b, 480);
+    }
+    return { logos: out, backgrounds: bgs };
 }
 
 function noteNotInPlan(id) {
@@ -563,14 +578,14 @@ function noteNotInPlan(id) {
 function presets() {
     const p = load().presets || {};
     const out = {};
-    for (const b of ['A', 'B', 'C']) out[b] = Array.isArray(p[b]) ? p[b].slice(0, 6).map((x) => (typeof x === 'string' && /^[0-9a-f-]{20,64}$/i.test(x) ? x : null)) : [];
+    for (const b of ['A', 'B', 'C']) out[b] = Array.isArray(p[b]) ? p[b].slice(0, 10).map((x) => (typeof x === 'string' && /^[0-9a-f-]{20,64}$/i.test(x) ? x : null)) : [];
     return out;
 }
 
 function setPresets(next) {
     const s = load();
     const clean = {};
-    for (const b of ['A', 'B', 'C']) clean[b] = Array.isArray(next && next[b]) ? next[b].slice(0, 6).map((x) => (typeof x === 'string' && /^[0-9a-f-]{20,64}$/i.test(x) ? x : null)) : [];
+    for (const b of ['A', 'B', 'C']) clean[b] = Array.isArray(next && next[b]) ? next[b].slice(0, 10).map((x) => (typeof x === 'string' && /^[0-9a-f-]{20,64}$/i.test(x) ? x : null)) : [];
     s.presets = clean;
     save();
     return presets();
@@ -578,13 +593,15 @@ function setPresets(next) {
 
 // ------------------------------------------------------------------ tuning and the stream
 
-/** tuneSource with the web player's arguments; the reply's stream addresses. */
-async function tune(channelId, opts = {}) {
+const QUALITIES = ['hi', 'std', 'low', 'eco24', 'eco16'];
+
+/** tuneSource with the web player's arguments: { json, url } (the stream's master playlist on SiriusXM's server). */
+async function tuneUpstream(channelId) {
     const id = String(channelId || '');
     if (!/^[0-9a-f-]{20,64}$/i.test(id)) throw fail('No such channel.', 'XMRADIO_CHANNEL');
     const tok = await authToken();
     if (!tok) throw fail('Sign in to SiriusXM to listen.', 'XMRADIO_SIGNED_OUT');
-    const body = { id, type: opts.type || 'channel-linear', manifestVariant: opts.manifestVariant || 'WEB', trackResumeSupported: false, hlsVersion: opts.hlsVersion || 'V3', mtcVersion: opts.mtcVersion || 'V2' };
+    const body = { id, type: 'channel-linear', manifestVariant: 'WEB', trackResumeSupported: false, hlsVersion: 'V3', mtcVersion: 'V2' };
     const r = await api('POST', '/playback/play/v1/tuneSource', { bearer: tok, body });
     if (r.status === 401) { auth = null; throw fail('The SiriusXM sign-in ended. Sign in again.', 'XMRADIO_SIGNED_OUT'); }
     if (r.status === 403 && r.json && /not-entitled/.test(String(r.json.code || ''))) {
@@ -594,14 +611,30 @@ async function tune(channelId, opts = {}) {
     if (!r.json) throw fail('SiriusXM did not tune the channel.', 'XMRADIO_TUNE', { status: r.status, detail: r.text.slice(0, 400) });
     const url = findStreamUrl(r.json);
     if (!url) throw fail('SiriusXM did not give the channel a stream.', 'XMRADIO_TUNE', { status: r.status, detail: JSON.stringify(r.json).slice(0, 600) });
+    return { json: r.json, url };
+}
+
+/**
+ * A channel for a radio at a quality (the faceplate's switch, Yukimi Nov 20 2026): hi / std / low are SiriusXM's own
+ * 256k / 128k / 32k streams (our copy of the master names only that one, so no player climbs to 256k on a weak link);
+ * eco24 / eco16 are Opus re-encoded on the server (startEco).
+ */
+async function tune(channelId, opts = {}) {
+    const id = String(channelId || '');
+    const quality = QUALITIES.includes(opts.quality) ? opts.quality : 'hi';
+    const { json, url } = await tuneUpstream(id);
+    if (quality === 'eco24' || quality === 'eco16') {
+        const relay = await startEco(id, quality === 'eco16' ? 16 : 24);
+        return { sid: relay.rid, url: `/api/xmradio/eco/${relay.rid}/index.m3u8`, quality, channel: describeTune(json) };
+    }
     const sid = crypto.randomBytes(12).toString('hex');
     // the stream's folder on SiriusXM's server is mirrored under /api/xmradio/live/<sid>/m/: the playlists' own relative
     // lines (about 1,850 a variant: five hours of replay) pass through unchanged
     const up = new URL(url);
     const base = new URL('./', up).href;
-    streams.set(sid, { sid, channelId: id, url, base, used: Date.now() });
+    streams.set(sid, { sid, channelId: id, url, base, quality, used: Date.now() });
     sweepStreams();
-    return { sid, url: `/api/xmradio/live/${sid}/m/${up.href.slice(base.length)}`, channel: describeTune(r.json) };
+    return { sid, url: `/api/xmradio/live/${sid}/m/${up.href.slice(base.length)}`, quality, channel: describeTune(json) };
 }
 
 /** The first HLS address anywhere in the tune reply (its exact place is still being learned). */
@@ -622,16 +655,17 @@ function findStreamUrl(o) {
 
 const ART_KEY = /^(aem|live|if)\/[A-Za-z0-9_./-]{4,200}$/;
 /** Our address for a SiriusXM art key (same origin: the LCD and dot-matrix displays redraw it in a canvas). */
-function artPath(key, size = 240) {
+function artPath(key, size = 240, format = 'jpeg') {
     const k = String(key || '');
-    return ART_KEY.test(k) ? `/api/xmradio/art?k=${encodeURIComponent(k)}&s=${Math.max(32, Math.min(600, Math.round(size)))}` : '';
+    // channel logos as PNG: their transparency kept (Yukimi, Nov 20 2026)
+    return ART_KEY.test(k) ? `/api/xmradio/art?k=${encodeURIComponent(k)}&s=${Math.max(32, Math.min(600, Math.round(size)))}${format === 'png' ? '&f=png' : ''}` : '';
 }
 
 /** SiriusXM's image service: a relative art key (aem/..., if/...) as a sized JPEG address. */
-function imageUrl(key, size = 300) {
+function imageUrl(key, size = 300, format = 'jpeg') {
     if (!key) return '';
     if (/^https?:/.test(key)) return key;
-    const spec = { key, edits: [{ resize: { width: size, height: size } }, { format: { type: 'jpeg' } }] };
+    const spec = { key, edits: [{ resize: { width: size, height: size } }, { format: { type: format === 'png' ? 'png' : 'jpeg' } }] };
     return `https://imgsrv-sxm-prod-device.streaming.siriusxm.com/${Buffer.from(JSON.stringify(spec)).toString('base64')}`;
 }
 
@@ -640,7 +674,7 @@ function describeTune(j) {
     const pickImg = (o) => o && (o.preferredImage || o.defaultImage);
     const logo = pickImg(im.logo && im.logo.aspect_5x4) || pickImg(im.tile && im.tile.aspect_1x1);
     if (logo && logo.url && lineupCache) { lineupCache.logos = lineupCache.logos || {}; if (lineupCache.logos[j.id] !== logo.url) { lineupCache.logos[j.id] = logo.url; saveLineup(); } }
-    return { id: j.id, type: j.type, logo: logo ? artPath(logo.url, 240) : '', skipLimits: j.skipLimits || null };
+    return { id: j.id, type: j.type, logo: logo ? artPath(logo.url, 240, 'png') : '', skipLimits: j.skipLimits || null };
 }
 
 function sweepStreams() {
@@ -680,6 +714,21 @@ function rewritePlaylist(sid, base, text) {
     }).join('\n');
 }
 
+/** A master playlist naming only the variant nearest the quality's bandwidth. */
+function onlyVariant(master, quality) {
+    const want = { hi: 256000, std: 128000, low: 32000 }[quality];
+    if (!want) return master;
+    const lines = master.split('\n');
+    let best = -1;
+    let bestBw = 0;
+    lines.forEach((l, i) => {
+        const m = /^#EXT-X-STREAM-INF:.*?BANDWIDTH=(\d+)/.exec(l);
+        if (m && (best < 0 || Math.abs(Number(m[1]) - want) < Math.abs(bestBw - want))) { best = i; bestBw = Number(m[1]); }
+    });
+    if (best < 0) return master;
+    return lines.filter((l, i) => !(/^#EXT-X-STREAM-INF/.test(l) && i !== best) && !(i > 0 && /^#EXT-X-STREAM-INF/.test(lines[i - 1]) && i - 1 !== best)).join('\n');
+}
+
 async function mirrorFile(sid, rest, query, res) {
     const s = streams.get(sid);
     if (!s) { res.status(404).end(); return; }
@@ -695,7 +744,8 @@ async function mirrorFile(sid, rest, query, res) {
     if (!up.ok) { res.status(up.status === 404 ? 404 : 502).end(); return; }
     const type = up.headers.get('content-type') || '';
     if (/mpegurl/i.test(type) || /\.m3u8$/i.test(url.pathname) || url.href === s.url) {
-        const text = await up.text();
+        let text = await up.text();
+        if (url.href === s.url && s.quality && s.quality !== 'auto') text = onlyVariant(text, s.quality);
         res.set('Content-Type', 'application/vnd.apple.mpegurl');
         res.set('Cache-Control', 'no-store');
         res.send(rewritePlaylist(sid, s.base, text));
@@ -704,6 +754,94 @@ async function mirrorFile(sid, rest, query, res) {
     res.set('Content-Type', type || 'application/octet-stream');
     res.set('Cache-Control', 'private, max-age=600');
     res.send(Buffer.from(await up.arrayBuffer()));
+}
+
+/** A key line's 16 bytes (the pump's decryption): SiriusXM's key service with the account's token. */
+async function keyBytes(uri) {
+    const m = /\/playback\/key\/v1\/([0-9a-f-]{8,64})/i.exec(String(uri || ''));
+    if (!m) throw fail('Not a SiriusXM key.', 'XMRADIO_KEY');
+    const tok = await authToken();
+    if (!tok) throw fail('Sign in to SiriusXM to listen.', 'XMRADIO_SIGNED_OUT');
+    const r = await api('GET', `/playback/key/v1/${m[1]}`, { bearer: tok });
+    const v = r.json && (r.json.key || r.json.keyValue);
+    if (!v) throw fail('SiriusXM did not give the key.', 'XMRADIO_KEY', { status: r.status });
+    return /^[0-9a-f]{32}$/i.test(v) ? Buffer.from(v, 'hex') : Buffer.from(String(v), 'base64');
+}
+
+// ------------------------------------------------------------------ ECO: Opus re-encoded on the server
+
+/*
+ * The faceplate's ECO positions (Yukimi, Nov 20 2026: "low bandwidth mode where the server can re-encode the stream at
+ * a lower bitrate that sounds good but can be played on a very low bandwidth connection"): the channel's 128k stream
+ * through the pump (modules/xmRadioPump.js) into ffmpeg, Opus at 24 or 16 kbit/s in fMP4 HLS (4 s pieces, an hour
+ * kept for replay) under <cache>/xmradio-eco/<rid>/. One relay per channel and rate, shared; it stops two minutes after
+ * nobody asked for it.
+ */
+const ECO_IDLE_MS = 2 * 60 * 1000;
+const relays = new Map(); // rid -> { rid, channelId, kbps, dir, ff, pump, used, dead }
+let ecoSweep = null;
+
+function ecoRoot() { return path.join(path.dirname(accountFile()), 'xmradio-eco'); }
+
+async function startEco(channelId, kbps) {
+    for (const r of relays.values()) {
+        if (r.channelId === channelId && r.kbps === kbps && !r.dead) { r.used = Date.now(); return r; }
+    }
+    const { spawn } = require('child_process');
+    const rid = crypto.randomBytes(12).toString('hex');
+    const dir = path.join(ecoRoot(), rid);
+    fs.mkdirSync(dir, { recursive: true });
+    const ff = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'aac', '-i', 'pipe:0',
+        '-c:a', 'libopus', '-b:a', `${kbps}k`, '-vbr', 'on', '-application', 'audio',
+        '-f', 'hls', '-hls_time', '4', '-hls_list_size', '900', '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
+        '-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-hls_segment_filename', path.join(dir, 's%05d.m4s'),
+        path.join(dir, 'index.m3u8')], { stdio: ['pipe', 'ignore', 'pipe'] });
+    const relay = { rid, channelId, kbps, dir, ff, pump: null, used: Date.now(), dead: false };
+    relays.set(rid, relay);
+    ff.stderr.on('data', (d) => console.warn(`[xmRadio eco] ${String(d).trim().slice(0, 200)}`));
+    ff.stdin.on('error', () => { /* ffmpeg ended */ });
+    ff.on('exit', () => stopEco(rid));
+    const pump = require('./xmRadioPump').createPump({
+        channelId, quality: 'std', keyBytes,
+        tune: async (id) => tuneUpstream(id),
+        log: (lvl, t) => console.warn(t)
+    });
+    relay.pump = pump;
+    pump.on('segment', (sg) => { if (!relay.dead) ff.stdin.write(sg.adts); });
+    pump.on('error', () => stopEco(rid));
+    pump.start({ back: 12 });
+    if (!ecoSweep) {
+        ecoSweep = setInterval(() => {
+            for (const r of relays.values()) if (Date.now() - r.used > ECO_IDLE_MS) stopEco(r.rid);
+            if (!relays.size) { clearInterval(ecoSweep); ecoSweep = null; }
+        }, 30000);
+        if (ecoSweep.unref) ecoSweep.unref();
+    }
+    return relay;
+}
+
+function stopEco(rid) {
+    const r = relays.get(rid);
+    if (!r || r.dead) return;
+    r.dead = true;
+    relays.delete(rid);
+    try { r.pump && r.pump.stop(); } catch (_) { /* stopped */ }
+    try { r.ff.stdin.end(); } catch (_) { /* gone */ }
+    try { r.ff.kill('SIGTERM'); } catch (_) { /* gone */ }
+    setTimeout(() => fs.rm(r.dir, { recursive: true, force: true }, () => {}), 2000);
+}
+
+async function ecoFile(rid, file, res) {
+    const r = relays.get(rid);
+    if (!r || !/^(index\.m3u8|init\.mp4|s\d{5}\.m4s)$/.test(file)) { res.status(404).end(); return; }
+    r.used = Date.now();
+    const p = path.join(r.dir, file);
+    // the first playlist comes once ffmpeg has its first piece (a few seconds after the channel was tuned)
+    for (let i = 0; i < 60 && !fs.existsSync(p); i++) await new Promise((ok) => setTimeout(ok, 300));
+    if (!fs.existsSync(p)) { res.status(404).end(); return; }
+    res.set('Cache-Control', file === 'index.m3u8' ? 'no-store' : 'private, max-age=3600');
+    res.type(file.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp4');
+    res.sendFile(file, { root: r.dir });
 }
 
 /** The AES key for a stream: SiriusXM's key service with the token, as the raw 16 bytes HLS wants. */
@@ -748,12 +886,13 @@ function mount(app, authMiddleware) {
     app.get('/api/xmradio/art', authMiddleware, admin, async (req, res) => {
         const k = String(req.query.k || '');
         const size = Math.max(32, Math.min(600, Number(req.query.s) || 240));
+        const fmt = req.query.f === 'png' ? 'png' : 'jpeg';
         if (!ART_KEY.test(k)) { res.status(404).end(); return; }
-        const ck = `${k}|${size}`;
+        const ck = `${k}|${size}|${fmt}`;
         let hit = artCache.get(ck);
         if (!hit) {
             try {
-                const r = await fetch(imageUrl(k, size), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+                const r = await fetch(imageUrl(k, size, fmt), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
                 if (!r.ok) { res.status(404).end(); return; }
                 hit = { type: r.headers.get('content-type') || 'image/jpeg', body: Buffer.from(await r.arrayBuffer()) };
             } catch (_) { res.status(502).end(); return; }
@@ -764,6 +903,7 @@ function mount(app, authMiddleware) {
         res.set('Cache-Control', 'private, max-age=86400');
         res.send(hit.body);
     });
+    app.get('/api/xmradio/eco/:rid/:file', authMiddleware, admin, (req, res) => { void ecoFile(String(req.params.rid), String(req.params.file), res); });
     app.get('/api/xmradio/key/:sid/:keyId', authMiddleware, admin, (req, res) => { void streamKey(String(req.params.sid), String(req.params.keyId), res); });
 }
 
@@ -780,11 +920,13 @@ module.exports = {
     signInPageCancel,
     mountSignInPage,
     tune,
+    tuneUpstream,
+    keyBytes,
     mount,
     lineup,
     logos,
     presets,
     setPresets,
     nowPlaying: (id) => nowPlaying.get(id) || null,
-    _test: { rewritePlaylist, findStreamUrl, jwtExp, maskHandle, upstream, streams, imageUrl, artPath, state: () => load() }
+    _test: { rewritePlaylist, findStreamUrl, jwtExp, maskHandle, upstream, streams, imageUrl, artPath, onlyVariant, state: () => load() }
 };

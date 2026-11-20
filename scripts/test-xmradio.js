@@ -39,6 +39,34 @@ assert.strictEqual(t.maskHandle('yukimi@example.com'), 'y•••••@example
 assert.strictEqual(t.maskHandle('ab'), 'ab');
 assert.ok(t.jwtExp('x.' + Buffer.from(JSON.stringify({ exp: 100 })).toString('base64url') + '.y') === 100000);
 
+// the quality switch: our master names only the variant nearest the position's bandwidth
+const mst = ['#EXTM3U', '#EXT-X-INDEPENDENT-SEGMENTS',
+    '#EXT-X-STREAM-INF:BANDWIDTH=128000,CODECS="mp4a.40.2"', '128k/128k_slide_long.m3u8',
+    '#EXT-X-STREAM-INF:BANDWIDTH=32000,CODECS="mp4a.40.5"', '32k/32k_slide_long.m3u8',
+    '#EXT-X-STREAM-INF:BANDWIDTH=64000,CODECS="mp4a.40.5"', '64k/64k_slide_long.m3u8',
+    '#EXT-X-STREAM-INF:BANDWIDTH=256000,CODECS="mp4a.40.2"', '256k/256k_slide_long.m3u8', ''].join('\n');
+for (const [q, want] of [['hi', '256k/256k_slide_long.m3u8'], ['std', '128k/128k_slide_long.m3u8'], ['low', '32k/32k_slide_long.m3u8']]) {
+    const lines = t.onlyVariant(mst, q).split('\n').filter((l) => l && !l.startsWith('#'));
+    assert.deepStrictEqual(lines, [want], q);
+}
+
+// the pump: variant choice, media parsing (sequence, date-time, key and IV), ID3 stripped, AES-128-CBC
+const pump = require('../modules/xmRadioPump')._test;
+assert.strictEqual(pump.pickVariant(mst, 'https://h.streaming.siriusxm.com/v1/x', 'std'), 'https://h.streaming.siriusxm.com/v1/128k/128k_slide_long.m3u8');
+const pm = pump.parseMedia(['#EXTM3U', '#EXT-X-MEDIA-SEQUENCE:5029', '#EXT-X-PROGRAM-DATE-TIME:2026-11-20T21:00:00.000Z',
+    '#EXT-X-KEY:METHOD=AES-128,URI="https://api.edge-gateway.siriusxm.com/playback/key/v1/abc-123",IV=0x3F26F41B2651345FBB04BB8895367253',
+    '#EXTINF:9.75,', 'a.aac', '#EXTINF:10,', 'b.aac'].join('\n'), 'https://h.streaming.siriusxm.com/v1/128k/x.m3u8');
+assert.deepStrictEqual(pm.map((m) => [m.seq, m.pdt, m.dur]), [[5029, Date.parse('2026-11-20T21:00:00.000Z'), 9.75], [5030, Date.parse('2026-11-20T21:00:09.750Z'), 10]]);
+assert.strictEqual(pm[1].url, 'https://h.streaming.siriusxm.com/v1/128k/b.aac');
+assert.strictEqual(pm[0].iv.toString('hex'), '3f26f41b2651345fbb04bb8895367253');
+const crypto = require('crypto');
+const kk = crypto.randomBytes(16);
+const id3 = Buffer.concat([Buffer.from('ID3'), Buffer.from([4, 0, 0, 0, 0, 0, 5]), Buffer.from('hello')]);
+const audio = Buffer.from([0xff, 0xf1, 0x50, 0x80]);
+const c = crypto.createCipheriv('aes-128-cbc', kk, pm[0].iv);
+const enc = Buffer.concat([c.update(Buffer.concat([id3, audio])), c.final()]);
+assert.ok(pump.stripId3(pump.decrypt(enc, kk, pm[0].iv, 5029)).equals(audio));
+
 // the one-time sign-in page: its address answers only its own code
 const xm = require('../modules/xmRadio');
 const { url } = xm.signInPageStart();
