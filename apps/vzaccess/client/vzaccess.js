@@ -36,7 +36,59 @@
     const doc = document;
     const VERSION = '7.6.3.1 (2642f)';
     const A = '/melaton-apps/vzaccess/assets';
-    const PREFS_KEY = 'vzaccess.prefs';
+    const PREFS_KEY = 'vzaccess.prefs'; // (before #953: this browser's copy; read once into the registry)
+    /**
+     * Preferences live where 7.6.3.1 keeps its own (HKCU\Software\Smith Micro\VZAM - Verizon Wireless on the VM), in
+     * the user's Melaton registry (melatonRegistry: the profile on the server), under the program's own value names
+     * (VZAccess Manager.exe's strings). A few have no 7.6 name and say so (LastUpdateCheck, LastViewMinimum,
+     * VPNClient, AutoStartVPN, WiFiAdapter).
+     */
+    const REG = 'HKCU\\Software\\Smith Micro\\VZAM - Verizon Wireless';
+    const PREF_DEFAULTS = {
+        // Connect: the phone is a LAN Adapter device (its modem is always its own connection): 7.6's choices 2004-2006
+        DisallowWWANIfRoaming: 0, NDISMode: 2006, AutoConnectWiFi: 0, ConnectionPrecedence: 'WiFi,WWAN', AutoSwitchToWiFi: 0,
+        ShowUsageInfoOnConnect: 1,
+        // Launch
+        WWANBrowserOpen: 0, WWANBrowserURL: '', RunProgram: 0, RunProgramPath: '',
+        // VPN (the Nightshade Network is Melaton's VPN client)
+        VPNClient: '', WWANVPNProfile: '', AutoStartVPN: 0,
+        // Device Settings
+        PowerOffEmbeddedDevice: 0,
+        // Wi-Fi
+        WiFiAdapter: '', WiFiShowPreferred: 0, WiFiAdvanced: 0, WiFiAutoLocationsUpdate: 0, PreferredList: '',
+        // TXT Messaging (string 160: five days)
+        SMSSwitchView: 0, SMSPlaySound: 1, SMSPlaySoundPath: 'C:\\Program Files\\Verizon Wireless\\VZAccess Manager\\System\\SMS.wav',
+        SMSValidityPeriod: 160, SMSWarnBeforeDelete: 1, SMSConfirmAfterDelete: 1, SMSConfirmSent: 1, CallbackNumber: '',
+        // Application
+        MinimizeToTray: 1, ShowTrayPopups: 1, RunAtStartup: 1,
+        // VZAM Update (string 191: Weekly)
+        UpdateFrequency: 191, UpdateSchedule: 0, LastUpdateCheck: 0,
+        // the window and Warning!
+        LastViewMinimum: 0, HideWWANConnectionWarning: 0
+    };
+    function prefs() {
+        const reg = root.melatonRegistry;
+        const got = reg && typeof reg.getKey === 'function' ? reg.getKey(REG) : {};
+        return Object.assign({}, PREF_DEFAULTS, got);
+    }
+    function pref(name) { return prefs()[name]; }
+    function setPrefs(values) {
+        const reg = root.melatonRegistry;
+        if (reg && typeof reg.set === 'function') return Promise.resolve(reg.set(REG, values)).catch(() => null);
+        return Promise.resolve(null);
+    }
+    /** Once: what this browser kept before (#947) goes into the registry, then the local copy is dropped. */
+    function migratePrefs() {
+        const old = readJson(PREFS_KEY, null);
+        if (!old || typeof old !== 'object') return;
+        const v = {};
+        if (old.minimum != null) v.LastViewMinimum = old.minimum ? 1 : 0;
+        if (old.runAtStartup === false) v.RunAtStartup = 0;
+        if (old.popup === false) v.ShowTrayPopups = 0;
+        if (old.noConnectWarning) v.HideWWANConnectionWarning = 1;
+        if (Object.keys(v).length) void setPrefs(v);
+        writeJson(PREFS_KEY, null);
+    }
     const SESSION_KEY = 'vzaccess.session';
     const LOG_KEY = 'vzaccess.sessionLog';
     const GRAPH_POINTS = 120;
@@ -54,7 +106,7 @@
      * Session Log Filter 540, About 101, Usage 498 (its WebBrowser control is a plain pane here), Warning! 465.
      * Drawn by Melaton's dialog kit (vistaDialogTemplate.js) as the VM draws them.
      */
-    const TPL = {"vzam:428":{"t":"Session Log","w":380,"h":162,"f":["MS Shell Dlg 2",8],"s":2160861248,"c":[[415,"SysListView32",7,8,366,110,1350633472,"",0],[1212,"B",7,121,366,16,1342177287,"",0],[1113,"S",10,125,260,8,1342325504,"",0],[1213,"S",286,125,85,8,1342374402,"* View Important Notice",0],[503,"B",7,142,42,14,1342242816,"&Export",0],[504,"B",51,142,42,14,1342242816,"&Clear",0],[505,"B",95,142,42,14,1342242816,"&Filter",0],[1,"B",324,142,50,14,1342242817,"Close",0]]},"vzam:540":{"t":"Session Log Filter","w":268,"h":127,"f":["MS Shell Dlg 2",8],"s":2160599232,"c":[[1232,"S",15,7,246,14,1342308352,"Use the following items to filter through the session log.",0],[1020,"B",17,25,68,10,1342242819,"&Connection:",0],[1065,"C",91,25,170,78,1344339971,"",0],[1021,"B",17,49,67,10,1342242819,"De&vice:",0],[1067,"C",91,49,170,79,1344339971,"",0],[1022,"B",17,72,39,10,1342242819,"&Date",0],[-1,"S",65,73,21,8,1342308352,"&From:",0],[1069,"SysDateTimePick32",91,72,70,15,1342242848,"",0],[-1,"S",175,72,14,8,1342308352,"&To:",0],[1071,"SysDateTimePick32",192,72,70,15,1342242848,"",0],[1,"B",157,107,50,14,1342242817,"OK",0],[2,"B",211,107,50,14,1342242816,"Cancel",0]]},"vzam:101":{"t":"About VZAccess Manager","w":257,"h":242,"f":["MS Shell Dlg 2",8],"s":2160855104,"c":[[1,"B",200,221,50,14,1342242817,"OK",0],[-1,"S",7,7,144,17,1342308352,"VZAccess Manager\r\nPowered By QuickLink Mobile Technology",0],[-1,"S",7,30,95,21,1342308352,"Copyright © 2006-2011\r\nSmith Micro Software, Inc.",0],[425,"S",7,52,204,26,1342308352,"Version 7.0.0 ( Alpha build)\r\nConsumer Release",0],[386,"SysListView32",7,91,243,125,1350633472,"",0],[-1,"S",7,82,91,8,1342308352,"Hardware information:",0],[387,"S",129,30,110,26,1342308352,"Static",0]]},"vzam:498":{"t":"Usage","w":226,"h":159,"f":["MS Shell Dlg 2",8],"s":2429296708,"c":[[1,"B",169,138,50,14,1342242817,"Close",0],[499,"{8856F961-340A-11D0-A96B-00C04FD705A2}",7,7,212,125,1342177280,"",0],[511,"E",7,7,212,125,1084233732,"",0],[497,"B",7,135,149,18,1073815555,"&Do not show my Usage information on connection",0]]},"vzam:465":{"t":"Warning!","w":231,"h":148,"f":["MS Shell Dlg 2",8],"s":2160591040,"c":[[1,"B",120,127,50,14,1342242817,"&Continue",0],[2,"B",174,127,50,14,1342242816,"Cancel",0],[466,"B",35,109,161,10,1342242819,"&Don't show this message again",0],[464,"S",7,7,21,20,1342177294,"",0],[1009,"RICHEDIT50W",35,7,190,98,1342179332,"",0]]}};
+    const TPL = {"vzam:428":{"t":"Session Log","w":380,"h":162,"f":["MS Shell Dlg 2",8],"s":2160861248,"c":[[415,"SysListView32",7,8,366,110,1350633472,"",0],[1212,"B",7,121,366,16,1342177287,"",0],[1113,"S",10,125,260,8,1342325504,"",0],[1213,"S",286,125,85,8,1342374402,"* View Important Notice",0],[503,"B",7,142,42,14,1342242816,"&Export",0],[504,"B",51,142,42,14,1342242816,"&Clear",0],[505,"B",95,142,42,14,1342242816,"&Filter",0],[1,"B",324,142,50,14,1342242817,"Close",0]]},"vzam:540":{"t":"Session Log Filter","w":268,"h":127,"f":["MS Shell Dlg 2",8],"s":2160599232,"c":[[1232,"S",15,7,246,14,1342308352,"Use the following items to filter through the session log.",0],[1020,"B",17,25,68,10,1342242819,"&Connection:",0],[1065,"C",91,25,170,78,1344339971,"",0],[1021,"B",17,49,67,10,1342242819,"De&vice:",0],[1067,"C",91,49,170,79,1344339971,"",0],[1022,"B",17,72,39,10,1342242819,"&Date",0],[-1,"S",65,73,21,8,1342308352,"&From:",0],[1069,"SysDateTimePick32",91,72,70,15,1342242848,"",0],[-1,"S",175,72,14,8,1342308352,"&To:",0],[1071,"SysDateTimePick32",192,72,70,15,1342242848,"",0],[1,"B",157,107,50,14,1342242817,"OK",0],[2,"B",211,107,50,14,1342242816,"Cancel",0]]},"vzam:101":{"t":"About VZAccess Manager","w":257,"h":242,"f":["MS Shell Dlg 2",8],"s":2160855104,"c":[[1,"B",200,221,50,14,1342242817,"OK",0],[-1,"S",7,7,144,17,1342308352,"VZAccess Manager\r\nPowered By QuickLink Mobile Technology",0],[-1,"S",7,30,95,21,1342308352,"Copyright © 2006-2011\r\nSmith Micro Software, Inc.",0],[425,"S",7,52,204,26,1342308352,"Version 7.0.0 ( Alpha build)\r\nConsumer Release",0],[386,"SysListView32",7,91,243,125,1350633472,"",0],[-1,"S",7,82,91,8,1342308352,"Hardware information:",0],[387,"S",129,30,110,26,1342308352,"Static",0]]},"vzam:498":{"t":"Usage","w":226,"h":159,"f":["MS Shell Dlg 2",8],"s":2429296708,"c":[[1,"B",169,138,50,14,1342242817,"Close",0],[499,"{8856F961-340A-11D0-A96B-00C04FD705A2}",7,7,212,125,1342177280,"",0],[511,"E",7,7,212,125,1084233732,"",0],[497,"B",7,135,149,18,1073815555,"&Do not show my Usage information on connection",0]]},"vzam:465":{"t":"Warning!","w":231,"h":148,"f":["MS Shell Dlg 2",8],"s":2160591040,"c":[[1,"B",120,127,50,14,1342242817,"&Continue",0],[2,"B",174,127,50,14,1342242816,"Cancel",0],[466,"B",35,109,161,10,1342242819,"&Don't show this message again",0],[464,"S",7,7,21,20,1342177294,"",0],[1009,"RICHEDIT50W",35,7,190,98,1342179332,"",0]]},"vzam:862":{"t":"Preferences","w":337,"h":214,"f":["MS Shell Dlg 2",8],"s":2160599240,"c":[[1299,"S",7,7,100,180,1350696960,"",131072],[1300,"S",107,0,230,187,1350696960,"",0],[1,"B",225,193,50,14,1342242817,"OK",0],[2,"B",281,193,50,14,1342242816,"Cancel",0]]},"vzam:32052":{"t":"","w":230,"h":208,"f":["MS Shell Dlg 2",8],"s":1074266176,"c":[[1104,"S",7,7,213,8,1342308352,"Connectivity options",0],[1074,"S",7,20,21,20,1342177294,"#32065",0],[32035,"B",40,19,180,10,1342242819,"Do not allow WWAN connectivity when &roaming",0],[2002,"S",40,32,152,8,1342308352,"Device &operating mode:",0],[2003,"C",40,43,180,59,1344339971,"",0],[2001,"S",40,59,152,8,1342308352,"D&evice connection preference:",0],[2000,"C",40,70,180,59,1344339971,"",0],[1320,"B",40,86,77,10,1342242819,"Auto-connect Wi-&Fi",0],[1318,"S",40,99,86,8,1342308352,"Auto-&connect precedence:",0],[393,"B",170,108,50,14,1342242816,"Move &Up",0],[401,"B",170,123,50,14,1342242816,"Move &Down",0],[1567,"B",40,141,173,10,1342242819,"Automatically &switch from WWAN to Wi-Fi",0],[523,"S",7,174,213,8,1342308352,"WWAN usage information",0],[1075,"S",7,187,21,20,1342177294,"#32065",0],[524,"B",40,186,164,10,1342242819,"Display &my usage information on connection",0],[1317,"SysListView32",40,108,125,29,1350649857,"",0],[1707,"E",58,155,94,14,1350631552,"",0],[1708,"S",40,155,16,14,1342308864,"&APN:",0],[402,"B",154,155,66,14,1342242816,"Restore De&fault",0]]},"vzam:514":{"t":"","w":230,"h":180,"f":["MS Shell Dlg 2",8],"s":1073741888,"c":[[515,"S",7,7,213,8,1342308352,"Web browser options",0],[518,"B",40,19,93,10,1342373897,"&Do not open my browser",0],[519,"B",40,32,152,10,1342177289,"Open my &browser to my default home page",0],[520,"B",40,45,112,10,1342177289,"Open my browser to this &URL:",0],[521,"E",52,58,149,14,1350762624,"",0],[-1,"S",7,20,21,20,1342177294,"#32065",0],[527,"S",7,83,213,8,1342308352,"Run program options",0],[530,"B",40,97,113,10,1342242819,"&Run program on connection:",0],[531,"E",52,111,149,14,1350631552,"",0],[532,"B",203,111,12,14,1342242816,"...",0],[525,"B",40,163,154,10,1342242819,"Disable IE Proxy &settings for this connection",0],[516,"S",7,7,213,8,1342308352,"Browser Options on Connection",0],[529,"S",7,100,21,20,1342177294,"#32065",0]]},"vzam:577":{"t":"","w":230,"h":180,"f":["MS Shell Dlg 2",8],"s":1074266176,"c":[[1110,"S",7,7,213,8,1342308352,"VPN connection",0],[-1,"S",42,19,181,16,1342308352,"You can configure the VPN so that it will automatically be started every time you connect.",0],[-1,"S",40,40,41,8,1342308352,"&VPN Client:",0],[578,"C",40,49,164,97,1344340227,"",0],[1085,"S",40,68,110,8,1342308352,"Pro&file:",0],[582,"C",40,77,164,87,1344339971,"",0],[583,"B",149,95,55,14,1342242816,"&Configure...",0],[579,"S",40,113,133,8,1342308352,"&Other VPN Application:",0],[581,"E",40,122,149,14,1350631552,"",0],[584,"B",192,122,12,14,1342242816,"...",0],[585,"B",40,144,149,10,1342373891,"&Automatically start the VPN on connection",0],[1124,"S",7,20,21,20,1342177294,"#32065",0]]},"vzam:32071":{"t":"","w":230,"h":180,"f":["MS Shell Dlg 2",8],"s":1074274368,"c":[[32041,"S",7,7,213,8,1342308352,"Security options",0],[32042,"S",40,19,114,16,1342308352,"Lock and unlock your device or change the lock code.",0],[32044,"B",114,21,65,14,1073807360,"&Disable SIM PIN...",0],[32045,"B",156,21,65,14,1342242816,"&Security Setup...",0],[1019,"B",40,63,79,10,1073807363,"Ena&ble NovaSpeed",0],[1230,"B",40,75,93,10,1073807363,"Enable R&emovable Disk",0],[1231,"B",40,88,172,10,1073807363,"Enable \"&VZAccess Manager\" CD-ROM Disk",0],[32048,"B",40,101,170,10,1073807363,"Po&wer off the device at the application shutdown",0],[32047,"S",7,47,213,8,1342308352,"Device options",0],[32051,"S",7,60,21,20,1342177294,"#32065",0],[32043,"B",40,21,65,14,1073807360,"&Modify SIM PIN...",0],[32050,"S",7,20,21,20,1342177294,"#32065",0]]},"vzam:790":{"t":"","w":230,"h":192,"f":["MS Shell Dlg 2",8],"s":1073741888,"c":[[1108,"S",7,7,216,8,1342308352,"Wi-Fi options",0],[1302,"S",7,20,21,20,1342177294,"#32065",0],[-1,"S",40,19,74,8,1342308352,"Use this Wi-Fi &adapter:",0],[1238,"C",40,29,183,93,1344339971,"",0],[1234,"B",40,47,145,10,1342242819,"Display only preferred wireless &networks",0],[1235,"B",40,60,156,10,1342242819,"Display ad&vanced Wi-Fi network information",0],[1240,"S",7,87,216,8,1342308352,"Preferred networks",0],[1305,"S",7,100,21,20,1342177294,"#32065",0],[1241,"SysListView32",40,99,127,87,1350633476,"",0],[389,"B",173,99,50,14,1342242816,"A&dd...",0],[399,"B",173,117,50,14,1342242816,"&Edit...",0],[403,"B",173,135,50,14,1342242816,"&Remove",0],[405,"B",173,153,50,14,1342242816,"Move &Up",0],[408,"B",173,171,50,14,1342242816,"&Move Down",0],[3220,"B",40,74,166,10,1342242819,"Automatically &check for Wi-Fi locations updates",0]]},"vzam:32066":{"t":"","w":230,"h":180,"f":["MS Shell Dlg 2",8],"s":1073741888,"c":[[1099,"S",7,7,213,8,1342308352,"Incoming message options",0],[32068,"B",40,19,181,10,1342242819,"&Open SMS window on arrival of new messages",0],[32070,"B",40,33,138,10,1342242819,"Play sound on arrival of new &messages",0],[32072,"B",183,31,40,14,1342242816,"Pl&ay",0],[32074,"E",52,50,153,14,1350631552,"",0],[32075,"B",211,49,12,14,1342242816,"...",0],[1098,"S",7,69,213,8,1342308352,"Outgoing message options",0],[-1,"S",40,81,90,8,1342308354,"&Try message delivery for:",0],[32078,"C",135,79,88,86,1344339971,"",0],[32079,"S",36,100,94,8,1342308354,"Callback &number:",0],[32080,"E",135,98,88,14,1350639744,"",0],[1049,"S",36,100,94,8,1342308354,"Service center &number:",0],[1050,"E",135,98,88,14,1350631552,"",0],[1100,"S",7,115,213,8,1342308352,"Confirmations",0],[32081,"B",40,127,123,10,1342242819,"&Warn before deletion of messages",0],[32082,"B",40,141,107,10,1342242819,"&Confirm deletion of messages",0],[32083,"B",40,155,88,10,1342242819,"Confirm &sent messages",0],[1014,"S",7,20,21,20,1342177294,"#32065",0],[1015,"S",7,81,21,20,1342177294,"#32065",0],[1016,"S",7,127,21,20,1342177294,"#32065",0],[3074,"S",40,168,90,8,1342308354,"Sto&re all messages on:",0],[3073,"C",135,166,88,86,1344339971,"",0]]},"vzam:32054":{"t":"","w":230,"h":180,"f":["MS Shell Dlg 2",8],"s":1073741888,"c":[[1105,"S",7,7,213,8,1342308352,"Run options",0],[32055,"B",40,20,105,10,1342242819,"&Minimize application into tray",0],[32056,"B",40,36,129,10,1342242819,"&Show popup status windows by tray",0],[32057,"B",40,52,181,10,1342242819,"&Run VZAccess Manager at Startup",0],[1017,"S",7,20,21,20,1342177294,"#32065",0]]},"vzam:32059":{"t":"","w":230,"h":180,"f":["MS Shell Dlg 2",8],"s":1074266176,"c":[[1111,"S",7,7,213,8,1342308352,"Updates",0],[1018,"S",7,20,21,20,1342177294,"#32065",0],[32060,"S",40,20,175,16,1342308352,"QuickLink Mobile can check the Internet automatically for updates.",0],[-1,"S",40,51,63,8,1342308352,"Check for &updates:",0],[32063,"C",109,48,66,79,1344339971,"",0],[32064,"B",39,73,84,14,1342242816,"&Check for Updates Now",0],[1078,"S",41,112,140,8,1342308352,"Last check for updates was on:",0],[1079,"S",41,137,140,8,1342308352,"Next scheduled check for updates is on:",0],[1080,"S",52,120,162,13,1342308352,"Day at Time",0],[1081,"S",52,145,162,13,1342308352,"Day at Time",0],[1082,"S",7,98,213,8,1342308352,"Update information",0],[1019,"S",7,111,21,20,1342177294,"#32065",0]]},"vzam:3078":{"t":"","w":230,"h":180,"f":["MS Shell Dlg 2",8],"s":1074266176,"c":[[1743,"S",7,7,213,8,1342308352,"Firmware Updates",0],[1744,"B",40,44,82,10,1342242819,"Auto-&download",0],[1745,"B",124,44,70,10,1342242819,"Auto-&update",0],[1746,"S",40,20,175,16,1342308352,"%s can check the Internet automatically for updates.",0],[1747,"S",7,83,213,8,1342308352,"Firmware Update Status",0],[1748,"S",7,20,21,20,1342177294,"#32065",0],[1749,"S",7,99,21,20,1342177294,"#32065",0],[1751,"B",39,60,77,14,1342242816,"&Check for Updates",0]]}};
 
     /** The dialog kit (loaded on demand) with the templates above. */
     function kit() {
@@ -113,10 +165,24 @@
         return { html: '<b>Mobile Broadband</b>', tech: '' };
     }
 
-    /** VZAM's signal meter (its bracket and four bars, from the 7.6 capture): 0-4 bars lit. */
+    /**
+     * VZAM's signal meter, 0-4 bars lit: 7.6.3.1's own 25 x 20 drawing (the bracket with its flag, four capped bars),
+     * taken pixel for pixel from a capture of the program (bar 4 lit made from bar 3's columns). Pixel art: drawn at
+     * its size, nearest-neighbour on a scaled screen (vzaccess.css .vz-meter).
+     */
     function meterHtml(bars) {
         const n = Math.max(0, Math.min(4, Math.round(Number(bars) || 0)));
-        return `<img class="vz-meter" src="${A}/meter-${n}.png" alt="" draggable="false">`;
+        return `<img class="vz-meter" src="${A}/meter-${n}.png" width="25" height="20" alt="" draggable="false">`;
+    }
+
+    /**
+     * Verizon's 4G LTE / 5G / 5G Ultra Wideband marks (Yukimi's artwork) as tall as the meter (20 px) and on its base
+     * line; one bitmap per screen scale (1x, 1.5x, 2x, each a whole number of pixels) so none is resampled.
+     */
+    const MARK_W = { '4glte': 68, '5g': 34, '5guw': 76 };
+    function markHtml(mark, alt) {
+        const b = `${A}/tech-${mark}-20`;
+        return `<img class="vz-tech-mark" src="${b}.png" srcset="${b}.png 1x, ${b}@1.5x.png 1.5x, ${b}@2x.png 2x" width="${MARK_W[mark]}" height="20" alt="${esc(alt)}" draggable="false">`;
     }
 
     const barsOfPercent = (p) => { const v = Number(p); return !Number.isFinite(v) || v <= 0 ? 0 : v >= 80 ? 4 : v >= 60 ? 3 : v >= 35 ? 2 : 1; };
@@ -140,7 +206,8 @@
             this.netSel = 'wwan';
             this.stats = { last: null, rx: [], tx: [], maxRx: 0, maxTx: 0, base: null, rxRate: 0, txRate: 0 };
             this.offs = [];
-            this.mini = !!readJson(PREFS_KEY, {}).minimum; // View > Minimum (7.6 opens in the view it closed in)
+            migratePrefs();
+            this.mini = !!Number(pref('LastViewMinimum')); // View > Minimum (7.6 opens in the view it closed in)
             this.cellInfo = null; // AndroidCellular.getCellInfo(), read when asked
             this.cellAt = 0;
             this.dialogs = new Map(); // the kit's dialogs open now (id -> ctx), closed with the program
@@ -314,16 +381,18 @@
             w.content.classList.add('vz-client');
             w.content.innerHTML = `
                 <div class="vz-root">
-                    <div class="naxt-menubar" role="menubar" data-win32-menus>
-                        <button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="file"><u>F</u>ile</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="view"><u>V</u>iew</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="tools"><u>T</u>ools</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="options"><u>O</u>ptions</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="help"><u>H</u>elp</button>
+                    <div class="vz-band">
+                        <div class="naxt-menubar" role="menubar" data-win32-menus>
+                            <button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="file"><u>F</u>ile</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="view"><u>V</u>iew</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="tools"><u>T</u>ools</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="options"><u>O</u>ptions</button><button type="button" class="naxt-menu-title" role="menuitem" data-vz-menu="help"><u>H</u>elp</button>
+                        </div>
+                        <img class="vz-logo" src="${A}/vzw-logo.png" width="173" height="25" alt="Verizon Wireless" draggable="false">
                     </div>
-                    <img class="vz-logo" src="${A}/vzw-logo.png" alt="Verizon Wireless" draggable="false">
-                    <menu role="tablist">
-                        <button type="button" role="tab" data-tab="networks" aria-selected="true"><img src="${A}/tab-networks.png" data-on="tab-networks" data-off="tab-networks-off" alt="" draggable="false">Networks</button>
-                        <button type="button" role="tab" data-tab="statistics" aria-selected="false"><img src="${A}/tab-statistics-off.png" data-on="tab-statistics" data-off="tab-statistics-off" alt="" draggable="false">Statistics</button>
-                        <button type="button" role="tab" data-tab="txt" aria-selected="false"><img src="${A}/tab-txt-off.png" data-on="tab-txt" data-off="tab-txt-off" alt="" draggable="false">TXT Messaging</button>
-                        <button type="button" role="tab" data-tab="wloc" aria-selected="false"><img src="${A}/tab-wifiloc.png" data-on="tab-wifiloc" data-off="tab-wifiloc" alt="" draggable="false">Wi-Fi Locations</button>
-                    </menu>
+                    <div class="vz-tabs" role="tablist">
+                        <button type="button" class="vz-tab" role="tab" data-tab="networks" aria-selected="true"><i class="vz-tab-l"></i><i class="vz-tab-m"></i><i class="vz-tab-r"></i><img src="${A}/tab-networks.png" data-on="tab-networks" data-off="tab-networks-off" width="17" height="17" alt="" draggable="false"><span class="vz-tab-t" data-t="Networks">Networks</span></button>
+                        <button type="button" class="vz-tab" role="tab" data-tab="statistics" aria-selected="false"><i class="vz-tab-l"></i><i class="vz-tab-m"></i><i class="vz-tab-r"></i><img src="${A}/tab-statistics-off.png" data-on="tab-statistics" data-off="tab-statistics-off" width="17" height="17" alt="" draggable="false"><span class="vz-tab-t" data-t="Statistics">Statistics</span></button>
+                        <button type="button" class="vz-tab" role="tab" data-tab="txt" aria-selected="false"><i class="vz-tab-l"></i><i class="vz-tab-m"></i><i class="vz-tab-r"></i><img src="${A}/tab-txt-off.png" data-on="tab-txt" data-off="tab-txt-off" width="18" height="17" alt="" draggable="false"><span class="vz-tab-t" data-t="TXT Messaging">TXT Messaging</span></button>
+                        <button type="button" class="vz-tab" role="tab" data-tab="wloc" aria-selected="false"><i class="vz-tab-l"></i><i class="vz-tab-m"></i><i class="vz-tab-r"></i><img src="${A}/tab-wifiloc.png" data-on="tab-wifiloc" data-off="tab-wifiloc" width="17" height="17" alt="" draggable="false"><span class="vz-tab-t" data-t="Wi-Fi Locations">Wi-Fi Locations</span></button>
+                    </div>
                     <article role="tabpanel" class="vz-panel">
                         <div class="vz-page is-shown" data-page="networks">
                             <div class="vz-bar">
@@ -443,6 +512,16 @@
             });
             // the window's close button puts it back in the notification area while it runs from there (on Verizon);
             // Exit in the File and tray menus quits
+            // Preferences > Application, "Minimize application into tray": the minimize button leaves only the tray icon
+            const minBtn = m.querySelector('.minimize-btn');
+            if (minBtn) {
+                minBtn.addEventListener('click', (ev) => {
+                    if (!Number(pref('MinimizeToTray')) || !this.trayIcon) return;
+                    ev.preventDefault();
+                    ev.stopImmediatePropagation();
+                    this.hide();
+                }, Object.assign({ capture: true }, sig));
+            }
             w.close.addEventListener('click', (ev) => {
                 if (!this.trayOnly) { this.app.exit(); return; }
                 ev.stopImmediatePropagation();
@@ -479,7 +558,7 @@
             this.mini = !!on;
             this.modal.classList.toggle('vz-min', this.mini);
             if (!quiet) {
-                writeJson(PREFS_KEY, Object.assign(readJson(PREFS_KEY, {}), { minimum: this.mini }));
+                void setPrefs({ LastViewMinimum: this.mini ? 1 : 0 });
                 if (this.mini && this.tab === 'statistics') this.drawGraph();
                 this.paintSoon();
             }
@@ -598,7 +677,15 @@
             }
             const tm = root.textMessaging;
             if (tm && typeof tm.on === 'function') {
-                const fn = () => { if (this.tab === 'txt') void this.loadTexts(); };
+                const fn = (d) => {
+                    if (this.tab === 'txt') void this.loadTexts();
+                    // Preferences > TXT Messaging: an arriving message (the server's notify rule) brings the TXT
+                    // Messaging view up and plays the sound
+                    if (!d || !d.notify || !this.wwan().present) return;
+                    const P = prefs();
+                    if (Number(P.SMSSwitchView)) { if (this.mini) this.setMini(false); this.show(); this.showTab('txt'); }
+                    if (Number(P.SMSPlaySound)) this.playSms();
+                };
                 tm.on('message', fn);
                 this.offs.push(() => { try { tm.off('message', fn); } catch (_) { /* gone */ } });
             }
@@ -650,6 +737,8 @@
         paint() {
             const w = this.wwan();
             this.noteConnection(w);
+            this.noteTransition(w);
+            this.autoConnect(w);
             if (this.pending === 'connecting' && w.connected) this.endPending();
             if (this.pending === 'disconnecting' && !w.connected) this.endPending();
             // the FR2 (mmWave) answer comes from the cell details, if they were read
@@ -657,7 +746,7 @@
             const cov = coverageOf(w.type, ci && ci.frequencyRange);
             const ext = w.roaming ? ' Extended Network' : '';
             // the Coverage Indicator: the network and its radio (strings 1363, 3061), roaming, the mark and the bars
-            const mark = cov.mark ? `<img class="vz-tech-mark" src="${A}/tech-${cov.mark}-15.png" srcset="${A}/tech-${cov.mark}-30.png 2x" alt="${esc(cov.tech)}" draggable="false">` : cov.tech ? `<span class="vz-tech">${esc(cov.tech)}</span>` : '';
+            const mark = cov.mark ? markHtml(cov.mark, cov.tech) : cov.tech ? `<span class="vz-tech">${esc(cov.tech)}</span>` : '';
             const roam = w.roaming ? `<img class="vz-roam" src="${A}/roam-extended.png" alt="" title="Extended Network" draggable="false">` : '';
             const meter = `<span class="vz-sig" title="${esc(this.signalTip(w))}">${meterHtml(w.bars)}</span>`;
             const covText = !w.present ? '' : w.searching ? '<span>Searching for network</span>' : `<span title="${esc(`Coverage - ${cov.html.replace(/<[^>]+>/g, '')}${ext}`)}">${cov.html}</span>`;
@@ -726,7 +815,12 @@
             const st = p && typeof p.get === 'function' ? (p.get() || {}) : {};
             const wifi = st.wifi || {};
             // the Wi-Fi radio off: no Wi-Fi networks (the last scan is not what is around now)
-            const wifiOff = wifi.radio === false || wifi.state === 'off' || wifi.present === false;
+            const P = prefs();
+            // Preferences > Wi-Fi: no adapter chosen is no Wi-Fi in VZAccess Manager
+            const wifiOff = wifi.radio === false || wifi.state === 'off' || wifi.present === false || P.WiFiAdapter === 'none';
+            const onlyPreferred = !!Number(P.WiFiShowPreferred);
+            const advanced = !!Number(P.WiFiAdvanced);
+            const known = new Set((this.known || []).map((n) => n.name || n.ssid));
             const current = !wifiOff && wifi.state === 'connected' && wifi.network ? wifi.network : null;
             const rows = [];
             if (w.present) {
@@ -743,8 +837,13 @@
             const wifiRow = (n, connected) => {
                 const name = String(n.name || n.ssid || '');
                 if (!name || seen.has(name)) return;
+                // "Display only preferred wireless networks": the saved ones (and the one in use)
+                if (onlyPreferred && !connected && !known.has(name)) return;
                 seen.add(name);
-                rows.push({ key: `wifi:${name}`, icon: connected ? 'wifi-on' : 'wifi', name, status: connected ? 'Connected' : '', bars: barsOfPercent(n.signalPercent), on: connected, secure: n.secured || n.security });
+                // "Display advanced Wi-Fi network information": its security and band beside the status
+                const mhz = Number(n.frequency || n.frequencyMhz) || 0;
+                const adv = advanced ? [n.security || (n.secured ? 'Secured' : 'Open'), mhz ? (mhz >= 5900 ? '6 GHz' : mhz >= 4900 ? '5 GHz' : '2.4 GHz') : '', n.channel ? `Ch ${n.channel}` : ''].filter(Boolean).join(', ') : '';
+                rows.push({ key: `wifi:${name}`, icon: connected ? 'wifi-on' : 'wifi', name, status: [connected ? 'Connected' : '', adv].filter(Boolean).join(' - '), bars: barsOfPercent(n.signalPercent), on: connected, secure: n.secured || n.security });
             };
             if (current) wifiRow(current, true);
             if (!wifiOff) (this.scan || []).forEach((n) => wifiRow(n, false));
@@ -793,11 +892,16 @@
             this.modal.querySelectorAll('.vz-page').forEach((p) => p.classList.toggle('is-shown', p.dataset.page === tab));
             if (tab === 'statistics') { void this.sample(); this.drawGraph(); }
             if (tab === 'txt') void this.loadTexts();
-            if (tab === 'wloc') void this.loadKnown();
+            // (Preferences > Wi-Fi: the list is read again on each visit only with "Automatically check for Wi-Fi
+            // locations updates"; otherwise once, and Tools > Update Locations)
+            if (tab === 'wloc' && (!this.knownRead || Number(pref('WiFiAutoLocationsUpdate')))) { this.knownRead = true; void this.loadKnown(); }
         }
 
         async refreshLists() {
             const p = this.provider();
+            // the saved networks, for Preferences > Wi-Fi's preferred-only view and auto-connect
+            const P = prefs();
+            if ((Number(P.WiFiShowPreferred) || Number(P.AutoConnectWiFi)) && p && typeof p.known === 'function' && !this.knownRead) { this.knownRead = true; void this.loadKnown(); }
             if (p && typeof p.networks === 'function') {
                 try { const r = await p.networks(); this.scan = r && Array.isArray(r.networks) ? r.networks : []; } catch (_) { this.scan = []; }
             }
@@ -990,7 +1094,11 @@
         async command(a) {
             if (a.startsWith('tab:')) { if (this.mini) this.setMini(false); this.showTab(a.slice(4)); return; }
             switch (a) {
-                case 'exit': this.app.exit(); return;
+                case 'exit':
+                    // Preferences > Device Settings: the device off as the program ends (the phone's mobile data)
+                    if (this.wwan().present && Number(pref('PowerOffEmbeddedDevice'))) await this.setData(false);
+                    this.app.exit();
+                    return;
                 case 'wwan': await this.toggleWwan(); return;
                 case 'minimum': this.setMini(!this.mini); return;
                 // Power Device: the modem's data on or off (no warning when turning it on: 7.6 asks only on Connect)
@@ -1038,7 +1146,7 @@
                 case 'wrefresh': return this.loadKnown();
                 case 'prefs': return this.prefs();
                 case 'log': return this.sessionLog();
-                case 'updates': return this.message('VZAccess Manager', 'VZAccess Manager is up to date.', 'info');
+                case 'updates': return this.checkUpdates(true);
                 case 'about': return this.about();
                 case 'devinfo': return this.deviceInfo();
                 default: return undefined;
@@ -1056,11 +1164,17 @@
             if (!w.present || this.pending) return;
             const off = forceOff || w.connected;
             if (!off) {
-                const prefs = readJson(PREFS_KEY, {});
-                if (!prefs.noConnectWarning) {
+                // Preferences > Connect: no WWAN while roaming (string 1366)
+                if (w.roaming && Number(pref('DisallowWWANIfRoaming'))) {
+                    await this.message('VZAccess Manager', 'You are currently roaming. Your WWAN settings in preferences are configured to not allow data connectivity when roaming.', 'warning');
+                    return;
+                }
+                if (!Number(pref('HideWWANConnectionWarning'))) {
                     const go = await this.connectWarning();
                     if (!go) return;
                 }
+                // a connection VZAccess Manager makes runs Preferences' on-connection steps once it is up
+                this.ownConnect = Date.now();
             }
             this.pending = off ? 'disconnecting' : 'connecting';
             this.paint();
@@ -1105,7 +1219,7 @@
                     },
                     ok: (ctx) => {
                         answer = true;
-                        if (ctx.get(466)) writeJson(PREFS_KEY, Object.assign(readJson(PREFS_KEY, {}), { noConnectWarning: true }));
+                        if (ctx.get(466)) void setPrefs({ HideWWANConnectionWarning: 1 });
                     },
                     close: () => resolve(answer)
                 }).then((ctx) => { if (!ctx) resolve(true); });
@@ -1116,7 +1230,7 @@
          * Usage (VZAMres dialog 498): 7.6 showed Verizon's page in it; here the estimate from the phone's own mobile
          * counters (kept from its last start, not a billing month), in 7.6's words. Strings 307, 311 when it cannot.
          */
-        async usage() {
+        async usage(onConnect) {
             const w = this.wwan();
             let text = '';
             if (!w.present) text = 'Device not available. A device is required to retrieve your usage information.';
@@ -1134,22 +1248,494 @@
             }
             await this.dialog('vzAccessUsage', {
                 key: 'vzam:498',
-                init: (ctx) => { ctx.html(499, `<div class="vz-usage">${esc(text)}</div>`); }
+                // on a connection: 7.6's "Do not show my Usage information on connection" box (497, shown then)
+                overrides: onConnect ? { 497: { hidden: false } } : undefined,
+                init: (ctx) => {
+                    ctx.html(499, `<div class="vz-usage">${esc(text)}</div>`);
+                    if (onConnect) ctx.show(497, true);
+                },
+                ok: (ctx) => {
+                    if (!onConnect || !ctx.get(497)) return;
+                    void setPrefs({ ShowUsageInfoOnConnect: 0 });
+                    // string 314
+                    void this.message('VZAccess Manager', 'Show Usage information on connection has been disabled.\nYour usage will no longer be displayed automatically whenever you connect.\n\nYou may change this setting later in preferences.', 'info');
+                }
             });
         }
 
-        /** Preferences > Application (the User Guide's page): kept for this program. */
-        async prefs() {
-            if (typeof root.showConfirmationDialog !== 'function') return;
-            const p = readJson(PREFS_KEY, {});
-            const box = (id, label, on) => `<div class="win7"><input type="checkbox" id="${id}"${on ? ' checked' : ''}><label for="${id}">${label}</label></div>`;
-            const html = `<b>Application</b><br><br>${box('vzPrefStart', 'Run VZAccess Manager at Startup', p.runAtStartup !== false)}${box('vzPrefPopup', 'Show popup status windows by tray', p.popup !== false)}${box('vzPrefWarn', 'Show the charges warning before connecting', !p.noConnectWarning)}`;
-            let dlg = null;
-            const r = await root.showConfirmationDialog(html, [{ text: 'OK', value: true }, { text: 'Cancel', value: false }], null, { title: 'Preferences', icon: 'fas fa-info-circle', onDialogReady: () => { dlg = doc.getElementById('confirmationDialog'); } });
-            if (!r || !dlg) return;
-            const v = (id) => { const e = doc.getElementById(id); return !!(e && e.checked); };
-            // runAtStartup: the desktop puts VZAccess Manager in the tray on a Verizon connection (androidTrayProviders.js)
-            writeJson(PREFS_KEY, Object.assign(p, { runAtStartup: v('vzPrefStart'), popup: v('vzPrefPopup'), noConnectWarning: !v('vzPrefWarn') }));
+        /**
+         * Preferences (VZAMres dialog 862 with its pages 32052 Connect, 514 Launch, 577 VPN, 32071 Device Settings,
+         * 790 Wi-Fi, 32066 TXT Messaging, 32054 Application, 32059 VZAM Update), measured on 7.6.3.1 on the Vista VM
+         * (~/.cache/vzam-ref/vm/prefs): the tree on the left (24 px icons, 28 px rows, the selection a grey box
+         * round the label: flat while the tree has no focus, shaded while it has), the page on the right, OK and
+         * Cancel. 7.6 places its controls by MS Shell Dlg units and draws them in Segoe UI 9 pt with its own check
+         * boxes (a red tick) and radio buttons (a red dot), and shows a page's controls for the device it has,
+         * moving the rest up. Nothing is kept until OK; Cancel drops it. The phone is a LAN Adapter device, so
+         * Device operating mode (Global devices) and the APN (modem-mode devices) stay hidden, as 7.6 hides them.
+         *
+         * What each setting does here:
+         *   Connect   Do not allow WWAN when roaming: Connect WWAN (and auto-connect) refuse while roaming (string 1366)
+         *             Device connection preference: LAN Adapter - Auto-connect turns the phone's mobile data on when
+         *               VZAccess Manager starts (not while roaming with "except when roaming"); Manually connect leaves it
+         *             Auto-connect Wi-Fi / precedence / switch from WWAN: while it runs, VZAccess Manager joins the
+         *               first preferred network (Wi-Fi page) in range when Wi-Fi is on and not connected (with WWAN
+         *               first in the precedence, only while WWAN is not connected; "switch" also while it is)
+         *             Display my usage information on connection: Usage opens when WWAN connects
+         *   Launch    the browser (Alchemy: its home page or this URL) and a program (Melaton's Run) on connection
+         *   VPN       the Nightshade Network as the VPN client; started with each connection when ticked
+         *   Device    Power off the device at the application shutdown: Exit turns the phone's mobile data off
+         *   Wi-Fi     the adapter (None: no Wi-Fi rows in Networks), preferred networks only, advanced information
+         *             (security and the radio's band in Networks), the preferred list (the phone's saved networks,
+         *             their order for auto-connect, Add = Melaton's Connect to a network, Remove = forget)
+         *   TXT       Open SMS window: the TXT Messaging tab comes up when a message arrives; the sound plays then
+         *   App       Minimize into tray (the minimize button hides the window in the tray), popups (connected /
+         *             disconnected balloons on the tray icon), Run at Startup (the desktop's Verizon start)
+         *   Update    the check for a newer VZAccess Manager package (on connection when due, or Check Now)
+         */
+        async prefs(startKey) {
+            const open = this.dialogs.get('vzAccessPrefs');
+            if (open && open.modal && open.modal.isConnected) { call('bringModalToFront', open.modal); return; }
+            let k = null;
+            try { k = await kit(); } catch (_) { return; }
+            if (this.app.signal.aborted) return;
+            const w = this.wwan();
+            const P = prefs();
+            const PA = `${A}/prefs`;
+            // the tree, in 7.6's order (strings 863-871); Device Settings and TXT Messaging with a device only
+            const pages = [
+                { key: 'connect', name: 'Connect', tpl: 'vzam:32052', icon: 'r1338' },
+                { key: 'launch', name: 'Launch', tpl: 'vzam:514', icon: 'r1340', child: true },
+                { key: 'vpn', name: 'VPN', tpl: 'vzam:577', icon: 'r1343' },
+                ...(w.present ? [{ key: 'device', name: 'Device Settings', tpl: 'vzam:32071', icon: 'r1342' }] : []),
+                { key: 'wifi', name: 'Wi-Fi', tpl: 'vzam:790', icon: 'r865' },
+                ...(w.present ? [{ key: 'txt', name: 'TXT Messaging', tpl: 'vzam:32066', icon: 'r1324' }] : []),
+                { key: 'app', name: 'Application', tpl: 'vzam:32054', icon: 'r1329' },
+                { key: 'update', name: 'VZAM Update', tpl: 'vzam:32059', icon: 'r1327' }
+            ];
+            // per page: controls 7.6 hides for this device, rows it moves up (DLU), and the run-time icons
+            const L = {
+                connect: w.present
+                    ? { hide: [2002, 2003, 1707, 1708, 402], y: { 2001: 32, 2000: 43, 1320: 59, 1318: 72, 1317: 81, 393: 81, 401: 96, 1567: 114, 523: 155, 1075: 168, 524: 167 }, icons: { 1074: 'r1319', 1075: 'r1323' },
+                        // Melaton's own (Yukimi, #953): Android's "Mobile data always active", two lines under the switch
+                        add: [[39001, 'B', 40, 127, 180, 20, 0x50012003, 'Always stay connected to mobile broadband\n(Uses more power)', 0]] }
+                    : { hide: [2002, 2003, 2001, 2000, 1318, 393, 401, 1317, 1707, 1708, 402, 523, 1075, 524], y: { 1320: 32, 1567: 45 }, icons: { 1074: 'r1319' } },
+                launch: { hide: [516, 525], icons: { x5: 'r1333', 529: 'r1332' } },
+                vpn: { hide: [583, 579, 581, 584], icons: { 1124: 'r586' } },
+                device: { hide: [32041, 32042, 32043, 32044, 32045, 32050], y: { 32047: 7, 32051: 20, 32048: 19 }, show: [32048], icons: { 32051: 'r1341' } },
+                wifi: { icons: { 1302: 'r1097', 1305: 'r1319' } },
+                txt: { hide: [32079, 32080, 1049, 1050, 3074, 3073], icons: { 1014: 'r1334', 1015: 'r1335', 1016: 'r1325' } },
+                app: { icons: { 1017: 'r1328' } },
+                update: { text: { 32060: 'VZAccess Manager can check the Internet automatically for updates.' }, icons: { 1018: 'r1326', 1019: 'r1331' } }
+            };
+            const T = root.vistaDialogTemplates || {};
+            const pageHtml = pages.map((pg) => {
+                const lay = L[pg.key] || {};
+                const tpl = JSON.parse(JSON.stringify(T[pg.tpl]));
+                if (lay.add) tpl.c.push(...lay.add);
+                tpl.c.forEach((c) => {
+                    if (lay.y && lay.y[c[0]] != null) c[3] = lay.y[c[0]];
+                    if (lay.show && lay.show.includes(c[0])) c[6] = (c[6] | 0x10000000) >>> 0;
+                    if (lay.text && lay.text[c[0]] != null) c[7] = lay.text[c[0]];
+                });
+                const overrides = {};
+                (lay.hide || []).forEach((id) => { overrides[id] = { hidden: true }; });
+                Object.entries(lay.icons || {}).forEach(([id, img]) => { if (!id.startsWith('x')) overrides[id] = Object.assign(overrides[id] || {}, { image: `${PA}/${img}.png` }); });
+                let html = k.renderControls(tpl, `vzPref-${pg.key}`, { overrides, module: 'vzam' });
+                // a two-line static (16 DLU) wraps at its width as 7.6's does; one-line ones run on
+                tpl.c.forEach((c2, ix) => { if (c2[1] === 'S' && c2[5] >= 16 && (c2[6] & 0x1F) === 0) html = html.replace(`data-vdt-index="${ix}"`, `data-vdt-index="${ix}" data-vz-multi="1"`); });
+                // an icon static without an id of its own (Launch's browser picture): by its place in the template
+                Object.entries(lay.icons || {}).forEach(([id, img]) => {
+                    if (!id.startsWith('x')) return;
+                    html = html.replace(new RegExp(`(data-vdt-index="${id.slice(1)}"[^>]*>)<img src="[^"]*"`), `$1<img src="${PA}/${img}.png"`);
+                });
+                // 7.6's own line breaks (GDI's Segoe UI runs narrower than the browser's)
+                html = html.replace('automatically be started', 'automatically be<br>started').replace('Internet automatically for updates', 'Internet<br>automatically for updates');
+                return `<div class="vz-pref-page" data-vdt-page="${pg.key}" hidden>${html}</div>`;
+            }).join('');
+            // the tree (interior origin inside the frame's blue line and its 1 px gap)
+            const rows = pages.map((pg, i) => `<div class="vz-tree-row${pg.child ? ' is-child' : ''}" role="treeitem" data-key="${pg.key}" style="top:${1 + i * 28}px" aria-selected="false"><img src="${PA}/${pg.icon}.png" width="24" height="24" alt="" draggable="false"><span class="vz-tree-label">${esc(pg.name)}</span></div>`).join('');
+            const top0 = pages.filter((pg) => !pg.child);
+            const lastTop = pages.indexOf(top0[top0.length - 1]);
+            const treeHtml = `<div class="vz-tree" tabindex="0" role="tree" aria-label="Preferences"><div class="vz-tree-in">`
+                + `<i class="vz-tree-v" style="top:15px;height:${lastTop * 28 - 1}px"></i>`
+                + pages.map((pg, i) => (pg.child ? `<i class="vz-tree-v is-child" style="top:${1 + (i - 1) * 28 + 25}px;height:${28 - 12}px"></i><i class="vz-tree-h is-child" style="top:${1 + i * 28 + 13}px"></i>` : (i ? `<i class="vz-tree-h" style="top:${1 + i * 28 + 13}px"></i>` : ''))).join('')
+                + `<img class="vz-tree-box" src="${PA}/tree-minus.png" width="9" height="9" alt="" draggable="false" style="top:10px">`
+                + rows + '</div></div>';
+            let cur = '';
+            const ctx = k.openDialog({
+                id: 'vzAccessPrefs',
+                key: 'vzam:862',
+                title: 'Preferences',
+                owner: this.m && !this.m.classList.contains('hidden') ? this.m : null,
+                icon: `${A}/vzaccess-16.png`,
+                bareCaption: true,
+                help: true,
+                overrides: { 1299: { html: treeHtml, cls: 'vz-pref-tree' }, 1300: { html: pageHtml, cls: 'vz-pref-pages' } },
+                init: (c) => {
+                    c.modal.classList.add('vz-dlg', 'vz-prefs');
+                    this.prefsInit(c, P, w);
+                },
+                ok: (c) => this.prefsSave(c),
+                close: () => { this.dialogs.delete('vzAccessPrefs'); }
+            });
+            if (!ctx) return;
+            this.dialogs.set('vzAccessPrefs', ctx);
+            const tree = ctx.content.querySelector('.vz-tree');
+            const select = (key, focus) => {
+                if (!pages.some((pg) => pg.key === key)) key = 'connect';
+                cur = key;
+                tree.querySelectorAll('.vz-tree-row').forEach((r) => r.setAttribute('aria-selected', String(r.dataset.key === key)));
+                ctx.content.querySelectorAll('.vz-pref-page').forEach((pg) => { pg.hidden = pg.dataset.vdtPage !== key; });
+                ctx.setTitle(`Preferences - ${pages.find((pg) => pg.key === key).name}`);
+                if (focus) tree.focus();
+            };
+            tree.addEventListener('pointerdown', (ev) => {
+                const r = ev.target.closest('.vz-tree-row');
+                if (r) { ev.preventDefault(); select(r.dataset.key, true); }
+            });
+            tree.addEventListener('keydown', (ev) => {
+                const i = pages.findIndex((pg) => pg.key === cur);
+                const n = ev.key === 'ArrowDown' ? i + 1 : ev.key === 'ArrowUp' ? i - 1 : ev.key === 'Home' ? 0 : ev.key === 'End' ? pages.length - 1 : -2;
+                if (n === -2) return;
+                ev.preventDefault();
+                select(pages[Math.max(0, Math.min(pages.length - 1, n))].key, true);
+            });
+            select(startKey || 'connect', false);
+        }
+
+        /** The pages' values from the registry, and what the controls switch on and off. */
+        prefsInit(c, P, w) {
+            const on = (id, key, fn) => c.on(id, 'change', fn, key);
+            const en = (id, yes, key) => c.enable(id, !!yes, key);
+            // Connect: 7.6's LAN Adapter choices (strings 2004-2006)
+            c.set(32035, !!Number(P.DisallowWWANIfRoaming), 'connect');
+            c.options(2000, [{ value: 2004, text: 'LAN Adapter - Auto-connect' }, { value: 2005, text: 'LAN Adapter - Auto-connect except when roaming' }, { value: 2006, text: 'LAN Adapter - Manually connect' }], Number(P.NDISMode) || 2006, 'connect');
+            c.set(1320, !!Number(P.AutoConnectWiFi), 'connect');
+            c.set(1567, !!Number(P.AutoSwitchToWiFi), 'connect');
+            c.set(524, !!Number(P.ShowUsageInfoOnConnect), 'connect');
+            // Always stay connected to mobile broadband: Android's own setting, read now (hidden on an app without it)
+            const pv = this.provider();
+            const always = pv && typeof pv.dataAlwaysOn === 'function' ? pv.dataAlwaysOn() : null;
+            c.store.always = always;
+            if (always === null) c.show(39001, false, 'connect');
+            else c.set(39001, always, 'connect');
+            // the precedence list (a one-column report view without its header, as the template sets it)
+            const order = String(P.ConnectionPrecedence || 'WiFi,WWAN').split(',').filter((x) => x === 'WiFi' || x === 'WWAN');
+            if (order.length !== 2) order.splice(0, order.length, 'WiFi', 'WWAN');
+            const prec = { order, sel: 0 };
+            c.store.prec = prec;
+            const precBox = c.holder(1317, 'connect');
+            const drawPrec = () => {
+                const ok = !!c.get(1320, 'connect');
+                if (!precBox) return;
+                precBox.classList.toggle('is-disabled', !ok);
+                precBox.querySelector('.vdt-lv-body').innerHTML = prec.order.map((x, i) => `<div class="vdt-lv-row${i === prec.sel ? ' is-selected' : ''}" data-i="${i}"><span>${x === 'WiFi' ? 'Wi-Fi Connections' : 'WWAN Connections'}</span></div>`).join('');
+                en(393, ok && prec.sel > 0, 'connect');
+                en(401, ok && prec.sel < prec.order.length - 1, 'connect');
+            };
+            if (precBox) precBox.addEventListener('pointerdown', (ev) => { const r = ev.target.closest('.vdt-lv-row'); if (r && c.get(1320, 'connect')) { prec.sel = Number(r.dataset.i); drawPrec(); } });
+            const move = (d) => { const j = prec.sel + d; if (j < 0 || j >= prec.order.length) return; [prec.order[prec.sel], prec.order[j]] = [prec.order[j], prec.order[prec.sel]]; prec.sel = j; drawPrec(); };
+            c.on(393, 'click', () => move(-1), 'connect');
+            c.on(401, 'click', () => move(1), 'connect');
+            on(1320, 'connect', drawPrec);
+            drawPrec();
+            // Launch
+            const browser = Number(P.WWANBrowserOpen) || 0;
+            c.set(518, browser === 0, 'launch');
+            c.set(519, browser === 1, 'launch');
+            c.set(520, browser === 2, 'launch');
+            c.set(521, P.WWANBrowserURL || '', 'launch');
+            c.set(530, !!Number(P.RunProgram), 'launch');
+            c.set(531, P.RunProgramPath || '', 'launch');
+            const launchState = () => {
+                en(521, c.get(520, 'launch'), 'launch');
+                en(531, c.get(530, 'launch'), 'launch');
+                en(532, c.get(530, 'launch'), 'launch');
+            };
+            [518, 519, 520, 530].forEach((id) => on(id, 'launch', launchState));
+            launchState();
+            c.on(532, 'click', () => {
+                if (typeof root.studioOpenFolderDialog !== 'function') return;
+                root.studioOpenFolderDialog('open', { host: { title: 'Open', typeLabel: 'Programs', onOpen: (item) => c.set(531, String(item && item.name || '').replace(/\.(lnk|exe)$/i, ''), 'launch') } });
+            }, 'launch');
+            // VPN: the Nightshade Network (Melaton's VPN client)
+            const vpnFacts = this.vpn();
+            const clients = [{ value: '', text: '(none)' }, ...(vpnFacts || root.melatonControlPanel ? [{ value: 'nightshade', text: 'Nightshade Network' }] : [])];
+            c.options(578, clients, P.VPNClient === 'nightshade' && clients.length > 1 ? 'nightshade' : '', 'vpn');
+            const vpnState = () => {
+                const has = c.get(578, 'vpn') === 'nightshade';
+                const name = (vpnFacts && (vpnFacts.name || vpnFacts.profile)) || 'Nightshade Network';
+                c.options(582, has ? [{ value: name, text: name }] : [], has ? name : undefined, 'vpn');
+                en(582, has, 'vpn');
+                en(585, has, 'vpn');
+                if (!has) c.set(585, false, 'vpn');
+            };
+            c.set(585, !!Number(P.AutoStartVPN), 'vpn');
+            on(578, 'vpn', vpnState);
+            vpnState();
+            if (P.VPNClient === 'nightshade') c.set(585, !!Number(P.AutoStartVPN), 'vpn');
+            // Device Settings
+            c.set(32048, !!Number(P.PowerOffEmbeddedDevice), 'device');
+            // Wi-Fi: the phone's adapter, or none (VZAccess Manager's Wi-Fi off)
+            const hw = this.hardware();
+            const dev = (hw && hw.device && (hw.device.marketName || hw.device.model)) || 'Phone';
+            c.options(1238, [{ value: '', text: `${dev} Wi-Fi Adapter` }, { value: 'none', text: 'None (Wi-Fi support disabled)' }], P.WiFiAdapter === 'none' ? 'none' : '', 'wifi');
+            c.set(1234, !!Number(P.WiFiShowPreferred), 'wifi');
+            c.set(1235, !!Number(P.WiFiAdvanced), 'wifi');
+            c.set(3220, !!Number(P.WiFiAutoLocationsUpdate), 'wifi');
+            const wifiState = () => { const off = c.get(1238, 'wifi') === 'none'; en(1234, !off, 'wifi'); en(1235, !off, 'wifi'); };
+            on(1238, 'wifi', wifiState);
+            wifiState();
+            this.prefsWifiList(c, P);
+            // TXT Messaging: delivery for 1 hour ... 5 days (strings 156-160)
+            c.set(32068, !!Number(P.SMSSwitchView), 'txt');
+            c.set(32070, !!Number(P.SMSPlaySound), 'txt');
+            c.set(32074, P.SMSPlaySoundPath || PREF_DEFAULTS.SMSPlaySoundPath, 'txt');
+            c.options(32078, [[156, '1 hour'], [157, '6 hours'], [158, '1 day'], [159, '3 days'], [160, '5 days']].map(([v, t]) => ({ value: v, text: t })), Number(P.SMSValidityPeriod) || 160, 'txt');
+            c.set(32081, !!Number(P.SMSWarnBeforeDelete), 'txt');
+            c.set(32082, !!Number(P.SMSConfirmAfterDelete), 'txt');
+            c.set(32083, !!Number(P.SMSConfirmSent), 'txt');
+            const soundState = () => { const s2 = c.get(32070, 'txt'); en(32072, s2, 'txt'); en(32074, s2, 'txt'); en(32075, s2, 'txt'); };
+            on(32070, 'txt', soundState);
+            soundState();
+            c.on(32072, 'click', () => this.playSms(), 'txt');
+            c.on(32075, 'click', () => {
+                if (typeof root.studioOpenFolderDialog !== 'function') return;
+                root.studioOpenFolderDialog('open', { host: { title: 'Open', typeLabel: 'WAV Files (*.wav)', acceptItem: (it) => /\.wav$/i.test(it.name || ''), onOpen: (item, folder) => c.set(32074, `${folder || ''}/${item.name}`.replace(/^\/+/, '/'), 'txt') } });
+            }, 'txt');
+            // Application
+            c.set(32055, !!Number(P.MinimizeToTray), 'app');
+            c.set(32056, !!Number(P.ShowTrayPopups), 'app');
+            c.set(32057, !!Number(P.RunAtStartup), 'app');
+            // VZAM Update (strings 189-192, 188 and 154)
+            c.options(32063, [[189, 'Never'], [190, 'Daily'], [191, 'Weekly'], [192, 'Monthly']].map(([v, t]) => ({ value: v, text: t })), Number(P.UpdateFrequency) || 191, 'update');
+            const when = (t) => { const d = new Date(t); return `${d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} at ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`; };
+            const updateText = () => {
+                const p2 = prefs();
+                c.text(1080, Number(p2.LastUpdateCheck) ? when(Number(p2.LastUpdateCheck)) : 'No previous attempts.', 'update');
+                const f = Number(c.get(32063, 'update'));
+                const next = f === 189 ? 0 : Number(p2.LastUpdateCheck) ? Number(p2.LastUpdateCheck) + (f === 190 ? 1 : f === 192 ? 30 : 7) * 86400000 : 0;
+                c.text(1081, f === 189 ? 'Information  unavailable.' : next ? when(next) : 'Next connection.', 'update');
+            };
+            on(32063, 'update', updateText);
+            updateText();
+            c.on(32064, 'click', async () => { await this.checkUpdates(true); updateText(); }, 'update');
+        }
+
+        /** Wi-Fi > Preferred networks: the phone's saved networks, in VZAccess Manager's order (PreferredList). */
+        prefsWifiList(c, P) {
+            const box = c.holder(1241, 'wifi');
+            if (!box) return;
+            box.classList.add('is-report');
+            box.querySelector('.vdt-lv-header').innerHTML = '<span class="vdt-lv-col" style="width:170px">Profile Name</span>';
+            const st = { list: [], sel: -1 };
+            c.store.wifi = st;
+            let saved = [];
+            try { saved = JSON.parse(P.PreferredList || '[]'); } catch (_) { saved = []; }
+            const draw = () => {
+                box.querySelector('.vdt-lv-body').innerHTML = st.list.map((n, i) => `<div class="vdt-lv-row${i === st.sel ? ' is-selected' : ''}" data-i="${i}"><span>${esc(n)}</span></div>`).join('');
+                c.enable(399, false, 'wifi'); // Edit: the phone's own network settings hold a saved network's details
+                c.enable(403, st.sel >= 0, 'wifi');
+                c.enable(405, st.sel > 0, 'wifi');
+                c.enable(408, st.sel >= 0 && st.sel < st.list.length - 1, 'wifi');
+            };
+            box.addEventListener('pointerdown', (ev) => { const r = ev.target.closest('.vdt-lv-row'); st.sel = r ? Number(r.dataset.i) : -1; draw(); });
+            const load = async () => {
+                const p = this.provider();
+                let known = [];
+                try { const r = p && typeof p.known === 'function' ? await p.known() : null; known = (r && Array.isArray(r.networks) ? r.networks : []).map((n) => n.name || n.ssid).filter(Boolean); } catch (_) { known = []; }
+                st.list = saved.filter((n) => known.includes(n)).concat(known.filter((n) => !saved.includes(n)));
+                draw();
+            };
+            const mv = (d) => { const j = st.sel + d; if (st.sel < 0 || j < 0 || j >= st.list.length) return; [st.list[st.sel], st.list[j]] = [st.list[j], st.list[st.sel]]; st.sel = j; draw(); };
+            c.on(405, 'click', () => mv(-1), 'wifi');
+            c.on(408, 'click', () => mv(1), 'wifi');
+            c.on(389, 'click', () => { const wf = root.dreamosWifi; if (wf && typeof wf.openConnect === 'function') void wf.openConnect(); }, 'wifi');
+            c.on(403, 'click', async () => {
+                const name = st.list[st.sel];
+                if (!name || typeof root.showConfirmationDialog !== 'function') return;
+                // string 1516
+                const yes = await root.showConfirmationDialog(esc(`Are you sure you want to remove the profile "${name}" from your preferred networks?`), [{ text: 'Yes', value: true }, { text: 'No', value: false }], null, { title: 'VZAccess Manager', icon: 'fas fa-question-circle' });
+                if (!yes) return;
+                const p = this.provider();
+                if (p && typeof p.forget === 'function') { try { await p.forget(name); } catch (_) { /* the phone said no */ } }
+                await load();
+            }, 'wifi');
+            draw();
+            void load();
+        }
+
+        /** OK: every page's values into the registry, then what they change now. */
+        prefsSave(c) {
+            const b = (id, key) => (c.get(id, key) ? 1 : 0);
+            const hasDev = !!c.page('device');
+            const v = {
+                DisallowWWANIfRoaming: b(32035, 'connect'),
+                AutoConnectWiFi: b(1320, 'connect'),
+                AutoSwitchToWiFi: b(1567, 'connect'),
+                WWANBrowserOpen: c.get(519, 'launch') ? 1 : c.get(520, 'launch') ? 2 : 0,
+                WWANBrowserURL: String(c.get(521, 'launch') || '').trim(),
+                RunProgram: b(530, 'launch'),
+                RunProgramPath: String(c.get(531, 'launch') || '').trim(),
+                VPNClient: c.get(578, 'vpn') || '',
+                WWANVPNProfile: c.get(582, 'vpn') || '',
+                AutoStartVPN: b(585, 'vpn'),
+                WiFiAdapter: c.get(1238, 'wifi') === 'none' ? 'none' : '',
+                WiFiShowPreferred: b(1234, 'wifi'),
+                WiFiAdvanced: b(1235, 'wifi'),
+                WiFiAutoLocationsUpdate: b(3220, 'wifi'),
+                MinimizeToTray: b(32055, 'app'),
+                ShowTrayPopups: b(32056, 'app'),
+                RunAtStartup: b(32057, 'app'),
+                UpdateFrequency: Number(c.get(32063, 'update')) || 191
+            };
+            if (c.page('connect').querySelector('[data-vdt-id="2000"]:not([hidden])')) {
+                v.NDISMode = Number(c.get(2000, 'connect')) || 2006;
+                v.ConnectionPrecedence = c.store.prec.order.join(',');
+                v.ShowUsageInfoOnConnect = b(524, 'connect');
+            }
+            if (c.store.wifi) v.PreferredList = JSON.stringify(c.store.wifi.list);
+            if (typeof c.store.always === 'boolean' && !!c.get(39001, 'connect') !== c.store.always) {
+                const pv = this.provider();
+                if (pv && typeof pv.setDataAlwaysOn === 'function') pv.setDataAlwaysOn(!!c.get(39001, 'connect'));
+            }
+            if (hasDev) v.PowerOffEmbeddedDevice = b(32048, 'device');
+            if (c.page('txt')) {
+                // string 989: a sound to play needs a file
+                if (c.get(32070, 'txt') && !String(c.get(32074, 'txt') || '').trim()) {
+                    c.selectPage && void 0;
+                    void this.message('VZAccess Manager', 'You must specify a valid sound file for arrival of new messages.', 'warning');
+                    return false;
+                }
+                Object.assign(v, { SMSSwitchView: b(32068, 'txt'), SMSPlaySound: b(32070, 'txt'), SMSPlaySoundPath: String(c.get(32074, 'txt') || ''), SMSValidityPeriod: Number(c.get(32078, 'txt')) || 160, SMSWarnBeforeDelete: b(32081, 'txt'), SMSConfirmAfterDelete: b(32082, 'txt'), SMSConfirmSent: b(32083, 'txt') });
+            }
+            // a URL to open needs one (7.6 keeps the radio on "Do not open" otherwise)
+            if (v.WWANBrowserOpen === 2 && !v.WWANBrowserURL) v.WWANBrowserOpen = 0;
+            void setPrefs(v).then(() => { this.paintSoon(); void this.refreshLists(); });
+            return true;
+        }
+
+        /**
+         * A connection's coming and going as the program sees it: the tray balloon (Preferences > Application, strings
+         * 150/151) on each change, and for a connection VZAccess Manager made itself (Connect WWAN, or its own
+         * auto-connect) Preferences' on-connection steps: Usage, the browser, the program, the VPN, the update check.
+         */
+        noteTransition(w) {
+            const was = this.lastConnected;
+            this.lastConnected = !!w.connected;
+            if (was === undefined || was === this.lastConnected || !w.present) return;
+            const name = `${w.carrier || 'Verizon Wireless'} - VZAccess`;
+            if (Number(pref('ShowTrayPopups'))) this.balloon(this.lastConnected ? `Connected to ${name}` : `Disconnected from ${name}`);
+            if (!this.lastConnected) return;
+            const own = this.ownConnect && Date.now() - this.ownConnect < 60000;
+            this.ownConnect = 0;
+            if (own) void this.onConnected();
+        }
+
+        async onConnected() {
+            const P = prefs();
+            if (Number(P.ShowUsageInfoOnConnect)) void this.usage(true);
+            const browse = Number(P.WWANBrowserOpen) || 0;
+            if (browse && typeof root.openGrimoireUrl === 'function') {
+                let url = browse === 2 ? String(P.WWANBrowserURL || '') : '';
+                if (browse === 1) {
+                    // the browser's own home page (Alchemy's setting), else its start page
+                    try { const st = typeof root.grimoireLoadAlchemySettings === 'function' ? await root.grimoireLoadAlchemySettings() : null; url = (st && st.homePage) || ''; } catch (_) { url = ''; }
+                    if (!url) url = 'https://www.bing.com/';
+                }
+                if (url) { if (!/^[a-z]+:/i.test(url)) url = `http://${url}`; Promise.resolve().then(() => root.openGrimoireUrl(url)).catch(() => {}); }
+            }
+            if (Number(P.RunProgram) && P.RunProgramPath && typeof root.searchRunCommands === 'function') {
+                // Melaton's Run: the program as the Run box would start it
+                try {
+                    const found = await root.searchRunCommands(String(P.RunProgramPath));
+                    const hit = Array.isArray(found) ? found.find((e) => e && typeof e.execute === 'function') : null;
+                    if (hit) await hit.execute();
+                } catch (_) { /* nothing by that name */ }
+            }
+            if (P.VPNClient === 'nightshade' && Number(P.AutoStartVPN)) {
+                const v = this.vpn();
+                const cp = root.melatonControlPanel;
+                if (v && !v.connected && cp && typeof cp.toggleConnection === 'function') { try { cp.toggleConnection(); } catch (_) { /* nothing */ } }
+            }
+            // VZAM Update: a scheduled check comes with a connection
+            const f = Number(P.UpdateFrequency) || 191;
+            const days = f === 190 ? 1 : f === 192 ? 30 : f === 191 ? 7 : 0;
+            if (days && Date.now() - (Number(P.LastUpdateCheck) || 0) >= days * 86400000) void this.checkUpdates(false);
+        }
+
+        /** A balloon on the program's tray icon (tray-balloons rule): a click opens the window. */
+        balloon(text) {
+            const icon = this.trayIcon;
+            const pm = root.PopoverManager;
+            if (!icon || !icon.isConnected || !pm || typeof pm.showPopover !== 'function') return;
+            pm.showPopover(icon, 'info', 'VZAccess Manager', esc(text), false, 5000, `<img src="${A}/vzaccess-32.png" alt="" width="32" height="32">`, null,
+                { popupId: 'vzaccess', position: 'top', arrowPosition: 'bottom-right', onClick: () => this.show() });
+        }
+
+        /** TXT Messaging's sound (the program's own System\SMS.wav). */
+        playSms() {
+            try {
+                const a = new Audio(`${A}/sms.wav`);
+                void a.play().catch(() => {});
+            } catch (_) { /* no audio */ }
+        }
+
+        /**
+         * Check for Updates (Help, the tray, Preferences > VZAM Update): VZAccess Manager is a Melaton package, so
+         * the check asks the server for the package's current tree; a newer one is put in place (melatonApps swaps
+         * a running package by itself on the next launch). Recorded for "Last check for updates was on".
+         */
+        async checkUpdates(manual) {
+            await setPrefs({ LastUpdateCheck: Date.now() });
+            const apps = root.melatonApps;
+            let newer = false;
+            try {
+                const ws = root.wsClient;
+                const res = ws && typeof ws.sendMessage === 'function' ? await ws.sendMessage('app_describe', { packageId: 'vzaccess' }, false) : null;
+                const have = apps && typeof apps.loadedPackages === 'function' ? apps.loadedPackages().find((x) => x.id === 'vzaccess') : null;
+                newer = !!(res && res.package && have && have.treeHash && res.package.treeHash && res.package.treeHash.slice(0, 12) !== have.treeHash.slice(0, 12));
+            } catch (_) {
+                if (manual) await this.message('VZAccess Manager', 'VZAccess Manager could not check for updates. Please make sure you are connected to the Internet and try again.', 'warning');
+                return;
+            }
+            if (manual) await this.message('VZAccess Manager', newer ? 'A newer version of VZAccess Manager is available. It is installed the next time VZAccess Manager starts.' : 'VZAccess Manager is up to date.', 'info');
+        }
+
+        /**
+         * Preferences > Connect, while the program runs: LAN Adapter - Auto-connect turns mobile data on as it starts
+         * (not while roaming when told so), and Auto-connect Wi-Fi joins the first preferred network in range.
+         */
+        autoConnect(w) {
+            const P = prefs();
+            if (!this.autoWwanDone && w.present) {
+                this.autoWwanDone = true;
+                const mode = Number(P.NDISMode) || 2006;
+                const roamBlock = w.roaming && (mode === 2005 || Number(P.DisallowWWANIfRoaming));
+                if ((mode === 2004 || mode === 2005) && !roamBlock && this.cell && this.cell.dataEnabled === false && !w.airplane) {
+                    this.ownConnect = Date.now();
+                    void this.setData(true);
+                }
+            }
+            if (!Number(P.AutoConnectWiFi) || P.WiFiAdapter === 'none') return;
+            const p = this.provider();
+            const st = p && typeof p.get === 'function' ? (p.get() || {}) : {};
+            const wifi = st.wifi || {};
+            if (wifi.radio === false || wifi.state === 'off' || wifi.state === 'connected' || wifi.state === 'connecting' || !p || typeof p.connect !== 'function') return;
+            // with WWAN first in the precedence, Wi-Fi only when WWAN is down (or "switch from WWAN to Wi-Fi")
+            const wwanFirst = String(P.ConnectionPrecedence || 'WiFi,WWAN').startsWith('WWAN');
+            if (w.connected && (wwanFirst || !Number(P.AutoSwitchToWiFi))) return;
+            let order = [];
+            try { order = JSON.parse(P.PreferredList || '[]'); } catch (_) { order = []; }
+            const known = new Set((this.known || []).map((n) => n.name || n.ssid));
+            order = order.concat([...known].filter((n) => !order.includes(n)));
+            const here = new Set((this.scan || []).map((n) => n.name || n.ssid));
+            const pick = order.find((n) => here.has(n) && known.has(n));
+            if (!pick) return;
+            this.autoTried = this.autoTried || new Map();
+            if (Date.now() - (this.autoTried.get(pick) || 0) < 120000) return;
+            this.autoTried.set(pick, Date.now());
+            void Promise.resolve(p.connect(pick)).catch(() => {});
         }
 
         /** The log's sessions that pass Session Log Filter. */

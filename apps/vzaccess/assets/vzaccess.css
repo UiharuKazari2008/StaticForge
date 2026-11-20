@@ -3,50 +3,113 @@
    AnandTech capture of 7.6.3.1 on Windows 7; its colours are tokens (--vz-*) set by the theme
    (css/themes/vista/vzaccess.css), the only place their literals live (ui-standard section 6, a custom app). */
 
-.vz-window.vz-window { width: 716px; }
+.vz-window.vz-window { width: 728px; }
 .vz-window > .modal-content.vz-client { padding: 0 !important; background: var(--vz-client); }
 
 .vz-root {
     position: relative;
     display: flex;
     flex-direction: column;
-    height: 481px;
+    height: 503px;
     background: var(--vz-client);
     color: var(--vz-text);
     cursor: default;
     user-select: none;
 }
 
-/* ---- the menu bar and the Verizon Wireless logo beside it (7.6 draws it across the caption and menu rows) ---- */
-/* Melaton's caption cannot hold it as 7.6's own frame did: the menu row stays the kit's, and the logo sits at the
-   right from the menu row down into the tab row's free space (the tabs end well left of it), as 7.6 drew it beside
-   the tabs' top; nothing rises into the frame */
-.vz-root > .naxt-menubar { flex: none; padding-right: 200px; }
-.vz-root .vz-logo {
-    position: absolute;
-    top: 6px;
-    right: 12px;
-    width: 186px;
-    height: 30px;
-    pointer-events: none;
-}
+/* ---- the header band, the tabs and the pane: measured on the real 7.6.3.1 (2642f) at 100 % on the Vista VM
+   (~/.cache/vzam-ref/vm/main/full-networks.png, 717 x 520 with its own 1 px frame; the program's client is 712 px wide).
+   Every number below is the VM's position less (2, 14): its frame's left column, and the 14 rows of its own caption
+   that Melaton's caption stands for. 7.6 paints one band from its caption to a dark line under the menu row, plain on
+   the left and darkening to the right (a horizontal gradient only), the Verizon Wireless logo (VZAMres PNG 1481,
+   173 x 25, unscaled) in it 4 px under the band's top here (18 there) with its foot on the menu text's base line. ---- */
+.vz-root > .vz-band { position: relative; flex: none; box-sizing: border-box; height: 37px; border-bottom: 1px solid var(--vz-band-line); background: var(--vz-band-face); }
+#vzAccessManagerModal .vz-root > .vz-band > .naxt-menubar:not(#_) { position: absolute; left: 0; right: 0; bottom: 0; display: flex; height: 22px; padding: 0 0 0 12px; background: transparent; border: 0; box-shadow: none; }
+/* 7.6's menu row: Segoe UI 9 pt, no access-key underlines until Alt (Windows' own rule), its titles 7.6's distance apart */
+#vzAccessManagerModal .vz-root > .vz-band > .naxt-menubar > .naxt-menu-title:not(#_) { height: 22px; padding: 0 0 2px 8px; margin: 0; font: 12px "Segoe UI", SegoeUI, sans-serif; line-height: 19px; text-align: left; background: transparent; border: 0; }
+/* each title as wide as 7.6's (GDI's Segoe UI runs wider than the browser's): File 33, View 42, Tools 45, Options 58 */
+#vzAccessManagerModal .vz-root > .vz-band > .naxt-menubar > [data-vz-menu="file"]:not(#_) { width: 33px; }
+#vzAccessManagerModal .vz-root > .vz-band > .naxt-menubar > [data-vz-menu="view"]:not(#_) { width: 42px; }
+#vzAccessManagerModal .vz-root > .vz-band > .naxt-menubar > [data-vz-menu="tools"]:not(#_) { width: 45px; }
+#vzAccessManagerModal .vz-root > .vz-band > .naxt-menubar > [data-vz-menu="options"]:not(#_) { width: 58px; }
+#vzAccessManagerModal .vz-root > .vz-band > .naxt-menubar > [data-vz-menu="help"]:not(#_) { width: 38px; }
+#vzAccessManagerModal .vz-root > .vz-band > .naxt-menubar:not(:focus-within) > .naxt-menu-title > u { text-decoration: none; }
+.vz-root > .vz-band .vz-logo { position: absolute; left: 522px; top: 4px; width: 173px; height: 25px; pointer-events: none; }
 
-/* ---- the tabs ---- */
-/* the kit's tabs at 7.6's size (27 px, a bold selected tab); by the window's id, as the kit's own rules are long chains */
-#vzAccessManagerModal .vz-root > menu[role="tablist"] { flex: none; margin: 9px 0 0 9px; }
-#vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"] { display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 14px 0 9px; font-size: 12px; flex: none; min-width: max-content; white-space: nowrap; }
-#vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"] img { width: auto; height: 16px; flex: none; }
-#vzAccessManagerModal .vz-root > menu[role="tablist"] > button[role="tab"][aria-selected="true"] { font-weight: bold; }
-.vz-root .vz-panel {
+/* the tabs: 7.6 draws its own, trapezoids whose sides lean out 6 px over their 28 rows, each over the next one to
+   its right and the selected one over all, 2 px taller (VM 60 / 62) and white into the pane; their side columns are
+   the program's own pixels (tabface-*.png: the VM's selected Networks tab, the unselected Wi-Fi Locations' right side
+   and an unselected Networks' left side from a 7.6.3.1 capture). Each tab is as wide as 7.6 makes it (its labels in
+   GDI's Segoe UI; the browser's run narrower, so the widths are 7.6's own, from icon to icon: 107, 99, 137 and the
+   last to its edge), the selected one's bold label centred. */
+.vz-root > .vz-tabs { position: relative; z-index: 1; flex: none; display: flex; height: 28px; margin: 9px 0 -1px 12px; }
+.vz-root .vz-tab {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    box-sizing: border-box;
+    height: 28px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0 0 0 -5px;
+    padding: 0 18px 0 15px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--vz-text);
+    font: 12px "Segoe UI", SegoeUI, sans-serif;
+    white-space: nowrap;
+    cursor: default;
+}
+.vz-root .vz-tab::before, .vz-root .vz-tab::after { display: none; }
+.vz-root .vz-tab:first-child { margin-left: 0; }
+.vz-root .vz-tab[data-tab="networks"] { width: 110px; }
+.vz-root .vz-tab[data-tab="statistics"] { width: 105px; }
+.vz-root .vz-tab[data-tab="txt"] { width: 141px; }
+.vz-root .vz-tab[data-tab="wloc"] { width: 139px; }
+.vz-root .vz-tab:nth-child(1) { z-index: 4; }
+.vz-root .vz-tab:nth-child(2) { z-index: 3; }
+.vz-root .vz-tab:nth-child(3) { z-index: 2; }
+.vz-root .vz-tab:nth-child(4) { z-index: 1; }
+.vz-root .vz-tab[aria-selected="true"] { z-index: 5; }
+.vz-root .vz-tab > i { position: absolute; top: 0; height: 28px; pointer-events: none; }
+.vz-root .vz-tab > .vz-tab-l { left: 0; width: 8px; background: url(tabface-l.png) no-repeat; }
+.vz-root .vz-tab > .vz-tab-r { right: 0; width: 8px; background: url(tabface-r.png) no-repeat; }
+.vz-root .vz-tab > .vz-tab-m { left: 8px; right: 8px; top: 2px; height: auto; bottom: 0; box-sizing: border-box; border-top: 1px solid var(--vz-tab-edge); border-bottom: 1px solid var(--vz-tab-edge); background: var(--vz-tab-face); }
+.vz-root .vz-tab[aria-selected="true"] > .vz-tab-l { background-image: url(tabface-sel-l.png); }
+.vz-root .vz-tab[aria-selected="true"] > .vz-tab-r { background-image: url(tabface-sel-r.png); }
+.vz-root .vz-tab[aria-selected="true"] > .vz-tab-m { top: 0; border-top-color: var(--vz-box-edge); border-bottom: 0; background: var(--vz-tab-sel-face); }
+/* icon and label 4 / 3 px under the tab's top (unselected tabs start 2 px lower) */
+.vz-root .vz-tab > img { position: relative; flex: none; margin-top: 6px; }
+.vz-root .vz-tab > .vz-tab-t { position: relative; flex: none; margin: 6px 0 0 7px; line-height: 16px; }
+.vz-root .vz-tab[aria-selected="true"] > img { margin-top: 4px; }
+.vz-root .vz-tab[aria-selected="true"] > .vz-tab-t { margin-top: 4px; }
+/* the selected label: bold, centred over the regular one that sets the width */
+.vz-root .vz-tab[aria-selected="true"] > img { margin-left: -2px; margin-right: 2px; }
+.vz-root .vz-tab[aria-selected="true"] > .vz-tab-t { color: transparent; }
+.vz-root .vz-tab[aria-selected="true"] > .vz-tab-t::after { content: attr(data-t); position: absolute; top: 0; left: -10px; right: -10px; text-align: center; font-weight: bold; color: var(--vz-text); }
+.vz-root .vz-tab:focus { outline: none; }
+.vz-root .vz-tab:focus-visible > .vz-tab-t::before { content: ""; position: absolute; inset: 0 -2px; outline: 1px dotted var(--vz-text); }
+
+/* the pane: 693 x 351 with 2 px cut corners (panel-frame.png, the VM's pixels), its top line under the tabs */
+#vzAccessManagerModal .vz-root .vz-panel:not(#_) {
     position: relative;
     flex: none;
     box-sizing: border-box;
-    height: 350px;
-    margin: 0 8px 0 4px;
+    width: 693px;
+    height: 351px;
+    margin: 0 0 0 10px;
     padding: 0;
+    border: 1px solid transparent;
+    border-image: url(panel-frame.png) 3 fill / 3px;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
     overflow: hidden;
 }
-.vz-root .vz-page { position: absolute; inset: 0; display: none; padding: 10px 14px 12px 16px; box-sizing: border-box; }
+/* a page in the pane (VM: the Networks bar 11 px under the pane's top line, the list 14 px in from its sides) */
+.vz-root .vz-page { position: absolute; inset: 0; display: none; padding: 11px 13px 14px 14px; box-sizing: border-box; }
 .vz-root .vz-page.is-shown { display: flex; flex-direction: column; }
 
 /* ---- buttons: the kit's push buttons (7.6 used Windows' own), sized as on the capture; Disconnect WWAN is
@@ -60,8 +123,9 @@
 .vz-root .vz-status button.vz-red:disabled { opacity: .6; }
 .vz-root button u { text-decoration: underline; }
 
-.vz-root .vz-bar { flex: none; display: flex; align-items: center; gap: 4px; height: 26px; margin-bottom: 6px; }
+.vz-root .vz-bar { flex: none; display: flex; align-items: center; gap: 4px; height: 22px; margin-bottom: 7px; }
 .vz-root .vz-bar button { min-width: 77px; }
+#vzAccessManagerModal .vz-root .vz-bar button:not(#_) { height: 22px; min-height: 0; }
 .vz-root .vz-bar .vz-fill { flex: 1; }
 
 /* ---- the lists: Available Network | Status | Signal, TXT Messaging, Wi-Fi Locations ---- */
@@ -90,7 +154,16 @@
 .vz-root .vz-row:hover { background: var(--vz-row-hot); }
 .vz-root .vz-row.is-selected { background: var(--vz-row-sel); }
 .vz-root .vz-row.is-dim { color: var(--vz-dim); }
-.vz-root .vz-net .vz-head, .vz-root .vz-net .vz-row { grid-template-columns: 337px 155px 62px 1fr; }
+/* Networks: 7.6's report view (its header 2 px in from the frame, 19 rows; the rows 3 px under it, 32 tall, the
+   selection only as wide as the columns), the Signal column's meter centred 6 px down */
+.vz-root .vz-net .vz-head, .vz-root .vz-net .vz-row { grid-template-columns: 339px 154px 61px 1fr; }
+.vz-root .vz-net { padding-top: 2px; }
+.vz-root .vz-net .vz-head { height: 19px; margin: 0 1px 3px 2px; }
+#vzAccessManagerModal .vz-root .vz-net .vz-row { min-height: 32px; height: 32px; margin-left: 1px; padding: 0; }
+.vz-root .vz-net .vz-row:is(:hover, .is-selected) { background: none; }
+.vz-root .vz-net .vz-row:hover > span:not(:last-child) { background: var(--vz-row-hot); }
+.vz-root .vz-net .vz-row.is-selected > span:not(:last-child) { background: var(--vz-row-sel); }
+.vz-root .vz-net .vz-row > span { align-self: stretch; }
 .vz-root .vz-net .vz-row { font-size: 15px; }
 .vz-root .vz-net .vz-row.is-on { font-weight: bold; }
 .vz-root .vz-net .vz-row img { flex: none; }
@@ -114,8 +187,8 @@
     user-select: text;
 }
 
-/* ---- the signal meter: VZAM's own bitmap (bracket and four bars, meter-0 ... meter-4) ---- */
-.vz-meter { display: block; width: 30px; height: 22px; flex: none; }
+/* ---- the signal meter: VZAM's own 25 x 20 drawing (meter-0 ... meter-4), pixel art: never smoothed when scaled ---- */
+.vz-meter { display: block; width: 25px; height: 20px; flex: none; image-rendering: pixelated; }
 
 /* ---- Statistics ---- */
 .vz-root .vz-legend { flex: none; display: flex; align-items: center; justify-content: center; gap: 22px; height: 16px; margin: 0 0 6px; }
@@ -149,10 +222,10 @@
 .vz-root .vz-status {
     flex: none;
     display: grid;
-    grid-template-columns: 407px 164px 112px;
+    grid-template-columns: 407px 166px 112px;
     grid-template-rows: 28px 28px;
-    gap: 4px 5px;
-    margin: 10px 8px 0 4px;
+    gap: 4px;
+    margin: 9px 0 0 10px;
 }
 .vz-root .vz-box {
     box-sizing: border-box;
@@ -170,7 +243,8 @@
 .vz-root .vz-cover .vz-national { color: var(--vz-national); }
 .vz-root .vz-cover .vz-fill { flex: 1; }
 .vz-root .vz-tech { font-weight: bold; font-size: 13px; margin-right: 3px; }
-.vz-root .vz-tech-mark { flex: none; height: 15px; width: auto; margin-right: 5px; }
+/* the marks: as tall as the meter, on whole pixels (a 26 px row centres both 3 px down), one bitmap per scale */
+.vz-root .vz-tech-mark { display: block; flex: none; height: 20px; margin-right: 5px; }
 .vz-root .vz-roam { flex: none; width: 20px; height: 16px; margin-right: 4px; }
 .vz-root .vz-sig { display: flex; flex: none; }
 .vz-root .vz-conn { gap: 8px; }
@@ -183,6 +257,8 @@
     grid-template-columns: 24px 1fr;
     grid-template-rows: 1fr 1fr;
     align-items: center;
+    align-self: start;
+    height: 61px;
     padding: 0 6px 0 4px;
 }
 .vz-root .vz-device .mode { display: flex; justify-content: flex-end; gap: 22px; padding-right: 2px; }
@@ -190,7 +266,8 @@
 .vz-root .vz-device .num { text-align: right; padding-right: 2px; overflow: hidden; text-overflow: ellipsis; }
 .vz-root .vz-device img { justify-self: center; }
 .vz-root .vz-status button { height: 27px; width: 112px; padding: 0 2px; font-size: 12px; white-space: nowrap; }
-.vz-root .vz-status .vz-vpn { grid-column: 3; grid-row: 1; }
+/* VM: Start VPN rises 2 px above the boxes; the device box is a row taller than the two beside it */
+.vz-root .vz-status .vz-vpn { grid-column: 3; grid-row: 1; margin-top: -2px; }
 .vz-root .vz-status .vz-cmd { grid-column: 3; grid-row: 2; }
 
 /* no device: the box holds 7.6's "Device not available" beside the device's not-available icon */
@@ -212,12 +289,19 @@
 .vz-root .vz-mini { display: none; }
 .vz-window.vz-min.vz-min { width: 218px; }
 .vz-window.vz-min .vz-root { height: auto; padding-bottom: 6px; }
-.vz-window.vz-min .vz-root > menu[role="tablist"],
+.vz-window.vz-min .vz-root > .vz-tabs,
 .vz-window.vz-min .vz-root > .vz-panel,
 .vz-window.vz-min .vz-root > .vz-status { display: none; }
-.vz-window.vz-min .vz-root > .naxt-menubar { padding-right: 0; }
-/* the logo over the menu, as 7.6 drew it under its caption */
-.vz-window.vz-min .vz-root .vz-logo { order: -1; position: static; align-self: flex-end; width: 130px; height: auto; margin: 2px 6px 0 0; }
+/* the logo over the menu, as 7.6 drew it under its caption (scaled down there too) */
+/* (VM: the logo drawn at 112 x 16 with its right end 12 px in, the menu titles closer: File 30, View 36, Tools 41,
+   Options 52 apart) */
+.vz-window.vz-min .vz-root > .vz-band { height: 41px; }
+.vz-window.vz-min .vz-root > .vz-band .vz-logo { left: auto; right: 12px; top: 2px; width: 112px; height: 16px; }
+#vzAccessManagerModal.vz-min .vz-root > .vz-band > .naxt-menubar:not(#_) { padding-left: 2px; }
+#vzAccessManagerModal.vz-min .vz-root > .vz-band > .naxt-menubar > [data-vz-menu="file"]:not(#_) { width: 30px; }
+#vzAccessManagerModal.vz-min .vz-root > .vz-band > .naxt-menubar > [data-vz-menu="view"]:not(#_) { width: 36px; }
+#vzAccessManagerModal.vz-min .vz-root > .vz-band > .naxt-menubar > [data-vz-menu="tools"]:not(#_) { width: 41px; }
+#vzAccessManagerModal.vz-min .vz-root > .vz-band > .naxt-menubar > [data-vz-menu="options"]:not(#_) { width: 52px; }
 .vz-window.vz-min .vz-root .vz-mini { display: flex; flex-direction: column; gap: 4px; margin: 4px 5px 0; }
 .vz-root .vz-mini .vz-box { padding: 0 6px; }
 .vz-root .vz-mcover { flex-direction: column; align-items: stretch; height: 58px; padding: 0 !important; }
@@ -255,3 +339,71 @@
 .vz-dlg .vdt-static:has(> .vz-about-logo) { overflow: visible; }
 .vz-dlg .vz-about-logo { display: block; width: 160px; height: 60px; }
 .vz-dlg .vdt-custom .vz-usage { box-sizing: border-box; height: 100%; padding: 8px; border: 1px solid var(--vz-field-edge); background: var(--vz-box-face); overflow: auto; user-select: text; }
+
+/* ---- Preferences (VZAMres 862 and its pages; the VM's 7.6.3.1, ~/.cache/vzam-ref/vm/prefs) ----
+   Placed by MS Shell Dlg units (the kit), drawn in Segoe UI 9 pt as 7.6 draws them; its own check boxes (14 px, a
+   red tick over the corner) and radio buttons (15 px, a red dot) from the VM's pixels (assets/prefs/). */
+#vzAccessPrefs .vdt-client:not(#_) { font: 12px "Segoe UI", SegoeUI, sans-serif; }
+#vzAccessPrefs .vz-pref-pages, #vzAccessPrefs .vz-pref-tree { overflow: visible; }
+#vzAccessPrefs .vz-pref-page { position: absolute; inset: 0; }
+#vzAccessPrefs .vz-pref-page[hidden] { display: none; }
+/* the tree: a blue line, a 1 px gap of the dialog's face, white */
+#vzAccessPrefs .vz-tree { position: absolute; inset: 0; box-sizing: border-box; border: 1px solid var(--vz-box-edge); background: var(--vz-box-face); box-shadow: inset 0 0 0 1px var(--vz-client); outline: none; }
+#vzAccessPrefs .vz-tree-in { position: absolute; inset: 1px; overflow: hidden; }
+#vzAccessPrefs .vz-tree-row { position: absolute; left: 0; right: 0; height: 28px; cursor: default; }
+#vzAccessPrefs .vz-tree-row > img { position: absolute; left: 20px; top: 0; }
+#vzAccessPrefs .vz-tree-row.is-child > img { left: 44px; }
+#vzAccessPrefs .vz-tree-label { position: absolute; left: 45px; top: 3px; height: 22px; padding: 0 3px; font-size: 13px; line-height: 22px; white-space: nowrap; color: var(--vz-text); }
+#vzAccessPrefs .vz-tree-row.is-child .vz-tree-label { left: 67px; }
+/* selected: a flat grey box while the tree is not focused, shaded (25 rows) while it is (VM) */
+#vzAccessPrefs .vz-tree-row[aria-selected="true"] .vz-tree-label { background: var(--vz-tree-sel); }
+#vzAccessPrefs .vz-tree:focus .vz-tree-row[aria-selected="true"] .vz-tree-label { top: 0; height: 25px; line-height: 28px; background: var(--vz-tree-sel-focus); }
+/* the lines: dotted, every other pixel; the open box of Connect */
+#vzAccessPrefs .vz-tree-v, #vzAccessPrefs .vz-tree-h { position: absolute; display: block; pointer-events: none; }
+#vzAccessPrefs .vz-tree-v { left: 9px; width: 1px; background: repeating-linear-gradient(to bottom, var(--vz-tree-line) 0 1px, transparent 1px 2px); }
+#vzAccessPrefs .vz-tree-v.is-child { left: 28px; }
+#vzAccessPrefs .vz-tree-h { left: 10px; width: 9px; height: 1px; background: repeating-linear-gradient(to right, transparent 0 1px, var(--vz-tree-line) 1px 2px); }
+#vzAccessPrefs .vz-tree-h.is-child { left: 29px; width: 15px; }
+#vzAccessPrefs .vz-tree-box { position: absolute; left: 5px; }
+/* a section's heading and its rule (2 px: light over dark) to the template's right edge */
+#vzAccessPrefs :is([data-vdt-id="1104"], [data-vdt-id="523"], [data-vdt-id="515"], [data-vdt-id="527"], [data-vdt-id="1110"], [data-vdt-id="32041"], [data-vdt-id="32047"], [data-vdt-id="1108"], [data-vdt-id="1240"], [data-vdt-id="1099"], [data-vdt-id="1098"], [data-vdt-id="1100"], [data-vdt-id="1105"], [data-vdt-id="1111"], [data-vdt-id="1082"]).vdt-static:not([hidden]) { display: flex; overflow: visible; }
+#vzAccessPrefs :is([data-vdt-id="1104"], [data-vdt-id="523"], [data-vdt-id="515"], [data-vdt-id="527"], [data-vdt-id="1110"], [data-vdt-id="32041"], [data-vdt-id="32047"], [data-vdt-id="1108"], [data-vdt-id="1240"], [data-vdt-id="1099"], [data-vdt-id="1098"], [data-vdt-id="1100"], [data-vdt-id="1105"], [data-vdt-id="1111"], [data-vdt-id="1082"]).vdt-static::after { content: ""; flex: 1; height: 2px; margin: 6px 0 0 4px; background: linear-gradient(var(--vz-rule-light) 0 1px, var(--vz-box-edge) 1px 2px); }
+/* check boxes and radio buttons */
+#vzAccessPrefs .tbp-client .tbp-check input:not(#_) + label { padding-left: 19px; line-height: 14px; }
+#vzAccessPrefs .tbp-client .tbp-check input:not(#_) + label > span { position: relative; top: -1px; }
+#vzAccessPrefs .tbp-client .tbp-check input:not(#_) + label::after { display: none; }
+#vzAccessPrefs .tbp-client .tbp-check:is(*, :hover, :active) input:not(#_)[type="checkbox"] + label::before { top: -2px; width: 17px; height: 16px; background: url(prefs/chk-off.png) no-repeat; }
+#vzAccessPrefs .tbp-client .tbp-check:is(*, :hover, :active) input:not(#_)[type="checkbox"]:checked + label::before { background-image: url(prefs/chk-on.png); }
+#vzAccessPrefs .tbp-client .tbp-check:is(*, :hover, :active) input:not(#_)[type="checkbox"]:disabled + label::before { background-image: url(prefs/chk-dis.png); }
+#vzAccessPrefs .tbp-client .tbp-check:is(*, :hover, :active) input:not(#_)[type="checkbox"]:checked:disabled + label::before { background-image: url(prefs/chk-on.png); opacity: .5; }
+#vzAccessPrefs .tbp-client .tbp-check:is(*, :hover, :active) input:not(#_)[type="radio"] + label::before { top: 0; width: 15px; height: 15px; background: url(prefs/rad-off.png) no-repeat; }
+#vzAccessPrefs .tbp-client .tbp-check:is(*, :hover, :active) input:not(#_)[type="radio"]:checked + label::before { background-image: url(prefs/rad-on.png); }
+#vzAccessPrefs .tbp-client .tbp-check:is(*, :hover, :active) input:not(#_)[type="radio"]:disabled + label::before { opacity: .5; }
+/* the report views (Connect's precedence, Wi-Fi's preferred networks) */
+#vzAccessPrefs .vdt-listview .vdt-lv-row { padding: 0 4px; line-height: 19px; }
+#vzAccessPrefs .vdt-listview.is-disabled { color: var(--vz-dim); }
+/* 7.6's own push buttons (the VM's pixels, assets/prefs/btn*.png: a blue rounded edge over white shading to grey; the
+   default one ringed in light blue; hot, pressed and greyed), and its edit boxes (blue outside, a sunken line inside) */
+#vzAccessPrefs .vdt-client button.vdt-button:not(#_) { border: 6px solid transparent; border-width: 0 6px; border-image: url(prefs/btn.png) 0 6 fill / 0 6px repeat; background: none; box-shadow: none; border-radius: 0; min-width: 0; padding: 0; color: var(--vz-text); font: inherit; line-height: 20px; }
+#vzAccessPrefs .vdt-client button.vdt-button:not(#_)::before, #vzAccessPrefs .vdt-client button.vdt-button:not(#_)::after { display: none; }
+#vzAccessPrefs .vdt-client button.vdt-button[data-dialog-primary]:not(#_) { border-image-source: url(prefs/btn-def.png); }
+#vzAccessPrefs .vdt-client button.vdt-button:not(#_):hover:enabled { border-image-source: url(prefs/btn-hot.png); }
+#vzAccessPrefs .vdt-client button.vdt-button:not(#_):active:enabled { border-image-source: url(prefs/btn-down.png); }
+#vzAccessPrefs .vdt-client button.vdt-button:not(#_):disabled { border-image-source: url(prefs/btn-dis.png); color: var(--vz-dim); }
+#vzAccessPrefs .vdt-client button.vdt-button:not(#_):focus-visible { outline: 1px dotted var(--vz-text); outline-offset: -4px; }
+#vzAccessPrefs .vdt-client input.vdt-edit:not(#_) { box-sizing: border-box; border: 1px solid; border-color: var(--vz-box-edge) var(--vz-rule-light) var(--vz-rule-light) var(--vz-box-edge); border-radius: 0; box-shadow: inset 1px 1px 0 var(--vz-edit-in-light), inset -1px -1px 0 var(--vz-edit-in-dark); background: var(--vz-box-face); padding: 0 3px; font: inherit; }
+#vzAccessPrefs .vdt-client input.vdt-edit:not(#_):disabled { background: var(--vz-edit-off); }
+/* labels run past their template width as GDI draws them (Segoe UI is wider than the MS Shell Dlg the dialog was laid
+   out in); the report views: a blue frame, a white line inside, a 22 px shaded header */
+#vzAccessPrefs .vdt-static { overflow: visible; white-space: nowrap; }
+#vzAccessPrefs .vdt-listview:not(#_) { border: 1px solid var(--vz-box-edge); box-shadow: none; padding: 1px; background: var(--vz-box-face); }
+#vzAccessPrefs .vdt-listview .vdt-lv-header:not(#_) { display: flex; height: 22px; margin: 0; padding: 0; border: 0; background: var(--vz-pref-head-face); }
+#vzAccessPrefs .vdt-listview .vdt-lv-col:not(#_) { display: flex; align-items: center; box-sizing: border-box; height: 22px; padding: 0 7px; border-right: 1px solid var(--vz-head-edge); }
+#vzAccessPrefs .vdt-listview:not(.is-report) .vdt-lv-header { display: none; }
+/* drop-down lists: 7.6 draws them as its buttons (a blue rounded edge, white shading to grey) with a black arrow
+   8 px in from the right; greyed, flat */
+#vzAccessPrefs .vdt-client select.vdt-select:not(#_) { appearance: none; box-sizing: border-box; height: 20px; border: 1px solid var(--vz-box-edge); border-radius: 2px; box-shadow: none; padding: 0 20px 0 4px; background: url(prefs/combo-arrow.png) no-repeat right 7px top 6px, var(--vz-combo-face); color: var(--vz-text); font: inherit; line-height: 18px; }
+#vzAccessPrefs .vdt-client select.vdt-select:not(#_):disabled { background: url(prefs/combo-arrow.png) no-repeat right 7px top 6px, var(--vz-edit-off); color: var(--vz-dim); }
+#vzAccessPrefs .vdt-listview.no-header .vdt-lv-header:not(#_) { display: none; }
+#vzAccessPrefs .vdt-listview.no-header .vdt-lv-row { line-height: 20px; }
+#vzAccessPrefs .vdt-listview .vdt-lv-row.is-selected { background: var(--vz-tree-sel); }

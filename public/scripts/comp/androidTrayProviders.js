@@ -187,7 +187,7 @@
         const go = () => {
             if (!vzOn) return;
             const reg = root.melatonRegistry;
-            const atStartup = reg && typeof reg.get === 'function' ? reg.get('HKCU\\Software\\Verizon Wireless\\VZAccess Manager\\Preferences', 'RunAtStartup', 1) : 1;
+            const atStartup = reg && typeof reg.get === 'function' ? reg.get('HKCU\\Software\\Smith Micro\\VZAM - Verizon Wireless', 'RunAtStartup', 1) : 1;
             if (Number(atStartup) === 0) return;
             const apps = root.melatonApps;
             const ws = root.wsClient;
@@ -209,6 +209,34 @@
         const once = () => { if (started || !booted()) return; started = true; clearTimeout(vzTimer); vzTimer = setTimeout(go, 3000); };
         doc.addEventListener('desktopBootDone', () => setTimeout(once, 0), { once: true, signal: appScopeSignal });
         vzTimer = setTimeout(() => { once(); if (!started) vzTimer = setTimeout(once, 40000); }, 20000);
+    }
+
+    // ---- mobile broadband kept up beside Wi-Fi (#953, Yukimi): connecting mobile broadband while Wi-Fi (or another
+    // link) is up turns on Android's "Mobile data always active" (Settings.Global mobile_data_always_on, through the
+    // app's Shizuku path) so the cellular link really stays up; disconnecting turns it off again only if Melaton turned
+    // it on (the mark in the registry, so it survives a restart). Read back by the app's radios push.
+    const MB_KEY = 'HKCU\\Software\\Melaton\\Mobile Broadband';
+    function setAlwaysOn(on, mark) {
+        if (!root.AndroidDevice || typeof root.AndroidDevice.setMobileDataAlwaysOn !== 'function') return { ok: false, error: 'This app version cannot change it.' };
+        const r = parse(call('AndroidDevice', 'setMobileDataAlwaysOn', !!on)) || { ok: false };
+        const reg = root.melatonRegistry;
+        if (r.ok && reg && typeof reg.set === 'function') void reg.set(MB_KEY, { AlwaysOnByMelaton: on && mark ? 1 : null });
+        return r;
+    }
+    function keepMobileUp(on) {
+        const dev = root.AndroidDevice;
+        if (!dev || typeof dev.getMobileDataAlwaysOn !== 'function') return;
+        const cur = parse(call('AndroidDevice', 'getMobileDataAlwaysOn'));
+        const isOn = !!(cur && cur.on);
+        const reg = root.melatonRegistry;
+        const ours = !!(reg && typeof reg.get === 'function' && Number(reg.get(MB_KEY, 'AlwaysOnByMelaton', 0)));
+        if (on) {
+            const w = parse(call('AndroidWifi', 'get'));
+            const otherUp = !!(w && w.state === 'connected') || !!(status && status.active === 'ethernet');
+            if (otherUp && !isOn) setAlwaysOn(true, true);
+        } else if (isOn && ours) {
+            setAlwaysOn(false, false);
+        }
     }
 
     // ---- network: Wi-Fi + mobile broadband ------------------------------------------------------------------------
@@ -275,7 +303,11 @@
             forget: (ssid) => wifiAsk('forget', String(ssid)),
             autoConnect: (ssid, on) => (typeof root.AndroidWifi.autoConnect === 'function' ? wifiAsk('autoConnect', String(ssid), !!on) : Promise.resolve({ error: 'This app version cannot change it.' })),
             radio: (on) => wifiAsk('radio', !!on),
-            mobileData: (on) => Promise.resolve(parse(call('AndroidDevice', 'setRadio', 'data', !!on)) || { error: 'No mobile data.' }),
+            mobileData: (on) => { keepMobileUp(!!on); return Promise.resolve(parse(call('AndroidDevice', 'setRadio', 'data', !!on)) || { error: 'No mobile data.' }); },
+            // Developer options > Mobile data always active (DSApp AndroidDevice.get/setMobileDataAlwaysOn): null on an
+            // older app
+            dataAlwaysOn: () => { const r = parse(call('AndroidDevice', 'getMobileDataAlwaysOn')); return r && typeof r.on === 'boolean' ? r.on : null; },
+            setDataAlwaysOn: (on) => setAlwaysOn(!!on, false),
             // round 2 (docs/client-api/tray-providers.md): read when asked, never pushed
             known: () => Promise.resolve(parse(call('AndroidWifi', 'known')) || { networks: [] }),
             // stats(iface): the app answers per interface ({ iface, kind, ... }, #945); an older app answers every call
