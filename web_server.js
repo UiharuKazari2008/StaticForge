@@ -2820,6 +2820,8 @@ function publicStatusExtras(req) {
         // and shows the Administrator tile with its picture like Vista's Welcome screen
         useVistaLogon,
         logonPicture: useVistaLogon ? accountPictures.logonPictureUrl(config) : null,
+        // User Accounts' "Decrease Login Time by skipping Minimum Login Time": kept by the client for its next start
+        skipMinimumLogonTime: config.skipMinimumLogonTime === true,
         // the Administrator's name for the Welcome screen and the logon dialog (User Accounts'
         // Change the account name), shown before anyone signs in
         logonName: accountPictures.accountName(config, 'administrator'),

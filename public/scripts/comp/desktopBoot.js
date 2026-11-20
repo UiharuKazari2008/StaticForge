@@ -216,11 +216,15 @@
         }, Math.max(0, delay));
     }
 
+    // User Accounts' "Decrease Login Time by skipping Minimum Login Time" (#910): no stage keeps a minimum dwell
+    // (websocket.js _skipMinimumLogon)
+    const dwellOf = (stage) => ((window.wsClient && typeof window.wsClient._skipMinimumLogon === 'function' && window.wsClient._skipMinimumLogon()) ? 0 : (config.dwellMs[stage] || 0));
+
     function advance() {
         if (!state.active || state.connectionPaused || state.timer) return;
         // The stage on screen keeps its minimum dwell even when the next request arrives late
         if (state.stage) {
-            const dwell = config.dwellMs[state.stage] || 0;
+            const dwell = dwellOf(state.stage);
             const elapsed = Date.now() - state.stageShownAt;
             if (elapsed < dwell) {
                 scheduleAdvance(dwell - elapsed);
@@ -238,7 +242,7 @@
         refreshPrimaryText();
         dispatch('desktopBootStage', { stage: next });
         if (state.queue.length || next === 'done') {
-            scheduleAdvance(config.dwellMs[next] || 0);
+            scheduleAdvance(dwellOf(next));
         }
     }
 

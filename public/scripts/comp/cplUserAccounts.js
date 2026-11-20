@@ -139,7 +139,25 @@
                         <p class="desktop-settings-hint">Start at the Melaton Welcome screen instead of the Classic logon dialog. The connection and startup windows use Melaton Basic. Applies to every computer that signs in to this server.</p>
                     </div>
                 </div>
+                ${skipMinimumOption()}
             </div>`;
+    }
+
+    /**
+     * "Decrease Login Time by skipping Minimum Login Time" (config.skipMinimumLogonTime, one choice for the server;
+     * Yukimi, Nov 20 2026, #910): the logon's statuses show only as long as they are true (websocket.js
+     * _skipMinimumLogon). Beside Use Vista Logon.
+     */
+    function skipMinimumOption() {
+        const on = !!(pins && pins.skipMinimumLogonTime);
+        return `
+                <div class="desktop-settings-option">
+                    <button type="button" class="btn-secondary toggle-btn icon-only indicator" data-cpl-ua="skip-minimum" data-state="${on ? 'on' : 'off'}" aria-pressed="${on}" aria-label="Decrease Login Time by skipping Minimum Login Time"></button>
+                    <div class="desktop-settings-option-body">
+                        <span class="desktop-settings-option-label">Decrease Login Time by skipping Minimum Login Time</span>
+                        <p class="desktop-settings-hint">The logon screens show each step only for as long as it takes, instead of for their minimum time. Applies to every computer that signs in to this server, from its next start.</p>
+                    </div>
+                </div>`;
     }
 
     function listView() {
@@ -301,6 +319,14 @@
                 const res = await client.setUserPinLoginEnabled(enable);
                 if (res && res.success) pins.userPinLoginEnabled = res.userPinLoginEnabled;
             } catch (_err) { toast('error', 'The guest account could not be changed.'); }
+            return paint();
+        }
+        if (action === 'skip-minimum' && client && isAdmin()) {
+            const enable = !(pins && pins.skipMinimumLogonTime);
+            try {
+                const res = await client.setSkipMinimumLogonTime(enable);
+                if (res && res.success) pins = { ...(pins || {}), skipMinimumLogonTime: res.skipMinimumLogonTime };
+            } catch (_err) { toast('error', 'The logon setting could not be changed.'); }
             return paint();
         }
         if (action === 'vista-logon' && client && isAdmin()) {

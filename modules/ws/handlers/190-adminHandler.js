@@ -529,6 +529,7 @@ async function handleGetPinSettings(handlersCtx, ws, message, clientInfo, wsServ
                 success: true,
                 userPinLoginEnabled: config.userPinLoginEnabled !== false,
                 useVistaLogon: config.useVistaLogon === true,
+                skipMinimumLogonTime: config.skipMinimumLogonTime === true,
                 adminPinConfigured: isPinConfigured(secureConfig.loginPin),
                 userPinConfigured: isPinConfigured(secureConfig.readOnlyPin)
             },
@@ -671,6 +672,35 @@ async function handleSetUseVistaLogon(handlersCtx, ws, message, clientInfo, wsSe
     } catch (error) {
         console.error('❌ Error toggling Vista logon:', error);
         handlersCtx.sendError(ws, 'Failed to update the Vista logon setting', error.message, message.requestId);
+    }
+}
+
+/**
+ * User Accounts "Decrease Login Time by skipping Minimum Login Time" (Yukimi, Nov 20 2026, #910): one server-wide
+ * choice beside Use Vista Logon, read from /status and kept by every client for its next start. On, the logon's
+ * scripted minimum durations (the connection dialog's beats, the Welcome holds) are skipped: each status shows only
+ * as long as it is true.
+ */
+async function handleSetSkipMinimumLogonTime(handlersCtx, ws, message, clientInfo) {
+    try {
+        if (clientInfo.userType !== 'admin') {
+            handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+            return;
+        }
+        const { enabled } = message;
+        if (typeof enabled !== 'boolean') {
+            handlersCtx.sendError(ws, 'enabled must be a boolean', 'INVALID_VALUE', message.requestId);
+            return;
+        }
+        handlersCtx.globalResources.modifyConfig('config').assign('skipMinimumLogonTime', enabled);
+        handlersCtx.sendToClient(ws, {
+            type: 'set_skip_minimum_logon_time_response',
+            requestId: message.requestId,
+            data: { success: true, skipMinimumLogonTime: enabled },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        handlersCtx.sendError(ws, 'Failed to update the logon setting', error.message, message.requestId);
     }
 }
 
@@ -1772,6 +1802,7 @@ function registerPackets(handlersCtx) {
     reg('set_user_pin', handleSetUserPin, ADMIN_DESTRUCTIVE);
     reg('set_user_pin_login_enabled', handleSetUserPinLoginEnabled, ADMIN_DESTRUCTIVE);
     reg('set_use_vista_logon', handleSetUseVistaLogon, ADMIN_DESTRUCTIVE);
+    reg('set_skip_minimum_logon_time', handleSetSkipMinimumLogonTime, ADMIN_DESTRUCTIVE);
 
     reg('get_rate_limiting_stats', handleGetRateLimitingStats);
     reg('get_session_rate_limiting_stats', handleGetSessionRateLimitingStats);

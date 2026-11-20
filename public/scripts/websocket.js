@@ -888,6 +888,7 @@ class WebSocketClient {
     // the installed app: "Please wait..." while the server is tried this long, then the logon from the cached profile
     // (#910, Yukimi Nov 20 2026: the password box with nothing before it said nothing about what was going on)
     static INSTALLED_LOGON_GRACE_MS = 2000;
+    static PROFILE_LIVE_MAX = 3; // profile pieces a reconnect applies quietly; more is "out of sync" (#910)
     static OFFLINE_ART_WAIT_MS = 1500; // the Welcome screen's art on an offline boot (#910)
     static NIGHTSHADE_QUEUE_MAX = 64;
     // the user's own settings and desktop: written only by a desktop that loaded them from the server (_userSettingsWritable)
@@ -1565,9 +1566,22 @@ class WebSocketClient {
             // login is on it should auto login"): "Welcome", then the desktop built from the profile cached on this
             // computer (cachedLogon.js cachedProfile); the reconnect checks it against the domain controller's.
             if (window.cachedLogon && !window.cachedLogon.mustSignIn()) {
-                this._offlineLogonReady = true;
-                console.log('🔑 Offline logon: this computer signs in by itself - the cached profile');
-                this._completeOfflineLogon();
+                // Fast logon (Yukimi, Nov 20 2026; Windows' fast logon optimization): with a cached profile the desktop
+                // is built from it at once and the server's word is checked behind (_checkProfileSync applies what
+                // changed). No cached profile yet (a first start): the server gets until OFFLINE_LOGON_AFTER_MS, then
+                // the computer still signs in (on defaults, nothing written) so the network can be joined from it.
+                const go = () => {
+                    if (this.socketAuthenticated === true || this.connectionPhase === 'auth' || this._offlineBoot || !this._offlineLogonEligible()) return;
+                    this._offlineLogonReady = true;
+                    console.log('🔑 Logon from the cached profile: this computer signs in by itself');
+                    this._completeOfflineLogon();
+                };
+                const meta = window.cachedProfile ? window.cachedProfile.meta() : Promise.resolve(null);
+                Promise.resolve(meta).catch(() => null).then((m) => {
+                    if (m && m.revision) return go();
+                    this._offlineLogonTimer = setTimeout(() => { this._offlineLogonTimer = null; go(); },
+                        Math.max(0, WebSocketClient.OFFLINE_LOGON_AFTER_MS - WebSocketClient.INSTALLED_LOGON_GRACE_MS));
+                });
                 return;
             }
             // Otherwise the password box, checked against the cached verifier
@@ -1575,7 +1589,21 @@ class WebSocketClient {
             this._offlinePasswordBoxShown = true;
             console.log('🔑 Offline logon: the server has not answered, the cached password is accepted');
             this._setConnectionPhase('auth', { beat: 'establishing', message: 'The Nightshade Network is not available. Log on with your password to use this computer.' });
-        }, installedApp ? WebSocketClient.INSTALLED_LOGON_GRACE_MS : offlineStart ? 2500 : WebSocketClient.OFFLINE_LOGON_AFTER_MS);
+        }, installedApp ? (this._skipMinimumLogon() ? 0 : WebSocketClient.INSTALLED_LOGON_GRACE_MS) : offlineStart ? 2500 : WebSocketClient.OFFLINE_LOGON_AFTER_MS);
+    }
+
+    /**
+     * User Accounts' "Decrease Login Time by skipping Minimum Login Time" (#910, Yukimi Nov 20 2026): server-wide
+     * (/status skipMinimumLogonTime), kept here for the next start. On: the logon's scripted minimum durations go (the
+     * connection beats, the teal hold, the Welcome holds, the installed app's "Please wait..." grace); the statuses
+     * still show for as long as they are true.
+     */
+    _skipMinimumLogon() {
+        try { return localStorage.getItem('melatonSkipLogonMinimum') === '1'; } catch (_) { return false; }
+    }
+
+    _setSkipMinimumLogon(on) {
+        try { if (on) localStorage.setItem('melatonSkipLogonMinimum', '1'); else localStorage.removeItem('melatonSkipLogonMinimum'); } catch (_) { /* storage off */ }
     }
 
     async _completeOfflineLogon() {
@@ -1591,32 +1619,84 @@ class WebSocketClient {
     }
 
     /**
-     * After a logon from the cached profile, at the first reconnect (#910, Yukimi Nov 20 2026): the cache's revision
-     * against the server's (profile_revision, modules/profileRevision.js). The same: the session goes on as the
-     * server's and writes again from now on (what changed while out of reach is not sent). Different, or the desktop
-     * came from the cache with no revision: the account is out of sync with the domain controller - this session
-     * writes nothing, the next logon takes the server's profile. Nothing came from the cache at all: the put-off
-     * steps load the server's profile now and the session is the server's.
+     * After a logon from the cached profile (fast logon or no server), at the first reconnect (#910, Yukimi Nov 20
+     * 2026): the cache's revision against the server's (profile_revision, modules/profileRevision.js).
+     * - The same, or nothing came from the cache: the session is the server's and writes again from now on.
+     * - Different: the server's profile is applied over the desktop, quietly, piece by piece (each read again and
+     *   compared with the cached copy; only what changed is applied, through its own loader).
+     * - Unless this session changed something itself (writes were held), more than PROFILE_LIVE_MAX pieces changed, or
+     *   a piece cannot be applied live: then "out of sync with the domain controller" - nothing from this session is
+     *   saved, the next logon takes the server's profile.
      */
     async _checkProfileSync() {
         if (!this._profileHold || this._profileOutOfSync) return;
         let server = null;
         try { server = ((await this.sendMessage('profile_revision', {}, false)) || {}).revision || null; } catch (_) { /* asked again at the next reconnect */ }
         if (!server) return;
-        const fromCache = !!(this._profileCacheHits && this._profileCacheHits.size);
-        const meta = fromCache && window.cachedProfile ? await window.cachedProfile.meta() : null;
-        if (!fromCache || (meta && meta.revision === server)) {
+        const profile = window.cachedProfile;
+        const hits = Array.from(this._profileCacheHits || []);
+        const meta = hits.length && profile ? await profile.meta() : null;
+        if (!hits.length || (meta && meta.revision === server)) {
             this._profileHold = false;
-            console.log(`👤 Profile: ${fromCache ? 'the cached profile is the domain controller\'s' : 'nothing came from the cache'} - this session writes again`);
+            console.log(`👤 Profile: ${hits.length ? 'the cached profile is the domain controller\'s' : 'nothing came from the cache'} - this session writes again`);
+            return;
+        }
+        let applied = null;
+        if (!this._profileHeldWrites && profile) applied = await this._applyServerProfile(hits).catch((e) => { console.warn('👤 Profile: live apply failed', e); return null; });
+        if (applied) {
+            profile.setRevision(server);
+            this._profileHold = false;
+            console.log(`👤 Profile: the domain controller's changes were applied (${applied.join(', ') || 'nothing differed'}) - this session writes again`);
             return;
         }
         this._profileOutOfSync = true;
-        console.warn(`👤 Profile: out of sync with the domain controller (cached ${meta ? meta.revision : 'none'}, server ${server}) - nothing from this session is saved`);
+        console.warn(`👤 Profile: out of sync with the domain controller (cached ${meta ? meta.revision : 'none'}, server ${server}, ${this._profileHeldWrites || 0} change(s) held) - nothing from this session is saved`);
         // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
         if (typeof showConfirmationDialog === 'function') {
             showConfirmationDialog('Your user account is out of sync with the domain controller. Changes you make in this session will not be saved.\n\nLog off and log on again to update your profile.',
                 [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'User Profile Service', icon: 'fas fa-triangle-exclamation' });
         }
+    }
+
+    /**
+     * The server's copy of each piece the desktop was built from (types read from the cache); the ones that differ
+     * are applied through their loaders. Returns the names applied, or null when it cannot (too many, or a piece
+     * without a live loader or whose loader failed). The cache takes every copy read here.
+     */
+    async _applyServerProfile(types) {
+        const profile = window.cachedProfile;
+        const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || window.currentWorkspace || 'default';
+        const changed = [];
+        for (const type of types) {
+            const data = (type === 'desktop_get_shortcuts' || type === 'sidebar_get') ? { workspaceId: ws } : {};
+            const [fresh, cached] = await Promise.all([this.sendMessage(type, data, false), profile.get(type, data)]);
+            profile.put(type, data, fresh);
+            if (JSON.stringify(fresh) !== JSON.stringify(cached)) changed.push(type);
+        }
+        if (changed.length > WebSocketClient.PROFILE_LIVE_MAX) return null;
+        const live = {
+            // loadUserGlobalSettingsFromServer / fetchStartMenuCustomLayout: modalUtils.js; loadWorkspaces: workspaceUtils.js
+            get_user_global_settings: () => (typeof loadUserGlobalSettingsFromServer === 'function' ? loadUserGlobalSettingsFromServer().then((s) => !!s) : false),
+            start_menu_get_layout: () => (typeof fetchStartMenuCustomLayout === 'function' ? fetchStartMenuCustomLayout().then(() => true) : false),
+            workspace_list: () => (typeof loadWorkspaces === 'function' ? loadWorkspaces().then(() => true) : false),
+            desktop_get_settings: () => (typeof loadWorkspaces === 'function' ? loadWorkspaces().then(() => true) : false),
+            // desktopShortcuts: desktopShortcuts.js
+            desktop_get_shortcuts: () => (typeof desktopShortcuts !== 'undefined' && desktopShortcuts
+                ? desktopShortcuts.loadShortcuts(ws).then((ok) => { if (ok) desktopShortcuts.renderShortcuts(); return ok; }) : false),
+            // vsbLoad: vistaSidebar.js
+            sidebar_get: () => (typeof vsbLoad === 'function' ? vsbLoad(ws).then(() => true) : false)
+        };
+        const done = new Set();
+        for (const type of changed) {
+            const fn = live[type];
+            if (!fn) return null;
+            // desktop settings and the workspace list share one loader
+            const key = type === 'desktop_get_settings' ? 'workspace_list' : type;
+            if (done.has(key)) continue;
+            done.add(key);
+            if (!(await fn())) return null;
+        }
+        return changed;
     }
 
     _connectionTheaterSkipped() {
@@ -1668,7 +1748,7 @@ class WebSocketClient {
     // Dial beats are a visible first-connect animation. A hidden or resumed tab must not
     // sit on them — background timer throttling turns a few seconds into a stuck loader.
     _sleepConnectionBeat(ms) {
-        if (!ms || ms <= 0 || this._connectionTheaterSkipped()) {
+        if (!ms || ms <= 0 || this._connectionTheaterSkipped() || this._skipMinimumLogon()) {
             return Promise.resolve();
         }
         const startedHidden = document.visibilityState === 'hidden';
@@ -1700,7 +1780,7 @@ class WebSocketClient {
 
     async _ensureBeatMinDuration(beat, startedAt) {
         const minMs = WebSocketClient.CONNECTION_BEATS[beat]?.minMs || 0;
-        if (minMs <= 0 || this._connectionTheaterSkipped()) return;
+        if (minMs <= 0 || this._connectionTheaterSkipped() || this._skipMinimumLogon()) return;
         const elapsed = Date.now() - startedAt;
         if (elapsed < minMs) {
             await this._sleepConnectionBeat(minMs - elapsed);
@@ -2745,6 +2825,7 @@ class WebSocketClient {
     }
 
     _waitForTealHold() {
+        if (this._skipMinimumLogon()) return Promise.resolve();
         const wait = (Number(window.dreamscapeTealHoldUntil) || 0) - Date.now();
         return wait > 0 ? new Promise((resolve) => setTimeout(resolve, wait)) : Promise.resolve();
     }
@@ -4108,6 +4189,7 @@ class WebSocketClient {
         if (typeof data.useVistaLogon === 'boolean') {
             this._setVistaLogon(data.useVistaLogon, data.logonPicture);
         }
+        if (typeof data.skipMinimumLogonTime === 'boolean') this._setSkipMinimumLogon(data.skipMinimumLogonTime);
         if (data.siteAccess && typeof data.siteAccess === 'object') {
             try {
                 if (data.siteAccess.configured) localStorage.setItem('dreamscapeSiteGate', '1');
@@ -5009,6 +5091,8 @@ class WebSocketClient {
             // serviceWorkerManager.flushUpdatesAfterDesktop: public/scripts/comp/serviceWorkerManager.js
             if (window.serviceWorkerManager) window.serviceWorkerManager.flushUpdatesAfterDesktop();
             this._runDeferredInitSteps();
+            // a fast logon whose server answered during the boot: the reconnection checks the profile now (#910)
+            if (this._reconnectAfterCachedBoot) { this._reconnectAfterCachedBoot = false; this.forceReconnect(); }
 
             // Hide overlay after all steps complete
             setTimeout(async () => {
@@ -5367,6 +5451,14 @@ class WebSocketClient {
                 }
                 // the server answered: the offline logon is not needed (#899)
                 if (this._offlineLogonTimer) { clearTimeout(this._offlineLogonTimer); this._offlineLogonTimer = null; }
+                // The desktop is being built from the cached profile (fast logon, #910): this socket only serves its
+                // requests now; once the boot is done it connects again as a reconnection, which checks the profile
+                // with the server (_checkProfileSync) and runs the put-off steps (executeInitSteps' end)
+                if (this._offlineBoot && !this.initializationCompleted) {
+                    this._reconnectAfterCachedBoot = true;
+                    if (sessionAuthenticated) this.startPeriodicPings();
+                    return;
+                }
                 if (sessionAuthenticated) this._offlineLogonReady = false;
                 if (!sessionAuthenticated && this.preStartupCredentialsAccepted && connectedSocket && connectedSocket.miniport
                     && !this._miniportRelinkTried && window.melatonContinuity && window.melatonContinuity.relinkMiniport()) {
@@ -9683,6 +9775,13 @@ class WebSocketClient {
         return res;
     }
 
+    /** User Accounts' "Decrease Login Time by skipping Minimum Login Time" (config.skipMinimumLogonTime). Admin only. */
+    async setSkipMinimumLogonTime(enabled) {
+        const res = await this.sendMessage('set_skip_minimum_logon_time', { enabled });
+        if (res && res.success) this._setSkipMinimumLogon(res.skipMinimumLogonTime);
+        return res;
+    }
+
     /** Account pictures for Administrator and Guest (modules/accountPictures.js; User Accounts). */
     async getAccountPictures() {
         return this.sendMessage('get_account_pictures', {}, false);
@@ -9866,6 +9965,8 @@ class WebSocketClient {
         // a desktop that is not signed in with the server's copy of the user's settings never writes them (Nov 19
         // 2026): an offline boot or a desktop on defaults would push those defaults over the real ones
         if (WebSocketClient.USER_SETTINGS_WRITES.has(type) && !this._userSettingsWritable()) {
+            // a change made in a session from the cached profile: the reconnect cannot overwrite it quietly (#910)
+            if (this._profileHold) this._profileHeldWrites = (this._profileHeldWrites || 0) + 1;
             console.warn(`[settings] ${type} held back: this desktop does not have the server's settings yet`);
             return Promise.resolve({ success: false, heldBack: true });
         }

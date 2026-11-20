@@ -567,6 +567,7 @@ class WebSocketMessageHandlers {
             'set_user_pin',
             'set_user_pin_login_enabled',
             'set_use_vista_logon',
+            'set_skip_minimum_logon_time',
             'update_user_global_settings',
             'generation_quips_run',
             'generation_quips_clear',
