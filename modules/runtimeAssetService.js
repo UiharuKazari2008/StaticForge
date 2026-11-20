@@ -550,13 +550,37 @@ function startRuntimeAssetPrime(root, options = {}) {
     return primePromise;
 }
 
+// A file compiled because it was asked for (a memory hit whose source changed, a new file) gets a new hash that the
+// pages' ?sha= links (/app) name at once. The hash list / manifest must say the same, or an installed client's restart
+// commits an /app naming files no update listed and boots the old one (#951, the Fold Nov 20: vista-explorer.css and
+// vista-file-dialog.css recompiled on request at 23:31:35, never in the manifest). Each such compile refreshes the list
+// and pushes it to clients the way the notify script does (silent), one refresh per burst.
+const ON_REQUEST_REFRESH_MS = 2500;
+let onRequestRefreshTimer = null;
+function noteCompiledOnRequest(targetRoot, result) {
+    if (!result || result.status !== 'compiled') return;
+    if (onRequestRefreshTimer) return;
+    onRequestRefreshTimer = setTimeout(() => {
+        onRequestRefreshTimer = null;
+        // during the start's own compile the boot builds the list once it is done
+        let state = null;
+        try { state = getStatus(); } catch (_) { state = null; }
+        if (!state || !state.complete || state.inProgress) { noteCompiledOnRequest(targetRoot, result); return; }
+        postCompileActions(
+            { compiled: 1, skipped: 0, errors: [] },
+            { projectRoot: targetRoot, silent: true, broadcastManifest: true, broadcastComplete: false, compileWorkspaceCss: false, message: 'Runtime assets recompiled on request' }
+        ).catch((err) => console.error('[Runtime Compile] refresh after an on-request compile failed:', err.message));
+    }, ON_REQUEST_REFRESH_MS);
+    if (typeof onRequestRefreshTimer.unref === 'function') onRequestRefreshTimer.unref();
+}
+
 function scheduleAutoRecompile(targetRoot, webPath) {
     if (!isAutoRecompileEnabled() || !runtimeAssetCompiler.isManagedWebPath(webPath)) {
         return;
     }
     const abs = runtimeAssetCompiler.webPathToSourcePath(targetRoot, webPath);
     const rel = `public${webPath}`;
-    runtimeAssetCompiler.compileOneFile(targetRoot, abs, rel, { force: false }).catch((err) => {
+    runtimeAssetCompiler.compileOneFile(targetRoot, abs, rel, { force: false }).then((result) => noteCompiledOnRequest(targetRoot, result)).catch((err) => {
         if (err && err.code === 'ENOENT') {
             return;
         }
@@ -662,7 +686,7 @@ async function resolveRuntimeAsset(root, webPath, options = {}) {
         throw err;
     }
     try {
-        await runtimeAssetCompiler.compileOneFile(targetRoot, abs, rel, { force: false });
+        noteCompiledOnRequest(targetRoot, await runtimeAssetCompiler.compileOneFile(targetRoot, abs, rel, { force: false }));
     } catch (err) {
         if (err && err.code !== 'ENOENT') {
             console.error(`[Runtime Compile] ${rel}: ${err.message}`);

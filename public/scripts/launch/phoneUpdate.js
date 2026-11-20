@@ -141,7 +141,7 @@
                 v.set({ fraction: all, left: `${Math.floor(all * 100)}%`, right: `${mb(got)}/${mb(of)}`, time: eta(startedAt, f) });
             }
         }).catch((err) => ({ ok: false, error: String(err && err.message || err) }));
-        if (!copied || !copied.ok) return { ok: false, why: copied && copied.stalled ? 'stalled' : 'download' };
+        if (!copied || !copied.ok) return { ok: false, why: copied && copied.stalled ? 'stalled' : 'download', error: copied && copied.error };
 
         // extracting and installing, 75-100 %: expanding is half of it, the two groups the rest
         const share = { expand: [0, 0.5], features: [0.5, 0.8], updates: [0.8, 1] };
@@ -184,6 +184,11 @@
         // so an installed phone can start offline; before, "Software updated 100%" handed over unchecked and a first
         // install whose rows did not hold sent /app to download all ~6,600 files a second time
         let justInstalled = false;
+        // the server's list moved while the pack came down (a publish rebuilds the pack: its hash no longer matches the
+        // list this phone asked with), or the pack was still building: the list is asked again and the download starts
+        // over by itself, a few times, before any error card (#916: a fresh install on the Fold7 emulator, Nov 20)
+        let quietRetries = 0;
+        let postInstallTopUps = 0;
         for (;;) {
             const { found, workerOk } = await findUpdates(engine, e);
             if (!found || found.skipped || !found.files || !found.files.length) {
@@ -198,8 +203,18 @@
                 let est = null;
                 try { est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; } catch (_) { est = null; }
                 console.warn(`[install] ${found.files.length} file(s) still differ right after the install (cache rows ${rows}, storage ${est ? `${Math.round(est.usage / 1048576)}/${Math.round(est.quota / 1048576)} MB` : '?'})`, found.files.slice(0, 5).map((f) => f.url));
-                if (!engine.needsInstaller(e, found.files)) {
-                    // a few stragglers: the running app fetches them
+                // files published while the install ran (agents publish often; a 10-minute install saw 16 of 7,150 move):
+                // they come down now the small way, and what is still left goes to the running app. Only a cache that
+                // lost much of what was just written (#916: all 6,638) is an install that did not hold
+                const installedCount = (engine.readRecord && engine.readRecord(e) && engine.readRecord(e).files) || 0;
+                const small = found.files.length <= Math.max(200, Math.round(installedCount * 0.05));
+                if (small || !engine.needsInstaller(e, found.files)) {
+                    if (postInstallTopUps < 1) {
+                        postInstallTopUps += 1;
+                        await silent(engine, e, found, workerOk).catch(() => null);
+                        justInstalled = true;
+                        continue;
+                    }
                     v.hide();
                     return { installed: true };
                 }
@@ -221,6 +236,12 @@
             }
             const result = await install(engine, e, found, v);
             if (result.ok) { justInstalled = true; continue; }
+            if ((result.error === 'pack-hash' || result.error === 'pack-not-ready') && quietRetries < 3) {
+                quietRetries += 1;
+                console.warn(`[install] the pack did not match the list (${result.error}); asking for the list again (${quietRetries} of 3)`);
+                await sleep(3000);
+                continue;
+            }
             v.set({ state: 'error', title: FAIL_TEXT[result.why] || FAIL_TEXT.download, time: '', button: 'RETRY' });
             // an installed phone never stays on this card (it may be Android's launcher, Yukimi
             // Nov 13): with no tap on RETRY it starts the copy it has, and the update comes later

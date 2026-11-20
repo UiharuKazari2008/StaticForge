@@ -6509,8 +6509,8 @@
             if (mc && typeof mc.active === 'function' && mc.active()) {
                 let both = false;
                 try { both = typeof mc.updateScope === 'function' && mc.updateScope(Array.from(sw.pendingUpdateUrls || [])) === 'both'; } catch (_) { both = false; }
-                html += `<br><br>${both ? 'These updates also restart your Continuity-enabled PC. Programs that are open on it will close. Save your work there before you continue.'
-                    : 'Your Continuity-enabled PC stays on and reconnects when your Pocket PC is ready.'}`;
+                html += `<br><br>${both ? 'Your Continuity PC will restart too.'
+                    : 'Your Continuity PC stays on.'}`;
             }
             return { title: 'Updates', html, action: { text: 'Restart Now', run: () => sw.forceRestart() } };
         }

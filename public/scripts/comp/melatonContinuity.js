@@ -559,19 +559,25 @@
         const pocket = (note) => ({ icon: `${NET}/imageres-87-48.png`, name: `${phoneName} (Pocket PC)`, note });
         const desktop = (note) => ({ icon: pcArt, name: `${pcName} (Continuity-enabled PC)`, note });
         const ask = (o) => {
+            // Melaton Mobile (Yukimi, Nov 20 2026: "way too wordy"): Windows Mobile's own short box, two lines at most,
+            // Restart / Later
+            if (root.uiShell === 'mobile' && typeof root.showConfirmationDialog === 'function') {
+                return root.showConfirmationDialog(o.phoneText || 'Restart to finish installing updates?',
+                    [{ text: 'Restart', value: true }, { text: 'Later', value: false }], null, { title: 'Updates', icon: 'fas fa-exclamation-triangle', sound: true });
+            }
             const p = root.melatonRestartPrompt;
             // the desktop's task dialog; Melaton Mobile asks in its own message box
             if (root.uiShell !== 'mobile' && p && typeof p.confirmRestart === 'function') return p.confirmRestart(o);
             // without the prompt's module: the plain question, as before
             return typeof root.showConfirmationDialog === 'function'
-                ? root.showConfirmationDialog(`${o.instruction}<br><br>${o.reason}`, [{ text: 'Restart Now', value: true }, { text: 'Cancel', value: false }], null, { title: 'Melaton Update', icon: 'fas fa-exclamation-triangle', sound: true })
+                ? root.showConfirmationDialog(`${o.instruction}<br><br>${(o.devices || []).map((d) => `${String(d.name).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)}: ${d.note}`).join('<br>')}${o.devices && o.devices.length ? '<br><br>' : ''}${o.reason}`, [{ text: 'Restart Now', value: true }, { text: 'Cancel', value: false }], null, { title: 'Melaton Update', icon: 'fas fa-exclamation-triangle', sound: true })
                 : Promise.resolve(true);
         };
         const SAVE = 'Programs that are open on a computer that restarts will close. Save your work before you continue.';
         const both = () => ask({
             instruction: 'Restart your Pocket PC and this Continuity-enabled PC to finish installing updates',
             reason: SAVE,
-            devices: [pocket('Installs the updates and restarts.'), desktop('Shuts down first, then starts again with your Pocket PC.')]
+            devices: [pocket('Installs the updates first, then restarts.'), desktop('Shuts down once your Pocket PC is installing, then starts again with it.')]
         });
         const phoneOnly = () => ask({
             instruction: 'Restart your Pocket PC to finish installing updates',
@@ -579,9 +585,10 @@
             devices: [pocket('Installs the updates and restarts.'), desktop('Stays on and reconnects when your Pocket PC is ready.')]
         });
         const fromPhone = () => ask({
+            phoneText: 'Restart to finish installing updates? Your Continuity PC will restart too.',
             instruction: 'These updates also restart your Continuity-enabled PC',
             reason: SAVE,
-            devices: [desktop('Shuts down first, then starts again with this phone.'), pocket('Installs the updates and restarts.')]
+            devices: [pocket('Installs the updates first, then restarts.'), desktop('Shuts down once this phone is installing, then starts again with it.')]
         });
         // a plan (restartPlan, #900): the question names exactly the computers that restart
         if (plan && typeof plan === 'object') {
@@ -737,7 +744,9 @@
     let shutBox = null;
     let shutTimer = 0;
     function showShuttingDown() {
-        if (!isPhone()) return;
+        // a restart for updates shows the phone's install window first; the PC's shutdown is part of it, never a box of
+        // its own in front of it (Yukimi, Nov 20 2026)
+        if (!isPhone() || restartingForUpdates) return;
         clearTimeout(shutTimer);
         // at most the DeX window's longest sequence (its updates install on the way down): then it is gone anyway
         shutTimer = setTimeout(hideShuttingDown, 60000);
@@ -750,7 +759,9 @@
         if (shutBox) { try { shutBox.close(); } catch (_) { /* gone */ } }
         shutBox = null;
     }
-    api.on('dex-shutting-down', () => showShuttingDown());
+    // the DeX window shutting down for a restart of both (a page from before #951 sends this first): the phone's own
+    // restart for updates follows with its install window, so no box here
+    api.on('dex-shutting-down', (m) => { if (!(m && m.kind === 'restart')) showShuttingDown(); });
     api.on('dex-shutdown-cancelled', () => hideShuttingDown());
     api.on('peer', (m) => { if (m.role === 'desktop' && m.state === 'joined') hideShuttingDown(); });
 

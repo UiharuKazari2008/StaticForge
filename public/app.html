@@ -373,21 +373,16 @@
             }
         } catch (e) { /* ignore */ }
 
-        // One-time static cache generation bump (SW v2)
+        // One-time static cache generation bump (SW v2): only the old generation's cache goes. It deleted
+        // static-cache-v2 too - the current one - so a fresh install (its installer never sets this key) lost every
+        // file it had just installed on its first /app load and downloaded them all again (#916: "installer 100%,
+        // then /app finds 6,638 files to update"; reproduced on the Fold7 emulator Nov 20, 7,158 rows -> 299)
         try {
             var swCacheGen = 2;
             var swCacheGenKey = 'staticforge_sw_static_cache_gen';
-            var swCacheReloadKey = 'staticforge_sw_gen_reload';
             if (parseInt(localStorage.getItem(swCacheGenKey) || '0', 10) < swCacheGen) {
                 localStorage.setItem(swCacheGenKey, String(swCacheGen));
-                if (window.caches && window.caches.delete) {
-                    caches.delete('static-cache-v1');
-                    caches.delete('static-cache-v2');
-                }
-                if (!sessionStorage.getItem(swCacheReloadKey)) {
-                    sessionStorage.setItem(swCacheReloadKey, '1');
-                    location.reload();
-                }
+                if (window.caches && window.caches.delete) caches.delete('static-cache-v1');
             }
         } catch (e) { /* ignore */ }
     </script>
