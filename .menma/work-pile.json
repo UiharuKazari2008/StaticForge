@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-11-19T07:10:00-05:00",
+  "updated_at": "2026-11-20T07:05:00-05:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-11-13T07:30:00-05:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Nov19 7am loop on host dreamscape. Live tree diverged (562 ahead/612 behind origin) behind Claude lock wm732 (Nov10): untouched; lands from ~/wt/n19 off origin/main adb2b1ce. Docs: rest-api Client certificates (/api/client-cert/*) and Test devices (/api/test-devices/*), DreamOS push note; new ws/dreamosUpdates.md (dreamos_channel_watch, dreamos_channel) for 312-dreamosUpdatesHandler #910; userSettings desktop_tray_order_changed push (#932). Jules kicks 400 FAILED_PRECONDITION (account-level). open=[].",
+  "cake_note": "Nov20 7am loop on host dreamscape. Live tree dirty (833 files) behind Claude locks dirfocus + wm732: untouched; lands from ~/wt/n20 off origin/main 88ef4905. Docs: new ws/mediaLibrary.md (media_library_get, media_library_changed) + rest-api Media library ({vfsPath}/media/file/:id, /media/art/:hash) for #956; new ws/profileRevision.md (profile_revision, profile_changed) and admin set_skip_minimum_logon_time + /status skipMinimumLogonTime for #910; new ws/linkSpeed.md (link_speed_probe/report) and userSettings registry_changed push for #952. open=[].",
   "eaten": [
     {
       "id": "sf-22",

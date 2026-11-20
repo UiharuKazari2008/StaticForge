@@ -517,6 +517,7 @@ during that `dev_admin` session may use a 120-second private HTTP cache after
   "melaton": { "domain": "DREAMSCAPE", "connectionName": "VPN Connection", "connectionType": "WAN", "device": "L-PPoP" },
   "useVistaLogon": false,
   "logonPicture": null,
+  "skipMinimumLogonTime": true,
   "logonName": "Administrator",
   "novelaiKeyConfigured": true,
   "siteAccess": { "configured": false, "homepage": null }
@@ -529,6 +530,8 @@ Use before login if server may still be compiling runtime assets.
 
 `useVistaLogon` is `config.json` `useVistaLogon` (User Accounts "Use Vista Logon"); when it is on,
 `logonPicture` is the Administrator tile's picture URL (`GET /logon-picture`), else `null`.
+`skipMinimumLogonTime` is User Accounts "Decrease Login Time by skipping Minimum Login Time" (`config.skipMinimumLogonTime`,
+on unless set `false`; #910); the client keeps it for its next start and then skips the logon's minimum durations.
 `logonName` is the Administrator's account name (User Accounts "Change the account name"), shown
 by the Welcome screen and the logon dialog before anyone signs in. `novelaiKeyConfigured` is
 whether the server has a NovelAI key, stored or from `NOVELAI_API_KEY`; Melaton Setup's
@@ -1457,6 +1460,19 @@ Errors are `{ success: false, code, error }`.
 | `DELETE /api/test-devices/notices` | none | Clears the whole test lane |
 | `POST /api/test-devices/:id/catch-up` | none | What a hello would send now (`notificationInbox.catchUpPhone`) |
 | `GET /api/test-devices/deliveries` | `?device=` | The delivery rows: `sentAt`, `attempts`, `postedAt`, how |
+
+---
+
+## Media library
+
+`modules/mediaLibrary.js` `registerMediaLibraryRoutes` (#956, Nov 19 2026). Melaton Media Player plays from these; the
+list comes over WS `media_library_get` (see [ws/mediaLibrary.md](ws/mediaLibrary.md)). Both need a session
+(`authMiddleware`).
+
+| Route | Notes |
+| --- | --- |
+| `GET {vfsPath}/media/file/:id` | The VFS file by id, with HTTP Range (`Accept-Ranges: bytes`, 206 / 416) so songs and videos can seek. 404 if missing, trashed or no blob; 403 if the session may not access it. |
+| `GET {vfsPath}/media/art/:hash` | The album art (300 px JPEG) for a content hash (16-64 hex). 404 when there is none. Cached by the browser as immutable. |
 
 ---
 
