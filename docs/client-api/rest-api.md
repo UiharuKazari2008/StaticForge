@@ -947,12 +947,13 @@ Claude Code run can fix each new one (see [Fault auto-fix](#fault-auto-fix) belo
 | `server` | `crash`, `rejection`, `route`, `logged` | `modules/serverFaultCapture.js`: `uncaughtException` (spooled synchronously to `data/fault-reports/.spool.ndjson`, read back on the next start), `unhandledRejection`, the final Express error handler (500s), `logger.error` / `console.error` with an Error whose top frame is ours (not `node_modules`) |
 
 | `desktop`, `mobile` | `animation` | The animation watchdog in `public/scripts/utils/offscreenAnimationPause.js` (`window.animationWatchdog`, Yozora #930), through `dreamscapeErrorCapture`. Not an error: an animation that costs frames for nothing. The occurrence carries `animation`: `{ type: "hidden" \| "endless" \| "restarts", name, kind: "css" \| "script" \| "transition", target, window, reason, properties, iterations, durationMs, runMs, targets, paused, allowed, source, shell, client }`. `hidden` = a looping animation whose target cannot be seen (under opacity 0, off screen, zero size, behind another window, its element removed); the page has already paused it (`paused: true`). `endless` = a looping animation that ran two minutes in view and is not on the watchdog's allow-list. `restarts` = one animation name started 60+ times between two scans. `source` is the stylesheet that declares the keyframes; the stack names it as a frame so the report points at the file. At most 8 groups per page load. Off in the auto-fix kinds by default; `POST /api/fault-reports/:id/fix` runs one by hand. |
+| `os` | `service`, `process`, `kernel`, `oom`, `journal`, `runaway`, `thermal`, `unclean` | DreamOS's base layer: CaféReady `cafeready/src/faults.rs` (DreamOS repo, #910) posts them itself with the browser's session, never the page; spooled on the machine (`/var/lib/dreamos/faults`) until the Miniport link is up. `service` = a unit failed or its process died of a signal; `process` = the kernel saw a crash (segfault, trap); `kernel` = an error, oops, hung task, lockup, GPU hang, or a panic kept in pstore; `oom`; `journal` = another error-level journal line; `runaway` = a thread over 80% of a core for two 10-minute samples; `thermal` = 90 °C and throttling through two samples; `unclean` = the previous boot ended without a shutdown (with that boot's last journal lines and what the sampler last found unusual). `program.key` starts with `dreamos:`; `stack` holds the journal lines around the fault; `os` holds the machine's details (flat, at most 24 keys: `image`, `cafeready`, `bootId`, `host`, `unit`, `identifier`, `pid`, `cpuPct`, `tempC`, ...). Not in the auto-fix surfaces. |
 
 The client posts one fault once per page load and later repeats again with the same
 `occurrenceId` (at most every 30 s, and on `pagehide` via `sendBeacon`), at most 25 distinct
 faults per page load. The server writes a fault at once and counts its repeats for 30 s. A report
 keeps its most serious kind (`crash` > `uncaught` > `rejection` > `route` > `dialog` > `swallowed` >
-`resource` > `logged` > `animation`); `surface` and `kind` are not part of the signature.
+`resource` > `logged` > `animation`; DreamOS kinds rank with them); `surface` and `kind` are not part of the signature.
 
 ### `POST /api/fault-reports`
 
@@ -977,7 +978,7 @@ values ignored) + the top three frames of our scripts (line and column ignored).
 }
 ```
 
-Optional (#833): `surface` (`desktop` default, `mobile`, `server`), `kind` (`dialog` default; see the
+Optional (#833): `surface` (`desktop` default, `mobile`, `server`, `os`), `kind` (`dialog` default; see the
 table above), and for server faults `request` (`{ method, path, status }`) and `server`
 (`{ pid, uptimeS, node, commit }`). A fault with no program uses `shell:desktop` /
 `shell:mobile` (Melaton Desktop / Melaton Mobile) or `server:<file of the top frame>`.

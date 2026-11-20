@@ -18,8 +18,8 @@
  *   GET  /api/fault-reports      -> { ok, reports }           newest first, from the in-memory index
  *   GET  /api/fault-reports/:id  -> { ok, report, file } | 404
  *
- * Not only dialogs (Yozora #833): every captured error lands here, from three surfaces -
- *   surface  desktop | mobile | server
+ * Not only dialogs (Yozora #833): every captured error lands here, from four surfaces -
+ *   surface  desktop | mobile | server | os (DreamOS's base layer: CaféReady faults.rs, #910)
  *   kind     dialog (a "has stopped working" dialog), uncaught, rejection, swallowed (a catch block
  *            handed it over), resource (one of our scripts/styles failed to load), route (an Express
  *            route threw), logged (logger.error / console.error with an Error of ours), crash
@@ -28,6 +28,13 @@
  *            without end, public/scripts/utils/offscreenAnimationPause.js, #930; the finding is in
  *            the occurrence's `animation` field: type hidden | endless | restarts, name, target,
  *            reason, properties, runMs, shell, client, whether the page paused it, stylesheet)
+ *   os kinds (surface os, sent by the machine itself with the browser's session, never by the page):
+ *            service (a unit failed or its process died of a signal), process (the kernel saw a crash),
+ *            kernel (an error, oops, hung task, lockup, GPU hang, or a panic kept in pstore), oom,
+ *            journal (another error-level journal line), runaway (a thread held most of a core for
+ *            20 min), thermal (90 °C and throttling), unclean (the previous boot ended without a
+ *            shutdown); the machine's details are in the occurrence's `os` field (image, cafeready,
+ *            bootId, host, unit, identifier, pid, cpuPct, tempC...). Not in the fixer's default kinds.
  * public/scripts/comp/errorCapture.js posts the client ones, modules/serverFaultCapture.js the
  * server ones (in process, through upsert). modules/faultAutoFix.js listens for 'change' events
  * and records its runs on the report's `fix` field through patch().
@@ -63,10 +70,11 @@ const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 const RATE_MAX = 30;
 const RATE_WINDOW_MS = 60 * 1000;
 const ID_RE = /^fault_[0-9a-f]{12}$/;
-const SURFACES = new Set(['desktop', 'mobile', 'server']);
-const KINDS = new Set(['dialog', 'uncaught', 'rejection', 'swallowed', 'resource', 'route', 'logged', 'crash', 'animation']);
+const SURFACES = new Set(['desktop', 'mobile', 'server', 'os']);
+const OS_KINDS = ['service', 'process', 'kernel', 'oom', 'journal', 'runaway', 'thermal', 'unclean'];
+const KINDS = new Set(['dialog', 'uncaught', 'rejection', 'swallowed', 'resource', 'route', 'logged', 'crash', 'animation', ...OS_KINDS]);
 const SPOOL_NAME = '.spool.ndjson';
-const KIND_RANK = ['crash', 'uncaught', 'rejection', 'route', 'dialog', 'swallowed', 'resource', 'logged', 'animation'];
+const KIND_RANK = ['crash', 'unclean', 'kernel', 'oom', 'uncaught', 'process', 'service', 'rejection', 'route', 'dialog', 'runaway', 'thermal', 'swallowed', 'resource', 'journal', 'logged', 'animation'];
 
 function clip(value, max = MAX_TEXT) {
     if (value == null) return '';
@@ -102,6 +110,18 @@ function faultId(input) {
     const program = input.program || {};
     const basis = [program.key || program.name || '', input.errorName || '', messageKey(input.message), frameKeys(input.stack).join('|')].join('\n');
     return 'fault_' + crypto.createHash('sha1').update(basis).digest('hex').slice(0, 12);
+}
+
+/** The machine's details of a DreamOS report: flat, at most 24 keys, strings / numbers / booleans, clipped. */
+function osDetails(os) {
+    if (!os || typeof os !== 'object' || Array.isArray(os)) return {};
+    const out = {};
+    for (const [k, v] of Object.entries(os).slice(0, 24)) {
+        const key = clip(k, 40);
+        if (typeof v === 'number' || typeof v === 'boolean') out[key] = v;
+        else if (v != null) out[key] = clip(typeof v === 'string' ? v : JSON.stringify(v), 600);
+    }
+    return out;
 }
 
 function normalizeOccurrence(body, now) {
@@ -163,6 +183,7 @@ function normalizeOccurrence(body, now) {
             shell: clip(b.animation.shell, 20),
             client: clip(b.animation.client, 20)
         } : undefined,
+        os: surface === 'os' ? osDetails(b.os) : undefined,
         repeats: Math.max(1, Math.min(1e6, Number(b.repeats) || 1)),
         extraFaults: Array.isArray(b.extraFaults) ? b.extraFaults.slice(0, 3).map((f) => ({
             message: clip(f && f.message, 500),
@@ -533,6 +554,7 @@ module.exports = {
     MAX_BODY_BYTES,
     SURFACES,
     KINDS,
+    OS_KINDS,
     MAX_REPORTS,
     MAX_AGE_MS,
     RATE_MAX,

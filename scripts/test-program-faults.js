@@ -715,6 +715,23 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !emotion.c
     // a fault in the fault dialog's own code never loops back into it
     assert.strictEqual(PF.present({ message: 'x', stack: stack(frame('comp/programFaults.js'), frame('comp/desktop-apps/emotion.js')) }, {}), false);
 
+    // a DreamOS base-OS report (CaféReady faults.rs): surface os, its kind and the machine's details kept
+    const osOcc = await store.upsert({
+        surface: 'os', kind: 'runaway', source: 'dreamos', errorName: 'Runaway',
+        program: { key: 'dreamos:runaway:cafeready:power-runtime', name: 'cafeready', core: true },
+        message: 'cafeready (thread power-runtime) used 90% of a core for 20 minutes or more',
+        stack: 'Busiest threads over the last 600 s:\n  90.0%  cafeready [673] / power-runtime [866]',
+        os: { image: '0.2.29', cafeready: 'dev-74be759', bootId: 'b'.repeat(32), cpuPct: 90, tempC: 92, nested: { a: 1 } }
+    });
+    const osReport = await store.read(osOcc.id);
+    assert.strictEqual(osReport.surface, 'os');
+    assert.strictEqual(osReport.kind, 'runaway');
+    assert.strictEqual(osReport.latest.os.cpuPct, 90);
+    assert.strictEqual(osReport.latest.os.image, '0.2.29');
+    assert.strictEqual(osReport.latest.os.nested, '{"a":1}', 'nested values flattened to text');
+    const pageOcc = await store.upsert({ surface: 'desktop', kind: 'uncaught', program: { key: 'launch:x', name: 'X' }, message: 'x', os: { image: 'forged' } });
+    assert.strictEqual((await store.read(pageOcc.id)).latest.os, undefined, 'only surface os carries machine details');
+
     console.error = consoleError;
     console.log('test-program-faults: ok');
 })().catch((err) => {
