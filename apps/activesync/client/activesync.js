@@ -42,6 +42,9 @@
     // BS_DEFPUSHBUTTON, the default the dialog manager gives IDOK. Melaton's own row 1020 (#827, Yukimi):
     // the device's picture shows its wallpapers (the default) or ADB screenshots; the dialog grows 13 units for it
     const CONNECTION_SETTINGS_TPL = {"t":"Connection Settings","w":304,"h":172,"f":["MS Shell Dlg",8],"s":13116360,"c":[[1011,"S",5,4,8,8,1342177419,"Device status icon",0],[1002,"S",5,5,21,20,1342177411,"#2000",0],[1003,"S",31,4,255,10,1342308352,"Waiting for device to connect",0],[1014,"S",31,14,255,10,1073872896,"Some settings may be disabled by Group Policy",0],[-1,"S",5,30,294,1,1342177424,"",0],[1006,"B",5,39,281,9,1342252035,"Allow &USB connections",0],[1007,"B",5,52,281,9,1342251011,"Allow co&nnections to one of the following:",0],[1012,"S",17,60,8,8,1342177419,"Connection selection dropdown",0],[1008,"C",17,63,135,92,1344339971,"",0],[-1,"S",5,79,281,10,1342308352,"This computer is connected &to:",0],[1009,"C",5,89,147,92,1344339971,"",0],[1016,"B",6,107,280,11,1342242819,"Allow auto&matic device authentication",0],[1013,"B",6,120,280,11,1342242819,"Allow &data connections on device when connected to PC",0],[1020,"B",6,133,280,11,1342242819,"Show the device's &wallpaper, not screenshots",0],[-1,"S",5,146,294,1,1342177424,"",0],[1,"B",194,154,50,14,1342242817,"OK",0],[2,"B",249,154,50,14,1342242816,"Cancel",0]]};
+    // Vista's notification balloon (shell32.dll icon 221, from the VM; HiDPI copies from its 48 / 256 frames): WMDC has
+    // no notifications art of its own (#979)
+    const NOTIFY_ICON = '/static_images/activesync/notifications-32.png';
     const TILES = [
         { id: 'programs', title: 'Programs and Services', icon: 'programs-64.png' },
         { id: 'media', title: 'Pictures, Music and Video', icon: 'media-64.png' },
@@ -306,6 +309,8 @@
                 if (dev && dev.online && !dev.partner && !local) out.push({ id: 'setup', text: 'Set up your device', icon: 'setup-32.png' });
                 // WMDC's TaskConfigureDesktopPartnership, with its own art
                 if (pdev && pdev.partner) out.push({ id: 'manage', text: 'Manage a partnership', icon: 'manage-partnership-32.png' });
+                // the partnership's notification settings (#979, Yukimi: with the partnership's own settings)
+                if (pdev && pdev.partner) out.push({ id: 'nfsettings', text: 'Change notification settings', icon: NOTIFY_ICON });
                 if (!local) out.push({ id: 'connection', text: 'Connection settings', icon: 'connection-32.png' });
                 // Vista's System applet art: "View basic information about your computer" (#827)
                 if (dev) out.push({ id: 'info', text: 'Device information', icon: '/static_images/vista-cpl/items/system-32.png' });
@@ -313,12 +318,7 @@
             }
             if (tile === 'programs' && dev && dev.online && dev.permissions.includes('notify') && root.activeSyncNotifications) {
                 const n = root.activeSyncNotifications.count(dev.deviceId);
-                // Vista keeps the notification area's settings under Taskbar and Start Menu: its art (#827)
-                out.push({ id: 'notifications', text: n ? `View notifications on your device (${n})` : 'View notifications on your device', icon: '/static_images/vista-cpl/items/taskbar-and-start-menu-32.png' });
-            }
-            if (tile === 'programs' && pdev && pdev.partner) {
-                // Vista's notification area settings art, as the notifications above (#979)
-                out.push({ id: 'nfsettings', text: 'Change notification settings', icon: '/static_images/vista-cpl/items/taskbar-and-start-menu-32.png' });
+                out.push({ id: 'notifications', text: n ? `View notifications on your device (${n})` : 'View notifications on your device', icon: NOTIFY_ICON });
             }
             for (const t of extraTasks[tile] || []) {
                 if (!dev || (typeof t.when === 'function' && !t.when(dev))) continue;
@@ -699,7 +699,7 @@
                     <div><b>${esc(n.title || n.app)}</b><span>${esc(n.text)}</span><small>${esc(n.title ? `${n.app} \u2022 ${when(n.time)}` : when(n.time))}</small></div>
                     <button type="button" class="btn-standard" data-asdc="notif-dismiss" data-key="${esc(n.key)}">Dismiss</button>
                 </li>`).join('');
-            return `<div class="asdc-page asdc-page--wide" style="top:60px"><h2>Notifications on ${esc(dev.name)}</h2>
+            return `<div class="asdc-page asdc-page--wide" style="top:60px"><h2 class="asdc-h-icon"><img src="${NOTIFY_ICON}" alt="">Notifications on ${esc(dev.name)}</h2>
                 ${list.length ? `<ul class="asdc-notes">${rows}</ul>` : '<p>There are no notifications on your device.</p>'}
                 <div class="asdc-page-buttons">${dev.partner ? '<button type="button" class="btn-standard" data-asdc="nfsettings">Settings...</button>' : ''}<button type="button" class="btn-standard primary" data-asdc="back">Close</button></div></div>`;
         }
@@ -770,11 +770,11 @@
 
         notifySettingsPage(dev) {
             const nf = this.nf && this.nf.deviceId === dev.deviceId ? this.nf : null;
-            if (!nf) { void this.loadNotifySettings(false); return '<div class="asdc-page asdc-nf"><h2>Change notification settings</h2><p>Please wait...</p></div>'; }
-            if (!nf.apps) return `<div class="asdc-page asdc-nf"><h2>Change notification settings</h2><p>${esc(nf.error || 'Please wait...')}</p></div>`;
+            if (!nf) { void this.loadNotifySettings(false); return `<div class="asdc-page asdc-nf"><h2 class="asdc-h-icon"><img src="${NOTIFY_ICON}" alt="">Change notification settings</h2><p>Please wait...</p></div>`; }
+            if (!nf.apps) return `<div class="asdc-page asdc-nf"><h2 class="asdc-h-icon"><img src="${NOTIFY_ICON}" alt="">Change notification settings</h2><p>${esc(nf.error || 'Please wait...')}</p></div>`;
             // the list itself is the kit's tree list (vistaTreeList.js), drawn into its host by mountNotifyList
             return `<div class="asdc-page win7 asdc-nf">
-                <h2>Change notification settings</h2>
+                <h2 class="asdc-h-icon"><img src="${NOTIFY_ICON}" alt="">Change notification settings</h2>
                 <p>Choose which notifications ${esc(dev.name)} sends to this computer, and which of them show in the notification area. Notifications that are not sent stay on the device.</p>
                 ${nf.apps.length ? '<div class="asdc-nf-list"></div>' : '<p>No notifications have come from this device yet. Programs are added here as they post notifications.</p>'}
                 <div class="asdc-error">${esc(nf.error || '')}</div>
