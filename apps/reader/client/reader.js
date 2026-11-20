@@ -225,7 +225,7 @@
                 <div class="modal-content win7 rdr-client">
                     <div class="rdr-menubar" role="menubar">${[['File', 32], ['Edit', 34], ['View', 39], ['Document', 70], ['Tools', 43], ['Window', 58], ['Help', 39]].map(([t, w]) => `<button type="button" class="rdr-menu-title" data-menu="${t.toLowerCase()}" role="menuitem" style="width:${w}px">${t}</button>`).join('')}<button type="button" class="rdr-doc-close" data-a="close" title="Close" hidden></button></div>
                     <div class="rdr-toolbar" role="toolbar">
-                        <div class="rdr-group" data-bar="file">${grip}${btn('print', 'tb-print', 'Print')}<span class="rdr-sep"></span><button type="button" class="rdr-tb rdr-tb-email" data-a="email" title="Attach to Email"><img src="${A}/tb-collab.png" alt="" draggable="false"></button></div>
+                        <div class="rdr-group" data-bar="file">${grip}${btn('print', 'tb-print', 'Print')}<span class="rdr-sep"></span><button type="button" class="rdr-tb rdr-tb-meeting" data-a="meeting" title="Click to start an Acrobat Connect meeting and share documents"><img src="${A}/tb-meeting.png" alt="" draggable="false"><span class="rdr-tb-arrow" data-menu-arrow></span></button></div>
                         <div class="rdr-group" data-bar="nav">${grip}${btn('prev', 'tb-prev', 'Previous Page')}${btn('next', 'tb-next', 'Next Page')}<input type="text" class="rdr-pagebox" value="0" spellcheck="false" autocomplete="off" title="Page Number"><span class="rdr-pagecount">/ 0</span></div>
                         <div class="rdr-group" data-bar="zoom">${grip}${btn('zoomout', 'tb-zoomout', 'Zoom Out')}${btn('zoomin', 'tb-zoomin', 'Zoom In')}<span class="rdr-combo rdr-zoombox"><input type="text" value="100%" spellcheck="false" autocomplete="off" title="Zoom"><button type="button" class="rdr-combo-drop" data-a="zoommenu" tabindex="-1"></button></span></div>
                         <div class="rdr-group" data-bar="display">${grip}${btn('fitwidth', 'tb-fitwidth', 'Scrolling Mode')}${btn('fitpage', 'tb-fitpage', 'One Full Page')}</div>
@@ -298,6 +298,7 @@
             m.addEventListener('pointerdown', () => { activeWin = this; }, true);
             m.querySelectorAll('[data-menu]').forEach((t) => {
                 root.contextMenu.attachClickMenuToElement(t, {
+                    skin: 'reader',
                     onAction: (a, item) => void this.action(a, item),
                     sections: [{ type: 'list', initfn: (s) => { s.items = this.menu(t.dataset.menu); } }]
                 });
@@ -305,17 +306,24 @@
             m.querySelectorAll('.rdr-toolbar [data-a]').forEach((b) => {
                 if (b.dataset.a === 'zoommenu' || b.dataset.a === 'findmenu') return;
                 b.addEventListener('mousedown', (ev) => ev.preventDefault());
-                b.addEventListener('click', () => void this.action(b.dataset.a));
+                b.addEventListener('click', (ev) => { if (!ev.target.closest('[data-menu-arrow]')) void this.action(b.dataset.a); });
             });
             this.el.docClose.addEventListener('click', () => void this.action('close'));
-            // the email button's own menu (its arrow)
-            const email = m.querySelector('.rdr-tb-email');
-            email.addEventListener('contextmenu', (ev) => ev.preventDefault());
+            // Start Meeting's arrow: its own menu (Start Meeting..., Meeting Preferences...)
+            const meeting = m.querySelector('.rdr-tb-meeting');
+            meeting.addEventListener('contextmenu', (ev) => ev.preventDefault());
+            root.contextMenu.attachClickMenuToElement(meeting.querySelector('.rdr-tb-arrow'), {
+                skin: 'reader',
+                onAction: (a) => void this.action(a),
+                sections: [{ type: 'list', initfn: (s) => { s.items = withKeys([{ text: 'Start &Meeting...', action: 'meeting', image: `${A}/meeting-sm.png` }, { text: 'Meeting &Preferences...', action: 'meetingprefs' }]); } }]
+            });
             root.contextMenu.attachClickMenuToElement(m.querySelector('[data-a="zoommenu"]'), {
+                skin: 'reader',
                 onAction: (a) => void this.action(a),
                 sections: [{ type: 'list', initfn: (s) => { s.items = this.zoomMenu(); } }]
             });
             root.contextMenu.attachClickMenuToElement(m.querySelector('[data-a="findmenu"]'), {
+                skin: 'reader',
                 onAction: (a) => void this.action(a),
                 sections: [{ type: 'list', initfn: (s) => { s.items = this.findMenu(); } }]
             });
@@ -376,7 +384,10 @@
 
         // ---- menus --------------------------------------------------------------------------------
 
-        menu(name) {
+        /** A menu's rows with their access keys ("&Open..." -> Open... with the O underlined, as Reader draws them). */
+        menu(name) { return withKeys(this.menuItems(name)); }
+
+        menuItems(name) {
             const has = !!this.pdf;
             const img = (n) => `${A}/${n}.png`;
             const sel = (() => { const s = root.getSelection(); return !!(s && !s.isCollapsed && this.el.pagesEl.contains(s.anchorNode)); })();
@@ -385,54 +396,54 @@
                 case 'file': {
                     const recent = this.recent();
                     return [
-                        { text: 'Open...', subtext: 'Ctrl+O', action: 'open', image: img('open-sm') },
+                        { text: '&Open...', subtext: 'Ctrl+O', action: 'open', image: img('open-sm') },
                         { separator: true },
-                        { text: 'Create Adobe PDF Online...', disabled: true },
+                        { text: 'Create Adobe PD&F Online...', action: 'createpdf' },
                         { separator: true },
-                        { text: 'Start Meeting...', disabled: true },
+                        { text: 'Start &Meeting...', action: 'meeting', image: img('meeting-sm') },
                         { separator: true },
-                        { text: 'Save a Copy...', subtext: 'Shift+Ctrl+S', action: 'savecopy', disabled: !has },
-                        { text: 'Save as Text...', action: 'savetext', disabled: !has },
+                        { text: 'Save &a Copy...', subtext: 'Shift+Ctrl+S', action: 'savecopy', disabled: !has },
+                        { text: 'Sa&ve as Text...', action: 'savetext', disabled: !has },
                         { separator: true },
-                        { text: 'Attach to Email...', action: 'email', disabled: !has },
-                        { text: 'Close', subtext: 'Ctrl+W', action: 'close', disabled: !has },
+                        { text: 'Attach to Emai&l...', action: 'email', disabled: !has },
+                        { text: '&Close', subtext: 'Ctrl+W', action: 'close', disabled: !has },
                         { separator: true },
-                        { text: 'Properties...', subtext: 'Ctrl+D', action: 'props', disabled: !has },
+                        { text: '&Properties...', subtext: 'Ctrl+D', action: 'props', disabled: !has },
                         { separator: true },
-                        { text: 'Digital Editions', disabled: true },
+                        { text: 'Digital Edition&s', action: 'digitaleditions' },
                         { separator: true },
-                        { text: 'Print Setup...', subtext: 'Shift+Ctrl+P', action: 'printsetup' },
-                        { text: 'Print...', subtext: 'Ctrl+P', action: 'print', disabled: !has, image: img('print-sm') },
-                        ...(recent.length ? [{ separator: true }].concat(recent.map((r, i) => ({ text: `${i + 1} ${r.label}`, action: `recent:${i}` }))) : []),
+                        { text: 'Print Set&up...', subtext: 'Shift+Ctrl+P', action: 'printsetup', disabled: !has },
+                        { text: '&Print...', subtext: 'Ctrl+P', action: 'print', disabled: !has, image: img('print-sm') },
+                        ...(recent.length ? [{ separator: true }].concat(recent.map((r, i) => ({ text: `&${i + 1} ${recentLabel(r).replace(/&/g, '&&')}`, action: `recent:${i}` }))) : []),
                         { separator: true },
-                        { text: 'Exit', subtext: 'Ctrl+Q', action: 'exit' }
+                        { text: 'E&xit', subtext: 'Ctrl+Q', action: 'exit' }
                     ];
                 }
                 case 'edit': return [
-                    { text: 'Undo', subtext: 'Ctrl+Z', disabled: true, image: img('undo-sm') },
-                    { text: 'Redo', subtext: 'Shift+Ctrl+Z', disabled: true, image: img('redo-sm') },
+                    { text: '&Undo', subtext: 'Ctrl+Z', disabled: true, image: img('undo-sm') },
+                    { text: '&Redo', subtext: 'Shift+Ctrl+Z', disabled: true, image: img('redo-sm') },
                     { separator: true },
-                    { text: 'Cut', subtext: 'Ctrl+X', disabled: true },
-                    { text: 'Copy', subtext: 'Ctrl+C', action: 'copy', disabled: !sel, image: img('copy-sm') },
-                    { text: 'Paste', subtext: 'Ctrl+V', disabled: true, image: img('paste-sm') },
-                    { text: 'Delete', disabled: true },
+                    { text: 'Cu&t', subtext: 'Ctrl+X', disabled: true },
+                    { text: '&Copy', subtext: 'Ctrl+C', action: 'copy', disabled: !sel, image: img('copy-sm') },
+                    { text: '&Paste', subtext: 'Ctrl+V', disabled: true, image: img('paste-sm') },
+                    { text: '&Delete', disabled: true },
                     { separator: true },
-                    { text: 'Copy File to Clipboard', action: 'copyfile', disabled: !has },
+                    { text: 'Copy File to Clip&board', action: 'copyfile', disabled: !has },
                     { separator: true },
-                    { text: 'Select All', subtext: 'Ctrl+A', action: 'selectall', disabled: !has },
-                    { text: 'Deselect All', subtext: 'Shift+Ctrl+A', action: 'deselect', disabled: !has },
+                    { text: 'Se&lect All', subtext: 'Ctrl+A', action: 'selectall', disabled: !has },
+                    { text: 'D&eselect All', subtext: 'Shift+Ctrl+A', action: 'deselect', disabled: !has },
                     { separator: true },
-                    { text: 'Check Spelling', disabled: true, submenu: [{ text: 'In Comments and Form Fields...', subtext: 'F7', disabled: true }, { text: 'Edit Dictionary...', disabled: true }] },
-                    { text: 'Look Up Selected Word...', disabled: true },
+                    { text: 'Chec&k Spelling', disabled: true, submenu: [{ text: 'In Comments and Form Fields...', subtext: 'F7', disabled: true }, { text: 'Edit Dictionary...', disabled: true }] },
+                    { text: 'L&ook Up Selected Word...', disabled: true },
                     { separator: true },
-                    { text: 'Find', subtext: 'Ctrl+F', action: 'find', disabled: !has },
-                    { text: 'Search', subtext: 'Shift+Ctrl+F', action: 'search', image: img('search-sm') },
-                    { text: 'Search Results', submenu: [{ text: 'Next Result', subtext: 'Ctrl+]', action: 'searchnext', disabled: !(this.find.hits && this.find.hits.length) }, { text: 'Previous Result', subtext: 'Ctrl+[', action: 'searchprev', disabled: !(this.find.hits && this.find.hits.length) }] },
+                    { text: '&Find', subtext: 'Ctrl+F', action: 'find', disabled: !has },
+                    { text: '&Search', subtext: 'Shift+Ctrl+F', action: 'search', image: img('search-sm') },
+                    { text: 'Se&arch Results', submenu: [{ text: 'Next Result', subtext: 'Ctrl+]', action: 'searchnext', disabled: !(this.find.hits && this.find.hits.length) }, { text: 'Previous Result', subtext: 'Ctrl+[', action: 'searchprev', disabled: !(this.find.hits && this.find.hits.length) }] },
                     { separator: true },
-                    { text: 'Preferences...', subtext: 'Ctrl+K', action: 'prefs' }
+                    { text: 'Prefere&nces...', subtext: 'Ctrl+K', action: 'prefs' }
                 ];
                 case 'view': return [
-                    { text: 'Go To', disabled: !has, submenu: [
+                    { text: '&Go To', disabled: !has, submenu: [
                         { text: 'First Page', subtext: 'Home', action: 'first', disabled: this.current <= 1, image: img('go-first') },
                         { text: 'Previous Page', subtext: 'Left Arrow', action: 'prev', disabled: this.current <= 1, image: img('go-prev') },
                         { text: 'Next Page', subtext: 'Right Arrow', action: 'next', disabled: !has || this.current >= this.pages.length, image: img('go-next') },
@@ -446,55 +457,55 @@
                         { text: 'Next Document', subtext: 'Alt+Shift+Right Arrow', disabled: true }
                     ] },
                     { separator: true },
-                    { text: 'Zoom', disabled: !has, submenu: [
-                        { text: 'Zoom To...', subtext: 'Ctrl+Y', action: 'zoomto' },
-                        chk('Actual Size', 'z:actual', !this.fit && this.zoom === 1, { subtext: 'Ctrl+1', image: img('z-actual') }),
-                        chk('Fit Page', 'z:page', this.fit === 'page', { subtext: 'Ctrl+0', image: img('z-fitpage') }),
-                        chk('Fit Width', 'z:width', this.fit === 'width', { subtext: 'Ctrl+2', image: img('z-fitwidth') }),
-                        chk('Fit Height', 'z:height', this.fit === 'height'),
-                        chk('Fit Visible', 'z:visible', this.fit === 'visible', { subtext: 'Ctrl+3' }),
+                    { text: '&Zoom', disabled: !has, submenu: [
+                        { text: '&Zoom To...', subtext: 'Ctrl+Y', action: 'zoomto' },
+                        chk('&Actual Size', 'z:actual', !this.fit && this.zoom === 1, { subtext: 'Ctrl+1', image: img('z-actual') }),
+                        chk('Fit &Page', 'z:page', this.fit === 'page', { subtext: 'Ctrl+0', image: img('z-fitpage') }),
+                        chk('Fit &Width', 'z:width', this.fit === 'width', { subtext: 'Ctrl+2', image: img('z-fitwidth') }),
+                        chk('Fit &Height', 'z:height', this.fit === 'height'),
+                        chk('Fit Visi&ble', 'z:visible', this.fit === 'visible', { subtext: 'Ctrl+3' }),
                         { separator: true },
-                        { text: 'Reflow', subtext: 'Ctrl+4', disabled: true }
+                        { text: '&Reflow', subtext: 'Ctrl+4', disabled: true }
                     ] },
-                    { text: 'Page Display', disabled: !has, submenu: [
-                        chk('Single Page', 'l:single', this.layout === 'single', { image: img('pd-single') }),
-                        chk('Single Page Continuous', 'l:continuous', this.layout === 'continuous', { image: img('pd-continuous') }),
-                        chk('Two-Up', 'l:twoup', this.layout === 'twoup', { image: img('pd-facing') }),
-                        chk('Two-Up Continuous', 'l:twoupcont', this.layout === 'twoupcont', { image: img('pd-contfacing') }),
+                    { text: '&Page Display', disabled: !has, submenu: [
+                        chk('&Single Page', 'l:single', this.layout === 'single'),
+                        chk('Single Page &Continuous', 'l:continuous', this.layout === 'continuous'),
+                        chk('Two-&Up', 'l:twoup', this.layout === 'twoup'),
+                        chk('&Two-Up Continuous', 'l:twoupcont', this.layout === 'twoupcont'),
                         { separator: true },
-                        chk('Show Gaps Between Pages', 'gaps', reg('ShowGaps', true) !== false),
-                        chk('Show Cover Page During Two-Up', 'cover', !!reg('CoverPage', false))
+                        chk('Show &Gaps Between Pages', 'gaps', reg('ShowGaps', true) !== false),
+                        chk('Show Co&ver Page During Two-Up', 'cover', !!reg('CoverPage', false))
                     ] },
-                    { text: 'Rotate View', disabled: !has, submenu: [
+                    { text: 'Rotate &View', disabled: !has, submenu: [
                         { text: 'Clockwise', subtext: 'Shift+Ctrl+Plus', action: 'rotcw', image: img('rot-cw') },
                         { text: 'Counterclockwise', subtext: 'Shift+Ctrl+Minus', action: 'rotccw', image: img('rot-ccw') }
                     ] },
                     { separator: true },
-                    { text: 'Reading Mode', subtext: 'Ctrl+H', action: 'readmode', disabled: !has, showIndicator: true, checked: !!this.reading },
-                    { text: 'Full Screen Mode', subtext: 'Ctrl+L', action: 'fullscreen', disabled: !has },
+                    { text: '&Reading Mode', subtext: 'Ctrl+H', action: 'readmode', disabled: !has, showIndicator: true, checked: !!this.reading },
+                    { text: '&Full Screen Mode', subtext: 'Ctrl+L', action: 'fullscreen', disabled: !has },
                     { separator: true },
-                    { text: 'Menu Bar', subtext: 'F9', action: 'menubar', showIndicator: true, checked: !this.modal.classList.contains('rdr-no-menubar') },
-                    { text: 'Toolbars', image: img('view-toolbars'), submenu: [
+                    { text: '&Menu Bar', subtext: 'F9', action: 'menubar' },
+                    { text: '&Toolbars', image: img('view-toolbars'), submenu: [
                         { text: 'Beyond Adobe Reader', disabled: true },
                         { text: 'Edit', disabled: true },
                         chk('File', 'tb:file', this.toolbars.file),
-                        chk('Find', 'tb:find', this.toolbars.find),
+                        chk('&Find', 'tb:find', this.toolbars.find),
                         { text: 'Object Data', disabled: true },
-                        chk('Page Display', 'tb:display', this.toolbars.display),
+                        chk('&Page Display', 'tb:display', this.toolbars.display),
                         chk('Page Navigation', 'tb:nav', this.toolbars.nav),
-                        chk('Select & Zoom', 'tb:zoom', this.toolbars.zoom),
+                        chk('Select && &Zoom', 'tb:zoom', this.toolbars.zoom),
                         { separator: true },
                         { text: 'Properties Bar', subtext: 'Ctrl+E', disabled: true },
                         { separator: true },
                         { text: 'Hide Toolbars', subtext: 'F8', action: 'hidetoolbars' },
                         { text: 'Reset Toolbars', subtext: 'Alt+F8', action: 'resettoolbars' }
                     ] },
-                    { text: 'Navigation Panels', image: img('view-navpanels'), submenu: [
+                    { text: '&Navigation Panels', image: img('view-navpanels'), submenu: [
                         { text: 'Articles', disabled: true, image: img('np-articles') },
                         chk('Attachments', 'p:attachments', this.bottomPanel === 'attachments', { image: img('np-attachments') }),
                         chk('Bookmarks', 'p:bookmarks', this.panel === 'bookmarks', { image: img('np-bookmarks') }),
                         chk('Comments', 'p:comments', this.bottomPanel === 'comments', { image: img('np-comments') }),
-                        chk('How To', 'p:howto', this.panel === 'howto', { image: img('np-howto') }),
+                        chk('Ho&w To', 'p:howto', this.panel === 'howto', { image: img('np-howto') }),
                         { text: 'Layers', disabled: true, image: img('np-layers') },
                         { text: 'Model Tree', disabled: true, image: img('np-modeltree') },
                         chk('Pages', 'p:pages', this.panel === 'pages', { image: img('np-pages') }),
@@ -502,26 +513,26 @@
                         { text: this.panel ? 'Hide Navigation Pane' : 'Show Navigation Pane', subtext: 'F4', action: 'navpane' }
                     ] },
                     { separator: true },
-                    { text: 'Line Weights', subtext: 'Ctrl+5', disabled: true, image: img('lineweights-sm') },
+                    { text: '&Line Weights', subtext: 'Ctrl+5', disabled: true },
                     { separator: true },
-                    { text: 'Review Tracker...', disabled: true },
+                    { text: 'Review Trac&ker...', disabled: true },
                     { separator: true },
-                    { text: 'Automatically Scroll', subtext: 'Shift+Ctrl+H', action: 'autoscroll', disabled: !has, showIndicator: true, checked: !!this.autoTimer },
-                    { text: 'Read Out Loud', disabled: true, submenu: [{ text: 'Activate Read Out Loud', subtext: 'Shift+Ctrl+Y', disabled: true }] }
+                    { text: 'Automaticall&y Scroll', subtext: 'Shift+Ctrl+H', action: 'autoscroll', disabled: !has, showIndicator: true, checked: !!this.autoTimer },
+                    { text: 'Re&ad Out Loud', disabled: true, submenu: [{ text: 'Activate Read Out Loud', subtext: 'Shift+Ctrl+Y', disabled: true }] }
                 ];
                 case 'document': return [
-                    { text: 'Sign', disabled: true, submenu: [{ text: 'Place Signature...', disabled: true }] },
-                    { text: 'Security', disabled: true, submenu: [{ text: 'Show Security Properties', disabled: true }] },
-                    { text: 'Security Settings...', disabled: true },
-                    { text: 'Manage Trusted Identities...', disabled: true },
+                    { text: '&Sign', disabled: true, image: img('sign-sm'), submenu: [{ text: 'Place Signature...', disabled: true }] },
+                    { text: 'Se&curity', disabled: true, image: img('security-sm'), submenu: [{ text: 'Show Security Properties', disabled: true }] },
+                    { text: 'S&ecurity Settings...', disabled: true },
+                    { text: 'Manage Trusted &Identities...', disabled: true },
                     { separator: true },
-                    { text: 'Change Accessibility Reading Options...', subtext: 'Shift+Ctrl+5', disabled: true },
-                    { text: 'Accessibility Quick Check', subtext: 'Shift+Ctrl+6', disabled: true },
+                    { text: 'Change Accessibility &Reading Options...', subtext: 'Shift+Ctrl+5', disabled: true },
+                    { text: 'Accessibility &Quick Check', subtext: 'Shift+Ctrl+6', disabled: true },
                     { separator: true },
-                    { text: 'Accessibility Setup Assistant...', disabled: true }
+                    { text: 'Accessibility Se&tup Assistant...', disabled: true }
                 ];
                 case 'tools': return [
-                    { text: 'Select & Zoom', submenu: [
+                    { text: 'Select && &Zoom', submenu: [
                         chk('Select Tool', 't:select', this.tool === 'select', { image: img('tool-select') }),
                         chk('Hand Tool', 't:hand', this.tool === 'hand', { image: img('tool-hand') }),
                         chk('Marquee Zoom', 't:marquee', this.tool === 'marquee', { image: img('tool-marquee') }),
@@ -534,39 +545,39 @@
                     { separator: true },
                     { text: 'Object Data', disabled: true, submenu: [{ text: 'Object Data Tool', disabled: true }] },
                     { separator: true },
-                    { text: 'Customize Toolbars...', disabled: true }
+                    { text: 'C&ustomize Toolbars...', disabled: true }
                 ];
                 case 'window': {
                     const list = Array.from(windows);
                     return [
-                        { text: 'New Window', action: 'newwindow' },
+                        { text: '&New Window', action: 'newwindow' },
                         { separator: true },
-                        { text: 'Cascade', subtext: 'Shift+Ctrl+J', action: 'cascade' },
-                        { text: 'Tile', submenu: [{ text: 'Horizontally', subtext: 'Shift+Ctrl+K', action: 'tileh' }, { text: 'Vertically', subtext: 'Shift+Ctrl+L', action: 'tilev' }] },
-                        { text: 'Minimize All Windows', action: 'minall' },
-                        { text: 'Close All', subtext: 'Shift+Ctrl+W', action: 'closeall' },
+                        { text: '&Cascade', subtext: 'Shift+Ctrl+J', action: 'cascade' },
+                        { text: '&Tile', submenu: [{ text: 'Horizontally', subtext: 'Shift+Ctrl+K', action: 'tileh' }, { text: 'Vertically', subtext: 'Shift+Ctrl+L', action: 'tilev' }] },
+                        { text: '&Minimize All Windows', action: 'minall' },
+                        { text: 'Close &All', subtext: 'Shift+Ctrl+W', action: 'closeall' },
                         { separator: true },
-                        { text: 'Full Screen Mode', subtext: 'Ctrl+L', action: 'fullscreen', disabled: !has },
+                        { text: '&Full Screen Mode', subtext: 'Ctrl+L', action: 'fullscreen', disabled: !has },
                         ...(list.some((w) => w.pdf) ? [{ separator: true }] : []),
-                        ...list.filter((w) => w.pdf).map((w, i) => ({ text: `${i + 1} ${w.name}`, action: `win:${w.n}`, showIndicator: true, checked: w === this }))
+                        ...list.filter((w) => w.pdf).map((w, i) => ({ text: `&${i + 1} ${String(w.name).replace(/&/g, '&&')}`, action: `win:${w.n}`, showIndicator: true, checked: w === this }))
                     ];
                 }
                 case 'help': return [
-                    { text: 'Adobe Reader 8 Help...', subtext: 'F1', action: 'help', image: img('help-complete') },
+                    { text: 'Adobe Reader 8 &Help...', subtext: 'F1', action: 'help', image: img('help-complete') },
                     { separator: true },
-                    { text: 'Beyond Adobe Reader...', disabled: true },
-                    { text: 'How To', image: img('help-sm'), submenu: [{ text: 'Adobe Reader Essentials', action: 'p:howto' }] },
+                    { text: '&Beyond Adobe Reader...', action: 'web:beyond' },
+                    { text: 'Ho&w To', image: img('help-sm'), submenu: [{ text: 'Adobe Reader Essentials', action: 'p:howto' }] },
                     { separator: true },
-                    { text: 'Online Support...', disabled: true, submenu: [{ text: 'Knowledge Base', disabled: true }] },
+                    { text: '&Online Support...', submenu: [{ text: '&Knowledge Base', action: 'web:support' }] },
                     { separator: true },
-                    { text: 'About Adobe Reader 8...', action: 'about' },
-                    { text: 'About Adobe Plug-Ins...', disabled: true },
+                    { text: '&About Adobe Reader 8...', action: 'about' },
+                    { text: 'About Adobe &Plug-Ins...', disabled: true },
                     { separator: true },
-                    { text: 'Repair Adobe Reader Installation', disabled: true },
-                    { text: 'Purchase Adobe Acrobat', disabled: true },
-                    { text: 'Adobe Online Services...', disabled: true },
+                    { text: 'Re&pair Adobe Reader Installation', disabled: true },
+                    { text: 'Pu&rchase Adobe Acrobat', action: 'web:acrobat' },
+                    { text: 'Adobe Online Services...', action: 'web:services', image: img('online-services-sm') },
                     { separator: true },
-                    { text: 'Check for Updates...', disabled: true }
+                    { text: 'Check for &Updates...', disabled: true }
                 ];
                 default: return [];
             }
@@ -599,12 +610,18 @@
             if (a.startsWith('p:')) { this.togglePanel(a.slice(2), true); return; }
             if (a.startsWith('f:')) { const k = { whole: 'whole', case: 'matchCase', bookmarks: 'bookmarks', comments: 'comments' }[a.slice(2)]; this.find[k] = !this.find[k]; this.find.hits = null; return; }
             if (a.startsWith('recent:')) { const r = this.recent()[Number(a.slice(7))]; if (r) await this.openInWindow({ file: r.file }); return; }
+            if (a.startsWith('web:')) { openWeb(WEB[a.slice(4)]); return; }
             if (a.startsWith('win:')) { const w = Array.from(windows).find((x) => String(x.n) === a.slice(4)); if (w) w.front(); return; }
             switch (a) {
                 case 'open': this.openDialog(); return;
                 case 'savecopy': this.saveCopy(); return;
                 case 'savetext': this.saveText(); return;
                 case 'email': await this.email(); return;
+                case 'meeting': openMeeting(this); return;
+                case 'meetingprefs': openPreferences(this); return;
+                // Reader's own web pages open in the browser with no prompt (the prompt is a document's)
+                case 'createpdf': openWeb('https://createpdf.acrobat.com/'); return;
+                case 'digitaleditions': openWeb('https://www.adobe.com/solutions/ebook/digital-editions.html'); return;
                 case 'close': this.closeDocument(); return;
                 case 'props': this.properties(); return;
                 case 'printsetup': this.printSetup(); return;
@@ -897,7 +914,7 @@
             if (!this.file) return;
             const max = Number(reg('RecentCount', 5)) || 5;
             // the computer's path as Reader lists it ("1 C:\Workspaces\Default\Report.pdf")
-            const label = `C:${String(this.file.path || '').replace(/\/+$/, '').replace(/\//g, '\\')}\\${this.file.name}`;
+            const label = recentLabel({ file: this.file });
             const list = this.recent().filter((r) => r.file && r.file.id !== this.file.id);
             list.unshift({ file: this.file, label });
             setReg({ RecentFiles: JSON.stringify(list.slice(0, max)) });
@@ -905,7 +922,7 @@
 
         // ---- layout -------------------------------------------------------------------------------
 
-        get dpi() { return reg('ResolutionMode', 'system') === 'custom' ? Number(reg('Resolution', 96)) || 96 : 96; }
+        get dpi() { return reg('ResolutionMode', 'custom') === 'custom' ? Number(reg('Resolution', 110)) || 110 : 96; }
 
         /** CSS px per PDF point at the current zoom. */
         get scale() { return (this.zoom * this.dpi) / 72; }
@@ -1303,16 +1320,15 @@
             const has = !!this.pdf;
             const set = (a, on) => { const b = this.modal.querySelector(`.rdr-toolbar [data-a="${a}"]`); if (b) b.disabled = !on; };
             set('print', has);
-            set('email', has);
             set('prev', has && this.current > 1);
             set('next', has && this.current < this.pages.length);
             set('zoomin', has); set('zoomout', has); set('fitwidth', has); set('fitpage', has); set('zoommenu', has);
             this.el.pagebox.disabled = !has;
             this.el.zoombox.disabled = !has;
-            this.el.findbox.disabled = !has;
             this.el.pagecount.textContent = `/ ${has ? this.pages.length : 0}`;
-            if (document.activeElement !== this.el.zoombox) this.el.zoombox.value = has ? fmtZoom(this.zoom) : '';
-            if (document.activeElement !== this.el.pagebox) this.el.pagebox.value = has ? String(this.current) : '';
+            this.el.pagecount.classList.toggle('is-disabled', !has);
+            if (document.activeElement !== this.el.zoombox) this.el.zoombox.value = has ? fmtZoom(this.zoom) : '100%';
+            if (document.activeElement !== this.el.pagebox) this.el.pagebox.value = has ? String(this.current) : '0';
             const fw = this.modal.querySelector('[data-a="fitwidth"]');
             const fp = this.modal.querySelector('[data-a="fitpage"]');
             fw.classList.toggle('is-on', has && this.fit === 'width');
@@ -1547,7 +1563,7 @@
             p.hidden = !name;
             this.el.split.hidden = !name;
             this.modal.classList.toggle('rdr-panel-open', !!name);
-            if (name) p.style.width = `${Number(reg('PanelWidth', 0)) || (name === 'howto' ? 280 : 194)}px`;
+            if (name) p.style.width = `${Number(reg('PanelWidth', 0)) || (name === 'howto' ? 280 : 195)}px`;
             this.modal.querySelectorAll('.rdr-navtabs:not(.rdr-navtabs-bottom) .rdr-navtab').forEach((b) => b.classList.toggle('is-on', b.dataset.panel === name));
             if (name) this.renderPanel();
             this.relayout();
@@ -1573,7 +1589,7 @@
             b.className = 'rdr-options';
             b.textContent = 'Options';
             tools.appendChild(b);
-            root.contextMenu.attachClickMenuToElement(b, { onAction: (a) => void this.panelAction(a), sections: [{ type: 'list', initfn: (s) => { s.items = items(); } }] });
+            root.contextMenu.attachClickMenuToElement(b, { skin: 'reader', onAction: (a) => void this.panelAction(a), sections: [{ type: 'list', initfn: (s) => { s.items = items(); } }] });
         }
 
         async panelAction(a) {
@@ -1968,6 +1984,39 @@
 
     // ---- shared helpers ------------------------------------------------------------------------------
 
+    /** Win32's "&" access keys: "&Open..." -> { text: 'Open...', accessKey: 0 } ("&&" is a literal &), submenus too. */
+    function withKeys(items) {
+        return items.map((it) => {
+            if (!it || it.separator) return it;
+            const out = Object.assign({}, it);
+            if (typeof it.text === 'string' && it.text.includes('&')) {
+                let t = '';
+                let key = -1;
+                for (let i = 0; i < it.text.length; i += 1) {
+                    const ch = it.text[i];
+                    if (ch === '&' && i + 1 < it.text.length) {
+                        if (it.text[i + 1] !== '&' && key < 0) key = t.length;
+                        t += it.text[i + 1];
+                        i += 1;
+                    } else t += ch;
+                }
+                out.text = t;
+                if (key >= 0) out.accessKey = key;
+            }
+            if (Array.isArray(it.submenu)) out.submenu = withKeys(it.submenu);
+            return out;
+        });
+    }
+
+    function openWeb(url) { if (typeof root.openGrimoireUrl === 'function') void root.openGrimoireUrl(url); }
+
+    /** A recent file as Reader lists it: "C:\Workspaces\default\Report.pdf". */
+    function recentLabel(r) {
+        const f = r && r.file;
+        if (!f) return (r && r.label) || '';
+        return `C:${String(f.path || '').replace(/\/+$/, '').replace(/\//g, '\\')}\\${f.name}`;
+    }
+
     function workspaceRoot() {
         const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'Default'; // eslint-disable-line no-undef
         return `/Workspaces/${ws}`;
@@ -2061,6 +2110,55 @@
         m.querySelector('.rdr-about-credits').addEventListener('click', () => void w.message('Adobe Reader 8.1.3\nPDF rendering in Melaton: PDF.js, Copyright Mozilla Foundation, Apache License 2.0.', null, 'Credits'));
         m.tabIndex = -1;
         m.focus();
+    }
+
+    // ---- Start Meeting (the toolbar's Start Meeting and File > Start Meeting...: Acrobat Connect's welcome) -------
+    // The VM's window, client 519 x 508: a 100 px band (#f0f0f0 to #cccccc) with the 32 px Connect picture and the
+    // title (Segoe UI Bold 17 px), the photo at 15, 132, the two framed offers (#d5dfe5 frames with a white inner
+    // line, headings Segoe UI Bold 15 px), See Demo / Buy Now as links, Close. Acrobat Connect's pages open in the
+    // browser, as Reader sent them there.
+
+    const CONNECT_URL = 'https://www.adobe.com/products/adobeconnect.html';
+    // Reader's Help menu sends these to the browser
+    const WEB = {
+        beyond: 'https://www.adobe.com/acrobat.html',
+        support: 'https://helpx.adobe.com/support/reader.html',
+        acrobat: 'https://www.adobe.com/acrobat/pricing.html',
+        services: 'https://www.adobe.com/acrobat/online.html'
+    };
+
+    function openMeeting(w) {
+        const D = root.vistaDialogTemplate;
+        if (!D) return;
+        const id = 'rdrMeeting';
+        const old = doc.getElementById(id);
+        if (old) { call('bringModalToFront', old); return; }
+        const tpl = tplOf('Welcome to Start Meeting', 519, 508, [
+            C.custom(100, 0, 0, 519, 470, 'ReaderMeeting'),
+            C.btn(101, 180, 271, 133, 23, 'Create Trial Account'),
+            C.btn(102, 180, 393, 75, 23, 'Log In'),
+            C.btn(2, 429, 471, 75, 23, 'Close', true)
+        ]);
+        D.openDialog({
+            id, tpl, owner: w.modal, bareCaption: true,
+            init: (ctx) => {
+                const host = ctx.el(100);
+                if (host) {
+                    host.classList.add('rdr-meet');
+                    host.innerHTML = `
+                        <div class="rdr-meet-band"><img src="${A}/meeting-header.png" alt="" draggable="false"><span>Start Meeting with Acrobat Connect</span></div>
+                        <img class="rdr-meet-photo" src="${A}/meeting-photo.png" alt="" draggable="false">
+                        <div class="rdr-meet-blurb">Use Acrobat Connect rich<br>web communication<br>system to share &amp; review<br>documents in real time<br>with your colleagues,<br>customers, and friends.</div>
+                        <button type="button" class="tbp-link vdt-link rdr-meet-link" data-go="demo" style="top:411px">See Demo</button>
+                        <button type="button" class="tbp-link vdt-link rdr-meet-link" data-go="buy" style="top:441px">Buy Now</button>
+                        <div class="rdr-meet-box" style="top:132px;height:174px"><b>Sign up for a free trial</b><p style="top:34px">Start Meeting today with a free trial of Acrobat Connect.</p><p style="top:59px">Share presentations and collaborate with others<br>online with your own personal meeting room.<br>Anyone you invite can meet in your room without<br>downloading or installing any software.</p></div>
+                        <div class="rdr-meet-box" style="top:333px;height:95px"><b>Already have an account?</b><p style="top:34px">Log in and start meeting.</p></div>`;
+                    host.addEventListener('click', (ev) => { if (ev.target.closest('[data-go]')) openWeb(CONNECT_URL); });
+                }
+                ctx.on(101, 'click', () => openWeb(CONNECT_URL));
+                ctx.on(102, 'click', () => openWeb(CONNECT_URL));
+            }
+        });
     }
 
     // ---- Document Properties (Description, Security, Fonts, Advanced) -----------------------------------
@@ -2279,9 +2377,9 @@
                 ctx.options(3002, layouts.map(([value, text]) => ({ value, text })), reg('PageLayout', 'auto'));
                 ctx.options(3004, zooms.map(([value, text]) => ({ value, text })), String(reg('DefaultZoom', 'auto')));
                 ctx.options(3022, ['For Monitor', 'For Laptop/LCD screens', 'None'], reg('SmoothText', 'For Monitor'));
-                const custom = reg('ResolutionMode', 'system') === 'custom';
+                const custom = reg('ResolutionMode', 'custom') === 'custom';
                 ctx.set(custom ? 3014 : 3011, true);
-                ctx.set(3015, String(reg('Resolution', 96)));
+                ctx.set(3015, String(reg('Resolution', 110)));
                 const e2008 = ctx.el(2008); if (e2008) e2008.disabled = true;
                 const sync = () => { const e = ctx.el(3015); if (e) e.disabled = !ctx.get(3014); };
                 ctx.on(3011, 'change', sync); ctx.on(3014, 'change', sync); sync();
@@ -2297,7 +2395,7 @@
                 v.DefaultZoom = String(ctx.get(3004) || 'auto');
                 v.SmoothText = String(ctx.get(3022) || 'For Monitor');
                 v.ResolutionMode = ctx.get(3014) ? 'custom' : 'system';
-                v.Resolution = Math.max(36, Math.min(600, parseInt(ctx.get(3015), 10) || 96));
+                v.Resolution = Math.max(36, Math.min(600, parseInt(ctx.get(3015), 10) || 110));
                 v.PrefsCategory = current;
                 setReg(v);
                 windows.forEach((x) => x.relayout());

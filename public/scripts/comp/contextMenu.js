@@ -1815,6 +1815,10 @@ class ContextMenuController {
 
     renderMenu(config, target) {
         this.detachItemContextMenusFromConfig(config);
+        // a program that draws its own menus names their look (Adobe Reader 8's flat ones: config.skin 'reader');
+        // its submenus take it too (showSubmenu)
+        if (config.skin) this.menu.dataset.menuSkin = config.skin;
+        else delete this.menu.dataset.menuSkin;
 
         const menuContent = this.menu.querySelector('.context-menu-content');
         menuContent.innerHTML = '';
@@ -1983,7 +1987,7 @@ class ContextMenuController {
 
                     const textElement = document.createElement('span');
                     textElement.className = 'context-menu-item-text';
-                    textElement.textContent = item.text;
+                    ContextMenuController.fillItemText(textElement, item.text, item.accessKey);
                     textContainer.appendChild(textElement);
 
                     if (item.subtext !== null && item.subtext !== undefined) {
@@ -2512,6 +2516,20 @@ class ContextMenuController {
         ['IAFS', 'Inhibit Arabic form shaping', '⁬'], ['RS', 'Record Separator (Block separator)', '\u001E'],
         ['US', 'Unit Separator (Segment separator)', '\u001F']
     ];
+
+    /**
+     * A row's label, its access key underlined when the item names one (item.accessKey: the letter's index in the
+     * text) - for a program that draws its menus with the underlines always shown (Adobe Reader 8's own menus).
+     */
+    static fillItemText(el, text, key) {
+        const t = String(text == null ? '' : text);
+        if (!(Number.isInteger(key) && key >= 0 && key < t.length)) { el.textContent = t; return; }
+        const u = document.createElement('u');
+        u.className = 'context-menu-access-key';
+        u.textContent = t[key];
+        el.textContent = t.slice(0, key);
+        el.append(u, t.slice(key + 1));
+    }
 
     /** "Ctrl+N", "Ctrl+Shift+V", "Alt+F4", "F5", "Del", "Esc": an accelerator, not a description. */
     static isAccelerator(text) {
@@ -3725,6 +3743,7 @@ class ContextMenuController {
         // Create submenu container
         const submenu = document.createElement('div');
         submenu.className = 'context-menu-submenu';
+        if (this.menu && this.menu.dataset.menuSkin) submenu.dataset.menuSkin = this.menu.dataset.menuSkin;
         submenu.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return;
             e.preventDefault();
@@ -3855,6 +3874,12 @@ class ContextMenuController {
                     const iconElement = document.createElement('i');
                     iconElement.className = `${subItem.icon}`;
                     subItemElement.appendChild(iconElement);
+                } else if (subItem.image && typeof subItem.image === 'string') {
+                    // a row's picture, as a top-level row draws it (Adobe Reader's Zoom / Go To submenus)
+                    const iconElement = document.createElement('i');
+                    iconElement.className = 'desktop-menu-icon';
+                    iconElement.style.backgroundImage = `url("${subItem.image.replace(/["\\]/g, '')}")`;
+                    subItemElement.appendChild(iconElement);
                 }
 
                 if (subItem.text) {
@@ -3865,7 +3890,7 @@ class ContextMenuController {
 
                         const textElement = document.createElement('span');
                         textElement.className = 'context-menu-item-text';
-                        textElement.textContent = subItem.text;
+                        ContextMenuController.fillItemText(textElement, subItem.text, subItem.accessKey);
                         textContainer.appendChild(textElement);
 
                         const subtextElement = document.createElement('span');
@@ -3879,7 +3904,7 @@ class ContextMenuController {
                     } else {
                         const textElement = document.createElement('span');
                         textElement.className = 'context-menu-item-text';
-                        textElement.textContent = subItem.text;
+                        ContextMenuController.fillItemText(textElement, subItem.text, subItem.accessKey);
                         subItemElement.appendChild(textElement);
                     }
                 }

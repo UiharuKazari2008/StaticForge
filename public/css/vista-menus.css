@@ -555,6 +555,12 @@ body.windows-classic-theme .dark .custom-dropdown-menu .custom-dropdown-separato
     box-shadow: inset 0 1px var(--ButtonShadow), inset 0 -1px var(--ButtonHilight);
 }
 
+/* a Win32 menu (either theme) is as wide as its longest row, never context-menu.css's 300 px cap: a long recent file's
+   path made Adobe Reader's File menu scroll both ways (Yukimi, Nov 20 2026) */
+body.desktop-mode .context-menu.context-menu-win32 {
+    max-width: none;
+}
+
 /* ---------- a program's Win32 menu bar menus (contextMenu.js .context-menu-win32) ----------
    Every menu opened from a title in a role="menubar" bar is one (contextMenu.js _isWin32MenuTitle;
    data-win32-menus is not read for this any more). Measured on the Vista VM (WordPad):

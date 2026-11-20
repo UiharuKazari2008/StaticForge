@@ -23,7 +23,8 @@
     position: relative;
     display: flex;
     flex: none;
-    height: 19px;
+    box-sizing: border-box;
+    height: 20px;
     background: #dedede;
     border-bottom: 1px solid #f0f0f0;
     box-shadow: 0 1px 0 #6b6b6b;
@@ -58,34 +59,24 @@
 .rdr-window .rdr-menubar .rdr-menu-title::before,
 .rdr-window .rdr-menubar .rdr-menu-title::after { content: none; }
 
-/* the document's own close box at the bar's right end (an open document only) */
+/* the document's own close box at the bar's right end (an open document only): the VM's 7 x 7 black cross, 6 px
+   down and 7 px from the client's right edge */
 .rdr-window.rdr-window .rdr-doc-close:not(#_) {
     position: absolute;
-    right: 4px;
-    top: 4px;
-    width: 11px;
-    height: 11px;
+    right: 7px;
+    top: 6px;
+    width: 7px;
+    height: 7px;
     min-width: 0;
     min-height: 0;
     padding: 0;
     border: 0;
-    background: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7' shape-rendering='crispEdges'%3E%3Cpath d='M1 0h1v1H1zM5 0h1v1H5zM0 1h3v1H0zM4 1h3v1H4zM1 2h5v1H1zM2 3h3v1H2zM1 4h5v1H1zM0 5h3v1H0zM4 5h3v1H4zM1 6h1v1H1zM5 6h1v1H5z'/%3E%3C/svg%3E") 0 0 / 7px 7px no-repeat;
     box-shadow: none;
 }
 
 .rdr-window .rdr-doc-close::before,
-.rdr-window .rdr-doc-close::after {
-    content: '';
-    position: absolute;
-    left: 1px;
-    top: 4px;
-    width: 9px;
-    height: 2px;
-    background: #000;
-    transform: rotate(45deg);
-}
-
-.rdr-window .rdr-doc-close::after { transform: rotate(-45deg); }
+.rdr-window .rdr-doc-close::after { content: none; }
 .rdr-window .rdr-doc-close[hidden] { display: none; }
 
 /* ---- the toolbar band ---- */
@@ -94,7 +85,8 @@
     display: flex;
     flex: none;
     align-items: stretch;
-    height: 32px;
+    box-sizing: border-box;
+    height: 33px;
     background: linear-gradient(#f7f7f7, #efefef 1px, #eeeeee 3px, #d9d9d9 31px);
     border-bottom: 1px solid #6b6b6b;
     overflow: hidden;
@@ -126,6 +118,7 @@
 }
 
 .rdr-window .rdr-group[data-bar="file"] > .rdr-grip { margin-left: 3px; }
+.rdr-window .rdr-group[data-bar="nav"] > .rdr-grip { margin-left: 6px; }
 .rdr-window .rdr-group[data-bar="zoom"] > .rdr-grip { margin-left: 17px; }
 .rdr-window .rdr-group[data-bar="display"] > .rdr-grip { margin-left: 9px; }
 .rdr-window .rdr-group[data-bar="find"] > .rdr-grip { margin-left: 8px; }
@@ -167,7 +160,18 @@
 .rdr-window.rdr-window .rdr-tb:not(:disabled):active:not(#_) { background: #9db9cb; box-shadow: inset 0 1px #7e94a2, inset 0 -1px #cedce5; }
 
 .rdr-window.rdr-window .rdr-tb-print:not(#_) { width: 30px; margin-left: 7px; }
-.rdr-window.rdr-window .rdr-tb-email:not(#_) { width: 32px; margin-left: 10px; }
+/* Start Meeting: a split button, the picture's 31 px face and the arrow's 12 px one (each lights alone) */
+.rdr-window.rdr-window .rdr-tb-meeting:not(#_) { width: 43px; margin-left: 5px; justify-content: flex-start; }
+.rdr-window.rdr-window .rdr-tb-meeting:not(:disabled):is(:hover, :active):not(#_) { background: none; box-shadow: none; }
+.rdr-window .rdr-tb-meeting img { position: relative; margin: -1px 0 0 5px; z-index: 1; }
+.rdr-window .rdr-tb-meeting::before,
+.rdr-window .rdr-tb-meeting .rdr-tb-arrow { content: ''; position: absolute; top: 0; bottom: 0; }
+.rdr-window .rdr-tb-meeting::before { left: 0; width: 31px; }
+.rdr-window .rdr-tb-meeting .rdr-tb-arrow { right: 0; width: 12px; background: url('pulldown.png') center / 7px 7px no-repeat; z-index: 1; }
+.rdr-window .rdr-tb-meeting:hover:not(:has(.rdr-tb-arrow:hover))::before,
+.rdr-window .rdr-tb-meeting .rdr-tb-arrow:hover { background-color: #c1d3df; box-shadow: inset 0 1px #9db9cb, inset 0 -1px #dbe6ed; }
+.rdr-window .rdr-tb-meeting:active:not(:has(.rdr-tb-arrow:active))::before,
+.rdr-window .rdr-tb-meeting .rdr-tb-arrow:is(:active, .context-open) { background-color: #9db9cb; box-shadow: inset 0 1px #7e94a2, inset 0 -1px #cedce5; }
 .rdr-window.rdr-window .rdr-tb-prev:not(#_) { width: 24px; margin-left: 7px; }
 .rdr-window.rdr-window .rdr-tb-next:not(#_) { width: 24px; margin-left: 6px; }
 .rdr-window.rdr-window .rdr-tb-zoomout:not(#_) { width: 19px; margin-left: 5px; }
@@ -197,6 +201,11 @@
 
 .rdr-window.rdr-window .rdr-pagebox:not(#_) { width: 28px; margin-left: 6px; text-align: center; }
 .rdr-window .rdr-pagecount { margin-left: 7px; font: 12px "Segoe UI", Tahoma, sans-serif; color: #000; }
+.rdr-window .rdr-pagecount.is-disabled { color: #acacac; }
+
+/* a disabled box (no document): a #afafaf frame, the white rim, the face #e3e3e3, the text greyed (the VM's "0" and
+   "100%") */
+.rdr-window.rdr-window :is(.rdr-pagebox, .rdr-combo input):disabled:not(#_) { border-color: #afafaf; background: #e3e3e3; color: #a3a3a3; }
 
 .rdr-window .rdr-combo { display: inline-flex; align-items: center; flex: none; }
 .rdr-window .rdr-zoombox { margin-left: 8px; }
@@ -241,7 +250,7 @@
     right: 0;
     top: 0;
     height: 4px;
-    background: linear-gradient(#3e3e3e, #474747 1px, #4f4f4f 2px, #585858 3px, rgba(88, 88, 88, 0) 4px);
+    background: linear-gradient(#3e3e3e 1px, #474747 1px 2px, #4f4f4f 2px 3px, #585858 3px);
     pointer-events: none;
     z-index: 3;
 }
@@ -250,15 +259,23 @@
 .rdr-window.rdr-reading .rdr-panel,
 .rdr-window.rdr-reading .rdr-split { display: none; }
 
-/* the navigation bar: 46 px, 42 px and a #808080 rule while a panel is open; 44 px tabs every 50 px */
+/* the navigation bar: 46 px, 42 px while a panel is open (the panel's own #808080 rim follows it); 45 px tabs
+   every 50 px */
 .rdr-window .rdr-navbar {
     position: relative;
     flex: none;
     width: 46px;
     background: #676767;
+    z-index: 2;
 }
 
-.rdr-window.rdr-panel-open .rdr-navbar { width: 42px; border-right: 1px solid #808080; }
+.rdr-window.rdr-panel-open .rdr-navbar { width: 42px; }
+
+/* no document: Reader 8 shows no navigation bar or panel at all, only the empty grey pane */
+.rdr-window.rdr-empty .rdr-navbar,
+.rdr-window.rdr-empty .rdr-panel,
+.rdr-window.rdr-empty .rdr-split,
+.rdr-window.rdr-empty .rdr-bottom { display: none; }
 
 .rdr-window .rdr-navtabs {
     position: absolute;
@@ -266,7 +283,7 @@
     top: 4px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 5px;
 }
 
 .rdr-window .rdr-navtabs-bottom { top: auto; bottom: 5px; }
@@ -276,14 +293,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
     width: 40px;
-    height: 44px;
+    height: 45px;
     min-width: 0;
     min-height: 0;
     margin: 0;
     padding: 0 3px 0 0;
     border: 0;
-    border-radius: 6px 0 0 6px;
+    border-radius: 5px 0 0 5px;
+    overflow: visible;
     background: none;
     box-shadow: none;
 }
@@ -291,29 +310,58 @@
 .rdr-window .rdr-navtab img { display: block; pointer-events: none; }
 .rdr-window.rdr-window .rdr-navtab:hover:not(.is-on):not(#_) { background: #707070; }
 
-/* the open panel's tab joins the panel: its colour, a #808080 top edge, darker below */
+/* the panel's sunken face (the VM, alpha of black over #565656 from each edge inward): a lighter first row then
+   the dark rim at the top, the dark rim on the other sides */
+.rdr-window {
+    --rdr-sunk-top: linear-gradient(rgba(0, 0, 0, 0.116) 1px, rgba(0, 0, 0, 0.209) 1px 2px, rgba(0, 0, 0, 0.128) 2px 3px, rgba(0, 0, 0, 0.081) 3px 4px, rgba(0, 0, 0, 0.047) 4px 5px, rgba(0, 0, 0, 0.023) 5px 6px, rgba(0, 0, 0, 0.012) 6px 7px, transparent 7px) top / 100% 7px no-repeat;
+    --rdr-sunk-bottom: linear-gradient(to top, rgba(0, 0, 0, 0.279) 1px, rgba(0, 0, 0, 0.186) 1px 2px, rgba(0, 0, 0, 0.116) 2px 3px, rgba(0, 0, 0, 0.07) 3px 4px, rgba(0, 0, 0, 0.035) 4px 5px, rgba(0, 0, 0, 0.012) 5px 6px, transparent 6px) bottom / 100% 6px no-repeat;
+    --rdr-sunk-left: linear-gradient(to right, rgba(0, 0, 0, 0.314) 1px, rgba(0, 0, 0, 0.209) 1px 2px, rgba(0, 0, 0, 0.128) 2px 3px, rgba(0, 0, 0, 0.081) 3px 4px, rgba(0, 0, 0, 0.047) 4px 5px, rgba(0, 0, 0, 0.023) 5px 6px, rgba(0, 0, 0, 0.012) 6px 7px, transparent 7px) left / 7px 100% no-repeat;
+    --rdr-sunk-right: linear-gradient(to left, rgba(0, 0, 0, 0.279) 1px, rgba(0, 0, 0, 0.186) 1px 2px, rgba(0, 0, 0, 0.116) 2px 3px, rgba(0, 0, 0, 0.07) 3px 4px, rgba(0, 0, 0, 0.035) 4px 5px, rgba(0, 0, 0, 0.012) 5px 6px, transparent 6px) right / 6px 100% no-repeat;
+}
+
+/* the open panel's tab is part of the panel: the same rim and face, open on its right, laid over the panel's left
+   edge so the two are one sunken shape (its ::after carries the face over the panel's 4 px left rim, up to the list) */
 .rdr-window.rdr-window .rdr-navtab.is-on:not(#_) {
-    width: 44px;
-    background: linear-gradient(#808080, #4c4c4c 1px, #444 2px, #4f4f4f 4px, #565656 8px, #565656 38px, #4b4b4b 41px, #3d3d3d 43px, #808080 44px);
+    border: 1px solid #808080;
+    border-right: 0;
+    background: var(--rdr-sunk-top), var(--rdr-sunk-bottom), var(--rdr-sunk-left), #565656;
     z-index: 2;
+}
+
+.rdr-window .rdr-navtabs:not(.rdr-navtabs-bottom) .rdr-navtab.is-on:not(#_)::after {
+    content: '';
+    z-index: 1;
+    opacity: 1;
+    transition: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    filter: none;
+    transform: none;
+    position: absolute;
+    left: 100%;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--rdr-sunk-top), var(--rdr-sunk-bottom), #565656;
 }
 
 .rdr-window .rdr-navtabs-bottom .rdr-navtab.is-on { background: #565656; }
 
-/* the panel: #565656, a #808080 rim, rounded top, a 4 px dark rim inside it */
+/* the panel: #565656, a #808080 rim with 5 px corners, the sunken face inside it */
 .rdr-window .rdr-panel {
     position: relative;
     display: flex;
     flex-direction: column;
     flex: none;
-    width: 194px;
+    width: 195px;
     margin-top: 4px;
     margin-bottom: 4px;
     box-sizing: border-box;
     border: 1px solid #808080;
-    border-left: 0;
-    border-radius: 0 6px 0 0;
-    background: linear-gradient(#4c4c4c, #444 1px, #4b4b4b 2px, #4f4f4f 3px, #525252 4px, #555 6px, #565656 8px);
+    border-radius: 5px;
+    background: var(--rdr-sunk-top), var(--rdr-sunk-bottom), var(--rdr-sunk-left), var(--rdr-sunk-right), #565656;
     color: #fff;
 }
 
@@ -323,10 +371,12 @@
 
 .rdr-window .rdr-panel-head {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     flex: none;
-    height: 26px;
-    padding: 4px 8px 0 12px;
+    box-sizing: border-box;
+    height: 30px;
+    padding: 6px 9px 0 7px;
+    line-height: 16px;
 }
 
 .rdr-window .rdr-panel-title {
@@ -344,6 +394,7 @@
     min-height: 0;
     padding: 0;
     border: 0;
+    margin-top: 3px;
     background: url('close-white.png') center / 7px 7px no-repeat;
     box-shadow: none;
 }
@@ -352,8 +403,9 @@
     display: flex;
     align-items: center;
     flex: none;
+    box-sizing: border-box;
     height: 32px;
-    padding: 0 8px 0 10px;
+    padding: 0 8px 0 8px;
 }
 
 .rdr-window.rdr-window .rdr-panel-tool:not(#_) {
@@ -393,8 +445,8 @@
     margin: 4px 3px 4px 4px;
     background: #f5f5f5;
     color: #000;
-    overflow-x: auto;
-    overflow-y: scroll;
+    /* both bars always, as Reader 8's panel list shows them */
+    overflow: scroll;
 }
 
 /* bookmarks (the VM, list x from its left edge, d = depth): the box at 7 + 16d, the icon at 20 + 16d, the text at
@@ -510,7 +562,6 @@
     background: #676767 radial-gradient(circle, #8c8c8c 0.8px, transparent 1px) center / 3px 4px no-repeat;
 }
 
-.rdr-window.rdr-panel-open .rdr-split { border-left: 1px solid #808080; box-sizing: border-box; }
 
 /* ---- the document pane ---- */
 
@@ -532,7 +583,7 @@
     outline: none;
 }
 
-.rdr-window.rdr-empty .rdr-view { background: #676767; }
+.rdr-window.rdr-empty .rdr-view { background: #676767; overflow: hidden; }
 .rdr-window.rdr-busy .rdr-view { cursor: progress; }
 
 .rdr-window .rdr-pages { position: relative; min-width: 100%; }
@@ -754,3 +805,159 @@
 
 /* Document Properties' fields are read-only in Reader: the grey face */
 [id^="rdrProps"] :is(.tbp-edit, .vdt-textarea)[readonly] { background: #f0f0f0; }
+
+/* ---- Reader's own menus (the menu bar's and their submenus: contextMenu.js config.skin 'reader' ->
+   data-menu-skin): not Vista's themed Win32 menus but Reader 8's flat ones, measured on the VM. #dedede in a
+   #a0a0a0 rim and 2 px of padding, the menu's top on the title's bottom (no overlap); 22 px rows, the hot one #9db9cb
+   inside a #eeeeee line; separators 6 px with a #9d9da1 line 3 down, edge to edge of the rows; text black, #808080
+   when disabled. Columns from the row's left: text 17 (no pictures or checks), pictures 2 and text 22, checks 0 and
+   text 16, checks 0 / pictures 19 / text 38 (a check column only while a row is checked); a checked row's 16 px box is #dadada with a 7 px check in it. The label's
+   end and the accelerator's start 52 px apart, the accelerator 16 px from the row's end ---- */
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"]:not(#_) {
+    min-width: 0;
+    max-width: none;
+    margin-top: 0;
+    padding: 2px;
+    border: 1px solid #a0a0a0;
+    border-radius: 0;
+    background: #dedede;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    line-height: 22px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    --rdr-mi-text: 17px;
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"]:has(.context-menu-item > i:first-child):not(#_) { --rdr-mi-text: 22px; --rdr-mi-pic: 2px; }
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"]:has(.has-menu-mark):not(#_) { --rdr-mi-text: 16px; }
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"]:has(.has-menu-mark):has(.context-menu-item > i:first-child):not(#_) { --rdr-mi-text: 38px; --rdr-mi-pic: 19px; }
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item:not(#_):not(#__) {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    height: 22px;
+    min-height: 0;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 1px 15px 0 var(--rdr-mi-text);
+    gap: 0;
+    border: 1px solid transparent !important;
+    border-radius: 0;
+    background: none !important;
+    color: #000 !important;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 16px;
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item::before { content: none; }
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item:is(:hover:not(.disabled), .keyboard-selected, .context-menu-item-highlighted):not(#_):not(#__) {
+    border-color: #eeeeee !important;
+    background: #9db9cb !important;
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item.disabled:not(#_):not(#__) { color: #808080 !important; }
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item-text-container:not(#_) {
+    display: flex;
+    flex: 1;
+    flex-direction: row;
+    align-items: flex-start;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item-text:not(#_) {
+    flex: none;
+    min-width: 0;
+    max-width: none;
+    margin: 0 36px 0 0;
+    font-size: 12px;
+    line-height: 16px;
+    white-space: nowrap;
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item-subtext:not(#_) {
+    flex: none;
+    min-width: 0;
+    margin: 0 0 0 auto;
+    padding-left: 16px;
+    color: inherit;
+    font-size: 12px;
+    line-height: 16px;
+    text-align: right;
+    opacity: 1;
+    white-space: nowrap;
+}
+
+/* a picture in its column (beside a check, not under it) */
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item > :is(i, img):first-child:not(.context-menu-submenu-arrow):not(#_) {
+    position: absolute;
+    left: calc(var(--rdr-mi-pic, 2px) - 1px);
+    top: 1px;
+    width: 16px;
+    min-width: 0;
+    height: 16px;
+    margin: 0;
+    padding: 0;
+    visibility: visible;
+    background-size: 16px 16px;
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item.disabled > :is(i, img):first-child { opacity: 0.45; filter: grayscale(1); }
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item-mark:not(#_) {
+    left: -1px;
+    top: 0;
+    bottom: auto;
+    width: 16px;
+    height: 16px;
+    background: #dadada url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges' fill='%23040404'%3E%3Cpath d='M10 4h1v1h-1zM9 5h2v1H9zM4 6h1v1H4zM8 6h3v1H8zM4 7h2v1H4zM7 7h3v1H7zM4 8h5v1H4zM5 9h3v1H5zM6 10h1v1H6z'/%3E%3C/svg%3E") 0 0 / 16px 16px no-repeat;
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item-mark::before { content: none; }
+
+/* the submenu arrow: Reader's small black one, 7 px from the row's end */
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item > .context-menu-submenu-arrow:not(#_) {
+    position: absolute;
+    right: 6px;
+    top: 7px;
+    width: 4px;
+    height: 7px;
+    margin: 0;
+    font-size: 0;
+    color: transparent;
+    opacity: 1;
+    background: #000;
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item.disabled > .context-menu-submenu-arrow { filter: opacity(0.5); }
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-item.has-submenu .context-menu-item-text:not(#_) { margin-right: 36px; }
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-separator:not(#_):not(#__) {
+    height: 6px;
+    margin: 0;
+    border: 0;
+    background: linear-gradient(transparent 3px, #9d9da1 3px 4px, transparent 4px);
+    box-shadow: none;
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu)[data-menu-skin="reader"] .context-menu-separator::before { content: none; }
+
+/* ---- Start Meeting's welcome (reader.js openMeeting; the VM's window, client px) ---- */
+.vdt-custom.rdr-meet { overflow: visible; font: 12px "Segoe UI", Tahoma, sans-serif; color: #000; }
+.rdr-meet .rdr-meet-band { position: absolute; left: 0; top: 0; width: 519px; height: 100px; background: linear-gradient(#f0f0f0, #cccccc 99px); }
+.rdr-meet .rdr-meet-band img { position: absolute; left: 16px; top: 34px; }
+.vdt-custom.rdr-meet .rdr-meet-band span:not(#_) { position: absolute; left: 60px; top: 38px; font: bold 17px/23px "Segoe UI", Tahoma, sans-serif; color: #000; white-space: nowrap; }
+.rdr-meet .rdr-meet-photo { position: absolute; left: 15px; top: 132px; }
+.rdr-meet .rdr-meet-blurb { position: absolute; left: 15px; top: 284px; line-height: 15px; white-space: nowrap; }
+.vdt-custom.rdr-meet .rdr-meet-link:not(#_) { position: absolute; left: 15px; height: 17px; padding: 0; line-height: 15px; }
+.rdr-meet .rdr-meet-box { position: absolute; left: 165px; width: 339px; box-sizing: border-box; border: 1px solid #d5dfe5; border-radius: 3px; box-shadow: inset 0 0 0 1px #fff; }
+.rdr-meet .rdr-meet-box b { position: absolute; left: 14px; top: 5px; font: bold 15px/20px "Segoe UI", Tahoma, sans-serif; white-space: nowrap; }
+.rdr-meet .rdr-meet-box p { position: absolute; left: 14px; margin: 0; line-height: 15px; white-space: nowrap; }
