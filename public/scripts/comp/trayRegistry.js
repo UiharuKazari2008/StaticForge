@@ -115,7 +115,8 @@ const TRAY_INACTIVE_MS = 10 * 60 * 1000;
 const TRAY_COLLAPSE_MS = 4500;
 const TRAY_SYSTEM_ICON_IDS = ['powerTrayIcon', 'modemTrayIcon', 'volumeTrayIcon'];
 // state classes this file and the boot reveal set, which are not the icon's own activity
-const TRAY_OWN_CLASSES = new Set(['tray-overflow', 'tray-boot-in']);
+// tray-balloon-promoted: a tucked icon shown in the visible area while its balloon is up (popoverManager.js trayPromote)
+const TRAY_OWN_CLASSES = new Set(['tray-overflow', 'tray-boot-in', 'tray-balloon-promoted']);
 const TRAY_BEHAVIORS = ['inactive', 'hide', 'show'];
 
 /**
@@ -257,6 +258,8 @@ function trayHideInactiveEnabled() {
 
 function trayIconTucked(id, el, now, hideInactive = trayHideInactiveEnabled()) {
     if (!el || el.classList.contains('hidden') || !hideInactive) return false;
+    // Vista promotes a hidden icon while its balloon shows, and tucks it back when the balloon closes
+    if (el.classList.contains('tray-balloon-promoted')) return false;
     const behavior = trayIconBehavior(id);
     if (behavior === 'show') return false;
     if (behavior === 'hide') return true;

@@ -1602,6 +1602,8 @@ class ServiceWorkerManager {
         const wasShown = this.trayPopup.el.classList.contains('show');
         this.trayPopup.el.classList.remove('show');
         this.trayPopup.state = 'hidden';
+        const pm = window.PopoverManager;
+        if (pm && typeof pm.trayPromote === 'function') pm.trayPromote(this._getServiceWorkerTrayAnchor(), false);
         // one tray balloon at a time (popoverManager.js): the next waiting one shows
         if (wasShown && window.PopoverManager && typeof window.PopoverManager.trayReleased === 'function') window.PopoverManager.trayReleased();
     }
@@ -1934,6 +1936,8 @@ class ServiceWorkerManager {
         if (progress !== null) this.trayPopup.progress = progress;
         if (filesTotal !== null) this.trayPopup.filesTotal = filesTotal;
 
+        // a Melaton Update icon tucked behind the chevron shows while its balloon is up (popoverManager.js trayPromote)
+        if (pm && typeof pm.trayPromote === 'function') pm.trayPromote(this.trayPopup.anchorEl, true);
         this._renderServiceWorkerTrayPopup();
         this._positionServiceWorkerTrayPopup();
         this.trayPopup.el.classList.add('show');

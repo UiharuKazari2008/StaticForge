@@ -187,9 +187,8 @@ function showAgentSessionTrayNotice(action, messageOrData) {
     mcpLastNoticeGroup = noticeGroup;
     const anchor = document.getElementById('mcpActivityIndicator');
     if (!anchor) return;
-    const icon = action === 'physics'
-        ? '<i class="fas fa-location-arrow"></i>'
-        : '<img src="/static_images/vista-icons/remote-access-32.png" alt="" width="32" height="32">';
+    // Remote Access's own image for every notice, the physics reads too (vista-icons-not-fa)
+    const icon = '<img src="/static_images/vista-icons/remote-access-32.png" alt="" width="32" height="32">';
     // showPopover: public/scripts/comp/popoverManager.js
     showPopover(anchor, 'info', 'Remote Access', message, false, 8000, icon, null, {
         position: 'top',

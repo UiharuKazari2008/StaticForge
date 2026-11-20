@@ -139,6 +139,25 @@ const PopoverManager = {
     _noTargetWarned: new Set(),
     _trayWaitTimer: null,  // presence timer: the waiting balloon takes the place of the one up after TRAY_QUEUE_MAX_WAIT_MS
 
+    /**
+     * Vista promotes a tray icon that is hidden behind the chevron into the visible area while its balloon shows (the
+     * balloon points at the icon itself), and tucks it back once the balloon closes. on: promote a tucked icon; off:
+     * let it go back (trayRegistry.js trayIconTucked / traySyncOverflow decide, the class is the tray's own).
+     */
+    trayPromote(el, on) {
+        if (!el || !el.classList) return;
+        if (on && !el.classList.contains('tray-overflow')) return;
+        if (el.classList.contains('tray-balloon-promoted') === on) return;
+        el.classList.toggle('tray-balloon-promoted', on);
+        if (typeof traySyncOverflow === 'function') traySyncOverflow();
+    },
+
+    /** A tray balloon's own icon when the caller gave none: Vista's info / warning / error (user32 icons 4, 1, 3). */
+    _trayTypeIcon(type) {
+        const name = type === 'error' ? 'error' : (type === 'warning' ? 'warning' : 'info');
+        return `<img src="/static_images/vista-icons/${name}-32.png" alt="" width="32" height="32" draggable="false">`;
+    },
+
     /** A balloon on a tray icon other than `exceptKey` (an anchor element or a key) is showing. */
     trayBusy(exceptKey = null) {
         if (trayPresenting()) return true;
@@ -240,6 +259,7 @@ const PopoverManager = {
         }
         if (options.popupId) trayNotePopup(options.popupId, title);
         timeout = trayClampPopupTimeout(timeout);
+        // (after the hidden-taskbar check below: promoted only once it really shows)
 
         // No tray balloon while the taskbar is hidden (desktopBoot.isTaskbarVisible, #435)
         const boot = window.desktopBoot;
@@ -255,6 +275,7 @@ const PopoverManager = {
             return null;
         }
         
+        if (trayBalloon) this.trayPromote(element, true);
         const {
             position: askedPosition = 'top',
             arrowPosition: askedArrow = null,
@@ -285,7 +306,7 @@ const PopoverManager = {
             // Create header with icon
             const header = document.createElement('div');
             header.className = 'popover-header';
-            const icon = customIcon || this._getPopoverIcon(type);
+            const icon = customIcon || (trayBalloon ? this._trayTypeIcon(type) : this._getPopoverIcon(type));
             header.innerHTML = `${icon} ${title}`;
             
             // Create body with message
@@ -535,6 +556,7 @@ const PopoverManager = {
         
         // Hide popover
         popoverData.popover.classList.remove('show');
+        if (!popoverData.hoverOnly) this.trayPromote(element, false);
 
         this._exitNotificationMode(element, popoverData);
         
@@ -568,6 +590,7 @@ const PopoverManager = {
             clearTimeout(popoverData.maxShowTimeout);
         }
         if (popoverData.presenceTimer) popoverData.presenceTimer.cancel();
+        this.trayPromote(element, false);
         
         this._teardownHoverListeners(popoverData);
         this._teardownNotificationDismissListeners(popoverData);

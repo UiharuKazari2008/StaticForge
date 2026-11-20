@@ -208,7 +208,8 @@ function testCreditsIndicatorPopover() {
     const popoverMessage1 = `<i class="nai-anla"></i> -5 fixed<br>Free: ${fixedCredits}<br>Total: ${totalCredits}`;
     // a click opens Account Manager's Status, as the wallet's own balloons do (toastManager.js _trayBalloonTarget)
     const openWallet = () => { if (window.walletTray && typeof window.walletTray.showFlyout === 'function') window.walletTray.showFlyout(indicator, 'status'); };
-    showPopover(indicator, 'success', 'Generation Complete', popoverMessage1, false, false, '<i class="fas fa-sparkles"></i>', null, {
+    const walletImg = '<img src="/static_images/vista-icons/account-manager-32.png" alt="" width="32" height="32">';
+    showPopover(indicator, 'success', 'Generation Complete', popoverMessage1, false, false, walletImg, null, {
         position: 'top',
         arrowPosition: 'bottom-right',
         popupId: 'generation-complete',
@@ -221,7 +222,7 @@ function testCreditsIndicatorPopover() {
         console.log('Testing credits indicator popover with balance change');
         const messageParts = ['-5 free', `Free: 250`, `Paid: 100`, `Total: 350`];
         const popoverMessage2 = `<i class="nai-anla"></i> -5 free<br>Free: 250<br>Paid: 100<br>Total: 350`;
-        showPopover(indicator, 'info', 'Balance Updated', popoverMessage2, false, false, '<i class="fas fa-sync-alt"></i>', null, {
+        showPopover(indicator, 'info', 'Balance Updated', popoverMessage2, false, false, walletImg, null, {
             position: 'top',
             arrowPosition: 'bottom-right',
             popupId: 'balance-updated',

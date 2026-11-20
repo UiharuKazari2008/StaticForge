@@ -562,6 +562,32 @@ function _trayBalloonTarget(anchorId, title) {
     }
 }
 
+/**
+ * A toast's tray balloon carries its program's 32 px image (tray-balloons, vista-icons-not-fa): the caller's icon
+ * when it is an image, else the icon's program (Account Manager for the receipts, the printer, Nightshade Network...),
+ * else Vista's info / warning / error.
+ */
+const TRAY_BALLOON_IMAGES = {
+    walletTrayIcon: '/static_images/vista-icons/account-manager-32.png',
+    serviceWorkerTrayIcon: '/static_images/vista-icons/windows-update-32.png',
+    imageGenerationIndicator: '/static_images/vista-print/printer-32.png',
+    nightshadeTrayIcon: '/static_images/vista-icons/nightshade-32.png',
+    pingWarningIndicator: '/static_images/vista-icons/nightshade-32.png',
+    modemTrayIcon: '/static_images/vista-icons/net-internet-32.png',
+    activeSyncTrayIcon: '/static_images/activesync/activesync-32.png',
+    directorTrayIcon: '/static_images/app_icons/32/director.png'
+};
+function _trayBalloonImage(anchorId, type, customIcon) {
+    if (customIcon && /<img\b/i.test(String(customIcon))) return customIcon;
+    let src = TRAY_BALLOON_IMAGES[anchorId];
+    if (src && (type === 'warning' || type === 'error')) {
+        // the computer's own link with a problem: Vista's limited-connectivity network icon
+        if (anchorId === 'modemTrayIcon') src = '/static_images/vista-icons/net-limited-32.png';
+    }
+    if (!src) src = `/static_images/vista-icons/${type === 'error' ? 'error' : (type === 'warning' ? 'warning' : 'info')}-32.png`;
+    return `<img src="${src}" alt="" width="32" height="32" draggable="false">`;
+}
+
 function _showDesktopPopupForToast(toastId, type, title, message, timeout, customIcon) {
     const anchor = _getDesktopPopupAnchorForTitle(title);
     if (!anchor || !window.PopoverManager || typeof showPopover !== 'function') {
@@ -591,7 +617,7 @@ function _showDesktopPopupForToast(toastId, type, title, message, timeout, custo
         message,
         false,
         resolvedTimeout,
-        customIcon,
+        _trayBalloonImage(anchor.id, type, customIcon),
         null,
         {
             position: 'top',
@@ -893,7 +919,7 @@ function _showPolicyBalloon(toastId, route, type, title, message, timeout, custo
     if (!anchor || !anchor.getClientRects().length || !window.PopoverManager || typeof showPopover !== 'function') return false;
     const first = Array.isArray(buttons) && buttons[0];
     const firstFn = first && (first.onClick || first.callback);
-    showPopover(anchor, type, title, message, false, timeout === false ? 8000 : timeout, customIcon, null, {
+    showPopover(anchor, type, title, message, false, timeout === false ? 8000 : timeout, _trayBalloonImage(route.anchorId, type, customIcon), null, {
         position: 'top',
         arrowPosition: 'bottom-right',
         popupId: route.popupId,
