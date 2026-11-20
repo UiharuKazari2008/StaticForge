@@ -79,7 +79,7 @@ const weatherService = require('./modules/weatherService');
 const calendarFeed = require('./modules/calendarFeed');
 const installManifestFilter = require('./modules/installManifestFilter');
 const { browserRequest } = require('./modules/browserHttp');
-const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
+const { mountGrimoireBrowserBridge, attachGrimoireBrowserUpgrade } = require('./modules/grimoireBrowserBridge');
 const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacRemoteBridge');
 const { getQwenTokenizerDefinition } = require('./modules/qwenTokenizerAssetCache');
 const { SUBSCRIPTION_USAGE_POLL_MS } = require('./modules/opusUsage');
@@ -4788,6 +4788,8 @@ async function handleAdminUnixSocketMessage(message, socket) {
         const { wsServer } = globalResources.initializeWebSocketServer();
         attachSiteGateWebUpgrade(server, globalResources, sessionStore, sessionSecret);
         attachGuacWebUpgrade(server, sessionMiddleware);
+        // Alchemy's viewer socket (#990): binary frames and input on one WebSocket
+        attachGrimoireBrowserUpgrade(server, sessionMiddleware);
         serverStartupStatus.setCapability('websocket', true);
 
         // Start ping interval with server data callback

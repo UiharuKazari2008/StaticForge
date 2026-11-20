@@ -269,12 +269,15 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
         const mobileView = req.body && req.body.viewKind === 'mobile'
             ? { viewKind: 'mobile', viewScale: Math.max(1, Math.min(4, Number(req.body.viewScale) || 1)) }
             : null;
+        // the desktop's pixel ratio (#990): the page is laid out and drawn for it before the viewer first reports
+        const ratio = Number(req.body && req.body.pixelRatio);
+        const pixelRatio = !mobileView && ratio >= 0.5 && ratio <= 8 ? ratio : undefined;
         const { bookmarks, audioEnabled, audioVolume, audioBackground, homePage, searchProvider, sessions: _sessions, performance, ...settings } = config.alchemy;
         try {
             const upstream = await serviceFetch(config, '/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(Object.assign({ url, width, height, popup, isolated, settings, owner, performance }, mobileView))
+                body: JSON.stringify(Object.assign({ url, width, height, pixelRatio, popup, isolated, settings, owner, performance }, mobileView))
             });
             const payload = await upstream.json().catch(() => ({}));
             if (!upstream.ok) {
@@ -364,6 +367,9 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
             'Cache-Control': 'no-store',
             'X-Accel-Buffering': 'no'
         });
+        // The fallback when the viewer cannot hold a WebSocket (attachGrimoireBrowserUpgrade): binary messages ride as
+        // base64 lines (#990: the first byte is the kind; 1 = a whole frame, of which only the newest waits; audio and
+        // tile packs are kept in order).
         const flush = () => {
             if (closed || drainWait || res.writableEnded) return;
             while (pendingControl.length) {
@@ -383,7 +389,7 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
             }
             const bytes = pendingFrame;
             pendingFrame = null;
-            const line = JSON.stringify({ type: 'frame', data: bytes.toString('base64') }) + '\n';
+            const line = JSON.stringify({ type: 'bin', data: bytes.toString('base64') }) + '\n';
             if (!res.write(line)) {
                 drainWait = true;
                 res.once('drain', () => {
@@ -394,8 +400,23 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
         };
         const onMessage = (data, isBinary) => {
             if (closed || res.writableEnded) return;
-            if (isBinary) pendingFrame = Buffer.isBuffer(data) ? data : Buffer.from(data);
-            else pendingControl.push(String(data) + '\n');
+            if (isBinary) {
+                const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data);
+                const line = (buf) => JSON.stringify({ type: 'bin', data: buf.toString('base64') }) + '\n';
+                if (bytes[0] === 1) {
+                    pendingFrame = bytes;
+                } else if (bytes[0] === 3) {
+                    // tiles patch the frame before them: that frame goes first
+                    if (pendingFrame) pendingControl.push(line(pendingFrame));
+                    pendingFrame = null;
+                    pendingControl.push(line(bytes));
+                } else if (bytes[0] !== 2 || res.writableLength < 128 * 1024) {
+                    // audio on a link this backed up is too late to play
+                    pendingControl.push(line(bytes));
+                }
+            } else {
+                pendingControl.push(String(data) + '\n');
+            }
             flush();
         };
         const finish = () => {
@@ -822,7 +843,78 @@ async function closeServiceSession(id) {
     if (!res.ok && res.status !== 404) throw new Error('remote browser could not close the session');
 }
 
+// The viewer's own socket (#990): /api/grimoire-browser/sessions/:id/stream is piped byte for byte to the service's
+// /sessions/:id/stream, so frames stay binary and input goes up the same socket (the NDJSON stream + one POST per
+// event above is the fallback). A signed-in Dreamscape session is required here; the service checks the viewer token.
+// Mounted after the site gate and Guacamole (web_server.js), which pass every other upgrade on to the listeners before them.
+const STREAM_PATH = /^\/api\/grimoire-browser\/sessions\/([a-f0-9]{32})\/stream(\?.*)?$/;
+
+function proxyBrowserUpgrade(req, socket, head, id, query) {
+    const config = grimoireBrowserConfig();
+    if (!config.enabled) {
+        socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
+        return;
+    }
+    let target;
+    try { target = new URL(config.origin + '/sessions/' + id + '/stream' + (query || '')); } catch (_) {
+        socket.end('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
+        return;
+    }
+    const client = target.protocol === 'https:' ? require('https') : require('http');
+    const headers = {
+        host: target.host,
+        connection: 'Upgrade',
+        upgrade: 'websocket',
+        'sec-websocket-key': req.headers['sec-websocket-key'] || '',
+        'sec-websocket-version': req.headers['sec-websocket-version'] || '13'
+    };
+    if (req.headers['sec-websocket-extensions']) headers['sec-websocket-extensions'] = req.headers['sec-websocket-extensions'];
+    const upstream = client.request({ hostname: target.hostname, port: target.port, path: target.pathname + target.search, method: 'GET', headers });
+    upstream.on('upgrade', (upstreamRes, upstreamSocket, upstreamHead) => {
+        let reply = 'HTTP/1.1 101 Switching Protocols\r\n';
+        for (let i = 0; i < upstreamRes.rawHeaders.length; i += 2) reply += upstreamRes.rawHeaders[i] + ': ' + upstreamRes.rawHeaders[i + 1] + '\r\n';
+        socket.write(reply + '\r\n');
+        if (upstreamHead && upstreamHead.length) socket.write(upstreamHead);
+        if (head && head.length) upstreamSocket.write(head);
+        // frames are latency-bound: no Nagle on either leg
+        socket.setNoDelay(true);
+        upstreamSocket.setNoDelay(true);
+        upstreamSocket.pipe(socket).pipe(upstreamSocket);
+        upstreamSocket.on('error', () => socket.destroy());
+        socket.on('error', () => upstreamSocket.destroy());
+        upstreamSocket.on('close', () => socket.destroy());
+        socket.on('close', () => upstreamSocket.destroy());
+    });
+    upstream.on('response', (upstreamRes) => {
+        socket.end('HTTP/1.1 ' + upstreamRes.statusCode + ' ' + (upstreamRes.statusMessage || '') + '\r\nConnection: close\r\n\r\n');
+        upstreamRes.resume();
+    });
+    upstream.on('error', () => socket.destroy());
+    upstream.end();
+}
+
+function attachGrimoireBrowserUpgrade(server, sessionMiddleware) {
+    const existing = server.listeners('upgrade');
+    server.removeAllListeners('upgrade');
+    server.on('upgrade', (req, socket, head) => {
+        const match = String(req.url || '').match(STREAM_PATH);
+        if (!match) {
+            existing.forEach((listener) => listener.call(server, req, socket, head));
+            return;
+        }
+        socket.on('error', () => {});
+        sessionMiddleware(req, {}, () => {
+            if (!req.session || !req.session.authenticated) {
+                socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+                return;
+            }
+            proxyBrowserUpgrade(req, socket, head, match[1], match[2] || '');
+        });
+    });
+}
+
 module.exports = {
+    attachGrimoireBrowserUpgrade,
     listServiceSessions,
     leaseServiceSessions,
     transferServiceSession,

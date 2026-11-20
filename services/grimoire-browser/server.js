@@ -23,6 +23,7 @@
  *   ALCHEMY_CHROMIUM_DIR     default ~/.local/share/dreamscape/alchemy-chromium (scripts/alchemy-brand-chromium.js)
  *   ALCHEMY_HEADLESS         set 1 to run headless; otherwise Chromium runs windowed on a private Xvfb display when Xvfb is installed
  *   ALCHEMY_AUDIO            set 0 to mute; otherwise audio plays into a private PulseAudio when pulseaudio and ffmpeg are installed
+ *   ALCHEMY_DATA_DIR         default ~/.local/share/dreamscape (X auth, performance and display settings, fake capture files)
  */
 
 let sharp = null;
@@ -83,7 +84,8 @@ const DIALOG_MS = 5 * 60 * 1000;
 const LEASE_GRACE_MS = 2 * 60 * 1000;
 const LEASE_MAX_MS = 10 * 60 * 1000;
 
-const DATA_DIR = path.join(os.homedir(), '.local', 'share', 'dreamscape');
+// ALCHEMY_DATA_DIR: a second instance (a bench, a test) keeps its X auth, profile and settings apart from the live one
+const DATA_DIR = process.env.ALCHEMY_DATA_DIR || path.join(os.homedir(), '.local', 'share', 'dreamscape');
 const PROFILE_DIR = process.env.ALCHEMY_PROFILE_DIR || path.join(DATA_DIR, 'alchemy-profile');
 const EXTENSIONS_DIR = process.env.ALCHEMY_EXTENSIONS_DIR || path.join(DATA_DIR, 'alchemy-extensions');
 const ALCHEMY_BIN = path.join(process.env.ALCHEMY_CHROMIUM_DIR || path.join(DATA_DIR, 'alchemy-chromium'), 'alchemy');
@@ -136,6 +138,41 @@ function normalizePerf(raw) {
 let perf = readPerf();
 // the options Chromium was launched with (the relaunch ones only change on a restart)
 let launchedPerf = null;
+
+// ---- 1:1 pixels (#990) ----
+// Screencast frames are the page's DIP size times Chromium's real scale factor: an emulated deviceScaleFactor
+// only changes how sharp the page is drawn before it is scaled back down (measured, Chromium 156: DSF 1, 1.5 and 2
+// all give 800x600 frames of an 800x600 viewport). Chromium's default zoom does add pixels: a desktop viewport of
+// W*Z DIP at default zoom Z is laid out W CSS pixels wide with devicePixelRatio Z from the first script, and its
+// frames are W*Z pixels, the viewer's device pixels when Z is its pixel ratio. The zoom is a profile preference read
+// at launch, so it follows the pixel ratio desktop viewers last reported (alchemy-display.json) and changes when
+// Chromium relaunches with nothing open (createSession). Mobile emulation ignores the zoom (the phone path keeps
+// CSS-sized frames and its stills).
+const DISPLAY_FILE = path.join(DATA_DIR, 'alchemy-display.json');
+const DISPLAY_ZOOM_MIN = 1;
+const DISPLAY_ZOOM_MAX = 3;
+
+function readDisplayZoom() {
+    try {
+        const raw = JSON.parse(fs.readFileSync(DISPLAY_FILE, 'utf8'));
+        const zoom = Number(raw && raw.zoom);
+        if (Number.isFinite(zoom)) return Math.max(DISPLAY_ZOOM_MIN, Math.min(DISPLAY_ZOOM_MAX, zoom));
+    } catch (_) {}
+    return 1;
+}
+
+let wantedZoom = readDisplayZoom();
+let launchedZoom = 1;
+
+function noteDesktopPixelRatio(dpr) {
+    const zoom = Math.max(DISPLAY_ZOOM_MIN, Math.min(DISPLAY_ZOOM_MAX, Math.round((Number(dpr) || 1) * 100) / 100));
+    if (Math.abs(zoom - wantedZoom) < 0.01) return;
+    wantedZoom = zoom;
+    try {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+        fs.writeFileSync(DISPLAY_FILE, JSON.stringify({ zoom, at: new Date().toISOString() }));
+    } catch (_) {}
+}
 
 /** New options from Dreamscape; the ones that need a relaunch wait for one (pendingRelaunch). */
 function takePerf(raw) {
@@ -225,11 +262,50 @@ function watchScroll() {
     let queued = false;
     const big = (el) => el.clientHeight >= innerHeight * 0.5 && el.clientWidth >= innerWidth * 0.5;
     const scroller = () => (target && target.isConnected ? target : (document.scrollingElement || document.documentElement));
+    // #990: the viewer moves the picture itself while the document scrolls, all but what stays put: the fixed (or
+    // stuck sticky) bars along the top and bottom edges. Measured when scrolling stops, from the elements at a few
+    // points along each edge, never per frame.
+    let bands = [0, 0];
+    let bandsTimer = 0;
+    const pinned = (el) => {
+        for (let node = el; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+            const pos = getComputedStyle(node).position;
+            if (pos === 'fixed' || pos === 'sticky') return node;
+        }
+        return null;
+    };
+    const measureBands = () => {
+        bandsTimer = 0;
+        const w = innerWidth;
+        const h = innerHeight;
+        let top = 0;
+        let bottom = 0;
+        const seen = new Set();
+        for (const fx of [0.05, 0.3, 0.5, 0.7, 0.95]) {
+            for (const fy of [0.002, 0.03, 0.08, 0.15, 0.998, 0.97, 0.92]) {
+                const el = document.elementFromPoint(w * fx, h * fy);
+                const bar = el && pinned(el);
+                if (!bar || seen.has(bar)) continue;
+                seen.add(bar);
+                const r = bar.getBoundingClientRect();
+                // a bar across most of the width, against one edge, not a whole-screen overlay
+                if (r.width < w * 0.5 || r.height > h * 0.4) continue;
+                if (r.top <= 1 && r.bottom > top) top = r.bottom;
+                if (r.bottom >= h - 1 && h - r.top > bottom) bottom = h - r.top;
+            }
+        }
+        const next = [Math.ceil(top), Math.ceil(bottom)];
+        if (next[0] === bands[0] && next[1] === bands[1]) return;
+        bands = next;
+        last = '';
+        queue();
+    };
     const report = () => {
         queued = false;
         const el = scroller();
         if (!el) return;
-        const next = [el.scrollTop, el.scrollHeight, el.clientHeight, el.scrollLeft, el.scrollWidth, el.clientWidth].map(Math.round).join(':');
+        const root = !(target && target.isConnected);
+        const next = [el.scrollTop, el.scrollHeight, el.clientHeight, el.scrollLeft, el.scrollWidth, el.clientWidth, root ? 1 : 0, bands[0], bands[1]].map(Math.round).join(':');
         if (next === last) return;
         last = next;
         try { globalThis.__alchemyScroll(next); } catch (_) {}
@@ -239,6 +315,8 @@ function watchScroll() {
         queued = true;
         requestAnimationFrame(report);
         setTimeout(() => { if (queued) report(); }, 100);
+        if (bandsTimer) clearTimeout(bandsTimer);
+        bandsTimer = setTimeout(measureBands, 180);
     };
     globalThis.__alchemyScrollTo = (y, x) => {
         const el = scroller();
@@ -281,8 +359,9 @@ function sessionSettings(input, base) {
     return out;
 }
 
+// read per request, so a new viewer reaches the next page opened (ALCHEMY_VIEWER_FILE: a test instance's own copy)
 function viewerHtml() {
-    return fs.readFileSync(path.join(__dirname, 'viewer.html'));
+    return fs.readFileSync(process.env.ALCHEMY_VIEWER_FILE || path.join(__dirname, 'viewer.html'));
 }
 
 const sessions = new Map();
@@ -887,7 +966,7 @@ function cropRGBA(src, stride, rect) {
     return out;
 }
 
-async function packFrame(session, jpeg, gen) {
+async function packFrame(session, jpeg, gen, header) {
     if (!sharp) return { binary: jpeg };
     const stale = () => gen != null && session.packGen !== gen;
     let decoded;
@@ -912,6 +991,7 @@ async function packFrame(session, jpeg, gen) {
     for (const rect of rects) area += rect.w * rect.h;
     if (area > width * height * 0.4 || rects.length > 18) return { binary: jpeg };
     const regions = [];
+    const bodies = [];
     let total = 0;
     for (const rect of rects) {
         const encoded = await sharp(cropRGBA(next, width, rect), {
@@ -920,16 +1000,12 @@ async function packFrame(session, jpeg, gen) {
         if (stale()) return { stale: true };
         total += encoded.length;
         if (total > jpeg.length * 0.7) return { binary: jpeg };
-        regions.push({
-            x: rect.x,
-            y: rect.y,
-            w: rect.w,
-            h: rect.h,
-            data: encoded.toString('base64')
-        });
+        regions.push({ x: rect.x, y: rect.y, w: rect.w, h: rect.h, n: encoded.length });
+        bodies.push(encoded);
     }
     if (stale()) return { stale: true };
-    return { json: { type: 'regions', width, height, rects: regions } };
+    // tiles patch the frame before them; the header is this frame's (its scroll offset and time)
+    return { tiles: binaryMessage(MSG_TILES, Object.assign({}, header, { width, height, rects: regions }), Buffer.concat(bodies)) };
 }
 
 // Full-resolution still (Yozora #709). Chromium's screencast sends frames at the CSS viewport size
@@ -986,6 +1062,8 @@ async function changeViewport(session) {
         await restartScreencast(session);
     } finally {
         session.viewportBusy -= 1;
+        // the new size's first frame may match the last one and be skipped: the still is asked for here too
+        if (!session.viewportBusy) armStill(session);
     }
 }
 
@@ -1104,8 +1182,11 @@ function pumpFrames(session) {
     if (!session.paceNow && session.sockets.size && socketsCongested(session)) {
         session.latestFrame = null;
     }
-    const frame = session.latestFrame;
+    const jpeg = session.latestFrame;
+    const header = jpeg ? frameHeader(session, session.latestMeta) : null;
+    const frame = jpeg ? binaryMessage(MSG_FRAME, header, jpeg) : null;
     session.latestFrame = null;
+    session.latestMeta = null;
     const ack = session.pendingAck;
     session.pendingAck = null;
     session.paceNow = false;
@@ -1137,14 +1218,12 @@ function pumpFrames(session) {
         sendFrame(session, frame, true);
         schedulePump(session);
     }, 40);
-    packFrame(session, frame, gen).then((packed) => {
+    packFrame(session, jpeg, gen, header).then((packed) => {
         if (settled || !sessions.get(session.id)) return;
         settled = true;
         clearTimeout(budget);
         session.framePump = false;
-        if (packed && packed.stale) sendFrame(session, frame, true);
-        else if (packed && packed.binary) sendFrame(session, packed.binary, true);
-        else if (packed && packed.json) sendFrame(session, packed.json);
+        if (packed && packed.tiles) sendFrame(session, packed.tiles, true);
         else if (!(packed && packed.skip)) sendFrame(session, frame, true);
         schedulePump(session);
     }).catch(() => {
@@ -1159,8 +1238,42 @@ function pumpFrames(session) {
 
 function noteScreencastFrame(session, event) {
     session.pendingAck = event.sessionId;
-    if (event.data) session.latestFrame = Buffer.from(event.data, 'base64');
+    if (event.data) {
+        session.latestFrame = Buffer.from(event.data, 'base64');
+        session.latestMeta = event.metadata || null;
+    }
     pumpFrames(session);
+}
+
+// ---- binary messages to the viewer (#990) ----
+// The first byte is the kind: 1 a whole JPEG frame, 2 an Opus packet (audio pump), 3 a pack of JPEG tiles. Frames and
+// tile packs carry a JSON header (u16 length): t = when Chromium drew it (ms, this host's clock, which also stamps the
+// audio), sx / sy = the root scroll offset in CSS pixels, k = frame pixels per CSS pixel and p = 1 when the viewer may
+// scroll the picture itself (a desktop page at page scale 1).
+const MSG_FRAME = 1;
+const MSG_AUDIO = 2;
+const MSG_TILES = 3;
+
+function frameHeader(session, meta) {
+    const m = meta || session.meta || {};
+    const k = session.cssPerPx ? 1 / session.cssPerPx : 0;
+    const desktop = !!k && Math.abs((Number(m.pageScaleFactor) || 1) - 1) < 0.001;
+    return {
+        t: Math.round((Number(m.timestamp) || Date.now() / 1000) * 1000),
+        // the screencast's offsets are DIP; the page's scroll reports (and scroll-to) are CSS pixels
+        sx: Math.round((Number(m.scrollOffsetX) || 0) / (k || 1) * 100) / 100,
+        sy: Math.round((Number(m.scrollOffsetY) || 0) / (k || 1) * 100) / 100,
+        k: desktop ? k : 0,
+        p: desktop ? 1 : 0
+    };
+}
+
+function binaryMessage(kind, header, body) {
+    const json = Buffer.from(JSON.stringify(header));
+    const head = Buffer.allocUnsafe(3);
+    head[0] = kind;
+    head.writeUInt16LE(json.length, 1);
+    return Buffer.concat([head, json, body]);
 }
 
 function beginNavigating(session, resetTimer) {
@@ -1830,29 +1943,65 @@ let pulse = null;
 let pulseDir = '';
 let audioListener = null;
 
+// Alchemy's own PulseAudio daemons left running by a service that died (their parent is gone): each one holds a
+// null sink and, before #990, the session bus name. Only daemons started here (runtime dir alchemy-pulse-*) are touched.
+function reapOrphanAudio() {
+    let pids = [];
+    try { pids = fs.readdirSync('/proc').filter((name) => /^\d+$/.test(name)); } catch (_) { return; }
+    for (const pid of pids) {
+        try {
+            const stat = fs.readFileSync('/proc/' + pid + '/stat', 'utf8');
+            const ppid = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]);
+            if (ppid !== 1 || fs.readlinkSync('/proc/' + pid + '/exe') !== PULSEAUDIO_BIN) continue;
+            const dir = (fs.readFileSync('/proc/' + pid + '/environ', 'utf8').split('\0').find((v) => v.startsWith('PULSE_RUNTIME_PATH=')) || '').slice(19);
+            if (!dir || !path.basename(dir).startsWith('alchemy-pulse-') || path.dirname(dir) !== os.tmpdir()) continue;
+            process.kill(Number(pid), 'SIGTERM');
+            fs.rmSync(dir, { recursive: true, force: true });
+        } catch (_) {}
+    }
+}
+
 // A private PulseAudio (socket in a fresh 0700 temp dir, one null sink) gives Chromium a device; the sink monitor is the stream.
+// It must not see the user's session bus or X display (#990): another PulseAudio on that bus owns org.PulseAudio1, and a
+// daemon that cannot take the name exits at once, so Chromium launched muted on every start since Nov 7.
 async function startAudio() {
     if (pulse && pulse.exitCode === null && pulseDir) return 'unix:' + path.join(pulseDir, 'native');
+    reapOrphanAudio();
     pulseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alchemy-pulse-'));
     const socket = path.join(pulseDir, 'native');
+    const env = Object.assign({}, process.env, {
+        PULSE_RUNTIME_PATH: pulseDir,
+        PULSE_STATE_PATH: pulseDir,
+        XDG_RUNTIME_DIR: pulseDir,
+        DBUS_SESSION_BUS_ADDRESS: 'unix:path=' + path.join(pulseDir, 'no-bus')
+    });
+    delete env.DISPLAY;
+    delete env.WAYLAND_DISPLAY;
     const child = spawn(PULSEAUDIO_BIN, [
         '-n', '--daemonize=no', '--exit-idle-time=-1', '--use-pid-file=no', '--disallow-exit', '--disable-shm=yes', '--log-target=stderr', '--log-level=error',
         '-L', 'module-native-protocol-unix socket=' + socket + ' auth-anonymous=1',
-        '-L', 'module-null-sink sink_name=alchemy sink_properties=device.description=Alchemy'
-    ], { stdio: 'ignore', env: Object.assign({}, process.env, { PULSE_RUNTIME_PATH: pulseDir, PULSE_STATE_PATH: pulseDir }) });
+        // 48 kHz like the Opus stream: no resampling between Chromium and the encoder
+        '-L', 'module-null-sink sink_name=alchemy rate=48000 channels=2 sink_properties=device.description=Alchemy'
+    ], { stdio: ['ignore', 'ignore', 'pipe'], env });
     pulse = child;
+    let why = '';
+    child.stderr.on('data', (chunk) => { why = (why + chunk).slice(-400); });
+    let exited = false;
     child.once('exit', () => {
+        exited = true;
         if (pulse === child) pulse = null;
     });
-    for (let i = 0; i < 50 && !fs.existsSync(socket); i++) await new Promise((resolve) => setTimeout(resolve, 100));
-    if (!fs.existsSync(socket)) {
+    for (let i = 0; i < 50 && !exited && !fs.existsSync(socket); i++) await new Promise((resolve) => setTimeout(resolve, 100));
+    if (exited || !fs.existsSync(socket)) {
         stopAudio();
-        throw new Error('PulseAudio did not start');
+        throw new Error('PulseAudio did not start' + (why.trim() ? ': ' + why.trim().split('\n').pop() : ''));
     }
+    child.stderr.resume();
     return 'unix:' + socket;
 }
 
 function stopAudio() {
+    stopAudioPump();
     if (audioListener) audioListener();
     if (pulse) pulse.kill('SIGTERM');
     pulse = null;
@@ -1880,6 +2029,128 @@ function streamAudio(res) {
     ff.once('exit', end);
     ff.once('error', end);
     res.once('close', end);
+}
+
+// ---- audio on the viewer's socket (#990) ----
+// The <audio> stream above (kept for old viewers) has no clock: the element buffers what it likes and the viewer had
+// to seek to catch up, a gap each time, and it drifted from the picture. Here one ffmpeg reads the sink and every
+// Opus packet goes to the listening viewer as a binary message [2][f64 ms][packet], stamped on this host's clock as
+// the frames are (frameHeader t), so the viewer plays it at the picture's delay. One listener at a time: the newest
+// takes it and the one before is told (audio-off, taken) instead of fighting back.
+const OPUS_SAMPLES_PER_MS = 48;
+// pulse fragment (20 ms) plus one Opus frame between the sink and ffmpeg's output
+const AUDIO_CAPTURE_LAG_MS = 40;
+const AUDIO_SOCKET_MAX_BUFFER = 512 * 1024;
+
+const audioPump = { ff: null, listener: null, buf: Buffer.alloc(0), carry: [], packets: 0, base: Infinity, lastGranule: -1 };
+
+function setAudioListener(ws, on) {
+    const prev = audioPump.listener;
+    if (!on) {
+        if (prev === ws) {
+            audioPump.listener = null;
+            stopAudioPump();
+        }
+        return;
+    }
+    if (!pulseDir) {
+        try { ws.send(JSON.stringify({ type: 'audio-off', reason: 'unavailable' })); } catch (_) {}
+        return;
+    }
+    if (prev && prev !== ws && prev.readyState === 1) {
+        try { prev.send(JSON.stringify({ type: 'audio-off', reason: 'taken' })); } catch (_) {}
+    }
+    audioPump.listener = ws;
+    startAudioPump();
+}
+
+function startAudioPump() {
+    if (audioPump.ff || !pulseDir) return;
+    const ff = spawn(FFMPEG_BIN, [
+        '-hide_banner', '-loglevel', 'error', '-fragment_size', '3840', '-f', 'pulse', '-i', 'alchemy.monitor',
+        '-ac', '2', '-ar', '48000', '-c:a', 'libopus', '-b:a', '128k', '-vbr', 'off', '-frame_duration', '20', '-application', 'audio',
+        '-f', 'ogg', '-page_duration', '20000', '-flush_packets', '1', 'pipe:1'
+    ], { stdio: ['ignore', 'pipe', 'ignore'], env: Object.assign({}, process.env, { PULSE_SERVER: 'unix:' + path.join(pulseDir, 'native') }) });
+    audioPump.ff = ff;
+    audioPump.buf = Buffer.alloc(0);
+    audioPump.carry = [];
+    audioPump.packets = 0;
+    audioPump.base = Infinity;
+    audioPump.lastGranule = -1;
+    ff.stdout.on('data', (chunk) => readOggPages(chunk, Date.now()));
+    const gone = () => {
+        if (audioPump.ff !== ff) return;
+        audioPump.ff = null;
+        // ffmpeg died under a listener (PulseAudio restarted): try again once it is back
+        if (audioPump.listener && audioPump.listener.readyState === 1) setTimeout(startAudioPump, 1000).unref();
+    };
+    ff.once('exit', gone);
+    ff.once('error', gone);
+}
+
+function stopAudioPump() {
+    const ff = audioPump.ff;
+    audioPump.ff = null;
+    if (ff) ff.kill('SIGKILL');
+}
+
+// Ogg pages: 'OggS', header type, granule (int64 LE, samples at 48 kHz after the last packet that ends on the page),
+// serial, sequence, CRC, segment count and lacing table; a packet ends on a lacing value under 255.
+function readOggPages(chunk, arrivedAt) {
+    let buf = audioPump.buf.length ? Buffer.concat([audioPump.buf, chunk]) : chunk;
+    let at = 0;
+    while (buf.length - at >= 27) {
+        if (buf.readUInt32BE(at) !== 0x4f676753) {
+            const next = buf.indexOf('OggS', at + 1);
+            if (next < 0) { at = buf.length; break; }
+            at = next;
+            continue;
+        }
+        const segments = buf[at + 26];
+        if (buf.length - at < 27 + segments) break;
+        let size = 0;
+        for (let i = 0; i < segments; i++) size += buf[at + 27 + i];
+        const end = at + 27 + segments + size;
+        if (buf.length < end) break;
+        const granule = Number(buf.readBigInt64LE(at + 6));
+        const done = [];
+        let offset = at + 27 + segments;
+        for (let i = 0; i < segments; i++) {
+            const lace = buf[at + 27 + i];
+            audioPump.carry.push(buf.subarray(offset, offset + lace));
+            offset += lace;
+            if (lace < 255) {
+                done.push(Buffer.concat(audioPump.carry));
+                audioPump.carry = [];
+            }
+        }
+        if (done.length) sendOpusPackets(done, granule, arrivedAt);
+        at = end;
+    }
+    audioPump.buf = at >= buf.length ? Buffer.alloc(0) : Buffer.from(buf.subarray(at));
+}
+
+function sendOpusPackets(packets, granule, arrivedAt) {
+    const ws = audioPump.listener;
+    for (let i = 0; i < packets.length; i++) {
+        const packet = packets[i];
+        audioPump.packets += 1;
+        // OpusHead and OpusTags
+        if (audioPump.packets <= 2 || granule < 0) continue;
+        // each packet is 20 ms (960 samples); the ones before the page's last end earlier
+        const endSample = granule - (packets.length - 1 - i) * 960;
+        if (endSample <= audioPump.lastGranule) continue;
+        audioPump.lastGranule = endSample;
+        // the stream's start on this clock: the earliest arrival seen less the audio it carried (a late page never moves it)
+        audioPump.base = Math.min(audioPump.base, arrivedAt - endSample / OPUS_SAMPLES_PER_MS);
+        const stamp = audioPump.base - AUDIO_CAPTURE_LAG_MS + (endSample - 960) / OPUS_SAMPLES_PER_MS;
+        if (!ws || ws.readyState !== 1 || ws.bufferedAmount > AUDIO_SOCKET_MAX_BUFFER) continue;
+        const msg = Buffer.allocUnsafe(9 + packet.length);
+        msg[0] = MSG_AUDIO;
+        msg.writeDoubleLE(stamp, 1);
+        packet.copy(msg, 9);
+        ws.send(msg);
+    }
 }
 
 /**
@@ -1936,6 +2207,21 @@ function ensureBrowser() {
     if (browser && browser.connected) return Promise.resolve(browser);
     if (!browserLaunch) browserLaunch = launchBrowser().finally(() => { browserLaunch = null; });
     return browserLaunch;
+}
+
+// The desktop pixel ratio changed since launch (#990): Chromium takes a new default zoom only at launch, so it
+// relaunches when nothing is open (no session, every page blank: not Hoshino's Alchemy-owned tab), before a new tab.
+async function relaunchForZoom() {
+    if (!browser || !browser.connected || sessions.size || browserLaunch) return;
+    if (Math.abs(wantedZoom - launchedZoom) < 0.01) return;
+    let pages = [];
+    try { pages = await browser.pages(); } catch (_) { return; }
+    if (pages.some((page) => !/^(about:blank|chrome:\/\/new-?tab)/i.test(page.url() || 'about:blank'))) return;
+    console.log('[grimoire-browser] relaunching for display zoom ' + wantedZoom + ' (was ' + launchedZoom + ')');
+    await keepSessionCookies().catch(() => {});
+    const old = browser;
+    browser = null;
+    await closeBrowserGently(old, 6000).catch(() => {});
 }
 
 // Viewers get 'restarting' first, so they reopen their page instead of showing the failed tab page.
@@ -2109,8 +2395,20 @@ function setProfilePrefs() {
     } catch (err) {
         if (err.code !== 'ENOENT') return;
     }
-    if (prefs.enable_do_not_track === true) return;
+    // Chromium keeps zoom levels as log base 1.2 of the factor (#990: the default zoom is the desktop pixel ratio)
+    const zoomLevel = Math.abs(wantedZoom - 1) < 0.001 ? 0 : Math.log(wantedZoom) / Math.log(1.2);
+    const partition = prefs.partition && typeof prefs.partition === 'object' ? prefs.partition : {};
+    const levels = partition.default_zoom_level && typeof partition.default_zoom_level === 'object' ? partition.default_zoom_level : {};
+    // per-host levels would beat the default on their sites; nothing in Alchemy sets one on purpose
+    const hostLevels = partition.per_host_zoom_levels && typeof partition.per_host_zoom_levels === 'object' ? partition.per_host_zoom_levels : {};
+    const hostsClear = !Object.values(hostLevels).some((v) => v && typeof v === 'object' && Object.keys(v).length);
+    launchedZoom = wantedZoom;
+    if (prefs.enable_do_not_track === true && Math.abs((Number(levels.x) || 0) - zoomLevel) < 1e-6 && hostsClear) return;
     prefs.enable_do_not_track = true;
+    levels.x = zoomLevel;
+    partition.default_zoom_level = levels;
+    partition.per_host_zoom_levels = {};
+    prefs.partition = partition;
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     fs.writeFileSync(file, JSON.stringify(prefs), { mode: 0o600 });
 }
@@ -2247,11 +2545,12 @@ async function launchBrowser() {
 
 async function startScreencast(session) {
     session.casting = true;
+    // the frame is the viewport's DIP size (desktop: device pixels, see applyViewport); never scaled down
     await session.cdp.send('Page.startScreencast', {
         format: 'jpeg',
         quality: session.settings.jpegQuality,
-        maxWidth: session.width,
-        maxHeight: session.height,
+        maxWidth: session.dipWidth || session.width,
+        maxHeight: session.dipHeight || session.height,
         everyNthFrame: 1
     });
 }
@@ -2318,11 +2617,14 @@ async function thawSession(session) {
     syncCapture(session);
 }
 
-// Grimoire's zoom (the IE7 status bar's 100% ▾): Chrome's own page zoom is a narrower CSS viewport drawn
-// at a higher device scale, so the page reflows and stays sharp while frames stay width x height pixels.
-// Input needs nothing: the viewer maps pointer positions through the frame metadata (CSS pixels).
+// Grimoire's zoom (the IE7 status bar's 100% ▾): a narrower CSS viewport drawn at a higher device scale, so the
+// page reflows and stays sharp; its frames have the viewport's DIP pixels (#990: zoomed in, fewer than the screen's,
+// and the viewer scales them up). Input needs nothing: the viewer maps pointer positions through the frame metadata.
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 4;
+// a 4K screen at 100 %, or a 1920 x 1200 window at 200 %
+const DIP_MAX_WIDTH = 3840;
+const DIP_MAX_HEIGHT = 2400;
 
 async function applyViewport(session) {
     const zoom = session.zoom || 1;
@@ -2331,6 +2633,9 @@ async function applyViewport(session) {
         // and waits for the load; the reload here is the session's own (view-kind)
         const width = Math.max(80, Math.round(session.width / zoom));
         const height = Math.max(60, Math.round(session.height / zoom));
+        session.dipWidth = width;
+        session.dipHeight = height;
+        session.cssPerPx = 0;
         await session.cdp.send('Emulation.setDeviceMetricsOverride', {
             width,
             height,
@@ -2353,10 +2658,22 @@ async function applyViewport(session) {
             mobile: false
         }).catch(() => {});
     }
+    // #990: DIP = the page's CSS size times Chromium's default zoom (launchedZoom), so frames are that many pixels; the
+    // viewer's device pixels when it reports them (pxWidth) and its pixel ratio is that zoom. The emulated scale keeps
+    // devicePixelRatio = the viewer's ratio times Grimoire's zoom, so the page picks images for the real screen.
+    const z0 = launchedZoom || 1;
+    const dpr = session.dpr || z0;
+    const cssW = (session.pxWidth ? session.pxWidth / dpr : session.width) / zoom;
+    const cssH = (session.pxHeight ? session.pxHeight / dpr : session.height) / zoom;
+    const width = Math.max(80, Math.min(DIP_MAX_WIDTH, Math.round(cssW * z0)));
+    const height = Math.max(60, Math.min(DIP_MAX_HEIGHT, Math.round(cssH * z0)));
+    session.dipWidth = width;
+    session.dipHeight = height;
+    session.cssPerPx = 1 / z0;
     await session.page.setViewport({
-        width: Math.max(80, Math.round(session.width / zoom)),
-        height: Math.max(60, Math.round(session.height / zoom)),
-        deviceScaleFactor: zoom
+        width,
+        height,
+        deviceScaleFactor: Math.max(0.25, Math.min(8, (dpr * zoom) / z0))
     });
 }
 
@@ -2412,6 +2729,10 @@ async function createSession(body, adoptedPage) {
     }
     const width = clampSize(body && body.width, 1280, 320, 1920);
     const height = clampSize(body && body.height, 800, 240, 1440);
+    // a desktop tab's pixel ratio from the request (Grimoire sends it): with nothing open yet, Chromium takes it now
+    const askedRatio = Number(body && body.pixelRatio);
+    if (!adoptedPage && !popup && !(body && body.viewKind === 'mobile') && askedRatio >= 0.5 && askedRatio <= 8) noteDesktopPixelRatio(askedRatio);
+    if (!adoptedPage) await relaunchForZoom();
     const instance = await ensureBrowser();
     const ownerForPage = normalizeOwner(body && body.owner);
     // isolated: a throwaway browser context of its own (CardSpace's Google sign-in for RCS pairing). Its cookies
@@ -2488,6 +2809,12 @@ async function createSession(body, adoptedPage) {
         session.clientScale = Math.max(0, Math.min(STILL_MAX_SCALE, Number(body && body.viewScale) || 0));
         await applyIdentity(session, false).catch(() => {});
         await applyViewport(session).catch(() => {});
+    } else {
+        // the desktop page loads at its real CSS size from the start (#990); the viewer's pixel ratio may come with
+        // the request (pixelRatio), else its first resize brings it
+        const dpr = Number(body && body.pixelRatio);
+        if (dpr >= 0.5 && dpr <= 8) session.dpr = dpr;
+        await applyViewport(session).catch(() => {});
     }
     armDownloads(session);
     armFileChooser(session);
@@ -2513,7 +2840,8 @@ async function createSession(body, adoptedPage) {
             if (!picked || !Array.isArray(picked.options)) return;
             session.selectContextId = ev.executionContextId;
             // the list's place in the picture (a mobile page drawn smaller: see onViewerMessage)
-            const pageScale = session.viewKind === 'mobile' ? Number(session.meta && session.meta.pageScaleFactor) || 1 : 1;
+            // (a desktop page: CSS pixels to the picture's DIP, #990)
+            const pageScale = session.viewKind === 'mobile' ? Number(session.meta && session.meta.pageScaleFactor) || 1 : (session.cssPerPx ? 1 / session.cssPerPx : 1);
             broadcast(session, { type: 'select', options: picked.options, selected: picked.selected, x: (Number(picked.x) || 0) * pageScale, y: (Number(picked.y) || 0) * pageScale });
             return;
         }
@@ -2523,10 +2851,11 @@ async function createSession(body, adoptedPage) {
             return;
         }
         if (ev && ev.name === '__alchemyScroll' && sessions.get(id)) {
-            const [y, height, view, x = 0, width = 0, viewWidth = 0] = String(ev.payload || '').split(':').map(Number);
-            if (![y, height, view, x, width, viewWidth].every(Number.isFinite)) return;
+            const [y, height, view, x = 0, width = 0, viewWidth = 0, root = 1, bandTop = 0, bandBottom = 0] = String(ev.payload || '').split(':').map(Number);
+            if (![y, height, view, x, width, viewWidth, root, bandTop, bandBottom].every(Number.isFinite)) return;
             session.scrollContextId = ev.executionContextId;
-            session.scroll = { type: 'scroll', y, height, view, x, width, viewWidth };
+            // root / bandTop / bandBottom (#990): whether the document is the scroller, and its fixed bars (CSS pixels)
+            session.scroll = { type: 'scroll', y, height, view, x, width, viewWidth, root: root ? 1 : 0, bandTop, bandBottom };
             broadcast(session, session.scroll);
             return;
         }
@@ -2693,6 +3022,19 @@ async function onViewerMessage(session, raw) {
             for (const key of ['x', 'y']) {
                 if (typeof msg[key] === 'number' && Number.isFinite(msg[key])) msg[key] /= pageScale;
             }
+        }
+    }
+    // #990: a desktop page's picture is in DIP (the CSS size times Chromium's default zoom); Chromium takes pointer
+    // positions in CSS pixels and wheel distances in DIP. A wheel notch moves the page as far on screen as in a local
+    // browser: the viewer's CSS pixels are its device pixels over its ratio, the picture's DIP over the zoom.
+    if (session.viewKind !== 'mobile' && session.cssPerPx && (msg.type === 'mouse' || msg.type === 'wheel' || msg.type === 'inspect')) {
+        for (const key of ['x', 'y']) {
+            if (typeof msg[key] === 'number' && Number.isFinite(msg[key])) msg[key] *= session.cssPerPx;
+        }
+        if (msg.type === 'wheel' && session.dipWidth && session.width) {
+            const perCss = session.dipWidth / (session.pxWidth && session.dpr ? session.pxWidth / session.dpr : session.width);
+            msg.deltaX = (Number(msg.deltaX) || 0) * perCss;
+            msg.deltaY = (Number(msg.deltaY) || 0) * perCss;
         }
     }
     if (msg.type === 'dialog-reply') {
@@ -3014,9 +3356,22 @@ async function onViewerMessage(session, raw) {
     if (msg.type === 'resize') {
         const width = clampSize(msg.width, session.width, 320, 1920);
         const height = clampSize(msg.height, session.height, 240, 1440);
-        if (width === session.width && height === session.height) return;
+        // #990: the viewer's canvas in device pixels (device-pixel-content-box) and its pixel ratio
+        // (a phone's page is laid out by its mobile metrics: its pixels are the stills' business, not the viewport's)
+        const dpr = session.viewKind === 'mobile' ? 0 : Number(msg.dpr);
+        const okDpr = dpr >= 0.5 && dpr <= 8 ? Math.round(dpr * 1000) / 1000 : 0;
+        const pxWidth = okDpr ? clampSize(msg.pxWidth, Math.round(width * okDpr), 160, DIP_MAX_WIDTH * 2) : 0;
+        const pxHeight = okDpr ? clampSize(msg.pxHeight, Math.round(height * okDpr), 120, DIP_MAX_HEIGHT * 2) : 0;
+        if (okDpr && !session.popup) noteDesktopPixelRatio(okDpr);
+        if (width === session.width && height === session.height && pxWidth === (session.pxWidth || 0)
+            && pxHeight === (session.pxHeight || 0) && (okDpr || session.dpr) === session.dpr) return;
         session.width = width;
         session.height = height;
+        if (okDpr) {
+            session.dpr = okDpr;
+            session.pxWidth = pxWidth;
+            session.pxHeight = pxHeight;
+        }
         await changeViewport(session);
         return;
     }
@@ -3425,6 +3780,11 @@ function attachViewer(ws, session) {
         const raw = data.toString();
         let preview = null;
         try { preview = JSON.parse(raw); } catch (_) {}
+        // the window in front wants this host's audio on its socket (#990)
+        if (preview && preview.type === 'audio') {
+            setAudioListener(ws, preview.on === true);
+            return;
+        }
         const gesture = preview && (
             (preview.type === 'mouse' && (preview.kind === 'down' || preview.kind === 'up' || preview.kind === 'click'))
             || (preview.type === 'key' && preview.kind === 'down')
@@ -3509,6 +3869,7 @@ function attachViewer(ws, session) {
     });
     ws.on('close', () => {
         session.sockets.delete(ws);
+        setAudioListener(ws, false);
         // a moment's grace: a viewer reconnecting (a reload, a transfer) finds the capture still on
         setTimeout(() => syncCapture(session), 2000);
     });

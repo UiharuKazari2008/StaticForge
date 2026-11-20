@@ -11,6 +11,7 @@
     background: #111;
     overflow: hidden;
   }
+  /* sized by the page; its backing store is the frame, which is the canvas's device pixels (#990: 1:1) */
   canvas {
     display: block;
     width: 100%;
@@ -73,6 +74,9 @@
   var sessionId = parts[parts.length - 1] || '';
   var relay = location.pathname.indexOf('/api/grimoire-browser/view/') !== -1;
   var socket = null;
+  // #990: the viewer's own WebSocket (straight to Alchemy, or through Dreamscape's relay socket). Only when that
+  // cannot open does it fall back to the NDJSON stream with one POST per input event.
+  var fallback = false;
   var pendingClipboard = null;
   var pendingMenu = null;
   var inputUrl = relay
@@ -97,7 +101,7 @@
   }
 
   function pumpOutbound() {
-    if (!relay || sending || !outbound.length) return;
+    if (!fallback || sending || !outbound.length) return;
     sending = true;
     var obj = outbound.shift();
     fetch(inputUrl, {
@@ -120,7 +124,7 @@
   }
 
   function enqueueInput(obj) {
-    if (!relay) {
+    if (!fallback) {
       if (socket && socket.readyState === 1) socket.send(JSON.stringify(obj));
       return;
     }
@@ -167,7 +171,7 @@
       var move = pendingMove;
       pendingMove = null;
       if (move) enqueueInput(move);
-    }, 30);
+    }, fallback ? 30 : 16);
   }
 
   function send(obj) {
@@ -185,26 +189,56 @@
     enqueueInput(obj);
   }
 
+  // ---- clock (#990) ----
+  // Frames (t) and audio packets carry Alchemy's clock. The smallest (arrival - stamp) seen is the fastest a message
+  // has ever come; how far a frame or a packet is behind that is its delay, the same measure for picture and sound.
+  var clock = { off: Infinity, at: 0 };
+  function noteClock(stamp) {
+    var now = Date.now();
+    var gap = now - stamp;
+    if (!isFinite(gap)) return;
+    // clocks drift a little: the floor creeps up 0.2 ms a second until a faster message sets it again
+    if (clock.off !== Infinity) clock.off += (now - clock.at) * 0.0002;
+    clock.at = now;
+    if (gap < clock.off) clock.off = gap;
+  }
+
+  // ---- frames ----
+  // The newest frame is kept on an offscreen canvas (base) at its own scroll offset; what shows (canvas) is drawn
+  // from it, moved by the scrolling the viewer is doing ahead of the page (prediction below).
   var stillCanvas = document.getElementById('still');
   var stillCtx = stillCanvas.getContext('2d', { alpha: false });
+  var base = document.createElement('canvas');
+  var baseCtx = base.getContext('2d', { alpha: false });
+  var baseInfo = { sy: 0, sx: 0, k: 0, p: 0, t: 0 };
   // Arrival order of frames and stills: a frame hides the still only if it came after it.
   var arrivals = 0;
   var stillArrival = 0;
   var frameArrival = 0;
-  var queuedArrival = 0;
   // byte size of the frame the last still was taken over: the relay can deliver that frame after
   // the still, and it must not hide it
   var stillBase = 0;
-
-  var queuedBytes = null;
+  var queuedJob = null;
   var drawing = false;
   var paintGen = 0;
-  var regionQueue = [];
+  var tileQueue = [];
+  var tileChain = Promise.resolve();
+  var textDecoder = new TextDecoder();
 
-  function flushRegions() {
-    var queued = regionQueue;
-    regionQueue = [];
-    for (var q = 0; q < queued.length; q++) paintRegions(queued[q]);
+  function decodeImage(bytes) {
+    var blob = new Blob([bytes], { type: 'image/jpeg' });
+    if (typeof createImageBitmap === 'function') return createImageBitmap(blob);
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      var url = URL.createObjectURL(blob);
+      img.onload = function () { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode')); };
+      img.src = url;
+    });
+  }
+
+  function releaseImage(img) {
+    if (img && typeof img.close === 'function') img.close();
   }
 
   function hideStill() {
@@ -212,6 +246,7 @@
   }
 
   function drawStill(msg) {
+    stillCount += 1;
     var arrival = stillArrival = ++arrivals;
     stillBase = msg.baseBytes || 0;
     // one still on the way at a time (Alchemy waits for this before the next)
@@ -219,114 +254,407 @@
     var bin = atob(msg.data);
     var bytes = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    var img = new Image();
-    var url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
-    img.onload = function () {
-      URL.revokeObjectURL(url);
+    decodeImage(bytes).then(function (img) {
       // a newer frame or still came first, or the still is not of the page's current CSS size
       // (frames can be smaller than that: the phone's Desktop view gets 780 px frames of 1024)
-      if (arrival !== stillArrival || frameArrival > arrival) return;
-      if (Math.abs(msg.cssW - (meta.deviceWidth || 0)) > 1.5 || Math.abs(msg.cssH - (meta.deviceHeight || 0)) > 1.5) return;
+      if (arrival !== stillArrival || frameArrival > arrival
+        || Math.abs(msg.cssW - (meta.deviceWidth || 0)) > 1.5 || Math.abs(msg.cssH - (meta.deviceHeight || 0)) > 1.5) {
+        releaseImage(img);
+        return;
+      }
       if (stillCanvas.width !== img.width || stillCanvas.height !== img.height) {
         stillCanvas.width = img.width;
         stillCanvas.height = img.height;
       }
       stillCtx.drawImage(img, 0, 0);
+      releaseImage(img);
       stillCanvas.hidden = false;
-    };
-    img.onerror = function () { URL.revokeObjectURL(url); };
-    img.src = url;
+    }, function () {});
   }
 
-  function drawBytes(bytes) {
-    queuedBytes = bytes;
-    if (stillBase && bytes.length === stillBase && frameArrival < stillArrival) {
+  // A whole frame. header: t, sx, sy, k, p (server.js frameHeader); size: the message's length, for the still's base.
+  function drawBytes(bytes, header, size) {
+    var arrival;
+    if (stillBase && size === stillBase && frameArrival < stillArrival) {
       // the still's own frame, delivered after it: older than the still
-      queuedArrival = frameArrival = stillArrival - 0.5;
-      stillBase = 0;
-      paintQueued();
-      return;
+      arrival = stillArrival - 0.5;
+    } else {
+      arrival = ++arrivals;
     }
     stillBase = 0;
-    queuedArrival = frameArrival = ++arrivals;
+    frameArrival = arrival;
+    if (header) noteClock(header.t);
+    frameCount += 1;
+    // a frame not drawn yet is replaced; the tiles that patched it go with it (the new frame has them)
+    queuedJob = { bytes: bytes, header: header, arrival: arrival, tiles: [] };
     paintQueued();
   }
 
   function paintQueued() {
-    if (drawing || !queuedBytes) return;
+    if (drawing || !queuedJob) return;
     drawing = true;
+    var job = queuedJob;
+    queuedJob = null;
+    tileQueue = job.tiles;
     var gen = ++paintGen;
-    var arrival = queuedArrival;
-    var blob = new Blob([queuedBytes], { type: 'image/jpeg' });
-    queuedBytes = null;
-    var img = new Image();
-    var url = URL.createObjectURL(blob);
-    img.onload = function () {
-      URL.revokeObjectURL(url);
+    decodeImage(job.bytes).then(function (img) {
       drawing = false;
       if (gen === paintGen) {
-        if (canvas.width !== img.width || canvas.height !== img.height) {
-          canvas.width = img.width;
-          canvas.height = img.height;
+        if (base.width !== img.width || base.height !== img.height) {
+          base.width = img.width;
+          base.height = img.height;
+          resetCache();
         }
-        ctx.drawImage(img, 0, 0);
-        if (arrival > stillArrival) hideStill();
-        flushRegions();
+        baseCtx.drawImage(img, 0, 0);
+        if (job.arrival > stillArrival) hideStill();
+        frameReady(job.header);
+        flushTiles();
         if (tabState === 'unresponsive') showTabStatus('ok');
       }
+      releaseImage(img);
       paintQueued();
-    };
-    img.onerror = function () {
-      URL.revokeObjectURL(url);
+    }, function () {
       drawing = false;
-      if (gen === paintGen) flushRegions();
+      if (gen === paintGen) flushTiles();
       paintQueued();
-    };
-    img.src = url;
+    });
   }
 
-  function paintRegions(msg) {
-    if (!msg || !msg.rects || !msg.rects.length) return;
-    if (canvas.width !== msg.width || canvas.height !== msg.height) {
-      if (!canvas.width || !canvas.height) {
-        canvas.width = msg.width;
-        canvas.height = msg.height;
-      }
-    }
-    var gen = paintGen;
-    for (var r = 0; r < msg.rects.length; r++) {
-      (function (rect) {
-        var bin = atob(rect.data);
-        var bytes = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        var blob = new Blob([bytes], { type: 'image/jpeg' });
-        var tile = new Image();
-        var url = URL.createObjectURL(blob);
-        tile.onload = function () {
-          URL.revokeObjectURL(url);
-          if (gen !== paintGen) return;
-          ctx.drawImage(tile, rect.x, rect.y, rect.w, rect.h);
-          // a small change patches the still (soft until the next one) instead of dropping it
-          if (!stillCanvas.hidden && msg.arrival > stillArrival && canvas.width && canvas.height) {
-            var sx = stillCanvas.width / canvas.width;
-            var sy = stillCanvas.height / canvas.height;
-            stillCtx.drawImage(tile, rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy);
-          }
-          if (tabState === 'unresponsive') showTabStatus('ok');
-        };
-        tile.onerror = function () { URL.revokeObjectURL(url); };
-        tile.src = url;
-      })(msg.rects[r]);
-    }
+  function flushTiles() {
+    var queued = tileQueue;
+    tileQueue = [];
+    for (var q = 0; q < queued.length; q++) paintTiles(queued[q]);
   }
 
-  function drawRegions(msg) {
-    msg.arrival = frameArrival = ++arrivals;
-    if (drawing) {
-      regionQueue.push(msg);
+  // Changed tiles of the frame before them (kind 3): patched into base in arrival order.
+  function drawTiles(header, body) {
+    var job = { header: header, body: body, arrival: (frameArrival = ++arrivals) };
+    noteClock(header.t);
+    if (queuedJob) {
+      queuedJob.tiles.push(job);
       return;
     }
-    paintRegions(msg);
+    if (drawing) {
+      tileQueue.push(job);
+      return;
+    }
+    paintTiles(job);
+  }
+
+  function paintTiles(job) {
+    var h = job.header;
+    var rects = h.rects || [];
+    if (!rects.length) return;
+    var gen = paintGen;
+    var pos = 0;
+    var decodes = [];
+    for (var r = 0; r < rects.length; r++) {
+      decodes.push(decodeImage(job.body.subarray(pos, pos + rects[r].n)).catch(function () { return null; }));
+      pos += rects[r].n;
+    }
+    tileChain = tileChain.then(function () {
+      return Promise.all(decodes);
+    }).then(function (imgs) {
+      if (gen === paintGen) {
+        if (!base.width || !base.height) {
+          base.width = h.width;
+          base.height = h.height;
+        }
+        for (var i = 0; i < imgs.length; i++) {
+          if (!imgs[i]) continue;
+          var rect = rects[i];
+          baseCtx.drawImage(imgs[i], rect.x, rect.y, rect.w, rect.h);
+          // a small change patches the still (soft until the next one) instead of dropping it
+          if (!stillCanvas.hidden && job.arrival > stillArrival) {
+            var sx = stillCanvas.width / base.width;
+            var sy = stillCanvas.height / base.height;
+            stillCtx.drawImage(imgs[i], rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy);
+          }
+        }
+        frameReady(h);
+        if (tabState === 'unresponsive') showTabStatus('ok');
+      }
+      for (var j = 0; j < imgs.length; j++) releaseImage(imgs[j]);
+    });
+  }
+
+  // Binary messages (server.js binaryMessage): [kind][u16 header length][JSON header][body]; audio is [2][f64 ms][Opus].
+  function handleBinary(data) {
+    var bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    if (!bytes.length) return;
+    var kind = bytes[0];
+    if (kind === 2) {
+      if (bytes.length > 9) audioPacket(new DataView(bytes.buffer, bytes.byteOffset, 9).getFloat64(1, true), bytes.subarray(9));
+      return;
+    }
+    if (kind !== 1 && kind !== 3) {
+      // an Alchemy from before #990: a bare JPEG
+      drawBytes(bytes, null, bytes.length);
+      return;
+    }
+    var headerLength = bytes[1] | (bytes[2] << 8);
+    var header = null;
+    try { header = JSON.parse(textDecoder.decode(bytes.subarray(3, 3 + headerLength))); } catch (e) { return; }
+    var body = bytes.subarray(3 + headerLength);
+    if (kind === 1) drawBytes(body, header, bytes.length);
+    else drawTiles(header, body);
+  }
+
+  function base64Bytes(text) {
+    var bin = atob(text);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+
+  // ---- scrolling ahead of the page (#990) ----
+  // A wheel turn or a scrollbar drag moves the picture at once, at the display's rate, instead of a round trip and
+  // Alchemy's frame rate later. Only the document (the root scroller) of a desktop page, and only what scrolls: the
+  // fixed bars along the top and bottom edges (bandTop / bandBottom, measured in the page) stay where they are.
+  // Rows the frame does not have come from what was already seen (cache: the page around the view as it was drawn,
+  // the over-render), else the page's own background until the frame with them arrives. When the input stops, the
+  // frames have the last word: a page that did not scroll (it took the wheel itself) snaps back and is not guessed
+  // for a while.
+  var scrollInfo = { y: 0, height: 0, view: 0, x: 0, width: 0, viewWidth: 0, root: 1, bandTop: 0, bandBottom: 0 };
+  var pred = { active: false, converging: false, target: 0, display: 0, startSy: 0, sum: 0, lastInput: 0, smooth: false, distrustUntil: 0, posted: null };
+  var rafId = 0;
+  var lastRafAt = 0;
+  var bgColor = '';
+  var CACHE_MAX_PIXELS = 12e6;
+  var cache = { canvas: null, ctx: null, doc0: 0, valid0: 0, valid1: 0 };
+
+  function requestComposite() {
+    if (!rafId) rafId = requestAnimationFrame(composite);
+  }
+
+  function resetCache() {
+    cache.valid0 = cache.valid1 = 0;
+    bgColor = '';
+  }
+
+  function bands() {
+    var k = baseInfo.k || 1;
+    var height = base.height;
+    var top = Math.max(0, Math.min(height, Math.round((scrollInfo.bandTop || 0) * k)));
+    var bottom = Math.max(0, Math.min(height - top, Math.round((scrollInfo.bandBottom || 0) * k)));
+    return { m0: top, m1: height - bottom, top: top, bottom: bottom };
+  }
+
+  // the newest frame's middle (what scrolls) goes into the cache at its place in the document
+  function cacheStore() {
+    if (!baseInfo.p || !baseInfo.k || !scrollInfo.root) return;
+    var width = base.width;
+    var height = base.height;
+    var rows = Math.min(height * 3, Math.floor(CACHE_MAX_PIXELS / Math.max(1, width)));
+    if (rows < height * 1.5) return;
+    if (!cache.canvas || cache.canvas.width !== width || cache.canvas.height !== rows) {
+      cache.canvas = cache.canvas || document.createElement('canvas');
+      cache.canvas.width = width;
+      cache.canvas.height = rows;
+      cache.ctx = cache.canvas.getContext('2d', { alpha: false });
+      cache.valid0 = cache.valid1 = 0;
+    }
+    var b = bands();
+    var band = b.m1 - b.m0;
+    if (band <= 0) return;
+    var d0 = Math.round(baseInfo.sy * baseInfo.k) + b.m0;
+    var d1 = d0 + band;
+    if (d0 < cache.doc0 || d1 > cache.doc0 + rows) {
+      // the cache window follows the page: centred on this band, keeping what still fits
+      var doc0 = Math.max(0, Math.round((d0 + d1 - rows) / 2));
+      var shift = doc0 - cache.doc0;
+      if (cache.valid1 > cache.valid0 && Math.abs(shift) < rows) {
+        cache.ctx.drawImage(cache.canvas, 0, -shift);
+        cache.valid0 = Math.max(cache.valid0, doc0);
+        cache.valid1 = Math.min(cache.valid1, doc0 + rows);
+      } else {
+        cache.valid0 = cache.valid1 = 0;
+      }
+      cache.doc0 = doc0;
+    }
+    cache.ctx.drawImage(base, 0, b.m0, width, band, 0, d0 - cache.doc0, width, band);
+    if (cache.valid1 <= cache.valid0 || d1 < cache.valid0 || d0 > cache.valid1) {
+      cache.valid0 = d0;
+      cache.valid1 = d1;
+    } else {
+      cache.valid0 = Math.min(cache.valid0, d0);
+      cache.valid1 = Math.max(cache.valid1, d1);
+    }
+  }
+
+  function pageBackground(b) {
+    if (bgColor) return bgColor;
+    try {
+      var px = baseCtx.getImageData(Math.max(0, base.width - 2), Math.max(b.m0, b.m1 - 2), 1, 1).data;
+      bgColor = 'rgb(' + px[0] + ',' + px[1] + ',' + px[2] + ')';
+    } catch (e) {
+      bgColor = '#fff';
+    }
+    return bgColor;
+  }
+
+  // rows [g0, g1) of the scrolling band that the frame does not cover, at document row doc0 + g0
+  function fillGap(g0, g1, docAtTop, b) {
+    if (g1 <= g0) return;
+    var width = base.width;
+    if (cache.canvas && cache.valid1 > cache.valid0) {
+      var d0 = Math.max(docAtTop + g0, cache.valid0);
+      var d1 = Math.min(docAtTop + g1, cache.valid1);
+      if (d1 > d0) {
+        ctx.drawImage(cache.canvas, 0, d0 - cache.doc0, width, d1 - d0, 0, d0 - docAtTop, width, d1 - d0);
+        if (d0 - docAtTop > g0) fillRows(g0, d0 - docAtTop, b);
+        if (d1 - docAtTop < g1) fillRows(d1 - docAtTop, g1, b);
+        return;
+      }
+    }
+    fillRows(g0, g1, b);
+  }
+
+  function fillRows(y0, y1, b) {
+    if (y1 <= y0) return;
+    ctx.fillStyle = pageBackground(b);
+    ctx.fillRect(0, y0, base.width, y1 - y0);
+  }
+
+  function drawComposite(off) {
+    var width = base.width;
+    var height = base.height;
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    if (!off) {
+      ctx.drawImage(base, 0, 0);
+      return;
+    }
+    var b = bands();
+    var y0 = Math.max(b.m0, b.m0 - off);
+    var y1 = Math.min(b.m1, b.m1 - off);
+    var docAtTop = Math.round(baseInfo.sy * baseInfo.k) + off;
+    if (y1 > y0) ctx.drawImage(base, 0, y0 + off, width, y1 - y0, 0, y0, width, y1 - y0);
+    if (off > 0) fillGap(Math.max(b.m0, y1), b.m1, docAtTop, b);
+    else fillGap(b.m0, Math.min(b.m1, y0), docAtTop, b);
+    if (b.top) ctx.drawImage(base, 0, 0, width, b.top, 0, 0, width, b.top);
+    if (b.bottom) ctx.drawImage(base, 0, b.m1, width, b.bottom, 0, b.m1, width, b.bottom);
+  }
+
+  function canPredict() {
+    return !!(baseInfo.p && baseInfo.k > 0 && base.width && scrollInfo.root && scrollInfo.height > scrollInfo.view + 1
+      && performance.now() >= pred.distrustUntil);
+  }
+
+  function maxScroll() {
+    return Math.max(0, scrollInfo.height - scrollInfo.view);
+  }
+
+  function settleMs() {
+    return Math.min(1500, (rttMs || 60) + 400);
+  }
+
+  function beginGesture() {
+    if (pred.active) return;
+    pred.active = true;
+    pred.target = pred.display;
+    pred.startSy = baseInfo.sy;
+    pred.sum = 0;
+  }
+
+  // the page's CSS pixels for one of this window's (Grimoire's zoom; the same when 100 %)
+  function remotePerLocal() {
+    var local = canvas.clientWidth || 0;
+    if (!local || !baseInfo.k) return 1;
+    return (base.width / baseInfo.k) / local;
+  }
+
+  function predictWheel(dx, dy) {
+    if (Math.abs(dy) <= Math.abs(dx) || !canPredict()) return;
+    beginGesture();
+    var amount = dy * remotePerLocal();
+    pred.sum += amount;
+    // a notch glides as it does in a local browser; a touchpad's small steps follow the fingers
+    pred.smooth = Math.abs(dy) >= 40;
+    pred.target = Math.max(0, Math.min(maxScroll(), pred.target + amount));
+    pred.lastInput = performance.now();
+    requestComposite();
+  }
+
+  function predictScrollTo(y) {
+    if (!canPredict()) return;
+    beginGesture();
+    pred.smooth = false;
+    pred.sum += y - pred.target;
+    pred.target = Math.max(0, Math.min(maxScroll(), y));
+    pred.lastInput = performance.now();
+    requestComposite();
+  }
+
+  function finishGesture() {
+    pred.active = false;
+    // the picture glides to where the page really is (it lags behind its own smooth scroll, or did not move)
+    pred.converging = true;
+    // asked to move and the page stayed where it was: it took the wheel itself (a map, a carousel, an inner list)
+    if (Math.abs(pred.sum) > 20 && Math.abs(baseInfo.sy - pred.startSy) < 1) pred.distrustUntil = performance.now() + 4000;
+    postScroll(scrollInfo.y);
+  }
+
+  function postScroll(y) {
+    var msg = scrollInfo;
+    var key = Math.round(y) + ':' + msg.height + ':' + msg.view + ':' + msg.x + ':' + msg.width + ':' + msg.viewWidth;
+    if (key === pred.posted) return;
+    pred.posted = key;
+    postParent({ type: 'grimoire-browser-scroll', y: Math.round(y) || 0, height: msg.height || 0, view: msg.view || 0, x: msg.x || 0, width: msg.width || 0, viewWidth: msg.viewWidth || 0 });
+  }
+
+  function composite() {
+    rafId = 0;
+    if (!base.width || !base.height) return;
+    var now = performance.now();
+    var dt = lastRafAt ? Math.min(64, now - lastRafAt) : 16;
+    lastRafAt = now;
+    if (pred.active && now - pred.lastInput > settleMs()) finishGesture();
+    var k = baseInfo.k;
+    var moving = false;
+    if (!k || !baseInfo.p) {
+      pred.display = baseInfo.sy;
+    } else {
+      var goal = pred.active ? pred.target : baseInfo.sy;
+      var diff = goal - pred.display;
+      if (Math.abs(diff) * k < 0.5) {
+        pred.display = goal;
+        if (!pred.active) pred.converging = false;
+      } else {
+        pred.display += diff * (1 - Math.exp(-dt / (pred.smooth || !pred.active ? 70 : 24)));
+        moving = true;
+      }
+    }
+    var off = k && baseInfo.p ? Math.round((pred.display - baseInfo.sy) * k) : 0;
+    drawComposite(off);
+    if (pred.active) postScroll(pred.display);
+    if (moving || pred.active) requestComposite();
+    else lastRafAt = 0;
+  }
+
+  // a frame or a tile pack is in base: its scroll offset is where base is
+  function frameReady(header) {
+    if (header) {
+      baseInfo.sy = Number(header.sy) || 0;
+      baseInfo.sx = Number(header.sx) || 0;
+      baseInfo.k = Number(header.k) || 0;
+      baseInfo.p = header.p ? 1 : 0;
+      baseInfo.t = Number(header.t) || 0;
+      if (engine && engine.ready) noteVideoDelay(baseInfo.t);
+    } else {
+      baseInfo.k = 0;
+      baseInfo.p = 0;
+    }
+    bgColor = '';
+    cacheStore();
+    // no scrolling of its own going on (the page moved itself, or a long way): the picture is the frame, at once
+    if (!pred.active && (!pred.converging || Math.abs(pred.display - baseInfo.sy) * (baseInfo.k || 1) > base.height)) {
+      pred.display = baseInfo.sy;
+      pred.converging = false;
+    }
+    requestComposite();
   }
 
   function postParent(payload) {
@@ -337,21 +665,23 @@
     if (!msg) return;
     if (msg.type === 'meta' && msg.metadata) {
       meta = msg.metadata;
-    } else if (msg.type === 'regions') {
-      drawRegions(msg);
+    } else if (msg.type === 'bin' && msg.data) {
+      handleBinary(base64Bytes(msg.data));
     } else if (msg.type === 'still' && msg.data) {
       drawStill(msg);
     } else if (msg.type === 'frame' && msg.data) {
-      var bin = atob(msg.data);
-      var bytes = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      drawBytes(bytes);
+      var bytes = base64Bytes(msg.data);
+      drawBytes(bytes, null, bytes.length);
     } else if (msg.type === 'pong' && typeof msg.t === 'number') {
       var rtt = performance.now() - msg.t;
       if (rtt > 0 && rtt < 10000) {
         rttMs = rttMs ? (rttMs * 0.4 + rtt * 0.6) : rtt;
         send({ type: 'rtt', ms: Math.round(rttMs) });
       }
+    } else if (msg.type === 'audio-off') {
+      // another window took the sound (it comes back with a click or a key here), or this Alchemy has none
+      engineStop();
+      if (msg.reason === 'taken') audioTaken = true;
     } else if (msg.type === 'popup' && (msg.url || msg.sessionId)) {
       postParent({ type: 'grimoire-browser-popup', url: msg.url || '', sessionId: msg.sessionId || '', viewerToken: msg.viewerToken || '', tab: !!msg.tab });
     } else if (msg.type === 'closed') {
@@ -388,6 +718,13 @@
     } else if (msg.type === 'status') {
       showTabStatus(msg.state || 'failed', msg.url || lastUrl);
     } else if (msg.type === 'navigating' || msg.type === 'location') {
+      if (msg.url && msg.url !== lastUrl) {
+        // another page: nothing seen of the old one belongs to it
+        resetCache();
+        pred.active = false;
+        pred.converging = false;
+        pred.distrustUntil = 0;
+      }
       if (msg.url) lastUrl = msg.url;
       if (tabState === 'unresponsive') showTabStatus('ok');
       postParent({
@@ -429,7 +766,21 @@
       // The page copied by itself (a copy button): this document has focus, so write here; the parent is the fallback.
       writeLocalClipboard(text);
     } else if (msg.type === 'scroll') {
-      postParent({ type: 'grimoire-browser-scroll', y: msg.y || 0, height: msg.height || 0, view: msg.view || 0, x: msg.x || 0, width: msg.width || 0, viewWidth: msg.viewWidth || 0 });
+      var wasRoot = scrollInfo.root;
+      scrollInfo = {
+        y: msg.y || 0,
+        height: msg.height || 0,
+        view: msg.view || 0,
+        x: msg.x || 0,
+        width: msg.width || 0,
+        viewWidth: msg.viewWidth || 0,
+        root: msg.root === 0 ? 0 : 1,
+        bandTop: msg.bandTop || 0,
+        bandBottom: msg.bandBottom || 0
+      };
+      if (wasRoot && !scrollInfo.root) resetCache();
+      // while the viewer scrolls ahead, the scrollbar follows the picture, not the page catching up
+      if (!pred.active) postScroll(scrollInfo.y);
     } else if (msg.type === 'history-end') {
       postParent({ type: 'grimoire-browser-history-end', dir: msg.dir === 1 ? 1 : -1 });
     } else if (msg.type === 'download-progress') {
@@ -516,27 +867,37 @@
   // minimised window measures 0, and a window animating to the taskbar is scaled by a transform:
   // resizing the remote page to that squeezed it into a tiny layout that showed when the tab came
   // back (Yozora #628). Layout sizes (clientWidth) ignore transforms; nothing under 64 px is sent.
+  // #990: the size also goes in device pixels (the canvas's device-pixel-content-box, exact where the browser
+  // snaps it) with the pixel ratio, and Alchemy sends frames of exactly that many pixels.
   var lastViewport = null;
+  var devicePx = null;
   function measuredViewport() {
     var width = canvas.clientWidth || 0;
     var height = canvas.clientHeight || 0;
     if (document.hidden || width < 64 || height < 64) return null;
-    return { width: Math.max(320, Math.round(width)), height: Math.max(240, Math.round(height)) };
-  }
-
-  function viewportSize() {
-    var size = measuredViewport();
-    if (size) lastViewport = size;
-    return lastViewport;
+    var dpr = window.devicePixelRatio || 1;
+    // the observer's exact size where it agrees with CSS size x ratio (DevTools' ratio emulation reports CSS pixels)
+    var exact = devicePx && Math.abs(devicePx.w - width * dpr) <= dpr + 0.5 && Math.abs(devicePx.h - height * dpr) <= dpr + 0.5;
+    var pxWidth = exact ? devicePx.w : Math.round(width * dpr);
+    var pxHeight = exact ? devicePx.h : Math.round(height * dpr);
+    return {
+      width: Math.max(320, Math.round(width)),
+      height: Math.max(240, Math.round(height)),
+      dpr: Math.round(dpr * 1000) / 1000,
+      pxWidth: pxWidth,
+      pxHeight: pxHeight
+    };
   }
 
   function sendViewport() {
     var size = measuredViewport();
     if (!size) return;
-    if (lastViewport && lastViewport.width === size.width && lastViewport.height === size.height && sendViewport.sent) return;
+    var same = lastViewport && lastViewport.width === size.width && lastViewport.height === size.height
+      && lastViewport.dpr === size.dpr && lastViewport.pxWidth === size.pxWidth && lastViewport.pxHeight === size.pxHeight;
+    if (same && sendViewport.sent) return;
     lastViewport = size;
     sendViewport.sent = true;
-    send({ type: 'resize', width: size.width, height: size.height });
+    send({ type: 'resize', width: size.width, height: size.height, dpr: size.dpr, pxWidth: size.pxWidth, pxHeight: size.pxHeight });
   }
 
   function mapPoint(ev) {
@@ -598,6 +959,7 @@
     postParent({ type: 'grimoire-browser-reopen', url: lastUrl });
   });
   function probeRtt() {
+    if (document.hidden) return;
     send({ type: 'ping', t: performance.now() });
   }
   function startRttProbe() {
@@ -612,9 +974,19 @@
     startRttProbe();
     sendViewport.sent = false;
     sendViewport();
+    // the sound was asked for before the socket was up
+    if (audioWanted && engine) send({ type: 'audio', on: true });
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({ type: 'grimoire-browser-ready' }, '*');
     }
+  }
+
+  function lostConnection() {
+    connected = false;
+    clearInterval(rttProbe);
+    rttProbe = 0;
+    engineStop();
+    showTabStatus('failed', lastUrl);
   }
 
   function keyPayload(ev, kind) {
@@ -632,7 +1004,9 @@
     };
   }
 
-  if (relay) {
+  // The NDJSON stream through Dreamscape (before #990 the only way; now for a link that will not hold a socket).
+  function startFallback() {
+    fallback = true;
     var framesUrl = '/api/grimoire-browser/sessions/' + encodeURIComponent(sessionId) + '/frames?t=' + encodeURIComponent(token);
     fetch(framesUrl, { credentials: 'same-origin', headers: { 'X-No-Compression': '1' } }).then(function (res) {
       if (!res.ok || !res.body) {
@@ -640,64 +1014,95 @@
         return;
       }
       announceReady();
+      pumpOutbound();
       var reader = res.body.getReader();
       var decoder = new TextDecoder();
       var buf = '';
       function pump() {
         return reader.read().then(function (result) {
           if (result.done) {
-            connected = false;
-            showTabStatus('failed', lastUrl);
+            lostConnection();
             return;
           }
           buf += decoder.decode(result.value, { stream: true });
           var lines = buf.split('\n');
           buf = lines.pop();
-          var lastFrame = null;
-          var lateStill = null;
           for (var n = 0; n < lines.length; n++) {
             if (!lines[n]) continue;
             var parsed = null;
             try { parsed = JSON.parse(lines[n]); } catch (e) { parsed = null; }
-            if (!parsed) continue;
-            if (parsed.type === 'frame') {
-              lastFrame = parsed;
-              lateStill = null;
-            } else if (parsed.type === 'still' && lastFrame) {
-              lateStill = parsed;
-            } else {
-              handleControl(parsed);
-            }
+            if (parsed) handleControl(parsed);
           }
-          if (lastFrame) handleControl(lastFrame);
-          if (lateStill) handleControl(lateStill);
           return pump();
         });
       }
       return pump();
     }).catch(function () {
-      connected = false;
-      showTabStatus('failed', lastUrl);
+      lostConnection();
     });
-  } else {
+  }
+
+  function connectSocket() {
     var wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    socket = new WebSocket(
-      wsProto + '//' + location.host + '/sessions/' + encodeURIComponent(sessionId) + '/stream?t=' + encodeURIComponent(token)
-    );
-    socket.binaryType = 'arraybuffer';
-    socket.onopen = announceReady;
-    socket.onclose = function () {
-      connected = false;
-      showTabStatus('failed', lastUrl);
+    var streamPath = (relay ? '/api/grimoire-browser/sessions/' : '/sessions/') + encodeURIComponent(sessionId) + '/stream?t=' + encodeURIComponent(token);
+    var opened = false;
+    var ws;
+    try {
+      ws = new WebSocket(wsProto + '//' + location.host + streamPath);
+    } catch (e) {
+      if (relay) startFallback();
+      else lostConnection();
+      return;
+    }
+    ws.binaryType = 'arraybuffer';
+    socket = ws;
+    // a proxy that neither upgrades nor refuses: the stream instead
+    var openWait = setTimeout(function () {
+      if (!opened && socket === ws) ws.close();
+    }, 5000);
+    ws.onopen = function () {
+      opened = true;
+      clearTimeout(openWait);
+      announceReady();
     };
-    socket.onmessage = function (ev) {
+    ws.onclose = function () {
+      clearTimeout(openWait);
+      if (socket !== ws) return;
+      socket = null;
+      if (!opened && relay) {
+        startFallback();
+        return;
+      }
+      lostConnection();
+    };
+    ws.onmessage = function (ev) {
       if (typeof ev.data === 'string') {
         try { handleControl(JSON.parse(ev.data)); } catch (e) {}
         return;
       }
-      drawBytes(ev.data);
+      handleBinary(ev.data);
     };
   }
+  connectSocket();
+
+  // read-only numbers for tests (scripts/test-alchemy-viewer.js, an agent's run_client_js): nothing runs to keep them
+  var frameCount = 0;
+  var stillCount = 0;
+  var packetCount = 0;
+  window.__alchemyViewerStats = function () {
+    return {
+      transport: fallback ? 'ndjson' : (socket && socket.readyState === 1 ? 'websocket' : 'none'),
+      still: stillCanvas.hidden ? null : { width: stillCanvas.width, height: stillCanvas.height },
+      stills: stillCount,
+      frames: frameCount,
+      frame: { width: base.width, height: base.height, sy: baseInfo.sy, k: baseInfo.k, p: baseInfo.p },
+      canvas: { width: canvas.width, height: canvas.height, cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight, devicePx: devicePx, dpr: window.devicePixelRatio || 1 },
+      scroll: { display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, cacheRows: cache.valid1 - cache.valid0 },
+      audio: engine ? { path: 'worklet', state: engine.ctx.state, ready: engine.ready, packets: packetCount, targetMs: Math.round(engine.targetMs), lagMs: Math.round(engine.lagAvg || 0), jitterMs: Math.round(engine.jitter), underruns: engine.underruns, videoDelayMs: Math.round(videoDelay) }
+        : { path: audio ? 'element' : 'off', wanted: audioWanted, taken: audioTaken, packets: packetCount },
+      rttMs: Math.round(rttMs)
+    };
+  };
 
   var press = null;
 
@@ -713,32 +1118,260 @@
     };
   }
 
+  // ---- sound (#990) ----
+  // Opus packets arrive on the socket with Alchemy's clock (kind 2). WebCodecs decodes them; an AudioWorklet plays
+  // them from a small buffer whose length follows the picture's delay (the frames' t on the same clock), so sound
+  // and picture line up, and drift is taken out by playing a fraction of a percent faster or slower, never by
+  // skipping. Without WebCodecs or worklets (an insecure origin) the old <audio> stream plays, caught up by rate.
   var audio = null;
   var audioWanted = false;
+  var audioTaken = false;
   var audioVolume = 1;
   var audioFails = 0;
   var audioTrimTimer = 0;
   var audioUrl = (relay ? '/api/grimoire-browser' : '') + '/sessions/' + encodeURIComponent(sessionId) + '/audio?t=' + encodeURIComponent(token);
+  var engine = null;
+  var engineBroken = false;
+  var videoDelay = 0;
+
+  function engineSupported() {
+    return !engineBroken && window.isSecureContext && typeof AudioDecoder === 'function' && typeof EncodedAudioChunk === 'function'
+      && typeof AudioWorkletNode === 'function' && typeof AudioContext === 'function';
+  }
+
+  // runs in the AudioWorkletGlobalScope (its source is this function's text)
+  function audioWorkletMain() {
+    var SIZE = 48000 * 4;
+    var MAX_RATE_STEP = 0.006;
+    class AlchemyAudio extends AudioWorkletProcessor {
+      constructor() {
+        super();
+        var self = this;
+        this.l = new Float32Array(SIZE);
+        this.r = new Float32Array(SIZE);
+        this.written = 0;
+        this.read = 0;
+        this.target = 4800;
+        this.playing = false;
+        this.port.onmessage = function (e) {
+          var d = e.data;
+          if (!d || !d.l) return;
+          var n = d.l.length;
+          for (var i = 0; i < n; i++) {
+            var at = (self.written + i) % SIZE;
+            self.l[at] = d.l[i];
+            self.r[at] = d.r[i];
+          }
+          self.written += n;
+          self.target = Math.max(480, Math.min(SIZE / 2, d.target || 4800));
+          // a backlog after a stall: what is older than the target plus a little is already late
+          if (self.written - self.read > self.target + 14400) self.read = self.written - self.target;
+        };
+      }
+
+      process(inputs, outputs) {
+        var out = outputs[0];
+        var left = out[0];
+        var right = out[1] || out[0];
+        var frames = left.length;
+        var queued = this.written - this.read;
+        if (!this.playing) {
+          if (queued < this.target) {
+            left.fill(0);
+            if (right !== left) right.fill(0);
+            return true;
+          }
+          this.playing = true;
+        }
+        // over 150 ms more than wanted (a burst after a stall): straight to the wanted delay, once
+        var err = queued - this.target;
+        if (err > 7200) {
+          this.read += err;
+          err = 0;
+        }
+        // the rest by rate: 10 ms of error is 0.2 % faster or slower, never more than 0.6 % (inaudible)
+        var rate = 1 + Math.max(-MAX_RATE_STEP, Math.min(MAX_RATE_STEP, err / 480000));
+        for (var i = 0; i < frames; i++) {
+          if (this.written - this.read < 2) {
+            for (; i < frames; i++) {
+              left[i] = 0;
+              right[i] = 0;
+            }
+            // ran dry: wait for the wanted delay again rather than stutter on every packet
+            this.playing = false;
+            this.port.postMessage({ underrun: true });
+            break;
+          }
+          var whole = Math.floor(this.read);
+          var frac = this.read - whole;
+          var a = whole % SIZE;
+          var b = (whole + 1) % SIZE;
+          left[i] = this.l[a] + (this.l[b] - this.l[a]) * frac;
+          right[i] = this.r[a] + (this.r[b] - this.r[a]) * frac;
+          this.read += rate;
+        }
+        return true;
+      }
+    }
+    registerProcessor('alchemy-audio', AlchemyAudio);
+  }
+
+  function engineStart() {
+    if (engine) return true;
+    // it starts with room to spare (150 ms) and comes down to what the link needs as the numbers settle
+    var e = { ctx: null, node: null, gain: null, decoder: null, ready: false, closed: false, pending: [], lagAvg: null, jitter: 15, underruns: 0, targetMs: 150 };
+    try {
+      e.ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+    } catch (err) {
+      engineBroken = true;
+      return false;
+    }
+    engine = e;
+    var src = URL.createObjectURL(new Blob(['(' + audioWorkletMain.toString() + ')()'], { type: 'application/javascript' }));
+    e.ctx.audioWorklet.addModule(src).then(function () {
+      URL.revokeObjectURL(src);
+      if (e.closed) return;
+      e.node = new AudioWorkletNode(e.ctx, 'alchemy-audio', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+      e.node.port.onmessage = function (m) {
+        if (m.data && m.data.underrun) e.underruns = Math.min(8, e.underruns + 1);
+      };
+      e.gain = e.ctx.createGain();
+      e.gain.gain.value = audioVolume;
+      e.node.connect(e.gain);
+      e.gain.connect(e.ctx.destination);
+      e.decoder = new AudioDecoder({
+        output: function (data) { engineOutput(e, data); },
+        error: function () {
+          if (engine !== e) return;
+          engineBroken = true;
+          engineStop();
+          if (audioWanted) startLegacyAudio();
+        }
+      });
+      e.decoder.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 2 });
+      e.ready = true;
+      var pending = e.pending;
+      e.pending = [];
+      for (var i = 0; i < pending.length; i++) engineDecode(e, pending[i].stamp, pending[i].data);
+      if (e.ctx.state === 'suspended') e.ctx.resume().catch(function () {});
+    }).catch(function () {
+      URL.revokeObjectURL(src);
+      if (engine !== e) return;
+      engineBroken = true;
+      engineStop();
+      if (audioWanted) startLegacyAudio();
+    });
+    return true;
+  }
+
+  function engineStop() {
+    var e = engine;
+    if (!e) return;
+    engine = null;
+    e.closed = true;
+    try { if (e.decoder && e.decoder.state !== 'closed') e.decoder.close(); } catch (err) {}
+    try { if (e.node) e.node.disconnect(); } catch (err) {}
+    if (e.ctx && e.ctx.state !== 'closed') e.ctx.close().catch(function () {});
+  }
+
+  function engineDecode(e, stamp, data) {
+    try {
+      e.decoder.decode(new EncodedAudioChunk({ type: 'key', timestamp: Math.round(stamp * 1000), data: data }));
+    } catch (err) {}
+  }
+
+  function audioPacket(stamp, data) {
+    noteClock(stamp);
+    packetCount += 1;
+    var e = engine;
+    if (!e) return;
+    if (!e.ready) {
+      if (e.pending.length < 50) e.pending.push({ stamp: stamp, data: data.slice() });
+      return;
+    }
+    engineDecode(e, stamp, data);
+  }
+
+  function noteVideoDelay(t) {
+    if (!t || clock.off === Infinity) return;
+    var delay = Date.now() - t - clock.off;
+    if (delay < 0 || delay > 2000) return;
+    videoDelay = videoDelay ? videoDelay * 0.9 + delay * 0.1 : delay;
+  }
+
+  function engineOutput(e, data) {
+    if (engine !== e || !e.node) {
+      data.close();
+      return;
+    }
+    var frames = data.numberOfFrames;
+    var left = new Float32Array(frames);
+    var right = new Float32Array(frames);
+    try {
+      data.copyTo(left, { planeIndex: 0, format: 'f32-planar' });
+      if (data.numberOfChannels > 1) data.copyTo(right, { planeIndex: 1, format: 'f32-planar' });
+      else right.set(left);
+    } catch (err) {
+      data.close();
+      return;
+    }
+    var stamp = data.timestamp / 1000;
+    data.close();
+    var now = Date.now();
+    // how late this packet is beyond the fastest message seen, and how much that moves about
+    var lag = Math.max(0, now - stamp - clock.off);
+    e.lagAvg = e.lagAvg == null ? lag : e.lagAvg * 0.97 + lag * 0.03;
+    e.jitter = e.jitter * 0.97 + Math.abs(lag - e.lagAvg) * 0.03;
+    // enough delay that the buffer rarely runs dry, and at least the picture's, so the two meet
+    var need = e.lagAvg + 3 * e.jitter + 20 + e.underruns * 15;
+    var want = Math.min(600, Math.max(40, Math.max(need, videoDelay || 0)));
+    // up at once (it ran short), down slowly
+    e.targetMs = want > e.targetMs ? e.targetMs * 0.7 + want * 0.3 : e.targetMs * 0.99 + want * 0.01;
+    var outLatency = ((e.ctx.outputLatency || 0) + (e.ctx.baseLatency || 0)) * 1000;
+    // samples to have queued so this packet's last sample is heard targetMs after the fastest it could have been
+    var targetSamples = (e.targetMs + stamp + frames / 48 + clock.off - now - outLatency) * 48;
+    e.node.port.postMessage({ l: left, r: right, target: Math.max(480, Math.round(targetSamples)) }, [left.buffer, right.buffer]);
+  }
 
   // Also the retry after the stream gave up: any click or key in the page asks again.
   function playAudio() {
-    if (!audio && audioWanted) {
-      audioFails = 0;
-      startAudio();
+    if (!audioWanted) return;
+    if (audioTaken) {
+      audioTaken = false;
+      startAudioPath();
       return;
     }
-    if (audio && audio.paused) audio.play().catch(function () {});
+    if (engine) {
+      if (engine.ctx.state === 'suspended') engine.ctx.resume().catch(function () {});
+      return;
+    }
+    if (!audio) {
+      audioFails = 0;
+      startAudioPath();
+      return;
+    }
+    if (audio.paused) audio.play().catch(function () {});
   }
 
-  // A live stream keeps buffering; jump to the newest audio so it stays in step with the picture.
+  function startAudioPath() {
+    if (engineSupported() && engineStart()) {
+      if (connected) send({ type: 'audio', on: true });
+      return;
+    }
+    startLegacyAudio();
+  }
+
+  // A live stream keeps buffering: play a little faster until it is caught up (seeking was a gap every time).
   function trimAudioLag() {
     if (!audio || audio.paused || !audio.buffered.length) return;
-    var end = audio.buffered.end(audio.buffered.length - 1);
-    if (end - audio.currentTime > 0.6) audio.currentTime = end - 0.15;
+    var behind = audio.buffered.end(audio.buffered.length - 1) - audio.currentTime;
+    var rate = behind > 0.8 ? 1.06 : (behind > 0.35 ? 1.03 : 1);
+    if (audio.playbackRate !== rate) audio.playbackRate = rate;
   }
 
-  function stopAudio() {
+  function stopLegacyAudio() {
     clearInterval(audioTrimTimer);
+    audioTrimTimer = 0;
     if (!audio) return;
     var el = audio;
     audio = null;
@@ -747,22 +1380,23 @@
     el.load();
   }
 
-  function startAudio() {
+  function startLegacyAudio() {
     if (audio || !audioWanted) return;
     var el = new Audio(audioUrl + '&n=' + Date.now());
     el.volume = audioVolume;
+    el.preservesPitch = true;
     audio = el;
     el.addEventListener('playing', function () { audioFails = 0; });
     // Another window taking the stream, an Alchemy restart, or a network drop ends it; keep coming back while wanted.
     var lost = function () {
       if (audio !== el) return;
-      stopAudio();
+      stopLegacyAudio();
       audioFails += 1;
-      if (audioWanted && audioFails < 6) setTimeout(startAudio, Math.min(10000, 1000 * audioFails));
+      if (audioWanted && audioFails < 6) setTimeout(startLegacyAudio, Math.min(10000, 1000 * audioFails));
     };
     el.addEventListener('error', lost);
     el.addEventListener('ended', lost);
-    playAudio();
+    el.play().catch(function () {});
     audioTrimTimer = setInterval(trimAudioLag, 1000);
   }
 
@@ -770,11 +1404,20 @@
   function setAudio(on, volume) {
     if (typeof volume === 'number') audioVolume = Math.max(0, Math.min(1, volume));
     if (audio) audio.volume = audioVolume;
+    if (engine && engine.gain) engine.gain.gain.value = audioVolume;
     if (on === audioWanted) return;
     audioWanted = on;
     audioFails = 0;
-    if (on) startAudio();
-    else stopAudio();
+    audioTaken = false;
+    if (on) {
+      startAudioPath();
+      return;
+    }
+    if (engine) {
+      send({ type: 'audio', on: false });
+      engineStop();
+    }
+    stopLegacyAudio();
   }
 
   // Mouse side buttons are Back / Forward for the remote page, not a click, and never the Dreamscape tab's own history.
@@ -822,7 +1465,7 @@
       && Math.hypot(p.x - press.x, p.y - press.y) < 6;
     var origin = press ? { x: press.x, y: press.y } : p;
     var replaced = false;
-    if (tap) {
+    if (tap && fallback) {
       for (var i = outbound.length - 1; i >= 0; i--) {
         if (outbound[i].type === 'mouse' && outbound[i].kind === 'down' && outbound[i].button === press.button) {
           outbound[i] = mouseBody(ev, origin);
@@ -842,12 +1485,13 @@
     send(body);
   });
   canvas.addEventListener('pointermove', function (ev) {
-    if (!relay && (!socket || socket.readyState !== 1)) return;
+    if (!connected) return;
     var p = mapPoint(ev);
     send({ type: 'mouse', kind: 'move', x: p.x, y: p.y });
   });
   // One wheel message per animation frame, deltas in pixels, at the pointer: a trackpad fires far more often than
-  // the link can carry, and a backlog of tiny scrolls is what made scrolling stutter.
+  // the link can carry, and a backlog of tiny scrolls is what made scrolling stutter. The picture moves at once
+  // (predictWheel).
   var wheelAcc = null;
   var wheelRaf = 0;
   function flushWheel() {
@@ -858,7 +1502,7 @@
   }
   canvas.addEventListener('wheel', function (ev) {
     ev.preventDefault();
-    var scale = ev.deltaMode === 1 ? 40 : (ev.deltaMode === 2 ? (meta.deviceHeight || 800) : 1);
+    var scale = ev.deltaMode === 1 ? 40 : (ev.deltaMode === 2 ? (canvas.clientHeight || 800) : 1);
     var p = mapPoint(ev);
     var ctrl = !!(ev.ctrlKey || ev.metaKey);
     if (wheelAcc && wheelAcc.ctrl !== ctrl) flushWheel();
@@ -867,6 +1511,7 @@
     wheelAcc.y = p.y;
     wheelAcc.deltaX += ev.deltaX * scale;
     wheelAcc.deltaY += ev.deltaY * scale;
+    if (!ctrl && !ev.shiftKey) predictWheel(ev.deltaX * scale, ev.deltaY * scale);
     if (!wheelRaf) wheelRaf = requestAnimationFrame(flushWheel);
   }, { passive: false });
   canvas.addEventListener('contextmenu', function (ev) {
@@ -964,6 +1609,7 @@
         password: data.password || ''
       });
     } else if (data.type === 'grimoire-browser-scroll-to' && typeof data.y === 'number') {
+      predictScrollTo(data.y);
       send(typeof data.x === 'number' ? { type: 'scroll-to', y: data.y, x: data.x } : { type: 'scroll-to', y: data.y });
     } else if (data.type === 'grimoire-browser-touch' && /^(start|move|end|cancel)$/.test(data.kind)
       && typeof data.x === 'number' && typeof data.y === 'number') {
@@ -1011,11 +1657,19 @@
 
   if (typeof ResizeObserver === 'function') {
     var resizeTimer = 0;
-    var observer = new ResizeObserver(function () {
+    var observer = new ResizeObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        var box = entries[i].devicePixelContentBoxSize;
+        if (box && box[0]) devicePx = { w: box[0].inlineSize, h: box[0].blockSize };
+      }
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(sendViewport, 80);
     });
-    observer.observe(document.body);
+    try {
+      observer.observe(canvas, { box: 'device-pixel-content-box' });
+    } catch (e) {
+      observer.observe(document.body);
+    }
   }
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) setTimeout(sendViewport, 80);

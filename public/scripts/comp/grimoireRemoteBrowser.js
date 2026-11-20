@@ -2045,6 +2045,8 @@ async function grimoireOpenRemoteBrowser(shell, url, options) {
                 url: webUrl,
                 width: Math.max(320, shell.displayArea.clientWidth || 1280),
                 height: Math.max(240, shell.displayArea.clientHeight || 800),
+                // the page loads at this screen's pixel ratio from the start (Alchemy 1:1 frames, #990)
+                pixelRatio: window.devicePixelRatio || 1,
                 popup: !!opts.popup,
                 // every session this window makes stays private (a reopened page too)
                 isolated: shell._alchemyIsolated === true || undefined,
