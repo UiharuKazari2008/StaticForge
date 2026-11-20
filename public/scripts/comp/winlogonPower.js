@@ -406,7 +406,7 @@ function winlogonPowerQuiet(label, job) {
  * desktop saves never stop the shutdown; a failed log off or server restart does (the
  * caller shows why), since /launch would boot straight back in or against the old server.
  */
-function startWinlogonPowerWork(kind, onCommit) {
+function startWinlogonPowerWork(kind, onCommit, signOut) {
     bypassConfirmation = true;
     // suppressWebSocketReconnectForReload: public/scripts/comp/modalUtils.js
     suppressWebSocketReconnectForReload();
@@ -425,9 +425,12 @@ function startWinlogonPowerWork(kind, onCommit) {
         // the next logon asks for the password, whatever the server still holds (cachedLogon.js, Yukimi Nov 19)
         if (window.cachedLogon && typeof window.cachedLogon.markLoggedOff === 'function') window.cachedLogon.markLoggedOff();
         // handleLogout: public/scripts/comp/connectionManager.js (stays put; the logon is next). An installed copy
-        // logs off without its server too (the mark above keeps the desktop shut); a plain tab needs the server
+        // logs off without its server too (the mark above keeps the desktop shut); a plain tab needs the server.
+        // A certificate client (CaféReady, the Android app) keeps its session: Log off is a lock there, and only the
+        // Nightshade client's Sign Out (signOut) ends it (Yukimi, Nov 20 2026)
         // keepSiteAccess: the user signs out, the computer keeps its site key - the logon that follows reaches the server
-        jobs.push(Promise.resolve().then(() => handleLogout({ redirect: false, keepSiteAccess: true })).then((ok) => {
+        jobs.push(Promise.resolve().then(() => handleLogout({ redirect: false, keepSiteAccess: true, signOut: !!signOut })).then((ok) => {
+            if (!ok && signOut) throw new Error('Could not sign out of the Nightshade Network. Connect to it and try again.');
             if (!ok && !winlogonInstalledCopy()) throw new Error('Could not log off. You are still signed in.');
         }));
     }
@@ -720,7 +723,7 @@ function winlogonLogoffNavigate() {
 }
 
 /** Narrow mode has no Welcome screen: the old direct exits. */
-function commitWinlogonPower(kind, onCommit) {
+function commitWinlogonPower(kind, onCommit, signOut) {
     bypassConfirmation = true;
     // suppressWebSocketReconnectForReload: public/scripts/comp/modalUtils.js
     suppressWebSocketReconnectForReload();
@@ -729,10 +732,17 @@ function commitWinlogonPower(kind, onCommit) {
             window.close();
             return;
         }
+        if (kind === 'logoff' && !signOut && handleLogout.certificateClient()) {
+            // a certificate client's Log off is a lock: no sign-out, back to the logon (connectionManager.js)
+            if (window.cachedLogon && typeof window.cachedLogon.markLoggedOff === 'function') window.cachedLogon.markLoggedOff();
+            winlogonLogoffNavigate();
+            return;
+        }
         if (kind === 'logoff') {
             // handleLogout: public/scripts/comp/connectionManager.js
-            handleLogout();
-            return;
+            return handleLogout({ signOut: !!signOut }).then((ok) => {
+                if (!ok && signOut) throw new Error('Could not sign out of the Nightshade Network. Connect to it and try again.');
+            });
         }
         // Restart on the phone: the app's connection (Melaton Miniport, #815) starts fresh too
         if (kind === 'restart' && window.melatonContinuity && window.melatonContinuity.resetMiniport) {
@@ -744,12 +754,12 @@ function commitWinlogonPower(kind, onCommit) {
     if (kind === 'server' && typeof onCommit === 'function') {
         return Promise.resolve(onCommit()).then(after);
     }
-    after();
-    return Promise.resolve();
+    return Promise.resolve().then(after);
 }
 
 /**
  * kind: 'restart' | 'shutdown' | 'logoff' | 'server'
+ * options.signOut (logoff): the Nightshade client's Sign Out - the same log off, and the server session ends too
  * options.onCommit runs once "Shutting down..." has gone dark (server restart posts PM2
  * from there). Resolves false when the still-running list is cancelled. On the desktop
  * every kind ends on /launch; after a log off its boot lands on the logon page.
@@ -761,7 +771,7 @@ async function runWinlogonPower(kind, options) {
     if (!window.isDesktop) {
         if (await winlogonUpdates.installNarrow(kind, opts) === false) return false;
         await winlogonUpdates.commitShell(kind);
-        await commitWinlogonPower(kind, opts.onCommit);
+        await commitWinlogonPower(kind, opts.onCommit, opts.signOut);
         return true;
     }
     winlogonPowerRunning = true;
@@ -797,7 +807,7 @@ async function runWinlogonPower(kind, options) {
             winlogonUpdates.setText(copy.screen);
         }
         await winlogonDelay(WINLOGON_TEXT_HOLD_MS);
-        const work = startWinlogonPowerWork(kind, opts.onCommit);
+        const work = startWinlogonPowerWork(kind, opts.onCommit, opts.signOut);
         await lingerWinlogonPowerBlack(work, cutShutdownCover(),
             kind === 'server' ? Infinity : WINLOGON_POWER_BLACK_MAX_MS);
         if (kind === 'shutdown' || kind === 'logoff') forgetDirectorReopen();

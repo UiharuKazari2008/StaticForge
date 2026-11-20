@@ -60,19 +60,37 @@ function refreshVistaWebFontsAfterLogon() {
 /**
  * options.redirect: where to go once the server has ended the session (default '/'); false
  * stays on the page (Log Off, winlogonPower.js, goes to /launch itself). Resolves true on success.
+ * options.signOut: the Nightshade client's Sign Out (nightshadeClient.js), the only real sign-out on a certificate
+ * client: the server retires this device's certificate and ends the session, and the cached logon is forgotten.
+ * Without it a certificate client keeps its session: nothing is asked of the server (the server would keep it anyway).
  */
 async function handleLogout(options = {}) {
     const redirect = options.redirect === undefined ? '/' : options.redirect;
+    const signOut = options.signOut === true;
+    if (!signOut && handleLogout.certificateClient()) {
+        if (redirect) window.location.href = redirect;
+        return true;
+    }
     try {
+        const data = { intent: signOut ? 'nightshade-signout' : 'logoff' };
+        // keepSiteAccess: the desktop's Log off keeps this computer's site key (web_server.js 'logout')
+        if (options.keepSiteAccess) data.keepSiteAccess = true;
         const response = await fetchWithAuth('/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            // keepSiteAccess: the desktop's Log off keeps this computer's site key (web_server.js 'logout')
-            body: JSON.stringify(options.keepSiteAccess ? { action: 'logout', data: { keepSiteAccess: true } } : { action: 'logout' })
+            body: JSON.stringify({ action: 'logout', data })
         });
+        const answer = response.ok ? await response.json().catch(() => null) : null;
+        // the server kept a certificate session (Log off is a lock there): the user's state stays, the page goes on
+        if (response.ok && answer && answer.signedOut === false) {
+            if (redirect) window.location.href = redirect;
+            return true;
+        }
         if (response.ok) {
+            // signed out: this computer's logon no longer opens offline with the old password
+            if (signOut && window.cachedLogon && typeof window.cachedLogon.forget === 'function') window.cachedLogon.forget();
             // Clear authentication-related data from localStorage
             try {
                 // Remove user authentication data
@@ -100,6 +118,17 @@ async function handleLogout(options = {}) {
         return false;
     }
 }
+
+/**
+ * The Dreamscape app's own installed clients, which sign in with their client certificate (docs/client-certificates.md):
+ * the Android app (phone, cover, DeX: its bridges) and DreamOS with CaféReady (its shell's bridges). Their Log off is a
+ * lock and never signs out of the server; only the Nightshade Network client's Sign Out does (Yukimi, Nov 20 2026). The
+ * server knows it too (modules/clientCertificates.js logoutPlan keeps any certificate session); this is the half that
+ * needs no request, so Log off works offline. (winlogonPower.js asks it too.)
+ */
+handleLogout.certificateClient = function () {
+    return !!(window.AndroidClientCert || window.AndroidHardware || window.AndroidDisplay || window.DreamOSHardware);
+};
 
 async function fetchWithAuth(url, options = {}) {
     if (!(await ensureSessionValid())) {

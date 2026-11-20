@@ -234,6 +234,29 @@ const hasOpenssl = (() => { try { execFileSync('openssl', ['version'], { stdio: 
     assert.strictEqual(crlPush[1]({ sessionId: 'someone-else' }), false);
     assert.strictEqual(broadcasts[0][1]({ authenticated: true, userType: 'readonly' }), false, 'Key Manager refresh is for administrators');
 
+    // ---- log off is a lock on a certificate session; only the Nightshade client's Sign Out signs out (7a) ----
+    const key5 = newPair();
+    const desk = (await service.enrol({ csr: makeCsr(key5), deviceId: 'dd0910c077e218f55a6020767818c5f8', deviceName: 'DreamOS desk', kind: 'dreamos', sessionId: 'sid-enrolled' })).answer;
+    const certReq = (session) => ({ session: { authenticated: true, ...session } });
+    const opened = certReq({ id: 'sid-opened', authMethod: 'client_cert', clientCertSerial: desk.serial.toUpperCase() });
+    assert.strictEqual(await cc.sessionCertificate(opened, null, service), desk.serial, 'a session the certificate opened');
+    assert.strictEqual(await cc.sessionCertificate(certReq({ id: 'sid-enrolled' }), null, service), desk.serial, 'the sign-in that enrolled it');
+    assert.strictEqual(await cc.sessionCertificate(certReq({ id: 'sid-browser' }), null, service), null, 'a browser session');
+    assert.strictEqual(await cc.sessionCertificate({ session: { id: 'sid-enrolled' } }, null, service), null, 'not signed in');
+    const brokenDb = { sessionSerial: async () => { throw new Error('database not open'); } };
+    assert.strictEqual(await cc.sessionCertificate(certReq({ id: 'sid-enrolled' }), null, brokenDb), null, 'no database: nothing bound');
+    assert.deepStrictEqual(await cc.logoutPlan(opened, { intent: 'logoff', keepSiteAccess: true }, null, service), { action: 'keep', serial: desk.serial });
+    assert.deepStrictEqual(await cc.logoutPlan(certReq({ id: 'sid-enrolled' }), undefined, null, service), { action: 'keep', serial: desk.serial }, 'a stray logout with no data keeps it too');
+    assert.deepStrictEqual(await cc.logoutPlan(certReq({ id: 'sid-browser' }), { intent: 'logoff' }, null, service), { action: 'logout', serial: null }, 'a browser still signs out');
+    assert.deepStrictEqual(await cc.logoutPlan(certReq({ id: 'sid-browser' }), { intent: cc.SIGN_OUT_INTENT }, null, service), { action: 'signout', serial: null });
+    assert.deepStrictEqual(await cc.logoutPlan(opened, { intent: cc.SIGN_OUT_INTENT }, null, service), { action: 'signout', serial: desk.serial });
+    destroyed.length = 0;
+    const out = await cc.signOutDevice({ getSessionStore: () => ({ destroy: (sid, cb) => { destroyed.push(sid); cb(); } }) }, desk.serial, service);
+    assert.strictEqual(out.record.revokeReason, 'cessation', 'Sign Out retires the certificate');
+    assert.deepStrictEqual(destroyed, ['sid-enrolled'], 'and ends its sessions');
+    assert.strictEqual(await service.sessionSerial('sid-enrolled'), null);
+    assert.strictEqual(await cc.signOutDevice({}, desk.serial, service), null, 'signing out twice is not an error');
+
     // ---- the routes mount before Key Manager's database is open (boot order): nothing is touched until a request ----
     const routes = {};
     const fakeApp = { get: (p) => { routes[`GET ${p}`] = true; }, post: (p) => { routes[`POST ${p}`] = true; } };

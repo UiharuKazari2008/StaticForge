@@ -360,16 +360,29 @@ When unauthenticated: `authenticated: false`, `redirect: null`.
 **Request:**
 
 ```json
-{ "action": "logout" }
+{ "action": "logout", "data": { "intent": "logoff", "keepSiteAccess": true } }
 ```
+
+`data` is optional. `intent`: `"logoff"` (the desktop's Log off; the default) or `"nightshade-signout"` (the
+Nightshade Network client's Sign Out). `keepSiteAccess: true` keeps the site gate's `dsk` cookie.
 
 **Success (200):**
 
 ```json
-{ "success": true, "message": "Logged out successfully" }
+{ "success": true, "signedOut": true, "message": "Logged out successfully" }
 ```
 
 Server clears `connect.sid` cookie. Client should disconnect WebSocket and clear cached auth state.
+
+**Certificate sessions** (a session a client certificate opened or enrolled from, docs/client-certificates.md 7a):
+the desktop's Log off is a lock there, so the server keeps the session and answers
+
+```json
+{ "success": true, "signedOut": false, "kept": "certificate", "message": "..." }
+```
+
+Only `intent: "nightshade-signout"` signs such a session out; it also revokes the device's certificate (reason
+`cessation`).
 
 ## Legacy Bearer / query token (loginKey)
 

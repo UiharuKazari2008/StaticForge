@@ -482,6 +482,56 @@ async function revokeAndTell(globalResources, serial, reason, actor, service = l
     return result;
 }
 
+// ---- log off and sign out (docs/client-certificates.md section 7a) ------------------------------------------------
+
+/**
+ * Yukimi, Nov 20 2026: "on sign out it should NEVER sign out. CaféReady is cert based accounting. Sign out in the desktop
+ * is just close everything and return to the login screen, and it's like a lock, not an actual server sign out. The only
+ * way to sign out when using CaféReady is from the Nightshade client." The Nightshade client's Sign Out says so with this.
+ */
+const SIGN_OUT_INTENT = 'nightshade-signout';
+
+/**
+ * The certificate the request's session belongs to (serial), or null: a session the certificate opened (4.4) or the
+ * sign-in that enrolled it (4.2), and a logon's PIN check carried over from either (web_server.js 'login').
+ */
+async function sessionCertificate(req, globalResources, service) {
+    const s = req && req.session;
+    if (!s || !s.authenticated) return null;
+    if (s.authMethod === 'client_cert' && s.clientCertSerial) return normalSerial(String(s.clientCertSerial));
+    try {
+        return await (service || live(globalResources)).sessionSerial(s.id);
+    } catch (_) {
+        return null; // Key Manager's database is not open yet: nothing is bound that it could tell
+    }
+}
+
+/**
+ * What POST / {action:'logout'} does (web_server.js): 'keep' for a certificate's session unless the Nightshade client
+ * signs out (the desktop's Log off is a lock there: the session, the certificate and the cookies stay), 'signout' for
+ * that sign-out (the certificate is retired and the session ends), 'logout' for anything else (a browser's sign-out).
+ */
+async function logoutPlan(req, data, globalResources, service) {
+    const serial = await sessionCertificate(req, globalResources, service);
+    if (data && data.intent === SIGN_OUT_INTENT) return { action: 'signout', serial };
+    if (serial) return { action: 'keep', serial };
+    return { action: 'logout', serial: null };
+}
+
+/**
+ * The Nightshade client's Sign Out on a certificate device: the certificate is revoked (cessation: this device stops
+ * using the account), so its sessions end, its sockets and Miniport carrier are told (client_cert_revoked) and the app
+ * forgets the key; it does not sign back in by itself (section 6 step 4). The next PIN sign-in enrols afresh.
+ */
+async function signOutDevice(globalResources, serial, service = live(globalResources)) {
+    try {
+        return await revokeAndTell(globalResources, serial, 'cessation', 'signed out on the device', service);
+    } catch (e) {
+        if (e instanceof ClientCertError && (e.code === 'ALREADY_REVOKED' || e.code === 'CERT_UNKNOWN')) return null;
+        throw e;
+    }
+}
+
 function clientIp(req, globalResources) {
     try {
         const address = require('./clientAddress');
@@ -627,5 +677,6 @@ function mount(app, authMiddleware, globalResources, options = {}) {
 
 module.exports = {
     createService, mount, live, revokeAndTell, endSessions, announce, authMessage, ClientCertError,
+    SIGN_OUT_INTENT, sessionCertificate, logoutPlan, signOutDevice,
     _util: { cleanName, isDeviceId, normalSerial, personSession }
 };

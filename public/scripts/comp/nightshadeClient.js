@@ -158,6 +158,44 @@
         if (c && typeof c.cancelConnectionFromUser === 'function') c.cancelConnectionFromUser();
     }
 
+    /**
+     * Sign Out (Yukimi, Nov 20 2026): the only real sign-out on a certificate client (CaféReady, the Android app) - the
+     * desktop's Log off is a lock there. After the warning (Cancel is the default button) it logs off as Log off does
+     * (winlogonPower.js: the programs close, "Logging off...", the Welcome screen), and the server retires this
+     * computer's certificate and ends the session (web_server.js 'logout', intent nightshade-signout). Needs the server.
+     */
+    async function signOut() {
+        if (state().service !== 'connected') {
+            if (typeof root.showConfirmationDialog === 'function') {
+                await root.showConfirmationDialog(
+                    'You must be connected to the Nightshade Network to sign out.\n\nConnect, and then try again.',
+                    [{ text: 'OK', value: true, className: 'btn-standard primary' }],
+                    null,
+                    { title: TITLE, icon: 'fas fa-info-circle' });
+            }
+            return;
+        }
+        const ok = typeof root.showConfirmationDialog === 'function'
+            ? await root.showConfirmationDialog(
+                'Are you sure you want to sign out of the Nightshade Network?\n\nAll your programs close and this computer forgets your sign-in. To use it again, you must type your password while it is connected to the Nightshade Network.',
+                [{ text: 'Sign Out', value: true, className: 'btn-standard' }, { text: 'Cancel', value: false, className: 'btn-standard primary' }],
+                null,
+                { title: TITLE, icon: 'fas fa-exclamation-triangle', sound: true })
+            : false;
+        if (ok !== true || typeof root.runWinlogonPower !== 'function') return;
+        try {
+            await root.runWinlogonPower('logoff', { signOut: true });
+        } catch (error) {
+            if (typeof root.showConfirmationDialog === 'function') {
+                root.showConfirmationDialog(
+                    (error && error.message) || 'Could not sign out of the Nightshade Network.',
+                    [{ text: 'OK', value: true, className: 'btn-standard primary' }],
+                    null,
+                    { title: TITLE, icon: 'fas fa-times-circle', sound: true });
+            }
+        }
+    }
+
     function about() {
         if (typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: TITLE });
     }
@@ -178,6 +216,8 @@
                 { text: s.service === 'signed-out' ? 'Sign In...' : up ? 'Reconnect' : 'Connect', action: 'connect', disabled: s.service === 'connecting' },
                 { text: 'Disconnect...', action: 'disconnect', disabled: !up },
                 { separator: true },
+                { text: 'Sign Out of Nightshade Network...', action: 'signout', disabled: s.service !== 'connected' },
+                { separator: true },
                 { text: 'Close', action: 'close' }
             ];
         }
@@ -191,6 +231,7 @@
     function onMenu(action) {
         if (action === 'connect') connect();
         else if (action === 'disconnect') void disconnect();
+        else if (action === 'signout') void signOut();
         else if (action === 'close') close();
         else if (action === 'help') help();
         else if (action === 'about') about();
@@ -349,7 +390,7 @@
 
     // ---- the tray icon's menu ---------------------------------------------------------------------
 
-    /** Right-click on the Nightshade tray icon: open the client, Reconnect, Sign Out. No Disconnect. */
+    /** Right-click on the Nightshade tray icon: open the client, Reconnect, Sign Out (the real sign-out). No Disconnect. */
     function attachTrayMenu(anchor) {
         if (!anchor || anchor.dataset.nightshadeMenu === '1' || !root.contextMenu || typeof root.contextMenu.attachToElement !== 'function') return;
         anchor.dataset.nightshadeMenu = '1';
@@ -360,17 +401,17 @@
                     { icon: 'fas fa-circle-info', text: `Open ${TITLE}`, action: 'ns-open', bold: true },
                     { icon: 'fas fa-rotate', text: 'Reconnect', action: 'ns-reconnect', disabled: () => state().service === 'connecting' },
                     { separator: true },
-                    { icon: 'fas fa-right-from-bracket', text: 'Sign Out', action: 'ns-signout' }
+                    { icon: 'fas fa-right-from-bracket', text: 'Sign Out of Nightshade Network...', action: 'ns-signout', disabled: () => state().service !== 'connected' }
                 ]
             }],
             onAction: (action) => {
                 if (action === 'ns-open') open();
                 else if (action === 'ns-reconnect') connect();
-                else if (action === 'ns-signout') call('runLogoutDirect');
+                else if (action === 'ns-signout') void signOut();
             }
         });
     }
 
-    root.nightshadeClient = { open, close, attachTrayMenu, _state: state, _quality: quality, _detail: detail };
+    root.nightshadeClient = { open, close, attachTrayMenu, signOut, _state: state, _quality: quality, _detail: detail };
     root.openNightshadeClient = open;
 })(typeof window !== 'undefined' ? window : globalThis);

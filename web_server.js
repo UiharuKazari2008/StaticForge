@@ -3047,18 +3047,29 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
                     console.warn('PIN hash upgrade skipped:', e.message);
                 }
 
-                // Regenerate the session id on login to prevent session fixation.
-                return req.session.regenerate((regenErr) => {
+                // Regenerate the session id on login to prevent session fixation. A certificate client's logon after
+                // Log off (a lock there, modules/clientCertificates.js logoutPlan) keeps the session the certificate's
+                // own: the new id is bound to the same certificate, or the app would enrol again (docs 7a)
+                const clientCerts = require('./modules/clientCertificates');
+                const priorCertMethod = req.session.authMethod === 'client_cert';
+                return clientCerts.sessionCertificate(req, globalResources).then((certSerial) => req.session.regenerate((regenErr) => {
                     if (regenErr) {
                         console.error('Session regenerate failed on login:', regenErr);
                         return res.status(500).json({ success: false, error: 'Login failed' });
                     }
                     req.session.authenticated = true;
                     req.session.userType = userType;
-                    req.session.save((saveErr) => {
+                    if (certSerial) {
+                        req.session.clientCertSerial = certSerial;
+                        if (priorCertMethod) req.session.authMethod = 'client_cert';
+                    }
+                    req.session.save(async (saveErr) => {
                         if (saveErr) {
                             console.error('Session save failed on login:', saveErr);
                             return res.status(500).json({ success: false, error: 'Login failed' });
+                        }
+                        if (certSerial) {
+                            try { await clientCerts.live(globalResources).bindSession(req.session.id, certSerial); } catch (e) { console.warn('Certificate session carry-over failed:', e.message); }
                         }
                         const siteCfg = siteAccessPublic.readSiteAccessSecure(globalResources);
                         if (siteCfg.configured && siteCfg.hash) {
@@ -3069,7 +3080,7 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
                             : { success: true, message: 'Login successful', userType: 'readonly', vfsPathUuid: globalResources.getVfsPathUuid() };
                         res.json(payload);
                     });
-                });
+                }));
             } else {
                 // Skip tracking failed login attempts for private IP addresses
                 if (!isPrivateIP(realIP)) {
@@ -3102,17 +3113,32 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
             }
             break;
             
-        case 'logout':
-            req.session.destroy(() => {
-                res.clearCookie('connect.sid');
-                // The desktop's Log off (winlogonPower.js, keepSiteAccess) signs the user out, not the computer: the
-                // site key stays, so the logon that follows can reach the server and ask the password. Without it the
-                // installed copy's logon (straight to /app, no BIOS gateway) got the cover for /status and its socket,
-                // and sat on "Please wait..." for good (Fold DeX window, Nov 20 2026)
-                if (!(data && data.keepSiteAccess === true)) siteAccessPublic.clearDskCookie(res);
-                res.json({ success: true, message: 'Logged out successfully' });
+        case 'logout': {
+            // modules/clientCertificates.js logoutPlan (docs/client-certificates.md 7a). A certificate client's Log off
+            // is a lock (Yukimi, Nov 20 2026: "on sign out it should NEVER sign out ... The only way to sign out when
+            // using CaféReady is from the Nightshade client"): its session, certificate and cookies stay, whoever asks.
+            // The Nightshade client's Sign Out (intent 'nightshade-signout') retires the certificate and ends the session.
+            const clientCerts = require('./modules/clientCertificates');
+            clientCerts.logoutPlan(req, data, globalResources).then(async (plan) => {
+                if (plan.action === 'keep') {
+                    return res.json({ success: true, signedOut: false, kept: 'certificate', message: 'This computer signs in with its certificate: Log off keeps the session. Sign out from the Nightshade Network client.' });
+                }
+                if (plan.action === 'signout' && plan.serial) await clientCerts.signOutDevice(globalResources, plan.serial);
+                req.session.destroy(() => {
+                    res.clearCookie('connect.sid');
+                    // The desktop's Log off (winlogonPower.js, keepSiteAccess) signs the user out, not the computer: the
+                    // site key stays, so the logon that follows can reach the server and ask the password. Without it the
+                    // installed copy's logon (straight to /app, no BIOS gateway) got the cover for /status and its socket,
+                    // and sat on "Please wait..." for good (Fold DeX window, Nov 20 2026)
+                    if (!(data && data.keepSiteAccess === true)) siteAccessPublic.clearDskCookie(res);
+                    res.json({ success: true, signedOut: true, message: 'Logged out successfully' });
+                });
+            }).catch((e) => {
+                console.error('Logout failed:', e && e.message ? e.message : e);
+                if (!res.headersSent) res.status(500).json({ success: false, error: 'Logout failed' });
             });
             break;
+        }
         
         case 'ping':
             globalResources.generateLoginSpriteSheet();

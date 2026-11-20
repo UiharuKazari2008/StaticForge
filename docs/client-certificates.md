@@ -192,6 +192,30 @@ store with **Issued Certificates** and **Revoked Certificates**. Revoke is on a 
 reason. WebSocket packets (admin only), documented in `docs/client-api/ws/clientCertificates.md`:
 `client_cert_list`, `client_cert_revoke`, and the push `client_cert_changed` to administrators.
 
+## 7a. Log off and sign out
+
+Yukimi, Nov 20 2026:
+
+> "on sign out it should NEVER sign out. CaféReady is cert based accounting. Sign out in the desktop is just close
+> everything and return to the login screen, and it's like a lock, not an actual server sign out. The only way to
+> sign out when using CaféReady is from the Nightshade client."
+
+| What | On a certificate client | On a plain browser |
+| --- | --- | --- |
+| The desktop's **Log off** (Start menu, the Shut Down Windows box) | Vista's log off (still-running programs, "Logging off...", the desktop closes) and back to the logon, which asks the password (or logs on by itself, per its settings), offline from the cached logon too. **No request to the server**: the session, the certificate, `connect.sid` and the site key stay. | Signs out of the server, as before. |
+| The Nightshade Network client's **Sign Out of Nightshade Network...** (its Connection menu and the tray icon's menu, behind a warning; needs the connection) | The same log off, and the server **revokes this device's certificate** (reason `cessation`, by "signed out on the device"): its sessions end, the page sockets and the Miniport carrier get `client_cert_revoked`, the app deletes key and certificate and does not sign back in by itself (section 6 step 4). The cached logon verifier is forgotten. The next PIN sign-in enrols afresh. | Signs out of the server. |
+
+The page knows a certificate client with no request: the Android app's bridges (`AndroidClientCert`, `AndroidHardware`,
+`AndroidDisplay`) or DreamOS' (`DreamOSHardware`) are present (`handleLogout.certificateClient()`, connectionManager.js).
+The server knows by the session, and decides on its own (`logoutPlan`, `modules/clientCertificates.js`): a session
+the certificate opened (4.4) or the sign-in that enrolled it (4.2) is a certificate session, and `POST /`
+`{ action: "logout" }` on one answers `{ success: true, signedOut: false, kept: "certificate" }` and changes nothing,
+whoever sent it, unless `data.intent` is `"nightshade-signout"`.
+
+A logon's PIN check on a certificate session (the logon after Log off) still gets a new session id (session
+fixation), but the new id is bound to the same certificate and keeps `authMethod: "client_cert"`, so renewal works
+and the app does not enrol again.
+
 ## 8. What each client implements
 
 ### Android (DSApp-Kotlin, `ClientCert.kt`)
