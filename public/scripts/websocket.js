@@ -1659,7 +1659,14 @@ class WebSocketClient {
      *   a piece cannot be applied live: then "out of sync with the domain controller" - nothing from this session is
      *   saved (never: Yukimi), the next logon takes the server's profile, or resolveProfileConflict('server') now.
      */
-    async _checkProfileSync() {
+    _checkProfileSync() {
+        // one check at a time: a reconnect during a check (or Sync now) shares the one in flight
+        if (this._profileCheckInFlight) return this._profileCheckInFlight;
+        this._profileCheckInFlight = this._checkProfileSyncOnce().finally(() => { this._profileCheckInFlight = null; });
+        return this._profileCheckInFlight;
+    }
+
+    async _checkProfileSyncOnce() {
         if (!this._profileHold || this._profileOutOfSync) return this._profileSyncLast || null;
         this._profileSyncEvent('checking');
         const server = await this._profileServerRevision();
@@ -1791,9 +1798,14 @@ class WebSocketClient {
      * server's: the cached pieces read again, what differs applied live, the cache marked with the server's revision.
      * -> the 'done' / 'outofsync' / 'unknown' detail.
      */
-    async syncProfileNow() {
-        if (this._profileOutOfSync) return this._profileSyncLast;
-        if (this._profileHold) return this._checkProfileSync();
+    syncProfileNow() {
+        if (this._profileOutOfSync) return Promise.resolve(this._profileSyncLast);
+        if (this._profileHold || this._profileCheckInFlight) return this._checkProfileSync();
+        this._profileCheckInFlight = this._syncProfileNowOnce().finally(() => { this._profileCheckInFlight = null; });
+        return this._profileCheckInFlight;
+    }
+
+    async _syncProfileNowOnce() {
         const profile = window.cachedProfile;
         if (!profile || !this.isConnected()) return this._profileSyncEvent('unknown', { source: 'manual' });
         this._profileSyncEvent('checking', { source: 'manual' });

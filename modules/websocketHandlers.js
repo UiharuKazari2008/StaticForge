@@ -828,6 +828,9 @@ class WebSocketMessageHandlers {
         if (direct) {
             wsMessageDispatcher.dispatch(ws, clientInfo, async () => {
                 await direct({ ws, message, clientInfo, wsServer, handlers: this });
+                // every registered packet resolves here (the domain registry reads the same table): a profile write
+                // moves the revision on (modules/profileRevision.js) - the branch below is never reached for them
+                profileRevision.afterPacketOn(message.type, wsServer);
             }, { dispatch: 'parallel' }, (err) => {
                 console.error('[WS] Domain packet handler error for', message.type, err);
                 this.sendError(ws, 'Packet handler failed', err.message, message.requestId);
