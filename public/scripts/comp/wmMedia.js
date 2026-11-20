@@ -1747,6 +1747,23 @@
 
     // ---------------------------------------------------------------- the app
 
+    // the stylesheet this script was written with (wm-media.css --wmp-rev): a live update can bring the
+    // script while the page keeps the stylesheet it booted with until its restart; then the program
+    // brings its own (kept in its page, so it goes with the program)
+    const CSS_REV = '975';
+    function ensureStyles(p) {
+        if (getComputedStyle(p).getPropertyValue('--wmp-rev').trim() === CSS_REV || p.querySelector('style[data-wmp-css]')) return;
+        fetch('/css/wm-media.css').then((r) => (r.ok ? r.text() : '')).then((css) => {
+            if (!css || !new RegExp(`--wmp-rev:\\s*${CSS_REV}\\b`).test(css) || !page) return;
+            const st = document.createElement('style');
+            st.dataset.wmpCss = CSS_REV;
+            st.textContent = css;
+            page.prepend(st);
+            orient = '';
+            render();
+        }).catch(() => { /* offline: the page's own stylesheet */ });
+    }
+
     function mount(p) {
         page = p;
         p.classList.add('wm-media');
@@ -1841,6 +1858,7 @@
             if (e.key !== 'Enter') return;
             if (e.target.closest('.wmp-url-edit')) { e.preventDefault(); openUrlNow(); } else if (e.target.closest('.wmp-save-edit')) { e.preventDefault(); savePlaylist(); }
         });
+        ensureStyles(p);
         try { new ResizeObserver(() => { fitSkin(); fitFull(); }).observe(p); } catch (_) { window.addEventListener('resize', () => { fitSkin(); fitFull(); }, { signal: appScopeSignal }); }
     }
 
