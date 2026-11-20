@@ -945,6 +945,17 @@
             ].join('\n');
         }
 
+        /** Offline Files (offlineFiles.js, #910): Vista's Offline status and Offline availability of a network item. */
+        _offlineRows(item, row) {
+            const of = root.melatonOfflineFiles;
+            if (!item || !(item.offline || item.offlineOverlay) || !of || !of.available()) return '';
+            const online = (of.state() || {}).online !== false;
+            const pinned = !!(item.offline && item.offline.pinned);
+            const local = item.offline && item.offline.local;
+            const status = online ? (item.offline && item.offline.state === 'conflict' ? 'Online (sync conflicts)' : 'Online') : 'Offline (not connected)';
+            return row('Offline status', status) + row('Offline availability', pinned ? 'Always available' : (local ? 'Available' : 'Not available'));
+        }
+
         renderDetails(selected, summaryText) {
             const { detailsIcon, detailsInfo } = this.el;
             if (!detailsIcon || !detailsInfo) return;
@@ -972,7 +983,7 @@
                     ? this.app._formatStatusSize(this.app._itemSizeBytes(item)) : '';
                 detailsInfo.innerHTML = `<div class="explorer-details-name">${esc(contactName != null ? contactName : (item.name || ''))}</div>`
                     + (type ? `<div class="explorer-details-type">${esc(type)}</div>` : '')
-                    + row('Date modified', date) + row('Size', size);
+                    + row('Date modified', date) + row('Size', size) + this._offlineRows(item, row);
                 return;
             }
             // no selection or several: the folder's icon and the summary line

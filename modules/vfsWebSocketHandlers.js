@@ -89,6 +89,9 @@ class VfsWebSocketHandlers {
                 sortDirection: sortDirection || 'asc',
                 search: search || ''
             });
+            // Offline Files (offlineFilesRoute.js, #910): the folder's path by names, as CaféReady keys its cache
+            const offlinePath = await require('./offlineFilesRoute').namePathOf(this.globalResources, result.path);
+            if (offlinePath) result.offlinePath = offlinePath;
             this.handlers.sendToClient(ws, {
                 type: 'vfs_list_directory_response',
                 requestId: message.requestId,

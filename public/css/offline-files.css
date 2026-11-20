@@ -1,0 +1,142 @@
+/* Offline Files (#910; public/scripts/comp/offlineFiles.js). Colours: css/themes/vista/offline-files.css.
+
+   Explorer's overlay: Vista draws Offline Files' sync circle (cscui.dll icon 5) over the lower-left corner of a file or
+   folder that is available offline; a conflict shows the warning (icon 3). The 16 px frame for small icons and rows,
+   the 32 px frame (its glyph in the lower-left 16 px) for the larger views. Resolve Conflict is shell32's conflict
+   dialog, laid out as css/nightshade-profile-sync.css measured it on the VM (450 px client, 418 x 120 choices). */
+
+.explorer-offline-overlay {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    z-index: 2;
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
+    background: no-repeat 0 0 / 16px 16px url("/static_images/vista-offline/overlay-sync-16.png");
+}
+
+.explorer-offline-overlay[data-kind="conflict"] { background-image: url("/static_images/vista-offline/overlay-conflict-16.png"); }
+
+:is(.explorer-item-icon-box-md, .explorer-item-icon-box-lg, .explorer-item-icon-box-xl) > .explorer-offline-overlay {
+    width: 32px;
+    height: 32px;
+    background-size: 32px 32px;
+    background-image: url("/static_images/vista-offline/overlay-sync-32.png");
+}
+
+:is(.explorer-item-icon-box-md, .explorer-item-icon-box-lg, .explorer-item-icon-box-xl) > .explorer-offline-overlay[data-kind="conflict"] {
+    background-image: url("/static_images/vista-offline/overlay-conflict-32.png");
+}
+
+/* ---- Resolve Conflict ------------------------------------------------------------------------------------------- */
+
+#offlineFilesResolveConflictDialog.modal { height: auto !important; }
+
+#offlineFilesResolveConflictDialog > .modal-content.vdt-client.vdt-plain {
+    box-sizing: border-box;
+    width: 450px !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 0 !important;
+    background: var(--ofc-client);
+}
+
+#offlineFilesResolveConflictDialog .ofc {
+    display: flex;
+    flex-direction: column;
+    font: 9pt/15px var(--ofc-font);
+    color: var(--ofc-text);
+}
+
+#offlineFilesResolveConflictDialog .ofc-instruction {
+    padding: 16px 16px 0;
+    font-size: 12pt;
+    line-height: 21px;
+    color: var(--ofc-instruction);
+}
+
+#offlineFilesResolveConflictDialog .ofc-sub { padding: 3px 16px 6px; }
+
+#offlineFilesResolveConflictDialog .ofc-option:not(#_) {
+    position: relative;
+    display: block;
+    box-sizing: border-box;
+    width: 418px;
+    min-height: 120px;
+    margin: 0 16px 9px;
+    padding: 7px 8px 8px 23px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+    color: var(--ofc-instruction);
+    text-align: left;
+    cursor: default;
+}
+
+#offlineFilesResolveConflictDialog .ofc-option.ofc-both:not(#_) { min-height: 0; }
+
+#offlineFilesResolveConflictDialog .ofc-option:not(#_)::before {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 10px;
+    width: 20px;
+    height: 20px;
+    opacity: 1 !important;
+    transition: none !important;
+    background: image-set(url("/static_images/vista-games/ui/commandlink-glyph.png") 1x, url("/static_images/vista-games/ui/commandlink-glyph@2x.png") 2x) no-repeat 0 0 / 20px 100px;
+}
+
+#offlineFilesResolveConflictDialog .ofc-option:not(#_)::after { content: none; }
+
+#offlineFilesResolveConflictDialog .ofc-option:not(#_):hover {
+    border-color: var(--ofc-hot-edge);
+    background: linear-gradient(var(--ofc-hot-top), var(--ofc-hot-bottom));
+    box-shadow: inset 0 0 0 1px var(--ofc-hot-inner);
+}
+
+#offlineFilesResolveConflictDialog .ofc-option:not(#_):hover::before { background-position: 0 -20px; }
+
+#offlineFilesResolveConflictDialog .ofc-option:not(#_):active::before { background-position: 0 -40px; }
+
+#offlineFilesResolveConflictDialog .ofc-option:not(#_):focus-visible {
+    outline: 1px dotted var(--ofc-text);
+    outline-offset: -3px;
+}
+
+#offlineFilesResolveConflictDialog .ofc-head { display: block; font-size: 12pt; line-height: 21px; }
+
+#offlineFilesResolveConflictDialog .ofc-desc { display: block; }
+
+#offlineFilesResolveConflictDialog .ofc-card { display: flex; gap: 11px; margin: 3px 0 0 10px; }
+
+#offlineFilesResolveConflictDialog .ofc-card > img { flex: none; width: 48px; height: 48px; margin-top: 2px; }
+
+#offlineFilesResolveConflictDialog .ofc-card-text { display: flex; flex-direction: column; line-height: 16px; color: var(--ofc-text); }
+
+#offlineFilesResolveConflictDialog .ofc-card-text .ofc-loc { color: var(--ofc-instruction); }
+
+#offlineFilesResolveConflictDialog .ofc-footer {
+    display: flex;
+    justify-content: flex-end;
+    height: 41px;
+    box-sizing: border-box;
+    margin-top: 23px;
+    padding: 9px 11px;
+    border-top: 1px solid var(--ofc-band-edge);
+    background: var(--ofc-band);
+}
+
+#offlineFilesResolveConflictDialog .ofc-footer > button {
+    position: relative !important;
+    inset: auto !important;
+    box-sizing: border-box;
+    min-width: 75px;
+    height: 23px;
+    margin: 0;
+    padding: 0 10px;
+    font: 9pt/15px var(--ofc-font);
+}

@@ -1254,6 +1254,18 @@ class ExplorerApplet {
             }
             items.push({ icon: 'fas fa-download', text: 'Download', action: 'explorer-download' });
         }
+        // Offline Files (offlineFiles.js, #910): Vista's Always Available Offline and Sync on a network item, and the
+        // folder's Offline Settings (filemgmt's caching dialog); only where CaféReady keeps an Offline Files cache
+        const off = window.melatonOfflineFiles;
+        const offPath = !multi && off && off.available() && (item.targetKind === 'vfs-folder' || item.targetKind === 'user-file' || item.targetKind === 'offline-file')
+            ? (item.offlinePath || (off.namePathFor(this.currentPath) ? `${off.namePathFor(this.currentPath)}/${item.name}` : null)) : null;
+        if (offPath) {
+            const pol = off.policy(item.kind === 'folder' ? offPath : offPath.slice(0, offPath.lastIndexOf('/'))) || {};
+            const pinned = !!(pol.pinned || (item.kind !== 'folder' && off.stat(offPath) && off.isPinned(offPath)));
+            items.push({ icon: 'fas fa-arrows-rotate', text: 'Always Available Offline', showIndicator: true, indicatorMark: 'check', checked: pinned, action: 'explorer-offline-pin', data: { path: offPath, on: !pinned } });
+            if (pinned || pol.writeBack) items.push({ icon: 'fas fa-arrows-rotate', text: 'Sync', action: 'explorer-offline-sync' });
+            if (item.kind === 'folder') items.push({ icon: 'fas fa-folder-gear', text: 'Offline Settings...', action: 'explorer-offline-settings', data: { path: offPath } });
+        }
         // Send To > a phone connected through ActiveSync (explorerPhoneDrive.sendToMenuItem)
         if (typeof explorerPhoneDrive !== 'undefined' && this._canCutCopyItem(item)) {
             const sendTo = explorerPhoneDrive.sendToMenuItem(item);
@@ -2517,6 +2529,17 @@ class ExplorerApplet {
                 case 'explorer-edit-paint':
                     if (item) void this.editInPaint(item);
                     break;
+                case 'explorer-offline-pin':
+                case 'explorer-offline-sync':
+                case 'explorer-offline-settings': {
+                    const off = window.melatonOfflineFiles;
+                    const offPath = item && (item.offlinePath || (off && off.namePathFor(this.currentPath) ? `${off.namePathFor(this.currentPath)}/${item.name}` : null));
+                    if (!off || !offPath) break;
+                    if (action === 'explorer-offline-sync') void off.syncNow();
+                    else if (action === 'explorer-offline-settings') void off.openOfflineSettings(offPath, this.modal);
+                    else { off.pin(offPath, !off.isPinned(offPath)); await this.softRefresh(); }
+                    break;
+                }
                 case 'explorer-download':
                     if (item) await this.downloadSelectionItem(item);
                     else await this.downloadSelection();
@@ -4598,6 +4621,12 @@ class ExplorerApplet {
         // a file on the phone opens in the phone's own app (explorerPhoneDrive.js)
         if (typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.isEntry(item)) {
             await explorerPhoneDrive.open(this, item);
+            return;
+        }
+
+        // a file only this computer has yet (Offline Files, offlineFiles.js: a recording still being sent)
+        if (window.melatonOfflineFiles && window.melatonOfflineFiles.isLocalItem(item)) {
+            if (!(await window.melatonOfflineFiles.openLocal(item))) await this._openUnknownFile(item);
             return;
         }
 

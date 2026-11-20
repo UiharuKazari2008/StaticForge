@@ -762,6 +762,20 @@ class VfsVirtualGrid {
         const box = el.querySelector('.explorer-item-icon-box');
         if (!box) return;
         this._syncIconBoxContent(box, item);
+        this._syncOfflineOverlay(box, item);
+    }
+
+    /** Offline Files' overlay on an item kept on this computer (cscui.dll 5, the sync circle; 3 for a conflict). */
+    _syncOfflineOverlay(box, item) {
+        const want = item.offlineOverlay || '';
+        let o = box.querySelector(':scope > .explorer-offline-overlay');
+        if (!want) { if (o) o.remove(); return; }
+        if (!o) {
+            o = document.createElement('span');
+            o.className = 'explorer-offline-overlay';
+            box.appendChild(o);
+        }
+        if (o.dataset.kind !== want) o.dataset.kind = want;
     }
 
     _syncIconBoxContent(box, item) {
@@ -848,6 +862,7 @@ class VfsVirtualGrid {
         const box = document.createElement('div');
         box.className = `explorer-item-icon-box explorer-item-icon-box-${size}`;
         this._syncIconBoxContent(box, item);
+        this._syncOfflineOverlay(box, item);
         return box;
     }
 

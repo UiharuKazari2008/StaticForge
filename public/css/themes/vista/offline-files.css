@@ -1,0 +1,16 @@
+/* Offline Files, Vista theme (#910): the colours and font of shell32's Resolve Conflict as Sync Center opens it for
+   Offline Files (the same dialog the Nightshade Profile uses). The layout is css/offline-files.css. */
+
+#offlineFilesResolveConflictDialog {
+    --ofc-font: "Segoe UI", Tahoma, sans-serif;
+    --ofc-client: #fff;
+    --ofc-text: #000;
+    --ofc-instruction: #003399;
+    --ofc-band: #f0f0f0;
+    --ofc-band-edge: #dfdfdf;
+    /* the hot choice: the light blue frame */
+    --ofc-hot-edge: #daf2fc;
+    --ofc-hot-inner: #f9fdff;
+    --ofc-hot-top: #f7fcff;
+    --ofc-hot-bottom: #eaf7ff;
+}

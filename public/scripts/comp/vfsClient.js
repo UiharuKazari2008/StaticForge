@@ -26,7 +26,15 @@ const vfsClient = {
     },
 
     async listDirectory(path, options = {}) {
-        return wsClient.sendMessage('vfs_list_directory', { path, ...options });
+        // Offline Files (offlineFiles.js, #910): a folder kept on this computer lists from its cache with no server,
+        // and a server listing shows the files only this computer has yet (a recording still being sent)
+        const of = typeof window !== 'undefined' ? window.melatonOfflineFiles : null;
+        if (of && of.available() && typeof wsClient !== 'undefined' && !wsClient.isConnected()) {
+            const local = of.offlineListing(path);
+            if (local) return local;
+        }
+        const result = await wsClient.sendMessage('vfs_list_directory', { path, ...options });
+        return of && of.available() ? of.decorate(result) : result;
     },
 
     async getPathStats(path) {

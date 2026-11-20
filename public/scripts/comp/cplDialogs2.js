@@ -392,7 +392,9 @@
             { page: 'cscui:1361', id: 2227, key: KEY.csc, name: 'SlowLinkMinutes', type: 'num', def: 5 }
         ],
         init(ctx) {
-            const enabled = () => reg(KEY.csc, 'Enabled', true);
+            // a CaféReady client (#910): Offline Files is the host's cache (cafeready offline.rs, offlineFiles.js)
+            const OF = root.melatonOfflineFiles && root.melatonOfflineFiles.available() ? root.melatonOfflineFiles : null;
+            const enabled = () => (OF ? OF.state().enabled !== false : reg(KEY.csc, 'Enabled', true));
             const showGeneral = () => {
                 const on = ctx.store.enabled;
                 ctx.text(2235, on ? 'Offline Files is enabled.' : 'Offline Files is disabled.', 'cscui:1358');
@@ -404,14 +406,74 @@
             ctx.on(2233, 'click', () => { ctx.store.enabled = true; showGeneral(); ctx.dirty(); }, 'cscui:1358');
             ctx.on(2234, 'click', () => { ctx.store.enabled = false; showGeneral(); ctx.dirty(); }, 'cscui:1358');
             ctx.on(2212, 'click', () => openCpl('sync-center'), 'cscui:1358');
-            ctx.on(2214, 'click', () => callGlobal('openExplorerApplet'), 'cscui:1358');
+            ctx.on(2214, 'click', () => {
+                // the folders kept on this computer (Camera Roll first): Explorer opens the first
+                const kept = OF ? Object.entries(OF.state().folders || {}).filter(([, f]) => f.pinned || f.writeBack).map(([p]) => p) : [];
+                callGlobal('openExplorerApplet', ...(kept.length ? [kept[0]] : []));
+            }, 'cscui:1358');
             // Disk Usage (#945, diskCleanup.js melatonStorage): what is kept offline for the user (pictures kept for
             // offline viewing, wallpapers, offline databases) and the temporary offline files (recent pictures,
             // thumbnails, temporary internet files), against the storage the browser grants Melaton. Melaton's own
             // files are not offline files: Disk Cleanup lists them. Read once, when the dialog opens.
             const D = 'cscui:1359';
             const bar = (id, pct) => { const f = ctx.holder(id, D); const fill = f && f.querySelector('.vdt-progress-fill'); if (fill) fill.style.setProperty('--vdt-progress', `${pct}%`); };
+            const sizeOf = (n) => (root.melatonStorage && root.melatonStorage.size ? root.melatonStorage.size(n) : `${Math.round(n / 1048576)} MB`);
+            // CaféReady: the host's cache against this computer's disk, in cscui's own words ("(10% of 999 GB disk)")
+            const showHostUsage = () => {
+                const u = OF.state().usage || {};
+                const disk = u.disk || 0;
+                const avail = Math.max(0, Math.min(u.writable || 0, (u.limitAll || 0) - (u.used || 0)));
+                const pct = (b) => (disk ? Math.min(100, Math.round((b / disk) * 100)) : 0);
+                ctx.text(2238, `${sizeOf(u.used || 0)} in use (${sizeOf(avail)} available)`, D);
+                ctx.text(2242, `${sizeOf(u.limitAll || 0)} limit`, D);
+                ctx.text(2245, `(${pct(u.limitAll || 0)}% of ${sizeOf(disk)} disk)`, D);
+                bar(2138, u.limitAll ? Math.min(100, Math.round(((u.used || 0) / u.limitAll) * 100)) : 0);
+                ctx.text(2243, `${sizeOf(u.temp || 0)} in use (${sizeOf(Math.max(0, Math.min(u.writable || 0, (u.limitTemp || 0) - (u.temp || 0))))} available)`, D);
+                ctx.text(2244, `${sizeOf(u.limitTemp || 0)} limit`, D);
+                ctx.text(2246, `(${pct(u.limitTemp || 0)}% of ${sizeOf(disk)} disk)`, D);
+                bar(2240, u.limitTemp ? Math.min(100, Math.round(((u.temp || 0) / u.limitTemp) * 100)) : 0);
+            };
+            if (OF) {
+                const off = OF.on(() => { if (ctx.modal && ctx.modal.isConnected) showHostUsage(); else off(); });
+                // Change Limits: cscui.dll.mui 1362, as the VM has it (trackbars in steps of 1 % of the disk)
+                ctx.on(2236, 'click', async () => {
+                    const V = root.vistaDialogTemplate;
+                    if (!V) return;
+                    const u = OF.state().usage || {};
+                    const disk = Math.max(1, u.disk || 1);
+                    const pctOf = (b) => Math.max(1, Math.min(100, Math.round(((b || 0) / disk) * 100)));
+                    V.openDialog({
+                        id: 'cplOfflineFilesLimits',
+                        owner: ctx.modal,
+                        tpl: { t: 'Offline Files Disk Usage Limits', w: 237, h: 126, f: ['MS Shell Dlg', 8], s: 2160591048, c: [[2224, 'S', 14, 14, 216, 8, 1342308352, 'Ma&ximum amount of space all offline files can use:', 0], [2231, 'msctls_trackbar32', 21, 26, 120, 15, 1342242832, '', 0], [2233, 'S', 142, 29, 88, 8, 1342308352, '', 0], [2246, 'S', 142, 41, 88, 8, 1342308352, '', 0], [2225, 'S', 14, 58, 216, 8, 1342308352, 'Maximum amount of space &temporary offline files can use:', 0], [2232, 'msctls_trackbar32', 21, 70, 119, 15, 1342242832, '', 0], [2234, 'S', 142, 73, 88, 8, 1342308352, '', 0], [2247, 'S', 142, 85, 88, 8, 1342308352, '', 0], [1, 'B', 126, 105, 50, 14, 1342242817, 'OK', 0], [2, 'B', 180, 105, 50, 14, 1342242816, 'Cancel', 0]] },
+                        init: (c) => {
+                            c.range(2231, 1, 100, pctOf(u.limitAll));
+                            c.range(2232, 1, 100, pctOf(u.limitTemp));
+                            const show = () => {
+                                const a = Number(c.get(2231)) || 1;
+                                // the temporary files' limit is part of the whole
+                                if (Number(c.get(2232)) > a) c.set(2232, a);
+                                const t = Number(c.get(2232)) || 1;
+                                c.text(2233, `${sizeOf((disk * a) / 100)} limit`);
+                                c.text(2246, `(${a}% of ${sizeOf(disk)} disk)`);
+                                c.text(2234, `${sizeOf((disk * t) / 100)} limit`);
+                                c.text(2247, `(${t}% of ${sizeOf(disk)} disk)`);
+                            };
+                            show();
+                            c.on(2231, 'input', show);
+                            c.on(2232, 'input', show);
+                        },
+                        ok: (c) => {
+                            const all = Math.round((disk * (Number(c.get(2231)) || 1)) / 100);
+                            const temp = Math.round((disk * (Number(c.get(2232)) || 1)) / 100);
+                            OF.setLimits(all, temp);
+                            showHostUsage();
+                        }
+                    });
+                }, D);
+            }
             const showUsage = () => {
+                if (OF) { showHostUsage(); return; }
                 const st = root.melatonStorage;
                 if (!st) return;
                 ctx.text(2238, 'Calculating...', D);
@@ -461,6 +523,8 @@
             helpLinks(ctx, 'offline-files');
         },
         async apply(ctx) {
+            const OF = root.melatonOfflineFiles && root.melatonOfflineFiles.available() ? root.melatonOfflineFiles : null;
+            if (OF) OF.setEnabled(ctx.store.enabled);
             if (R()) await R().set(KEY.csc, { Enabled: ctx.store.enabled, EncryptOfflineFiles: ctx.store.encrypted });
         }
     };

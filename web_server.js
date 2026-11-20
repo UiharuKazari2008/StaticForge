@@ -2362,6 +2362,8 @@ require('./modules/activeSyncWallpapers').mount(app, authMiddleware, globalResou
 require('./modules/cafeTasksRoute').mount(app, authMiddleware);
 // DreamOS laptop updates: signed channel manifests + content-addressed images and components (#910)
 require('./modules/dreamosUpdates').mount(app, authMiddleware);
+// modules/offlineFilesRoute.js — Offline Files for CaféReady clients: folder settings, chunked write-back uploads (#910)
+require('./modules/offlineFilesRoute').mount(app, authMiddleware, globalResources);
 // modules/searchSuggest.js — Internet Search's predictions from Google / Bing (Yozora #830)
 require('./modules/searchSuggest').mount(app, authMiddleware);
 // modules/textMessagingHttp.js — Text Messaging attachments (BlueBubbles / RCS, Yozora #779)

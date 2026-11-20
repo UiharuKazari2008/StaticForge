@@ -5,10 +5,16 @@
  *
  *   preview      getUserMedia; Camera / Microphone lists (enumerateDevices, their labels), Resolution and
  *                Frame rate from the camera track's capabilities; View > Mirror Image (the preview only)
- *   capture      Take Picture (a canvas frame, PNG) into the workspace's Pictures (the gallery, so Lumen
- *                opens it); Start Recording (MediaRecorder, MP4 where the browser records it, else WebM,
- *                with the microphone's sound) into the workspace's Videos folder, Pause / Resume / Stop,
- *                the time and the microphone's peak meter
+ *   capture      Take Picture (a canvas frame, PNG) into the workspace's Camera Roll; Start Recording
+ *                (MediaRecorder, MP4 where the browser records it, else WebM, with the microphone's sound)
+ *                into Camera Roll\Camcorder, Pause / Resume / Stop, the time and the microphone's peak meter.
+ *                Yukimi (Nov 20 2026): Pictures is the generated images' gallery, so captures go to Camera
+ *                Roll, an Offline Files folder ("Don't store files offline", "Send files to server using
+ *                Offline Files"). On a CaféReady client (offlineFiles.js) a picture lands on this computer's
+ *                disk at once and each second of a recording is written straight into its file there: no
+ *                size cap, the limit is the disk's free space, shown as the recording time left (warned
+ *                and stopped cleanly near full); Offline Files sends them to the server. A plain browser
+ *                uploads over the socket as before, with MAX_RECORDING_BYTES.
  *   power        the camera and microphone run only while the window is on screen: minimised, closed or on
  *                a hidden page every track stops (DreamOS powers the FaceTime HD camera down ~3 s later) and
  *                the meter's AudioContext closes. A recording keeps its tracks until it is stopped; only
@@ -27,8 +33,15 @@
     const PREFS_KEY = 'melatonCameraPrefs';
     const METER_BARS = 16;
     const TICK_MS = 80;
-    // a recording is sent through the socket as base64: stop before the message outgrows it
+    // without CaféReady a recording is sent through the socket as base64: stop before the message outgrows it
     const MAX_RECORDING_BYTES = 60 * 1024 * 1024;
+    const CAMERA_ROLL = 'Camera Roll';
+    const CAMCORDER = 'Camcorder';
+    // a recording is stopped when the disk has less than this much recording time left (and warned at WARN_S)
+    const STOP_S = 5;
+    const WARN_S = 60;
+    // the recorder's rates (startRecording): what a second costs before the first second is measured
+    const NOMINAL_BPS = (4000000 + 128000) / 8;
     const SIZES = [[320, 240], [640, 480], [800, 600], [1024, 768], [1280, 720], [1280, 960], [1600, 1200], [1920, 1080], [2560, 1440], [3840, 2160]];
     const RATES = [5, 10, 15, 20, 24, 25, 30, 50, 60];
     const TYPES = [
@@ -40,6 +53,12 @@
     const vfs = () => root.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null); // eslint-disable-line no-undef
     const ws = () => root.wsClient || (typeof wsClient !== 'undefined' ? wsClient : null); // eslint-disable-line no-undef
     const workspace = () => (typeof activeWorkspace !== 'undefined' && activeWorkspace ? activeWorkspace : (root.activeWorkspace || '')); // eslint-disable-line no-undef
+    // Offline Files on a CaféReady client (public/scripts/comp/offlineFiles.js): Camera Roll is written here first
+    const offline = () => root.melatonOfflineFiles || null;
+    const rollPath = (w) => `/Workspaces/${w}/${CAMERA_ROLL}`;
+    const camcorderPath = (w) => `${rollPath(w)}/${CAMCORDER}`;
+    const viaHost = (folder) => { const o = offline(); return !!(o && o.available() && o.takes(folder)); };
+    const left = (s) => { const t = Math.max(0, Math.floor(s)); return t >= 3600 ? `${Math.floor(t / 3600)}:${pad(Math.floor(t / 60) % 60)}:${pad(t % 60)}` : `${Math.floor(t / 60)}:${pad(t % 60)}`; };
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const clock = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
     const pad = (n) => String(n).padStart(2, '0');
@@ -261,8 +280,8 @@
                     { text: rec && rec.paused ? 'Resume Recording' : 'Pause Recording', action: 'pause', disabled: !rec },
                     { separator: true },
                     { text: 'Open Last Capture', action: 'open-last', disabled: !this.last },
-                    { text: 'Open Pictures Folder', action: 'open-pictures', disabled: !workspace() },
-                    { text: 'Open Videos Folder', action: 'open-videos', disabled: !workspace() },
+                    { text: 'Open Camera Roll Folder', action: 'open-pictures', disabled: !workspace() },
+                    { text: 'Open Camcorder Folder', action: 'open-videos', disabled: !workspace() },
                     { separator: true },
                     { text: 'Exit', action: 'exit' }
                 ];
@@ -288,8 +307,8 @@
                 case 'pause': return this.togglePause();
                 case 'retry': return this.open(true);
                 case 'open-last': return this.openLast();
-                case 'open-pictures': { const w = workspace(); if (w) await call('openExplorerApplet', `/Workspaces/${w}/Pictures`); return undefined; }
-                case 'open-videos': { const w = workspace(); if (w && await this.videosFolder(w)) await call('openExplorerApplet', `/Workspaces/${w}/Videos`); return undefined; }
+                case 'open-pictures': { const w = workspace(); if (w && await this.rollFolder(w)) await call('openExplorerApplet', rollPath(w)); return undefined; }
+                case 'open-videos': { const w = workspace(); if (w && await this.rollFolder(w, CAMCORDER)) await call('openExplorerApplet', camcorderPath(w)); return undefined; }
                 case 'mirror': this.prefs.mirror = !this.prefs.mirror; this.savePrefs(); this.syncMirror(); return undefined;
                 case 'refresh': return this.enumerate();
                 case 'help': return this.help();
@@ -629,11 +648,19 @@
             const name = `Picture ${stamp(new Date())}.png`;
             const seq = ++this.captureSeq;
             this.setStatus('Saving the picture...');
+            const folder = rollPath(w);
             try {
-                const resp = await ws().uploadWorkspaceImage(await blobToBase64(blob), w, name, { currentIndex: 0, totalCount: 1 });
-                if (!resp || resp.success === false || !resp.filename) throw new Error((resp && (resp.message || resp.error)) || 'The server did not keep the picture.');
-                this.saved(seq, { kind: 'picture', name, filename: resp.filename }, blob, `${name} was saved to Pictures.`);
-                if (typeof root.loadGallery === 'function') root.loadGallery(true);
+                if (viaHost(folder)) {
+                    // this computer's disk first (no wait on the server); Offline Files sends it
+                    const item = await offline().putFile(folder, name, blob, 'image/png');
+                    this.saved(seq, { kind: 'picture', name: item.name || name, path: item.path, local: true }, blob, `${item.name || name} was saved to ${CAMERA_ROLL}.`);
+                } else {
+                    if (!(await this.rollFolder(w))) throw new Error(`The ${CAMERA_ROLL} folder could not be made.`);
+                    const resp = await vfs().uploadFile(folder, await blobToBase64(blob), name, 'image/png');
+                    if (!resp || resp.success === false) throw new Error((resp && (resp.message || resp.error)) || 'The server did not keep the picture.');
+                    const stored = (resp.file && resp.file.name) || name;
+                    this.saved(seq, { kind: 'picture', name: stored, path: `${folder}/${stored}` }, blob, `${stored} was saved to ${CAMERA_ROLL}.`);
+                }
             } catch (err) {
                 this.setStatus('The picture was not saved.');
                 await this.message(`The picture could not be saved.\n${(err && err.message) || err}`);
@@ -652,10 +679,38 @@
                 return;
             }
             const rec = { seq: ++this.captureSeq, recorder, chunks: [], bytes: 0, type, t0: performance.now(), elapsed: 0, paused: false, started: new Date(), sound: !!this.audioTrack() };
+            const w = workspace();
+            rec.name = `Video ${stamp(rec.started)}.${type.ext}`;
+            // CaféReady: each second goes straight into the file on this computer's disk (no cap but the disk)
+            if (w && viaHost(camcorderPath(w))) {
+                const sp = offline().space();
+                if ((sp.writable || 0) < NOMINAL_BPS * (STOP_S + 5)) {
+                    void this.message('There is not enough free disk space on this computer to record video. Free some space, and then try again.');
+                    return;
+                }
+                rec.writable = sp.writable;
+                rec.writer = offline().createWriter(camcorderPath(w), rec.name, type.mime.split(';')[0]).catch((err) => { rec.failed = err; return null; });
+                rec.writes = Promise.resolve();
+            }
             recorder.addEventListener('dataavailable', (e) => {
                 if (!e.data || !e.data.size) return;
-                rec.chunks.push(e.data);
                 rec.bytes += e.data.size;
+                if (rec.writer) {
+                    const piece = e.data;
+                    rec.writes = rec.writes.then(async () => {
+                        const wr = await rec.writer;
+                        if (!wr || rec.failed) return;
+                        try {
+                            const r = await wr.write(piece);
+                            rec.writable = r.writable;
+                        } catch (err) {
+                            rec.failed = err;
+                        }
+                        this.checkSpace(rec);
+                    });
+                    return;
+                }
+                rec.chunks.push(e.data);
                 if (rec.bytes >= MAX_RECORDING_BYTES && recorder.state !== 'inactive') {
                     rec.full = true;
                     void this.stopRecording();
@@ -708,43 +763,96 @@
             // the window was minimised or hidden while it recorded: the camera goes off now
             if (!this.seen() && this.stream) this.release('off');
             const mime = rec.type.mime.split(';')[0];
+            const where = `${CAMERA_ROLL}\\${CAMCORDER}`;
+            if (rec.writer) {
+                // the file is on this computer's disk already: close it, and Offline Files sends it to the server
+                try {
+                    await rec.writes;
+                    const wr = await rec.writer;
+                    if (!wr) throw rec.failed || new Error('Offline Files could not create the file.');
+                    if (!rec.bytes) { wr.abort(); this.setStatus('Nothing was recorded.'); return; }
+                    const item = await wr.close();
+                    const poster = await this.posterOfUrl(offline().fileUrl(item.path));
+                    this.saved(rec.seq, { kind: 'video', name: item.name, path: item.path, local: true }, poster, `${item.name} (${clock(rec.elapsed)}) was saved to ${where}.`);
+                    if (rec.failed && rec.failed.code !== 'FULL') await this.message(`The recording was stopped because the video could not be written.\n${rec.failed.message || rec.failed}\nWhat was recorded was saved to ${where}.`);
+                    else if (rec.full) await this.message(`The recording was stopped because the disk is almost full. The video was saved to ${where}.`);
+                } catch (err) {
+                    this.setStatus('The video was not saved.');
+                    await this.message(`The video could not be saved.\n${(err && err.message) || err}`);
+                }
+                return;
+            }
             const blob = new Blob(rec.chunks, { type: mime });
             rec.chunks = [];
             if (!blob.size) { this.setStatus('Nothing was recorded.'); return; }
-            const name = `Video ${stamp(rec.started)}.${rec.type.ext}`;
+            const name = rec.name || `Video ${stamp(rec.started)}.${rec.type.ext}`;
             const w = workspace();
             try {
                 if (!w) throw new Error('There is no workspace to save the video in.');
-                const folder = await this.videosFolder(w);
-                if (!folder) throw new Error('The Videos folder could not be made.');
+                const folder = await this.rollFolder(w, CAMCORDER);
+                if (!folder) throw new Error(`The ${CAMCORDER} folder could not be made.`);
                 const resp = await vfs().uploadFile(folder, await blobToBase64(blob), name, mime);
                 if (!resp || resp.success === false) throw new Error((resp && (resp.message || resp.error)) || 'The server did not keep the video.');
                 const stored = (resp.file && resp.file.name) || name;
-                this.saved(rec.seq, { kind: 'video', name: stored, path: `${folder}/${stored}` }, await this.posterOf(blob), `${stored} (${clock(rec.elapsed)}) was saved to Videos.`);
-                if (rec.full) await this.message('The recording was stopped because the file reached its maximum size. The video was saved to Videos.');
+                this.saved(rec.seq, { kind: 'video', name: stored, path: `${folder}/${stored}` }, await this.posterOf(blob), `${stored} (${clock(rec.elapsed)}) was saved to ${where}.`);
+                if (rec.full) await this.message(`The recording was stopped because the file reached its maximum size. The video was saved to ${where}.`);
             } catch (err) {
                 this.setStatus('The video was not saved.');
                 await this.message(`The video could not be saved.\n${(err && err.message) || err}`);
             }
         }
 
-        /** /Workspaces/<ws>/Videos, made the first time (its name is not reserved, so it is a user folder). */
-        async videosFolder(w) {
+        /**
+         * /Workspaces/<ws>/Camera Roll (and Camcorder in it) on the server, made the first time: the uploads of a
+         * client without CaféReady, and the folder menu. (With CaféReady the server makes them when the first file
+         * arrives; until then Explorer shows them from this computer's Offline Files.)
+         */
+        async rollFolder(w, sub) {
             const base = `/Workspaces/${w}`;
-            const path = `${base}/Videos`;
-            const has = async () => {
-                const r = await vfs().listDirectory(base);
+            const want = sub ? camcorderPath(w) : rollPath(w);
+            const has = async (dir, name) => {
+                const r = await vfs().listDirectory(dir);
                 const items = (r && (r.items || r.entries)) || [];
-                return items.some((it) => it && it.name === 'Videos' && (it.kind === 'folder' || it.type === 'folder' || it.isFolder));
+                return items.some((it) => it && it.name === name && (it.kind === 'folder' || it.type === 'folder' || it.isFolder));
             };
-            try {
-                if (await has()) return path;
-                await vfs().createFolder(base, 'Videos');
-                return path;
-            } catch (_) {
-                // made meanwhile (another window): it is there now
-                try { return (await has()) ? path : null; } catch (__) { return null; }
+            const ensure = async (dir, name) => {
+                try {
+                    if (await has(dir, name)) return true;
+                    await vfs().createFolder(dir, name);
+                    return true;
+                } catch (_) {
+                    // made meanwhile (another window), or no server: the offline copy answers
+                    try { return await has(dir, name); } catch (__) { return false; }
+                }
+            };
+            if (!(await ensure(base, CAMERA_ROLL))) return viaHost(want) ? want : null;
+            if (sub && !(await ensure(rollPath(w), sub))) return viaHost(want) ? want : null;
+            return want;
+        }
+
+        /** The recording time left on this computer's disk, at what a second has cost so far; near full it stops. */
+        checkSpace(rec) {
+            if (!rec.writer || rec.stopping) return;
+            const secs = (rec.elapsed + (rec.paused ? 0 : performance.now() - rec.t0)) / 1000;
+            const bps = secs > 3 ? rec.bytes / secs : NOMINAL_BPS;
+            rec.left = (rec.writable || 0) / Math.max(1, bps);
+            if (rec.failed || rec.left < STOP_S) {
+                rec.full = true;
+                void this.stopRecording();
+                return;
             }
+            if (rec.left < WARN_S && !rec.warned) {
+                rec.warned = true;
+                this.setStatus('The disk is almost full. The recording will stop soon.');
+            } else if (!rec.warned) {
+                this.setStatus(`${rec.sound ? 'Recording video with sound' : 'Recording video (no microphone)'} - ${left(rec.left)} left on the disk`);
+            }
+        }
+
+        /** A recording's first frame from its offline copy (the loopback URL). */
+        posterOfUrl(url) {
+            if (!url) return Promise.resolve(null);
+            return fetch(url, { headers: { Range: 'bytes=0-4194303' } }).then((r) => r.blob()).then((b) => this.posterOf(b)).catch(() => null);
         }
 
         /** The last capture's little picture: the frame itself, or a recording's first frame. */
@@ -792,16 +900,19 @@
         async openLast() {
             const l = this.last;
             if (!l) return;
+            // the copy on this computer while Offline Files has it (it lets it go once the server has the file)
+            const st = l.local && offline() ? offline().stat(l.path) : null;
+            const base = vfs() && vfs().getBasePath();
+            const url = st && st.local ? offline().fileUrl(l.path) : (base ? `${base}/fs/read?path=${encodeURIComponent(l.path)}` : null);
+            if (!url) { await this.message(`The ${l.kind === 'picture' ? 'picture' : 'video'} could not be opened.`); return; }
             if (l.kind === 'picture') {
-                const found = typeof root.findImageByFilename === 'function' ? root.findImageByFilename(l.filename) : null;
-                if (typeof root.openGalleryImageInViewer === 'function') root.openGalleryImageInViewer(found || { filename: l.filename, original: l.filename });
+                if (typeof root.openImageInViewer === 'function') root.openImageInViewer(url, l.name, {});
                 return;
             }
             const fl = root.featureLoader || (typeof featureLoader !== 'undefined' ? featureLoader : null); // eslint-disable-line no-undef
             if (fl && typeof fl.loadFeature === 'function') await fl.loadFeature('media_player');
-            const base = vfs() && vfs().getBasePath();
-            if (!base || typeof root.openDesktopMediaPlayerUrl !== 'function') { await this.message('The video could not be opened.'); return; }
-            root.openDesktopMediaPlayerUrl(`${base}/fs/read?path=${encodeURIComponent(l.path)}`, l.name);
+            if (typeof root.openDesktopMediaPlayerUrl !== 'function') { await this.message('The video could not be opened.'); return; }
+            root.openDesktopMediaPlayerUrl(url, l.name);
         }
 
         // ---- drawing ----
@@ -883,7 +994,7 @@
         }
 
         help() {
-            void this.message('Choose the camera and the microphone at the top of the window. Take Picture (Space) saves a picture to Pictures; Start Recording records video with sound into the Videos folder of your workspace, and Stop Recording saves it. Click the picture at the lower right to open the last capture.\nThe camera is off while the window is minimized.');
+            void this.message('Choose the camera and the microphone at the top of the window. Take Picture (Space) saves a picture to the Camera Roll folder of your workspace; Start Recording records video with sound into Camera Roll\\Camcorder, and Stop Recording saves it. On this computer the files are kept on its disk until Offline Files has sent them to the server. Click the picture at the lower right to open the last capture.\nThe camera is off while the window is minimized.');
         }
 
         /** Vista asks before a recording is thrown away; here the recording is saved first. */
@@ -903,6 +1014,8 @@
                 } else if (r) {
                     r.saved = true;
                     try { r.recorder.stop(); } catch (_) { /* stopped */ }
+                    // not saved: the file on this computer goes too
+                    if (r.writer) void r.writes.then(() => r.writer).then((wr) => { if (wr) wr.abort(); });
                     this.rec = null;
                 }
             }
@@ -911,7 +1024,14 @@
 
         destroy() {
             this.openSeq += 1;
-            if (this.rec) { this.rec.saved = true; try { this.rec.recorder.stop(); } catch (_) { /* stopped */ } this.rec = null; }
+            if (this.rec) {
+                const r = this.rec;
+                r.saved = true;
+                try { r.recorder.stop(); } catch (_) { /* stopped */ }
+                // what was recorded stays: the file is closed and Offline Files sends it
+                if (r.writer) void r.writes.then(() => r.writer).then((wr) => (wr ? wr.close() : null)).catch(() => {});
+                this.rec = null;
+            }
             this.release();
             if (this.last && this.last.thumb) URL.revokeObjectURL(this.last.thumb);
             this.last = null;
