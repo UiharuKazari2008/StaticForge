@@ -230,8 +230,19 @@
         [101, 'B', 13, 20, 225, 10, CHECK, '&Use all F1, F2, etc. keys as standard function keys', 0],
         [102, 'S', 25, 34, 213, 24, TEXT, 'When this option is selected, press the Fn key to use the special features printed on each key.', 0],
         [103, 'S', 7, 70, 238, 9, TEXT, '&Keys this computer handles itself:', 0],
-        [104, 'S', 7, 81, 238, 129, TEXT, '', 0]
+        [104, 'S', 7, 81, 238, 106, TEXT, '', 0],
+        [105, 'S', 7, 196, 30, 9, TEXT, 'Acti&on:', 0],
+        [106, 'C', 40, 194, 150, 100, COMBO, '', 0]
     ]);
+    // the keys in the Mac's top-row order (cafeready settings.rs HOTKEYS / KEY_ACTIONS); the assignable ones take an
+    // action from Melaton's (desktopHotkeys.js) in the Action box
+    const KEY_ORDER = ['Brightness Down', 'Brightness Up', 'Mission Control', 'Launchpad', 'Keyboard Light Down', 'Keyboard Light Up',
+        'Previous Track', 'Play/Pause', 'Next Track', 'Mute', 'Volume Down', 'Volume Up', 'Power'];
+    const KEY_ACTION_TEXT = {
+        flip3d: 'Switch between windows (Flip 3D)', start: 'Open the Start menu', allprograms: 'Show All Programs',
+        desktop: 'Show the desktop', playpause: 'Play or pause', next: 'Next track', previous: 'Previous track', stop: 'Stop',
+        none: '(None)'
+    };
 
     const KBDLIGHT_TPL = page('Backlight', [
         [100, 'B', 7, 7, 238, 50, GROUP, 'Low light', 0],
@@ -462,8 +473,32 @@
                 ctx.enable(101, !!fn, 'dreamos:fnkeys');
                 ctx.enable(102, !!fn, 'dreamos:fnkeys');
                 const list = ctx.holder(104, 'dreamos:fnkeys');
+                // the assignable keys' actions as chosen in this sheet (applied on OK / Apply)
+                const chosen = ctx.store.keyActions = {};
+                (input.keyActions || []).forEach((k) => { chosen[k.id] = k.action; });
+                const keys = [...(input.hotkeys || []).map((k) => ({ key: k.key, text: k.action })),
+                    ...(input.keyActions || []).map((k) => ({ key: k.key, id: k.id }))]
+                    .sort((a, b) => ((KEY_ORDER.indexOf(a.key) + 1) || 99) - ((KEY_ORDER.indexOf(b.key) + 1) || 99));
+                const textOf = (k) => (k.id ? KEY_ACTION_TEXT[chosen[k.id]] || chosen[k.id] : k.text);
+                const actions = (input.actions || Object.keys(KEY_ACTION_TEXT)).filter((a) => KEY_ACTION_TEXT[a]);
+                ctx.options(106, actions.map((a) => ({ value: a, text: KEY_ACTION_TEXT[a] })), undefined, 'dreamos:fnkeys');
+                let current = null;
+                const select = (i) => {
+                    current = keys[i] || null;
+                    const on = !!(current && current.id);
+                    if (on) ctx.set(106, chosen[current.id], 'dreamos:fnkeys');
+                    ctx.enable(105, on, 'dreamos:fnkeys');
+                    ctx.enable(106, on, 'dreamos:fnkeys');
+                };
+                ctx.on(106, 'change', () => {
+                    if (!current || !current.id) return;
+                    chosen[current.id] = String(ctx.get(106, 'dreamos:fnkeys'));
+                    const row = list && list.querySelector(`.vdt-lv-row[data-i="${keys.indexOf(current)}"] span:last-child`);
+                    if (row) row.textContent = textOf(current);
+                    ctx.dirty();
+                }, 'dreamos:fnkeys');
                 if (list) {
-                    const rows = (input.hotkeys || []).map((k, i) => `<div class="vdt-lv-row${i === 0 ? ' is-selected' : ''}"><span style="width:120px">${esc(k.key)}</span><span>${esc(k.action)}</span></div>`).join('');
+                    const rows = keys.map((k, i) => `<div class="vdt-lv-row${i === 0 ? ' is-selected' : ''}" data-i="${i}"><span style="width:120px">${esc(k.key)}</span><span>${esc(textOf(k))}</span></div>`).join('');
                     list.innerHTML = `<div class="vdt-listview vdt-edge is-report" style="position:absolute;inset:0;" tabindex="0">
                         <div class="vdt-lv-header"><span class="vdt-lv-col" style="width:120px">Key</span><span class="vdt-lv-col">Action</span></div>
                         <div class="vdt-lv-body">${rows}</div></div>`;
@@ -472,8 +507,10 @@
                         if (!row) return;
                         list.querySelectorAll('.vdt-lv-row.is-selected').forEach((x) => x.classList.remove('is-selected'));
                         row.classList.add('is-selected');
+                        select(Number(row.dataset.i));
                     });
                 }
+                select(0);
             }
             const power = hostPower();
             if (power && power.keyboard && ctx.page('dreamos:kbdlight')) {
@@ -497,6 +534,14 @@
             if (R()) await R().set(KEY.desktop, { CursorBlinkRate: stop === 0 ? -1 : 1200 - (stop - 1) * 100 });
             if (ctx.store.input && ctx.store.input.fnKeys && ctx.page('dreamos:fnkeys')) {
                 await hostSet(ctx, { fnKeys: ctx.get(101, 'dreamos:fnkeys') ? 'function' : 'media' });
+            }
+            // the keys' actions that changed (cafeready keeps them and acts on the next press)
+            if (ctx.store.input && ctx.store.keyActions && ctx.page('dreamos:fnkeys')) {
+                const was = {};
+                (ctx.store.input.keyActions || []).forEach((k) => { was[k.id] = k.action; });
+                const diff = {};
+                Object.entries(ctx.store.keyActions).forEach(([id, a]) => { if (was[id] !== a) diff[id] = a; });
+                if (Object.keys(diff).length) await hostSet(ctx, { keyActions: diff });
             }
             if (ctx.store.kbd && ctx.page('dreamos:kbdlight') && root.DreamOSPowerOptions) {
                 const want = {
