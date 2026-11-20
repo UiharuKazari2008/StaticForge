@@ -376,16 +376,12 @@
 :where(html[data-hidpi-tier="150"]) body.windows-classic-theme .dove-move-row.is-selected .dove-move-label{background-image:none}
 /* css/desktop-apps/mediaPlayer.css */
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer > .modal-content.wmp-content, :where(html[data-hidpi-tier="150"]) body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-content{background-image:none}
-:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tabstrip{background-image:linear-gradient(#7a8295 0, #7a8295 1px, #626c88 1px, #393f4d 16px, #151516 16px, #151516 17px, #111 17px, #121212 24px, #12131d 25px, #181e31 27px, #29314d 29px, #394267 31px, #3c476f 33px, #646c89 33px, #646c89 34px, #222 34px)}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-orb{background-image:radial-gradient(ellipse 60% 40% at 50% 18%, hsl(0 0% 100% / 70%), hsl(0 0% 100% / 0%) 70%), radial-gradient(ellipse 70% 55% at 50% 100%, #78b6ff, #2c6bd6 55%, hsl(0 0% 100% / 0%) 80%), linear-gradient(#5a78b8, #1e3b86 45%, #0a2566 50%, #16418f)}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-orb:hover:not(:disabled){background-image:radial-gradient(ellipse 60% 40% at 50% 18%, hsl(0 0% 100% / 85%), hsl(0 0% 100% / 0%) 70%), radial-gradient(ellipse 70% 55% at 50% 100%, #9fd0ff, #3f86ec 55%, hsl(0 0% 100% / 0%) 80%), linear-gradient(#7a98d8, #2a4fa2 45%, #163584 50%, #2358b4)}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-orb:active:not(:disabled){background-image:linear-gradient(#17306a, #0a2060 50%, #10306f)}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-orb:disabled{background-image:radial-gradient(ellipse 60% 40% at 50% 18%, hsl(0 0% 100% / 40%), hsl(0 0% 100% / 0%) 70%), linear-gradient(#6b7382, #3c4352 45%, #2c3240 50%, #3e4654)}
-:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab:not(:first-child)::before{background-image:linear-gradient(hsl(0 0% 100% / 10%), #2d323b 40%, #2d323b 60%, hsl(0 0% 100% / 10%))}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab-label{background-image:none}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab-menu{background-image:none}
-:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab:hover:not(.is-active), :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab:has(.context-open):not(.is-active){background-image:linear-gradient(#3d4454, #2a3140 47%, #1b1f28 50%, #22272f)}
-:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab.is-active{background-image:linear-gradient(#8ea6de, #6d8cc8 47%, #4d6fb8 50%, #4f74c2 80%, #6c8fd2)}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-page{background-image:none}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-stage{background-image:none}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-stage video{background-image:none}
@@ -430,6 +426,7 @@
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-stage.is-fullscreen{background-image:none}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-star{background-image:url("/static_images/vista-wmp/star.png")}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-star.is-on{background-image:url("/static_images/vista-wmp/star-gold.png")}
+:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-viewtile{background-image:none}
 /* css/desktop-apps/remoteDesktopConnection.css */
 :where(html[data-hidpi-tier="150"]) .rdc-client .rdc-opt-icon{background-image:none}
 :where(html[data-hidpi-tier="150"]) .rdc-client .rdc-opt-logon{background-image:image-set(url('/static_images/hidpi/150/vista-mstsc/opt-logon.png') 1.5x)}
@@ -1094,6 +1091,14 @@ html:where([data-hidpi-tier="150"]) body.desktop-mode:not(.windows-classic-theme
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-volarrow:hover{background-image:image-set(url('/static_images/hidpi/150/vista-wmp/volume-split-arrow-hot.png') 1.5333x)}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-volarrow:is(:hover:active, .is-open){background-image:image-set(url('/static_images/hidpi/150/vista-wmp/volume-split-arrow-down.png') 1.5333x)}
 :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-volpop{background-image:image-set(url('/static_images/hidpi/150/vista-wmp/volume-popup.png') 1.5x)}
+:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab:hover:not(.is-active), :where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab:has(.context-open):not(.is-active){border-image-source:image-set(url('/static_images/hidpi/150/vista-wmp/tab-hot.png') 1.5x)}
+:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab:active:not(.is-active){border-image-source:image-set(url('/static_images/hidpi/150/vista-wmp/tab-down.png') 1.5x)}
+:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab.is-active{border-image-source:image-set(url('/static_images/hidpi/150/vista-wmp/tab-selected.png') 1.5x)}
+:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab.is-active:is(:hover, :has(.context-open)){border-image-source:image-set(url('/static_images/hidpi/150/vista-wmp/tab-selected-hot.png') 1.5x)}
+:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab.is-active:active{border-image-source:image-set(url('/static_images/hidpi/150/vista-wmp/tab-selected-down.png') 1.5x)}
+:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab:is([data-tab="library"], [data-tab="online-stores"])::before{background-image:image-set(url('/static_images/hidpi/150/vista-wmp/tab-divider.png') 2x)}
+:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tabstrip{background-image:image-set(url('/static_images/hidpi/150/vista-wmp/tab-strip.png') 2x)}
+:where(html[data-hidpi-tier="150"]) #desktopMediaPlayer .wmp-tab-menu::before{background-image:image-set(url('/static_images/hidpi/150/vista-wmp/tab-arrow.png') 1.5556x)}
 /* css/token-display.css */
 :where(html[data-hidpi-tier="150"]) #tokenDisplayModal .token-analysis-box{border-image-source:image-set(url("/static_images/hidpi/150/vista-controls/edit-normal.png") 1.5x);background-image:none}
 :where(html[data-hidpi-tier="150"]) #tokenDisplayModal .token-analysis-box:focus-visible{border-image-source:image-set(url("/static_images/hidpi/150/vista-controls/edit-focus.png") 1.6x)}

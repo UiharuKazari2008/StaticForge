@@ -43,6 +43,7 @@ const OP_GROUP = {
     status: null, // always allowed once connected
     storage: 'files',
     stream: 'files',
+    media: 'files', // media sharing (#956): the phone's music and videos in a computer's Media Player
     studio: 'session',
     clipboard: 'clipboard',
     open: 'clipboard',
@@ -400,6 +401,10 @@ function describeDevice(globalResources, wsServer, row) {
         online: live.length > 0,
         session: sess ? sess.session : null,
         speakers: live.map((s) => s.info.as.speaker),
+        // the phone shares its media library (#956): its app answers media.list (DSApp ActiveSyncMedia)
+        media: live.some((s) => socketAnswers(s.info, 'media.list')),
+        // a test device (modules/testDevices.js, the emulators): Media Player lists it only while it is connected
+        test: isTestDevice(row.device_id),
         partner: !!row.partner,
         permissions: sess ? sess.permissions : parseJson(row.permissions, []),
         syncItems: parseJson(row.sync_items, []),

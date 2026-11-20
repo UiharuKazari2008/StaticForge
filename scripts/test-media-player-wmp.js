@@ -90,12 +90,23 @@ assert.ok(read('public/scripts/comp/desktop-apps/emotion.js').includes("resultBa
 const css = read('public/css/desktop-apps/mediaPlayer.css');
 assert.ok(css.includes('--window-frame-bottom: 60px;'), 'the frame extends 60px into the client for the transport (the VM)');
 assert.ok(read('public/css/aero-glass.css').includes('--window-frame-bottom: 0px;') && read('public/css/modal-window-title-toolbar.css').includes('bottom: calc(var(--window-frame-inset) + var(--window-frame-bottom, 0px) - 2px);'), 'the frame honours the extension');
-assert.ok(css.includes('height: 36px;') && css.includes('#7a8295 0, #7a8295 1px, #626c88 1px, #393f4d 16px, #151516 16px'), "the tab strip's measured gradient");
+assert.ok(css.includes('height: 36px;'), 'the tab strip is 36px');
 // the bar (#956): wmploc's art placed where the VM draws it, around the client's centre
 assert.ok(css.includes('left: calc(round(down, 50%, 1px) - 279px);') && css.includes('width: 558px;'), 'the pill (2164) centred on the whole pixel left of the middle (the VM at odd widths)');
 assert.ok(css.includes('left: 171px;') && css.includes('width: 182px;'), 'the transport group (4153) at -108');
 assert.ok(css.includes('right: calc(round(up, 50%, 1px) + 217px);'), 'the elapsed time 217px left of the centre');
 const theme = read('public/css/themes/vista/media-player.css');
+// the tabs (#956 round 3): wmploc's tab bitmaps and strip, nine-sliced
+['tab-strip', 'tab-selected', 'tab-selected-hot', 'tab-selected-down', 'tab-hot', 'tab-down', 'tab-divider']
+    .forEach((name) => assert.ok(theme.includes("url('/static_images/vista-wmp/" + name + ".png')"), name + ' in the theme'));
+// paired phones over ActiveSync (#956 round 3): other libraries, their views page, the relay URLs, push reloads
+assert.ok(js.includes("'media.list', { kind, volume, offset, limit: 500 }") && js.includes("'/api/activesync/file/' + encodeURIComponent(deviceId) + '/media'"), 'a phone lists its library page by page and streams through the relay');
+assert.ok(js.includes("e.event !== 'media.changed'"), 'a change on the phone is pushed, not polled');
+assert.ok(js.includes("/^src:(local|phone|as:[0-9a-f]{32}):(.+)$/"), 'a phone is a library source');
+assert.ok(js.includes('Primary Views</span>') && js.includes('Additional Views</span>') && js.includes("['contributing', 'Contributing Artist']"), "the views page of a shared library's node");
+['view-artist', 'view-album', 'view-songs', 'view-genre', 'view-year', 'view-rating', 'view-contributing', 'view-composer', 'view-parental', 'view-stores']
+    .forEach((name) => assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-wmp', name + '.png')) && fs.existsSync(path.join(ROOT, 'public/static_images/vista-wmp', name + '@2x.png')), name + ' shipped'));
+assert.ok(read('modules/activeSync.js').includes("media: 'files'"), 'media.* needs the files permission');
 // narrow and compact (#956 round 2): the narrow pill under a 614px client, the time 158px left of the centre and
 // gone under 544px, the window folding to 96px below 201px, the VM's minimum 374px
 assert.ok(css.includes('@container (max-width: 613.98px)') && css.includes('left: calc(round(down, 50%, 1px) - 137px);') && css.includes('right: calc(round(up, 50%, 1px) + 158px);') && css.includes('@container (max-width: 543.98px)'), 'the narrow layout');

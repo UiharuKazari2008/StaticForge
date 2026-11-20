@@ -185,3 +185,64 @@
 #desktopMediaPlayer .wmp-volpop {
     background: image-set(url('/static_images/vista-wmp/volume-popup.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-popup.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-popup.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/volume-popup.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-popup.png') 2x) no-repeat;
 }
+
+/* ---- the tabs: wmploc's bitmaps over the strip's 36 rows, nine-sliced with 4px caps (2_45010 selected, 45012
+   selected and hot, 45011 selected and pressed, 5012 hot, 5011 pressed); white labels ---- */
+
+#desktopMediaPlayer .wmp-tab .wmp-tab-label {
+    color: #fff;
+}
+
+#desktopMediaPlayer .wmp-tab:hover:not(.is-active),
+#desktopMediaPlayer .wmp-tab:has(.context-open):not(.is-active) {
+    border-image: image-set(url('/static_images/vista-wmp/tab-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/tab-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/tab-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/tab-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/tab-hot.png') 2x) 0 4 fill / 0 4px stretch;
+}
+
+#desktopMediaPlayer .wmp-tab:active:not(.is-active) {
+    border-image: image-set(url('/static_images/vista-wmp/tab-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/tab-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/tab-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/tab-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/tab-down.png') 2x) 0 4 fill / 0 4px stretch;
+}
+
+#desktopMediaPlayer .wmp-tab.is-active {
+    border-image: image-set(url('/static_images/vista-wmp/tab-selected.png') 1x, url('/static_images/hidpi/125/vista-wmp/tab-selected.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/tab-selected.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/tab-selected.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/tab-selected.png') 2x) 0 4 fill / 0 4px stretch;
+}
+
+#desktopMediaPlayer .wmp-tab.is-active:is(:hover, :has(.context-open)) {
+    border-image: image-set(url('/static_images/vista-wmp/tab-selected-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/tab-selected-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/tab-selected-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/tab-selected-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/tab-selected-hot.png') 2x) 0 4 fill / 0 4px stretch;
+}
+
+#desktopMediaPlayer .wmp-tab.is-active:active {
+    border-image: image-set(url('/static_images/vista-wmp/tab-selected-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/tab-selected-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/tab-selected-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/tab-selected-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/tab-selected-down.png') 2x) 0 4 fill / 0 4px stretch;
+}
+
+/* the dividers: the VM's own column (window x 276 and 693), the strip's rows with the line through them */
+#desktopMediaPlayer .wmp-tab:is([data-tab="library"], [data-tab="online-stores"])::before {
+    background: image-set(url('/static_images/vista-wmp/tab-divider.png') 1x, url('/static_images/hidpi/125/vista-wmp/tab-divider.png') 1x, url('/static_images/hidpi/150/vista-wmp/tab-divider.png') 2x, url('/static_images/hidpi/175/vista-wmp/tab-divider.png') 2x, url('/static_images/hidpi/200/vista-wmp/tab-divider.png') 2x) no-repeat;
+}
+
+/* the tab strip: wmploc's 2_5101 (one column of it, the same across) */
+#desktopMediaPlayer .wmp-tabstrip {
+    background: image-set(url('/static_images/vista-wmp/tab-strip.png') 1x, url('/static_images/hidpi/125/vista-wmp/tab-strip.png') 1x, url('/static_images/hidpi/150/vista-wmp/tab-strip.png') 2x, url('/static_images/hidpi/175/vista-wmp/tab-strip.png') 2x, url('/static_images/hidpi/200/vista-wmp/tab-strip.png') 2x) repeat-x;
+}
+
+#desktopMediaPlayer .wmp-tab-menu::before {
+    background: image-set(url('/static_images/vista-wmp/tab-arrow.png') 1x, url('/static_images/hidpi/125/vista-wmp/tab-arrow.png') 1.2222x, url('/static_images/hidpi/150/vista-wmp/tab-arrow.png') 1.5556x, url('/static_images/hidpi/175/vista-wmp/tab-arrow.png') 1.7778x, url('/static_images/hidpi/200/vista-wmp/tab-arrow.png') 2x) no-repeat;
+}
+
+/* the views page's icons: the library's hot / selected tile look */
+#desktopMediaPlayer .wmp-viewtile span {
+    color: var(--wmp-text, #000);
+}
+
+#desktopMediaPlayer .wmp-viewtile:hover {
+    border-color: var(--wmp-tile-hot-edge);
+    background: var(--wmp-tile-hot);
+}
+
+#desktopMediaPlayer .wmp-viewtile.is-selected {
+    border-color: var(--wmp-tile-sel-edge);
+    background: var(--wmp-tile-sel);
+}
+
+#desktopMediaPlayer .wmp-tree-node.is-offline .wmp-tree-item span {
+    color: var(--wmp-sub-text);
+}

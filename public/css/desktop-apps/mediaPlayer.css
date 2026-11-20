@@ -74,7 +74,6 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     flex: none;
     align-items: stretch;
     height: 36px;
-    background: linear-gradient(#7a8295 0, #7a8295 1px, #626c88 1px, #393f4d 16px, #151516 16px, #151516 17px, #111 17px, #121212 24px, #12131d 25px, #181e31 27px, #29314d 29px, #394267 31px, #3c476f 33px, #646c89 33px, #646c89 34px, #222 34px);
     z-index: 2;
 }
 
@@ -83,7 +82,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     flex: none;
     align-items: center;
     gap: 1px;
-    width: 162px;
+    width: 160px;
     padding-left: 12px;
     box-sizing: border-box;
 }
@@ -153,13 +152,16 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     filter: none;
 }
 
+/* the tabs (#956, measured on the VM at 1000x706): 100px each over the strip's full 36 rows, Now Playing
+   then a 17px gap with the divider in its middle, Library / Rip / Burn / Sync side by side, the divider
+   again 8px after Sync, then Online Stores (176px) right after it; the states are wmploc's own bitmaps (themes/vista/media-player.css),
+   nine-sliced with 4px caps (the middle stretched, as the VM does) */
 #desktopMediaPlayer .wmp-tabs {
     display: flex;
     flex: 1 1 auto;
     align-items: stretch;
-    gap: 17px;
     min-width: 0;
-    padding: 2px 0 0;
+    padding: 0;
     box-sizing: border-box;
     overflow: hidden;
 }
@@ -170,23 +172,39 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     flex: none;
     flex-direction: column;
     width: 100px;
-    height: 33px;
+    height: 36px;
+    border: solid transparent;
+    border-width: 0 4px;
     box-sizing: border-box;
 }
 
-#desktopMediaPlayer .wmp-tab[data-tab="online-stores"] {
-    width: 177px;
+#desktopMediaPlayer .wmp-tab[data-tab="now-playing"] {
+    margin-right: 17px;
 }
 
-/* the divider sits in the gap, 8px after each tab */
-#desktopMediaPlayer .wmp-tab:not(:first-child)::before {
+#desktopMediaPlayer .wmp-tab[data-tab="sync"] {
+    margin-right: 9px;
+}
+
+#desktopMediaPlayer .wmp-tab[data-tab="online-stores"] {
+    width: 176px;
+}
+
+/* the two dividers: 8px after Now Playing and after Sync */
+#desktopMediaPlayer .wmp-tab:is([data-tab="library"], [data-tab="online-stores"])::before {
     content: '';
     position: absolute;
-    top: 1px;
-    bottom: 1px;
-    left: -9px;
+    top: 0;
+    bottom: 0;
     width: 1px;
-    background: linear-gradient(hsl(0 0% 100% / 10%), #2d323b 40%, #2d323b 60%, hsl(0 0% 100% / 10%));
+}
+
+#desktopMediaPlayer .wmp-tab[data-tab="library"]::before {
+    left: -13px;
+}
+
+#desktopMediaPlayer .wmp-tab[data-tab="online-stores"]::before {
+    left: -5px;
 }
 
 #desktopMediaPlayer .wmp-tab-label {
@@ -194,12 +212,11 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     width: 100%;
     min-width: 0;
     min-height: 0;
-    padding: 0 4px 10px;
+    padding: 4px 0 8px 2px;
     border: 0;
     border-radius: 0;
     background: none;
     box-shadow: none;
-    color: #fff;
     font: var(--wmp-font);
     text-align: center;
     white-space: nowrap;
@@ -209,6 +226,12 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 }
 
 /* the small arrow under the label: the tab's menu */
+/* a tab that is not selected sets its label 2px lower (the VM) */
+#desktopMediaPlayer .wmp-tab:not(.is-active) .wmp-tab-label {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
 #desktopMediaPlayer .wmp-tab-menu {
     position: absolute;
     left: 0;
@@ -225,15 +248,25 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     cursor: var(--c-default);
 }
 
+/* the arrow (wmploc's, with its shadow; art in the theme): 45px into a selected tab, 46px into the others and a
+   row lower, as the VM draws them */
 #desktopMediaPlayer .wmp-tab-menu::before {
     content: '';
     position: absolute;
-    left: 50%;
+    left: 42px;
+    top: 3px;
+    width: 9px;
+    height: 5px;
+}
+
+#desktopMediaPlayer .wmp-tab.is-active .wmp-tab-menu::before {
+    left: 41px;
     top: 2px;
-    border: 3px solid transparent;
-    border-top: 3px solid #fff;
-    border-bottom: 0;
-    transform: translateX(-50%);
+}
+
+/* the VM draws a selected tab's 35 upper rows; the strip's last row shows under it */
+#desktopMediaPlayer .wmp-tab.is-active {
+    clip-path: inset(0 0 1px 0);
 }
 
 #desktopMediaPlayer .wmp-tab.is-active .wmp-tab-menu,
@@ -242,25 +275,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     opacity: 1;
 }
 
-/* a hot tab: the glossy box in dark glass; the active one in Vista blue */
-#desktopMediaPlayer .wmp-tab:hover:not(.is-active),
-#desktopMediaPlayer .wmp-tab:has(.context-open):not(.is-active) {
-    border: 1px solid #555d6c;
-    border-radius: 2px;
-    background: linear-gradient(#3d4454, #2a3140 47%, #1b1f28 50%, #22272f);
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 10%);
-}
 
-#desktopMediaPlayer .wmp-tab.is-active {
-    border: 1px solid #4a5a84;
-    border-radius: 2px;
-    background: linear-gradient(#8ea6de, #6d8cc8 47%, #4d6fb8 50%, #4f74c2 80%, #6c8fd2);
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 35%), 0 0 4px hsl(216 60% 60% / 50%);
-}
-
-#desktopMediaPlayer .wmp-tab.is-active .wmp-tab-label {
-    color: #fff;
-}
 
 /* ---- the page ---- */
 
@@ -661,7 +676,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     padding: 0;
     border: 0;
     border-radius: 0;
-    background: url('/static_images/vista-wmp/split-arrow.png') no-repeat 26px 10px;
+    background: image-set(url('/static_images/vista-wmp/split-arrow.png') 1x, url('/static_images/hidpi/125/vista-wmp/split-arrow.png') 1.2222x, url('/static_images/hidpi/150/vista-wmp/split-arrow.png') 1.5556x, url('/static_images/hidpi/175/vista-wmp/split-arrow.png') 1.7778x, url('/static_images/hidpi/200/vista-wmp/split-arrow.png') 2x) no-repeat 26px 10px;
     box-shadow: none;
     cursor: var(--c-default);
 }
@@ -678,13 +693,13 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     top: 5px;
     width: 20px;
     height: 16px;
-    background: url('/static_images/vista-wmp/view-layout.png') no-repeat;
+    background: image-set(url('/static_images/vista-wmp/view-layout.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-layout.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-layout.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/view-layout.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-layout.png') 2x) no-repeat;
 }
 
 #desktopMediaPlayer .wmp-view-options::before {
     left: 0;
     top: 4px;
-    background-image: url('/static_images/vista-wmp/view-options.png');
+    background-image: image-set(url('/static_images/vista-wmp/view-options.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-options.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-options.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/view-options.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-options.png') 2x);
 }
 
 #desktopMediaPlayer .wmp-search {
@@ -1128,6 +1143,16 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     top: 0;
     width: 558px;
     height: 60px;
+}
+
+/* the pill's and the group's empty glass is not theirs: a click on the seek bar above them seeks (the pill's
+   picture starts at the bar's top row) */
+#desktopMediaPlayer :is(.wmp-pill, .wmp-group) {
+    pointer-events: none;
+}
+
+#desktopMediaPlayer :is(.wmp-pill, .wmp-group) > :is(button, .wmp-volume) {
+    pointer-events: auto;
 }
 
 #desktopMediaPlayer .wmp-tbtn {
@@ -1618,10 +1643,55 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 #desktopMediaPlayer .wmp-star {
     width: 13px;
     height: 13px;
-    background: url("/static_images/vista-wmp/star.png") no-repeat center / 13px 13px;
+    background: image-set(url("/static_images/vista-wmp/star.png") 1x, url("/static_images/hidpi/125/vista-wmp/star.png") 1.2857x, url("/static_images/hidpi/150/vista-wmp/star.png") 1.5x, url("/static_images/hidpi/175/vista-wmp/star.png") 1.7857x, url("/static_images/hidpi/200/vista-wmp/star.png") 2x) no-repeat center / 13px 13px;
 }
-#desktopMediaPlayer .wmp-star.is-on { background-image: url("/static_images/vista-wmp/star-gold.png"); }
+#desktopMediaPlayer .wmp-star.is-on { background-image: image-set(url("/static_images/vista-wmp/star-gold.png") 1x, url("/static_images/hidpi/125/vista-wmp/star-gold.png") 1.2857x, url("/static_images/hidpi/150/vista-wmp/star-gold.png") 1.5x, url("/static_images/hidpi/175/vista-wmp/star-gold.png") 1.7857x, url("/static_images/hidpi/200/vista-wmp/star-gold.png") 2x); }
 #desktopMediaPlayer .wmp-stars[data-rate] .wmp-star { cursor: var(--c-pointer, pointer); }
 
 /* a library song's cover in Now Playing (List Pane, the stage, the transport's thumbnail) */
 #desktopMediaPlayer img.is-cover { object-fit: cover; }
+
+/* ---- a paired phone's library (#956): its views page (WMP 11's page for a shared library's node: 32px icons
+   75px apart under "Primary Views" / "Additional Views", the label centred 6px under the icon) ---- */
+
+#desktopMediaPlayer .wmp-viewtiles {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 2px 0 6px;
+}
+
+#desktopMediaPlayer .wmp-viewtile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 75px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+    cursor: var(--c-default);
+}
+
+#desktopMediaPlayer .wmp-viewtile img {
+    display: block;
+    width: 32px;
+    height: 32px;
+    margin-top: 1px;
+}
+
+#desktopMediaPlayer .wmp-viewtile span {
+    margin-top: 2px;
+    padding: 0 2px 2px;
+    font: var(--wmp-font);
+    line-height: 15px;
+    text-align: center;
+    white-space: normal;
+}
+
+/* a paired phone that is not connected: its node greyed (its library is not available) */
+#desktopMediaPlayer .wmp-tree-node.is-offline img {
+    opacity: 0.5;
+}

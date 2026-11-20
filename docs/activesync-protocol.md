@@ -172,3 +172,25 @@ The phone -> the server:
   confirmation goes to no computer.
 - `reminder_snooze { id, minutes }` / `reminder_dismiss { id }` as ordinary packets (fields in `data`), from a
   reminder's notification buttons.
+
+## Media sharing (StaticForge #956)
+
+A paired computer's Media Player lists the phone's music and videos as one of Windows Media Player 11's other
+libraries (the navigation pane's node for the phone, its views page and its views) and plays a song or a video
+streamed from the phone to the one computer tab that asked. The service answers it with no WebView (rule
+cafeready-background); the group is `media` and needs the `files` permission, plus Android's own media
+permission (no All files access).
+
+- `media.hello` -> `{ version: 1, access, volumes: [{ id, generation }] }`
+- `media.list { kind: 'audio' | 'video', volume, offset, limit <= 1000 }` -> `{ kind, volume, generation, total,
+  offset, items }`; a song: `id, title, artist, albumArtist, album, albumId, genre, composer, track, disc, year,
+  duration (ms), size, mime, added (ms)`; a video: `id, title, artist, duration, width, height, size, mime, added,
+  folder`. Nothing is copied: the computer pages through the tags.
+- `stream.send` with `root: 'media'`: `/audio/<volume>/<id>` or `/video/<volume>/<id>` (the file, with the
+  `Range` it was asked for), with `thumb`: `/album/<volume>/<albumId>` (the cover, else a song's own picture) or
+  `/video/<volume>/<id>` (a frame), JPEG. The computer asks through
+  `GET /api/activesync/file/:deviceId/media/<path>` like any phone file.
+- event `media.changed { volume, generation }`: MediaStore changed (a ContentObserver, 2 s after the last change);
+  a computer showing that library reads it again. No polling.
+- The device description says `media: true` when a socket of the phone answers `media.list`; a phone whose app
+  does not yet (DSApp branch `claude/media-share`) shows "needs an update" in Media Player.
