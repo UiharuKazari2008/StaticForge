@@ -106,6 +106,28 @@
     flex: 1;
 }
 
+/* a Property / Value list (Details): the Value column as wide as its longest value, the list scrolling sideways with
+   its header, as the VM's (#952) */
+.vdt-client .dwf-proplist .vdt-lv-header {
+    overflow: hidden;
+}
+
+.vdt-client .dwf-proplist :is(.vdt-lv-col.dwf-col-value, .vdt-lv-row > .dwf-col-value) {
+    flex: 0 0 auto;
+    width: max(var(--dwf-value-w, 0px), 120px);
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.vdt-client .dwf-proplist .vdt-lv-col.dwf-col-value {
+    width: max(var(--dwf-value-w, 0px), 120px, 100%);
+}
+
+.vdt-client .dwf-proplist .vdt-lv-row {
+    width: max-content;
+    min-width: 100%;
+}
+
 .vdt-client .vdt-lv-row.dwf-item {
     gap: 4px;
     padding-left: 4px;

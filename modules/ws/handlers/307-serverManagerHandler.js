@@ -85,7 +85,10 @@ function clientRows() {
             light: !!info.light,
             dormant: !!info.dormant,
             continuity: !!info.continuitySub,
-            userAgentFull: info.userAgent || ''
+            userAgentFull: info.userAgent || '',
+            // the client's Nightshade address (#952: modules/nightshadeAddressPool.js, 314-nightshadeLeaseHandler.js)
+            nightshadeIp: (info.nightshadeLease && info.nightshadeLease.ip) || null,
+            computer: (info.nightshadeLease && info.nightshadeLease.host) || null
         });
     }
     const items = {};
@@ -180,4 +183,9 @@ function registerPackets(handlersCtx) {
     }, { owner: 'serverManager' });
 }
 
-module.exports = { registerPackets };
+/** A client's row changed outside a packet here (its Nightshade address, #952): the open lists get it now. */
+function pokeClients() {
+    clientsFeed.poke();
+}
+
+module.exports = { registerPackets, pokeClients };

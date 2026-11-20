@@ -780,9 +780,10 @@
             // Windows-style device name; tun VPNs go to the VPN group, the rest are Local Area Connections
             const names = customNames();
             let wifis = 0;
+            const labels = uniqueLabels(ifaces);
             return ifaces.filter((x) => x.nc).map((x) => {
                 const id = String(x.alias || x.name);
-                const a = { iface: String(x.name), id, kind: x.kind, label: x.label || '', mac: x.mac || '', enabled: x.enabled !== false, row: x, present: x.present !== false };
+                const a = { iface: String(x.name), id, kind: x.kind, label: labels.get(x) || x.label || '', mac: x.mac || '', enabled: x.enabled !== false, row: x, present: x.present !== false };
                 let base;
                 if (x.kind === 'wifi') { wifis += 1; base = wifis > 1 ? `${ADAPTER} ${wifis}` : ADAPTER; } else if (x.kind === 'vpn') base = x.vpnApp || 'VPN Connection';
                 else { const k = lanNumber(id); base = k > 1 ? `${LAN} ${k}` : LAN; }
@@ -811,6 +812,28 @@
         }).concat(miniportAdapter() ? [miniportAdapter()] : []);
     }
 
+    /** Device names as Device Manager / Network Connections show them: a second adapter with the same description is
+     *  "<name> #2", a third "#3" (Windows numbers its instances; the app's names carry the kernel's number already, so
+     *  this only parts two the app named alike). */
+    function uniqueLabels(rows) {
+        const out = new Map();
+        const seen = new Map();
+        rows.forEach((x) => {
+            const base = String((x && x.label) || '');
+            if (!base) return;
+            const n = (seen.get(base) || 0) + 1;
+            seen.set(base, n);
+            out.set(x, n > 1 ? `${base} #${n}` : base);
+        });
+        return out;
+    }
+
+    /** The Nightshade adapter's lease from the server (melatonNetworkDialogs: 172.18.x.x, #952), or null. */
+    function nightshadeLease() {
+        const d = root.melatonNetworkDialogs;
+        try { return d && typeof d.nightshadeLease === 'function' ? d.nightshadeLease() : null; } catch (_) { return null; }
+    }
+
     /** The Café Miniport: the Nightshade app's virtual Ethernet adapter (#952), while this page rides on it. */
     function miniportAdapter() {
         const d = root.melatonNetworkDialogs;
@@ -818,7 +841,8 @@
         try { info = d && typeof d.connectionInfo === 'function' ? d.connectionInfo() : null; } catch (_) { info = null; }
         if (!info || !info.viaMiniport) return null;
         const names = customNames();
-        return { iface: 'miniport', id: 'miniport', kind: 'miniport', label: info.miniport || 'Xyridian Nightshade Virtual Ethernet Adapter', mac: '', enabled: true, present: true, base: info.connectionName, conn: names.miniport || info.connectionName };
+        const lease = nightshadeLease();
+        return { iface: 'miniport', id: 'miniport', kind: 'miniport', label: info.miniport || 'Xyridian Nightshade Virtual Ethernet Adapter', mac: lease ? lease.nic : '', enabled: true, present: true, base: info.connectionName, conn: names.miniport || info.connectionName };
     }
 
     const wifiAdapter = () => adapters().find((a) => a.kind === 'wifi') || { iface: '', id: 'wlan0', kind: 'wifi', label: '', mac: '', enabled: true, base: ADAPTER, conn: ADAPTER };
@@ -832,14 +856,19 @@
         const s = state();
         if (a.kind === 'miniport') {
             const f = vpnFacts();
-            return { enabled: true, carrier: f.connected, connected: f.connected, network: f.domain || f.name, ip: [], ip6: [], mac: '', speedMbps: f.speedKbps ? f.speedKbps / 1000 : null, config: null, net: null, vpn: f, intranet: true, limited: !!f.limited };
+            const lease = f.connected ? nightshadeLease() : null;
+            return { enabled: true, carrier: f.connected, connected: f.connected, network: f.domain || f.name, ip: lease ? [`${lease.ip}/${lease.prefix || 16}`] : [], ip6: [], mac: lease ? lease.nic : '', speedMbps: f.speedKbps ? f.speedKbps / 1000 : null, config: null, net: null, vpn: f, intranet: true, limited: !!f.limited, lease };
         }
         // the app's v2 rows (#952): a Local Area Connection or a VPN tunnel, from the interface itself
         if (a.row && a.kind !== 'wifi') {
             const r = a.row;
             const m = s.mobile || {};
-            const name = r.kind === 'vpn' ? (r.vpnApp || 'VPN') : r.kind === 'mobile' && r.alias === 'rmnet0' ? (m.carrier || r.apn || N.network) : (r.apn || N.network);
-            return { enabled: a.enabled, present: r.present !== false, carrier: r.present !== false && !!r.up, connected: !!r.connected, network: name, ip: rowList(r, 'ip'), ip6: rowList(r, 'ip6'), mac: r.mac || '', speedMbps: null, config: null, net: null, connectedAt: Number(r.connectedAt) || 0, row: r, vpnTunnel: r.kind === 'vpn' };
+            // (#952) the network's name, as Vista's status line shows it: the cellular data link is the carrier's network
+            // (Windows 7 names a mobile broadband network after its provider); a modem link that is not the phone's data
+            // (the carrier's IMS, a tethering PDN) has no Internet and no gateway Windows could name: Unidentified network
+            const data = r.alias === 'rmnet0';
+            const name = r.kind === 'vpn' ? (r.vpnSession || r.vpnApp || 'VPN') : r.kind === 'mobile' ? (data ? (m.carrier || r.apn || N.network) : 'Unidentified network') : (r.apn || N.network);
+            return { enabled: a.enabled, present: r.present !== false, carrier: r.present !== false && !!r.up, connected: !!r.connected, network: name, ip: rowList(r, 'ip'), ip6: rowList(r, 'ip6'), mac: r.mac || '', speedMbps: null, config: null, net: null, connectedAt: Number(r.connectedAt) || 0, row: r, vpnTunnel: r.kind === 'vpn', dataLink: data || r.kind === 'ethernet' || r.kind === 'lan' || r.kind === 'usb' || r.kind === 'bluetooth' };
         }
         if (a.kind === 'wifi') {
             const w = s.wifi || {};
@@ -1191,6 +1220,10 @@
     function ipv4Text(info, x) {
         if (!info.connected && !(info.carrier && info.enabled)) return S.notConnected;
         const ip = (x && Array.isArray(x.ip) && x.ip.length ? x.ip : info.ip) || [];
+        // (#952) a modem link that carries no IPv4 (the carrier's IMS is IPv6 only): IPv4 is not connected there
+        if (info.row && !info.dataLink && !ip.length) return S.notConnected;
+        // the app's v2 row of a link that is not the phone's Internet (IMS): Local at most
+        if (info.row && !info.dataLink && info.row.kind !== 'vpn') return S.local;
         // a mobile data link or the VPN that is carrying this page reaches the Internet, address or not (an older app
         // does not say the cellular address)
         if (!ip.length && (info.mobile || info.vpn) && info.connected) return internetWord();
@@ -1201,10 +1234,18 @@
     function ipv6Text(info, x) {
         const ip6 = (x && Array.isArray(x.ip6) && x.ip6.length ? x.ip6 : info.ip6) || [];
         if (!info.enabled || !info.carrier || !ip6.length) return S.notConnected;
-        return ip6.some((a) => !/^fe80:/i.test(String(a))) ? S.internet : S.local;
+        const global = ip6.some((a) => !/^fe80:/i.test(String(a)));
+        // (#952) a global address on a link that is not the Internet's (the carrier's IMS) is Local, never Internet
+        if (info.row && !info.dataLink && info.row.kind !== 'vpn') return S.local;
+        return global && reachesInternet() ? S.internet : S.local;
     }
 
-    const macText = (m) => (m ? String(m).replace(/[:.]/g, '-').toUpperCase() : '');
+    // Windows writes a physical address as 00-0C-29-E8-4E-9F (a bare 12-digit one, the Nightshade adapter's, too)
+    const macText = (m) => {
+        const v = String(m || '');
+        if (/^[0-9a-f]{12}$/i.test(v)) return v.toUpperCase().match(/../g).join('-');
+        return v ? v.replace(/[:.]/g, '-').toUpperCase() : '';
+    };
 
     function statusPaint(st) {
         if (!st || !st.ctx.modal.isConnected) return;
@@ -1274,30 +1315,35 @@
         const f = vpnFacts();
         // a VPN app's tunnel (#952): what the interface and its app say
         const r = st.a.row;
-        const x = st.stats || {};
+        // rasdlg's Details (netshell's RAS strings, Vista's order): Device Name, Device Type, Server type, Transports,
+        // Authentication, Encryption, Compression, PPP multilink framing, Server / Client IPv4 address (#952)
+        const lease = nightshadeLease();
+        const wg = /wireguard/i.test((r && r.vpnPackage) || '');
+        const v4 = r ? (rowList(r, 'ip')[0] || '').split('/')[0] : '';
         const rows = r ? [
-            ['Device name', r.label || st.a.iface],
-            ['Device type', 'VPN'],
-            ['Server type', r.vpnApp || 'VPN'],
+            ['Device Name', r.label || st.a.iface],
+            ['Device Type', 'vpn'],
+            ['Server type', wg ? 'WireGuard' : (r.vpnApp || 'VPN')],
             ['Transports', 'TCP/IP'],
-            ['Authentication', /wireguard/i.test(r.vpnPackage || '') ? 'Public key' : ''],
-            ['Encryption', /wireguard/i.test(r.vpnPackage || '') ? 'ChaCha20-Poly1305' : ''],
+            ['Authentication', wg ? 'Public key (Curve25519)' : ''],
+            ['Encryption', wg ? 'ChaCha20-Poly1305' : ''],
             ['Compression', '(none)'],
-            ['Client IPv4 address', (rowList(r, 'ip')[0] || '').split('/')[0]],
-            ['Interface', st.a.iface],
-            ['MTU', r.mtu || ''],
-            ['Bytes sent', bytes(x.txBytes != null ? x.txBytes : r.tx)],
-            ['Bytes received', bytes(x.rxBytes != null ? x.rxBytes : r.rx)]
+            ['PPP multilink framing', 'Off'],
+            ['Server IPv4 address', r.gateway || ''],
+            ['Client IPv4 address', v4]
         ] : [
-            ['Device name', f.device],
-            ['Device type', 'VPN'],
+            ['Device Name', f.device],
+            ['Device Type', 'vpn'],
             ['Server type', 'Xyridian Nightshade'],
             ['Transports', 'TCP/IP (WebSocket)'],
             ['Authentication', f.authentication || 'User Password'],
             ['Encryption', f.encryption],
             ['Compression', f.compression || '(none)'],
+            ['PPP multilink framing', 'Off'],
+            ['Server IPv4 address', lease && f.connected ? lease.gateway : ''],
+            ['Client IPv4 address', lease && f.connected ? lease.ip : ''],
             ['Domain', f.domain],
-            ['Server name', f.server],
+            ['Server name', (lease && lease.domain) || f.server],
             ['Latency', f.latency || S.notAvailable],
             ['Messages sent', Number(f.messagesOut || 0).toLocaleString()],
             ['Messages received', Number(f.messagesIn || 0).toLocaleString()]
@@ -1335,6 +1381,20 @@
             row.append(l, r);
             body.appendChild(row);
         });
+        // (#952) the VM's list keeps each value whole: the Value column is as wide as its longest value (LVSCW_AUTOSIZE)
+        // and the list scrolls sideways, its header with it; nothing is cut to "..."
+        lv.classList.add('dwf-proplist');
+        // (measured once the dialog is on the page: the kit fills it before it shows)
+        const measure = (tries) => {
+            const widest = Math.max(0, ...Array.from(body.querySelectorAll('.dwf-col-value'), (v) => v.scrollWidth));
+            if (widest) lv.style.setProperty('--dwf-value-w', `${Math.ceil(widest) + 2}px`);
+            else if (tries > 0) root.requestAnimationFrame(() => measure(tries - 1));
+        };
+        measure(10);
+        if (head && !lv.dataset.dwfScroll) {
+            lv.dataset.dwfScroll = '1';
+            body.addEventListener('scroll', () => { head.scrollLeft = body.scrollLeft; }, { passive: true });
+        }
     }
 
     /** The sheet is on screen: not closed, not minimised, the page shown and the screen on. */
@@ -1376,40 +1436,88 @@
         if (st && st.timer) { root.clearInterval(st.timer); st.timer = null; }
     }
 
-    async function openDetails(owner, a) {
-        const V = await kit();
-        const ad = a || wifiAdapter();
+    /** The Details rows of an adapter: [[property, value]] (also ipconfig's source). */
+    async function detailRows(ad) {
         const info = adapterInfo(ad);
         const st = statusWins.get(ad.id || ad.iface) || { a: ad, stats: null };
         const x = (await readStats(st)) || {};
+        const r = ad.row || {};
         const cfg = info.config || {};
-        const v4 = ((Array.isArray(x.ip) && x.ip.length ? x.ip : info.ip) || []).map(splitCidr).filter((p) => p.address);
-        const v6 = ((Array.isArray(x.ip6) && x.ip6.length ? x.ip6 : info.ip6) || []).map((v) => String(v).split('/')[0]);
-        const dnsAll = Array.isArray(x.dns) && x.dns.length ? x.dns : (Array.isArray(cfg.dns) ? cfg.dns : []);
+        const lease = ad.kind === 'miniport' ? info.lease || nightshadeLease() : null;
+        const pick = (k) => (Array.isArray(x[k]) && x[k].length ? x[k] : Array.isArray(r[k]) && r[k].length ? r[k] : null);
+        const v4 = ((pick('ip') || info.ip) || []).map(splitCidr).filter((p) => p.address);
+        const v6all = ((pick('ip6') || info.ip6) || []).map((v) => String(v).split('/')[0]);
+        const temp = new Set((pick('ip6Temp') || []).map(String));
+        const linkLocal = v6all.filter((p) => /^fe80:/i.test(p));
+        const v6 = v6all.filter((p) => !/^fe80:/i.test(p) && !temp.has(p));
+        const v6temp = v6all.filter((p) => temp.has(p));
+        const dnsAll = lease ? lease.dns : (pick('dns') || (Array.isArray(cfg.dns) ? cfg.dns : []));
         const dns = dnsAll.filter((d) => !String(d).includes(':'));
         const dns6 = dnsAll.filter((d) => String(d).includes(':'));
-        const dhcp = x.dhcp !== undefined ? !!x.dhcp : cfg.mode !== 'static';
-        const prefix = v4.length && v4[0].prefix !== null ? v4[0].prefix : (Number.isFinite(Number(cfg.prefix)) && cfg.prefix !== null && cfg.prefix !== undefined ? Number(cfg.prefix) : null);
-        const many = (label, list) => (list.length ? list.map((v, i) => [i ? '' : label, v]) : [[label, '']]);
-        // Vista's rows (the VM's Local Area Connection Details); the lease rows need the DHCP server, which the host does not say
-        const rows = [['Connection-specific DNS Suffix', ''], ['Description', ad.label || (ad.kind === 'mobile' ? MOBILE : '') || ad.iface || ''], ['Physical Address', macText(x.mac || info.mac)], ['DHCP Enabled', dhcp ? 'Yes' : 'No']]
-            .concat(many('IPv4 IP Address', v4.map((p) => p.address)))
-            .concat([['IPv4 Subnet Mask', prefix !== null ? maskOf(prefix) : ''], ['IPv4 Default Gateway', x.gateway || cfg.gateway || '']])
-            .concat(many('IPv4 DNS Server', dns))
+        const dhcp = lease ? true : x.dhcp !== undefined ? !!x.dhcp : r.dhcp !== undefined ? !!r.dhcp : (ad.kind === 'mobile' || ad.kind === 'ipa' || ad.kind === 'vpn') ? false : cfg.mode !== 'static';
+        const prefix = lease ? lease.prefix : v4.length && v4[0].prefix !== null ? v4[0].prefix : (Number.isFinite(Number(cfg.prefix)) && cfg.prefix !== null && cfg.prefix !== undefined ? Number(cfg.prefix) : null);
+        const suffix = lease ? (lease.domain || '') : String(x.domains || r.domains || '').split(/[\s,]+/)[0] || '';
+        const dhcpServer = lease ? lease.dhcpServer : (x.dhcpServer || r.dhcpServer || '');
+        const times = lease ? { obtained: lease.obtainedAt, expires: lease.expiresAt } : dhcp ? leaseTimes(x.leaseFrom || r.leaseFrom, x.leaseSec || r.leaseSec) : null;
+        const gateway = lease ? lease.gateway : (x.gateway || r.gateway || cfg.gateway || '');
+        const gateway6 = x.gateway6 || r.gateway6 || '';
+        // netshell builds each label from 'IPv4 ' / 'IPv6 ' and its singular or plural word
+        const many = (label, plural, list) => (list.length ? list.map((v, i) => [i ? '' : (list.length > 1 ? plural : label), v]) : [[label, '']]);
+        const desc = ad.kind === 'miniport' ? ad.label : ad.label || (ad.kind === 'mobile' ? MOBILE : '') || ad.iface || '';
+        const rows = [['Connection-specific DNS Suffix', suffix], ['Description', desc], ['Physical Address', macText(x.mac || info.mac || ad.mac)], ['DHCP Enabled', dhcp ? 'Yes' : 'No']]
+            .concat(many('IPv4 IP Address', 'IPv4 IP Addresses', v4.map((p) => p.address)))
+            .concat([['IPv4 Subnet Mask', prefix !== null ? maskOf(prefix) : '']])
+            .concat(times ? [['Lease Obtained', longDate(times.obtained)], ['Lease Expires', longDate(times.expires)]] : [])
+            .concat([['IPv4 Default Gateway', gateway]])
+            .concat(dhcp ? [['IPv4 DHCP Server', dhcpServer]] : [])
+            .concat(many('IPv4 DNS Server', 'IPv4 DNS Servers', dns))
             .concat([['IPv4 WINS Server', ''], ['NetBIOS over Tcpip Enabled', 'Yes']])
-            .concat(many('Link-local IPv6 Address', v6.filter((p) => /^fe80:/i.test(String(p)))))
-            .concat([['IPv6 Default Gateway', x.gateway6 || '']])
-            .concat(many('IPv6 DNS Server', dns6));
+            .concat(v6.length ? many('IPv6 IP Address', 'IPv6 IP Addresses', v6) : [])
+            .concat(v6temp.length ? many('Temporary IPv6 Address', 'Temporary IPv6 Address', v6temp) : [])
+            .concat(many('Link-local IPv6 Address', 'Link-local IPv6 Address', linkLocal))
+            .concat([['IPv6 Default Gateway', gateway6]])
+            .concat(many('IPv6 DNS Server', 'IPv6 DNS Servers', dns6));
         // the Café Miniport (#952): the Nightshade link the virtual adapter carries, after Windows' own rows
         if (ad.kind === 'miniport') {
             const f = vpnFacts();
-            rows.splice(1, 1, ['Description', ad.label]);
             rows.push(['Server type', 'Xyridian Nightshade'], ['Authentication', f.authentication || 'User Password'], ['Encryption', f.encryption || ''],
-                ['Compression', f.compression || '(none)'], ['Domain', f.domain || ''], ['Server name', f.server || ''],
+                ['Compression', f.compression || '(none)'], ['Domain', f.domain || ''], ['Server name', (lease && lease.domain) || f.server || ''],
                 ['Maximum data rate', f.speedKbps ? speed(f.speedKbps / 1000) : S.notAvailable], ['Latency', f.latency || S.notAvailable],
                 ['Messages sent', Number(f.messagesOut || 0).toLocaleString()], ['Messages received', Number(f.messagesIn || 0).toLocaleString()]);
         }
-        if (ad.row && ad.row.driver) rows.splice(2, 0, ['Driver', ad.row.driver]);
+        return rows;
+    }
+
+    // Vista's Details dates: "Wednesday, November 18, 2026 9:09:28 PM" (the VM's Lease Obtained)
+    function longDate(ms) {
+        const d = new Date(Number(ms));
+        if (!Number.isFinite(d.getTime())) return '';
+        const day = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+        const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+        return `${day} ${time}`;
+    }
+
+    /** A DHCP lease's obtained / expires now: Android's DHCP client renews at half the lease (T1), as Windows' does, so
+     *  a lease that began at `from` was last renewed at the latest T1 mark before now. */
+    function leaseTimes(fromMs, leaseSec) {
+        const from = Number(fromMs);
+        const len = Number(leaseSec) * 1000;
+        if (!from || !(len > 0)) return null;
+        const half = len / 2;
+        const now = Date.now();
+        const obtained = now - from < len ? from : from + Math.floor((now - from - half) / half) * half;
+        return { obtained, expires: obtained + len };
+    }
+
+    /**
+     * The adapter's Network Connection Details (netshell 24300), the VM's rows in its order (#952: real values where
+     * the host has them, blank where Windows shows a blank). A row whose list holds several values says so in the
+     * plural ("IPv4 DNS Servers"), its other values under it, as the VM draws them.
+     */
+    async function openDetails(owner, a) {
+        const V = await kit();
+        const ad = a || wifiAdapter();
+        const rows = await detailRows(ad);
         V.openDialog({
             id: 'dreamosNetDetails',
             key: 'netshell:24300',

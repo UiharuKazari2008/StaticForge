@@ -543,6 +543,67 @@
     api.linkSpeed = () => ({ kbps: link.kbps, rttMs: link.rttMs, at: link.at, limited: link.limited });
     api.probeLink = probeLink;
 
+    // ---- the Nightshade adapter's address (#952, Yukimi Nov 20 2026) ------------------------------------------------
+    //
+    // The server is the adapter's DHCP server (modules/nightshadeAddressPool.js): each time the connection comes up the
+    // page asks for its lease with the adapter's physical address, made once and kept in this computer's storage (the
+    // Android app's phone page and DeX window share it: one computer, one Café Miniport, one address). The lease (a
+    // 172.18.x.x address, mask, the server as gateway / DHCP / DNS, obtained / expires, the server's FQDN as the DNS
+    // suffix) is what the adapter's Status > Details and ipconfig show; 'melaton-nightshade-lease' tells open windows.
+    // No timer: a lease is 8 days and the server renews it at a connection once half has run.
+    const NIC_KEY = 'melaton.nightshade.nic';
+    const dhcp = { lease: null, nic: '', wired: false, asking: false };
+    function adapterNic() {
+        if (dhcp.nic) return dhcp.nic;
+        let v = '';
+        try { v = String(root.localStorage.getItem(NIC_KEY) || ''); } catch (_) { v = ''; }
+        if (!/^[0-9a-f]{12}$/.test(v)) {
+            const b = new Uint8Array(6);
+            if (root.crypto && typeof root.crypto.getRandomValues === 'function') root.crypto.getRandomValues(b);
+            else for (let i = 0; i < 6; i += 1) b[i] = Math.floor(Math.random() * 256);
+            b[0] = (b[0] & 0xfc) | 0x02; // a locally administered, unicast address (a virtual adapter's)
+            v = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+            try { root.localStorage.setItem(NIC_KEY, v); } catch (_) { /* private window: this page's own */ }
+        }
+        dhcp.nic = v;
+        return v;
+    }
+    function computerName() {
+        const id = root.melatonDeviceIdentity;
+        try { const n = id && typeof id.identity === 'function' ? id.identity() : null; if (n && n.name) return String(n.name); } catch (_) { /* below */ }
+        return '';
+    }
+    async function requestLease() {
+        const c = root.wsClient;
+        if (dhcp.asking || !c || typeof c.sendMessage !== 'function') return dhcp.lease;
+        dhcp.asking = true;
+        try {
+            const r = await c.sendMessage('nightshade_dhcp', { nic: adapterNic(), host: computerName() }, false);
+            const d = r && r.lease ? r : (r && r.data) || r;
+            if (d && d.success !== false && d.lease && d.lease.ip) {
+                dhcp.lease = { ...d.lease, at: Date.now() };
+                try { root.dispatchEvent(new CustomEvent('melaton-nightshade-lease', { detail: dhcp.lease })); } catch (_) { /* old engine */ }
+            }
+        } catch (_) { /* an older server: no address yet */ }
+        dhcp.asking = false;
+        return dhcp.lease;
+    }
+    function wireDhcp() {
+        const c = root.wsClient;
+        if (dhcp.wired || !c || typeof c.on !== 'function') return;
+        dhcp.wired = true;
+        c.on('connected', () => { void requestLease(); }, { signal: linkSignal });
+        if (typeof c.isConnected === 'function' && c.isConnected()) void requestLease();
+    }
+    if (root && root.document) {
+        root.document.addEventListener('desktopBootDone', wireDhcp, { once: true, signal: linkSignal });
+        root.addEventListener('load', wireDhcp, { once: true, signal: linkSignal });
+    }
+    /** The adapter's lease (null until the server answered), its physical address, and a fresh request. */
+    api.nightshadeLease = () => dhcp.lease;
+    api.nightshadeNic = adapterNic;
+    api.requestNightshadeLease = requestLease;
+
     if (root) root.melatonNetworkDialogs = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -497,6 +497,8 @@
         // a DeX window is an Android page too: Continuity first; a phone tab without its phone state yet
         // (just reconnected) still reads as a phone by its user agent
         const what = r.light ? 'Light client' : r.continuity ? 'Continuity PC' : (r.phone || /Android|iPhone/.test(ua)) ? 'Phone' : 'Desktop';
+        // the computer's name its Nightshade adapter gave with its DHCP request (#952), when it gave one
+        if (r.computer) return `${r.computer} (${what})`;
         return `${what}${where ? ` (${where})` : ''}`;
     }
 
@@ -532,7 +534,10 @@
         const cols = [
             { t: 'Client', w: 230, key: 'label', text: (d) => `${d.label}${d.self ? ' (this computer)' : ''}` },
             { t: 'User', w: 90, key: 'userType', text: (d) => (d.userType === 'admin' ? 'Administrator' : d.userType || '') },
-            { t: 'Address', w: 120, key: 'address', text: (d) => d.address || '' },
+            // the client's own Nightshade Network address (#952: the server is its adapter's DHCP server, 172.18.0.0/16),
+            // then where its connection comes from
+            { t: 'IP Address', w: 100, key: 'nightshadeIp', text: (d) => d.nightshadeIp || '' },
+            { t: 'Remote Address', w: 120, key: 'address', text: (d) => d.address || '' },
             { t: 'Workspace', w: 130, key: 'workspace', text: (d) => d.workspace },
             { t: 'Status', w: 120, key: 'status', html: (d) => c.state(d.authenticated, clientStateText(d), true) },
             { t: 'Connected', w: 100, key: 'connectedAt', text: (d) => ago(d.connectedAt) },

@@ -910,6 +910,8 @@ function listClients(globalResources, bindKey, opts) {
             desktopReady: !device && isDesktopStateReady(clientDesktopState(info)) && !!info.authenticated,
             // Melaton Mobile tab (#732): { shell, allowStudio, studioOpen } or absent
             ...(clientPhoneState(info) ? { phone: clientPhoneState(info) } : {}),
+            // its Nightshade Network address (#952, modules/nightshadeAddressPool.js), once its adapter asked
+            ...(info.nightshadeLease && info.nightshadeLease.ip ? { nightshadeIp: info.nightshadeLease.ip } : {}),
             ...(device ? { kind: device.kind, name: device.name, deviceId: device.deviceId, bindable: false } : {})
         });
     }
