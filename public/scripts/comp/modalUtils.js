@@ -7033,6 +7033,8 @@ function buildToolsSubmenuItems(opts) {
         { launchId: 'wordpad', icon: 'fas fa-file-word', imageIcon: 'vista-wordpad.png', text: 'WordPad', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'wordpad' }) },
         // Accessories > Sound Recorder (Yozora #632; apps/soundrec, a system package)
         { launchId: 'soundrec', icon: 'fas fa-microphone', imageIcon: 'vista-sound-recorder.png', text: 'Sound Recorder', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'soundrec' }) },
+        // Melaton Camera (#910; apps/camera, a system package): the computer's camera, pictures and videos with sound
+        { launchId: 'camera', icon: 'fas fa-camera', imageIcon: 'melaton-camera.png', text: 'Melaton Camera', appMenuLocation: 'tools', desktopOnly: true, action: () => melatonApps.launch({ packageId: 'camera' }) },
         // Melaton Contacts (Yozora #632; apps/contacts, a system package)
         { launchId: 'contacts', icon: 'fas fa-address-book', imageIcon: 'vista-contacts.png', text: 'Melaton Contacts', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'contacts' }) },
         // Melaton Weather (Yozora #792): the phone's Weather in a desktop window (wmWeather.js openDesktop)
@@ -8352,6 +8354,7 @@ const START_MENU_SYSTEM_PLACES = {
     calendar: { at: 'top' },                       // Windows Calendar
     weather: { at: 'top' },                        // Melaton Weather (#792): beside Calendar and Contacts
     contacts: { at: 'top' },                       // Windows Contacts
+    camera: { at: 'top' },                         // Melaton Camera (#910): where Vista keeps Windows Photo Gallery / Movie Maker
     'media-player': { at: 'top' },                 // Windows Media Player
     'remote-desktop-connection': { at: 'accessories' },
     charmap: { at: 'system-tools' },               // Accessories > System Tools > Character Map

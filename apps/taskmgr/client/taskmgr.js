@@ -43,7 +43,7 @@
         [/^explorerModal$|explorer/i, 'explorer.exe', 'Melaton Explorer'], [/paint/i, 'mspaint.exe', 'Paint'], [/notepad/i, 'notepad.exe', 'Notepad'],
         [/charmap/i, 'charmap.exe', 'Character Map'], [/calculator/i, 'calc.exe', 'Calculator'], [/dovecote/i, 'WinMail.exe', 'Dovecote'],
         [/snipping/i, 'SnippingTool.exe', 'Snipping Tool'], [/calendar/i, 'wincal.exe', 'Melaton Calendar'], [/contacts/i, 'wab.exe', 'Melaton Contacts'],
-        [/soundrec/i, 'SoundRecorder.exe', 'Sound Recorder'], [/wordpad/i, 'wordpad.exe', 'WordPad'], [/taskmgr|taskmanager/i, 'taskmgr.exe', 'Melaton Task Manager'],
+        [/soundrec/i, 'SoundRecorder.exe', 'Sound Recorder'], [/camera/i, 'camera.exe', 'Melaton Camera'], [/wordpad/i, 'wordpad.exe', 'WordPad'], [/taskmgr|taskmanager/i, 'taskmgr.exe', 'Melaton Task Manager'],
         [/controlpanel|cpl/i, 'control.exe', 'Control Panel'], [/media/i, 'wmplayer.exe', 'Windows Media Player'], [/studio/i, 'studio.exe', 'Studio'],
         [/gallery/i, 'WindowsPhotoGallery.exe', 'Photo Gallery'], [/ledge/i, 'ledge.exe', 'Ledge'], [/alarm/i, 'alarm.exe', 'Alarm Clock'],
         [/welcome/i, 'oobe.exe', 'Welcome Center'], [/regedit|config/i, 'regedit.exe', 'Registry Editor'], [/games/i, 'games.exe', 'Games']

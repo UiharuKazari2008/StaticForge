@@ -1,0 +1,327 @@
+/* Melaton Camera (#910; apps/camera/client/camera.js): a Vista-era capture program in Melaton's light
+   frame. Vista shipped no webcam program; the window follows its media programs: a menu bar, Sound
+   Recorder's toolbar band (aero.msstyles IMAGE_641, band.png) above and below a black video surface
+   (Windows Media Player's Now Playing), the band's flat tool buttons with Sound Recorder's faces
+   (face-hot / face-pressed, 9-sliced 4 | 1 | 4), the kit's drop-down lists and status bar.
+   Colours: css/themes/vista/camera.css (the program's token block). */
+
+#melatonCameraModal {
+    flex-direction: column;
+}
+
+#melatonCameraModal > .modal-content.cam-client {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    height: auto;
+    padding: 0;
+    overflow: hidden;
+}
+
+#melatonCameraModal .hidden { display: none !important; }
+
+#melatonCameraModal .cam-client > .naxt-menubar {
+    flex: none;
+}
+
+/* ---- the bands: Sound Recorder's toolbar band, a 1 px white edge round it ---- */
+#melatonCameraModal .cam-bar {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 2px;
+    box-sizing: border-box;
+    height: 32px;
+    padding: 0 4px;
+    white-space: nowrap;
+}
+
+#melatonCameraModal .cam-bar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 0 solid transparent;
+    border-width: 9px 1px 15px;
+    border-image: url('band.png') 9 1 15 1 fill / 9px 1px 15px 1px stretch;
+    pointer-events: none;
+}
+
+#melatonCameraModal .cam-bar > * {
+    position: relative;
+}
+
+#melatonCameraModal .cam-setup {
+    gap: 6px;
+}
+
+#melatonCameraModal .cam-setup label {
+    margin-left: 4px;
+}
+
+#melatonCameraModal .cam-setup .cam-pick {
+    flex: 0 1 auto;
+    min-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#melatonCameraModal .cam-pick[data-cam-pick="camera"],
+#melatonCameraModal .cam-pick[data-cam-pick="mic"] {
+    width: 170px;
+}
+
+#melatonCameraModal .cam-pick[data-cam-pick="size"] {
+    width: 110px;
+}
+
+#melatonCameraModal .cam-pick[data-cam-pick="fps"] {
+    width: 74px;
+}
+
+/* ---- the video surface ---- */
+#melatonCameraModal .cam-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 120px;
+    overflow: hidden;
+    background: var(--cam-preview);
+    color: var(--cam-preview-text);
+}
+
+#melatonCameraModal .cam-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: var(--cam-preview);
+}
+
+#melatonCameraModal .cam-stage.is-mirror .cam-video {
+    transform: scaleX(-1);
+}
+
+/* the shutter: a white frame that fades out (opacity only, a class for the run) */
+#melatonCameraModal .cam-flash {
+    position: absolute;
+    inset: 0;
+    background: var(--cam-flash);
+    opacity: 0;
+    pointer-events: none;
+}
+
+#melatonCameraModal .cam-flash.is-on {
+    animation: cam-flash 280ms ease-out 1;
+}
+
+@keyframes cam-flash {
+    from { opacity: .85; }
+    to { opacity: 0; }
+}
+
+/* what the surface says when there is no picture: starting, no camera, denied, in use, unplugged */
+#melatonCameraModal .cam-note {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+}
+
+#melatonCameraModal .cam-note img {
+    width: 48px;
+    height: 48px;
+}
+
+#melatonCameraModal .cam-note-text {
+    max-width: 420px;
+    line-height: 17px;
+}
+
+#melatonCameraModal .cam-note-sub {
+    max-width: 420px;
+    color: var(--cam-preview-dim);
+}
+
+/* recording: the red dot and the time over the picture's corner */
+#melatonCameraModal .cam-badge {
+    position: absolute;
+    left: 10px;
+    top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 16px;
+    pointer-events: none;
+}
+
+#melatonCameraModal .cam-badge::before {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--cam-rec);
+}
+
+#melatonCameraModal .cam-badge.is-paused::before {
+    background: var(--cam-preview-dim);
+}
+
+/* ---- the tool buttons: flat on the band, a face when hot or focused, a darker one pressed ---- */
+#melatonCameraModal.cam-window .win7 .cam-tool:not(#_) {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: auto;
+    min-width: 0;
+    height: 28px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 6px 0 4px;
+    border: 0;
+    border-image: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    outline: none;
+    animation: none;
+    color: CanvasText;
+    text-shadow: none;
+}
+
+#melatonCameraModal.cam-window .win7 .cam-tool:not(#_)::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: 4px solid transparent;
+    border-image: url('face-hot.png') 4 fill / 4px stretch;
+    border-radius: 0;
+    box-shadow: none;
+    opacity: 0;
+    transition: none;
+    animation: none;
+}
+
+#melatonCameraModal.cam-window .win7 .cam-tool:not(#_):is(:hover, :focus-visible):not(:disabled)::before {
+    opacity: 1;
+}
+
+#melatonCameraModal.cam-window .win7 .cam-tool:not(#_):active:not(:disabled)::before {
+    border-image-source: url('face-pressed.png');
+    opacity: 1;
+}
+
+#melatonCameraModal.cam-window .win7 .cam-tool:not(#_)::after {
+    content: none;
+    animation: none;
+}
+
+#melatonCameraModal.cam-window .win7 .cam-tool:not(#_):disabled {
+    color: GrayText;
+}
+
+#melatonCameraModal .cam-tool > * {
+    position: relative;
+    z-index: 1;
+}
+
+#melatonCameraModal .cam-glyph {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: no-repeat center / 16px 16px;
+}
+
+#melatonCameraModal .cam-tool:disabled .cam-glyph {
+    opacity: .45;
+}
+
+#melatonCameraModal .cam-glyph[data-glyph="shutter"] { background-image: url('shutter-16.png'); }
+/* SoundRecorder.exe bitmap 205: the record dot, the stop square (16 px cells) */
+#melatonCameraModal .cam-glyph[data-glyph="record"] { background: url('buttons.png') 0 0 no-repeat; }
+#melatonCameraModal .cam-glyph[data-glyph="stop"] { background: url('buttons.png') -16px 0 no-repeat; }
+#melatonCameraModal .cam-glyph[data-glyph="pause"] { background-image: url('/static_images/vista-cmdbar/pause.png'); }
+#melatonCameraModal .cam-glyph[data-glyph="resume"] { background-image: url('/static_images/vista-cmdbar/play.png'); }
+
+#melatonCameraModal .cam-sep {
+    width: 2px;
+    height: 20px;
+    margin: 0 4px;
+    border-left: 1px solid var(--cam-meter-edge);
+    opacity: .5;
+}
+
+#melatonCameraModal .cam-time {
+    min-width: 50px;
+    padding: 0 4px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- the microphone level: Vista's peak meter, 16 bars across ---- */
+#melatonCameraModal .cam-meter {
+    display: flex;
+    gap: 1px;
+    padding: 2px;
+    border: 1px solid var(--cam-meter-edge);
+}
+
+#melatonCameraModal .cam-meter i {
+    display: block;
+    width: 4px;
+    height: 12px;
+    background: var(--cam-meter-idle);
+}
+
+#melatonCameraModal .cam-meter i.is-lit {
+    background: var(--cam-meter-lit);
+}
+
+#melatonCameraModal .cam-meter.is-off {
+    opacity: .5;
+}
+
+#melatonCameraModal .cam-fill {
+    flex: 1 1 auto;
+}
+
+/* the last capture: its picture, opened in Lumen / Media Player */
+#melatonCameraModal.cam-window .win7 .cam-last:not(#_) {
+    width: 42px;
+    height: 28px;
+    padding: 1px;
+}
+
+#melatonCameraModal .cam-last img {
+    display: block;
+    width: 38px;
+    height: 24px;
+    object-fit: cover;
+    border: 1px solid var(--cam-thumb-edge);
+    background: var(--cam-thumb-face);
+    box-sizing: border-box;
+}
+
+/* ---- the status bar (7.css's) ---- */
+#melatonCameraModal .cam-client > .status-bar {
+    flex: none;
+    margin: 0;
+}
+
+#melatonCameraModal .status-bar-field[data-cam-status="text"] {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

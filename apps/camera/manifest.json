@@ -1,0 +1,14 @@
+{
+    "id": "camera",
+    "version": "1.0.0",
+    "title": "Melaton Camera",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "camera",
+    "icon": "assets/camera.png",
+    "client": {
+        "entry": "client/camera.js",
+        "styles": ["assets/camera.css"]
+    }
+}

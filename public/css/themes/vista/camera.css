@@ -1,0 +1,17 @@
+/* Melaton Camera (apps/camera, #910), Vista theme: the program's own colours (ui-standard section 6).
+   The layout is apps/camera/assets/camera.css; the app's private colours live only here.
+   The preview is a video surface (black, white captions over it, as Windows Media Player's Now Playing);
+   the level meter is Vista's peak meter (Sound > Recording's bars: #c1dce2 idle, #3cc23c lit). */
+
+.cam-window {
+    --cam-preview: #000;
+    --cam-preview-text: #fff;
+    --cam-preview-dim: #c8c8c8;
+    --cam-flash: #fff;
+    --cam-rec: #e0201b;
+    --cam-meter-idle: #c1dce2;
+    --cam-meter-lit: #3cc23c;
+    --cam-meter-edge: #8ea5b0;
+    --cam-thumb-edge: #a0a0a0;
+    --cam-thumb-face: #fff;
+}
