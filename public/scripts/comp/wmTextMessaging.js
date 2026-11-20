@@ -832,6 +832,14 @@
     function fillLinkCards(box, onSize) {
         const t = window.textMessaging;
         if (!box || !t || typeof t.linkPreview !== 'function') return;
+        // the cards of one draw resolve together: one layout read in the next frame, not one per card
+        // (36 cards forced 36 layouts, ~215 ms on the Fold, #959)
+        let sizeQueued = false;
+        const sized = typeof onSize === 'function' ? () => {
+            if (sizeQueued) return;
+            sizeQueued = true;
+            requestAnimationFrame(() => { sizeQueued = false; if (box.isConnected) onSize(); });
+        } : null;
         box.querySelectorAll('[data-tm-link]:not([data-tm-filled])').forEach((slot) => {
             slot.dataset.tmFilled = '1';
             const url = slot.dataset.tmLink;
@@ -840,7 +848,7 @@
                 const e = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                 slot.innerHTML = `<a class="tm-card" href="${e(url)}" target="_blank" rel="noopener noreferrer">${p.image ? `<img class="tm-card-img" src="${e(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="tm-card-body"><span class="tm-card-title">${e(p.title || p.site)}</span>${p.description ? `<span class="tm-card-desc">${e(p.description)}</span>` : ''}<span class="tm-card-site">${e(p.site)}</span></span></a>`;
                 slot.hidden = false;
-                if (typeof onSize === 'function') onSize();
+                if (sized) sized();
             });
         });
     }

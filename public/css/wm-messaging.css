@@ -92,9 +92,9 @@
     cursor: default;
     -webkit-touch-callout: none;
     user-select: none;
-    /* a 50-row page laid out whole cost ~150 ms on a throttled phone: off-screen rows skip layout */
-    content-visibility: auto;
-    contain-intrinsic-size: auto calc(28 * var(--wm-px));
+    /* no content-visibility: auto here (#959). The WebView forces style and layout thousands of times
+     * after a tap that rebuilds the list (a folder picked), and with locked rows every one of those
+     * laid the list out again: 450 ms per pick on the Fold, 60 ms with the rows always laid out */
 }
 
 .wm-msg .msg-row .msg-ico {
@@ -841,7 +841,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row {
     padding: calc(4 * var(--wm-px)) calc(5.5 * var(--wm-px)) 0 0;
     border-bottom: 0;
     font-size: var(--wm-fs);
-    contain-intrinsic-size: auto calc(38.5 * var(--wm-px));
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row.is-unread .msg-subj {
