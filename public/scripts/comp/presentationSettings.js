@@ -11,9 +11,10 @@
  *   ((None), Vista's wallpapers by file name, Melaton's, a picture picked with Browse...; the preview; Position:
  *   Center / Tile / Fit to screen): saved to the user's registry (melatonPresentation.saveSettings) at OK and
  *   applied at once while presenting
- *   Connected displays...   the displays this computer has now. "I always give a presentation when I use this
- *                           display configuration" stays off and unavailable: Melaton never starts a presentation
- *                           by itself.
+ *   Connected displays...   the displays this computer has now and "I always give a presentation when I use this
+ *                           display configuration" for them, off by default (Yukimi, Nov 20 2026): ticked, the
+ *                           presentation turns on when this configuration is connected again and off when it goes
+ *                           if it was turned on that way (melatonPresentation.js checkDisplays); saved at OK.
  * On a computer that is not a mobile PC Vista says "Presentation settings are available only on mobile PCs."
  *
  *   window.openPresentationSettings()
@@ -66,7 +67,8 @@
 
     function openDisplays(owner) {
         const V = root.vistaDialogTemplate;
-        if (!V) return;
+        if (!V || !root.melatonPresentation) return;
+        let key = '';
         V.openDialog({
             id: 'presentationDisplaysDialog',
             key: 'presentationsettings:101',
@@ -76,15 +78,17 @@
             // the VM's line break (GDI's Segoe UI runs a little wider than the browser's)
             overrides: { 119: { text: 'I &always give a presentation when I use this display\nconfiguration.' } },
             init(ctx) {
-                const s = root.screen || {};
-                const rows = [`Display 1 (${s.width || 0} x ${s.height || 0})`];
-                if (s.isExtended) rows.push('Display 2');
-                ctx.options(117, rows);
-                // never by itself: presentation mode is turned on by hand only (Yukimi, Nov 19 2026)
-                ctx.set(119, false);
-                ctx.enable(119, false);
+                const P = root.melatonPresentation;
+                key = P.displayKey();
+                ctx.options(117, P.displayRows());
+                ctx.set(119, P.alwaysFor(key));
                 const ok = ctx.el(1);
                 if (ok) ok.dataset.dialogPrimary = '1';
+            },
+            ok(ctx) {
+                const P = root.melatonPresentation;
+                const on = !!ctx.get(119);
+                if (on !== P.alwaysFor(key)) void P.setAlwaysFor(key, on);
             }
         });
     }

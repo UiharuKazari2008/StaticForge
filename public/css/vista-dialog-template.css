@@ -66,6 +66,24 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
     white-space: normal;
 }
 
+/* a BS_MULTILINE box taller than a line (vistaDialogTemplate.js vdt-vcenter): the box centred in the rect
+   (--vdt-check-top), the lines centred beside it */
+.tbp-window .vdt-client .tbp-check.vdt-check.vdt-vcenter {
+    display: flex;
+    align-items: stretch;
+}
+
+.tbp-window .vdt-client .tbp-check.vdt-vcenter input:is([type="checkbox"], [type="radio"]) + label {
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+}
+
+.tbp-window .vdt-client .tbp-check.vdt-vcenter input:not(#_):is([type="checkbox"], [type="radio"]) + label::before,
+.tbp-window .vdt-client .tbp-check.vdt-vcenter input:not(#_):is([type="checkbox"], [type="radio"]) + label::after {
+    top: var(--vdt-check-top, 0);
+}
+
 .vdt-client .vdt-edge {
     border: 1px solid #828790;
     background: #fff;
@@ -426,6 +444,36 @@ body.desktop-mode:not(.windows-classic-theme) .vdt-client .vdt-trackbar.vdt-both
     height: 4px;
     background: repeating-linear-gradient(90deg, #c4c4c4 0 1px, transparent 1px calc(100% / var(--vdt-ticks, 10)));
     background-size: calc(100% + 1px) 100%;
+    pointer-events: none;
+}
+
+/* No TBS_AUTOTICKS and no TBS_NOTICKS (Presentation Settings' volume, #958): comctl32 draws only the first and the
+   last tick, 1x3 #c4c4c4, 25 px below the control's top at the thumb's two ends; the channel is inset 8 px each side
+   and 4 px tall 10 px down (the thumb 3 px down), its groove the VM's (TKP_TRACK: #b0b0b0 top and left, #e7eaea,
+   #fcfcfc bottom), as measured on the VM */
+.vdt-client .vdt-trackbar.vdt-endticks input[type="range"] {
+    width: calc(var(--vdt-cx, 100%) - 16px);
+    margin: 1px 8px 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vdt-trackbar.vdt-endticks input[type="range"]:not(.win7 .is-vertical > input, .hover-show)::-webkit-slider-runnable-track {
+    border-image: url("/static_images/vista-controls/trackbar-channel.png") 1 fill / 1px stretch;
+    border-width: 1px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vdt-trackbar.vdt-endticks input[type="range"]:not(.win7 .is-vertical > input, .hover-show)::-webkit-slider-thumb {
+    margin-top: -8px;
+}
+
+.vdt-client .vdt-trackbar.vdt-endticks .vdt-tickmarks {
+    display: block;
+    position: absolute;
+    left: 13px;
+    width: calc(var(--vdt-cx, 100%) - 26px);
+    top: 25px;
+    height: 3px;
+    border-left: 1px solid var(--vdt-trackbar-tick);
+    border-right: 1px solid var(--vdt-trackbar-tick);
     pointer-events: none;
 }
 

@@ -157,9 +157,18 @@
                         // BS_PUSHLIKE: a push button that stays down while checked (WinCal's S M T W T F S)
                         out.push(`<button type="button" class="tbp-ctl tbp-button vdt-button vdt-pushlike" id="${domId}" style="${style(r, 1)}" ${dataId} aria-pressed="false"${hid}${dis}>${label(t)}</button>`);
                     } else if (lowType === 2 || lowType === 3 || lowType === 5 || lowType === 6) {
-                        // BS_VCENTER (the default for a one-line box) centres the 13 px box
-                        const top = (st & 0xC00) === 0x400 ? 0 : Math.max(0, Math.floor((r.height - 13) / 2));
-                        out.push(`<div class="tbp-ctl tbp-check vdt-check${multi}" style="${style(r)}padding-top:${multi ? 0 : top}px;" ${dataId}${hid}><input type="checkbox" id="${domId}"${dis}><label for="${domId}"><span>${label(t)}</span></label></div>`);
+                        // BS_VCENTER (the default) centres the 13 px box in the window's own height, MulDiv(cy) (Set the
+                        // volume to's 8 DLU are 15 px, not the 14 the rounded edges leave); a BS_MULTILINE box whose
+                        // rect holds one line is centred the same (Presentation Settings' boxes sit 1 px down on the VM)
+                        const top = (st & 0xC00) === 0x400 ? 0 : Math.max(0, Math.floor((Math.round((h * u.yu) / 8) - 13) / 2));
+                        const oneLine = multi && r.height <= 16;
+                        // a taller BS_MULTILINE box (no BS_TOP) centres the box in its rect and the lines beside it
+                        // (Connected displays' "I always give a presentation...", 12 px down on the VM)
+                        if (multi && !oneLine && (st & 0xC00) !== 0x400) {
+                            out.push(`<div class="tbp-ctl tbp-check vdt-check${multi} vdt-vcenter" style="${style(r)}--vdt-check-top:${top}px;" ${dataId}${hid}><input type="checkbox" id="${domId}"${dis}><label for="${domId}"><span>${label(t)}</span></label></div>`);
+                            break;
+                        }
+                        out.push(`<div class="tbp-ctl tbp-check vdt-check${multi}" style="${style(r)}padding-top:${multi && !oneLine ? 0 : top}px;" ${dataId}${hid}><input type="checkbox" id="${domId}"${dis}><label for="${domId}"><span>${label(t)}</span></label></div>`);
                     } else if (isRadio) {
                         const top = (st & 0xC00) === 0x400 || multi ? 0 : Math.max(0, Math.floor((r.height - 13) / 2));
                         out.push(`<div class="tbp-ctl tbp-check vdt-check${multi}" style="${style(r)}padding-top:${top}px;" ${dataId}${hid}><input type="radio" id="${domId}" name="${prefix}-g${radioGroup}"${dis}><label for="${domId}"><span>${label(t)}</span></label></div>`);
@@ -238,19 +247,26 @@
                     }
                     break;
                 }
-                case 'L':
-                    out.push(`<div class="tbp-ctl vdt-listbox vdt-edge" style="${style(r)}" ${dataId}${hid} tabindex="0" role="listbox"></div>`);
+                case 'L': {
+                    // without LBS_NOINTEGRALHEIGHT the list shrinks to whole rows (15 px Segoe, 13 px Tahoma) inside
+                    // its 2 px client edge, as on the VM (Connected displays' list: 90 px -> 79)
+                    const rowH = u.segoe ? 15 : 13;
+                    const lr = (st & 0x100) ? r : { ...r, height: Math.max(rowH + 4, Math.floor((r.height - 4) / rowH) * rowH + 4) };
+                    out.push(`<div class="tbp-ctl vdt-listbox vdt-edge" style="${style(lr)}" ${dataId}${hid} tabindex="0" role="listbox"></div>`);
                     break;
+                }
                 case 'msctls_trackbar32': {
                     // TBS_VERT draws the horizontal bar turned a quarter left (the minimum at the
                     // bottom); TBS_BOTH has the flat 6x19 thumb (aero 789) with ticks on both sides
                     const vertical = (st & 2) !== 0;
                     const both = (st & 8) !== 0 ? ' vdt-both' : '';
-                    const ticks = (st & 1) && !(st & 0x10) ? ' vdt-ticks' : '';
+                    // without TBS_AUTOTICKS comctl32 still draws the first and last tick unless TBS_NOTICKS
+                    // (Presentation Settings' volume); that bar's channel is inset 8 px each side, as on the VM
+                    const ticks = (st & 1) && !(st & 0x10) ? ' vdt-ticks' : !(st & 1) && !(st & 0x10) && !(st & 8) && !vertical ? ' vdt-endticks' : '';
                     const inner = `<input type="range" id="${domId}" min="0" max="10" value="0"${dis}><span class="vdt-tickmarks"></span>${both ? '<span class="vdt-tickmarks vdt-tickmarks-top"></span>' : ''}`;
                     out.push(vertical
                         ? `<div class="tbp-ctl vdt-trackbar vdt-vertical${both}${ticks}" style="${style(r)}" ${dataId}${hid}><div class="vdt-rot" style="width:${r.height}px;height:${r.width}px;--vdt-cross:${r.width}px">${inner}</div></div>`
-                        : `<div class="tbp-ctl vdt-trackbar${both}${ticks}" style="${style(r)}--vdt-cross:${r.height}px" ${dataId}${hid}>${inner}</div>`);
+                        : `<div class="tbp-ctl vdt-trackbar${both}${ticks}" style="${style(r)}--vdt-cross:${r.height}px;--vdt-cx:${Math.round((w * u.xu) / 4)}px" ${dataId}${hid}>${inner}</div>`);
                     break;
                 }
                 case 'msctls_updown32': {
