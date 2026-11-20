@@ -175,20 +175,105 @@
         ['Alternate Select', 'aero_up'], ['Link Select', 'aero_link']
     ];
 
+    // ---- DreamOS: the machine's own pointing devices and keyboard (cafeready settings.rs / power.rs) --------------------
+    // Vista adds a tab to Mouse / Keyboard Properties for what the hardware's driver offers (a trackpad's settings, a
+    // notebook's function keys and keyboard light); these are those tabs for the DreamOS laptop, in Vista's property
+    // page metrics (252 x 218 DLU, MS Shell Dlg 8). Shown only where the hardware is there. A Force Touch trackpad's
+    // click feedback strength is not offered: Linux's driver (bcm5974) cannot set the haptic actuator.
+
+    const GROUP = 0x50000007;
+    const CHECK = 0x50010003;
+    const RADIO_FIRST = 0x50030009;
+    const RADIO = 0x50010009;
+    const TEXT = 0x50020000;
+    const TEXT_RIGHT = 0x50020002;
+    const TRACKBAR = 0x50030101;
+    const COMBO = 0x50210003;
+    const page = (t, c) => ({ t, w: 252, h: 218, f: ['MS Shell Dlg', 8], s: 0, c });
+
+    const TRACKPAD_TPL = page('Trackpad', [
+        [100, 'B', 7, 7, 238, 60, GROUP, 'Tapping and clicking', 0],
+        [101, 'B', 13, 20, 225, 10, CHECK, '&Tap to click', 0],
+        [102, 'B', 13, 35, 225, 10, RADIO_FIRST, 'Click with t&wo fingers for a secondary click', 0],
+        [103, 'B', 13, 49, 225, 10, RADIO, 'Click the &bottom-right corner for a secondary click', 0],
+        [104, 'B', 7, 71, 238, 66, GROUP, 'Scrolling', 0],
+        [105, 'B', 13, 84, 225, 10, CHECK, '&Reverse scrolling direction', 0],
+        [106, 'S', 13, 100, 120, 9, TEXT, 'Scrolling &speed:', 0],
+        [107, 'S', 13, 117, 17, 9, TEXT_RIGHT, 'Slow', 0],
+        [108, 'msctls_trackbar32', 32, 113, 100, 16, TRACKBAR, '', 0],
+        [109, 'S', 134, 117, 16, 9, TEXT, 'Fast', 0],
+        [110, 'B', 7, 141, 238, 30, GROUP, 'Typing', 0],
+        [111, 'B', 13, 154, 225, 10, CHECK, '&Ignore the trackpad while I am typing', 0]
+    ]);
+    // libinput's scroll factor for each stop of the trackpad's Scrolling speed (the DreamOS default, 0.5, is stop 3)
+    const SCROLL_STOPS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1, 1.25, 1.5, 2];
+
+    const FNKEYS_TPL = page('Function Keys', [
+        [100, 'B', 7, 7, 238, 54, GROUP, 'Function keys', 0],
+        [101, 'B', 13, 20, 225, 10, CHECK, '&Use all F1, F2, etc. keys as standard function keys', 0],
+        [102, 'S', 25, 34, 213, 24, TEXT, 'When this option is selected, press the Fn key to use the special features printed on each key.', 0],
+        [103, 'S', 7, 70, 238, 9, TEXT, '&Keys this computer handles itself:', 0],
+        [104, 'S', 7, 81, 238, 129, TEXT, '', 0]
+    ]);
+
+    const KBDLIGHT_TPL = page('Backlight', [
+        [100, 'B', 7, 7, 238, 50, GROUP, 'Low light', 0],
+        [101, 'B', 13, 20, 225, 10, CHECK, '&Adjust keyboard brightness in low light', 0],
+        [102, 'S', 25, 33, 213, 18, TEXT, 'The keyboard lights up in a dark room and turns off in a bright one.', 0],
+        [103, 'B', 7, 61, 238, 50, GROUP, 'Inactivity', 0],
+        [104, 'B', 13, 74, 225, 10, CHECK, '&Turn off the keyboard backlight when the computer is not used', 0],
+        [105, 'S', 25, 92, 22, 9, TEXT, 'Aft&er:', 0],
+        [106, 'C', 50, 90, 80, 100, COMBO, '', 0]
+    ]);
+    const KBD_IDLE = [[5, '5 seconds'], [10, '10 seconds'], [30, '30 seconds'], [60, '1 minute'], [300, '5 minutes']];
+
+    /** the host's input settings (melatonPointerScheme.js reads them once at load), or null off DreamOS */
+    function hostInput() {
+        return root.DreamOSSettings ? (root.melatonPointerScheme && root.melatonPointerScheme.inputState()) || null : null;
+    }
+    function hostPower() {
+        const p = root.DreamOSPowerOptions;
+        return p && typeof p.get === 'function' ? p.get() : null;
+    }
+
+    /** a template page with controls added at the end (Vista's own page, plus a DreamOS control) */
+    function withControls(key, extra) {
+        const t = (root.vistaDialogTemplates || {})[key];
+        return t ? { ...t, c: t.c.concat(extra) } : undefined;
+    }
+
+    /** apply the host settings a sheet changed (input: one set with what differs from when it opened) */
+    async function hostSet(ctx, patch) {
+        const st = ctx.store.input;
+        const diff = {};
+        Object.entries(patch).forEach(([k, v]) => { if (!st || st[k] !== v) diff[k] = v; });
+        if (!Object.keys(diff).length || !root.DreamOSSettings) return;
+        const out = await root.DreamOSSettings.input.set(diff).catch((e) => ({ error: String(e) }));
+        if (out && !out.error) {
+            ctx.store.input = out;
+            if (root.melatonPointerScheme) root.melatonPointerScheme.inputState(out);
+        }
+    }
+
     const DIALOGS = {};
 
     DIALOGS.mouse = {
         windowId: 'cplMouseProperties',
         title: 'Mouse Properties',
         icon: itemIcon('mouse'),
-        tabs: { buttons: 'main:100', pointers: 'main:101', options: 'main:103', wheel: 'main:108', hardware: 'main:106' },
-        pages: [
-            { key: 'main:100', overrides: { 103: { html: '<img class="cpl-mouse-picture" src="/static_images/vista-dlg/main-mouse.png" alt="">' }, 106: { html: '<button type="button" class="cpl-dbl-folder" aria-label="Test folder"></button>' } } },
-            { key: 'main:101', overrides: { 110: { html: '<img class="cpl-pointer-preview" alt="">' } } },
-            { key: 'main:103' },
-            { key: 'main:108' },
-            { key: 'main:106', overrides: {} }
-        ],
+        tabs: { buttons: 'main:100', pointers: 'main:101', options: 'main:103', wheel: 'main:108', trackpad: 'dreamos:trackpad', hardware: 'main:106' },
+        // DreamOS: the Wheel tab's Reverse scrolling direction (mice), and the Trackpad tab where there is a touchpad
+        get pages() {
+            const input = hostInput();
+            return [
+                { key: 'main:100', overrides: { 103: { html: '<img class="cpl-mouse-picture" src="/static_images/vista-dlg/main-mouse.png" alt="">' }, 106: { html: '<button type="button" class="cpl-dbl-folder" aria-label="Test folder"></button>' } } },
+                { key: 'main:101', overrides: { 110: { html: '<img class="cpl-pointer-preview" alt="">' } } },
+                { key: 'main:103' },
+                input ? { key: 'main:108', tpl: withControls('main:108', [[120, 'B', 7, 170, 238, 30, GROUP, 'Scrolling direction', 0], [121, 'B', 13, 183, 225, 10, CHECK, '&Reverse scrolling direction', 0]]) } : { key: 'main:108' },
+                ...(input && input.devices && input.devices.touchpad ? [{ key: 'dreamos:trackpad', tpl: TRACKPAD_TPL }] : []),
+                { key: 'main:106', overrides: {} }
+            ];
+        },
         fields: [
             { page: 'main:100', id: 101, key: KEY.mouse, name: 'SwapMouseButtons', type: 'check', def: false },
             { page: 'main:100', id: 105, key: KEY.mouse, name: 'DoubleClickSpeedStop', type: 'range', min: 0, max: 10, def: 5 },
@@ -206,7 +291,23 @@
             { page: 'main:108', id: 110, key: KEY.desktop, name: 'WheelScrollChars', type: 'num', def: 3 }
         ],
         init(ctx) {
-            ctx.options(113, POINTER_SCHEMES, reg(KEY.cursors, 'Scheme', '(None)'), 'main:101');
+            // the scheme in force (DreamOS: Windows Aero until one is chosen; '' is (None))
+            const cur = root.melatonPointerScheme ? root.melatonPointerScheme.current() : reg(KEY.cursors, 'Scheme', '');
+            ctx.store.scheme = POINTER_SCHEMES.includes(cur) ? cur : '(None)';
+            ctx.options(113, POINTER_SCHEMES, ctx.store.scheme, 'main:101');
+            const input = ctx.store.input = hostInput();
+            if (input) {
+                ctx.set(121, !!input.mouseNaturalScroll, 'main:108');
+                if (ctx.page('dreamos:trackpad')) {
+                    ctx.set(101, !!input.tap, 'dreamos:trackpad');
+                    ctx.set(102, input.clickMethod !== 'button_areas', 'dreamos:trackpad');
+                    ctx.set(103, input.clickMethod === 'button_areas', 'dreamos:trackpad');
+                    ctx.set(105, !!input.naturalScroll, 'dreamos:trackpad');
+                    const stop = SCROLL_STOPS.reduce((best, v, i) => (Math.abs(v - input.scrollSpeed) < Math.abs(SCROLL_STOPS[best] - input.scrollSpeed) ? i : best), 3);
+                    ctx.range(108, 0, SCROLL_STOPS.length - 1, stop, 'dreamos:trackpad');
+                    ctx.set(111, !!input.disableWhileTyping, 'dreamos:trackpad');
+                }
+            }
             const preview = ctx.page('main:101').querySelector('.cpl-pointer-preview');
             const showScheme = () => {
                 const scheme = ctx.get(113, 'main:101');
@@ -256,7 +357,21 @@
             const scheme = ctx.get(113, 'main:101');
             const r = R();
             if (r) await r.set(KEY.mouse, { DoubleClickSpeed: DOUBLE_CLICK(Number(ctx.get(105, 'main:100'))) });
-            if (r && scheme !== reg(KEY.cursors, 'Scheme', '(None)')) await r.set(KEY.cursors, { Scheme: scheme === '(None)' ? null : scheme });
+            // (None) is kept as an empty value: chosen, not "never set" (DreamOS starts unset schemes on Windows Aero)
+            if (r && scheme !== ctx.store.scheme) await r.set(KEY.cursors, { Scheme: scheme === '(None)' ? '' : scheme });
+            ctx.store.scheme = scheme;
+            if (!ctx.store.input) return;
+            const patch = { mouseNaturalScroll: !!ctx.get(121, 'main:108') };
+            if (ctx.page('dreamos:trackpad')) {
+                Object.assign(patch, {
+                    tap: !!ctx.get(101, 'dreamos:trackpad'),
+                    clickMethod: ctx.get(103, 'dreamos:trackpad') ? 'button_areas' : 'clickfinger',
+                    naturalScroll: !!ctx.get(105, 'dreamos:trackpad'),
+                    scrollSpeed: SCROLL_STOPS[Number(ctx.get(108, 'dreamos:trackpad'))] || 0.5,
+                    disableWhileTyping: !!ctx.get(111, 'dreamos:trackpad')
+                });
+            }
+            await hostSet(ctx, patch);
         }
     };
 
@@ -276,8 +391,18 @@
         windowId: 'cplKeyboardProperties',
         title: 'Keyboard Properties',
         icon: itemIcon('keyboard'),
-        tabs: { speed: 'main:104', hardware: 'main:106' },
-        pages: [{ key: 'main:104', overrides: { 103: { html: '' }, 104: { html: '<span class="cpl-blink-caret"></span>', cls: 'cpl-blink-host' } } }, { key: 'main:106' }],
+        tabs: { speed: 'main:104', fnkeys: 'dreamos:fnkeys', backlight: 'dreamos:kbdlight', hardware: 'main:106' },
+        // DreamOS: Function Keys (an Apple keyboard's F-key mode, the keys the OS handles) and the keyboard light
+        get pages() {
+            const input = hostInput();
+            const power = hostPower();
+            return [
+                { key: 'main:104', overrides: { 103: { html: '' }, 104: { html: '<span class="cpl-blink-caret"></span>', cls: 'cpl-blink-host' } } },
+                ...(input ? [{ key: 'dreamos:fnkeys', tpl: FNKEYS_TPL, overrides: { 104: { html: '' } } }] : []),
+                ...(power && power.keyboard && power.keyboard.present ? [{ key: 'dreamos:kbdlight', tpl: KBDLIGHT_TPL }] : []),
+                { key: 'main:106' }
+            ];
+        },
         fields: [
             { page: 'main:104', id: 100, key: KEY.keyboard, name: 'KeyboardDelay', type: 'range', min: 0, max: 3, def: 1, ticks: 3 },
             { page: 'main:104', id: 101, key: KEY.keyboard, name: 'KeyboardSpeed', type: 'range', min: 0, max: 31, def: 31, ticks: 31 },
@@ -294,10 +419,60 @@
             blink();
             ctx.page('main:106').insertAdjacentHTML('beforeend', hardwareTab([{ name: 'Standard PS/2 Keyboard', type: 'Keyboards', icon: '/static_images/vista-cpl/items/keyboard-16.png', location: 'plugged into keyboard port' }]));
             // the on-screen keyboard the Keyboard item used to open (modalUtils.js) is under Ease of Access
+            const input = ctx.store.input = hostInput();
+            if (input && ctx.page('dreamos:fnkeys')) {
+                const fn = input.fnKeys;
+                ctx.set(101, fn === 'function', 'dreamos:fnkeys');
+                // no Apple keyboard: the F-keys are plain F-keys already
+                ctx.enable(101, !!fn, 'dreamos:fnkeys');
+                ctx.enable(102, !!fn, 'dreamos:fnkeys');
+                const list = ctx.holder(104, 'dreamos:fnkeys');
+                if (list) {
+                    const rows = (input.hotkeys || []).map((k, i) => `<div class="vdt-lv-row${i === 0 ? ' is-selected' : ''}"><span style="width:120px">${esc(k.key)}</span><span>${esc(k.action)}</span></div>`).join('');
+                    list.innerHTML = `<div class="vdt-listview vdt-edge is-report" style="position:absolute;inset:0;" tabindex="0">
+                        <div class="vdt-lv-header"><span class="vdt-lv-col" style="width:120px">Key</span><span class="vdt-lv-col">Action</span></div>
+                        <div class="vdt-lv-body">${rows}</div></div>`;
+                    list.querySelector('.vdt-lv-body').addEventListener('mousedown', (ev) => {
+                        const row = ev.target.closest('.vdt-lv-row');
+                        if (!row) return;
+                        list.querySelectorAll('.vdt-lv-row.is-selected').forEach((x) => x.classList.remove('is-selected'));
+                        row.classList.add('is-selected');
+                    });
+                }
+            }
+            const power = hostPower();
+            if (power && power.keyboard && ctx.page('dreamos:kbdlight')) {
+                const k = power.keyboard;
+                ctx.set(101, !!k.auto, 'dreamos:kbdlight');
+                // no light sensor: the low-light rule cannot work
+                ctx.enable(101, !!power.als, 'dreamos:kbdlight');
+                ctx.enable(102, !!power.als, 'dreamos:kbdlight');
+                const idle = Number(k.idle) || 0;
+                ctx.set(104, idle > 0, 'dreamos:kbdlight');
+                const pick = idle > 0 ? KBD_IDLE.reduce((b, x) => (Math.abs(x[0] - idle) < Math.abs(b[0] - idle) ? x : b))[0] : 60;
+                ctx.options(106, KBD_IDLE.map(([v, t]) => ({ value: String(v), text: t })), String(pick), 'dreamos:kbdlight');
+                const sync = () => { const on = !!ctx.get(104, 'dreamos:kbdlight'); ctx.enable(105, on, 'dreamos:kbdlight'); ctx.enable(106, on, 'dreamos:kbdlight'); };
+                ctx.on(104, 'change', sync, 'dreamos:kbdlight');
+                sync();
+                ctx.store.kbd = { auto: !!k.auto, idle };
+            }
         },
         async apply(ctx) {
             const stop = Number(ctx.get(105, 'main:104'));
             if (R()) await R().set(KEY.desktop, { CursorBlinkRate: stop === 0 ? -1 : 1200 - (stop - 1) * 100 });
+            if (ctx.store.input && ctx.store.input.fnKeys && ctx.page('dreamos:fnkeys')) {
+                await hostSet(ctx, { fnKeys: ctx.get(101, 'dreamos:fnkeys') ? 'function' : 'media' });
+            }
+            if (ctx.store.kbd && ctx.page('dreamos:kbdlight') && root.DreamOSPowerOptions) {
+                const want = {
+                    auto: !!ctx.get(101, 'dreamos:kbdlight'),
+                    idle: ctx.get(104, 'dreamos:kbdlight') ? Number(ctx.get(106, 'dreamos:kbdlight')) : 0
+                };
+                if (want.auto !== ctx.store.kbd.auto || want.idle !== ctx.store.kbd.idle) {
+                    const out = await root.DreamOSPowerOptions.keyboard(want).catch(() => null);
+                    if (out && !out.error) ctx.store.kbd = want;
+                }
+            }
         }
     };
 

@@ -405,6 +405,8 @@
         if (st.cpu) groups.push({ t: 'Processor power management', items: [{ key: 'cpuMin', t: 'Minimum processor state', type: 'pct' }, { key: 'cpuMax', t: 'Maximum processor state', type: 'pct' }] });
         const display = [{ key: 'display', t: 'Turn off display after', type: 'minutes' }];
         if (two) display.push({ key: 'brightness', t: 'Display brightness', type: 'pct' });
+        // Windows 7's adaptive brightness (DreamOS: an ambient light sensor, cafeready als.rs), listed only where there is one
+        if (st.als) display.push({ key: 'adaptive', t: 'Enable adaptive brightness', type: 'onoff' });
         groups.push({ t: 'Display', items: display });
         return groups;
     }
@@ -412,6 +414,7 @@
     /** Vista's value text: "20 Minutes", "Never", "100%", "Yes", "Shut down" */
     function advValueText(type, v, sleepOk) {
         if (type === 'yesno') return v ? 'Yes' : 'No';
+        if (type === 'onoff') return v ? 'On' : 'Off';
         if (type === 'action') return ACTION_TEXT[v] || String(v);
         if (type === 'minutes') { const m = Math.round((Number(v) || 0) / 60); return m ? `${m} Minute${m === 1 ? '' : 's'}` : 'Never'; }
         return `${Number(v)}%`;
@@ -419,6 +422,7 @@
 
     function advChoices(type, sleepOk) {
         if (type === 'yesno') return [['1', 'Yes'], ['0', 'No']];
+        if (type === 'onoff') return [['1', 'On'], ['0', 'Off']];
         return ['nothing', ...(sleepOk ? ['sleep'] : []), 'shutdown'].map((a) => [a, ACTION_TEXT[a]]);
     }
 
@@ -445,12 +449,13 @@
         const v = row.dataset.value;
         const text = row.querySelector('.vdt-stree-text');
         const val = row.querySelector('.vdt-stree-val');
-        if (type === 'yesno' || type === 'action') {
+        const bool = type === 'yesno' || type === 'onoff';
+        if (bool || type === 'action') {
             text.textContent = `${label}:`;
-            const cur = type === 'yesno' ? (v === 'true' || v === '1' ? '1' : '0') : v;
+            const cur = bool ? (v === 'true' || v === '1' ? '1' : '0') : v;
             val.innerHTML = `<select class="tbp-select vdt-stree-combo" aria-label="${esc(label)}">${advChoices(type, sleepOk).map(([k, t]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
             const sel = val.querySelector('select');
-            sel.addEventListener('change', () => { row.dataset.value = type === 'yesno' ? String(sel.value === '1') : sel.value; onChange(); });
+            sel.addEventListener('change', () => { row.dataset.value = bool ? String(sel.value === '1') : sel.value; onChange(); });
             return;
         }
         const minutes = type === 'minutes';
@@ -486,7 +491,7 @@
         row.querySelector('.vdt-stree-text').textContent = `${row.dataset.label}:`;
         const type = row.dataset.type;
         const raw = row.dataset.value;
-        const v = type === 'yesno' ? raw === 'true' || raw === '1' : type === 'action' ? raw : Number(raw);
+        const v = type === 'yesno' || type === 'onoff' ? raw === 'true' || raw === '1' : type === 'action' ? raw : Number(raw);
         row.querySelector('.vdt-stree-val').textContent = advValueText(type, v);
     }
 
@@ -571,7 +576,8 @@
                         Object.entries(edits[id]).forEach(([k, raw]) => {
                             const [key, side] = k.split('|');
                             if (key === 'passwordOnWake') { pw = raw === true || raw === 'true'; return; }
-                            const v = key === 'lid' || key === 'power' || key === 'sleepButton' ? String(raw) : Number(raw);
+                            const v = key === 'lid' || key === 'power' || key === 'sleepButton' ? String(raw)
+                                : key === 'adaptive' ? raw === true || raw === 'true' : Number(raw);
                             if (st.plans[id][side][key] !== v) patch[side][key] = v;
                         });
                         if (Object.keys(patch.ac).length || Object.keys(patch.dc).length) await hostCall('set', id, patch);

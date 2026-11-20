@@ -2820,6 +2820,7 @@ class WebSocketClient {
         if (this.vistaLogon && !modal.classList.contains('vista-logon-art-ready')) return;
         this._logonPaintedOnce = true;
         if (window.dreamscapeShowBootPointer) window.dreamscapeShowBootPointer();
+        if (window.melatonPointerScheme) window.melatonPointerScheme.shown();
         if (window.DreamOSBoot && window.DreamOSBoot.native) {
             requestAnimationFrame(() => requestAnimationFrame(() => window.DreamOSBoot.ready('logon')));
         }
@@ -4958,6 +4959,8 @@ class WebSocketClient {
             this.initializationLock = false; // Release initialization lock
             // serviceWorkerManager.flushUpdatesAfterDesktop: public/scripts/comp/serviceWorkerManager.js
             if (window.serviceWorkerManager) window.serviceWorkerManager.flushUpdatesAfterDesktop();
+            // DreamOS: the pointer stays shown from here (melatonPointerScheme.js; the boot hides it when still)
+            if (window.melatonPointerScheme) window.melatonPointerScheme.shown();
             await this.hideProgressNotification();
             return;
         }
@@ -5091,6 +5094,8 @@ class WebSocketClient {
             this.initializationLock = false; // Release initialization lock
             // serviceWorkerManager.flushUpdatesAfterDesktop: public/scripts/comp/serviceWorkerManager.js
             if (window.serviceWorkerManager) window.serviceWorkerManager.flushUpdatesAfterDesktop();
+            // DreamOS: the pointer stays shown from here (melatonPointerScheme.js; the boot hides it when still)
+            if (window.melatonPointerScheme) window.melatonPointerScheme.shown();
             this._runDeferredInitSteps();
             // a fast logon whose server answered during the boot: the reconnection checks the profile now (#910)
             if (this._reconnectAfterCachedBoot) { this._reconnectAfterCachedBoot = false; this.forceReconnect(); }
