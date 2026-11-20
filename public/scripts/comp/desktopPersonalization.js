@@ -271,7 +271,7 @@
         ];
         if (!p.transparency) {
             // opaque frames need no backdrop pass
-            lines.push('html[data-glass="live"] body.desktop-mode .modal:not(.modal-maximized) { -webkit-backdrop-filter: none; backdrop-filter: none; }');
+            lines.push('html[data-glass="premium"] body.desktop-mode .modal:not(.modal-maximized) { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }');
         }
         return lines.join('\n');
     }

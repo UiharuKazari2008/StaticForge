@@ -270,6 +270,15 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     assert.strictEqual(api.syncModal(m), true);
     assert.notStrictEqual(m.style.getPropertyValue('--aero-x'), '');
 
+    // ---- premium: live backdrop-filter on every window, nothing cached ----
+    assert.strictEqual(api.setMode('premium'), 'premium');
+    assert.strictEqual(root.dataset.glass, 'premium');
+    assert.strictEqual(root.classList.contains('disable-blur'), false);
+    assert.strictEqual(T.readStoredMode(), 'premium', 'premium is stored like the other modes');
+    assert.strictEqual(api.toggleBasic(), 'basic');
+    assert.strictEqual(api.toggleBasic(), 'premium', 'leaving basic returns to premium');
+    api.setMode('live');
+
     // ---- live recipe: app.css backdrop-filter radius at the wallpaper's cover scale ----
     const liveRecipe = T.computeRecipe('live', 1920, 1200, 960, 1920, 1200);
     assert.strictEqual(liveRecipe.blur, 2.5, '5 CSS px at a half-size copy');

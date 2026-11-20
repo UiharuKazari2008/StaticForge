@@ -157,7 +157,8 @@
         globalPending: null
     };
 
-    const GLASS_NAMES = [['live', 'Melaton Aero'], ['frosted', 'Melaton Aero (frosted glass)'], ['basic', 'Melaton Basic']];
+    // premium: live glass on every window, always (aero-glass.css; Yukimi, Nov 20 2026: fidelity over power)
+    const GLASS_NAMES = [['live', 'Melaton Aero'], ['premium', 'Melaton Aero Premium'], ['frosted', 'Melaton Aero (frosted glass)'], ['basic', 'Melaton Basic']];
 
     function readGlobal() {
         /* global desktopSettingsGlobalState */

@@ -146,7 +146,8 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content
    paints frosted / basic and aeroGlass.syncSurfaces aligns it). Live has no surface paint of its own
    (the frame is a real backdrop the felt covers), so it takes basic's: the frame colour, tint and
    sheen. A dark rim and a light inner line make it read as glass set into the cloth. */
-html[data-glass="live"] body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed #manualPreviewContainer[data-aero-surface] {
+html[data-glass="live"] body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed #manualPreviewContainer[data-aero-surface],
+html[data-glass="premium"] body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed #manualPreviewContainer[data-aero-surface] {
     background-origin: border-box;
     background-clip: border-box;
     background-color: var(--aero-frame-base);

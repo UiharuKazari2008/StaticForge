@@ -1,7 +1,7 @@
 /**
  * Aero glass engine — window frame glass modes and the frosted wallpaper layer.
  *
- * html[data-glass] = frosted | live | basic (public/css/aero-glass.css).
+ * html[data-glass] = frosted | live | premium | basic (public/css/aero-glass.css).
  *   frosted  once per wallpaper a downscaled, blurred copy is drawn to a canvas and
  *            published as --aero-wallpaper on <html> (plus a lighter-blur copy,
  *            --aero-wallpaper-light, for the taskbar). Every .modal::before paints it at
@@ -20,6 +20,8 @@
  *            screen shows it (CaféReady screencopy, gadgets included). Redrawn only when the
  *            stack changes (move, resize, open, close, focus, wallpaper, resolution), debounced
  *            and never while the page is hidden.
+ *   premium  live backdrop-filter on every window, active and inactive, always (aero-glass.css): Vista's DWM for
+ *            people who prefer fidelity over power. Nothing cached; the origin is still tracked (streaks).
  *   basic    performance mode: static tinted frames, same geometry. html.disable-blur
  *            is kept in sync so the older rules that key off it still apply.
  *
@@ -40,7 +42,7 @@
 
     const STORAGE_KEY = 'aero-glass-mode';
     const LEGACY_BLUR_KEY = 'disable-blur';
-    const MODES = ['frosted', 'live', 'basic'];
+    const MODES = ['frosted', 'live', 'premium', 'basic'];
     const DEFAULT_MODE = 'live';
     const ANIMATING_CLASSES = ['opening', 'closing', 'minimising', 'unminimising'];
 
@@ -104,20 +106,18 @@
         wallpaperSample: null,      // { width, height, data } of the blurred frame copy
         builtKey: null,             // mode | url | blur of the published copy
         composeSource: null,        // live: { canvas, pad, width } unfiltered padded copy for window textures
-        backdropTimer: null,
-        backdropPending: false,     // a compose waits for the page to show again
-        backdropToken: 0,
+        backdropPending: false,     // an update waits for the page to show again
+        updateQueued: false,
         observedModals: null,       // WeakSet of windows whose class / size is watched
-        backdropWorker: null,       // { worker, url, jobs, seq, sourceSent } draws the textures off the main thread
-        layerInfo: new WeakMap(),   // window -> { id, stamp, at, w, h } of its picture in the worker
-        layerIds: new Map(),        // id -> window, to let the worker drop a closed window's picture
-        layerSeq: 0,
-        layerQueue: [],             // windows waiting for a picture (one at a time, in idle moments)
-        layerRunning: false,
-        screenSig: null,            // the window geometry the desktop picture was last taken for (DreamOS)
-        screenStamp: 0,             // bumped when the worker's desktop picture changed
+        backdropWorker: null,       // { worker, url, jobs, seq, sourceFor, sourceReady } makes the blurred pictures
+        pics: new Map(),            // window -> { url, img, w, h, real, at, pending } its blurred picture (null: being made)
+        copyQueue: [],              // windows (and 'icons') waiting for a copy of their own pixels, one per idle moment
+        copyRunning: false,
+        screenSig: null,            // the window geometry the desktop was last taken for (DreamOS)
         screenBusy: false,
-        icons: null,                // the desktop icons' picture (other clients): { stamp, at, dirty, left, top, width, height }
+        desktopUrl: null,           // the desktop as the screen showed it, blurred (DreamOS)
+        desktopImg: null,
+        icons: null,                // the desktop icons' blurred picture (other clients): { url, img, at, dirty, observer }
         initialized: false
     };
 
@@ -765,6 +765,14 @@
     const COPY_STYLE_ID = 'aeroGlassCopy';
     const COPY_TARGETS = '.modal::before, .modal [data-aero-surface], #galleryWindow [data-aero-surface], .desktop-taskbar::after, #startMenu.start-menu';
     const copyVars = new Map();
+    // live's frames only: the desktop as the screen showed it (DreamOS) instead of the wallpaper copy, the icons' picture
+    const copyModalVars = new Map();
+    const COPY_MODAL_TARGETS = 'html[data-glass="live"] .modal::before';
+
+    function setModalCopyVar(name, value) {
+        if (value === null || value === undefined) copyModalVars.delete(name);
+        else copyModalVars.set(name, value);
+    }
 
     function setCopyVar(name, value) {
         if (value === null || value === undefined) copyVars.delete(name);
@@ -774,7 +782,8 @@
     function flushCopyVars() {
         if (!doc || !doc.head || typeof doc.createElement !== 'function') return;
         const decls = Array.from(copyVars, ([k, v]) => `${k}: ${v};`).join(' ');
-        const css = decls ? `${COPY_TARGETS} { ${decls} }` : '';
+        const modalDecls = Array.from(copyModalVars, ([k, v]) => `${k}: ${v};`).join(' ');
+        const css = (decls ? `${COPY_TARGETS} { ${decls} }` : '') + (modalDecls ? `\n${COPY_MODAL_TARGETS} { ${modalDecls} }` : '');
         let el = typeof doc.getElementById === 'function' ? doc.getElementById(COPY_STYLE_ID) : null;
         if (!el) {
             if (!css) return;
@@ -887,7 +896,10 @@
             syncAllModals();
             revokeLater(previous);
             revokeLater(previousLight);
-            if (mode === 'live') scheduleBackdrops({ force: true });
+            if (mode === 'live') {
+                resetDesktop(); // a new wallpaper: the desktop is taken again
+                scheduleBackdrops();
+            }
             return true;
         } catch (err) {
             if (token !== state.buildToken) return false;
@@ -915,17 +927,29 @@
             state.resizeTimer = null;
             publishCoverVars();
             // live's copy is blurred for this resolution's cover scale; a no-op when the key holds
-            if (state.mode === 'live') scheduleWallpaperRefresh(false);
+            if (state.mode === 'live') {
+                scheduleWallpaperRefresh(false);
+                resetDesktop();
+            }
             syncAllModals();
         }, config.resizeDebounceMs);
     }
 
-    // ---------- live: windows behind a window ----------
-    // A window over other windows gets a texture of its own: the unfiltered wallpaper copy, the
-    // lower windows as blocks (frame tint, client colour), then live's blur + colour recipe, at half
-    // resolution. CSS lays it over the shared copy (--aero-backdrop, registered non-inheriting so a
-    // new texture restyles the frame paint only, not the window's subtree). Windows over nothing use
-    // the shared copy alone. Built on stack changes only, never per frame, never while hidden.
+    // ---------- live: what is behind a window ----------
+    // Vista's DWM way, in CSS. Every window has a picture of its own (windowCapture.js, the copy Flip 3D and the
+    // taskbar previews share; frame-tint and client-colour blocks until it exists), made small and blurred with live's
+    // recipe and a blur halo in a Worker. Each window's frame paint (::before) lays the pictures of the windows below
+    // it, placed by screen coordinates like the wallpaper copy, over the desktop icons' blurred picture and the
+    // wallpaper copy (DreamOS: the desktop as the screen shows it, gadgets included).
+    // So a move, open, close, minimise or focus change makes no image and swaps none: it only rewrites the lists of
+    // the windows whose below-set changed (--aero-under, -size, -pos: registered, not inherited, so only that
+    // window's frame paint restyles), in the same task as the change, so no frame shows a stale place. A new image (a
+    // window's content changed, a first picture, the desktop) is decoded before any frame refers to it, and the old
+    // one stays until then: no blank, unblurred or half-made frame (Yukimi, Nov 20 2026: "a LOT of flickering on
+    // window drag, close, open"). Pictures are made only at a stack change, in idle moments, never during a drag,
+    // never while the page is hidden; a changed window again at most every layerRefreshMs.
+
+    const HALO = Math.ceil(config.liveBlurPx * 3);
 
     function isFrameWindow(modal) {
         if (!modal || !modal.classList) return false;
@@ -944,95 +968,58 @@
         return Number.isFinite(z) ? z : 0;
     }
 
-    function rectsMeet(a, b, margin) {
-        return a.left - margin < b.right && b.left < a.right + margin
-            && a.top - margin < b.bottom && b.top < a.bottom + margin;
-    }
-
     function cssColorOf(value, fallback) {
         const c = resolveCssColor(value);
         return c ? `rgba(${Math.round(c[0] * 255)}, ${Math.round(c[1] * 255)}, ${Math.round(c[2] * 255)}, ${c[3]})` : fallback;
     }
 
-    /** What a lower window looks like through a 5 px blur: its frame tint and its client colour. */
-    function describeLowerWindow(modal) {
-        const rect = modal.getBoundingClientRect();
+    /** A window as blocks until its picture exists: its frame tint and its client colour, in window px. */
+    function windowBlocks(modal, rect) {
         const cs = getComputedStyle(modal);
         const active = modal.classList.contains('active-window');
-        const maximized = modal.classList.contains('modal-maximized');
-        const tint = cssColorOf(cs.getPropertyValue(maximized ? '--aero-tint-maximized' : (active ? '--aero-tint-active' : '--aero-tint-inactive')).trim(), 'rgba(40, 60, 80, 0.6)');
-        let client = null;
+        const tint = cssColorOf(cs.getPropertyValue(active ? '--aero-tint-active' : '--aero-tint-inactive').trim(), 'rgba(40, 60, 80, 0.6)');
+        const blocks = [[0, 0, rect.width, rect.height, tint]];
         const content = modal.querySelector(':scope > .modal-content, :scope > .modal-body');
         if (content) {
             const r = content.getBoundingClientRect();
             const bg = parseCssColor(getComputedStyle(content).backgroundColor);
             if (r.width > 0 && r.height > 0 && bg && bg[3] > 0.05) {
-                client = {
-                    left: r.left, top: r.top, width: r.width, height: r.height,
-                    color: `rgba(${Math.round(bg[0] * 255)}, ${Math.round(bg[1] * 255)}, ${Math.round(bg[2] * 255)}, ${bg[3]})`
-                };
+                blocks.push([r.left - rect.left, r.top - rect.top, r.width, r.height,
+                    `rgba(${Math.round(bg[0] * 255)}, ${Math.round(bg[1] * 255)}, ${Math.round(bg[2] * 255)}, ${bg[3]})`]);
             }
         }
-        return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, tint, client };
-    }
-
-    /** Where the unfiltered copy lands in a texture whose top left is CSS (originX, originY), k texels per px. */
-    function composeSourcePlacement(originX, originY, k) {
-        const src = state.composeSource;
-        const geo = src && win ? computeCoverGeometry(state.imageWidth, state.imageHeight, win.innerWidth, win.innerHeight, state.position) : null;
-        if (!geo) return null;
-        const cssPerPx = geo.width / src.width;
-        return [
-            (geo.x - src.pad * cssPerPx - originX) * k,
-            (geo.y - src.pad * cssPerPx - originY) * k,
-            src.canvas.width * cssPerPx * k,
-            src.canvas.height * cssPerPx * k
-        ];
+        return blocks;
     }
 
     /**
-     * One texture: the copy, the lower windows as blocks, then the blur + colour recipe. Pure canvas
-     * work so it runs the same in the worker (OffscreenCanvas) and on the main thread (fallback).
+     * One blurred picture with its halo: a window's (or the icons') own pixels, or its blocks, through live's blur and
+     * colour recipe on a transparent canvas. Pure canvas work: it runs in the Worker.
      */
-    function paintBackdrop(makeCanvas, source, job, layers, desktop) {
-        const work = makeCanvas(job.workWidth, job.workHeight);
-        const wctx = work.getContext('2d', { alpha: false });
-        wctx.imageSmoothingEnabled = true;
-        // the desktop as the screen showed it (DreamOS), else the wallpaper copy
-        if (desktop && job.desktopPlace) wctx.drawImage(desktop, job.desktopPlace[0], job.desktopPlace[1], job.desktopPlace[2], job.desktopPlace[3]);
-        else {
-            wctx.drawImage(source, job.place[0], job.place[1], job.place[2], job.place[3]);
-            // the desktop icons over it (their own picture: other clients have no screen copy)
-            const icons = layers ? layers.get('icons') : null;
-            if (icons && job.iconsPlace) wctx.drawImage(icons, job.iconsPlace[0], job.iconsPlace[1], job.iconsPlace[2], job.iconsPlace[3]);
-        }
-        job.blocks.forEach((b) => {
-            // a lower window: its own picture where there is one, else its frame tint and client colour
-            const pic = b.layer && layers ? layers.get(b.layer) : null;
-            if (pic) {
-                wctx.drawImage(pic, b.x, b.y, b.w, b.h);
-                return;
-            }
-            (b.fallback || []).forEach((f) => {
-                wctx.fillStyle = f[4];
-                wctx.fillRect(f[0], f[1], f[2], f[3]);
-            });
-        });
+    function blurPicture(makeCanvas, src, job) {
         const out = makeCanvas(job.width, job.height);
-        const octx = out.getContext('2d', { alpha: false });
-        octx.imageSmoothingEnabled = true;
-        if ('filter' in octx) octx.filter = job.filter;
-        octx.drawImage(work, -job.margin, -job.margin);
+        const g = out.getContext('2d');
+        g.imageSmoothingEnabled = true;
+        let from = src;
+        if (!from) {
+            from = makeCanvas(job.width, job.height);
+            const b = from.getContext('2d');
+            job.blocks.forEach((f) => {
+                b.fillStyle = f[4];
+                b.fillRect(job.margin + f[0], job.margin + f[1], f[2], f[3]);
+            });
+        }
+        if ('filter' in g) g.filter = job.filter;
+        if (src) g.drawImage(src, job.margin, job.margin, job.innerWidth, job.innerHeight);
+        else g.drawImage(from, 0, 0);
         return out;
     }
 
-    // The worker gets the painter as an argument, never by name: the served copy is minified, and a name written
-    // into the worker's source ('const paintBackdrop = ...') is not the name the minified worker body calls
-    // ("ot is not defined": no texture at all on the served build, Nov 20 2026).
+    // The worker gets the painter as an argument, never by name: the served copy is minified, and a name written into
+    // the worker's source is not the name the minified worker body calls ("ot is not defined", Nov 20 2026).
     function backdropWorkerMain(paint) {
         let source = null;
-        const layers = new Map();   // window picture id -> ImageBitmap
         let desktop = null;         // OffscreenCanvas: the desktop as last seen (DreamOS)
+        const make = (w, h) => new OffscreenCanvas(w, h);
         // app-scope: allow worker global (this function runs in the backdrop Worker, never on the page)
         self.onmessage = async (event) => {
             const msg = event.data || {};
@@ -1042,37 +1029,37 @@
                 desktop = null; // a new wallpaper: what was seen of the old one goes
                 return;
             }
-            if (msg.type === 'layer') {
-                const old = layers.get(msg.id);
-                if (old && old.close) old.close();
-                if (msg.bitmap) layers.set(msg.id, msg.bitmap);
-                else layers.delete(msg.id);
-                return;
-            }
-            if (msg.type === 'screen') {
-                // the screen's pixels outside the windows (and their shadows) go into the desktop picture; the parts
-                // under windows keep what was seen there before (the wallpaper copy until then)
-                const shot = msg.bitmap;
-                if (!desktop || desktop.width !== msg.width || desktop.height !== msg.height) {
-                    if (!source) { if (shot.close) shot.close(); return; }
-                    desktop = new OffscreenCanvas(msg.width, msg.height);
-                    const d = desktop.getContext('2d', { alpha: false });
-                    d.imageSmoothingEnabled = true;
-                    d.drawImage(source, msg.place[0], msg.place[1], msg.place[2], msg.place[3]);
-                }
-                const tmp = new OffscreenCanvas(msg.width, msg.height);
-                const t = tmp.getContext('2d');
-                t.drawImage(shot, 0, 0, msg.width, msg.height);
-                if (shot.close) shot.close();
-                msg.exclude.forEach((r) => t.clearRect(r[0], r[1], r[2], r[3]));
-                desktop.getContext('2d').drawImage(tmp, 0, 0);
-                return;
-            }
-            if (msg.type !== 'job') return;
             try {
-                if (!source) throw new Error('no source');
-                const out = paint((w, h) => new OffscreenCanvas(w, h), source, msg.job, layers, desktop);
-                const blob = await out.convertToBlob({ type: 'image/jpeg', quality: msg.quality });
+                let out = null;
+                let type = 'image/webp';
+                if (msg.type === 'picture') {
+                    out = paint(make, msg.bitmap || null, msg.job);
+                    if (msg.bitmap && msg.bitmap.close) msg.bitmap.close();
+                } else if (msg.type === 'screen') {
+                    // the screen's pixels outside the windows (and their shadows) go into the desktop; the parts under
+                    // windows keep what was seen there before (the wallpaper copy until then)
+                    const shot = msg.bitmap;
+                    if (!desktop || desktop.width !== msg.width || desktop.height !== msg.height) {
+                        if (!source) throw new Error('no source');
+                        desktop = make(msg.width, msg.height);
+                        const d = desktop.getContext('2d', { alpha: false });
+                        d.imageSmoothingEnabled = true;
+                        d.drawImage(source, msg.place[0], msg.place[1], msg.place[2], msg.place[3]);
+                    }
+                    const tmp = make(msg.width, msg.height);
+                    const t = tmp.getContext('2d');
+                    t.drawImage(shot, 0, 0, msg.width, msg.height);
+                    if (shot.close) shot.close();
+                    msg.exclude.forEach((r) => t.clearRect(r[0], r[1], r[2], r[3]));
+                    desktop.getContext('2d').drawImage(tmp, 0, 0);
+                    out = make(msg.width, msg.height);
+                    const g = out.getContext('2d', { alpha: false });
+                    g.filter = msg.filter;
+                    g.drawImage(desktop, 0, 0);
+                    type = 'image/jpeg';
+                }
+                if (!out) return;
+                const blob = await out.convertToBlob({ type, quality: msg.quality });
                 self.postMessage({ id: msg.id, blob });
             } catch (err) {
                 self.postMessage({ id: msg.id, error: String(err && err.message) });
@@ -1084,16 +1071,6 @@
         const bw = state.backdropWorker;
         if (!bw) return;
         state.backdropWorker = null;
-        // the pictures lived in that worker
-        state.layerInfo = new WeakMap();
-        state.layerIds.clear();
-        state.layerQueue = [];
-        state.screenSig = null;
-        state.screenStamp = 0;
-        if (state.icons) {
-            if (state.icons.observer) state.icons.observer.disconnect();
-            state.icons = null;
-        }
         try { bw.worker.terminate(); } catch (_) { /* gone */ }
         try { URL.revokeObjectURL(bw.url); } catch (_) { /* gone */ }
         bw.jobs.forEach((resolve) => resolve(null));
@@ -1105,7 +1082,7 @@
             || typeof Blob !== 'function') return null;
         try {
             const url = URL.createObjectURL(new Blob([
-                '(' + backdropWorkerMain.toString() + ')(' + paintBackdrop.toString() + ');'
+                '(' + backdropWorkerMain.toString() + ')(' + blurPicture.toString() + ');'
             ], { type: 'text/javascript' }));
             const worker = new Worker(url);
             const bw = { worker, url, jobs: new Map(), seq: 0, sourceFor: null, sourceReady: null };
@@ -1124,41 +1101,75 @@
         }
     }
 
-    /** The worker has the current copy: one transfer per copy; work posted while it is on its way waits for it. */
-    async function workerSource(bw) {
-        if (bw.sourceFor !== state.composeSource) {
-            const source = state.composeSource;
-            bw.sourceFor = source;
-            // a new copy resets the worker's desktop picture: it is taken again
-            state.screenSig = null;
-            state.screenStamp = 0;
-            bw.sourceReady = createImageBitmap(source.canvas).then((bitmap) => {
-                if (state.backdropWorker === bw) bw.worker.postMessage({ type: 'source', bitmap }, [bitmap]);
-            });
-        }
-        await bw.sourceReady;
-        return state.backdropWorker === bw;
+    function ask(bw, msg, transfer) {
+        const id = ++bw.seq;
+        return new Promise((resolve) => {
+            bw.jobs.set(id, resolve);
+            bw.worker.postMessage(Object.assign({ id, quality: config.jpegQuality }, msg), transfer || []);
+        });
     }
 
-    // ---- the pictures of the windows behind (every client) ----
-    // windowCapture.js copies a window's DOM into a picture (Flip 3D and the taskbar previews use the same copy). Here
-    // a lower window's picture is made small and handed to the worker once; the textures above it draw it. Copied
-    // only at a stack change, one window per idle moment, and a window that changed again only after layerRefreshMs.
+    /** A blob made into a URL whose image is decoded: a frame that refers to it never paints it half-made or blank. */
+    async function decodedUrl(blob) {
+        if (!blob) return null;
+        const url = URL.createObjectURL(blob);
+        try {
+            const img = new Image();
+            img.src = url;
+            await img.decode();
+            return { url, img };
+        } catch (_) {
+            URL.revokeObjectURL(url);
+            return null;
+        }
+    }
 
-    function layerNeedsCopy(modal, rect) {
-        const info = state.layerInfo.get(modal);
-        if (!info) return true;
-        if (Math.abs(info.w - rect.width) > 1 || Math.abs(info.h - rect.height) > 1) return true;
+    /** A window's blurred picture (src: its own pixels as an ImageBitmap, or null for its blocks). */
+    async function makePicture(w, h, src, blocks) {
+        const bw = backdropWorker();
+        if (!bw) {
+            if (src && src.close) src.close();
+            return null;
+        }
+        const k = Math.min(config.backdropScale, config.backdropMaxSide / Math.max(w, h, 1));
+        const job = {
+            width: Math.max(1, Math.ceil((w + 2 * HALO) * k)),
+            height: Math.max(1, Math.ceil((h + 2 * HALO) * k)),
+            margin: HALO * k,
+            innerWidth: w * k,
+            innerHeight: h * k,
+            filter: `blur(${config.liveBlurPx * k}px) ${config.liveFilter}`,
+            blocks: blocks ? blocks.map((b) => [b[0] * k, b[1] * k, b[2] * k, b[3] * k, b[4]]) : null
+        };
+        return decodedUrl(await ask(bw, { type: 'picture', job, bitmap: src || null }, src ? [src] : []));
+    }
+
+    /** A new picture for a window: the lists above it change in the same task (the old image goes later). */
+    function setPicture(modal, made, w, h, real) {
+        const old = state.pics.get(modal);
+        state.pics.set(modal, { url: made.url, img: made.img, w, h, real, at: performance.now() });
+        if (old) revokeLater(old.url);
+        updateBackdrops();
+    }
+
+    function pictureFits(pic, rect) {
+        return !!pic && Math.abs(pic.w - rect.width) <= 1 && Math.abs(pic.h - rect.height) <= 1;
+    }
+
+    /** The window's own pixels are wanted: none yet, another size, or changed long enough ago. */
+    function wantsCopy(modal, rect) {
+        const pic = state.pics.get(modal);
+        if (!pic || !pic.real || !pictureFits(pic, rect)) return true;
         const wc = win && win.windowCapture;
-        if (wc && typeof wc.fresh === 'function' && !wc.fresh(modal)) return performance.now() - info.at > config.layerRefreshMs;
+        if (wc && typeof wc.fresh === 'function' && !wc.fresh(modal)) return performance.now() - pic.at > config.layerRefreshMs;
         return false;
     }
 
-    function queueLayers(list) {
-        list.forEach((m) => { if (!state.layerQueue.includes(m)) state.layerQueue.push(m); });
-        if (state.layerRunning || !state.layerQueue.length) return;
-        state.layerRunning = true;
-        runLayers().finally(() => { state.layerRunning = false; });
+    function queueCopies(list) {
+        list.forEach((m) => { if (!state.copyQueue.includes(m)) state.copyQueue.push(m); });
+        if (state.copyRunning || !state.copyQueue.length) return;
+        state.copyRunning = true;
+        runCopies().finally(() => { state.copyRunning = false; });
     }
 
     function idle() {
@@ -1168,7 +1179,11 @@
         });
     }
 
-    async function runLayers() {
+    function dragging() {
+        return !!(doc.body && doc.body.classList.contains('is-window-dragging'));
+    }
+
+    async function runCopies() {
         if (!win) return;
         try {
             if (!win.windowCapture && win.featureLoader && typeof win.featureLoader.loadFeature === 'function') {
@@ -1176,99 +1191,85 @@
             }
         } catch (_) { /* the blocks stay */ }
         const wc = win.windowCapture;
-        if (!wc || typeof wc.capture !== 'function' || typeof createImageBitmap !== 'function') { state.layerQueue = []; return; }
-        let made = 0;
-        while (state.layerQueue.length) {
+        if (!wc || typeof wc.capture !== 'function') { state.copyQueue = []; return; }
+        while (state.copyQueue.length) {
             await idle();
-            // hidden, or a window is being moved (a copy would stall the drag): the next settle queues them again
-            if (state.mode !== 'live' || doc.visibilityState === 'hidden' || (doc.body && doc.body.classList.contains('is-window-dragging'))) {
-                state.layerQueue = [];
-                break;
-            }
-            const bw = state.backdropWorker;
-            const modal = state.layerQueue.shift();
-            if (modal === 'icons') {
-                if (bw && await copyIcons(wc, bw)) made += 1;
+            // hidden, or a window is being moved (a copy would stall the drag): the next change queues them again
+            if (state.mode !== 'live' || doc.visibilityState === 'hidden' || dragging()) { state.copyQueue = []; break; }
+            const item = state.copyQueue.shift();
+            if (item === 'icons') {
+                await copyIcons(wc);
                 continue;
             }
-            if (!bw || !modal || !modal.isConnected || !isFrameWindow(modal)) continue;
+            const modal = item;
+            if (!modal || !modal.isConnected || !isFrameWindow(modal)) continue;
             let pic = null;
             try { pic = await wc.capture(modal); } catch (_) { pic = null; }
-            if (!pic || state.backdropWorker !== bw) continue;
+            if (!pic || state.mode !== 'live') continue;
             try {
                 const canvas = wc.composite(pic);
                 const rim = wc.RIM || 0;
+                const k = Math.min(config.backdropScale, config.backdropMaxSide / Math.max(pic.w, pic.h, 1));
                 const bitmap = await createImageBitmap(canvas, rim, rim, canvas.width - 2 * rim, canvas.height - 2 * rim, {
-                    resizeWidth: Math.max(1, Math.round(pic.w * config.backdropScale)),
-                    resizeHeight: Math.max(1, Math.round(pic.h * config.backdropScale)),
+                    resizeWidth: Math.max(1, Math.round(pic.w * k)),
+                    resizeHeight: Math.max(1, Math.round(pic.h * k)),
                     resizeQuality: 'medium'
                 });
-                if (state.backdropWorker !== bw) { bitmap.close(); continue; }
-                const old = state.layerInfo.get(modal);
-                const id = old ? old.id : ++state.layerSeq;
-                bw.worker.postMessage({ type: 'layer', id, bitmap }, [bitmap]);
-                state.layerInfo.set(modal, { id, stamp: ++state.layerSeq, at: performance.now(), w: pic.w, h: pic.h });
-                state.layerIds.set(id, modal);
-                made += 1;
+                const made = await makePicture(pic.w, pic.h, bitmap, null);
+                if (made && modal.isConnected && state.mode === 'live') setPicture(modal, made, pic.w, pic.h, true);
+                else if (made) revokeLater(made.url);
             } catch (_) { /* tainted or gone: the blocks stay */ }
         }
-        if (made) scheduleBackdrops();
     }
 
-    /** The desktop icons as a picture (windowCapture.snapshot), copied again only after they changed. */
-    async function copyIcons(wc, bw) {
+    /** The desktop icons' blurred picture (other clients; DreamOS has the screen), again only after they changed. */
+    async function copyIcons(wc) {
         const el = doc.getElementById('desktopIcons');
-        if (!el || typeof wc.snapshot !== 'function') return false;
-        const info = state.icons || (state.icons = { stamp: 0, at: 0, dirty: true });
+        if (!el || typeof wc.snapshot !== 'function') return;
+        const info = state.icons || (state.icons = { at: 0, dirty: true, url: null });
         if (!info.observer && typeof MutationObserver === 'function') {
             info.observer = new MutationObserver(() => { info.dirty = true; });
             info.observer.observe(el, { subtree: true, childList: true, attributes: true, characterData: true });
         }
         info.dirty = false;
+        info.at = performance.now();
         const r = el.getBoundingClientRect();
         let canvas = null;
         try { canvas = await wc.snapshot(el, { scale: config.backdropScale }); } catch (_) { canvas = null; }
-        if (!canvas || state.backdropWorker !== bw) return false;
-        const bitmap = await createImageBitmap(canvas);
-        if (state.backdropWorker !== bw) { bitmap.close(); return false; }
-        bw.worker.postMessage({ type: 'layer', id: 'icons', bitmap }, [bitmap]);
-        Object.assign(info, { stamp: ++state.layerSeq, at: performance.now(), left: r.left, top: r.top, width: r.width, height: r.height });
-        return true;
+        if (!canvas || state.mode !== 'live') return;
+        const made = await makePicture(r.width, r.height, await createImageBitmap(canvas), null);
+        if (!made || state.mode !== 'live') return;
+        const old = info.url;
+        Object.assign(info, { url: made.url, img: made.img });
+        const x = r.left - HALO;
+        const y = r.top - HALO;
+        setModalCopyVar('--aero-icons', `url("${made.url}")`);
+        setModalCopyVar('--aero-icons-size', `${r.width + 2 * HALO}px ${r.height + 2 * HALO}px`);
+        setModalCopyVar('--aero-icons-pos', `calc(${x}px - var(--aero-x, 0px) - var(--modal-drag-x, 0px) - 1px) calc(${y}px - var(--aero-y, 0px) - var(--modal-drag-y, 0px) - 1px)`);
+        flushCopyVars();
+        if (old) revokeLater(old);
     }
 
-    function iconsNeedCopy() {
+    function iconsWanted() {
         if (screenCapture()) return false; // the screen copy has them, gadgets too
         const info = state.icons;
-        if (!info || !info.stamp) return true;
+        if (!info || !info.url) return !(info && performance.now() - info.at < config.layerRefreshMs);
         return info.dirty && performance.now() - info.at > config.layerRefreshMs;
-    }
-
-    /** Closed windows' pictures leave the worker. */
-    function dropGoneLayers() {
-        const bw = state.backdropWorker;
-        state.layerIds.forEach((modal, id) => {
-            if (modal.isConnected && !modal.classList.contains('hidden') && !modal.classList.contains('hidden-alt')) return;
-            state.layerIds.delete(id);
-            state.layerInfo.delete(modal);
-            if (bw) bw.worker.postMessage({ type: 'layer', id, bitmap: null });
-        });
     }
 
     // ---- DreamOS: the desktop behind the windows as the screen shows it ----
     // CaféReady copies the screen small (wlr-screencopy, window.DreamOSScreen) when the windows' geometry changed; the
-    // pixels outside every window (and its shadow) go into the worker's desktop picture, so icons, gadgets and the
-    // taskbar show through the glass as they are. Parts under windows keep what was seen there last.
+    // pixels outside every window (and its shadow) go into the worker's desktop picture, which the frames then show
+    // instead of the wallpaper copy. Parts under windows keep what was seen there last.
 
     function screenCapture() {
         const s = win && win.DreamOSScreen;
         return s && typeof s.capture === 'function' ? s : null;
     }
 
-    function frameRectsSignature(frames) {
-        return frames.map((f) => {
-            const r = f.modal.getBoundingClientRect();
-            return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)].join(',');
-        }).join(';') + `|${win.innerWidth}x${win.innerHeight}|${state.builtKey}`;
+    function rectsSignature(rects) {
+        return rects.map((r) => [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)].join(',')).join(';')
+            + `|${win.innerWidth}x${win.innerHeight}|${state.builtKey}`;
     }
 
     function nextFrames(n) {
@@ -1278,10 +1279,23 @@
         });
     }
 
+    /** The worker has the current copy: one transfer per copy; work posted while it is on its way waits for it. */
+    async function workerSource(bw) {
+        if (bw.sourceFor !== state.composeSource) {
+            const source = state.composeSource;
+            bw.sourceFor = source;
+            bw.sourceReady = createImageBitmap(source.canvas).then((bitmap) => {
+                if (state.backdropWorker === bw) bw.worker.postMessage({ type: 'source', bitmap }, [bitmap]);
+            });
+        }
+        await bw.sourceReady;
+        return state.backdropWorker === bw;
+    }
+
     async function takeScreen(sig) {
         const screen = screenCapture();
-        const bw = state.backdropWorker;
-        if (!screen || !bw || state.screenBusy) return;
+        const bw = backdropWorker();
+        if (!screen || !bw || state.screenBusy || !state.composeSource) return;
         state.screenBusy = true;
         try {
             if (!(await workerSource(bw))) return;
@@ -1291,21 +1305,32 @@
             const factor = Math.max(1, Math.round(dpr / config.screenScale));
             const shot = await screen.capture({ factor });
             if (!shot || state.backdropWorker !== bw || state.mode !== 'live') return;
-            // the windows moved while it was taken: it shows them somewhere else
-            const frames = Array.from(doc.querySelectorAll('.modal')).filter(isFrameWindow).map((modal) => ({ modal }));
-            if (frameRectsSignature(frames) !== sig) return;
+            const rects = Array.from(doc.querySelectorAll('.modal')).filter(isFrameWindow).map((m) => m.getBoundingClientRect());
+            if (rectsSignature(rects) !== sig) return; // the windows moved meanwhile: it shows them elsewhere
             const ks = shot.width / win.innerWidth;
             const pad = config.screenShadowPx;
-            const exclude = frames.map(({ modal }) => {
-                const r = modal.getBoundingClientRect();
-                return [(r.left - pad) * ks, (r.top - pad) * ks, (r.width + 2 * pad) * ks, (r.height + 2 * pad) * ks];
-            });
+            const exclude = rects.map((r) => [(r.left - pad) * ks, (r.top - pad) * ks, (r.width + 2 * pad) * ks, (r.height + 2 * pad) * ks]);
             const bitmap = await createImageBitmap(new ImageData(shot.data, shot.width, shot.height));
-            if (state.backdropWorker !== bw) { bitmap.close(); return; }
-            const place = composeSourcePlacement(0, 0, ks);
-            bw.worker.postMessage({ type: 'screen', bitmap, width: shot.width, height: shot.height, place, exclude }, [bitmap]);
-            state.screenStamp += 1;
-            scheduleBackdrops({ force: true });
+            const src = state.composeSource;
+            const geo = computeCoverGeometry(state.imageWidth, state.imageHeight, win.innerWidth, win.innerHeight, state.position);
+            const per = geo.width / src.width;
+            const place = [(geo.x - src.pad * per) * ks, (geo.y - src.pad * per) * ks, src.canvas.width * per * ks, src.canvas.height * per * ks];
+            const made = await decodedUrl(await ask(bw, {
+                type: 'screen', bitmap, width: shot.width, height: shot.height, place, exclude,
+                filter: `blur(${config.liveBlurPx * ks}px) ${config.liveFilter}`
+            }, [bitmap]));
+            if (!made || state.mode !== 'live') return;
+            const old = state.desktopUrl;
+            state.desktopUrl = made.url;
+            state.desktopImg = made.img;
+            // the frames' wallpaper layer becomes the desktop, the viewport's size at the screen's origin
+            setModalCopyVar('--aero-wallpaper', `url("${made.url}")`);
+            setModalCopyVar('--aero-cover-w', `${win.innerWidth}px`);
+            setModalCopyVar('--aero-cover-h', `${win.innerHeight}px`);
+            setModalCopyVar('--aero-cover-x', '0px');
+            setModalCopyVar('--aero-cover-y', '0px');
+            flushCopyVars();
+            if (old) revokeLater(old);
         } catch (_) {
             /* no picture this time: the wallpaper copy stays */
         } finally {
@@ -1313,167 +1338,145 @@
         }
     }
 
-    async function renderBackdrop(rect, lower) {
-        const k = Math.min(config.backdropScale, config.backdropMaxSide / Math.max(rect.width, rect.height, 1));
-        const margin = Math.ceil(config.liveBlurPx * 3);
-        const ox = rect.left - margin;
-        const oy = rect.top - margin;
-        const place = composeSourcePlacement(ox, oy, k);
-        if (!place) return null;
-        const blocks = lower.map((w) => {
-            const fallback = [[(w.left - ox) * k, (w.top - oy) * k, w.width * k, w.height * k, w.tint]];
-            if (w.client) fallback.push([(w.client.left - ox) * k, (w.client.top - oy) * k, w.client.width * k, w.client.height * k, w.client.color]);
-            return { layer: w.layer || 0, x: (w.left - ox) * k, y: (w.top - oy) * k, w: w.width * k, h: w.height * k, fallback };
-        });
-        const job = {
-            place,
-            // the desktop picture covers the viewport at its own scale; drawn at this texture's
-            desktopPlace: state.screenStamp && win ? [-ox * k, -oy * k, win.innerWidth * k, win.innerHeight * k] : null,
-            iconsPlace: state.icons && state.icons.stamp
-                ? [(state.icons.left - ox) * k, (state.icons.top - oy) * k, state.icons.width * k, state.icons.height * k] : null,
-            blocks,
-            margin: margin * k,
-            workWidth: Math.max(1, Math.ceil((rect.width + margin * 2) * k)),
-            workHeight: Math.max(1, Math.ceil((rect.height + margin * 2) * k)),
-            width: Math.max(1, Math.round(rect.width * k)),
-            height: Math.max(1, Math.round(rect.height * k)),
-            filter: `blur(${config.liveBlurPx * k}px) ${config.liveFilter}`
-        };
-        const bw = backdropWorker();
-        if (bw) {
-            if (!(await workerSource(bw))) return null;
-            const id = ++bw.seq;
-            return new Promise((resolve) => {
-                bw.jobs.set(id, resolve);
-                bw.worker.postMessage({ type: 'job', id, job, quality: config.jpegQuality });
-            });
-        }
-        const out = paintBackdrop((w, h) => {
-            const c = doc.createElement('canvas');
-            c.width = w;
-            c.height = h;
-            return c;
-        }, state.composeSource.canvas, job);
-        return canvasToBlob(out);
+    /** The desktop picture no longer fits (a new wallpaper, another screen size): the wallpaper copy until taken again. */
+    function resetDesktop() {
+        ['--aero-wallpaper', '--aero-cover-w', '--aero-cover-h', '--aero-cover-x', '--aero-cover-y'].forEach((k) => setModalCopyVar(k, null));
+        flushCopyVars();
+        if (state.desktopUrl) revokeLater(state.desktopUrl);
+        state.desktopUrl = null;
+        state.desktopImg = null;
+        state.screenSig = null;
     }
 
-    function setBackdrop(modal, url, key) {
-        const previous = modal._aeroBackdropUrl;
-        modal._aeroBackdropUrl = url || null;
-        modal._aeroBackdropKey = key || null;
-        if (url) modal.style.setProperty('--aero-backdrop', `url("${url}")`);
-        else if (previous) modal.style.removeProperty('--aero-backdrop');
-        if (previous && previous !== url) revokeLater(previous);
+    // ---- the lists ----
+
+    function writeUnder(modal, images, sizes, pos) {
+        const key = images.join(',') + '|' + sizes.join(',') + '|' + pos.join(',');
+        if (modal._aeroUnderKey === key) return false;
+        modal._aeroUnderKey = key;
+        if (images.length) {
+            modal.style.setProperty('--aero-under', images.join(', '));
+            modal.style.setProperty('--aero-under-size', sizes.join(', '));
+            modal.style.setProperty('--aero-under-pos', pos.join(', '));
+        } else {
+            modal.style.removeProperty('--aero-under');
+            modal.style.removeProperty('--aero-under-size');
+            modal.style.removeProperty('--aero-under-pos');
+        }
+        return true;
     }
 
     function clearBackdrops() {
-        clearTimeout(state.backdropTimer);
-        state.backdropTimer = null;
+        state.updateQueued = false;
         state.backdropPending = false;
-        state.backdropToken += 1;
+        state.copyQueue = [];
         stopBackdropWorker();
-        if (!doc) return;
-        doc.querySelectorAll('.modal').forEach((modal) => {
-            if (modal._aeroBackdropUrl || modal._aeroBackdropKey) setBackdrop(modal, null, null);
-        });
+        if (doc) {
+            doc.querySelectorAll('.modal').forEach((modal) => { if (modal._aeroUnderKey) writeUnder(modal, [], [], []); });
+        }
+        state.pics.forEach((p) => revokeLater(p.url));
+        state.pics = new Map();
+        if (state.icons) {
+            if (state.icons.observer) state.icons.observer.disconnect();
+            if (state.icons.url) revokeLater(state.icons.url);
+            state.icons = null;
+        }
+        if (state.desktopUrl) revokeLater(state.desktopUrl);
+        state.desktopUrl = null;
+        state.screenSig = null;
+        copyModalVars.clear();
+        flushCopyVars();
     }
 
-    async function composeBackdrops() {
-        if (!doc || state.mode !== 'live' || phoneUi() || !state.composeSource) return 0;
+    /**
+     * Every window's list of what is below it, written where it changed. Synchronous and cheap (reads, then writes):
+     * it runs in the same task as the change, so the frame that shows a window in its new place shows the windows
+     * above it with the new list.
+     */
+    function updateBackdrops() {
+        state.updateQueued = false;
+        if (!doc || state.mode !== 'live' || phoneUi()) return 0;
         if (doc.visibilityState === 'hidden') {
             state.backdropPending = true;
             return 0;
         }
-        const token = ++state.backdropToken;
         const desktop = !!(doc.body && doc.body.classList.contains('desktop-mode'));
         const frames = desktop
             ? Array.from(doc.querySelectorAll('.modal')).filter(isFrameWindow).map((modal, index) => ({ modal, index, z: modalZ(modal) }))
             : [];
         frames.sort((a, b) => (a.z - b.z) || (a.index - b.index));
-        const margin = config.liveBlurPx * 3;
-        let built = 0;
-        const descriptions = new Map();
-        const needCopy = [];
-        const describe = (modal) => {
-            if (!descriptions.has(modal)) {
-                const d = describeLowerWindow(modal);
-                const info = state.layerInfo.get(modal);
-                if (layerNeedsCopy(modal, d)) needCopy.push(modal);
-                // a picture of another size would stretch: the blocks until the new one is made
-                if (info && Math.abs(info.w - d.width) <= 1 && Math.abs(info.h - d.height) <= 1) {
-                    d.layer = info.id;
-                    d.layerStamp = info.stamp;
-                }
-                descriptions.set(modal, d);
-            }
-            return descriptions.get(modal);
-        };
-        const keep = new Set();
-        const jobs = [];
-        let moving = false;
-        for (let i = 0; i < frames.length; i += 1) {
-            const { modal } = frames[i];
-            // moving / animating: keep the last texture, the move's settle composes again
-            if (isModalAnimating(modal) || modal.hasAttribute('data-dragging') || modal.hasAttribute('data-resizing')) {
-                keep.add(modal);
+        // reads
+        let moving = dragging();
+        frames.forEach((f) => {
+            f.rect = f.modal.getBoundingClientRect();
+            if (isModalAnimating(f.modal) || f.modal.hasAttribute('data-dragging') || f.modal.hasAttribute('data-resizing')) {
+                f.moving = true;
                 moving = true;
-                continue;
             }
-            if (modal.classList.contains('modal-maximized')) continue; // near-solid dark frame
-            const rect = modal.getBoundingClientRect();
-            const lower = [];
-            for (let j = 0; j < i; j += 1) {
-                const other = frames[j].modal;
-                const r = other.getBoundingClientRect();
-                if (rectsMeet(rect, r, margin)) lower.push(describe(other));
-            }
-            // the desktop as it is (DreamOS: the screen, icons and gadgets; elsewhere: the icons' picture) shows behind
-            // every window; before either exists a window over nothing keeps the shared copy
-            if (!lower.length && !screenCapture() && !(state.icons && state.icons.stamp)) continue;
-            keep.add(modal);
-            const key = [state.builtKey, state.screenStamp, state.icons ? state.icons.stamp : 0, Math.round(rect.left), Math.round(rect.top), Math.round(rect.width), Math.round(rect.height)]
-                .concat(lower.map((w) => [w.left, w.top, w.width, w.height, w.tint, w.layerStamp || '', w.client ? [w.client.left, w.client.top, w.client.width, w.client.height, w.client.color].join(',') : ''].map((v) => (typeof v === 'number' ? Math.round(v) : v)).join(',')))
-                .join('|');
-            if (modal._aeroBackdropKey !== key) jobs.push({ modal, rect, lower, key });
-        }
-        // DreamOS: the windows' geometry changed since the desktop was last seen (read now, taken after the writes)
-        const screenSig = screenCapture() && frames.length ? frameRectsSignature(frames) : null;
-        // Every read is done before the first write: one style pass for the whole stack, and the
-        // textures are drawn together (in the worker where there is one).
-        const blobs = await Promise.all(jobs.map((job) => renderBackdrop(job.rect, job.lower).catch(() => null)));
-        if (token !== state.backdropToken) return 0; // a newer compose took over
-        jobs.forEach((job, i) => {
-            if (!blobs[i]) return;
-            setBackdrop(job.modal, URL.createObjectURL(blobs[i]), job.key);
-            built += 1;
         });
-        dropGoneLayers();
-        // the pictures the textures want (nearest below the top first), then the desktop as it is now
-        if (state.backdropWorker) {
-            const copies = needCopy.reverse();
-            if (frames.length && iconsNeedCopy()) copies.push('icons');
-            if (copies.length) queueLayers(copies);
-            // never while a window is on its way: the move's settle composes again
-            if (screenSig && !moving && screenSig !== state.screenSig && keep.size) {
-                state.screenSig = screenSig;
-                takeScreen(screenSig);
+        const blocksFor = [];
+        const copies = [];
+        frames.forEach((f) => {
+            const pic = state.pics.get(f.modal);
+            if (f.moving) return;
+            if (!pic || (!pictureFits(pic, f.rect) && !pic.pending)) blocksFor.push({ modal: f.modal, rect: f.rect, blocks: windowBlocks(f.modal, f.rect) });
+            if (wantsCopy(f.modal, f.rect)) copies.push(f.modal);
+        });
+        // writes: a window's list is the pictures of the windows below it, the nearest first
+        let written = 0;
+        frames.forEach((f, i) => {
+            const images = [];
+            const sizes = [];
+            const pos = [];
+            if (!f.modal.classList.contains('modal-maximized')) {
+                for (let j = i - 1; j >= 0; j -= 1) {
+                    const below = frames[j];
+                    const pic = state.pics.get(below.modal);
+                    if (!pic) continue;
+                    const r = below.rect;
+                    images.push(`url("${pic.url}")`);
+                    sizes.push(`${pic.w + 2 * HALO}px ${pic.h + 2 * HALO}px`);
+                    pos.push(`calc(${Math.round(r.left) - HALO}px - var(--aero-x, 0px) - var(--modal-drag-x, 0px) - 1px) calc(${Math.round(r.top) - HALO}px - var(--aero-y, 0px) - var(--modal-drag-y, 0px) - 1px)`);
+                }
+            }
+            if (writeUnder(f.modal, images, sizes, pos)) written += 1;
+        });
+        // pictures to make: blocks now (quick), the windows' own pixels in idle moments
+        blocksFor.forEach(({ modal, rect, blocks }) => {
+            const prev = state.pics.get(modal);
+            if (prev) prev.pending = true;
+            else state.pics.set(modal, null); // reserved: no second blocks request meanwhile
+            makePicture(rect.width, rect.height, null, blocks).then((made) => {
+                const cur = state.pics.get(modal);
+                if (made && modal.isConnected && state.mode === 'live' && !(cur && cur.real && pictureFits(cur, rect))) setPicture(modal, made, rect.width, rect.height, false);
+                else if (made) revokeLater(made.url);
+                else if (!cur) state.pics.delete(modal);
+            });
+        });
+        // closed windows' pictures go
+        state.pics.forEach((pic, modal) => {
+            if (modal.isConnected && !modal.classList.contains('hidden') && !modal.classList.contains('hidden-alt')) return;
+            if (pic) revokeLater(pic.url);
+            state.pics.delete(modal);
+        });
+        if (!moving) {
+            const list = copies.reverse();
+            if (frames.length && iconsWanted()) list.push('icons');
+            if (list.length) queueCopies(list);
+            const sig = screenCapture() && frames.length ? rectsSignature(frames.map((f) => f.rect)) : null;
+            if (sig && sig !== state.screenSig) {
+                state.screenSig = sig;
+                takeScreen(sig);
             }
         }
-        // windows that no longer overlap anything go back to the shared copy
-        doc.querySelectorAll('.modal').forEach((modal) => {
-            if (!keep.has(modal) && (modal._aeroBackdropUrl || modal._aeroBackdropKey)) setBackdrop(modal, null, null);
-        });
-        return built;
+        return written;
     }
 
-    function scheduleBackdrops(options = {}) {
-        if (state.mode !== 'live' || phoneUi()) return;
-        if (options.force && doc) doc.querySelectorAll('.modal').forEach((m) => { m._aeroBackdropKey = m._aeroBackdropUrl ? 'stale' : null; });
-        clearTimeout(state.backdropTimer);
-        state.backdropTimer = setTimeout(() => {
-            state.backdropTimer = null;
-            composeBackdrops();
-        }, config.backdropDebounceMs);
+    /** In the same task as the change (a microtask): never a frame with the old list. */
+    function scheduleBackdrops() {
+        if (state.mode !== 'live' || phoneUi() || state.updateQueued) return;
+        state.updateQueued = true;
+        queueMicrotask(updateBackdrops);
     }
 
     /** Focus (z-order), close, minimise and the end of an open / drag show up as class changes; size as a resize. */
@@ -1534,7 +1537,7 @@
         syncAllModals,
         refreshWallpaper: () => scheduleWallpaperRefresh(false),
         rebuildWallpaper: () => ensureFrosted({ force: true }),
-        refreshBackdrops: () => scheduleBackdrops({ force: true }),
+        refreshBackdrops: () => updateBackdrops(),
         refreshContrast: scheduleContrast,
         syncContrast,
         _test: {
@@ -1547,7 +1550,7 @@
             computeModalOrigin,
             readStoredMode,
             ensureFrosted,
-            composeBackdrops,
+            composeBackdrops: updateBackdrops,
             copyVar: (name) => copyVars.get(name) || '',
             computeRecipe,
             parseCssColor,

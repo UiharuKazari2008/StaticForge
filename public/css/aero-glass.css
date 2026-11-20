@@ -6,21 +6,35 @@
               wallpaper by aeroGlass.js) is painted under each frame at viewport cover
               size, offset by the window's own origin (--aero-x / --aero-y). Dragging
               adds --modal-drag-x / -y in CSS. No window pays a per-frame backdrop-filter.
-     live     the same cached paint, the copy made with live's own blur and colour recipe;
-              a window over other windows also gets --aero-backdrop, its own texture of the
-              wallpaper and the windows behind it, redrawn only when the stack changes. No frame
-              and no taskbar runs a backdrop-filter at rest (Yukimi, Nov 20 2026); menus and
-              other transient chrome keep the live blur app.css gives them.
+     live     the same cached paint, the copy made with live's own blur and colour recipe,
+              and under the tint the blurred pictures of the windows below (--aero-under, a
+              layer each, placed by screen coordinates like the wallpaper), the desktop icons'
+              (--aero-icons) and on DreamOS the desktop itself: what is behind a window, as
+              Vista's DWM shows it. A move changes positions only, never an image. No frame and no
+              taskbar runs a backdrop-filter at rest (Yukimi, Nov 20 2026); menus and other
+              transient chrome keep the live blur app.css gives them.
+     premium  live backdrop-filter on every window, active and inactive, always: Vista's DWM
+              for people who prefer fidelity over power (Yukimi, Nov 20 2026). The taskbar too.
      basic    performance mode: static tinted frames with the same geometry, borders
               and shadows. html.disable-blur is kept in sync so older rules still apply.
 
    Link after desktop-shell.css and windows-classic-theme.css, before hidden.css.
    Yozora #400. */
 
-/* A window's own backdrop texture (live, aeroGlass.js composeBackdrops). Not inherited: a new
-   texture restyles the frame paint (::before takes it with an explicit inherit), never the
-   window's subtree. */
-@property --aero-backdrop {
+/* What is below a window (live, aeroGlass.js updateBackdrops): the pictures, their sizes and their
+   screen places, one entry per window below. Not inherited: a new list restyles the frame paint
+   (::before takes them with an explicit inherit), never the window's subtree. */
+@property --aero-under {
+    syntax: '*';
+    inherits: false;
+}
+
+@property --aero-under-size {
+    syntax: '*';
+    inherits: false;
+}
+
+@property --aero-under-pos {
     syntax: '*';
     inherits: false;
 }
@@ -231,11 +245,14 @@ html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-them
     box-shadow: var(--aero-frame-highlight);
 }
 
-/* frosted and live add the wallpaper layer under the tint, aligned to the desktop; live lays a
-   window's own texture (the windows behind it, --aero-backdrop) over it, sized to the border box */
+/* frosted and live add the wallpaper layer under the tint, aligned to the desktop; live lays the
+   windows below (--aero-under) and the desktop icons (--aero-icons) over it, each at its own screen
+   place. Unset, each list is one empty layer, so the size and position lists stay in step. */
 html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before,
 html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before {
-    --aero-backdrop: inherit;
+    --aero-under: inherit;
+    --aero-under-size: inherit;
+    --aero-under-pos: inherit;
     background-image:
         var(--aero-frame-wash), var(--aero-frame-wash), var(--aero-frame-wash),
         var(--aero-body-shade-layer),
@@ -244,7 +261,8 @@ html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme
         var(--aero-streaks),
         var(--aero-shade),
         linear-gradient(var(--aero-tint), var(--aero-tint)),
-        var(--aero-backdrop, none),
+        var(--aero-under, none),
+        var(--aero-icons, none),
         var(--aero-wallpaper, none);
     background-size:
         var(--aero-strip-side-size), var(--aero-strip-side-size), var(--aero-strip-bottom-size),
@@ -254,7 +272,8 @@ html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme
         var(--aero-streaks-size),
         100% 100%,
         100% 100%,
-        calc(100% + 2px) calc(100% + 2px),
+        var(--aero-under-size, auto),
+        var(--aero-icons-size, auto),
         var(--aero-cover-w, 100vw) var(--aero-cover-h, 100vh);
     background-position:
         0 var(--modal-title-chrome-height, 27px), 100% var(--modal-title-chrome-height, 27px), var(--window-frame-inset, 0px) 100%,
@@ -264,16 +283,43 @@ html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme
         var(--aero-streaks-pos),
         0 0,
         0 0,
-        -1px -1px,
+        var(--aero-under-pos, 0 0),
+        var(--aero-icons-pos, 0 0),
         calc(var(--aero-cover-x, 0px) - var(--aero-x, 0px) - var(--modal-drag-x, 0px) - 1px)
         calc(var(--aero-cover-y, 0px) - var(--aero-y, 0px) - var(--modal-drag-y, 0px) - 1px);
 }
 
-/* While a window moves or resizes, the windows behind it are wherever it was when the texture
-   was made: it shows the shared copy, which slides with the desktop, until the move settles and
-   aeroGlass.js composes again. */
-html[data-glass="live"] body:not(.windows-classic-theme) .modal:is([data-dragging="true"], [data-resizing="true"]):not(.alert-theme):not(.warning-theme):not(.success-theme)::before {
-    --aero-backdrop: none;
+/* premium: the backdrop-filter glass on every window, the way the live mode drew it before it was
+   cached, with the frame texture on the window's own background. app.css drops the blur on inactive,
+   moving and resizing windows through long :not() chains (live's old power saving); premium is the
+   choice to keep it everywhere, so it wins with !important instead of a longer chain. */
+html[data-glass="premium"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed))) {
+    -webkit-backdrop-filter: var(--glass-blur-3, blur(5px)) saturate(3) contrast(1.5) brightness(1.2) !important;
+    backdrop-filter: var(--glass-blur-3, blur(5px)) saturate(3) contrast(1.5) brightness(1.2) !important;
+    background-image:
+        var(--aero-frame-wash), var(--aero-frame-wash), var(--aero-frame-wash),
+        var(--aero-wedges),
+        var(--aero-streaks),
+        var(--aero-shade);
+    background-size:
+        var(--aero-strip-side-size), var(--aero-strip-side-size), var(--aero-strip-bottom-size),
+        100% 100%, 100% 100%, var(--aero-streaks-size), 100% 100%;
+    background-position:
+        0 var(--modal-title-chrome-height, 27px), 100% var(--modal-title-chrome-height, 27px), var(--window-frame-inset, 0px) 100%,
+        0 0, 0 0, var(--aero-streaks-pos), 0 0;
+    background-repeat: no-repeat;
+}
+
+/* premium, inactive: Vista's lighter, calmer frame over the same live blur */
+html[data-glass="premium"] body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):not(.modal-maximized):not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed))) {
+    background-color: var(--aero-tint-inactive);
+}
+
+/* premium, maximized: the Vista dark frame, a touch of the blur left under it */
+html[data-glass="premium"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme) {
+    background-color: var(--aero-tint-maximized);
+    border-color: transparent;
+    box-shadow: none;
 }
 
 /* Inactive windows keep faint glass: same image, calmer tint and sheen (Vista inactive frame). Set where
