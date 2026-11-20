@@ -367,8 +367,11 @@
         if (list.length < 2) return [];
         const label = (d) => {
             const full = d.description && d.description !== d.name ? `${d.name} (${d.description})` : d.name;
-            // the menu is at most 300 px: a long one goes by its hardware ("NexDock (HDMI)")
-            if (full.length <= 34 || !d.description) return full;
+            // the menu is at most 300 px (about 30 characters of text): the maker's name goes first ("Speakers (Galaxy Z
+            // Fold7)"), then a long one goes by its hardware ("NexDock (HDMI)")
+            if (full.length <= 30 || !d.description) return full;
+            const short = `${d.name} (${d.description.replace(/^(Samsung|Google|Apple|Sony|Motorola)\s+/i, '')})`;
+            if (short.length <= 30) return short;
             return d.kind === 'hdmi' ? `${d.description} (HDMI)` : d.description;
         };
         return list.map((d) => ({
