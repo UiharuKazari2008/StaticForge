@@ -20,7 +20,11 @@
  * Inside the app it goes to AndroidDisplay.reportSelfTest(json): the boot cover holds the maker's
  * logo until it comes, and a failure opens the recovery page with what failed. The start
  * (launch.html redirectToApp) waits for it and does not go on after a failure inside the app.
- * Every check has its own time limit and the whole test ends within 8 s.
+ * Every check has its own time limit and the whole test ends within 8 s. Running out of time is never a
+ * failure (installed-boot-zero-wait: a slow start must look like a fast one): a check that does not answer in
+ * time, or the 8 s limit, is a warning and the start goes on. Only a check that answers with a fault fails
+ * (Yukimi, Nov 20: an update restart, the new service worker and the other window busy, opened Recovery with
+ * "The self test did not answer within 8 s").
  */
 (function (root) {
     'use strict';
@@ -34,7 +38,11 @@
     const items = [];
     const result = { state: 'running', items, ms: 0, startedAt: t0 };
 
-    const limit = (p, ms, what) => Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} did not answer within ${ms / 1000} s`)), ms))]);
+    const limit = (p, ms, what) => Promise.race([p, new Promise((_, reject) => setTimeout(() => {
+        const e = new Error(`${what} did not answer within ${ms / 1000} s`);
+        e.slow = true;
+        reject(e);
+    }, ms))]);
     const req = (r) => new Promise((resolve, reject) => { r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error || new Error('failed')); });
     const msg = (e) => String((e && (e.name && e.message ? `${e.name}: ${e.message}` : e.message || e.name)) || e || 'failed');
 
@@ -128,12 +136,13 @@
 
     async function step(id, name, fn, repair) {
         let out;
-        try { out = (await fn()) || { level: 'ok', detail: '' }; } catch (e) { out = { level: 'error', detail: msg(e) }; }
+        // slow is not broken: a check that did not answer in time is a warning, with no repair
+        try { out = (await fn()) || { level: 'ok', detail: '' }; } catch (e) { out = { level: e && e.slow ? 'warn' : 'error', detail: msg(e) }; }
         if (out.level === 'error' && repair) {
             try {
                 await repair(out);
                 let again;
-                try { again = (await fn()) || { level: 'ok', detail: '' }; } catch (e) { again = { level: 'error', detail: msg(e) }; }
+                try { again = (await fn()) || { level: 'ok', detail: '' }; } catch (e) { again = { level: e && e.slow ? 'warn' : 'error', detail: msg(e) }; }
                 if (again.level !== 'error') { add(id, name, again.level, `repaired (${out.detail})`, true); return; }
                 out = again;
             } catch (e) { out.detail += `; repair failed: ${msg(e)}`; }
@@ -151,7 +160,8 @@
         add('cookies', 'Cookies', root.navigator && root.navigator.cookieEnabled === false ? 'error' : 'ok', root.navigator && root.navigator.cookieEnabled === false ? 'cookies are off' : '');
     }
 
-    const done = limit(run(), TOTAL_MS, 'The self test').catch((e) => { add('time', 'Self test', 'error', msg(e)); }).then(() => {
+    // the checks still running at 8 s are left to finish on their own; what answered decides
+    const done = limit(run(), TOTAL_MS, 'The self test').catch((e) => { add('time', 'Self test', e && e.slow ? 'warn' : 'error', msg(e)); }).then(() => {
         result.state = items.some((i) => i.level === 'error') ? 'fail' : items.some((i) => i.level === 'warn') ? 'warn' : 'pass';
         result.ms = Date.now() - t0;
         if (result.state !== 'pass') console.warn('[self test]', result.state, items.filter((i) => i.level !== 'ok'));
