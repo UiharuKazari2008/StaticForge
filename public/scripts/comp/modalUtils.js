@@ -2592,6 +2592,109 @@ function keepsActiveOnTop(modal) {
 /** Where an owned dialog hands the activation back when it closes: the window that was active under it. */
 const dialogActivationReturn = new WeakMap();
 
+/** The main window in use (not a palette), or null: the owner a modal dialog opened now would have. */
+function getMainActiveWindow() {
+    const m = mainActiveWindowId ? document.getElementById(mainActiveWindowId) : null;
+    return m && m.classList.contains('modal') && !m.classList.contains('hidden') && !m.classList.contains('closing') ? m : null;
+}
+
+/**
+ * Modal dialogs (#970), as Vista's DialogBox / MessageBox with an owner: while a window has a modal dialog
+ * open it is disabled - a click on it (caption, body, frame) or on its taskbar button, and a key typed into
+ * it, does nothing to it; the dialog is activated instead and flashes (FlashWindow: the frame goes
+ * inactive 3 times, measured on the VM as ~110 ms off on a ~230 ms period, the first ~140 ms after the
+ * click) with the Default Beep. So the owner cannot be moved, resized or closed until its dialog closes.
+ * A dialog opened without an owner (MessageBox(NULL), a box the server raised) blocks nothing; modeless
+ * windows and tool windows never call this.
+ */
+const modalDialogOwners = new Map(); // dialog element -> owner element
+const DISABLED_OWNER_FLASH = [[140, false], [250, true], [370, false], [480, true], [600, false], [710, true]];
+
+function setModalDialogOwner(dialog, owner) {
+    if (!dialog || !owner || owner === dialog || !dialog.id || !owner.classList || !owner.classList.contains('modal')) return;
+    clearModalDialogOwner(dialog);
+    modalDialogOwners.set(dialog, owner);
+    owner.dataset.modalDialogId = dialog.id;
+}
+
+function clearModalDialogOwner(dialog) {
+    const owner = modalDialogOwners.get(dialog);
+    if (!owner) return;
+    modalDialogOwners.delete(dialog);
+    if (owner.dataset.modalDialogId !== dialog.id) return;
+    // another modal dialog of the same owner still open keeps it disabled
+    let other = null;
+    modalDialogOwners.forEach((o, d) => { if (o === owner) other = d; });
+    if (other) owner.dataset.modalDialogId = other.id;
+    else delete owner.dataset.modalDialogId;
+}
+
+/** The dialog that has to be answered first: the owner's modal dialog, or that dialog's own, and so on. */
+function enabledPopupFor(owner) {
+    let popup = null;
+    let w = owner;
+    for (let i = 0; i < 8 && w && w.dataset.modalDialogId; i++) {
+        const d = document.getElementById(w.dataset.modalDialogId);
+        if (!d || !modalDialogOwners.has(d) || d.classList.contains('hidden') || d.classList.contains('closing')) {
+            if (d) clearModalDialogOwner(d); else delete w.dataset.modalDialogId;
+            break;
+        }
+        popup = d;
+        w = d;
+    }
+    return popup;
+}
+
+/** FlashWindow on a window: its frame blinks inactive and back, with the Default Beep. */
+function flashModalWindow(modal) {
+    if (!modal) return;
+    if (modal._flashTimers) modal._flashTimers.forEach(clearTimeout);
+    // desktopSounds.play: public/scripts/comp/desktopSounds.js
+    if (typeof desktopSounds !== 'undefined' && desktopSounds && typeof desktopSounds.play === 'function') desktopSounds.play('default');
+    modal.classList.add('window-flash');
+    modal._flashTimers = DISABLED_OWNER_FLASH.map(([ms, on], i) => setTimeout(() => {
+        if (on) {
+            if (currentActiveWindowId === modal.id) modal.classList.add('active-window');
+        } else {
+            modal.classList.remove('active-window');
+        }
+        if (i === DISABLED_OWNER_FLASH.length - 1) {
+            modal.classList.remove('window-flash');
+            modal._flashTimers = null;
+        }
+    }, ms));
+}
+
+function blockDisabledOwnerInput(e) {
+    if (!modalDialogOwners.size) return;
+    const t = e.target;
+    if (!t || t.nodeType !== 1) return;
+    let owner = t.closest('.modal[data-modal-dialog-id]');
+    if (!owner && e.type !== 'keydown') {
+        const item = t.closest('.taskbar-window-item[data-modal-id]:not(.taskbar-window-group)');
+        const m = item ? document.getElementById(item.dataset.modalId) : null;
+        if (m && m.dataset.modalDialogId) owner = m;
+    }
+    if (!owner) return;
+    const popup = enabledPopupFor(owner);
+    if (!popup || popup.contains(t)) return;
+    if (e.cancelable) e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.type !== 'pointerdown' && e.type !== 'keydown' && !(e.type === 'touchstart' && !window.PointerEvent)) return;
+    bringModalToFront(popup);
+    if (!popup.contains(document.activeElement)) {
+        const target = popup.querySelector('[data-dialog-primary="1"], button:not([disabled]):not(.close-btn), input:not([disabled]), select, textarea');
+        if (target && typeof target.focus === 'function') target.focus({ preventScroll: true });
+    }
+    flashModalWindow(popup);
+}
+
+['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu', 'touchstart', 'touchend', 'keydown'].forEach((type) => {
+    window.addEventListener(type, blockDisabledOwnerInput, { capture: true, passive: false });
+});
+
+window.modalDialogs = { setOwner: setModalDialogOwner, clear: clearModalDialogOwner, popupFor: enabledPopupFor, flash: flashModalWindow, mainActiveWindow: getMainActiveWindow };
+
 function setActiveWindow(modalId) {
     if (modalId) {
         const modal = typeof modalId === 'string' ? document.getElementById(modalId) : modalId;
@@ -3685,6 +3788,8 @@ async function closeModal(modal) {
 
 function closeMainModal(modal) {
     if (!modal) return Promise.resolve();
+    // a modal dialog that closes enables its owner again (#970)
+    clearModalDialogOwner(modal);
 
     if (shouldPersistWindowPosition(modal)) {
         // Window may be hidden before the 10s debounce fires — commit last normal

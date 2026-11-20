@@ -857,10 +857,19 @@
         return { modal, content: modal.querySelector('.vdt-client'), close: modal.querySelector('.vdt-close') };
     }
 
-    function show(modal, owner) {
+    /**
+     * modalTo: the dialog is modal to its owner (Vista's DialogBox, a nested property sheet): the owner is
+     * disabled until it closes (modalUtils.js modalDialogs, #970). opts.modeless opts out (a Find box).
+     */
+    function show(modal, owner, modalTo) {
         if (owner && owner.id) modal.dataset.iconOwnerId = owner.id;
         callGlobal('openModal', modal);
         modal.classList.remove('hidden');
+        const md = root.modalDialogs;
+        if (md) {
+            if (modalTo && owner && owner !== modal && owner.isConnected && !owner.classList.contains('hidden')) md.setOwner(modal, owner);
+            else md.clear(modal);
+        }
         root.requestAnimationFrame(() => {
             const r = modal.getBoundingClientRect();
             let cx = root.innerWidth / 2;
@@ -872,6 +881,11 @@
             }
             callGlobal('setModalOffsetsFromViewportTopLeft', modal, Math.max(0, Math.round(cx - r.width / 2)), Math.max(0, Math.round(cy - r.height / 2)));
         });
+    }
+
+    /** A dialog box (kit dialog, sheet, message box or other Vista dialog), not a program window. */
+    function isDialogWindow(el) {
+        return !!el && !!el.classList && (el.classList.contains('vdt-window') || el.classList.contains('tbp-window') || !!(el.dataset && el.dataset.vistaDialog));
     }
 
     function destroy(modal) {
@@ -1441,7 +1455,9 @@
         }
         selectPage(state, start);
         state.dirty = false;
-        show(modal, opts.owner);
+        // a sheet opened from a dialog or another sheet is modal to it; one opened from a program window
+        // is not (Vista: an object's Properties are modeless)
+        show(modal, opts.owner, !opts.modeless && isDialogWindow(opts.owner));
         return state.ctx;
     }
 
@@ -1493,7 +1509,8 @@
         if (typeof opts.init === 'function') {
             try { opts.init(state.ctx); } catch (err) { console.error(`${opts.id}: init failed`, err); }
         }
-        show(modal, opts.owner);
+        // DialogBox: modal to its owner
+        show(modal, opts.owner, !opts.modeless);
         // focusFirst: the first control that takes the focus has it, an edit's text selected (Win32's
         // WM_INITDIALOG default; WordPad's Paragraph and Date and Time on the VM)
         if (opts.focusFirst) {
@@ -1595,7 +1612,7 @@
             try { opts.init(state.ctx); } catch (err) { console.error(`${opts.id}: init failed`, err); }
         }
         showPage(pages[0].key, false);
-        show(modal, opts.owner);
+        show(modal, opts.owner, !opts.modeless && isDialogWindow(opts.owner));
         return state.ctx;
     }
 
