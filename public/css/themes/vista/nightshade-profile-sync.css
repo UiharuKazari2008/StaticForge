@@ -1,0 +1,18 @@
+/* Nightshade Profile in Sync Center, Vista theme (#976): the colours and font of cscui's sync progress task dialog and
+   shell32's Resolve Conflict as captured on the VM. The layout is css/nightshade-profile-sync.css. */
+
+:is(#nightshadeProfileSyncDialog, #nightshadeResolveConflictDialog, #melatonControlPanelModal, .cpl-instance) {
+    --nps-font: "Segoe UI", Tahoma, sans-serif;
+    --nps-client: #fff;
+    --nps-text: #000;
+    --nps-instruction: #003399;
+    --nps-link: #0066cc;
+    --nps-band: #f0f0f0;
+    --nps-band-edge: #dfdfdf;
+    --nps-rule: #e5e5e5;
+    /* the hot choice: the light blue frame */
+    --nrc-hot-edge: #daf2fc;
+    --nrc-hot-inner: #f9fdff;
+    --nrc-hot-top: #f7fcff;
+    --nrc-hot-bottom: #eaf7ff;
+}

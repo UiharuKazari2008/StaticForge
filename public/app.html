@@ -758,6 +758,9 @@
     <link rel="stylesheet" href="/css/open-with.css">
     <link rel="stylesheet" href="/css/themes/vista/nightshade-client.css">
     <link rel="stylesheet" href="/css/nightshade-client.css">
+    <!-- Nightshade Profile in Sync Center (#976): the profile sync window, its tray icon and Resolve Conflict -->
+    <link rel="stylesheet" href="/css/themes/vista/nightshade-profile-sync.css">
+    <link rel="stylesheet" href="/css/nightshade-profile-sync.css">
     <link rel="stylesheet" href="/css/system-font.css">
     <link rel="stylesheet" href="/css/hidden.css">
     <script>
@@ -7227,6 +7230,10 @@ Examples:
                 <div class="taskbar-tray-icon hidden" id="activeSyncTrayIcon" title="Melaton Mobile Device Center">
                     <img src="/static_images/activesync/activesync-idle-16.png" alt="" width="16" height="16" draggable="false">
                 </div>
+                <!-- Sync Center: the Nightshade Profile partnership's syncs (nightshadeProfileSync.js, #976) -->
+                <div class="taskbar-tray-icon hidden" id="nightshadeSyncTrayIcon" title="Sync Center" data-state="idle">
+                    <span class="nps-tray-glyph" aria-hidden="true"></span>
+                </div>
                 <!-- Windows Sidebar, while it runs (vistaSidebar.js vsbSyncTray) -->
                 <div class="taskbar-tray-icon hidden" id="vistaSidebarTrayIcon" title="Melaton Sidebar">
                     <i class="fas fa-sidebar-flip"></i>
@@ -7460,6 +7467,8 @@ Examples:
     <script src="scripts/comp/desktop-apps/desktopAppWindow.js"></script>
     <!-- Nightshade Network Client (#895): with the desktop, not on demand (it must open while the server is out of reach) -->
     <script src="scripts/comp/nightshadeClient.js"></script>
+    <!-- Nightshade Profile in Sync Center (#976): listens for the profile syncs from the start (no request of its own) -->
+    <script src="scripts/comp/nightshadeProfileSync.js"></script>
     <!-- Melaton app runtime (#638): built-in apps launch through it from the Start menu, so it loads globally -->
     <!-- app packages run as unloadable segments, so one updates without a restart (#872) -->
     <script src="scripts/comp/melatonSegments.js"></script>

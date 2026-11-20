@@ -694,42 +694,99 @@
         <div class="dcl-sd-links"><a href="#" class="cpl-vlink" data-cpl-vpage="usage">Manage disk space used by your offline files</a><a href="#" class="cpl-vlink" data-cpl-vpage="cleanup">Free up space used by Melaton (Disk Cleanup)</a></div></div></div>`;
     }
 
+    // Sync Center (SyncCenter.dll.mui's strings): the partnerships, the conflicts and the sync results. The Nightshade
+    // Profile partnership (#976, nightshadeProfileSync.js) is the user's profile on the domain controller; Offline Files
+    // is this computer's offline copies (#945).
+    const NPS = () => root.nightshadeProfileSync || null;
+    const SYNCMGR = 'HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\SyncMgr';
+    let syncView = 'partnerships';
+    let syncSel = '';
+    const SYNC_KIND = { error: 'Error', warning: 'Warning', info: 'Info', conflict: 'Conflict' };
+    function syncWhen(ms) {
+        const d = new Date(ms);
+        return `${d.toLocaleDateString('en-US')} ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    }
+    function syncPartnerships() {
+        const p = NPS() ? NPS().partnership() : null;
+        const off = reg(SYNCMGR, 'LastSync', '');
+        const sel = (id) => (syncSel === id ? ' is-selected' : '');
+        // the row's bar (nightshade-profile-sync.css: Vista's trough and fill in 5 % steps, data-pct), the marquee while
+        // the domain controller is being reached
+        const pct = p ? Math.round(p.percent / 5) * 5 : 0;
+        const bar = !p || !p.busy ? ''
+            : `<div class="nps-cpl-bar${p.marquee ? ' nps-marquee' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100"${p.marquee ? '' : ` aria-valuenow="${p.percent}" data-pct="${pct}"`}><div></div></div>`;
+        return `<div class="cpl-pf-bar">${syncSel === 'profile'
+            ? `<button type="button" class="cpl-pf-cmd" data-cpl-vpage="syncprofile"${p && p.busy ? ' disabled' : ''}>Sync</button>${p && p.conflicts ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="conflicts">View Conflicts</button>' : ''}${p && p.errors ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="results">View Errors</button>' : ''}`
+            : '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="syncall">Sync All</button><button type="button" class="cpl-pf-cmd" data-cpl-vpage="schedule">Schedule</button>'}</div>
+            <table class="cpl-vtable nps-cpl-table"><tr class="is-head"><td>Name</td><td>Status</td><td>Category</td><td>Progress</td></tr>
+            ${p ? `<tr class="nps-cpl-row${sel('profile')}" data-cpl-vpage="select" data-sync="profile"><td><img src="/static_images/vista-icons/nightshade-16.png" alt=""> ${esc(p.name)}</td><td>${esc(p.status)}</td><td>${esc(p.category)}</td><td>${bar}</td></tr>` : ''}
+            <tr class="${sel('offline').trim()}" data-cpl-vpage="select" data-sync="offline"><td><img src="/static_images/vista-cpl/items/sync-center-16.png" alt=""> Offline Files</td><td>${esc(off ? `Last sync on ${off}` : 'Ready for first sync')}</td><td>Folders</td><td></td></tr></table>
+            ${p && syncSel === 'profile' ? `<div class="nps-cpl-detail"><img src="/static_images/vista-icons/nightshade-48.png" alt=""><div><b>${esc(p.name)}</b><br>Your user profile on ${esc(p.domain)}, the domain controller, synced with this computer over the ${esc(p.network)}.<br>Status: ${esc(p.status)}${p.last ? `<br>Last sync: ${esc(syncWhen(p.last.at))}` : ''}<br>Conflicts: ${p.conflicts}&nbsp;&nbsp;&nbsp;Errors: ${p.errors}</div></div>` : ''}
+            ${syncDetails()}`;
+    }
+    function syncConflicts() {
+        const c = NPS() ? NPS().conflict() : null;
+        return `<h1 class="cpl-vtitle">These items are in conflict and did not sync</h1>
+            <p class="cpl-vtext">Select one or more sync conflicts. Then click Resolve to view the details of each conflict and decide how to resolve them.</p>
+            <div class="cpl-pf-bar">${c && syncSel === 'conflict' ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="resolve">Resolve</button>' : ''}</div>
+            ${c ? `<table class="cpl-vtable nps-cpl-table"><tr class="is-head"><td>Name</td><td>Partnership</td><td>Details</td></tr>
+                <tr class="${syncSel === 'conflict' ? 'is-selected' : ''}" data-cpl-vpage="select" data-sync="conflict" data-dbl="resolve"><td><img src="/static_images/vista-sync/status-conflict-16.png" alt=""> Your profile</td><td>Nightshade Profile</td><td>${esc(c.text)}</td></tr></table>`
+        : '<p class="cpl-vtext">There are currently no sync conflicts.</p>'}`;
+    }
+    function syncResults() {
+        const list = NPS() ? NPS().results() : [];
+        const icon = (k) => (k === 'error' ? 'status-error-16.png' : k === 'conflict' || k === 'warning' ? 'status-conflict-16.png' : 'status-done-16.png');
+        return `<h1 class="cpl-vtitle">Review errors, warnings, and other sync information</h1>
+            <p class="cpl-vtext">These are the results of your most recent sync activity.</p>
+            <div class="cpl-pf-bar">${list.length ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="clearresults">Delete</button>' : ''}</div>
+            ${list.length ? `<table class="cpl-vtable nps-cpl-table"><tr class="is-head"><td>Name</td><td>Partnership</td><td>Category</td><td>Details</td><td>Date</td></tr>
+                ${list.map((r) => `<tr><td><img src="/static_images/vista-sync/${icon(r.kind)}" alt=""> ${esc(SYNC_KIND[r.kind] || 'Info')}</td><td>${esc(r.item)}</td><td>${esc(r.kind === 'conflict' ? 'Conflict' : 'Sync')}</td><td>${esc(r.text)}</td><td>${esc(syncWhen(r.at))}</td></tr>`).join('')}</table>`
+        : '<p class="cpl-vtext">There are currently no sync errors or warnings.</p>'}`;
+    }
+
     pages['sync-center'] = {
         title: () => 'Sync Center',
         tasks: () => tasks([[
             { t: 'View sync partnerships', a: 'js:partnerships' }, { t: 'View sync conflicts', a: 'js:conflicts' },
             { t: 'View sync results', a: 'js:results' }, { t: 'Set up new sync partnerships', a: 'js:setup' }
         ]], [{ t: 'Offline files', a: 'item:offline-files' }]),
-        body: () => `<div class="cpl-vpage cpl-vwide">${help('sync-center')}
-            <h1 class="cpl-vtitle">Keep your information in sync</h1>
-            <p class="cpl-vtext">View recent sync activity, sync now, or change your sync settings.</p>
-            <div class="cpl-pf-bar"><button type="button" class="cpl-pf-cmd" data-cpl-vpage="syncall">Sync All</button><button type="button" class="cpl-pf-cmd" data-cpl-vpage="schedule">Schedule</button></div>
-            <table class="cpl-vtable"><tr class="is-head"><td>Name</td><td>Status</td><td>Category</td><td>Progress</td></tr>
-            <tr data-cpl-vpage="syncall"><td><img src="/static_images/vista-cpl/items/sync-center-16.png" alt=""> Offline Files</td><td>${esc(reg('HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\SyncMgr', 'LastSync', '') ? `Sync completed ${reg('HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\SyncMgr', 'LastSync', '')}` : 'Not synced')}</td><td>Folders</td><td></td></tr></table>
-            ${syncDetails()}
-        </div>`
+        body: () => {
+            // the catalog / tray links 'page:sync-center:results' / 'conflicts'
+            const arg = CP() && CP().pageArg('sync-center');
+            if (arg === 'results' || arg === 'conflicts') { syncView = arg; syncSel = arg === 'conflicts' ? 'conflict' : ''; }
+            const inner = syncView === 'conflicts' ? syncConflicts() : syncView === 'results' ? syncResults()
+                : `<h1 class="cpl-vtitle">Keep your information in sync</h1>
+                    <p class="cpl-vtext">View recent sync activity, sync now, or change your sync settings.</p>${syncPartnerships()}`;
+            return `<div class="cpl-vpage cpl-vwide">${help('sync-center')}${inner}</div>`;
+        }
     };
     handlers['sync-center'] = {
         async syncall() {
+            if (NPS()) void NPS().syncNow();
             // the replicas are the server's sync partnership (Data Management > Replication)
-            if (R()) await R().set('HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\SyncMgr', { LastSync: new Date().toLocaleString('en-US') });
+            if (R()) await R().set(SYNCMGR, { LastSync: new Date().toLocaleString('en-US') });
+            rerender();
+        },
+        syncprofile() { if (NPS()) void NPS().syncNow(); },
+        select(t, ev) {
+            // a double-click on a conflict resolves it (Vista's default verb there)
+            if (ev && ev.detail >= 2 && t.dataset.dbl === 'resolve') { if (NPS()) void NPS().resolve(); return; }
+            if (syncSel === (t.dataset.sync || '')) return;
+            syncSel = t.dataset.sync || '';
+            rerender();
+        },
+        resolve() { if (NPS()) void NPS().resolve(); },
+        clearresults() {
+            try { root.localStorage.setItem('melatonProfileSync', JSON.stringify({ ...JSON.parse(root.localStorage.getItem('melatonProfileSync') || '{}'), results: [] })); } catch (_) { /* private mode */ }
             rerender();
         },
         schedule() { callGlobal('openDataManagementDsap', 'replication'); },
-        partnerships() { rerender(); },
-        conflicts() { msg('There are no sync conflicts.', 'Sync Center'); },
+        partnerships() { syncView = 'partnerships'; syncSel = ''; rerender(); },
+        conflicts() { syncView = 'conflicts'; syncSel = 'conflict'; rerender(); },
         usage() { const cp = CP(); if (cp) cp.doAction('dialog:offline-files:disk'); },
         cleanup() { callGlobal('openDiskCleanup'); },
-        results() { msg('No sync results to show.', 'Sync Center'); },
+        results() { syncView = 'results'; syncSel = ''; rerender(); },
         setup() { callGlobal('openDataManagementDsap', 'replication'); }
-    };
-    // the catalog links 'page:sync-center:results' / 'conflicts'
-    const syncBody = pages['sync-center'].body;
-    pages['sync-center'].body = () => {
-        const arg = CP() && CP().pageArg('sync-center');
-        if (arg === 'results') setTimeout(() => handlers['sync-center'].results(), 0);
-        else if (arg === 'conflicts') setTimeout(() => handlers['sync-center'].conflicts(), 0);
-        return syncBody();
     };
 
     // Melaton SideShow (Yozora #654): Dreamscape Frame tablets and the Device Simulator are its

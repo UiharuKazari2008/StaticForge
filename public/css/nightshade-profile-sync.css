@@ -1,0 +1,450 @@
+/* Nightshade Profile in Sync Center (#976; public/scripts/comp/nightshadeProfileSync.js).
+
+   The progress window is Vista's Offline Files sync dialog (cscui.dll's task dialog, "Always Available Offline"),
+   measured on the VM capture (516 x 258 window, 500 x 222 client): the 32 px sync arrows at 10,9; the main
+   instruction (Segoe UI 12 pt, #003399) from x 52, its line at y 10; the content (9 pt, 15 px lines) at y 45; the item
+   line after one empty line (y 90); the 15 px progress bar at 52,121, 438 px wide (11 px from the edge); the command
+   band under a #dfdfdf edge at y 146 (40 px: the 66 x 21 buttons 9 px down, 8 px apart, 11 px from the edge); a
+   second #dfdfdf / white edge and the 33 px footer band, empty until it names errors or conflicts.
+
+   The Resolve Conflict dialog is shell32's conflict dialog (the Copy File capture: 450 px client): the main
+   instruction 16 px in at y 16, the sub line at 40, each choice a 418 x 120 block 16 px in (61, then 129 px down) with
+   the command link arrow 5 px in, the heading (12 pt #003399) 25 px in, the note (9 pt #003399) under it, the item's
+   48 px picture and its lines (bold name, the location in #003399, then black, 16 px apart); the hot block is the
+   light blue frame (#daf2fc edge, #f7fcff to #eaf7ff). */
+
+/* ---- the progress window -------------------------------------------------------------------------------------- */
+
+#nightshadeProfileSyncDialog.modal,
+#nightshadeResolveConflictDialog.modal { height: auto !important; }
+
+#nightshadeProfileSyncDialog > .modal-content.vdt-client.vdt-plain {
+    box-sizing: border-box;
+    width: 500px !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 0 !important;
+    background: var(--nps-client);
+}
+
+#nightshadeProfileSyncDialog .nps {
+    display: flex;
+    flex-direction: column;
+    font: 9pt/15px var(--nps-font);
+    color: var(--nps-text);
+}
+
+#nightshadeProfileSyncDialog .nps-main {
+    position: relative;
+    box-sizing: border-box;
+    min-height: 146px;
+    padding: 10px 11px 11px 52px;
+}
+
+/* cscui.dll icon 8 (the blue sync arrows) */
+#nightshadeProfileSyncDialog .nps-icon {
+    position: absolute;
+    left: 10px;
+    top: 9px;
+    width: 32px;
+    height: 32px;
+    background: image-set(url("/static_images/vista-sync/sync-progress-32.png") 1x, url("/static_images/vista-sync/sync-progress-40.png") 1.25x, url("/static_images/vista-sync/sync-progress-48.png") 1.5x, url("/static_images/vista-sync/sync-progress-56.png") 1.75x, url("/static_images/vista-sync/sync-progress-64.png") 2x) no-repeat 0 0 / 32px 32px;
+}
+
+#nightshadeProfileSyncDialog .nps-instruction {
+    font-size: 12pt;
+    line-height: 21px;
+    color: var(--nps-instruction);
+}
+
+#nightshadeProfileSyncDialog .nps-text {
+    margin-top: 14px;
+    padding-right: 13px;
+}
+
+/* the item being synced: after one empty line of the content */
+#nightshadeProfileSyncDialog .nps-line {
+    min-height: 15px;
+    margin-top: 15px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* the SysLink: #0066cc, underlined */
+#nightshadeProfileSyncDialog .nps-link,
+#nightshadeProfileSyncDialog .nps-link:hover,
+#nightshadeProfileSyncDialog .nps-link:focus {
+    display: inline;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font: inherit;
+    color: var(--nps-link);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* the bar: the kit's Vista progress bar (vista-glass-controls.css, .win7 [role=progressbar]) at the dialog's size */
+#nightshadeProfileSyncDialog .nps-bar[role="progressbar"] {
+    position: relative;
+    box-sizing: border-box;
+    width: 438px;
+    height: 15px;
+    min-height: 15px;
+    margin: 16px 0 0;
+    overflow: hidden;
+}
+
+#nightshadeProfileSyncDialog .nps-bar[role="progressbar"] > div {
+    width: var(--nps-done, 0%);
+}
+
+/* the marquee (PBS_MARQUEE): aero.msstyles' MOVEOVERLAY (IMAGE_640) running through the empty trough */
+#nightshadeProfileSyncDialog .nps-bar.nps-marquee[role="progressbar"] > div { visibility: hidden; }
+
+#nightshadeProfileSyncDialog .nps-bar.nps-marquee[role="progressbar"]::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 127px;
+    height: 13px;
+    background: url("/static_images/vista-sync/progress-marquee.png") no-repeat 0 0 / 127px 13px;
+    transform: translateX(-127px);
+    /* perf: allow busy indicator: only while the domain controller is being reached (the window closes when the sync ends); a translate */
+    animation: nps-marquee 2.4s linear infinite;
+}
+
+@keyframes nps-marquee {
+    from { transform: translateX(-127px); }
+    to { transform: translateX(438px); }
+}
+
+/* the command band */
+#nightshadeProfileSyncDialog .nps-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    height: 41px;
+    box-sizing: border-box;
+    padding: 9px 11px 10px;
+    border-top: 1px solid var(--nps-band-edge);
+    background: var(--nps-band);
+}
+
+#nightshadeProfileSyncDialog .nps-buttons > button,
+#nightshadeResolveConflictDialog .nrc-footer > button {
+    /* in the flow (the kit's .tbp-ctl is absolute), and still the containing block of the Vista face's hot and
+       default-pulse layers (::before / ::after) */
+    position: relative !important;
+    inset: auto !important;
+    box-sizing: border-box;
+    min-width: 66px;
+    height: 21px;
+    margin: 0;
+    padding: 0 10px;
+    font: 9pt/15px var(--nps-font);
+}
+
+/* the footer band (TDF footer): the etched edge, then the line naming errors or conflicts with its 16 px icon */
+#nightshadeProfileSyncDialog .nps-footer {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    box-sizing: border-box;
+    min-height: 34px;
+    padding: 9px 11px 9px 10px;
+    border-top: 1px solid var(--nps-band-edge);
+    box-shadow: inset 0 1px 0 var(--nps-client);
+    background: var(--nps-band);
+}
+
+#nightshadeProfileSyncDialog .nps-foot-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: no-repeat 0 0 / 16px 16px;
+}
+
+/* the task dialog's footer icons: Vista's small warning and error (user32) */
+#nightshadeProfileSyncDialog .nps-foot-icon.is-warning {
+    background-image: image-set(url("/static_images/vista-icons/warning-16.png") 1x, url("/static_images/hidpi/125/vista-icons/warning-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/warning-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/warning-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/warning-16.png") 2x);
+}
+
+#nightshadeProfileSyncDialog .nps-foot-icon.is-error {
+    background-image: image-set(url("/static_images/vista-icons/error-16.png") 1x, url("/static_images/hidpi/125/vista-icons/error-16.png") 1.25x, url("/static_images/hidpi/150/vista-icons/error-16.png") 1.5x, url("/static_images/hidpi/175/vista-icons/error-16.png") 1.75x, url("/static_images/hidpi/200/vista-icons/error-16.png") 2x);
+}
+
+/* ---- Resolve Conflict --------------------------------------------------------------------------------------------- */
+
+#nightshadeResolveConflictDialog > .modal-content.vdt-client.vdt-plain {
+    box-sizing: border-box;
+    width: 450px !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 0 !important;
+    background: var(--nps-client);
+}
+
+#nightshadeResolveConflictDialog .nrc {
+    display: flex;
+    flex-direction: column;
+    font: 9pt/15px var(--nps-font);
+    color: var(--nps-text);
+}
+
+#nightshadeResolveConflictDialog .nrc-instruction {
+    padding: 16px 16px 0;
+    font-size: 12pt;
+    line-height: 21px;
+    color: var(--nps-instruction);
+}
+
+#nightshadeResolveConflictDialog .nrc-sub {
+    padding: 3px 16px 6px;
+}
+
+#nightshadeResolveConflictDialog .nrc-option:not(#_) {
+    position: relative;
+    display: block;
+    box-sizing: border-box;
+    width: 418px;
+    min-height: 120px;
+    margin: 0 16px 9px;
+    padding: 7px 8px 8px 25px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    box-shadow: none;
+    font: inherit;
+    color: var(--nps-instruction);
+    text-align: left;
+    cursor: default;
+}
+
+#nightshadeResolveConflictDialog .nrc-option:not(#_)::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 11px;
+    width: 20px;
+    height: 20px;
+    /* the Vista button face's hot layer (::before) is see-through at rest: this one is the glyph */
+    opacity: 1 !important;
+    transition: none !important;
+    background: image-set(url("/static_images/vista-games/ui/commandlink-glyph.png") 1x, url("/static_images/vista-games/ui/commandlink-glyph@2x.png") 2x) no-repeat 0 0 / 20px 100px;
+}
+
+#nightshadeResolveConflictDialog .nrc-option:not(#_)::after { content: none; }
+
+@media (hover: hover) {
+    #nightshadeResolveConflictDialog .nrc-option:not(#_):hover {
+        border-color: var(--nrc-hot-edge);
+        background: linear-gradient(var(--nrc-hot-top), var(--nrc-hot-bottom));
+        box-shadow: inset 0 0 0 1px var(--nrc-hot-inner);
+    }
+    #nightshadeResolveConflictDialog .nrc-option:not(#_):hover::before { background-position: 0 -20px; }
+}
+
+#nightshadeResolveConflictDialog .nrc-option:not(#_):active::before { background-position: 0 -40px; }
+
+#nightshadeResolveConflictDialog .nrc-option:not(#_):focus-visible {
+    outline: 1px dotted var(--nps-text);
+    outline-offset: -3px;
+}
+
+#nightshadeResolveConflictDialog .nrc-head {
+    display: block;
+    font-size: 12pt;
+    line-height: 21px;
+}
+
+#nightshadeResolveConflictDialog .nrc-desc {
+    display: block;
+    margin-top: 0;
+}
+
+#nightshadeResolveConflictDialog .nrc-card {
+    display: flex;
+    gap: 11px;
+    margin: 4px 0 0 10px;
+}
+
+#nightshadeResolveConflictDialog .nrc-card > img {
+    flex: none;
+    width: 48px;
+    height: 48px;
+    margin-top: 2px;
+}
+
+#nightshadeResolveConflictDialog .nrc-card-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 16px;
+    color: var(--nps-text);
+}
+
+#nightshadeResolveConflictDialog .nrc-card-text .nrc-loc { color: var(--nps-instruction); }
+
+#nightshadeResolveConflictDialog .nrc-footer {
+    display: flex;
+    justify-content: flex-end;
+    height: 41px;
+    box-sizing: border-box;
+    margin-top: 32px;
+    padding: 9px 11px 9px;
+    border-top: 1px solid var(--nps-band-edge);
+    background: var(--nps-band);
+}
+
+#nightshadeResolveConflictDialog .nrc-footer > button { min-width: 75px; height: 23px; }
+
+/* ---- the tray icon: Sync Center's (SyncCenter.dll 22, the turning arrows 23-30, done 31, error 32, conflict 41) ---- */
+
+#nightshadeSyncTrayIcon .nps-tray-glyph {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: no-repeat 0 0 / 16px 16px;
+    background-image: image-set(url("/static_images/vista-sync/tray-done-16.png") 1x, url("/static_images/vista-sync/tray-done-20.png") 1.25x, url("/static_images/vista-sync/tray-done-24.png") 1.5x, url("/static_images/vista-sync/tray-done-28.png") 1.75x, url("/static_images/vista-sync/tray-done-32.png") 2x);
+}
+
+#nightshadeSyncTrayIcon[data-state="idle"] .nps-tray-glyph {
+    background-image: image-set(url("/static_images/vista-sync/tray-idle-16.png") 1x, url("/static_images/vista-sync/tray-idle-20.png") 1.25x, url("/static_images/vista-sync/tray-idle-24.png") 1.5x, url("/static_images/vista-sync/tray-idle-28.png") 1.75x, url("/static_images/vista-sync/tray-idle-32.png") 2x);
+}
+
+#nightshadeSyncTrayIcon[data-state="error"] .nps-tray-glyph {
+    background-image: image-set(url("/static_images/vista-sync/tray-error-16.png") 1x, url("/static_images/vista-sync/tray-error-20.png") 1.25x, url("/static_images/vista-sync/tray-error-24.png") 1.5x, url("/static_images/vista-sync/tray-error-28.png") 1.75x, url("/static_images/vista-sync/tray-error-32.png") 2x);
+}
+
+#nightshadeSyncTrayIcon[data-state="conflict"] .nps-tray-glyph {
+    background-image: image-set(url("/static_images/vista-sync/tray-conflict-16.png") 1x, url("/static_images/vista-sync/tray-conflict-20.png") 1.25x, url("/static_images/vista-sync/tray-conflict-24.png") 1.5x, url("/static_images/vista-sync/tray-conflict-28.png") 1.75x, url("/static_images/vista-sync/tray-conflict-32.png") 2x);
+}
+
+/* the eight frames in one strip, stepped across a 16 px window (a transform: the compositor's) */
+#nightshadeSyncTrayIcon[data-state="syncing"] .nps-tray-glyph {
+    position: relative;
+    overflow: hidden;
+    background: none;
+}
+
+#nightshadeSyncTrayIcon[data-state="syncing"] .nps-tray-glyph::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 128px;
+    height: 16px;
+    background: image-set(url("/static_images/vista-sync/tray-syncing-16.png") 1x, url("/static_images/vista-sync/tray-syncing-20.png") 1.25x, url("/static_images/vista-sync/tray-syncing-24.png") 1.5x, url("/static_images/vista-sync/tray-syncing-28.png") 1.75x, url("/static_images/vista-sync/tray-syncing-32.png") 2x) no-repeat 0 0 / 128px 16px;
+    /* perf: allow busy indicator: only while a profile sync runs (seconds); 8 frames a second */
+    animation: nps-tray-turn 1s steps(8) infinite;
+}
+
+@keyframes nps-tray-turn {
+    from { transform: none; }
+    to { transform: translateX(-128px); }
+}
+
+/* ---- Sync Center (cplPages2.js): the partnership's progress in its row, its details under the list -------------- */
+
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar {
+    position: relative;
+    box-sizing: border-box;
+    width: 120px;
+    height: 15px;
+    overflow: hidden;
+    border: 0 solid transparent;
+    border-image: image-set(url("/static_images/vista-controls/progress-bar.png") 1x, url("/static_images/hidpi/125/vista-controls/progress-bar.png") 1.25x, url("/static_images/hidpi/150/vista-controls/progress-bar.png") 1.5x, url("/static_images/hidpi/175/vista-controls/progress-bar.png") 1.75x, url("/static_images/hidpi/200/vista-controls/progress-bar.png") 2x) 7 4 6 4 fill / 7px 4px 6px 4px stretch;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar > div {
+    position: absolute;
+    left: 1px;
+    top: 1px;
+    bottom: 1px;
+    width: 0;
+    border: 0 solid transparent;
+    border-image: image-set(url("/static_images/vista-controls/progress-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/progress-fill.png") 1.25x, url("/static_images/hidpi/150/vista-controls/progress-fill.png") 1.5x, url("/static_images/hidpi/175/vista-controls/progress-fill.png") 1.75x, url("/static_images/hidpi/200/vista-controls/progress-fill.png") 2x) 0 8 fill / 0 8px stretch;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="5"] > div { width: calc(5% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="10"] > div { width: calc(10% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="15"] > div { width: calc(15% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="20"] > div { width: calc(20% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="25"] > div { width: calc(25% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="30"] > div { width: calc(30% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="35"] > div { width: calc(35% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="40"] > div { width: calc(40% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="45"] > div { width: calc(45% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="50"] > div { width: calc(50% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="55"] > div { width: calc(55% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="60"] > div { width: calc(60% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="65"] > div { width: calc(65% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="70"] > div { width: calc(70% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="75"] > div { width: calc(75% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="80"] > div { width: calc(80% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="85"] > div { width: calc(85% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="90"] > div { width: calc(90% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="95"] > div { width: calc(95% - 2px); }
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar[data-pct="100"] > div { width: calc(100% - 2px); }
+
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar.nps-marquee::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 64px;
+    height: 13px;
+    background: url("/static_images/vista-sync/progress-marquee.png") no-repeat 0 0 / 64px 13px;
+    /* perf: allow busy indicator: only while a profile sync reaches the domain controller; a translate */
+    animation: nps-cpl-marquee 2s linear infinite;
+}
+
+@keyframes nps-cpl-marquee {
+    from { transform: translateX(-64px); }
+    to { transform: translateX(120px); }
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-table tr[data-sync] td,
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-table tr[data-sync="conflict"] td { cursor: default; }
+
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-detail {
+    display: flex;
+    gap: 12px;
+    margin: 14px 0 0;
+    padding: 10px 0 0;
+    border-top: 1px solid var(--nps-rule);
+    line-height: 17px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-detail > img {
+    flex: none;
+    width: 48px;
+    height: 48px;
+}
+
+/* a sync waiting on the network (no step for a minute, nightshadeProfileSync.js STALL_MS): the first frame, still */
+#nightshadeSyncTrayIcon[data-state="waiting"] .nps-tray-glyph {
+    background-image: image-set(url("/static_images/vista-sync/tray-idle-16.png") 1x, url("/static_images/vista-sync/tray-idle-20.png") 1.25x, url("/static_images/vista-sync/tray-idle-24.png") 1.5x, url("/static_images/vista-sync/tray-idle-28.png") 1.75x, url("/static_images/vista-sync/tray-idle-32.png") 2x);
+}
+
+/* the screen off (html[data-screen-off]): nothing turns */
+html[data-screen-off] #nightshadeSyncTrayIcon .nps-tray-glyph::before,
+html[data-screen-off] #nightshadeProfileSyncDialog .nps-bar.nps-marquee::after,
+html[data-screen-off] :is(#melatonControlPanelModal, .cpl-instance) .nps-cpl-bar.nps-marquee::after {
+    animation-play-state: paused;
+}
+
+/* Vista's own art at each display scale for the <img>s of these windows (the caption, the taskbar button, the balloon,
+   Sync Center's list), as the HiDPI sheets do (hidpi/<tier>/img.css): the same layout, the density's frame */
+img[src="/static_images/vista-sync/sync-progress-16.png"] { content: image-set(url("/static_images/vista-sync/sync-progress-16.png") 1x, url("/static_images/vista-sync/sync-progress-20.png") 1.25x, url("/static_images/vista-sync/sync-progress-24.png") 1.5x, url("/static_images/vista-sync/sync-progress-28.png") 1.75x, url("/static_images/vista-sync/sync-progress-32.png") 2x); }
+img[src="/static_images/vista-sync/sync-center-16.png"] { content: image-set(url("/static_images/vista-sync/sync-center-16.png") 1x, url("/static_images/vista-sync/sync-center-20.png") 1.25x, url("/static_images/vista-sync/sync-center-24.png") 1.5x, url("/static_images/vista-sync/sync-center-28.png") 1.75x, url("/static_images/vista-sync/sync-center-32.png") 2x); }
+img[src="/static_images/vista-sync/status-done-16.png"] { content: image-set(url("/static_images/vista-sync/status-done-16.png") 1x, url("/static_images/vista-sync/status-done-20.png") 1.25x, url("/static_images/vista-sync/status-done-24.png") 1.5x, url("/static_images/vista-sync/status-done-28.png") 1.75x, url("/static_images/vista-sync/status-done-32.png") 2x); }
+img[src="/static_images/vista-sync/status-error-16.png"] { content: image-set(url("/static_images/vista-sync/status-error-16.png") 1x, url("/static_images/vista-sync/status-error-20.png") 1.25x, url("/static_images/vista-sync/status-error-24.png") 1.5x, url("/static_images/vista-sync/status-error-28.png") 1.75x, url("/static_images/vista-sync/status-error-32.png") 2x); }
+img[src="/static_images/vista-sync/status-conflict-16.png"] { content: image-set(url("/static_images/vista-sync/status-conflict-16.png") 1x, url("/static_images/vista-sync/status-conflict-20.png") 1.25x, url("/static_images/vista-sync/status-conflict-24.png") 1.5x, url("/static_images/vista-sync/status-conflict-28.png") 1.75x, url("/static_images/vista-sync/status-conflict-32.png") 2x); }
+img[src="/static_images/vista-sync/sync-center-32.png"] { content: image-set(url("/static_images/vista-sync/sync-center-32.png") 1x, url("/static_images/vista-sync/sync-center-48.png") 1.5x, url("/static_images/vista-sync/sync-center-64.png") 2x); }
