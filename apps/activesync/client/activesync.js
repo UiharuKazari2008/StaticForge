@@ -216,25 +216,12 @@
             // the settings pages (#979): check boxes, a program opened to its channels, the name being typed
             q('.asdc-body').addEventListener('change', (ev) => {
                 const t = ev.target;
-                if (t.matches('input[data-nf-key]') && this.nf && this.nf.apps) {
-                    this.nfSet(t.dataset.nfPkg, t.dataset.nfCh || null, t.dataset.nfKey, t.checked);
-                    this.render();
-                } else if (t.matches('input[data-asdc-manage="primary"]') && this.manage) {
+                if (t.matches('input[data-asdc-manage="primary"]') && this.manage) {
                     this.manage.primary = t.checked;
                 }
             }, sig);
             q('.asdc-body').addEventListener('input', (ev) => {
                 if (ev.target.matches('input[data-asdc-manage="name"]') && this.manage) this.manage.name = ev.target.value;
-            }, sig);
-            q('.asdc-body').addEventListener('click', (ev) => {
-                const l = ev.target.closest('a[data-nf-open]');
-                if (!l || !this.nf) return;
-                ev.preventDefault();
-                const pkg = l.dataset.nfOpen;
-                if (this.nf.open.has(pkg)) this.nf.open.delete(pkg); else this.nf.open.add(pkg);
-                this.render();
-                const again = this.el(`.asdc-body a[data-nf-open="${CSS.escape(pkg)}"]`);
-                if (again) again.focus({ preventScroll: true });
             }, sig);
             q('.asdc-device').addEventListener('click', () => this.toggleFold(), sig);
             m.addEventListener('keydown', (ev) => {
@@ -545,22 +532,15 @@
             const wide = this.page === 'nfsettings';
             if (this.el('.asdc-stage').classList.contains('is-wide-page') !== wide) this.el('.asdc-stage').classList.toggle('is-wide-page', wide);
             if (body.dataset.html !== html) {
-                // keep what is being typed when a status report redraws nothing new; a list keeps its place and the
-                // focused box (#979)
-                const list = body.querySelector('.asdc-nf-list');
-                const scroll = list ? list.scrollTop : 0;
-                const focusId = doc.activeElement && body.contains(doc.activeElement) ? doc.activeElement.id : '';
-                const samePage = body.dataset.page === (this.page || '');
+                // keep what is being typed when a status report redraws nothing new (the settings list is drawn into
+                // its host and updated in place, mountNotifyList)
                 body.dataset.html = html;
-                body.dataset.page = this.page || '';
                 body.innerHTML = html;
-                const nl = body.querySelector('.asdc-nf-list');
-                if (nl && samePage) nl.scrollTop = scroll;
-                const again = focusId && samePage ? body.querySelector(`#${CSS.escape(focusId)}`) : null;
-                if (again) again.focus({ preventScroll: true });
-                const field = !again && body.querySelector('.asdc-page input[type="text"]');
+                const field = body.querySelector('.asdc-page input[type="text"]');
                 if (field) { field.focus({ preventScroll: true }); field.select(); }
             }
+            if (this.page === 'nfsettings') void this.mountNotifyList();
+            else this.nfTree = null;
             this.applyOpen();
         }
 
@@ -775,59 +755,100 @@
 
         nfSet(pkg, ch, key, value) {
             const e = this.nf.edits[pkg] || (this.nf.edits[pkg] = {});
-            if (!ch) e[key] = value;
-            else { e.ch = e.ch || {}; (e.ch[ch] = e.ch[ch] || {})[key] = value; }
+            const app = this.nf.apps.find((x) => x.package === pkg);
+            // a box put back to what the server has is no change (Save stays off)
+            if (!ch) { if (app && app[key] === value) delete e[key]; else e[key] = value; } else {
+                const c = app && app.channels.find((x) => x.id === ch);
+                e.ch = e.ch || {};
+                const ce = e.ch[ch] || (e.ch[ch] = {});
+                if (c && c[key] === value) delete ce[key]; else ce[key] = value;
+                if (!Object.keys(ce).length) delete e.ch[ch];
+                if (!Object.keys(e.ch).length) delete e.ch;
+            }
+            if (!Object.keys(e).length) delete this.nf.edits[pkg];
         }
 
         notifySettingsPage(dev) {
             const nf = this.nf && this.nf.deviceId === dev.deviceId ? this.nf : null;
             if (!nf) { void this.loadNotifySettings(false); return '<div class="asdc-page asdc-nf"><h2>Change notification settings</h2><p>Please wait...</p></div>'; }
             if (!nf.apps) return `<div class="asdc-page asdc-nf"><h2>Change notification settings</h2><p>${esc(nf.error || 'Please wait...')}</p></div>`;
-            let n = 0;
-            const box = (pkg, ch, key, on, disabled, label) => {
-                n += 1;
-                const id = `asdcNf${n}`;
-                return `<input type="checkbox" id="${id}" data-nf-pkg="${esc(pkg)}" data-nf-ch="${esc(ch || '')}" data-nf-key="${key}" aria-label="${esc(label)}"${on ? ' checked' : ''}${disabled ? ' disabled' : ''}><label for="${id}"></label>`;
-            };
-            const rows = [];
-            for (const a of nf.apps) {
-                const send = this.nfValue(a.package, null, 'send');
-                const tray = this.nfValue(a.package, null, 'tray');
-                const open = nf.open.has(a.package);
-                const note = a.handledBy ? `Handled by ${a.handledBy}` : a.why;
-                const icon = a.icon ? `<img src="${esc(a.icon)}" alt="" width="16" height="16">` : `<img src="${A}/item-32.png" alt="" width="16" height="16">`;
-                const name = `${icon}<span class="asdc-nf-name">${esc(a.app)}</span>${note ? `<span class="asdc-nf-note">${esc(note)}</span>` : ''}`;
-                // the program's channels open under it from a link (the kit has no tree expander yet, #851 slice 3)
-                const more = a.channels.length ? `<a href="#" data-nf-open="${esc(a.package)}" aria-expanded="${open}">${open ? 'Hide channels' : `Channels (${a.channels.length})`}</a>` : '';
-                const first = `<span class="asdc-nf-leaf" title="${esc(a.package)}">${name}</span>${more}`;
-                rows.push(`<tr class="asdc-nf-app">
-                    <td><div class="asdc-nf-cell">${first}</div></td>
-                    <td>${box(a.package, '', 'send', send, false, `${a.app}: Send to this computer`)}</td>
-                    <td>${box(a.package, '', 'tray', send && tray, !send, `${a.app}: Show in the notification area`)}</td></tr>`);
-                if (!open) continue;
-                for (const c of a.channels) {
-                    const cs = this.nfValue(a.package, c.id, 'send');
-                    const ct = this.nfValue(a.package, c.id, 'tray');
-                    // a channel says why only where it differs from its program
-                    const cnote0 = c.handledBy ? `Handled by ${c.handledBy}` : c.why;
-                    const cnote = cnote0 === note ? '' : cnote0;
-                    const label = c.name || c.id;
-                    rows.push(`<tr class="asdc-nf-channel">
-                        <td><span class="asdc-nf-ch" title="${esc(c.id)}"><span class="asdc-nf-name">${esc(label)}</span>${cnote ? `<span class="asdc-nf-note">${esc(cnote)}</span>` : ''}</span></td>
-                        <td>${box(a.package, c.id, 'send', send && cs, !send, `${a.app}, ${label}: Send to this computer`)}</td>
-                        <td>${box(a.package, c.id, 'tray', send && cs && tray && ct, !(send && cs && tray), `${a.app}, ${label}: Show in the notification area`)}</td></tr>`);
-                }
-            }
-            const changed = Object.keys(nf.edits).length > 0;
+            // the list itself is the kit's tree list (vistaTreeList.js), drawn into its host by mountNotifyList
             return `<div class="asdc-page win7 asdc-nf">
                 <h2>Change notification settings</h2>
                 <p>Choose which notifications ${esc(dev.name)} sends to this computer, and which of them show in the notification area. Notifications that are not sent stay on the device.</p>
-                <div class="asdc-nf-list">${nf.apps.length ? `<table>
-                    <thead><tr><th>Program</th><th>Send to this computer</th><th>Show in the notification area</th></tr></thead>
-                    <tbody>${rows.join('')}</tbody></table>` : '<p>No notifications have come from this device yet. Programs are added here as they post notifications.</p>'}</div>
+                ${nf.apps.length ? '<div class="asdc-nf-list"></div>' : '<p>No notifications have come from this device yet. Programs are added here as they post notifications.</p>'}
                 <div class="asdc-error">${esc(nf.error || '')}</div>
-                <div class="asdc-page-buttons"><button type="button" class="btn-standard" data-asdc="nf-defaults"${nf.saving ? ' disabled' : ''}>Restore Defaults</button><button type="button" class="btn-standard primary" data-asdc="nf-save"${nf.saving || !changed ? ' disabled' : ''}>Save</button><button type="button" class="btn-standard" data-asdc="back">Cancel</button></div>
+                <div class="asdc-page-buttons"><button type="button" class="btn-standard" data-asdc="nf-defaults">Restore Defaults</button><button type="button" class="btn-standard primary" data-asdc="nf-save" disabled>Save</button><button type="button" class="btn-standard" data-asdc="back">Cancel</button></div>
             </div>`;
+        }
+
+        /** The tree list's rows: programs, each opening to its channels; the reason under the name and in its tooltip. */
+        nfRows() {
+            const nf = this.nf;
+            return nf.apps.map((a) => {
+                const send = this.nfValue(a.package, null, 'send');
+                const tray = this.nfValue(a.package, null, 'tray');
+                const note = a.handledBy ? `Handled by ${a.handledBy}` : a.why;
+                return {
+                    id: `a\u0001${a.package}`,
+                    label: a.app,
+                    detail: note || '',
+                    tip: note ? `${a.app} (${a.package})\n${note}` : `${a.app} (${a.package})`,
+                    icon: a.icon || `${A}/item-32.png`,
+                    cells: {
+                        send: { checked: send, label: `${a.app}: Send to this computer` },
+                        tray: { checked: send && tray, disabled: !send, label: `${a.app}: Show in the notification area` }
+                    },
+                    children: a.channels.map((c) => {
+                        const cs = this.nfValue(a.package, c.id, 'send');
+                        const ct = this.nfValue(a.package, c.id, 'tray');
+                        const cn = c.handledBy ? `Handled by ${c.handledBy}` : c.why;
+                        const label = c.name || c.id;
+                        return {
+                            id: `c\u0001${a.package}\u0001${c.id}`,
+                            label,
+                            // a channel says why only where it differs from its program
+                            detail: cn && cn !== note ? cn : '',
+                            tip: cn ? `${label} (${c.id})\n${cn}` : `${label} (${c.id})`,
+                            cells: {
+                                send: { checked: send && cs, disabled: !send, label: `${a.app}, ${label}: Send to this computer` },
+                                tray: { checked: send && cs && tray && ct, disabled: !(send && cs && tray), label: `${a.app}, ${label}: Show in the notification area` }
+                            }
+                        };
+                    })
+                };
+            });
+        }
+
+        /** Draws the settings list into its host (made once per page, then updated in place) and the Save button's state. */
+        async mountNotifyList() {
+            const host = this.el('.asdc-body .asdc-nf-list');
+            const nf = this.nf;
+            if (!host || !nf || !nf.apps) return;
+            if (!root.vistaTreeList && root.featureLoader) { try { await root.featureLoader.loadFeature('vista_tree_list'); } catch (_) { /* below */ } }
+            if (!root.vistaTreeList || this.app.signal.aborted || this.nf !== nf || !host.isConnected) return;
+            if (!this.nfTree || this.nfTree.el.parentNode !== host) {
+                host.textContent = '';
+                this.nfTree = root.vistaTreeList.create(host, {
+                    label: 'Notifications',
+                    columns: [{ id: 'name', title: 'Program', kind: 'tree' }, { id: 'send', title: 'Send to this computer', kind: 'check', width: 136 }, { id: 'tray', title: 'Show in the notification area', kind: 'check', width: 172 }],
+                    rows: this.nfRows(),
+                    open: [...nf.open].map((pkg) => `a\u0001${pkg}`),
+                    onToggle: (id, open) => { const pkg = id.split('\u0001')[1]; if (open) this.nf.open.add(pkg); else this.nf.open.delete(pkg); },
+                    onCheck: (id, col, checked) => {
+                        const [kind, pkg, ch] = id.split('\u0001');
+                        this.nfSet(pkg, kind === 'c' ? ch : null, col, checked);
+                        void this.mountNotifyList();
+                    }
+                });
+            } else {
+                this.nfTree.update(this.nfRows());
+            }
+            const save = this.el('.asdc-body [data-asdc="nf-save"]');
+            const off = nf.saving || !Object.keys(nf.edits).length;
+            if (save && save.disabled !== off) save.disabled = off;
+            const def = this.el('.asdc-body [data-asdc="nf-defaults"]');
+            if (def && def.disabled !== !!nf.saving) def.disabled = !!nf.saving;
         }
 
         /** What the page sends: every app the user touched, whole (the server stores only differences from the defaults). */

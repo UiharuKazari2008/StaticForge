@@ -13,6 +13,11 @@ const FEATURE_MANIFEST = {
         styles: ['css/activesync-device-art.css'],
         scripts: ['scripts/comp/activeSyncDeviceArt.js']
     },
+    // the kit's tree list (#979): a list view whose rows open to child rows; its styles are in the kit
+    // (vista-glass-controls.css). Device Center's notification settings; any window may load it
+    vista_tree_list: {
+        scripts: ['scripts/comp/vistaTreeList.js']
+    },
     spellbook: {
         hot: true,
         html: 'templates/spellbook.html',

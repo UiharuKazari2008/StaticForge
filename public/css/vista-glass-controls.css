@@ -1891,6 +1891,118 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
 }
 
 
+/* ---------- Vista common controls: tree list (Yozora #979; #851 slice 3) ----------
+   A report list view whose rows open to child rows (public/scripts/comp/vistaTreeList.js), as Vista lists nested
+   items: the header items and the row hot / selected faces of the shared list views (measured on the VM, cpl
+   Programs and Features), Explorer's tree glyphs (aero.msstyles 807 GLYPH, 810 HOTGLYPH: closed / open, the hot
+   pair while the pointer is on the row), 19 px of indent per level in the first column only, the check boxes in
+   their own columns at every depth, and an optional details line under the name (it wraps, never cut). */
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist {
+    --vtl-indent: 19px;
+    position: relative;
+    box-sizing: border-box;
+    overflow: auto;
+    border: 1px solid #828790;
+    background: #fff;
+    color: #000;
+    font: 12px 'Segoe UI', Tahoma, sans-serif;
+    outline: none;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-head,
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-row {
+    display: grid;
+    grid-template-columns: var(--vtl-cols, 1fr);
+    align-items: center;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    height: 23px;
+    background: #fff;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-colhead {
+    box-sizing: border-box;
+    height: 23px;
+    padding: 4px 6px 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    border-image: image-set(url('/static_images/vista-controls/header-item-normal.png') 1x, url('/static_images/hidpi/125/vista-controls/header-item-normal.png') 1.25x, url('/static_images/hidpi/150/vista-controls/header-item-normal.png') 1.5x, url('/static_images/hidpi/175/vista-controls/header-item-normal.png') 1.75x, url('/static_images/hidpi/200/vista-controls/header-item-normal.png') 2x) 0 2 0 1 fill / 0 2px 0 1px stretch;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-row {
+    min-height: 20px;
+    margin: 0 1px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-sizing: border-box;
+    cursor: var(--c-default);
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-row:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-row.is-selected {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist:focus .vista-treelist-row.is-selected {
+    background: linear-gradient(#dcebfc, #c1dbfc);
+    border-color: #7da2ce;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-cell {
+    box-sizing: border-box;
+    min-width: 0;
+    padding: 0 6px;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-main {
+    display: flex;
+    align-items: flex-start;
+    padding: 1px 6px 1px calc(2px + var(--vtl-depth, 0) * var(--vtl-indent));
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-glyph {
+    flex: 0 0 12px;
+    height: 18px;
+    margin-right: 3px;
+    background: no-repeat center / 12px 18px;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-glyph.is-closed { background-image: image-set(url('/static_images/vista-controls/tree-closed.png') 1x, url('/static_images/hidpi/125/vista-controls/tree-closed.png') 1.25x, url('/static_images/hidpi/150/vista-controls/tree-closed.png') 1.5x, url('/static_images/hidpi/175/vista-controls/tree-closed.png') 1.75x, url('/static_images/hidpi/200/vista-controls/tree-closed.png') 2x); }
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-glyph.is-open { background-image: image-set(url('/static_images/vista-controls/tree-open.png') 1x, url('/static_images/hidpi/125/vista-controls/tree-open.png') 1.25x, url('/static_images/hidpi/150/vista-controls/tree-open.png') 1.5x, url('/static_images/hidpi/175/vista-controls/tree-open.png') 1.75x, url('/static_images/hidpi/200/vista-controls/tree-open.png') 2x); }
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-row:hover .vista-treelist-glyph.is-closed { background-image: image-set(url('/static_images/vista-controls/tree-closed-hot.png') 1x, url('/static_images/hidpi/125/vista-controls/tree-closed-hot.png') 1.25x, url('/static_images/hidpi/150/vista-controls/tree-closed-hot.png') 1.5x, url('/static_images/hidpi/175/vista-controls/tree-closed-hot.png') 1.75x, url('/static_images/hidpi/200/vista-controls/tree-closed-hot.png') 2x); }
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-row:hover .vista-treelist-glyph.is-open { background-image: image-set(url('/static_images/vista-controls/tree-open-hot.png') 1x, url('/static_images/hidpi/125/vista-controls/tree-open-hot.png') 1.25x, url('/static_images/hidpi/150/vista-controls/tree-open-hot.png') 1.5x, url('/static_images/hidpi/175/vista-controls/tree-open-hot.png') 1.75x, url('/static_images/hidpi/200/vista-controls/tree-open-hot.png') 2x); }
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 1px 5px 0 0;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-text {
+    flex: 1;
+    min-width: 0;
+    padding-top: 1px;
+    line-height: 16px;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-label {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-detail {
+    display: block;
+    padding-bottom: 2px;
+    color: #6d6d6d;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist-check {
+    display: flex;
+    justify-content: center;
+    align-self: stretch;
+    align-items: flex-start;
+    padding-top: 3px;
+}
+
 /* ---------- the window's outer edge (Yukimi 2026-10-13: "the way you add the border is not 1:1 ...
    missing when it's over a dark background"). Vista: a dark line on the outside (VM: (36,46,57) at
    the top, (25,30,34) on the shadow side) and a near-white line just inside it ((247,249,250)). Ours

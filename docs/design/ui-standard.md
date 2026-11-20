@@ -136,6 +136,7 @@ Scope: `:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7
 | Link | `a[href]` without a class |
 | Menus | `contextMenu.js`; menu bar markup `.naxt-menubar > .naxt-menu-title` |
 | Scroll bars | the theme's (`vista-scrollbars.css`, `customScrollbar.js`) |
+| Tree list (list view whose rows open to child rows, check-box columns) | `vistaTreeList.create(host, { columns, rows, onToggle, onCheck })` (feature `vista_tree_list`), `.vista-treelist` in `vista-glass-controls.css` (#979) |
 | Balloon | `PopoverManager` / `showGlassToast` routing (`tray-balloons.mdc`) |
 | Message box | `showConfirmationDialog` |
 

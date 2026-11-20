@@ -71,7 +71,7 @@
 .asdc-page { position: absolute; left: 302px; top: 104px; width: 437px; color: #1e1e1e; }
 .asdc-root .asdc-page h2 { margin: 0 0 14px; font: normal 21px/1.2 'Segoe UI', sans-serif; color: #333; }
 .asdc-root .asdc-page p { margin: 0 0 12px; font: 15px/19px 'Segoe UI', sans-serif; }
-.asdc-page label { display: block; margin: 0 0 4px; font: 13px/1.3 'Segoe UI', sans-serif; }
+.asdc-page > label { display: block; margin: 0 0 4px; font: 13px/1.3 'Segoe UI', sans-serif; }
 .asdc-root .asdc-page input[type="text"] { box-sizing: border-box; width: 300px; height: 23px; padding: 2px 5px; border: 1px solid #abadb3; border-top-color: #7b8a91; background: #fff; font: 13px 'Segoe UI', sans-serif; color: #000; }
 .asdc-page .asdc-error { min-height: 19px; margin: 6px 0 0; color: #a00000; font-size: 13px; }
 .asdc-page-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
@@ -211,20 +211,9 @@ body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.mo
 .asdc-stage.is-wide-page .asdc-device, .asdc-stage.is-wide-page .asdc-status, .asdc-stage.is-wide-page .asdc-sync { visibility: hidden; }
 .asdc-page.asdc-nf { left: 24px; top: 92px; width: 736px; }
 .asdc-root .asdc-nf p { margin-bottom: 8px; }
-.asdc-nf-list { height: 276px; overflow-y: auto; }
-.asdc-nf-list table { width: 100%; }
-.asdc-nf-list th:nth-child(2), .asdc-nf-list td:nth-child(2) { width: 136px; }
-.asdc-nf-list th:nth-child(3), .asdc-nf-list td:nth-child(3) { width: 172px; }
-.asdc-nf-list td { height: 22px; padding: 0 8px; vertical-align: middle; }
-.asdc-nf-list td:nth-child(n+2) label { display: inline-flex; vertical-align: middle; margin-left: 20px; min-height: 13px; }
-.asdc-nf-list .asdc-nf-cell { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.asdc-nf-list .asdc-nf-leaf, .asdc-nf-list .asdc-nf-ch { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
-.asdc-nf-list .asdc-nf-leaf img { width: 16px; height: 16px; flex: none; }
-.asdc-nf-list .asdc-nf-cell > a { flex: none; }
-.asdc-nf-list .asdc-nf-ch { padding-left: 22px; }
-.asdc-nf-list .asdc-nf-name { flex: none; }
-.asdc-nf-list .asdc-nf-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; opacity: .62; }
-.asdc-nf-list .asdc-nf-note::before { content: '\2014  '; }
+.asdc-nf-list { height: 276px; }
+/* the kit's tree list (vista-glass-controls.css) fills its host */
+.asdc-nf-list > .vista-treelist { height: 100%; --vtl-indent: 24px; } /* channels have no icon: their names start past the program's */
 .asdc-nf .asdc-page-buttons { margin-top: 8px; }
 .asdc-nf .asdc-error { min-height: 0; margin: 4px 0 0; }
 .asdc-nf .asdc-page-buttons [data-asdc="nf-defaults"] { margin-right: auto; }
