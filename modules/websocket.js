@@ -135,6 +135,8 @@ const PHONE_BATCH_MS = 10000;
 // progress and status only feed the desktop's tray icon and MMC page, whose runs only they start).
 const DESKTOP_ONLY_TYPES = new Set([
     'runtime_compile_logs',
+    // the Media Player library changed (modules/mediaLibrary.js, #956): only desktop pages run Media Player
+    'media_library_changed',
     'generation_quips_progress', 'generation_quips_status',
     'print_queue_state',
     'replication_progress', 'replication_maintenance', 'replication_sync_status', 'replication_sync_complete', 'replication_separation_done',

@@ -649,8 +649,11 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     padding-right: 26px;
 }
 
-/* the two view split buttons (wmploc 4619: 39x25, 2 states) */
+/* the two view split buttons (wmploc 4619: 39x25, 2 states). At rest WMP draws no frame: the icon and a black
+   arrow (measured on the Vista VM, ~/.cache/vista-vm/wmp-ref: icon at 2,5, arrow at 26,10); hot = the split frame
+   with its blue arrow, the icon on top (#956) */
 #desktopMediaPlayer .wmp-viewbtn {
+    position: relative;
     flex: none;
     width: 39px;
     height: 25px;
@@ -659,27 +662,30 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     padding: 0;
     border: 0;
     border-radius: 0;
-    background: image-set(url('/static_images/vista-wmp/view-split.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-split.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-split.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/view-split.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-split.png') 2x) no-repeat center;
+    background: url('/static_images/vista-wmp/split-arrow.png') no-repeat 26px 10px;
     box-shadow: none;
     cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-viewbtn:hover {
-    background-image: image-set(url('/static_images/vista-wmp/view-split-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-split-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-split-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/view-split-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-split-hot.png') 2x);
+    background: image-set(url('/static_images/vista-wmp/view-split-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-split-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-split-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/view-split-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-split-hot.png') 2x) no-repeat 0 0;
 }
 
 #desktopMediaPlayer .wmp-view-layout::before,
 #desktopMediaPlayer .wmp-view-options::before {
     content: '';
     position: absolute;
-    width: 12px;
-    height: 10px;
-    margin: 7px 0 0 6px;
-    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 10"><rect x="0.5" y="0.5" width="11" height="9" fill="%23fff" stroke="%235c6f85"/><path d="M4 1v8M1 4h11" stroke="%235c6f85"/></svg>') no-repeat;
+    left: 2px;
+    top: 5px;
+    width: 20px;
+    height: 16px;
+    background: url('/static_images/vista-wmp/view-layout.png') no-repeat;
 }
 
 #desktopMediaPlayer .wmp-view-options::before {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 10"><rect x="0.5" y="0.5" width="4" height="4" fill="%2387a7cc" stroke="%235c6f85"/><rect x="0.5" y="5.5" width="4" height="4" fill="%2387a7cc" stroke="%235c6f85"/><path d="M7 2h5M7 5h5M7 8h5" stroke="%235c6f85"/></svg>');
+    left: 0;
+    top: 4px;
+    background-image: url('/static_images/vista-wmp/view-options.png');
 }
 
 #desktopMediaPlayer .wmp-search {
@@ -727,8 +733,8 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     height: 20px;
     pointer-events: none;
     background:
-        image-set(url('/static_images/vista-wmp/search-strip.png') 1x, url('/static_images/hidpi/125/vista-wmp/search-strip.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/search-strip.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/search-strip.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/search-strip.png') 2x) no-repeat 0 0,
-        image-set(url('/static_images/vista-wmp/split-strip.png') 1x, url('/static_images/hidpi/125/vista-wmp/split-strip.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/split-strip.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/split-strip.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/split-strip.png') 2x) no-repeat 26px 0;
+        image-set(url('/static_images/vista-wmp/split-strip.png') 1x, url('/static_images/hidpi/125/vista-wmp/split-strip.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/split-strip.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/split-strip.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/split-strip.png') 2x) no-repeat 26px 0,
+        image-set(url('/static_images/vista-wmp/search-strip.png') 1x, url('/static_images/hidpi/125/vista-wmp/search-strip.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/search-strip.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/search-strip.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/search-strip.png') 2x) no-repeat 0 0;
 }
 
 #desktopMediaPlayer .wmp-addr .wmp-listpane-arrow {
@@ -1442,3 +1448,203 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     padding: 0 8px;
     font: inherit;
 }
+
+/* ---- Library views (#956): WMP 11's Songs, Album tiles, Artist / Genre / Year / Rating stacks and Video, measured
+   on the VM at 1000x706: the pane and the list share the library's pale blue; Songs groups by album artist (a blue
+   name and a rule), each album with its 96px art and four facts at the left; tiles are 143 x 146 with 92px art,
+   stacks 260 x 132 with the art at the left. Colours: css/themes/vista/media-player.css. ---- */
+
+#desktopMediaPlayer .wmp-nav,
+#desktopMediaPlayer .wmp-list-host {
+    background: var(--wmp-lib-bg);
+}
+
+#desktopMediaPlayer .wmp-list-head {
+    grid-template-columns: none;
+    display: flex;
+    padding-left: 0;
+}
+
+#desktopMediaPlayer .wmp-list-head > span {
+    flex: 0 0 auto;
+    width: 110px;
+}
+
+#desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(1) { width: 242px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(2) { width: 39px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(3) { width: 150px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(4) { width: 60px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(5) { width: 74px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(6) { width: 150px; }
+#desktopMediaPlayer .wmp-list-head > span:last-child { flex: 1 1 auto; width: auto; border-right: 0; }
+
+#desktopMediaPlayer .wmp-list { padding: 0; }
+
+/* Songs: the album artist's heading, then one block per album */
+#desktopMediaPlayer .wmp-group-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 20px;
+    margin: 4px 10px 0 13px;
+    color: var(--wmp-group-text);
+    white-space: nowrap;
+}
+
+#desktopMediaPlayer .wmp-group-head::after {
+    content: "";
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--wmp-group-line);
+}
+
+#desktopMediaPlayer .wmp-album-block {
+    display: flex;
+    min-height: 120px;
+    padding: 6px 0 14px;
+}
+
+#desktopMediaPlayer .wmp-album-side {
+    flex: 0 0 242px;
+    display: flex;
+    gap: 10px;
+    padding-left: 5px;
+    box-sizing: border-box;
+}
+
+#desktopMediaPlayer .wmp-album-art,
+#desktopMediaPlayer .wmp-tile-art {
+    flex: none;
+    display: block;
+    width: 96px;
+    height: 96px;
+}
+
+#desktopMediaPlayer .wmp-album-art > img,
+#desktopMediaPlayer .wmp-tile-art > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    box-shadow: var(--wmp-art-shadow);
+}
+
+#desktopMediaPlayer .wmp-album-facts {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding-top: 2px;
+}
+
+#desktopMediaPlayer .wmp-album-facts > span {
+    height: 20px;
+    line-height: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#desktopMediaPlayer .wmp-album-rows {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-top: 2px;
+}
+
+#desktopMediaPlayer .wmp-row.wmp-song {
+    display: grid;
+    grid-template-columns: 39px 150px 60px 74px 150px minmax(0, 1fr);
+    height: 20px;
+}
+
+#desktopMediaPlayer .wmp-song > .wmp-c-track { padding-left: 5px; }
+#desktopMediaPlayer .wmp-song > :is(.wmp-c-artist, .wmp-c-composer) { color: var(--wmp-sub-text); }
+
+/* tiles (Album, Video) and stacks (Artist, Genre, Year, Rating) */
+/* Album tiles on the VM: 96px art on a 143 x 143 pitch, the first art 21px in and 3px under the column
+   heads, the title 7px under the art and the artist below it, 16px lines (~/.cache/vista-vm/wmp-ref/wmp-album.png) */
+#desktopMediaPlayer .wmp-tiles {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 3px 0 0 0;
+}
+
+#desktopMediaPlayer .wmp-row.wmp-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 143px;
+    height: 143px;
+    padding: 0;
+    text-align: center;
+}
+
+#desktopMediaPlayer .wmp-tile .wmp-tile-art { width: 96px; height: 96px; margin-bottom: 6px; }
+#desktopMediaPlayer .wmp-tile .wmp-tile-art.is-video { width: 120px; height: 90px; }
+
+#desktopMediaPlayer .wmp-row.wmp-tile:not(.is-stack) .wmp-tile-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+#desktopMediaPlayer .wmp-tile :is(.wmp-tile-name, .wmp-tile-sub) {
+    display: block;
+    max-width: 100%;
+    height: 16px;
+    line-height: 16px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#desktopMediaPlayer .wmp-tile .wmp-tile-sub { color: var(--wmp-sub-text); }
+
+/* stacks (Artist, Genre, Year, Rating) on the VM: 259 x 129 pitch, the art 20px in and 21px under the column
+   heads, the text left-aligned 15px right of the art from 15px down, 15px lines (wmp-ref/wmp-artist.png) */
+#desktopMediaPlayer .wmp-row.wmp-tile.is-stack {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 15px;
+    width: 259px;
+    height: 129px;
+    padding: 18px 0 0 20px;
+    text-align: left;
+}
+
+#desktopMediaPlayer .wmp-tile.is-stack .wmp-tile-art { width: 96px; height: 96px; margin: 0; }
+
+#desktopMediaPlayer .wmp-tile.is-stack .wmp-tile-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+    padding-top: 15px;
+}
+
+#desktopMediaPlayer .wmp-tile.is-stack :is(.wmp-tile-name, .wmp-tile-sub) { height: 15px; line-height: 15px; }
+
+/* Rating on the VM: a 30px star over the name, 76px apart, the name 7px under the star (wmp-ref/wmp-rating.png) */
+#desktopMediaPlayer .wmp-row.wmp-tile.is-rating {
+    width: 76px;
+    height: 62px;
+    padding-top: 6px;
+}
+
+#desktopMediaPlayer .wmp-tile.is-rating .wmp-rating-star { display: block; margin-bottom: 4px; }
+
+#desktopMediaPlayer .wmp-row.wmp-tile:hover { border-color: var(--wmp-tile-hot-edge); background: var(--wmp-tile-hot); }
+#desktopMediaPlayer .wmp-row.wmp-tile.is-selected { border-color: var(--wmp-tile-sel-edge); background: var(--wmp-tile-sel); }
+
+/* the stars (WMP's 14px star art: an empty outline, gold when rated) */
+#desktopMediaPlayer .wmp-stars { display: inline-flex; gap: 0; }
+#desktopMediaPlayer .wmp-star {
+    width: 13px;
+    height: 13px;
+    background: url("/static_images/vista-wmp/star.png") no-repeat center / 13px 13px;
+}
+#desktopMediaPlayer .wmp-star.is-on { background-image: url("/static_images/vista-wmp/star-gold.png"); }
+#desktopMediaPlayer .wmp-stars[data-rate] .wmp-star { cursor: var(--c-pointer, pointer); }
+
+/* a library song's cover in Now Playing (List Pane, the stage, the transport's thumbnail) */
+#desktopMediaPlayer img.is-cover { object-fit: cover; }

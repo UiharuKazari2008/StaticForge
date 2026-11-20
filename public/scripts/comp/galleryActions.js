@@ -468,6 +468,7 @@ async function openAnimatedResultInEmotion(image) {
 }
 
 async function openAnimatedResultInVideoPlayer(image) {
+    if (window.uiShell === 'mobile') return;
     const formats = animatedResultFormats(image);
     const candidates = [formats.webm, formats.mp4].filter(Boolean);
     for (const name of candidates) {
@@ -499,7 +500,8 @@ function buildAnimatedResultMenuItems(getImage, actionPrefix = '') {
             icon: 'fas fa-play',
             text: 'Open in Media Player',
             action: actionPrefix + 'open-in-video-player',
-            hidden: () => !isAnimatedResultImage(getImage())
+            // Media Player is a desktop program: the phone shell never loads it (#956)
+            hidden: () => window.uiShell === 'mobile' || !isAnimatedResultImage(getImage())
         }
     ];
 }

@@ -51,24 +51,26 @@ assert.strictEqual(lib.find((i) => i.text === 'Video').checked, true, 'the categ
 assert.strictEqual(mp.mediaPlayerMenuItems(player, 'rip'), null, 'the hardware tabs have no menu');
 assert.ok(mp.WMP_BLANK_PAGES.rip && mp.WMP_BLANK_PAGES['online-stores']);
 
-// Library category filter
-const folder = { name: 'Music', kind: 'folder' };
-const song = { name: 'a.mp3', kind: 'file' };
-const clip = { name: 'b.mp4', kind: 'file', mimeType: 'video/mp4' };
-const text = { name: 'c.txt', kind: 'file' };
-const lp = { library: { category: 'music' } };
-assert.deepStrictEqual([folder, song, clip, text].map((i) => mp.mediaPlayerLibraryAccepts(lp, i)), [true, true, false, false]);
-lp.library.category = 'video';
-assert.deepStrictEqual([folder, song, clip, text].map((i) => mp.mediaPlayerLibraryAccepts(lp, i)), [true, false, true, false]);
-lp.library.category = 'all';
-assert.deepStrictEqual([folder, song, clip, text].map((i) => mp.mediaPlayerLibraryAccepts(lp, i)), [true, true, true, false]);
+// Library views (#956): stacks and lengths
+const L = mp.mediaPlayerLibrary;
+const tracks = [
+    { title: 'A', artist: 'X', album: 'One', year: 2006, genre: 'Jazz', duration: 61, art: '/a.jpg' },
+    { title: 'B', artist: 'X', album: 'One', year: 2006, genre: 'Jazz', duration: 120 },
+    { title: 'C', artist: 'Y', album: 'Two', year: 2009, duration: 30 }
+];
+const albums = L.groups(tracks, 'album');
+assert.deepStrictEqual(albums.map((g) => [g.label, g.sub, g.tracks.length, g.duration, g.art]), [['One', 'X', 2, 181, '/a.jpg'], ['Two', 'Y', 1, 30, '']]);
+assert.deepStrictEqual(L.groups(tracks, 'year').map((g) => g.label), ['2009', '2006'], 'years newest first');
+assert.deepStrictEqual(L.groups(tracks, 'genre').map((g) => g.label), ['Jazz', 'Unknown Genre']);
+assert.strictEqual(L.length(61), '1:01');
+assert.strictEqual(L.length(3725), '1:02:05');
 
 // markup
 const html = mp.mediaPlayerBodyHtml();
 ['wmp-tabstrip', 'wmp-orb-back', 'wmp-stage', 'wmp-listpane', 'wmp-listpane-clear', 'wmp-playlist', 'wmp-addr', 'wmp-crumbs', 'wmp-search', 'wmp-tree', 'wmp-list-head', 'wmp-transport', 'wmp-seek', 'wmp-pill', 'wmp-shuffle', 'wmp-repeat', 'wmp-stop', 'wmp-prev', 'wmp-play', 'wmp-next', 'wmp-mute', 'wmp-volume', 'wmp-fullscreen', 'wmp-compact']
     .forEach((cls) => assert.ok(html.includes('class="' + cls) || html.includes(' ' + cls + '"') || html.includes(' ' + cls + ' '), cls + ' in the markup'));
 assert.ok(!html.includes('data-aero-surface'), 'the transport is frame, not a surface');
-assert.ok(html.includes('<span class="wmp-col-title">Title</span>') && html.includes('Date modified'), "the Library's Details columns");
+assert.ok(!html.includes('Date modified'), 'the Library list head is built per view, not a file list');
 
 // wiring
 const js = read('public/scripts/comp/desktop-apps/mediaPlayer.js');

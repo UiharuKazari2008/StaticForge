@@ -184,7 +184,7 @@ const FEATURE_MANIFEST = {
     },
     media_player: {
         hot: true,
-        styles: ['css/desktop-apps/mediaPlayer.css'],
+        styles: ['css/themes/vista/media-player.css', 'css/desktop-apps/mediaPlayer.css'],
         scripts: ['scripts/comp/desktop-apps/mediaPlayer.js']
     },
     // Alarm Clock moved to a Melaton app package (apps/alarm, Yozora #642):

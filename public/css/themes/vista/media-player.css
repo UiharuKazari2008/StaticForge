@@ -1,0 +1,14 @@
+/* Melaton Media Player, Vista theme (#956): WMP 11's library colours as measured on the VM (Songs / Album / Artist
+   views). The layout is css/desktop-apps/mediaPlayer.css. */
+
+#desktopMediaPlayer {
+    --wmp-lib-bg: #eef3fa;
+    --wmp-group-text: #3558cb;
+    --wmp-group-line: #a6b9dd;
+    --wmp-sub-text: #77797d;
+    --wmp-art-shadow: 1px 2px 4px rgba(0, 0, 0, 0.35);
+    --wmp-tile-hot: linear-gradient(#f8fbfe, #eaf3fd);
+    --wmp-tile-hot-edge: #b8d6fb;
+    --wmp-tile-sel: linear-gradient(#dcebfc, #c1dbf7);
+    --wmp-tile-sel-edge: #99defd;
+}

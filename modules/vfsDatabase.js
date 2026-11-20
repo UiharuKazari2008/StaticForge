@@ -276,6 +276,14 @@ async function moveEntry(id, newFolderId) {
 // changes, without polling). fn({ name?, id?, folderIds? }): name when the write knows the file's name;
 // none for batch writes (folder moves, trash), where a listener must assume anything changed.
 const userFileListeners = new Set();
+/** Every music and video file in the VFS that is not in the Trash (the Media Player library, modules/mediaLibrary.js). */
+async function getMediaUserFiles() {
+    return db.all(
+        `SELECT id, content_hash, original_name, mime_type, size, scope, workspace_id, folder_id, created_at, updated_at
+         FROM user_files WHERE trashed_at IS NULL AND (mime_type LIKE 'audio/%' OR mime_type LIKE 'video/%')`
+    );
+}
+
 function onUserFilesChanged(fn) {
     if (typeof fn !== 'function') return () => {};
     userFileListeners.add(fn);
@@ -701,5 +709,6 @@ module.exports = {
     getUserFilesByIds,
     getFoldersByIds,
     getEntriesByFolderIds,
-    onUserFilesChanged
+    onUserFilesChanged,
+    getMediaUserFiles
 };

@@ -3495,6 +3495,14 @@ app.get('/traces/:id', authMiddleware, adminOnlyMiddleware, (req, res) => {
         globalResources
     });
 
+    // modules/mediaLibrary.js — `${vfsPath}/media/file/:id` (Range) and `/media/art/:hash`: Media Player's library (#956)
+    require('./modules/mediaLibrary').registerMediaLibraryRoutes(app, {
+        vfsPath,
+        authMiddleware,
+        globalResources,
+        buildVfsSession
+    });
+
     app.get(`${vfsPath}/system/:encodedKey`, authMiddleware, async (req, res) => {
         try {
             const vfs = globalResources.getVfsManager();

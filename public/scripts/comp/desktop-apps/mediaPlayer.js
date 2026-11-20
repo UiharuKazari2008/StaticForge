@@ -224,7 +224,7 @@ function mediaPlayerCaptionHtml() {
         + '<div class="modal-window-title-main">'
         + '<i class="fas fa-play icon-fa"></i>'
         + '<img src="/static_images/app_icons/24/media_player.webp" srcset="/static_images/app_icons/24/media_player.webp 1x, /static_images/app_icons/48/media_player.webp 2x" alt="" class="icon-image">'
-        + '<span>Media Player</span>'
+        + '<span>Melaton Media Player</span>'
         + '</div>'
         + '</div>'
         + '<div class="modal-focus-overlay"></div>'
@@ -295,19 +295,11 @@ function mediaPlayerBodyHtml() {
         + '</div>'
         + '<div class="wmp-library-body">'
         + '<div class="wmp-nav">'
-        + '<div class="wmp-tree">'
-        + '<div class="wmp-tree-node is-open" data-node="playlists"><button type="button" class="wmp-tree-toggle" aria-label="Collapse"></button><button type="button" class="wmp-tree-item" data-nav="playlists"><img src="' + WMP_ART + '/nav-playlists.png" alt="" width="16" height="16"><span>Playlists</span></button></div>'
-        + '<div class="wmp-tree-leaf"><button type="button" class="wmp-tree-item wmp-tree-create" data-nav="create-playlist"><img src="' + WMP_ART + '/nav-playlists.png" alt="" width="16" height="16"><span>Create Playlist</span></button></div>'
-        + '<div class="wmp-tree-leaf"><button type="button" class="wmp-tree-item" data-nav="now-playing"><img src="' + WMP_ART + '/nav-now-playing.png" alt="" width="16" height="16"><span>Now Playing</span></button></div>'
-        + '<div class="wmp-tree-node is-open" data-node="library"><button type="button" class="wmp-tree-toggle" aria-label="Collapse"></button><button type="button" class="wmp-tree-item" data-nav="library"><img src="' + WMP_ART + '/nav-library.png" alt="" width="16" height="16"><span>Library</span></button></div>'
-        + '<div class="wmp-tree-leaf"><button type="button" class="wmp-tree-item" data-nav="recently-added"><img src="' + WMP_ART + '/nav-recently-added.png" alt="" width="16" height="16"><span>Recently Added</span></button></div>'
-        + '<div class="wmp-tree-leaf"><button type="button" class="wmp-tree-item" data-nav="music"><img src="' + WMP_ART + '/nav-songs.png" alt="" width="16" height="16"><span>Music</span></button></div>'
-        + '<div class="wmp-tree-leaf"><button type="button" class="wmp-tree-item" data-nav="video"><img src="' + WMP_ART + '/nav-video.png" alt="" width="16" height="16"><span>Video</span></button></div>'
-        + '<div class="wmp-tree-leaf"><button type="button" class="wmp-tree-item" data-nav="all"><img src="' + WMP_ART + '/nav-album.png" alt="" width="16" height="16"><span>All Files</span></button></div>'
-        + '</div>'
+        // the navigation tree: Playlists, Library (its views) and the other libraries (mediaPlayerRenderTree)
+        + '<div class="wmp-tree" role="tree"></div>'
         + '</div>'
         + '<div class="wmp-list-host">'
-        + '<div class="wmp-list-head"><span class="wmp-col-title">Title</span><span class="wmp-col-type">Type</span><span class="wmp-col-length">Length</span><span class="wmp-col-date">Date modified</span></div>'
+        + '<div class="wmp-list-head"></div>'
         + '<div class="wmp-list" role="listbox"></div>'
         + '<p class="wmp-list-note hidden"></p>'
         + '</div>'
@@ -423,6 +415,9 @@ function mediaPlayerAdd(player, entries, play) {
             mime: entry.mime || (entry.file && entry.file.type) || '',
             file: entry.file || null,
             vfs: entry.vfs || null,
+            art: entry.art || '',
+            artist: entry.artist || '',
+            album: entry.album || '',
             kind: mediaPlayerKindFor(entry.name || desktopMediaNameFromUrl(entry.url), entry.mime || (entry.file && entry.file.type) || '')
         });
     });
@@ -639,9 +634,14 @@ function mediaPlayerSyncNow(player) {
     player.el.nowTitle.textContent = title;
     player.el.nowTitle.title = item ? item.name : '';
     const art = item && item.kind === 'video' ? 'art-video' : 'art-music';
-    player.el.stageArt.src = WMP_ART + '/' + art + '.png';
-    player.el.listpaneIcon.src = WMP_ART + '/' + art + '.png';
-    player.el.nowIcon.src = WMP_ART + '/' + art + '.png';
+    // a library song shows its album art (WMP 11's List Pane and the transport's thumbnail), anything else WMP's note
+    const cover = item && item.kind !== 'video' && item.art ? item.art : '';
+    const fallback = WMP_ART + '/' + art + '.png';
+    [player.el.stageArt, player.el.listpaneIcon, player.el.nowIcon].forEach((img) => {
+        img.onerror = () => { img.onerror = null; img.src = fallback; img.classList.remove('is-cover'); };
+        img.src = cover || fallback;
+        img.classList.toggle('is-cover', !!cover);
+    });
     player.el.listpane.classList.toggle('has-item', !!item);
     player.el.now.classList.toggle('has-item', !!item);
 }
@@ -683,7 +683,9 @@ function mediaPlayerSyncClock(player) {
     player.el.seek.setAttribute('aria-valuenow', String(Math.round(now)));
     player.el.seek.classList.toggle('is-ready', duration > 0);
     const shown = desktopMediaClock(now);
-    player.el.time.textContent = shown.length < 5 ? '0' + shown : shown;
+    // nothing loaded: no time beside the controls (WMP 11 shows it only while a file is open)
+    const text = media.currentSrc ? (shown.length < 5 ? '0' + shown : shown) : '';
+    if (player.el.time.textContent !== text) player.el.time.textContent = text;
 }
 
 // ---- views and history ----
@@ -703,14 +705,16 @@ function mediaPlayerShowView(player, view, record) {
     });
     if (WMP_BLANK_PAGES[id]) player.el.blankText.textContent = WMP_BLANK_PAGES[id];
     player.modal.dataset.wmpView = id;
-    if (id === 'library' && !player.library.loaded) mediaPlayerLoadFolder(player, player.library.path);
+    if (id === 'library') mediaPlayerRenderLibrary(player);
     if (record !== false) mediaPlayerRecord(player);
 }
 
 function mediaPlayerRecord(player) {
-    const entry = { view: player.view, path: player.library.path, mode: player.library.mode };
+    const lib = player.library;
+    const entry = { view: player.view, mode: lib.mode, source: lib.source, category: lib.category, lview: lib.view, filter: lib.filter };
+    const sig = (e) => [e.view, e.mode, e.source, e.category, e.lview, e.filter ? e.filter.field + ':' + e.filter.value : ''].join('|');
     const last = player.history[player.historyIndex];
-    if (last && last.view === entry.view && last.path === entry.path && last.mode === entry.mode) return;
+    if (last && sig(last) === sig(entry)) return;
     player.history = player.history.slice(0, player.historyIndex + 1);
     player.history.push(entry);
     player.historyIndex = player.history.length - 1;
@@ -727,149 +731,479 @@ function mediaPlayerGo(player, step) {
     if (to < 0 || to >= player.history.length) return;
     player.historyIndex = to;
     const entry = player.history[to];
-    player.library.mode = entry.mode;
-    if (entry.view === 'library') {
-        if (entry.mode === 'folder') mediaPlayerLoadFolder(player, entry.path, false);
-        else mediaPlayerRenderLibrary(player);
-    }
+    const lib = player.library;
+    lib.mode = entry.mode;
+    if (entry.source) lib.source = entry.source;
+    if (entry.lview) lib.view = entry.lview;
+    lib.filter = entry.filter || null;
+    if (entry.category && entry.category !== lib.category) { lib.category = entry.category; mediaPlayerLibrary.renderTree(player); }
+    if (entry.view === 'library') mediaPlayerRenderLibrary(player);
     mediaPlayerShowView(player, entry.view, false);
     mediaPlayerSyncOrbs(player);
 }
 
 // ---- Library ----
 
-function mediaPlayerLibraryAccepts(player, item) {
-    if (desktopVfsItemIsFolder(item)) return true;
-    const kind = mediaPlayerKindFor(item.name, item.mimeType);
-    if (player.library.category === 'music') return kind === 'audio';
-    if (player.library.category === 'video') return kind === 'video';
-    return !!kind;
-}
+// ---- Library (Yozora #956): WMP 11's music and video library ----
+//
+// Sources: 'local' = this computer's library, the server's (modules/mediaLibrary.js: the VFS's music and video with
+// their tags, media_library_get; files and art at <vfs>/media/file|art); 'phone' = the phone this window runs from
+// (the Android app's MediaStore, window.AndroidMediaLibrary, as Melaton Media reads it) as one of WMP's other
+// libraries. Views (WMP 11's, measured on the VM): Music - Recently Added, Artist, Album, Songs, Genre, Year, Rating;
+// Video - All Video, Actors, Genre, Year, Rating. Ratings are kept in this browser (localStorage wmpRatings).
 
-function mediaPlayerSetCategory(player, category) {
-    player.library.category = category;
-    const icon = category === 'video' ? 'nav-video' : category === 'music' ? 'nav-music' : 'nav-album';
-    player.el.categoryIcon.src = WMP_ART + '/' + icon + '.png';
-    player.el.navItems.forEach((btn) => btn.classList.toggle('is-current', btn.dataset.nav === (player.library.mode === 'folder' ? category : player.library.mode)));
-    mediaPlayerRenderLibrary(player);
-}
+// One namespace (app-scope: no page globals of its own); the six names the rest of the file used before stay as
+// thin functions.
+const mediaPlayerLibrary = (function () {
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
+    const WMP_MUSIC_VIEWS = [
+        { id: 'recent', label: 'Recently Added', icon: 'nav-recently-added' },
+        { id: 'artist', label: 'Artist', icon: 'nav-artist' },
+        { id: 'album', label: 'Album', icon: 'nav-album' },
+        { id: 'songs', label: 'Songs', icon: 'nav-songs' },
+        { id: 'genre', label: 'Genre', icon: 'nav-genre' },
+        { id: 'year', label: 'Year', icon: 'nav-year' },
+        { id: 'rating', label: 'Rating', icon: 'nav-rating' }
+    ];
+    const WMP_VIDEO_VIEWS = [
+        { id: 'all', label: 'All Video', icon: 'nav-video' },
+        { id: 'artist', label: 'Actors', icon: 'nav-artist' },
+        { id: 'genre', label: 'Genre', icon: 'nav-genre' },
+        { id: 'year', label: 'Year', icon: 'nav-year' },
+        { id: 'rating', label: 'Rating', icon: 'nav-rating' }
+    ];
+    const WMP_RECENT_DAYS = 30;
+    const WMP_RATINGS_KEY = 'wmpRatings';
 
-async function mediaPlayerLoadFolder(player, path, record) {
-    const lib = player.library;
-    const next = path || '/';
-    lib.token += 1;
-    const token = lib.token;
-    lib.mode = 'folder';
-    lib.path = next;
-    lib.loaded = true;
-    mediaPlayerRenderCrumbs(player);
-    player.el.listNote.textContent = 'Loading...';
-    player.el.listNote.classList.remove('hidden');
-    try {
-        // vfsClient.listDirectory: public/scripts/comp/vfsClient.js
-        const result = await vfsClient.listDirectory(next, {
-            offset: 0,
-            limit: 400,
-            sortField: 'name',
-            sortDirection: 'asc',
-            search: ''
+    function mediaPlayerRatings() {
+        if (!mediaPlayerRatings.cache) {
+            try { mediaPlayerRatings.cache = JSON.parse(localStorage.getItem(WMP_RATINGS_KEY) || '{}') || {}; } catch (_) { mediaPlayerRatings.cache = {}; }
+        }
+        return mediaPlayerRatings.cache;
+    }
+    function mediaPlayerRatingOf(t) { return Number(mediaPlayerRatings()[t.key]) || 0; }
+    function mediaPlayerSetRating(t, n) {
+        const r = mediaPlayerRatings();
+        if (n > 0) r[t.key] = n; else delete r[t.key];
+        try { localStorage.setItem(WMP_RATINGS_KEY, JSON.stringify(r)); } catch (_) { /* private mode */ }
+    }
+
+    /** WMP's stars: five 14px stars, gold up to the rating (empty outlines above). */
+    function mediaPlayerStarsHtml(n, key) {
+        let h = '<span class="wmp-stars"' + (key ? ' data-rate="' + mediaPlayerEsc(key) + '"' : '') + '>';
+        for (let i = 1; i <= 5; i++) h += '<span class="wmp-star' + (i <= n ? ' is-on' : '') + '" data-star="' + i + '"></span>';
+        return h + '</span>';
+    }
+
+    function mediaPlayerLength(sec) {
+        const s = Math.max(0, Math.round(Number(sec) || 0));
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const r = s % 60;
+        return h ? h + ':' + String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0') : m + ':' + String(r).padStart(2, '0');
+    }
+    const mediaPlayerMinutes = (sec) => { const m = Math.round((Number(sec) || 0) / 60); return m + (m === 1 ? ' minute' : ' minutes'); };
+
+    /** The name the phone goes by (Mobile Device Center's), for its library in the tree. */
+    function mediaPlayerPhoneName() {
+        try {
+            const H = window.AndroidHome;
+            const c = H && typeof H.getContinuity === 'function' ? JSON.parse(H.getContinuity()) : null;
+            const id = c && c.deviceId ? String(c.deviceId).toLowerCase() : '';
+            const as = window.activeSync && typeof window.activeSync.state === 'function' ? window.activeSync.state() : null;
+            const dev = id && as ? (as.devices || []).find((d) => String(d.deviceId).toLowerCase() === id) : null;
+            if (dev && dev.name) return String(dev.name);
+            const hw = window.melatonDeviceIdentity && typeof window.melatonDeviceIdentity.hardware === 'function' ? window.melatonDeviceIdentity.hardware() : null;
+            if (hw && hw.device && (hw.device.marketName || hw.device.model)) return String(hw.device.marketName || hw.device.model);
+        } catch (_) { /* below */ }
+        return 'Phone';
+    }
+
+    function mediaPlayerHasPhone() {
+        return !!(window.AndroidMediaLibrary && typeof window.AndroidMediaLibrary.baseUrl === 'function');
+    }
+
+    /** One source's tracks: { audio, video, error, needsAccess }. Each track: key, title, artist, album, ... url, art. */
+    async function mediaPlayerFetchSource(source) {
+        if (source === 'phone') {
+            const L = window.AndroidMediaLibrary;
+            let acc = {};
+            try { acc = JSON.parse(L.access() || '{}'); } catch (_) { acc = {}; }
+            if (!acc.granted) return { audio: [], video: [], needsAccess: true };
+            let vols = [];
+            try { vols = JSON.parse(L.volumes() || '[]'); } catch (_) { vols = []; }
+            const base = L.baseUrl();
+            const audio = [];
+            const video = [];
+            for (const v of vols) {
+                const volume = typeof v === 'string' ? v : (v && (v.id || v.name));
+                if (!volume) continue;
+                const vol = encodeURIComponent(volume);
+                let d = null;
+                try { const r = await fetch(base + '/library/' + vol, { cache: 'no-store' }); d = r.ok ? await r.json() : null; } catch (_) { d = null; }
+                if (!d) continue;
+                (d.songs || []).forEach((x) => audio.push({
+                    key: 'phone:' + volume + ':' + x.id, kind: 'audio', title: x.title || 'Unknown', artist: x.artist || '', albumArtist: x.albumArtist || '',
+                    album: x.album || '', genre: x.genre || '', year: x.year || 0, track: x.track || 0, disc: x.disc || 0, composer: x.composer || '',
+                    duration: (x.duration || 0) / 1000, added: (x.dateAdded || 0) * 1000, mime: x.mime || 'audio/mpeg', name: x.title || 'Unknown',
+                    url: base + '/audio/' + vol + '/' + x.id, art: x.albumId ? base + '/album/' + vol + '/' + x.albumId + '?px=200' : ''
+                }));
+                (d.videos || []).forEach((x) => video.push({
+                    key: 'phone:' + volume + ':v' + x.id, kind: 'video', title: x.title || 'Video', artist: x.artist || '', album: x.folder || '', genre: '', year: 0,
+                    duration: (x.duration || 0) / 1000, added: (x.dateAdded || 0) * 1000, mime: x.mime || 'video/mp4', name: x.title || 'Video',
+                    url: base + '/video/' + vol + '/' + x.id, art: base + '/video/' + vol + '/' + x.id + '?thumb=240'
+                }));
+            }
+            return { audio, video };
+        }
+        // vfsClient.getBasePath: public/scripts/comp/vfsClient.js (the VFS's HTTP prefix, where the library's files are)
+        const base = typeof vfsClient !== 'undefined' && vfsClient.getBasePath ? vfsClient.getBasePath() : '';
+        const r = await window.wsClient.sendMessage('media_library_get', {});
+        const d = (r && r.data) || r || {};
+        const map = (x) => ({
+            key: 'local:' + x.hash, kind: '', title: x.title || mediaPlayerTitle(x.name), artist: x.artist || '', albumArtist: x.albumArtist || '',
+            album: x.album || '', genre: x.genre || '', year: x.year || 0, track: x.track || 0, disc: x.disc || 0, composer: x.composer || '',
+            duration: x.duration || 0, added: x.added || 0, mime: x.mime || '', name: x.name || '',
+            url: base ? base + '/media/file/' + encodeURIComponent(x.id) : '', art: x.art && base ? base + '/media/art/' + x.hash : ''
         });
-        if (token !== lib.token) return;
-        lib.path = (result && result.path) || next;
-        lib.items = (result && result.items) || [];
-        mediaPlayerRenderCrumbs(player);
-        mediaPlayerRenderLibrary(player);
-        if (record !== false) mediaPlayerRecord(player);
-    } catch (err) {
-        if (token !== lib.token) return;
-        lib.items = [];
+        return {
+            audio: (d.audio || []).map((x) => Object.assign(map(x), { kind: 'audio' })),
+            video: (d.video || []).map((x) => Object.assign(map(x), { kind: 'video' }))
+        };
+    }
+
+    async function mediaPlayerLoadLibrary(player, force) {
+        const lib = player.library;
+        const src = lib.source;
+        if (!force && lib.data[src] && !lib.data[src].stale) { mediaPlayerRenderLibrary(player); return; }
+        lib.token += 1;
+        const token = lib.token;
         player.el.list.innerHTML = '';
-        player.el.listNote.textContent = (err && err.message) || 'Media Player cannot list this folder.';
+        player.el.listNote.textContent = 'Loading...';
         player.el.listNote.classList.remove('hidden');
+        try {
+            const data = await mediaPlayerFetchSource(src);
+            if (token !== lib.token) return;
+            lib.data[src] = data;
+        } catch (err) {
+            if (token !== lib.token) return;
+            lib.data[src] = { audio: [], video: [], stale: true, error: (err && err.message) || 'Media Player cannot read the library.' }; // read again on the next visit
+        }
+        lib.loaded = true;
+        mediaPlayerRenderLibrary(player);
     }
-}
+    // the old name (menus: Refresh)
+    function mediaPlayerLoadFolder(player) { return mediaPlayerLoadLibrary(player, true); }
 
-function mediaPlayerRenderCrumbs(player) {
-    const lib = player.library;
-    const parts = String(lib.path || '/').split('/').filter(Boolean);
-    const crumbs = [{ label: 'Library', path: '/' }];
-    parts.forEach((part, i) => crumbs.push({ label: part, path: '/' + parts.slice(0, i + 1).join('/') }));
-    if (lib.mode === 'now-playing') crumbs.push({ label: 'Now Playing', path: '' });
-    player.el.crumbs.innerHTML = crumbs.map((c) => '<span class="wmp-crumb-sep" aria-hidden="true"></span><button type="button" class="wmp-crumb" data-path="' + mediaPlayerEsc(c.path) + '">' + mediaPlayerEsc(c.label) + '</button>').join('');
-}
+    function mediaPlayerViews(category) { return category === 'video' ? WMP_VIDEO_VIEWS : WMP_MUSIC_VIEWS; }
 
-function mediaPlayerRenderLibrary(player) {
-    const lib = player.library;
-    const filter = String(player.el.search.value || '').trim().toLowerCase();
-    let rows;
-    if (lib.mode === 'now-playing') {
-        rows = player.items.map((item, i) => ({
-            key: 'np:' + item.id, name: item.name, icon: item.kind === 'video' ? 'nav-video' : 'nav-songs',
-            type: mediaPlayerTypeName(item), length: '', date: '', current: i === player.index
-        }));
-    } else {
-        rows = lib.items.filter((item) => mediaPlayerLibraryAccepts(player, item)).map((item, i) => ({
-            key: 'vfs:' + i, name: item.name || '', folder: desktopVfsItemIsFolder(item),
-            icon: desktopVfsItemIsFolder(item) ? 'nav-library' : (mediaPlayerKindFor(item.name, item.mimeType) === 'video' ? 'nav-video' : 'nav-songs'),
-            type: mediaPlayerTypeName(item), length: '', date: mediaPlayerDate(item.modifiedAt)
-        }));
+    /** The tree: Playlists (Create Playlist, Now Playing), Library and its views, then the other libraries. */
+    function mediaPlayerRenderTree(player) {
+        const lib = player.library;
+        const views = mediaPlayerViews(lib.category);
+        const leaf = (nav, icon, label, extra) => '<div class="wmp-tree-leaf' + (extra || '') + '"><button type="button" class="wmp-tree-item' + (nav === 'create-playlist' ? ' wmp-tree-create' : '') + '" data-nav="' + nav + '"><img src="' + WMP_ART + '/' + icon + '.png" alt="" width="16" height="16"><span>' + mediaPlayerEsc(label) + '</span></button></div>';
+        const node = (id, nav, icon, label, open) => '<div class="wmp-tree-node' + (open ? ' is-open' : '') + '" data-node="' + id + '"><button type="button" class="wmp-tree-toggle" aria-label="' + (open ? 'Collapse' : 'Expand') + '"></button><button type="button" class="wmp-tree-item" data-nav="' + nav + '"><img src="' + WMP_ART + '/' + icon + '.png" alt="" width="16" height="16"><span>' + mediaPlayerEsc(label) + '</span></button></div>';
+        const open = lib.open || (lib.open = { playlists: true, local: true, phone: false });
+        let h = node('playlists', 'playlists', 'nav-playlists', 'Playlists', open.playlists);
+        const hid = (on) => (on ? '' : ' hidden');
+        h += leaf('create-playlist', 'nav-create-playlist', 'Create Playlist', hid(open.playlists));
+        h += node('local', 'src:local:' + views[0].id, lib.category === 'video' ? 'nav-video' : 'nav-library', 'Library', open.local);
+        views.forEach((v) => { h += leaf('src:local:' + v.id, v.icon, v.label, hid(open.local)); });
+        if (mediaPlayerHasPhone()) {
+            h += node('phone', 'src:phone:' + views[0].id, 'nav-other-library', mediaPlayerPhoneName(), open.phone);
+            views.forEach((v) => { h += leaf('src:phone:' + v.id, v.icon, v.label, hid(open.phone)); });
+        }
+        player.el.tree.innerHTML = h;
+        player.el.navItems = Array.from(player.el.tree.querySelectorAll('.wmp-tree-item'));
+        mediaPlayerMarkTree(player);
     }
-    if (filter) rows = rows.filter((r) => r.name.toLowerCase().indexOf(filter) !== -1);
-    player.el.list.innerHTML = rows.map((r) => ''
-        + '<div class="wmp-row' + (r.current ? ' is-current' : '') + (r.folder ? ' is-folder' : '') + '" role="option" data-key="' + r.key + '" tabindex="-1">'
-        + '<span class="wmp-col-title"><img src="' + WMP_ART + '/' + r.icon + '.png" alt="" width="16" height="16">' + mediaPlayerEsc(r.folder ? r.name : mediaPlayerTitle(r.name)) + '</span>'
-        + '<span class="wmp-col-type">' + mediaPlayerEsc(r.type) + '</span>'
-        + '<span class="wmp-col-length">' + mediaPlayerEsc(r.length) + '</span>'
-        + '<span class="wmp-col-date">' + mediaPlayerEsc(r.date) + '</span>'
-        + '</div>').join('');
-    const empty = !rows.length;
-    player.el.listNote.textContent = empty
-        ? (lib.mode === 'now-playing' ? 'There are no items in the Now Playing list.' : (filter ? 'No items match your search.' : 'There are no items in this view.'))
-        : '';
-    player.el.listNote.classList.toggle('hidden', !empty);
-}
 
-function mediaPlayerNav(player, nav) {
-    const lib = player.library;
-    player.el.navItems.forEach((btn) => btn.classList.toggle('is-current', btn.dataset.nav === nav));
-    if (nav === 'now-playing' || nav === 'playlists' || nav === 'create-playlist') {
-        lib.mode = 'now-playing';
-        mediaPlayerRenderCrumbs(player);
+    function mediaPlayerMarkTree(player) {
+        const lib = player.library;
+        const cur = lib.mode === 'now-playing' ? 'now-playing' : 'src:' + lib.source + ':' + lib.view;
+        player.el.navItems.forEach((btn) => btn.classList.toggle('is-current', btn.dataset.nav === cur && !lib.filter));
+    }
+
+    function mediaPlayerSetCategory(player, category) {
+        const lib = player.library;
+        lib.category = category === 'video' ? 'video' : 'music';
+        lib.view = mediaPlayerViews(lib.category)[lib.category === 'video' ? 0 : 3].id;
+        lib.filter = null;
+        player.el.categoryIcon.src = WMP_ART + '/' + (lib.category === 'video' ? 'nav-video' : 'nav-music') + '.png';
+        mediaPlayerRenderTree(player);
         mediaPlayerRenderLibrary(player);
         mediaPlayerRecord(player);
-        return;
     }
-    if (nav === 'music' || nav === 'video' || nav === 'all') lib.category = nav;
-    if (nav === 'recently-added' || nav === 'library') lib.category = 'all';
-    const icon = lib.category === 'video' ? 'nav-video' : lib.category === 'music' ? 'nav-music' : 'nav-album';
-    player.el.categoryIcon.src = WMP_ART + '/' + icon + '.png';
-    if (lib.mode !== 'folder' || !lib.loaded) {
-        mediaPlayerLoadFolder(player, lib.path);
-        return;
-    }
-    mediaPlayerRenderCrumbs(player);
-    mediaPlayerRenderLibrary(player);
-    mediaPlayerRecord(player);
-}
 
-function mediaPlayerActivateRow(player, key) {
-    if (key.indexOf('np:') === 0) {
-        const id = Number(key.slice(3));
-        const at = player.items.findIndex((item) => item.id === id);
-        if (at !== -1) {
-            mediaPlayerPlayIndex(player, at);
-            mediaPlayerShowView(player, 'now-playing');
+    function mediaPlayerRenderCrumbs(player) {
+        const lib = player.library;
+        const views = mediaPlayerViews(lib.category);
+        const view = views.find((v) => v.id === lib.view) || views[0];
+        const crumbs = [{ label: lib.category === 'video' ? 'Video' : 'Music', nav: 'category' }];
+        if (lib.mode === 'now-playing') crumbs.push({ label: 'Now Playing', nav: '' });
+        else {
+            crumbs.push({ label: lib.source === 'phone' ? mediaPlayerPhoneName() : 'Library', nav: 'src:' + lib.source + ':' + views[0].id });
+            crumbs.push({ label: lib.filter ? lib.filter.from : view.label, nav: 'src:' + lib.source + ':' + (lib.filter ? lib.filter.fromView : view.id) });
+            if (lib.filter) crumbs.push({ label: lib.filter.label || 'Unknown', nav: '' });
         }
-        return;
+        player.el.crumbs.innerHTML = crumbs.map((c) => '<span class="wmp-crumb-sep" aria-hidden="true"></span><button type="button" class="wmp-crumb" data-nav="' + mediaPlayerEsc(c.nav) + '">' + mediaPlayerEsc(c.label) + '</button>').join('');
     }
-    const item = player.library.items[Number(key.slice(4))];
-    if (!item) return;
-    if (desktopVfsItemIsFolder(item)) {
-        mediaPlayerLoadFolder(player, desktopVfsFolderPath({ vfsPath: player.library.path }, item));
-        return;
+
+    /** The tracks the view shows, searched and (drilled into a stack) filtered. */
+    function mediaPlayerTracks(player) {
+        const lib = player.library;
+        const d = lib.data[lib.source] || { audio: [], video: [] };
+        let list = (lib.category === 'video' ? d.video : d.audio) || [];
+        if (lib.view === 'recent') {
+            const since = Date.now() - WMP_RECENT_DAYS * 86400000;
+            list = list.filter((t) => t.added >= since);
+        }
+        if (lib.filter) list = list.filter((t) => String(mediaPlayerGroupKey(t, lib.filter.field)) === String(lib.filter.value));
+        const q = String(player.el.search.value || '').trim().toLowerCase();
+        if (q) list = list.filter((t) => [t.title, t.artist, t.albumArtist, t.album, t.genre, t.composer].some((v) => String(v || '').toLowerCase().indexOf(q) !== -1));
+        return list;
     }
-    mediaPlayerOpenVfsItem(player, item, player.library.path);
-}
+
+    function mediaPlayerGroupKey(t, field) {
+        if (field === 'artist') return t.albumArtist || t.artist || 'Unknown Artist';
+        if (field === 'album') return (t.album || 'Unknown Album') + '\u0001' + (t.albumArtist || t.artist || '');
+        if (field === 'genre') return t.genre || 'Unknown Genre';
+        if (field === 'year') return t.year || 'Unknown Year';
+        if (field === 'rating') return mediaPlayerRatingOf(t);
+        return '';
+    }
+
+    /** Stacks / tiles: one per album, artist, genre, year or rating. */
+    function mediaPlayerGroups(tracks, field) {
+        const map = new Map();
+        tracks.forEach((t) => {
+            const k = mediaPlayerGroupKey(t, field);
+            let g = map.get(k);
+            if (!g) { g = { key: k, tracks: [], art: '', duration: 0 }; map.set(k, g); }
+            g.tracks.push(t);
+            g.duration += t.duration || 0;
+            if (!g.art && t.art) g.art = t.art;
+        });
+        const out = Array.from(map.values());
+        out.forEach((g) => {
+            const first = g.tracks[0];
+            if (field === 'album') { g.label = first.album || 'Unknown Album'; g.sub = first.albumArtist || first.artist || 'Unknown Artist'; }
+            else if (field === 'rating') g.label = g.key ? g.key + (g.key === 1 ? ' Star' : ' Stars') : 'Unrated';
+            else g.label = String(g.key);
+            const rated = g.tracks.map(mediaPlayerRatingOf).filter(Boolean);
+            g.rating = rated.length ? Math.round(rated.reduce((a, b) => a + b, 0) / rated.length) : 0;
+        });
+        if (field === 'year') out.sort((a, b) => (Number(b.key) || 0) - (Number(a.key) || 0));
+        // the VM lists My Ratings as Unrated, then 1 Star up
+        else if (field === 'rating') out.sort((a, b) => (Number(a.key) || 0) - (Number(b.key) || 0));
+        // WMP files "The Best of Beethoven" under B: a leading article does not count (as on the VM)
+        else out.sort((a, b) => mediaPlayerSortName(a.label).localeCompare(mediaPlayerSortName(b.label)));
+        return out;
+    }
+
+    /** The name WMP sorts by: without a leading "The", "A" or "An". */
+    function mediaPlayerSortName(s) { return String(s || '').replace(/^(the|an?)\s+/i, ''); }
+
+    const WMP_HEADS = {
+        songs: ['Album', '', 'Title', 'Length', 'Rating', 'Contributing Artist', 'Composer'],
+        album: ['Album', 'Album Artist', 'Genre', 'Release Year', 'Count', 'Length', 'Rating'],
+        artist: ['Album Artist', 'Count', 'Length', 'Rating'],
+        genre: ['Genre', 'Count', 'Length', 'Rating'],
+        year: ['Release Year', 'Count', 'Length', 'Rating'],
+        rating: ['Title'],
+        video: ['Title', 'Length', 'Rating', 'Actors', 'Genre', 'Release Year']
+    };
+
+    function mediaPlayerArtHtml(art, kind, cls) {
+        const fallback = WMP_ART + '/' + (kind === 'video' ? 'art-video' : 'art-music') + '.png';
+        return '<span class="' + cls + '"><img src="' + mediaPlayerEsc(art || fallback) + '" alt="" draggable="false" loading="lazy" onerror="this.onerror=null;this.src=\'' + fallback + '\'"></span>';
+    }
+
+    function mediaPlayerRenderLibrary(player) {
+        const lib = player.library;
+        const el = player.el;
+        mediaPlayerRenderCrumbs(player);
+        mediaPlayerMarkTree(player);
+        el.list.dataset.layout = '';
+        if (lib.mode === 'now-playing') {
+            el.listHead.innerHTML = '<span>Title</span><span>Length</span>';
+            el.list.dataset.layout = 'details';
+            lib.rows = [];
+            el.list.innerHTML = player.items.map((item, i) => '<div class="wmp-row wmp-np-row' + (i === player.index ? ' is-current' : '') + '" role="option" data-key="np:' + item.id + '" tabindex="-1"><span>' + mediaPlayerEsc(item.name) + '</span><span></span></div>').join('');
+            el.listNote.textContent = player.items.length ? '' : 'There are no items in the Now Playing list.';
+            el.listNote.classList.toggle('hidden', !!player.items.length);
+            return;
+        }
+        const d = lib.data[lib.source];
+        if (!d) { void mediaPlayerLoadLibrary(player); return; }
+        const tracks = mediaPlayerTracks(player);
+        const viewId = lib.filter ? 'songs' : lib.view;
+        const kindWord = lib.category === 'video' ? 'Video' : 'Music';
+        let html = '';
+        let head;
+        lib.rows = [];
+        lib.groups = [];
+        if (lib.category === 'video' && (viewId === 'all' || viewId === 'songs')) {
+            head = WMP_HEADS.video;
+            el.list.dataset.layout = 'tiles-video';
+            lib.rows = tracks.slice().sort((a, b) => mediaPlayerSortName(a.title).localeCompare(mediaPlayerSortName(b.title)));
+            html = '<div class="wmp-tiles">' + lib.rows.map((t, i) => '<div class="wmp-tile wmp-row" role="option" tabindex="-1" data-key="t:' + i + '">'
+                + mediaPlayerArtHtml(t.art, 'video', 'wmp-tile-art is-video')
+                + '<span class="wmp-tile-name">' + mediaPlayerEsc(t.title) + '</span><span class="wmp-tile-sub">' + mediaPlayerEsc(mediaPlayerLength(t.duration)) + '</span></div>').join('') + '</div>';
+        } else if (viewId === 'songs' || viewId === 'recent') {
+            head = WMP_HEADS.songs;
+            el.list.dataset.layout = 'songs';
+            // grouped by album artist, then album (WMP 11's Songs view): the art and the album's facts at the left
+            const albums = mediaPlayerGroups(tracks, 'album');
+            albums.sort((a, b) => String(a.sub).localeCompare(String(b.sub)) || String(a.label).localeCompare(String(b.label)));
+            let lastArtist = null;
+            albums.forEach((g) => {
+                g.tracks.sort((a, b) => (a.disc - b.disc) || (a.track - b.track) || a.title.localeCompare(b.title));
+                if (g.sub !== lastArtist) { html += '<div class="wmp-group-head"><span>' + mediaPlayerEsc(g.sub) + '</span></div>'; lastArtist = g.sub; }
+                const first = g.tracks[0];
+                html += '<div class="wmp-album-block">'
+                    + '<div class="wmp-album-side">' + mediaPlayerArtHtml(g.art, 'audio', 'wmp-album-art')
+                    + '<div class="wmp-album-facts"><span>' + mediaPlayerEsc(g.label) + '</span><span>' + mediaPlayerEsc(g.sub) + '</span><span>' + mediaPlayerEsc(first.genre || '') + '</span><span>' + (first.year || '') + '</span></div></div>'
+                    + '<div class="wmp-album-rows">' + g.tracks.map((t) => {
+                        const i = lib.rows.push(t) - 1;
+                        return '<div class="wmp-row wmp-song" role="option" tabindex="-1" data-key="t:' + i + '">'
+                            + '<span class="wmp-c-track">' + (t.track || '') + '</span>'
+                            + '<span class="wmp-c-title">' + mediaPlayerEsc(t.title) + '</span>'
+                            + '<span class="wmp-c-length">' + mediaPlayerLength(t.duration) + '</span>'
+                            + '<span class="wmp-c-rating">' + mediaPlayerStarsHtml(mediaPlayerRatingOf(t), t.key) + '</span>'
+                            + '<span class="wmp-c-artist">' + mediaPlayerEsc(t.artist) + '</span>'
+                            + '<span class="wmp-c-composer">' + mediaPlayerEsc(t.composer) + '</span></div>';
+                    }).join('') + '</div></div>';
+            });
+        } else {
+            // Album tiles; Artist / Genre / Year / Rating stacks (art, name, count, length, stars)
+            const field = viewId === 'album' ? 'album' : viewId;
+            head = WMP_HEADS[field] || WMP_HEADS.genre;
+            el.list.dataset.layout = field === 'album' ? 'tiles' : field === 'rating' ? 'ratings' : 'stacks';
+            lib.groups = mediaPlayerGroups(tracks, field);
+            const tile = (g, i) => {
+                if (field === 'rating') {
+                    // Rating on the VM: a large star over the rating's name, nothing else
+                    return '<div class="wmp-tile wmp-row is-rating" role="option" tabindex="-1" data-key="g:' + i + '">'
+                        + '<img class="wmp-rating-star" src="' + WMP_ART + '/rating-star.png" alt="" width="30" height="29" draggable="false"><span class="wmp-tile-name">' + mediaPlayerEsc(g.label) + '</span></div>';
+                }
+                const count = g.tracks.length;
+                // the VM's Artist stacks count the songs; Genre and Year stacks give only the length
+                const countLine = field === 'artist' ? '<span class="wmp-tile-sub">' + count + (lib.category === 'video' ? (count === 1 ? ' Video' : ' Videos') : (count === 1 ? ' Song' : ' Songs')) + '</span>' : '';
+                const lines = field === 'album'
+                    ? '<span class="wmp-tile-name">' + mediaPlayerEsc(g.label) + '</span><span class="wmp-tile-sub">' + mediaPlayerEsc(g.sub) + '</span>'
+                    : '<span class="wmp-tile-name">' + mediaPlayerEsc(g.label) + '</span>' + countLine + '<span class="wmp-tile-sub">' + mediaPlayerMinutes(g.duration) + '</span>' + mediaPlayerStarsHtml(g.rating);
+                return '<div class="wmp-tile wmp-row' + (field === 'album' ? '' : ' is-stack') + '" role="option" tabindex="-1" data-key="g:' + i + '">'
+                    + mediaPlayerArtHtml(g.art, lib.category === 'video' ? 'video' : 'audio', 'wmp-tile-art') + '<span class="wmp-tile-text">' + lines + '</span></div>';
+            };
+            // Year is filed under its decade ("2000s", "1990s") and Rating under "My Ratings", each with a group line
+            const sectionOf = field === 'year' ? (g) => (Number(g.key) ? Math.floor(Number(g.key) / 10) * 10 + 's' : 'Unknown')
+                : field === 'rating' ? () => 'My Ratings' : null;
+            if (sectionOf) {
+                let last = null;
+                lib.groups.forEach((g, i) => {
+                    const sec = sectionOf(g);
+                    if (sec !== last) { html += (last === null ? '' : '</div>') + '<div class="wmp-group-head"><span>' + mediaPlayerEsc(sec) + '</span></div><div class="wmp-tiles">'; last = sec; }
+                    html += tile(g, i);
+                });
+                if (last !== null) html += '</div>';
+            } else html = '<div class="wmp-tiles">' + lib.groups.map(tile).join('') + '</div>';
+        }
+        el.listHead.innerHTML = head.map((h) => '<span>' + mediaPlayerEsc(h) + '</span>').join('');
+        el.listHead.dataset.layout = el.list.dataset.layout;
+        el.list.innerHTML = html;
+        const empty = !(lib.rows.length || lib.groups.length);
+        let note = '';
+        if (empty) {
+            if (d.error) note = d.error;
+            else if (d.needsAccess) note = 'Allow Melaton to read your music and videos on your phone to see its library.';
+            else if (String(el.search.value || '').trim()) note = 'No items match your search.';
+            else if (viewId === 'recent') note = 'There are no recently added items in ' + kindWord + '.';
+            else note = 'There are no items in ' + kindWord + '.';
+        }
+        el.listNote.textContent = note;
+        el.listNote.classList.toggle('hidden', !note);
+    }
+
+    function mediaPlayerNav(player, nav) {
+        const lib = player.library;
+        if (!nav) return;
+        if (nav === 'now-playing' || nav === 'playlists' || nav === 'create-playlist') {
+            lib.mode = 'now-playing';
+            mediaPlayerRenderLibrary(player);
+            mediaPlayerRecord(player);
+            return;
+        }
+        if (nav === 'category') return;
+        const m = /^src:(local|phone):(.+)$/.exec(nav);
+        if (!m) return;
+        lib.mode = 'library';
+        lib.source = m[1];
+        lib.view = m[2];
+        lib.filter = null;
+        mediaPlayerRenderLibrary(player);
+        mediaPlayerRecord(player);
+    }
+
+    /** The tracks to play from what was activated: a song plays its view from there, a tile or stack all of its songs. */
+    function mediaPlayerTracksFor(player, key) {
+        const lib = player.library;
+        if (key.indexOf('t:') === 0) {
+            const i = Number(key.slice(2));
+            return lib.rows.slice(i).concat(lib.rows.slice(0, i));
+        }
+        const g = lib.groups[Number(key.slice(2))];
+        if (!g) return [];
+        return g.tracks.slice().sort((a, b) => (a.album || '').localeCompare(b.album || '') || (a.disc - b.disc) || (a.track - b.track));
+    }
+
+    function mediaPlayerPlayTracks(player, tracks, add) {
+        const entries = tracks.filter((t) => t.url).map((t) => ({ name: t.title, url: t.url, mime: t.mime, art: t.art, artist: t.artist, album: t.album }));
+        if (!entries.length) return;
+        if (!add) mediaPlayerClear(player);
+        mediaPlayerAdd(player, entries, !add);
+    }
+
+    function mediaPlayerActivateRow(player, key) {
+        if (key.indexOf('np:') === 0) {
+            const id = Number(key.slice(3));
+            const at = player.items.findIndex((item) => item.id === id);
+            if (at !== -1) {
+                mediaPlayerPlayIndex(player, at);
+                mediaPlayerShowView(player, 'now-playing');
+            }
+            return;
+        }
+        const lib = player.library;
+        if (key.indexOf('g:') === 0) {
+            const g = lib.groups[Number(key.slice(2))];
+            if (!g) return;
+            const viewId = lib.view;
+            // a stack opens (WMP 11: double-click a stack); an album tile plays
+            if (viewId !== 'album') {
+                const views = mediaPlayerViews(lib.category);
+                lib.filter = { field: viewId, value: g.key, label: g.label, from: (views.find((v) => v.id === viewId) || views[0]).label, fromView: viewId };
+                mediaPlayerRenderLibrary(player);
+                mediaPlayerRecord(player);
+                return;
+            }
+        }
+        mediaPlayerPlayTracks(player, mediaPlayerTracksFor(player, key), false);
+    }
+
+    return {
+        signal: appScopeSignal, loadLibrary: mediaPlayerLoadLibrary, renderTree: mediaPlayerRenderTree, setRating: mediaPlayerSetRating,
+        ratingOf: mediaPlayerRatingOf, groups: mediaPlayerGroups, length: mediaPlayerLength, setCategory: mediaPlayerSetCategory,
+        renderCrumbs: mediaPlayerRenderCrumbs, renderLibrary: mediaPlayerRenderLibrary, nav: mediaPlayerNav,
+        activateRow: mediaPlayerActivateRow, loadFolder: mediaPlayerLoadFolder
+    };
+})();
+function mediaPlayerSetCategory(player, category) { return mediaPlayerLibrary.setCategory(player, category); }
+function mediaPlayerLoadFolder(player) { return mediaPlayerLibrary.loadFolder(player); }
+function mediaPlayerRenderCrumbs(player) { return mediaPlayerLibrary.renderCrumbs(player); }
+function mediaPlayerRenderLibrary(player) { return mediaPlayerLibrary.renderLibrary(player); }
+function mediaPlayerNav(player, nav) { return mediaPlayerLibrary.nav(player, nav); }
+function mediaPlayerActivateRow(player, key) { return mediaPlayerLibrary.activateRow(player, key); }
 
 // ---- menus ----
 
@@ -895,7 +1229,6 @@ function mediaPlayerMenuItems(player, tab) {
         return [
             { text: 'Music', action: 'category:music', indicatorStyle: 'dot', checked: player.library.category === 'music' },
             { text: 'Video', action: 'category:video', indicatorStyle: 'dot', checked: player.library.category === 'video' },
-            { text: 'All Files', action: 'category:all', indicatorStyle: 'dot', checked: player.library.category === 'all' },
             { separator: true }
         ].concat(open, [{ separator: true }, { text: 'Refresh', icon: 'fas fa-sync', action: 'refresh' }]);
     }
@@ -914,7 +1247,7 @@ function mediaPlayerRunAction(player, action) {
     else if (action === 'stop') mediaPlayerStop(player);
     else if (action === 'previous') mediaPlayerStep(player, -1);
     else if (action === 'next') mediaPlayerStep(player, 1);
-    else if (action === 'refresh') mediaPlayerLoadFolder(player, player.library.path, false);
+    else if (action === 'refresh') mediaPlayerLibrary.loadLibrary(player, true);
     else if (action.indexOf('category:') === 0) mediaPlayerSetCategory(player, action.slice(9));
     else if (action.indexOf('remove:') === 0) mediaPlayerRemove(player, Number(action.slice(7)));
 }
@@ -1026,7 +1359,7 @@ function mediaPlayerAttachMenus(player) {
                 items: [
                     { text: 'Music', action: 'category:music', icon: 'fas fa-music', indicatorStyle: 'dot', checked: player.library.category === 'music' },
                     { text: 'Video', action: 'category:video', icon: 'fas fa-film', indicatorStyle: 'dot', checked: player.library.category === 'video' },
-                    { text: 'All Files', action: 'category:all', icon: 'fas fa-folder', indicatorStyle: 'dot', checked: player.library.category === 'all' }
+
                 ]
             }],
             onAction: (action) => mediaPlayerRunAction(player, action)
@@ -1246,7 +1579,8 @@ function createDesktopMediaPlayer() {
         crumbs: q('.wmp-crumbs'),
         search: q('.wmp-search input'),
         addrArrow: q('.wmp-addr-arrow'),
-        navItems: Array.from(content.querySelectorAll('.wmp-tree-item')),
+        navItems: [],
+        listHead: q('.wmp-list-head'),
         tree: q('.wmp-tree'),
         list: q('.wmp-list'),
         listNote: q('.wmp-list-note'),
@@ -1286,7 +1620,7 @@ function createDesktopMediaPlayer() {
         view: 'now-playing',
         history: [],
         historyIndex: -1,
-        library: { path: '/', items: [], category: 'music', mode: 'folder', loaded: false, token: 0 },
+        library: { source: 'local', category: 'music', view: 'songs', mode: 'library', filter: null, data: {}, rows: [], groups: [], loaded: false, token: 0 },
         epoch: 0,
         clearEpoch: 0,
         objectUrl: null,
@@ -1366,9 +1700,9 @@ function createDesktopMediaPlayer() {
     el.addrArrow.addEventListener('click', () => mediaPlayerShowView(player, 'now-playing'));
     el.crumbs.addEventListener('click', (e) => {
         const crumb = e.target.closest('.wmp-crumb');
-        if (!crumb || !crumb.dataset.path) return;
-        mediaPlayerLoadFolder(player, crumb.dataset.path);
-        el.navItems.forEach((btn) => btn.classList.toggle('is-current', btn.dataset.nav === player.library.category));
+        if (!crumb || !crumb.dataset.nav) return;
+        if (crumb.dataset.nav === 'category') { el.category.focus(); return; }
+        mediaPlayerNav(player, crumb.dataset.nav);
     });
     el.search.addEventListener('input', () => mediaPlayerRenderLibrary(player));
     el.tree.addEventListener('click', (e) => {
@@ -1376,6 +1710,8 @@ function createDesktopMediaPlayer() {
         if (toggle) {
             const node = toggle.closest('.wmp-tree-node');
             node.classList.toggle('is-open');
+            const lib = player.library;
+            if (lib.open && node.dataset.node) lib.open[node.dataset.node] = node.classList.contains('is-open');
             let leaf = node.nextElementSibling;
             while (leaf && leaf.classList.contains('wmp-tree-leaf')) {
                 leaf.classList.toggle('hidden', !node.classList.contains('is-open'));
@@ -1387,6 +1723,18 @@ function createDesktopMediaPlayer() {
         if (item) mediaPlayerNav(player, item.dataset.nav);
     });
     el.list.addEventListener('click', (e) => {
+        // a star in a song's Rating column rates it (clicking its own rating again clears it, as in WMP)
+        const star = e.target.closest('.wmp-stars[data-rate] .wmp-star');
+        if (star) {
+            const key = star.parentElement.dataset.rate;
+            const t = (player.library.rows || []).find((x) => x.key === key);
+            if (t) {
+                const n = Number(star.dataset.star) || 0;
+                mediaPlayerLibrary.setRating(t, mediaPlayerLibrary.ratingOf(t) === n ? 0 : n);
+                mediaPlayerRenderLibrary(player);
+            }
+            return;
+        }
         const row = e.target.closest('.wmp-row');
         if (!row) return;
         el.list.querySelectorAll('.is-selected').forEach((r) => r.classList.remove('is-selected'));
@@ -1435,8 +1783,16 @@ function createDesktopMediaPlayer() {
     mediaPlayerSetListPane(player, true);
     mediaPlayerSyncNow(player);
     mediaPlayerSyncTransport(player);
+    mediaPlayerLibrary.renderTree(player);
     mediaPlayerRenderCrumbs(player);
-    el.navItems.forEach((btn) => btn.classList.toggle('is-current', btn.dataset.nav === 'music'));
+    // the server's library changed (a file added or removed in the VFS, modules/mediaLibrary.js): read again when seen
+    if (window.wsClient && typeof window.wsClient.on === 'function') {
+        window.wsClient.on('media_library_changed', () => {
+            const d = player.library.data.local;
+            if (d) d.stale = true;
+            if (player.view === 'library' && player.library.source === 'local' && !modal.classList.contains('hidden')) void mediaPlayerLibrary.loadLibrary(player, true);
+        }, { signal: mediaPlayerLibrary.signal });
+    }
     mediaPlayerShowView(player, 'now-playing');
     document.body.appendChild(modal);
     return player;
@@ -1504,7 +1860,7 @@ window.openDesktopVideoPlayerUrl = openDesktopVideoPlayerUrl;
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         WMP_TABS, WMP_BLANK_PAGES, WMP_TYPE_NAMES, mediaPlayerKindFor, mediaPlayerCanPlay, mediaPlayerTitle,
-        mediaPlayerTypeName, mediaPlayerNextIndex, mediaPlayerMenuItems, mediaPlayerLibraryAccepts,
+        mediaPlayerTypeName, mediaPlayerNextIndex, mediaPlayerMenuItems, mediaPlayerLibrary,
         mediaPlayerBodyHtml, findDesktopMediaRow, desktopMediaClock, desktopMediaNameFromUrl
     };
 }
