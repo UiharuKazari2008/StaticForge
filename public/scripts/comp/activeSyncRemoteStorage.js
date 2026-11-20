@@ -64,7 +64,9 @@
     }
 
     function usable() {
-        return as.state().devices.filter((d) => d.online && (d.session === 'guest' || d.session === 'partner') && d.permissions.includes('files'));
+        // a DreamOS computer (platform cafeready, #910) is never a phone drive: it is in Network, and only the folders it
+        // shares are reachable (explorerNetwork.js)
+        return as.state().devices.filter((d) => d.online && d.platform !== 'cafeready' && (d.session === 'guest' || d.session === 'partner') && d.permissions.includes('files'));
     }
 
     function pick() {
@@ -264,7 +266,7 @@
     const addTask = (tile, task) => (typeof mas.addTask === 'function' ? mas.addTask(tile, task) : (mas.pending = mas.pending || []).push([tile, task]));
     addTask('files', {
         id: 'browse', text: 'Browse the contents of your device', icon: 'explore-32.png',
-        when: (d) => d.online && d.permissions.includes('files'),
+        when: (d) => d.online && d.platform !== 'cafeready' && d.permissions.includes('files'),
         run: (d) => {
             root.phoneStorage.select(d.deviceId);
             // openExplorerApplet: public/scripts/comp/featureLoader.js
@@ -273,7 +275,7 @@
     });
     addTask('files', {
         id: 'received', text: 'Open the folder of files sent to your device', icon: 'explore-32.png',
-        when: (d) => d.online && d.permissions.includes('files'),
+        when: (d) => d.online && d.platform !== 'cafeready' && d.permissions.includes('files'),
         run: (d) => openReceived(d.deviceId)
     });
 

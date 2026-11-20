@@ -81,6 +81,9 @@ function sanitizeHost(raw) {
     if (raw.allow && typeof raw.allow === 'object') {
         out.allow = { commands: raw.allow.commands === true, screenshots: raw.allow.screenshots === true, killSwitch: raw.allow.killSwitch === true };
     }
+    // Network and Sharing Center's Network discovery / File sharing and the shared folders (modules/networkShares.js)
+    const sharing = require('./networkShares').sanitizeSharing(raw.sharing);
+    if (sharing) out.sharing = sharing;
     if (Number.isFinite(Number(raw.uptime))) out.uptime = Math.max(0, Math.round(Number(raw.uptime)));
     return out;
 }

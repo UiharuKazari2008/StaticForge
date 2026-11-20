@@ -1,0 +1,96 @@
+/* Sharing a folder on a DreamOS computer (#910, public/scripts/comp/vistaFileSharing.js): the File Sharing wizard's
+   people list (ntshrui 3002: Name 357 px, Permission Level with its drop arrow), its result tile (3005), the shields on
+   Share and Advanced Sharing..., and Share Permissions' Allow / Deny check list (aclui 103: 18 px rows, the boxes centred
+   under Allow at x 239 and Deny at x 299 of the page). Measured on the VM: ~/.cache/vista-vm/netshare. */
+
+.vfs-person .vfs-person-name img { margin-right: 4px; }
+
+.vdt-client .vfs-level, .vfs-level {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 2px;
+    min-width: 0;
+    height: 17px;
+    border: 0 !important;
+    border-image: none !important;
+    background: none !important;
+    box-shadow: none !important;
+    font: inherit;
+    color: inherit;
+    cursor: default;
+}
+
+.vfs-level-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid #000;
+}
+
+.vfs-shield {
+    width: 16px;
+    height: 16px;
+    margin-right: 3px;
+    vertical-align: -3px;
+}
+
+
+.vfs-shield-link .vdt-cmdlink-main::before {
+    content: "";
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+    vertical-align: -3px;
+    background: no-repeat center / 16px 16px url("/static_images/vista-cpl/shield-uac-16.png");
+}
+
+.vfs-done-tile {
+    height: auto !important;
+    padding: 6px 4px;
+    align-items: flex-start !important;
+}
+
+.vfs-done-tile img {
+    width: 32px !important;
+    height: 32px !important;
+    margin: 0 8px 0 0 !important;
+}
+
+.vfs-done-text {
+    display: flex;
+    flex-direction: column;
+    padding: 0 !important;
+}
+
+.vfs-done-path { color: #6d6d6d; }
+
+.vfs-acl {
+    display: flex;
+    flex-direction: column;
+    padding-top: 2px;
+    border: 1px solid #828790;
+    background: #fff;
+}
+
+.vfs-acl-row {
+    display: grid;
+    grid-template-columns: 1fr 60px 60px;
+    align-items: center;
+    height: 18px;
+    padding-left: 4px;
+}
+
+.vfs-acl-row input { justify-self: center; margin: 0; }
+
+.vdt-progress.is-marquee .vdt-progress-fill {
+    width: 30%;
+    animation: vfs-marquee 1.6s linear 40; /* the page is shown for a moment; never left running */
+}
+
+@keyframes vfs-marquee {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(340%); }
+}

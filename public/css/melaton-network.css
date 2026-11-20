@@ -2312,3 +2312,90 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
     width: 120px;
     min-width: 0;
 }
+
+/* ---- Sharing and Discovery (DreamOS #910, melatonControlPanel.js sharingSection): Vista's section of Network and
+   Sharing Center, measured on the VM (nsc-expand-*.png): 27 px rows on a hairline, the label, the state with its dot,
+   the circled chevron on the right (the same expando art as Personalization's); the open row's pane is white with a
+   1 px frame, its text 21 px in. ----------------------------------------------------------------------------------- */
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd {
+    margin: 16px 0 6px;
+    border-bottom: 1px solid var(--cpl-line);
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 0 6px;
+    border-bottom: 1px solid var(--cpl-line);
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-row {
+    display: grid;
+    grid-template-columns: 180px 1fr 24px;
+    align-items: center;
+    min-height: 26px;
+    padding: 0 0 0 5px;
+    border-bottom: 1px solid #e3e9ef;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-row:last-child { border-bottom: 0; }
+
+:is(#melatonControlPanelModal, .cpl-instance) button.cpl-sd-expando {
+    justify-self: center;
+    width: 19px;
+    min-width: 0;
+    height: 21px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: no-repeat center / 19px 21px url("/static_images/vista-personalization/expando-down.png");
+    cursor: default;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) button.cpl-sd-expando:hover { background-image: url("/static_images/vista-personalization/expando-down-hot.png"); }
+:is(#melatonControlPanelModal, .cpl-instance) button.cpl-sd-expando:active { background-image: url("/static_images/vista-personalization/expando-down-pressed.png"); }
+:is(#melatonControlPanelModal, .cpl-instance) button.cpl-sd-expando.is-open { background-image: url("/static_images/vista-personalization/expando-up.png"); }
+:is(#melatonControlPanelModal, .cpl-instance) button.cpl-sd-expando.is-open:hover { background-image: url("/static_images/vista-personalization/expando-up-hot.png"); }
+:is(#melatonControlPanelModal, .cpl-instance) button.cpl-sd-expando.is-open:active { background-image: url("/static_images/vista-personalization/expando-up-pressed.png"); }
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-pane {
+    padding: 8px 12px 10px 26px;
+    border: 1px solid var(--cpl-line);
+    border-top: 0;
+    background: #ffffff;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-says { margin: 0 0 2px; }
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-radio {
+    display: block;
+    line-height: 17px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-apply-row {
+    display: flex;
+    justify-content: flex-end;
+    margin: 6px 0 4px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-apply {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 77px;
+    height: 23px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-apply img { width: 16px; height: 16px; }
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-apply:disabled img { opacity: 0.5; }
+
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-icon { width: 24px; height: 24px; }
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-value { display: inline-flex; align-items: center; gap: 1px; }
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-dot { width: 16px; height: 16px; }
+/* the status column's white-to-blue wash (sampled on the VM: white at the dots, (228,231,242) at the right edge) */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sd-row { background: linear-gradient(90deg, #fff 0, #fff 176px, rgb(228, 231, 242) 100%); border-bottom-color: #fff; }

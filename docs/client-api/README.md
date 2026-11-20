@@ -98,6 +98,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Glancewell library (Photo Gallery tags, captions, favorites, watched folders, Fix saves) | [ws/glancewell.md](./ws/glancewell.md) | 13 (+ `glancewell_changed` push) |
 | Location (Home / Work, place lookup and reverse lookup) | [ws/location.md](./ws/location.md) | 4 (+ `location_places_changed` broadcast) |
 | DreamOS updates (firmware release push) | [ws/dreamosUpdates.md](./ws/dreamosUpdates.md) | 1 (+ `dreamos_channel` push) |
+| Network folder and shared folders (DreamOS computers, `\\PC` shares) | [ws/networkShares.md](./ws/networkShares.md) | 2 (+ `net_computers_updated` push) |
 | Media library (Melaton Media Player, VFS music and video) | [ws/mediaLibrary.md](./ws/mediaLibrary.md) | 1 (+ `media_library_changed` push) |
 | Profile revision (cached logon, out of sync check) | [ws/profileRevision.md](./ws/profileRevision.md) | 1 (+ `profile_changed` push) |
 | Link speed (adapter Speed probe and report) | [ws/linkSpeed.md](./ws/linkSpeed.md) | 2 |

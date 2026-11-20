@@ -653,6 +653,8 @@ function scheduleUpdated(globalResources, wsServer) {
         const key = peersKey(data);
         if (key === lastPeersKey) return;
         lastPeersKey = key;
+        // the pages watching Explorer's Network folder (DreamOS computers and their shares, modules/networkShares.js)
+        try { require('./networkShares').peersChanged(globalResources, server, data); } catch (err) { console.warn('[activeSync] network list:', err.message); }
         // a phone's own report (battery, the program in front, Wi-Fi) no longer comes back to that same
         // phone as the whole list (#890): its sockets get it only when something it reads changed. The
         // app's background link reads no peer list at all (ActiveSyncLink); desktops get every change.

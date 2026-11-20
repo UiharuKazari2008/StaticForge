@@ -375,6 +375,13 @@ const FEATURE_MANIFEST = {
         styles: ['css/taskbar-properties.css', 'css/vista-dialog-template.css'],
         scripts: ['scripts/comp/vistaDialogTemplates.js', 'scripts/comp/vistaDialogTemplate.js']
     },
+    // Sharing a folder on a DreamOS computer (#910): the File Sharing wizard, the folder's Properties (General, Sharing),
+    // Advanced Sharing and Share Permissions (vistaFileSharing.js; explorerHostDrive.js and explorerNetwork.js open them)
+    vista_file_sharing: {
+        hot: true,
+        depends: ['vista_dialog_templates'],
+        scripts: ['scripts/comp/vistaFileSharing.js']
+    },
     // Vista's VPN connections (#952): Connect to a workplace, Connect <name>, its Properties (dreamosVpn.js, from dreamosWifi.js)
     network_vpn: {
         depends: ['vista_dialog_templates'],

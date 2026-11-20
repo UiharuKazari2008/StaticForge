@@ -208,8 +208,17 @@ class ExplorerApplet {
             modeOverrides: (viewMode) => (this.vista && this.vista.isOn() ? this.vista.modeMetrics(viewMode) : null),
             // the Contacts folder's own names, columns and tiles (explorerContacts.js)
             labelFor: (item) => (typeof explorerContacts !== 'undefined' ? explorerContacts.labelFor(this, item) : null),
-            columnText: (item, field) => (typeof explorerContacts !== 'undefined' ? explorerContacts.columnText(this, item, field) : null),
-            tileLines: (item) => (typeof explorerContacts !== 'undefined' ? explorerContacts.tileLines(this, item) : null),
+            // and the Network folder's (explorerNetwork.js: Category, Workgroup, Network location; a computer's shares)
+            columnText: (item, field) => {
+                const net = typeof explorerNetwork !== 'undefined' ? explorerNetwork.columnText(this, item, field) : null;
+                if (net != null) return net;
+                return typeof explorerContacts !== 'undefined' ? explorerContacts.columnText(this, item, field) : null;
+            },
+            tileLines: (item) => {
+                const net = typeof explorerNetwork !== 'undefined' ? explorerNetwork.tileLines(this, item) : null;
+                if (net) return net;
+                return typeof explorerContacts !== 'undefined' ? explorerContacts.tileLines(this, item) : null;
+            },
             onItemOpen: (item) => this.openItem(item),
             onSelectionChange: (sel) => this.onSelectionChange(sel),
             onItemContextMenu: (item, e) => this.showItemContextMenu(item, e),
@@ -485,6 +494,9 @@ class ExplorerApplet {
         const parts = normalized.split('/').filter(Boolean);
         // the Contacts folder opens in Tiles until a view is chosen for it (Vista's folder template)
         if (typeof explorerContacts !== 'undefined' && explorerContacts.isPath(normalized) && !map[normalized]) return 'tiles';
+        // so do Network and a computer on it (Vista's network folder template; explorerNetwork.js)
+        // (their view is kept under the place's own path: net:// does not split into folders)
+        if (typeof explorerNetwork !== 'undefined' && explorerNetwork.isPath(path) && (map[path] || !explorerNetwork.parse(path).share)) return map[path] || 'tiles';
         for (let i = parts.length; i >= 0; i--) {
             const p = i === 0 ? '/' : `/${parts.slice(0, i).join('/')}`;
             if (map[p]) return map[p];
@@ -4944,8 +4956,8 @@ class ExplorerApplet {
         set(this.el.newFolderBtn, isWsList || canWrite);
         if (this._isPhonePath()) {
             // phone files download (?download=1); entries delete through the phone's trash
-            const entries = hasSel && (sel.every(i => i.targetKind === 'phone-entry') || sel.every(i => i.targetKind === 'host-entry'));
-            set(this.el.downloadBtn, entries && sel.every(i => !(i.phone || i.host).dir));
+            const entries = hasSel && (sel.every(i => i.targetKind === 'phone-entry') || sel.every(i => i.targetKind === 'host-entry') || sel.every(i => i.targetKind === 'net-entry'));
+            set(this.el.downloadBtn, entries && sel.every(i => !(i.phone || i.host || i.net).dir));
             set(this.el.replaceBtn, false);
             set(this.el.deleteBtn, entries);
         }
@@ -4953,6 +4965,8 @@ class ExplorerApplet {
         if (this.vista) this.vista.syncCommands();
         if (typeof explorerArchive !== 'undefined') explorerArchive.syncCommands(this);
         if (typeof explorerContacts !== 'undefined') explorerContacts.syncCommands(this, sel);
+        // the Network folder's column headers and its Network discovery bar (explorerNetwork.js)
+        if (typeof explorerNetwork !== 'undefined') explorerNetwork.syncCommands(this, sel);
         if (typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.available()) explorerPhoneDrive.syncPreview(this, sel);
         // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
         notifyKeyboardOverlayContextChanged();

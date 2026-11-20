@@ -437,6 +437,11 @@
             // Network Connections and Set up a connection or network (#932): dreamosWifi.js; without it the old status
             case 'ncpa': if (root.dreamosWifi && root.dreamosWifi.openConnections) root.dreamosWifi.openConnections(); else openStatusDialog(); break;
             case 'net-setup': if (root.dreamosWifi && root.dreamosWifi.openSetup) root.dreamosWifi.openSetup(); break;
+            // Sharing and Discovery (DreamOS #910): Network discovery / File sharing kept by CaféReady (shares.rs)
+            case 'sd-toggle': sharingOpen = sharingOpen === arg ? null : arg; sharingPick = null; render(); break;
+            case 'sd-pick': sharingPick = arg === 'on'; render(); break;
+            case 'sd-apply': void applySharing(); break;
+            case 'net-view': if (typeof root.openExplorerApplet === 'function') root.openExplorerApplet('net://'); break;
             default: break;
         }
     }
@@ -1368,6 +1373,68 @@
         return `<div class="cpl-map-link cpl-map-link--${state}" title="${esc(title)}"><span class="cpl-map-line"></span>${state === 'down' ? '<img class="cpl-map-x" src="/static_images/vista-net/netcenter-16-16.png" alt="" draggable="false">' : state === 'limited' ? '<img class="cpl-map-x" src="/static_images/vista-net/netcenter-17-16.png" alt="" draggable="false">' : ''}</div>`;
     }
 
+    // ---- Sharing and Discovery (DreamOS #910) ------------------------------------------------------------------------
+    // Vista's section of Network and Sharing Center, on a DreamOS computer (window.DreamOSShares, CaféReady shares.rs):
+    // Network discovery (on by default on a private network: this computer sees the others and they see it) and File
+    // sharing (off until a folder is shared, as Vista's), each with its expander, the two radios and Apply. The rows
+    // Vista has that DreamOS has nothing behind show their fixed state without an expander.
+    let sharingOpen = null;   // 'discovery' | 'fileSharing' | null
+    let sharingPick = null;   // the radio chosen and not applied yet
+    const SHARING_TEXT = {
+        discovery: ['Network discovery', 'When network discovery is on, this computer can see other network computers and devices and is visible to other network computers.', 'Turn on network discovery', 'Turn off network discovery'],
+        fileSharing: ['File sharing', 'When file sharing is on, files and printers that you have shared from this computer can be accessed by people on the network.', 'Turn on file sharing', 'Turn off file sharing']
+    };
+    function sharingState() {
+        const s = root.DreamOSShares;
+        try { return s && typeof s.get === 'function' ? s.get() : null; } catch (_) { return null; }
+    }
+    function sharingSection() {
+        const st = sharingState();
+        if (!st) return '';
+        const ex = (key, open) => `<button type="button" class="cpl-sd-expando${open ? ' is-open' : ''}" data-cpl-action="sd-toggle" data-cpl-arg="${key}" aria-expanded="${open ? 'true' : 'false'}" title="${open ? 'Collapse' : 'Expand'}"></button>`;
+        const row = (label, on, text, key) => `
+                    <div class="cpl-sd-row${key && sharingOpen === key ? ' is-open' : ''}">
+                        <span class="cpl-sd-label">${esc(label)}</span>
+                        <span class="cpl-sd-value"><img class="cpl-sd-dot" src="/static_images/vista-file-sharing/nsc-${on ? 'on' : 'off'}-16.png" alt="" draggable="false">${esc(text || (on ? 'On' : 'Off'))}</span>
+                        ${key ? ex(key, sharingOpen === key) : '<span></span>'}
+                    </div>`;
+        const pane = (key) => {
+            if (sharingOpen !== key) return '';
+            const [, says, onText, offText] = SHARING_TEXT[key];
+            const now = st[key] === true;
+            const want = sharingPick == null ? now : sharingPick;
+            return `
+                    <div class="cpl-sd-pane">
+                        <p class="cpl-sd-says">${esc(says)}</p>
+                        <label class="cpl-sd-radio"><input type="radio" name="cpl-sd-${key}" data-cpl-action="sd-pick" data-cpl-arg="on"${want ? ' checked' : ''}> ${esc(onText)}</label>
+                        <label class="cpl-sd-radio"><input type="radio" name="cpl-sd-${key}" data-cpl-action="sd-pick" data-cpl-arg="off"${want ? '' : ' checked'}> ${esc(offText)}</label>
+                        <div class="cpl-sd-apply-row"><button type="button" class="cpl-sd-apply" data-cpl-action="sd-apply"${want === now ? ' disabled' : ''}><img src="/static_images/vista-cpl/shield-uac-16.png" alt="">Apply</button></div>
+                        ${key === 'discovery' ? `<p class="cpl-sd-says">Workgroup: ${esc(String(info().domain || 'DREAMSCAPE').toUpperCase())}</p>` : ''}
+                    </div>`;
+        };
+        return `
+                <div class="cpl-sd">
+                    <div class="cpl-sd-head"><img src="/static_images/vista-file-sharing/sharing-discovery-imageres-178-24.png" alt="" class="cpl-sd-icon" draggable="false"><span class="cpl-box-title">Sharing and Discovery</span></div>
+                    ${row('Network discovery', st.discovery !== false, '', 'discovery')}${pane('discovery')}
+                    ${row('File sharing', st.fileSharing === true, '', 'fileSharing')}${pane('fileSharing')}
+                    ${row('Public folder sharing', false)}
+                    ${row('Printer sharing', false, 'Off (no printers installed)')}
+                    ${row('Password protected sharing', true)}
+                    ${row('Media sharing', false)}
+                </div>`;
+    }
+    async function applySharing() {
+        const s = root.DreamOSShares;
+        if (!s || !sharingOpen || sharingPick == null) return;
+        const r = await s.set({ [sharingOpen]: sharingPick });
+        sharingPick = null;
+        if (r && r.error) {
+            const box = root.bootMessageBox;
+            if (box && typeof box.show === 'function') void box.show({ title: 'Network and Sharing Center', icon: 'error', message: r.error, buttons: [{ label: 'OK', value: 'ok', default: true, cancel: true }] });
+        }
+        render();
+    }
+
     pages.network = {
         // Vista's address: Control Panel > Network and Internet > Network and Sharing Center (#952)
         parent: 'cat-network',
@@ -1381,6 +1448,7 @@
                 <ul class="cpl-task-list">
                     ${wifiUi() ? `${taskLink('Connect to a network', 'wifi-connect')}${taskLink('Manage wireless networks', 'wifi-manage')}` : ''}
                     ${root.dreamosWifi && root.dreamosWifi.openSetup ? taskLink('Set up a connection or network', 'net-setup') : ''}
+                    ${root.explorerNetwork || root.DreamOSShares ? taskLink('View computers and devices', 'net-view') : ''}
                     ${taskLink('Manage network connections', 'ncpa')}
                     ${state === 'connected' || state === 'connecting'
                         ? taskLink(`Disconnect ${i.connectionName}`, 'disconnect')
@@ -1488,6 +1556,7 @@
                         <button type="button" class="cpl-link cpl-row-action" data-cpl-action="portal">Open your browser</button>
                     </div>` : ''}
                 </div>
+                ${sharingSection()}
                 <h2 class="cpl-section-title">Server status</h2>
                 <div class="cpl-box cpl-box--rows">${dots}</div>
             </div>`;

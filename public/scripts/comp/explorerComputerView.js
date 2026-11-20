@@ -335,6 +335,9 @@
             const self = continuity();
             return (st.devices || [])
                 .filter((d) => d.online && (d.session === 'guest' || d.session === 'partner'))
+                // a DreamOS computer (CaféReady, #910) is never a portable device, this one least of all: other computers
+                // are in Network with the folders they share (explorerNetwork.js)
+                .filter((d) => d.platform !== 'cafeready')
                 // the hybrid phone this DeX window runs on is this computer, not a device on a link (#798)
                 .filter((d) => !(self && String(self.deviceId).toLowerCase() === String(d.deviceId).toLowerCase()))
                 .map((d) => ({

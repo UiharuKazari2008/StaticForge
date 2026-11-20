@@ -63,11 +63,11 @@
                 sections: [{
                     type: 'list',
                     initfn: (s) => {
-                        const devices = a.state().devices.filter((d) => d.online || d.partner);
+                        const devices = a.state().devices.filter((d) => (d.online || d.partner) && d.platform !== 'cafeready');
                         s.items = [{ text: 'Open Melaton Mobile Device Center', action: 'open', default: true }];
                         if (devices.length) s.items.push({ separator: true }, ...devices.map((d) => ({ text: d.primary && devices.length > 1 ? `${line(d)} (primary)` : line(d), action: `dev:${d.deviceId}` })));
                         // the folder files sent to a phone go to (activeSyncRemoteStorage.js openReceived)
-                        const sharing = devices.filter((d) => d.online && (d.permissions || []).includes('files'));
+                        const sharing = devices.filter((d) => d.online && d.platform !== 'cafeready' && (d.permissions || []).includes('files'));
                         if (sharing.length && root.phoneStorage && typeof root.phoneStorage.openReceived === 'function') {
                             s.items.push({ separator: true }, ...sharing.map((d) => ({ text: sharing.length > 1 ? `Open Received Files on ${d.name}` : 'Open Received Files folder', action: `rx:${d.deviceId}` })));
                         }
@@ -113,7 +113,10 @@
         }
     }
 
-    function onState(st) {
+    function onState(raw) {
+        // a DreamOS computer (platform cafeready, #910) is not a mobile device: no tray line, balloon or battery news for
+        // it here (it is in Explorer's Network; Device Center keeps its own page for administrators)
+        const st = Object.assign({}, raw, { devices: (raw.devices || []).filter((d) => d.platform !== 'cafeready') });
         if (!st.online) { paint({ devices: [] }); seen.clear(); first = true; return; }
         paint(st);
         for (const d of st.devices) {

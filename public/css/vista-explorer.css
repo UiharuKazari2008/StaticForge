@@ -3509,3 +3509,68 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-v
 .hp-list .hp-row > span { padding: 0 2px; line-height: 15px; }
 .hp-tree .hp-row.is-selected > span { background: #3399ff; color: #fff; }
 .hp-tree:not(:focus) .hp-row.is-selected > span { background: #f0f0f0; color: #000; }
+
+/* Vista's shared overlay (imageres.dll 164, the two people) on a folder that is shared on a DreamOS computer
+   (vistaFileSharing.js, vfsVirtualGrid.js _syncShareOverlay). Like Offline Files' overlay it sits in the icon's lower-left
+   corner: the 16 px frame (a 10 px glyph) on small icons and rows, the 32 px frame (its 16 px glyph) from Medium Icons up,
+   as the VM draws it on 48 px folders (explorer-c-shared-medium.png). */
+.explorer-share-overlay {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    z-index: 2;
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
+    background: no-repeat 0 0 / 16px 16px url("/static_images/vista-explorer/share-overlay-16.png");
+}
+
+:is(.explorer-item-icon-box-md, .explorer-item-icon-box-lg, .explorer-item-icon-box-xl) > .explorer-share-overlay {
+    width: 32px;
+    height: 32px;
+    background-size: 32px 32px;
+    background-image: url("/static_images/vista-explorer/share-overlay-32.png");
+}
+
+/* Network's information bar (explorerNetwork.js syncInfoBar; VM net-discovery-off.png): 27 px of #ffffe1 with a #b3b3b3
+   rule under it, the text 8 px in, Segoe UI 9; it opens its menu on a click. */
+#explorerModal .explorer-net-infobar {
+    display: block;
+    flex: none;
+    box-sizing: border-box;
+    width: 100%;
+    height: 28px;
+    margin: 0;
+    padding: 0 8px;
+    border: 0;
+    border-bottom: 1px solid #b3b3b3;
+    border-radius: 0;
+    background: #ffffe1;
+    color: #000;
+    box-shadow: none;
+    font: inherit;
+    text-align: left;
+    justify-content: flex-start;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+#explorerModal .explorer-net-infobar:hover { background: #d6effc; }
+
+/* the shared overlay one size below the icon, from the VM (shots/overlay): 48 px icons take the 32 frame, Large (96) the
+   48 frame, Extra Large (256) the 96 frame */
+.explorer-item-icon-box-lg > .explorer-share-overlay {
+    width: 48px;
+    height: 48px;
+    background-size: 48px 48px;
+    background-image: url("/static_images/vista-explorer/share-overlay-48.png");
+}
+
+.explorer-item-icon-box-xl > .explorer-share-overlay {
+    width: 96px;
+    height: 96px;
+    background-size: 96px 96px;
+    background-image: url("/static_images/vista-explorer/share-overlay-96.png");
+}

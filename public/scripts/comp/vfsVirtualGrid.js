@@ -763,6 +763,18 @@ class VfsVirtualGrid {
         if (!box) return;
         this._syncIconBoxContent(box, item);
         this._syncOfflineOverlay(box, item);
+        this._syncShareOverlay(box, item);
+    }
+
+    /** Vista's shared overlay (imageres.dll 164, the two people) on a folder that is shared (vistaFileSharing.js). */
+    _syncShareOverlay(box, item) {
+        let o = box.querySelector(':scope > .explorer-share-overlay');
+        if (!item.shareOverlay) { if (o) o.remove(); return; }
+        if (!o) {
+            o = document.createElement('span');
+            o.className = 'explorer-share-overlay';
+            box.appendChild(o);
+        }
     }
 
     /** Offline Files' overlay on an item kept on this computer (cscui.dll 5, the sync circle; 3 for a conflict). */
@@ -863,6 +875,7 @@ class VfsVirtualGrid {
         box.className = `explorer-item-icon-box explorer-item-icon-box-${size}`;
         this._syncIconBoxContent(box, item);
         this._syncOfflineOverlay(box, item);
+        this._syncShareOverlay(box, item);
         return box;
     }
 

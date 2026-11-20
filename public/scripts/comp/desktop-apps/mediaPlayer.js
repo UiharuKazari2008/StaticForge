@@ -1183,7 +1183,8 @@ const mediaPlayerLibrary = (function () {
         const as = window.activeSync;
         if (!as || as.kind !== 'computer' || typeof as.state !== 'function') return [];
         const own = mediaPlayerOwnPhoneId();
-        return (as.state().devices || []).filter((d) => d && d.deviceId !== own && (d.permissions || []).includes('files')
+        // a DreamOS computer (platform cafeready, #910) shares no media library: it is a computer in Network, not a phone
+        return (as.state().devices || []).filter((d) => d && d.deviceId !== own && d.platform !== 'cafeready' && (d.permissions || []).includes('files')
             && (d.partner || (d.online && (d.session === 'guest' || d.session === 'partner')))
             // a test device (the emulators, modules/testDevices.js) only while it is connected
             && (d.online || !d.test))

@@ -220,7 +220,7 @@ function refuse(res, status, code, error) {
 }
 
 function statusOf(code) {
-    return { UNKNOWN_DEVICE: 404, OFFLINE: 503, NOT_CONNECTED: 409, NOT_PERMITTED: 403, UNSUPPORTED: 501, TIMEOUT: 504, DISCONNECTED: 502, ENOENT: 404, enoent: 404, 'not-found': 404 }[code] || 502;
+    return { UNKNOWN_DEVICE: 404, OFFLINE: 503, ACCESS_DENIED: 403, SHARING_OFF: 403, DISCOVERY_OFF: 403, NO_SUCH_SHARE: 404, NOT_FOUND: 404, TOO_MANY_USERS: 503, NOT_AUTHENTICATED: 401, NOT_CONNECTED: 409, NOT_PERMITTED: 403, UNSUPPORTED: 501, TIMEOUT: 504, DISCONNECTED: 502, ENOENT: 404, enoent: 404, 'not-found': 404 }[code] || 502;
 }
 
 /** One of a device's stream slots; resolves with a release(). */
@@ -342,6 +342,12 @@ function mount(app, authMiddleware, globalResources) {
     const wsServer = () => (typeof globalResources.getWebSocketServer === 'function' ? globalResources.getWebSocketServer() : null);
     const isAdmin = (req) => req.userType === 'admin';
     const fromDevice = (req, deviceId) => activeSync.isDeviceSession(globalResources, wsServer(), deviceId, req.sessionId || (req.session && req.session.id));
+    const sessionOf = (req) => String(req.sessionId || (req.session && req.session.id) || '');
+    // a folder shared on a DreamOS computer (root 'share', modules/networkShares.js): any signed-in user the share lets
+    // in, checked against the share's people and permissions (administrators are not a bypass); an upload into one
+    // stays with the session that began it
+    const shareAccess = (req, deviceId, sharePath, write) => require('./networkShares').shareAccessForHttp(globalResources, req, deviceId, sharePath, write);
+    const mayUse = (req, meta) => isAdmin(req) || !!(meta && meta.share && meta.owner && meta.owner === sessionOf(req));
 
     sweep(globalResources).catch(() => {});
     const sweeper = setInterval(() => { sweep(globalResources).catch(() => {}); }, 6 * 3600 * 1000);
@@ -355,11 +361,22 @@ function mount(app, authMiddleware, globalResources) {
     // ---------------------------------------------------------------- phone -> desktop
 
     app.get('/api/activesync/file/:deviceId/:root/*', auth, async (req, res) => {
-        if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         const deviceId = String(req.params.deviceId || '').toLowerCase();
         const rootId = String(req.params.root || '');
-        const filePath = `/${String(req.params[0] || '')}`;
-        const thumb = Number(req.query.thumb) > 0 ? Math.max(32, Math.min(1024, Math.round(Number(req.query.thumb)))) : 0;
+        let filePath = `/${String(req.params[0] || '')}`;
+        let thumb = Number(req.query.thumb) > 0 ? Math.max(32, Math.min(1024, Math.round(Number(req.query.thumb)))) : 0;
+        let shareArgs = null;
+        let fromName;
+        if (rootId === 'share') {
+            // /share/<share>/<path inside it>: the asking user's access to that share (read)
+            let c;
+            try { c = shareAccess(req, deviceId, filePath, false); } catch (error) { refuse(res, statusOf(error.code), error.code || 'ERROR', error.message); return; }
+            shareArgs = { share: c.share.name, account: c.account };
+            filePath = c.inner;
+            fromName = c.fromName;
+            // a DreamOS computer makes no thumbnails
+            thumb = 0;
+        } else if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         const id = crypto.randomBytes(16).toString('hex');
         const release = await slot(deviceId);
         if (req.destroyed || res.destroyed) { release(); return; }
@@ -389,8 +406,8 @@ function mount(app, authMiddleware, globalResources) {
         arm(START_TIMEOUT_MS);
         try {
             await activeSync.serverCall(globalResources, wsServer(), deviceId, 'stream.send', {
-                transferId: id, root: rootId, path: filePath, thumb, range: req.headers.range ? String(req.headers.range).slice(0, 100) : null
-            }, { timeoutMs: SEND_CALL_TIMEOUT_MS, maxTimeoutMs: SEND_CALL_TIMEOUT_MS });
+                transferId: id, root: rootId, path: filePath, thumb, range: req.headers.range ? String(req.headers.range).slice(0, 100) : null, ...(shareArgs || {})
+            }, { timeoutMs: SEND_CALL_TIMEOUT_MS, maxTimeoutMs: SEND_CALL_TIMEOUT_MS, fromName });
             // the phone says it sent everything: a response that never got its end chunk ends here
             if (!st.done) {
                 if (!st.headed) refuse(res, 502, 'EMPTY', 'The device sent nothing.'); else res.end();
@@ -457,9 +474,16 @@ function mount(app, authMiddleware, globalResources) {
     // ---------------------------------------------------------------- desktop -> phone
 
     app.post('/api/activesync/upload/:deviceId/begin', auth, async (req, res) => {
-        if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         const deviceId = String(req.params.deviceId || '').toLowerCase();
         const b = req.body && typeof req.body === 'object' ? req.body : {};
+        // into a share: dir is /<share>/<folder inside it>, the user needs Change there (Contributor, Co-owner)
+        let share = null;
+        if (b.root === 'share') {
+            try {
+                const c = shareAccess(req, deviceId, String(b.dir || '/').slice(0, 2048), true);
+                share = { name: c.share.name, account: c.account, dir: c.inner };
+            } catch (error) { refuse(res, statusOf(error.code), error.code || 'ERROR', error.message); return; }
+        } else if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         const size = Number(b.size);
         const name = cleanName(b.name);
         if (!activeSync.isPeerId(deviceId)) { refuse(res, 400, 'BAD_DEVICE', 'deviceId is not valid'); return; }
@@ -473,6 +497,7 @@ function mount(app, authMiddleware, globalResources) {
             mtime: Number.isFinite(Number(b.mtime)) && Number(b.mtime) > 0 ? Number(b.mtime) : null,
             mkdirs: b.mkdirs === true
         };
+        if (share) Object.assign(meta, { dir: share.dir, share: { name: share.name, account: share.account }, owner: sessionOf(req) });
         // known before its files exist, so a sweep running now leaves them be
         metas.set(id, meta);
         try {
@@ -487,9 +512,9 @@ function mount(app, authMiddleware, globalResources) {
     });
 
     app.post('/api/activesync/upload/:id/chunk', auth, async (req, res) => {
-        if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         const meta = await loadMeta(globalResources, req.params.id);
-        if (!meta || meta.committed) { refuse(res, 404, 'NOT_FOUND', 'No such upload'); return; }
+        if (!meta || meta.committed) { refuse(res, isAdmin(req) || (meta && meta.share) ? 404 : 403, isAdmin(req) ? 'NOT_FOUND' : 'INSUFFICIENT_PERMISSIONS', isAdmin(req) ? 'No such upload' : 'Admin access required'); return; }
+        if (!mayUse(req, meta)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         const offset = Number(req.query.offset);
         // a resent chunk after a lost answer (or while the first copy is still being written): say where
         // the file stands, write nothing twice
@@ -524,9 +549,20 @@ function mount(app, authMiddleware, globalResources) {
     });
 
     app.post('/api/activesync/upload/:id/commit', auth, async (req, res) => {
-        if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         const meta = await loadMeta(globalResources, req.params.id);
-        if (!meta || meta.committed) { refuse(res, 404, 'NOT_FOUND', 'No such upload'); return; }
+        if (!meta || meta.committed) { refuse(res, isAdmin(req) || (meta && meta.share) ? 404 : 403, isAdmin(req) ? 'NOT_FOUND' : 'INSUFFICIENT_PERMISSIONS', isAdmin(req) ? 'No such upload' : 'Admin access required'); return; }
+        if (!mayUse(req, meta)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
+        // into a share: checked again now (its people or File sharing may have changed since begin); never queued
+        // or installed, the computer takes it while it is there
+        let shareFrom;
+        if (meta.share) {
+            try { shareFrom = shareAccess(req, meta.deviceId, `/${meta.share.name}${meta.dir === '/' ? '' : meta.dir}`, true).fromName; } catch (error) {
+                removeUpload(globalResources, meta.id);
+                refuse(res, statusOf(error.code), error.code || 'ERROR', error.message);
+                return;
+            }
+            if (req.body && (req.body.install || req.body.queue)) { refuse(res, 400, 'BAD_REQUEST', 'A shared folder takes files only while its computer is there.'); return; }
+        }
         if (meta.received !== meta.size || writing.has(meta.id)) { res.status(409).json({ success: false, code: 'INCOMPLETE', received: meta.received }); return; }
         meta.committed = true;
         try {
@@ -538,6 +574,7 @@ function mount(app, authMiddleware, globalResources) {
         }
         const args = { transferId: meta.id, root: meta.root, dir: meta.dir, name: meta.name, size: meta.size, conflict: meta.conflict, mtime: meta.mtime };
         if (meta.mkdirs) args.mkdirs = true;
+        if (meta.share) Object.assign(args, { share: meta.share.name, account: meta.share.account });
         const wantQueue = !!(req.body && req.body.queue);
         const wantInstall = !!(req.body && req.body.install);
         if (wantInstall && !/\.apk$/i.test(meta.name)) { refuse(res, 400, 'NOT_APK', 'Only an .apk can be installed'); return; }
@@ -575,7 +612,7 @@ function mount(app, authMiddleware, globalResources) {
             progStart(globalResources, meta.deviceId, meta.id, 'down', meta.size);
             let entry;
             try {
-                entry = await activeSync.serverCall(globalResources, wsServer(), meta.deviceId, 'stream.receive', args, { timeoutMs, maxTimeoutMs: SEND_CALL_TIMEOUT_MS });
+                entry = await activeSync.serverCall(globalResources, wsServer(), meta.deviceId, 'stream.receive', args, { timeoutMs, maxTimeoutMs: SEND_CALL_TIMEOUT_MS, fromName: shareFrom });
             } finally {
                 progEnd(globalResources, meta.deviceId, meta.id);
             }
@@ -624,8 +661,8 @@ function mount(app, authMiddleware, globalResources) {
     });
 
     app.delete('/api/activesync/upload/:id', auth, async (req, res) => {
-        if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         const meta = await loadMeta(globalResources, req.params.id);
+        if (meta ? !mayUse(req, meta) : !isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         if (meta && !meta.committed) removeUpload(globalResources, meta.id);
         res.json({ success: true });
     });

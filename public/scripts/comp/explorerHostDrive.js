@@ -110,7 +110,11 @@
             modifiedAt: Math.floor((Number(e.mtime) || 0) / 1000),
             host: { drive: id, path: e.path, dir, hidden: !!e.hidden, mime: e.mime || '' }
         };
-        if (dir) item.navPath = pathFor(id, e.path);
+        if (dir) {
+            item.navPath = pathFor(id, e.path);
+            // a shared folder wears Vista's shared overlay (imageres 164; vistaFileSharing.js, CaféReady shares.rs)
+            if (sharedAt(id, e.path)) item.shareOverlay = true;
+        }
         else {
             item.size = Number(e.size) || 0;
             item.downloadUrl = fileUrl(id, e.path);
@@ -118,6 +122,14 @@
             if (/^image\/(jpeg|png|gif|webp|bmp|avif)$/.test(item.mimeType) && item.size < 24 * 1024 * 1024) item.previewUrl = item.downloadUrl;
         }
         return item;
+    }
+
+    /** Is this folder shared (window.DreamOSShares, the shares kept by CaféReady)? */
+    function sharedAt(id, path) {
+        const s = root.DreamOSShares;
+        let st = null;
+        try { st = s && typeof s.get === 'function' ? s.get() : null; } catch (_) { st = null; }
+        return !!(st && Array.isArray(st.shares) && st.shares.some((x) => x.drive === id && (x.path || '/') === (path || '/')));
     }
 
     function sortItems(items, field, direction) {
@@ -138,6 +150,10 @@
     function bind() {
         if (bound || !available()) return;
         bound = true;
+        // a folder shared or no longer shared: its overlay follows (vistaFileSharing.js)
+        root.addEventListener('dreamosshares', () => {
+            apps.forEach((app) => { try { if (isPath(app.currentPath)) void app.softRefresh(); } catch (_) { /* a closed window */ } });
+        }, { signal: appScopeSignal });
         root.addEventListener('dreamosdrives', () => {
             apps.forEach((app) => {
                 try {
@@ -302,6 +318,8 @@
         const file = !item.host.dir;
         const writable = isWritable(pathFor(item.host.drive, '/'));
         const items = [{ icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open', className: 'context-menu-item-default' }];
+        // Vista's folder menu: Share... under Open (the File Sharing wizard, vistaFileSharing.js)
+        if (!file && root.DreamOSShares) items.push({ text: 'Share...', action: `${ACTION}share` });
         if (file) items.push({ icon: 'fas fa-download', text: 'Download', action: `${ACTION}download` });
         items.push({ separator: true });
         items.push({ icon: 'fas fa-scissors', text: 'Cut', action: 'explorer-cut', disabled: !writable });
@@ -310,6 +328,8 @@
         items.push({ separator: true });
         items.push({ icon: 'fas fa-trash', text: 'Delete', action: 'explorer-delete', disabled: !writable });
         items.push({ icon: 'fas fa-i-cursor', text: 'Rename', action: 'explorer-rename', disabled: !writable });
+        // a folder's Properties: General and Sharing (vistaFileSharing.js)
+        if (!file && root.DreamOSShares) items.push({ separator: true }, { text: 'Properties', action: `${ACTION}properties` });
         return [{ type: 'list', items }];
     }
 
@@ -340,7 +360,25 @@
             case 'download': download(many); break;
             case 'paste-into': if (item && item.navPath) await app.pasteToPath(item.navPath); break;
             case 'refresh': await app.softRefresh(); break;
+            case 'share': await sharing(app, item, 'share'); break;
+            case 'properties': await sharing(app, item, 'properties'); break;
             default: break;
+        }
+    }
+
+    /** The File Sharing wizard or the folder's Properties (vistaFileSharing.js, loaded with the vista_file_sharing feature). */
+    async function sharing(app, item, what) {
+        if (!item || !item.host || !item.host.dir) return;
+        try {
+            const fl = root.featureLoader;
+            if (!root.vistaFileSharing && fl && typeof fl.loadFeature === 'function') await fl.loadFeature('vista_file_sharing');
+            const fs = root.vistaFileSharing;
+            if (!fs) return;
+            const folder = { drive: item.host.drive, path: item.host.path, name: item.name, location: displayPath(pathFor(item.host.drive, parentPath(item.host.path))), letter: (driveInfo(item.host.drive) || {}).letter || '', mtime: item.modifiedAt ? item.modifiedAt * 1000 : 0 };
+            if (what === 'properties') await fs.openProperties(folder, { owner: app && app.modal });
+            else await fs.openWizard(folder, { owner: app && app.modal });
+        } catch (err) {
+            await message((err && err.message) || String(err), 'File Sharing');
         }
     }
 
@@ -748,7 +786,7 @@
         rootName, displayName, displayPath, crumbs, crumbIcon, resolveInput, parentOf, isWritable, open,
         sourceOf, sourceLabel, sourceUrl, isSource, writeText, entryMenuSections, emptyMenuSections, handleAction,
         download, eject, createFolder, rename, renameDrive, setLabel, remove, deliver, uploadFiles, computerDrives, openComputerDrive,
-        syncPreview, programFor, kindOf, fileUrl, drives,
+        syncPreview, programFor, kindOf, fileUrl, drives, sharedAt, share: (app, item) => sharing(app, item, 'share'),
         driveLetter: (id) => (driveInfo(id) || {}).letter || '',
         _test: { entryToItem, sortItems }
     };

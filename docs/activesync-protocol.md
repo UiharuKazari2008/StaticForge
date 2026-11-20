@@ -308,3 +308,29 @@ SHA-256 prefix (never its words, which may hold a secret).
   whatever the settings say. Nothing over the network writes it.
 - **Origin:** the machine takes requests only from the server's socket on its own sub, only `from.kind: computer`. Bodies
   travel over HTTPS with the Miniport's session in a 0600 header file, never on a command line or in the journal.
+
+### Shared folders (Network)
+
+Yukimi, Nov 20 2026: "it should never discover itself, that being dreamos or other CaféReady devices. PCs should show up
+in the Network folder of the sidebar, and you have to share a folder like in Windows." A DreamOS machine is never a
+portable device, a phone drive or a Device Center tray line in a page: other computers are in Explorer's **Network**
+(`public/scripts/comp/explorerNetwork.js`), and opening one shows only the folders it shares, as `\\PC` does. The server
+side is `modules/networkShares.js` ([client-api/ws/networkShares.md](client-api/ws/networkShares.md)).
+
+- **On the machine** (DreamOS CaféReady `shares.rs`, `/var/lib/cafeready/state/shares.json`): Network discovery (on by
+  default, Vista's private-network default), File sharing (off until a folder is shared; the File Sharing wizard and
+  Advanced Sharing turn it on, as Vista's do) and the shares: name, drive and path, comment, user limit (10), people
+  (`administrator | guest | everyone` with `reader | contributor | coowner | owner`) and share permissions (`allow` /
+  `deny` of `read | change | full`). The page manages them through the shell bridge (`window.DreamOSShares`).
+- **Status:** `host.sharing { discovery, fileSharing, shares: [{ name, comment, limit, people, permissions, available }] }`
+  (no paths), pushed with the rest of `as_status` when it changes.
+- **The `share` root:** `storage.stat | list | mkdir | delete | rename` and `stream.send | receive` with `{ root: 'share',
+  share, account, path | paths | dir ... }`. File sharing, not a remote command: neither Allow remote commands nor the
+  `REMOTE_COMMANDS` kill switch apply; File sharing off answers `SHARING_OFF`. The server sends only after checking the
+  session's account against the share (`access`), and the machine checks again with that account (`ACCESS_DENIED`,
+  `NO_SUCH_SHARE`). Every path is resolved beneath the share's folder (openat2 `RESOLVE_BENEATH | NO_SYMLINKS |
+  NO_MAGICLINKS | NO_XDEV`, as drives.rs does), entries come back with paths inside the share. The `fs` root stays the
+  administrators' remote command path behind Allow remote commands.
+- **Files** go through the transfer routes above with root `share`: `GET /api/activesync/file/<id>/share/<share>/<path>`
+  and uploads with `{ root: 'share', dir: '/<share>/<folder>' }`, open to any signed-in user the share lets in (read to
+  download, change to upload). Copies run under Vista's progress dialog in Explorer.

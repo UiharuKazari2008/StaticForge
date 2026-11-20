@@ -361,6 +361,9 @@
             const deviceId = atComputer ? root.ExplorerComputerView.deviceIdOf(this.app.currentPath) : null;
             if (deviceId) crumbs.push({ label: this.app.computer.deviceName(deviceId), path: this.app.currentPath });
             const phone = root.explorerPhoneDrive && root.explorerPhoneDrive.isPath(this.app.currentPath);
+            // Network ▸ NAME ▸ share ▸ folder: Network is a root of its own, not under Computer (explorerNetwork.js)
+            const onNetwork = root.explorerNetwork && root.explorerNetwork.isPath(this.app.currentPath);
+            if (onNetwork) crumbs.length = 0;
             if (phone) {
                 // Computer ▸ Phone ▸ Internal storage ▸ DCIM (explorerPhoneDrive.js)
                 root.explorerPhoneDrive.crumbs(this.app.currentPath).forEach((c) => crumbs.push(c));
@@ -665,6 +668,10 @@
                 fixed: ['drive-fixed-16.png'],
                 device: ['portable-device-16.png', 'portable-device-32.png'],
                 network: ['drive-network-16.png'],
+                // Network (Vista's namespace node) and a computer on it (explorerNetwork.js)
+                'net-place': ['net-place-16.png', 'net-place-32.png'],
+                'net-computer': ['net-computer-16.png', 'net-computer-32.png'],
+                'net-share': ['net-share-16.png', 'net-share-32.png'],
                 'network-off': ['drive-network-off-16.png'],
                 'control-panel': ['tree-control-panel-16.png', 'tree-control-panel-32.png'],
                 recycle: ['../vista-icons/explorer/recycle-16.png', '../vista-icons/explorer/recycle-32.png'],
@@ -689,6 +696,8 @@
                 if (computerPath && this.app.computer) {
                     list.push({ label: 'Computer', icon: 'computer', path: computerPath, children: () => this.computerSpecs() });
                 }
+                // Network: the other DreamOS computers (never this one) and the folders they share (explorerNetwork.js)
+                if (root.explorerNetwork) list.push({ label: 'Network', icon: 'net-place', path: root.explorerNetwork.PATH, children: () => root.explorerNetwork.treeSpecs() });
                 list.push({ label: 'Control Panel', icon: 'control-panel', leaf: true, action: () => this.openControlPanel() });
                 if (ws) list.push({ label: 'Recycle Bin', icon: 'recycle', path: `/Workspaces/${ws}/Trash`, leaf: true });
                 // the folders on the desktop follow, as Vista lists them under Desktop
@@ -907,6 +916,18 @@
             if (computer && path === computer) return head.concat(computer);
             const view = root.ExplorerComputerView;
             if (view && view.deviceIdOf(path)) return head.concat(computer, path);
+            // Network ▸ computer ▸ share ▸ folders (explorerNetwork.js)
+            const net = root.explorerNetwork;
+            if (net && net.isPath(path)) {
+                const p = net.parse(path);
+                const out = head.concat(net.PATH);
+                if (p.device) out.push(net.pathFor(p.device));
+                if (p.share) {
+                    const parts = p.path.split('/').filter(Boolean);
+                    for (let i = 0; i <= parts.length; i++) out.push(net.pathFor(p.device, p.share, '/' + parts.slice(0, i).join('/')));
+                }
+                return out;
+            }
             if (root.explorerPhoneDrive && root.explorerPhoneDrive.isPath(path)) {
                 // a remote phone's storage: Computer ▸ <device> ▸ <storage> (the storage node is the deepest)
                 const ps = root.phoneStorage;
@@ -993,6 +1014,12 @@
                     if (keepPreview) detailsIcon.classList.add('has-preview');
                     if (typeof this.app._populateIconBox === 'function') this.app._populateIconBox(detailsIcon, item);
                 }
+                // a computer on the network or one of its shares: Vista's own rows (explorerNetwork.js details)
+                const netRows = root.explorerNetwork ? root.explorerNetwork.details(this.app, item) : null;
+                if (netRows) {
+                    detailsInfo.innerHTML = `<div class="explorer-details-name">${esc(item.name || '')}</div>` + netRows.map(([l, v]) => row(l, v)).join('');
+                    return;
+                }
                 // a contact shows its name and no type (Vista's Contacts folder)
                 const contactName = root.explorerContacts ? root.explorerContacts.detailsName(this.app, item) : null;
                 const type = contactName != null ? '' : this.typeLabel(item);
@@ -1006,13 +1033,16 @@
             }
             // no selection or several: the folder's icon and the summary line
             const inContacts = !!(root.explorerContacts && root.explorerContacts.active(this.app));
-            const folderKey = inContacts ? 'contacts' : '';
+            // Network and a computer on it show their own picture (explorerNetwork.js placeIcon)
+            const netIcon = root.explorerNetwork ? root.explorerNetwork.placeIcon(this.app.currentPath) : null;
+            const folderKey = inContacts ? 'contacts' : (netIcon || '');
             if (detailsIcon.dataset.detailsKey !== folderKey) {
                 detailsIcon.dataset.detailsKey = folderKey;
                 detailsIcon.className = 'explorer-details-icon explorer-item-icon-box explorer-item-icon-box-md';
                 detailsIcon.innerHTML = inContacts
                     ? `<img class="explorer-contacts-folder-icon" src="${root.explorerContacts.ART}/folder-48.png" alt="">`
-                    : '<i class="fas fa-folder explorer-item-type-icon" data-kind="folder"></i>';
+                    : netIcon ? `<img class="explorer-contacts-folder-icon" src="${netIcon}" alt="">`
+                        : '<i class="fas fa-folder explorer-item-type-icon" data-kind="folder"></i>';
             }
             detailsInfo.innerHTML = `<div class="explorer-details-summary">${esc(summaryText || '')}</div>`;
         }
