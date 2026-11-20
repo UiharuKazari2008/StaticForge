@@ -1219,7 +1219,7 @@
         disableAll: false,
         bassManagement: { on: true, crossover: 4000, invert: false },
         bassBoost: { on: false, frequency: 250, level: 6 },
-        lowFrequencyProtection: { on: true, cutoff: 150 },
+        lowFrequencyProtection: { on: true, cutoff: 250 },
         loudness: { on: false, release: 4 }
     };
     const FX_CROSSOVER = [1000, 1200, 1500, 1800, 2000, 2500, 3000, 3500, 4000, 4500];
