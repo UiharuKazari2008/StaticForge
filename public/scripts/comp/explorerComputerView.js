@@ -246,7 +246,9 @@
                             type: 'list',
                             // a phone disk can be renamed (its .label file, #954), as Vista renames a drive
                             items: tile
-                                ? [{ text: 'Open', action: `computer-open:${tile.dataset.drive}`, className: 'context-menu-item-default' }].concat(this.phoneDrive(tile.dataset.drive) && root.explorerPhoneDrive && root.explorerPhoneDrive.setDiskLabel ? [{ separator: true }, { text: 'Rename', action: `computer-rename:${tile.dataset.drive}` }] : [])
+                                ? [{ text: 'Open', action: `computer-open:${tile.dataset.drive}`, className: 'context-menu-item-default' }].concat(String(tile.dataset.drive).startsWith('phone:') && root.explorerPhoneDrive && root.explorerPhoneDrive.setDiskLabel ? [{ separator: true }, { text: 'Rename', action: `computer-rename:${tile.dataset.drive}` }] : [])
+                                    // a removable disk of this machine (DreamOS): Vista's Eject
+                                    .concat((this.phoneDrive(tile.dataset.drive) || {}).removable && String(tile.dataset.drive).startsWith('host:') ? [{ separator: true }, { text: 'Eject', action: `computer-eject:${tile.dataset.drive}` }] : [])
                                 : [{ text: 'Refresh', action: 'computer-refresh' }]
                         }];
                     },
@@ -269,6 +271,7 @@
             const a = String(action || '');
             if (a.startsWith('computer-open:')) this.openDrive(a.slice('computer-open:'.length));
             else if (a.startsWith('computer-rename:')) void this.renameDrive(a.slice('computer-rename:'.length));
+            else if (a.startsWith('computer-eject:') && root.explorerHostDrive) void root.explorerHostDrive.eject(a.slice('computer-eject:host:'.length));
             else if (a === 'computer-refresh') this.show({ reload: true });
         }
 
@@ -298,8 +301,12 @@
             const hybrid = continuity();
             // over ActiveSync a phone is a portable device, except the hybrid phone this DeX window runs on:
             // its storage is this computer's own drives (#798)
-            if (root.phoneStorage && root.phoneStorage.remote && !hybrid) return [];
-            const list = root.explorerPhoneDrive && root.explorerPhoneDrive.available() ? root.explorerPhoneDrive.computerDrives() : [];
+            // DreamOS: this machine's own drives (explorerHostDrive.js), lettered by the host, before any phone's
+            const host = root.explorerHostDrive && root.explorerHostDrive.available() ? root.explorerHostDrive.computerDrives() : [];
+            if (root.phoneStorage && root.phoneStorage.remote && !hybrid) return host;
+            const own = root.__explorerPhoneDriveOwn || root.explorerPhoneDrive;
+            const list = own && own.available() ? own.computerDrives() : [];
+            if (host.length) return host.concat(list);
             if (!hybrid) return list;
             const internal = list.filter((d) => d.kind === 'internal');
             const others = list.filter((d) => d.kind !== 'internal');
@@ -444,7 +451,7 @@
         }
 
         phoneDrive(key) {
-            return String(key || '').startsWith('phone:') ? (this.phoneDrives().find((d) => d.key === key) || null) : null;
+            return /^(phone|host):/.test(String(key || '')) ? (this.phoneDrives().find((d) => d.key === key) || null) : null;
         }
 
         /** Network drives (Network Location): Sequenzia, when this server has it set up (explorerSequenzia.js). */
@@ -782,7 +789,7 @@
                         ['Space used', phone.total ? `<span class="explorer-drive-bar"><span class="explorer-drive-bar-fill" style="--used:${used.toFixed(4)}"></span></span>` : ''],
                         ['Space free', phone.total ? esc(formatSize(phone.free)) : ''],
                         ['Total size', phone.total ? esc(formatSize(phone.total)) : '']
-                    ]);
+                    ], phone.fileSystem ? ['File system', esc(phone.fileSystem)] : null);
                 return;
             }
             const net = this.networkDrive(this.selected);

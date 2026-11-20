@@ -18,6 +18,7 @@ const TRAY_ICON_CATALOG = [
     { id: 'workspaceTrayIcon', label: 'Workspace' },
     { id: 'serviceWorkerTrayIcon', label: 'Melaton Update' },
     { id: 'presentationTrayIcon', label: 'Presentation Settings' },
+    { id: 'safelyRemoveTrayIcon', label: 'Safely Remove Hardware' },
     { id: 'nightshadeSyncTrayIcon', label: 'Sync Center' },
     { id: 'pingWarningIndicator', label: 'Network latency' },
     { id: 'nightshadeTrayIcon', label: 'Nightshade Network' },
@@ -42,6 +43,7 @@ const TRAY_POPUP_CATALOG = [
     { id: 'sync-center', label: 'Sync Center' },
     { id: 'network-portal', label: 'Network log on' },
     { id: 'battery', label: 'Battery' },
+    { id: 'safely-remove', label: 'Safely Remove Hardware' },
     { id: 'operation-receipt', label: 'Operation Receipt' },
     { id: 'generation-receipt', label: 'Generation Receipt' },
     { id: 'upscale-receipt', label: 'Upscaling Receipt' },
@@ -186,7 +188,8 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 // always visible unless the user picked otherwise: the Nightshade Network icon (#895) and Melaton Update, which is
 // only there while updates download or wait for a restart (#945); the system icons have their own switches
 // Vista shows the presentation icon while presenting (PresentationSettings.exe, #958)
-const TRAY_DEFAULT_SHOW = new Set(['nightshadeTrayIcon', 'serviceWorkerTrayIcon', 'presentationTrayIcon']);
+// Safely Remove Hardware is there only while a removable disk is in, and is how it comes out (#910)
+const TRAY_DEFAULT_SHOW = new Set(['nightshadeTrayIcon', 'serviceWorkerTrayIcon', 'presentationTrayIcon', 'safelyRemoveTrayIcon']);
 function trayIconBehavior(id) {
     const { map, legacy } = trayBehaviorsSaved();
     const fallback = TRAY_DEFAULT_SHOW.has(id) ? 'show' : 'hide';

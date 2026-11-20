@@ -1068,8 +1068,9 @@ class ExplorerApplet {
     }
 
     _canCutCopyItem(item) {
-        if (item?.targetKind === 'phone-entry') return true;
-        if (item?.targetKind === 'phone-drive' || item?.targetKind === 'phone-trash') return false;
+        // a file on a phone or on this machine's own drives (explorerHostDrive.js, DreamOS)
+        if (item?.targetKind === 'phone-entry' || item?.targetKind === 'host-entry') return true;
+        if (item?.targetKind === 'phone-drive' || item?.targetKind === 'phone-trash' || item?.targetKind === 'host-drive') return false;
         if (!item || item.protected || this._isSystemItem(item)) return false;
         // Native gallery/reference/vibe/note entries cannot relocate between VFS folders — vfsManager.js
         if (this._isVirtualSurfaceItem(item) && !this._isVfsVirtualEntry(item)) return false;
@@ -1109,7 +1110,7 @@ class ExplorerApplet {
     }
 
     _canRenameItem(item) {
-        if (item?.targetKind === 'phone-entry') return true;
+        if (item?.targetKind === 'phone-entry' || item?.targetKind === 'host-entry') return true;
         if (!item || item.protected || this._isSystemItem(item)) return false;
         if (item.targetKind === 'vfs-folder' || item.targetKind === 'user-file') return true;
         if (item.shortcutType || this._isStoredShortcutItem(item) || this._isLiveDesktopShortcutItem(item)) return true;
@@ -4896,8 +4897,8 @@ class ExplorerApplet {
         set(this.el.newFolderBtn, isWsList || canWrite);
         if (this._isPhonePath()) {
             // phone files download (?download=1); entries delete through the phone's trash
-            const entries = hasSel && sel.every(i => i.targetKind === 'phone-entry');
-            set(this.el.downloadBtn, entries && sel.every(i => !i.phone.dir));
+            const entries = hasSel && (sel.every(i => i.targetKind === 'phone-entry') || sel.every(i => i.targetKind === 'host-entry'));
+            set(this.el.downloadBtn, entries && sel.every(i => !(i.phone || i.host).dir));
             set(this.el.replaceBtn, false);
             set(this.el.deleteBtn, entries);
         }

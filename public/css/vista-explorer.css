@@ -3471,3 +3471,24 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-v
     border-top: 1px solid #e0e0e0;
     border-bottom: 1px solid #fdfdfd;
 }
+
+/* ---- AutoPlay (hostDrivesShell.js, DreamOS #910): Vista's AutoPlay window for a removable disk put in ----------------
+   The drive and its name at the top, "Always do this for ...", the content's options and General options as rows of a
+   32 px program icon with two lines (the action, "using <program>"), hot like Vista's list rows, and the link to
+   Control Panel > AutoPlay. */
+#confirmationDialog .autoplay { font: 12px/1.35 'Segoe UI', Tahoma, sans-serif; color: #000; text-align: left; margin: -4px 0 0; }
+#confirmationDialog .autoplay-head { display: flex; align-items: center; gap: 10px; padding: 2px 0 8px; font-size: 12px; }
+#confirmationDialog .autoplay-always { display: flex; align-items: center; gap: 5px; margin: 0 0 6px; }
+#confirmationDialog .autoplay-options { border: 1px solid #c5c5c5; background: #fff; max-height: 300px; overflow: auto; padding: 0 0 4px; }
+#confirmationDialog .autoplay-group-head { margin: 6px 6px 2px; padding-bottom: 2px; color: #1e3287; border-bottom: 1px solid #e3e8f4; }
+#confirmationDialog .autoplay-option { display: flex; align-items: center; gap: 8px; width: calc(100% - 8px); margin: 1px 4px; padding: 3px 6px;
+    border: 1px solid transparent; border-radius: 3px; background: none; text-align: left; font: inherit; color: inherit; }
+#confirmationDialog .autoplay-option:hover, #confirmationDialog .autoplay-option:focus-visible {
+    border-color: #b8d6fb; background: linear-gradient(#fafbfd, #ebf3fd); outline: none; }
+#confirmationDialog .autoplay-option > span { display: flex; flex-direction: column; }
+#confirmationDialog .autoplay-option-sub { color: #6d6d6d; }
+#confirmationDialog .autoplay-defaults { display: inline-block; margin-top: 8px; color: #0066cc; text-decoration: none; }
+#confirmationDialog .autoplay-defaults:hover { text-decoration: underline; }
+/* Safely Remove Hardware's device list (hostDrivesShell.js): whole lines, as Vista's menu has them */
+.context-menu:has(> .context-menu-content > .safely-remove-menu) { max-width: none; }
+.safely-remove-menu .context-menu-item-text { max-width: none; }
