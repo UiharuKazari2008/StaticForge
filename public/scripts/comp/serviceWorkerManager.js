@@ -3382,8 +3382,15 @@ class ServiceWorkerManager {
         if (!this._failedDownloads) this._failedDownloads = new Map();
         const updated = this._resolveUpdatedFilesFromCacheComplete(data) || [];
         updated.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this._failedDownloads.delete(u); });
-        const failed = (Array.isArray(data && data.failed) ? data.failed : [])
-            .filter((f) => f && f.url && f.hash && f.reason !== 'uncacheable')
+        const all = Array.isArray(data && data.failed) ? data.failed : [];
+        // gone: the server's list no longer has it (sw.js updatePackGone, #951) - not an update, nothing waits for it
+        const gone = all.filter((f) => f && f.url && f.reason === 'gone');
+        if (gone.length) {
+            gone.forEach((f) => this._failedDownloads.delete(f.url));
+            this._clearAvailableUpdates(gone);
+        }
+        const failed = all
+            .filter((f) => f && f.url && f.hash && f.reason !== 'uncacheable' && f.reason !== 'gone')
             .map((f) => ({ url: f.url, hash: f.hash }));
         if (!failed.length) {
             if (!this._failedDownloads.size && (this._failedRetryRound || this.updateInstallFailure)) {

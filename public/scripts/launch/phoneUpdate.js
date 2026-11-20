@@ -107,6 +107,9 @@
         if (workerOk) {
             const done = await engine.download(e, found.files, { silent: true }).catch(() => null);
             if (!done || done.ok !== false) left = (await engine.verify(e, found.files).catch(() => null)) || found.files;
+            // what the server no longer has (absent: sw.js updatePackGone, or 404 after its tries) is not asked again (#951)
+            const absent = new Set((done && Array.isArray(done.absent)) ? done.absent : []);
+            if (absent.size) left = left.filter((file) => !absent.has(file.url));
         }
         if (!left.length) return;
         const manifest = found.manifest || found.files;

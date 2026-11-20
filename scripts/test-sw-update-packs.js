@@ -32,7 +32,7 @@ function constLine(name) {
 
 const FUNCS = ['retryAfterMs', 'retryOrFailStaticFile', 'nextStaticRetry', 'freshDownloadState', 'staticCacheResponseWithHash',
     'takeUpdatePackBatch', 'readUpdatePackBody', 'fetchUpdatePack', 'eachUpdatePackEntry', 'updatePackRow', 'updatePackStoreHash',
-    'postDownloadProgress', 'cacheUpdatePack', 'postStaticCacheProgress', 'sendStaticCacheProgress', 'dropStaticCacheProgress',
+    'postDownloadProgress', 'updatePackGone', 'cacheUpdatePack', 'postStaticCacheProgress', 'sendStaticCacheProgress', 'dropStaticCacheProgress',
     'noteInstallFileDone', 'mergeIntoRunningDownload', 'cacheStaticFiles', 'hasBodyHash', 'sha256Hex', 'isAuthGatedStaticPath',
     'isAuthGatedManifestFile', 'getContentTypeFromPath', 'purgeStaticCacheEntriesNow'];
 const CONSTS = ['STATIC_CACHE', 'SAVED_ASSET_CACHE_CONTROL', 'NON_BODY_HASH_PATHS', 'STATIC_FILE_RETRY_DELAYS_MS', 'STATIC_FILE_404_RETRIES',
@@ -107,7 +107,7 @@ async function world(opts = {}) {
             const planned = await updatePack.plan({ manifestByUrl: byUrl, requested: body.files, resolveFile, contentType: (u) => (u.endsWith('.js') ? 'application/javascript; charset=UTF-8' : '') });
             if (!planned.files && planned.missing.every((m) => m.reason === 'not-found')) {
                 await planned.close();
-                return new Response('{}', { status: 404 });
+                return new Response(JSON.stringify({ success: false, error: 'no matching files', missing: planned.missing.slice(0, 50) }), { status: 404 });
             }
             const res = new FakeRes();
             await updatePack.send(res, planned);
@@ -192,19 +192,25 @@ async function world(opts = {}) {
     assert.ok(Buffer.from(await w.rows.get('/static_images/d.webp').arrayBuffer()).equals(files['/static_images/d.webp']));
     w.cleanup();
 
-    // 5. a file the server does not have yet (in the manifest, no file) and one it never heard of: tried again in packs
-    //    with the others' retries, then failed / absent; nothing else asked again; never a per-file request
-    w = await world({ files, unresolved: ['/scripts/new.js'] });
+    // 5. a file the server does not have yet (in the manifest, no file) is tried again in packs, bounded, then failed;
+    //    one its manifest never heard of is gone at once (reason 'gone', absent, no retries); never a per-file request
+    w = await world({ files, unresolved: ['/scripts/new.js', '/scripts/new2.js'] });
     list = w.manifest.slice().concat([{ url: '/scripts/gone.js', hash: '0'.repeat(64), size: 5 }]);
     await w.api.cacheStaticFiles(list, true);
     done = w.complete();
-    assert.strictEqual(w.requests[0].files.length, 7);
-    for (const r of w.requests.slice(1)) assert.ok(r.files.every((u) => u === '/scripts/new.js' || u === '/scripts/gone.js'), 'retries carry only what is missing');
-    assert.ok(w.requests.slice(1).some((r) => r.files.length === 2), 'both missing files ride in the same retry pack');
+    assert.strictEqual(w.requests[0].files.length, 8);
+    for (const r of w.requests.slice(1)) same(r.files.sort(), ['/scripts/new.js', '/scripts/new2.js'], 'retries carry only what may still come, together');
     assert.ok(w.requests.length <= 1 + 5, `bounded rounds (${w.requests.length})`);
-    same(done.failed.map((f) => f.url).sort(), ['/scripts/gone.js', '/scripts/new.js']);
-    same(done.absent, ['/scripts/gone.js'], 'the 404 is reported absent');
+    same(done.failed.map((f) => `${f.url} ${f.reason}`).sort(), ['/scripts/gone.js gone', '/scripts/new.js not on the server yet', '/scripts/new2.js not on the server yet']);
+    same(done.absent, ['/scripts/gone.js'], 'the gone file is reported absent');
     assert.strictEqual(done.updatedFiles.length, 5);
+    w.cleanup();
+
+    // 5b. a round of only files the server's list does not have: its 404 names them, all gone, one request
+    w = await world({ files });
+    await w.api.cacheStaticFiles([{ url: '/ClaudeVideoTest.mp4', hash: '1'.repeat(64), size: 9 }, { url: '/ClaudeVideoTest.webm', hash: '2'.repeat(64), size: 9 }], true);
+    assert.strictEqual(w.requests.length, 1, 'no retries for files the server no longer has');
+    same(w.complete().failed.map((f) => f.reason), ['gone', 'gone']);
     w.cleanup();
 
     // 6. a large round: a few packs of at most UPDATE_PACK_MAX_BYTES (manifest sizes), in order

@@ -2805,7 +2805,15 @@ async function fetchUpdatePack(files, options = {}) {
         if (options.priority) init.priority = options.priority;
         const response = await fetch(UPDATE_PACK_URL, init);
         if (response.status !== 200) {
-            return { ok: false, status: response.status, error: `HTTP ${response.status}`, retryAfterMs: retryAfterMs(response) };
+            // the route's 404 names the urls its manifest does not have (modules/updatePack.js, web_server.js)
+            let gone = null;
+            if (response.status === 404) {
+                try {
+                    const body = await response.json();
+                    if (body && Array.isArray(body.missing)) gone = new Set(body.missing.filter((m) => m && m.reason === 'not-found').map((m) => m.url));
+                } catch (_) { /* not the route's answer */ }
+            }
+            return { ok: false, status: response.status, error: `HTTP ${response.status}`, retryAfterMs: retryAfterMs(response), gone };
         }
         const total = Number(response.headers.get('content-length')) || 0;
         poke();
@@ -2960,6 +2968,18 @@ function mergeIntoRunningDownload(files, requester) {
     return true;
 }
 
+/**
+ * A file the pack route says its manifest does not have (not-found): not an update any more, so not tried again. The
+ * route answers 503 while the server starts, so this is the server's current list, not a server that was not serving
+ * yet (the 404 retries, STATIC_FILE_404_RETRIES, are for a plain 404). Reported absent and failed with reason 'gone':
+ * the page drops it from what it has waiting (serviceWorkerManager _noteDownloadOutcome). A list kept from before a file
+ * was deleted (the A53, Nov 20: two test videos) waited 17 s of retries per round, behind the boot logo at a restart.
+ */
+function updatePackGone(file) {
+    downloadState.failedFiles.push({ url: file.url, hash: file.hash, reason: 'gone' });
+    noteInstallFileDone(file.url, '404');
+}
+
 /** The count the pages see: never back down (the pack's bytes run ahead of the files stored from it). */
 function postDownloadProgress(provisional, currentFile) {
     downloadState.shown = Math.max(Number(downloadState.shown) || 0, downloadState.completed, provisional || 0);
@@ -2996,10 +3016,14 @@ async function cacheUpdatePack(cache, batch, signal) {
         downloadState.lastProgressTime = Date.now();
         if (!pack.ok) {
             if (pack.status === 413 && batch.length > 1) return 'too-large';
-            // nothing by those names on the server (404) or the whole pack failed: every file waits for one more pack
+            // nothing by those names on the server (404) or the whole pack failed: every file waits for one more pack;
+            // one the route says its manifest does not have is gone at once (updatePackGone)
             const reason = pack.status === 404 ? '404' : `pack ${pack.error}`;
             console.warn(`[update] a pack of ${batch.length} file(s): ${pack.error}`);
-            for (const file of batch) retryOrFailStaticFile(file, reason, pack.retryAfterMs || 0);
+            for (const file of batch) {
+                if (pack.gone && pack.gone.has(file.url)) updatePackGone(file);
+                else retryOrFailStaticFile(file, reason, pack.retryAfterMs || 0);
+            }
             return 'done';
         }
         const byUrl = new Map(batch.map((file) => [file.url, file]));
@@ -3047,7 +3071,7 @@ async function cacheUpdatePack(cache, batch, signal) {
             if (stored.has(file.url)) continue;
             const why = pack.missing.get(file.url);
             if (why === 'auth') noteInstallFileDone(file.url, 'auth');
-            else if (why === 'not-found') retryOrFailStaticFile(file, '404');
+            else if (why === 'not-found') updatePackGone(file);
             else if (damaged.has(file.url)) retryOrFailStaticFile(file, 'damaged in the pack');
             else retryOrFailStaticFile(file, why === 'unresolved' ? 'not on the server yet' : 'not in the pack');
         }
