@@ -382,6 +382,13 @@ const FEATURE_MANIFEST = {
         styles: ['css/expander-make-global.css'],
         scripts: ['scripts/comp/expanderMakeGlobalWizard.js']
     },
+    // DreamOS: the domain controller's last known address (#910; dreamosServerAddress.js, the Server tab of the
+    // Nightshade adapter's Properties in cplDeviceManager.js; the host keeps the addresses, CaféReady serveraddr.rs)
+    dreamos_server_address: {
+        depends: ['vista_dialog_templates'],
+        styles: ['css/dreamos-server-address.css'],
+        scripts: ['scripts/comp/dreamosServerAddress.js']
+    },
     // DreamOS firmware updates (#910): the OS base and CaféReady's components - Melaton Update, Control Panel >
     // Firmware and the shut down screen (serviceWorkerManager.installUpdatesAtShutdown) load it
     dreamos_firmware: {

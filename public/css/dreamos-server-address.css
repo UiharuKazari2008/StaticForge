@@ -1,0 +1,12 @@
+/* The Nightshade adapter's Server page (dreamosServerAddress.js, #910): the last known addresses' columns */
+.vdt-client .dsa-col-addr {
+    width: 96px;
+}
+
+.vdt-client .dsa-col-when {
+    width: 142px;
+}
+
+.vdt-client .vdt-lv-row > .dsa-col-net {
+    flex: 1;
+}

@@ -168,6 +168,10 @@ function closeAll(carrier) {
     subs.clear();
 }
 
+/** The server's time zone, sent with miniport_ready (a DreamOS host's zone follows it, CaféReady clock.rs; #910). */
+let SERVER_ZONE = 'UTC';
+try { SERVER_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (_) { /* UTC */ }
+
 /**
  * Melaton Miniport (#815): the Android app's native connection, opened with ?miniport=1 on the
  * signed-in session. It carries the app's pages (sub 'phone', sub 'desktop') and nothing else: no
@@ -208,13 +212,15 @@ function acceptMiniport(ws, req, info, connect) {
     ws.on('message', (data) => {
         let message = null;
         try { message = JSON.parse(data); } catch (_) { return; }
-        if (message && message.type === 'ping') { try { ws.send(JSON.stringify({ type: 'pong', t: message.t || null })); } catch (_) { /* closing */ } return; }
+        // at: the server's clock, so a DreamOS host sets its own from it (CaféReady clock.rs: at + half the round trip)
+        if (message && message.type === 'ping') { try { ws.send(JSON.stringify({ type: 'pong', t: message.t || null, at: Date.now() })); } catch (_) { /* closing */ } return; }
         handle(ws, message, connect);
     });
     ws.on('close', () => { miniports.delete(ws); clearInterval(beat); closeAll(ws); });
     ws.on('error', () => { /* close follows */ });
     console.log(`🔌 Melaton Miniport connected: session ${String(info.sessionId || '').slice(0, 8)}… (${info.clientIP || 'unknown'})`);
-    try { ws.send(JSON.stringify({ type: 'miniport_ready', at: Date.now() })); } catch (_) { /* gone */ }
+    // at / tz: the server's clock and time zone (a DreamOS host takes both, CaféReady clock.rs; #910)
+    try { ws.send(JSON.stringify({ type: 'miniport_ready', at: Date.now(), tz: SERVER_ZONE })); } catch (_) { /* gone */ }
 }
 
 /** Every live Miniport carrier (clientCertificates.js tells a revoked client's carrier and closes it, #922). */

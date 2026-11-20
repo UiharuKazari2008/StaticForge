@@ -1057,6 +1057,11 @@
         if (/^(Network adapters|Display adapters|Sound, video and game controllers|Universal Serial Bus controllers|System devices)$/.test(d.cat)) pages.push({ key: 'setupapi:2001', overrides: { 2002: { image: big } } });
         if (isNet) pages.push({ key: 'devmgr:330', overrides: { 331: { image: big } } });
         if (valuesTpl) pages.push({ key: 'devmgr:values', tpl: valuesTpl, overrides: { 373: { image: big } } });
+        // DreamOS: the Nightshade adapter's own Server tab after General (and Advanced), the domain controller's last
+        // known address (dreamosServerAddress.js; the host keeps it, CaféReady serveraddr.rs)
+        const sa = root.dreamosServerAddress;
+        const srv = d.cat === 'Network adapters' && info.miniport && sa && sa.available() ? sa.page() : null;
+        if (srv) pages.splice(isNet ? 2 : 1, 0, srv);
         const manufacturer = info.manufacturer || (/Melaton|Dreamscape/.test(name) ? 'Xyridian Corporation' : '(Standard system devices)');
         let timer = 0;
         open({
@@ -1071,6 +1076,7 @@
                     const nameId = { 'devmgr:103': 219, 'devmgr:106': 227, 'devmgr:372': 374, 'devmgr:values': 374, 'setupapi:2001': 2003, 'devmgr:330': 332 }[p.key];
                     if (nameId) ctx.text(nameId, name, p.key);
                 });
+                if (srv) sa.wire(ctx, srv.key);
                 // ---- General
                 ctx.set(220, d.cat, P(103));
                 ctx.set(221, manufacturer, P(103));
@@ -1342,6 +1348,8 @@
         if (!win) build();
         callGlobal('openModal', win);
         win.classList.remove('hidden');
+        // DreamOS: the Nightshade adapter's Server tab, ready by the time its Properties open
+        if (root.DreamOSServerAddress && root.featureLoader && typeof root.featureLoader.loadFeature === 'function') void root.featureLoader.loadFeature('dreamos_server_address');
         await refresh();
     }
 
@@ -1350,6 +1358,7 @@
     async function openAdapter(ifaceName) {
         const fl = root.featureLoader;
         await Promise.resolve(fl && typeof fl.loadFeature === 'function' ? fl.loadFeature('vista_dialog_templates') : null);
+        if (ifaceName === 'miniport' && root.DreamOSServerAddress && fl && typeof fl.loadFeature === 'function') await fl.loadFeature('dreamos_server_address');
         tree = withHidden(await categories());
         const ci = tree.findIndex((c) => c.name === 'Network adapters');
         if (ci < 0) return false;
