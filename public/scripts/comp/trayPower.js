@@ -277,19 +277,21 @@
             <div class="network-flyout-body power-flyout-body">
                 ${m && Array.isArray(m.packs) && m.packs.length > 1 ? m.packs.map((b, i) => {
                     const bf = frames(b);
+                    // separate packs (the computer's own and a watched dock): the first carries the computer's time left
+                    const sub = m.packsSeparate && i === 0 && extra ? `<span class="network-flyout-sub">${esc(extra)}</span>` : '';
                     return `<div class="power-flyout-status">
                     <span class="power-flyout-battery" style="--power-big:${bf.big};--power-big-mark:${bf.bigMark === null ? 0 : bf.bigMark}"${bf.bigMark === null ? '' : ' data-mark="1"'}></span>
-                    <div class="network-flyout-text"><span class="network-flyout-sub">Battery #${i + 1}: ${esc(statusText(b))}</span></div>
+                    <div class="network-flyout-text"><span class="network-flyout-sub">Battery #${i + 1}: ${esc(statusText(i === 0 && m.packsSeparate ? m : b))}</span>${sub}</div>
                 </div>`;
                 }).join('') : ''}
-                <div class="power-flyout-status">
+                ${m && m.packsSeparate && Array.isArray(m.packs) && m.packs.length > 1 ? '' : `<div class="power-flyout-status">
                     <span class="power-flyout-battery" style="--power-big:${f.big};--power-big-mark:${f.bigMark === null ? 0 : f.bigMark}"${f.bigMark === null ? '' : ' data-mark="1"'}></span>
                     <div class="network-flyout-text">
                         <span class="network-flyout-name">${esc(statusText(m))}</span>
                         ${extra ? `<span class="network-flyout-sub">${esc(extra)}</span>` : ''}
                         ${m && m.protect ? '<span class="network-flyout-sub power-flyout-protect">Battery protection is on: files cannot be saved until your computer is plugged in.</span>' : ''}
                     </div>
-                </div>
+                </div>`}
                 <div class="power-flyout-plans win7" role="radiogroup" aria-label="Select a power plan">
                     <div class="network-flyout-heading">Select a power plan:</div>
                     ${plans().map((p) => `
@@ -463,7 +465,9 @@
         return {
             percent: st.full ? 100 : n(st.percent), plugged: !!st.plugged, charging: !!st.charging, full: !!st.full,
             protect: !!st.protect, minutesLeft: n(st.minutesLeft), minutesToFull: n(st.minutesToFull),
-            packs: Array.isArray(st.packs) ? st.packs.map((b) => ({ percent: n(b.percent), plugged: b.plugged === undefined ? !!st.plugged : !!b.plugged, charging: !!b.charging, full: !!b.full, protect: false, minutesLeft: null, minutesToFull: null })) : undefined
+            packs: Array.isArray(st.packs) ? st.packs.map((b) => ({ percent: n(b.percent), plugged: b.plugged === undefined ? !!st.plugged : !!b.plugged, charging: !!b.charging, full: !!b.full, protect: false, minutesLeft: null, minutesToFull: null })) : undefined,
+            // a watched battery beside the computer's own (a NexDock): listed, never summed into the total
+            packsSeparate: !!st.packsSeparate
         };
     }
 

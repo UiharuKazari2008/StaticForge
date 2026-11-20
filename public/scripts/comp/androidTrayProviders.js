@@ -7,7 +7,7 @@
  *   power      AndroidDeviceStatus.battery ('androiddevicestatus') + AndroidHardware.getBattery() for the time left
  *              (read only when a push comes, never on a timer); a docked NexDock's own battery (AndroidHome.getDockStatus,
  *              myNexDock's provider, read with each push and on 'androiddock') is Battery #2 as in Vista's flyout for two
- *              packs, the phone Battery #1, the total the two averaged (the dock reports no capacity); plans Balanced / Power saver = Android's battery saver
+ *              packs, the phone Battery #1; watched beside it, never summed: the icon and time left are the phone's; plans Balanced / Power saver = Android's battery saver
  *              (AndroidDevice.setRadio('saver'))
  *   network    AndroidWifi ('androidwifi', 'androidwifiscan', results 'androidwifiresult') + AndroidDeviceStatus.cellular
  *              as Mobile broadband (mobileData(on) = AndroidDevice.setRadio('data')); joins, leaves, forget, the radio and
@@ -113,19 +113,16 @@
             const charge = Number(info.chargeCounterUah) || 0;
             if (!plugged && cur > 1000 && charge > 0) m.minutesLeft = Math.round(charge / cur * 60);
             if (charging && Number(info.chargeTimeRemainingMs) > 0) m.minutesToFull = Math.round(Number(info.chargeTimeRemainingMs) / 60000);
-            // the dock's battery (NexDock): a second pack
+            // the dock's battery (NexDock): a second battery that is watched, not part of the computer's own (Yukimi,
+            // Nov 20: the NexDock is not a phone battery - never summed). The icon, the total and the time left stay the
+            // phone's; the flyout lists the two as Battery #1 / #2 with no combined line
             const dock = dockBattery();
             if (dock) {
                 m.packs = [
                     { percent, plugged, charging, full },
                     { percent: dock.level, plugged: dock.charging || dock.level >= 100 && plugged, charging: dock.charging && dock.level < 100, full: dock.level >= 100 && (dock.charging || plugged) }
                 ];
-                m.percent = Math.round((percent + dock.level) / 2);
-                m.full = m.packs.every((x) => x.full);
-                m.charging = !m.full && m.packs.some((x) => x.charging);
-                // the time left was the phone's alone: unknown for the two
-                m.minutesLeft = null;
-                m.minutesToFull = null;
+                m.packsSeparate = true;
             }
             return m;
         };
