@@ -589,7 +589,8 @@
         'media-player': { name: 'Melaton Media Player', icon: '/static_images/app_icons/32/media_player.webp' },
         notepad: { name: 'Notepad', icon: '/static_images/app_icons/32/vista-notepad.webp' },
         paint: { name: 'Paint', icon: '/static_images/app_icons/32/vista-paint.webp' },
-        viewer: { name: 'Document Viewer', icon: '/static_images/app_icons/32/vista-explorer.webp' }
+        // a PDF: Adobe Reader 8 (apps/reader, #910), read from the file URL ('viewer' was the Document Viewer before it)
+        reader: { name: 'Adobe Reader 8', icon: '/static_images/app_icons/32/adobe-reader.webp', publisher: 'Adobe Systems Incorporated' }
     };
     const TEXT_EXT = /\.(txt|log|ini|inf|cfg|conf|json|md|csv|tsv|xml|html?|css|js|ts|py|sh|bat|cmd|yml|yaml|srt|nfo)$/i;
 
@@ -613,9 +614,10 @@
     /** The program for a file: the user's association (Default Programs) or the type's default. */
     function programFor(name, mime) {
         const reg = root.melatonRegistry;
-        const assoc = reg ? reg.get(ASSOC, extOf(name), '') : '';
+        const stored = reg ? reg.get(ASSOC, extOf(name), '') : '';
+        const assoc = stored === 'viewer' ? 'reader' : stored;
         if (assoc && (PROGRAMS[assoc] || assoc === 'android' || isAndroidPick(assoc))) return assoc;
-        return { image: 'lumen', media: 'media-player', text: 'notepad', pdf: 'viewer' }[kindOf(name, mime)] || null;
+        return { image: 'lumen', media: 'media-player', text: 'notepad', pdf: 'reader' }[kindOf(name, mime)] || null;
     }
 
     function sourceOf(item) {
@@ -719,8 +721,9 @@
                     await root.featureLoader.loadFeature('paint');
                     if (root.openMelatonPaint) root.openMelatonPaint({ image: url, name: item.name });
                     break;
-                case 'viewer':
-                    openDocumentViewer(src, label);
+                case 'reader':
+                    if (!root.melatonApps) throw { code: 'no_app', message: 'Adobe Reader is not available' };
+                    await root.melatonApps.launch({ packageId: 'reader', args: { url, name: item.name, size: src.size || 0, location: label } });
                     break;
                 default:
                     await openWith(app, item);
@@ -741,9 +744,9 @@
         const ow = root.melatonOpenWith;
         if (!ow) return;
         const kind = kindOf(item.name, item.mimeType);
-        const fits = { image: ['lumen', 'paint'], media: ['media-player'], text: ['notepad'], pdf: ['viewer'], other: [] }[kind];
+        const fits = { image: ['lumen', 'paint'], media: ['media-player'], text: ['notepad'], pdf: ['reader'], other: [] }[kind];
         const current = programFor(item.name, item.mimeType);
-        const desk = (id) => ({ id, name: PROGRAMS[id].name, publisher: 'Xyridian Corporation', icon: PROGRAMS[id].icon });
+        const desk = (id) => ({ id, name: PROGRAMS[id].name, publisher: PROGRAMS[id].publisher || 'Xyridian Corporation', icon: PROGRAMS[id].icon });
         const phone = await phoneApps({ root: item.phone.root, path: item.phone.path }, { ps: PS(), deviceId: null, name: phoneName() });
         const recommended = [...new Set([current, ...fits].filter((id) => PROGRAMS[id]))].map(desk).concat(phone);
         const others = Object.keys(PROGRAMS).filter((id) => !recommended.some((p) => p.id === id)).map(desk).concat([ow.ANDROID_RUNTIME]);
@@ -860,138 +863,6 @@
         if (!t || !t.ps) return false;
         if (t.deviceId) t.ps.select(t.deviceId);
         try { await t.ps.call('defaults', pkg ? { package: pkg } : {}); return true; } catch (err) { toast('error', errText(err)); return false; }
-    }
-
-    /** PDFs (and anything a frame shows) in a Vista window of their own, read from the file URL. */
-    function openDocumentViewer(src, label) {
-        const key = `${src.root}:${src.path}`;
-        const id = `phoneDocViewer_${key.replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 120);
-        const existing = document.getElementById(id);
-        if (existing) {
-            if (typeof root.bringModalToFront === 'function') root.bringModalToFront(existing);
-            return;
-        }
-        const modal = document.createElement('div');
-        modal.id = id;
-        modal.className = 'modal resizeable-window explorer-phone-doc-window hidden';
-        modal.dataset.windowClient = 'light';
-        modal.dataset.windowIdentifier = 'phoneDocViewer';
-        modal.dataset.windowDefaultWidth = '720';
-        modal.dataset.windowDefaultHeight = '640';
-        modal.dataset.windowMinWidth = '320';
-        modal.dataset.windowMinHeight = '240';
-        // a child of Cartograph: its icon (window icon policy) and Dovecote's caption / controls markup
-        modal.dataset.iconOwnerId = 'explorerModal';
-        const isPdf = kindOf(src.name, src.mime) === 'pdf';
-        modal.innerHTML = `<div class="modal-window-title"><div class="modal-window-title-main"><i class="${isPdf ? 'fas fa-file-pdf' : 'fas fa-file-lines'} icon-fa" aria-hidden="true"></i><span>${esc(`${src.name} - Document Viewer`)}</span></div></div>
-            <div class="modal-focus-overlay"></div>
-            <div class="modal-window-controls">
-                <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize" aria-label="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
-                <button type="button" class="btn-danger close-btn btn-small" title="Close" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
-            </div>
-            <div class="modal-content win7 explorer-phone-doc-client" title="${esc(label)}">${isPdf
-                ? '<div class="explorer-phone-pdf" tabindex="0"><div class="explorer-phone-pdf-status">Opening…</div></div>'
-                : `<iframe class="explorer-phone-doc-frame" src="${esc(sourceUrl(src))}" title="${esc(label)}"></iframe>`}
-            </div>`;
-        document.body.appendChild(modal);
-        const close = modal.querySelector('.close-btn');
-        if (close) {
-            close.addEventListener('click', () => {
-                // closeModal: public/scripts/comp/modalUtils.js
-                const closing = typeof root.closeModal === 'function' ? root.closeModal(modal) : null;
-                Promise.resolve(closing).then(() => modal.remove());
-            });
-        }
-        if (typeof root.openModal === 'function') root.openModal(modal);
-        else modal.classList.remove('hidden');
-        const pdfHost = modal.querySelector('.explorer-phone-pdf');
-        if (pdfHost) void renderPdf(pdfHost, sourceUrl(src), modal);
-    }
-
-    // pdf.js (public/dist/pdfjs, pdfjs-dist 5.7.284): Android WebView has no PDF viewer of its own,
-    // so pages are drawn into canvases, each when it scrolls into view. The file URL serves byte
-    // ranges, so a large PDF is read as its pages are needed.
-    const PDFJS = '/dist/pdfjs';
-    let pdfjsPromise = null;
-
-    function loadPdfJs() {
-        if (!pdfjsPromise) {
-            pdfjsPromise = import(`${PDFJS}/pdf.min.mjs`).then((lib) => {
-                lib.GlobalWorkerOptions.workerSrc = `${PDFJS}/pdf.worker.min.mjs`;
-                return lib;
-            }, (err) => {
-                pdfjsPromise = null;
-                throw err;
-            });
-        }
-        return pdfjsPromise;
-    }
-
-    async function renderPdf(host, url, modal) {
-        const status = host.querySelector('.explorer-phone-pdf-status');
-        let pdf;
-        try {
-            const lib = await loadPdfJs();
-            pdf = await lib.getDocument({
-                url,
-                cMapUrl: `${PDFJS}/cmaps/`,
-                cMapPacked: true,
-                standardFontDataUrl: `${PDFJS}/standard_fonts/`
-            }).promise;
-        } catch (err) {
-            if (status) status.textContent = `This PDF could not be opened. ${(err && err.message) || ''}`;
-            return;
-        }
-        if (status) status.remove();
-        const dpr = Math.min(2, root.devicePixelRatio || 1);
-        const pages = [];
-        for (let n = 1; n <= pdf.numPages; n += 1) {
-            const box = document.createElement('div');
-            box.className = 'explorer-phone-pdf-page';
-            box.dataset.page = String(n);
-            host.appendChild(box);
-            pages.push(box);
-        }
-        const width = () => Math.max(200, host.clientWidth - 24);
-        // every page sized from the first one until it is drawn (most PDFs keep one page size)
-        try {
-            const first = await pdf.getPage(1);
-            const vp = first.getViewport({ scale: 1 });
-            pages.forEach((box) => { box.style.aspectRatio = `${vp.width} / ${vp.height}`; });
-        } catch (_err) { /* sized when drawn */ }
-        const draw = async (box) => {
-            if (box.dataset.drawn) return;
-            box.dataset.drawn = '1';
-            try {
-                const page = await pdf.getPage(Number(box.dataset.page));
-                const base = page.getViewport({ scale: 1 });
-                const vp = page.getViewport({ scale: (width() / base.width) * dpr });
-                const canvas = document.createElement('canvas');
-                canvas.width = Math.floor(vp.width);
-                canvas.height = Math.floor(vp.height);
-                box.style.aspectRatio = `${base.width} / ${base.height}`;
-                box.appendChild(canvas);
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-            } catch (_err) {
-                box.dataset.drawn = '';
-            }
-        };
-        if (typeof IntersectionObserver === 'function') {
-            const io = new IntersectionObserver((entries) => {
-                entries.forEach((e) => { if (e.isIntersecting) void draw(e.target); });
-            }, { root: host, rootMargin: '400px 0px' });
-            pages.forEach((box) => io.observe(box));
-            // closed: let pdf.js and the observer go
-            const gone = new MutationObserver(() => {
-                if (modal.isConnected) return;
-                gone.disconnect();
-                io.disconnect();
-                void pdf.destroy();
-            });
-            gone.observe(document.body, { childList: true });
-        } else {
-            for (const box of pages) await draw(box);
-        }
     }
 
     // ---- NovelAI images: their blueprint into Studio, Properties --------------------------------
@@ -1202,11 +1073,17 @@
         // video and sound play through the pane's own transport (Play / Pause and the Vista trackbar), never the browser's controls
         else if (kind === 'video') media = `<video class="explorer-phone-preview-media" src="${esc(url)}" preload="metadata" playsinline></video>${PREVIEW_TRANSPORT}`;
         else if (kind === 'audio') media = `<div class="explorer-phone-preview-icon explorer-item-icon-box explorer-item-icon-box-md"></div><audio class="explorer-phone-preview-audio" src="${esc(url)}" preload="metadata"></audio>${PREVIEW_TRANSPORT}`;
-        else if (kind === 'pdf' || kind === 'text') media = `<iframe class="explorer-phone-preview-frame" src="${esc(url)}" title="Preview"></iframe>`;
+        // a PDF: its first page drawn by Adobe Reader (as Reader 8's preview handler shows it), never the browser's viewer (#910)
+        else if (kind === 'pdf') media = '<div class="explorer-phone-preview-media explorer-phone-preview-pdf"></div>';
+        else if (kind === 'text') media = `<iframe class="explorer-phone-preview-frame" src="${esc(url)}" title="Preview"></iframe>`;
         else media = `<div class="explorer-phone-preview-icon explorer-item-icon-box explorer-item-icon-box-md"></div>`;
         pane.innerHTML = `<div class="explorer-phone-preview" data-kind="${kind}">${media}
             <div class="explorer-phone-preview-name">${esc(one.name)}</div>${facts}</div>`;
         wirePreviewTransport(pane);
+        const pdfBox = pane.querySelector('.explorer-phone-preview-pdf');
+        if (pdfBox && root.melatonApps && typeof root.melatonApps.ensureLoaded === 'function') {
+            void root.melatonApps.ensureLoaded('reader').then(() => root.melatonAdobeReader && root.melatonAdobeReader.preview(url, pdfBox)).catch(() => {});
+        }
         const box = pane.querySelector('.explorer-phone-preview-icon');
         if (box && typeof app._populateIconBox === 'function') app._populateIconBox(box, one);
         if (naiCandidate(one)) {

@@ -1223,7 +1223,12 @@
             root.openImageInViewer(item.viewUrl, item.name, {});
             return;
         }
-        if ((item.mimeType || '').startsWith('text/') || item.mimeType === 'application/pdf') {
+        // a PDF opens in Adobe Reader 8 (apps/reader, #910), read from the entry's URL
+        if ((item.mimeType === 'application/pdf' || /\.pdf$/i.test(item.name || '')) && root.melatonApps) {
+            await root.melatonApps.launch({ packageId: 'reader', args: { url: item.viewUrl, name: item.name, size: item.size || 0, location: arc ? `${arc.name}\\` : '' } });
+            return;
+        }
+        if ((item.mimeType || '').startsWith('text/')) {
             root.open(item.viewUrl, '_blank', 'noopener');
             return;
         }

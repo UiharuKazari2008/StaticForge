@@ -96,7 +96,12 @@
             root.openImageInViewer(item.viewUrl, item.name, {});
             return;
         }
-        if (mime.startsWith('video/') || mime.startsWith('audio/') || mime.startsWith('text/') || mime === 'application/pdf' || mime === 'application/json') {
+        // a PDF opens in Adobe Reader 8 (apps/reader, #910), read from the share's URL
+        if ((mime === 'application/pdf' || /\.pdf$/i.test(item.name || '')) && root.melatonApps) {
+            await root.melatonApps.launch({ packageId: 'reader', args: { url: item.viewUrl, name: item.name, size: item.size || 0 } });
+            return;
+        }
+        if (mime.startsWith('video/') || mime.startsWith('audio/') || mime.startsWith('text/') || mime === 'application/json') {
             root.open(item.viewUrl, '_blank', 'noopener');
             return;
         }

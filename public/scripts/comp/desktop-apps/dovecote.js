@@ -2402,7 +2402,13 @@ const doveOpenAttachment = async function (att, viewAsOwner, action) {
             openDesktopMediaPlayerUrl(URL.createObjectURL(doveBase64ToBlob(base64, att.mimeType)), name);
             return;
         }
-        if (kind === 'text' || kind === 'pdf') {
+        // a PDF opens in Adobe Reader 8 (apps/reader, #910), never the browser's own PDF viewer
+        if (kind === 'pdf') {
+            if (window.melatonApps) await window.melatonApps.launch({ packageId: 'reader', args: { data: base64, name, size: att.size || 0, location: 'Dovecote' } });
+            else doveSaveAttachment(att, base64);
+            return;
+        }
+        if (kind === 'text') {
             doveOpenAttachmentViewer(att, base64, kind);
             return;
         }
@@ -2435,10 +2441,8 @@ const doveOpenAttachmentViewer = function (att, base64, kind) {
     modal.dataset.windowMaxWidth = '1600';
     modal.dataset.windowMaxHeight = '1200';
 
-    let objectUrl = null;
     const close = () => {
         doveAttachmentWindows.delete(key);
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
         modal.remove();
     };
     modal.dataset.iconOwnerId = DESKTOP_DOVECOTE_MODAL_ID;
@@ -2458,15 +2462,7 @@ const doveOpenAttachmentViewer = function (att, base64, kind) {
 
     const body = document.createElement('div');
     body.className = 'modal-body dovecote-attachment-body';
-    if (kind === 'pdf') {
-        // a blob typed application/pdf: Chrome's PDF viewer, never parsed as HTML
-        objectUrl = URL.createObjectURL(doveBase64ToBlob(base64, 'application/pdf'));
-        const frame = document.createElement('iframe');
-        frame.className = 'dovecote-body-frame';
-        frame.title = name;
-        frame.src = objectUrl;
-        body.appendChild(frame);
-    } else {
+    {
         const binary = atob(base64);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);

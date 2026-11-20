@@ -7029,6 +7029,8 @@ function buildToolsSubmenuItems(opts) {
         // the desktop so it opens while the server is out of reach); its own program folder, as a broadband
         // card's utility installs. The phone has Settings > Connections > Nightshade instead.
         { launchId: 'nightshade', icon: 'fas fa-signal', imageIcon: 'nightshade-client.png', text: 'Nightshade Network Client', desktopOnly: true, appMenuLocation: 'tools', action: () => { if (typeof window.openNightshadeClient === 'function') window.openNightshadeClient(); } },
+        // Adobe Reader 8 (Yozora #910; apps/reader, a system package): the PDF reader, at the top of All Programs where its installer puts it
+        { launchId: 'adobe-reader', icon: 'fas fa-file-pdf', imageIcon: 'adobe-reader.png', text: 'Adobe Reader 8', appMenuLocation: 'tools', desktopOnly: true, action: () => melatonApps.launch({ packageId: 'reader' }) },
         // Accessories > WordPad (Yozora #632; apps/wordpad, a system package)
         { launchId: 'wordpad', icon: 'fas fa-file-word', imageIcon: 'vista-wordpad.png', text: 'WordPad', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'wordpad' }) },
         // Accessories > Sound Recorder (Yozora #632; apps/soundrec, a system package)
@@ -8356,6 +8358,7 @@ const START_MENU_SYSTEM_PLACES = {
     contacts: { at: 'top' },                       // Windows Contacts
     camera: { at: 'top' },                         // Melaton Camera (#910): where Vista keeps Windows Photo Gallery / Movie Maker
     'media-player': { at: 'top' },                 // Windows Media Player
+    'adobe-reader': { at: 'top' },                 // Adobe Reader 8 (#910): its installer's "Adobe Reader 8.lnk" in Programs
     'remote-desktop-connection': { at: 'accessories' },
     charmap: { at: 'system-tools' },               // Accessories > System Tools > Character Map
     'disk-cleanup': { at: 'system-tools' },        // Accessories > System Tools > Disk Cleanup

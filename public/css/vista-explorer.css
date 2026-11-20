@@ -2255,6 +2255,27 @@ body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .ex
     --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/recycle-16.png') 1x, url('/static_images/vista-icons/explorer/recycle-32.png') 2x);
 }
 
+/* a PDF: Adobe Reader 8's document icon (PDFFile_8.ico from its installer: 256, 48, 32, 16; the 96 scaled from the
+   256), as Explorer shows .pdf with Reader installed (#910); set by explorerApplet.js data-ftype */
+body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon[data-ftype="pdf"] {
+    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/pdf-96.png') 1x, url('/static_images/vista-icons/explorer/pdf-256.png') 2x);
+    --ex-icon-xl: url('/static_images/vista-icons/explorer/pdf-256.png');
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/pdf-48.png') 1x, url('/static_images/vista-icons/explorer/pdf-96.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/pdf-16.png') 1x, url('/static_images/vista-icons/explorer/pdf-32.png') 2x);
+    --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/pdf-16.png') 1x, url('/static_images/vista-icons/explorer/pdf-32.png') 2x);
+    display: block;
+    width: 96px;
+    height: 96px;
+    font-size: 0 !important;
+    color: transparent;
+    background: var(--ex-icon-lg) no-repeat center / contain;
+}
+body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type-icon[data-ftype="pdf"]::before { content: none; }
+body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-icon-box-xl .explorer-item-type-icon[data-ftype="pdf"] { width: 256px; height: 256px; background-image: var(--ex-icon-xl); }
+body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-icon-box-md .explorer-item-type-icon[data-ftype="pdf"] { width: 48px; height: 48px; background-image: var(--ex-icon-md); }
+body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-icon-box-sm .explorer-item-type-icon[data-ftype="pdf"] { width: 16px; height: 16px; background-image: var(--ex-icon-sm); }
+body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-icon-box-row .explorer-item-type-icon[data-ftype="pdf"] { width: 16px; height: 16px; background-image: var(--ex-icon-row); }
+
 /* Large Icons is the 96 extract, 1:1 in the 96px box */
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-icon-box-xl { width: 256px; height: 256px; }
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-icon-box-lg { width: 96px; height: 96px; }

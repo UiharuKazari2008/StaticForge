@@ -1,0 +1,14 @@
+{
+    "id": "reader",
+    "version": "8.1.3",
+    "title": "Adobe Reader 8",
+    "publisher": "Adobe Systems Incorporated",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "adobe-reader",
+    "icon": "assets/icon-48.png",
+    "client": {
+        "entry": "client/reader.js",
+        "styles": ["assets/reader.css"]
+    }
+}

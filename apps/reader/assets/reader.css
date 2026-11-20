@@ -1,0 +1,756 @@
+/* Adobe Reader 8 (Yozora #910; apps/reader/client/reader.js), measured on the Vista VM (Adobe Reader 8.1.3,
+   refs in ~/.cache/vista-vm/adobe-reader/ref). Client coordinates: Reader's own flat menu bar (19 px, #dedede),
+   a 1 px light and a 1 px #6b6b6b rule, the 32 px toolbar band (#f7f7f7 -> #d9d9d9) and its #6b6b6b rule, then the
+   dark body: a 4 px shadow at its top, the navigation bar (#676767), the panel (#565656, #808080 edges), the
+   9 px splitter and the document pane. Toolbar and panel art is AcroRd32.dll's (RCDATA PNGs). */
+
+.rdr-window .rdr-client {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding: 0 !important;
+    background: #676767;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+    overflow: hidden;
+}
+
+/* ---- the menu bar: flat #dedede, the open title solid #3399ff with white text (Reader draws its own) ---- */
+
+.rdr-window .rdr-menubar {
+    position: relative;
+    display: flex;
+    flex: none;
+    height: 19px;
+    background: #dedede;
+    border-bottom: 1px solid #f0f0f0;
+    box-shadow: 0 1px 0 #6b6b6b;
+    margin-bottom: 1px;
+    z-index: 1;
+}
+
+.rdr-window.rdr-window .rdr-menubar .rdr-menu-title:not(#_) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 19px;
+    min-height: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0 0 1px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    text-shadow: none;
+    outline: none;
+}
+
+.rdr-window.rdr-window .rdr-menubar .rdr-menu-title:is(:hover, .context-open, :focus-visible):not(#_) {
+    background: #3399ff;
+    color: #fff;
+}
+
+.rdr-window .rdr-menubar .rdr-menu-title::before,
+.rdr-window .rdr-menubar .rdr-menu-title::after { content: none; }
+
+/* the document's own close box at the bar's right end (an open document only) */
+.rdr-window.rdr-window .rdr-doc-close:not(#_) {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    width: 11px;
+    height: 11px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+}
+
+.rdr-window .rdr-doc-close::before,
+.rdr-window .rdr-doc-close::after {
+    content: '';
+    position: absolute;
+    left: 1px;
+    top: 4px;
+    width: 9px;
+    height: 2px;
+    background: #000;
+    transform: rotate(45deg);
+}
+
+.rdr-window .rdr-doc-close::after { transform: rotate(-45deg); }
+.rdr-window .rdr-doc-close[hidden] { display: none; }
+
+/* ---- the toolbar band ---- */
+
+.rdr-window .rdr-toolbar {
+    display: flex;
+    flex: none;
+    align-items: stretch;
+    height: 32px;
+    background: linear-gradient(#f7f7f7, #efefef 1px, #eeeeee 3px, #d9d9d9 31px);
+    border-bottom: 1px solid #6b6b6b;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.rdr-window.rdr-no-toolbars .rdr-toolbar,
+.rdr-window.rdr-no-menubar .rdr-menubar,
+.rdr-window.rdr-reading .rdr-toolbar,
+.rdr-window.rdr-reading .rdr-menubar { display: none; }
+
+.rdr-window .rdr-group {
+    display: flex;
+    align-items: center;
+}
+
+.rdr-window .rdr-group[hidden] { display: none; }
+
+/* every item placed by its left margin, from the VM's client x (grips 3 / 104 / 241 / 365 / 447; Print 13, Email 60,
+   Previous 114, Next 144, the page box 174, Zoom Out 249, Zoom In 274, the zoom box 301, Fit Width 372, Fit Page 409,
+   Find 454) */
+.rdr-window .rdr-grip {
+    flex: none;
+    width: 3px;
+    height: 17px;
+    margin: 8px 0 0 12px;
+    align-self: flex-start;
+    background: radial-gradient(circle at 0.5px 0.5px, #999 0.5px, transparent 0.6px) 0 0 / 2px 2px;
+}
+
+.rdr-window .rdr-group[data-bar="file"] > .rdr-grip { margin-left: 3px; }
+.rdr-window .rdr-group[data-bar="zoom"] > .rdr-grip { margin-left: 17px; }
+.rdr-window .rdr-group[data-bar="display"] > .rdr-grip { margin-left: 9px; }
+.rdr-window .rdr-group[data-bar="find"] > .rdr-grip { margin-left: 8px; }
+
+.rdr-window .rdr-sep {
+    flex: none;
+    width: 2px;
+    height: 24px;
+    margin-left: 5px;
+    background: linear-gradient(90deg, #b7b7b7 1px, #f8f8f8 1px);
+}
+
+.rdr-window.rdr-window .rdr-tb:not(#_) {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    min-width: 0;
+    min-height: 0;
+    height: 32px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    overflow: visible;
+}
+
+.rdr-window .rdr-tb img { display: block; pointer-events: none; }
+.rdr-window.rdr-window .rdr-tb[hidden]:not(#_) { display: none; }
+.rdr-window.rdr-window .rdr-tb:disabled:not(#_) { background: none; }
+.rdr-window .rdr-tb:disabled img { filter: grayscale(1) opacity(0.4); }
+
+/* hover and the latched Fit buttons: Reader's flat blue-grey face (#9db9cb, its edges #7e94a2 / #cedce5) */
+.rdr-window.rdr-window .rdr-tb:not(:disabled):hover:not(#_) { background: linear-gradient(#b9cfdc, #c9dae5); box-shadow: inset 0 1px #9db9cb, inset 0 -1px #dbe6ed; }
+.rdr-window.rdr-window .rdr-tb.is-on:not(#_),
+.rdr-window.rdr-window .rdr-tb:not(:disabled):active:not(#_) { background: #9db9cb; box-shadow: inset 0 1px #7e94a2, inset 0 -1px #cedce5; }
+
+.rdr-window.rdr-window .rdr-tb-print:not(#_) { width: 30px; margin-left: 7px; }
+.rdr-window.rdr-window .rdr-tb-email:not(#_) { width: 32px; margin-left: 10px; }
+.rdr-window.rdr-window .rdr-tb-prev:not(#_) { width: 24px; margin-left: 7px; }
+.rdr-window.rdr-window .rdr-tb-next:not(#_) { width: 24px; margin-left: 6px; }
+.rdr-window.rdr-window .rdr-tb-zoomout:not(#_) { width: 19px; margin-left: 5px; }
+.rdr-window.rdr-window .rdr-tb-zoomin:not(#_) { width: 19px; margin-left: 6px; }
+.rdr-window.rdr-window .rdr-tb-fitwidth:not(#_) { width: 28px; margin-left: 4px; }
+.rdr-window.rdr-window .rdr-tb-fitpage:not(#_) { width: 30px; margin-left: 9px; }
+.rdr-window.rdr-window .rdr-tb-findprev:not(#_) { width: 30px; margin-left: 5px; }
+.rdr-window.rdr-window .rdr-tb-findnext:not(#_) { width: 30px; margin-left: 1px; }
+
+/* the page box and the zoom / find boxes: Vista's edit frame, the face #f5f5f5 inside a white rim */
+.rdr-window.rdr-window .rdr-pagebox:not(#_),
+.rdr-window.rdr-window .rdr-combo input:not(#_) {
+    flex: none;
+    box-sizing: border-box;
+    height: 24px;
+    margin: 0;
+    padding: 0 3px;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 0;
+    background: #f5f5f5;
+    box-shadow: inset 0 0 0 1px #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+    outline: none;
+}
+
+.rdr-window.rdr-window .rdr-pagebox:not(#_) { width: 28px; margin-left: 6px; text-align: center; }
+.rdr-window .rdr-pagecount { margin-left: 7px; font: 12px "Segoe UI", Tahoma, sans-serif; color: #000; }
+
+.rdr-window .rdr-combo { display: inline-flex; align-items: center; flex: none; }
+.rdr-window .rdr-zoombox { margin-left: 8px; }
+.rdr-window .rdr-findbox { margin-left: 4px; }
+.rdr-window.rdr-window .rdr-zoombox input:not(#_) { width: 46px; }
+.rdr-window.rdr-window .rdr-findbox input:not(#_) { width: 117px; }
+.rdr-window .rdr-combo input::placeholder { color: #8d8d8d; opacity: 1; }
+.rdr-window .rdr-combo input:disabled { color: #8d8d8d; }
+
+/* the combo's arrow: Reader's 7 x 7 pulldown on the band, 2 px after the box */
+.rdr-window.rdr-window .rdr-combo-drop:not(#_) {
+    flex: none;
+    width: 7px;
+    height: 24px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0 0 0 2px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: url('pulldown.png') center / 7px 7px no-repeat;
+    box-shadow: none;
+}
+
+.rdr-window .rdr-combo-drop:disabled { opacity: 0.4; }
+
+/* ---- the body ---- */
+
+.rdr-window .rdr-body {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    background: #676767;
+}
+
+/* the 4 px shadow under the toolbar, over everything */
+.rdr-window .rdr-body::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 4px;
+    background: linear-gradient(#3e3e3e, #474747 1px, #4f4f4f 2px, #585858 3px, rgba(88, 88, 88, 0) 4px);
+    pointer-events: none;
+    z-index: 3;
+}
+
+.rdr-window.rdr-reading .rdr-navbar,
+.rdr-window.rdr-reading .rdr-panel,
+.rdr-window.rdr-reading .rdr-split { display: none; }
+
+/* the navigation bar: 46 px, 42 px and a #808080 rule while a panel is open; 44 px tabs every 50 px */
+.rdr-window .rdr-navbar {
+    position: relative;
+    flex: none;
+    width: 46px;
+    background: #676767;
+}
+
+.rdr-window.rdr-panel-open .rdr-navbar { width: 42px; border-right: 1px solid #808080; }
+
+.rdr-window .rdr-navtabs {
+    position: absolute;
+    left: 3px;
+    top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.rdr-window .rdr-navtabs-bottom { top: auto; bottom: 5px; }
+
+.rdr-window.rdr-window .rdr-navtab:not(#_) {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 44px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0 3px 0 0;
+    border: 0;
+    border-radius: 6px 0 0 6px;
+    background: none;
+    box-shadow: none;
+}
+
+.rdr-window .rdr-navtab img { display: block; pointer-events: none; }
+.rdr-window.rdr-window .rdr-navtab:hover:not(.is-on):not(#_) { background: #707070; }
+
+/* the open panel's tab joins the panel: its colour, a #808080 top edge, darker below */
+.rdr-window.rdr-window .rdr-navtab.is-on:not(#_) {
+    width: 44px;
+    background: linear-gradient(#808080, #4c4c4c 1px, #444 2px, #4f4f4f 4px, #565656 8px, #565656 38px, #4b4b4b 41px, #3d3d3d 43px, #808080 44px);
+    z-index: 2;
+}
+
+.rdr-window .rdr-navtabs-bottom .rdr-navtab.is-on { background: #565656; }
+
+/* the panel: #565656, a #808080 rim, rounded top, a 4 px dark rim inside it */
+.rdr-window .rdr-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    width: 194px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+    box-sizing: border-box;
+    border: 1px solid #808080;
+    border-left: 0;
+    border-radius: 0 6px 0 0;
+    background: linear-gradient(#4c4c4c, #444 1px, #4b4b4b 2px, #4f4f4f 3px, #525252 4px, #555 6px, #565656 8px);
+    color: #fff;
+}
+
+.rdr-window .rdr-panel[hidden],
+.rdr-window .rdr-split[hidden],
+.rdr-window .rdr-bottom[hidden] { display: none; }
+
+.rdr-window .rdr-panel-head {
+    display: flex;
+    align-items: center;
+    flex: none;
+    height: 26px;
+    padding: 4px 8px 0 12px;
+}
+
+.rdr-window .rdr-panel-title {
+    flex: 1;
+    font: bold 12px "Segoe UI", Tahoma, sans-serif;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.rdr-window.rdr-window .rdr-panel-x:not(#_) {
+    width: 11px;
+    height: 11px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: url('close-white.png') center / 7px 7px no-repeat;
+    box-shadow: none;
+}
+
+.rdr-window .rdr-panel-tools {
+    display: flex;
+    align-items: center;
+    flex: none;
+    height: 32px;
+    padding: 0 8px 0 10px;
+}
+
+.rdr-window.rdr-window .rdr-panel-tool:not(#_) {
+    width: 26px;
+    height: 26px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.rdr-window .rdr-panel-tool img { display: block; margin: auto; }
+.rdr-window.rdr-window .rdr-panel-tool:hover:not(#_) { background: #6e6e6e; }
+
+.rdr-window.rdr-window .rdr-options:not(#_) {
+    margin-left: auto;
+    min-width: 0;
+    min-height: 0;
+    height: 20px;
+    padding: 0 12px 0 4px;
+    border: 0;
+    border-radius: 2px;
+    background: url('pulldown-white.png') right 1px center / 7px 7px no-repeat;
+    box-shadow: none;
+    color: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.rdr-window.rdr-window .rdr-options:hover:not(#_) { background-color: #6e6e6e; }
+
+.rdr-window .rdr-panel-body {
+    flex: 1;
+    min-height: 0;
+    margin: 4px 3px 4px 4px;
+    background: #f5f5f5;
+    color: #000;
+    overflow-x: auto;
+    overflow-y: scroll;
+}
+
+/* bookmarks (the VM, list x from its left edge, d = depth): the box at 7 + 16d, the icon at 20 + 16d, the text at
+   41 + 16d, 22 px rows in Segoe UI 13 px; children hang from a #a0a0a0 line under their parent's icon (28 + 16d) */
+.rdr-window .rdr-bm-tree,
+.rdr-window .rdr-bm-tree ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.rdr-window .rdr-bm-tree { padding: 1px 0 4px; font-size: 13px; }
+.rdr-window .rdr-bm { position: relative; }
+.rdr-window .rdr-bm > ul { display: none; position: relative; }
+.rdr-window .rdr-bm.is-open > ul { display: block; }
+
+/* the line down the children, each child its own run (the last one only to its stub) */
+.rdr-window .rdr-bm .rdr-bm::before {
+    content: '';
+    position: absolute;
+    left: calc(12px + var(--depth) * 16px);
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid #a0a0a0;
+}
+
+.rdr-window .rdr-bm .rdr-bm:last-child::before { bottom: auto; height: 11px; }
+.rdr-window .rdr-bm.is-open > ul::before { content: ''; position: absolute; left: calc(28px + var(--depth) * 16px); top: -5px; height: 5px; border-left: 1px solid #a0a0a0; }
+
+.rdr-window .rdr-bm-row {
+    position: relative;
+    min-height: 22px;
+    padding: 3px 0 3px calc(41px + var(--depth) * 16px);
+    box-sizing: border-box;
+    cursor: default;
+    white-space: normal;
+    line-height: 16px;
+}
+
+.rdr-window .rdr-panel-body.is-nowrap .rdr-bm-row { white-space: nowrap; }
+
+/* the stub to the icon: from the parent's line (children) or from the box (a top-level bookmark) */
+.rdr-window .rdr-bm-row::before {
+    content: '';
+    position: absolute;
+    left: calc(12px + var(--depth) * 16px);
+    top: 11px;
+    width: 8px;
+    border-top: 1px solid #a0a0a0;
+}
+
+.rdr-window .rdr-bm-tree > .rdr-bm > .rdr-bm-row::before { left: 16px; width: 4px; }
+.rdr-window .rdr-bm-tree > .rdr-bm > .rdr-bm-row:not(:has(.rdr-bm-box))::before { content: none; }
+
+.rdr-window .rdr-bm-box {
+    position: absolute;
+    left: calc(7px + var(--depth) * 16px);
+    top: 7px;
+    width: 9px;
+    height: 9px;
+    box-sizing: border-box;
+    border: 1px solid #808080;
+    background: #fff linear-gradient(#000, #000) center / 5px 1px no-repeat;
+    z-index: 1;
+}
+
+.rdr-window .rdr-bm:not(.is-open) > .rdr-bm-row .rdr-bm-box { background: #fff linear-gradient(#000, #000) center / 5px 1px no-repeat, linear-gradient(#000, #000) center / 1px 5px no-repeat; }
+
+.rdr-window .rdr-bm-icon { position: absolute; left: calc(20px + var(--depth) * 16px); top: 3px; width: 16px; height: 16px; }
+.rdr-window .rdr-bm-row.is-current .rdr-bm-icon { filter: grayscale(1) brightness(0.9); }
+.rdr-window .rdr-bm-text { padding: 0 1px; }
+.rdr-window .rdr-bm-row.is-sel .rdr-bm-text { background: #3399ff; color: #fff; }
+
+/* pages: 76 px thumbnails on the light list, the current one's number highlighted and its view framed in red */
+.rdr-window .rdr-thumbs {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 0;
+}
+
+.rdr-window .rdr-thumb {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: default;
+}
+
+.rdr-window .rdr-thumb-page {
+    position: relative;
+    box-sizing: content-box;
+    border: 1px solid #888;
+    background: #fff;
+    overflow: hidden;
+}
+
+.rdr-window .rdr-thumb-page canvas { display: block; width: 100%; height: 100%; }
+.rdr-window .rdr-thumb-view { position: absolute; display: none; box-sizing: border-box; border: 2px solid #f00; }
+.rdr-window .rdr-thumb.is-current .rdr-thumb-view { display: block; }
+.rdr-window .rdr-thumb-num { margin-top: 2px; padding: 0 3px; font-size: 12px; line-height: 15px; }
+.rdr-window .rdr-thumb.is-current .rdr-thumb-num { background: #b5cfe6; }
+
+.rdr-window .rdr-howto { padding: 8px 10px; }
+.rdr-window .rdr-howto-title { font-weight: bold; margin-bottom: 6px; }
+.rdr-window .rdr-howto ul { margin: 0; padding-left: 16px; }
+.rdr-window .rdr-howto li { margin: 3px 0; color: #0645ad; }
+
+.rdr-window .rdr-split {
+    flex: none;
+    width: 9px;
+    cursor: col-resize;
+    background: #676767 radial-gradient(circle, #8c8c8c 0.8px, transparent 1px) center / 3px 4px no-repeat;
+}
+
+.rdr-window.rdr-panel-open .rdr-split { border-left: 1px solid #808080; box-sizing: border-box; }
+
+/* ---- the document pane ---- */
+
+.rdr-window .rdr-main {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.rdr-window .rdr-view {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: scroll;
+    background: #676767;
+    outline: none;
+}
+
+.rdr-window.rdr-empty .rdr-view { background: #676767; }
+.rdr-window.rdr-busy .rdr-view { cursor: progress; }
+
+.rdr-window .rdr-pages { position: relative; min-width: 100%; }
+
+.rdr-window .rdr-page {
+    position: absolute;
+    background: #fff;
+    overflow: hidden;
+    --scale-round-x: 1px;
+    --scale-round-y: 1px;
+}
+
+.rdr-window .rdr-page[hidden] { display: none; }
+.rdr-window .rdr-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.rdr-window[data-tool="hand"] .rdr-view { cursor: grab; }
+.rdr-window[data-tool="hand"] .rdr-view.is-grabbing { cursor: grabbing; }
+.rdr-window[data-tool="hand"] .textLayer,
+.rdr-window[data-tool="marquee"] .textLayer,
+.rdr-window[data-tool="dynamic"] .textLayer { pointer-events: none; }
+.rdr-window[data-tool="marquee"] .rdr-view { cursor: zoom-in; }
+.rdr-window[data-tool="dynamic"] .rdr-view { cursor: ns-resize; }
+
+.rdr-window .rdr-hit { position: absolute; background: #a8cbe9; mix-blend-mode: multiply; pointer-events: none; z-index: 1; }
+.rdr-window .rdr-marquee { position: absolute; border: 1px dotted #000; pointer-events: none; z-index: 4; }
+
+.rdr-window .rdr-links { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.rdr-window .rdr-link { position: absolute; pointer-events: auto; cursor: pointer; }
+
+/* pdf.js's text layer (text_layer_builder.css, pdf.js 5): transparent spans at the glyphs' places */
+.rdr-window .textLayer {
+    position: absolute;
+    text-align: initial;
+    inset: 0;
+    overflow: clip;
+    opacity: 1;
+    line-height: 1;
+    -webkit-text-size-adjust: none;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+    caret-color: CanvasText;
+    z-index: 2;
+    --min-font-size: 1;
+    --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.rdr-window .textLayer[data-main-rotation="90"] { transform: rotate(90deg) translateY(-100%); }
+.rdr-window .textLayer[data-main-rotation="180"] { transform: rotate(180deg) translate(-100%, -100%); }
+.rdr-window .textLayer[data-main-rotation="270"] { transform: rotate(270deg) translateX(-100%); }
+
+.rdr-window .textLayer :is(span, br) {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+}
+
+.rdr-window .textLayer > :not(.markedContent),
+.rdr-window .textLayer .markedContent span:not(.markedContent) {
+    z-index: 1;
+    --font-height: 0;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    --scale-x: 1;
+    --rotate: 0deg;
+    transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.rdr-window .textLayer .markedContent { display: contents; }
+.rdr-window .textLayer span[role="img"] { user-select: none; cursor: default; }
+.rdr-window .textLayer ::selection { background: rgba(0, 96, 192, 0.3); }
+.rdr-window .textLayer br::selection { background: transparent; }
+.rdr-window .textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none; }
+.rdr-window .textLayer.selecting .endOfContent { top: 0; }
+
+/* ---- the bottom panels (Attachments, Comments): across the document pane, as Reader 8 shows them ---- */
+
+.rdr-window .rdr-bottom {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    height: 168px;
+    margin: 4px 4px 4px 0;
+    border: 1px solid #808080;
+    border-radius: 6px 6px 0 0;
+    background: #565656;
+}
+
+.rdr-window .rdr-bottom-tools {
+    display: flex;
+    align-items: center;
+    flex: none;
+    height: 30px;
+    padding: 0 8px;
+    color: #fff;
+}
+
+.rdr-window.rdr-window .rdr-bt:not(#_) {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+    min-height: 0;
+    height: 24px;
+    margin-right: 6px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+    color: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.rdr-window .rdr-bt img { width: 16px; height: 16px; object-fit: contain; }
+.rdr-window .rdr-bt:disabled { color: #a8a8a8; }
+.rdr-window .rdr-bt:disabled img { filter: grayscale(1) opacity(0.5); }
+.rdr-window .rdr-bt-fill { flex: 1; }
+
+.rdr-window .rdr-bottom-body {
+    flex: 1;
+    min-height: 0;
+    margin: 0 3px 3px;
+    background: #fff;
+    color: #000;
+    overflow: auto;
+}
+
+.rdr-window .rdr-att-head,
+.rdr-window .rdr-att-row {
+    display: grid;
+    grid-template-columns: 110px 100px 70px 1fr;
+    align-items: center;
+    height: 20px;
+    padding-left: 4px;
+}
+
+.rdr-window .rdr-att-head { border-bottom: 1px solid #d5d5d5; background: linear-gradient(#fff, #f3f3f3); }
+.rdr-window .rdr-att-head span { padding-left: 2px; border-right: 1px solid #e3e3e3; }
+.rdr-window .rdr-att-row span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding-left: 2px; }
+.rdr-window .rdr-att-row b { font-weight: normal; }
+.rdr-window .rdr-att-row img { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
+.rdr-window .rdr-att-row.is-sel { background: #3399ff; color: #fff; }
+
+.rdr-window .rdr-cm-none { padding: 8px; color: #555; }
+.rdr-window .rdr-cm-row { padding: 4px 8px; border-bottom: 1px solid #e5e5e5; cursor: default; }
+.rdr-window .rdr-cm-text { color: #333; white-space: pre-wrap; }
+
+/* ---- Document Properties' Fonts list ---- */
+
+.rdr-fonts-tree { overflow: auto; border: 1px solid #828790; background: #fff; padding: 4px 6px; box-sizing: border-box; }
+.rdr-fonts-tree .rdr-font { margin-bottom: 6px; }
+.rdr-fonts-tree .rdr-font b { font-weight: normal; }
+.rdr-fonts-tree .rdr-font div { padding-left: 18px; color: #333; }
+
+/* ---- Preferences' Categories list (18 px rows, a rule after Page Display) ---- */
+
+.rdr-cats { box-sizing: border-box; border: 1px solid #828790; background: #fff; overflow: auto; outline: none; }
+.rdr-cats .rdr-cat { height: 18px; line-height: 18px; padding: 0 4px; white-space: nowrap; cursor: default; }
+.rdr-cats .rdr-cat.is-sel { background: #3399ff; color: #fff; }
+.rdr-cats .rdr-cat-sep { height: 1px; margin: 8px 30px 8px 6px; background: #000; }
+
+/* ---- Print's preview (the VM: the width arrow 8 px down, the sheet 199 x 257 at 39, 26, the height arrow at 19,
+   Units / Zoom under it, the page slider at the bottom) ---- */
+.rdr-print-preview { position: relative; overflow: visible !important; }
+.rdr-print-preview .rdr-pp-w { position: absolute; left: 42px; width: 196px; top: 1px; height: 14px; text-align: center; }
+.rdr-print-preview .rdr-pp-w::before { content: ''; position: absolute; left: 0; right: 0; top: 7px; border-top: 1px solid #000; }
+.rdr-print-preview .rdr-pp-w::after { content: ''; position: absolute; left: 0; right: 0; top: 3px; height: 9px; border-left: 1px solid #000; border-right: 1px solid #000; }
+.rdr-print-preview .rdr-pp-w span { position: relative; padding: 0 4px; background: #f0f0f0; }
+.rdr-print-preview .rdr-pp-h { position: absolute; left: 12px; top: 26px; width: 14px; height: 257px; }
+.rdr-print-preview .rdr-pp-h::before { content: ''; position: absolute; left: 7px; top: 0; bottom: 0; border-left: 1px solid #000; }
+.rdr-print-preview .rdr-pp-h::after { content: ''; position: absolute; left: 3px; width: 9px; top: 0; bottom: 0; border-top: 1px solid #000; border-bottom: 1px solid #000; }
+.rdr-print-preview .rdr-pp-h span { position: absolute; left: 0; width: 14px; text-align: center; top: 50%; transform: translateY(-50%); background: #f0f0f0; padding: 3px 0; }
+.rdr-print-preview .rdr-pp-sheet { position: absolute; left: 39px; top: 26px; width: 199px; height: 257px; box-sizing: border-box; border: 2px solid #000; background: #fff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.rdr-print-preview .rdr-pp-units { position: absolute; left: 0; top: 295px; }
+.rdr-print-preview .rdr-pp-zoom { position: absolute; left: 136px; top: 295px; }
+
+/* ---- About Adobe Reader 8: the picture with its 1 px black edge, the buttons and lines over it ---- */
+
+.modal.rdr-about { padding: 0 !important; border: 0 !important; background: none !important; box-shadow: 0 0 0 1px #000, 3px 3px 8px rgba(0, 0, 0, 0.45) !important; }
+.modal.rdr-about > .modal-window-title,
+.modal.rdr-about > .modal-window-controls { display: none !important; }
+.rdr-about .rdr-about-box { position: relative; width: 580px; height: 278px; padding: 0 !important; margin: 0; background: none !important; font: 12px "Segoe UI", Tahoma, sans-serif; color: #fff; overflow: hidden; }
+.rdr-about .rdr-about-art { display: block; width: 580px; height: 278px; }
+.rdr-about .rdr-about-version { position: absolute; left: 24px; top: 111px; font-size: 11px; }
+.rdr-about .rdr-about-copy { position: absolute; left: 24px; top: 190px; font-size: 11px; line-height: 14px; }
+.rdr-about.rdr-about .rdr-about-btn:not(#_) { position: absolute; top: 152px; height: 26px; min-height: 0; padding: 0; font: 11px "Segoe UI", Tahoma, sans-serif; color: #000; border: 1px solid #707070; border-radius: 0; box-shadow: inset 0 0 0 1px #fff; background: linear-gradient(#f2f2f2 50%, #ebebeb 50%, #dddddd); }
+.rdr-about.rdr-about .rdr-about-btn:hover:not(#_) { border-color: #3c7fb1; background: linear-gradient(#eaf6fd 50%, #d9f0fc 50%, #bee6fd); }
+.rdr-about .rdr-about-legal { left: 24px; width: 202px; }
+.rdr-about .rdr-about-credits { left: 232px; width: 76px; }
+
+/* ---- Search ---- */
+
+.rdr-search-window .rdr-search { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 0 !important; background: #f5f5f5; font: 12px "Segoe UI", Tahoma, sans-serif; color: #000; }
+.rdr-search-window.rdr-search-window .rdr-arrange:not(#_) { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; margin: 2px 0 0 2px; min-height: 0; height: 30px; padding: 0 4px; border: 1px solid transparent; border-radius: 3px; background: none; box-shadow: none; font: 12px "Segoe UI", Tahoma, sans-serif; }
+.rdr-search-window.rdr-search-window .rdr-arrange:hover:not(#_) { border-color: #7da2ce; background: linear-gradient(#dcebfc, #c1dbfc); }
+.rdr-search-window .rdr-arrange img { width: 24px; height: 24px; }
+.rdr-search-window .rdr-s-form,
+.rdr-search-window .rdr-s-results { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 4px 10px 8px; }
+.rdr-search-window [hidden] { display: none !important; }
+.rdr-search-window .rdr-s-label { margin: 6px 0 4px; }
+.rdr-search-window.rdr-search-window .rdr-s-q:not(#_) { width: 254px; height: 23px; margin: 0 0 12px 10px; box-sizing: border-box; }
+.rdr-search-window .rdr-s-opt,
+.rdr-search-window .rdr-s-chk { display: flex; align-items: center; gap: 4px; margin: 2px 0 2px 10px; height: 16px; }
+.rdr-search-window.rdr-search-window .rdr-s-folder:not(#_) { width: 244px; margin: 2px 0 14px 20px; }
+.rdr-search-window.rdr-search-window .rdr-s-go:not(#_) { align-self: flex-start; margin: 14px 0 0 202px; width: 61px; height: 22px; min-width: 0; }
+.rdr-search-window .rdr-s-bold { margin-left: 10px; font-weight: bold; }
+.rdr-search-window .rdr-s-new { align-self: flex-start; margin: 14px 0 12px 1px; width: 88px; height: 22px; }
+.rdr-search-window .rdr-s-list { flex: 1; min-height: 0; border: 1px solid #000; background: #f5f5f5; overflow: auto; padding: 4px 0; outline: none; }
+.rdr-search-window .rdr-s-row { position: relative; display: flex; align-items: center; gap: 4px; height: 22px; padding-left: 22px; white-space: nowrap; cursor: default; --depth: 0; }
+.rdr-search-window .rdr-s-row img { width: 16px; height: 16px; object-fit: contain; }
+.rdr-search-window .rdr-s-hit { padding-left: 40px; }
+.rdr-search-window .rdr-s-hit::before { content: ''; position: absolute; left: 14px; top: -11px; width: 16px; height: 22px; border-left: 1px solid #a0a0a0; border-bottom: 1px solid #a0a0a0; box-sizing: border-box; }
+.rdr-search-window .rdr-s-doc:not(.is-open) .rdr-s-hits { display: none; }
+.rdr-search-window .rdr-s-hit.is-sel .rdr-s-ctx { background: #b5cfe6; }
+.rdr-search-window .rdr-bm-box { position: absolute; left: 6px; top: 6px; width: 9px; height: 9px; box-sizing: border-box; border: 1px solid #808080; background: #fff linear-gradient(#000, #000) center / 5px 1px no-repeat; }
+.rdr-search-window .rdr-s-doc:not(.is-open) .rdr-bm-box { background: #fff linear-gradient(#000, #000) center / 5px 1px no-repeat, linear-gradient(#000, #000) center / 1px 5px no-repeat; }
+
+/* Document Properties' fields are read-only in Reader: the grey face */
+[id^="rdrProps"] :is(.tbp-edit, .vdt-textarea)[readonly] { background: #f0f0f0; }

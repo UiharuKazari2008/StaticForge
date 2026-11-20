@@ -65,6 +65,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['camera', 'camera.exe', 'melaton camera', 'webcam', 'web camera'], launchIds: ['camera'] },
     { aliases: ['nightshade', 'nightshade.exe', 'nightshade network', 'nightshade network client', 'nsclient'], launchIds: ['nightshade'] },
     { aliases: ['wordpad', 'wordpad.exe', 'write', 'write.exe'], launchIds: ['wordpad'] },
+    { aliases: ['acrord32', 'acrord32.exe', 'acrobat reader', 'adobe reader'], launchIds: ['adobe-reader'] },
     { aliases: ['taskmgr', 'taskmgr.exe', 'task manager'], launchIds: ['taskmgr'] },
     { aliases: ['chat', 'girlfriend', 'friend', 'erp', 'roleplay', 'messages'], launchIds: ['chat'] },
     { aliases: ['atelier', 'naxt', 'naxt tag', 'tag lab'], launchIds: ['naxt'] },

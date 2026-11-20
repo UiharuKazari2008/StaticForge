@@ -32,7 +32,7 @@
         webp: 'WebP Image', avif: 'AVIF Image', tif: 'TIFF Image', tiff: 'TIFF Image', ico: 'Icon',
         svg: 'SVG Document', txt: 'Text Document', md: 'Markdown Document', json: 'JSON File',
         html: 'HTML Document', htm: 'HTML Document', css: 'Cascading Style Sheet Document',
-        js: 'JScript Script File', pdf: 'PDF Document', zip: 'Compressed (zipped) Folder',
+        js: 'JScript Script File', pdf: 'Adobe Acrobat Document', zip: 'Compressed (zipped) Folder',
         mp3: 'MP3 Format Sound', wav: 'Wave Sound', ogg: 'OGG File', mp4: 'MP4 Video', webm: 'WebM Video',
         mov: 'QuickTime Movie', gifv: 'GIF Video',
         // 7-Zip's own names for the formats it is associated with ("7z Archive"; zip stays Vista's)

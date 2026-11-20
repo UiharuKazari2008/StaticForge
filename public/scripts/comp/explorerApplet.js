@@ -4435,6 +4435,8 @@ class ExplorerApplet {
         icon.className = `${item.icon || 'fas fa-file'} explorer-item-type-icon`;
         // vista-explorer.css draws Vista's folder icon for every folder
         icon.dataset.kind = this.isFolderItem(item) ? 'folder' : 'file';
+        // a PDF shows Adobe Reader's document icon (PDFFile_8.ico, vista-explorer.css; #910)
+        if (icon.dataset.kind === 'file' && /\.pdf$/i.test(item.name || '')) icon.dataset.ftype = 'pdf';
         box.innerHTML = '';
         box.appendChild(icon);
         // Vista's live folder: the folder's pictures stand in it (item.previews from vfsManager.js,
@@ -4660,6 +4662,12 @@ class ExplorerApplet {
                     if (window.openMelatonPaint) await window.openMelatonPaint({ vfsFile: { id: item.targetId, name: item.name, path: this.currentPath } });
                     return;
                 }
+                // a PDF opens in Adobe Reader 8 (apps/reader, #910), or in the program Default Programs gave .pdf
+                if (/\.pdf$/i.test(item.name || '') && window.melatonApps) {
+                    const assoc = window.melatonRegistry ? window.melatonRegistry.get('HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\Explorer\\FileExts', '.pdf', '') : '';
+                    if (!(assoc && assoc !== 'reader' && await this._openFileWith(item, assoc))) await this._openFileWith(item, 'reader');
+                    return;
+                }
                 // a Rich Text document opens in WordPad (apps/wordpad, a system package)
                 if (/\.(rtf|wri)$/i.test(item.name || '') && window.melatonApps) {
                     await window.melatonApps.launch({ packageId: 'wordpad', args: { file: { id: item.targetId || item.id, name: item.name, path: this.currentPath } } });
@@ -4724,6 +4732,7 @@ class ExplorerApplet {
         const programs = [
             { id: 'notepad', name: 'Notepad', publisher: 'Xyridian Corporation', icon: icon('vista-notepad') },
             { id: 'wordpad', name: 'WordPad', publisher: 'Xyridian Corporation', icon: icon('vista-wordpad') },
+            { id: 'reader', name: 'Adobe Reader 8', publisher: 'Adobe Systems Incorporated', icon: icon('adobe-reader') },
             { id: 'paint', name: 'Paint', publisher: 'Xyridian Corporation', icon: icon('vista-paint') },
             { id: 'lumen', name: 'Lumen', publisher: 'Dreamscape', icon: icon('vista-photo-viewer') }
         ];
@@ -4757,6 +4766,11 @@ class ExplorerApplet {
             case 'wordpad':
                 if (!window.melatonApps) return false;
                 await window.melatonApps.launch({ packageId: 'wordpad', args: { file } });
+                return true;
+            case 'reader':
+                // Adobe Reader 8 (apps/reader, #910) reads PDFs only
+                if (!window.melatonApps || !/\.pdf$/i.test(item.name || '')) return false;
+                await window.melatonApps.launch({ packageId: 'reader', args: { file } });
                 return true;
             case 'paint':
                 await featureLoader.loadFeature('paint');
