@@ -327,7 +327,7 @@ async function replicationCargoHandleImport(root, host) {
             if (host && host.showToast) host.showToast('error', err.message);
         }
     };
-    input.click();
+    void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Choose Cargo' }) : input.click());
 }
 
 async function replicationCargoHandleUpsert(root, host) {

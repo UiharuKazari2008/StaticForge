@@ -288,7 +288,8 @@
                     msg(`The file ${file.name} is not a valid font file.`, 'Install Font');
                 }
             };
-            input.click();
+            // the Open dialog (fileOpenPicker.js), Receive from Device for this device's own fonts
+            void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Install Font' }) : input.click());
         },
         organize() {}, views() {}
     };
@@ -805,7 +806,7 @@
         },
         chatphoto() {
             const f = doc.querySelector('.cpl-instance.cpl-current .cpl-chat-file');
-            if (f) { f.value = ''; f.click(); }
+            if (f) { f.value = ''; void (window.fileOpenPicker ? window.fileOpenPicker.open(f, { title: 'Browse for a picture' }) : f.click()); }
         },
         chatnophoto() {
             if (!chatState.draft) return;

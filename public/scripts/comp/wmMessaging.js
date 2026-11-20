@@ -2826,7 +2826,8 @@
             };
             reader.readAsDataURL(file);
         });
-        input.click();
+        // WM's Open dialog (fileOpenPicker.js): My Documents and the phone's storage, Browse device... in Menu
+        void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Insert' }) : input.click());
     }
 
     // ---------------------------------------------------------------- Message Options (165521)

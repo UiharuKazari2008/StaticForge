@@ -3527,7 +3527,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             };
             reader.readAsText(f);
         };
-        file.click();
+        void (window.fileOpenPicker ? window.fileOpenPicker.open(file, { title: 'Choose Key File' }) : file.click());
     },
 
     _openKeychainEditPanel(root, serviceId) {

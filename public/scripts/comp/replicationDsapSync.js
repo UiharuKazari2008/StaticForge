@@ -350,7 +350,7 @@ async function replicationSyncHandleManualImport(root, host) {
             if (host && host.showToast) host.showToast('error', err.message);
         }
     };
-    input.click();
+    void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Choose Archive' }) : input.click());
 }
 
 function replicationSyncWirePanel(root, host) {

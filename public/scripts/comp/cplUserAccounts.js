@@ -368,7 +368,8 @@
                     paint();
                 } catch (err) { toast('error', err.message); }
             };
-            input.click();
+            // Browse for more pictures: the Open dialog (fileOpenPicker.js), Receive from Device for this device's own
+            void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Open' }) : input.click());
             return undefined;
         }
         if (action === 'picture-save' && client) {

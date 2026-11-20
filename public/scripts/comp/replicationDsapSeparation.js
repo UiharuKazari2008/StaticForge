@@ -422,7 +422,7 @@ function replicationSepWireBootstrapPanel(root) {
     const applyBtn = root.querySelector('#replicationSepApplyBtn');
 
     if (pickManifest && manifestInput) {
-        pickManifest.addEventListener('click', () => manifestInput.click());
+        pickManifest.addEventListener('click', () => void (window.fileOpenPicker ? window.fileOpenPicker.open(manifestInput, { title: 'Choose Manifest' }) : manifestInput.click()));
         manifestInput.addEventListener('change', () => {
             state.manifestFile = manifestInput.files && manifestInput.files[0] ? manifestInput.files[0] : null;
             replicationSepUpdateSummary(root);
@@ -431,7 +431,7 @@ function replicationSepWireBootstrapPanel(root) {
     }
 
     if (pickArchive && archiveInput) {
-        pickArchive.addEventListener('click', () => archiveInput.click());
+        pickArchive.addEventListener('click', () => void (window.fileOpenPicker ? window.fileOpenPicker.open(archiveInput, { title: 'Choose Archive' }) : archiveInput.click()));
         archiveInput.addEventListener('change', () => {
             state.archiveFile = archiveInput.files && archiveInput.files[0] ? archiveInput.files[0] : null;
             replicationSepUpdateSummary(root);

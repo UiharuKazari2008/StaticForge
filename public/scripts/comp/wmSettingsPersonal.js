@@ -889,7 +889,8 @@
             if (!d.canEdit) return;
             el.querySelectorAll('[data-pic]').forEach((c) => c.addEventListener('click', () => { d.chosen = c.dataset.pic; d.upload = null; api.rerender(); }));
             const input = el.querySelector('[data-f="file"]');
-            el.querySelector('[data-act="browse"]').addEventListener('click', () => input.click());
+            // WM's Open dialog (fileOpenPicker.js), Browse device... in Menu
+            el.querySelector('[data-act="browse"]').addEventListener('click', () => void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Picture' }) : input.click()));
             input.addEventListener('change', async () => {
                 const file = input.files && input.files[0];
                 if (!file) return;

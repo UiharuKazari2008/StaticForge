@@ -1632,7 +1632,7 @@ class Director {
     renderAttachDropdown() {
         if (!this.directorAttachDropdownMenu) return;
         const options = [
-            { id: 'computer', name: 'This computer', icon: 'fas fa-laptop' },
+            { id: 'computer', name: 'File...', icon: 'fas fa-laptop' },
             { id: 'studio', name: 'Current image', icon: 'fas fa-image' },
             { id: 'explorer', name: 'Explorer selection', icon: 'fas fa-folder-open' }
         ];
@@ -6210,7 +6210,12 @@ class Director {
 
     chooseAttachmentSource(source) {
         if (source === 'computer') {
-            if (this.directorAttachFileInput) this.directorAttachFileInput.click();
+            const input = this.directorAttachFileInput;
+            if (!input) return;
+            // the Open dialog (fileOpenPicker.js): Melaton's files and drives, Receive from Device for this
+            // device's own; the phone keeps its own Attach File (wmFileDialogs.js wraps this input's click)
+            if (window.fileOpenPicker && !Object.prototype.hasOwnProperty.call(input, 'click')) void window.fileOpenPicker.open(input, { title: 'Attach File' });
+            else input.click();
             return;
         }
         if (source === 'studio') {

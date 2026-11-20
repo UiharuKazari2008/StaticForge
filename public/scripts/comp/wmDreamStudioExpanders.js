@@ -425,7 +425,9 @@
                     box('Import Expanders', `${plural(Object.keys(out).length, 'expander was', 'expanders were')} imported.`);
                 } catch (err) { box('Import Expanders', `The expanders could not be imported. ${errText(err)}`.trim(), 'error'); }
             }, { once: true });
-            input.click();
+            input.addEventListener('cancel', () => input.remove(), { once: true });
+            // WM's Open dialog (fileOpenPicker.js): a .json in My Documents, or Browse device...
+            void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Import Expanders' }) : input.click());
         }
 
         // ------------------------------------------------------------ Local Expanders

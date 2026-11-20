@@ -349,7 +349,7 @@
                 case 'properties': this.properties(); break;
                 case 'about': this.about(); break;
                 case 'diag': this.diagnostics(); break;
-                case 'import-menu': this.importing = 'menu.json'; this.el('.xl-file').click(); break;
+                case 'import-menu': this.importing = 'menu.json'; void (window.fileOpenPicker ? window.fileOpenPicker.open(this.el('.xl-file'), { title: 'Import' }) : this.el('.xl-file').click()); break;
                 case 'export-log': this.exportLog(); break;
                 case 'toggle': await this.run(el.dataset.path, 'toggle', Number(el.dataset.value)); break;
                 case 'send': await this.run(el.dataset.path, 'send'); break;

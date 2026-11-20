@@ -640,7 +640,7 @@
             logoBrowse.type = 'button';
             logoBrowse.className = 'sec-dsap-action-btn';
             logoBrowse.textContent = 'Choose picture…';
-            logoBrowse.addEventListener('click', () => logoInput.click());
+            logoBrowse.addEventListener('click', () => void (window.fileOpenPicker ? window.fileOpenPicker.open(logoInput, { title: 'Choose picture' }) : logoInput.click()));
             const logoClear = document.createElement('button');
             logoClear.type = 'button';
             logoClear.className = 'sec-dsap-action-btn';

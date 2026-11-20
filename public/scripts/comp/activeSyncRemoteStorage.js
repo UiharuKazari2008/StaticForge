@@ -333,7 +333,9 @@
                 }
                 resolve();
             }, { once: true });
-            pick.click();
+            pick.addEventListener('cancel', () => resolve(), { once: true });
+            // the Open dialog (fileOpenPicker.js): a package in Downloads, or Receive from Device for this computer's disk
+            void (window.fileOpenPicker ? window.fileOpenPicker.open(pick, { title: 'Install a program on your device' }) : pick.click());
         })
     });
 

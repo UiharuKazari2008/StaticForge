@@ -439,7 +439,9 @@ class ExplorerApplet {
         const items = [
             ...(sortBy ? [sortBy, { separator: true }] : []),
             { icon: 'fas fa-folder-plus', text: 'New Folder', action: 'explorer-new-folder' },
-            { icon: 'fas fa-upload', text: 'Upload', action: 'explorer-upload' }
+            // files from this device's own disk (Yukimi, Nov 20 2026: Receive from Device, disabled on DreamOS,
+            // whose own drives are already in Computer) (#910)
+            { icon: 'fas fa-upload', text: 'Receive from Device', action: 'explorer-upload', disabled: !!(window.fileOpenPicker && !window.fileOpenPicker.canReceive) }
         ];
         if (this.clipboard) {
             items.push({ separator: true });
@@ -2503,7 +2505,11 @@ class ExplorerApplet {
                     if (item?.targetId) confirmDeleteWorkspace(item.targetId, item.name);
                     break;
                 case 'explorer-upload':
-                    this.el?.fileInput?.click();
+                    // the device's own chooser (fileOpenPicker.receive: nothing on DreamOS)
+                    if (this.el?.fileInput) {
+                        if (window.fileOpenPicker) window.fileOpenPicker.receive(this.el.fileInput);
+                        else this.el.fileInput.click();
+                    }
                     break;
                 case 'explorer-rename':
                     await this.renameSelection();
@@ -2917,7 +2923,12 @@ class ExplorerApplet {
         if (e.replaceBtn) e.replaceBtn.addEventListener('click', () => this.replaceSelection());
         if (e.deleteBtn) e.deleteBtn.addEventListener('click', () => this.deleteSelection());
         if (e.newFolderBtn) e.newFolderBtn.addEventListener('click', () => this.createFolder());
-        if (e.uploadBtn) e.uploadBtn.addEventListener('click', () => e.fileInput?.click());
+        // Receive from Device: the device's own chooser (fileOpenPicker.receive: nothing on DreamOS)
+        if (e.uploadBtn) e.uploadBtn.addEventListener('click', () => {
+            if (!e.fileInput) return;
+            if (window.fileOpenPicker) window.fileOpenPicker.receive(e.fileInput);
+            else e.fileInput.click();
+        });
         if (e.fileInput) e.fileInput.addEventListener('change', (ev) => this.handleFileUpload(ev.target.files));
         if (e.viewLargeBtn) e.viewLargeBtn.addEventListener('click', () => this.setViewMode('icons-lg'));
         if (e.viewDetailsBtn) e.viewDetailsBtn.addEventListener('click', () => this.setViewMode('details'));
@@ -4809,7 +4820,9 @@ class ExplorerApplet {
             uploadBtn.classList.toggle('hidden', isWsList || this._isComputerPath()
                 || (this._isPhonePath() && !this._isWritableFolderPath(this.currentPath))
                 // the Sequenzia network drive is read-only for now (explorerSequenzia.js)
-                || this._isSequenziaPath());
+                || this._isSequenziaPath()
+                // DreamOS: nothing to receive from (fileOpenPicker.canReceive)
+                || !!(window.fileOpenPicker && !window.fileOpenPicker.canReceive));
         }
     }
 
@@ -5328,8 +5341,10 @@ class ExplorerApplet {
                 if (progress) progress.finish();
             }
         });
+        input.addEventListener('cancel', () => input.remove(), { once: true });
         document.body.appendChild(input);
-        input.click();
+        // Replace with: the Open dialog (fileOpenPicker.js), Receive from Device for this device's own file
+        void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Replace With' }) : input.click());
     }
 
     async downloadSelection() {

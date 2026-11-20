@@ -965,7 +965,9 @@
             input.remove();
             if (files.length) addPending(files);
         }, { once: true });
-        input.click();
+        input.addEventListener('cancel', () => input.remove(), { once: true });
+        // WM's Open dialog (fileOpenPicker.js): My Documents and the phone's storage, Browse device... in Menu
+        void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Insert' }) : input.click());
         // a cancelled picker fires no change: tidy up later
         setTimeout(() => { if (input.isConnected && !(input.files && input.files.length)) input.remove(); }, 120000);
     }

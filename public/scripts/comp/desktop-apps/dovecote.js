@@ -3248,7 +3248,7 @@ const doveBuildComposeWindow = function (key, initial) {
     };
 
     if (pendingAttachments.length) renderAttachList();
-    attachBtn.addEventListener('click', () => fileInput.click());
+    attachBtn.addEventListener('click', () => void (window.fileOpenPicker ? window.fileOpenPicker.open(fileInput, { title: 'Insert File' }) : fileInput.click()));
     fileInput.addEventListener('change', async () => {
         const files = Array.from(fileInput.files || []);
         fileInput.value = '';

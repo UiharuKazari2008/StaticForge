@@ -6440,7 +6440,8 @@ function showVibeBundlePreview(vibes) {
                     }
                 };
                 
-                input.click();
+                // the Open dialog (fileOpenPicker.js), Receive from Device for this device's own
+                void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Choose Preview' }) : input.click());
             };
             
             buttonsContainer.appendChild(thumbnailButton);
@@ -6496,7 +6497,8 @@ function showVibeBundlePreview(vibes) {
                     }
                 };
                 
-                input.click();
+                // the Open dialog (fileOpenPicker.js), Receive from Device for this device's own
+                void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Choose Source Image' }) : input.click());
             };
             
             buttonsContainer.appendChild(sourceButton);
@@ -6928,7 +6930,8 @@ function initializeCacheManager() {
             
             // Append to body temporarily and trigger click
             document.body.appendChild(fileInput);
-            fileInput.click();
+            // the Open dialog (fileOpenPicker.js), Receive from Device for this device's own
+            void (window.fileOpenPicker ? window.fileOpenPicker.open(fileInput, { title: 'Select Files' }) : fileInput.click());
             
             // Clean up after a short delay
             setTimeout(() => {

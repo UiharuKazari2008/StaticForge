@@ -1246,7 +1246,7 @@
                             };
                             r.readAsText(f);
                         };
-                        input.click();
+                        void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Choose Key File' }) : input.click());
                     });
                 }
             },

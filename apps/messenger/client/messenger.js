@@ -709,7 +709,7 @@
                 case 'new': this.newMessage('', null); return;
                 case 'attach':
                     if (!this.chatGuid || this.compose || f.attachments === false) return;
-                    this.q('.mm-file').click();
+                    void (window.fileOpenPicker ? window.fileOpenPicker.open(this.q('.mm-file'), { title: 'Send a File' }) : this.q('.mm-file').click());
                     return;
                 case 'send': await this.send(); return;
                 case 'reply': if (sel && f.reply) this.setReply(sel); return;

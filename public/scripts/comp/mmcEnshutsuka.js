@@ -729,7 +729,7 @@
             };
             reader.readAsDataURL(file);
         });
-        input.click();
+        void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Choose Photo' }) : input.click());
     }
 
     async function savePersona(c) {

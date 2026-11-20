@@ -153,7 +153,8 @@
                     if (!f) { resolve(null); return; }
                     f.text().then((text) => resolve({ name: f.name, text }), () => resolve({ error: 'The file could not be read.' }));
                 });
-                input.click();
+                input.addEventListener('cancel', () => resolve(null), { once: true });
+                void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Import' }) : input.click());
             });
         }
 

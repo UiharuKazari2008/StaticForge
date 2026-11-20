@@ -1136,7 +1136,7 @@ async function grimoireDialogIdle() {
 
 /**
  * An upload field on the page (Yozora #628): IE7's "Choose File to Upload", here the desktop's Open
- * dialog over the VFS (studioSession.js studioOpenFolderDialog with a host), with Select on Client
+ * dialog over the VFS (studioSession.js studioOpenFolderDialog with a host), with Receive from Device
  * for files from this computer. The files go to the remote browser (grimoireBrowserBridge.js
  * file-chooser routes) and the page's input gets them; Cancel leaves the input empty.
  */
@@ -1186,9 +1186,13 @@ async function grimoireShowFileChooser(found, data) {
         onOpen: (item) => sendItems([item]),
         onOpenMany: data.multiple ? (items) => sendItems(items) : null,
         onCancel: () => reply(true),
+        // Receive from Device (Yukimi, Nov 20 2026): this device's own chooser; disabled on DreamOS, whose
+        // drives are already in the dialog (fileOpenPicker.js) (#910)
         extraButton: {
-            label: 'Select on <u>C</u>lient',
+            label: 'Receive from <u>D</u>evice',
+            disabled: !!(window.fileOpenPicker && !window.fileOpenPicker.canReceive),
             onClick: () => {
+                if (window.fileOpenPicker && !window.fileOpenPicker.canReceive) return;
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.multiple = !!data.multiple;

@@ -1276,7 +1276,7 @@
         if (isWritable(path)) {
             items.push({ separator: true });
             items.push({ icon: 'fas fa-folder-plus', text: 'New Folder', action: 'explorer-new-folder' });
-            items.push({ icon: 'fas fa-upload', text: 'Upload', action: 'explorer-upload' });
+            items.push({ icon: 'fas fa-upload', text: 'Receive from Device', action: 'explorer-upload', disabled: !!(root.fileOpenPicker && !root.fileOpenPicker.canReceive) });
             if (app.clipboard) items.push({ icon: 'fas fa-paste', text: 'Paste', action: 'explorer-paste' });
         }
         items.push({ separator: true });

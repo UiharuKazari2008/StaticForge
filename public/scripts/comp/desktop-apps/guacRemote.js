@@ -1011,7 +1011,7 @@ function buildDesktopGuacSessionBar(modal) {
         if (!files.length) return;
         if (!api || !api.upload(files)) desktopGuacSetStatus(modal, 'This session has no shared folder');
     });
-    uploadBtn.addEventListener('click', () => fileInput.click());
+    uploadBtn.addEventListener('click', () => void (window.fileOpenPicker ? window.fileOpenPicker.open(fileInput, { title: 'Upload' }) : fileInput.click()));
     const downloads = document.createElement('div');
     downloads.className = 'desktop-guac-downloads';
     const downloadsBtn = desktopGuacBarButton('Downloads', 'Where session downloads go');
