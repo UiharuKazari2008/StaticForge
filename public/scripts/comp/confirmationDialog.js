@@ -170,7 +170,36 @@ function wireConfirmationDialogKeydownScope() {
 }
 
 // Create and show confirmation dialog with multiple options
+/**
+ * Melaton Mobile (the phone shell) has its own message box (wmShell.messageBox, the WM look): a plain question or
+ * notice asked through the desktop's dialog is shown there instead, so no desktop dialog or its buttons reach the
+ * phone (Yukimi, Nov 19, #951). A dialog that builds its own content (onDialogReady / resolveValue, form controls in
+ * the message) keeps this one. Returns null when it is not a phone-shell plain dialog.
+ */
+function confirmationOnPhoneShell(message, options, config) {
+    const wm = window.wmShell;
+    const phone = window.uiShell === 'mobile' || document.documentElement.classList.contains('ui-mobile');
+    if (!phone || !wm || typeof wm.messageBox !== 'function') return null;
+    const cfg = config || {};
+    if (typeof cfg.onDialogReady === 'function' || typeof cfg.resolveValue === 'function') return null;
+    const html = String(message == null ? '' : message);
+    if (/<(input|select|textarea|button|form|img|canvas|video|label)\b/i.test(html)) return null;
+    let list = options;
+    if (typeof list === 'string') list = [{ text: list, value: true }, { text: 'Cancel', value: false }];
+    if (!Array.isArray(list) || !list.length) list = [{ text: 'OK', value: true }];
+    const text = html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n').replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+        .replace(/\n{3,}/g, '\n\n').trim();
+    const ic = String(cfg.icon || '');
+    const icon = /triangle|warning/.test(ic) ? 'warning' : /circle-xmark|times-circle|exclamation-circle|error|ban/.test(ic) ? 'error' : /question/.test(ic) ? 'question' : /info/.test(ic) ? 'info' : (list.length > 1 ? 'question' : null);
+    const buttons = list.map((o) => ({ text: String(o && o.text != null ? o.text : 'OK'), value: o ? o.value : undefined }));
+    const cancel = buttons.find((b) => b.value === false || b.value === null || b.value === undefined);
+    return wm.messageBox({ title: cfg.title || 'Melaton Mobile', text, icon, buttons, cancelValue: cancel ? cancel.value : buttons[buttons.length - 1].value, modal: buttons.length > 1 });
+}
+
 function showConfirmationDialog(message, options = [], event = null, config = {}) {
+    const onPhone = confirmationOnPhoneShell(message, typeof options === 'string' ? [{ text: options, value: true }, { text: arguments[2] || 'Cancel', value: false }] : options, typeof options === 'string' ? {} : config);
+    if (onPhone) return onPhone;
     return new Promise((resolve, reject) => {
         // Handle legacy format: (message, confirmText, cancelText, event)
         if (typeof options === 'string') {

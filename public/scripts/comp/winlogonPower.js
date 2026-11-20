@@ -572,7 +572,17 @@ function forgetDirectorReopen() {
         // an instant: a box that flashes says nothing)
         let box = null;
         let text = 'Installing updates...';
+        // #951: the phone installs its updates the way Windows Mobile installs a package - wceload's
+        // "Installing Melaton Mobile update..." screen and bar, then its success page after the restart
+        // (wmShell.packageInstall); the progress box stays for a shell without it
+        const pkg = window.wmShell && typeof window.wmShell.packageInstall === 'function' ? window.wmShell.packageInstall : null;
+        let installed = false;
         const boxTimer = setTimeout(() => {
+            if (pkg) {
+                const screen = pkg();
+                box = { update: (o) => { if (o && o.pct != null) screen.progress(o.pct); }, close: () => { if (installed) screen.restartNext(); else screen.cancel(); }, screen };
+                return;
+            }
             if (window.wmShell && typeof window.wmShell.progressBox === 'function') box = window.wmShell.progressBox({ title: 'Melaton Update', text, pct: null });
         }, 400);
         try {
@@ -590,6 +600,8 @@ function forgetDirectorReopen() {
                     // the download's progress on the box's bar (#951: updates held as a count download here)
                     onPercent: (pct) => { if (box) box.update({ text, pct }); }
                 });
+                installed = true;
+                if (box && box.screen) box.screen.progress(100);
             }
         } catch (_) { /* restart anyway: the files are in the cache */ }
         clearTimeout(boxTimer);

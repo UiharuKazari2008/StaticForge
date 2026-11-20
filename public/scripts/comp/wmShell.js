@@ -11988,6 +11988,35 @@
         }
     }
 
+    /**
+     * Melaton Update installs as a package (Yukimi, Nov 19, #951): wceload's screen while the update downloads and
+     * installs ("Installing Melaton Mobile update ...", the segmented bar, the wait cursor, no soft keys); before
+     * the soft reset that finishes it, the next start shows "... was successfully installed on your device."
+     *   const job = wmShell.packageInstall(); job.progress(pct); job.restartNext(); job.cancel();
+     */
+    function packageInstall() {
+        installKind = 'update';
+        installMax = 0;
+        setBoot('install');
+        setInstallProgress(0);
+        let open = true;
+        return {
+            progress(pct) { if (open) setInstallProgress(Number(pct) || 0); },
+            /** the restart that installs it comes next: its start says it is done */
+            restartNext() { try { sessionStorage.setItem(INSTALL_DONE_KEY, 'update'); } catch (_) { /* storage off */ } },
+            /** installed in place (styles, pictures, a package): wceload's last page, then back to the shell */
+            done() { if (!open) return; open = false; showInstallDone('update'); },
+            /** stopped (offline, cancelled): back to what was on screen */
+            cancel() {
+                if (!open) return;
+                open = false;
+                installMax = 0;
+                setBoot('done');
+                activate(current || 'today');
+            }
+        };
+    }
+
     function swDownloading() {
         const swm = window.serviceWorkerManager;
         if (!swm || swm.bootComplete) return null;
@@ -12088,6 +12117,13 @@
         // minimum, the connection and the start-up steps carrying on behind it (a flaky network held the splash up to 25 s)
         let installed = false;
         try { installed = !!localStorage.getItem('melatonManifestHash') && !!(window.AndroidDevice || window.AndroidCaption || window.AndroidNotification); } catch (_) { /* storage off */ }
+        // an update installed by the restart that ended the last session (packageInstall): wceload's last page needs
+        // nothing from the server, so it shows before the connection is ready too (#951)
+        if (installed && !ready && elapsed >= BOOT_MIN_SPLASH_MS) {
+            let doneKind = null;
+            try { doneKind = sessionStorage.getItem(INSTALL_DONE_KEY); } catch (_) { /* storage off */ }
+            if (doneKind === 'update') { clearInterval(bootTimer); bootTimer = null; showInstallDone('update'); return; }
+        }
         if (installed && !ready && elapsed >= BOOT_MIN_SPLASH_MS) {
             try { sessionStorage.removeItem('melatonOfflineStart'); } catch (_) { /* storage off */ }
             finishBoot();
@@ -12525,6 +12561,7 @@
         open,
         back,
         messageBox,
+        packageInstall,
         /** Dreamscape Mainframe Server box while the server boots: mainframeBox(percent, stage); null hides. */
         mainframeBox: (percent, stage) => mainframeBox(percent, stage),
         /** Work the user started, as a WM box with bar / preview / Hide / Cancel (#806): progressBox({ title, text, pct, preview, onCancel }). */

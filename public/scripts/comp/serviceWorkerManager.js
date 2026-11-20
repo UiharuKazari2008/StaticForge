@@ -536,6 +536,16 @@ class ServiceWorkerManager {
         return verdict.route === 'installer';
     }
 
+    /**
+     * The Dreamscape app's own clients (the Android app's phone / cover / DeX pages, Melaton Mobile, DreamOS) once
+     * installed: they boot their kept copy at once and never wait on, or show, the boot's update check (#951).
+     * A desktop browser keeps the checked boot.
+     */
+    _appClientStartsAtOnce() {
+        const app = !!(window.AndroidHardware || window.AndroidDisplay || window.DreamOSHardware || window.uiShell === 'mobile');
+        return app && this._isInstalledClient();
+    }
+
     /** The installed mark: the desktop's last boot step, Melaton Mobile's, a finished install, or a cache once proven in sync. */
     _isInstalledClient() {
         try {
@@ -5969,6 +5979,13 @@ class ServiceWorkerManager {
         } finally {
             this._bootOrchestrating = false;
         }
+        if (outcome && outcome.ask && this._appClientStartsAtOnce()) {
+            // (only reachable on a path the early start above did not cover) the app client starts anyway; the
+            // update flow takes it from there
+            console.warn('[boot] update check could not settle; starting on the kept copy:', outcome.ask);
+            this.queueCacheUpdateUntilBoot(null, true);
+            return null;
+        }
         if (outcome && outcome.ask) {
             const choice = await this._askBootGateRetry(outcome.ask, { install: outcome.install === true });
             if (choice === 'restart') {
@@ -5996,6 +6013,19 @@ class ServiceWorkerManager {
             if (this._isContinuityDexWindow()) {
                 this._clearLegacyInstallWizardSession();
                 document.body.classList.remove('initializing');
+                this._resolveBootComplete();
+                return null;
+            }
+
+            // An installed app client (the phone and its cover, DreamOS) starts on its kept copy with no server wait
+            // (installed-boot-zero-wait): the check runs once the shell is up, through the normal update flow (a
+            // count, or a download in the automatic modes). It never shows the boot updater's box - the desktop
+            // message box "The offline cache still does not match..." reached the Fold's phone shell when files
+            // changed while it checked (#951). (A DeX window already returned above.)
+            if (this._appClientStartsAtOnce()) {
+                this._clearLegacyInstallWizardSession();
+                document.body.classList.remove('initializing');
+                this.queueCacheUpdateUntilBoot(null, true);
                 this._resolveBootComplete();
                 return null;
             }

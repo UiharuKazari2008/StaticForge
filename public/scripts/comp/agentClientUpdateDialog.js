@@ -424,6 +424,11 @@
      * A second push after abort replaces the aborted dialog with a new countdown.
      */
     function showAgentClientUpdateDialog(options) {
+        // never on Melaton Mobile (the phone shell): this is the desktop's mandatory countdown; a phone takes its
+        // updates through its own Melaton Update (WM package install) when its owner chooses (Yukimi, Nov 19, #951)
+        if (window.uiShell === 'mobile' || document.documentElement.classList.contains('ui-mobile')) {
+            return Promise.resolve({ ok: false, refused: true, error: 'Melaton Mobile does not take agent-requested updates; its owner installs them from Melaton Update.' });
+        }
         if (phase === 'counting' || phase === 'applying') {
             return Promise.resolve({
                 ok: true,
