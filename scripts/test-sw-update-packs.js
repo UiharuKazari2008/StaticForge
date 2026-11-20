@@ -82,7 +82,8 @@ async function world(opts = {}) {
         Promise, JSON, Map, Set, Math, Number, String, Array, Object, Uint8Array, ArrayBuffer, TextDecoder, TextEncoder, Error,
         URL, Headers, Response, AbortController, crypto: globalThis.crypto,
         Request: class extends Request { constructor(u, init) { super(new URL(u, 'http://x'), init); } },
-        Date: { now: () => clock },
+        // each read moves the clock 1 ms: files put back in one loop get _nextAt a few ms apart, as in a browser
+        Date: { now: () => clock++ },
         setTimeout: (fn, ms) => { const t = { fn, at: clock + (ms || 0) }; timers.push(t); setImmediate(() => { if (t.cancelled) return; clock = Math.max(clock, t.at); fn(); }); return t; },
         clearTimeout: (t) => { if (t) t.cancelled = true; },
         caches: { open: async () => cache },
@@ -170,7 +171,7 @@ async function world(opts = {}) {
     // 2. the server answers 503 + Retry-After (starting), then the pack: two requests, no per-file GET
     w = await world({ files, script: [{ status: 503, headers: { 'Retry-After': '5' } }] });
     await w.api.cacheStaticFiles(w.manifest.slice(), true);
-    assert.strictEqual(w.requests.length, 2, '503, then one more pack');
+    assert.strictEqual(w.requests.length, 2, '503, then ONE more pack (the files put back a few ms apart go together)');
     same(w.requests[1].files.sort(), w.manifest.map((f) => f.url).sort(), 'every file in the second pack');
     assert.strictEqual(w.complete().updatedFiles.length, 5);
     w.cleanup();

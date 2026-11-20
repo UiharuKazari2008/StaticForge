@@ -450,7 +450,9 @@ async function nextStaticRetry(signal) {
         downloadState.lastProgressTime = Date.now();
         await new Promise((resolve) => setTimeout(resolve, Math.min(1000, Math.max(0, retry[0]._nextAt - Date.now()))));
     }
-    const now = Date.now();
+    // the files due within a second of the first go together: one pack per retry round (#951; a 503's files are put
+    // back a few ms apart, and the first alone made its own pack)
+    const now = Date.now() + 1000;
     for (let i = retry.length - 1; i >= 0; i--) {
         if (retry[i]._nextAt <= now) downloadState.queue.unshift(retry.splice(i, 1)[0]);
     }
