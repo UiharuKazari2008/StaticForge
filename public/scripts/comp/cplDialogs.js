@@ -178,8 +178,9 @@
     // ---- DreamOS: the machine's own pointing devices and keyboard (cafeready settings.rs / power.rs) --------------------
     // Vista adds a tab to Mouse / Keyboard Properties for what the hardware's driver offers (a trackpad's settings, a
     // notebook's function keys and keyboard light); these are those tabs for the DreamOS laptop, in Vista's property
-    // page metrics (252 x 218 DLU, MS Shell Dlg 8). Shown only where the hardware is there. A Force Touch trackpad's
-    // click feedback strength is not offered: Linux's driver (bcm5974) cannot set the haptic actuator.
+    // page metrics (252 x 218 DLU, MS Shell Dlg 8). Shown only where the hardware is there. A Force Touch trackpad adds
+    // macOS's click feedback (Light / Medium / Firm, Silent clicking): the host sets the actuator's press and release
+    // waveforms (cafeready forcetouch.rs) and plays one pulse while the slider moves, so the level is felt before OK.
 
     const GROUP = 0x50000007;
     const CHECK = 0x50010003;
@@ -205,6 +206,18 @@
         [110, 'B', 7, 141, 238, 30, GROUP, 'Typing', 0],
         [111, 'B', 13, 154, 225, 10, CHECK, '&Ignore the trackpad while I am typing', 0]
     ]);
+    // with a Force Touch trackpad: the Click group under Typing
+    const TRACKPAD_FT_TPL = { ...TRACKPAD_TPL, c: TRACKPAD_TPL.c.concat([
+        [112, 'B', 7, 175, 238, 38, GROUP, 'Click', 0],
+        [113, 'S', 13, 189, 56, 9, TEXT, 'Click &feedback:', 0],
+        [114, 'S', 70, 189, 18, 9, TEXT_RIGHT, 'Light', 0],
+        [115, 'msctls_trackbar32', 90, 185, 60, 16, TRACKBAR, '', 0],
+        [116, 'S', 152, 189, 20, 9, TEXT, 'Firm', 0],
+        [117, 'B', 13, 201, 225, 10, CHECK, 'Si&lent clicking', 0]
+    ]) };
+    const CLICK_LEVELS = ['light', 'medium', 'firm'];
+    // the strength the host plays for each level's preview (0-100, forcetouch.rs: the firmware's 0x10 / 0x19 / 0x30)
+    const CLICK_PREVIEW = [20, 31, 60];
     // libinput's scroll factor for each stop of the trackpad's Scrolling speed (the DreamOS default, 0.5, is stop 3)
     const SCROLL_STOPS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1, 1.25, 1.5, 2];
 
@@ -270,7 +283,7 @@
                 { key: 'main:101', overrides: { 110: { html: '<img class="cpl-pointer-preview" alt="">' } } },
                 { key: 'main:103' },
                 input ? { key: 'main:108', tpl: withControls('main:108', [[120, 'B', 7, 170, 238, 30, GROUP, 'Scrolling direction', 0], [121, 'B', 13, 183, 225, 10, CHECK, '&Reverse scrolling direction', 0]]) } : { key: 'main:108' },
-                ...(input && input.devices && input.devices.touchpad ? [{ key: 'dreamos:trackpad', tpl: TRACKPAD_TPL }] : []),
+                ...(input && input.devices && input.devices.touchpad ? [{ key: 'dreamos:trackpad', tpl: input.clickFeedback ? TRACKPAD_FT_TPL : TRACKPAD_TPL }] : []),
                 { key: 'main:106', overrides: {} }
             ];
         },
@@ -306,6 +319,20 @@
                     const stop = SCROLL_STOPS.reduce((best, v, i) => (Math.abs(v - input.scrollSpeed) < Math.abs(SCROLL_STOPS[best] - input.scrollSpeed) ? i : best), 3);
                     ctx.range(108, 0, SCROLL_STOPS.length - 1, stop, 'dreamos:trackpad');
                     ctx.set(111, !!input.disableWhileTyping, 'dreamos:trackpad');
+                    if (input.clickFeedback) {
+                        ctx.range(115, 0, 2, Math.max(0, CLICK_LEVELS.indexOf(input.clickFeedback)), 'dreamos:trackpad');
+                        ctx.set(117, !!input.silentClicking, 'dreamos:trackpad');
+                        // feel the level now: one pulse as the slider settles or Silent clicking changes
+                        const haptic = root.DreamOSSettings.haptic;
+                        const preview = () => {
+                            if (!haptic) return;
+                            const silent = !!ctx.get(117, 'dreamos:trackpad');
+                            const strength = CLICK_PREVIEW[Number(ctx.get(115, 'dreamos:trackpad'))] || 31;
+                            haptic.play({ strength: silent ? Math.round(strength * 2 / 3) : strength, softness: silent ? 'soft' : 'normal' }).catch(() => {});
+                        };
+                        ctx.on(115, 'change', preview, 'dreamos:trackpad');
+                        ctx.on(117, 'change', preview, 'dreamos:trackpad');
+                    }
                 }
             }
             const preview = ctx.page('main:101').querySelector('.cpl-pointer-preview');
@@ -370,6 +397,10 @@
                     scrollSpeed: SCROLL_STOPS[Number(ctx.get(108, 'dreamos:trackpad'))] || 0.5,
                     disableWhileTyping: !!ctx.get(111, 'dreamos:trackpad')
                 });
+                if (ctx.store.input.clickFeedback) {
+                    patch.clickFeedback = CLICK_LEVELS[Number(ctx.get(115, 'dreamos:trackpad'))] || 'medium';
+                    patch.silentClicking = !!ctx.get(117, 'dreamos:trackpad');
+                }
             }
             await hostSet(ctx, patch);
         }
