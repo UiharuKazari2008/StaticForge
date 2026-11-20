@@ -19,6 +19,9 @@
  * (melatonControlPanel.js networkFlyoutHtml) for its name, access and signal line. Wording: pnidui.dll.mui.
  *
  * Nothing polls: the provider pushes, and the browser's online / offline events and the portal's change event redraw.
+ * The limited look waits LIMITED_AFTER_MS before it shows (one timer, armed only while the host says limited) and
+ * goes at once: on Yukimi's MacBook on her phone's hotspot (Nov 20 2026) it flashed on every passing miss. A captive
+ * portal is an answer, not a miss, and shows at once.
  * The state comes from the 'network' tray provider (trayProviders.js, docs/client-api/tray-providers.md: DreamOS's
  * window.DreamOSNetwork, the Android app's desktop shell, which may add a mobile data link). Without one (a plain
  * browser) look() answers null and the icon stays websocket.js's.
@@ -33,6 +36,26 @@
     const STRENGTH = ['Poor', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
 
     let state = null;
+    // the limited look shows only once it has held this long (ms); back to normal at once
+    const LIMITED_AFTER_MS = 10000;
+    let limitedSince = 0;
+    let limitedTimer = 0;
+
+    /** Whether a limited look is shown now: `raw` held for LIMITED_AFTER_MS (a one-shot repaint then), or at once. */
+    function heldLimited(raw, now) {
+        if (!raw) {
+            limitedSince = 0;
+            if (limitedTimer) { clearTimeout(limitedTimer); limitedTimer = 0; }
+            return false;
+        }
+        if (now) return true;
+        const t = Date.now();
+        if (!limitedSince) limitedSince = t;
+        const left = limitedSince + LIMITED_AFTER_MS - t;
+        if (left <= 0) return true;
+        if (!limitedTimer) limitedTimer = setTimeout(() => { limitedTimer = 0; paint(); }, left);
+        return false;
+    }
 
     function read() {
         const h = host();
@@ -118,7 +141,8 @@
         // fail, or the network check gets nothing through - the Mac's dead Wi-Fi firmware on Nov 20 2026 read as
         // "Excellent" and "Local and Internet"): Vista's limited look, whatever else says online
         out.failing = out.kind === 'wifi' && !!(wifi.failing && typeof wifi.failing === 'object');
-        out.limited = out.kind !== 'none' && (out.failing || !internet(s));
+        const portal = !!(root.dreamosPortal && typeof root.dreamosPortal.captive === 'function' && root.dreamosPortal.captive());
+        out.limited = heldLimited(out.kind !== 'none' && (out.failing || !internet(s)), portal);
         out.access = out.kind === 'none' ? '' : out.limited ? 'Local only' : 'Local and Internet';
         out.category = out.kind === 'none' ? null
             : out.kind === 'mobile' ? 'public'
@@ -185,7 +209,7 @@
     if (!root.melatonTray || !doc) return;
 
     const off = root.melatonTray.onChange('network', (st) => apply(st));
-    if (appScopeSignal) appScopeSignal.addEventListener('abort', off, { once: true });
+    if (appScopeSignal) appScopeSignal.addEventListener('abort', () => { off(); clearTimeout(limitedTimer); limitedTimer = 0; }, { once: true });
     // the browser's own word on reaching anything, and a sign-in page coming or going: the limited look
     root.addEventListener('online', paint, { signal: appScopeSignal });
     root.addEventListener('offline', paint, { signal: appScopeSignal });
