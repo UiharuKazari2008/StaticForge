@@ -296,7 +296,8 @@ const vghSystem = function (ctx) {
 // ---------------------------------------------------------------- the machine (server figures, WMI)
 
 /**
- * Gadgets read "this computer": here that is Dreamscape's server, as the CPU Meter shows it.
+ * Gadgets read "this computer": here that is Dreamscape's server, as the CPU Meter shows it; on a device client
+ * (the phone, DeX, DreamOS) the device itself (devicePerf.js, #946), sampled while one of its gadgets shows.
  * The Sidebar's live feed (system topic of sidebar_live, modules/sidebarLiveFeed.js) feeds every
  * gadget that asked, once a second while the tab is visible, and stops when none is left. Reads are synchronous in
  * JScript, so they answer from the last sample.
@@ -389,7 +390,9 @@ const vghSysUse = function (ctx, parts) {
         VGH_SYS.users.add(ctx);
         added = true;
     }
-    if (!VGH_SYS.release && typeof window.vsbLiveUse === 'function') {
+    if (!VGH_SYS.release && window.AndroidHardware && window.featureLoader) {
+        VGH_SYS.device();
+    } else if (!VGH_SYS.release && typeof window.vsbLiveUse === 'function') {
         // only while one of its gadgets is on screen (vistaSidebar.js vsbIsShown)
         VGH_SYS.release = window.vsbLiveUse('vgh-system', VGH_SYS_SPEC, vghSysOnData,
             () => [...VGH_SYS.users].some((user) => !user.inst || typeof vsbIsShown !== 'function' || vsbIsShown(user.inst)));
@@ -397,6 +400,37 @@ const vghSysUse = function (ctx, parts) {
         vsbLiveSync(false);
     }
     return VGH_SYS.data || VGH_SYS_EMPTY;
+};
+
+/** A device sample in the feed's shape: its storage volumes lettered from C:, the app's processes. */
+VGH_SYS.deviceData = function (d) {
+    const dp = window.melatonDevicePerf;
+    const info = dp && dp.info();
+    const vols = info && Array.isArray(info.storage) ? info.storage.filter((v) => v && v.totalBytes && (!v.state || /^mounted/.test(v.state))) : [];
+    return {
+        at: d.at,
+        cpu: { name: d.cpu.name, mhz: Math.max(0, ...d.cpu.mhz), cores: d.cpu.cores.length ? d.cpu.cores : [d.cpu.total], total: d.cpu.total },
+        memory: { totalBytes: d.memory.total, freeBytes: d.memory.available },
+        uptimeSec: d.uptimeSec,
+        disks: vols.map((v, i) => ({ letter: `${String.fromCharCode(67 + i)}:`, label: v.label || '', totalBytes: v.totalBytes, freeBytes: v.freeBytes || 0, readBps: 0, writeBps: 0, busy: 0 })),
+        network: d.network.map((n) => ({ mac: '', ip: '', speedBps: n.speedBps, rxBps: n.rxBps, txBps: n.txBps, rxBytes: n.rxBytes, txBytes: n.txBytes })),
+        processes: d.processes.map((p) => ({ pid: p.pid, name: p.name, cpu: p.cpu, memBytes: (p.rssKB || p.memKB || 0) * 1024 }))
+    };
+};
+
+/** On a device client the gadgets' machine is the device: its sampler, once a second while one of them shows. */
+VGH_SYS.device = function () {
+    VGH_SYS.release = () => {}; // taken: the subscription replaces it once the sampler is loaded
+    const go = () => {
+        const dp = window.melatonDevicePerf;
+        if (!dp || !dp.available() || !VGH_SYS.users.size) { VGH_SYS.release = null; return; }
+        VGH_SYS.release = dp.subscribe({
+            intervalMs: 1000,
+            isActive: () => [...VGH_SYS.users].some((user) => !user.inst || typeof vsbIsShown !== 'function' || vsbIsShown(user.inst))
+        }, (d) => vghSysOnData(VGH_SYS.deviceData(d)));
+    };
+    if (window.melatonDevicePerf) go();
+    else window.featureLoader.loadFeature('device_perf').then(go).catch(() => { VGH_SYS.release = null; });
 };
 
 const vghSysRelease = function (ctx) {
@@ -420,7 +454,12 @@ const vghMachine = function (ctx) {
         // megabytes, as Vista gives them
         get totalMemory() { return Math.round(sys('memory').memory.totalBytes / 1048576); },
         get availableMemory() { return Math.round(sys('memory').memory.freeBytes / 1048576); },
-        get processorArchitecture() { return 'x64'; },
+        // a device's own (an ARM phone), else the server's x64
+        get processorArchitecture() {
+            const dp = window.AndroidHardware && window.melatonDevicePerf;
+            const arch = dp ? String((dp.info() && dp.info().soc && dp.info().soc.arch) || '') : '';
+            return /arm64|aarch64/i.test(arch) ? 'ARM64' : /arm/i.test(arch) ? 'ARM' : 'x64';
+        },
         PowerStatus: { isBatteryPresent: false, isPowerLineConnected: true, isBatteryCharging: false, batteryPercentRemaining: 100, batteryCapacityRemaining: 0, batteryCapacityTotal: 0, timeRemaining: -1, powerLineStatusChanged: null },
         PowerStatusChanged: null
     };

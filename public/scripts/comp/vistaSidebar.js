@@ -6,7 +6,8 @@
  *   sidebar_updated (push)            another admin tab saved the same workspace
  *   sidebar_random_image              Slide Show and Picture Puzzle (workspace images or favorites)
  *   sidebar_weather                   Weather from the client IP, like dynamic generation (weather service, #780)
- *   sidebar_host_metrics              CPU Meter, the same host figures as Periscope
+ *   sidebar_host_metrics              CPU Meter, the same host figures as Periscope; on a device client (the phone,
+ *                                     DeX, DreamOS) the device's own (devicePerf.js, #946), never the server's
  *   sidebar_fx                        Currency (ECB rates)
  *   sidebar_quotes                    Stocks
  *   sidebar_feed                      Feed Headlines (https feeds only)
@@ -254,6 +255,8 @@ const vsbLiveSend = function (force) {
     // here, on every use, release and visibility change
     const unseen = document.hidden || vsbLiveCovered();
     const watch = vsbLive.users.size > 0 && !unseen;
+    // the device's own figures (CPU Meter, hosted gadgets on a device client) follow the same visibility
+    if (window.melatonDevicePerf) window.melatonDevicePerf.wake();
     if (watch && !vsbLive.watchTimer) vsbLive.watchTimer = setInterval(vsbLiveWatch, VSB_LIVE_WATCH_MS);
     else if (!watch && vsbLive.watchTimer) { clearInterval(vsbLive.watchTimer); vsbLive.watchTimer = null; }
     if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
@@ -358,7 +361,10 @@ const VSB_GADGETS = {
     clipboard: { title: 'Clipboard', icon: 'clipboard/icon.png', desc: 'Keep the text you copy in Dreamscape and paste it back with one click.', author: 'Jan Zeman' },
     clock: { title: 'Clock', icon: 'clock/icon.png', desc: 'Watch the clock in your own time zone or any city in the world.', author: 'Xyridian Corporation', options: true },
     contacts: { title: 'Contacts', icon: 'contacts/icon.png', desc: 'Keep names, e-mail addresses, and phone numbers on the Sidebar.', author: 'Xyridian Corporation', options: true },
-    cpu: { title: 'CPU Meter', icon: 'cpu/icon.png', desc: 'See the server\'s current CPU and system memory (RAM), the same figures as Periscope.', author: 'Xyridian Corporation' },
+    cpu: {
+        title: 'CPU Meter', icon: 'cpu/icon.png', author: 'Xyridian Corporation',
+        get desc() { return window.AndroidHardware ? 'See the current CPU and system memory (RAM) of this device.' : 'See the server\'s current CPU and system memory (RAM), the same figures as Periscope.'; }
+    },
     currency: { title: 'Currency', icon: 'currency/icon.png', desc: 'Convert an amount from one currency to another.', author: 'Xyridian Corporation' },
     deskcalc: { title: 'Desktop Calculator', icon: 'deskcalc/icon.png', desc: 'A calculator for the Sidebar. Undock it for scientific keys.', author: 'Home Cooked Gadgets', options: true },
     feed: { title: 'Feed Headlines', icon: 'feed/icon.png', desc: 'See headlines from a web feed. Click a headline to open it.', author: 'Xyridian Corporation', options: true },
@@ -735,6 +741,22 @@ const vsbCpuMount = function (inst) {
     };
     inst.metrics = { cpu: 0, ram: 0 };
     vsbCpuApply(inst);
+    // a device client: the device's own load every 2 s while the gadget shows (#946), never the server's
+    if (window.AndroidHardware && window.featureLoader) {
+        const use = () => {
+            const dp = window.melatonDevicePerf;
+            if (inst.destroyed || !dp || !dp.available()) return false;
+            inst.liveRelease = dp.subscribe({ intervalMs: 2000, isActive: () => vsbIsShown(inst) && !vsbLivePaused() }, (d) => {
+                if (inst.destroyed) return;
+                const ram = d.memory.total ? ((d.memory.total - d.memory.available) / d.memory.total) * 100 : 0;
+                inst.metrics = { cpu: Math.min(100, Math.max(0, d.cpu.total || 0)), ram: Math.min(100, Math.max(0, ram)) };
+                vsbCpuPaint(inst);
+            });
+            return true;
+        };
+        if (!use()) window.featureLoader.loadFeature('device_perf').then(use).catch(() => {});
+        return;
+    }
     // host figures arrive on the tab's live feed every 2 s (Yozora #653)
     inst.liveRelease = vsbLiveUse(inst, { host: true }, (data) => {
         if (inst.destroyed || !data) return;
