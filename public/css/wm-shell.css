@@ -1209,6 +1209,11 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-sip[aria-pressed="true"]::before
     mask: center / contain no-repeat image-set(url('/static_images/wm61/menu-check.png') 1x, url('/static_images/wm61/menu-check@2x.png') 2x, url('/static_images/wm61/menu-check@4x.png') 4x);
 }
 
+/* a path row in regular weight (wmShell.js item.plain: Windows Media's Library drop-down) */
+.wm-popup-item.is-plain {
+    font-weight: normal;
+}
+
 /* a row with its picture in the gutter (Pictures & Videos: My Device, Storage Card) */
 .wm-popup-item.has-icon {
     padding-left: calc((20 + 12 * var(--wm-indent, 0)) * var(--wm-px)) !important;
@@ -1216,7 +1221,8 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-sip[aria-pressed="true"]::before
 
 .wm-popup-item.has-icon > img {
     position: absolute;
-    left: calc(2 * var(--wm-px));
+    /* the picture goes in with its row's level (Windows Media's Library path) */
+    left: calc((2 + 12 * var(--wm-indent, 0)) * var(--wm-px));
     top: 50%;
     width: calc(16 * var(--wm-px));
     height: calc(16 * var(--wm-px));
@@ -1240,6 +1246,13 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-sip[aria-pressed="true"]::before
     height: calc(1 * var(--wm-px));
     margin: calc(3 * var(--wm-px)) calc(8 * var(--wm-px));
     background: var(--wm-menu-text);
+}
+
+/* a menu's rule takes 10 units (4.5 above the line, 4.5 below), measured on the 6.1 emulator's
+   soft key menus (File Explorer, Windows Media); drop-downs keep theirs */
+.wm-popup:not([data-side="dropdown"]) > .wm-popup-sep {
+    margin-top: calc(4.5 * var(--wm-px));
+    margin-bottom: calc(4.5 * var(--wm-px));
 }
 
 /* ---- Today ---- */

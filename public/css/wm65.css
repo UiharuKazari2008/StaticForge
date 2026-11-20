@@ -584,6 +584,11 @@ html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] > .wm-popu
     font-size: calc(13 * var(--wm-px));
 }
 
+/* a row with its picture: the text after the picture, both in by the row's level */
+html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] > .wm-popup-item.has-icon {
+    padding-left: calc((18 + 12 * var(--wm-indent, 0)) * var(--wm-px)) !important;
+}
+
 html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="dropdown"] > .wm-popup-sep {
     height: calc(1 * var(--wm-px));
     margin: calc(0.5 * var(--wm-px)) calc(8 * var(--wm-px)) calc(0.5 * var(--wm-px)) calc(15 * var(--wm-px));

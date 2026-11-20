@@ -1,11 +1,11 @@
 {
  "note": "Counts may only go down. See docs/design/ui-standard.md and scripts/check-ui-standard.js.",
  "totals": {
-  "colour-literal": 12741,
+  "colour-literal": 12735,
   "font-literal": 597,
   "theme-negative": 2548,
   "own-control": 714,
-  "inline-style": 667,
+  "inline-style": 665,
   "theme-art-path": 169,
   "hand-built-window": 103,
   "toast": 1061,
@@ -896,7 +896,7 @@
    "theme-art-path": 2
   },
   "public/css/wm-media.css": {
-   "colour-literal": 11,
+   "colour-literal": 5,
    "font-literal": 1,
    "own-control": 6
   },
@@ -1854,7 +1854,7 @@
    "theme-art-path": 1
   },
   "public/scripts/comp/wmMedia.js": {
-   "inline-style": 10,
+   "inline-style": 8,
    "theme-art-path": 1
   },
   "public/scripts/comp/wmMessaging.js": {

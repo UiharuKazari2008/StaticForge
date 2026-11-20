@@ -1,15 +1,26 @@
 /*
- * Melaton Mobile: Windows Media (WM 6.1 Professional's Windows Media Player 10 Mobile), Yozora #732.
- * wmMedia.js. The Now Playing skin is laid out in the skin file's own VGA units (--wmp-u, set by the
- * script so the skin fits the screen); the Library and Now Playing list are WM lists measured on the
- * Device Emulator (VGA halved; ~/.cache/wm61/ref-apps/wmp*.png): 24 px tint header, 17 px rows, icon
- * 16 px at x 3, text 13 px regular at x 20, only the text highlighted; the list toolbar 24 px.
+ * Melaton Mobile: Melaton Media (Windows Media Player 10 Mobile, the same program on WM 6.1 and 6.5), Yozora
+ * #732, #801, completed 1:1 in #975. wmMedia.js. Measured on the Device Emulator (VGA halved = units;
+ * captures ~/.cache/claude-run/wmwmp/ref61, ref65):
+ *   the skin       laid out in the skin file's own VGA units (--wmp-u, set by the script so the skin fits the
+ *                  screen); every positioned part carries --x / --y / --w / --h (.wmp-at)
+ *   the lists      24 px tint header, 17 px rows, icon 16 px at x 3, text at x 20, only the text highlighted;
+ *                  the Now Playing list's tool bar 24 px
+ *   the pages      Options (header, page, tabs at the bottom), Properties (label / value rows 13.5 units,
+ *                  Tahoma 10.5), Update Library, Open URL, Save Playlist, About: positions from the device's
+ *                  dialog templates (emu ui tree), bold labels 12 units, controls 10.5
  */
 
 .wm-page.wm-media {
+    /* the program's own colours (UI standard 7) */
+    --wmp-ink: #000;
+    --wmp-paper: #fff;
+    --wmp-skin-ink: #fff;
+    --wmp-skin-bg: #101410;
+    --wmp-grey: #848284;
     overflow: hidden !important;
-    background: #101410;
-    color: #000;
+    background: var(--wmp-skin-bg);
+    color: var(--wmp-ink);
 }
 
 .wm-media > div {
@@ -28,30 +39,20 @@
 .wm-media[data-layer="queue"] > .wmp-queue {
     display: flex;
     flex-direction: column;
-    background: linear-gradient(to right, #fff 0%, color-mix(in srgb, #fff 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+    background: linear-gradient(to right, var(--wmp-paper) 0%, color-mix(in srgb, var(--wmp-paper) 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
 }
 
-/* Options (#801 filter): a plain WM form page */
-.wm-media > .wmp-opts {
-    display: none;
-}
-
-.wm-media[data-layer="options"] > .wmp-opts {
+.wm-media[data-layer="options"] > .wmp-opts,
+.wm-media[data-layer="props"] > .wmp-props,
+.wm-media[data-layer="update"] > .wmp-update,
+.wm-media[data-layer="about"] > .wmp-about,
+.wm-media[data-layer="url"] > .wmp-url,
+.wm-media[data-layer="save"] > .wmp-save {
     display: block;
-    position: absolute;
-    inset: 0;
-    overflow-y: auto;
-    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
-    background: #fff;
-    color: #000;
+    background: var(--wmp-paper);
+    color: var(--wmp-ink);
+    font-size: calc(10.5 * var(--wm-px));
 }
-
-.wm-media .wmp-opts-list {
-    display: flex;
-    flex-direction: column;
-    gap: calc(2 * var(--wm-px));
-}
-
 
 .wm-media button {
     margin: 0;
@@ -70,9 +71,21 @@
 .wm-media .wmp-skin {
     position: relative;
     flex: 0 0 auto;
+    width: calc(var(--sw) * var(--wmp-u));
+    height: calc(var(--sh) * var(--wmp-u));
     background: var(--bg) 0 0 / 100% 100% no-repeat;
     font-family: Tahoma, var(--wm-font);
-    color: #fff;
+    font-size: calc(21.3 * var(--wmp-u));
+    color: var(--wmp-skin-ink);
+}
+
+.wm-media .wmp-at {
+    position: absolute;
+    box-sizing: border-box;
+    left: calc(var(--x) * var(--wmp-u));
+    top: calc(var(--y) * var(--wmp-u));
+    width: calc(var(--w) * var(--wmp-u));
+    height: calc(var(--h) * var(--wmp-u));
 }
 
 /* a landscape screen wider than the skin (#829, wmMedia.js skinLayout): the 640-wide background stays
@@ -103,16 +116,16 @@
     pointer-events: none;
 }
 
-.wm-media .wmp-skin > * {
-    position: absolute;
-    box-sizing: border-box;
-}
-
 .wm-media .wmp-art {
     overflow: hidden;
 }
 
-/* album art from the phone's library (#801), as the device showed the album's folder.jpg */
+/* a video's rectangle is black, as the device fills it before the first frame and around the picture */
+.wm-media .wmp-art.is-video {
+    background: var(--wmp-ink);
+}
+
+/* album art, as the device showed the song's picture */
 .wm-media .wmp-cover {
     display: block;
     width: 100%;
@@ -124,45 +137,46 @@
     display: block;
     width: 100%;
     height: 100%;
-    object-fit: contain;
-    background: #000;
+    /* Options > Video > Scale to fit window: a clip bigger than the rectangle shrinks to fit, a smaller one
+       plays at its own size (the device never enlarged it there); off: its own size, cut at the edges */
+    object-fit: scale-down;
+    background: var(--wmp-ink);
+}
+
+.wm-media .wmp-art.is-noscale > .wmp-video {
+    object-fit: none;
 }
 
 .wm-media .wmp-marquee,
 .wm-media .wmp-status,
 .wm-media .wmp-time,
 .wm-media .wmp-vol {
-    display: flex;
-    align-items: center;
+    display: block;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    line-height: 1;
+    line-height: calc(var(--h) * var(--wmp-u));
 }
 
-.wm-media .wmp-marquee {
-    display: block;
-    font-weight: bold;
-    line-height: calc(33 * var(--wmp-u));
-}
-
-.wm-media .is-landscape .wmp-marquee {
-    line-height: calc(26 * var(--wmp-u));
-}
-
+.wm-media .wmp-marquee,
 .wm-media .wmp-status {
-    display: block;
-    line-height: calc(26 * var(--wmp-u));
+    font-size: calc(var(--fs) * var(--wmp-u));
+}
+
+/* the skin file's fonts: marquee Tahoma 10 bold, the rest Tahoma 8 */
+.wm-media .wmp-marquee {
+    font-weight: bold;
 }
 
 .wm-media .wmp-vol {
-    justify-content: flex-end;
+    text-align: right;
 }
 
+/* the rating: five stars (ratings.png holds the six states, none to five, side by side); a tap rates one more */
 .wm-media .wmp-ratings {
-    background-repeat: no-repeat;
-    background-size: var(--rw) 100%;
-    background-position: 0 0;
+    background: var(--ratings-art) no-repeat;
+    background-size: calc(918 * var(--wmp-u)) 100%;
+    background-position: calc(var(--r, 0) * -153 * var(--wmp-u)) 0;
 }
 
 .wm-media .wmp-seek {
@@ -173,8 +187,10 @@
     position: absolute;
     top: 0;
     left: calc(var(--p, 0) * (100% - 40 * var(--wmp-u)));
-    background-repeat: no-repeat;
-    background-size: var(--tw) 100%;
+    width: calc(40 * var(--wmp-u));
+    height: calc(20 * var(--wmp-u));
+    background: var(--thumb-art) no-repeat;
+    background-size: calc(120 * var(--wmp-u)) 100%;
     background-position: 0 0;
     pointer-events: none;
 }
@@ -191,24 +207,64 @@
 .wm-media .wmp-btn.is-down,
 .wm-media .wmp-btn.is-on {
     background-image: var(--pushed);
-    background-size: var(--pw) var(--ph);
-    background-position: var(--px) 0;
+    background-size: calc(var(--pw) * var(--wmp-u)) calc(var(--ph) * var(--wmp-u));
+    background-position: calc(var(--px) * var(--wmp-u)) 0;
 }
 
 .wm-media .wmp-btn.is-pause {
     background-image: var(--pushed);
-    background-size: var(--pw) var(--ph);
-    background-position: var(--px2) 0;
+    background-size: calc(var(--pw) * var(--wmp-u)) calc(var(--ph) * var(--wmp-u));
+    background-position: calc(var(--px2) * var(--wmp-u)) 0;
 }
 
 .wm-media .wmp-btn.is-pause.is-down {
-    background-position: var(--px3) 0;
+    background-position: calc(var(--px3) * var(--wmp-u)) 0;
 }
 
 .wm-media .wmp-btn.is-disabled {
     background-image: var(--disabled);
-    background-size: var(--dw) var(--dh);
-    background-position: var(--px) 0;
+    background-size: calc(var(--dw) * var(--wmp-u)) calc(var(--dh) * var(--wmp-u));
+    background-position: calc(var(--px) * var(--wmp-u)) 0;
+}
+
+/* ---- full screen: the video alone over the whole screen, on its side on an upright screen ---- */
+
+html.ui-mobile.wmp-full[data-wm-app="windows-media"] #wmShell > .wm-titlebar,
+html.ui-mobile.wmp-full[data-wm-app="windows-media"] #wmShell > .wm-softkeys {
+    display: none !important;
+}
+
+.wm-media > .wmp-fs:not([hidden]) {
+    display: block;
+    z-index: 3;
+    background: var(--wmp-ink);
+    overflow: hidden;
+}
+
+.wm-media > .wmp-fs > .wmp-video {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--fw);
+    height: var(--fh);
+    transform: translate(-50%, -50%);
+    /* Options > Video > Scale to fit window off: the clip at its own size */
+    object-fit: none;
+}
+
+.wm-media > .wmp-fs.is-fit > .wmp-video {
+    object-fit: contain;
+}
+
+.wm-media > .wmp-fs.is-turned > .wmp-video {
+    transform: translate(-50%, -50%) rotate(90deg);
+}
+
+/* Toggle Screen (Options > Buttons): dark until a tap or a key */
+.wm-media > .wmp-dark:not([hidden]) {
+    display: block;
+    z-index: 4;
+    background: var(--wmp-ink);
 }
 
 /* ---- Library and Now Playing list ---- */
@@ -253,7 +309,7 @@
     margin: calc(2 * var(--wm-px)) 0 0 calc(2 * var(--wm-px));
     border-left: calc(3.5 * var(--wm-px)) solid transparent;
     border-right: calc(3.5 * var(--wm-px)) solid transparent;
-    border-top: calc(3.5 * var(--wm-px)) solid #000;
+    border-top: calc(3.5 * var(--wm-px)) solid var(--wmp-ink);
 }
 
 .wm-media .wmp-llist,
@@ -295,6 +351,7 @@
     color: var(--wm-highlight-text);
 }
 
+/* the item that plays: bold, with the play arrow for its icon */
 .wm-media .wmp-lrow.is-current span {
     font-weight: bold;
 }
@@ -331,16 +388,289 @@
     opacity: 0.55;
 }
 
+/* ---- Properties: label (bold) and value rows, 13.5 units each, the value 2.5 units in ---- */
+
+.wm-media[data-layer="props"] > .wmp-props {
+    overflow-y: auto;
+    padding: 0 0 calc(2 * var(--wm-px)) calc(5 * var(--wm-px));
+    background: linear-gradient(to right, var(--wmp-paper) 0%, color-mix(in srgb, var(--wmp-paper) 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+}
+
+.wm-media .wmp-pk,
+.wm-media .wmp-pv {
+    height: calc(13.5 * var(--wm-px));
+    line-height: calc(13.5 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-media .wmp-pk {
+    font-weight: bold;
+}
+
+.wm-media .wmp-pv {
+    padding-left: calc(2.5 * var(--wm-px));
+}
+
+/* the rating: the ROM's two 12 x 14 stars (wmploc.dll bitmap 1002: empty, gold), drawn at their own size */
+.wm-media .wmp-pstars {
+    display: inline-flex;
+    vertical-align: top;
+    margin-top: calc(-0.5 * var(--wm-px));
+}
+
+.wm-media .wmp-pstars > i {
+    width: calc(12 * var(--wm-px));
+    height: calc(14 * var(--wm-px));
+    background: var(--wmp-stars) 0 0 / calc(24 * var(--wm-px)) 100% no-repeat;
+    image-rendering: pixelated;
+}
+
+.wm-media .wmp-pstars[style*="--r:1"] > i:nth-child(-n+1),
+.wm-media .wmp-pstars[style*="--r:2"] > i:nth-child(-n+2),
+.wm-media .wmp-pstars[style*="--r:3"] > i:nth-child(-n+3),
+.wm-media .wmp-pstars[style*="--r:4"] > i:nth-child(-n+4),
+.wm-media .wmp-pstars[style*="--r:5"] > i {
+    background-position: calc(-12 * var(--wm-px)) 0;
+}
+
+/* ---- the dialog pages: positions in units from the device's templates ---- */
+
+.wm-media .wmp-ubar,
+.wm-media .wmp-u1,
+.wm-media .wmp-u2,
+.wm-media .wmp-save-k,
+.wm-media .wmp-save-edit,
+.wm-media .wmp-url-k,
+.wm-media .wmp-url-edit,
+.wm-media .wmp-url-h,
+.wm-media .wmp-url-list,
+.wm-media .wmp-about > * {
+    position: absolute;
+    box-sizing: border-box;
+}
+
+/* Update Library: the bar 10,11 220 x 14; the count 10,30; the step 10,48 (two lines) */
+.wm-media .wmp-ubar {
+    left: calc(10 * var(--wm-px));
+    top: calc(11 * var(--wm-px));
+    width: calc(220 * var(--wm-px));
+    height: calc(14 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid var(--wmp-ink);
+    background: var(--wm-tint);
+    overflow: hidden;
+}
+
+/* the device's blocks: 7 units of the highlight, 2 of gap */
+.wm-media .wmp-ubar > span {
+    position: absolute;
+    left: calc(1 * var(--wm-px));
+    top: calc(1 * var(--wm-px));
+    bottom: calc(1 * var(--wm-px));
+    width: calc(var(--blocks, 0) * 9 * var(--wm-px));
+    max-width: calc(100% - 2 * var(--wm-px));
+    background: repeating-linear-gradient(to right, var(--wm-highlight) 0, var(--wm-highlight) calc(7 * var(--wm-px)), transparent calc(7 * var(--wm-px)), transparent calc(9 * var(--wm-px)));
+}
+
+.wm-media .wmp-u1,
+.wm-media .wmp-u2 {
+    left: calc(10 * var(--wm-px));
+    width: calc(220 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
+}
+
+.wm-media .wmp-u1 { top: calc(30 * var(--wm-px)); }
+.wm-media .wmp-u2 { top: calc(48 * var(--wm-px)); }
+
+/* Save Playlist: "Enter playlist name:" 10,11 bold; the edit 10,34 220 x 19 */
+.wm-media .wmp-save-k,
+.wm-media .wmp-url-k,
+.wm-media .wmp-url-h {
+    left: calc(10 * var(--wm-px));
+    top: calc(11 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+    font-weight: bold;
+    line-height: calc(13 * var(--wm-px));
+    white-space: nowrap;
+}
+
+.wm-media .wmp-save-edit {
+    left: calc(10 * var(--wm-px));
+    top: calc(34 * var(--wm-px));
+    width: calc(220 * var(--wm-px)) !important;
+    height: calc(19 * var(--wm-px)) !important;
+}
+
+/* Open URL: "URL:" in a 24-unit static that cuts its colon, as the device; edit 19,26 202 x 22; "History:"
+   10,55; the list from 73 to the bottom, framed */
+.wm-media .wmp-url-k {
+    width: calc(24 * var(--wm-px));
+    overflow: hidden;
+}
+
+.wm-media .wmp-url-edit {
+    left: calc(19 * var(--wm-px));
+    top: calc(26 * var(--wm-px));
+    width: calc(202 * var(--wm-px)) !important;
+    height: calc(22 * var(--wm-px)) !important;
+}
+
+.wm-media .wmp-url-h {
+    top: calc(55 * var(--wm-px));
+}
+
+.wm-media .wmp-url-list {
+    left: 0;
+    right: 0;
+    top: calc(73 * var(--wm-px));
+    bottom: 0;
+    overflow-y: auto;
+    border: calc(1 * var(--wm-px)) solid var(--wmp-ink);
+    background: linear-gradient(to right, var(--wmp-paper) 0%, color-mix(in srgb, var(--wmp-paper) 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+}
+
+/* About: the name 3,8 234 x 32 bold (Tahoma 12) centred; the version 3,40; the copyright 3,65; the
+   warning (a read-only edit) 1,98 238 wide to the bottom */
+.wm-media .wmp-about > div {
+    left: calc(3 * var(--wm-px));
+    width: calc(234 * var(--wm-px));
+    text-align: center;
+    line-height: calc(12.5 * var(--wm-px));
+}
+
+.wm-media .wmp-ab-name {
+    top: calc(9 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+    font-weight: bold;
+    line-height: calc(14.5 * var(--wm-px)) !important;
+}
+
+.wm-media .wmp-ab-ver {
+    top: calc(42 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wm-media .wmp-ab-copy {
+    top: calc(66 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wm-media textarea.wmp-ab-warn {
+    left: calc(1 * var(--wm-px));
+    top: calc(98 * var(--wm-px));
+    bottom: calc(1 * var(--wm-px));
+    width: calc(238 * var(--wm-px)) !important;
+    height: auto !important;
+    resize: none;
+    /* the edit always has its scroll bar, as the device's (WS_VSCROLL) */
+    overflow-y: scroll;
+    font-size: calc(10.5 * var(--wm-px)) !important;
+    line-height: calc(12.5 * var(--wm-px)) !important;
+}
+
+/* ---- Options: header, the tab's page, the tabs at the bottom ---- */
+
+.wm-media[data-layer="options"] > .wmp-opts {
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-media .wmp-o-body {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* every control at the device's place (units from the page's top, under the header) */
+.wm-media .wmp-o-body > * {
+    position: absolute;
+    box-sizing: border-box;
+}
+
+.wm-media .wmp-o-b {
+    font-size: calc(12 * var(--wm-px));
+    font-weight: bold;
+    line-height: calc(13 * var(--wm-px));
+}
+
+/* Playback: "Show time as:" 10,11; the combo 24,30 145 wide; the two checks 25,56 and 25,97 (190 wide,
+   two lines); 6.5 has the combo only */
+.wm-media .is-playback > .wmp-o-time { left: calc(10 * var(--wm-px)); top: calc(11 * var(--wm-px)); }
+.wm-media .is-playback > [data-act] { left: calc(24 * var(--wm-px)); top: calc(30 * var(--wm-px)); width: calc(145 * var(--wm-px)); }
+.wm-media .is-playback > .wmp-o-61 { left: calc(25 * var(--wm-px)); top: calc(56 * var(--wm-px)); width: calc(190 * var(--wm-px)); }
+.wm-media .is-playback > .wmp-o-61 > label { min-height: calc(34 * var(--wm-px)); margin-bottom: calc(7 * var(--wm-px)); }
+.wm-media .is-playback > .wmp-o-apps { left: calc(10 * var(--wm-px)); right: calc(10 * var(--wm-px)); top: calc(140 * var(--wm-px)); font-size: calc(10.5 * var(--wm-px)); font-weight: normal; }
+.wm-media .is-playback > .wmp-o-applist { left: calc(22 * var(--wm-px)); right: calc(6 * var(--wm-px)); top: calc(168 * var(--wm-px)); bottom: 0; overflow-y: auto; }
+
+/* Video: the label 25,26; the combo 25,45 145 wide; the check 25,73 */
+.wm-media .is-video > .wmp-o-vlabel { left: calc(25 * var(--wm-px)); top: calc(26 * var(--wm-px)); line-height: calc(13 * var(--wm-px)); }
+.wm-media .is-video > [data-act] { left: calc(25 * var(--wm-px)); top: calc(45 * var(--wm-px)); width: calc(145 * var(--wm-px)); }
+.wm-media .is-video > label { left: calc(25 * var(--wm-px)); top: calc(73 * var(--wm-px)); }
+
+/* Network: Protocol 10,8; UDP / TCP / HTTP 22,27 / 45 / 63; UDP Port 100,27 and its edit 150,22 60 x 22;
+   Internet connection speed 10,82; the combo 22,99 145 wide; Detect connection speed 22,123 */
+.wm-media .is-network > .wmp-o-proto { left: calc(10 * var(--wm-px)); top: calc(8 * var(--wm-px)); }
+.wm-media .is-network > .wmp-o-protos { left: calc(22 * var(--wm-px)); top: calc(27 * var(--wm-px)); display: flex; flex-direction: column; row-gap: calc(2 * var(--wm-px)); }
+/* the three checks 18 units apart on both versions (the 6.5 kit's check is taller) */
+.wm-media .is-network > .wmp-o-protos > label { height: calc(16 * var(--wm-px)) !important; min-height: 0 !important; margin: 0 !important; }
+.wm-media .is-network > .wmp-o-port { left: calc(100 * var(--wm-px)); top: calc(22 * var(--wm-px)); display: flex; align-items: center; }
+.wm-media .is-network > .wmp-o-port > span { width: calc(50 * var(--wm-px)); }
+.wm-media .is-network > .wmp-o-port > input { width: calc(60 * var(--wm-px)) !important; height: calc(22 * var(--wm-px)) !important; }
+.wm-media .is-network > .wmp-o-speedk { left: calc(10 * var(--wm-px)); top: calc(82 * var(--wm-px)); }
+.wm-media .is-network > [data-act] { left: calc(22 * var(--wm-px)); top: calc(99 * var(--wm-px)); width: calc(145 * var(--wm-px)); }
+.wm-media .is-network > label { left: calc(22 * var(--wm-px)); top: calc(123 * var(--wm-px)); }
+
+/* Library: the check 21,30 (165 wide, two lines' room) */
+.wm-media .is-library > label { left: calc(21 * var(--wm-px)); top: calc(39 * var(--wm-px)); }
+
+/* Skins: the name centred 0,0 240 x 19 bold; the preview 41.5,21.5 157 x 175; Previous 10,199.5 and
+   Next 155,199.5 (75 x 22) */
+.wm-media .is-skins > .wmp-o-skin { left: 0; right: 0; top: 0; height: calc(19 * var(--wm-px)); line-height: calc(19 * var(--wm-px)); text-align: center; font-size: calc(12 * var(--wm-px)); font-weight: bold; }
+.wm-media .is-skins > .wmp-o-preview { left: calc(41.5 * var(--wm-px)); top: calc(21.5 * var(--wm-px)); width: calc(157 * var(--wm-px)); height: calc(175 * var(--wm-px)); background: var(--art) 0 0 / 100% 100% no-repeat; }
+.wm-media .is-skins > .wmp-o-preview.is-landscape { left: calc(20 * var(--wm-px)); width: calc(200 * var(--wm-px)); height: calc(117.5 * var(--wm-px)); top: calc(50 * var(--wm-px)); }
+.wm-media .is-skins > .wmp-o-skinbtns,
+.wm-media .is-buttons > .wmp-o-keybtns { left: calc(10 * var(--wm-px)); right: calc(10 * var(--wm-px)); top: calc(199.5 * var(--wm-px)); display: flex; justify-content: space-between; }
+.wm-media .wmp-o-skinbtns > button,
+.wm-media .wmp-o-keybtns > button { width: calc(75 * var(--wm-px)); min-width: 0; height: calc(22 * var(--wm-px)); font-weight: normal; }
+
+/* Buttons: the list 0,0 240 x 195.5 (label bold 21.5 in, its key 37.5 in, 17 units each); Assign / Reset /
+   None 13 / 75 / 136, 198 (57 x 22) */
+.wm-media .is-buttons > .wmp-o-keys {
+    left: 0;
+    right: 0;
+    top: 0;
+    height: calc(195.5 * var(--wm-px));
+    overflow-y: auto;
+    border: calc(1 * var(--wm-px)) solid var(--wmp-ink);
+    background: linear-gradient(to right, var(--wmp-paper) 0%, color-mix(in srgb, var(--wmp-paper) 55%, var(--wm-tint)) 50%, var(--wm-tint) 100%);
+}
+.wm-media .wmp-o-key > span,
+.wm-media .wmp-o-key > div { height: calc(17 * var(--wm-px)); line-height: calc(17 * var(--wm-px)); white-space: nowrap; }
+.wm-media .wmp-o-key > span { display: inline-block; margin-left: calc(19.5 * var(--wm-px)); padding: 0 calc(2 * var(--wm-px)); font-weight: bold; }
+.wm-media .wmp-o-key > div { padding-left: calc(37.5 * var(--wm-px)); }
+.wm-media .wmp-o-key.is-selected > span { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wm-media .is-buttons > .wmp-o-keybtns { left: calc(13 * var(--wm-px)); right: auto; top: calc(198 * var(--wm-px)); column-gap: calc(5 * var(--wm-px)); }
+.wm-media .wmp-o-keybtns > button { width: calc(57 * var(--wm-px)); }
+
 /* ---- Melaton Mobile 6.5 ---- */
 /* WM 6.5 ships the same player and the same skin files as 6.1 (the ROM's wmp_WPC_* and wm_*.bmp
  * are byte-identical), so Now Playing keeps its skin. The Library and Now Playing list change with
  * the 6.5 theme (measured on the 6.5 emulator, VGA halved; ~/.cache/claude-run/wm65apps/tools/
  * wmp65-*.png): the lists are plain white (no gradient), the header is 23 px of flat tint with
  * its text in 12 px right after the icon and the wide 9.5 x 5 drop-down arrow; rows keep their
- * 17 px pitch, text 12 px. */
+ * 17 px pitch, text 12 px. Options > Playback has the time combo only. */
 html.ui-mobile[data-wm-version="6.5"] .wm-media[data-layer="library"] > .wmp-lib,
-html.ui-mobile[data-wm-version="6.5"] .wm-media[data-layer="queue"] > .wmp-queue {
-    background: #fff;
+html.ui-mobile[data-wm-version="6.5"] .wm-media[data-layer="queue"] > .wmp-queue,
+html.ui-mobile[data-wm-version="6.5"] .wm-media[data-layer="props"] > .wmp-props,
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-url-list,
+html.ui-mobile[data-wm-version="6.5"] .wm-media .is-buttons > .wmp-o-keys {
+    background: var(--wmp-paper);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-o-61 {
+    display: none;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-lhead {
@@ -398,8 +728,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-qtool[data-t="props"] {
     margin-left: calc(8 * var(--wm-px));
 }
 
-/* a disabled tool is the icon's shape in #848284 with a white edge 1 px down and right */
+/* a disabled tool is the icon's shape in the grey with a light edge 1 px down and right */
 html.ui-mobile[data-wm-version="6.5"] .wm-media .wmp-qtool:disabled img {
-    filter: brightness(0) invert(0.517) drop-shadow(calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #fff);
+    filter: brightness(0) invert(0.517) drop-shadow(calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 var(--wmp-paper));
     opacity: 1;
 }

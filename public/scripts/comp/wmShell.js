@@ -1319,7 +1319,8 @@
         }
         // 6.5.1 (#850) bars: a key that names a picture (key.icon) is a round button, the others text bubbles
         if (BARS651 && !(stage && stage.mask.keys)) bars651Keys(softKeys);
-        if (!(stage && stage.mask.keys)) shell.querySelector('.wm-sip').hidden = !(app && app.sip);
+        // app.sip: true, or a function for the layer on screen (Windows Media: the playback screen and Properties have none)
+        if (!(stage && stage.mask.keys)) shell.querySelector('.wm-sip').hidden = !(app && (typeof app.sip === 'function' ? app.sip() : app.sip));
         // the corner follows the same layer as the soft keys
         refreshTitleAction();
     }
@@ -1491,6 +1492,9 @@
             b.disabled = !!item.disabled;
             // path levels in a drop-down (File Explorer's folder list): 12 px per level
             if (item.indent) b.style.setProperty('--wm-indent', String(Number(item.indent) || 0));
+            // a path row in regular weight (Windows Media's Library list); the row a drop-down opens on (hot)
+            if (item.plain) b.classList.add('is-plain');
+            if (item.hot) b.classList.add('is-hot');
             if (item.submenu) {
                 b.classList.add('has-submenu');
                 b.setAttribute('aria-haspopup', 'menu');
@@ -1569,9 +1573,9 @@
         // both devices open a menu with its first enabled row under the highlight (recorded: soft
         // key, tap-and-hold and Start menus; a drop-down keeps its own mark for the current choice).
         // It leaves as soon as the finger goes anywhere in the menu
-        if (side !== 'dropdown') {
+        if (side !== 'dropdown' || pop.querySelector(':scope > .is-hot')) {
             const first = pop.querySelector(':scope > .wm-popup-item:not(:disabled)');
-            if (first) first.classList.add('is-hot');
+            if (first && side !== 'dropdown') first.classList.add('is-hot');
             const cool = () => { pop.querySelectorAll(':scope > .is-hot').forEach((x) => x.classList.remove('is-hot')); pop.removeEventListener('pointerover', cool); pop.removeEventListener('pointerdown', cool); };
             pop.addEventListener('pointerover', cool);
             pop.addEventListener('pointerdown', cool);
