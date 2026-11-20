@@ -356,6 +356,37 @@
         else showFlyout();
     }
 
+    /** The computer's outputs (audioDevices.js) as radio items, "Speakers (Samsung Galaxy Z Fold7)" as Windows names them. */
+    function outputItems() {
+        const A = window.melatonAudioDevices;
+        if (!A || typeof A.list !== 'function') return [];
+        try { if (typeof A.refresh === 'function') A.refresh(); } catch (_err) { /* the platform answers later */ }
+        let list = [];
+        try { list = A.list('playback').filter((d) => d.state === 'working'); } catch (_err) { list = []; }
+        if (list.length < 2) return [];
+        return list.map((d) => ({
+            text: d.description && d.description !== d.name ? `${d.name} (${d.description})` : d.name,
+            action: 'volume-out:' + d.id,
+            showIndicator: true,
+            indicatorMark: 'radio',
+            checked: !!d.isDefault,
+            disabled: !d.isDefault && !d.canSetDefault,
+            menuItemClass: 'volume-menu-output'
+        }));
+    }
+
+    /** One click from the tray menu: media moves there (Android: the Media output route; DreamOS: the default sink). */
+    function switchOutput(id) {
+        const A = window.melatonAudioDevices;
+        if (!A || typeof A.setDefault !== 'function') return;
+        Promise.resolve(A.setDefault(id, 'default')).then((r) => {
+            if (!r || !r.error) return;
+            if (typeof window.showConfirmationDialog === 'function') {
+                window.showConfirmationDialog(r.error, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'Sound', icon: 'fas fa-exclamation-triangle', showCloseButton: true });
+            }
+        });
+    }
+
     /** Right-click: Open Volume Mixer and Sounds as on Vista, then each app's own options. */
     function showMenu(e) {
         const icon = document.getElementById('volumeTrayIcon');
@@ -367,6 +398,8 @@
                 // Vista's SndVolSSO menu: no icons (#963: Playback / Recording devices open Sound on their tab)
                 { text: 'Open Volume Mixer', action: 'volume-mixer' },
                 { text: 'Playback devices', action: 'volume-sound:playback' },
+                // the outputs, one click to switch (#963): radio items, the one media plays on marked
+                ...outputItems(),
                 { text: 'Recording devices', action: 'volume-sound:recording' },
                 { text: 'Sounds', action: 'volume-sound:sounds' }
             ]
@@ -382,6 +415,8 @@
             sections,
             onAction: (action, target, item) => {
                 if (action === 'volume-mixer') { showFlyout(); return; }
+                const out = /^volume-out:(.+)$/.exec(String(action || ''));
+                if (out) { switchOutput(out[1]); return; }
                 const snd = /^volume-sound:(\w+)$/.exec(String(action || ''));
                 if (snd) {
                     // the Sound dialog lives in Control Panel's scripts: loaded first when the tray asks before it

@@ -441,8 +441,7 @@ const FEATURE_MANIFEST = {
             'scripts/comp/dpiScalingDialog.js',
             // Personalization's hub and Window Color page, then the Screen Saver and Sound dialogs
             'scripts/comp/cplPersonalization.js',
-            // Sound's Playback / Recording: the device client's own speakers, headphones and microphones (#963)
-            'scripts/comp/audioDevices.js',
+            // (Sound's devices, audioDevices.js, load with the page: the tray volume menu lists the outputs, #963)
             'scripts/comp/personalizationDialogs.js',
             // Vista's other items: the property sheets, then the pages (Yozora #632)
             'scripts/comp/cplDialogs.js',

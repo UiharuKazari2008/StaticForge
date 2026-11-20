@@ -142,10 +142,20 @@ While a volume provider is in use, `tabVolume.js` works as follows:
 
 ## audio devices (Control Panel > Sound, #963)
 
-Sound's Playback and Recording tabs, each device's Properties (General / Levels / Advanced) and the tray volume menu's
-Playback devices / Recording devices list the computer's own sound devices. The page side is
-`public/scripts/comp/audioDevices.js` (`window.melatonAudioDevices`), loaded with Control Panel; it reads the platform's
-bridge directly, not through `melatonTray.register`. The platform is asked to push only while the Sound dialog is open.
+Sound's Playback and Recording tabs, each device's Properties (General / Levels / Advanced), the tray volume menu and the
+Volume Mixer list the computer's own sound devices. The page side is `public/scripts/comp/audioDevices.js`
+(`window.melatonAudioDevices`), loaded with the page (it does nothing until asked); it reads the platform's bridge
+directly, not through `melatonTray.register`. The platform is asked to push only while someone listens (the Sound dialog,
+the Mixer), and for a few seconds around a switch from the tray menu.
+
+- Two defaults, as Windows 7 shows them: the Default Device (green check; media) and the Default Communication Device
+  (green phone; calls and VoIP: Android's setCommunicationDevice; on DreamOS and the browser the same device as the
+  default). `setDefault(id, 'comm')` sets the second; Set Default is a split button (Default Device / Default
+  Communication Device), the button itself sets both.
+- Names given in Properties are kept on the server: melatonRegistry `HKCU\Software\Melaton\Audio\DeviceNames\<device>`
+  (the phone's ActiveSync id, else this computer's), one value per output's `stableKey` (type + Bluetooth address /
+  product / PipeWire node name, never Android's volatile id). Names kept in a browser before move there once.
+- The tray volume icon's menu lists the outputs as radio items under Playback devices; a click is `setDefault(id)`.
 
 Android (DSApp `AudioDevicesBridge`, `window.AndroidAudioDevices`):
 

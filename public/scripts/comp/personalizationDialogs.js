@@ -982,9 +982,11 @@
 
     function deviceRow(d) {
         // the default's green check (mmsys PNG 240); unplugged: the red arrow (249); unavailable: the grey one (248)
+        // (#963, Windows 7's second default): the green phone on the Default Communication Device when it is another
         const mark = d.state === 'unplugged' ? ['device-unplugged-16.png', 'Not plugged in']
             : d.state === 'disconnected' ? ['device-disabled-16.png', 'Disconnected']
-            : d.isDefault ? ['device-default-16.png', 'Default device'] : null;
+            : d.isDefault ? ['device-default-16.png', 'Default device']
+            : d.isDefaultComm ? ['device-default-comm-16.png', 'Default communication device'] : null;
         return `
                 <div class="cpl-pers-device${d.state !== 'working' ? ' is-unplugged' : ''}" data-device="${d.flow}" data-id="${esc(d.id)}">
                     <span class="cpl-pers-device-icon"><img src="${ART}/${DEVICE_ICONS[d.kind] || DEVICE_ICONS.speakers}" width="48" height="48" alt="" draggable="false">${mark ? `<img class="cpl-pers-device-default" src="${ART}/${mark[0]}" width="16" height="16" alt="${mark[1]}" draggable="false">` : ''}</span>
@@ -1002,7 +1004,7 @@
             ${text(7, 7, 245, 12, `Select a ${kind} device below to modify its settings:`)}
             <div class="tbp-ctl tbp-list cpl-pers-devices" style="${dlu(7, 21, 238, 171)}" tabindex="0" aria-label="${kind} devices" data-kind="${kind}">${deviceList(kind).map(deviceRow).join('')}</div>
             ${button(7, 199, 50, 14, '<u>C</u>onfigure', 'device-configure')}
-            ${button(131, 199, 60, 14, '<u>S</u>et Default', 'device-default')}
+            <button type="button" class="tbp-ctl tbp-button cpl-snd-split" style="${dlu(131, 199, 60, 14, 1)}" data-action="device-default"><span class="cpl-snd-split-text"><u>S</u>et Default</span><span class="cpl-snd-split-arrow" aria-hidden="true"></span></button>
             ${button(195, 199, 50, 14, '<u>P</u>roperties', 'device-properties')}`;
     }
 
@@ -1021,9 +1023,25 @@
         const d = id ? selectedDevice(page) : null;
         // Configure: there is no speaker setup to run; Set Default: what the platform allows
         page.querySelector('[data-action="device-configure"]').disabled = true;
+        // Set Default is Windows 7's split button (#963): the button makes the device both defaults, its arrow offers
+        // Default Device / Default Communication Device (calls and VoIP)
         const def = page.querySelector('[data-action="device-default"]');
-        def.disabled = !d || d.isDefault || !d.canSetDefault;
-        def.title = d && !d.isDefault && !d.canSetDefault ? d.setDefaultNote || '' : '';
+        const canDev = !!d && !d.isDefault && d.canSetDefault;
+        const canComm = !!d && !d.isDefaultComm && d.canSetDefaultComm;
+        def.disabled = !canDev && !canComm;
+        def.title = d && !canDev && !canComm && !d.isDefault ? d.setDefaultNote || '' : '';
+        const cm = root.contextMenu;
+        const arrow = def.querySelector('.cpl-snd-split-arrow');
+        if (arrow && cm && typeof cm.attachClickMenuToElement === 'function') {
+            if (def.disabled) arrow.removeAttribute('data-click-menu');
+            else cm.attachClickMenuToElement(arrow, {
+                sections: [{ type: 'list', items: [
+                    { text: 'Default Device', action: 'default', disabled: !canDev },
+                    { text: 'Default Communication Device', action: 'comm', disabled: !canComm }
+                ] }],
+                onAction: (action) => setDefaultDevice(page, action === 'comm' ? 'comm' : 'default')
+            });
+        }
         page.querySelector('[data-action="device-properties"]').disabled = !d || d.state === 'disconnected';
     }
 
@@ -1051,6 +1069,7 @@
             if (kind === 'playback') items.push({ text: 'Test', action: 'test', disabled: !(d.isDefault && d.state === 'working') });
             items.push({ text: 'Disable', action: 'disable', disabled: true });
             items.push({ text: 'Set as Default Device', action: 'default', disabled: d.isDefault || !d.canSetDefault });
+            items.push({ text: 'Set as Default Communication Device', action: 'comm', disabled: d.isDefaultComm || !d.canSetDefaultComm });
             items.push({ separator: true });
         }
         items.push({ text: 'Show Disabled Devices', action: 'show-disabled', showIndicator: true, checked: false, disabled: true });
@@ -1060,7 +1079,8 @@
             sections: [{ type: 'list', items }],
             onAction: (action) => {
                 if (action === 'test') testDevice();
-                else if (action === 'default') setDefaultDevice(page);
+                else if (action === 'default') setDefaultDevice(page, 'default');
+                else if (action === 'comm') setDefaultDevice(page, 'comm');
                 else if (action === 'properties') deviceProperties(page);
                 else if (action === 'show-disconnected') {
                     showDisconnected = !showDisconnected;
@@ -1078,11 +1098,16 @@
         if (S && typeof S.play === 'function') S.play('dialog');
     }
 
-    function setDefaultDevice(page) {
+    /** role 'default' | 'comm', or 'both' (the split button itself: Windows 7 makes the device both defaults). */
+    function setDefaultDevice(page, role) {
         const d = selectedDevice(page);
         const A = audio();
         if (!d || !A) return;
-        A.setDefault(d.id).then((r) => {
+        const roles = role === 'both'
+            ? [(!d.isDefault && d.canSetDefault) ? 'default' : null, (!d.isDefaultComm && d.canSetDefaultComm) ? 'comm' : null].filter(Boolean)
+            : [role];
+        // one after the other: the media move answers once Android has moved it
+        roles.reduce((p, r) => p.then((prev) => (prev && prev.error ? prev : A.setDefault(d.id, r))), Promise.resolve(null)).then((r) => {
             if (r && r.error) message('Sound', r.error, page.closest('.modal'), 'warning');
             renderDevices(page);
         });
@@ -1125,10 +1150,14 @@
         });
     }
 
-    function onDeviceAction(action, b) {
+    function onDeviceAction(action, b, ev) {
         const page = b.closest('.tbp-page');
         if (action === 'device-properties') { deviceProperties(page); return true; }
-        if (action === 'device-default') { setDefaultDevice(page); return true; }
+        if (action === 'device-default') {
+            // the split button's arrow opens its menu (contextMenu's click menu); the rest of it sets both defaults
+            if (!(ev && ev.target && ev.target.closest && ev.target.closest('.cpl-snd-split-arrow'))) setDefaultDevice(page, 'both');
+            return true;
+        }
         return false;
     }
 
@@ -1673,8 +1702,8 @@
                 if (soundDlg && soundDlg.offDevices) soundDlg.offDevices();
                 soundDlg = null;
             },
-            onAction: (action, b) => {
-                if (onDeviceAction(action, b)) return;
+            onAction: (action, b, ev) => {
+                if (onDeviceAction(action, b, ev)) return;
                 if (action === 'sound-test') {
                     const file = soundDlg.selected ? pendingFile(soundDlg.selected) : '';
                     if (file && S && typeof S.playFile === 'function') S.playFile(file);

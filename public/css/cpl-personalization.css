@@ -677,6 +677,38 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     background: #3cc23c;
 }
 
+/* Set Default as Windows 7's split button (#963): the label, then a 1 px divider and the drop-down arrow. Children only:
+   the button's own ::before / ::after are its hot and pulse layers and stay as they are */
+.tbp-client .tbp-button.cpl-snd-split {
+    display: flex;
+    align-items: stretch;
+    padding: 0;
+}
+
+.tbp-client .cpl-snd-split-text {
+    display: block;
+    flex: 1;
+    align-self: center;
+    min-width: 0;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.tbp-client .cpl-snd-split-arrow {
+    position: relative;
+    inset: auto;
+    flex: none;
+    width: 15px;
+    margin: 3px 0;
+    border-left: 1px solid rgb(0 0 0 / 22%);
+    box-shadow: inset 1px 0 0 rgb(255 255 255 / 70%);
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23000'/%3E%3C/svg%3E") center / 7px 4px no-repeat;
+}
+
+.tbp-client .tbp-button.cpl-snd-split:disabled .cpl-snd-split-arrow {
+    opacity: 0.4;
+}
+
 /* a device's Properties (#963, mmsys dialogs 121 / 123 / 126): VM Speakers Properties, 414 x 459 like Sound */
 .tbp-client.cpl-snd-props .cpl-snd-icon img {
     display: block;
