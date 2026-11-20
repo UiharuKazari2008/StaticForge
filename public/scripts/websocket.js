@@ -1032,6 +1032,11 @@ class WebSocketClient {
         // ActiveSync (activeSyncAgent.js): the phone link's own traffic, relayed calls included (file
         // listings, status, notifications); it recurs on its own and is not something the user asked for
         'as_hello',
+        // Browsing sessions (browsingSessions.js, #756): this window telling the server it is here and which
+        // windows it has open; background bookkeeping on every connect, never work the user asked for (Nov 20:
+        // a slow answer put the raw "browsing_session_hello" in the ticker)
+        'browsing_session_hello',
+        'browsing_session_update',
         'as_list',
         'as_call',
         'as_partnership',
