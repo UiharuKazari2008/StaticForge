@@ -166,9 +166,10 @@
         });
     }
 
-    // ---- VZAccess Manager (#947): on a Verizon data connection the desktop has Verizon's connection manager in the
-    // notification area (7.x ran at startup into the tray), and the Start menu lists it from the first such
-    // connection on (a local mark, 'melatonVzaccessSeen'). Leaving Verizon ends a copy that is only in the tray.
+    // ---- VZAccess Manager (#947, #953): with a Verizon SIM in the phone the desktop has Verizon's connection manager
+    // in the notification area (7.x ran at startup into the tray; its Preferences > Application "Run VZAccess Manager
+    // at Startup", kept in the registry), and the Start menu lists it from then on (a local mark,
+    // 'melatonVzaccessSeen'). A SIM that is not Verizon's ends a copy that is only in the tray.
     let vzOn = null;
     let vzTimer = 0;
     function onVerizon(on) {
@@ -181,17 +182,28 @@
             return;
         }
         try { if (root.localStorage.getItem('melatonVzaccessSeen') !== '1') root.localStorage.setItem('melatonVzaccessSeen', '1'); } catch (_) { /* private mode */ }
-        let prefs = null;
-        try { prefs = JSON.parse(root.localStorage.getItem('vzaccess.prefs') || 'null'); } catch (_) { prefs = null; }
-        if (prefs && prefs.runAtStartup === false) return;
-        // after the desktop is up (the package comes from the server or the cache), once
+        // after the desktop is up (the package comes from the server or the cache, the registry from the profile). An
+        // installed desktop is up before its server link (installed-boot-zero-wait): a launch that cannot reach the
+        // server yet is tried again when the late boot steps end ('deferredInitDone') and a few times after, further
+        // apart each time (5 s ... 80 s), never on a steady timer
+        let tries = 0;
         const go = () => {
             if (!vzOn) return;
+            const reg = root.melatonRegistry;
+            const atStartup = reg && typeof reg.get === 'function' ? reg.get('HKCU\\Software\\Verizon Wireless\\VZAccess Manager\\Preferences', 'RunAtStartup', 1) : 1;
+            if (Number(atStartup) === 0) return;
             const apps = root.melatonApps;
-            if (!apps || typeof apps.launch !== 'function') return;
+            const ws = root.wsClient;
+            const later = () => { if (vzOn && tries < 5) { clearTimeout(vzTimer); vzTimer = setTimeout(go, 5000 * 2 ** tries); tries += 1; } };
+            if (!apps || typeof apps.launch !== 'function' || !ws || (typeof ws.isConnected === 'function' && !ws.isConnected())) { later(); return; }
             const running = typeof apps.running === 'function' && apps.running().some((a) => a.packageId === 'vzaccess');
-            if (!running) void Promise.resolve(apps.launch({ packageId: 'vzaccess', args: { tray: true } })).catch(() => { /* no package: no tray icon */ });
+            if (running) return;
+            void Promise.resolve(apps.launch({ packageId: 'vzaccess', args: { tray: true } })).catch((err) => {
+                // the program's own fault is reported by melatonApps; a server not reached yet is tried again
+                if (!(err && err.melatonAppFault)) later();
+            });
         };
+        doc.addEventListener('deferredInitDone', () => { if (vzOn) setTimeout(go, 1000); }, { once: true, signal: appScopeSignal });
         const booted = () => !!(root.wsClient && root.wsClient.initializationCompleted && root.melatonApps);
         if (booted()) { vzTimer = setTimeout(go, 1500); return; }
         // the boot's end: its event, or (the DeX window can pass desktopBootDone before this first runs, and then it
@@ -244,7 +256,9 @@
             netKey = key;
             net = next;
             h.emit(net);
-            onVerizon(!!(next.mobile && next.mobile.connected && /^verizon/i.test(String(next.mobile.carrier || ''))));
+            // a Verizon SIM in the phone (its data on or not: on Wi-Fi the SIM is still Verizon's, as 7.x ran at startup
+            // whatever the connection), not only a live Verizon data link (#953)
+            onVerizon(!!(next.mobile && /verizon/i.test(String(next.mobile.carrier || ''))));
         };
         listen('androidwifi', (d) => { if (d && typeof d === 'object') { wifi = d; update(); } });
         listen('androidwifiscan', (d) => scanHub.emit(d && Array.isArray(d.networks) ? d : { networks: [] }));
