@@ -365,6 +365,11 @@ const FEATURE_MANIFEST = {
         styles: ['css/taskbar-properties.css', 'css/vista-dialog-template.css'],
         scripts: ['scripts/comp/vistaDialogTemplates.js', 'scripts/comp/vistaDialogTemplate.js']
     },
+    // Vista's VPN connections (#952): Connect to a workplace, Connect <name>, its Properties (dreamosVpn.js, from dreamosWifi.js)
+    network_vpn: {
+        depends: ['vista_dialog_templates'],
+        scripts: ['scripts/comp/dreamosVpn.js']
+    },
     // Restore Session, Browsing Session Settings, Other Devices (#756; browsingRestore.js, browsingOtherDevices.js at boot)
     browsing_sessions_ui: {
         depends: ['vista_dialog_templates'],

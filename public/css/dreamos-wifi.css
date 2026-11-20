@@ -157,7 +157,7 @@
 
 /* Connect to a network's pages are Segoe UI 9 pt templates: their controls take the client's 12 px (the property
    sheet rule in taskbar-properties.css sets every control to 11 px) */
-body.desktop-mode :is(#dreamosWifiConnectModal, #dreamosWifiAdd).modal.tbp-window[data-vista-dialog] > .modal-content.vdt-client.vdt-segoe :is(button, input, select, label, span, div):not(.vdt-cmdlink):not(.vdt-cmdlink *) {
+body.desktop-mode :is(#dreamosWifiConnectModal, #dreamosWifiAdd, #dreamosVpnWizard).modal.tbp-window[data-vista-dialog] > .modal-content.vdt-client.vdt-segoe :is(button, input, select, label, span, div):not(.vdt-cmdlink):not(.vdt-cmdlink *) {
     font-size: inherit;
 }
 
@@ -341,4 +341,34 @@ body.desktop-mode :is(#dreamosWifiConnectModal, #dreamosWifiAdd).modal.tbp-windo
 #dreamosNetSetup .vdt-client .vdt-image[data-vdt-id="1702"] img {
     width: 100%;
     height: 100%;
+}
+
+/* Connect to a workplace (#952, dreamosVpn.js): How do you want to connect?'s pictures joined by the VM's 1 px grey
+   lines; Sharing's "Establish a dial-up connection ..." check box (greyed: Melaton has no dial-up) */
+.vdt-client .dsvpn-line-holder {
+    display: flex;
+    align-items: center;
+}
+
+.vdt-client .dsvpn-line {
+    display: block;
+    width: 100%;
+    height: 1px;
+    background: #6d6d6d;
+}
+
+.vdt-client .dsvpn-establish {
+    height: auto !important;
+}
+
+.vdt-client .dsvpn-fake-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 3px;
+    color: #a0a0a0;
+}
+
+.vdt-client .dsvpn-fake-check input {
+    flex: none;
+    margin: 0 2px 0 0;
 }

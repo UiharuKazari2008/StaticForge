@@ -312,7 +312,11 @@
         // the connected network first, as Vista lists it
         wifi.sort((a, b) => (b.connected ? 1 : 0) - (a.connected ? 1 : 0));
         const ns = nightshade();
-        const vpn = [{ kind: 'vpn', key: 'v:nightshade', name: ns.name, connected: ns.connected }];
+        const vpn = [{ kind: 'vpn', key: 'v:nightshade', name: ns.name, connected: ns.connected }]
+            // (#952) Dial-up and VPN: the phone's VPN apps' tunnels and this computer's workplace connections, as Vista lists
+            // every connection of its phone book here
+            .concat((ifaces || []).filter((x) => x && x.kind === 'vpn' && x.nc).map((x) => ({ kind: 'vpn', key: `v:tun:${x.name}`, name: x.vpnSession || x.vpnApp || x.name, connected: !!x.connected, row: x })))
+            .concat(vpnObjects().map((o) => { const r = vpnObjectRow(o); return { kind: 'vpn', key: `v:vo:${o.id}`, name: o.name, connected: r.connected, vo: o }; }));
         // no adapter (no host, or none present) or its radio off: no wireless networks to list
         return { wifi: !available() || state().wifi.radio === false ? [] : wifi, vpn };
     }
@@ -399,6 +403,19 @@
     function vanNext(ctx) {
         const r = vanSelected();
         if (!r) return false;
+        if (r.kind === 'vpn' && r.vo) {
+            // a workplace connection: Vista's Connect <name> (or its status while it is up)
+            ctx.close();
+            if (r.connected) void openStatus(vpnAdapter());
+            else void vpnLib().then((lib) => lib && lib.openConnect(r.vo.id));
+            return false;
+        }
+        if (r.kind === 'vpn' && r.row) {
+            // a VPN app's tunnel: connected or disconnected through its app
+            ctx.close();
+            if (!vpnControl(r.row, !r.connected)) { const h = host(); if (h && typeof h.openVpnApp === 'function') h.openVpnApp(r.row.name); }
+            return false;
+        }
         if (r.kind === 'vpn') {
             // the Nightshade Network has its own client: it connects (and, behind its warning, disconnects) there
             ctx.close();
@@ -785,7 +802,7 @@
                 const id = String(x.alias || x.name);
                 const a = { iface: String(x.name), id, kind: x.kind, label: labels.get(x) || x.label || '', mac: x.mac || '', enabled: x.enabled !== false, row: x, present: x.present !== false };
                 let base;
-                if (x.kind === 'wifi') { wifis += 1; base = wifis > 1 ? `${ADAPTER} ${wifis}` : ADAPTER; } else if (x.kind === 'vpn') base = x.vpnApp || 'VPN Connection';
+                if (x.kind === 'wifi') { wifis += 1; base = wifis > 1 ? `${ADAPTER} ${wifis}` : ADAPTER; } else if (x.kind === 'vpn') base = x.vpnSession || x.vpnApp || 'VPN Connection'; // the tunnel's own name in its app (WireGuard's)
                 else { const k = lanNumber(id); base = k > 1 ? `${LAN} ${k}` : LAN; }
                 return { ...a, base, conn: names[id] || base };
             }).concat(miniportAdapter() ? [miniportAdapter()] : []);
@@ -1966,6 +1983,48 @@
         return { key: 'vpn', kind: 'vpn', conn: ns.name, status: ns.connected ? N.connected : N.disconnectedVpn, device, look: ns.connected ? 'on' : 'off', connected: ns.connected };
     }
 
+    // ---- VPN connection objects (#952): Connect to a workplace's connections, kept on this computer (dreamosVpn.js reads
+    // and writes them; this file lists them without loading it) ------------------------------------------------------
+    const VPN_KEY = 'dreamos.ncpa.vpn';
+    function vpnObjects() {
+        try { const v = JSON.parse(root.localStorage.getItem(VPN_KEY) || '[]'); return Array.isArray(v) ? v.filter((o) => o && o.id && o.name) : []; } catch (_) { return []; }
+    }
+    /** dreamosVpn.js (featureLoader 'network_vpn'): the wizard, Connect, Properties. */
+    function vpnLib() {
+        const fl = root.featureLoader;
+        return Promise.resolve(fl && typeof fl.loadFeature === 'function' ? fl.loadFeature('network_vpn') : null).then(() => root.dreamosVpn || null);
+    }
+    /** A VPN app's tunnel up or down through the app (AndroidWifi.vpnControl, DSApp claude/vpn-info): true when asked. */
+    function vpnControl(row, up) {
+        const h = host();
+        if (!row || !row.vpnPackage || !h || typeof h.vpnControl !== 'function') return false;
+        Promise.resolve(h.vpnControl(row.vpnPackage, row.vpnSession || '', !!up)).then((res) => {
+            if (res && res.error) void message(res.error, row.vpnSession || row.vpnApp || 'VPN', 'error');
+            root.setTimeout(() => { void readIfaces().then(ncRerender); }, 1500);
+        }).catch(() => {});
+        return true;
+    }
+
+    function vpnObjectRow(o) {
+        // a connection to this server is up while the Nightshade link is (dreamosVpn.isNightshade); the rest never are
+        const lib = root.dreamosVpn;
+        const up = !!(lib && typeof lib.connected === 'function' && lib.connected(o));
+        const device = o.type === 'pptp' ? 'WAN Miniport (PPTP)' : 'WAN Miniport (L2TP)';
+        return { key: `vo:${o.id}`, kind: 'vpn', vo: o, a: { iface: 'vo', id: `vo:${o.id}`, kind: 'vpn', label: device, base: o.name, conn: o.name }, conn: o.name, status: up ? N.connected : N.disconnectedVpn, device, look: up ? 'on' : 'off', enabled: true, connected: up };
+    }
+
+    /** Delete this connection: Vista's confirmation (netshell "Confirm Connection Delete"). */
+    async function vpnDelete(r) {
+        if (r.connected) { await message('You cannot delete a connection while it is connected or busy connecting. Please disconnect or close the login property page and try again.', 'Network Connections', 'error'); return; }
+        const ok = await Promise.resolve(call('showConfirmationDialog', esc(`Are you sure you want to delete '${r.conn}'?`),
+            [{ text: 'Yes', value: true, className: 'btn-standard primary' }, { text: 'No', value: false, className: 'btn-standard' }], null,
+            { title: 'Confirm Connection Delete', icon: 'fas fa-exclamation-triangle', sound: true }));
+        if (ok !== true) return;
+        try { root.localStorage.setItem(VPN_KEY, JSON.stringify(vpnObjects().filter((o) => o.id !== r.vo.id))); } catch (_) { /* private window */ }
+        nc.sel = null;
+        ncRerender();
+    }
+
     /** The redrawn command bar keeps Vista's overflow: what does not fit goes under » (melatonControlPanel). */
     function fitBars(win) {
         const cp = root.melatonControlPanel;
@@ -1980,14 +2039,21 @@
             return { key: `if:${a.id || a.iface}`, kind: a.kind, a, conn: a.conn, status: adapterStatus(a, info), device: a.label || a.iface, look, enabled: info.enabled, connected: info.connected };
         });
         // the Café Miniport is an adapter now (#952); without it (a browser, Continuity) the Nightshade link stays a VPN
-        return list.some((a) => a.kind === 'miniport') ? rows : rows.concat([vpnRow()]);
+        const objects = vpnObjects().map(vpnObjectRow);
+        return (list.some((a) => a.kind === 'miniport') ? rows : rows.concat([vpnRow()])).concat(objects);
     }
 
     function ncBar(rows) {
         const r = rows.find((x) => x.key === nc.sel) || null;
         const btn = (v, icon, t, on = true) => `<button type="button" class="cpl-fbar-btn" data-cpl-vpage="${v}"${on ? '' : ' disabled'}>${icon ? img(icon) : ''}${esc(t)}</button>`;
         let cmds = '';
-        if (r && r.kind === 'vpn') {
+        if (r && r.vo) {
+            // a Connect to a workplace connection (#952): Vista's VPN bar, Delete this connection included
+            cmds = btn(r.connected ? 'vpnstop' : 'vpnstart', r.connected ? 'ncpa-disable-16' : 'ncpa-connect-16', r.connected ? N.stop : N.start)
+                + btn('rename', 'ncpa-rename-16', N.rename)
+                + btn('vodelete', 'ncpa-delete-16', N.remove, !r.connected)
+                + btn('settings', 'ncpa-settings-16', N.settings);
+        } else if (r && r.kind === 'vpn') {
             cmds = btn(r.connected ? 'vpnstop' : 'vpnstart', r.connected ? 'ncpa-disable-16' : 'ncpa-connect-16', r.connected ? N.stop : N.start)
                 + btn('rename', 'ncpa-rename-16', N.rename)
                 // (no Delete this connection: the Nightshade Network is the domain's own connection, and Vista's bar
@@ -2048,10 +2114,16 @@
         if (nc.renaming) return;
         const r = ncRows().find((x) => x.key === id);
         if (!r) return;
+        if (r.vo) {
+            // connected: the Nightshade link's status (the connection reaches this server); otherwise Connect <name>
+            if (r.connected) { void openStatus(vpnAdapter()); return; }
+            void vpnLib().then((lib) => lib && lib.openConnect(r.vo.id));
+            return;
+        }
         if (r.kind === 'vpn' && r.a && r.a.row) {
             // a VPN app's tunnel (#952): its status while it is up, else its app (where the tunnel is switched)
             if (r.connected) void openStatus(r.a);
-            else { const h = host(); if (h && typeof h.openVpnApp === 'function') h.openVpnApp(r.a.iface); }
+            else if (!vpnControl(r.a.row, true)) { const h = host(); if (h && typeof h.openVpnApp === 'function') h.openVpnApp(r.a.iface); }
             return;
         }
         if (r.kind === 'miniport') { void openStatus(r.a); return; }
@@ -2071,7 +2143,7 @@
     function ncRename(t) {
         const r = ncRow();
         if (!r) return;
-        if (r.kind === 'vpn') {
+        if (r.kind === 'vpn' && !r.vo) {
             const cp = root.melatonControlPanel;
             if (cp && typeof cp.openCustomizeDialog === 'function') cp.openCustomizeDialog('connection');
             return;
@@ -2099,7 +2171,12 @@
                 // tcpipcfg-style checks are netshell's: no tabs, not only spaces, none of \/:*?<>|"
                 if (!v.trim() || /[\\/:*?<>|"\t]/.test(v)) { done = true; await message(N.renameChars, N.renameTitle, 'error'); done = false; input.focus(); input.select(); return; }
                 if (ncRows().some((x) => x.key !== r.key && x.conn.toLowerCase() === v.toLowerCase())) { done = true; await message(N.renameExists, N.renameTitle, 'error'); done = false; input.focus(); input.select(); return; }
-                storeName(r.a.id || r.a.iface, v === r.a.base ? '' : v);
+                // a VPN connection object keeps its own name (its phone book entry, #952)
+                if (r.vo) {
+                    const all = vpnObjects();
+                    const it = all.find((o) => o.id === r.vo.id);
+                    if (it) { it.name = v; try { root.localStorage.setItem(VPN_KEY, JSON.stringify(all)); } catch (_) { /* private window */ } }
+                } else storeName(r.a.id || r.a.iface, v === r.a.base ? '' : v);
             }
             done = true;
             nc.renaming = null;
@@ -2141,13 +2218,28 @@
                 diagnose: go((r) => { void diagnoseAdapter(r.a); }),
                 rename(t) { ncRename(t); },
                 status: go((r) => { void openStatus(r.a); }),
+                vodelete: go((r) => { if (r.vo) void vpnDelete(r); }),
                 settings: go((r) => {
+                    if (r.vo) { void vpnLib().then((lib) => lib && lib.openProperties(r.vo.id)); return; }
                     if (r.kind === 'vpn') { if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open(); return; }
                     void adapterProperties(null, r.a);
                 }),
                 // a VPN app's tunnel (#952) is switched in its app; the Nightshade link in its client
-                vpnstart() { const r = ncRow(); const h = host(); if (r && r.a && r.a.row && h && typeof h.openVpnApp === 'function') { h.openVpnApp(r.a.iface); return; } if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open(); },
-                vpnstop() { const r = ncRow(); const h = host(); if (r && r.a && r.a.row && h && typeof h.openVpnApp === 'function') { h.openVpnApp(r.a.iface); return; } if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open(); },
+                vpnstart() {
+                    const r0 = ncRow();
+                    if (r0 && r0.vo) { void vpnLib().then((lib) => lib && lib.openConnect(r0.vo.id)); return; }
+                    // a VPN app's tunnel (#952): WireGuard connects through its remote control, any other app opens
+                    if (r0 && r0.a && r0.a.row && vpnControl(r0.a.row, true)) return;
+                    const r = ncRow(); const h = host(); if (r && r.a && r.a.row && h && typeof h.openVpnApp === 'function') { h.openVpnApp(r.a.iface); return; } if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open(); },
+                vpnstop() {
+                    const r0 = ncRow();
+                    if (r0 && r0.vo) {
+                        // a connection to this server: its link is the Nightshade link (the Nightshade client asks first)
+                        if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open();
+                        return;
+                    }
+                    if (r0 && r0.a && r0.a.row && vpnControl(r0.a.row, false)) return;
+                    const r = ncRow(); const h = host(); if (r && r.a && r.a.row && h && typeof h.openVpnApp === 'function') { h.openVpnApp(r.a.iface); return; } if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open(); },
                 organize() {}, views() {}
             };
             if (root.cplSort && typeof root.cplSort.columns === 'function') root.cplSort.columns(NC, N.cols);
@@ -2316,9 +2408,9 @@
                         }
                         if (id === 'wireless') return 'wlanpref:10101';
                         if (id === 'workplace') {
-                            // the Nightshade Network's own client is Melaton's workplace connection
-                            c.close();
-                            if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open();
+                            // Vista's Connect to a workplace (#952, dreamosVpn.js): its own wizard window, as on the VM
+                            const owner = c.modal;
+                            void vpnLib().then((lib) => { if (lib) { c.close(); void lib.openWizard(owner); } });
                             return false;
                         }
                         // a wireless router, an ad hoc network, a dial-up modem: hardware Melaton does not have
@@ -2525,6 +2617,11 @@
         followScan();
     }
     root.addEventListener('nightshade:state', vanPaint, { signal: appScopeSignal });
+    // (#952) a workplace connection made, renamed, changed or deleted (dreamosVpn.js), the Nightshade link up or down
+    // (a connection to this server follows it), the adapter's lease: an open Network Connections draws it
+    root.addEventListener('dreamos-vpn-changed', () => { ncRerender(); vanPaint(); }, { signal: appScopeSignal });
+    root.addEventListener('nightshade:state', () => ncRerender(), { signal: appScopeSignal });
+    root.addEventListener('melaton-nightshade-lease', () => ncRerender(), { signal: appScopeSignal });
     noteConnection();
 
     root.dreamosWifi = {
