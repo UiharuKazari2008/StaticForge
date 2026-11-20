@@ -213,7 +213,7 @@ body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.mo
 .asdc-root .asdc-nf p { margin-bottom: 8px; }
 .asdc-nf-list { height: 276px; }
 /* the kit's tree list (vista-glass-controls.css) fills its host */
-.asdc-nf-list > .vista-treelist { height: 100%; --vtl-indent: 24px; } /* channels have no icon: their names start past the program's */
+.asdc-nf-list > .vista-treelist { height: 100%; }
 .asdc-nf .asdc-page-buttons { margin-top: 8px; }
 .asdc-nf .asdc-error { min-height: 0; margin: 4px 0 0; }
 .asdc-nf .asdc-page-buttons [data-asdc="nf-defaults"] { margin-right: auto; }

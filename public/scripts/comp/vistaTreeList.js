@@ -69,10 +69,13 @@
             flat = [];
             walk(rows, 0, null);
             if (selected && !flat.some((x) => x.row.id === selected)) selected = null;
+            // as a Win32 tree view's image list: when any row has an icon, every row keeps the icon's room, so a child
+            // starts one level (19 px, Device Manager on the VM) in from its parent and its text clears the parent's
+            const icons = flat.some((x) => x.row.icon);
             body.innerHTML = flat.map(({ row: r, depth }, i) => {
                 const kids = !!(r.children && r.children.length);
                 const isOpen = kids && open.has(r.id);
-                const icon = r.icon ? `<img class="vista-treelist-icon" src="${esc(r.icon)}" alt="">` : '';
+                const icon = r.icon ? `<img class="vista-treelist-icon" src="${esc(r.icon)}" alt="">` : (icons ? '<span class="vista-treelist-icon" aria-hidden="true"></span>' : '');
                 const detail = r.detail ? `<span class="vista-treelist-detail">${esc(r.detail)}</span>` : '';
                 return `<div class="vista-treelist-row${selected === r.id ? ' is-selected' : ''}${r.detail ? ' has-detail' : ''}" role="row" data-vtl-row="${i}" aria-level="${depth + 1}"${kids ? ` aria-expanded="${isOpen}"` : ''}${selected === r.id ? ' aria-selected="true"' : ''}>`
                     + `<span class="vista-treelist-cell vista-treelist-main" role="gridcell" data-depth="${depth}"${r.tip ? ` title="${esc(r.tip)}"` : ''}>`

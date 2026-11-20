@@ -1895,7 +1895,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
    A report list view whose rows open to child rows (public/scripts/comp/vistaTreeList.js), as Vista lists nested
    items: the header items and the row hot / selected faces of the shared list views (measured on the VM, cpl
    Programs and Features), Explorer's tree glyphs (aero.msstyles 807 GLYPH, 810 HOTGLYPH: closed / open, the hot
-   pair while the pointer is on the row), 19 px of indent per level in the first column only, the check boxes in
+   pair while the pointer is on the row), 19 px of indent per level (a Win32 tree view's, measured on the VM's Device
+   Manager: each level's glyph starts under its parent's icon) in the first column only, the check boxes in
    their own columns at every depth, and an optional details line under the name (it wraps, never cut). */
 :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .vista-treelist {
     --vtl-indent: 19px;
