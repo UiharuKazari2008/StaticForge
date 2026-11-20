@@ -29,7 +29,13 @@ const recorder = require('../../xmRadioRecorder');
 //   xmradio_deck_get        { workspaceId? }      { deck: { tape, workspaceId, mode, recordings[], timers[], alerts[], terms[] }, tapes[] }
 //   xmradio_deck_set        { tape?, workspaceId?, mode? (song | long) }  admins -> { deck } (a new tape name makes the tape)
 //   xmradio_tape_tracks     { workspaceId, tape } { tracks[{ id, name, size, at }] } (played through vfs_download_file)
-//   xmradio_rec_start       { channelId }         admins -> { rid, channelId, kind, mode, tape, since, until, url, cut }
+//   xmradio_rec_start       { channelId, song?, fromStart? }  admins -> { rid, channelId, kind, mode, tape, since, until, url, cut }
+//                                                 (song: the phone's one-touch Record, the cut on air, from its start
+//                                                 when fromStart; it stops when the cut ends)
+//   xmradio_phone_watch     { channels[] }        a phone's channels (up to 12) for the feed xmradio_phone
+//
+// Phones subscribe to statusHub feed `xmradio_phone` instead: { account { signedIn }, lineup { at }, rec[{ rid,
+// channelId, kind, since }], 'ch:<id>': { a, t, s, ad, i, at } } for the presets and the watched channels only.
 //                                                 (url: the recording's own growing playlist, which the radio plays)
 //   xmradio_rec_stop        { rid }               admins -> { rid, filed }
 //   xmradio_timers_set      { timers[{ id?, channelId, start 'HH:MM', minutes, days[0-6], date?, mode?, off? }] }  admins
@@ -68,6 +74,7 @@ function registerPackets(handlersCtx) {
     xmRadio.bind(handlersCtx.globalResources);
     xmRadio.defineFeed(statusHub);
     recorder.init(xmRadio, handlersCtx.globalResources, { changed: () => xmRadio.touch() });
+    xmRadio.definePhoneFeed(statusHub);
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             await fn(handlersCtx, ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer);
@@ -94,7 +101,16 @@ function registerPackets(handlersCtx) {
     }));
     reg('xmradio_deck_set', packet(true, 'The cassette deck could not be set', async (m) => ({ deck: recorder.setDeck(m) })));
     reg('xmradio_tape_tracks', packet(false, 'The tape could not be read', async (m) => ({ tracks: await recorder.tracks(String(m.workspaceId || recorder.deck().workspaceId), String(m.tape || recorder.deck().tape)) })));
-    reg('xmradio_rec_start', packet(true, 'The recording could not be started', async (m) => recorder.start({ channelId: m.channelId, kind: 'manual' })));
+    reg('xmradio_rec_start', packet(true, 'The recording could not be started', async (m) => (m.song
+        ? recorder.recordCut(m.channelId, { fromStart: !!m.fromStart })
+        : recorder.start({ channelId: m.channelId, kind: 'manual' }))));
+    // a phone's channels for its feed (xmradio_phone): the one it plays and the pages Today shows; fire and forget
+    wsPacketRegistry.registerWsPacket('xmradio_phone_watch', async (ctx) => {
+        if (!canRead(ctx.clientInfo)) return;
+        const m = ctx.message.data != null && typeof ctx.message.data === 'object' ? ctx.message.data : ctx.message;
+        const list = xmRadio.setPhoneWatch(ctx.ws, m.channels);
+        if (ctx.message.requestId) reply(handlersCtx, ctx.ws, ctx.message, { channels: list });
+    }, { owner: 'xmradio' });
     reg('xmradio_rec_stop', packet(true, 'The recording could not be stopped', async (m) => (await recorder.stop(String(m.rid || ''))) || { rid: m.rid, filed: 0 }));
     reg('xmradio_timers_set', packet(true, 'The timers could not be saved', async (m) => ({ timers: recorder.setTimers(m.timers) })));
     reg('xmradio_alert_add', packet(true, 'The alert could not be set', async (m) => ({ alerts: recorder.addAlert(m) })));

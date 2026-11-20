@@ -309,7 +309,8 @@ async function fileFinishedCuts(rec) {
             rec.meta.cuts = (rec.meta.cuts || 0) + 1;
             changed();
             // an alert or a term records one cut
-            if (rec.meta.kind === 'alert' || rec.meta.kind === 'term') { void stop(rec.meta.rid, { filed: true }); break; }
+            // an alert, a term, or the phone's one-touch Record (kind song) records one cut
+            if (rec.meta.kind === 'alert' || rec.meta.kind === 'term' || rec.meta.kind === 'song') { void stop(rec.meta.rid, { filed: true }); break; }
         }
     } finally { rec.filing = false; }
 }
@@ -358,6 +359,19 @@ function makePump(rec, back) {
  * Start recording a channel: kind manual (the deck's REC), timer, alert or term. `back` seconds behind live (an alert
  * reaches back to the start of the matched cut); `until` the wall-clock end (at most 8 hours).
  */
+/**
+ * One-touch Record (the phone's Today item, Yukimi Nov 20 2026): the cut on air now, from its first frame when asked
+ * ("Record from the start?" Yes), else from now; it stops when the cut ends.
+ */
+async function recordCut(channelId, { fromStart } = {}) {
+    const cut = xm.nowPlayingCuts(String(channelId || '')).slice(-1)[0];
+    const now = Date.now();
+    if (fromStart && cut && now - cut.at < 4 * 3600 * 1000) {
+        return start({ channelId, kind: 'song', back: Math.ceil((now - cut.at) / 1000) + 8, fromCut: cut.at, until: now + 2 * 3600 * 1000 });
+    }
+    return start({ channelId, kind: 'song', back: 0, fromCut: now, until: now + 2 * 3600 * 1000 });
+}
+
 async function start(opts) {
     const s = load();
     const channelId = String(opts.channelId || '');
@@ -372,7 +386,7 @@ async function start(opts) {
     const meta = {
         rid, channelId, kind: opts.kind || 'manual', ref: opts.ref || null,
         workspaceId: opts.workspaceId || s.deck.workspaceId, tape: opts.tape || s.deck.tape,
-        mode: opts.kind === 'alert' || opts.kind === 'term' ? 'song' : (opts.mode || s.deck.mode),
+        mode: opts.kind === 'alert' || opts.kind === 'term' || opts.kind === 'song' ? 'song' : (opts.mode || s.deck.mode),
         since: now, until: Math.min(now + MAX_MS, Number(opts.until) || now + MAX_MS), startPdt: now - back * 1000, cursor: 0, filed: 0
     };
     const rec = { meta, dir, segs: [], cuts: [], lastEnd: 0, write: Promise.resolve(), pump: null, filing: false };
@@ -664,6 +678,6 @@ function init(xmRadio, globalResources, { changed: cb } = {}) {
 }
 
 module.exports = {
-    init, start, stop, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
+    init, start, stop, recordCut, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
     _test: { adtsFrames, nextStart, cutAt, norm, onLook, sliceAac, recs, load: () => load(), reset: () => { st = null; recs.clear(); ended.clear(); fired.clear(); } }
 };

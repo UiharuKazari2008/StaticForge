@@ -402,6 +402,8 @@ function signOut() {
 
 /** The public lookAround: every channel's current cut and show (a delta after the first read). */
 async function readLookAround() {
+    // the radios' feed, the phones' feed and the deck's watch share one read every 10 s at most
+    if (Date.now() - lookAt < 10000) return true;
     const url = `${LOOKAROUND}?delta=${encodeURIComponent(lookDelta)}`;
     let j;
     try {
@@ -485,6 +487,50 @@ function defineFeed(statusHub) {
 
 function touch() {
     if (hub && typeof hub.poke === 'function') hub.poke();
+    if (phoneHub && typeof phoneHub.poke === 'function') phoneHub.poke();
+}
+
+// ------------------------------------------------------------------ the phones' feed
+// A phone (Today's item, the phone radio) gets only its channels (rule phone-power-server 4): the presets of every
+// bank and the channels its sockets say they show (xmradio_phone_watch), not the whole lineup's cuts every 20 s.
+let phoneHub = null;
+const phoneWatch = new Map(); // ws -> Set(channelId)
+function setPhoneWatch(ws, ids) {
+    if (!ws) return [];
+    const list = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter((x) => /^[0-9a-f-]{20,64}$/i.test(x)))].slice(0, 12);
+    if (!phoneWatch.has(ws) && typeof ws.once === 'function') ws.once('close', () => phoneWatch.delete(ws));
+    phoneWatch.set(ws, new Set(list));
+    if (phoneHub && typeof phoneHub.poke === 'function') phoneHub.poke();
+    return list;
+}
+function phoneChannels() {
+    const out = new Set();
+    const p = presets();
+    for (const b of ['A', 'B', 'C']) for (const id of p[b] || []) if (id) out.add(id);
+    for (const set of phoneWatch.values()) for (const id of set) out.add(id);
+    return out;
+}
+function definePhoneFeed(statusHub) {
+    if (phoneHub || !statusHub) return phoneHub;
+    phoneHub = statusHub.define({
+        name: 'xmradio_phone',
+        pushType: 'xmradio_phone_status',
+        intervalMs: HUB_INTERVAL,
+        allow: (info) => !!(info && /^(admin|dev_admin)$/.test(String(info.userType || ''))),
+        sample: async () => {
+            await readLookAround();
+            const a = account();
+            const items = { account: { signedIn: !!(a && a.signedIn) }, lineup: lineupCache && lineupCache.at ? { at: lineupCache.at } : null };
+            // the deck as a phone shows it: what records now (no timers, alerts or terms lists)
+            try { const d = require('./xmRadioRecorder').deck(); items.rec = d.recordings.map((r) => ({ rid: r.rid, channelId: r.channelId, kind: r.kind, since: r.since })); } catch (_) { items.rec = []; }
+            for (const id of phoneChannels()) {
+                const v = nowPlaying.get(id);
+                if (v) items[`ch:${id}`] = { a: v.a, t: v.t, s: v.s, ad: v.ad, i: v.i, at: v.at };
+            }
+            return items;
+        }
+    });
+    return phoneHub;
 }
 
 // ------------------------------------------------------------------ the lineup and presets
@@ -1005,6 +1051,8 @@ module.exports = {
     watch,
     onLook,
     touch,
+    definePhoneFeed,
+    setPhoneWatch,
     accountFilePath: () => accountFile(),
     imageUrlFor: (key, size) => imageUrl(key, size, 'jpeg', size),
     _test: { rewritePlaylist, findStreamUrl, jwtExp, maskHandle, upstream, streams, imageUrl, artPath, onlyVariant, state: () => load() }

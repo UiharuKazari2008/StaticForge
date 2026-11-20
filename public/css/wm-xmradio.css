@@ -1,0 +1,113 @@
+/* Melaton Mobile: XM Radio (wmXmRadio.js, Yozora #989). The program: the channel on air on a dark receiver-like
+   panel, then the presets or all channels as a Windows Mobile list. Today: a channel a page, sideways. */
+
+.wm-xmradio { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--wm-bg, #fff); }
+
+.wm-xmradio .xrm-now {
+    flex: 0 0 auto;
+    padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(5 * var(--wm-px));
+    background: linear-gradient(#123a6b, #061830 70%, #020a16);
+    color: #f2f6fb;
+    cursor: default;
+}
+.wm-xmradio .xrm-top { display: flex; align-items: center; gap: calc(4 * var(--wm-px)); height: calc(18 * var(--wm-px)); }
+.wm-xmradio .xrm-logo { height: calc(16 * var(--wm-px)); max-width: calc(48 * var(--wm-px)); object-fit: contain; }
+.wm-xmradio .xrm-ch { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: calc(11 * var(--wm-px)); font-weight: bold; }
+.wm-xmradio .xrm-state { flex: 0 0 auto; font-size: calc(9 * var(--wm-px)); opacity: 0.85; }
+.wm-xmradio .xrm-state.is-rec { color: #ff6a5a; font-weight: bold; opacity: 1; }
+.wm-xmradio .xrm-body { display: flex; gap: calc(6 * var(--wm-px)); margin-top: calc(3 * var(--wm-px)); align-items: center; }
+.wm-xmradio .xrm-art { flex: 0 0 auto; width: calc(56 * var(--wm-px)); height: calc(56 * var(--wm-px)); object-fit: contain; background: rgba(0, 0, 0, 0.25); border: calc(1 * var(--wm-px)) solid rgba(255, 255, 255, 0.35); }
+.wm-xmradio .xrm-lines { flex: 1 1 auto; min-width: 0; }
+.wm-xmradio .xrm-lines > div { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.3; }
+.wm-xmradio .xrm-t1 { font-size: calc(13 * var(--wm-px)); font-weight: bold; }
+.wm-xmradio .xrm-t2 { font-size: calc(11 * var(--wm-px)); }
+.wm-xmradio .xrm-t3 { font-size: calc(9 * var(--wm-px)); opacity: 0.8; }
+
+.wm-xmradio .xrm-head {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: calc(17 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-today-rule, #c0c0c0);
+    font-size: calc(11 * var(--wm-px));
+    font-weight: bold;
+}
+.wm-xmradio .xrm-count { font-weight: normal; opacity: 0.7; }
+.wm-xmradio .xrm-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.wm-xmradio .xrm-row {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    height: calc(30 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid rgba(0, 0, 0, 0.08);
+    cursor: default;
+}
+.wm-xmradio .xrm-row:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wm-xmradio .xrm-row.is-current .xrm-rname { font-weight: bold; }
+.wm-xmradio .xrm-rlogo { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: calc(32 * var(--wm-px)); height: calc(24 * var(--wm-px)); border-radius: calc(2 * var(--wm-px)); background: #0b1a2e; color: #fff; font-size: calc(10 * var(--wm-px)); }
+.wm-xmradio .xrm-rlogo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.wm-xmradio .xrm-rlines { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.wm-xmradio .xrm-rname, .wm-xmradio .xrm-rsub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.wm-xmradio .xrm-rname { font-size: calc(11 * var(--wm-px)); }
+.wm-xmradio .xrm-rsub { font-size: calc(9 * var(--wm-px)); opacity: 0.75; }
+.wm-xmradio .xrm-recdot { font-style: normal; font-weight: bold; font-size: calc(8 * var(--wm-px)); color: #d0220e; }
+.wm-xmradio .xrm-empty { padding: calc(8 * var(--wm-px)); font-size: calc(11 * var(--wm-px)); opacity: 0.75; }
+
+/* ---------------------------------------------------------------- Today (6.1): one channel, paged sideways */
+.wm-today-block.xrm-today { display: flex; align-items: center; gap: calc(2 * var(--wm-px)); padding-left: 0; padding-right: 0; touch-action: pan-y; overflow: hidden; }
+.xrm-today .xrm-td-arrow {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: calc(14 * var(--wm-px));
+    align-self: stretch;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    opacity: 0.75;
+    font-size: calc(16 * var(--wm-px));
+}
+.xrm-today .xrm-td-arrow:active { opacity: 1; background: var(--wm-highlight); }
+.xrm-today .xrm-td-arrow[disabled] { visibility: hidden; }
+.xrm-today .xrm-td-slide { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: calc(6 * var(--wm-px)); }
+/* perf: allow only while a finger drags the slide (its inline translateX exists only then) */
+.xrm-today .xrm-td-slide[style*="translateX"] { will-change: transform; }
+.xrm-today .xrm-td-slide.is-back { transition: transform 0.16s ease-out; }
+.xrm-today .xrm-td-slide.is-in-r { animation: xrm-in-r 0.2s ease-out; }
+.xrm-today .xrm-td-slide.is-in-l { animation: xrm-in-l 0.2s ease-out; }
+@keyframes xrm-in-r { from { transform: translateX(45%); opacity: 0; } }
+@keyframes xrm-in-l { from { transform: translateX(-45%); opacity: 0; } }
+.xrm-today .xrm-td-pic {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(40 * var(--wm-px));
+    height: calc(40 * var(--wm-px));
+    background: #0b1a2e;
+    color: #fff;
+    border: calc(1 * var(--wm-px)) solid var(--wm-today-rule);
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.xrm-today .xrm-td-pic img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.xrm-today .xrm-td-icon { flex: 0 0 auto; width: calc(32 * var(--wm-px)); height: calc(32 * var(--wm-px)); margin: 0 calc(4 * var(--wm-px)); }
+.xrm-today .wtw-lines { flex: 1 1 auto; min-width: 0; }
+.xrm-today .xrm-td-rec {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0 calc(4 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid currentColor;
+    border-radius: calc(2 * var(--wm-px));
+    background: none;
+    color: inherit;
+    font-size: calc(9 * var(--wm-px));
+}
+.xrm-today .xrm-td-rec:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.xrm-today .xrm-td-rec.is-rec { border-color: #d0220e; background: #d0220e; color: #fff; font-weight: bold; }

@@ -71,6 +71,20 @@ Auto-record:
 - The server reads lookAround through one timer, only while a recording, an alert or a term exists. It backs off when
   SiriusXM does not answer.
 
+## Phones (Melaton Mobile, `wmXmRadio.js`)
+
+- The phone subscribes to statusHub feed `xmradio_phone` instead of `xmradio`. It carries only:
+  - `account { signedIn }` and `lineup { at }`;
+  - `rec[{ rid, channelId, kind, since }]`;
+  - `ch:<id> { a, t, s, ad, i, at }` for the presets of every bank and the channels the phone names.
+- `xmradio_phone_watch { channels[] }` (up to 12; fire and forget, kept per socket) names those channels: the one it
+  plays and Today's pages.
+- One-touch Record: `xmradio_rec_start { channelId, song: true, fromStart }`. It records the cut on air into the deck's
+  tape, from its first frame when `fromStart` (the stream keeps five hours), and stops when the cut ends. The phone
+  always asks first.
+- Sound: the Dreamscape app's native player (`AndroidVideos`, sound only) plays `/api/xmradio/live/...` and
+  `/api/xmradio/eco/...`. A page without it plays with hls.js.
+
 ## HTTP
 
 - `GET /api/xmradio/live/<sid>/m/<path>`: the tuned stream's folder on SiriusXM's server, mirrored. The playlists'
