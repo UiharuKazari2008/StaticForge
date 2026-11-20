@@ -1419,6 +1419,8 @@
         box.innerHTML = `<div class="wm-form-hdr">Options</div><div class="wmp-o-body is-${optTab}">${body}</div>
             <div class="wm-tabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" class="wm-tab" role="tab" data-tab="${k}" aria-selected="${optTab === k}">${l}</button>`).join('')}</div>`;
         if (window.wmSettings && typeof window.wmSettings.fitTabs === 'function') window.wmSettings.fitTabs(box.querySelector('.wm-tabs'), tabState);
+        // the tab's first control has the focus (the device's dialog: the combo text lit, the check framed)
+        if (ui && typeof ui.focusFirst === 'function') ui.focusFirst(box.querySelector('.wmp-o-body'));
         const preview = box.querySelector('.wmp-o-preview');
         if (preview) preview.style.setProperty('--art', img(orient === 'landscape' ? 'np-landscape' : 'np-portrait'));
         box.querySelectorAll('.wm-tab').forEach((t) => t.addEventListener('click', () => { optTab = t.dataset.tab; renderOptions(); }));
@@ -1747,23 +1749,6 @@
 
     // ---------------------------------------------------------------- the app
 
-    // the stylesheet this script was written with (wm-media.css --wmp-rev): a live update can bring the
-    // script while the page keeps the stylesheet it booted with until its restart; then the program
-    // brings its own (kept in its page, so it goes with the program)
-    const CSS_REV = '975';
-    function ensureStyles(p) {
-        if (getComputedStyle(p).getPropertyValue('--wmp-rev').trim() === CSS_REV || p.querySelector('style[data-wmp-css]')) return;
-        fetch('/css/wm-media.css').then((r) => (r.ok ? r.text() : '')).then((css) => {
-            if (!css || !new RegExp(`--wmp-rev:\\s*${CSS_REV}\\b`).test(css) || !page) return;
-            const st = document.createElement('style');
-            st.dataset.wmpCss = CSS_REV;
-            st.textContent = css;
-            page.prepend(st);
-            orient = '';
-            render();
-        }).catch(() => { /* offline: the page's own stylesheet */ });
-    }
-
     function mount(p) {
         page = p;
         p.classList.add('wm-media');
@@ -1858,7 +1843,6 @@
             if (e.key !== 'Enter') return;
             if (e.target.closest('.wmp-url-edit')) { e.preventDefault(); openUrlNow(); } else if (e.target.closest('.wmp-save-edit')) { e.preventDefault(); savePlaylist(); }
         });
-        ensureStyles(p);
         try { new ResizeObserver(() => { fitSkin(); fitFull(); }).observe(p); } catch (_) { window.addEventListener('resize', () => { fitSkin(); fitFull(); }, { signal: appScopeSignal }); }
     }
 

@@ -791,12 +791,41 @@ class FeatureLoader {
     async _injectStylesheet(href) {
         const url = await this._versionedAssetUrl(href);
         const pathOnly = url.split('?')[0];
-        if (document.querySelector(`link[href^="${pathOnly}"]`)) return;
+        const have = [...document.querySelectorAll('link[rel="stylesheet"][href]')].filter((l) => new URL(l.href, location.href).pathname === pathOnly);
+        if (have.length) { this._refreshLinks(have, url); return; }
 
         const el = document.createElement('link');
         el.rel = 'stylesheet';
         el.href = url;
         document.head.appendChild(el);
+    }
+
+    /**
+     * A program's stylesheets at the version of the script it is about to load (#975). The page links its
+     * stylesheets when it boots; an update downloaded later gives every script loaded on demand its new copy
+     * (_versionedAssetUrl asks for the cache's hash) while the page keeps the stylesheets it booted with until
+     * its restart, so a program loaded in between drew its new markup with its old styles (Melaton Media on
+     * the A53: the playback screen collapsed into one corner). The shell's on-demand programs
+     * (wmShell.js loadLazyApp) and every feature (styles) call this first: a stylesheet whose ?sha= is not
+     * the cache's goes in again at the cache's version, right after the old link (its place in the
+     * cascade), and the old link leaves once the new one has loaded. Matching versions change nothing.
+     */
+    ensureStyles(list) {
+        return Promise.all((list || []).map((href) => this._injectStylesheet(href).catch(() => { /* offline: the page's own */ })));
+    }
+
+    _refreshLinks(links, url) {
+        const want = new URL(url, location.href).searchParams.get('sha');
+        if (!want) return;
+        const shaOf = (l) => new URL(l.href, location.href).searchParams.get('sha');
+        // a link without ?sha= (a page served without hashes) is left alone: no version to compare
+        if (links.some((l) => shaOf(l) === want || !shaOf(l))) return;
+        const old = links[links.length - 1];
+        const el = document.createElement('link');
+        el.rel = 'stylesheet';
+        el.href = url;
+        el.addEventListener('load', () => links.forEach((l) => l.remove()), { once: true });
+        old.after(el);
     }
 
     _loadScript(src) {

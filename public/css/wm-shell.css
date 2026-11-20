@@ -1439,6 +1439,19 @@ html.ui-mobile[data-wm-search="1"] body > #galleryWindow {
     display: none;
 }
 
+/* a message box's middle sits 37.5 % down the space between the bars, not in its middle: both devices put
+   it at VGA row 253 of 52..588 whatever its height (Windows Media's and Notes' Delete, 6.1 and 6.5,
+   #975); a box too tall for that (is-tall, wmShell.js) stays in the middle */
+.wm-msgbox-layer:not(.wm-progress-layer):not(.is-tall) {
+    align-items: flex-start;
+}
+
+.wm-msgbox-layer:not(.wm-progress-layer):not(.is-tall) > .wm-msgbox {
+    position: relative;
+    top: 37.5%;
+    transform: translateY(-50%);
+}
+
 .wm-msgbox {
     width: 100%;
     max-width: calc(224 * var(--wm-px));

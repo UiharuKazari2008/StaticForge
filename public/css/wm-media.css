@@ -12,9 +12,6 @@
  */
 
 .wm-page.wm-media {
-    /* this stylesheet's revision: wmMedia.js loads the stylesheet itself when the page still has an
-       older one (a live update brings the program before the page's restart) */
-    --wmp-rev: 975;
     /* the program's own colours (UI standard 7) */
     --wmp-ink: #000;
     --wmp-paper: #fff;

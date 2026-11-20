@@ -2448,6 +2448,18 @@
 
     const ui = {
         esc: escUi,
+        /**
+         * A page or tab opens with its first control focused, as WM's dialogs do (#975: Windows Media's
+         * Options, Password, Owner Information): a combo box shows its text in the highlight, a check box its
+         * text framed. A first control that takes typing (an edit) is left alone: on the phone its focus
+         * would raise the keyboard, which the device's did not.
+         */
+        focusFirst(box) {
+            if (!box) return;
+            const first = [...box.querySelectorAll('input, button.wm-combo, textarea, select')].find((el) => !el.disabled && el.type !== 'hidden' && el.offsetParent !== null);
+            if (!first || first.tagName === 'TEXTAREA' || first.tagName === 'SELECT' || (first.tagName === 'INPUT' && !/^(checkbox|radio)$/.test(first.type))) return;
+            try { first.focus({ preventScroll: true }); } catch (_) { /* not focusable */ }
+        },
         /** A unique id for a label's for= (pages render more than once). */
         uid: (p = 'wmSet') => `${p}${++uiSeq}`,
         /** Check box: name, label, checked, extra attributes (e.g. 'data-k="x" disabled'). */
@@ -3515,6 +3527,8 @@
             // more tabs than fit: the spin button (its position is the open page's, kept across redraws)
             if (!open.tabScroll) open.tabScroll = { first: 0 };
             fitTabs(page.querySelector('.wm-tabs'), open.tabScroll);
+            // a tab's first draw focuses its first control (the device's dialogs, #975); redraws keep the focus where it is
+            if (open.focusedTab !== (open.tab || '-')) { open.focusedTab = open.tab || '-'; ui.focusFirst(el); }
             refreshTitleKind();
             if (sh && typeof sh.refreshSoftKeys === 'function') sh.refreshSoftKeys();
         }

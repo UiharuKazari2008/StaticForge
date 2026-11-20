@@ -151,7 +151,9 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-icongrid-label span {
 .wm-tab {
     flex: 0 0 auto;
     margin-top: calc(-1 * var(--wm-px)) !important;
-    padding: 0 calc(5 * var(--wm-px)) !important;
+    /* device 6.1 (Windows Media's Options, Password, Owner Information): a tab is its text and 9 units,
+       4 on each side and its 1-unit rule (#975) */
+    padding: 0 calc(4 * var(--wm-px)) !important;
     border-right: calc(1 * var(--wm-px)) solid #000 !important;
     border-top: calc(1 * var(--wm-px)) solid #000 !important;
     font-weight: normal;
@@ -350,6 +352,16 @@ html.ui-mobile #wmShell :is(input, textarea)::selection {
     color: #8c8e8c;
 }
 
+/* the control with the focus, as both devices mark it (a page opens with its first control focused,
+   wmSettings.ui.focusFirst; a tap moves it, #975): a check box's text in a 1-unit highlight frame */
+.wm-check:focus-within > input:focus-visible + span,
+.wm-check:focus-within > input:focus + span {
+    outline: calc(1 * var(--wm-px)) solid var(--wm-highlight);
+    outline-offset: 0;
+    padding: 0 calc(1 * var(--wm-px));
+    margin-left: calc(-1 * var(--wm-px));
+}
+
 /* push button (Align Screen, Beam): 1 px black frame, tint face, bold */
 .wm-button {
     min-width: calc(76 * var(--wm-px));
@@ -455,6 +467,19 @@ html.ui-mobile #wmShell :is(input, textarea)::selection {
 .wm-combo > span {
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* a focused combo box: its text field in the highlight, 1 unit inside the frame (Windows Media's Options,
+   6.1 and 6.5, #975) */
+.wm-combo:focus > span {
+    flex: 1 1 auto;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    margin: calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) calc(-2 * var(--wm-px));
+    padding-left: calc(2 * var(--wm-px));
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
 }
 
 .wm-combo::after {

@@ -1570,11 +1570,12 @@
         // sizes an app gave its last menu (a combo's width, a scroll limit) do not carry over
         pop.style.minWidth = pop.style.maxWidth = pop.style.maxHeight = pop.style.overflowX = pop.style.overflowY = '';
         fillMenu(pop, items);
-        // both devices open a menu with its first enabled row under the highlight (recorded: soft
-        // key, tap-and-hold and Start menus; a drop-down keeps its own mark for the current choice).
+        // both devices open a menu with its first row under the highlight, a disabled one too (recorded:
+        // soft key, tap-and-hold and Start menus; Word Mobile's and Excel Mobile's Undo and Windows Media's
+        // Queue Up, 6.1 and 6.5, #975; a drop-down keeps its own mark for the current choice).
         // It leaves as soon as the finger goes anywhere in the menu
         if (side !== 'dropdown' || pop.querySelector(':scope > .is-hot')) {
-            const first = pop.querySelector(':scope > .wm-popup-item:not(:disabled)');
+            const first = pop.querySelector(':scope > .wm-popup-item');
             if (first && side !== 'dropdown') first.classList.add('is-hot');
             const cool = () => { pop.querySelectorAll(':scope > .is-hot').forEach((x) => x.classList.remove('is-hot')); pop.removeEventListener('pointerover', cool); pop.removeEventListener('pointerdown', cool); };
             pop.addEventListener('pointerover', cool);
@@ -1913,12 +1914,34 @@
             document.body.appendChild(el);
         });
     }
+    // each on-demand program's own stylesheets (linked by app.html at boot): brought to the version of the
+    // script before it loads (featureLoader.ensureStyles, #975). Stylesheets other programs share
+    // (wm-shell, wm-search, wm-chat, wm-accounts, wm-suite-kit) stay with the page until its restart
+    const LAZY_STYLES = {
+        'scripts/comp/wmAtelier.js': ['css/wm-atelier.css'], 'scripts/comp/wmBinToss.js': ['css/wm-bintoss.css'],
+        'scripts/comp/wmBlockDrop.js': ['css/wm-blockdrop.css'], 'scripts/comp/wmBrickBreaker.js': ['css/wm-brickbreaker.css'],
+        'scripts/comp/wmCalculator.js': ['css/wm-calculator.css'], 'scripts/comp/wmCharacters.js': ['css/wm-characters.css'],
+        'scripts/comp/wmClaudeAccounts.js': ['css/wm-claude-accounts.css'], 'scripts/comp/wmDoubles.js': ['css/wm-doubles.css'],
+        'scripts/comp/wmEmotion.js': ['css/wm-emotion.css'], 'scripts/comp/wmExpanders.js': ['css/wm-expanders.css'],
+        'scripts/comp/wmFileExplorer.js': ['css/wm-file-explorer.css'], 'scripts/comp/wmGems.js': ['css/wm-gems.css'],
+        'scripts/comp/wmInkBall.js': ['css/wm-inkball.css'], 'scripts/comp/wmMedia.js': ['css/wm-media.css'],
+        'scripts/comp/wmMinesweeper.js': ['css/wm-minesweeper.css'], 'scripts/comp/wmNotes.js': ['css/wm-notes.css'],
+        'scripts/comp/wmPayPass.js': ['css/wm-paypass.css'], 'scripts/comp/wmPhasewalker.js': ['css/wm-phasewalker.css'],
+        'scripts/comp/wmReference.js': ['css/wm-reference.css'], 'scripts/comp/wmRemoteDesktop.js': ['css/wm-remote-desktop.css'],
+        'scripts/comp/wmSolitaire.js': ['css/wm-solitaire.css'], 'scripts/comp/wmSpellbook.js': ['css/wm-spellbook.css'],
+        'scripts/comp/wmSpellcaster.js': ['css/wm-spellcaster.css'], 'scripts/comp/wmTextMessaging.js': ['css/wm-textmessaging.css']
+    };
+    function lazyStyles(src) {
+        const fl = window.featureLoader;
+        const list = LAZY_STYLES[String(src).replace(/^\//, '').split('?')[0]];
+        return list && fl && typeof fl.ensureStyles === 'function' ? fl.ensureStyles(list) : Promise.resolve();
+    }
     /** Loads a lazy program's script once; true when its real registration replaced the entry. */
     function loadLazyApp(id) {
         const app = apps.get(id);
         if (!app || !app.lazyScript) return Promise.resolve(!!app);
         if (!lazyLoads.has(id)) {
-            const run = loadScriptOnce(app.lazyScript)
+            const run = lazyStyles(app.lazyScript).then(() => loadScriptOnce(app.lazyScript))
                 .then(() => { const now = apps.get(id); return !!(now && !now.lazyScript); })
                 .catch((err) => { console.warn('[wmShell] load', id, err); return false; })
                 .then((ok) => { if (!ok) lazyLoads.delete(id); return ok; });
@@ -9088,6 +9111,13 @@
             // the first paint (recorded): 6.1 an empty outline, 6.5 the first text line only with
             // the buttons right under it; whole a tick later (wm-stage.css)
             const painted = layer.querySelector('.wm-msgbox');
+            // the device's place (37.5 % down, wm-shell.css) unless the box is too tall to sit there
+            {
+                const cs = getComputedStyle(layer);
+                const room = layer.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+                const tall = painted.offsetHeight / 2 > room * 0.375;
+                if (layer.classList.contains('is-tall') !== tall) layer.classList.toggle('is-tall', tall);
+            }
             painted.dataset.wmPaint = 'first';
             setTimeout(() => { delete painted.dataset.wmPaint; }, STAGE_TICK);
             // WM: the title bar's corner goes empty while a message box is up
