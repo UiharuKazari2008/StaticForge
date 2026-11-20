@@ -555,7 +555,7 @@
                 const swap = Number.isFinite(mm.swapTotal) && Number.isFinite(mm.swapFree) ? `${mb(mm.swapTotal - mm.swapFree)}M / ${mb(mm.swapTotal)}M` : '-';
                 fig('phys', [['Total', MB(mm.total)], ['Cached', MB(mm.cached)], ['Free', MB(Number.isFinite(mm.free) ? mm.free : this.device ? mm.available : null)]]);
                 fig('kern', [['Total', Number.isFinite(mm.paged) && Number.isFinite(mm.nonpaged) ? MB(mm.paged + mm.nonpaged) : '-'], ['Paged', MB(mm.paged)], ['Nonpaged', MB(mm.nonpaged)]]);
-                fig('sys', [['Handles', n(mm.handles)], ['Threads', n(s.threads)], ['Processes', String(procs)], ['Up Time', upTime(s.uptimeSec)], ['Page File', swap]]);
+                fig('sys', [['Handles', n(mm.handles)], ['Threads', n(s.threads)], ['Processes', String(procs)], ['Up Time', Number.isFinite(s.uptimeSec) ? upTime(s.uptimeSec) : '-'], ['Page File', swap]]);
             } else {
                 const heap = performance && performance.memory;
                 fig('phys', [['Total', heap ? mb(heap.jsHeapSizeLimit) : '-'], ['Cached', '-'], ['Free', heap ? mb(heap.jsHeapSizeLimit - heap.usedJSHeapSize) : '-']]);

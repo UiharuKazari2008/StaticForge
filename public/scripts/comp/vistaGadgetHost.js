@@ -411,7 +411,7 @@ VGH_SYS.deviceData = function (d) {
         at: d.at,
         cpu: { name: d.cpu.name, mhz: Math.max(0, ...d.cpu.mhz), cores: d.cpu.cores.length ? d.cpu.cores : [d.cpu.total], total: d.cpu.total },
         memory: { totalBytes: d.memory.total, freeBytes: d.memory.available },
-        uptimeSec: d.uptimeSec,
+        uptimeSec: d.uptimeSec || 0,
         disks: vols.map((v, i) => ({ letter: `${String.fromCharCode(67 + i)}:`, label: v.label || '', totalBytes: v.totalBytes, freeBytes: v.freeBytes || 0, readBps: 0, writeBps: 0, busy: 0 })),
         network: d.network.map((n) => ({ mac: '', ip: '', speedBps: n.speedBps, rxBps: n.rxBps, txBps: n.txBps, rxBytes: n.rxBytes, txBytes: n.txBytes })),
         processes: d.processes.map((p) => ({ pid: p.pid, name: p.name, cpu: p.cpu, memBytes: (p.rssKB || p.memKB || 0) * 1024 }))

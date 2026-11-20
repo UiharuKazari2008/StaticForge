@@ -135,7 +135,8 @@
             at, source, host: hostName(), device: true,
             cpu: { name: fx.name || 'Processor', arch: fx.arch || '', total, cores: loads, mhz, maxMhz, freqPct: fr.length ? (fr.reduce((a, b) => a + b, 0) / fr.length) * 100 : null, gpu: f.gpu || null },
             memory,
-            uptimeSec: Math.floor((num(raw.uptimeMs) || performance.now()) / 1000),
+            // the device's own up time (older apps do not say it: null, never the page's)
+            uptimeSec: num(raw.uptimeMs) !== null ? Math.floor(num(raw.uptimeMs) / 1000) : null,
             threads: processes.reduce((t, p) => t + p.threads, 0) || null,
             processes,
             network,
