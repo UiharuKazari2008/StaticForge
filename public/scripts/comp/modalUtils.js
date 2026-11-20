@@ -5187,7 +5187,9 @@ function updateTaskbarActiveStates() {
                     const imagePath = resolveAppIconPath(imageIcon);
                     const expectedSrc = new URL(imagePath, window.location.origin).href;
                     if (imageIconEl.src !== expectedSrc) {
-                        imageIconEl.src = expectedSrc;
+                        // the path, not the absolute URL: the HiDPI tier sheets match img[src="/static_images/..."]
+                        // exactly, as renderAppIconImg writes it (#986)
+                        imageIconEl.src = /^\/(?!\/)/.test(imagePath) ? imagePath : expectedSrc;
                     }
                     const srcset = buildAppIconSrcset(imageIcon);
                     if (srcset && imageIconEl.getAttribute('srcset') !== srcset) {
