@@ -33,6 +33,20 @@ root reads those, so `refs` rows here only hold what that store has no column fo
 | `glancewell_watched_set` | `add?: [{ folder, name }]`, `remove?: [folder]` | `{ success, folders }` |
 | `glancewell_forget` | `items` | `{ success, forgot }`. Call it when a picture is deleted for good |
 
+## Fix (`modules/glancewellFix.js`)
+
+Photo Gallery's Fix pane saves a fixed print through these packets. VFS files go through `vfs_replace_file` /
+`vfs_upload_file`, and phone pictures through the phone's own storage.
+
+| Request | Fields | Response `data` |
+| --- | --- | --- |
+| `glancewell_fix_save` | `filename` (a print), `mode` (`overwrite` / `copy`), `data` (the fixed PNG, base64), `workspaceId?` | `{ success, filename, mode, hasOriginal }`. Either way the print's PNG text chunks (prompt, seed, parameters) carry over. `overwrite` keeps the first original in `<cache>/glancewell-originals` for Revert to Original. `copy` adds `<name>_fixed.png` to the workspace. Pushes `gallery_updated` |
+| `glancewell_fix_revert` | `filename`, `workspaceId?` | `{ success, filename }`. The kept original goes back over the print and the kept copy is removed |
+| `glancewell_fix_original` | `filename` | `{ success, hasOriginal }` |
+
+`glancewell_fix_save` and `glancewell_fix_revert` are marked destructive. Rotation in the gallery and the viewer
+uses `glancewell_fix_save` `overwrite` with the turned picture. Test: `node scripts/test-glancewell-fix.js`.
+
 `change` in `glancewell_meta_set` applies the same edit to every picture in `items`:
 
 | Field | Effect |

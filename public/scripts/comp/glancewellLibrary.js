@@ -33,6 +33,11 @@
     // page listeners end with this file's segment (app-scope, #872/#890)
     const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined;
     const SRC = () => root.glancewellSources;
+    // page-level consts / classes of other scripts (not window properties): vfsClient.js, imageViewer.js, dovecote.js
+    /* global vfsClient, ImageViewer, doveOpenComposeWindow */
+    const vfs = () => (typeof vfsClient !== 'undefined' ? vfsClient : null);
+    const viewerProto = () => (typeof ImageViewer !== 'undefined' ? ImageViewer.prototype : null);
+    const doveCompose = () => (typeof doveOpenComposeWindow === 'function' ? doveOpenComposeWindow : null);
     const ws = () => root.wsClient || null;
     const send = (type, data) => {
         const c = ws();
@@ -147,6 +152,12 @@
         if (b < 1024 * 1024) return `${(b / 1024).toFixed(b < 10240 ? 2 : 1).replace(/\.0+$/, '')} KB`;
         if (b < 1024 * 1024 * 1024) return `${(b / 1048576).toFixed(b < 10485760 ? 2 : 1).replace(/\.0+$/, '')} MB`;
         return `${(b / 1073741824).toFixed(2)} GB`;
+    }
+    /** A thumbnail address with the item's revision, so a rotated or fixed picture is fetched again. */
+    function thumbOf(it, px) {
+        const u = it.thumb(px);
+        if (!it.rev || !u) return u;
+        return `${u}${u.includes('?') ? '&' : '?'}r=${it.rev}`;
     }
     const dimsText = (it) => (it.width && it.height ? `${it.width} x ${it.height}` : '');
     const countText = (n) => (n === 1 ? '1 item' : `${n} items`);
@@ -713,9 +724,9 @@
     async function folderName(path) {
         const parts = String(path).split('/').filter(Boolean);
         const last = parts[parts.length - 1] || path;
-        if (typeof root.vfsClient === 'undefined') return last;
+        if (!vfs()) return last;
         try {
-            const res = await root.vfsClient.listDirectory(`/${parts.slice(0, -1).join('/')}`, { offset: 0, limit: 1000 });
+            const res = await vfs().listDirectory(`/${parts.slice(0, -1).join('/')}`, { offset: 0, limit: 1000 });
             const hit = ((res && res.items) || []).find((e) => e.navPath === path || e.id === last || e.name === last);
             if (hit && hit.name) return hit.name;
         } catch (_) { /* the path */ }
@@ -914,7 +925,7 @@
 
     const cellCache = new Map(); // id|view|size -> element (reused while it stays in view)
     function cellFor(it, x, y, m) {
-        const k = `${it.id}|${prefs.view}|${m.box}`;
+        const k = `${it.id}|${prefs.view}|${m.box}|${it.rev || 0}`;
         let cell = cellCache.get(k);
         if (!cell) {
             cell = h('div', 'wpg-lib-cell');
@@ -925,7 +936,7 @@
             img.decoding = 'async';
             img.loading = 'lazy';
             img.draggable = false;
-            img.src = it.thumb(m.box * (root.devicePixelRatio || 1));
+            img.src = thumbOf(it, m.box * (root.devicePixelRatio || 1));
             img.addEventListener('load', () => cell.classList.add('is-loaded'), { once: true });
             img.addEventListener('error', () => cell.classList.add('is-broken'), { once: true });
             fr.appendChild(img);
@@ -1139,7 +1150,7 @@
             const n = S.shown.length;
             head = `<div class="wpg-lib-i-none">${n === 1 ? '1 item' : `${n} items`}<br>in this view${n ? '<br><br>Click a thumbnail in the Gallery view to select a picture or video.' : ''}</div>`;
         } else if (one) {
-            head = `<div class="wpg-lib-i-thumb"><img alt="" src="${esc(one.thumb(180 * (root.devicePixelRatio || 1)))}"></div><div class="wpg-lib-i-name" title="${esc(one.name)}">${esc(one.name)}</div><div class="wpg-lib-i-line">${esc(dateText(takenOf(one)).replace(/ (\d+:)/, ' $1'))}</div><div class="wpg-lib-i-line">${esc(sizeText(one.size))}${dimsText(one) ? ` (${esc(dimsText(one))})` : ''}</div>`;
+            head = `<div class="wpg-lib-i-thumb"><img alt="" src="${esc(thumbOf(one, 180 * (root.devicePixelRatio || 1)))}"></div><div class="wpg-lib-i-name" title="${esc(one.name)}">${esc(one.name)}</div><div class="wpg-lib-i-line">${esc(dateText(takenOf(one)).replace(/ (\d+:)/, ' $1'))}</div><div class="wpg-lib-i-line">${esc(sizeText(one.size))}${dimsText(one) ? ` (${esc(dimsText(one))})` : ''}</div>`;
         } else {
             const pics = items.filter((x) => !x.video).length;
             const vids = items.length - pics;
@@ -1321,6 +1332,9 @@
             { separator: true },
             { text: 'Add Tags...', action: 'gwi-tags' },
             { separator: true },
+            { text: 'Rotate Clockwise', action: 'gwi-rotr', disabled: !items.every(canRotate) },
+            { text: 'Rotate Counterclockwise', action: 'gwi-rotl', disabled: !items.every(canRotate) },
+            { separator: true },
             { text: 'Change Time Taken...', action: 'gwi-time' },
             { separator: true },
             { text: 'Copy', action: 'gwi-copy', disabled: !one },
@@ -1351,6 +1365,8 @@
             case 'gwi-preview': openViewer(it.id); break;
             case 'gwi-tags': openAddTags(items); break;
             case 'gwi-time': void changeTimeTaken(items); break;
+            case 'gwi-rotr': void rotateSelection(1); break;
+            case 'gwi-rotl': void rotateSelection(-1); break;
             case 'gwi-delete': void deleteSelection(); break;
             case 'gwi-fav':
                 await send('glancewell_meta_set', { items: items.map(ref), change: { favorite: !isFavorite(it) } });
@@ -1377,7 +1393,7 @@
     }
 
     async function itemAction(action, it) {
-        const viewer = typeof root.ImageViewer !== 'undefined' ? root.ImageViewer.prototype : null;
+        const viewer = viewerProto();
         const ctx = {
             metadata: it.source === 'prints' ? printRecord(it) : {},
             imageSrc: it.full(),
@@ -1405,6 +1421,44 @@
         return undefined;
     }
 
+    /** Pictures whose file Glancewell can write back (prints, VFS files, phone pictures; not references or videos). */
+    function canRotate(it) {
+        return !!it && !it.video && it.source !== 'refs' && it.source !== 'url';
+    }
+
+    /** A Fix / rotate target for a library item (glancewellFix.js). */
+    function fixTarget(it) {
+        return {
+            src: it.full(),
+            name: it.name,
+            item: it,
+            print: it.source === 'prints' ? { filename: it.key, workspaceId: it.workspaceId || null } : null
+        };
+    }
+
+    /** Rotate Clockwise / Counterclockwise: each selected picture's file turned a quarter (Photo Gallery's "Rotating..."). */
+    async function rotateSelection(dir) {
+        const items = selectedItems().filter(canRotate);
+        if (!items.length || !root.glancewellFix) return;
+        S.el.status.textContent = 'Rotating...';
+        for (const it of items) {
+            try {
+                await root.glancewellFix.rotateFile(fixTarget(it), dir);
+                const w = it.width; it.width = it.height; it.height = w;
+                it.rev = Date.now();
+            } catch (err) {
+                // WPG 2845 / 3029-3035
+                await message(`Could not rotate ${it.name}.\n${errorText(err)}`, 'error');
+                break;
+            }
+        }
+        cellCache.clear();
+        S.layout = null;
+        queueRender();
+        renderStatus();
+        renderInfo();
+    }
+
     /** Delete: prints go to Scraps (a scrap is deleted for good), references and files are removed after a question. */
     async function deleteSelection() {
         const items = selectedItems();
@@ -1427,7 +1481,12 @@
                         const vibe = it.refType === 'vibe';
                         await root.deleteReferenceImage({ hash: it.key, filename: (it.raw && it.raw.filename) || it.key, hasPreview: true, preview: vibe ? it.raw.preview : undefined, isStandalone: vibe, hasVibes: vibe, workspaceId: it.workspaceId || undefined }, it.workspaceId || null, null, vibe ? 'vibes' : 'base');
                     }
-                    else if (it.source === 'folders' && root.vfsClient) await root.vfsClient.moveToTrash([{ id: it.key, targetKind: 'user-file', targetId: it.key, name: it.name, kind: 'file' }], (it.raw && it.raw.parentPath) || '/');
+                    else if (it.source === 'folders' && vfs()) {
+                        // the workspace Trash where the folder has one; a folder outside workspaces deletes for good
+                        // (Explorer's own permanent delete, vfs_delete_file)
+                        const trashed = await vfs().moveToTrash([{ id: it.key, targetKind: 'user-file', targetId: it.key, name: it.name, kind: 'file' }], it.parentPath || '/').then((r) => !(r && r.success === false), () => false);
+                        if (!trashed) await send('vfs_delete_file', { fileId: it.key });
+                    }
                     else if (it.raw && it.raw.root && root.phoneStorage) await root.phoneStorage.call('delete', { root: it.raw.root, path: it.raw.path });
                 }
                 await send('glancewell_forget', { items: items.map(ref) });
@@ -1551,8 +1610,9 @@
         if (pill('previous')) pill('previous').disabled = i <= 0;
         if (pill('next')) pill('next').disabled = i >= S.shown.length - 1;
         if (pill('slideshow')) pill('slideshow').disabled = !S.shown.length;
-        if (pill('rotate-left')) pill('rotate-left').disabled = true;
-        if (pill('rotate-right')) pill('rotate-right').disabled = true;
+        const turnable = one && items.every(canRotate);
+        if (pill('rotate-left')) pill('rotate-left').disabled = !turnable;
+        if (pill('rotate-right')) pill('rotate-right').disabled = !turnable;
         if (pill('delete')) pill('delete').disabled = !one;
     }
 
@@ -1568,7 +1628,9 @@
             case 'delete': void deleteSelection(); return true;
             case 'fit': prefs.size = SIZE_DEFAULT; savePrefs(); cellCache.clear(); S.layout = null; queueRender(); return true;
             case 'zoom': return false; // lightbox.js's popup, sized by zoomFraction / setZoomFraction
-            case 'fix': if (S.focus) openViewer(S.focus); return true;
+            case 'fix': if (S.focus) { root.glancewellStartFix = true; openViewer(S.focus); } return true;
+            case 'rotate-left': void rotateSelection(-1); return true;
+            case 'rotate-right': void rotateSelection(1); return true;
             case 'info': setInfoOpen(!!(S.el.info && S.el.info.classList.contains('hidden'))); return true;
             default: void L; void btn; return false;
         }
@@ -1617,8 +1679,9 @@
             case 'gwf-delete': await deleteSelection(); return true;
             case 'gwf-selectall': S.shown.forEach((it) => S.selected.add(it.id)); queueRender(); renderStatus(); renderInfo(); syncCommands(); return true;
             case 'gwf-screensaver':
-                if (typeof root.openControlPanelPage === 'function') root.openControlPanelPage('screensaver');
-                else if (typeof root.openScreenSaverSettings === 'function') root.openScreenSaverSettings();
+                // Screen Saver Settings (personalizationDialogs.js, in the Control Panel feature)
+                if (root.featureLoader) await root.featureLoader.loadFeature('control_panel').catch(() => {});
+                if (root.personalizationDialogs) root.personalizationDialogs.openScreenSaver();
                 return true;
             case 'gwf-share':
                 if (root.explorerPhoneDrive && typeof root.explorerPhoneDrive.sendFiles === 'function') await root.explorerPhoneDrive.sendFiles(items.map((it) => ({ name: it.name, url: it.full() })));
@@ -1739,7 +1802,7 @@
         const base = String(pic.title || pic.filename || 'Picture').replace(/\.[a-z0-9]+$/i, '');
         const name = `${base}.${ext === 'jpeg' ? 'jpg' : ext}`;
         if (kind === 'dovecote') {
-            const open = root.doveOpenComposeWindow;
+            const open = doveCompose();
             if (typeof open !== 'function') { await message('The picture could not be sent. Check that an e-mail program is installed and then try again.', 'error'); return; }
             const base64 = await new Promise((resolve) => {
                 const r = new FileReader();

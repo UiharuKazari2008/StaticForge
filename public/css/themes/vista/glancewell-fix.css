@@ -1,0 +1,311 @@
+/* Glancewell's Fix pane (glancewellFix.js, Yozora #446): Windows Photo Gallery's Fix 1:1 with the Vista VM
+   (~/.cache/vista-vm/wpg/shots/pane-4x-*.png). The pane is the Info pane's place, 203 px on #eef3fa fading from
+   #d9e3f0; each tool a 33 px row (PhotoViewer.dll PNG 8001-8062, 22x21 frames: disabled, normal, hot, pressed),
+   the open one in a white rounded box (#c5ccd4 edge, 5 px radius), its sliders Vista trackbars (the window is a light
+   client: vista-glass-controls.css skins the range input). Undo / Redo at the foot (PNG 8020 / 8021, 12x14).
+   The picture sits centred on #eef3fa; Crop shows a white-edged frame with eight handles over a dimmed picture. */
+
+body.theme-vista #photoSwipeWindow.wpg-mode-fix #photoSwipeMount,
+body.theme-vista #photoSwipeWindow.wpg-mode-fix .wpg-info {
+    display: none !important;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: #eef3fa;
+    user-select: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-stage[hidden],
+body.theme-vista #photoSwipeWindow .wpg-fix[hidden] {
+    display: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-stage.is-redeye {
+    cursor: crosshair;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-canvas {
+    position: absolute;
+    display: block;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-wait {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 45%;
+    color: #6d6d6d;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    text-align: center;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-wait[hidden] {
+    display: none;
+}
+
+/* Crop: the frame over the picture, everything outside it dimmed */
+body.theme-vista #photoSwipeWindow .wpg-fix-crop {
+    position: absolute;
+    inset: 0;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-crop[hidden] {
+    display: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-crop-box {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 0 0 9999px rgba(238, 243, 250, 0.55);
+    cursor: move;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-h {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    margin: -3px 0 0 -3px;
+    border: 1px solid #000;
+    background: #fff;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-h[data-h="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+body.theme-vista #photoSwipeWindow .wpg-fix-h[data-h="n"] { left: 50%; top: 0; cursor: ns-resize; }
+body.theme-vista #photoSwipeWindow .wpg-fix-h[data-h="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+body.theme-vista #photoSwipeWindow .wpg-fix-h[data-h="e"] { left: 100%; top: 50%; cursor: ew-resize; }
+body.theme-vista #photoSwipeWindow .wpg-fix-h[data-h="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+body.theme-vista #photoSwipeWindow .wpg-fix-h[data-h="s"] { left: 50%; top: 100%; cursor: ns-resize; }
+body.theme-vista #photoSwipeWindow .wpg-fix-h[data-h="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+body.theme-vista #photoSwipeWindow .wpg-fix-h[data-h="w"] { left: 0; top: 50%; cursor: ew-resize; }
+
+/* Red Eye's rectangle while it is drawn */
+body.theme-vista #photoSwipeWindow .wpg-fix-band {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px dotted #000;
+    outline: 1px dotted #fff;
+    outline-offset: -2px;
+    pointer-events: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-band[hidden] {
+    display: none;
+}
+
+/* the pane */
+body.theme-vista #photoSwipeWindow .wpg-fix {
+    position: relative;
+    display: flex;
+    flex: 0 0 203px;
+    flex-direction: column;
+    box-sizing: border-box;
+    min-height: 0;
+    padding: 30px 6px 6px;
+    background: linear-gradient(#d9e3f0, #eef3fa 260px);
+    box-shadow: -1px 0 0 #c5ccd4;
+    margin-left: 1px;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-close {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 17px;
+    height: 16px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: url("/static_images/vista-photo-gallery/fix-close.png") -17px 0 / 68px 16px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-close:hover { background-position-x: -34px; }
+body.theme-vista #photoSwipeWindow .wpg-fix-close:active { background-position-x: -51px; }
+
+body.theme-vista #photoSwipeWindow .wpg-fix-tools {
+    flex: 1 1 auto;
+    overflow-y: auto;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-tool {
+    margin: 0 0 1px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-tool.is-open {
+    margin: 0 0 4px;
+    background: rgba(255, 255, 255, 0.55);
+    border-color: #c5ccd4;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-tool-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    height: 31px;
+    padding: 0 6px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font: inherit;
+    color: #000;
+    text-align: left;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-tool-head:hover {
+    color: #1e5ebc;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-icon {
+    flex: none;
+    width: 22px;
+    height: 21px;
+    background: var(--fix-art) -22px 0 / 88px 21px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-tool-head:hover .wpg-fix-icon { background-position-x: -44px; }
+body.theme-vista #photoSwipeWindow .wpg-fix-tool-head:active .wpg-fix-icon { background-position-x: -66px; }
+
+body.theme-vista #photoSwipeWindow .wpg-fix-icon-auto { --fix-art: url("/static_images/vista-photo-gallery/fix-auto.png"); }
+body.theme-vista #photoSwipeWindow .wpg-fix-icon-exposure { --fix-art: url("/static_images/vista-photo-gallery/fix-exposure.png"); }
+body.theme-vista #photoSwipeWindow .wpg-fix-icon-color { --fix-art: url("/static_images/vista-photo-gallery/fix-color.png"); }
+body.theme-vista #photoSwipeWindow .wpg-fix-icon-crop { --fix-art: url("/static_images/vista-photo-gallery/fix-crop.png"); }
+body.theme-vista #photoSwipeWindow .wpg-fix-icon-redeye { --fix-art: url("/static_images/vista-photo-gallery/fix-redeye.png"); }
+
+body.theme-vista #photoSwipeWindow .wpg-fix-tool-body {
+    display: none;
+    padding: 2px 10px 12px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-tool.is-open .wpg-fix-tool-body {
+    display: block;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-slider {
+    display: block;
+    margin: 4px 0 6px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-slider > span {
+    display: block;
+    margin-bottom: 2px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-slider input[type="range"] {
+    width: 150px;
+    margin: 0 0 0 6px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-crop-ui {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-prop {
+    width: 160px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-rotate {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    align-self: center;
+    min-width: 0;
+    height: 24px;
+    margin: 6px 0;
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font: inherit;
+    color: #000;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-rotate:hover { color: #1e5ebc; }
+
+body.theme-vista #photoSwipeWindow .wpg-fix-rotate-icon {
+    width: 22px;
+    height: 21px;
+    background: url("/static_images/vista-photo-gallery/fix-rotate.png") -22px 0 / 88px 21px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-apply {
+    align-self: center;
+    min-width: 86px;
+    margin-top: 8px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-note {
+    margin: 4px 0 12px;
+    line-height: 16px;
+}
+
+/* Undo / Redo at the foot */
+body.theme-vista #photoSwipeWindow .wpg-fix-foot {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0;
+    height: 24px;
+    padding: 0 0 0 6px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-foot button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    height: 20px;
+    padding: 0 3px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+    font: inherit;
+    color: #000;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-foot button:hover:not(:disabled) {
+    border-color: #a8bad1;
+    background: linear-gradient(#fafbfd, #e3ecf9);
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-foot button:disabled {
+    color: #8d8d8d;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-undo-icon,
+body.theme-vista #photoSwipeWindow .wpg-fix-redo-icon {
+    width: 12px;
+    height: 14px;
+    background: url("/static_images/vista-photo-gallery/fix-undo.png") -12px 0 / 48px 14px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-redo-icon { background-image: url("/static_images/vista-photo-gallery/fix-redo.png"); }
+body.theme-vista #photoSwipeWindow .wpg-fix-foot button:disabled .wpg-fix-undo-icon,
+body.theme-vista #photoSwipeWindow .wpg-fix-foot button:disabled .wpg-fix-redo-icon { background-position-x: 0; }
+
+body.theme-vista #photoSwipeWindow .wpg-fix-undo-drop,
+body.theme-vista #photoSwipeWindow .wpg-fix-redo-drop {
+    width: 13px;
+    margin-right: 18px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23000'/%3E%3C/svg%3E") center / 7px 4px no-repeat !important;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-fix-undo-drop:disabled,
+body.theme-vista #photoSwipeWindow .wpg-fix-redo-drop:disabled {
+    opacity: 0.45;
+}

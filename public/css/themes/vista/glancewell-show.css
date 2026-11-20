@@ -1,0 +1,170 @@
+/* Glancewell's themed slide show (glancewellThemes.js, Yozora #446): the picture layers over the full-screen show and
+   Vista's slide show control bar (PhotoViewer.dll PNG 11005-11021: a dark capsule 33 px tall, its caps 16 px; Previous /
+   Next 52x25, the Play / Pause orb 44x49, Settings 40x25, four frames each: disabled, normal, hot, pressed; Themes and
+   Exit as text buttons). The bar shows on a mouse move and hides after 3 s, with the pointer. */
+
+body.theme-vista #photoSwipeWindow .wpg-theme {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    overflow: hidden;
+    background: #000;
+    contain: strict;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-pic {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-pic > img {
+    display: block;
+    flex: none;
+}
+
+/* a 3D theme's group: the background plane and the picture slots, each a 1000 x 1000 box mapped onto its quad */
+body.theme-vista #photoSwipeWindow .wpg-theme-3d {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #000;
+}
+
+body.theme-vista #photoSwipeWindow :is(.wpg-theme-bg, .wpg-theme-slot) {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1000px;
+    height: 1000px;
+    box-sizing: border-box;
+    transform-origin: 0 0;
+    backface-visibility: hidden;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-bg {
+    background-repeat: repeat;
+    background-position: 0 0;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-bg.is-flipped {
+    /* a mirrored group draws its background mirrored */
+    background-position: 100% 0;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-slot > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-slot.has-shadow {
+    box-shadow: 18px 22px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* the control bar */
+body.theme-vista #photoSwipeWindow .wpg-theme-bar {
+    position: absolute;
+    right: 28px;
+    bottom: 22px;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    height: 33px;
+    padding: 0 16px;
+    background:
+        url("/static_images/vista-photo-gallery/show-cap-left.png") left top / 16px 33px no-repeat,
+        url("/static_images/vista-photo-gallery/show-cap-right.png") right top / 16px 33px no-repeat,
+        url("/static_images/vista-photo-gallery/show-middle.png") 16px 0 / 22px 33px repeat-x;
+    background-clip: border-box;
+    opacity: 0;
+    transition: opacity 0.25s linear;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    pointer-events: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-bar.is-shown {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+body.theme-vista #photoSwipeWindow.wpg-pointer-idle .wpg-theme-bar:not(:hover) {
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-bar button {
+    flex: none;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    color: #fff;
+    font: inherit;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-bar :is(.wpg-theme-themes, .wpg-theme-exit) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 25px;
+    padding: 0 10px;
+    border-radius: 3px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-bar :is(.wpg-theme-themes, .wpg-theme-exit):is(:hover, .context-open) {
+    background: linear-gradient(rgba(140, 190, 255, 0.35), rgba(40, 110, 220, 0.25) 50%, rgba(20, 70, 170, 0.35) 50%, rgba(80, 160, 255, 0.4));
+    box-shadow: inset 0 0 0 1px rgba(160, 210, 255, 0.55);
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-drop {
+    width: 7px;
+    height: 4px;
+    background: url("/static_images/vista-photo-gallery/show-drop.png") 0 0 / 7px 4px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-sep {
+    flex: none;
+    width: 3px;
+    height: 21px;
+    margin: 0 6px;
+    background: url("/static_images/vista-photo-gallery/show-sep.png") 0 0 / 3px 21px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-bar :is(.wpg-theme-prev, .wpg-theme-next) {
+    width: 52px;
+    height: 25px;
+    background: var(--show-art) -52px 0 / 208px 25px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-prev { --show-art: url("/static_images/vista-photo-gallery/show-prev.png"); }
+body.theme-vista #photoSwipeWindow .wpg-theme-next { --show-art: url("/static_images/vista-photo-gallery/show-next.png"); }
+body.theme-vista #photoSwipeWindow .wpg-theme-bar :is(.wpg-theme-prev, .wpg-theme-next):hover { background-position-x: -104px; }
+body.theme-vista #photoSwipeWindow .wpg-theme-bar :is(.wpg-theme-prev, .wpg-theme-next):active { background-position-x: -156px; }
+
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-play {
+    width: 44px;
+    height: 49px;
+    margin: -8px -4px;
+    background: url("/static_images/vista-photo-gallery/show-pause.png") -44px 0 / 176px 49px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-play.is-paused { background-image: url("/static_images/vista-photo-gallery/show-play.png"); }
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-play:hover { background-position-x: -88px; }
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-play:active { background-position-x: -132px; }
+
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-gear {
+    width: 40px;
+    height: 25px;
+    background: url("/static_images/vista-photo-gallery/show-gear.png") -40px 0 / 160px 25px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-gear:is(:hover, .context-open) { background-position-x: -80px; }
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-gear:active { background-position-x: -120px; }

@@ -1,5 +1,6 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const store = require('../../glancewellStore');
+const fix = require('../../glancewellFix');
 
 // Glancewell (Windows Photo Gallery, Yozora #446): tags, captions, date taken, Pictures Favorites and the Folders
 // watched list (modules/glancewellStore.js). Writes push glancewell_changed to every signed-in client; nothing polls.
@@ -43,7 +44,7 @@ function registerPackets(handlersCtx) {
                 return;
             }
             try {
-                reply(handlersCtx, ws, message, await fn(message));
+                reply(handlersCtx, ws, message, await fn(message, ctx));
             } catch (error) {
                 handlersCtx.sendError(ws, error.message || 'Glancewell request failed', error.message, message.requestId);
             }
@@ -79,6 +80,27 @@ function registerPackets(handlersCtx) {
         changed({ what: 'watched' });
         return { folders };
     });
+    // Fix (glancewellFix.js): a print's fixed pixels over it (the original kept for Revert) or as a new print
+    const galleryChanged = async (ctx, options) => {
+        try {
+            const { broadcastGalleryMutation } = require('./120-galleryHandler');
+            await broadcastGalleryMutation(handlersCtx, ctx.wsServer, ctx.clientInfo, options);
+        } catch (e) { console.warn(`[316-glancewellHandler] gallery broadcast: ${e.message}`); }
+    };
+    reg('glancewell_fix_save', async (m, ctx) => {
+        const b64 = String(m.data || '').replace(/^data:[^,]*,/, '');
+        const out = await fix.saveFixed(gr, { filename: m.filename, buffer: Buffer.from(b64, 'base64'), mode: m.mode, workspaceId: m.workspaceId });
+        await galleryChanged(ctx, out.mode === 'copy'
+            ? { viewType: 'images', action: 'append_top', filename: out.filename, workspaceId: m.workspaceId }
+            : { viewType: 'images', action: 'invalidate_sync', workspaceId: m.workspaceId });
+        return out;
+    }, { destructive: true });
+    reg('glancewell_fix_revert', async (m, ctx) => {
+        const out = await fix.revert(gr, m.filename);
+        await galleryChanged(ctx, { viewType: 'images', action: 'invalidate_sync', workspaceId: m.workspaceId });
+        return out;
+    }, { destructive: true });
+    reg('glancewell_fix_original', async (m) => ({ hasOriginal: await fix.hasOriginal(gr, m.filename) }));
     // a picture deleted for good: forget its tags, caption, date and favourite
     reg('glancewell_forget', (m) => {
         const n = store.forget(m.items);

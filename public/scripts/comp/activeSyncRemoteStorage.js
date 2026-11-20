@@ -31,7 +31,10 @@
     // explorerPhoneDrive.js and the menus that open it read it from phoneStorage.receivedDir
     const RECEIVED_DIR = '/ActiveSync';
     // handlers / defaults: Open With's phone apps and Android's own defaults page (#954; DSApp features.openWith)
-    const REMOTE_OPS = new Set(['hello', 'list', 'stat', 'mkdir', 'rename', 'delete', 'trash', 'trashList', 'restore', 'move', 'copy', 'open', 'watch', 'unwatch', 'handlers', 'defaults']);
+    const REMOTE_OPS = new Set(['hello', 'list', 'stat', 'mkdir', 'rename', 'delete', 'trash', 'trashList', 'restore', 'move', 'copy', 'open', 'watch', 'unwatch', 'handlers', 'defaults', 'media.albums', 'media.list']);
+    // the bridge's MediaStore ops travel as one-word ActiveSync ops (op names have one dot, modules/activeSync.js;
+    // DSApp ActiveSyncLink storage.mediaAlbums / storage.mediaList, #984); the device says so in hello's features.media
+    const REMOTE_NAMES = { 'media.albums': 'mediaAlbums', 'media.list': 'mediaList' };
     const listeners = new Map();
     const progress = new Map(); // transfer id -> onProgress
     const watches = new Map(); // "root\npath" -> count
@@ -91,7 +94,7 @@
     function call(op, args = {}) {
         if (!current) return Promise.reject(error('disabled', 'No device is connected'));
         if (!REMOTE_OPS.has(op)) return Promise.reject(error('unsupported', 'This is done on the device itself'));
-        return as.call(current.deviceId, `storage.${op}`, args, { timeoutMs: 60000 })
+        return as.call(current.deviceId, `storage.${REMOTE_NAMES[op] || op}`, args, { timeoutMs: 60000 })
             .catch((e) => { throw error(e && e.code, e && e.message); });
     }
 

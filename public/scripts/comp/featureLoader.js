@@ -131,8 +131,8 @@ const FEATURE_MANIFEST = {
     },
     // Glancewell's gallery (Windows Photo Gallery, #446): the library, its sources and the shared Info pane
     glancewell_library: {
-        styles: ['css/themes/vista/glancewell-library.css'],
-        scripts: ['scripts/comp/glancewellSources.js', 'scripts/comp/glancewellLibrary.js']
+        styles: ['css/themes/vista/glancewell-library.css', 'css/themes/vista/glancewell-fix.css', 'css/themes/vista/glancewell-show.css'],
+        scripts: ['scripts/comp/glancewellSources.js', 'scripts/comp/glancewellLibrary.js', 'scripts/comp/glancewellFix.js', 'scripts/comp/glancewellThemes.js']
     },
     image_prompt_inspector: {
         hot: true,

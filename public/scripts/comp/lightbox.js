@@ -451,6 +451,11 @@ function attachStandalonePhotoSwipeShellRestoreUi(pswp) {
 // the pointer hidden while idle, the right-click menu (Play, Pause, Next, Back, Shuffle, Loop, the
 // three speeds, Exit; Slow 10 s, Medium 5 s, Fast 3 s as measured on the VM), Esc back to the window. ----
 
+/** The gallery's hooks into the viewer (glancewellLibrary.js, glancewellFix.js, glancewellThemes.js), one object. */
+const GW = {
+    themesOn: () => !!(window.glancewellThemes && glancewellThemes.active())
+};
+
 const GLANCEWELL_SLIDE_SHOW_SPEEDS = { slow: 10000, medium: 5000, fast: 3000 };
 const GLANCEWELL_POINTER_IDLE_MS = 3000;
 let glancewellRotation = 0;
@@ -532,7 +537,9 @@ function syncGlancewellChrome() {
     const del = shell.querySelector('[data-gw="delete"]');
     if (del) del.disabled = !pic.filename;
     // Edit (DreamStudio) and Make a Movie work from the gallery file and its print parameters
-    shell.querySelectorAll('.wpg-cmds > [data-gw="fix"], .wpg-cmds > [data-gw="movie"]').forEach((btn) => { btn.disabled = !pic.filename; });
+    // Fix works on any picture (glancewellFix.js); Make a Movie animates prints only
+    shell.querySelectorAll('.wpg-cmds > [data-gw="movie"]').forEach((btn) => { btn.disabled = !pic.filename; });
+    shell.querySelectorAll('.wpg-cmds > [data-gw="fix"]').forEach((btn) => { btn.disabled = !pic.src && !pic.filename; });
     syncGlancewellZoomChrome();
     glancewellRotation = 0;
     applyGlancewellRotation();
@@ -651,9 +658,39 @@ function removeGlancewellCurrentSlide(p) {
 
 // ---- the slide show ----
 
+/** Photo Gallery's themed show (glancewellThemes.js): the 14 themes draw over the slide show, PhotoSwipe follows. */
+
+GW.startGlancewellThemes = function (p) {
+    const shell = getPhotoSwipeShell();
+    if (!shell || !p || !window.glancewellThemes || !glancewellShow.on) return;
+    clearTimeout(glancewellShow.timer);
+    const n = p.getNumItems();
+    const slides = [];
+    for (let i = 0; i < n; i++) {
+        const d = p.getItemData(i) || {};
+        slides.push({ src: d.src, width: d.width, height: d.height });
+    }
+    glancewellThemes.start({
+        host: shell,
+        slides,
+        index: p.currIndex,
+        speed: glancewellShow.speed,
+        shuffle: glancewellShow.shuffle,
+        loop: glancewellShow.loop,
+        onIndex: (i) => { if (!p.isDestroying && p.currIndex !== i) p.goTo(i); },
+        onExit: () => exitGlancewellSlideShow(),
+        onOption: (k, v) => { glancewellShow[k] = v; }
+    });
+};
+
 function scheduleGlancewellSlide() {
     clearTimeout(glancewellShow.timer);
     glancewellShow.timer = null;
+    if (GW.themesOn()) {
+        if (glancewellShow.playing) glancewellThemes.play(); else glancewellThemes.pause();
+        glancewellThemes.setSpeed(glancewellShow.speed);
+        return;
+    }
     if (!glancewellShow.on || !glancewellShow.playing) return;
     glancewellShow.timer = setTimeout(advanceGlancewellSlide, GLANCEWELL_SLIDE_SHOW_SPEEDS[glancewellShow.speed]);
 }
@@ -661,6 +698,7 @@ function scheduleGlancewellSlide() {
 function advanceGlancewellSlide(step = 1) {
     const p = getActivePhotoSwipe();
     if (!p || !glancewellShow.on) return;
+    if (GW.themesOn()) { if (step > 0) glancewellThemes.next(); else glancewellThemes.back(); return; }
     const count = p.getNumItems();
     if (count < 2) return;
     let index;
@@ -729,6 +767,9 @@ function playGlancewellSlideShow() {
         onGlancewellSlideShowPointerMove();
         notifyPhotoSwipeShellResized();
         requestAnimationFrame(() => requestAnimationFrame(() => fillGlancewellSlideShowSlide(p)));
+        // the themed show (Classic by default, as Vista's), loaded with the gallery
+        if (window.glancewellThemes) GW.startGlancewellThemes(p);
+        else if (window.featureLoader) void featureLoader.loadFeature('glancewell_library').then(() => GW.startGlancewellThemes(p), () => {});
     }
     glancewellShow.playing = true;
     scheduleGlancewellSlide();
@@ -737,6 +778,7 @@ function playGlancewellSlideShow() {
 /** After a show closed with the window (Lumen's): back to the window's own layout for the next open. */
 function resetGlancewellSlideShowShell() {
     holdGlancewellSlideShowScreen(false);
+    if (GW.themesOn()) glancewellThemes.stop();
     const shell = getPhotoSwipeShell();
     if (!shell || !shell.classList.contains('wpg-slideshow')) return;
     const mount = getPhotoSwipeMount();
@@ -775,6 +817,12 @@ function fillGlancewellSlideShowSlide(p) {
 function exitGlancewellSlideShow() {
     if (!glancewellShow.on) return;
     holdGlancewellSlideShowScreen(false);
+    // the themed show hands back the picture it stopped on
+    if (GW.themesOn()) {
+        const at = glancewellThemes.stop();
+        const sp = getActivePhotoSwipe();
+        if (sp && !sp.isDestroying && Number.isInteger(at) && sp.currIndex !== at) sp.goTo(at);
+    }
     // Lumen's show closes on Exit and hands Lumen the picture it stopped on
     if (glancewellShow.lumenExit) {
         const onExit = glancewellShow.lumenExit;
@@ -883,7 +931,7 @@ function positionGlancewellZoomThumb(pop, s) {
     const thumb = pop.querySelector('.wpg-zoom-thumb');
     if (!thumb) return;
     const t = GLANCEWELL_ZOOM_TRAVEL;
-    const lib = glancewellLibraryZoom();
+    const lib = GW.glancewellLibraryZoom();
     const centre = t.bottom - (t.bottom - t.top) * (lib ? lib.zoomFraction() : glancewellZoomFraction(s));
     thumb.style.top = `${Math.round(centre - 5.5)}px`;
 }
@@ -894,7 +942,7 @@ function glancewellZoomFromPointer(pop, clientY) {
     const t = GLANCEWELL_ZOOM_TRAVEL;
     const y = clientY - pop.getBoundingClientRect().top - pop.clientTop;
     const f = Math.max(0, Math.min(1, (t.bottom - y) / (t.bottom - t.top)));
-    const lib = glancewellLibraryZoom();
+    const lib = GW.glancewellLibraryZoom();
     if (lib) { lib.setZoomFraction(f); positionGlancewellZoomThumb(pop, null); return; }
     if (!s) return;
     const fitZoom = glancewellFitZoom(s);
@@ -921,14 +969,14 @@ function onGlancewellZoomOutside(e) {
 }
 
 /** The gallery's zoom: the thumbnails' size (glancewellLibrary.js zoomFraction / setZoomFraction). */
-function glancewellLibraryZoom() {
+GW.glancewellLibraryZoom = function () {
     return !getActivePhotoSwipe() && window.glancewellLibrary && glancewellLibrary.isOpen() ? glancewellLibrary : null;
-}
+};
 
 function toggleGlancewellZoomPopup(btn) {
     const shell = getPhotoSwipeShell();
     const p = getActivePhotoSwipe();
-    const lib = glancewellLibraryZoom();
+    const lib = GW.glancewellLibraryZoom();
     if (!shell || (!lib && (!p || !p.currSlide))) return;
     let pop = shell.querySelector('.wpg-zoom-pop');
     if (!pop) {
@@ -951,7 +999,7 @@ function toggleGlancewellZoomPopup(btn) {
         });
         pop.addEventListener('wheel', (e) => {
             e.preventDefault();
-            const lib = glancewellLibraryZoom();
+            const lib = GW.glancewellLibraryZoom();
             if (lib) { lib.setZoomFraction(lib.zoomFraction() + (e.deltaY < 0 ? 0.08 : -0.08)); positionGlancewellZoomThumb(pop, null); return; }
             const s = getActivePhotoSwipe() && getActivePhotoSwipe().currSlide;
             if (!s) return;
@@ -1079,8 +1127,73 @@ function glancewellMenuItems(key) {
 const GLANCEWELL_GALLERY_ACTIONS = new Set(['gw-fix', 'gw-studio', 'gw-reroll', 'gw-enhance', 'gw-upscale', 'gw-expand', 'gw-movie']);
 
 /** One command or menu row, by action; ImageViewer's own methods do the work (glancewellViewerCall). */
+/** Photo Gallery's Fix on the picture in the viewer (glancewellFix.js; loaded with the gallery). */
+GW.openGlancewellFix = async function () {
+    const p = getActivePhotoSwipe();
+    if (!p) return;
+    if (!window.glancewellFix && window.featureLoader) await featureLoader.loadFeature('glancewell_library');
+    if (!window.glancewellFix) return;
+    if (glancewellFix.isOpen()) { await glancewellFix.leave(); return; }
+    const pic = glancewellCurrentPicture();
+    const data = p.currSlide && p.currSlide.data ? (p.currSlide.data.data || p.currSlide.data) : null;
+    const item = window.glancewellLibrary ? glancewellLibrary.itemForSlide(data) : null;
+    const index = p.currIndex;
+    await glancewellFix.open({
+        src: (p.currSlide && p.currSlide.data && p.currSlide.data.src) || pic.src,
+        name: item ? item.name : (pic.title || pic.filename),
+        item,
+        print: pic.filename ? { filename: pic.filename, workspaceId: (pic.metadata && pic.metadata.workspaceId) || (item && item.workspaceId) || null } : null,
+        // the saved pixels in the viewer at once
+        onSaved: (src) => {
+            const slide = p.options.dataSource && p.options.dataSource[index];
+            if (slide) { slide.src = src; slide.width = undefined; slide.height = undefined; }
+            try { p.refreshSlideContent(index); } catch (_) { /* closed */ }
+        }
+    });
+};
+
+/** Rotate the picture in the viewer: its file where it has one to write back to, else only on screen. */
+GW.rotateGlancewellPicture = async function (dir) {
+    const p = getActivePhotoSwipe();
+    if (!p || (window.glancewellFix && glancewellFix.isOpen())) return;
+    const pic = glancewellCurrentPicture();
+    const data = p.currSlide && p.currSlide.data ? (p.currSlide.data.data || p.currSlide.data) : null;
+    if (!window.glancewellFix && window.featureLoader) await featureLoader.loadFeature('glancewell_library').catch(() => {});
+    const item = window.glancewellLibrary ? glancewellLibrary.itemForSlide(data) : null;
+    const writable = !!(window.glancewellFix && (pic.filename || (item && item.source !== 'refs' && !item.video)));
+    if (!writable) {
+        glancewellRotation = (glancewellRotation + (dir > 0 ? 90 : 270)) % 360;
+        applyGlancewellRotation();
+        return;
+    }
+    const index = p.currIndex;
+    const slide = p.options.dataSource && p.options.dataSource[index];
+    try {
+        await glancewellFix.rotateFile({
+            src: (slide && slide.src) || pic.src,
+            name: item ? item.name : (pic.title || pic.filename),
+            item,
+            print: pic.filename ? { filename: pic.filename, workspaceId: (pic.metadata && pic.metadata.workspaceId) || (item && item.workspaceId) || null } : null,
+            onSaved: (src) => {
+                if (slide) { slide.src = src; const w = slide.width; slide.width = slide.height; slide.height = w; }
+                if (item) { const w = item.width; item.width = item.height; item.height = w; item.rev = Date.now(); }
+                try { p.refreshSlideContent(index); } catch (_) { /* closed */ }
+            }
+        });
+    } catch (err) {
+        if (typeof showConfirmationDialog === 'function') await showConfirmationDialog(String((err && err.message) || 'You cannot rotate this image.'), [{ text: 'OK', value: true }], null, { title: 'Glancewell', icon: 'fas fa-circle-xmark' });
+    }
+};
+
+/** Leaving the picture while Fix has changes asks to save first (glancewellFix.js leave). */
+GW.glancewellFixAllowsLeaving = async function () {
+    return !(window.glancewellFix && glancewellFix.isOpen()) || await glancewellFix.leave();
+};
+
 async function runGlancewellAction(action, event) {
     const p = getActivePhotoSwipe();
+    if (action === 'gw-fix' && p) { await GW.openGlancewellFix(); return; }
+    if ((action === 'gw-gallery' || action === 'gw-scrap') && !(await GW.glancewellFixAllowsLeaving())) return;
     if (!p && window.glancewellLibrary && glancewellLibrary.isOpen()) {
         if (glancewellLibrary.handleControl(String(action).replace(/^gw-/, ''))) return;
         if (await glancewellLibrary.runFileAction(action, event)) return;
@@ -1125,7 +1238,6 @@ async function runGlancewellAction(action, event) {
         case 'gw-lumen':
             if (pic.filename && typeof openGalleryImageInViewer === 'function') openGalleryImageInViewer(pic.metadata);
             break;
-        case 'gw-fix':
         case 'gw-studio': glancewellViewerCall('openInCreator'); break;
         case 'gw-paint':
             // editGalleryImageInPaint / editImageInPaint: public/scripts/comp/imageViewer.js
@@ -1238,8 +1350,8 @@ function wireGlancewellChromeOnce() {
     on('gallery', () => void runGlancewellAction('gw-gallery'));
     on('info-close', () => setGlancewellInfoOpen(false));
     on('help', () => { if (typeof openGrimoireApplet === 'function') openGrimoireApplet(); });
-    on('previous', withSwipe((p) => p.prev()));
-    on('next', withSwipe((p) => p.next()));
+    on('previous', withSwipe(async (p) => { if (await GW.glancewellFixAllowsLeaving()) p.prev(); }));
+    on('next', withSwipe(async (p) => { if (await GW.glancewellFixAllowsLeaving()) p.next(); }));
     on('slideshow', () => playGlancewellSlideShow());
     on('zoom', (btn) => toggleGlancewellZoomPopup(btn));
     on('fit', withSwipe((p) => {
@@ -1249,8 +1361,9 @@ function wireGlancewellChromeOnce() {
         s.zoomTo(s.currZoomLevel > fit + 0.001 ? fit : 1);
         requestAnimationFrame(syncGlancewellZoomChrome);
     }));
-    on('rotate-left', () => { glancewellRotation = (glancewellRotation + 270) % 360; applyGlancewellRotation(); });
-    on('rotate-right', () => { glancewellRotation = (glancewellRotation + 90) % 360; applyGlancewellRotation(); });
+    // Photo Gallery turns the file itself (glancewellFix.js rotateFile); a picture known only by its address turns on screen
+    on('rotate-left', () => void GW.rotateGlancewellPicture(-1));
+    on('rotate-right', () => void GW.rotateGlancewellPicture(1));
     // Delete moves the picture to Scraps and shows the next
     on('delete', () => void runGlancewellAction('gw-scrap'));
     wireGlancewellSlideShowMenu();
@@ -1280,7 +1393,9 @@ function attachGlancewellChrome(pswp) {
     pswp.on('keydown', (ev) => {
         const t = ev.originalEvent && ev.originalEvent.target;
         const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-        if (typing || !isPhotoSwipeWindowKeyboardContext()) ev.preventDefault();
+        // while Fix is open the keys are Fix's (glancewellFix.js): no slide changes under it
+        const fixing = !!(window.glancewellFix && glancewellFix.isOpen());
+        if (typing || fixing || !isPhotoSwipeWindowKeyboardContext()) ev.preventDefault();
     });
     pswp.on('change', () => syncGlancewellChrome());
     pswp.on('afterInit', () => {
@@ -1289,6 +1404,11 @@ function attachGlancewellChrome(pswp) {
         if (window.glancewellStartSlideShow) {
             window.glancewellStartSlideShow = false;
             playGlancewellSlideShow();
+        }
+        // the gallery's Fix opens the viewer straight into Fix (glancewellLibrary.js)
+        if (window.glancewellStartFix) {
+            window.glancewellStartFix = false;
+            void GW.openGlancewellFix();
         }
         const start = glancewellShow.lumenStart;
         if (start) {

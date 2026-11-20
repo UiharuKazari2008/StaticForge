@@ -109,6 +109,35 @@
 
     const cardOf = (id) => cards().find((c) => c.id === id) || null;
 
+    // ---------------------------------------------------------------- Favorites (Glancewell, #446)
+
+    // the pictures marked Favorite in Glancewell's Pictures root (in DeX, or on a computer under this phone's
+    // ActiveSync root): a folder of the phone's own card, so every picture keeps its real path and actions
+    const FAV_PATH = '@favorites';
+    const isFav = (l) => !!(l && l.path === FAV_PATH);
+    const favRoot = () => { const c = cards().find((x) => x.kind === 'internal') || cards()[0]; return c ? c.id : null; };
+    function ownDeviceId() {
+        try { return window.AndroidActiveSync && typeof window.AndroidActiveSync.getDeviceId === 'function' ? String(window.AndroidActiveSync.getDeviceId() || '') : ''; } catch (_) { return ''; }
+    }
+    /** The favourite paths on one card, newest first (glancewell_favorites, modules/ws/handlers/316-glancewellHandler.js). */
+    async function favoritePaths(rootId) {
+        const wsc = window.wsClient;
+        if (!wsc || typeof wsc.sendMessage !== 'function') return [];
+        const sources = ['pictures'];
+        const own = ownDeviceId();
+        if (own) sources.push(`device:${own}`);
+        const lists = await Promise.all(sources.map((source) => wsc.sendMessage('glancewell_favorites', { source }, false).then((r) => (r && r.items) || [], () => [])));
+        const seen = new Set();
+        const out = [];
+        lists.flat().sort((a, b) => (b.added || 0) - (a.added || 0)).forEach((f) => {
+            const i = String(f.key || '').indexOf(':');
+            if (i < 0 || f.key.slice(0, i) !== rootId) return;
+            const path = f.key.slice(i + 1);
+            if (!seen.has(path)) { seen.add(path); out.push(path); }
+        });
+        return out;
+    }
+
     async function loadHello(fresh) {
         const ps = PS();
         if (!ps || !window.AndroidPhoneStorage) { hello = null; return null; }
@@ -225,7 +254,13 @@
         const at = loc;
         let list = [];
         try {
-            if (hasMediaOps()) {
+            if (isFav(at)) {
+                // each favourite as the card reports it now (one gone from the phone is left out)
+                const paths = await favoritePaths(at.root);
+                const found = await Promise.all(paths.map((p) => PS().call('stat', { root: at.root, path: p }).then((e) => e, () => null)));
+                list = found.filter((e) => e && !e.dir && isMedia(e.mime))
+                    .map((e) => Object.assign({}, e, { taken: e.taken || e.mtime, video: /^video\//.test(e.mime) }));
+            } else if (hasMediaOps()) {
                 const r = await PS().call('media.list', { root: at.root, path: at.path });
                 list = (r && r.entries) || [];
             } else {
@@ -249,7 +284,8 @@
     function watch() {
         const ps = PS();
         if (!ps || typeof ps.watch !== 'function') return;
-        const next = loc ? `${loc.root}\n${loc.path}` : null;
+        // Favorites is no folder on the card: Glancewell's change push refreshes it
+        const next = loc && !isFav(loc) ? `${loc.root}\n${loc.path}` : null;
         if (next === watched) return;
         if (watched) { const [r, p] = watched.split('\n'); try { ps.unwatch(r, p); } catch (_) { /* gone */ } }
         watched = next;
@@ -826,6 +862,9 @@
         // Ledge first: it is My Device's (wmLedge.js)
         const l = LG();
         const out = l ? l.folderItems() : [];
+        if (cardsOn() && favRoot()) {
+            out.push({ label: 'Favorites', icon: 'fe-folder', radio: isFav(loc), action: () => sh.busy(open(favRoot(), FAV_PATH), { paint: true }) });
+        }
         if (out.length && cardsOn()) out.push('-');
         for (const c of cardsOn() ? cards() : []) {
             const here = !!(loc && loc.root === c.id);
@@ -847,6 +886,7 @@
         if (ledgeOn()) return LG().barLabel();
         if (!loc) return '';
         if (query) return 'Search results';
+        if (isFav(loc)) return 'Favorites';
         if (loc.path === '/') { const c = cardOf(loc.root); return c ? c.label : 'Storage Card'; }
         return baseName(loc.path);
     }
@@ -1161,6 +1201,14 @@
         ps.on('changed', onFolderChanged);
         document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake) catchUpShown(); }, { signal: appScopeSignal });
         ps.on('config', async () => { await loadHello(false); if (loc && !cardOf(loc.root)) loc = null; refreshSoon(); });
+        // Glancewell's Favorites changed (server push): the Favorites folder reads them again while it is open
+        const wsc = window.wsClient;
+        if (wsc && typeof wsc.on === 'function') {
+            wsc.on('glancewell_changed', (m) => {
+                const d = (m && m.data) || m || {};
+                if (d.what === 'meta' && isFav(loc)) refreshSoon();
+            }, { signal: appScopeSignal });
+        }
     }
 
     let ready = null;

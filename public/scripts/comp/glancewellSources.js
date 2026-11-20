@@ -195,7 +195,7 @@
 
     // ------------------------------------------------------------------ Folders (watched VFS folders)
 
-    function vfsItem(e, folderName) {
+    function vfsItem(e, folderName, parentPath) {
         const video = isVideo(e.name, e.mimeType);
         return {
             id: itemId('folders', e.id || e.targetId),
@@ -210,7 +210,9 @@
             modified: ms(e.modifiedAt),
             folder: folderName,
             thumb: () => e.previewUrl || '',
-            full: () => e.url || e.downloadUrl || e.fileUrl || e.previewUrl || '',
+            // the file itself: /<vfs>/files/<id> beside /<vfs>/previews/<id> (web_server.js)
+            full: () => e.url || e.downloadUrl || e.fileUrl || String(e.previewUrl || '').replace('/previews/', '/files/'),
+            parentPath,
             raw: e
         };
     }
@@ -246,7 +248,7 @@
                             continue;
                         }
                         if (e.targetKind !== 'user-file' || !isMedia(e.name, e.mimeType)) continue;
-                        page.push(vfsItem(e, at.name));
+                        page.push(vfsItem(e, at.name, at.path));
                     }
                     out.push(...page);
                     if (onPage && page.length) onPage(page);
@@ -301,8 +303,9 @@
             const p = await ready();
             if (!p) return [];
             const h = await p.hello().catch(() => null);
-            if (h && h.features && h.features.media && !deviceId) {
-                try { return (await p.call('media.albums', {})) || []; } catch (_) { /* walk */ }
+            // MediaStore's albums: the page's bridge, or a device whose app answers them over ActiveSync (#984)
+            if (h && h.features && h.features.media) {
+                try { return (await p.call('media.albums', {})) || []; } catch (_) { /* an older app: walk */ }
             }
             const out = [];
             for (const c of await cards()) {
@@ -348,6 +351,8 @@
             id,
             label,
             deviceId: deviceId || null,
+            // where this source's files are written back (Fix, rotation)
+            store: () => ps(),
             available: () => !!(ps() && (deviceId ? true : ps().available)),
             async albums(force) {
                 if (!albums || force) albums = await loadAlbums();
@@ -358,7 +363,7 @@
                 if (!p) return [];
                 const list = scope.album ? [scope.album] : await this.albums();
                 const h = await p.hello().catch(() => null);
-                const media = h && h.features && h.features.media && !deviceId;
+                const media = !!(h && h.features && h.features.media);
                 const out = [];
                 for (const a of list) {
                     let entries = [];
@@ -375,8 +380,37 @@
         };
     }
 
-    // Pictures: this device's own library (the Android app's bridge; a computer has no local phone storage)
-    const localPs = () => (root.phoneStorage && !root.phoneStorage.remote ? root.phoneStorage : null);
+    /**
+     * DreamOS: this computer's own drives (window.DreamOSDrives, CaféReady drives.rs; explorerHostDrive.js) in the
+     * phone storage's shape, so Pictures reads their picture folders the same way. The host makes no thumbnails:
+     * the files themselves show.
+     */
+    let hostAdapter = null;
+    function hostPs() {
+        const D = root.DreamOSDrives;
+        if (!D || typeof D.get !== 'function' || typeof D.list !== 'function') return null;
+        if (hostAdapter) return hostAdapter;
+        const drives = () => { const st = D.get(); return (st && Array.isArray(st.drives)) ? st.drives : []; };
+        const baseName = (pth) => String(pth || '').split('/').filter(Boolean).pop() || '';
+        hostAdapter = {
+            remote: false,
+            get available() { return drives().length > 0; },
+            hello: async () => ({ roots: drives().map((d) => ({ id: d.id, name: d.label || d.name || 'Local Disk' })), features: {} }),
+            call: async (op, a) => {
+                if (op !== 'list') throw new Error('unsupported');
+                return D.list(a.root, a.path);
+            },
+            fileUrl: (id, pth) => D.fileUrl(id, pth, {}),
+            baseName,
+            parentPath: (pth) => { const parts = String(pth || '/').split('/').filter(Boolean); parts.pop(); return `/${parts.join('/')}`; },
+            encodePath: (pth) => String(pth || '').split('/').filter(Boolean).map(encodeURIComponent).join('/'),
+            write: (rootId, dir, file, opts) => D.write(rootId, dir, file, { name: (opts && opts.name) || file.name, conflict: (opts && opts.conflict) || 'fail' })
+        };
+        return hostAdapter;
+    }
+
+    // Pictures: this device's own library (the Android app's bridge on a phone or DeX; DreamOS's own drives)
+    const localPs = () => (root.phoneStorage && !root.phoneStorage.remote ? root.phoneStorage : hostPs());
     const pictures = phoneSource({ id: 'pictures', label: 'Pictures', ps: localPs });
 
     const deviceSources = new Map();
