@@ -5604,22 +5604,32 @@ class ServiceWorkerManager {
         try { localStorage.setItem('meletonUpdateCheckedAt', String(Date.now())); } catch (_) { /* private mode */ }
     }
 
+    /** What a restart for updates installs: the downloaded files and, by default (notify mode), those only counted. */
+    _restartUpdateUrls() {
+        const urls = new Set(this.pendingUpdateUrls || []);
+        (Array.isArray(this.availableUpdates) ? this.availableUpdates : []).forEach((f) => { if (f && f.url) urls.add(f.url); });
+        return Array.from(urls);
+    }
+
     forceRestart(opts = {}) {
         const mcw = window.melatonContinuity;
-        const bonded = !!(mcw && typeof mcw.restartPlan === 'function' && (mcw.isDexWindow() || mcw.keepPhoneConnected()));
+        // the phone with a DeX window up plans and warns for both, over the shared socket or each its own Miniport link
+        const phoneWithDex = !!(mcw && (typeof mcw.hasDexPeer === 'function' ? mcw.hasDexPeer() : mcw.keepPhoneConnected()));
+        const bonded = !!(mcw && typeof mcw.restartPlan === 'function' && (mcw.isDexWindow() || phoneWithDex));
+        const restartUrls = this._restartUpdateUrls();
         // Continuity (#900): who restarts is decided per window - each judges the pending files against what
         // it runs (restartPlan); the warning then names exactly the windows that restart. Cancel keeps the
         // updates waiting.
         // the DeX window plans even with no files of its own: its mirror of the phone's state can miss a push, and
         // without a plan the phone restarted both at once, skipping this desktop's shutdown (#945)
-        if (bonded && (this.pendingUpdateFuse || this._isContinuityDexWindow()) && !opts.plan) {
-            mcw.restartPlan(Array.from(this.pendingUpdateUrls || [])).then(async (plan) => {
+        if (bonded && (restartUrls.length || this._isContinuityDexWindow()) && !opts.plan) {
+            mcw.restartPlan(restartUrls).then(async (plan) => {
                 if (!opts.confirmed && !(await mcw.confirmUpdateRestart(plan))) return;
                 this.forceRestart({ confirmed: true, plan });
             });
             return;
         }
-        if (!opts.confirmed && mcw && typeof mcw.confirmUpdateRestart === 'function' && (mcw.isDexWindow() || mcw.keepPhoneConnected())) {
+        if (!opts.confirmed && mcw && typeof mcw.confirmUpdateRestart === 'function' && (mcw.isDexWindow() || phoneWithDex)) {
             mcw.confirmUpdateRestart().then((go) => { if (go) this.forceRestart({ confirmed: true }); });
             return;
         }
@@ -5635,7 +5645,7 @@ class ServiceWorkerManager {
         // the phone restarting both: the DeX window's shutdown sequence runs first (it then waits at its BIOS for the
         // phone), the phone showing "Shutting down..." meanwhile; with no plan, the file rule says whether both restart
         const phoneBoth = !this._isContinuityDexWindow() && (plan ? plan.other
-            : !!(mcw && typeof mcw.updateScope === 'function' && this.pendingUpdateFuse && mcw.updateScope(Array.from(this.pendingUpdateUrls || [])) === 'both'));
+            : !!(mcw && typeof mcw.updateScope === 'function' && restartUrls.length && mcw.updateScope(restartUrls) === 'both'));
         if (phoneBoth && !opts.dexDone && mcw && typeof mcw.dexShutdownFirst === 'function' && typeof mcw.peers === 'function' && mcw.peers().includes('desktop')) {
             const go = () => this.forceRestart(Object.assign({}, opts, { dexDone: true }));
             // a program kept open on the desktop ("programs still running", Cancel): nothing restarts

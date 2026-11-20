@@ -375,7 +375,9 @@
     // its own waiting files, so a restart for updates is still planned for both windows (#945)
     api.on('update-needs?', (m) => {
         const sw = root.serviceWorkerManager;
-        const own = sw && sw.pendingUpdateFuse && sw.pendingUpdateUrls ? Array.from(sw.pendingUpdateUrls) : [];
+        // its downloaded files and those only counted (a restart installs both)
+        const own = sw && typeof sw._restartUpdateUrls === 'function' ? sw._restartUpdateUrls()
+            : (sw && sw.pendingUpdateFuse && sw.pendingUpdateUrls ? Array.from(sw.pendingUpdateUrls) : []);
         answer(m, localNeed(Array.isArray(m.urls) && m.urls.length ? m.urls : own));
     });
 
@@ -1387,6 +1389,12 @@
      * is on" before a reconnect.
      */
     api.keepPhoneConnected = () => isPhone() && !miniport.available() && api.peers().includes('desktop');
+    /**
+     * The phone window with a DeX window up, whatever carries their connections (the shared socket or each its own
+     * Miniport link): a restart for updates plans and warns for both (Nov 20: with the Miniport the phone installed
+     * and restarted alone - keepPhoneConnected is false then - and the DeX window never restarted or asked).
+     */
+    api.hasDexPeer = () => isPhone() && api.peers().includes('desktop');
     /** The DeX window, while the phone window is there: its retries never stop at "Use Reconnect". */
     api.keepDexConnected = () => isDw() && api.peers().includes('phone');
     /**
