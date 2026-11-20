@@ -221,12 +221,15 @@
 .vz-window.vz-min .vz-root .vz-mini { display: flex; flex-direction: column; gap: 4px; margin: 4px 5px 0; }
 .vz-root .vz-mini .vz-box { padding: 0 6px; }
 .vz-root .vz-mcover { flex-direction: column; align-items: stretch; height: 58px; padding: 0 !important; }
-.vz-root .vz-mline { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; font-size: 14px; }
+.vz-root .vz-mline { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; font-size: 14px; white-space: nowrap; }
+.vz-root .vz-mline > span { overflow: hidden; text-overflow: ellipsis; }
+/* a long radio name (LTE Advanced, NR mmWave) fits the compact box a size down */
+.vz-root .vz-mcover > .vz-mline:first-child { font-size: 13px; letter-spacing: -.2px; }
 .vz-root .vz-mline b { font-weight: bold; }
 .vz-root .vz-mconn { border-top: 1px solid var(--vz-box-edge); font-size: 12px; }
 .vz-root .vz-mconn .vz-fill { flex: 1; }
 .vz-root .vz-mtech { display: flex; align-items: center; gap: 2px; }
-.vz-root .vz-mdevice { height: 28px; gap: 6px; }
+.vz-root .vz-mdevice { height: 28px; gap: 4px; font-size: 12px; }
 .vz-root .vz-mdevice .num { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .vz-root .vz-mdevice .vz-lan { font-weight: bold; font-size: 11px; }
 .vz-root .vz-mbtns { display: flex; gap: 4px; }
@@ -243,11 +246,12 @@
 .vz-dlg .vdt-lv-col:last-child { flex: 1 0 auto; }
 /* Session Log's columns, as wide as on the VM */
 .vz-dlg .vz-c0 { width: 150px; }
-.vz-dlg .vz-c1 { width: 110px; }
+.vz-dlg .vz-c1 { width: 128px; }
 .vz-dlg .vz-c2, .vz-dlg .vz-c3, .vz-dlg .vz-c4 { width: 75px; }
 .vz-dlg .vz-c5 { width: 90px; }
 .vz-dlg .vdt-richedit { white-space: normal; overflow: hidden; border: 0; background: transparent; box-shadow: none; }
 .vz-dlg .vdt-richedit p { margin: 0 0 1em; }
 .vz-dlg .vz-dlg-url { color: var(--vz-url); text-decoration: underline; cursor: pointer; }
+.vz-dlg .vdt-static:has(> .vz-about-logo) { overflow: visible; }
 .vz-dlg .vz-about-logo { display: block; width: 160px; height: 60px; }
 .vz-dlg .vdt-custom .vz-usage { box-sizing: border-box; height: 100%; padding: 8px; border: 1px solid var(--vz-field-edge); background: var(--vz-box-face); overflow: auto; user-select: text; }

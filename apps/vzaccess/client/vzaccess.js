@@ -246,7 +246,7 @@
             let x = null;
             try { x = await p.stats('rmnet0'); } catch (_) { x = null; }
             if (!x || x.error || (x.kind && x.kind !== 'mobile')) return null;
-            return { rx: Number(x.rxBytes) || 0, tx: Number(x.txBytes) || 0 };
+            return { rx: Math.round(Number(x.rxBytes) || 0), tx: Math.round(Number(x.txBytes) || 0) };
         }
 
         /**
@@ -1172,6 +1172,8 @@
                 close: () => { this.logCtx = null; },
                 init: (c) => {
                     const lv = c.holder(415);
+                    // the program makes the list a report view at run time (the template's is an icon view)
+                    lv.classList.add('is-report');
                     const head = lv.querySelector('.vdt-lv-header');
                     head.innerHTML = LOG_COLS.map(([t, right], i) => `<span class="vdt-lv-col vz-c${i}${right ? ' vz-r' : ''}">${esc(t)}</span>`).join('');
                     // the list's selection (one row, as the list view's)
@@ -1338,7 +1340,7 @@
          */
         deviceInfo() {
             const ci = this.readCellInfo(true);
-            const rows = this.hardwareRows();
+            const rows = this.hardwareRows().filter(([, v]) => v);
             if (ci) {
                 const lte = ci.lte || {};
                 const nr = ci.nr || {};
