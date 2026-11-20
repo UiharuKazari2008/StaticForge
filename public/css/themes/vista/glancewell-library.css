@@ -775,8 +775,18 @@ body.theme-vista #photoSwipeWindow .wpg-lib-i-capedit {
     text-align: right;
 }
 
-.wpg-lib-time .wpg-lib-time-h {
-    width: 44px;
+/* Change by: the box, its spinner and "hours" on one line (dialog 1472) */
+.wpg-lib-time .wpg-lib-time-row > span:last-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+#confirmationDialog .wpg-lib-time input.wpg-lib-time-h {
+    flex: none;
+    width: 52px;
+    min-width: 0;
 }
 
 .wpg-lib-options .wpg-lib-options-h {
