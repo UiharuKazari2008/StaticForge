@@ -65,7 +65,9 @@ class RcsProvider {
 
     get kind() { return 'rcs'; }
 
-    identity() { return this.phone || ''; }
+    // the account's own number as Messaging shows it (#978, Yukimi Nov 20): digits only, then +<country> and the
+    // national groups (+1 484-362-9855); this.phone stays the phone's own text for matching
+    identity() { return this.phone ? require('./phoneNumberFormat').format(this.phone) : ''; }
 
     features() {
         return { privateApi: false, attachments: true, tapbacks: true, edit: false, unsend: false, reply: true, typing: true, readReceipts: true, newChat: true, effects: false, pairing: true, deleteChat: true };

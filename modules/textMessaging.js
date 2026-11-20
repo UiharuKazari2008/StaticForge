@@ -894,6 +894,43 @@ async function resync(accountId, { rebuild = false } = {}) {
     return { ok: true };
 }
 
+/**
+ * Send/Receive (Yozora #978, Yukimi Nov 20: "Add Send/Receive for the text messaging accounts (they're server based)"):
+ * the account is read from its source now - BlueBubbles and RCS compare the server's copy with the Mac / phone and
+ * pull what is missing (reconcile), an Android app account reads what the phone shows (notify.list); a text is sent
+ * the moment it is written, so nothing waits to go out. Events: sendreceive { state: 'synchronizing' | 'done' |
+ * 'failed', at, error } to every page (Messaging's status line: "Synchronizing..."), then resync so lists read
+ * again. -> { ok, at } once it is done (at most SEND_RECEIVE_MS; a source still working then finishes on its own).
+ */
+const SEND_RECEIVE_MS = 90 * 1000;
+const sendReceiving = new Map(); // accountId -> promise
+function sendReceive(accountId) {
+    const p = provider(accountId);
+    if (sendReceiving.has(accountId)) return sendReceiving.get(accountId);
+    const run = (async () => {
+        broadcast({ event: 'sendreceive', accountId, state: 'synchronizing' });
+        try {
+            let work;
+            if (typeof p.sendReceive === 'function') work = p.sendReceive();
+            else if (typeof p.reconcile === 'function') work = p.reconcile();
+            else { if (typeof p.startSync === 'function') p.startSync(); work = Promise.resolve(); }
+            let timer = null;
+            await Promise.race([Promise.resolve(work), new Promise((resolve) => { timer = setTimeout(resolve, SEND_RECEIVE_MS); if (timer.unref) timer.unref(); })]);
+            clearTimeout(timer);
+            summaries.delete(accountId);
+            const at = Date.now();
+            broadcast({ event: 'sendreceive', accountId, state: 'done', at });
+            broadcast({ event: 'resync', accountId });
+            return { ok: true, at };
+        } catch (error) {
+            broadcast({ event: 'sendreceive', accountId, state: 'failed', error: error.message || 'The account could not be reached.' });
+            throw error;
+        }
+    })().finally(() => { sendReceiving.delete(accountId); });
+    sendReceiving.set(accountId, run);
+    return run;
+}
+
 async function listMessages(accountId, chatGuid, opts) {
     const p = provider(accountId);
     verifySoon(accountId, chatGuid);
@@ -1121,7 +1158,7 @@ function _reset() {
 
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
-    recentAndroidApps, action, androidAppIcon, openInApp, androidPopupPackages, accountRenamed,
+    recentAndroidApps, action, androidAppIcon, openInApp, androidPopupPackages, accountRenamed, sendReceive,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing, syncStatus, syncChats, resync,
     downloadAttachment, attachmentSeen, resolveName, handleKey, contactsChanged, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset,
     // tests (scripts/test-ws-phone-round5.js): a provider's event and who gets it

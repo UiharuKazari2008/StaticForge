@@ -239,8 +239,64 @@
         read: (d) => onRead(d),
         chat: (d) => onChat(d),
         account: () => { listDirty = true; loadAccounts(true).then(() => { if (page) { showLayer(); if (view() === 'list') refresh({ quiet: true }); } }); },
-        resync: (d) => { if (d && d.accountId && d.accountId !== accountId) return; listDirty = true; if (page && loaded) refresh({ quiet: true }); if (conv) reloadConv(); }
+        resync: (d) => { if (d && d.accountId && d.accountId !== accountId) return; listDirty = true; if (page && loaded) refresh({ quiet: true }); if (conv) reloadConv(); },
+        // Send/Receive on any device (#978): the status line follows the server's progress
+        sendreceive: (d) => onSendReceive(d)
     };
+
+    // ---------------------------------------------------------------- Send/Receive (#978)
+    // Yukimi, Nov 20 2026: Menu > Send/Receive on the text message accounts, as the device's e-mail accounts have it,
+    // with its progress on the status line ("Connecting..." until the server answers, then "Synchronizing...").
+    // The server reads the account from its source and pushes its progress; nothing is polled.
+    const srState = new Map(); // accountId -> 'connecting' | 'synchronizing'
+    const srStopped = new Set(); // Stop Send/Receive: no progress shown for it (the server finishes on its own)
+    function statusText() {
+        const st = srState.get(accountId);
+        if (st === 'connecting') return 'Connecting...';
+        if (st === 'synchronizing') return 'Synchronizing...';
+        const n = selectedGuid ? 1 : 0;
+        return `${n} conversation${n === 1 ? '' : 's'} selected`;
+    }
+    function paintStatus() {
+        const el = page && page.querySelector('.wch-status');
+        if (!el) return;
+        const t = statusText();
+        if (el.textContent !== t) el.textContent = t;
+    }
+    function srChanged(id) {
+        if (id !== accountId || !page) return;
+        if (!seen()) { listStale = true; return; }
+        paintStatus();
+        if (isCurrent()) sh.refreshSoftKeys();
+    }
+    function onSendReceive(d) {
+        if (!d || !d.accountId) return;
+        if (d.state === 'synchronizing') { if (!srStopped.has(d.accountId)) srState.set(d.accountId, 'synchronizing'); }
+        else { srState.delete(d.accountId); srStopped.delete(d.accountId); }
+        srChanged(d.accountId);
+    }
+    async function sendReceive() {
+        const id = accountId;
+        const t = tm();
+        if (!id || !t || typeof t.sendReceive !== 'function' || srState.has(id)) return;
+        srStopped.delete(id);
+        srState.set(id, 'connecting');
+        srChanged(id);
+        let failed = null;
+        try { await t.sendReceive(id); } catch (err) { failed = err; }
+        const stopped = srStopped.has(id);
+        srState.delete(id);
+        srStopped.delete(id);
+        srChanged(id);
+        if (failed && !stopped && id === accountId && isCurrent()) {
+            await sh.messageBox({ title: (acct() && acct().name) || TITLE, icon: 'warning', text: `Messages cannot be downloaded to your mobile device. ${(failed && failed.message) || 'Make sure you are connected and that your account settings are correct. Then, try to download messages again.'}` });
+        }
+    }
+    function stopSendReceive() {
+        srStopped.add(accountId);
+        srState.delete(accountId);
+        srChanged(accountId);
+    }
 
     /** Listen to window.textMessaging, again when a different one took its place. */
     function wire() {
@@ -451,8 +507,7 @@
         const empty = page.querySelector('.wch-empty');
         empty.hidden = !!list.length || !loaded;
         empty.textContent = emptyText();
-        const n = selectedGuid ? 1 : 0;
-        page.querySelector('.wch-status').textContent = `${n} conversation${n === 1 ? '' : 's'} selected`;
+        paintStatus();
         const f = folderOf(folder);
         const name = page.querySelector('.wch-folder-name');
         if (name.textContent !== 'Show') name.textContent = f.label;
@@ -1340,6 +1395,12 @@
             { label: 'Reply', disabled: !c, action: () => openConversation(c) },
             { label: 'Forward', disabled: !(c && c.last && c.last.text) || typeof window.wmMessagingCompose !== 'function', action: () => forwardText(c.last.text) }
         ] });
+        // the device's last group (Copy to SIM, Send/Receive; 6.1 Text Messages): the account read from its source now (#978)
+        const a = acct();
+        items.push('-');
+        items.push(srState.has(accountId)
+            ? { label: 'Stop Send/Receive', action: stopSendReceive }
+            : { label: 'Send/Receive', disabled: !a || unpaired(a) || a.status !== 'connected', action: () => { void sendReceive(); } });
         return items;
     }
 

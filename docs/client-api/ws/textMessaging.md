@@ -30,6 +30,7 @@ Every packet is **admin only** (authenticated, `userType === 'admin'`). Others g
 | `tm_delete_chat` | Destructive. |
 | `tm_sync_status` / `tm_sync_chats` | Sync state / sync one account's chat list. |
 | `tm_resync` | `{ accountId, rebuild? }`. Destructive. |
+| `tm_send_receive` | `{ accountId }` -> `{ ok, at }` once done (#978, Messaging's Menu > Send/Receive): BlueBubbles / RCS reconcile with the Mac / phone, an Android app account reads the phone's notifications (`notify.list`); at most 90 s. Events `sendreceive { state: 'synchronizing' | 'done' | 'failed', at?, error? }`, then `resync`. |
 | `tm_rcs_pair` / `tm_rcs_refresh_qr` | QR pairing for an RCS account (QR via `GET /api/textmessaging/:accountId/pairing-qr.svg`). |
 | `tm_rcs_pair_google` | Pair by Google account (sign in at messages.google.com in Alchemy). Destructive. |
 | `tm_rcs_unpair` | Destructive. |
@@ -63,7 +64,7 @@ Keys: `tm:<id>`, `sms` (Dreamscape Messenger), `mail` (Dreamscape Mail), `imap:<
 
 ## Events
 
-`tm_event` (admins only): `{ event: 'message'|'updated'|'reaction'|'typing'|'read'|'chat'|'account'|'resync'|'settings'|'reload'|'sync'|'syncprogress'|'pairing'|'signin_lost', accountId, chatGuid, message?, reaction?, targetGuid?, typing?, read?, known?, notify? }`.
+`tm_event` (admins only): `{ event: 'message'|'updated'|'reaction'|'typing'|'read'|'chat'|'account'|'resync'|'settings'|'reload'|'sync'|'syncprogress'|'pairing'|'signin_lost'|'sendreceive', accountId, chatGuid, message?, reaction?, targetGuid?, typing?, read?, known?, notify? }`.
 
 Who gets which (#890 round 5, W5):
 

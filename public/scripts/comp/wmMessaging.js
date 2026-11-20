@@ -1805,13 +1805,30 @@
                 children = sortByLabel(children);
             } else if (a.key.startsWith('imap:')) children = imapTreeNodes(a.key.slice(5), (p) => `${a.key}/${p}`);
             else if (a.key.startsWith('dir:')) children = DIR_FOLDERS.map((f) => ({ key: `${a.key}/${f.id}`, label: f.label, icon: f.icon }));
-            // several Text Messaging accounts share the name: the tree tells them apart by the Apple ID / number
-            // (not one the user named, #978)
-            const label = a.key.startsWith('tm:') && tmAccts.length > 1 && a.sub && !a.renamed ? `${a.name} (${a.sub})` : a.name;
+            // the account's address after its name: the Apple ID / number / user of a Text Messaging account (when
+            // there are several), an e-mail account's address (Yukimi, Nov 20 #978: "iCloud Mail (ykazari@...)")
+            const mailish = a.key === 'mail' || a.key.startsWith('imap:');
+            const label = a.sub && (mailish || (a.key.startsWith('tm:') && tmAccts.length > 1)) ? `${a.name} (${a.sub})` : a.name;
             return { key: a.key, label, icon: 'msg-folder-account', children };
         });
+        // the Director personas are one account here, Director, with a folder per persona (Yukimi, Nov 20 #978); the
+        // picker and Options > Accounts keep each persona as its own account
+        const dirs = nodes.filter((n) => n.key.startsWith('dir:'));
+        let list = nodes;
+        if (dirs.length) {
+            const director = {
+                key: 'director',
+                label: 'Director',
+                icon: 'msg-folder-account',
+                noselect: true,
+                children: dirs.map((n) => Object.assign({}, n, { icon: 'msg-folder-folder' }))
+            };
+            const at = nodes.indexOf(dirs[0]);
+            list = nodes.filter((n) => !n.key.startsWith('dir:'));
+            list.splice(at, 0, director);
+        }
         // alphabetical as the device sorts them, unless the user ordered the accounts (#978: the order applies here too)
-        return ((acctPrefs.order || []).length ? nodes : sortByLabel(nodes)).map((n) => Object.assign(n, { current: n.key === cur.acct }));
+        return ((acctPrefs.order || []).length ? list : sortByLabel(list)).map((n) => Object.assign(n, { current: n.key === cur.acct || (n.key === 'director' && String(cur.acct || '').startsWith('dir:')) }));
     }
 
     /** The key of the folder on screen, as the tree names it. */
@@ -1867,6 +1884,8 @@
         expanded.clear();
         expanded.add(o.acct === 'sms' || String(o.acct || '').startsWith('tm:') ? o.acct : currentKey());
         if (curKey.startsWith('box:')) { expanded.add('mail'); expanded.add('mail/other'); expanded.add(curKey.split('/')[0]); }
+        // a Director persona (#978): the Director account it sits in is open
+        if (String(currentKey()).startsWith('dir:') && !(o.acct === 'sms' || String(o.acct || '').startsWith('tm:'))) expanded.add('director');
         // a community folder (#978): the way down to it through Communities and its server is open
         { const m = /^(tm:[^/]+)\/community(?::([^:]+))?/.exec(curKey); if (m) { expanded.add(`${m[1]}/community`); if (m[2]) expanded.add(`${m[1]}/community:${m[2]}`); } }
         // an IMAP folder deep in the server's tree: the way down to it is open
@@ -1875,7 +1894,8 @@
         imapAccts.forEach((a) => { if (!imapFolders.has(a.id)) loadImapFolders(a.id).then(() => renderTree()); });
         const el = document.createElement('div');
         el.className = 'wm-msgtree';
-        el.innerHTML = '<div class="mt-tree" role="tree" aria-label="Folders"></div>';
+        // the version's own scroll bar (wm-pg-scroll), never the browser's (#978)
+        el.innerHTML = '<div class="mt-tree wm-pg-scroll" role="tree" aria-label="Folders"></div>';
         const bar = anchor.closest('.wm-pv-bar') || anchor;
         const hr = host.getBoundingClientRect();
         el.style.top = `${bar.getBoundingClientRect().bottom - hr.top}px`;

@@ -465,6 +465,15 @@ class AndroidAppProvider {
         })().finally(() => { this.syncing = false; });
     }
 
+    /** Send/Receive (#978): every partnered phone's notifications of this app now, waited for. */
+    async sendReceive() {
+        let links = [];
+        try { links = activeSync().partnerLinks(resources(), null); } catch (_) { links = []; }
+        if (!links.length) throw Object.assign(new Error('No phone is connected to send this app\'s notifications.'), { code: 'NO_DEVICE' });
+        for (const l of links) await this.syncDevice(l.deviceId, l.name);
+        return { ok: true };
+    }
+
     /**
      * One phone's notifications of this app now. Lines that are new count as arrivals (the server or
      * the phone was away when they came); what is already stored is not announced again.

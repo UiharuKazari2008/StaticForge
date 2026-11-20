@@ -16,6 +16,8 @@
  *   syncStatus() -> { accounts: [{ id, name, sync, reconcile, drift, push, lastPush }], storage: { database, attachments } }
  *   syncChats(accountId) -> [{ guid, title, service, lastDate, synced, messages, updated }]
  *   resync(accountId, rebuild)      catch up + reconcile now, or rebuild the server's copy from the source
+ *   sendReceive(accountId)          Send/Receive (#978): read from the source now -> { ok, at } when done; events
+ *                                   'sendreceive' { accountId, state: 'synchronizing' | 'done' | 'failed', at, error }
  *   events also: 'reload' { accountId, chatGuid } (the source corrected that conversation), 'sync'
  *   search(q, { accountId?, limit }) -> [{ accountId, account, chatGuid, chatTitle, known, message }]
  *   markRead(accountId, chatGuid[, newestMessageGuid]) / markUnread(accountId, chatGuid) / typing(accountId, chatGuid, bool)  (typing is throttled)
@@ -233,6 +235,8 @@
     const syncStatus = () => call('tm_sync_status');
     const syncChats = (accountId) => call('tm_sync_chats', { accountId }).then((d) => d.chats || []);
     const resync = (accountId, rebuild) => call('tm_resync', { accountId, rebuild: !!rebuild });
+    // Send/Receive (#978): the account read from its source now; answers when it is done ('sendreceive' events on the way)
+    const sendReceive = (accountId) => call('tm_send_receive', { accountId });
     const search = (q, opts) => call('tm_search', Object.assign({ q }, opts || {})).then((d) => d.results || []);
     const deleteChat = (accountId, chatGuid) => call('tm_delete_chat', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
     const markUnread = (accountId, chatGuid) => call('tm_unread', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
@@ -343,7 +347,7 @@
         links, linkify, linkPreview, primeLinkPreview,
         accounts, summary, unread, snapshot, preload, label, chats, chat, messages, send, sendFile, react, edit, unsend,
         action, androidApps, openInApp, androidPackages,
-        markRead, markUnread, deleteChat, search, syncStatus, syncChats, resync, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
+        markRead, markUnread, deleteChat, search, syncStatus, syncChats, resync, sendReceive, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
         unpairRcs, on, off, REACTIONS
     };
     // A tapped Android notification (the app's TextMessageNotifier, #779): open that conversation in

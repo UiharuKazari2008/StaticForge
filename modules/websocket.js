@@ -89,7 +89,7 @@ const DORMANT_HOLD_MAX = 300;
 
 // tm_event subtypes that wait for a sleeping page as the newest per account (W5): the page re-reads its
 // accounts / chats / settings from them, so only the last one counts
-const TM_HELD_EVENTS = new Set(['account', 'resync', 'settings', 'sync', 'syncprogress']);
+const TM_HELD_EVENTS = new Set(['account', 'resync', 'settings', 'sync', 'syncprogress', 'sendreceive']);
 
 /**
  * DORMANT_HOLD for tm_event (#890 round 5, W5). Texts, edits, reactions, reads, new chats, pairing and a

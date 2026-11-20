@@ -207,7 +207,11 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-scroll {
     z-index: 20;
     left: 0;
     bottom: 0;
-    width: calc(202 * var(--wm-px));
+    /* the device's 202 units, wider as far as the page allows when a name needs it (the accounts' addresses,
+     * Yozora 978); what still does not fit ends in an ellipsis: the tree scrolls up and down only, on the version's
+     * own scroll bar (wm-pg-scroll) */
+    width: max-content;
+    min-width: calc(202 * var(--wm-px));
     max-width: 100%;
     box-sizing: border-box;
     border: calc(1 * var(--wm-px)) solid #000;
@@ -220,8 +224,24 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-msg .msg-scroll {
 .wm-msgtree .mt-tree {
     flex: 1 1 auto;
     min-height: 0;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
     overscroll-behavior: contain;
+}
+
+.wm-msgtree .mt-row {
+    padding-right: calc(2 * var(--wm-px));
+}
+
+.wm-msgtree .mt-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-msgtree .mt-count {
+    flex: none;
 }
 
 .was-tree .mt-row,
