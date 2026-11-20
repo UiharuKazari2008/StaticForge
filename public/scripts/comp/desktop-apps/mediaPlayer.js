@@ -1844,7 +1844,8 @@ function mediaPlayerAttachMenus(player) {
         cm.attachToElement(player.el.stage, {
             sections: [{
                 type: 'list',
-                items: [
+                // the visualizations first, as on the VM (mediaPlayerViz.js)
+                items: (player.viz ? player.viz.stageItems() : []).concat([
                     { text: player.el.media.paused ? 'Play' : 'Pause', icon: player.el.media.paused ? 'fas fa-play' : 'fas fa-pause', action: 'play-pause', disabled: !player.items.length },
                     { text: 'Stop', icon: 'fas fa-stop', action: 'stop', disabled: !player.el.media.getAttribute('src') },
                     { separator: true },
@@ -1856,7 +1857,7 @@ function mediaPlayerAttachMenus(player) {
                     { separator: true },
                     { text: 'Open File...', icon: 'fas fa-folder-open', action: 'open-file' },
                     { text: 'Open URL...', icon: 'fas fa-link', action: 'open-url' }
-                ]
+                ])
             }],
             onAction: (action) => mediaPlayerRunAction(player, action)
         });

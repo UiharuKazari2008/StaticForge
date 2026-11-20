@@ -234,3 +234,21 @@
 #desktopMediaPlayer .is-off .wmp-eq-gray {
     display: block;
 }
+
+/* ---- visualizations (mediaPlayerViz.js): one canvas over the stage ---- */
+#desktopMediaPlayer .wmp-vis {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+}
+
+#desktopMediaPlayer .wmp-vis.hidden {
+    display: none;
+}
+
+#desktopMediaPlayer .wmp-stage.wmp-vis-on .wmp-stage-art,
+#desktopMediaPlayer .wmp-stage.wmp-vis-none .wmp-stage-art {
+    display: none;
+}

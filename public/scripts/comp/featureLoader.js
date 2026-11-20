@@ -190,7 +190,7 @@ const FEATURE_MANIFEST = {
     media_player: {
         hot: true,
         styles: ['css/themes/vista/media-player.css', 'css/desktop-apps/mediaPlayer.css', 'css/desktop-apps/mediaPlayerAudio.css'],
-        scripts: ['scripts/comp/desktop-apps/mediaPlayer.js', 'scripts/comp/desktop-apps/mediaPlayerAudio.js']
+        scripts: ['scripts/comp/desktop-apps/mediaPlayer.js', 'scripts/comp/desktop-apps/mediaPlayerAudio.js', 'scripts/comp/desktop-apps/mediaPlayerViz.js', 'scripts/comp/desktop-apps/mediaPlayerVizBattery.js', 'scripts/comp/desktop-apps/mediaPlayerVizAlchemy.js']
     },
     // Alarm Clock moved to a Melaton app package (apps/alarm, Yozora #642):
     // melatonApps.launch({ packageId: 'alarm' }) (args { mode: 'pomodoro' } for the Pomodoro tab).
