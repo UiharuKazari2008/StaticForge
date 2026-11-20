@@ -89,11 +89,16 @@
         return String(v);
     }
 
-    // the 1.25x ... 2x copies (#921, scripts/build-hidpi-assets.js): the browser takes the one for the
-    // screen's density; the hot spot stays in CSS px
+    // the 1.25x ... 2x copies (#921, scripts/build-hidpi-assets.js) and 2.5x / 3x ones of the pointers only
+    // (vista-cursors/x250, x300: Catmull-Rom from the 1x art, as the HiDPI build's soft art; in the core package, the
+    // DPI Scaling dialog goes to 300 % and the Mac's Larger scale is 250 %). The browser takes the copy for the
+    // screen's density and takes another when the scale changes (checked on DreamOS at 1 / 1.25 / 1.5 / 2: the same
+    // size as the compositor's pointer); the hot spot stays in CSS px
     const HIDPI = [[125, 1.25], [150, 1.5], [175, 1.75], [200, 2]];
+    const HIGHER = [[250, 2.5], [300, 3]];
     function art(name) {
-        const sets = HIDPI.map(([t, d]) => `url("/static_images/hidpi/${t}/vista-cursors/${name}") ${d}x`);
+        const sets = HIDPI.map(([t, d]) => `url("/static_images/hidpi/${t}/vista-cursors/${name}") ${d}x`)
+            .concat(HIGHER.map(([t, d]) => `url("${ART}/x${t}/${name}") ${d}x`));
         return `image-set(url("${ART}/${name}") 1x, ${sets.join(', ')})`;
     }
 
