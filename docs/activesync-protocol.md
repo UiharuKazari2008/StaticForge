@@ -181,14 +181,19 @@ streamed from the phone to the one computer tab that asked. The service answers 
 cafeready-background); the group is `media` and needs the `files` permission, plus Android's own media
 permission (no All files access).
 
-- `media.hello` -> `{ version: 1, access, volumes: [{ id, generation }] }`
-- `media.list { kind: 'audio' | 'video', volume, offset, limit <= 1000 }` -> `{ kind, volume, generation, total,
-  offset, items }`; a song: `id, title, artist, albumArtist, album, albumId, genre, composer, track, disc, year,
-  duration (ms), size, mime, added (ms)`; a video: `id, title, artist, duration, width, height, size, mime, added,
-  folder`. Nothing is copied: the computer pages through the tags.
+- `media.hello` -> `{ version: 1, access, volumes: [{ id, generation }] }`; only volumes MediaStore can read now
+  (a card still being scanned is left out).
+- `media.list { kind: 'audio' | 'video' | 'playlists', volume, offset, limit <= 1000 }` -> `{ kind, volume,
+  generation, total, offset, items }`; a song: `id, title, artist, albumArtist, album, albumId, genre, composer,
+  track, disc, year, duration (ms), size, mime, added (ms)` (`albumId` is a string: MediaStore's album ids pass
+  2^53); a video: `id, title, artist, duration, width, height, size, mime, added, folder`; a playlist (Android's
+  audio playlists): `id, name, modified (ms), songs` (song ids in play order). Nothing is copied: the computer
+  pages through the tags.
 - `stream.send` with `root: 'media'`: `/audio/<volume>/<id>` or `/video/<volume>/<id>` (the file, with the
-  `Range` it was asked for), with `thumb`: `/album/<volume>/<albumId>` (the cover, else a song's own picture) or
-  `/video/<volume>/<id>` (a frame), JPEG. The computer asks through
+  `Range` it was asked for), with `thumb`: `/album/<volume>/<albumId>` or `/audio/<volume>/<id>` (Android's album art, else
+  the picture embedded in the file, else Android's thumbnail, else a cover.jpg / folder.jpg / front.jpg beside it;
+  made once per album and size and kept in memory on the phone) or `/video/<volume>/<id>` (a frame), JPEG. Media
+  Player asks only for the covers of the rows in view. The computer asks through
   `GET /api/activesync/file/:deviceId/media/<path>` like any phone file.
 - event `media.changed { volume, generation }`: MediaStore changed (a ContentObserver, 2 s after the last change);
   a computer showing that library reads it again. No polling.

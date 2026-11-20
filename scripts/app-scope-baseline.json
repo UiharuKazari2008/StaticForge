@@ -243,7 +243,7 @@
  },
  "public/scripts/comp/desktop-apps/mediaPlayer.js": {
   "owner-less-listener": 1,
-  "page-global": 81
+  "page-global": 80
  },
  "public/scripts/comp/desktop-apps/paint/paintApp.js": {
   "page-global": 3

@@ -75,81 +75,74 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     align-items: stretch;
     height: 36px;
     z-index: 2;
+    container: wmp-strip / inline-size;
 }
 
+/* a narrow window (#956, measured on the VM): a tab whose right edge comes within 19px of the strip's end is
+   left out, and the » (wmploc 5060 / 5062, 19 x 36) takes the strip's last 19px; Online Stores goes first */
+#desktopMediaPlayer .wmp-tab-overflow {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 19px;
+    height: 36px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    box-shadow: none;
+    cursor: var(--c-default);
+}
+
+@container wmp-strip (max-width: 773px) {
+    #desktopMediaPlayer .wmp-tab-overflow { display: block; }
+    #desktopMediaPlayer .wmp-tab[data-tab="online-stores"] { visibility: hidden; }
+}
+
+@container wmp-strip (max-width: 625px) {
+    #desktopMediaPlayer .wmp-tab[data-tab="sync"] { visibility: hidden; }
+}
+
+@container wmp-strip (max-width: 525px) {
+    #desktopMediaPlayer .wmp-tab[data-tab="burn"] { visibility: hidden; }
+}
+
+@container wmp-strip (max-width: 425px) {
+    #desktopMediaPlayer .wmp-tab[data-tab="rip"] { visibility: hidden; }
+}
+
+/* Back and Forward (#956): WMP 11's navigation group (wmploc 5230-5234: normal, pressed, hot, disabled and the
+   region map that splits it into the two orbs), 7px into the strip as on Vista; the art is
+   css/themes/vista/media-player.css */
+/* the tasks are centred on the strip (Now Playing 332px left of its centre) but start at least 90px in */
 #desktopMediaPlayer .wmp-orbs {
-    display: flex;
+    position: relative;
     flex: none;
-    align-items: center;
-    gap: 1px;
-    width: 160px;
-    padding-left: 12px;
+    width: max(90px, round(down, 50%, 1px) - 332px);
     box-sizing: border-box;
 }
 
-/* the orbs: a navy sphere with a lit top, a white chevron; forward is the small dim one */
 #desktopMediaPlayer .wmp-orb {
-    position: relative;
+    position: absolute;
+    top: 4px;
+    left: 10px;
     width: 26px;
     height: 26px;
     min-width: 0;
     min-height: 0;
     padding: 0;
-    border: 1px solid #0b1a3a;
+    border: 0;
     border-radius: 50%;
-    background:
-        radial-gradient(ellipse 60% 40% at 50% 18%, hsl(0 0% 100% / 70%), hsl(0 0% 100% / 0%) 70%),
-        radial-gradient(ellipse 70% 55% at 50% 100%, #78b6ff, #2c6bd6 55%, hsl(0 0% 100% / 0%) 80%),
-        linear-gradient(#5a78b8, #1e3b86 45%, #0a2566 50%, #16418f);
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 1px 1px hsl(0 0% 0% / 40%);
+    background-color: transparent;
+    box-shadow: none;
     cursor: var(--c-default);
 }
 
-#desktopMediaPlayer .wmp-orb::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 7px;
-    height: 7px;
-    border-left: 3px solid #fff;
-    border-bottom: 3px solid #fff;
-    transform: translate(-32%, -50%) rotate(45deg);
-    filter: drop-shadow(0 1px 0 hsl(0 0% 0% / 35%));
-}
-
 #desktopMediaPlayer .wmp-orb-forward {
-    width: 24px;
-    height: 24px;
-}
-
-#desktopMediaPlayer .wmp-orb-forward::before {
-    transform: translate(-68%, -50%) rotate(-135deg);
-}
-
-#desktopMediaPlayer .wmp-orb:hover:not(:disabled) {
-    background:
-        radial-gradient(ellipse 60% 40% at 50% 18%, hsl(0 0% 100% / 85%), hsl(0 0% 100% / 0%) 70%),
-        radial-gradient(ellipse 70% 55% at 50% 100%, #9fd0ff, #3f86ec 55%, hsl(0 0% 100% / 0%) 80%),
-        linear-gradient(#7a98d8, #2a4fa2 45%, #163584 50%, #2358b4);
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 40%), 0 0 6px #5fb4ff, 0 1px 1px hsl(0 0% 0% / 40%);
-}
-
-#desktopMediaPlayer .wmp-orb:active:not(:disabled) {
-    background: linear-gradient(#17306a, #0a2060 50%, #10306f);
-}
-
-#desktopMediaPlayer .wmp-orb:disabled {
-    border-color: #2a3242;
-    background:
-        radial-gradient(ellipse 60% 40% at 50% 18%, hsl(0 0% 100% / 40%), hsl(0 0% 100% / 0%) 70%),
-        linear-gradient(#6b7382, #3c4352 45%, #2c3240 50%, #3e4654);
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 18%);
-}
-
-#desktopMediaPlayer .wmp-orb:disabled::before {
-    border-color: #c9ced8;
-    filter: none;
+    left: 37px;
 }
 
 /* the tabs (#956, measured on the VM at 1000x706): 100px each over the strip's full 36 rows, Now Playing
@@ -171,40 +164,44 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     display: flex;
     flex: none;
     flex-direction: column;
-    width: 100px;
+    width: 102px;
     height: 36px;
+    margin-right: -2px;
     border: solid transparent;
-    border-width: 0 4px;
+    /* the tab pictures are 68px (66 and 2 transparent, whole pixels at every display scale): the right slice is 6,
+       so the box is 2px wider than the tab it shows and the next one starts 2px back */
+    border-width: 0 6px 0 4px;
     box-sizing: border-box;
 }
 
 #desktopMediaPlayer .wmp-tab[data-tab="now-playing"] {
-    margin-right: 17px;
+    margin-right: 15px;
 }
 
 #desktopMediaPlayer .wmp-tab[data-tab="sync"] {
-    margin-right: 9px;
+    margin-right: 7px;
 }
 
 #desktopMediaPlayer .wmp-tab[data-tab="online-stores"] {
-    width: 176px;
+    width: 178px;
 }
 
 /* the two dividers: 8px after Now Playing and after Sync */
+/* the divider picture is 4px wide (the line in its second column): whole pixels at every display scale */
 #desktopMediaPlayer .wmp-tab:is([data-tab="library"], [data-tab="online-stores"])::before {
     content: '';
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 1px;
+    width: 4px;
 }
 
 #desktopMediaPlayer .wmp-tab[data-tab="library"]::before {
-    left: -13px;
+    left: -14px;
 }
 
 #desktopMediaPlayer .wmp-tab[data-tab="online-stores"]::before {
-    left: -5px;
+    left: -6px;
 }
 
 #desktopMediaPlayer .wmp-tab-label {
@@ -255,8 +252,8 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     position: absolute;
     left: 42px;
     top: 3px;
-    width: 9px;
-    height: 5px;
+    width: 12px;
+    height: 8px;
 }
 
 #desktopMediaPlayer .wmp-tab.is-active .wmp-tab-menu::before {
@@ -266,7 +263,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 
 /* the VM draws a selected tab's 35 upper rows; the strip's last row shows under it */
 #desktopMediaPlayer .wmp-tab.is-active {
-    clip-path: inset(0 0 1px 0);
+    clip-path: inset(0 -16px 1px -16px);
 }
 
 #desktopMediaPlayer .wmp-tab.is-active .wmp-tab-menu,
@@ -587,10 +584,10 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     display: flex;
     flex: none;
     align-items: center;
-    height: 28px;
-    padding: 0 6px 0 10px;
-    background: linear-gradient(#f4f7fb, #e8eef7);
-    border-bottom: 1px solid #c9d3e0;
+    height: 29px;
+    padding: 0 6px 0 3px;
+    background: var(--wmp-lib-bg);
+    border-bottom: 1px solid var(--wmp-addr-edge);
     box-sizing: border-box;
 }
 
@@ -598,11 +595,11 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     flex: none;
     display: inline-flex;
     align-items: center;
-    width: 22px;
+    width: 23px;
     height: 20px;
     min-width: 0;
     min-height: 0;
-    padding: 0 2px;
+    padding: 0 3px 0 2px;
     border: 1px solid transparent;
     border-radius: 2px;
     background: none;
@@ -629,7 +626,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     flex: none;
     width: 12px;
     height: 20px;
-    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 20"><path d="M4 6l4 4-4 4z" fill="%23000"/></svg>') no-repeat center;
+    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 20" shape-rendering="crispEdges"><path d="M5 6h1v1h1v1h1v1h1v1h-1v1h-1v1h-1v1h-1z" fill="%23000"/></svg>') no-repeat 0 0 / 12px 20px;
 }
 
 #desktopMediaPlayer .wmp-crumb {
@@ -764,11 +761,13 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 }
 
 /* the navigation tree */
+/* the navigation tree, measured on the VM (#956): 153px with no edge of its own (the list's header starts with a
+   column divider), rows of 18px from the top, the toggle 3px in (Vista's tree glyphs), a parent's icon at 22px, a
+   child's at 41px, the label 5px after the icon */
 #desktopMediaPlayer .wmp-nav {
     flex: none;
-    width: 155px;
-    padding: 6px 0 0;
-    border-right: 1px solid #e3e8ef;
+    width: 153px;
+    padding: 0;
     background: #fff;
     box-sizing: border-box;
     overflow: hidden auto;
@@ -782,40 +781,36 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 }
 
 #desktopMediaPlayer .wmp-tree-leaf {
-    padding-left: 26px;
+    padding-left: 38px;
+}
+
+/* a parent-level item with nothing under it (Now Playing): the toggle's room left empty */
+#desktopMediaPlayer .wmp-tree-solo::before {
+    content: '';
+    flex: none;
+    width: 19px;
 }
 
 #desktopMediaPlayer .wmp-tree-toggle {
     flex: none;
+    align-self: stretch;
     width: 16px;
-    height: 16px;
+    height: 18px;
     min-width: 0;
     min-height: 0;
-    margin-left: 6px;
+    margin-left: 3px;
     padding: 0;
     border: 0;
     border-radius: 0;
-    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M5 3l5 5-5 5z" fill="%23fff" stroke="%23595959"/></svg>') no-repeat center;
+    background: none;
     box-shadow: none;
     cursor: var(--c-default);
-}
-
-#desktopMediaPlayer .wmp-tree-node.is-open .wmp-tree-toggle {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4 11l7-7v7z" fill="%23262626"/></svg>');
-}
-
-#desktopMediaPlayer .wmp-tree-toggle:hover {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M5 3l5 5-5 5z" fill="%23fff" stroke="%231cc4f7"/></svg>');
-}
-
-#desktopMediaPlayer .wmp-tree-node.is-open .wmp-tree-toggle:hover {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4 11l7-7v7z" fill="%231cc4f7"/></svg>');
 }
 
 #desktopMediaPlayer .wmp-tree-item {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     width: auto;
     max-width: 100%;
     min-width: 0;
@@ -833,12 +828,14 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     box-sizing: border-box;
 }
 
+/* the icon sits a pixel below the row's middle, as on the VM */
 #desktopMediaPlayer .wmp-tree-item img {
     flex: none;
+    position: relative;
+    top: 1px;
 }
 
 #desktopMediaPlayer .wmp-tree-create {
-    color: var(--wmp-link);
     font-style: italic;
 }
 
@@ -874,8 +871,6 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     flex: none;
     height: 24px;
     padding: 0 0 0 10px;
-    background: linear-gradient(#fff, #f5f8fc);
-    border-bottom: 1px solid #e5eaf0;
     color: #4c607a;
     box-sizing: border-box;
 }
@@ -890,9 +885,6 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     text-overflow: ellipsis;
 }
 
-#desktopMediaPlayer .wmp-list-head > span:hover {
-    background: linear-gradient(#fcfdfe, #e9f0f9);
-}
 
 #desktopMediaPlayer .wmp-list {
     flex: 1 1 auto;
@@ -996,14 +988,16 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 }
 
 /* the seek bar */
+/* the groove's picture is 188x12 (185x9 and transparent to whole pixels at every display scale): its right
+   and bottom slices carry the 3px of padding, so the box reaches 3px further right and down than it shows */
 #desktopMediaPlayer .wmp-seek {
     position: absolute;
     top: 1px;
     left: 8px;
-    right: 8px;
-    height: 9px;
+    right: 5px;
+    height: 12px;
     border-style: solid;
-    border-width: 0 9px;
+    border-width: 0 12px 3px 9px;
     box-sizing: border-box;
     outline: none;
     cursor: var(--c-default);
@@ -1021,12 +1015,13 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     display: block;
 }
 
-#desktopMediaPlayer .wmp-seek-fill {
+#desktopMediaPlayer .wmp-seek .wmp-seek-fill {
     top: 0;
     left: -9px;
-    width: calc(var(--wmp-seek-x) + 9px);
+    width: calc(var(--wmp-seek-x) + 12px);
+    height: 12px;
     border-style: solid;
-    border-width: 0 9px;
+    border-width: 0 12px 3px 9px;
     box-sizing: border-box;
 }
 
@@ -1461,34 +1456,51 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     background: var(--wmp-lib-bg);
 }
 
+/* the header: 25px with its edge (the band is the theme's art), a 2px divider at the left and after each column,
+   the label 4px into its column */
 #desktopMediaPlayer .wmp-list-head {
     grid-template-columns: none;
     display: flex;
-    padding-left: 0;
+    height: 25px;
+    padding-left: 2px;
+    border-bottom: 0;
 }
 
 #desktopMediaPlayer .wmp-list-head > span {
     flex: 0 0 auto;
     width: 110px;
+    height: 25px;
+    padding: 0 6px 0 4px;
+    border-right: 0;
 }
 
 #desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(1) { width: 242px; }
-#desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(2) { width: 39px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(2) { width: 38px; }
 #desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(3) { width: 150px; }
 #desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(4) { width: 60px; }
-#desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(5) { width: 74px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(5) { width: 75px; }
 #desktopMediaPlayer .wmp-list-head[data-layout="songs"] > span:nth-child(6) { width: 150px; }
 #desktopMediaPlayer .wmp-list-head > span:last-child { flex: 1 1 auto; width: auto; border-right: 0; }
+/* Album: Album, Album Artist, Genre, Release Year, Count, Length as wide as on the VM */
+#desktopMediaPlayer .wmp-list-head[data-layout="tiles"] > span:nth-child(1) { width: 143px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="tiles"] > span:nth-child(2) { width: 108px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="tiles"] > span:nth-child(3) { width: 70px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="tiles"] > span:nth-child(4) { width: 106px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="tiles"] > span:nth-child(5) { width: 72px; }
+/* Title and Length (Now Playing, a playlist, a library's Playlists): 91 + 77px with their dividers, then the bare band */
+#desktopMediaPlayer .wmp-list-head[data-layout="details"] > span:nth-child(1) { width: 91px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="details"] > span:nth-child(2) { flex: 0 0 auto; width: 77px; }
 
 #desktopMediaPlayer .wmp-list { padding: 0; }
 
 /* Songs: the album artist's heading, then one block per album */
+/* the name's capitals 5px under the list's top, the rule 9px down (the VM) */
 #desktopMediaPlayer .wmp-group-head {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 4px;
-    height: 20px;
-    margin: 4px 10px 0 13px;
+    height: 18px;
+    margin: 0 10px 0 13px;
     color: var(--wmp-group-text);
     white-space: nowrap;
 }
@@ -1497,13 +1509,14 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     content: "";
     flex: 1 1 auto;
     height: 1px;
+    margin-top: 9px;
     background: var(--wmp-group-line);
 }
 
 #desktopMediaPlayer .wmp-album-block {
     display: flex;
     min-height: 120px;
-    padding: 6px 0 14px;
+    padding: 4px 0 14px;
 }
 
 #desktopMediaPlayer .wmp-album-side {
@@ -1535,7 +1548,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     display: flex;
     flex-direction: column;
     min-width: 0;
-    padding-top: 2px;
+    margin-top: -5px;
 }
 
 #desktopMediaPlayer .wmp-album-facts > span {
@@ -1549,7 +1562,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 #desktopMediaPlayer .wmp-album-rows {
     flex: 1 1 auto;
     min-width: 0;
-    padding-top: 2px;
+    margin-top: -3px;
 }
 
 #desktopMediaPlayer .wmp-row.wmp-song {
@@ -1657,7 +1670,17 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 #desktopMediaPlayer .wmp-viewtiles {
     display: flex;
     flex-wrap: wrap;
-    padding: 2px 0 6px;
+    padding: 2px 0 8px;
+}
+
+/* the views page's headings sit 5px under the column header, 12px in (the VM) */
+#desktopMediaPlayer .wmp-list[data-layout="home"] .wmp-group-head {
+    height: 17px;
+    margin: 1px 10px 0 12px;
+}
+
+#desktopMediaPlayer .wmp-list[data-layout="home"] .wmp-group-head::after {
+    margin-top: 8px;
 }
 
 #desktopMediaPlayer .wmp-viewtile {
@@ -1675,16 +1698,21 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     cursor: var(--c-default);
 }
 
+/* the icon on whole pixels: 20px into the tile (the VM's left of centre), 2px down */
 #desktopMediaPlayer .wmp-viewtile img {
     display: block;
+    align-self: flex-start;
     width: 32px;
     height: 32px;
-    margin-top: 1px;
+    margin: 2px 0 0 20px;
 }
 
+/* every label keeps room for two lines, as the VM lays the row out */
 #desktopMediaPlayer .wmp-viewtile span {
-    margin-top: 2px;
-    padding: 0 2px 2px;
+    min-height: 32px;
+    margin-top: 3px;
+    padding: 0 0 2px;
+    box-sizing: border-box;
     font: var(--wmp-font);
     line-height: 15px;
     text-align: center;

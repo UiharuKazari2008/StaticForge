@@ -376,10 +376,6 @@
 :where(html[data-hidpi-tier="175"]) body.windows-classic-theme .dove-move-row.is-selected .dove-move-label{background-image:none}
 /* css/desktop-apps/mediaPlayer.css */
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer > .modal-content.wmp-content, :where(html[data-hidpi-tier="175"]) body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-content{background-image:none}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb{background-image:radial-gradient(ellipse 60% 40% at 50% 18%, hsl(0 0% 100% / 70%), hsl(0 0% 100% / 0%) 70%), radial-gradient(ellipse 70% 55% at 50% 100%, #78b6ff, #2c6bd6 55%, hsl(0 0% 100% / 0%) 80%), linear-gradient(#5a78b8, #1e3b86 45%, #0a2566 50%, #16418f)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb:hover:not(:disabled){background-image:radial-gradient(ellipse 60% 40% at 50% 18%, hsl(0 0% 100% / 85%), hsl(0 0% 100% / 0%) 70%), radial-gradient(ellipse 70% 55% at 50% 100%, #9fd0ff, #3f86ec 55%, hsl(0 0% 100% / 0%) 80%), linear-gradient(#7a98d8, #2a4fa2 45%, #163584 50%, #2358b4)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb:active:not(:disabled){background-image:linear-gradient(#17306a, #0a2060 50%, #10306f)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb:disabled{background-image:radial-gradient(ellipse 60% 40% at 50% 18%, hsl(0 0% 100% / 40%), hsl(0 0% 100% / 0%) 70%), linear-gradient(#6b7382, #3c4352 45%, #2c3240 50%, #3e4654)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tab-label{background-image:none}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tab-menu{background-image:none}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-page{background-image:none}
@@ -397,35 +393,29 @@
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-playlist-item:hover, :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-row:hover{background-image:linear-gradient(#f8fbfe, #eaf3fd)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-playlist-item.is-selected, :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-row.is-selected{background-image:linear-gradient(#dcebfc, #c1dbf7)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-library{background-image:none}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-addr{background-image:linear-gradient(#f4f7fb, #e8eef7)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-category{background-image:none}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-category:hover, :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-category.context-open{background-image:linear-gradient(#fdfefe, #e6eef8)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-crumb-sep{background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 20"><path d="M4 6l4 4-4 4z" fill="%23000"/></svg>')}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-crumb-sep{background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 20" shape-rendering="crispEdges"><path d="M5 6h1v1h1v1h1v1h1v1h-1v1h-1v1h-1v1h-1z" fill="%23000"/></svg>')}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-crumb{background-image:none}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-crumb:hover{background-image:linear-gradient(#fdfefe, #e6eef8)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-viewbtn{background-image:url('/static_images/vista-wmp/split-arrow.png')}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-viewbtn{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/split-arrow.png') 1.7778x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-viewbtn:hover{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/view-split-hot.png') 1.75x)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-view-layout::before, :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-view-options::before{background-image:url('/static_images/vista-wmp/view-layout.png')}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-view-options::before{background-image:url('/static_images/vista-wmp/view-options.png')}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-view-layout::before, :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-view-options::before{content:'';background-image:image-set(url('/static_images/hidpi/175/vista-wmp/view-layout.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-view-options::before{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/view-options.png') 1.75x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-search{background-image:none}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-search input{background-image:none}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-search-glyph{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/split-strip.png') 1.75x), image-set(url('/static_images/hidpi/175/vista-wmp/search-strip.png') 1.75x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-nav{background-image:none}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tree-toggle{background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M5 3l5 5-5 5z" fill="%23fff" stroke="%23595959"/></svg>')}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tree-node.is-open .wmp-tree-toggle{background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4 11l7-7v7z" fill="%23262626"/></svg>')}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tree-toggle:hover{background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M5 3l5 5-5 5z" fill="%23fff" stroke="%231cc4f7"/></svg>')}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tree-node.is-open .wmp-tree-toggle:hover{background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4 11l7-7v7z" fill="%231cc4f7"/></svg>')}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tree-toggle{background-image:none}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tree-item{background-image:none}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tree-item:hover{background-image:linear-gradient(#f8fbfe, #eaf3fd)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tree-item.is-current{background-image:linear-gradient(#dcebfc, #c1dbf7)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-list-host{background-image:none}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-list-head{background-image:linear-gradient(#fff, #f5f8fc)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-list-head > span:hover{background-image:linear-gradient(#fcfdfe, #e9f0f9)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-blank{background-image:none}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer :where(.wmp-transport button){background-image:none}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-stage.is-fullscreen{background-image:none}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-star{background-image:url("/static_images/vista-wmp/star.png")}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-star.is-on{background-image:url("/static_images/vista-wmp/star-gold.png")}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-star{background-image:image-set(url("/static_images/hidpi/175/vista-wmp/star.png") 1.7857x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-star.is-on{background-image:image-set(url("/static_images/hidpi/175/vista-wmp/star-gold.png") 1.7857x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-viewtile{background-image:none}
 /* css/desktop-apps/remoteDesktopConnection.css */
 :where(html[data-hidpi-tier="175"]) .rdc-client .rdc-opt-icon{background-image:none}
@@ -1026,6 +1016,20 @@ html:where([data-hidpi-tier="175"]) body.desktop-mode:not(.windows-classic-theme
 :where(html[data-hidpi-tier="175"]) body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client .tbp-tabs > .tbp-tab.is-selected{background-image:none}
 @media (hover: hover){:where(html[data-hidpi-tier="175"]) body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client .tbp-tabs > .tbp-tab:not(.is-selected):hover{background-image:linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5)}}
 /* css/themes/vista/media-player.css */
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orbs{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/travel-gutter.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb-back{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/travel-back.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb-back:hover:not(:disabled){background-image:image-set(url('/static_images/hidpi/175/vista-wmp/travel-back-hot.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb-back:active:not(:disabled){background-image:image-set(url('/static_images/hidpi/175/vista-wmp/travel-back-down.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb-back:disabled{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/travel-back-disabled.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb-forward{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/travel-forward.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb-forward:hover:not(:disabled){background-image:image-set(url('/static_images/hidpi/175/vista-wmp/travel-forward-hot.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb-forward:active:not(:disabled){background-image:image-set(url('/static_images/hidpi/175/vista-wmp/travel-forward-down.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb-forward:disabled{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/travel-forward-disabled.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tab-overflow{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/tab-overflow.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tab-overflow:hover{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/tab-overflow-hot.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-list-head{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/list-head-divider.png') 1.75x), image-set(url('/static_images/hidpi/175/vista-wmp/list-head.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-list-head > span{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/list-head-divider.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-list-head > span:hover{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/list-head-divider.png') 1.75x), linear-gradient(#fcfdfe, #e9f0f9)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-seek{border-image-source:image-set(url('/static_images/hidpi/175/vista-wmp/seek-groove.png') 1.75x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-seek-fill{border-image-source:image-set(url('/static_images/hidpi/175/vista-wmp/seek-fill.png') 1.75x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-seek-tip{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/seek-tip.png') 1.75x)}
@@ -1068,9 +1072,9 @@ html:where([data-hidpi-tier="175"]) body.desktop-mode:not(.windows-classic-theme
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-next:hover:not(:disabled){--wmp-face:image-set(url('/static_images/hidpi/175/vista-wmp/transport-nextbar-hot.png') 1.75x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-prev:is(:hover:active, .is-seeking):not(:disabled){--wmp-face:image-set(url('/static_images/hidpi/175/vista-wmp/transport-prevbar-down.png') 1.75x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-next:is(:hover:active, .is-seeking):not(:disabled){--wmp-face:image-set(url('/static_images/hidpi/175/vista-wmp/transport-nextbar-down.png') 1.75x)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-play{--wmp-glyph:image-set(url('/static_images/hidpi/175/vista-wmp/play.png') 1.75x);--wmp-face:image-set(url('/static_images/hidpi/175/vista-wmp/transport-orbface.png') 1.75x)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-play.is-playing{--wmp-glyph:image-set(url('/static_images/hidpi/175/vista-wmp/pause.png') 1.75x)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-play:disabled{--wmp-glyph:image-set(url('/static_images/hidpi/175/vista-wmp/play-disabled.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-play{--wmp-glyph:image-set(url('/static_images/hidpi/175/vista-wmp/orb-play.png') 1.75x);--wmp-face:image-set(url('/static_images/hidpi/175/vista-wmp/transport-orbface.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-play.is-playing{--wmp-glyph:image-set(url('/static_images/hidpi/175/vista-wmp/orb-pause.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-play:disabled{--wmp-glyph:image-set(url('/static_images/hidpi/175/vista-wmp/orb-play-disabled.png') 1.75x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-play:hover:not(:disabled){--wmp-face:image-set(url('/static_images/hidpi/175/vista-wmp/transport-orbface-hot.png') 1.75x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-play:hover:active:not(:disabled){--wmp-face:image-set(url('/static_images/hidpi/175/vista-wmp/transport-orbface-down.png') 1.75x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-orb-halo{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/orb-halo.png') 1.75x)}
@@ -1096,9 +1100,12 @@ html:where([data-hidpi-tier="175"]) body.desktop-mode:not(.windows-classic-theme
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tab.is-active{border-image-source:image-set(url('/static_images/hidpi/175/vista-wmp/tab-selected.png') 1.75x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tab.is-active:is(:hover, :has(.context-open)){border-image-source:image-set(url('/static_images/hidpi/175/vista-wmp/tab-selected-hot.png') 1.75x)}
 :where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tab.is-active:active{border-image-source:image-set(url('/static_images/hidpi/175/vista-wmp/tab-selected-down.png') 1.75x)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tab:is([data-tab="library"], [data-tab="online-stores"])::before{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/tab-divider.png') 2x)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tabstrip{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/tab-strip.png') 2x)}
-:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tab-menu::before{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/tab-arrow.png') 1.7778x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tab:is([data-tab="library"], [data-tab="online-stores"])::before{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/tab-divider.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tabstrip{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/tab-strip.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tab-menu::before{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/tab-arrow.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tree-node .wmp-tree-toggle{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/tree-closed.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tree-node.is-open .wmp-tree-toggle{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/tree-open.png') 1.75x)}
+:where(html[data-hidpi-tier="175"]) #desktopMediaPlayer .wmp-tree-node.is-open .wmp-tree-toggle:hover{background-image:image-set(url('/static_images/hidpi/175/vista-wmp/tree-open-hot.png') 1.75x)}
 /* css/token-display.css */
 :where(html[data-hidpi-tier="175"]) #tokenDisplayModal .token-analysis-box{border-image-source:image-set(url("/static_images/hidpi/175/vista-controls/edit-normal.png") 1.75x);background-image:none}
 :where(html[data-hidpi-tier="175"]) #tokenDisplayModal .token-analysis-box:focus-visible{border-image-source:image-set(url("/static_images/hidpi/175/vista-controls/edit-focus.png") 1.8x)}

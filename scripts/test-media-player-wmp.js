@@ -128,4 +128,15 @@ assert.deepStrictEqual(mp.mediaPlayerNowLines({ name: 'Bear.webm', kind: 'video'
 assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/app_icons/media_player.png')), 'the app icon');
 assert.ok(!fs.existsSync(path.join(ROOT, 'public/scripts/comp/desktop-apps/mediaPlayers.js')), 'the old script is gone');
 
+// round 4 (#956): WMP's own Back / Forward group and the » cut from wmploc, the header band, the tree, gapless, playlists
+['travel-gutter', 'travel-back', 'travel-back-hot', 'travel-back-down', 'travel-back-disabled', 'travel-forward', 'travel-forward-disabled',
+    'tab-overflow', 'tab-overflow-hot', 'list-head', 'list-head-divider', 'cat-music', 'cat-video', 'tree-open', 'tree-closed']
+    .forEach((name) => assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-wmp', name + '.png')) && theme.includes("/static_images/vista-wmp/" + name + ".png") || js.includes(name), name + ' shipped and used'));
+assert.ok(!/radial-gradient/.test(css.slice(css.indexOf('#desktopMediaPlayer .wmp-orbs {'), css.indexOf('/* the tabs (#956'))), 'the orbs are wmploc art, not CSS-drawn');
+assert.ok(css.includes('container: wmp-strip / inline-size') && css.includes('@container wmp-strip (max-width: 773px)') && html.includes('class="wmp-tab-overflow"'), 'the » at narrow widths');
+assert.ok(css.includes('width: max(90px, round(down, 50%, 1px) - 332px)'), 'the tasks centred, at least 90px in');
+assert.strictEqual(typeof mp.mediaPlayerNextIndex, 'function');
+assert.ok(js.includes('const mediaPlayerQueue = (() => {') && js.includes('mediaPlayerQueue.maybe(player)'), 'the next song is read ahead (gapless)');
+assert.ok(js.includes("kind: 'playlists'") && js.includes('No files have been found on this remote library.'), "a phone's playlists and the remote library's empty text");
+
 console.log('test-media-player-wmp: ok');

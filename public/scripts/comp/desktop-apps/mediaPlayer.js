@@ -260,6 +260,8 @@ function mediaPlayerBodyHtml() {
         + '<button type="button" class="wmp-orb wmp-orb-forward" title="Forward" aria-label="Forward" disabled></button>'
         + '</div>'
         + '<div class="wmp-tabs">' + tabs + '</div>'
+        // the » that lists the tabs a narrow window cannot show (WMP 11's svOverflow)
+        + '<button type="button" class="wmp-tab-overflow" aria-label="More tasks"></button>'
         + '</div>'
         + '<div class="wmp-page">'
         // Now Playing
@@ -284,7 +286,7 @@ function mediaPlayerBodyHtml() {
         // Library
         + '<div class="wmp-view wmp-library hidden" data-view="library">'
         + '<div class="wmp-addr">'
-        + '<button type="button" class="wmp-category" title="Select a category"><img src="' + WMP_ART + '/nav-music.png" alt="" width="16" height="16"></button>'
+        + '<button type="button" class="wmp-category" title="Select a category"><img src="' + WMP_ART + '/cat-music.png" alt="" width="16" height="16"></button>'
         + '<div class="wmp-crumbs"></div>'
         + '<div class="wmp-addr-right">'
         + '<button type="button" class="wmp-viewbtn wmp-view-layout" title="Layout Options"></button>'
@@ -443,20 +445,82 @@ function mediaPlayerReleaseSource(player) {
         URL.revokeObjectURL(player.objectUrl);
         player.objectUrl = null;
     }
+    mediaPlayerQueue.drop(player);
+    if (player.blobUrl) {
+        URL.revokeObjectURL(player.blobUrl);
+        player.blobUrl = null;
+    }
     player.el.stage.dataset.kind = '';
     mediaPlayerPaintFrame(player, false);
 }
 
-async function mediaPlayerResolveUrl(player, item) {
-    if (item.file) {
-        if (!item.objectUrl) item.objectUrl = URL.createObjectURL(item.file);
-        return item.objectUrl;
+/* The queue's sources and order. Gapless (#956): with the song's last 30 s playing, the next song in Now Playing (a phone's song over ActiveSync
+   included) is read whole into memory, so the next song starts from memory the moment this one ends. One song is
+   held at a time; a video, a local file or a song over 64 MB plays as before. */
+const mediaPlayerQueue = (() => {
+    const LEAD = 30;
+    const MAX = 64 * 1024 * 1024;
+
+    function drop(player) {
+        const pre = player.preload;
+        if (!pre) return;
+        player.preload = null;
+        if (pre.ctrl) pre.ctrl.abort();
+        if (pre.url && pre.url !== player.blobUrl) URL.revokeObjectURL(pre.url);
     }
-    if (item.vfs) {
-        return desktopMediaVfsUrl({ vfsPath: item.vfs.dir }, item.vfs.item, item.name);
+
+    function maybe(player) {
+        const media = player.el.media;
+        if (player.preload && player.preload.epoch === player.epoch) return;
+        if (!media.duration || !isFinite(media.duration) || media.duration - media.currentTime > LEAD) return;
+        drop(player);
+        const index = nextIndex(player, 1);
+        const item = player.items[index];
+        const pre = { epoch: player.epoch, index, item, url: '', ctrl: null };
+        player.preload = pre;
+        if (!item || item.file || item.kind !== 'audio' || (item.size && item.size > MAX) || !mediaPlayerCanPlay(media, item.name, item.mime)) return;
+        pre.ctrl = new AbortController();
+        void (async () => {
+            try {
+                const src = await resolveUrl(player, item);
+                const res = await fetch(src, { signal: pre.ctrl.signal, credentials: 'same-origin' });
+                if (!res.ok) return;
+                const blob = await res.blob();
+                if (player.preload !== pre || blob.size > MAX) return;
+                pre.url = URL.createObjectURL(blob);
+            } catch (_) { /* aborted or offline: the next song streams as usual */ }
+        })();
     }
-    return item.url;
-}
+
+    async function resolveUrl(player, item) {
+        const pre = player.preload;
+        if (pre && pre.item === item && pre.url) return pre.url;
+        if (item.file) {
+            if (!item.objectUrl) item.objectUrl = URL.createObjectURL(item.file);
+            return item.objectUrl;
+        }
+        if (item.vfs) {
+            return desktopMediaVfsUrl({ vfsPath: item.vfs.dir }, item.vfs.item, item.name);
+        }
+        return item.url;
+    }
+
+    function nextIndex(player, step) {
+        const n = player.items.length;
+        if (!n) return -1;
+        if (player.shuffle && n > 1) {
+            let pick = player.index;
+            while (pick === player.index) pick = Math.floor(Math.random() * n);
+            return pick;
+        }
+        const next = player.index + step;
+        if (next >= 0 && next < n) return next;
+        if (player.repeat) return (next + n) % n;
+        return -1;
+    }
+
+    return { drop, maybe, resolveUrl, nextIndex };
+})();
 
 async function mediaPlayerPlayIndex(player, index, options) {
     const item = player.items[index];
@@ -474,7 +538,7 @@ async function mediaPlayerPlayIndex(player, index, options) {
     }
     let url = '';
     try {
-        url = await mediaPlayerResolveUrl(player, item);
+        url = await mediaPlayerQueue.resolveUrl(player, item);
     } catch (err) {
         mediaPlayerStatus(player, (err && err.message) || 'Media Player cannot open this file.');
         return;
@@ -491,7 +555,12 @@ async function mediaPlayerPlayIndex(player, index, options) {
     player.stopped = false;
     player.changing = true;
     player.nowLine = 0;
+    const lastBlob = player.blobUrl;
+    player.blobUrl = player.preload && player.preload.url === url ? url : null;
+    if (player.preload && player.preload.url === url) player.preload = null;
+    else mediaPlayerQueue.drop(player);
     media.src = url;
+    if (lastBlob && lastBlob !== url) URL.revokeObjectURL(lastBlob);
     mediaPlayerSyncNow(player);
     mediaPlayerSyncTransport(player);
     if (!(options && options.paused)) {
@@ -504,22 +573,9 @@ async function mediaPlayerPlayIndex(player, index, options) {
     }
 }
 
-function mediaPlayerNextIndex(player, step) {
-    const n = player.items.length;
-    if (!n) return -1;
-    if (player.shuffle && n > 1) {
-        let pick = player.index;
-        while (pick === player.index) pick = Math.floor(Math.random() * n);
-        return pick;
-    }
-    const next = player.index + step;
-    if (next >= 0 && next < n) return next;
-    if (player.repeat) return (next + n) % n;
-    return -1;
-}
-
 function mediaPlayerStep(player, step) {
-    const next = mediaPlayerNextIndex(player, step);
+    const pre = player.preload;
+    const next = step === 1 && pre && pre.epoch === player.epoch && player.items[pre.index] === pre.item ? pre.index : mediaPlayerQueue.nextIndex(player, step);
     if (next === -1) return false;
     mediaPlayerPlayIndex(player, next);
     return true;
@@ -620,6 +676,9 @@ function mediaPlayerOpenVfsItem(player, item, dir) {
 
 function mediaPlayerRenderPlaylist(player) {
     const host = player.el.playlist;
+    // the tree's Now Playing item comes and goes with the list
+    const has = player.items.length > 0;
+    if (has !== !!player.treeHasNowPlaying) { player.treeHasNowPlaying = has; mediaPlayerLibrary.renderTree(player); }
     host.innerHTML = player.items.map((item, i) => ''
         + '<button type="button" class="wmp-playlist-item' + (i === player.index ? ' is-current' : '') + '" role="option" data-id="' + item.id + '" aria-selected="' + (i === player.index) + '" title="' + mediaPlayerEsc(item.name) + '">'
         + '<span class="wmp-playlist-mark"></span><span class="wmp-playlist-name">' + mediaPlayerEsc(mediaPlayerTitle(item.name)) + '</span>'
@@ -675,7 +734,7 @@ function mediaPlayerSyncTransport(player) {
     el.play.classList.toggle('is-playing', playing && !player.seeking);
     el.play.title = playing ? 'Pause' : 'Play';
     el.stop.disabled = !hasSource || player.stopped;
-    el.prev.disabled = !n || (!video && mediaPlayerNextIndex(player, -1) === -1);
+    el.prev.disabled = !n || (!video && mediaPlayerQueue.nextIndex(player, -1) === -1);
     // Next stays enabled while anything is listed (on the last item it ends playback, as WMP 11 does)
     el.next.disabled = !n;
     el.prev.title = video ? 'Rewind' : 'Previous (press and hold to rewind)';
@@ -836,8 +895,9 @@ const mediaPlayerBar = (function () {
     /** The seek groove's value: its thumb (17px) travels from 7px in to 7px short of the far end. */
     function mediaPlayerSeekValue(seek, clientX) {
         const rect = seek.getBoundingClientRect();
-        if (rect.width <= 31) return 0;
-        return Math.max(0, Math.min(1, (clientX - rect.left - 15.5) / (rect.width - 31)));
+        // the box is 3px wider than the groove it shows (the picture's padding, css/desktop-apps/mediaPlayer.css)
+        if (rect.width <= 34) return 0;
+        return Math.max(0, Math.min(1, (clientX - rect.left - 15.5) / (rect.width - 34)));
     }
 
     function mediaPlayerSyncCompact(player, height) {
@@ -970,11 +1030,12 @@ const mediaPlayerLibrary = (function () {
         { id: 'year', label: 'Year', icon: 'nav-year' },
         { id: 'rating', label: 'Rating', icon: 'nav-rating' }
     ];
+    // the VM's Video library: Recently Added, All Video, Actors, Genre, Rating (no Year)
     const WMP_VIDEO_VIEWS = [
+        { id: 'recent', label: 'Recently Added', icon: 'nav-recently-added' },
         { id: 'all', label: 'All Video', icon: 'nav-video' },
-        { id: 'artist', label: 'Actors', icon: 'nav-artist' },
-        { id: 'genre', label: 'Genre', icon: 'nav-genre' },
-        { id: 'year', label: 'Year', icon: 'nav-year' },
+        { id: 'artist', label: 'Actors', icon: 'nav-actors' },
+        { id: 'genre', label: 'Genre', icon: 'nav-video-genre' },
         { id: 'rating', label: 'Rating', icon: 'nav-rating' }
     ];
     // a shared library / paired phone (#956): WMP 11's other-library children (the VM's "Xochitl": Artist,
@@ -986,9 +1047,10 @@ const mediaPlayerLibrary = (function () {
         { id: 'songs', label: 'Songs', icon: 'nav-songs' },
         { id: 'genre', label: 'Genre', icon: 'nav-genre' },
         { id: 'year', label: 'Year', icon: 'nav-year' },
-        { id: 'rating', label: 'Rating', icon: 'nav-rating' }
+        { id: 'rating', label: 'Rating', icon: 'nav-rating' },
+        { id: 'playlists', label: 'Playlists', icon: 'nav-playlists' }
     ];
-    const WMP_HOME_PRIMARY = [['artist', 'Artist'], ['album', 'Album'], ['songs', 'Songs'], ['genre', 'Genre'], ['year', 'Year'], ['rating', 'Rating']];
+    const WMP_HOME_PRIMARY = [['artist', 'Artist'], ['album', 'Album'], ['songs', 'Songs'], ['genre', 'Genre'], ['year', 'Year'], ['rating', 'Rating'], ['playlists', 'Playlists']];
     const WMP_HOME_MORE = [['contributing', 'Contributing Artist'], ['composer', 'Composer'], ['parental', 'Parental Rating'], ['stores', 'Online Stores']];
     const WMP_RECENT_DAYS = 30;
     const WMP_RATINGS_KEY = 'wmpRatings';
@@ -1086,14 +1148,17 @@ const mediaPlayerLibrary = (function () {
         const base = '/api/activesync/file/' + encodeURIComponent(deviceId) + '/media';
         const audio = [];
         const video = [];
+        const playlists = [];
         for (const v of hello.volumes || []) {
             const volume = String(v && v.id || '');
             if (!volume) continue;
             const vol = encodeURIComponent(volume);
             for (const kind of ['audio', 'video']) {
-                // page by page: nothing is copied, only the tags and ids
+                // page by page: nothing is copied, only the tags and ids; a volume the phone cannot read (a card
+                // being mounted, Android's "Volume ... not found") is left out and the others still show
                 for (let offset = 0, guard = 0; guard < 200; guard += 1) {
-                    const page = await as.call(deviceId, 'media.list', { kind, volume, offset, limit: 500 }, { timeoutMs: 30000 });
+                    let page = null;
+                    try { page = await as.call(deviceId, 'media.list', { kind, volume, offset, limit: 500 }, { timeoutMs: 30000 }); } catch (_) { break; }
                     const items = (page && page.items) || [];
                     items.forEach((x) => {
                         if (kind === 'audio') {
@@ -1101,7 +1166,10 @@ const mediaPlayerLibrary = (function () {
                                 key: 'as:' + deviceId + ':' + volume + ':' + x.id, kind: 'audio', title: x.title || 'Unknown', artist: x.artist || '', albumArtist: x.albumArtist || '',
                                 album: x.album || '', genre: x.genre || '', year: x.year || 0, track: x.track || 0, disc: x.disc || 0, composer: x.composer || '',
                                 duration: (x.duration || 0) / 1000, added: x.added || 0, mime: x.mime || 'audio/mpeg', name: x.title || 'Unknown', size: x.size || 0,
-                                url: base + '/audio/' + vol + '/' + x.id, art: x.albumId ? base + '/album/' + vol + '/' + x.albumId + '?thumb=200' : ''
+                                url: base + '/audio/' + vol + '/' + x.id,
+                                // one cover per album (the phone sends the id as a string: MediaStore's album ids pass
+                                // 2^53); an older app's number lost its last digits, so its songs ask for their own
+                                art: typeof x.albumId === 'string' && x.albumId ? base + '/album/' + vol + '/' + x.albumId + '?thumb=200' : base + '/audio/' + vol + '/' + x.id + '?thumb=200'
                             });
                         } else {
                             video.push({
@@ -1115,8 +1183,13 @@ const mediaPlayerLibrary = (function () {
                     if (!items.length || offset >= (page.total || 0)) break;
                 }
             }
+            // the phone's playlists (Android's audio playlists): names and their songs' ids, in order
+            try {
+                const pl = await as.call(deviceId, 'media.list', { kind: 'playlists', volume, offset: 0, limit: 1000 }, { timeoutMs: 30000 });
+                ((pl && pl.items) || []).forEach((x) => playlists.push({ key: 'pl:' + volume + ':' + x.id, name: x.name || 'Playlist', tracks: (x.songs || []).map((id) => 'as:' + deviceId + ':' + volume + ':' + id) }));
+            } catch (_) { /* an app without playlists */ }
         }
-        return { audio, video };
+        return { audio, video, playlists };
     }
 
     /** Paired phones in the tree follow the connection; a phone's library changed: read again when shown (push). */
@@ -1231,6 +1304,8 @@ const mediaPlayerLibrary = (function () {
         let h = node('playlists', 'playlists', 'nav-playlists', 'Playlists', open.playlists);
         const hid = (on) => (on ? '' : ' hidden');
         h += leaf('create-playlist', 'nav-create-playlist', 'Create Playlist', hid(open.playlists));
+        // Now Playing, at the parent level, while its list has something (as on the VM)
+        if (player.items.length) h += '<div class="wmp-tree-node wmp-tree-solo"><button type="button" class="wmp-tree-item" data-nav="now-playing"><img src="' + WMP_ART + '/nav-now-playing.png" alt="" width="16" height="16"><span>Now Playing</span></button></div>';
         h += node('local', 'src:local:' + views[0].id, lib.category === 'video' ? 'nav-video' : 'nav-library', 'Library', open.local);
         views.forEach((v) => { h += leaf('src:local:' + v.id, v.icon, v.label, hid(open.local)); });
         if (mediaPlayerHasPhone()) {
@@ -1238,7 +1313,7 @@ const mediaPlayerLibrary = (function () {
             views.forEach((v) => { h += leaf('src:phone:' + v.id, v.icon, v.label, hid(open.phone)); });
         }
         // paired phones (#956), as WMP 11 lists a shared library: the node opens its views page
-        const devViews = lib.category === 'video' ? views : WMP_DEVICE_VIEWS;
+        const devViews = lib.category === 'video' ? views.filter((v) => v.id !== 'recent') : WMP_DEVICE_VIEWS;
         mediaPlayerDevices().forEach((d) => {
             const id = 'as:' + d.deviceId;
             h += node(id, 'src:' + id + ':' + (lib.category === 'video' ? views[0].id : 'home'), 'nav-other-library', d.name, !!open[id]).replace('wmp-tree-node', 'wmp-tree-node' + (d.online ? '' : ' is-offline'));
@@ -1260,7 +1335,7 @@ const mediaPlayerLibrary = (function () {
         lib.category = category === 'video' ? 'video' : 'music';
         lib.view = mediaPlayerViews(lib.category)[lib.category === 'video' ? 0 : 3].id;
         lib.filter = null;
-        player.el.categoryIcon.src = WMP_ART + '/' + (lib.category === 'video' ? 'nav-video' : 'nav-music') + '.png';
+        player.el.categoryIcon.src = WMP_ART + '/' + (lib.category === 'video' ? 'cat-video' : 'cat-music') + '.png';
         mediaPlayerRenderTree(player);
         mediaPlayerRenderLibrary(player);
         mediaPlayerRecord(player);
@@ -1294,7 +1369,12 @@ const mediaPlayerLibrary = (function () {
             const since = Date.now() - WMP_RECENT_DAYS * 86400000;
             list = list.filter((t) => t.added >= since);
         }
-        if (lib.filter) list = list.filter((t) => String(mediaPlayerGroupKey(t, lib.filter.field)) === String(lib.filter.value));
+        if (lib.filter && lib.filter.field === 'playlist') {
+            // a playlist's songs, in its order
+            const pl = (d.playlists || []).find((p) => p.key === lib.filter.value);
+            const byKey = new Map(list.map((t) => [t.key, t]));
+            list = pl ? pl.tracks.map((k) => byKey.get(k)).filter(Boolean) : [];
+        } else if (lib.filter) list = list.filter((t) => String(mediaPlayerGroupKey(t, lib.filter.field)) === String(lib.filter.value));
         const q = String(player.el.search.value || '').trim().toLowerCase();
         if (q) list = list.filter((t) => [t.title, t.artist, t.albumArtist, t.album, t.genre, t.composer].some((v) => String(v || '').toLowerCase().indexOf(q) !== -1));
         return list;
@@ -1353,9 +1433,29 @@ const mediaPlayerLibrary = (function () {
         video: ['Title', 'Length', 'Rating', 'Actors', 'Genre', 'Release Year']
     };
 
+    /** A cover: the generic art until the row is on screen, then the real one (a phone's cover is fetched over
+        ActiveSync, so only the rows in view ask for theirs). */
     function mediaPlayerArtHtml(art, kind, cls) {
         const fallback = WMP_ART + '/' + (kind === 'video' ? 'art-video' : 'art-music') + '.png';
-        return '<span class="' + cls + '"><img src="' + mediaPlayerEsc(art || fallback) + '" alt="" draggable="false" loading="lazy" onerror="this.onerror=null;this.src=\'' + fallback + '\'"></span>';
+        return '<span class="' + cls + '"><img src="' + fallback + '"' + (art ? ' data-art="' + mediaPlayerEsc(art) + '"' : '') + ' alt="" draggable="false" onerror="this.onerror=null;this.src=\'' + fallback + '\'"></span>';
+    }
+
+    function mediaPlayerWatchArt(player) {
+        const list = player.el.list;
+        if (typeof IntersectionObserver !== 'function') {
+            list.querySelectorAll('img[data-art]').forEach((img) => { img.src = img.dataset.art; img.removeAttribute('data-art'); });
+            return;
+        }
+        if (!player.artObserver) {
+            player.artObserver = new IntersectionObserver((entries) => entries.forEach((e) => {
+                if (!e.isIntersecting) return;
+                const img = e.target;
+                player.artObserver.unobserve(img);
+                if (img.dataset.art) { img.src = img.dataset.art; img.removeAttribute('data-art'); }
+            }), { root: list, rootMargin: '48px 0px' });
+        }
+        player.artObserver.disconnect();
+        list.querySelectorAll('img[data-art]').forEach((img) => player.artObserver.observe(img));
     }
 
     function mediaPlayerRenderLibrary(player) {
@@ -1366,7 +1466,7 @@ const mediaPlayerLibrary = (function () {
         el.list.dataset.layout = '';
         if (lib.mode === 'now-playing') {
             el.listHead.innerHTML = '<span>Title</span><span>Length</span>';
-            el.list.dataset.layout = 'details';
+            el.listHead.dataset.layout = el.list.dataset.layout = 'details';
             lib.rows = [];
             el.list.innerHTML = player.items.map((item, i) => '<div class="wmp-row wmp-np-row' + (i === player.index ? ' is-current' : '') + '" role="option" data-key="np:' + item.id + '" tabindex="-1"><span>' + mediaPlayerEsc(item.name) + '</span><span></span></div>').join('');
             el.listNote.textContent = player.items.length ? '' : 'There are no items in the Now Playing list.';
@@ -1388,7 +1488,7 @@ const mediaPlayerLibrary = (function () {
             return;
         }
         const tracks = mediaPlayerTracks(player);
-        const viewId = lib.filter ? 'songs' : lib.view;
+        const viewId = lib.filter ? (lib.filter.field === 'playlist' ? 'playlist' : 'songs') : lib.view;
         const kindWord = lib.category === 'video' ? 'Video' : 'Music';
         let html = '';
         let head;
@@ -1401,6 +1501,20 @@ const mediaPlayerLibrary = (function () {
             html = '<div class="wmp-tiles">' + lib.rows.map((t, i) => '<div class="wmp-tile wmp-row" role="option" tabindex="-1" data-key="t:' + i + '">'
                 + mediaPlayerArtHtml(t.art, 'video', 'wmp-tile-art is-video')
                 + '<span class="wmp-tile-name">' + mediaPlayerEsc(t.title) + '</span><span class="wmp-tile-sub">' + mediaPlayerEsc(mediaPlayerLength(t.duration)) + '</span></div>').join('') + '</div>';
+        } else if (viewId === 'playlist') {
+            // one playlist's songs in its own order (Title and Length, as a playlist lists in WMP 11)
+            head = ['Title', 'Length'];
+            el.list.dataset.layout = 'details';
+            lib.rows = tracks.slice();
+            html = lib.rows.map((t, i) => '<div class="wmp-row" role="option" tabindex="-1" data-key="t:' + i + '"><span>' + mediaPlayerEsc(t.title) + '</span><span>' + mediaPlayerLength(t.duration) + '</span></div>').join('');
+        } else if (viewId === 'playlists') {
+            // a library's Playlists (the VM's shared library: Title and Length)
+            head = ['Title', 'Length'];
+            el.list.dataset.layout = 'details';
+            const all = (d.playlists || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+            const byKey = new Map(((d.audio || []).concat(d.video || [])).map((t) => [t.key, t]));
+            lib.groups = all.map((p) => ({ key: p.key, label: p.name, tracks: p.tracks.map((k) => byKey.get(k)).filter(Boolean), playlist: true }));
+            html = lib.groups.map((g, i) => '<div class="wmp-row" role="option" tabindex="-1" data-key="p:' + i + '"><span>' + mediaPlayerEsc(g.label) + '</span><span>' + mediaPlayerLength(g.tracks.reduce((n, t) => n + (t.duration || 0), 0)) + '</span></div>').join('');
         } else if (viewId === 'songs' || viewId === 'recent') {
             head = WMP_HEADS.songs;
             el.list.dataset.layout = 'songs';
@@ -1464,6 +1578,7 @@ const mediaPlayerLibrary = (function () {
         el.listHead.innerHTML = head.map((h) => '<span>' + mediaPlayerEsc(h) + '</span>').join('');
         el.listHead.dataset.layout = el.list.dataset.layout;
         el.list.innerHTML = html;
+        mediaPlayerWatchArt(player);
         const empty = !(lib.rows.length || lib.groups.length);
         let note = '';
         if (empty) {
@@ -1472,6 +1587,7 @@ const mediaPlayerLibrary = (function () {
             else if (d.noMedia) note = 'The Dreamscape app on ' + mediaPlayerSourceName(lib.source) + ' needs an update to share its music and videos.';
             else if (d.needsAccess) note = 'Allow Melaton to read your music and videos on your phone to see its library.';
             else if (String(el.search.value || '').trim()) note = 'No items match your search.';
+            else if (String(lib.source).indexOf('as:') === 0) note = 'No files have been found on this remote library.';
             else if (viewId === 'recent') note = 'There are no recently added items in ' + kindWord + '.';
             else note = 'There are no items in ' + kindWord + '.';
         }
@@ -1537,6 +1653,14 @@ const mediaPlayerLibrary = (function () {
             return;
         }
         const lib = player.library;
+        if (key.indexOf('p:') === 0) {
+            const g = lib.groups[Number(key.slice(2))];
+            if (!g) return;
+            lib.filter = { field: 'playlist', value: g.key, label: g.label, from: 'Playlists', fromView: 'playlists' };
+            mediaPlayerRenderLibrary(player);
+            mediaPlayerRecord(player);
+            return;
+        }
         if (key.indexOf('g:') === 0) {
             const g = lib.groups[Number(key.slice(2))];
             if (!g) return;
@@ -1618,6 +1742,16 @@ function mediaPlayerRunAction(player, action) {
 function mediaPlayerAttachMenus(player) {
     const cm = typeof contextMenu !== 'undefined' ? contextMenu : null;
     if (!cm) return;
+    // the »: every task, as WMP 11's ShowTaskMenu lists them
+    const more = player.el.tabstrip.querySelector('.wmp-tab-overflow');
+    if (more) {
+        cm.attachClickMenuToElement(more, {
+            position: 'anchor',
+            anchorAlign: 'end',
+            sections: [{ type: 'list', items: WMP_TABS.map((t) => ({ text: t.label, action: 'tab:' + t.id })) }],
+            onAction: (action) => { if (String(action).indexOf('tab:') === 0) mediaPlayerShowView(player, action.slice(4)); }
+        });
+    }
     player.el.tabs.forEach((tab) => {
         const btn = tab.querySelector('.wmp-tab-menu');
         const id = tab.dataset.tab;
@@ -2031,6 +2165,7 @@ function createDesktopMediaPlayer() {
     });
     media.addEventListener('timeupdate', () => {
         mediaPlayerSyncClock(player);
+        if (!media.paused) mediaPlayerQueue.maybe(player);
         if (!player.nowTimer) mediaPlayerBar.syncNowLine(player);
     });
     // "Media changing..." until the first frame
@@ -2289,7 +2424,7 @@ window.openDesktopVideoPlayerUrl = openDesktopVideoPlayerUrl;
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         WMP_TABS, WMP_BLANK_PAGES, WMP_TYPE_NAMES, mediaPlayerKindFor, mediaPlayerCanPlay, mediaPlayerTitle,
-        mediaPlayerTypeName, mediaPlayerNextIndex, mediaPlayerMenuItems, mediaPlayerLibrary,
+        mediaPlayerTypeName, mediaPlayerNextIndex: mediaPlayerQueue.nextIndex, mediaPlayerMenuItems, mediaPlayerLibrary,
         mediaPlayerBodyHtml, findDesktopMediaRow, desktopMediaClock, desktopMediaNameFromUrl, mediaPlayerNowLines: mediaPlayerBar.nowLines
     };
 }
