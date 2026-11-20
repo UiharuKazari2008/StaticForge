@@ -482,6 +482,16 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     right: 15px;
 }
 
+/* a program's own button left of Open (Receive from Device, fileOpenPicker.js): as wide as its words,
+   the Open / Cancel gap (12 px) from Open */
+#studioSaveFolderModal .fd-extra {
+    left: auto;
+    right: 189px;
+    width: auto;
+    padding: 0 10px;
+    white-space: nowrap;
+}
+
 /* ---- the compact form (Browse Folders): the travel band, the name and type, the buttons ---- */
 
 /* (Explorer's shared pane rules would show the panes again) */

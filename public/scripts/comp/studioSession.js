@@ -2174,7 +2174,7 @@ function studioSaveFolderOverwrite(name) {
         studioSaveFolderSettle(studioSaveFolderState.host);
     }
 
-    /** A host's own button beside Open (Alchemy's "Select on Client"): host.extraButton { label, onClick }. */
+    /** A host's own button beside Open (Receive from Device, fileOpenPicker.js): host.extraButton { label, onClick, disabled }. */
     function studioSaveFolderSyncExtraButton() {
         const saveBtn = document.getElementById('studioSaveFolderSaveBtn');
         if (!saveBtn) return;
@@ -2197,6 +2197,8 @@ function studioSaveFolderOverwrite(name) {
             });
         }
         extra.innerHTML = spec.label;
+        // shown but greyed where the program has nothing to offer (Receive from Device on DreamOS)
+        extra.disabled = !!spec.disabled;
         extra.hidden = false;
     }
 
