@@ -44,12 +44,16 @@ const TRAY_QUEUE_GAP_MS = 250;
 const trayQueue = []; // { key, show, at }
 let trayDrainTimer = null;
 const isTrayAnchor = (el) => !!(el && el.closest && el.closest('#desktopTaskbar'));
+// Vista turns system notifications off while presenting (melatonPresentation.js, #958): tray balloons wait in the
+// queue and show, one at a time, when the presentation ends (it calls trayReleased)
+const trayPresenting = () => !!(window.melatonPresentation && window.melatonPresentation.holdsBalloons());
 
 const PopoverManager = {
     activePopovers: new Map(),
 
     /** A balloon on a tray icon other than `exceptKey` (an anchor element or a key) is showing. */
     trayBusy(exceptKey = null) {
+        if (trayPresenting()) return true;
         for (const [el, data] of this.activePopovers) {
             if (el === exceptKey || data.hoverOnly || !isTrayAnchor(el)) continue;
             if (data.popover && data.popover.classList.contains('show')) return true;
@@ -79,7 +83,7 @@ const PopoverManager = {
 
     _drainTray() {
         trayDrainTimer = null;
-        if (!trayQueue.length) return;
+        if (!trayQueue.length || trayPresenting()) return;
         const next = trayQueue[0];
         if (this.trayBusy()) {
             // waited long enough: the waiting balloon takes the place of the one up now
@@ -123,8 +127,8 @@ const PopoverManager = {
             return null;
         }
         const trayBalloon = !options.hoverOnly && isTrayAnchor(element);
-        // the tray standard: one balloon at a time (this icon's own balloon may be replaced in place)
-        if (trayBalloon && this.trayBusy(element)) {
+        // the tray standard: one balloon at a time (this icon's own balloon may be replaced in place); none while presenting
+        if (trayBalloon && (trayPresenting() || this.trayBusy(element))) {
             const args = [element, type, title, message, showProgress, timeout, customIcon, buttons, options];
             this.whenTrayFree(element.id || title || 'balloon', () => this.showPopover(...args));
             return null;

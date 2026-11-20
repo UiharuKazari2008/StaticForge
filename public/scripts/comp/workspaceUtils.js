@@ -307,6 +307,8 @@ function clearDesktopWallpaperInline() {
 // Paint the active workspace wallpaper now. Compiled workspaces.css can lag
 // (and a stale served copy used to win over the saved setting).
 function syncDesktopWallpaperInline(workspaceId) {
+    // presenting with a background of its own (Presentation Settings, #958): melatonPresentation.js paints it
+    if (window.melatonPresentation && window.melatonPresentation.paintWallpaper()) return;
     const workspace = workspaces && workspaces[workspaceId];
     if (!workspace || !workspace.wallpaper) {
         clearDesktopWallpaperInline();
@@ -493,7 +495,9 @@ function applyEarlyWorkspaceThemeInline(settings) {
         document.documentElement.style.setProperty('--workspace-background-color', bgColor);
     }
     if (window.isDesktop) {
-        if (settings.wallpaper) {
+        if (window.melatonPresentation && window.melatonPresentation.paintWallpaper()) {
+            // presenting: the presentation's background stays (melatonPresentation.js, #958)
+        } else if (settings.wallpaper) {
             applyDesktopWallpaperInline(settings.wallpaper, settings.wallpaperPosition);
         } else {
             clearDesktopWallpaperInline();

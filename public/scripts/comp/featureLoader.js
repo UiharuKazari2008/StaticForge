@@ -389,6 +389,8 @@ const FEATURE_MANIFEST = {
             'css/welcome-center.css', 'css/cpl-cardspace.css', 'css/cpl-indexing.css', 'css/dpi-scaling.css',
             // Melaton Mobility Center (#932): the Vista theme's colours and art, then the layout
             'css/themes/vista/mobility-center.css', 'css/mobility-center.css',
+            // Presentation Settings (#958): the Vista theme's colours, then the layout
+            'css/themes/vista/presentation-settings.css', 'css/presentation-settings.css',
             // Disk Cleanup's list (#945, diskCleanup.js)
             'css/disk-cleanup.css'],
         scripts: [
@@ -426,7 +428,9 @@ const FEATURE_MANIFEST = {
             'scripts/comp/cplPages3.js',
             'scripts/comp/cplDeviceManager.js',
             // Melaton Mobility Center (#932): Vista's mblctr, the Control Panel item 'mobility-center'
-            'scripts/comp/mobilityCenter.js'
+            'scripts/comp/mobilityCenter.js',
+            // Presentation Settings (#958): PresentationSettings.exe; the state is melatonPresentation.js (boot)
+            'scripts/comp/presentationSettings.js'
         ]
     },
     // Image Search's search library (#831): the retired Global Search DSAP's helpers and sessions

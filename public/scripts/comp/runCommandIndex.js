@@ -682,6 +682,15 @@ function buildRunSystemCommandEntries() {
             try { if (window.featureLoader) await window.featureLoader.loadFeature('control_panel'); } catch (_) { /* opened below if it loaded */ }
             if (window.melatonControlPanel) window.melatonControlPanel.openItem('mobility-center');
         }
+    }, {
+        // Vista's presentationsettings: Presentation Settings (presentationSettings.js, in the Control Panel feature, #958)
+        id: 'system-presentationsettings',
+        category: 'app',
+        label: 'presentationsettings',
+        subtitle: 'Presentation Settings',
+        icon: 'fa-light fa-projector',
+        keywords: ['presentationsettings', 'presentation settings', 'presentation', 'giving a presentation', 'projector'],
+        execute: () => { if (window.melatonPresentation) void window.melatonPresentation.openSettings(); }
     }];
 }
 

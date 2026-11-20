@@ -763,6 +763,8 @@
         openThemeSettings: () => root.personalizationDialogs && root.personalizationDialogs.openTheme(),
         openStartMenuProperties: () => root.taskbarSettings && root.taskbarSettings.openProperties('start'),
         openVolumeMixer: () => root.personalizationDialogs && root.personalizationDialogs.openSound(),
+        // Presentation Settings (presentationSettings.js, #958)
+        openPresentationSettings: () => callGlobal('openPresentationSettings'),
         toggleMelatonConnectDialog: () => net() && net().connect && net().connect.open(),
         openHelpAndSupport: () => {
             const places = callGlobal('getStartMenuPlaces') || [];

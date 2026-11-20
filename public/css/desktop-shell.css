@@ -2532,6 +2532,22 @@ body.desktop-mode #manualModal #windowListEditorBtn {
     /* Allow right-click on wallpaper for context menu */
 }
 
+/* A presentation's background (Presentation Settings' Position, #958; workspaceUtils.js
+   applyPresentationWallpaperInline): Center at the picture's own size, Tile from the top left, Fit to screen
+   stretched to the screen as Vista's is. */
+body[data-wallpaper-fit="center"] .desktop-wallpaper {
+    background-size: auto;
+}
+
+body[data-wallpaper-fit="tile"] .desktop-wallpaper {
+    background-size: auto;
+    background-repeat: repeat;
+}
+
+body[data-wallpaper-fit="fit"] .desktop-wallpaper {
+    background-size: 100% 100%;
+}
+
 /* Boot: no wallpaper crossfade while early settings → loadWorkspaces settle */
 body.wallpaper-boot .desktop-wallpaper {
     transition: none;

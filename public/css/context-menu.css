@@ -545,6 +545,11 @@ span.context-menu-item-state {
     max-width: 360px;
 }
 
+/* Vista's default item (SetMenuDefaultItem: what a double-click does) is bold: item.className 'context-menu-item-default' */
+.context-menu-item.context-menu-item-default .context-menu-item-text {
+    font-weight: bold;
+}
+
 .context-menu-item.minimised-window .context-menu-item-text {
     font-style: italic;
 }

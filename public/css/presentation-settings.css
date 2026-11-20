@@ -1,0 +1,56 @@
+/* Presentation Settings (#958, presentationSettings.js): the background preview and the list's off state. The
+   colours are the Vista theme's (css/themes/vista/presentation-settings.css). */
+
+#presentationSettingsDialog .prs-preview {
+    box-sizing: border-box;
+    border-style: solid;
+    border-width: 1px;
+    border-color: var(--prs-edge-outer-dark) var(--prs-edge-outer-light) var(--prs-edge-outer-light) var(--prs-edge-outer-dark);
+    box-shadow: inset 1px 1px 0 var(--prs-edge-inner-dark), inset -1px -1px 0 var(--prs-edge-inner-light);
+    padding: 1px;
+    overflow: hidden;
+    background: var(--prs-preview-off);
+}
+
+#presentationSettingsDialog .prs-preview > img,
+#presentationSettingsDialog .prs-preview > .prs-black {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+}
+
+#presentationSettingsDialog .prs-preview > .prs-black {
+    background: var(--prs-preview-none);
+}
+
+#presentationSettingsDialog .vdt-listview.is-disabled {
+    background: var(--prs-list-off);
+}
+
+#presentationSettingsDialog .vdt-listview.is-disabled .vdt-lv-row {
+    color: var(--prs-list-off-text);
+}
+
+#presentationSettingsDialog .vdt-listview.is-disabled .vdt-lv-row.is-selected {
+    background: none;
+    border-color: transparent;
+}
+
+/* the VM's rows: 19 px apart (a 16 px icon in a Segoe UI 9 report view) */
+#presentationSettingsDialog .vdt-lv-row.prs-row {
+    height: 19px;
+    box-sizing: border-box;
+}
+
+#presentationSettingsDialog .vdt-lv-row.prs-row.is-selected {
+    border-color: transparent;
+    border-radius: 0;
+    background: var(--prs-row-selected);
+    color: var(--prs-row-selected-text);
+}
+
+#presentationSettingsDialog .vdt-listview:not(:focus-within) .vdt-lv-row.prs-row.is-selected {
+    background: var(--prs-row-selected-idle);
+    color: var(--prs-row-selected-idle-text);
+}

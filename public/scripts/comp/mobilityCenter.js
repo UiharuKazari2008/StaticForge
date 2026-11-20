@@ -32,7 +32,9 @@
  *                 sync         the ActiveSync partnership (activeSync.state().devices, 'state' events): the
  *                              partner phone (in Continuity the phone this DeX window runs on), else Sync Center's
  *                              "No sync partnerships"
- *                 presentation unavailable: nothing in Melaton acts on a presenting state yet
+ *                 presentation melatonPresentation.js (#958): Presenting / Not presenting, Turn on / Turn off (by hand
+ *                              only, never on a display connecting); the icon opens Presentation Settings
+ *                              (presentationSettings.js); onChange repaints the tile
  *   Art         public/static_images/vista-mblctr/ (mblctr.exe icons, the tile button faces and the volume
  *               wedge captured from the VM); the battery is batmeter.dll bitmap 301 (trayPower's flyout cells).
  *
@@ -79,6 +81,7 @@
         const cp = root.melatonControlPanel;
         if (!cp) return;
         if (target === 'connections') { cp.doAction('page:network'); return; }
+        if (target === 'presentation') { if (typeof root.openPresentationSettings === 'function') root.openPresentationSettings(); return; }
         if (target.startsWith('item:')) cp.openItem(target.slice(5));
         else cp.doAction(target);
     }
@@ -486,14 +489,28 @@
             }
         },
         {
+            // mblctr.exe.mui 200-203, icons 190 (presenting) / 191; turned on and off by hand only (Yukimi, Nov 19 2026)
             id: 'presentation', title: 'Presentation Settings', tip: 'Change presentation settings.',
-            open: null,
+            open: 'presentation',
             show: () => mobilePc(),
-            html: () => `<div class="mbl-tile-status">Not presenting</div>
-                <div class="mbl-tile-control"><button type="button" disabled>Turn on</button></div>`,
-            // nothing in Melaton acts on presenting yet (screen saver, notifications, wallpaper): unavailable
-            paint(el) { el.classList.add('is-unavailable'); setSrc(el.querySelector('.mbl-tile-icon img'), `${ART}/presentation-off.png`); },
-            wire() { /* nothing to turn on */ }
+            html: () => `<div class="mbl-tile-status" data-f="status">Not presenting</div>
+                <div class="mbl-tile-control"><button type="button" data-f="toggle">Turn on</button></div>`,
+            paint(el) {
+                const p = root.melatonPresentation;
+                const on = !!(p && p.isOn());
+                el.classList.toggle('is-unavailable', !p);
+                setSrc(el.querySelector('.mbl-tile-icon img'), `${ART}/${on ? 'presentation-on' : 'presentation-off'}.png`);
+                setText(el.querySelector('[data-f="status"]'), on ? 'Presenting' : 'Not presenting');
+                const btn = el.querySelector('[data-f="toggle"]');
+                setText(btn, on ? 'Turn off' : 'Turn on');
+                btn.disabled = !p;
+            },
+            wire(el) {
+                el.querySelector('[data-f="toggle"]').addEventListener('click', () => {
+                    const p = root.melatonPresentation;
+                    if (p) p.set(!p.isOn());
+                });
+            }
         }
     ];
 
@@ -647,6 +664,7 @@
         }
         const as = activeSync();
         if (as && typeof as.on === 'function') offs.push(as.on('state', () => paintTile('sync')));
+        if (root.melatonPresentation) offs.push(root.melatonPresentation.onChange(() => paintTile('presentation')));
         const tv = root.tabVolume;
         if (tv && typeof tv.onChange === 'function') {
             const off = tv.onChange(() => paintTile('volume'));

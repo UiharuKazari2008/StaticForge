@@ -97,6 +97,9 @@
         if (['workstation-locked', 'initializing', 'boot-from-launch', 'windows-startup', 'boot-staged', 'session-suspended']
             .some((c) => b.classList.contains(c))) return true;
         if (doc.fullscreenElement || videoPlaying()) return true;
+        // presenting with "Turn off the screen saver" (melatonPresentation.js, #958)
+        const pres = root.melatonPresentation;
+        if (pres && typeof pres.screenSaverOff === 'function' && pres.screenSaverOff()) return true;
         const boot = root.desktopBoot;
         if (boot && typeof boot.isWorkstationLocked === 'function' && boot.isWorkstationLocked()) return true;
         return false;

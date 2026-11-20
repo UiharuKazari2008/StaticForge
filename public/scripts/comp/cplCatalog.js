@@ -157,7 +157,8 @@
                     { t: 'Change when the computer sleeps', a: 'page:power-options:plan' }] },
                 // Vista's Mobile PC category (a laptop's) lists Mobility Center; Melaton has no Mobile PC category yet
                 { item: 'mobility-center', links: [
-                    { t: 'Adjust commonly used mobility settings', a: 'item:mobility-center' }] },
+                    { t: 'Adjust commonly used mobility settings', a: 'item:mobility-center' },
+                    { t: 'Adjust settings before giving a presentation', a: 'call:openPresentationSettings' }] },
                 { item: 'personalization', links: [
                     { t: 'Change size of on-screen items', s: true, a: 'item:personalization' },
                     { t: 'Adjust screen resolution', a: 'item:personalization' },

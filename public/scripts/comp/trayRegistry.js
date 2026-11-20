@@ -17,6 +17,7 @@ const TRAY_ICON_CATALOG = [
     { id: 'walletTrayIcon', label: 'Account Manager' },
     { id: 'workspaceTrayIcon', label: 'Workspace' },
     { id: 'serviceWorkerTrayIcon', label: 'Melaton Update' },
+    { id: 'presentationTrayIcon', label: 'Presentation Settings' },
     { id: 'pingWarningIndicator', label: 'Network latency' },
     { id: 'nightshadeTrayIcon', label: 'Nightshade Network' },
     { id: 'powerTrayIcon', label: 'Power' },
@@ -181,7 +182,8 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 /** 'show' | 'hide' | 'inactive'. Unset: Show for the always-visible icons, Hide for every other (Yukimi, #945). */
 // always visible unless the user picked otherwise: the Nightshade Network icon (#895) and Melaton Update, which is
 // only there while updates download or wait for a restart (#945); the system icons have their own switches
-const TRAY_DEFAULT_SHOW = new Set(['nightshadeTrayIcon', 'serviceWorkerTrayIcon']);
+// Vista shows the presentation icon while presenting (PresentationSettings.exe, #958)
+const TRAY_DEFAULT_SHOW = new Set(['nightshadeTrayIcon', 'serviceWorkerTrayIcon', 'presentationTrayIcon']);
 function trayIconBehavior(id) {
     const { map, legacy } = trayBehaviorsSaved();
     const fallback = TRAY_DEFAULT_SHOW.has(id) ? 'show' : 'hide';

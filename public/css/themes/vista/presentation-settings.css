@@ -1,0 +1,21 @@
+/* Presentation Settings, Vista theme (#958): PresentationSettings.exe's colours as measured on the VM. The layout
+   is css/presentation-settings.css. */
+
+#presentationSettingsDialog {
+    /* the background preview: a sunken edge (#a0a0a0 / #696969 top-left, #fff / #e3e3e3 bottom-right) */
+    --prs-edge-outer-dark: #a0a0a0;
+    --prs-edge-inner-dark: #696969;
+    --prs-edge-outer-light: #fff;
+    --prs-edge-inner-light: #e3e3e3;
+    --prs-preview-off: #f0f0f0;
+    --prs-preview-none: #000;
+    /* the list of backgrounds while Show this background is off */
+    --prs-list-off: #f0f0f0;
+    --prs-list-off-text: #6d6d6d;
+    /* a selected row: the system highlight (a plain common-controls list, not Explorer's), white text; the list
+       without the focus keeps it in the button face (LVS_SHOWSELALWAYS) */
+    --prs-row-selected: #39f;
+    --prs-row-selected-text: #fff;
+    --prs-row-selected-idle: #f0f0f0;
+    --prs-row-selected-idle-text: #000;
+}
