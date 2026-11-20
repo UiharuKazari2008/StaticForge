@@ -118,7 +118,10 @@
         notAvailable: 'Not Available', notConnected: 'Not Connected', // netshell 23137 / 23176
         internet: 'Internet', local: 'Local', limited: 'Limited', // 23175 / 23174 / 23173
         enabled: 'Enabled', disconnected: 'Disconnected', // 1050 / 1040
-        day: ' day ', days: ' days ' // 23069 / 23070
+        day: ' day ', days: ' days ', // 23069 / 23070
+        // Instant Hotspot (#910): Melaton's own wording, in Vista's voice (Vista has no phone hotspot)
+        hotspot: 'Instant Hotspot', hotspotBusy: 'Connecting...', hotspotBattery: 'Battery: %1%',
+        hotspotSignal: 'Signal: %1', hotspotMetered: 'Uses the phone\'s mobile data (metered)'
     };
 
     // Security types as Vista names them: Manage Wireless Networks (wlanpref 19001-19011) and a network's
@@ -303,6 +306,26 @@
         return { name, connected: !!(s && s.service === 'connected') };
     }
 
+    // ---- Instant Hotspot (#910, cafeready hotspot.rs): a bonded phone that can lend its mobile data, listed with the
+    // wireless networks; state from the provider's push ('dreamoshotspot'), never polled
+    function hotspotState() {
+        const h = host();
+        let v = null;
+        try { v = h && typeof h.hotspot === 'function' ? h.hotspot() : null; } catch (_) { v = null; }
+        return v && Array.isArray(v.phones) ? v : null;
+    }
+    /** the phone's cellular bars (0-4) on Vista's five-bar art */
+    const cellBars = (b) => (b == null ? 0 : Math.max(0, Math.min(5, Math.round(Number(b) * 5 / 4))));
+    function hotspotRows() {
+        const hs = hotspotState();
+        if (!hs) return [];
+        return hs.phones.filter((p) => p && p.enabled !== false && (p.linked || p.state === 'connected')).map((p) => ({
+            kind: 'hotspot', key: `h:${p.id}`, name: String(p.name || 'Phone'), ssid: p.ssid || String(p.name || ''),
+            bars: cellBars(p.bars), connected: p.state === 'connected', busy: p.state === 'requesting' || p.state === 'joining',
+            battery: p.battery, network: p.network, data: !!p.data, security: 'psk', known: false
+        }));
+    }
+
     /** The rows Vista lists: the wireless networks in range, then Dial-up and VPN. */
     function vanRows() {
         const now = current();
@@ -316,8 +339,12 @@
             known: !!n.known,
             auto: n.autoConnect !== false
         }));
+        // a phone's hotspot is listed once, as the phone (its network in range is the same thing)
+        const hot = hotspotRows();
+        const hotNames = new Set(hot.map((r) => r.ssid));
+        const all = hot.concat(wifi.filter((r) => !hotNames.has(r.name)));
         // the connected network first, as Vista lists it
-        wifi.sort((a, b) => (b.connected ? 1 : 0) - (a.connected ? 1 : 0));
+        all.sort((a, b) => (b.connected ? 1 : 0) - (a.connected ? 1 : 0));
         const ns = nightshade();
         const vpn = [{ kind: 'vpn', key: 'v:nightshade', name: ns.name, connected: ns.connected }]
             // (#952) Dial-up and VPN: the phone's VPN apps' tunnels and this computer's workplace connections, as Vista lists
@@ -325,15 +352,16 @@
             .concat((ifaces || []).filter((x) => x && x.kind === 'vpn' && x.nc).map((x) => ({ kind: 'vpn', key: `v:tun:${x.name}`, name: x.vpnSession || x.vpnApp || x.name, connected: !!x.connected, row: x })))
             .concat(vpnObjects().map((o) => { const r = vpnObjectRow(o); return { kind: 'vpn', key: `v:vo:${o.id}`, name: o.name, connected: r.connected, vo: o }; }));
         // no adapter (no host, or none present) or its radio off: no wireless networks to list
-        return { wifi: !available() || state().wifi.radio === false ? [] : wifi, vpn };
+        return { wifi: !available() || state().wifi.radio === false ? [] : all, vpn };
     }
 
     function vanRowHtml(r) {
-        const middle = r.connected ? S.connected : r.kind === 'vpn' ? S.vpn : r.security === 'open' ? S.unsecured : S.secured;
+        const middle = r.connected ? S.connected : r.kind === 'hotspot' ? (r.busy ? S.hotspotBusy : S.hotspot) : r.kind === 'vpn' ? S.vpn : r.security === 'open' ? S.unsecured : S.secured;
         const left = r.kind === 'vpn' ? img('rasmm-vpn-32') : img('wlanmm-wireless-32');
         const mark = r.kind === 'wifi' && r.security === 'open' && !r.connected ? img('van-unsecured-16', 'dwf-van-mark') : '';
         const right = r.kind === 'vpn' ? img('rasmm-server-32') : img(`wlanmm-bars-${r.bars}-32`);
-        const tip = r.kind === 'wifi' ? ` title="${esc(`${fill(S.tipName, r.name)}\n${fill(S.tipSignal, S.strength[r.bars])}`)}"` : '';
+        const tip = r.kind === 'wifi' ? ` title="${esc(`${fill(S.tipName, r.name)}\n${fill(S.tipSignal, S.strength[r.bars])}`)}"`
+            : r.kind === 'hotspot' ? ` title="${esc([fill(S.tipName, r.name), r.battery != null ? fill(S.hotspotBattery, r.battery) : '', r.network ? fill(S.hotspotSignal, r.network) : '', S.hotspotMetered].filter(Boolean).join('\n'))}"` : '';
         return `<div class="vdt-lv-row dwf-van-row${van && van.sel === r.key ? ' is-selected' : ''}" data-key="${esc(r.key)}" role="option"${tip}>`
             + `<span class="dwf-van-icon">${left}</span><span class="dwf-van-name">${esc(r.name)}</span><span class="dwf-van-state">${esc(middle)}</span>`
             + `<span class="dwf-van-mark-cell">${mark}</span><span class="dwf-van-right">${right}</span></div>`;
@@ -383,7 +411,7 @@
         const r = vanSelected();
         const label = r && r.connected ? S.disconnect : S.connect;
         if (next.textContent !== label) next.textContent = label;
-        next.disabled = !r || (r.kind === 'wifi' && !can(r.connected ? 'disconnect' : 'connect'));
+        next.disabled = !r || (r.kind === 'wifi' && !can(r.connected ? 'disconnect' : 'connect')) || (r.kind === 'hotspot' && r.busy);
     }
 
     function pageInstruction(ctx, key, text) {
@@ -428,6 +456,12 @@
             ctx.close();
             if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open();
             return false;
+        }
+        if (r.kind === 'hotspot') {
+            // the phone turns its hotspot on and hands over a key for this session; nothing is saved here
+            van.pending = { name: r.name, hotspot: true, disconnect: r.connected };
+            root.setTimeout(() => runHotspot(ctx, !r.connected), 0);
+            return 'wlanconn:102';
         }
         van.pending = { name: r.name, pass: null, wasKnown: r.known, auto: r.auto, security: r.security };
         if (r.connected) {
@@ -475,6 +509,31 @@
             ctx.go('wlanconn:107');
             return;
         }
+        ctx.go('wlanconn:103');
+    }
+
+    /** Instant Hotspot: ask the phone (on) or leave its hotspot (off); the host's push says how it went. */
+    async function runHotspot(ctx, on) {
+        const h = host();
+        const p = van && van.pending;
+        if (!h || !p || typeof h.hotspotConnect !== 'function') return;
+        let r = null;
+        try { r = await (on ? h.hotspotConnect() : h.hotspotDisconnect()); } catch (err) { r = { error: { message: String((err && err.message) || err) } }; }
+        if (!van || van.ctx !== ctx || !ctx.modal.isConnected) return;
+        if (!on) { van.pending = null; ctx.reset('van:7111'); vanPaint(); return; }
+        const phoneOf = (d) => (d && Array.isArray(d.phones) ? d.phones.find((x) => x && x.name === p.name) || d.phones[0] : null);
+        const settled = (d) => { const ph = phoneOf(d); return ph && ph.state === 'connected' ? true : (!ph || ph.state === 'idle') && d && d.error ? false : null; };
+        let ok = r && r.error ? false : settled(r);
+        if (ok === null && typeof h.onHotspot === 'function') {
+            ok = await new Promise((resolve) => {
+                let off = null;
+                // a guard for a host that never answers (the phone and the join have their own limits, 45 s + 60 s)
+                const guard = root.setTimeout(() => { if (off) off(); resolve(false); }, 120000);
+                off = h.onHotspot((d) => { const v = settled(d); if (v !== null) { root.clearTimeout(guard); off(); resolve(v); } });
+            });
+        }
+        if (!van || van.ctx !== ctx || !ctx.modal.isConnected) return;
+        if (!ok) { p.failed = true; ctx.go('wlanconn:107'); return; }
         ctx.go('wlanconn:103');
     }
 
@@ -614,6 +673,9 @@
                         c.set(336, true, 'wlanconn:103');
                         c.set(3339, p.wasKnown ? p.auto !== false : true, 'wlanconn:103');
                         c.enable(3339, true, 'wlanconn:103');
+                        // a phone's hotspot is never saved: its key is for this session only
+                        c.show(336, !p.hotspot, 'wlanconn:103');
+                        c.show(3339, !p.hotspot, 'wlanconn:103');
                         const n = c.content.querySelector('.vdt-wizard-next');
                         if (n) n.dataset.dialogPrimary = '1';
                     }
@@ -656,7 +718,7 @@
                 // Close on the connected page: Save this network / Start this connection automatically
                 const p = van && van.pending;
                 const h = host();
-                if (!p || !h) return true;
+                if (!p || !h || p.hotspot) return true;
                 const keep = !!c.get(336, 'wlanconn:103');
                 const auto = !!c.get(3339, 'wlanconn:103');
                 if (!keep) {
@@ -2700,7 +2762,8 @@
         if (!p || !h) return;
         const mine = setup;
         let r = null;
-        try { r = await h.connect(p.name, p.security === 'open' ? undefined : p.key); } catch (err) { r = { error: String((err && err.message) || err) }; }
+        // Connect even if the network is not broadcasting: the host probes for the name (iwd ConnectHiddenNetwork)
+        try { r = await h.connect(p.name, p.security === 'open' ? undefined : p.key, p.hidden ? { hidden: true } : undefined); } catch (err) { r = { error: String((err && err.message) || err) }; }
         if (!setup || setup !== mine || !c.modal.isConnected) return;
         if (r && r.error) {
             await message(r.error, W.title, 'error');
@@ -2812,7 +2875,7 @@
                     key: 'wlanpref:10101',
                     instruction: W.enter,
                     // one profile type (all users): the radios and their shield go, the rest moves up into their place
-                    overrides: { 10335: { skip: true }, 10336: { skip: true }, 10337: { skip: true }, 10328: { nudge: [0, -54, 0, 0] }, 10334: { nudge: [0, -54, 0, 0], disabled: true }, 10339: { nudge: [0, -54, 0, 0] } },
+                    overrides: { 10335: { skip: true }, 10336: { skip: true }, 10337: { skip: true }, 10328: { nudge: [0, -54, 0, 0] }, 10334: { nudge: [0, -54, 0, 0], disabled: !can('connect') }, 10339: { nudge: [0, -54, 0, 0] } },
                     show: (c) => { footer(c); setupTitle(c, W.manual); },
                     next: async (c) => {
                         const k = 'wlanpref:10101';
@@ -2826,7 +2889,7 @@
                             // eslint-disable-next-line no-control-regex
                             if (!hex64 && (key.length < 8 || key.length > 63 || /[^\x20-\x7e]/.test(key))) { await message(sec === 'wpa' ? W.keyRuleWpa : W.keyRule, W.badKey, 'error'); return false; }
                         }
-                        setup.pending = { name, security: sec, key, auto: !!c.get(10328, k) };
+                        setup.pending = { name, security: sec, key, auto: !!c.get(10328, k), hidden: !!c.get(10334, k) };
                         root.setTimeout(() => runAdd(c), 0);
                         return 'wlanpref:10103';
                     }
@@ -2966,6 +3029,8 @@
         followScan();
     }
     root.addEventListener('nightshade:state', vanPaint, { signal: appScopeSignal });
+    // Instant Hotspot: a phone came in reach, its battery or signal changed, its hotspot joined or left
+    root.addEventListener('dreamoshotspot', vanPaint, { signal: appScopeSignal });
     // (#952) a workplace connection made, renamed, changed or deleted (dreamosVpn.js), the Nightshade link up or down
     // (a connection to this server follows it), the adapter's lease: an open Network Connections draws it
     root.addEventListener('dreamos-vpn-changed', () => { ncRerender(); vanPaint(); }, { signal: appScopeSignal });

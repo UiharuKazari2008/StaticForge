@@ -103,7 +103,8 @@ Actions (each returns a Promise; `{ error }` when refused):
 
 - `networks()` returns `{ networks: [{ name, security, signalPercent, connected, known, autoConnect }] }`, strongest first.
 - `scan()` starts a scan. The list arrives through `onScan(fn)`, which returns an unsubscribe function.
-- `connect(ssid, passphrase?)`, `disconnect()`, `forget(ssid)`, `autoConnect(ssid, on)`, `radio(on)`.
+- `connect(ssid, passphrase?, { hidden }?)`, `disconnect()`, `forget(ssid)`, `autoConnect(ssid, on)`, `radio(on)`. `hidden`: Manually connect's "Connect even if the network is not broadcasting" (DreamOS: iwd ConnectHiddenNetwork).
+- Instant Hotspot (DreamOS, optional): `hotspot()`, `onHotspot(fn)`, `hotspotConnect()`, `hotspotDisconnect()`. See [instant-hotspot.md](instant-hotspot.md).
 - Planned for mobile: `mobileData(on)`. The UI hides the switch when the provider lacks it.
 - `can()` (optional) returns `{ connect, disconnect, forget, radio, scan }`. A `false` disables that action in the Wi-Fi
   windows, as Vista greys out what an adapter does not support. When `can()` is missing, every action the provider has is allowed.

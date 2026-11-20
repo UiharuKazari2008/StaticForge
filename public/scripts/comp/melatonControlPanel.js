@@ -1994,6 +1994,8 @@
             // the wireless adapter switched off: Turn this on (pnidui 33) / Network Connections
             else if (action === 'wifi-on' && root.dreamosWifi && root.dreamosWifi.setRadio) void root.dreamosWifi.setRadio(true);
             else if (action === 'ncpa' && root.dreamosWifi && root.dreamosWifi.openConnections) root.dreamosWifi.openConnections();
+            // Instant Hotspot (#910): the phone's hotspot, asked for and joined by the CaféReady host
+            else if (action === 'hotspot' && root.dreamosWifi) root.dreamosWifi.openConnect();
         });
         doc.body.appendChild(flyout);
         // Outside click / Escape closes it, like Vista's flyouts
@@ -2039,6 +2041,15 @@
             </div>`;
     }
 
+    /** Instant Hotspot (#910): the bonded phone the host has a link with, and whether this computer is on its hotspot. */
+    function hotspotPhone() {
+        const h = root.melatonTray && root.melatonTray.provider('network');
+        let v = null;
+        try { v = h && typeof h.hotspot === 'function' ? h.hotspot() : null; } catch (_) { v = null; }
+        const p = v && Array.isArray(v.phones) ? v.phones.find((x) => x && x.enabled !== false && (x.linked || x.state === 'connected')) : null;
+        return p || null;
+    }
+
     /** DreamOS (#932): the laptop's own link from the CaféReady host (dreamosNetTray.js), Wi-Fi with its signal. */
     function dreamosFlyoutHtml(l) {
         const wifiUi = root.dreamosWifi && typeof root.dreamosWifi.openConnect === 'function';
@@ -2048,6 +2059,8 @@
         // Vista's flyout shows the network's location icon (pnidui.dll 0 house = Private, 1 bench = Public: the same
         // choice as the Network and Server Center's map, #945), or 19 with nothing connected
         const pic = l.kind === 'none' ? '/static_images/vista-net/pnidui-19-32.png' : `/static_images/vista-net/${locationArt(l)}-32.png`;
+        const phone = hotspotPhone();
+        const onHotspot = !!(phone && phone.state === 'connected' && l.kind === 'wifi' && (!phone.ssid || phone.ssid === l.name));
         const item = l.kind === 'none'
             ? `<div class="network-flyout-item">
                     <img src="${pic}" alt="" draggable="false">
@@ -2056,6 +2069,8 @@
                         ${radioOff ? `<span class="network-flyout-sub">Do you want to turn on Wireless Network Connection?</span>
                         <button type="button" class="network-flyout-link network-flyout-turnon" data-flyout-action="wifi-on">Turn this on</button>` : ''}
                         ${l.available && !l.connecting ? '<span class="network-flyout-sub">Wireless networks are available.</span>' : ''}
+                        ${phone && phone.data && wifiUi ? `<span class="network-flyout-sub">${esc(phone.name)} can share its mobile data (Instant Hotspot).</span>
+                        <button type="button" class="network-flyout-link network-flyout-turnon" data-flyout-action="hotspot">Connect to ${esc(phone.name)}</button>` : ''}
                     </div>
                 </div>`
             : `<div class="network-flyout-item">
@@ -2063,6 +2078,7 @@
                     <div class="network-flyout-text">
                         <span class="network-flyout-name">${esc(l.name)}</span>
                         <span class="network-flyout-sub">Access: ${esc(l.access)}</span>
+                        ${onHotspot ? `<span class="network-flyout-sub">Instant Hotspot: mobile data (metered)${phone.battery != null ? `, battery ${esc(phone.battery)}%` : ''}</span>` : ''}
                         ${l.kind === 'wifi' ? `<span class="network-flyout-sub">Signal strength:  ${esc(l.strength)}</span>` : ''}
                     </div>
                     ${l.kind === 'wifi' ? `<img class="network-flyout-bars" src="/static_images/vista-net/tray-wifi-${l.bars}-16.png" srcset="/static_images/vista-net/tray-wifi-${l.bars}-32.png 2x" alt="" width="16" height="16" draggable="false">` : ''}

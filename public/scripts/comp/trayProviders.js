@@ -87,9 +87,16 @@
             get: () => n.get(),
             subscribe: evt('dreamosnet', (d) => d),
             onScan: evt('dreamosnetscan', (d) => d),
-            networks: () => n.networks(), scan: () => n.scan(), connect: (s, p) => n.connect(s, p),
+            networks: () => n.networks(), scan: () => n.scan(), connect: (s, p, o) => n.connect(s, p, o),
             disconnect: () => n.disconnect(), forget: (s) => n.forget(s), autoConnect: (s, on) => n.autoConnect(s, on),
-            radio: (on) => n.radio(on)
+            radio: (on) => n.radio(on),
+            // Instant Hotspot (cafeready hotspot.rs, docs/client-api/instant-hotspot.md): a bonded phone's hotspot
+            ...(root.DreamOSHotspot && typeof root.DreamOSHotspot.get === 'function' ? {
+                hotspot: () => root.DreamOSHotspot.get(),
+                onHotspot: evt('dreamoshotspot', (d) => d),
+                hotspotConnect: () => root.DreamOSHotspot.connect(),
+                hotspotDisconnect: () => root.DreamOSHotspot.disconnect()
+            } : {})
         });
     }
     if (root.DreamOSBluetooth && typeof root.DreamOSBluetooth.get === 'function') {
