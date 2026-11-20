@@ -24,6 +24,26 @@
     const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
     const hhmm = (ms) => { const d = new Date(ms); return `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')} ${d.getHours() < 12 ? 'AM' : 'PM'}`; };
 
+    /**
+     * Whether the phone itself is online, from its own readings (sys): false with Flight Mode or no Wi-Fi and no mobile
+     * data, true with either, null when the app sent none (Yukimi, Nov 20 2026: say the real issue, not "no internet").
+     */
+    function nsOnline(n) {
+        const s = n && n.sys;
+        if (!s) return null;
+        if (s.airplane) return false;
+        const w = s.wifi;
+        const c = s.cell;
+        if (!w && !c) return null;
+        return !!((w && w.connected) || (c && /^connected/i.test(String(c.state || ''))));
+    }
+    const nsDown = (n) => {
+        const on = nsOnline(n);
+        if (on === false) return 'No Internet access.';
+        if (on) return 'Cannot connect to the Nightshade server.';
+        return 'Not connected.';
+    };
+
     const builders = {
         // the "..." group: the app's own tray of waiting notices and folded icons (MelatonBars.showNoticeTray); this is
         // its popup when neither is there
@@ -93,7 +113,7 @@
             return pop('continuity', 'Continuity PC', [text(n.dex ? (n.dexReady === false ? 'The DeX window is starting.' : 'This phone carries the DeX window.') : 'No DeX window.')]);
         },
         nightshade(f, n) {
-            return pop('nightshade', 'Nightshade Network', [text(n.link === false ? 'Not connected. The phone shows what it last had.' : 'Connected.'), links(['Reconnect'])], ['Settings']);
+            return pop('nightshade', 'Nightshade Network', [text(n.link === false ? `${nsDown(n)} The phone shows what it last had.` : 'Connected.'), links(['Reconnect'])], ['Settings']);
         },
         // the phone's own icons, from what the app sends as their popup opens (sys)
         data(f, n) {
@@ -104,7 +124,7 @@
             if (w) sec.push({ t: 'pair', l: `Wi-Fi: ${w.on === false ? 'Power Off' : w.connected ? (w.ssid || 'Connected') : 'Disconnected'}`, lb: false, r: [], bars: w.connected && Number.isFinite(w.level) ? Math.max(0, Math.min(4, w.level)) : null, first: true });
             const c = s.cell;
             if (c) sec.push({ t: 'pair', l: `Mobile Broadband: ${c.state || 'Available'}`, lb: false, r: c.type ? [{ s: c.type, b: true }] : [], bars: Number.isFinite(c.level) ? Math.max(0, Math.min(5, c.level)) : null, first: true });
-            if (n.link === false) sec.push(text('Nightshade: Unavailable'));
+            if (n.link === false) sec.push(text(`Nightshade: ${nsOnline(n) === false ? 'No Internet access' : nsOnline(n) ? 'Cannot connect to the server' : 'Not connected'}`));
             return pop('data', 'Connectivity', sec, ['Settings']);
         // the notification standard (wmShell noteSoftKeys, Yukimi Nov 20 2026): what can be done is Install Now | Later,
         // never a link; Install Now is done in Melaton (its updater: Restart Now when the restart installs them), Later

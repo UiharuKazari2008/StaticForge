@@ -3166,12 +3166,19 @@
     const DC_NOTICE_MS = 10000;
     // Nightshade Network (#895): Yukimi's wording for the service being out of reach
     const DC_NOTICE_TEXT = 'The Nightshade Network is unavailable right now. Some features and services may not be accessible at this time.';
-    const NIGHTSHADE_STATUS = { connected: 'Connected', connecting: 'Connecting...', restarting: 'Restarting', 'signed-out': 'Sign-in required', off: 'Disconnected', 'no-internet': 'No internet connection', unavailable: 'Unavailable' };
+    // (Yukimi, Nov 20 2026) the real issue, never one word for all: no Internet on the phone, the Internet up but the
+    // server out of reach, the server answering but Dreamscape restarting (websocket.js nightshadeState tells them apart)
+    const NIGHTSHADE_STATUS = { connected: 'Connected', connecting: 'Connecting...', restarting: 'Services not available', 'signed-out': 'Sign-in required', off: 'Disconnected', 'no-internet': 'No Internet access', unavailable: 'Cannot connect to the server' };
     const NIGHTSHADE_PROBLEM = {
-        unavailable: DC_NOTICE_TEXT,
-        restarting: 'The Nightshade Network is restarting. Some features and services may not be accessible for a moment.',
-        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.',
+        unavailable: 'Cannot connect to the Nightshade server. The phone is online, but the server does not answer. Nightshade will keep trying.',
+        restarting: 'Nightshade services are not available at this time. The server is restarting; some features and services may not be accessible until it is ready.',
+        'no-internet': 'No Internet access. Nightshade connects again as soon as the phone is back online.',
         'signed-out': 'Sign in to Nightshade Network to get your mail, messages and programs.'
+    };
+    /** What is wrong with the service now, in its own words (the generic line while nothing says which). */
+    const nightshadeProblemText = () => {
+        const ns = nightshadeNow(window.wsClient);
+        return (ns && NIGHTSHADE_PROBLEM[ns.service]) || DC_NOTICE_TEXT;
     };
     /**
      * Sign in to the Nightshade Network (#899): never a box over the phone, this only when asked (the
@@ -3220,7 +3227,7 @@
         if (dcNote || !shell) return;
         const ws = window.wsClient;
         if (ws && typeof ws.isConnected === 'function' && ws.isConnected()) return;
-        dcNote = appNote({ title: 'Nightshade Network', html: escapeHtml(DC_NOTICE_TEXT), event: 'disconnect', icon: 'status-nightshade' });
+        dcNote = appNote({ title: 'Nightshade Network', html: escapeHtml(nightshadeProblemText()), event: 'disconnect', icon: 'status-nightshade' });
     }
 
     function dcNoticeCheck(ws, connected) {
@@ -5659,7 +5666,7 @@
         // Nightshade Network (#895): the service out of reach, in its own words
         return messageBox({
             title: 'Nightshade Network',
-            text: DC_NOTICE_TEXT,
+            text: nightshadeProblemText(),
             icon: 'error',
             buttons: [{ text: 'Retry', value: 'retry', default: true }, { text: 'Abort', value: 'abort' }],
             cancelValue: 'abort',

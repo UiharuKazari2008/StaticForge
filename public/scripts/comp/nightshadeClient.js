@@ -7,7 +7,8 @@
  * Nightshade Network (mmcServerManager.js).
  *
  * Loaded with the desktop (app.html), not on demand: it must open while the server is out of reach.
- * State: websocket.js nightshadeState() and its 'nightshade:state' event; the time connected ticks
+ * State: websocket.js nightshadeState() and its 'nightshade:state' event (no Internet / cannot connect to the server /
+ * services not available are told apart there, from real signals); the time connected ticks
  * on a local clock while the window shows (no request).
  *
  *   window.nightshadeClient.open()              the window (one instance)
@@ -18,6 +19,7 @@
     'use strict';
 
     const doc = root.document;
+    const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
     const TITLE = 'Nightshade Network Client';
     const VI = '/static_images/vista-icons';
     const ICON16 = `${VI}/nightshade-16.png`;
@@ -27,23 +29,55 @@
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+    // the window's own status line: the long form of websocket.js NIGHTSHADE_STATUS_TEXT (the tray tooltip's)
     const STATUS = {
         connected: 'Connected',
         connecting: 'Connecting...',
-        restarting: 'Restarting',
+        restarting: 'Nightshade services are not available at this time',
         'signed-out': 'Sign-in required',
         off: 'Disconnected',
-        'no-internet': 'No internet connection',
-        unavailable: 'Unavailable'
+        'no-internet': 'No Internet access',
+        unavailable: 'Cannot connect to the Nightshade server'
     };
     const NOTE = {
         connecting: 'Connecting to the Nightshade Network. This usually takes a few seconds.',
-        restarting: 'The Nightshade Network is restarting. Some features and services may not be accessible for a moment.',
-        unavailable: 'The Nightshade Network is unavailable right now. Some features and services may not be accessible at this time.',
-        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.',
+        restarting: 'The Nightshade server is restarting. Some features and services may not be accessible until it is ready; Nightshade connects again by itself.',
+        unavailable: 'The Internet connection is working, but the Nightshade server does not answer. Nightshade will keep trying.',
+        'no-internet': 'This computer cannot reach the Internet. Nightshade connects again as soon as the Internet connection is back.',
         'signed-out': 'Sign in to Nightshade Network to get your mail, messages and programs.',
         off: 'You disconnected from the Nightshade Network. Your mail, messages, prints and most programs are not available until you connect again.'
     };
+
+    /**
+     * The second line of a failure: what was actually seen (Yukimi, Nov 20 2026: say the real issue). From the state's
+     * reach / reachDetail (websocket.js _noteNightshadeReach), the server's own boot stage, the host's network.
+     */
+    function detail(s) {
+        const d = s.reachDetail;
+        if (s.service === 'restarting') {
+            const st = client() && client().lastServerStartupStatus;
+            if (st && st.isReady === false && st.stageMessage) {
+                return `Server status: ${String(st.stageMessage).replace(/[.…]+$/, '')}${Number.isFinite(st.progressPercent) ? ` (${Math.round(st.progressPercent)}%)` : ''}.`;
+            }
+            if (/^5\d\d$/.test(String(d || ''))) return `The server's gateway answered, but Dreamscape is not running behind it (error ${d}).`;
+            if (d === '1012' || d === '1001' || d === '1013') return 'The server closed the connection to restart.';
+            return '';
+        }
+        if (s.service === 'unavailable') {
+            if (d === 'timeout') return 'The server did not answer in time.';
+            if (d === 'network') return 'A connection to the server could not be made.';
+            if (/^\d{3}$/.test(String(d || ''))) return `The server refused the connection (error ${d}).`;
+            return '';
+        }
+        if (s.service === 'no-internet') {
+            let l = null;
+            try { l = root.dreamosNetTray && root.dreamosNetTray.look(); } catch (_) { l = null; }
+            if (l && l.kind !== 'none' && l.name) return `${l.name} is connected, but has no Internet access.`;
+            if (l && l.kind === 'none') return 'This computer is not connected to a network.';
+            return s.internet === 'offline' ? 'This computer is not connected to a network.' : 'The network is connected, but has no Internet access.';
+        }
+        return '';
+    }
 
     function client() { return root.wsClient || null; }
 
@@ -59,7 +93,10 @@
      * (Yukimi, #945): red not connected, yellow connected but slow (300 ms or more) or still connecting, green all good.
      */
     function quality(s) {
-        if (s.service === 'connecting' || s.service === 'restarting') return ['yellow', STATUS[s.service]];
+        // (Nov 20) restarting is amber, as a VPN client's "reconnecting": the server answers and comes back by itself;
+        // no Internet and no server are red, they need something fixed
+        if (s.service === 'connecting') return ['yellow', 'Connecting...'];
+        if (s.service === 'restarting') return ['yellow', 'Not available (server restarting)'];
         if (s.service !== 'connected') return ['red', 'Not connected'];
         const rtt = s.rtt;
         if (rtt == null) return ['green', 'Good'];
@@ -185,6 +222,7 @@
                     <div class="nsc-head-text">
                         <div class="nsc-name">Nightshade Network</div>
                         <div class="nsc-status" data-f="status"></div>
+                        <div class="nsc-detail" data-f="detail"></div>
                     </div>
                     <span class="nsc-light" data-f="light" data-lit="red" role="img" aria-label="Connection quality"></span>
                 </div>
@@ -231,7 +269,10 @@
         const s = state();
         const f = (k) => win.querySelector(`[data-f="${k}"]`);
         const connected = s.service === 'connected';
-        setText(f('status'), connected && s.cafeReady ? 'Connected (with CaféReady)' : STATUS[s.service] || 'Unavailable');
+        setText(f('status'), connected && s.cafeReady ? 'Connected (with CaféReady)' : STATUS[s.service] || STATUS.unavailable);
+        const why = detail(s);
+        setText(f('detail'), why);
+        f('detail').hidden = !why;
         win.dataset.nscState = s.service;
         win.classList.toggle('nsc-problem', !!s.problem);
         const [lit, word] = quality(s);
@@ -249,11 +290,12 @@
         setText(f('note'), note);
         f('note').hidden = !note;
         f('cafe-logo').hidden = !s.cafeReady;
-        // the footer's first button: Connect / Sign In while down, none while connected or dialing
+        // the footer's first button: Connect / Sign In while down, none while connected or dialing, nor while the server
+        // restarts (it connects again by itself as soon as the server is ready; the phone's bubble offers none either)
         const btn = win.querySelector('.nsc-footer [data-act="connect"]');
         const label = s.service === 'signed-out' ? 'Sign In' : 'Connect';
         setText(btn, label);
-        btn.hidden = connected || s.service === 'connecting';
+        btn.hidden = connected || s.service === 'connecting' || s.service === 'restarting';
         const primary = btn.hidden ? win.querySelector('.nsc-footer [data-act="close"]') : btn;
         win.querySelectorAll('.nsc-footer [data-dialog-primary]').forEach((b) => { if (b !== primary) b.removeAttribute('data-dialog-primary'); });
         primary.setAttribute('data-dialog-primary', '1');
@@ -303,7 +345,7 @@
         Promise.resolve(call('closeModal', m)).finally(() => setTimeout(() => m.remove(), 300));
     }
 
-    root.addEventListener('nightshade:state', paint);
+    root.addEventListener('nightshade:state', paint, { signal: appScopeSignal });
 
     // ---- the tray icon's menu ---------------------------------------------------------------------
 
@@ -329,6 +371,6 @@
         });
     }
 
-    root.nightshadeClient = { open, close, attachTrayMenu, _state: state, _quality: quality };
+    root.nightshadeClient = { open, close, attachTrayMenu, _state: state, _quality: quality, _detail: detail };
     root.openNightshadeClient = open;
 })(typeof window !== 'undefined' ? window : globalThis);

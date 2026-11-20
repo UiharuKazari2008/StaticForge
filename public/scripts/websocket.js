@@ -865,18 +865,24 @@ class WebSocketClient {
     static NIGHTSHADE_STATUS_TEXT = {
         connected: 'Connected',
         connecting: 'Connecting...',
-        restarting: 'Restarting',
+        restarting: 'Services not available',
         'signed-out': 'Sign-in required',
         off: 'Disconnected',
-        'no-internet': 'No internet connection',
-        unavailable: 'Unavailable'
+        'no-internet': 'No Internet access',
+        unavailable: 'Cannot connect to the server'
     };
+    // (Yukimi, Nov 20 2026) the three ways it can be down, each from its own signal (nightshadeState): no Internet on
+    // this device, the Internet up but the server out of reach, the server answering but Dreamscape not up yet
     static NIGHTSHADE_PROBLEM_TEXT = {
-        unavailable: 'The Nightshade Network is unavailable right now. Some features and services may not be accessible at this time.',
-        restarting: 'The Nightshade Network is restarting. Some features and services may not be accessible for a moment.',
-        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.',
+        unavailable: 'Cannot connect to the Nightshade server. The Internet connection is working, but the server does not answer. Nightshade will keep trying.',
+        restarting: 'Nightshade services are not available at this time. The server is restarting; Nightshade connects again as soon as it is ready.',
+        'no-internet': 'No Internet access. Nightshade connects again as soon as the Internet connection is back.',
         'signed-out': 'Sign in to Nightshade Network to get your mail, messages and programs.'
     };
+    // the reachability check when the server does not answer (Windows' NCSI does the same): a 204 from Google's check
+    // = the Internet works; one try per failure, at most once a minute (_nightshadeProbeInternet)
+    static NIGHTSHADE_PROBE_URL = 'https://www.gstatic.com/generate_204';
+    static NIGHTSHADE_PROBE_EVERY_MS = 60000;
     static NIGHTSHADE_BALLOON_MS = 5000; // a quiet reconnect inside this shows no balloon
     static OFFLINE_LOGON_AFTER_MS = 10000; // no server this long at boot: the offline logon (#899)
     static NIGHTSHADE_QUEUE_MAX = 64;
@@ -2071,23 +2077,34 @@ class WebSocketClient {
     /**
      * Nightshade Network (#895): the Dreamscape service's state apart from the real internet link.
      * internet: 'online' | 'offline' (the browser's own link, never the socket);
-     * service: 'connected' | 'connecting' | 'restarting' (the server answered but is still
-     * starting) | 'signed-out' (logon required) | 'off' (the user disconnected) | 'no-internet' |
-     * 'unavailable'. problem is true for restarting, no-internet and unavailable: the states the
-     * phone's status glyph and the desktop icon's red ! show. CaféReady: the Miniport carries the
-     * link (#815). Listen for 'nightshade:state' on window; it fires only when something changed.
+     * service: 'connected' | 'connecting' | 'restarting' (services not available: the server
+     * answered but Dreamscape is not up - /status not ready, a proxy's 5xx, a restart close code)
+     * | 'signed-out' (logon required) | 'off' (the user disconnected) | 'no-internet' (the device's
+     * own link is down, or the reachability check failed too) | 'unavailable' (cannot connect to the
+     * server: the Internet works, the server does not answer). Each failure keeps its name while
+     * the link retries (a real VPN client's "will keep trying"); 'connecting' is only a try with
+     * nothing wrong seen yet. problem is true for the failures and signed-out: the states the
+     * phone's status glyph and the desktop icon's red ! show. reach / reachDetail: what the last
+     * try found (_noteNightshadeReach). CaféReady: the Miniport carries the link (#815). Listen for
+     * 'nightshade:state' on window; it fires only when something changed.
      */
     nightshadeState() {
         const online = this._internetUp();
         const startup = this.lastServerStartupStatus;
+        const reach = this._nsReach || null;
+        const probe = this._nsProbe || null;
         let service;
         // signed out first (#899): a failed sign-in keeps the socket open, unauthenticated
         if (this.connectionPhase === 'auth' && (this.socketAuthenticated !== true || !this.isConnected())) service = 'signed-out';
         else if (this.isConnected()) service = 'connected';
         else if (!online) service = 'no-internet';
-        else if (startup && startup.isReady === false) service = 'restarting';
+        else if (this._userCancelledConnect && !this.isConnecting) service = 'off';
+        // the server did not answer and neither did the reachability check: the device has no Internet after all
+        else if (reach === 'unreachable' && probe && probe.ok === false) service = 'no-internet';
+        else if ((startup && startup.isReady === false) || reach === 'restarting') service = 'restarting';
+        // (until the first check answers, a plain retry)
+        else if (reach === 'unreachable' && probe && probe.ok === true) service = 'unavailable';
         else if (this.isConnecting || this.connectionPhase === 'dialing') service = 'connecting';
-        else if (this._userCancelledConnect) service = 'off';
         else service = 'unavailable';
         let cafeReady = false;
         try {
@@ -2103,6 +2120,8 @@ class WebSocketClient {
             // off because an administrator disconnected this client (Server Manager > Clients, #898)
             admin: service === 'off' && !!this._adminDisconnected,
             cafeReady,
+            reach: service === 'connected' ? null : reach,
+            reachDetail: service === 'connected' ? null : this._nsReachDetail || null,
             connectedAt: service === 'connected' ? (this.connectionStats && this.connectionStats.connectedAt) || null : null,
             rtt: Number.isFinite(this.currentRtt) ? Math.round(this.currentRtt) : null
         };
@@ -2116,6 +2135,60 @@ class WebSocketClient {
         const t = typeof window !== 'undefined' ? window.dreamosNetTray : null;
         try { if (t && typeof t.state === 'function' && t.state() && typeof t.internet === 'function') return t.internet(); } catch (_) { /* fall through */ }
         return typeof navigator === 'undefined' || navigator.onLine !== false;
+    }
+
+    /**
+     * What the last try to reach the server found (Yukimi, Nov 20 2026: "no internet" was shown for every outage):
+     * 'unreachable' (no answer: DNS, TLS, refused, timed out - the reachability check then tells no Internet from
+     * the server alone), 'restarting' (an answer from the proxy or the server, but no service: 5xx, a restart close
+     * code) or null (it answered). detail: the HTTP status, 'timeout', 'network' or the close code.
+     */
+    _noteNightshadeReach(kind, detail = null) {
+        if (kind === 'unreachable') this._nightshadeProbeInternet();
+        if (this._nsReach === kind && this._nsReachDetail === detail) return;
+        this._nsReach = kind;
+        this._nsReachDetail = detail;
+        this._updateModemTrayIcon();
+    }
+
+    /**
+     * Windows' NCSI check: does anything on the Internet answer? Two well-known no-content pages, no cookies, no
+     * referrer; once per failure and at most once a minute (the reconnect's own attempts call it, no timer). The
+     * answer is { ok, at, net } on this._nsProbe; going on / offline or a connection clears it, and an answer about
+     * another network is not reused.
+     */
+    _nightshadeProbeInternet() {
+        if (typeof fetch !== 'function') return;
+        // the network it was about (dreamosNetTray's look: Wi-Fi joined, the cable, mobile data); another one asks again
+        let net = '';
+        try { const l = window.dreamosNetTray && window.dreamosNetTray.look(); net = l ? `${l.kind}|${l.name}` : ''; } catch (_) { net = ''; }
+        const last = this._nsProbe && this._nsProbe.net === net ? this._nsProbe : null;
+        if (last && (last.pending || Date.now() - last.at < WebSocketClient.NIGHTSHADE_PROBE_EVERY_MS)) return;
+        const p = { pending: true, at: Date.now(), ok: last ? last.ok : null, net };
+        this._nsProbe = p;
+        const one = (url) => {
+            let signal;
+            try { signal = AbortSignal.timeout(5000); } catch (_) { signal = undefined; }
+            return fetch(url, { mode: 'no-cors', cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal });
+        };
+        const urls = [WebSocketClient.NIGHTSHADE_PROBE_URL, 'https://www.msftconnecttest.com/connecttest.txt'];
+        let left = urls.length;
+        let done = false;
+        const settle = (ok) => {
+            if (done || this._nsProbe !== p) return;
+            if (!ok && --left > 0) return;
+            done = true;
+            p.pending = false;
+            p.ok = ok;
+            p.at = Date.now();
+            this._updateModemTrayIcon();
+        };
+        urls.forEach((u) => one(u).then(() => settle(true), () => settle(false)));
+    }
+
+    /** The network changed or the link came up: the reachability answer was about the old one. */
+    _nightshadeResetProbe() {
+        this._nsProbe = null;
     }
 
     /** Fire 'nightshade:state' when the internet / service / CaféReady state moved (#895). */
@@ -4207,15 +4280,27 @@ class WebSocketClient {
     }
 
     async _fetchServerStartupStatus() {
-        const response = await fetch('/status', {
-            method: 'OPTIONS',
-            cache: 'no-cache',
-            signal: AbortSignal.timeout(WebSocketClient.TIMEOUT_VERSION_CHECK)
-        });
+        let response;
+        try {
+            response = await fetch('/status', {
+                method: 'OPTIONS',
+                cache: 'no-cache',
+                signal: AbortSignal.timeout(WebSocketClient.TIMEOUT_VERSION_CHECK)
+            });
+        } catch (error) {
+            // nothing answered (Nightshade: no Internet, or the server out of reach - the reachability check says which)
+            this._noteNightshadeReach('unreachable', error && error.name === 'TimeoutError' ? 'timeout' : 'network');
+            throw error;
+        }
         if (!response.ok) {
+            // the proxy's 502 / 503 / 504 with Dreamscape down behind it, or the server's own 503 while it starts:
+            // "services are not available at this time"; anything else (a 4xx) is a server that will not take us
+            this._noteNightshadeReach(response.status >= 500 ? 'restarting' : 'unreachable', String(response.status));
             return null;
         }
-        return response.json();
+        const data = await response.json();
+        this._noteNightshadeReach(null);
+        return data;
     }
 
     async pingHost() {
@@ -5058,12 +5143,13 @@ class WebSocketClient {
         });
 
         window.addEventListener('online', () => {
+            this._nightshadeResetProbe();
             this._updateModemTrayIcon();
             this._reconnectOnFocusRegain('online');
         });
         // Nightshade Network (#895): losing the internet is its own state, not "service unavailable";
         // the network icon follows the computer's link (_updateModemTrayIcon emits the state too)
-        window.addEventListener('offline', () => this._updateModemTrayIcon());
+        window.addEventListener('offline', () => { this._nightshadeResetProbe(); this._updateModemTrayIcon(); });
         // CaféReady (#895): the Miniport coming up or going down changes "Connected (with CaféReady)"
         // with no connection phase change (melatonContinuity.js loads after this file)
         const hookMiniport = () => {
@@ -5203,6 +5289,8 @@ class WebSocketClient {
                 if (connectEpoch !== this._connectEpoch || this.ws !== connectedSocket) return;
                 this._resetConnectingWatchdogDelay();
                 this._releaseConnectLock();
+                this._nightshadeResetProbe();
+                this._noteNightshadeReach(null);
                 this._missedPingCount = 0;
                 this._lastPongAt = Date.now();
 
@@ -5399,6 +5487,11 @@ class WebSocketClient {
                 }
                 this.connectionStats.connectedAt = null;
                 this._resetSocketAuthState();
+                // the server going down on purpose (1012 Service Restart, 1001 Going Away, 1013 Try Again Later):
+                // Nightshade's "services are not available at this time", not a lost link
+                if (!this.isManualClose && (event.code === 1012 || event.code === 1001 || event.code === 1013)) {
+                    this._noteNightshadeReach('restarting', String(event.code));
+                }
 
                 // Stop periodic pings when connection is closed
                 this.stopPeriodicPings();

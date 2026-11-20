@@ -47,6 +47,12 @@
     color: var(--text-primary);
 }
 
+/* what was actually seen when it is down (the Wi-Fi without Internet, the server's boot stage, the error) */
+.nsc-window .nsc-detail {
+    margin-top: 2px;
+    color: var(--text-muted);
+}
+
 /* the connection as a traffic light (#945): red not connected, yellow slow (high latency) or on its way,
    green all good. The signal head's art is the theme's (css/themes/vista/nightshade-client.css). */
 .nsc-window .nsc-light {
@@ -79,6 +85,7 @@
 }
 
 .nsc-window .nsc-note[hidden],
+.nsc-window .nsc-detail[hidden],
 .nsc-window .nsc-cafe[hidden],
 .nsc-window .nsc-footer [hidden] {
     display: none !important;

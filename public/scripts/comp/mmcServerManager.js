@@ -322,7 +322,7 @@
         const device = n && typeof n.miniportLabel === 'function' ? n.miniportLabel(i) : `${i.connectionType || 'WAN'} Miniport (${i.device || 'L-PPoP'})`;
         const st = (ws && ws.connectionStats) || {};
         const na = '<span class="mmc-hint">Not available</span>';
-        const words = { connected: 'Connected', connecting: 'Connecting', restarting: 'Restarting', 'signed-out': 'Logon required', off: 'Disconnected by the user', 'no-internet': 'No internet connection', unavailable: 'Unavailable' };
+        const words = { connected: 'Connected', connecting: 'Connecting', restarting: 'Services not available (restarting)', 'signed-out': 'Logon required', off: 'Disconnected by the user', 'no-internet': 'No Internet access', unavailable: 'Cannot connect to the server' };
         let latency = na;
         if (up && ws && Number.isFinite(ws.currentRtt)) {
             latency = `${Math.round(ws.currentRtt)} ms`;

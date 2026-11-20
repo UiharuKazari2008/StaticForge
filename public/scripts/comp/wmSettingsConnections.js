@@ -443,11 +443,12 @@
     // The service the Dreamscape link is: its own applet with the service's icon, as a deeply
     // integrated Windows service. Status from websocket.js nightshadeState.
 
-    const NS_STATUS = { connected: 'Connected', connecting: 'Connecting...', restarting: 'Restarting', 'signed-out': 'Sign-in required', off: 'Disconnected', 'no-internet': 'No internet connection', unavailable: 'Unavailable' };
+    // (Nov 20 2026) the real issue: no Internet, the server out of reach, or Dreamscape restarting (wmShell's words)
+    const NS_STATUS = { connected: 'Connected', connecting: 'Connecting...', restarting: 'Services not available', 'signed-out': 'Sign-in required', off: 'Disconnected', 'no-internet': 'No Internet access', unavailable: 'Cannot connect to the server' };
     const NS_PROBLEM = {
-        unavailable: 'The Nightshade Network is unavailable right now. Some features and services may not be accessible at this time.',
-        restarting: 'The Nightshade Network is restarting. Some features and services may not be accessible for a moment.',
-        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.',
+        unavailable: 'Cannot connect to the Nightshade server. The phone is online, but the server does not answer. Nightshade will keep trying.',
+        restarting: 'Nightshade services are not available at this time. The server is restarting; some features and services may not be accessible until it is ready.',
+        'no-internet': 'No Internet access. Nightshade connects again as soon as the phone is back online.',
         'signed-out': 'Sign in to Nightshade Network to get your mail, messages and programs.'
     };
     function nsState() {
