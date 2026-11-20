@@ -1185,18 +1185,18 @@
         { id: 'lowFrequencyProtection', name: 'Low Frequency Protection', desc: 'Low Frequency Protection eliminates frequencies below a specified cutoff to reduce audio distortion', settings: 'Low Frequency Protection Settings' },
         { id: 'loudness', name: 'Loudness Equalization', desc: 'Loudness Equalization uses understanding of human hearing to reduce perceived volume differences.', settings: 'Loudness Equalization Settings' }
     ];
-    // the tuning a machine starts with (CaféReady speakers.rs defaults): the crossover where the Mac's two drivers meet
+    // the tuning a machine starts with (CaféReady speakers.rs defaults): Apple's crossover for the Mac's two pairs (Boot Camp's CS4208 APO, about 4 kHz)
     const FX_DEFAULTS = {
         disableAll: false,
-        bassManagement: { on: true, crossover: 1800, invert: false },
-        bassBoost: { on: true, frequency: 450, level: 12 },
-        lowFrequencyProtection: { on: true, cutoff: 120 },
+        bassManagement: { on: true, crossover: 4000, invert: false },
+        bassBoost: { on: false, frequency: 250, level: 6 },
+        lowFrequencyProtection: { on: true, cutoff: 150 },
         loudness: { on: false, release: 4 }
     };
-    const FX_CROSSOVER = [1000, 1200, 1500, 1800, 2000, 2500, 3000];
+    const FX_CROSSOVER = [1000, 1200, 1500, 1800, 2000, 2500, 3000, 3500, 4000, 4500];
     const FX_BOOST_FREQ = [100, 125, 150, 175, 200, 250, 300, 350, 400, 450, 500, 600];
     const FX_BOOST_LEVEL = [3, 6, 9, 12, 15];
-    const FX_CUTOFF = [50, 60, 70, 80, 90, 100, 120, 150, 200];
+    const FX_CUTOFF = [50, 60, 70, 80, 90, 100, 120, 150, 180, 200, 250];
 
     function fxClone(t) {
         const base = JSON.parse(JSON.stringify(FX_DEFAULTS));
