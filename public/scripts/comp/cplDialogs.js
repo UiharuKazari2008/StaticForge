@@ -710,7 +710,10 @@
             },
             async ok(ctx) {
                 const zone = ctx.get(122);
-                if (R()) await R().set(KEY.tz, { TimeZoneKeyName: zone === browserZone() ? null : zone, DynamicDaylightTimeDisabled: ctx.get(127) ? 0 : 1 });
+                // a zone already saved stays saved when it is chosen again (DreamOS hosts take the saved zone from the
+                // server, #910: clearing it would move them to the server's own zone)
+                const follow = zone === browserZone() && !reg(KEY.tz, 'TimeZoneKeyName', '');
+                if (R()) await R().set(KEY.tz, { TimeZoneKeyName: follow ? null : zone, DynamicDaylightTimeDisabled: ctx.get(127) ? 0 : 1 });
                 if (owner.store.zoneText) owner.store.zoneText();
                 // taskbarClock.js redraws in the new zone
                 if (root.taskbarClock && typeof root.taskbarClock.refresh === 'function') root.taskbarClock.refresh();

@@ -37,6 +37,11 @@ async function handleUpdateUserGlobalSettings(handlers, ws, message, clientInfo,
             cfg.userGlobalSettings = merged;
             return cfg;
         });
+        // Date and Time's zone: every DreamOS host's /etc/localtime follows it (melatonTimeZone.js, #910)
+        if (require('../../melatonTimeZone').touchesZone(settingsPatch)) {
+            const { changed } = require('../../melatonTimeZone');
+            setImmediate(() => { try { changed(); } catch (e) { console.warn('time zone push:', e.message); } });
+        }
         if (clientInfo && merged.autofillSearch) {
             clientInfo.autofillSearch = merged.autofillSearch;
         }
