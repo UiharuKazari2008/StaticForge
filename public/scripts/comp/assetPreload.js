@@ -37,6 +37,7 @@ var assetPreload = (function () {
 
     var LOGIN_TIMEOUT_MS = 15000;
     var STAGE_TIMEOUT_MS = 20000;
+    var OFFLINE_STAGE_MS = 1500; // a stage's wait on an offline boot (#910)
     var IMAGE_TIMEOUT_MS = 12000;
 
     // Banner and art that can be on screen at the logon, including the connecting dialog.
@@ -746,7 +747,10 @@ var assetPreload = (function () {
         return drawBootShortcuts().then(function () {
             var root = document.getElementById('desktopIcons');
             var imgs = root ? root.querySelectorAll('img') : [];
-            return whenSettled(decodeImages(imgs), STAGE_TIMEOUT_MS);
+            // an offline boot (#910): a picture the server cannot send is not waited for (a flaky link held this
+            // stage 12 s on the Mac); the icon fills in when it arrives
+            var offline = typeof wsClient !== 'undefined' && wsClient && wsClient._offlineBoot && !wsClient.isConnected();
+            return whenSettled(decodeImages(imgs), offline ? OFFLINE_STAGE_MS : STAGE_TIMEOUT_MS);
         }).catch(function (error) {
             console.warn('Desktop icon preload failed:', error);
             return false;

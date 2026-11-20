@@ -109,6 +109,13 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
                 throw new Error('WebSocket client not initialized');
             }
 
+            // an offline boot (#910): no wait for a server that is not there (a flaky link held the desktop 10 s
+            // here); the step runs again when the Nightshade Network is back
+            if (window.wsClient._offlineBoot && !window.wsClient.initializationCompleted && !window.wsClient.isConnected()) {
+                const err = new Error('Application data waits for the server');
+                err.code = 'NOT_CONNECTED';
+                throw err;
+            }
             // Wait for WebSocket connection to be established and stable if not currently connected
             if (!window.wsClient.isConnected() || window.wsClient.getConnectionState() !== 'connected') {
                 console.log(`⏳ [loadOptions] Waiting for WebSocket connection to stabilize (attempt ${attempt}/${maxRetries})...`);

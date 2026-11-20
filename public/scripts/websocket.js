@@ -888,6 +888,7 @@ class WebSocketClient {
     // the installed app: "Please wait..." while the server is tried this long, then the logon from the cached profile
     // (#910, Yukimi Nov 20 2026: the password box with nothing before it said nothing about what was going on)
     static INSTALLED_LOGON_GRACE_MS = 2000;
+    static OFFLINE_ART_WAIT_MS = 1500; // the Welcome screen's art on an offline boot (#910)
     static NIGHTSHADE_QUEUE_MAX = 64;
     // the user's own settings and desktop: written only by a desktop that loaded them from the server (_userSettingsWritable)
     static USER_SETTINGS_WRITES = new Set(['update_user_global_settings', 'workspace_update_settings', 'workspace_update_window_positions',
@@ -3302,7 +3303,11 @@ class WebSocketClient {
             // it, then it fades straight to the desktop (desktopBoot.js fadeOutWelcome). It is
             // invisible until its art has decoded: the stages wait for it (holdImage caps each
             // image at 12 s), or wallpaper, icons and taskbar show before the Welcome screen
-            await this._whenVistaLogonArtReady();
+            // an offline boot (#910): art the server cannot send (the account picture) is not waited for past a moment
+            const art = this._whenVistaLogonArtReady();
+            await (this._offlineBoot && !this.isConnected()
+                ? Promise.race([art, new Promise((r) => setTimeout(r, WebSocketClient.OFFLINE_ART_WAIT_MS))])
+                : art);
             if (!this._canCompletePreStartupHandoff()) return;
             this.preStartupHandoffCompleted = true;
             window.desktopBoot.begin({ welcome: true });
