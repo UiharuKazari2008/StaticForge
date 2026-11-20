@@ -279,10 +279,11 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         // Check if there are any options to display
         const hasOptions = options && options.length > 0;
 
-        // The caption's close button: a Windows message box always has it (Vista's MessageBox shows it with
-        // Yes / No as with OK / Cancel; it answers the cancel value). Only a box without buttons (a progress
-        // window) may leave it out (#970).
-        const showCloseButton = hasOptions || config.showCloseButton !== false;
+        // Check if there's a cancel button (typically the last button or one with value=null/false)
+        const hasCancelButton = hasOptions && options.some(option => option.value === null || option.value === false);
+
+        // Determine if we should show the close button
+        const showCloseButton = config.showCloseButton !== undefined ? config.showCloseButton : !hasCancelButton;
 
         // Update close button visibility
         const closeBtnElement = confirmationDialog.querySelector('.close-btn');
@@ -683,10 +684,11 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         // Check if there are any options to display
         const hasOptions = options && options.length > 0;
 
-        // The caption's close button: a Windows message box always has it (Vista's MessageBox shows it with
-        // Yes / No as with OK / Cancel; it answers the cancel value). Only a box without buttons (a progress
-        // window) may leave it out (#970).
-        const showCloseButton = hasOptions || config.showCloseButton !== false;
+        // Check if there's a cancel button (typically the last button or one with value=null/false)
+        const hasCancelButton = hasOptions && options.some(option => option.value === null || option.value === false);
+
+        // Determine if we should show the close button
+        const showCloseButton = config.showCloseButton !== undefined ? config.showCloseButton : !hasCancelButton;
 
         // Update close button visibility
         const inputCloseBtnElement = confirmationDialog.querySelector('.close-btn');

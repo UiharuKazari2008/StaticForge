@@ -10,11 +10,17 @@
    falls back to the client's own copy (local()), and Segoe UI then to Selawik, Microsoft's
    Segoe-metric open font (OFL, public/dist/fonts/selawik). After a logon on the page
    (connectionManager.js refreshVistaWebFontsAfterLogon) the faces that fell back are fetched again.
-   --font-system (app.css) is the shell's stack; the workspace font pickers list these too. */
+   --font-system (app.css) is the shell's stack; the workspace font pickers list these too.
+
+   Segoe UI, Tahoma and Microsoft Sans Serif are the -gdi files (scripts/build-vista-gdi-fonts.py): the same
+   outlines with GDI's advance widths at each pixel size on an 'opsz' axis that Chrome sets to the font size
+   (font-optical-sizing: auto), and no 'kern' table, so 12 px Segoe UI (9 pt) and 11 px Tahoma / Microsoft Sans
+   Serif (MS Shell Dlg 8) lay out to the VM's pixel; the outline widths ran up to 21 px wider on a dialog line and
+   wrapped a word early. Keep font-optical-sizing at auto and 'opsz' out of font-variation-settings on Vista text. */
 
 @font-face {
     font-family: 'Segoe UI';
-    src: url('/protected/fonts/vista/segoeui.woff2') format('woff2'),
+    src: url('/protected/fonts/vista/segoeui-gdi2.woff2') format('woff2'),
          local('Segoe UI'),
          local('SegoeUI'),
          url('/dist/fonts/selawik/selawk.woff2') format('woff2');
@@ -25,7 +31,7 @@
 
 @font-face {
     font-family: 'Segoe UI';
-    src: url('/protected/fonts/vista/segoeuib.woff2') format('woff2'),
+    src: url('/protected/fonts/vista/segoeuib-gdi2.woff2') format('woff2'),
          local('Segoe UI Bold'),
          local('SegoeUI-Bold'),
          url('/dist/fonts/selawik/selawkb.woff2') format('woff2');
@@ -36,7 +42,7 @@
 
 @font-face {
     font-family: 'Segoe UI';
-    src: url('/protected/fonts/vista/segoeuii.woff2') format('woff2'),
+    src: url('/protected/fonts/vista/segoeuii-gdi2.woff2') format('woff2'),
          local('Segoe UI Italic'),
          local('SegoeUI-Italic');
     font-weight: 400;
@@ -46,7 +52,7 @@
 
 @font-face {
     font-family: 'Segoe UI';
-    src: url('/protected/fonts/vista/segoeuiz.woff2') format('woff2'),
+    src: url('/protected/fonts/vista/segoeuiz-gdi2.woff2') format('woff2'),
          local('Segoe UI Bold Italic'),
          local('SegoeUI-BoldItalic');
     font-weight: 700;
@@ -79,7 +85,7 @@
 
 @font-face {
     font-family: 'Tahoma';
-    src: url('/protected/fonts/vista/tahoma.woff2') format('woff2'),
+    src: url('/protected/fonts/vista/tahoma-gdi2.woff2') format('woff2'),
          local('Tahoma');
     font-weight: 400;
     font-style: normal;
@@ -88,7 +94,7 @@
 
 @font-face {
     font-family: 'Tahoma';
-    src: url('/protected/fonts/vista/tahomabd.woff2') format('woff2'),
+    src: url('/protected/fonts/vista/tahomabd-gdi2.woff2') format('woff2'),
          local('Tahoma Bold'),
          local('Tahoma-Bold');
     font-weight: 700;
@@ -137,7 +143,7 @@
 
 @font-face {
     font-family: 'Microsoft Sans Serif';
-    src: url('/protected/fonts/vista/micross.woff2') format('woff2'),
+    src: url('/protected/fonts/vista/micross-gdi2.woff2') format('woff2'),
          local('Microsoft Sans Serif'),
          local('MicrosoftSansSerif');
     font-weight: 400;

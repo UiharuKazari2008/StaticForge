@@ -26,17 +26,13 @@
         box = doc.createElement('div');
         box.id = 'bootMessageBox';
         box.className = 'modal hidden on-top boot-dialog boot-message-box';
-        // a message box: no caption icon (modalUtils ensureModalApplicationIcon), the close button (#970)
-        box.dataset.captionIcon = 'none';
         box.setAttribute('role', 'alertdialog');
         box.setAttribute('aria-modal', 'true');
         box.innerHTML = `
             <div class="modal-window-title">
                 <div class="modal-window-title-main"><span class="boot-message-box-title"></span></div>
             </div>
-            <div class="modal-window-controls">
-                <button type="button" class="btn-danger close-btn btn-small" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
-            </div>
+            <div class="modal-window-controls"></div>
             <div class="modal-content boot-message-box-content">
                 <div class="boot-message-box-body">
                     <div class="boot-message-box-icon"></div>
@@ -48,12 +44,6 @@
                 <div class="boot-message-box-buttons"></div>
             </div>`;
         doc.body.appendChild(box);
-        // the caption's X answers as the cancel button, else the last one (Windows' MessageBox)
-        box.querySelector('.close-btn').addEventListener('click', () => {
-            if (!current) return;
-            const cancel = current.buttons.find((b) => b.cancel) || current.buttons[current.buttons.length - 1];
-            finish(cancel ? cancel.value : null);
-        });
         box.addEventListener('keydown', (ev) => {
             if (!current) return;
             if (ev.key === 'Escape') {
@@ -107,10 +97,6 @@
             if (typeof root.openModal === 'function') root.openModal(el);
             else el.classList.remove('hidden');
             if (typeof root.bringModalToFront === 'function') root.bringModalToFront(el);
-            // sized to its text: a whole pixel, or the frame's right edge blurs
-            el.style.width = '';
-            const w = parseFloat(getComputedStyle(el).width);
-            if (w > 0 && w % 1) el.style.width = `${Math.ceil(w)}px`;
             if (defaultButton) setTimeout(() => defaultButton.focus(), 0);
         });
     }

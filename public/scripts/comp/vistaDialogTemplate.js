@@ -81,12 +81,24 @@
         }).join('');
     }
 
+    // A template's font as Vista draws it at 96 dpi, lines GDI's tmHeight apart. "MS Shell Dlg" is Microsoft Sans Serif
+    // (FontSubstitutes); a template with DS_SHELLFONT (DS_SETFONT | DS_FIXEDSYS) gets "MS Shell Dlg 2", Tahoma - the
+    // VM's Mouse and Folder Options pages are Microsoft Sans Serif, Internet Options' and Taskbar's Tahoma. A template
+    // of a program's own with no style keeps Tahoma.
     function units(tpl) {
         const face = (tpl.f && tpl.f[0]) || 'MS Shell Dlg';
         const pt = (tpl.f && tpl.f[1]) || 8;
-        if (/segoe/i.test(face) && pt >= 9) return { xu: 7, yu: 15, font: '12px "Segoe UI", Tahoma, sans-serif', segoe: true };
-        if (/segoe/i.test(face)) return { xu: 6, yu: 13, font: '11px "Segoe UI", Tahoma, sans-serif', segoe: true };
-        return { xu: 6, yu: 13, font: '11px Tahoma, "Segoe UI", sans-serif', segoe: false };
+        if (/segoe/i.test(face) && pt >= 9) return { xu: 7, yu: 15, font: '12px/15px "Segoe UI", Tahoma, sans-serif', segoe: true };
+        if (/segoe/i.test(face)) return { xu: 6, yu: 13, font: '11px/13px "Segoe UI", Tahoma, sans-serif', segoe: true };
+        if (/^ms shell dlg$/i.test(face) && tpl.s != null && ((tpl.s >>> 0) & 0x48) !== 0x48) {
+            return { xu: 6, yu: 13, font: '11px/13px "Microsoft Sans Serif", Tahoma, sans-serif', segoe: false, sans: true };
+        }
+        return { xu: 6, yu: 13, font: '11px/13px Tahoma, "Segoe UI", sans-serif', segoe: false };
+    }
+
+    /** The class that gives a page (or a client) its template's font over the sheet's 11 px Tahoma rule. */
+    function fontClass(u) {
+        return u.segoe ? 'vdt-font-segoe' : u.sans ? 'vdt-font-sans' : '';
     }
 
     function px(u, v, axis) {
@@ -1030,19 +1042,19 @@
     const TAB_ROW = 18;
     let measureCtx = null;
 
-    /** A tab's width at Tahoma 11 px: the label plus the 4 + 5 px padding and two borders. */
-    function tabWidth(text) {
+    /** A tab's width in the sheet's font (11 px Tahoma or Microsoft Sans Serif): the label plus the 4 + 5 px padding and two borders. */
+    function tabWidth(text, font) {
         if (!measureCtx) measureCtx = doc.createElement('canvas').getContext('2d');
-        measureCtx.font = '11px Tahoma';
+        measureCtx.font = font || '11px Tahoma';
         return Math.ceil(measureCtx.measureText(String(text).replace(/&(.)/g, '$1')).width) + 11;
     }
 
     /** Tab indexes per row, top row first, each row filled in order to the row width. */
-    function tabRows(titles, width) {
+    function tabRows(titles, width, font) {
         const rows = [[]];
         let used = 0;
         titles.forEach((t, i) => {
-            const w = tabWidth(t);
+            const w = tabWidth(t, font);
             if (used + w > width && rows[rows.length - 1].length) { rows.push([]); used = 0; }
             rows[rows.length - 1].push({ i, w });
             used += w;
@@ -1365,7 +1377,13 @@
         const minH = opts.noMinSize ? 0 : px(shell, 188, 'y');
         const pw = Math.max(minW, ...pages.map((p) => size(p.tpl).width));
         const ph = Math.max(minH, ...pages.map((p) => size(p.tpl).height));
-        const rows = tabRows(pages.map((p) => p.title || p.tpl.t), pw + 2);
+        // comctl32 draws the sheet (tabs, OK / Cancel / Apply) and every MS Shell Dlg page in the first page's MS Shell
+        // Dlg - Microsoft Sans Serif or Tahoma, see units() - and Segoe UI pages in their own font; a sheet whose first
+        // page is Segoe UI has MS Shell Dlg 2 tabs and buttons (the VM's Date and Time: SysTabControl32 and the buttons
+        // MS Shell Dlg 2 -11, the pages' controls Segoe UI -12)
+        const frame = u.segoe ? units({ f: ['MS Shell Dlg 2', 8] }) : u;
+        const pageUnits = (p) => { const pu = units(p.tpl); return pu.segoe ? pu : frame; };
+        const rows = tabRows(pages.map((p) => p.title || p.tpl.t), pw + 2, frame.font);
         const extra = (rows.length - 1) * TAB_ROW;
         const cw = pw + 20;
         const ch = ph + 69 + extra;
@@ -1373,13 +1391,14 @@
         const { modal, content } = makeWindow(opts.id, opts.title, { icon: opts.icon, captionIcon: !!opts.captionIcon, bareCaption: !!opts.bareCaption, segoe: u.segoe, help: opts.help });
         content.style.width = `${cw}px`;
         content.style.height = `${ch}px`;
-        content.style.font = u.font;
+        content.style.font = frame.font;
+        if (fontClass(frame)) content.classList.add(fontClass(frame));
         // without Apply, OK and Cancel move right into its place
         const bx = cw - 6 - 75 + (opts.noApply ? 81 : 0);
         content.innerHTML = `
             <div class="tbp-tabs" role="tablist">${pages.map((p) => `<button type="button" class="tbp-tab" role="tab" data-vdt-tab="${esc(p.key)}">${label(p.title || p.tpl.t)}</button>`).join('')}</div>
             <div class="tbp-pane" style="width:${pw + 6}px;height:${ph + 5}px;${extra ? `top:${27 + extra}px;` : ''}">
-                ${pages.map((p) => `<div class="tbp-page vdt-page" role="tabpanel" data-vdt-page="${esc(p.key)}" hidden>${renderControls(p.tpl, `${opts.id}-${p.key.replace(/[^a-z0-9]/gi, '_')}`, { overrides: p.overrides, module: p.key.split(':')[0] })}</div>`).join('')}
+                ${pages.map((p) => `<div class="tbp-page vdt-page ${fontClass(pageUnits(p))}" style="font:${pageUnits(p).font.replace(/"/g, "'")}" role="tabpanel" data-vdt-page="${esc(p.key)}" hidden>${renderControls(p.tpl, `${opts.id}-${p.key.replace(/[^a-z0-9]/gi, '_')}`, { overrides: p.overrides, module: p.key.split(':')[0] })}</div>`).join('')}
             </div>
             <button type="button" class="tbp-ctl tbp-button tbp-footer-button vdt-footer" style="left:${bx - 162 + 1}px;top:${ch - 29}px;" data-vdt-action="ok" data-dialog-primary="1">OK</button>
             <button type="button" class="tbp-ctl tbp-button tbp-footer-button vdt-footer" style="left:${bx - 81 + 1}px;top:${ch - 29}px;" data-vdt-action="cancel">Cancel</button>
@@ -1440,6 +1459,7 @@
         // bareCaption: no caption icon at all, as Vista draws most dialogs
         const { modal, content } = makeWindow(opts.id, opts.title || tpl.t, { icon: opts.icon, captionIcon: !!opts.captionIcon, bareCaption: !!opts.bareCaption, segoe: u.segoe, help: opts.help });
         content.classList.add('vdt-plain');
+        if (fontClass(u)) content.classList.add(fontClass(u));
         content.style.width = `${sz.width}px`;
         content.style.height = `${sz.height}px`;
         content.style.font = u.font;
@@ -1513,6 +1533,7 @@
         // the VM's: the page 56 px down, 40 px of footer and room under the page
         content.style.height = `${ph + 120}px`;
         content.style.font = u.font;
+        if (fontClass(u)) content.classList.add(fontClass(u));
         content.innerHTML = pages.map((p) => `<div class="vdt-wizard-page" data-vdt-page="${esc(p.key)}" hidden>
                 <div class="vdt-wizard-instruction">${esc(p.instruction || opts.title || '')}</div>
                 <div class="vdt-wizard-body">${renderControls(p.tpl, `${opts.id}-${p.key.replace(/[^a-z0-9]/gi, '_')}`, { overrides: p.overrides, module: p.key.split(':')[0] })}</div>

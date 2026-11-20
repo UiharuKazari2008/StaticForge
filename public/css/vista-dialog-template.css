@@ -8,8 +8,33 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
     position: relative;
 }
 
-.vdt-client.vdt-segoe :is(button, input, select, label, span, div, textarea) {
+/* A template's own font (vistaDialogTemplate.js units() / fontClass(), measured on the VM with WM_GETFONT): Segoe UI
+   9 pt is 12 px on 15 px lines (Date and Time, Regional and Language Options, Contacts, User Accounts, People Near Me,
+   Presentation Settings), 8 pt 11 px; "MS Shell Dlg" without DS_SHELLFONT is Microsoft Sans Serif 11 px (Mouse, Folder
+   Options, Device Manager's General). The class sits on the page, or on the client when the whole window is in that
+   font; the property sheet rule in taskbar-properties.css would set every control to 11 px Tahoma. A sheet whose
+   first page is Segoe UI keeps Tahoma tabs and OK / Cancel / Apply, as on the VM. */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.vdt-client:is(.vdt-font-segoe, .vdt-font-sans) :is(button, input, select, label, span, div, textarea):not(.tbp-preview *),
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.vdt-client :is(.vdt-font-segoe, .vdt-font-sans) :is(button, input, select, label, span, div, textarea):not(.tbp-preview *) {
+    font-family: inherit;
+    font-size: inherit;
+}
+
+/* ... and its lines are the font's GDI tmHeight apart (15 px for Segoe UI 9 pt: Date and Time's two-line Daylight
+   Saving Time note), not the 13 px the sheet rules give statics, check boxes, group boxes and links */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.vdt-client:is(.vdt-font-segoe, .vdt-font-sans) :is(.tbp-static, .tbp-check label, .tbp-group-label, .tbp-link-row, .tbp-tree-row label),
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.vdt-client :is(.vdt-font-segoe, .vdt-font-sans) :is(.tbp-static, .tbp-check label, .tbp-group-label, .tbp-link-row, .tbp-tree-row label) {
+    line-height: inherit;
+}
+
+.vdt-client.vdt-font-segoe :is(button, input, select, label, span, div, textarea),
+.vdt-client .vdt-font-segoe :is(button, input, select, label, span, div, textarea) {
     font-family: "Segoe UI", Tahoma, sans-serif !important;
+}
+
+.vdt-client.vdt-font-sans :is(button, input, select, label, span, div, textarea),
+.vdt-client .vdt-font-sans :is(button, input, select, label, span, div, textarea) {
+    font-family: "Microsoft Sans Serif", Tahoma, sans-serif !important;
 }
 
 .vdt-client .vdt-plain-page {
