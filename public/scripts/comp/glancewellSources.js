@@ -180,15 +180,17 @@
          * update_reference_metadata replaces the whole row (referenceMetadataDatabase.setMetadata), so the
          * reference's other fields go back with it; the store's own markers (precisionReference) stay.
          */
-        async saveMeta(item, { tags, comment }) {
+        async saveMeta(item, { tags, comment, displayName }) {
             const md = Object.assign({}, (item.raw && item.raw.metadata) || {});
             const internal = (Array.isArray(md.tags) ? md.tags : []).filter((t) => REF_INTERNAL_TAG.test(t));
             if (tags) md.tags = internal.concat(tags);
             if (comment != null) md.comment = comment || null;
+            if (displayName != null) md.displayName = displayName || null;
             const r = await send('update_reference_metadata', { hash: item.key, metadata: md });
             if (item.raw) item.raw.metadata = md;
             if (tags) item.refTags = tags.slice();
             if (comment != null) item.refComment = comment;
+            if (displayName) item.name = displayName;
             return r;
         }
     };
@@ -397,8 +399,10 @@
             get available() { return drives().length > 0; },
             hello: async () => ({ roots: drives().map((d) => ({ id: d.id, name: d.label || d.name || 'Local Disk' })), features: {} }),
             call: async (op, a) => {
-                if (op !== 'list') throw new Error('unsupported');
-                return D.list(a.root, a.path);
+                if (op === 'list') return D.list(a.root, a.path);
+                if (op === 'rename' && typeof D.rename === 'function') return D.rename(a.root, a.path, a.name);
+                if (op === 'delete' && typeof D.remove === 'function') return D.remove(a.root, [a.path]);
+                throw new Error('unsupported');
             },
             fileUrl: (id, pth) => D.fileUrl(id, pth, {}),
             baseName,

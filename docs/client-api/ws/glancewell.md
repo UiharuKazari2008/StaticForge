@@ -33,6 +33,17 @@ root reads those, so `refs` rows here only hold what that store has no column fo
 | `glancewell_watched_set` | `add?: [{ folder, name }]`, `remove?: [folder]` | `{ success, folders }` |
 | `glancewell_forget` | `items` | `{ success, forgot }`. Call it when a picture is deleted for good |
 
+## Options and Import
+
+| Request | Fields | Response `data` |
+| --- | --- | --- |
+| `glancewell_settings` | | `{ success, settings: { tooltips, originalsDays, updateNotes, import: { folder, folderName, fileName, promptTag, erase, rotate, openAfter } } }` |
+| `glancewell_settings_set` | `change` (any of the above) | `{ success, settings }`. Unknown keys are dropped. `originalsDays` is one of 0 (Never), 1, 7, 30, 182, 365. `folderName` is one of `dateImportedTag`, `dateTakenTag`, `dateRangeTag`, `tagDateImported`, `tagDateTaken`, `tagDateRange`, `tag`, `none`. `fileName` is one of `tag`, `original`, `originalFolders`. Pushes `glancewell_changed` `{ what: "settings" }` and removes kept Fix originals older than `originalsDays` |
+| `glancewell_import_record` | `items` | `{ success, batch }`. One import's pictures; the last 20 batches are kept. Pushes `{ what: "imports" }` |
+| `glancewell_recent_imports` | | `{ success, batch, at, items }`. The last import, for Recently Imported |
+
+The server removes kept Fix originals older than Options' "Move originals to Recycle Bin after" at start and once a day.
+
 ## Fix (`modules/glancewellFix.js`)
 
 Photo Gallery's Fix pane saves a fixed print through these packets. VFS files go through `vfs_replace_file` /
@@ -72,6 +83,8 @@ Tag names may not contain `/` or `;`; the error text is WPG's own.
 | `meta` | `items: [meta]`, `tags: true` when the edit created a tag | an edit |
 | `meta` | `forgot: [{ source, key }]` | `glancewell_forget` |
 | `tags` | | a tag edit |
+| `settings` | | Options saved |
+| `imports` | | an import recorded |
 | `watched` | | a watched-list edit |
 
 Clients update what they show from the push. Nothing polls.

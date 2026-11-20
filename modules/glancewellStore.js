@@ -10,6 +10,8 @@
  *   taken       Change Time Taken: the picture's date taken, where the user moved it
  *   favorites   the Pictures root's Favorites (phone and host pictures; prints keep their pins, Yukimi Nov 20 2026)
  *   watched     the Folders root: the VFS folders added with Add Folder to Gallery
+ *   settings    Options (General: originals kept for; Import: where and how pictures are imported)
+ *   imports     each Import from Camera or Scanner's pictures, for Recently Imported
  *
  * A picture is (source, key): source is the root it lives in ('prints', 'refs', 'pictures', 'folders', or
  * 'device:<deviceId>' for an ActiveSync phone) and key its id there (print filename, reference hash, VFS file id,
@@ -73,6 +75,17 @@ function init(globalResources) {
             item_key TEXT NOT NULL,
             added_at INTEGER NOT NULL,
             PRIMARY KEY (source, item_key)
+        );
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS imports (
+            batch INTEGER NOT NULL,
+            source TEXT NOT NULL,
+            item_key TEXT NOT NULL,
+            at INTEGER NOT NULL,
+            PRIMARY KEY (batch, source, item_key)
         );
         CREATE TABLE IF NOT EXISTS watched (
             folder TEXT PRIMARY KEY,
@@ -309,13 +322,81 @@ function setWatched({ add, remove } = {}) {
     return watched();
 }
 
+// Options (PhotoLibraryResources dialog 249, PhotoAcq dialog 1108): the defaults are Photo Gallery's
+const SETTING_DEFAULTS = {
+    tooltips: true,
+    originalsDays: 0,            // Move originals to Recycle Bin after: 0 Never, else days (1, 7, 30, 182, 365)
+    updateNotes: true,           // Tell me when updates to Photo Gallery are available
+    import: {
+        folder: '',              // the VFS folder pictures are imported to ('' = Imported Pictures)
+        folderName: 'dateImportedTag', // PhotoAcq 700-707
+        fileName: 'tag',         // 'tag' (Tag 001), 'original', 'originalFolders' (PhotoAcq 707-709)
+        promptTag: true,
+        erase: false,
+        rotate: true,
+        openAfter: true
+    }
+};
+const ORIGINAL_DAYS = new Set([0, 1, 7, 30, 182, 365]);
+
+function settings() {
+    const out = JSON.parse(JSON.stringify(SETTING_DEFAULTS));
+    for (const r of need().prepare('SELECT key, value FROM settings').all()) {
+        try { const v = JSON.parse(r.value); if (r.key === 'import') Object.assign(out.import, v); else out[r.key] = v; } catch (_) { /* skip */ }
+    }
+    return out;
+}
+
+/** Options' OK / Apply: only the known keys, in their own types. */
+function setSettings(change) {
+    const d = need();
+    const c = change || {};
+    const put = (k, v) => d.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(k, JSON.stringify(v));
+    if (typeof c.tooltips === 'boolean') put('tooltips', c.tooltips);
+    if (typeof c.updateNotes === 'boolean') put('updateNotes', c.updateNotes);
+    if (c.originalsDays != null && ORIGINAL_DAYS.has(Number(c.originalsDays))) put('originalsDays', Number(c.originalsDays));
+    if (c.import && typeof c.import === 'object') {
+        const cur = settings().import;
+        const i = c.import;
+        const next = Object.assign({}, cur);
+        if (typeof i.folder === 'string') next.folder = i.folder.slice(0, MAX_KEY);
+        if (/^(dateImportedTag|dateTakenTag|dateRangeTag|tagDateImported|tagDateTaken|tagDateRange|tag|none)$/.test(i.folderName || '')) next.folderName = i.folderName;
+        if (/^(tag|original|originalFolders)$/.test(i.fileName || '')) next.fileName = i.fileName;
+        for (const k of ['promptTag', 'erase', 'rotate', 'openAfter']) if (typeof i[k] === 'boolean') next[k] = i[k];
+        put('import', next);
+    }
+    return settings();
+}
+
+/** One import's pictures (Recently Imported shows the last one). Returns the batch number. */
+function recordImport(items) {
+    const d = need();
+    const list = cleanItems(items);
+    if (!list.length) return 0;
+    const batch = ((d.prepare('SELECT MAX(batch) b FROM imports').get() || {}).b || 0) + 1;
+    const at = now();
+    d.transaction(() => { for (const { source, key } of list) d.prepare('INSERT OR IGNORE INTO imports (batch, source, item_key, at) VALUES (?, ?, ?, ?)').run(batch, source, key, at); })();
+    // only the last few imports are kept
+    d.prepare('DELETE FROM imports WHERE batch <= ?').run(batch - 20);
+    return batch;
+}
+
+/** The last import's pictures: { batch, at, items: [{ source, key }] }. */
+function recentImports() {
+    const d = need();
+    const last = d.prepare('SELECT MAX(batch) b FROM imports').get();
+    if (!last || !last.b) return { batch: 0, at: null, items: [] };
+    const rows = d.prepare('SELECT source, item_key, at FROM imports WHERE batch = ?').all(last.b);
+    return { batch: last.b, at: rows.length ? rows[0].at : null, items: rows.map((r) => ({ source: r.source, key: r.item_key })) };
+}
+
 /** A picture left its store (deleted for good): forget what the gallery kept about it. */
 function forget(items) {
     const d = need();
     const list = cleanItems(items);
     d.transaction(() => {
         for (const { source, key } of list) {
-            for (const t of ['item_tags', 'captions', 'taken', 'favorites']) d.prepare(`DELETE FROM ${t} WHERE source = ? AND item_key = ?`).run(source, key);
+            for (const t of ['item_tags', 'captions', 'taken', 'favorites', 'imports']) d.prepare(`DELETE FROM ${t} WHERE source = ? AND item_key = ?`).run(source, key);
         }
     })();
     return list.length;
@@ -339,6 +420,10 @@ module.exports = {
     watched,
     setWatched,
     forget,
+    settings,
+    setSettings,
+    recordImport,
+    recentImports,
     close,
     _cleanTagName: cleanTagName
 };

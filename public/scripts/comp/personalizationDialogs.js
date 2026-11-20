@@ -1771,7 +1771,14 @@
         setPhotoSearch,
         SAVER_NAMES,
         EVENT_GROUPS,
-        _test: { dlu, screenSaverPage, soundsPage, devicesPage, browserName }
+        _test: { dlu, screenSaverPage, soundsPage, devicesPage, browserName },
+        // the Vista property sheet for other programs' dialogs (Glancewell's Options, #446): the same window, tabs,
+        // OK / Cancel / Apply and dialog-unit controls; useUnits picks MS Shell Dlg (TAHOMA) or Segoe UI 9 pt (SEGOE)
+        sheetKit: {
+            makeSheet, makeWindow, showWindow, closeWindow, dlu, group, text, button, check, radio, message,
+            TAHOMA, SEGOE,
+            useUnits: (u) => { units = u === SEGOE ? SEGOE : TAHOMA; }
+        }
     };
     root.personalizationDialogs = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;

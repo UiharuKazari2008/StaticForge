@@ -792,3 +792,100 @@ body.theme-vista #photoSwipeWindow .wpg-lib-i-capedit {
 .wpg-lib-options .wpg-lib-options-h {
     margin: 0 0 6px;
 }
+
+/* drag-to-tag: the tag (or Favorites) a picture is dragged over */
+body.theme-vista #photoSwipeWindow .wpg-lib-node.is-drop .wpg-lib-node-label {
+    background: linear-gradient(#e8f2fe, #c4ddfc);
+    border-color: #7da2ce;
+}
+
+/* Import Pictures and Videos (PhotoAcq dialogs 1071 / 1064 / 1063) in the shared message box */
+.wpg-imp { min-width: 380px; }
+.wpg-imp p { margin: 0 0 8px; }
+.wpg-imp-list {
+    height: 150px;
+    overflow: auto;
+    border: 1px solid #828790;
+    background: #fff;
+}
+.wpg-imp-dev {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    margin: 2px;
+}
+.wpg-imp-dev.is-selected {
+    background: linear-gradient(#dcebfc, #c1dbfc);
+    border-color: #7da2ce;
+}
+.wpg-imp-dev-icon {
+    width: 32px;
+    height: 32px;
+    background: url("/static_images/vista-explorer/portable-device-16.png") center / 32px 32px no-repeat;
+}
+.wpg-imp-none { padding: 8px; color: #6d6d6d; }
+.wpg-imp-tag { display: flex; flex-direction: column; gap: 4px; }
+.wpg-imp-tag-input { width: 100%; box-sizing: border-box; }
+.wpg-imp-note { margin-top: 10px !important; color: #6d6d6d; }
+.wpg-imp-bar {
+    height: 15px;
+    margin: 4px 0 10px;
+    border: 1px solid #bcbcbc;
+    border-radius: 3px;
+    background: #e6e6e6;
+    overflow: hidden;
+}
+.wpg-imp-bar > span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: linear-gradient(#cdffa6, #4fc829 50%, #2aa30e 50%, #6fe05a);
+    transition: width 0.2s linear;
+}
+.wpg-lib-rename label { display: flex; align-items: center; gap: 8px; }
+.wpg-lib-rename input { width: 260px; }
+
+/* Options (PhotoLibraryResources dialog 249 / PhotoAcq 1108 on the shared sheet): pages 257 x 237 DLU in Segoe UI 9 pt */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.gwo-sheet {
+    width: 464px;
+    height: 509px;
+}
+.gwo-sheet .tbp-pane {
+    width: 450px;
+    height: 445px;
+}
+.gwo-sheet .tbp-footer {
+    left: 222px;
+    top: 480px;
+}
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.gwo-sheet,
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.gwo-sheet :is(button, input, select, label, span, div) {
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    font-size: 12px;
+}
+.gwo-sheet .gwo-rule {
+    border-top: 1px solid #d5dfe5;
+}
+
+/* the import's progress window (PhotoAcq dialog 1063: 230 x 66 DLU) */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.gwi-progress {
+    width: 360px;
+    height: 150px;
+    padding: 12px;
+    box-sizing: border-box;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+.gwi-progress .gwi-progress-body { display: flex; gap: 12px; }
+.gwi-progress .gwi-progress-pic {
+    flex: none;
+    width: 64px;
+    height: 64px;
+    background: url("/static_images/app_icons/vista-photo-gallery.png") center / 48px 48px no-repeat;
+}
+.gwi-progress .gwi-progress-text { flex: 1 1 auto; }
+.gwi-progress .gwi-progress-text p { margin: 4px 0; }
+.gwi-progress .gwi-progress-foot { position: absolute; right: 12px; bottom: 10px; }

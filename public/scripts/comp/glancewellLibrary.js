@@ -39,9 +39,11 @@
     const viewerProto = () => (typeof ImageViewer !== 'undefined' ? ImageViewer.prototype : null);
     const doveCompose = () => (typeof doveOpenComposeWindow === 'function' ? doveOpenComposeWindow : null);
     const ws = () => root.wsClient || null;
+    // the gallery reports its own failures: no "Unhandled exception" window as well (wsClient.handlesErrors)
+    const quiet = (fn) => { const c = ws(); return c && typeof c.handlesErrors === 'function' ? c.handlesErrors(fn) : fn(); };
     const send = (type, data) => {
         const c = ws();
-        return c && typeof c.sendMessage === 'function' ? c.sendMessage(type, data || {}, false) : Promise.reject(new Error('offline'));
+        return c && typeof c.sendMessage === 'function' ? quiet(() => c.sendMessage(type, data || {}, false)) : Promise.reject(new Error('offline'));
     };
     const ART = '/static_images/vista-photo-gallery';
     const PREFS_KEY = 'glancewellLibrary';
@@ -118,7 +120,8 @@
         tipTimer: 0,
         tipFor: null,
         treeExpanded: new Set(Object.keys(prefs.expanded || {}).filter((k) => prefs.expanded[k])),
-        editing: null
+        editing: null,
+        recent: new Set()     // the last import's VFS file ids (glancewell_recent_imports)
     };
 
     const itemsById = new Map();
@@ -203,6 +206,10 @@
         try { S.tags = (await send('glancewell_tags', {})).tags || []; } catch (_) { S.tags = []; }
     }
 
+    async function loadRecent() {
+        try { S.recent = new Set(((await send('glancewell_recent_imports', {})).items || []).map((x) => x.key)); } catch (_) { S.recent = new Set(); }
+    }
+
     async function loadWatched() {
         try { S.watched = await SRC().get('folders').watched(); } catch (_) { S.watched = []; }
     }
@@ -267,6 +274,7 @@
             case 'day': return items.filter((it) => dayText(takenOf(it)) === node.value);
             case 'reftype': return items.filter((it) => it.refType === node.value);
             case 'album': return items.filter((it) => it.raw && `${it.raw.root}:${it.folder}` === node.value);
+            case 'recent': return items.filter((it) => S.recent.has(it.key));
             case 'pictures': return items.filter((it) => !it.video);
             case 'videos': return items.filter((it) => it.video);
             default: return items;
@@ -359,6 +367,11 @@
         E.canvas.addEventListener('click', onCanvasClick);
         E.canvas.addEventListener('mouseover', onCanvasOver);
         E.canvas.addEventListener('mouseout', onCanvasOut);
+        // drag pictures onto a tag (or Favorites) in the tree, as in Photo Gallery
+        E.canvas.addEventListener('dragstart', onDragStart);
+        E.tree.addEventListener('dragover', onTreeDragOver);
+        E.tree.addEventListener('dragleave', (e) => { const r = e.target.closest && e.target.closest('.wpg-lib-node'); if (r) r.classList.remove('is-drop'); });
+        E.tree.addEventListener('drop', onTreeDrop);
         E.scroller.addEventListener('keydown', onGridKey);
         E.toc.addEventListener('click', onTocClick);
         E.input.addEventListener('input', () => { S.search = E.input.value.trim(); refresh(); });
@@ -398,6 +411,8 @@
     }
 
     async function onStoreChanged(d) {
+        if (d.what === 'imports') { await loadRecent(); if (S.node.kind === 'recent') refresh(); return; }
+        if (d.what === 'settings') { await loadSettings(); return; }
         if (d.what === 'watched') { await loadWatched(); for (const k of S.loaded.keys()) if (k.startsWith('folders')) S.loaded.get(k).stale = true; renderTree(); return; }
         if (d.what === 'tags' || d.tags) await loadTags();
         if (d.what === 'meta') {
@@ -498,8 +513,9 @@
             tagRows('refs', 1);
             dateRows('refs', 1);
         }
-        // Folders: the watched VFS folders
+        // Folders: the watched VFS folders, and the last import (Recently Imported)
         if (rootRow('folders', 'Folders', ICON.folders)) {
+            add({ root: 'folders', kind: 'recent' }, 1, 'Recently Imported', ICON.recent);
             S.watched.forEach((f) => add({ root: 'folders', kind: 'folder', value: f.folder, label: f.name }, 1, f.name || f.folder, ICON.folderPictures, { watched: f }));
             if (!S.watched.length) add({ root: 'folders', kind: 'addfolder' }, 1, 'Add Folder to Gallery...', ICON.folder, { italic: true, action: 'addfolder' });
             tagRows('folders', 1);
@@ -635,6 +651,52 @@
         // WPG 2780
         if (!await confirmBox('If you delete this tag, you delete it from all pictures and videos that have this tag assigned.', 'Delete Tag')) return;
         try { await send('glancewell_tag_edit', { op: 'delete', id: r.tagId }); } catch (err) { await message(errorText(err), 'error'); }
+    }
+
+    const DRAG_TYPE = 'application/x-glancewell-items';
+    function onDragStart(e) {
+        const cell = e.target.closest && e.target.closest('.wpg-lib-cell');
+        if (!cell) return;
+        hideTip();
+        if (!S.selected.has(cell.dataset.id)) select(cell.dataset.id);
+        e.dataTransfer.setData(DRAG_TYPE, JSON.stringify([...S.selected]));
+        e.dataTransfer.effectAllowed = 'copy';
+    }
+    /** A tree row that takes dropped pictures: a tag (its own root's), Favorites (not the prints', which are pins). */
+    function dropRow(e) {
+        const rowEl = e.target.closest && e.target.closest('.wpg-lib-node');
+        const r = rowEl && S.treeRows[Number(rowEl.dataset.i)];
+        if (!r) return null;
+        if (r.node.kind === 'tag' || (r.node.kind === 'favorites' && r.node.root !== 'prints')) return { rowEl, r };
+        return null;
+    }
+    function onTreeDragOver(e) {
+        if (![...e.dataTransfer.types].includes(DRAG_TYPE)) return;
+        const hit = dropRow(e);
+        S.el.tree.querySelectorAll('.is-drop').forEach((x) => { if (!hit || x !== hit.rowEl) x.classList.remove('is-drop'); });
+        if (!hit) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        hit.rowEl.classList.add('is-drop');
+    }
+    async function onTreeDrop(e) {
+        const hit = dropRow(e);
+        S.el.tree.querySelectorAll('.is-drop').forEach((x) => x.classList.remove('is-drop'));
+        if (!hit) return;
+        e.preventDefault();
+        let ids = [];
+        try { ids = JSON.parse(e.dataTransfer.getData(DRAG_TYPE) || '[]'); } catch (_) { ids = []; }
+        const items = ids.map((id) => itemsById.get(id)).filter(Boolean);
+        if (!items.length) return;
+        if (hit.r.node.kind === 'favorites') {
+            const mine = items.filter((it) => it.source === hit.r.node.root);
+            if (mine.length) await send('glancewell_meta_set', { items: mine.map(ref), change: { favorite: true } });
+            return;
+        }
+        // a References tag goes on references only; the user's tags on everything else
+        const name = hit.r.node.root === 'refs' ? hit.r.node.value : hit.r.label;
+        const fit = items.filter((it) => (hit.r.node.root === 'refs') === (it.source === 'refs' && SRC().get('refs').ownsMeta(it)));
+        if (fit.length) await addTag(fit, name);
     }
 
     function inlineEdit(rowEl, initial) {
@@ -930,6 +992,7 @@
         if (!cell) {
             cell = h('div', 'wpg-lib-cell');
             cell.dataset.id = it.id;
+            cell.draggable = true;
             const fr = h('div', 'wpg-lib-frame');
             const img = h('img', 'wpg-lib-img');
             img.alt = '';
@@ -1073,6 +1136,10 @@
             case 't': case 'T':
                 if (e.ctrlKey) { e.preventDefault(); openAddTags(); }
                 break;
+            case 'm': case 'M':
+                if (e.ctrlKey) { e.preventDefault(); const one = selectedItems(); if (one.length === 1) void renameItem(one[0]); }
+                break;
+            case 'F2': { e.preventDefault(); const one = selectedItems(); if (one.length === 1) void renameItem(one[0]); break; }
             default: break;
         }
     }
@@ -1339,6 +1406,7 @@
             { separator: true },
             { text: 'Copy', action: 'gwi-copy', disabled: !one },
             { text: 'Delete', action: 'gwi-delete' },
+            { text: 'Rename...', action: 'gwi-rename', disabled: !(one && canRename(it)) },
             { text: 'Properties', action: 'gwi-properties', disabled: !one }
         ];
         // Dreamscape's own actions on a print (Yukimi, Nov 20 2026: the rest go to the right-click menu)
@@ -1368,6 +1436,7 @@
             case 'gwi-rotr': void rotateSelection(1); break;
             case 'gwi-rotl': void rotateSelection(-1); break;
             case 'gwi-delete': void deleteSelection(); break;
+            case 'gwi-rename': void renameItem(it); break;
             case 'gwi-fav':
                 await send('glancewell_meta_set', { items: items.map(ref), change: { favorite: !isFavorite(it) } });
                 break;
@@ -1419,6 +1488,42 @@
             }
         }
         return undefined;
+    }
+
+    /** Files Glancewell can rename: VFS files, a phone's pictures, references (their display name); prints keep the gallery's names. */
+    function canRename(it) {
+        return !!it && (it.source === 'folders' || it.source === 'refs' || it.source === 'pictures' || String(it.source).startsWith('device:'));
+    }
+
+    /** Rename (Ctrl+M): a new name for the file; "File names may not contain..." (WPG 7003) is refused. */
+    async function renameItem(it) {
+        if (!canRename(it)) return;
+        const m = /^(.*?)(\.[a-z0-9]+)?$/i.exec(it.name || '');
+        const stem = m[1]; const ext = it.source === 'refs' ? '' : (m[2] || '');
+        const next = await dialog(`<div class="wpg-lib-rename"><label>Name:<input type="text" class="wpg-lib-rename-input" value="${esc(stem)}" spellcheck="false" data-autofocus></label></div>`,
+            [{ text: 'OK', value: 'ok' }, { text: 'Cancel', value: null }], {
+                title: 'Rename', icon: 'fas fa-i-cursor',
+                onDialogReady: (dlg) => { const i = dlg.querySelector('.wpg-lib-rename-input'); i.focus(); i.select(); },
+                resolveValue: (v, dlg) => (v === 'ok' ? dlg.querySelector('.wpg-lib-rename-input').value.trim() : null)
+            });
+        if (!next || next === stem) return;
+        if (/[\\/:*?"<>|]/.test(next)) { await message('File names may not contain the following characters:\n\t\\ / : * ? " < > |', 'error'); return; }
+        const name = `${next}${ext}`;
+        S.el.status.textContent = 'Renaming files...';
+        try {
+            if (it.source === 'folders') await quiet(() => vfs().renameFile(it.key, name));
+            else if (it.source === 'refs') await SRC().get('refs').saveMeta(it, { displayName: next });
+            else {
+                const store = SRC().get(it.source).store();
+                await store.call('rename', { root: it.raw.root, path: it.raw.path, name });
+            }
+            it.name = name;
+            cellCache.clear();
+            refresh();
+        } catch (err) {
+            await message(`${name}\n${errorText(err)}`, 'error');
+        }
+        renderStatus();
     }
 
     /** Pictures whose file Glancewell can write back (prints, VFS files, phone pictures; not references or videos). */
@@ -1511,7 +1616,7 @@
     }
 
     function promptHours(cur) {
-        const html = `<div class="wpg-lib-time"><p>Change the time stamp for selected pictures and videos.</p><p class="wpg-lib-time-row"><span>Change by:</span><span><input type="number" min="-24" max="24" step="1" value="0" class="wpg-lib-time-h"> hours</span></p><p class="wpg-lib-time-row"><span>New Time:</span><span class="wpg-lib-time-new">${esc(dateText(cur))}</span></p><p class="wpg-lib-time-row"><span>Current Time:</span><span>${esc(dateText(cur))}</span></p></div>`;
+        const html = `<div class="wpg-lib-time"><p>Change the time stamp for selected pictures and videos.</p><p class="wpg-lib-time-row"><span>Change by:</span><span><input type="number" min="-24" max="24" step="1" value="0" class="wpg-lib-time-h" data-autofocus> hours</span></p><p class="wpg-lib-time-row"><span>New Time:</span><span class="wpg-lib-time-new">${esc(dateText(cur))}</span></p><p class="wpg-lib-time-row"><span>Current Time:</span><span>${esc(dateText(cur))}</span></p></div>`;
         return dialog(html, [{ text: 'OK', value: 'ok' }, { text: 'Cancel', value: null }], {
             title: 'Change Time Taken',
             icon: 'fas fa-clock',
@@ -1655,7 +1760,7 @@
             { text: 'Import from Camera or Scanner...', action: 'gwf-import', disabled: !SRC().devices().length },
             { separator: true },
             { text: 'Delete', subtext: 'Del', action: 'gwf-delete', disabled: !items.length },
-            { text: 'Rename', subtext: 'Ctrl+M', action: 'gwf-rename', disabled: true },
+            { text: 'Rename', subtext: 'Ctrl+M', action: 'gwf-rename', disabled: !(one && canRename(items[0])) },
             { separator: true },
             { text: 'Copy', subtext: 'Ctrl+C', action: 'gwi-copy', disabled: !one },
             { separator: true },
@@ -1677,6 +1782,7 @@
         switch (action) {
             case 'gwf-addfolder': addFolderToGallery(); return true;
             case 'gwf-delete': await deleteSelection(); return true;
+            case 'gwf-rename': if (items.length === 1) await renameItem(items[0]); return true;
             case 'gwf-selectall': S.shown.forEach((it) => S.selected.add(it.id)); queueRender(); renderStatus(); renderInfo(); syncCommands(); return true;
             case 'gwf-screensaver':
                 // Screen Saver Settings (personalizationDialogs.js, in the Control Panel feature)
@@ -1736,67 +1842,337 @@
         if (sent) await message(`${sent === 1 ? '1 item was' : `${sent} items were`} copied to ${dev.label} (${dir.replace(/^\//, '')}).`, 'info');
     }
 
+    // ------------------------------------------------------------------ Options and Import (PhotoAcq.dll, PhotoLibraryResources)
+
+    let SETTINGS = null;
+    async function loadSettings() {
+        try { SETTINGS = (await send('glancewell_settings', {})).settings; } catch (_) { SETTINGS = null; }
+        if (SETTINGS && typeof SETTINGS.tooltips === 'boolean') prefs.tooltips = SETTINGS.tooltips;
+        return SETTINGS;
+    }
+    const importSettings = () => Object.assign({ folder: '', folderName: 'dateImportedTag', fileName: 'tag', promptTag: true, erase: false, rotate: true, openAfter: true }, (SETTINGS && SETTINGS.import) || {});
+
+    const FOLDER_NAMES = [
+        ['dateImportedTag', 'Date Imported + Tag', '{DATE_ACQUIRED} Himalayas'], ['dateTakenTag', 'Date Taken + Tag', '{DATE_TAKEN_2} Himalayas'],
+        ['dateRangeTag', 'Date Taken Range + Tag', '{DATE_TAKEN_1} - {DATE_TAKEN_2} Himalayas'], ['tagDateImported', 'Tag + Date Imported', 'Himalayas {DATE_ACQUIRED}'],
+        ['tagDateTaken', 'Tag + Date Taken', 'Himalayas {DATE_TAKEN_2}'], ['tagDateRange', 'Tag + Date Taken Range', 'Himalayas {DATE_TAKEN_1} - {DATE_TAKEN_2}'],
+        ['tag', 'Tag', 'Himalayas'], ['none', '(None)', '']
+    ];
+    const FILE_NAMES = [['tag', 'Tag', 'Himalayas 001.JPG'], ['original', 'Original File Name', 'DSC_1234.JPG'], ['originalFolders', 'Original File Name (Preserve Folders)', 'Folder\\DSC_1234.JPG']];
+    const ymd = (t) => { const d = new Date(t); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+
+    /** The import's folder name from the setting (PhotoAcq 700-707: "2026-11-20 Himalayas" and the rest). */
+    function importFolderName(mode, tag, items) {
+        const ts = items.map((it) => it.taken).filter(Boolean).sort((x, y) => x - y);
+        const imported = ymd(Date.now());
+        const first = ts.length ? ymd(ts[0]) : imported;
+        const last = ts.length ? ymd(ts[ts.length - 1]) : imported;
+        const range = first === last ? last : `${first} - ${last}`;
+        const t = String(tag || '').trim();
+        const join = (...p) => p.filter(Boolean).join(' ');
+        switch (mode) {
+            case 'dateTakenTag': return join(last, t);
+            case 'dateRangeTag': return join(range, t);
+            case 'tagDateImported': return join(t, imported);
+            case 'tagDateTaken': return join(t, last);
+            case 'tagDateRange': return join(t, range);
+            case 'tag': return t;
+            case 'none': return '';
+            default: return join(imported, t);
+        }
+    }
+
+    /** A JPEG's EXIF orientation (1-8), 1 when there is none (Rotate pictures on import). */
+    function exifOrientation(buf) {
+        const v = new DataView(buf);
+        if (v.byteLength < 4 || v.getUint16(0) !== 0xffd8) return 1;
+        let o = 2;
+        while (o + 4 < v.byteLength) {
+            const marker = v.getUint16(o);
+            const len = v.getUint16(o + 2);
+            if (marker === 0xffe1 && v.getUint32(o + 4) === 0x45786966) {
+                const t = o + 10;
+                const little = v.getUint16(t) === 0x4949;
+                const ifd = t + v.getUint32(t + 4, little);
+                const n = v.getUint16(ifd, little);
+                for (let i = 0; i < n; i++) {
+                    const e = ifd + 2 + i * 12;
+                    if (v.getUint16(e, little) === 0x0112) return v.getUint16(e + 8, little) || 1;
+                }
+                return 1;
+            }
+            if ((marker & 0xff00) !== 0xff00) break;
+            o += 2 + len;
+        }
+        return 1;
+    }
+
+    /** Rotate pictures on import: a turned JPEG is redrawn upright (the browser applies the EXIF turn). */
+    async function uprightJpeg(blob) {
+        if (!/jpe?g/i.test(blob.type) || typeof createImageBitmap !== 'function') return blob;
+        const orient = exifOrientation(await blob.slice(0, 131072).arrayBuffer());
+        if (orient === 1) return blob;
+        const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+        const c = doc.createElement('canvas');
+        c.width = bmp.width; c.height = bmp.height;
+        c.getContext('2d').drawImage(bmp, 0, 0);
+        bmp.close && bmp.close();
+        return await new Promise((resolve) => c.toBlob((b) => resolve(b || blob), 'image/jpeg', 0.95));
+    }
+
+    /** Import Pictures and Videos (PhotoAcq dialog 1071): the devices to import from. Resolves a device or null. */
+    function chooseImportDevice() {
+        const list = SRC().devices();
+        const rows = list.map((d, i) => `<div class="wpg-imp-dev${i === 0 ? ' is-selected' : ''}" data-dev="${esc(d.id)}" tabindex="0"><span class="wpg-imp-dev-icon"></span><span>${esc(d.label)}</span></div>`).join('');
+        const html = `<div class="wpg-imp"><p>If you do not see your device in the list, make sure it is connected to the computer and turned on.</p><div class="wpg-imp-list" role="listbox">${rows || '<p class="wpg-imp-none">No devices were found.</p>'}</div></div>`;
+        return dialog(html, [{ text: 'Import', value: 'import' }, { text: 'Cancel', value: null }], {
+            title: 'Import Pictures and Videos',
+            icon: 'fas fa-camera',
+            onDialogReady: (dlg) => {
+                dlg.querySelectorAll('.wpg-imp-dev').forEach((r) => r.addEventListener('click', () => {
+                    dlg.querySelectorAll('.wpg-imp-dev').forEach((x) => x.classList.toggle('is-selected', x === r));
+                }));
+            },
+            resolveValue: (value, dlg) => {
+                if (value !== 'import') return null;
+                const sel = dlg.querySelector('.wpg-imp-dev.is-selected');
+                return sel ? list.find((d) => d.id === sel.dataset.dev) || null : null;
+            }
+        });
+    }
+
     /**
-     * File > Import from Camera or Scanner: a phone's camera roll (DCIM\Camera, else every album) copied into the
-     * VFS folder "Imported Pictures", leaving out pictures already there by name; the folder joins Folders.
+     * File > Import from Camera or Scanner, as Vista's Import Pictures and Videos: the device, then "Found N pictures
+     * and videos" and "Tag these pictures (optional)" (dialog 1064), then "Importing item n of m" with Erase after
+     * importing (dialog 1063). Options > Import decides where they go and how folders and files are named.
      */
     async function importFromDevice() {
-        const dev = await pickDevice('Import from');
-        if (!dev || !vfs()) return;
+        if (!vfs()) return;
+        if (root.featureLoader) await root.featureLoader.loadFeature('control_panel').catch(() => {});
+        await loadSettings();
+        const set = importSettings();
+        const dev = await chooseImportDevice();
+        if (!dev) return;
+        S.el.status.textContent = 'Locating pictures and videos';
         let albums = [];
         try { albums = await dev.albums(true); } catch (_) { albums = []; }
         const camera = albums.filter((a) => /\/DCIM\/Camera$/i.test(a.path));
-        const pick = camera.length ? camera : albums;
         let items = [];
-        for (const a of pick) { try { items = items.concat(await dev.list({ album: a })); } catch (_) { /* skipped */ } }
-        if (!items.length) { await message(`No new pictures or videos were found on ${dev.label}.`, 'info'); return; }
+        for (const a of (camera.length ? camera : albums)) { try { items = items.concat(await dev.list({ album: a })); } catch (_) { /* skipped */ } }
+        // where: Options > Import's folder, else "Imported Pictures" (made and added to Folders)
         const NAME = 'Imported Pictures';
-        let folder = S.watched.find((f) => f.name === NAME);
-        if (!folder) {
+        let base = set.folder ? { folder: set.folder, name: (S.watched.find((f) => f.folder === set.folder) || {}).name || set.folder } : S.watched.find((f) => f.name === NAME);
+        if (!base) {
             try {
-                const res = await vfs().createFolder('/', NAME);
+                const res = await quiet(() => vfs().createFolder('/', NAME));
                 const made = res && (res.folder || res.item || res);
-                const path = (made && (made.navPath || (made.id ? `/${made.id}` : null))) || null;
-                if (!path) throw new Error('The folder could not be made.');
-                S.watched = await SRC().get('folders').setWatched({ add: [{ folder: path, name: NAME }] });
-                folder = S.watched.find((f) => f.name === NAME);
-            } catch (err) { await message(errorText(err), 'error'); return; }
+                if (!made || !made.id) throw new Error('The folder could not be made.');
+                base = { folder: `/${made.id}`, name: NAME };
+            } catch (err) { renderStatus(); await message(errorText(err), 'error'); return; }
         }
+        if (!S.watched.some((f) => f.folder === base.folder)) S.watched = await SRC().get('folders').setWatched({ add: [{ folder: base.folder, name: base.name }] });
+        // pictures already imported (by name, anywhere under the import folder) are left out (PhotoAcq 114)
         let have = new Set();
-        try { have = new Set((((await vfs().listDirectory(folder.folder, { offset: 0, limit: 5000 })) || {}).items || []).map((e) => e.name)); } catch (_) { /* empty */ }
+        try { have = new Set((await SRC().get('folders').list({ folders: [{ path: base.folder, name: base.name }] })).map((x) => x.name)); } catch (_) { /* none */ }
         const todo = items.filter((it) => !have.has(it.name));
-        if (!todo.length) { await message(`No new pictures or videos were found on ${dev.label}.`, 'info'); return; }
-        let done = 0;
-        for (const it of todo) {
-            S.el.status.textContent = `Importing ${done + 1} of ${todo.length} from ${dev.label}...`;
+        renderStatus();
+        if (!todo.length) { await message('No new pictures or videos were found on this device', 'info'); return; }
+        // Found N ... Tag these pictures (optional) (PhotoAcq 1071 / 105 / 118)
+        let tag = '';
+        if (set.promptTag) {
+            const names = S.tags.map((t) => `<option value="${esc(t.name)}">`).join('');
+            const r = await dialog(`<div class="wpg-imp"><p>Found ${todo.length} pictures and videos</p><label class="wpg-imp-tag">Tag these pictures (optional):<input type="text" class="wpg-imp-tag-input" list="wpgImpTags" spellcheck="false" data-autofocus></label><datalist id="wpgImpTags">${names}</datalist><p class="wpg-imp-note">Tags help you find and organize pictures. You can add or change tags in Photo Gallery after importing.</p></div>`,
+                [{ text: 'Import', value: 'import' }, { text: 'Cancel', value: null }], {
+                    title: 'Importing Pictures and Videos', icon: 'fas fa-camera',
+                    onDialogReady: (dlg) => { const i = dlg.querySelector('.wpg-imp-tag-input'); if (i) { i.focus(); i.addEventListener('keydown', (e) => { if (e.key === '/' || e.key === ';') e.preventDefault(); }); } },
+                    resolveValue: (value, dlg) => (value === 'import' ? { tag: dlg.querySelector('.wpg-imp-tag-input').value.trim() } : null)
+                });
+            if (!r) return;
+            tag = r.tag;
+        }
+        // the batch's folder: "2026-11-20 Himalayas" (or the files straight into the import folder: None)
+        let target = base.folder;
+        const sub = importFolderName(set.folderName, tag, todo).replace(/[\\/:*?"<>|]/g, '').trim();
+        if (sub) {
             try {
-                const blob = await (await fetch(it.full(), { credentials: 'same-origin' })).blob();
+                const have2 = ((await vfs().listDirectory(base.folder, { offset: 0, limit: 1000 })) || {}).items || [];
+                const hit = have2.find((e) => e.kind === 'folder' && e.name === sub);
+                if (hit) target = hit.navPath || `${base.folder}/${hit.id}`;
+                else {
+                    const res = await quiet(() => vfs().createFolder(base.folder, sub));
+                    const made = res && (res.folder || res);
+                    target = made && made.id ? `${base.folder}/${made.id}` : base.folder;
+                }
+            } catch (_) { target = base.folder; }
+        }
+        // Importing item n of m (dialog 1063), Erase after importing: its own window, so a message box can still show
+        let cancelled = false;
+        let erase = !!set.erase;
+        const prog = progressWindow(todo.length, erase, (v) => { erase = v; }, () => { cancelled = true; });
+        const imported = [];
+        let n = 0;
+        for (const it of todo) {
+            if (cancelled) break;
+            n++;
+            prog.step(n);
+            try {
+                let blob = await (await fetch(it.full(), { credentials: 'same-origin' })).blob();
+                if (set.rotate && !it.video) blob = await uprightJpeg(blob);
+                const ext = (/\.[a-z0-9]+$/i.exec(it.name) || ['.jpg'])[0];
+                let name = it.name;
+                if (set.fileName === 'tag' && tag) name = `${tag} ${String(imported.length + 1).padStart(3, '0')}${ext}`;
+                let dir = target;
+                if (set.fileName === 'originalFolders' && it.folder) {
+                    // the phone's folder kept under the import folder
+                    const list = ((await vfs().listDirectory(target, { offset: 0, limit: 1000 })) || {}).items || [];
+                    const hit = list.find((e) => e.kind === 'folder' && e.name === it.folder);
+                    if (hit) dir = hit.navPath || `${target}/${hit.id}`;
+                    else { const res = await quiet(() => vfs().createFolder(target, it.folder)); const made = res && (res.folder || res); if (made && made.id) dir = `${target}/${made.id}`; }
+                }
                 const data = await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, '')); r.onerror = () => resolve(''); r.readAsDataURL(blob); });
-                await vfs().uploadFile(folder.folder, data, it.name, blob.type || 'image/jpeg');
-                done++;
+                const up = await quiet(() => vfs().uploadFile(dir, data, name, blob.type || 'image/jpeg'));
+                const id = up && ((up.file && up.file.id) || up.id || (up.item && up.item.id));
+                if (id) imported.push({ source: 'folders', key: id, from: it });
             } catch (err) {
-                await message(`${it.name} could not be imported.\n${errorText(err)}`, 'error');
+                await message(`The following error occurred while importing ${it.name}:\n${errorText(err)}`, 'error');
                 break;
             }
         }
-        renderStatus();
+        // tags, the import record (Recently Imported), then the phone's copies erased when asked
+        if (imported.length) {
+            const refs = imported.map(({ source, key }) => ({ source, key }));
+            try {
+                if (tag) await send('glancewell_meta_set', { items: refs, change: { addTags: [tag] } });
+                await send('glancewell_import_record', { items: refs });
+            } catch (_) { /* the pictures are in; tags can be added later */ }
+            if (erase && !cancelled) {
+                for (const { from } of imported) {
+                    try { await root.phoneStorage.call('delete', { root: from.raw.root, path: from.raw.path }); } catch (_) { /* left on the device */ }
+                }
+            }
+        }
+        prog.close();
         for (const k of S.loaded.keys()) if (k.startsWith('folders')) S.loaded.get(k).stale = true;
         renderTree();
-        if (done) await showNode({ root: 'folders', kind: 'folder', value: folder.folder, label: NAME });
+        renderStatus();
+        if (imported.length && set.openAfter) await showNode({ root: 'folders', kind: 'recent' });
     }
 
-    /** File > Options: the tooltip previews (General); the rest of the page is the VM's. */
-    function openOptions() {
-        const html = `<div class="wpg-lib-options"><p class="wpg-lib-options-h">Tooltips</p><label><input type="checkbox" class="wpg-lib-opt-tips"${prefs.tooltips ? ' checked' : ''}> Show picture and video previews in tooltips</label></div>`;
-        void dialog(html, [{ text: 'OK', value: 'ok' }, { text: 'Cancel', value: null }], {
-            title: 'Glancewell Options',
-            icon: 'fas fa-gear',
-            resolveValue: (value, dlg) => (value === 'ok' ? { tips: !!dlg.querySelector('.wpg-lib-opt-tips').checked } : null)
-        }).then((r) => {
-            if (!r) return;
-            prefs.tooltips = r.tips;
-            savePrefs();
+    /** The import's progress window (PhotoAcq dialog 1063: the picture, "Importing item n of m", the bar, Erase after importing). */
+    function progressWindow(total, erase, onErase, onCancel) {
+        const kit = root.personalizationDialogs && root.personalizationDialogs.sheetKit;
+        if (!kit || typeof kit.makeWindow !== 'function') return { step() {}, close() {} };
+        const { modal, content, close } = kit.makeWindow('glancewellImportProgress', 'Importing Pictures and Videos', 'gwi-progress', '/static_images/app_icons/vista-photo-gallery.png', false);
+        content.innerHTML = `<div class="gwi-progress-body"><span class="gwi-progress-pic"></span><div class="gwi-progress-text"><p class="wpg-imp-line">Importing item 1 of ${total}</p><div class="wpg-imp-bar"><span></span></div><label class="wpg-imp-erase"><input type="checkbox" class="wpg-imp-erase-box"${erase ? ' checked' : ''}> Erase after importing</label></div></div><div class="gwi-progress-foot"><button type="button" class="tbp-button" data-act="cancel">Cancel</button></div>`;
+        const stop = () => onCancel();
+        close.addEventListener('click', stop);
+        content.querySelector('[data-act="cancel"]').addEventListener('click', stop);
+        content.querySelector('.wpg-imp-erase-box').addEventListener('change', (e) => onErase(e.target.checked));
+        kit.showWindow(modal, S.shell);
+        return {
+            step(n) {
+                content.querySelector('.wpg-imp-line').textContent = `Importing item ${n} of ${total}`;
+                content.querySelector('.wpg-imp-bar > span').style.width = `${Math.round((n - 1) / total * 100)}%`;
+            },
+            close() { kit.closeWindow(modal); }
+        };
+    }
+
+    /**
+     * File > Options: Photo Gallery's property sheet (PhotoLibraryResources dialog 249 General, PhotoAcq dialog 1108
+     * Import) on the shared Vista sheet (personalizationDialogs.js sheetKit), saved on the server.
+     */
+    async function openOptions() {
+        if (root.featureLoader) await root.featureLoader.loadFeature('control_panel').catch(() => {});
+        const kit = root.personalizationDialogs && root.personalizationDialogs.sheetKit;
+        await loadSettings();
+        const cur = JSON.parse(JSON.stringify(SETTINGS || { tooltips: prefs.tooltips, originalsDays: 0, updateNotes: true, import: importSettings() }));
+        if (!kit) { await message('Options are not available right now.', 'warning'); return; }
+        kit.useUnits(kit.SEGOE);
+        // controls placed in dialog units: the geometry goes on after the sheet is built (data-dlu)
+        const sel = (cls, x, y, w, opts, value) => `<select class="tbp-ctl vdt-select ${cls}" data-dlu="${x},${y},${w},12">${opts.map(([v, t]) => `<option value="${esc(v)}"${String(v) === String(value) ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+        const days = [[0, 'Never'], [1, 'One day'], [7, 'One week'], [30, 'One month'], [182, 'Six months'], [365, 'One year']];
+        const general = kit.text(12, 8, 228, 8, 'Tooltips') + kit.check('gwoTips', 22, 19, 218, 14, 'Show picture and video previews in tooltips') +
+            '<div class="tbp-ctl gwo-rule" data-dlu="12,44,233,1"></div>' + kit.text(12, 47, 228, 8, 'Original Pictures') +
+            kit.text(22, 60, 213, 32, 'When you fix a picture in Glancewell, Melaton saves a copy of the original in case you want to revert. These originals can take up a lot of disk space.') +
+            kit.text(22, 100, 206, 8, 'Move originals to Recycle Bin after:') + sel('gwo-days', 22, 111, 71, days, cur.originalsDays) +
+            '<div class="tbp-ctl gwo-rule" data-dlu="13,131,233,1"></div>' + kit.text(12, 134, 228, 8, 'Automatic updates') +
+            kit.check('gwoUpdates', 22, 145, 218, 14, 'Tell me when updates to Glancewell are available') + kit.button(22, 162, 90, 14, 'Check for updates', 'gwo-check');
+        const imp = cur.import || importSettings();
+        const ex = (fv, nv) => {
+            const f = (FOLDER_NAMES.find((x) => x[0] === fv) || FOLDER_NAMES[0])[2];
+            const n = (FILE_NAMES.find((x) => x[0] === nv) || FILE_NAMES[0])[2];
+            const t = new Date(); const d2 = ymd(t.getTime()); const d1 = ymd(t.getTime() - 86400000 * 3);
+            return `${f.replace('{DATE_ACQUIRED}', d2).replace('{DATE_TAKEN_2}', d2).replace('{DATE_TAKEN_1}', d1)}${f ? '\\' : ''}${n}`;
+        };
+        const watched = S.watched.map((w) => [w.folder, w.name]);
+        const importPage = '<div class="tbp-group" data-dlu="7,9,245,169"><span class="tbp-group-label">Settings for:&nbsp;</span></div>' +
+            sel('gwo-for', 69, 7, 147, [['cameras', 'Cameras'], ['other', 'Other Devices']], 'cameras') +
+            kit.text(16, 44, 52, 8, 'Import to:') + sel('gwo-folder', 69, 42, 121, [['', 'Imported Pictures']].concat(watched.filter((w) => w[1] !== 'Imported Pictures')), imp.folder) + kit.button(193, 41, 50, 14, 'Browse...', 'gwo-browse') +
+            kit.text(16, 63, 52, 8, 'Folder name:') + sel('gwo-foldername', 69, 61, 174, FOLDER_NAMES.map((x) => [x[0], x[1]]), imp.folderName) +
+            kit.text(16, 82, 52, 8, 'File name:') + sel('gwo-filename', 69, 80, 174, FILE_NAMES.map((x) => [x[0], x[1]]), imp.fileName) +
+            kit.text(16, 99, 52, 8, 'Example:') + kit.text(69, 99, 174, 8, esc(ex(imp.folderName, imp.fileName)), 'gwo-example') +
+            kit.text(16, 114, 218, 8, 'Other options:') +
+            kit.check('gwoPrompt', 24, 125, 218, 10, 'Prompt for a tag on import') + kit.check('gwoErase', 24, 137, 218, 10, 'Always erase from camera after importing') +
+            kit.check('gwoRotate', 24, 149, 218, 10, 'Rotate pictures on import') + kit.check('gwoOpen', 24, 161, 218, 10, 'Open Glancewell after import') +
+            kit.button(7, 200, 62, 14, 'Restore defaults', 'gwo-defaults');
+        const read = (c) => ({
+            tooltips: c.querySelector('#gwoTips').checked,
+            originalsDays: Number(c.querySelector('.gwo-days').value),
+            updateNotes: c.querySelector('#gwoUpdates').checked,
+            import: {
+                folder: c.querySelector('.gwo-folder').value,
+                folderName: c.querySelector('.gwo-foldername').value,
+                fileName: c.querySelector('.gwo-filename').value,
+                promptTag: c.querySelector('#gwoPrompt').checked,
+                erase: c.querySelector('#gwoErase').checked,
+                rotate: c.querySelector('#gwoRotate').checked,
+                openAfter: c.querySelector('#gwoOpen').checked
+            }
         });
+        const sheet = kit.makeSheet({
+            id: 'glancewellOptionsDialog', title: 'Glancewell Options', cls: 'gwo-sheet', icon: '/static_images/app_icons/vista-photo-gallery.png',
+            tabs: ['General', 'Import'], selected: 0, pages: [general, importPage],
+            onApply: async () => {
+                try {
+                    const r = await send('glancewell_settings_set', { change: read(sheet.content) });
+                    SETTINGS = r.settings;
+                    prefs.tooltips = SETTINGS.tooltips;
+                    savePrefs();
+                } catch (err) { await message(errorText(err), 'error'); }
+            },
+            onAction: (action) => {
+                const c = sheet.content;
+                if (action === 'gwo-defaults') {
+                    c.querySelector('.gwo-folder').value = '';
+                    c.querySelector('.gwo-foldername').value = 'dateImportedTag';
+                    c.querySelector('.gwo-filename').value = 'tag';
+                    c.querySelector('#gwoPrompt').checked = true; c.querySelector('#gwoErase').checked = false;
+                    c.querySelector('#gwoRotate').checked = true; c.querySelector('#gwoOpen').checked = true;
+                    sync(); sheet.setDirty(true);
+                } else if (action === 'gwo-browse' && typeof root.studioOpenFolderDialog === 'function') {
+                    root.studioOpenFolderDialog('folder', { owner: sheet.modal, host: { title: 'Browse For Folder', onSave: async ({ path }) => {
+                        const name = await folderName(path);
+                        const s2 = c.querySelector('.gwo-folder');
+                        if (![...s2.options].some((o) => o.value === path)) s2.add(new Option(name, path));
+                        s2.value = path; sheet.setDirty(true); return true;
+                    } } });
+                } else if (action === 'gwo-check') {
+                    // updates come with Melaton's own (Windows Update in Control Panel)
+                    if (root.melatonControlPanel && typeof root.melatonControlPanel.open === 'function') root.melatonControlPanel.open('Microsoft.WindowsUpdate');
+                    else void message('Glancewell is up to date.', 'info');
+                }
+            }
+        });
+        const c = sheet.content;
+        c.querySelectorAll('[data-dlu]').forEach((n) => { const [x, y, w, h] = n.dataset.dlu.split(',').map(Number); n.style.cssText = kit.dlu(x, y, w, h); });
+        c.querySelector('#gwoTips').checked = !!cur.tooltips;
+        c.querySelector('#gwoUpdates').checked = cur.updateNotes !== false;
+        c.querySelector('#gwoPrompt').checked = !!imp.promptTag; c.querySelector('#gwoErase').checked = !!imp.erase;
+        c.querySelector('#gwoRotate').checked = !!imp.rotate; c.querySelector('#gwoOpen').checked = !!imp.openAfter;
+        const sync = () => { c.querySelector('.gwo-example').textContent = ex(c.querySelector('.gwo-foldername').value, c.querySelector('.gwo-filename').value); };
+        c.addEventListener('change', () => { sync(); sheet.setDirty(true); });
+        kit.showWindow(sheet.modal, S.shell);
     }
 
     // ------------------------------------------------------------------ message boxes (Vista's, never the browser's)
@@ -1804,7 +2180,18 @@
     const ICONS = { info: 'fas fa-circle-info', warning: 'fas fa-triangle-exclamation', error: 'fas fa-circle-xmark', question: 'fas fa-circle-question' };
     function dialog(html, buttons, config = {}) {
         if (typeof root.showConfirmationDialog !== 'function') return Promise.resolve(null);
-        return root.showConfirmationDialog(html, buttons, null, Object.assign({ title: 'Glancewell', owner: S.shell }, config));
+        const cfg = Object.assign({ title: 'Glancewell', owner: S.shell }, config);
+        // confirmationDialog.js calls onDialogReady(signal): ours take the dialog element (and the signal for listeners)
+        if (typeof config.onDialogReady === 'function') {
+            const ready = config.onDialogReady;
+            cfg.onDialogReady = (signal) => {
+                const el = doc.getElementById('confirmationDialog');
+                ready(el, signal);
+                // the dialog puts focus on its default button after this: the field marked data-autofocus takes it back
+                setTimeout(() => { const f = el && el.querySelector('[data-autofocus]'); if (f) { f.focus(); if (f.select) f.select(); } }, 60);
+            };
+        }
+        return root.showConfirmationDialog(html, buttons, null, cfg);
     }
     function message(text, icon = 'info') {
         return dialog(esc(text).replace(/\n/g, '<br>'), [{ text: 'OK', value: true }], { icon: ICONS[icon] || ICONS.info });
@@ -1827,7 +2214,7 @@
             if (typeof root.ensureModalEdgesWithinWorkArea === 'function') root.ensureModalEdgesWithinWorkArea(shell);
         } else if (typeof root.bringModalToFront === 'function') root.bringModalToFront(shell);
         if (typeof root.wireGlancewellChromeOnce === 'function') root.wireGlancewellChromeOnce();
-        await Promise.all([loadTags(), loadWatched()]);
+        await Promise.all([loadTags(), loadWatched(), loadRecent(), loadSettings()]);
         showLibrary();
         await showNode(opts.node || S.node || { root: 'prints', kind: 'all' }, { history: false });
     }

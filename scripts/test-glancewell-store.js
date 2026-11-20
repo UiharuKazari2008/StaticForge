@@ -81,6 +81,28 @@ try {
     assert.strictEqual(store.listTags().length, 0);
     assert.deepStrictEqual(store.getMeta([a])[0].tags, []);
 
+    // Options: defaults, known keys only, originals days from the list
+    assert.strictEqual(store.settings().tooltips, true);
+    assert.strictEqual(store.settings().import.folderName, 'dateImportedTag');
+    let st = store.setSettings({ tooltips: false, originalsDays: 30, bogus: 1, import: { folderName: 'tag', fileName: 'original', erase: true, folderName2: 'x' } });
+    assert.strictEqual(st.tooltips, false);
+    assert.strictEqual(st.originalsDays, 30);
+    assert.strictEqual(st.bogus, undefined);
+    assert.deepStrictEqual([st.import.folderName, st.import.fileName, st.import.erase, st.import.promptTag], ['tag', 'original', true, true]);
+    st = store.setSettings({ originalsDays: 3, import: { folderName: 'nope' } });
+    assert.strictEqual(st.originalsDays, 30);
+    assert.strictEqual(st.import.folderName, 'tag');
+
+    // Recently Imported: the last batch only
+    assert.strictEqual(store.recentImports().items.length, 0);
+    store.recordImport([{ source: 'folders', key: 'f1' }, { source: 'folders', key: 'f2' }]);
+    const b2 = store.recordImport([{ source: 'folders', key: 'f3' }]);
+    const ri = store.recentImports();
+    assert.strictEqual(ri.batch, b2);
+    assert.deepStrictEqual(ri.items.map((x) => x.key), ['f3']);
+    store.forget([{ source: 'folders', key: 'f3' }]);
+    assert.deepStrictEqual(store.recentImports().items.map((x) => x.key), ['f1', 'f2']);
+
     console.log('glancewell store: ok');
 } finally {
     store.close();

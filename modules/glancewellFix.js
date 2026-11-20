@@ -137,4 +137,24 @@ async function revert(gr, filename) {
     return { filename: name };
 }
 
-module.exports = { saveFixed, revert, hasOriginal, textChunks, withTextChunks };
+/**
+ * Options > Original Pictures: "Move originals to Recycle Bin after" (0 = Never). Kept originals older than that are
+ * removed (they are the server's own copies; the print itself stays). Returns how many went.
+ */
+async function sweepOriginals(gr, days) {
+    const d = Number(days) || 0;
+    if (d <= 0) return 0;
+    const dir = originalsDir(gr);
+    const cutoff = Date.now() - d * 86400000;
+    let n = 0;
+    for (const name of await fs.promises.readdir(dir)) {
+        const p = path.join(dir, name);
+        try {
+            const st = await fs.promises.stat(p);
+            if (st.isFile() && st.mtimeMs < cutoff) { await fs.promises.unlink(p); n++; }
+        } catch (_) { /* gone */ }
+    }
+    return n;
+}
+
+module.exports = { saveFixed, revert, hasOriginal, sweepOriginals, textChunks, withTextChunks };

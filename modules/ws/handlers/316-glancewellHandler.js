@@ -36,6 +36,11 @@ function registerPackets(handlersCtx) {
     }
     gr = handlersCtx.globalResources;
     try { store.init(gr); } catch (e) { console.warn(`[316-glancewellHandler] store: ${e.message}`); }
+    // kept Fix originals past Options' "Move originals ... after": once at start, then once a day (server side)
+    const sweep = () => { try { void fix.sweepOriginals(gr, store.settings().originalsDays).catch(() => {}); } catch (_) { /* store not ready */ } };
+    sweep();
+    const daily = setInterval(sweep, 24 * 3600 * 1000);
+    if (daily.unref) daily.unref();
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             const { ws, message, clientInfo } = ctx;
@@ -101,6 +106,21 @@ function registerPackets(handlersCtx) {
         return out;
     }, { destructive: true });
     reg('glancewell_fix_original', async (m) => ({ hasOriginal: await fix.hasOriginal(gr, m.filename) }));
+    // Options (General and Import)
+    reg('glancewell_settings', () => ({ settings: store.settings() }));
+    reg('glancewell_settings_set', async (m) => {
+        const s = store.setSettings(m.change);
+        changed({ what: 'settings' });
+        void fix.sweepOriginals(gr, s.originalsDays).catch(() => {});
+        return { settings: s };
+    });
+    // Import from Camera or Scanner: the batch's pictures, for Recently Imported
+    reg('glancewell_import_record', (m) => {
+        const batch = store.recordImport(m.items);
+        changed({ what: 'imports' });
+        return { batch };
+    });
+    reg('glancewell_recent_imports', () => store.recentImports());
     // a picture deleted for good: forget its tags, caption, date and favourite
     reg('glancewell_forget', (m) => {
         const n = store.forget(m.items);
