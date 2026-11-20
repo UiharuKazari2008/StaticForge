@@ -214,7 +214,9 @@
                     const ro = (st & 0x800) ? ' readonly' : '';
                     const align = (st & 3) === 2 ? 'right' : (st & 3) === 1 ? 'center' : 'left';
                     if (st & 4) {
-                        out.push(`<textarea class="tbp-ctl vdt-textarea${edge}" id="${domId}" style="${style(r)}text-align:${align};" ${dataId}${ro}${dis}${hid} spellcheck="false">${esc(t)}</textarea>`);
+                        // WS_VSCROLL: the bar is always there, greyed while nothing scrolls (Device Manager's Device status)
+                        const vs = (st & WS_VSCROLL) ? ' vdt-vscroll' : '';
+                        out.push(`<textarea class="tbp-ctl vdt-textarea${edge}${vs}" id="${domId}" style="${style(r)}text-align:${align};" ${dataId}${ro}${dis}${hid} spellcheck="false">${esc(t)}</textarea>`);
                     } else {
                         const type = (st & 0x20) ? 'password' : 'text';
                         lastEdit = { r, at: out.length, align };
@@ -1105,55 +1107,60 @@
         }
     }
 
-    /** A drop-down combo box's list: the datalist's choices under the edit, Vista's list box look. */
-    function comboDrop(box, state) {
+    /**
+     * A combo box's dropped list (the ComboLBox): Vista's list box under the control, over everything. opts:
+     * { items [{ value, text }], value, room (px the template allows, else comctl32 v6's 30 rows), pick(value),
+     * focus (the element that keeps the focus and hears the keys) }. A second open of the same box closes it.
+     */
+    function dropList(box, opts) {
         const old = doc.querySelector('.vdt-combo-pop');
         if (old) { const was = old._box; old._close(); if (was === box) return; }
-        const input = box && box.querySelector('input');
-        if (!input || input.disabled || input.readOnly) return;
-        const items = Array.from(box.querySelectorAll('datalist option')).map((o) => o.value);
+        const items = opts.items || [];
+        const focusEl = opts.focus;
         const r = box.getBoundingClientRect();
         const pop = doc.createElement('div');
-        pop.className = 'vdt-combo-pop vdt-listbox';
+        const cs = getComputedStyle(focusEl);
+        // MS Shell Dlg 8 (Tahoma, 11 px) rows are 13 px, Segoe UI 9 pt rows 15 (the VM's devmgr Property list: 13)
+        pop.className = `vdt-combo-pop vdt-listbox${parseFloat(cs.fontSize) <= 11 ? ' is-small' : ''}`;
         pop.setAttribute('role', 'listbox');
-        pop.style.font = getComputedStyle(input).font;
-        pop.innerHTML = items.length ? items.map((v) => `<div class="vdt-lb-row${v === input.value ? ' is-selected' : ''}" data-value="${esc(v)}" role="option"><span>${esc(v)}</span></div>`).join('') : '<div class="vdt-lb-row" data-empty="1"><span>&nbsp;</span></div>';
+        pop.style.font = cs.font;
+        pop.innerHTML = items.length ? items.map((o) => `<div class="vdt-lb-row${String(o.value) === String(opts.value) ? ' is-selected' : ''}" data-value="${esc(o.value)}" role="option"><span>${esc(o.text)}</span></div>`).join('') : '<div class="vdt-lb-row" data-empty="1"><span>&nbsp;</span></div>';
         const n = Math.max(1, items.length);
         pop.style.left = `${Math.round(r.left)}px`;
         pop.style.width = `${Math.round(r.width)}px`;
         doc.body.appendChild(pop);
         const rowH = (pop.querySelector('.vdt-lb-row') || pop).getBoundingClientRect().height || 13;
-        // as tall as the template's drop rect allows (Win32 sizes the dropped list from it), whole rows
-        const room = Number(box.dataset.drop) || rowH * 30;
+        const room = opts.room || rowH * 30 + 2;
         const h = Math.round(Math.max(1, Math.min(n, Math.floor((room - 2) / rowH))) * rowH + 2);
         const below = window.innerHeight - r.bottom;
         pop.style.height = `${h}px`;
         pop.style.top = `${Math.round(below >= h || below >= r.top ? r.bottom : r.top - h)}px`;
         const sel = pop.querySelector('.is-selected');
         if (sel) sel.scrollIntoView({ block: 'nearest' });
-        const pick = (row) => {
-            if (!row || row.dataset.empty) return;
-            input.value = row.dataset.value;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-            if (state && state.ctx) state.ctx.dirty();
-        };
+        const pick = (row) => { if (row && !row.dataset.empty) opts.pick(row.dataset.value); };
         const close = () => {
             pop.remove();
             doc.removeEventListener('mousedown', outside, true);
-            input.removeEventListener('keydown', keys, true);
+            doc.removeEventListener('touchstart', outside, true);
+            focusEl.removeEventListener('keydown', keys, true);
+            focusEl.removeEventListener('blur', blurred);
+            window.removeEventListener('resize', close);
             box.classList.remove('is-open');
         };
-        const outside = (ev) => { if (!pop.contains(ev.target) && !(ev.target.closest && ev.target.closest('.vdt-combo-drop') === box.querySelector('.vdt-combo-drop'))) close(); };
+        // a press on the box itself is the box's own (it closes the list through its toggle)
+        const outside = (ev) => { if (!pop.contains(ev.target) && !box.contains(ev.target)) close(); };
+        const blurred = () => setTimeout(() => { if (pop.isConnected && doc.activeElement !== focusEl) close(); }, 0);
         const keys = (ev) => {
             const list = Array.from(pop.querySelectorAll('.vdt-lb-row[data-value]'));
             let i = list.findIndex((x) => x.classList.contains('is-selected'));
             if (ev.key === 'Escape' || ev.key === 'Tab' || ev.key === 'F4' || (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown'))) { if (ev.key !== 'Tab') { ev.preventDefault(); ev.stopPropagation(); } close(); return; }
             if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); pick(list[i]); close(); return; }
-            if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+            const page = Math.max(1, Math.floor(h / rowH) - 1);
+            const step = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page, Home: -1e6, End: 1e6 }[ev.key];
+            if (!step) return;
             ev.preventDefault();
             ev.stopPropagation();
-            i = Math.max(0, Math.min(list.length - 1, i + (ev.key === 'ArrowDown' ? 1 : -1)));
+            i = Math.max(0, Math.min(list.length - 1, (i < 0 ? -1 : i) + step));
             list.forEach((x, j) => x.classList.toggle('is-selected', j === i));
             if (list[i]) { list[i].scrollIntoView({ block: 'nearest' }); pick(list[i]); }
         };
@@ -1162,13 +1169,72 @@
             const row = ev.target.closest('.vdt-lb-row[data-value]');
             if (row && !row.classList.contains('is-selected')) { pop.querySelectorAll('.is-selected').forEach((x) => x.classList.remove('is-selected')); row.classList.add('is-selected'); }
         });
-        pop.addEventListener('click', (ev) => { pick(ev.target.closest('.vdt-lb-row')); close(); input.focus(); });
+        pop.addEventListener('click', (ev) => { pick(ev.target.closest('.vdt-lb-row')); close(); focusEl.focus(); });
         pop._box = box;
         pop._close = close;
         box.classList.add('is-open');
-        input.focus();
+        focusEl.focus();
         doc.addEventListener('mousedown', outside, true);
-        input.addEventListener('keydown', keys, true);
+        doc.addEventListener('touchstart', outside, true);
+        focusEl.addEventListener('keydown', keys, true);
+        focusEl.addEventListener('blur', blurred);
+        window.addEventListener('resize', close);
+    }
+
+    /** A drop-down combo box's list: the datalist's choices under the edit, Vista's list box look. */
+    function comboDrop(box, state) {
+        const input = box && box.querySelector('input');
+        if (!input || input.disabled || input.readOnly) return;
+        const items = Array.from(box.querySelectorAll('datalist option')).map((o) => ({ value: o.value, text: o.value }));
+        dropList(box, {
+            items,
+            value: input.value,
+            focus: input,
+            // as tall as the template's drop rect allows (Win32 sizes the dropped list from it), whole rows
+            room: Number(box.dataset.drop) || 0,
+            pick(v) {
+                input.value = v;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                if (state && state.ctx) state.ctx.dirty();
+            }
+        });
+    }
+
+    /**
+     * A drop-down list (CBS_DROPDOWNLIST, the <select>): its list is always Vista's ComboLBox drawn here - never the
+     * browser's or Android's picker, nor Chrome's customizable-select popup (Device Manager's Property list opened as
+     * a dark custom list on the Fold's DeX, then as the native popup). The <select> keeps the value and its events.
+     */
+    function selectDrop(select, state) {
+        if (!select || select.disabled) return;
+        const items = Array.from(select.options).filter((o) => !o.hidden).map((o) => ({ value: o.value, text: o.text }));
+        dropList(select, {
+            items,
+            value: select.value,
+            focus: select,
+            pick(v) {
+                if (select.value === v) return;
+                select.value = v;
+                select.dispatchEvent(new Event('input', { bubbles: true }));
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                if (state && state.ctx) state.ctx.dirty();
+            }
+        });
+    }
+
+    /** Up / Down / Home / End / Page keys on a closed drop-down list: the next choice, no list (Win32). */
+    function selectStep(select, key, state) {
+        const opts = Array.from(select.options).filter((o) => !o.hidden && !o.disabled);
+        if (!opts.length) return;
+        let i = opts.findIndex((o) => o.value === select.value);
+        const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1, PageDown: 10, PageUp: -10, Home: -1e6, End: 1e6 }[key];
+        i = Math.max(0, Math.min(opts.length - 1, (i < 0 ? 0 : i) + step));
+        if (opts[i].value === select.value) return;
+        select.value = opts[i].value;
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        if (state && state.ctx) state.ctx.dirty();
     }
 
     function wireCommon(state) {
@@ -1203,6 +1269,28 @@
             const input = ev.target;
             if (!input.closest || !input.closest('.vdt-combo-edit')) return;
             if (ev.key === 'F4' || (ev.altKey && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'))) { ev.preventDefault(); comboDrop(input.closest('.vdt-combo-edit'), state); }
+        });
+        // drop-down lists (CBS_DROPDOWNLIST): a press opens Vista's list (the browser's picker never opens: the press,
+        // the tap's touchend and the click are taken), F4 / Alt+Down / Space / Enter too; the arrows step the value
+        const isDropList = (t) => t && t.matches && t.matches('select.vdt-select:not([multiple])');
+        const takePress = (ev) => {
+            if (!isDropList(ev.target)) return;
+            ev.preventDefault();
+            if (ev.type === 'click' || ev.target.disabled || (ev.type === 'mousedown' && ev.button !== 0)) return;
+            // a tap: touchend opens it (its click and mousedown never come); a mouse: mousedown
+            ev.target.focus();
+            selectDrop(ev.target, state);
+        };
+        content.addEventListener('mousedown', takePress);
+        content.addEventListener('touchend', takePress, { passive: false });
+        content.addEventListener('click', takePress);
+        content.addEventListener('keydown', (ev) => {
+            const sel = ev.target;
+            if (!isDropList(sel) || sel.classList.contains('is-open')) return;
+            // Enter is the dialog's (its default button), never the browser's picker
+            if (ev.key === 'Enter') { ev.preventDefault(); return; }
+            if (ev.key === 'F4' || ev.key === ' ' || (ev.altKey && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'))) { ev.preventDefault(); selectDrop(sel, state); return; }
+            if (/^(Arrow(Up|Down|Left|Right)|Page(Up|Down)|Home|End)$/.test(ev.key) && !ev.altKey) { ev.preventDefault(); selectStep(sel, ev.key, state); }
         });
         // IP address controls (SysIPAddress32)
         ipWire(content);

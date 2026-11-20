@@ -362,8 +362,7 @@
     top: -2px;
     flex: none;
     width: 142px;
-    /* the VM: 5 px between the level square and its figure (the bitmaps' teal is their transparency key) */
-    padding-left: 3px;
+    padding-left: 0;
     font: 11px "Segoe UI", Tahoma, sans-serif;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -415,26 +414,9 @@
     font-size: 11px;
 }
 
-/* a scale wider than the box ends in "..." after a gap ("Memory 100 Hard...", the VM) */
-.pfm-window .pfm-gtop > span:first-child {
-    flex: none;
-}
-
-.pfm-window .pfm-gtop > span:last-child {
-    min-width: 0;
-    margin-left: 4px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .pfm-window .pfm-gwrap {
     position: relative;
     height: 104px;
-}
-
-/* the graphs are drawn pixel for pixel: a 2x screen doubles their pixels instead of blurring them */
-.pfm-window canvas {
-    image-rendering: pixelated;
 }
 
 .pfm-window .pfm-graph {

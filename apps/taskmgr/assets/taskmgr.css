@@ -363,11 +363,6 @@
     display: block;
 }
 
-/* the graphs and meters are drawn pixel for pixel: a 2x screen doubles their pixels instead of blurring them */
-.wtm-window canvas {
-    image-rendering: pixelated;
-}
-
 .wtm-window .wtm-fig {
     display: grid;
     grid-template-columns: 1fr auto;

@@ -449,23 +449,29 @@
         const best = std.length ? std[std.length - 1] : '';
         const nics = pc ? list(hw.network).map((n) => n && n.name).filter(Boolean) : [];
         // (#952) the phone's real interfaces through the app's shell (AndroidWifi.interfaces v2: Windows-style names, the
-        // modem's multiplexing / accelerator interfaces, Wi-Fi Direct, VPN tunnels), each with its kernel name and driver
+        // modem's multiplexing / accelerator interfaces, Wi-Fi Direct / Aware, VPN tunnels), each with its kernel name and
+        // driver; an interface the app saw before and is gone now is a non-present adapter (View > Show hidden devices)
         let ifs = [];
         try {
             const w = root.AndroidWifi;
             const r = w && typeof w.interfaces === 'function' ? JSON.parse(w.interfaces()) : null;
-            ifs = r && r.version >= 2 && Array.isArray(r.interfaces) ? r.interfaces.filter((x) => x && x.present !== false && x.label) : [];
+            ifs = r && r.version >= 2 && Array.isArray(r.interfaces) ? r.interfaces.filter((x) => x && x.label) : [];
         } catch (_) { ifs = []; }
         const rate = (n) => (Number(n) >= 0 ? Number(n).toLocaleString() : '');
-        const ifRows = ifs.map((x) => ({ name: x.label, info: { manufacturer: /^Qualcomm/.test(x.label) ? 'Qualcomm' : /^Broadcom/.test(x.label) ? 'Broadcom' : /^MediaTek/.test(x.label) ? 'MediaTek' : x.vpnApp || maker,
-            location: x.name, props: [['Interface', x.name], ['Driver', x.driver || ''], ['MAC address', x.mac ? String(x.mac).toUpperCase().replace(/:/g, '-') : ''], ['MTU', x.mtu || ''],
-                ['State', x.connected ? 'Connected' : x.up ? 'Up, no network' : 'Down'], ['Bytes received', rate(x.rx)], ['Bytes sent', rate(x.tx)], ['Network', x.netType || x.apn || x.vpnApp || '']] } }));
+        const BUS = { wifi: 'PCI bus', 'wifi-direct': 'PCI bus', 'wifi-aware': 'PCI bus', mobile: 'Modem', ipa: 'IP Accelerator', vpn: 'Virtual', bluetooth: 'Bluetooth', usb: 'USB port', ethernet: 'USB port', lan: 'USB port' };
+        const ifRows = ifs.map((x) => ({ name: x.label, info: { iface: x, hidden: x.present === false, driver: x.driver || '',
+            manufacturer: /^Qualcomm/.test(x.label) || /^(cnss|qca|ath|rmnet|ipa)/i.test(x.driver || '') ? 'Qualcomm' : /^Broadcom/.test(x.label) ? 'Broadcom' : /^MediaTek/.test(x.label) ? 'MediaTek' : x.vpnApp || (x.kind === 'vpn' ? '' : maker),
+            location: `${x.name}${BUS[x.kind] ? ` (${BUS[x.kind]})` : ''}`,
+            props: [['Interface', x.name], ['Driver', x.driver || ''], ['MAC address', x.mac ? String(x.mac).toUpperCase().replace(/:/g, '-') : ''], ['MTU', x.mtu || ''],
+                ['State', x.present === false ? 'Not present' : x.connected ? 'Connected' : x.up ? 'Up, no network' : 'Down'], ['Bytes received', rate(x.rx)], ['Bytes sent', rate(x.tx)],
+                ['IPv4 address', Array.isArray(x.ip) ? x.ip.join('\n') : ''], ['IPv6 address', Array.isArray(x.ip6) ? x.ip6.join('\n') : ''], ['Network', x.netType || x.apn || x.vpnApp || '']] } }));
+        const miniport = extra.conn.miniport || `${extra.conn.connectionType || 'WAN'} Miniport (${extra.conn.device || 'L-PPoP'})`;
         add('Network adapters', 'network-adapters', (ifRows.length ? ifRows : nics.concat([
             !nics.length && wifi.present && `Wireless Network Adapter${best ? ` (${best})` : ''}`,
             tel.present && 'Mobile Broadband Adapter'
         ])).concat([
-            bt.present && !ifs.some((x) => x.kind === 'bluetooth') && 'Bluetooth Device (Personal Area Network)',
-            extra.conn.miniport || `${extra.conn.connectionType || 'WAN'} Miniport (${extra.conn.device || 'L-PPoP'})`
+            bt.present && !ifs.some((x) => x.kind === 'bluetooth') && { name: 'Bluetooth Device (Personal Area Network)', info: { manufacturer: 'Xyridian', location: 'Bluetooth radio' } },
+            { name: miniport, info: { miniport: true, manufacturer: 'Xyridian Corporation', location: 'Melaton Café Miniport' } }
         ]));
         // Vista lists removable media again under Portable Devices, by drive
         add('Portable Devices', 'portable', vols.filter((v) => v.removable && v.kind !== 'internal').map((v) => v.label || (v.kind === 'usb' ? 'USB Drive' : 'Storage Card')));
@@ -552,9 +558,86 @@
         return cats;
     }
 
+    // ---------------------------------------------------------------- Vista's device classes (devmgr Details tab)
+    // the class name in Details' "Device class", its setupapi GUID and the enumerator a device of it comes from
+    const CLASS = {
+        'Batteries': ['Battery', '{72631e54-78a4-11d0-bcf7-00aa00b7b32a}', 'ACPI'],
+        'Biometric devices': ['Biometric', '{53d29ef7-377c-4d14-864b-eb3a85769359}', 'ROOT'],
+        'Bluetooth Radios': ['Bluetooth', '{e0cbf06c-cd8b-4647-bb8a-263b43f0f974}', 'USB'],
+        'Computer': ['Computer', '{4d36e966-e325-11ce-bfc1-08002be10318}', 'ROOT'],
+        'Disk drives': ['DiskDrive', '{4d36e967-e325-11ce-bfc1-08002be10318}', 'SCSI'],
+        'Display adapters': ['Display', '{4d36e968-e325-11ce-bfc1-08002be10318}', 'PCI'],
+        'Human Interface Devices': ['HIDClass', '{745a17a0-74d3-11d0-b6fe-00a0c90f57da}', 'HID'],
+        'IDE ATA/ATAPI controllers': ['hdc', '{4d36e96a-e325-11ce-bfc1-08002be10318}', 'PCI'],
+        'Imaging devices': ['Image', '{6bdd1fc6-810f-11d0-bec7-08002be2092f}', 'USB'],
+        'Keyboards': ['Keyboard', '{4d36e96b-e325-11ce-bfc1-08002be10318}', 'ACPI'],
+        'Modems': ['Modem', '{4d36e96d-e325-11ce-bfc1-08002be10318}', 'USB'],
+        'Mice and other pointing devices': ['Mouse', '{4d36e96f-e325-11ce-bfc1-08002be10318}', 'HID'],
+        'Monitors': ['Monitor', '{4d36e96e-e325-11ce-bfc1-08002be10318}', 'DISPLAY'],
+        'Network adapters': ['Net', '{4d36e972-e325-11ce-bfc1-08002be10318}', 'PCI'],
+        'Portable Devices': ['WPD', '{eec5ad98-8080-425f-922a-dabf3de3f69a}', 'WPDBUSENUMROOT'],
+        'Processors': ['Processor', '{50127dc3-0f36-415e-a6cc-4cb3be910b65}', 'ACPI'],
+        'Proximity devices': ['Proximity', '{5630831c-06c9-4856-b327-f5d32586e060}', 'ROOT'],
+        'Security Devices': ['SecurityDevices', '{d94ee5d8-d189-4994-83d2-f68d7d41b0e6}', 'ACPI'],
+        'Sensors': ['Sensor', '{5175d334-c371-4806-b3ba-71fd53c9258d}', 'ROOT'],
+        'Sound, video and game controllers': ['MEDIA', '{4d36e96c-e325-11ce-bfc1-08002be10318}', 'HDAUDIO'],
+        'Storage volumes': ['Volume', '{71a27cdd-812a-11d0-bec7-00a0c91e2adc}', 'STORAGE'],
+        'System devices': ['System', '{4d36e97d-e325-11ce-bfc1-08002be10318}', 'ACPI'],
+        'Universal Serial Bus controllers': ['USB', '{36fc9e60-c465-11cf-8056-444553540000}', 'USB']
+    };
+    const classOf = (cat) => CLASS[cat] || ['System', '{4d36e97d-e325-11ce-bfc1-08002be10318}', 'ROOT'];
+    const slug = (s) => String(s || '').toUpperCase().replace(/\(R\)|\(TM\)/g, '').replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
+
+    // ---------------------------------------------------------------- what Vista keeps between runs
+    // Disable (CONFIGFLAG_DISABLED), the view, Show hidden devices, the devices seen before (non-present devices),
+    // all on this computer (localStorage); an Uninstall lasts until Scan for hardware changes finds the device again
+    const STORE = 'melaton.devmgr';
+    function load(k, d) { try { const v = JSON.parse(root.localStorage.getItem(`${STORE}.${k}`) || 'null'); return v == null ? d : v; } catch (_) { return d; } }
+    function save(k, v) { try { root.localStorage.setItem(`${STORE}.${k}`, JSON.stringify(v)); } catch (_) { /* full or private */ } }
+    const settings = Object.assign({ view: 'type', hidden: false, statusBar: true, toolbar: true, menus: true, actions: false }, load('settings', {}));
+    const disabled = new Set(load('disabled', []));
+    const uninstalled = new Set();
+    const keyOf = (cat, name) => `${cat}|${name}`;
+
+    /**
+     * Devices seen before and gone now come back flagged non-present (Vista's View > Show hidden devices). The record is
+     * written only when it changes, and is capped at 400 devices.
+     */
+    function withHidden(cats) {
+        const seen = load('seen', {});
+        let changed = false;
+        const now = new Set();
+        cats.forEach((c) => c.devices.forEach((d, i) => {
+            const k = keyOf(c.name, d);
+            now.add(k);
+            const inf = c.info[i];
+            // not remembered: non-present rows the app already reports, and names that change with a reading (the
+            // virtual disk's size, a radio's "(turned off)")
+            if (inf && (inf.hidden || (inf.live && inf.live.kind === 'quota'))) return;
+            if (/\((turned off)\)/.test(d)) return;
+            if (!seen[k]) { seen[k] = { cat: c.name, icon: c.icon, name: d }; changed = true; }
+        }));
+        Object.keys(seen).forEach((k) => {
+            if (now.has(k)) return;
+            const s = seen[k];
+            let c = cats.find((x) => x.name === s.cat);
+            if (!c) { c = { name: s.cat, icon: s.icon, devices: [], info: [] }; cats.push(c); }
+            c.devices.push(s.name);
+            c.info.push({ hidden: true, manufacturer: '', location: '' });
+        });
+        const keys = Object.keys(seen);
+        if (keys.length > 400) { keys.slice(0, keys.length - 400).forEach((k) => delete seen[k]); changed = true; }
+        if (changed) save('seen', seen);
+        cats.sort((a, b) => a.name.localeCompare(b.name));
+        return cats;
+    }
+
+    // ---------------------------------------------------------------- the console
     let win = null;
     let tree = null;
-    const expanded = new Set();
+    let nodes = null;
+    let selected = null;
+    const expanded = new Set(['root']);
 
     function computerName() {
         // the phone (or its DeX desktop): the name its owner gave it in Device ID (#829)
@@ -566,44 +649,308 @@
         return `${(n && n.domain) || 'DREAMSCAPE'}-${host.split('.')[0].toUpperCase()}`.slice(0, 15);
     }
 
+    /** A device of the tree: { cat, ci, di, name, info, icon, key, off (disabled), gone (non-present) }. */
+    function device(ci, di) {
+        const c = tree[ci];
+        const info = (c.info && c.info[di]) || {};
+        const name = c.devices[di];
+        const key = keyOf(c.name, name);
+        const iface = info.iface;
+        // a Wi-Fi adapter switched off is a disabled adapter (Network Connections' Disable is the same switch)
+        const off = disabled.has(key) || (!!iface && iface.kind === 'wifi' && iface.enabled === false);
+        return { cat: c.name, ci, di, name, info, icon: c.icon, key, off, gone: !!info.hidden };
+    }
+
     /**
-     * MMC's toolbar as the VM's Device Manager: Back, Forward | Show/Hide Console Tree | Help, Show/Hide
-     * Action Pane (mmc.exe bitmap 202); with a device selected, Properties joins before Help and
-     * devmgr.dll bitmap 358's Scan for hardware changes and Update Driver Software come last.
+     * The tree as nodes for the view: { id, label, icon, kids, dev, depth }. By type: the computer, the classes, their
+     * devices. By connection: the computer, its ACPI system, the buses the devices sit on, the devices. Resources: the
+     * resource types and what uses them.
+     */
+    function buildNodes() {
+        const all = [];
+        tree.forEach((c, ci) => c.devices.forEach((_, di) => {
+            const d = device(ci, di);
+            if (uninstalled.has(d.key)) return;
+            if (d.gone && !settings.hidden) return;
+            all.push(d);
+        }));
+        const devNode = (d) => ({ id: `d:${d.ci}:${d.di}`, label: d.name, icon: d.icon, dev: d, kids: [] });
+        const rootNode = { id: 'root', label: computerName(), icon: `${DEV}/root-16.png`, kids: [] };
+        if (settings.view === 'type') {
+            tree.forEach((c, ci) => {
+                const kids = all.filter((d) => d.ci === ci).map(devNode);
+                if (kids.length) rootNode.kids.push({ id: `c:${c.name}`, label: c.name, icon: c.icon, kids });
+            });
+        } else if (settings.view === 'connection') {
+            const pc = all.find((d) => d.cat === 'Computer');
+            const acpi = { id: 'n:acpi', label: 'Microsoft ACPI-Compliant System', icon: `${DEV}/system-devices-16.png`, kids: [] };
+            const buses = {};
+            const bus = (name, icon) => { if (!buses[name]) { buses[name] = { id: `n:${name}`, label: name, icon, kids: [] }; acpi.kids.push(buses[name]); } return buses[name]; };
+            const hw = deviceHardware() || {};
+            const soc = (hw.soc && (hw.soc.name || hw.soc.model)) || 'System on chip';
+            all.forEach((d) => {
+                if (d === pc) return;
+                const loc = String(d.info.location || '');
+                let parent;
+                if (/USB/i.test(loc) || d.cat === 'Universal Serial Bus controllers' || d.cat === 'Portable Devices') parent = bus('USB Root Hub', `${DEV}/usb-16.png`);
+                else if (d.cat === 'Sensors' || /Sensor hub/.test(loc)) parent = bus('Sensor Hub', `${DEV}/sensors-16.png`);
+                else if (d.cat === 'Storage volumes' || d.cat === 'Disk drives') parent = bus('Storage Controller', `${DEV}/storage-controllers-16.png`);
+                else if (d.cat === 'Network adapters' && d.info.iface && /^(mobile|ipa)$/.test(d.info.iface.kind)) parent = bus(`${soc} Modem`, `${DEV}/modems-16.png`);
+                else if (d.cat === 'Network adapters' && !d.info.iface) parent = bus('Melaton Virtual Bus', `${DEV}/system-devices-16.png`);
+                else if (d.cat === 'System devices' || d.cat === 'Batteries' || d.cat === 'Keyboards' || d.cat === 'Security Devices') parent = acpi;
+                else parent = bus(`${soc} System on Chip`, `${DEV}/system-devices-16.png`);
+                parent.kids.push(devNode(d));
+            });
+            const top = pc ? Object.assign(devNode(pc), { kids: [acpi] }) : acpi;
+            rootNode.kids.push(top);
+        } else {
+            // resources: Android shows a program no IRQ, DMA or I/O ranges; the memory a computer has is known
+            const hw = deviceHardware() || {};
+            const total = hw.memory && hw.memory.totalBytes;
+            const mem = { id: 'r:mem', label: 'Memory', icon: `${DEV}/res-memory-16.png`, kids: [] };
+            const board = all.find((d) => d.cat === 'System devices' && /System Board/.test(d.name)) || all.find((d) => d.cat === 'Computer');
+            if (total && board) {
+                // 8 hex digits, 16 past 4 GB (Vista x64's ranges)
+                const width = total > 0x100000000 ? 16 : 8;
+                const hex = (n) => n.toString(16).toUpperCase().padStart(width, '0');
+                const range = `[${hex(0)} - ${hex(Math.max(0, total - 1))}] ${board.name}`;
+                mem.kids.push(Object.assign(devNode(board), { id: `rm:${board.ci}:${board.di}`, label: range, icon: `${DEV}/res-memory-16.png` }));
+            }
+            if (settings.view === 'resconnection') {
+                const pc = all.find((d) => d.cat === 'Computer');
+                const top = pc ? Object.assign(devNode(pc), { kids: [mem] }) : mem;
+                rootNode.kids.push(top);
+            } else rootNode.kids.push(mem);
+        }
+        // depth, last-child and the ancestors' lines
+        const flat = new Map();
+        const walk = (n, depth, lines) => {
+            n.depth = depth;
+            n.lines = lines;
+            flat.set(n.id, n);
+            n.kids.forEach((k, i) => { k.last = i === n.kids.length - 1; k.parent = n; walk(k, depth + 1, depth >= 1 ? lines.concat([!n.last]) : lines); });
+        };
+        rootNode.last = true;
+        walk(rootNode, 0, []);
+        nodes = flat;
+        return rootNode;
+    }
+
+    /**
+     * MMC's toolbar as the VM's Device Manager: Back, Forward | Show/Hide Console Tree | Properties | Help, Show/Hide
+     * Action Pane (mmc.exe bitmap 202); with a device selected, devmgr.dll bitmap 358's Scan for hardware changes, then
+     * Update Driver Software, Uninstall and Disable (Enable for a disabled device).
      */
     function renderToolbar() {
         if (!win) return;
         const bar = win.querySelector('.dm-toolbar');
-        const dev = !!win.querySelector('.dm-row.is-selected.is-dev');
+        const n = selected && nodes ? nodes.get(selected) : null;
+        const d = n && n.dev;
         const mmc = (tool, i, title, opts = '') => `<button type="button" data-dm-tool="${tool}" title="${title}"${opts}><span class="dm-tb-icon" style="--i:${i}"></span></button>`;
-        const own = (tool, i, title) => `<button type="button" data-dm-tool="${tool}" title="${title}"><span class="dm-tb-icon is-devmgr" style="--i:${i}"></span></button>`;
+        const own = (tool, i, title, opts = '') => `<button type="button" data-dm-tool="${tool}" title="${title}"${opts}><span class="dm-tb-icon is-devmgr" style="--i:${i}"></span></button>`;
         const sep = '<span class="dm-sep"></span>';
-        bar.innerHTML = mmc('back', 0, 'Back', ' disabled') + mmc('forward', 1, 'Forward', ' disabled') + sep
+        const html = mmc('back', 0, 'Back', ' disabled') + mmc('forward', 1, 'Forward', ' disabled') + sep
             + mmc('tree', 10, 'Show/Hide Console Tree') + sep
-            + (dev ? mmc('properties', 8, 'Properties') + sep : '')
+            + (d ? mmc('properties', 8, 'Properties') + sep : '')
             + mmc('help', 15, 'Help') + mmc('actions', 17, 'Show/Hide Action Pane')
-            + (dev ? sep + own('scan', 0, 'Scan for hardware changes') + sep + own('update', 4, 'Update Driver Software...') : '');
+            + (d ? sep + own('scan', 0, 'Scan for hardware changes') + sep + own('update', 4, 'Update Driver Software...', d.gone ? ' disabled' : '')
+                + own('uninstall', 2, 'Uninstall') + (d.off ? own('enable', 1, 'Enable', d.gone ? ' disabled' : '') : own('disable', 3, 'Disable', d.gone ? ' disabled' : '')) : '');
+        if (bar.dataset.html !== html) { bar.innerHTML = html; bar.dataset.html = html; }
+        win.classList.toggle('dm-no-toolbar', !settings.toolbar);
+        win.classList.toggle('dm-no-status', !settings.statusBar);
+        win.classList.toggle('dm-no-menus', !settings.menus);
+        win.classList.toggle('dm-has-actions', !!settings.actions);
+        // Show/Hide Console Tree: the console's scope pane with the snap-in's one node (devmgr 986 / 989)
+        win.classList.toggle('dm-has-scope', !!settings.scope);
+        renderActions();
+    }
+
+    function rowHtml(n) {
+        const kids = n.kids.length > 0;
+        const open = kids && expanded.has(n.id);
+        const d = n.dev;
+        const cls = ['dm-row', kids ? 'has-kids' : '', open ? 'is-open' : '', n.last ? 'is-last' : '', n.id === selected ? 'is-selected' : '', d ? 'is-dev' : '', d && d.gone ? 'is-gone' : ''].filter(Boolean).join(' ');
+        // the ancestors' sibling lines (TVS_HASLINES): one per level whose node has more siblings below
+        const guides = n.lines.map((on, i) => (on ? `<i class="dm-guide" style="--g:${i + 1}"></i>` : '')).join('');
+        // Vista's overlays: the down arrow on a disabled device
+        const overlay = d && d.off ? `<img class="dm-overlay" src="${DEV}/overlay-disabled-16.png" srcset="${DEV}/overlay-disabled-32.png 2x" alt="">` : '';
+        const row = `<div class="${cls}" data-node="${esc(n.id)}" style="--d:${n.depth}" role="treeitem" aria-expanded="${kids ? open : ''}">${guides}${kids ? '<span class="dm-twisty"></span>' : ''}<span class="dm-icon"><img src="${esc(n.icon)}" alt="">${overlay}</span><span class="dm-label">${esc(n.label)}</span></div>`;
+        return row + (open ? n.kids.map(rowHtml).join('') : '');
     }
 
     function render() {
         if (!win || !tree) return;
+        const top = buildNodes();
+        if (selected && !nodes.has(selected)) selected = null;
         const body = win.querySelector('.dm-tree');
-        body.innerHTML = `<div class="dm-row is-root is-open" data-dm="root"><span class="dm-twisty"></span><img src="${DEV}/root-16.png" alt=""><span>${esc(computerName())}</span></div>
-            ${tree.map((c, ci) => {
-                const open = expanded.has(c.name);
-                // is-last / in-last: where the dotted sibling lines stop (TVS_HASLINES)
-                const last = ci === tree.length - 1;
-                return `<div class="dm-row is-cat${open ? ' is-open' : ''}${last ? ' is-last' : ''}" data-dm="cat" data-cat="${ci}" tabindex="0"><span class="dm-twisty"></span><img src="${esc(c.icon)}" alt=""><span>${esc(c.name)}</span></div>
-                    ${open ? c.devices.map((d, di) => `<div class="dm-row is-dev${last ? ' in-last' : ''}${di === c.devices.length - 1 ? ' is-last' : ''}" data-dm="dev" data-cat="${ci}" data-dev="${di}" tabindex="0"><img src="${esc(c.icon)}" alt=""><span>${esc(d)}</span></div>`).join('') : ''}`;
-            }).join('')}`;
+        body.innerHTML = rowHtml(top);
         renderToolbar();
     }
 
-    /** Update Driver Software: the browser's devices have no drivers to update. */
-    function msgUpToDate() {
-        const sel = win && win.querySelector('.dm-row.is-selected.is-dev span:last-child');
-        callGlobal('showConfirmationDialog', `<p>The best driver software for ${esc(sel ? sel.textContent : 'this device')} is already installed.</p><p>Melaton has determined the driver software for your device is up to date.</p>`, [{ text: 'Close', value: true, className: 'btn-standard primary' }], null, { title: 'Update Driver Software', width: 420 });
+    // ---------------------------------------------------------------- actions
+    const selDevice = () => { const n = selected && nodes ? nodes.get(selected) : null; return n && n.dev ? n.dev : null; };
+
+    /** Update Driver Software: Melaton's drivers come with the system (Android's updates); this one is current. */
+    function msgUpToDate(d) {
+        callGlobal('showConfirmationDialog', `<p>The best driver software for your device is already installed.</p><p>Melaton has determined the driver software for your device is up to date.</p><p>${esc(d ? d.name : '')}</p>`, [{ text: 'Close', value: true, className: 'btn-standard primary' }], null, { title: 'Update Driver Software', width: 440 });
     }
+
+    /** Scan for hardware changes: devmgr 328's box while the devices are read again; an Uninstall is undone. */
+    async function scan() {
+        uninstalled.clear();
+        const V = root.vistaDialogTemplate;
+        let box = null;
+        if (V && root.vistaDialogTemplates && root.vistaDialogTemplates['devmgr:328']) box = V.openDialog({ id: 'dmScanning', key: 'devmgr:328', owner: win, bareCaption: true });
+        // the Wi-Fi and modem interfaces read again (the app's shell)
+        try { const w = root.AndroidWifi; if (w && typeof w.netInterfaces === 'function') w.netInterfaces(); } catch (_) { /* old app */ }
+        await new Promise((r) => setTimeout(r, 700));
+        await refresh();
+        if (box && box.close) box.close(); else if (box && box.modal) callGlobal('closeModal', box.modal);
+    }
+
+    /** Disable: Vista's question, then the device is disabled (Wi-Fi: the radio off, as Network Connections' Disable). */
+    async function setDisabled(d, off) {
+        if (!d || d.gone) return;
+        if (off) {
+            const ok = await callGlobal('showConfirmationDialog', '<p class="dm-instruction">Disabling this device will cause it to stop functioning. Do you really want to disable it?</p>',
+                [{ text: 'Yes', value: true, className: 'btn-standard' }, { text: 'No', value: false, className: 'btn-standard primary' }], null, { title: d.name, icon: 'fas fa-triangle-exclamation', width: 366 });
+            if (ok !== true) return false;
+        }
+        const iface = d.info.iface;
+        if (iface && iface.kind === 'wifi' && root.dreamosWifi && typeof root.dreamosWifi.setRadio === 'function') {
+            try { await root.dreamosWifi.setRadio(!off); } catch (_) { /* below */ }
+        } else if (d.info.miniport && root.melatonControlPanel && typeof root.melatonControlPanel.toggleConnection === 'function') {
+            // the Café Miniport's adapter is the Nightshade connection
+            const conn = root.melatonNetworkDialogs ? root.melatonNetworkDialogs.connectionInfo() : {};
+            if (!!conn.connected === !!off) root.melatonControlPanel.toggleConnection();
+        }
+        // the Wi-Fi radio is its own record (Network Connections and the tray switch it too); any other device is disabled here
+        if (off && !(iface && iface.kind === 'wifi')) disabled.add(d.key); else disabled.delete(d.key);
+        save('disabled', Array.from(disabled));
+        await refresh();
+        return true;
+    }
+
+    /** Uninstall: devmgr 210's confirmation; the device leaves the list until Scan for hardware changes. */
+    function uninstall(d) {
+        if (!d) return;
+        const V = root.vistaDialogTemplate;
+        if (!V) return;
+        V.openDialog({
+            id: 'dmUninstall', key: 'devmgr:210', owner: win, bareCaption: true,
+            overrides: { 115: { image: d.icon.replace('-16.png', '-32.png') } },
+            init(ctx) {
+                ctx.text(116, d.name);
+                ctx.text(117, 'Warning: You are about to uninstall this device from your system.');
+                // Delete the driver software: only for a driver installed apart from the system (none here)
+                ctx.show(118, false);
+                ctx.show(119, false);
+            },
+            ok() {
+                uninstalled.add(d.key);
+                disabled.delete(d.key);
+                save('disabled', Array.from(disabled));
+                selected = null;
+                render();
+            }
+        });
+    }
+
+    function addLegacy() { const cp = root.melatonControlPanel; if (cp && cp.doAction) cp.doAction('dialog:add-hardware'); }
+
+    async function action(a) {
+        const d = selDevice();
+        switch (a) {
+            case 'scan': await scan(); break;
+            case 'update': if (d) msgUpToDate(d); break;
+            case 'disable': if (d) await setDisabled(d, true); break;
+            case 'enable': if (d) await setDisabled(d, false); break;
+            case 'uninstall': if (d) uninstall(d); break;
+            case 'properties': if (d) openProperties(d); break;
+            case 'add-hw': addLegacy(); break;
+            case 'help': callGlobal('openHelpAndSupport', 'device-manager'); break;
+            case 'techcenter': callGlobal('openHelpAndSupport', 'device-manager'); break;
+            case 'tree': settings.scope = !settings.scope; save('settings', settings); renderToolbar(); break;
+            case 'actions': settings.actions = !settings.actions; save('settings', settings); renderToolbar(); break;
+            case 'customize': await customize(); break;
+            case 'options': await options(); break;
+            case 'exit': callGlobal('closeModal', win); break;
+            case 'about': callGlobal('openAboutMelatoninModal', { program: 'Xyridian Management Console', product: 'Management Console 3.0' }); break;
+            case 'about-snapin': callGlobal('openSnapinAbout', { name: 'Device Manager', description: 'You can use Device Manager to view a list of hardware devices installed on your computer and set properties for each device.' }); break;
+            default:
+                if (a && a.startsWith('view:')) { settings.view = a.slice(5); save('settings', settings); render(); }
+                else if (a === 'hidden') { settings.hidden = !settings.hidden; save('settings', settings); render(); }
+        }
+    }
+
+    /** The Action menu (and a device's context menu, ctx true): devmgr's own items in Vista's order. */
+    function actionItems(ctx) {
+        const d = selDevice();
+        const items = [];
+        if (d) {
+            items.push({ text: 'Update Driver Software...', action: 'update', disabled: d.gone });
+            items.push(d.off ? { text: 'Enable', action: 'enable', disabled: d.gone } : { text: 'Disable', action: 'disable', disabled: d.gone });
+            items.push({ text: 'Uninstall', action: 'uninstall' }, { separator: true });
+        }
+        items.push({ text: 'Scan for hardware changes', action: 'scan' });
+        if (!ctx) items.push({ text: 'Add legacy hardware', action: 'add-hw' });
+        items.push({ separator: true }, { text: 'Properties', action: 'properties', disabled: !d, className: ctx ? 'context-menu-item-default' : '' });
+        if (!ctx) items.push({ separator: true }, { text: 'Help', action: 'help' });
+        return items;
+    }
+
+    function viewItems() {
+        const radio = (text, v) => ({ text, action: `view:${v}`, checked: settings.view === v, showIndicator: true, indicatorMark: 'radio' });
+        return [radio('Devices by type', 'type'), radio('Devices by connection', 'connection'), radio('Resources by type', 'restype'), radio('Resources by connection', 'resconnection'),
+            { separator: true }, { text: 'Show hidden devices', action: 'hidden', checked: !!settings.hidden, showIndicator: true },
+            { separator: true }, { text: 'Customize...', action: 'customize' }];
+    }
+
+    function menuItems(which) {
+        return {
+            file: [{ text: 'Options...', action: 'options' }, { separator: true }, { text: 'Exit', action: 'exit' }],
+            action: actionItems(false),
+            view: viewItems(),
+            // the VM's Device Manager: Help Topics, TechCenter Web Site | About ... Management Console..., About Device Manager...
+            help: [{ text: 'Help Topics', action: 'help' }, { text: 'TechCenter Web Site', action: 'techcenter' }, { separator: true }, { text: 'About Xyridian Management Console...', action: 'about' }, { text: 'About Device Manager...', action: 'about-snapin' }]
+        }[which];
+    }
+
+    /** MMC's Customize View: the parts of the console window a user can hide. */
+    async function customize() {
+        const parts = [['menus', 'Standard menus (Action and View)'], ['toolbar', 'Standard toolbar'], ['statusBar', 'Status bar']];
+        let boxes = null;
+        const html = `<p>Select or clear the check boxes to show or hide items in the console window.</p><div class="mmc-dialog-checks">${parts.map(([k, t]) => `<label><input type="checkbox" data-dm-part="${k}"${settings[k] ? ' checked' : ''}> ${esc(t)}</label>`).join('')}</div>`;
+        const ok = await callGlobal('showConfirmationDialog', html, [{ text: 'OK', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], null, {
+            title: 'Customize View', icon: 'fas fa-circle-info', width: 360,
+            onDialogReady: () => { boxes = Array.from(doc.querySelectorAll('#confirmationDialog [data-dm-part]')); }
+        });
+        if (ok !== true) return;
+        if (!boxes || !boxes.length) boxes = Array.from(doc.querySelectorAll('#confirmationDialog [data-dm-part]'));
+        boxes.forEach((b) => { settings[b.dataset.dmPart] = b.checked; });
+        save('settings', settings);
+        renderToolbar();
+    }
+
+    /** File > Options: the console's own options (a saved console's mode); Device Manager opened alone has none to change. */
+    async function options() {
+        await callGlobal('showConfirmationDialog', '<p><b>Device Manager</b></p><p>Console mode: Author mode</p><p>This console was opened from Control Panel and is not saved, so its options cannot be changed.</p>',
+            [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'Options', icon: 'fas fa-circle-info', width: 380 });
+    }
+
+    /** MMC 3.0's Action pane: Device Manager's group, then the selected device's (Show/Hide Action Pane). */
+    function renderActions() {
+        const pane = win && win.querySelector('.dm-actions');
+        if (!pane) return;
+        if (!settings.actions) { if (pane.dataset.html) { pane.innerHTML = ''; pane.dataset.html = ''; } return; }
+        const d = selDevice();
+        const list = (items) => items.filter((x) => !x.separator).map((x) => `<div class="dm-act${x.disabled ? ' is-disabled' : ''}" data-dm-act="${esc(x.action)}">${esc(x.text)}</div>`).join('');
+        const html = `<div class="dm-act-head">Actions</div><div class="dm-act-group">Device Manager</div>${list([{ text: 'Scan for hardware changes', action: 'scan' }, { text: 'Add legacy hardware', action: 'add-hw' }, { text: 'Help', action: 'help' }])}`
+            + (d ? `<div class="dm-act-group">${esc(d.name)}</div>${list(actionItems(true).filter((x) => x.action !== 'scan'))}` : '');
+        if (pane.dataset.html !== html) { pane.innerHTML = html; pane.dataset.html = html; }
+    }
+
+    // ---------------------------------------------------------------- Properties
 
     // Current Values (#829): devmgr's Details page laid out again for live readings - the device's icon
     // and name, then a list that refreshes each second while the sheet is open
@@ -617,49 +964,210 @@
         });
     }
 
-    function openProperties(ci, di) {
-        const c = tree[ci];
-        const name = c.devices[di];
-        const info = (c.info && c.info[di]) || {};
+    /** M/D/YYYY as Vista writes a driver date. */
+    const usDate = (iso) => { const m = /^(\d{4})-(\d\d)-(\d\d)/.exec(String(iso || '')); return m ? `${Number(m[2])}/${Number(m[3])}/${m[1]}` : ''; };
+
+    /** The driver's facts: Android's kernel and build for a phone's devices, the browser's for a plain computer. */
+    function driverFacts(d) {
+        const hw = deviceHardware() || {};
+        const dev = hw.device || {};
+        const maker = String(dev.manufacturer || '').replace(/^\w/, (c) => c.toUpperCase());
+        const iface = d.info.iface;
+        const kernel = String(dev.kernel || '').split('-')[0];
+        const driver = (iface && iface.driver) || d.info.driver || '';
+        return {
+            provider: d.info.driverProvider || (/^Qualcomm/.test(d.name) ? 'Qualcomm' : d.info.manufacturer && !/^\(/.test(d.info.manufacturer) ? d.info.manufacturer : maker || 'Xyridian'),
+            date: usDate(dev.securityPatch) || '6/21/2006',
+            version: kernel || '6.0.6002.18005',
+            signer: maker ? `${maker} (${dev.buildId || 'Android'})` : 'Xyridian Melaton',
+            driver,
+            files: driver ? [`/sys/bus/${/pci/.test(driver) ? 'pci' : 'platform'}/drivers/${driver}`] : []
+        };
+    }
+
+    /** Vista's General status text for a device's state (devmgr 1030 / 1020 + 1333, setupapi code 45). */
+    function statusText(d) {
+        if (d.gone) return 'Currently, this hardware device is not connected to the computer. (Code 45)\r\n\r\nTo fix this problem, reconnect this hardware device to the computer.';
+        if (d.off) return 'This device is disabled. (Code 22)\r\n\r\nClick Enable Device to enable this device.';
+        return 'This device is working properly.';
+    }
+
+    /** Details: Vista's property names (devmgr 600-664) and their values for this device, then what the device reports. */
+    function detailsProps(d, drv) {
+        const [cls, guid, en] = classOf(d.cat);
+        const iface = d.info.iface;
+        const hwId = `${en}\\${iface ? `NET_${slug(iface.name)}` : slug(d.name)}`;
+        const inst = `${hwId}\\${(d.di + 1).toString(16).toUpperCase().padStart(4, '0')}`;
+        const sibs = tree[d.ci].devices.filter((_, i) => i !== d.di).slice(0, 8);
+        const status = d.gone ? '' : ['DN_DRIVER_LOADED', 'DN_STARTED', 'DN_DISABLEABLE', 'DN_NT_ENUMERATOR', 'DN_NT_DRIVER'].concat(d.off ? ['DN_HAS_PROBLEM'] : []).join('\n');
+        const list = [
+            ['Device description', d.name], ['Hardware Ids', hwId], ['Compatible Ids', `${en}\\${slug(cls)}`], ['Service', drv.driver],
+            ['Device class', cls], ['Device class guid', guid], ['Driver key', `${guid}\\${d.di.toString().padStart(4, '0')}`],
+            ['ConfigFlags', d.off ? '00000001\nCONFIGFLAG_DISABLED' : '00000000'], ['Manufacturer', d.info.manufacturer || drv.provider],
+            ['Location information', d.info.location || ''], ['Capabilities', '00000060\nCM_DEVCAP_UNIQUEID\nCM_DEVCAP_SURPRISEREMOVALOK'],
+            ['Enumerator', en], ['Power data', d.gone ? '' : `Current power state:\nD${d.off ? '3' : '0'}\n\nPower capabilities:\n00000019\nPDCAP_D0_SUPPORTED\nPDCAP_D3_SUPPORTED\nPDCAP_WAKE_FROM_D0_SUPPORTED\n\nPower state mappings:\nS0 -> D0\nS1 -> D3\nS3 -> D3\nS4 -> D3\nS5 -> D3`],
+            ['Removal policy', /USB|Storage card/i.test(d.info.location || '') ? '00000003\nExpect surprise removal' : '00000001\nExpect no removal'],
+            ['Install state', d.gone ? '' : '00000000\nInstalled'], ['Location paths', d.info.location ? `ACPI(_SB_)#${slug(d.info.location)}` : ''],
+            ['Device Instance Path', inst], ['DevNode status', status], ['Problem code', d.off ? '00000016' : d.gone ? '0000002D' : '00000000'],
+            ['Parent', d.cat === 'Computer' ? `HTREE\\ROOT\\0` : 'ACPI_HAL\\PNP0C08\\0'], ['Siblings', sibs.join('\n')]
+        ];
+        // what the device itself reports (the phone's own facts, #829 / #952), under its own names
+        const own = (d.info.props || []).filter((p) => p && p[1] != null && p[1] !== '').map((p) => [p[0], String(p[1])]);
+        return list.filter((p) => p[1] != null && p[1] !== '').concat(own);
+    }
+
+    /** A network adapter's Advanced page (netcfgx 1505): the adapter's real settings, each as the driver reports it. */
+    function advancedProps(d) {
+        const x = d.info.iface || {};
+        const hw = deviceHardware() || {};
+        const wifi = hw.wifi || {};
+        const out = [];
+        if (x.kind === 'wifi') {
+            const std = Array.isArray(wifi.standards) ? wifi.standards : [];
+            // "802.11n/ac/ax/be", as a Wireless Mode value reads
+            out.push(['802.11 mode', std.length ? `802.11${std.map((x) => String(x).replace(/^802\.11/, '')).join('/')}` : '']);
+            out.push(['Band', ['2.4 GHz', wifi.band5GHz && '5 GHz', wifi.band6GHz && '6 GHz'].filter(Boolean).join(' / ')]);
+            out.push(['Wi-Fi Direct', 'Supported'], ['Wi-Fi Aware', 'Supported']);
+        }
+        if (x.kind === 'mobile') {
+            out.push(['Access point name', x.apn || (x.connected ? '' : 'Not in use')], ['Network type', x.netType || 'Not connected'], ['SIM', x.sim === 'ready' ? 'Ready' : x.sim || '']);
+        }
+        if (x.kind === 'vpn') out.push(['VPN application', x.vpnApp || '']);
+        out.push(['Jumbo Packet', x.mtu ? `${x.mtu} Bytes` : ''], ['Locally Administered Address', '']);
+        if (x.mac) out.push(['Permanent Address', String(x.mac).toUpperCase().replace(/:/g, '-')]);
+        return out.filter((p) => p[0] === 'Locally Administered Address' || (p[1] != null && p[1] !== ''));
+    }
+
+    function openProperties(d) {
         const V = root.vistaDialogTemplate;
-        if (!V) return;
+        if (!V || !d) return;
+        const { name, info } = d;
         const sheet = root.cplDialogs && root.cplDialogs.sheet;
         const open = sheet || ((def) => V.openSheet(def));
-        const big = c.icon.replace('-16.png', '-32.png');
+        const big = d.icon.replace('-16.png', '-32.png');
+        const isNet = d.cat === 'Network adapters' && !!info.iface;
         const valuesTpl = info.live ? valuesTemplate() : null;
-        const pages = [{ key: 'devmgr:103', overrides: { 218: { image: big } } }, { key: 'devmgr:106', overrides: { 226: { image: big } } }, { key: 'devmgr:372', overrides: { 373: { image: big } } }];
+        const drv = driverFacts(d);
+        // the tabs Vista shows a device of this class: General, Advanced (network adapters), Driver, Details,
+        // Resources (adapters, displays, sound, USB and system devices), Power Management (network adapters)
+        const pages = [{ key: 'devmgr:103', overrides: { 218: { image: big } } }];
+        if (isNet) pages.push({ key: 'netcfgx:1505' });
+        pages.push({ key: 'devmgr:106', overrides: { 226: { image: big } } }, { key: 'devmgr:372', overrides: { 373: { image: big } } });
+        if (/^(Network adapters|Display adapters|Sound, video and game controllers|Universal Serial Bus controllers|System devices)$/.test(d.cat)) pages.push({ key: 'setupapi:2001', overrides: { 2002: { image: big } } });
+        if (isNet) pages.push({ key: 'devmgr:330', overrides: { 331: { image: big } } });
         if (valuesTpl) pages.push({ key: 'devmgr:values', tpl: valuesTpl, overrides: { 373: { image: big } } });
         const manufacturer = info.manufacturer || (/Melaton|Dreamscape/.test(name) ? 'Xyridian Corporation' : '(Standard system devices)');
         let timer = 0;
         open({
             windowId: 'dmDeviceProperties',
             title: `${name} Properties`,
-            icon: c.icon,
+            icon: d.icon,
             noApply: true,
             pages,
             init(ctx) {
-                pages.forEach((p) => ctx.text(p.key === 'devmgr:103' ? 219 : p.key === 'devmgr:106' ? 227 : 374, name, p.key));
-                ctx.set(220, c.name, 'devmgr:103');
-                ctx.set(221, manufacturer, 'devmgr:103');
-                ctx.set(357, info.location || 'PCI bus 0, device 1, function 0', 'devmgr:103');
-                ctx.set(223, 'This device is working properly.', 'devmgr:103');
-                ctx.set(385, info.manufacturer || 'Xyridian', 'devmgr:106');
-                ctx.set(387, '6/21/2006', 'devmgr:106');
-                ctx.set(389, '6.0.6002.18005', 'devmgr:106');
-                ctx.set(393, 'Xyridian Melaton', 'devmgr:106');
+                const P = (k) => ({ 103: 'devmgr:103', 106: 'devmgr:106', 372: 'devmgr:372', 2001: 'setupapi:2001', 330: 'devmgr:330' }[k]);
+                pages.forEach((p) => {
+                    const nameId = { 'devmgr:103': 219, 'devmgr:106': 227, 'devmgr:372': 374, 'devmgr:values': 374, 'setupapi:2001': 2003, 'devmgr:330': 332 }[p.key];
+                    if (nameId) ctx.text(nameId, name, p.key);
+                });
+                // ---- General
+                ctx.set(220, d.cat, P(103));
+                ctx.set(221, manufacturer, P(103));
+                ctx.set(357, info.location || (d.gone ? '' : 'on System board'), P(103));
+                ctx.set(223, statusText(d), P(103));
+                // Troubleshoot / Enable Device: Vista's General shows the one button only for a problem it can fix
+                ctx.show(309, d.off && !d.gone, P(103));
+                if (d.off) { ctx.text(309, 'Enable Device', P(103)); ctx.enable(309, true, P(103)); }
+                ctx.on(309, 'click', async () => { if (await setDisabled(d, false)) ctx.close(); }, P(103));
+                // Change settings: the UAC button of an unelevated sheet; Melaton's sheets run elevated
+                ctx.show(217, false, P(103));
+                // ---- Driver
+                ctx.set(385, drv.provider, P(106));
+                ctx.set(387, drv.date, P(106));
+                ctx.set(389, drv.version, P(106));
+                ctx.set(393, drv.signer, P(106));
+                // the button texts as devmgr sets them at run time
+                ctx.text(379, d.off ? 'Enables the selected device.' : 'Disables the selected device.', P(106));
+                ctx.text(378, d.off ? 'Enable' : 'Disable', P(106));
+                ctx.enable(394, false, P(106));
+                ctx.enable(378, !d.gone, P(106));
+                ctx.enable(380, !d.gone, P(106));
+                ctx.on(390, 'click', () => driverDetails(d, drv, ctx.modal), P(106));
+                ctx.on(380, 'click', () => msgUpToDate(d), P(106));
+                ctx.on(378, 'click', async () => { if (await setDisabled(d, !d.off)) ctx.close(); }, P(106));
+                ctx.on(382, 'click', () => { ctx.close(); uninstall(d); }, P(106));
                 ['devmgr:103', 'devmgr:106', 'devmgr:372'].forEach((p) => {
                     ctx.content.querySelectorAll(`[data-vdt-page="${p}"] input.vdt-edit`).forEach((i) => { i.readOnly = true; });
                 });
-                const props = [['Device description', name], ['Hardware Ids', `ROOT\\${c.name.replace(/\W+/g, '').toUpperCase()}\\0000`], ['Class', c.name], ['Driver', 'Xyridian'], ['Manufacturer', manufacturer]]
-                    .concat((info.props || []).filter((p) => p && p[1] != null && p[1] !== ''));
-                ctx.options(375, props.map((p, i) => ({ value: String(i), text: p[0] })), '0', 'devmgr:372');
-                const lv = ctx.holder(376, 'devmgr:372');
-                const showProp = () => { lv.querySelector('.vdt-lv-body').innerHTML = `<div class="vdt-lv-row is-selected"><span>${esc(props[Number(ctx.get(375, 'devmgr:372'))][1])}</span></div>`; };
-                ctx.on(375, 'change', showProp, 'devmgr:372');
+                // ---- Details: the Property drop-down list (Vista's own, vistaDialogTemplate selectDrop) over the values
+                const props = detailsProps(d, drv);
+                ctx.options(375, props.map((p, i) => ({ value: String(i), text: p[0] })), '0', P(372));
+                const lv = ctx.holder(376, P(372));
+                // Vista's value list: one column as wide as the list, no sideways scroll
+                lv.classList.add('dm-value-list');
+                const showProp = () => {
+                    const v = props[Number(ctx.get(375, P(372)))] || ['', ''];
+                    lv.querySelector('.vdt-lv-body').innerHTML = String(v[1]).split('\n').map((line, i) => `<div class="vdt-lv-row${i === 0 ? ' is-selected' : ''}"><span>${line ? esc(line) : '&nbsp;'}</span></div>`).join('');
+                };
+                ctx.on(375, 'change', showProp, P(372));
                 showProp();
-                ctx.enable(309, false, 'devmgr:103');
-                ctx.enable(217, false, 'devmgr:103');
-                [380, 394, 378, 382].forEach((id) => ctx.enable(id, false, 'devmgr:106'));
+                // ---- Resources
+                if (pages.some((p) => p.key === 'setupapi:2001')) {
+                    const R = 'setupapi:2001';
+                    const hw = deviceHardware() || {};
+                    const total = hw.memory && hw.memory.totalBytes;
+                    const board = d.cat === 'System devices' && /System Board/.test(name) && total;
+                    ctx.show(2004, !!board, R);
+                    ctx.show(2005, !!board, R);
+                    ctx.show(2007, !board, R);
+                    ctx.show(2006, false, R);
+                    ctx.text(2007, d.off ? "This device isn't using any resources because it is not currently enabled." : 'This device does not require any resources.', R);
+                    ['2008', '2009', '2014', '2015', '2012', '2013'].forEach((id) => ctx.show(Number(id), false, R));
+                    ctx.show(2011, !!board, R);
+                    ctx.show(2010, !!board, R);
+                    if (board) {
+                        ctx.set(2011, true, R);
+                        ctx.enable(2011, false, R);
+                        ctx.enable(2010, false, R);
+                        const hex = (n) => n.toString(16).toUpperCase().padStart(16, '0');
+                        const lvr = ctx.holder(2005, R);
+                        lvr.classList.add('is-report');
+                        lvr.querySelector('.vdt-lv-header').innerHTML = '<span class="vdt-lv-col dm-res-type">Resource type</span><span class="vdt-lv-col">Setting</span>';
+                        lvr.querySelector('.vdt-lv-body').innerHTML = `<div class="vdt-lv-row"><span class="dm-res-type"><img src="${DEV}/res-memory-16.png" alt="">Memory Range</span><span>${hex(0)} - ${hex(total - 1)}</span></div>`;
+                    }
+                    ctx.set(2018, 'No conflicts.', R);
+                    const ta = ctx.el(2018, R);
+                    if (ta) ta.readOnly = true;
+                }
+                // ---- Power Management (network adapters): Android powers its radios itself; Vista's warning below
+                if (isNet) {
+                    const W = 'devmgr:330';
+                    ctx.set(338, true, W);
+                    ctx.enable(338, false, W);
+                    ctx.set(333, false, W);
+                    ctx.enable(333, false, W);
+                    ctx.show(396, false, W);
+                    ctx.text(343, 'Warning: Allowing this device to bring the computer out of standby may cause this computer to periodically wakeup to refresh its network state. If you travel with this computer or run it on a battery, you should not turn on this feature as the machine may awaken at inopportune times or consume the battery.', W);
+                    // ---- Advanced: the property list on the left, its value on the right
+                    const A = 'netcfgx:1505';
+                    const adv = advancedProps(d);
+                    ctx.options(1101, adv.map((p, i) => ({ value: String(i), text: p[0] })), '0', A);
+                    const showAdv = () => {
+                        const i = Number(ctx.get(1101, A) || 0);
+                        const p = adv[i] || ['', ''];
+                        const none = !p[1];
+                        // a value the adapter does not have: the Not Present choice (Locally Administered Address)
+                        ctx.show(1103, !none, A);
+                        ctx.show(1105, none, A);
+                        ctx.show(1106, none, A);
+                        ctx.show(1102, false, A);
+                        ctx.show(1104, false, A);
+                        ctx.show(1111, false, A);
+                        if (none) { ctx.set(1105, false, A); ctx.set(1106, true, A); ctx.enable(1105, false, A); ctx.enable(1106, false, A); } else ctx.options(1103, [{ value: '0', text: p[1] }], '0', A);
+                    };
+                    ctx.on(1101, 'change', showAdv, A);
+                    showAdv();
+                }
                 if (!valuesTpl) return;
                 const vlv = ctx.holder(376, 'devmgr:values');
                 const body = vlv && vlv.querySelector('.vdt-lv-body');
@@ -700,6 +1208,32 @@
         }, null, win);
     }
 
+    /** Driver Details (devmgr 110): the driver's files, then the selected file's provider, version, copyright, signer. */
+    function driverDetails(d, drv, owner) {
+        const V = root.vistaDialogTemplate;
+        if (!V) return;
+        V.openDialog({
+            id: 'dmDriverFiles', key: 'devmgr:110', owner, bareCaption: true,
+            overrides: { 303: { image: d.icon.replace('-16.png', '-32.png') } },
+            init(ctx) {
+                ctx.text(304, d.name);
+                ctx.show(247, false);
+                const lv = ctx.holder(228);
+                const body = lv && lv.querySelector('.vdt-lv-body');
+                if (body) {
+                    body.innerHTML = drv.files.length
+                        ? drv.files.map((f, i) => `<div class="vdt-lv-row${i === 0 ? ' is-selected' : ''}"><span><img src="${DEV}/driver-file-16.png" srcset="${DEV}/driver-file-32.png 2x" alt="">${esc(f)}</span></div>`).join('')
+                        : '<div class="vdt-lv-row"><span>No driver files are required or have been loaded for this device.</span></div>';
+                }
+                ctx.text(229, drv.files.length ? drv.provider : '');
+                ctx.text(230, drv.files.length ? `${drv.version} (kernel)` : '');
+                ctx.text(231, drv.files.length ? 'Not available' : '');
+                ctx.text(232, drv.files.length ? drv.signer : '');
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------- the window
     function build() {
         win = doc.createElement('div');
         win.id = 'deviceManagerModal';
@@ -719,98 +1253,86 @@
                 <button type="button" class="btn-danger close-btn btn-small dm-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
             <div class="modal-content win7 dm-client">
-                <div class="naxt-menubar dm-menubar" role="menubar" data-win32-menus><button type="button" class="naxt-menu-title" data-dm-menu="file">File</button><button type="button" class="naxt-menu-title" data-dm-menu="action">Action</button><button type="button" class="naxt-menu-title" data-dm-menu="view">View</button><button type="button" class="naxt-menu-title" data-dm-menu="help">Help</button></div>
+                <div class="naxt-menubar dm-menubar" role="menubar" data-win32-menus><button type="button" class="naxt-menu-title" data-dm-menu="file">File</button><button type="button" class="naxt-menu-title dm-std-menu" data-dm-menu="action">Action</button><button type="button" class="naxt-menu-title dm-std-menu" data-dm-menu="view">View</button><button type="button" class="naxt-menu-title" data-dm-menu="help">Help</button></div>
                 <div class="dm-toolbar" role="toolbar"></div>
-                <div class="dm-tree" role="tree" tabindex="0"></div>
+                <div class="dm-body"><div class="dm-scope" role="tree"><div class="dm-scope-row is-selected"><img src="${ITEMS}/device-manager-16.png" alt=""><span>Device Manager on local computer</span></div></div><div class="dm-tree" role="tree" tabindex="0"></div><div class="dm-actions"></div></div>
                 <div class="dm-status"><span></span><span></span><span></span></div>
             </div>`;
         doc.body.appendChild(win);
         win.querySelector('.dm-close').addEventListener('click', () => callGlobal('closeModal', win));
-        // attached up front: contextMenu opens them on click, and hovering another title
-        // while one is open switches to it
+        // attached up front: contextMenu opens them on click, and hovering another title while one is open switches to it
         win.querySelectorAll('[data-dm-menu]').forEach(attachMenu);
-        win.addEventListener('click', (ev) => {
+        const treeEl = win.querySelector('.dm-tree');
+        const select = (row) => {
+            selected = row ? row.dataset.node : null;
+            win.querySelectorAll('.dm-row.is-selected').forEach((r) => r.classList.remove('is-selected'));
+            if (row) { row.classList.add('is-selected'); row.scrollIntoView({ block: 'nearest' }); }
+            renderToolbar();
+        };
+        treeEl.addEventListener('mousedown', (ev) => {
             const row = ev.target.closest('.dm-row');
-            if (row) {
-                win.querySelectorAll('.dm-row.is-selected').forEach((r) => r.classList.remove('is-selected'));
-                row.classList.add('is-selected');
-                renderToolbar();
-                if (row.dataset.dm === 'cat' && ev.target.closest('.dm-twisty')) toggle(row);
-            }
+            if (row) select(row);
+        });
+        treeEl.addEventListener('click', (ev) => {
+            const row = ev.target.closest('.dm-row');
+            if (row && ev.target.closest('.dm-twisty')) toggle(row.dataset.node);
+        });
+        treeEl.addEventListener('dblclick', (ev) => {
+            const row = ev.target.closest('.dm-row');
+            if (!row || ev.target.closest('.dm-twisty')) return;
+            const n = nodes.get(row.dataset.node);
+            if (n && n.dev) openProperties(n.dev); else if (n) toggle(n.id);
+        });
+        treeEl.addEventListener('keydown', (ev) => {
+            const rows = Array.from(treeEl.querySelectorAll('.dm-row'));
+            const cur = treeEl.querySelector('.dm-row.is-selected');
+            const i = rows.indexOf(cur);
+            const n = cur ? nodes.get(cur.dataset.node) : null;
+            if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); select(rows[Math.max(0, Math.min(rows.length - 1, i + (ev.key === 'ArrowDown' ? 1 : -1)))] || rows[0]); return; }
+            if (!n) return;
+            if (ev.key === 'Enter' && n.dev) openProperties(n.dev);
+            else if (ev.key === 'ArrowRight' && n.kids.length && !expanded.has(n.id)) toggle(n.id);
+            else if (ev.key === 'ArrowLeft' && expanded.has(n.id) && n.kids.length) toggle(n.id);
+            else if (ev.key === 'ArrowLeft' && n.parent) { const p = treeEl.querySelector(`.dm-row[data-node="${CSS.escape(n.parent.id)}"]`); if (p) select(p); }
+            else if (ev.key === 'Delete' && n.dev) uninstall(n.dev);
+            else if (ev.key === 'F5') { ev.preventDefault(); void scan(); }
+        });
+        // a device's context menu (Vista's: Update Driver Software, Disable, Uninstall | Scan | Properties in bold);
+        // on a class or the computer: Scan for hardware changes, Properties greyed
+        if (root.contextMenu) {
+            root.contextMenu.attachToElement(treeEl, {
+                onAction: (a) => void action(a),
+                sections: [{ type: 'list', initfn: (s) => { s.items = actionItems(true); } }]
+            });
+        }
+        win.querySelector('.dm-toolbar').addEventListener('click', (ev) => {
             const tool = ev.target.closest('[data-dm-tool]');
-            if (tool) {
-                const t = tool.dataset.dmTool;
-                if (t === 'scan') void refresh();
-                else if (t === 'update') msgUpToDate();
-                else if (t === 'help') callGlobal('openHelpAndSupport', 'device-manager');
-                else if (t === 'properties') {
-                    const sel = win.querySelector('.dm-row.is-selected.is-dev');
-                    if (sel) openProperties(Number(sel.dataset.cat), Number(sel.dataset.dev));
-                }
-            }
+            if (tool && !tool.disabled) void action(tool.dataset.dmTool);
         });
-        win.addEventListener('dblclick', (ev) => {
-            const row = ev.target.closest('.dm-row');
-            if (!row) return;
-            if (row.dataset.dm === 'cat') toggle(row);
-            else if (row.dataset.dm === 'dev') openProperties(Number(row.dataset.cat), Number(row.dataset.dev));
+        win.querySelector('.dm-actions').addEventListener('click', (ev) => {
+            const a = ev.target.closest('.dm-act');
+            if (a && !a.classList.contains('is-disabled')) void action(a.dataset.dmAct);
         });
-        win.addEventListener('keydown', (ev) => {
-            const row = ev.target.closest && ev.target.closest('.dm-row');
-            if (!row) return;
-            if (ev.key === 'Enter' && row.dataset.dm === 'dev') openProperties(Number(row.dataset.cat), Number(row.dataset.dev));
-            if ((ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') && row.dataset.dm === 'cat') {
-                const name = tree[Number(row.dataset.cat)].name;
-                if ((ev.key === 'ArrowRight') !== expanded.has(name)) toggle(row);
-            }
-        });
+        treeEl.addEventListener('contextmenu', (ev) => { const row = ev.target.closest('.dm-row'); if (row) select(row); }, true);
     }
 
-    function toggle(row) {
-        const c = tree[Number(row.dataset.cat)];
-        if (expanded.has(c.name)) expanded.delete(c.name); else expanded.add(c.name);
+    function toggle(id) {
+        if (expanded.has(id)) expanded.delete(id); else expanded.add(id);
         render();
     }
 
     function attachMenu(btn) {
         const cm = root.contextMenu;
         if (!cm) return;
-        const items = {
-            // devmgr's MMC menus (Vista): File, Action, View with its four views, Help
-            file: [{ text: 'Options...', action: 'dm-none', disabled: true }, { separator: true }, { text: 'Exit', action: 'dm-exit' }],
-            action: [{ text: 'Scan for hardware changes', action: 'dm-scan' }, { text: 'Add legacy hardware', action: 'dm-add-hw' }, { separator: true }, { text: 'Properties', action: 'dm-props' }, { separator: true }, { text: 'Help', action: 'dm-help' }],
-            view: [
-                { text: 'Devices by type', action: 'dm-none', checked: true, showIndicator: true, indicatorMark: 'radio' },
-                { text: 'Devices by connection', action: 'dm-none', disabled: true },
-                { text: 'Resources by type', action: 'dm-none', disabled: true },
-                { text: 'Resources by connection', action: 'dm-none', disabled: true },
-                { separator: true },
-                { text: 'Show hidden devices', action: 'dm-none', disabled: true },
-                { separator: true },
-                { text: 'Customize...', action: 'dm-none', disabled: true }
-            ],
-            // the VM's Device Manager: Help Topics | About ... Management Console..., About Device Manager...
-            help: [{ text: 'Help Topics', action: 'dm-help' }, { separator: true }, { text: 'About Xyridian Management Console...', action: 'dm-about' }, { text: 'About Device Manager...', action: 'dm-about-snapin' }]
-        }[btn.dataset.dmMenu];
-        cm.attachClickMenuToElement(btn, {
-            sections: [{ type: 'list', items }],
-            onAction: (action) => {
-                if (action === 'dm-exit') callGlobal('closeModal', win);
-                else if (action === 'dm-scan') void refresh();
-                // the Add Hardware wizard (hdwwiz), as Control Panel opens it
-                else if (action === 'dm-add-hw') { const cp = root.melatonControlPanel; if (cp && cp.doAction) cp.doAction('dialog:add-hardware'); }
-                else if (action === 'dm-help') callGlobal('openHelpAndSupport', 'device-manager');
-                else if (action === 'dm-props') {
-                    const sel = win.querySelector('.dm-row.is-selected.is-dev');
-                    if (sel) openProperties(Number(sel.dataset.cat), Number(sel.dataset.dev));
-                } else if (action === 'dm-about') callGlobal('openAboutMelatoninModal', { program: 'Xyridian Management Console', product: 'Management Console 3.0' });
-                else if (action === 'dm-about-snapin') callGlobal('openSnapinAbout', { name: 'Device Manager', description: 'You can use Device Manager to view a list of hardware devices installed on your computer and set properties for each device.' });
-            }
-        });
+        const config = {
+            sections: [{ type: 'list', items: [], initfn: (s) => { s.items = menuItems(btn.dataset.dmMenu); } }],
+            onAction: (a) => void action(a)
+        };
+        cm.attachClickMenuToElement(btn, config);
     }
 
     async function refresh() {
-        tree = await categories();
+        tree = withHidden(await categories());
         render();
     }
 

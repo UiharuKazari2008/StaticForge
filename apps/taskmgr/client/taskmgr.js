@@ -9,9 +9,6 @@
  *   Services      the server's pm2 processes (read-only)
  *   Performance   CPU Usage / CPU Usage History (per core), Memory / Physical Memory Usage History, and
  *                 Physical Memory, Kernel Memory, System figures from /proc (taskmgr_snapshot)
- *   a device client (the phone, its DeX window, a DreamOS laptop: melatonDevicePerf, #946) shows the device's
- *                 own CPU, memory, the app's processes and its adapters, never the server's (those are Server
- *                 Manager's); a plain browser keeps the server's, as a browser cannot measure its machine
  *   Networking    each adapter's utilisation graph and table
  *   Users         the person signed in to this desktop
  *   the status bar  Processes, CPU Usage, Physical Memory; View > Update Speed (High 0.5 s, Normal 1 s,
@@ -67,8 +64,6 @@
     }
 
     const kb = (n) => `${Math.round(n).toLocaleString('en-US')} K`;
-    // physical memory in use, % (0 before a device has said its memory)
-    const usedPct = (s) => (s && s.memory && s.memory.total ? ((s.memory.total - s.memory.available) / s.memory.total) * 100 : 0);
     const mb = (b) => Math.round(b / 1048576).toLocaleString('en-US');
     function upTime(sec) {
         const d = Math.floor(sec / 86400);
@@ -94,8 +89,6 @@
             this.selPid = null;
             this.selApp = null;
             this.admin = (root.localStorage && root.localStorage.getItem('userType') === 'admin') || false;
-            // a device client: the device's own figures (devicePerf.js), sampled here only while this window shows
-            this.device = !!(root.melatonDevicePerf && root.melatonDevicePerf.available());
             this.build();
             // the host's figures are pushed (taskmgr_subscribe -> taskmgr_snapshot_push, one shared
             // sampler on the server at this window's speed); no polling (Yukimi, Nov 13)
@@ -111,14 +104,6 @@
             doc.addEventListener('visibilitychange', this.onVisible);
             // a phone's screen off is not document.hidden: it pauses the view too (#890)
             root.addEventListener('melatonscreen', this.onVisible);
-            // minimised or restored: the device sampler stops or starts with it
-            if (this.device && typeof MutationObserver === 'function') {
-                this.minWatch = new MutationObserver(() => {
-                    const min = this.modal.classList.contains('minimised');
-                    if (min !== this.wasMin) { this.wasMin = min; this.schedule(); }
-                });
-                this.minWatch.observe(this.modal, { attributes: true, attributeFilter: ['class'] });
-            }
             this.schedule();
         }
 
@@ -265,7 +250,6 @@
             clearInterval(this.timer);
             this.timer = null;
             const ms = SPEEDS[this.speed];
-            if (this.device) { this.scheduleDevice(ms); return; }
             const ws = root.wsClient;
             const seen = !doc.hidden && doc.documentElement.dataset.screenOff === undefined;
             const want = !!(ms && this.admin && ws && seen && ws.isConnected && ws.isConnected());
@@ -296,21 +280,7 @@
             }
         }
 
-        /** The device's figures at this window's speed, while it shows (not minimised, page seen); Paused: none. */
-        scheduleDevice(ms) {
-            const dp = root.melatonDevicePerf;
-            const want = !!ms;
-            if (this.devRelease && (!want || this.devMs !== ms)) { this.devRelease(); this.devRelease = null; }
-            if (want && !this.devRelease) {
-                this.devMs = ms;
-                this.devRelease = dp.subscribe({ intervalMs: ms, isActive: () => !this.modal.classList.contains('minimised') }, (s) => this.apply(s));
-            } else if (this.devRelease) {
-                dp.wake();
-            }
-        }
-
         unsubscribe() {
-            if (this.devRelease) { this.devRelease(); this.devRelease = null; }
             if (!this.subscribed) return;
             this.subscribed = false;
             this.subKey = '';
@@ -324,8 +294,7 @@
             this.polling = true;
             let snap = null;
             try {
-                if (this.device) snap = root.melatonDevicePerf.refresh();
-                else if (this.admin && root.wsClient) {
+                if (this.admin && root.wsClient) {
                     try {
                         snap = await root.wsClient.sendMessage('taskmgr_snapshot', { services: this.tab === 2 || !this.snap }, false);
                         if (snap && snap.data) snap = snap.data;
@@ -352,7 +321,7 @@
                     this.ticks += 1;
                     this.cpuHist.push(s.cpu.total);
                     s.cpu.cores.forEach((v, i) => { (this.coreHist[i] = this.coreHist[i] || []).push(v); if (this.coreHist[i].length > HISTORY) this.coreHist[i].shift(); });
-                    this.memHist.push(usedPct(s));
+                    this.memHist.push(((s.memory.total - s.memory.available) / s.memory.total) * 100);
                     s.network.forEach((n) => { (this.netHist[n.name] = this.netHist[n.name] || []).push(n.utilization); if (this.netHist[n.name].length > HISTORY) this.netHist[n.name].shift(); });
                     if (this.cpuHist.length > HISTORY) this.cpuHist.shift();
                     if (this.memHist.length > HISTORY) this.memHist.shift();
@@ -478,9 +447,7 @@
 
         renderProcs(pane) {
             const mine = this.melatonProcesses();
-            // a device: the app's own processes (all a phone shows an app); the server's are Server Manager's
-            const host = this.device ? (this.snap ? this.snap.processes.map((p) => ({ ...p, desc: p.command, host: true })) : [])
-                : this.admin && this.snap && this.allUsers ? this.snap.processes.map((p) => ({ ...p, desc: p.command, host: true })) : [];
+            const host = this.admin && this.snap && this.allUsers ? this.snap.processes.map((p) => ({ ...p, desc: p.command, host: true })) : [];
             const rows = mine.concat(host).map((p) => ({ ...p, key: p.melaton ? `m:${p.name}` : `h:${p.pid}` }));
             this.listView(pane, 'procs', [
                 { key: 'name', t: 'Image Name', w: '91px' }, { key: 'user', t: 'User Name', w: '64px' }, { key: 'cpu', t: 'CPU', w: '33px', center: true, fmt: (v) => String(Math.round(v || 0)).padStart(2, '0') },
@@ -489,19 +456,17 @@
             const sel = rows.find((r) => r.key === this.selPid);
             const can = !!(sel && sel.melaton && !sel.system && sel.windows.length);
             this.buttons(pane, [
-                { id: 'all', check: true, checked: this.device || (this.allUsers && this.admin), disabled: this.device || !this.admin, t: 'Show processes from all users' },
+                { id: 'all', check: true, checked: this.allUsers && this.admin, disabled: !this.admin, t: 'Show processes from all users' },
                 { id: 'end-proc', t: '&End Process', disabled: !can, r: 13, w: 97 }
             ]);
         }
 
         renderServices(pane) {
             const s = this.snap;
-            const rows = !this.device && s && s.services ? s.services.map((x) => ({ key: x.name, name: x.name, pid: x.pid || '', desc: x.script ? x.script.split('/').slice(-2).join('/') : '', status: x.status === 'online' ? 'Running' : x.status === 'stopped' ? 'Stopped' : x.status })) : [];
+            const rows = s && s.services ? s.services.map((x) => ({ key: x.name, name: x.name, pid: x.pid || '', desc: x.script ? x.script.split('/').slice(-2).join('/') : '', status: x.status === 'online' ? 'Running' : x.status === 'stopped' ? 'Stopped' : x.status })) : [];
             this.listView(pane, 'svc', [{ key: 'name', t: 'Name', w: '80px' }, { key: 'pid', t: 'PID', w: '40px' }, { key: 'desc', t: 'Description', w: '80px' }, { key: 'status', t: 'Status', w: '53px' }, { key: 'group', t: 'Group', w: '79px' }], rows, {});
             this.buttons(pane, [{ id: 'services', t: '&Services...', disabled: true, r: 13, w: 97 }]);
-            const note = this.device ? 'This device does not show its services to Melaton.' : !this.admin ? 'Only an administrator can see the server\'s services.' : '';
-            const list = pane.querySelector('.wtm-list');
-            if (note && !list.querySelector('.wtm-note')) list.insertAdjacentHTML('beforeend', `<div class="wtm-note">${esc(note)}</div>`);
+            if (!this.admin) pane.querySelector('.wtm-list').insertAdjacentHTML('beforeend', '<div class="wtm-note">Only an administrator can see the server\'s services.</div>');
         }
 
         renderPerf(pane) {
@@ -530,17 +495,8 @@
             const n = one || !s ? 1 : s.cpu.cores.length;
             // one graph per CPU side by side, 6 px apart (the VM's two: 110 px each)
             if (cores.children.length !== n) cores.innerHTML = Array.from({ length: n }, (_, i) => `<canvas class="wtm-hist wtm-sunken" data-h="core" data-i="${i}"></canvas>`).join('');
-            // whole-pixel graphs: a shared fractional width (8 cores) stretched each drawing a pixel or two and blurred it
-            const cw = cores.clientWidth;
-            const fit = `${n}:${cw}`;
-            if (cw && cores.dataset.fit !== fit) {
-                cores.dataset.fit = fit;
-                const each = Math.floor((cw - 6 * (n - 1)) / n);
-                const extra = cw - 6 * (n - 1) - each * n;
-                Array.from(cores.children).forEach((c, i) => { c.style.flex = 'none'; c.style.width = `${each + (i < extra ? 1 : 0)}px`; });
-            }
             const cpu = s ? s.cpu.total : 0;
-            const memPct = s ? usedPct(s) : 0;
+            const memPct = s ? ((s.memory.total - s.memory.available) / s.memory.total) * 100 : 0;
             this.drawMeter(pane.querySelector('[data-m="cpu"]'), cpu, `${Math.round(cpu)} %`);
             this.drawMeter(pane.querySelector('[data-m="mem"]'), memPct, s ? `${((s.memory.total - s.memory.available) / 1073741824).toFixed(2)} GB` : '');
             cores.querySelectorAll('canvas').forEach((c) => this.drawHist(c, one || !s ? [this.cpuHist] : [this.coreHist[Number(c.dataset.i)] || []]));
@@ -548,14 +504,9 @@
             const fig = (f, rows) => { const e = pane.querySelector(`[data-f="${f}"]`); if (e) e.innerHTML = rows.map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join(''); };
             if (s) {
                 const mm = s.memory;
-                // a device says less than /proc on the server: what it does not say reads "-"
-                const MB = (v) => (v === null || v === undefined || !Number.isFinite(v) ? '-' : mb(v));
-                const n = (v) => (v === null || v === undefined || !Number.isFinite(v) ? '-' : v.toLocaleString('en-US'));
-                const procs = s.processes.length + (this.device ? this.melatonProcesses().length : 0);
-                const swap = Number.isFinite(mm.swapTotal) && Number.isFinite(mm.swapFree) ? `${mb(mm.swapTotal - mm.swapFree)}M / ${mb(mm.swapTotal)}M` : '-';
-                fig('phys', [['Total', MB(mm.total)], ['Cached', MB(mm.cached)], ['Free', MB(Number.isFinite(mm.free) ? mm.free : this.device ? mm.available : null)]]);
-                fig('kern', [['Total', Number.isFinite(mm.paged) && Number.isFinite(mm.nonpaged) ? MB(mm.paged + mm.nonpaged) : '-'], ['Paged', MB(mm.paged)], ['Nonpaged', MB(mm.nonpaged)]]);
-                fig('sys', [['Handles', n(mm.handles)], ['Threads', n(s.threads)], ['Processes', String(procs)], ['Up Time', upTime(s.uptimeSec)], ['Page File', swap]]);
+                fig('phys', [['Total', mb(mm.total)], ['Cached', mb(mm.cached)], ['Free', mb(mm.free)]]);
+                fig('kern', [['Total', mb(mm.paged + mm.nonpaged)], ['Paged', mb(mm.paged)], ['Nonpaged', mb(mm.nonpaged)]]);
+                fig('sys', [['Handles', mm.handles.toLocaleString('en-US')], ['Threads', s.threads.toLocaleString('en-US')], ['Processes', String(s.processes.length)], ['Up Time', upTime(s.uptimeSec)], ['Page File', `${mb(mm.swapTotal - mm.swapFree)}M / ${mb(mm.swapTotal)}M`]]);
             } else {
                 const heap = performance && performance.memory;
                 fig('phys', [['Total', heap ? mb(heap.jsHeapSizeLimit) : '-'], ['Cached', '-'], ['Free', heap ? mb(heap.jsHeapSizeLimit - heap.usedJSHeapSize) : '-']]);
@@ -613,7 +564,7 @@
                 pane.innerHTML = `<div class="wtm-net" data-n="${lay}">${nets.map((a, i) => `
                     <div class="wtm-box" style="left:9px;top:${13 + i * (h + gap)}px;right:7px;height:${h}px"><span class="wtm-box-title">${esc(a.name)}</span></div>
                     <canvas class="wtm-hist wtm-sunken" data-net="${esc(a.name)}" style="left:15px;top:${27 + i * (h + gap)}px;width:${pane.clientWidth - 29}px;height:${h - 19}px"></canvas>`).join('')
-                    || `<div class="wtm-note" style="left:9px;top:13px">${this.device ? 'This version of the Melaton app does not report this device\'s network use.' : 'Only an administrator can see the server\'s network adapters.'}</div>`}
+                    || '<div class="wtm-note" style="left:9px;top:13px">Only an administrator can see the server\'s network adapters.</div>'}
                     <div class="wtm-net-table" style="top:${13 + gH + 7}px;height:${lH}px"></div></div>`;
             }
             pane.querySelectorAll('[data-net]').forEach((c) => this.drawNet(c, this.netHist[c.dataset.net] || []));
@@ -681,12 +632,10 @@
 
         renderStatus() {
             const s = this.snap;
-            const procs = this.melatonProcesses().length + ((this.admin || this.device) && s ? s.processes.length : 0);
-            // written only when a figure changed
-            const put = (q, t) => { const e = this.el(q); if (e && e.textContent !== t) e.textContent = t; };
-            put('.wtm-st-procs', `Processes: ${procs}`);
-            put('.wtm-st-cpu', `CPU Usage: ${s ? Math.round(s.cpu.total) : 0}%`);
-            put('.wtm-st-mem', `Physical Memory: ${s ? Math.round(usedPct(s)) : 0}%`);
+            const procs = this.melatonProcesses().length + (this.admin && s ? s.processes.length : 0);
+            this.el('.wtm-st-procs').textContent = `Processes: ${procs}`;
+            this.el('.wtm-st-cpu').textContent = `CPU Usage: ${s ? Math.round(s.cpu.total) : 0}%`;
+            this.el('.wtm-st-mem').textContent = `Physical Memory: ${s ? Math.round(((s.memory.total - s.memory.available) / s.memory.total) * 100) : 0}%`;
         }
 
         // ---- drawing: Vista's green LED meter and the history grid ---------------------------------
@@ -841,7 +790,6 @@
             doc.removeEventListener('visibilitychange', this.onVisible);
             root.removeEventListener('melatonscreen', this.onVisible);
             if (this.resizer) this.resizer.disconnect();
-            if (this.minWatch) this.minWatch.disconnect();
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;
             setTimeout(() => m.remove(), 300);
@@ -854,8 +802,6 @@
         if (running) { call('bringModalToFront', running.modal); app.exit(); return; }
         // the property sheet's tabs and push buttons (taskbar-properties.css) ride on the dialog templates
         if (root.featureLoader && !root.vistaDialogTemplate) { try { await root.featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* unstyled sheet */ } }
-        // a device client's own figures (#946)
-        if (root.featureLoader && root.AndroidHardware && !root.melatonDevicePerf) { try { await root.featureLoader.loadFeature('device_perf'); } catch (_) { /* the server's view */ } }
         if (running) { call('bringModalToFront', running.modal); app.exit(); return; }
         const t = new TaskManager(app);
         running = t;

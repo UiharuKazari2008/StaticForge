@@ -10,10 +10,6 @@
  *   Performance Monitor           counters over time (% Processor Time to start)
  *   Reliability Monitor           the stability chart from Melaton's own events
  *   Data Collector Sets / Reports the folders, as on a fresh Vista
- *   a device client (the phone, its DeX window, a DreamOS laptop: melatonDevicePerf, #946): the Resource View and
- *                      Performance Monitor show the device's own CPU (and its clock against the maximum), memory,
- *                      adapters and the app's processes, sampled here while the window shows; the server's figures
- *                      are Server Manager's. A plain browser keeps the server's.
  *
  *   melatonApps.define('perfmon', start)
  */
@@ -89,8 +85,6 @@
         constructor(app) {
             this.app = app;
             this.admin = (root.localStorage && root.localStorage.getItem('userType') === 'admin') || false;
-            this.device = !!(root.melatonDevicePerf && root.melatonDevicePerf.available());
-            this.avgCpu = new Map();
             this.node = 'root';
             this.history = [];
             this.future = [];
@@ -113,60 +107,12 @@
                 root.wsClient.on('connected', this.onConnected);
             }
             doc.addEventListener('visibilitychange', this.onVisible);
-            // a phone's screen off is not document.hidden (#890)
-            root.addEventListener('melatonscreen', this.onVisible);
-            if (this.device && typeof MutationObserver === 'function') {
-                this.minWatch = new MutationObserver(() => {
-                    const min = this.modal.classList.contains('minimised');
-                    if (min !== this.wasMin) { this.wasMin = min; void this.schedule(); }
-                });
-                this.minWatch.observe(this.modal, { attributes: true, attributeFilter: ['class'] });
-            }
             void this.schedule();
         }
 
-        /** The device's figures once a second while the window shows and runs (Stop ends them). */
-        scheduleDevice() {
-            const dp = root.melatonDevicePerf;
-            if (!this.running) { if (this.devRelease) { this.devRelease(); this.devRelease = null; } return; }
-            if (!this.devRelease) this.devRelease = dp.subscribe({ intervalMs: 1000, isActive: () => this.running && !this.modal.classList.contains('minimised') }, (d) => this.apply(this.fromDevice(d)));
-            else dp.wake();
-        }
-
-        /**
-         * A device sample in the Resource View's shape. Average CPU is each process's last 60 s, as Vista's; a device
-         * tells no disk traffic or per-connection bytes, so those read 0 and the lists stay empty.
-         */
-        fromDevice(d) {
-            const procs = d.processes.map((p) => {
-                const a = (this.avgCpu.get(p.pid) || []).concat([p.cpu]).slice(-60);
-                this.avgCpu.set(p.pid, a);
-                const rss = p.rssKB || 0;
-                const priv = p.privateKB !== null && p.privateKB !== undefined ? p.privateKB : rss;
-                return { name: p.name, pid: p.pid, command: p.command, threads: p.threads, cpu: p.cpu, avgCpu: a.reduce((x, y) => x + y, 0) / a.length, workingKB: rss, privateKB: priv, commitKB: priv, shareKB: Math.max(0, rss - priv), read: 0, write: 0 };
-            });
-            if (this.avgCpu.size > procs.length + 20) this.avgCpu.forEach((_, pid) => { if (!procs.some((p) => p.pid === pid)) this.avgCpu.delete(pid); });
-            return {
-                host: d.host, cpu: { total: d.cpu.total }, freqPct: d.cpu.freqPct, memory: { total: d.memory.total, available: d.memory.available },
-                adapters: d.network, disk: { bytesPerSec: 0, activeTime: 0 }, hardFaults: d.hardFaults || 0, processes: procs, connections: []
-            };
-        }
-
-        /** Refresh: one read now. */
-        async poll() {
-            if (this.device) { const d = root.melatonDevicePerf.refresh(); if (d) this.apply(this.fromDevice(d)); return; }
-            if (!this.admin || !root.wsClient) return;
-            try {
-                let r = await root.wsClient.sendMessage('perfmon_snapshot', {}, false);
-                if (r && r.data) r = r.data;
-                if (r && r.cpu) this.apply(r);
-            } catch (_) { /* the next push */ }
-        }
-
         async schedule() {
-            if (this.device) { this.scheduleDevice(); return; }
             const ws = root.wsClient;
-            const want = !!(this.running && this.admin && ws && !doc.hidden && doc.documentElement.dataset.screenOff === undefined && ws.isConnected && ws.isConnected());
+            const want = !!(this.running && this.admin && ws && !doc.hidden && ws.isConnected && ws.isConnected());
             if (!want) { this.unsubscribe(); return; }
             if (this.subscribed) return;
             this.subscribed = true;
@@ -181,7 +127,6 @@
         }
 
         unsubscribe() {
-            if (this.devRelease) { this.devRelease(); this.devRelease = null; }
             if (!this.subscribed) return;
             this.subscribed = false;
             const ws = root.wsClient;
@@ -423,10 +368,10 @@
             {
                 const s = this.snap;
                 if (s) {
-                    const used = s.memory.total ? ((s.memory.total - s.memory.available) / s.memory.total) * 100 : 0;
+                    const used = ((s.memory.total - s.memory.available) / s.memory.total) * 100;
                     const bps = (s.adapters || []).reduce((t, a) => t + (a.bitsPerSecond || 0), 0);
                     const util = (s.adapters || []).reduce((t, a) => Math.max(t, a.utilization || 0), 0);
-                    this.push('cpu', s.cpu.total); this.push('freq', Number.isFinite(s.freqPct) ? s.freqPct : 100);
+                    this.push('cpu', s.cpu.total); this.push('freq', 100);
                     this.push('disk', s.disk.bytesPerSec); this.push('diskActive', s.disk.activeTime);
                     this.push('net', bps); this.push('netUtil', util);
                     this.push('faults', s.hardFaults); this.push('mem', used);
@@ -522,7 +467,7 @@
             const netKbps = last('net') / 1000;
             const faults = last('faults');
             const mem = last('mem');
-            lv('cpu-a', cpu); val('cpu-a', `${Math.round(cpu)}%`); lv('cpu-b', last('freq')); val('cpu-b', `${Math.round(last('freq'))}% Maximum Frequency`);
+            lv('cpu-a', cpu); val('cpu-a', `${Math.round(cpu)}%`); lv('cpu-b', 100); val('cpu-b', '100% Maximum Frequency');
             lv('disk-a', Math.min(100, diskKB / 10)); val('disk-a', `${fmt(diskKB)} KB/sec`); lv('disk-b', last('diskActive')); val('disk-b', `${Math.round(last('diskActive'))}% Highest Active Time`);
             lv('net-a', Math.min(100, netKbps / 100)); val('net-a', netKbps >= 1000 ? `${fmt(netKbps / 1000)} Mbps` : `${fmt(netKbps)} Kbps`); lv('net-b', last('netUtil')); val('net-b', `${Math.round(last('netUtil'))}% Network Utilization`);
             lv('mem-a', Math.min(100, faults)); val('mem-a', `${fmt(faults)} Hard Faults/sec`); lv('mem-b', mem); val('mem-b', `${Math.round(mem)}% Used Physical Memory`);
@@ -1092,8 +1037,6 @@
                 root.wsClient.off('connected', this.onConnected);
             }
             doc.removeEventListener('visibilitychange', this.onVisible);
-            root.removeEventListener('melatonscreen', this.onVisible);
-            if (this.minWatch) this.minWatch.disconnect();
             this.closeRelPop();
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;
@@ -1104,9 +1047,6 @@
     let running = null;
 
     async function start(app) {
-        if (running) { call('bringModalToFront', running.modal); app.exit(); return; }
-        // a device client's own figures (#946)
-        if (root.featureLoader && root.AndroidHardware && !root.melatonDevicePerf) { try { await root.featureLoader.loadFeature('device_perf'); } catch (_) { /* the server's view */ } }
         if (running) { call('bringModalToFront', running.modal); app.exit(); return; }
         const p = new PerfMon(app);
         running = p;

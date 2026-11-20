@@ -2400,14 +2400,12 @@
         const activation = { activated: 'Melaton is activated', none: 'Melaton is not activated' }[account.state] || 'Checking activation...';
         const net = window.melatonNetworkDialogs && typeof window.melatonNetworkDialogs.connectionInfo === 'function'
             ? window.melatonNetworkDialogs.connectionInfo() : { domain: 'DREAMSCAPE', fqdn: location.hostname };
-        // the rating is this device's (its own Experience Index), not the domain controller's (#946)
         el.innerHTML = `<p>${esc(ed.name)}${ed.servicePack ? `<br>${esc(ed.servicePack)}` : ''}</p>
-            ${ui.sub('This device')}
-            <div class="wm-sys-facts">${ui.facts([['Rating:', rating]])}</div>
             ${ui.sub('Domain controller')}
             <div class="wm-sys-facts">${ui.facts([
                 ['Manufacturer:', T.OEM.manufacturer],
                 ['Model:', T.OEM.model],
+                ['Rating:', rating],
                 ['Processor:', v(host.processor ? `${host.processor}${host.clock ? ` ${host.clock}` : ''}` : '')],
                 ['Memory (RAM):', v(host.memory)],
                 ['System type:', v(host.type)],

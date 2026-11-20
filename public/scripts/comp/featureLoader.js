@@ -354,11 +354,6 @@ const FEATURE_MANIFEST = {
         styles: ['css/taskbar-properties.css'],
         scripts: ['scripts/comp/taskbarProperties.js']
     },
-    // the device's own CPU / memory / processes on a device client (Yozora #946): Task Manager, Performance
-    // Monitor, the Sidebar's CPU Meter and hosted gadgets read it instead of the server's figures
-    device_perf: {
-        scripts: ['scripts/comp/devicePerf.js']
-    },
     // Vista's own dialog templates and their renderer (Yozora #632): Control Panel's sheets,
     // Notepad's and Paint's dialogs draw from these
     vista_dialog_templates: {
@@ -397,7 +392,9 @@ const FEATURE_MANIFEST = {
             // Presentation Settings (#958): the Vista theme's colours, then the layout
             'css/themes/vista/presentation-settings.css', 'css/presentation-settings.css',
             // Disk Cleanup's list (#945, diskCleanup.js)
-            'css/disk-cleanup.css'],
+            'css/disk-cleanup.css',
+            // Device Manager: the Vista theme's colours (the Disable question's instruction, the combo list's shadow)
+            'css/themes/vista/device-manager.css'],
         scripts: [
             // Vista's items, categories and task links (Yozora #632), read by melatonControlPanel.js
             'scripts/comp/cplCatalog.js',

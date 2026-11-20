@@ -1,0 +1,37 @@
+/* Device Manager (cplDeviceManager.js): the Vista theme's colours and type for what the window adds to shared dialogs */
+
+/* devmgr's Disable question is a task dialog: its text is the main instruction (12 pt, #003399), as on the VM */
+body.desktop-mode #confirmationDialog .dm-instruction {
+    margin: 0;
+    color: #003399;
+    font-size: 12pt;
+    font-weight: 400;
+    line-height: 1.25;
+}
+
+
+/* MMC 3.0's Action pane (the VM's colours, as mmc-console.css): sunken white, the grey "Actions" bar and group rows */
+.dm-client :is(.dm-actions, .dm-scope) {
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
+    background: #fff;
+}
+
+.dm-client .dm-act-head {
+    border-color: #a0a0a0;
+    box-shadow: inset 0 1px #fff, 0 1px #fff;
+    background: #f0f0f0;
+}
+
+.dm-client .dm-act-group {
+    background: #f0f0f0;
+}
+
+.dm-client .dm-act.is-disabled {
+    color: #a0a0a0;
+}
+
+/* the scope pane's node, selected while the console has the focus elsewhere (the VM's grey) */
+.dm-client .dm-scope-row.is-selected > span {
+    background: #f0f0f0;
+}
