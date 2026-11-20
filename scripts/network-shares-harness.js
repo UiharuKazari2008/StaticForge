@@ -127,7 +127,7 @@ async function until(what, fn, s = 60) {
 async function drive() {
     const both = await until('two CaféReady machines registered', () => (machines().length >= 2 ? machines() : null), WAIT_S);
     if (!both) return;
-    const [a, b] = both.sort((x, y) => x.name.localeCompare(y.name));
+    let [a, b] = both.sort((x, y) => x.name.localeCompare(y.name));
     console.log(`      A = ${a.name} (${a.deviceId.slice(0, 8)}), B = ${b.name} (${b.deviceId.slice(0, 8)})`);
     const va = viewOn(a.deviceId, 'harness');
     const vb = viewOn(b.deviceId, 'harness');
@@ -138,7 +138,11 @@ async function drive() {
     if (!ON_A) { console.log('      (give --on-a to go on with sharing a folder on A)'); return; }
 
     onA(`mkdir -p ${A_LOCAL}/nstest/sub && echo hello-from-a > ${A_LOCAL}/nstest/hello.txt && chown -R dream: ${A_LOCAL}/nstest || true`);
-    console.log(`      on A: ${onA(`${A_SEND} shares share '{"drive":"local-disk","path":"/nstest","name":"NSTest","people":[{"account":"administrator","level":"owner"},{"account":"guest","level":"reader"}]}' | head -c 300`)}`);
+    const shared = onA(`${A_SEND} shares share '{"drive":"local-disk","path":"/nstest","name":"NSTest","people":[{"account":"administrator","level":"owner"},{"account":"guest","level":"reader"}]}'`);
+    console.log(`      on A: ${shared.slice(0, 300)}`);
+    // A is the machine --on-a reaches (its own deviceId in the answer)
+    const aid = (/"deviceId":"([0-9a-f]{32})"/.exec(shared) || [])[1];
+    if (aid && aid === b.deviceId) [a, b] = [b, a];
     const listed = await until('B sees A\'s new share (pushed status)', () => {
         const c = viewOn(b.deviceId, 'harness').computers.find((x) => x.deviceId === a.deviceId);
         return c && c.shares.find((s) => s.name === 'NSTest');

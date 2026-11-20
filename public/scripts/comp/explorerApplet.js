@@ -4196,6 +4196,12 @@ class ExplorerApplet {
         }
 
         const stats = this._pathStats;
+        // Network and its computers count their items alone, as Vista's do ("17 items"; explorerNetwork.js)
+        if (!stats && typeof explorerNetwork !== 'undefined' && explorerNetwork.isPath(this.currentPath) && !this._loading) {
+            const n = this._serverItemCount();
+            el.textContent = `${n} item${n === 1 ? '' : 's'}`;
+            return;
+        }
         if (!stats) {
             if (!this._loading && !this._loadingMore && this._serverItemCount() === 0 && this._emptyMessage) {
                 el.textContent = this._emptyMessage;

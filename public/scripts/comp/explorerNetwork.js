@@ -372,9 +372,11 @@
 
     function entryMenuSections(app, item) {
         const def = (text) => ({ icon: 'fas fa-folder-open', text, action: 'explorer-open', className: 'context-menu-item-default' });
-        if (item.targetKind === 'net-computer') return [{ type: 'list', items: [def('Open')] }];
+        // the VM's: Explore (bold), Open for a computer and a share (Create Shortcut, Map Network Drive... have no place here)
+        const open = { icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open' };
+        if (item.targetKind === 'net-computer') return [{ type: 'list', items: [def('Explore'), open] }];
         if (item.targetKind === 'net-share') {
-            const items = [def('Open')];
+            const items = [def('Explore'), open];
             items.push({ separator: true }, { icon: 'fas fa-copy', text: 'Copy', action: 'explorer-copy', disabled: item.net.access === 'none' });
             return [{ type: 'list', items }];
         }
@@ -470,7 +472,12 @@
             ? await root.showConfirmationDialog(`<p>${esc(text).replace(/\n/g, '<br>')}</p>`, [{ text: 'Yes', value: true, className: 'btn-primary' }, { text: 'No', value: false }], null, { title, icon: 'fas fa-triangle-exclamation' })
             : false;
         if (!ok) return;
-        try { await shareCall(entries[0].net.device, entries[0].net.share, 'delete', { paths: entries.map((e) => e.net.path) }); } catch (err) {
+        try {
+            // the computer answers per item ({ results: [{ path, deleted, error }] })
+            const r = await shareCall(entries[0].net.device, entries[0].net.share, 'delete', { paths: entries.map((e) => e.net.path) });
+            const bad = ((r && r.results) || []).filter((x) => x && x.deleted === false);
+            if (bad.length) await message(`${bad.length} item(s) could not be deleted: ${bad[0].error || bad[0].code || ''}`, 'Error Deleting File or Folder');
+        } catch (err) {
             await message(err.message || String(err), 'Error Deleting File or Folder');
         }
         await app.softRefresh();
