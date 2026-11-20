@@ -1475,9 +1475,9 @@
                 title: 'File Explorer',
                 html: `Received ${got.length} ${rxNoun({ entries: got }, got.length)}<br>${esc(fmtSize(size))}`,
                 icon: rxIcon(),
+                // the notification standard (wmShell noteSoftKeys): the action on the left, Dismiss on the right
                 softKeys: () => ({
-                    left: { label: 'Dismiss', action: () => note.close() },
-                    right: {
+                    left: {
                         label: 'Show',
                         action: async () => {
                             note.close();
@@ -1485,7 +1485,8 @@
                             const got1 = await busyOf(() => item);
                             navigate(first.dest, null, { trail: first.trail, select: got1 ? got1.id : undefined });
                         }
-                    }
+                    },
+                    right: { label: 'Dismiss', action: () => note.close() }
                 })
             });
         }

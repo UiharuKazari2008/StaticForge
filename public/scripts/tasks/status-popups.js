@@ -87,7 +87,7 @@
             return pop('received', 'ActiveSync', [text(k ? `${plural(k, 'item', 'items')} received.` : 'Nothing new received.'), links(['Open'])]);
         },
         update() {
-            return pop('update', 'Updates', [text('Updates are ready to install. Melaton restarts to install them.'), links(['Install'])]);
+            return { title: 'Updates', role: 'update', sec: [text('Updates are waiting to install.')], foot: [], buttons: [{ text: 'Install Now' }, { text: 'Later' }] };
         },
         continuity(f, n) {
             return pop('continuity', 'Continuity PC', [text(n.dex ? (n.dexReady === false ? 'The DeX window is starting.' : 'This phone carries the DeX window.') : 'No DeX window.')]);
@@ -106,6 +106,9 @@
             if (c) sec.push({ t: 'pair', l: `Mobile Broadband: ${c.state || 'Available'}`, lb: false, r: c.type ? [{ s: c.type, b: true }] : [], bars: Number.isFinite(c.level) ? Math.max(0, Math.min(5, c.level)) : null, first: true });
             if (n.link === false) sec.push(text('Nightshade: Unavailable'));
             return pop('data', 'Connectivity', sec, ['Settings']);
+        // the notification standard (wmShell noteSoftKeys, Yukimi Nov 20 2026): what can be done is Install Now | Later,
+        // never a link; Install Now is done in Melaton (its updater: Restart Now when the restart installs them), Later
+        // closes the popup like Hide and the updates keep waiting on the icon
         },
         signal(f, n) {
             const s = n.sys || {};

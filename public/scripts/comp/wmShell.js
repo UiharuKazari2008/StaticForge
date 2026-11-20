@@ -1164,6 +1164,14 @@
                     const b = shell.querySelector('.wm-bubble:not([hidden])');
                     const target = b && [...b.querySelectorAll('button')].find((x) => (x.textContent || '').trim() === o.label);
                     if (target) target.click();
+                    // the icon brought up its notification (the update's): the app's popup button is one of its soft keys
+                    else if (noteShownNote()) {
+                        const k = noteSoftKeys();
+                        const want = String(o.label || '').trim().toLowerCase();
+                        const hit = ['left', 'right'].map((side) => k[side]).find((key) => key && !key.menu && String(key.label).toLowerCase() === want)
+                            || (/^(install|install now|restart now)$/.test(want) && k.left && !k.left.menu ? k.left : null);
+                        if (hit && typeof hit.action === 'function') hit.action();
+                    }
                 }
                 doneSoon();
                 return;
@@ -3406,6 +3414,8 @@
         hide(shell.querySelector('[data-role="prints"]'), !printsInProgress());
         const mailEl = shell.querySelector('[data-role="mail"]');
         // any unread mail, if the user asked for that (Messaging > Tools > Options); else only mail
+        // the update notification goes once nothing waits (installed, or the restart took them)
+        if (!updateReady && updateNote) dropUpdateNote();
         // that came in since this client started and is still unread (mailNewCheck)
         // IMAP accounts (#789) count the same way; while their New E-mail notification waits it stands for them
         const noteWaits = (ev) => notes.some((n) => { const o = appNotes.get(n.id); return !!(o && o.event === ev); });
@@ -5269,7 +5279,9 @@
     // 'Updates Complete' / 'Completed updating ...' belong to the update icon's one notification, not a
     // separate bubble (Yukimi, Nov 15: merge the completion into the existing update notification)
     const UPDATE_TOAST = /^(checking for updates|downloading updates|download stalled|up to date|updates? applied|updates? complete|completed updating|update check failed|updates? (are )?(ready|available)|update (waiting|failed)|retrying updates|retry failed|service worker|cache error)/i;
-    const isUpdateNote = (n) => !!n && UPDATE_TOAST.test(String(n.title || ''));
+    // the update icon's own standard notification (showUpdateNote) is one of them too
+    const updateNoteIds = new Set();
+    const isUpdateNote = (n) => !!n && (UPDATE_TOAST.test(String(n.title || '')) || updateNoteIds.has(n.id));
     // while updates are checked for or download there is no notification and no popup: the update
     // icon animates and its own popup shows the progress; the result is the notification (Yukimi,
     // Nov 13). "Up to Date" is no news at all.
@@ -6050,7 +6062,9 @@
         const shown = noteShownNote();
         if (shown) shown.ids.forEach((id) => noteSeen.add(seenKey(id, shown)));
         renderNotes();
-        const keysFor = shown ? `${shown.id}:${!!shown.toast.querySelector('.toast-close')}` : '';
+        // the keys are worked out from the notice (its actions, an update's state): drawn again when their labels change
+        let keysFor = '';
+        if (shown) { const k = noteSoftKeys(); keysFor = `${shown.id}:${k.left ? k.left.label : ''}|${k.right ? k.right.label : ''}`; }
         if (keysFor !== noteKeysFor) { noteKeysFor = keysFor; renderSoftKeys(); }
     }
 
@@ -6254,7 +6268,9 @@
         // a notification on screen: the soft key bar is black (WM 6.1, Yukimi Nov 14; wm-shell.css)
         root.setAttribute('data-wm-note', '');
         const at = notes.indexOf(n);
-        const snap = `${n.id}\u0001${at}/${notes.length}\u0001${n.toast.innerHTML}`;
+        // an update notice that can be acted on is drawn as the standard update notification (updateNoteSpec)
+        const upd = isUpdateNote(n) && !updateFailure(n) ? updateNoteSpec() : null;
+        const snap = `${n.id}\u0001${at}/${notes.length}\u0001${upd ? `${upd.title}\u0001${upd.html}` : n.toast.innerHTML}`;
         const cameUp = el.hidden;
         el.hidden = false;
         syncScrim();
@@ -6265,7 +6281,7 @@
         head.className = 'wm-notify-title';
         const name = document.createElement('span');
         name.className = 'wm-notify-name';
-        name.textContent = noteTitle(n);
+        name.textContent = upd ? upd.title : noteTitle(n);
         head.appendChild(name);
         if (notes.length > 1) {
             const pager = document.createElement('span');
@@ -6288,18 +6304,21 @@
         el.appendChild(head);
         const body = document.createElement('div');
         body.className = 'wm-notify-body';
-        const content = n.toast.querySelector('.toast-content');
+        const content = upd ? null : n.toast.querySelector('.toast-content');
+        if (upd) body.innerHTML = `<div class="toast-content"><div class="toast-message">${upd.html}</div></div>`;
         if (content) {
-            // toastManager's own markup (its message HTML, progress, image preview, buttons) minus the title
+            // toastManager's own markup (its message HTML, progress, image preview) minus the title; the toast's buttons
+            // are the notification's soft keys (the standard, noteActions), never buttons in the body
             const copy = content.cloneNode(true);
             copy.querySelectorAll('.toast-title').forEach((x) => x.remove());
             copy.querySelectorAll('[id]').forEach((x) => x.removeAttribute('id'));
-            const own = [...content.querySelectorAll('button')];
+            const own = [...content.querySelectorAll('button')].filter((b) => !b.closest('.toast-buttons'));
             copy.querySelectorAll('button').forEach((b, i) => {
                 b.removeAttribute('onclick');
                 b.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const src = own[i];
+            copy.querySelectorAll('.toast-buttons').forEach((x) => x.remove());
                     const dupes = n.ids.filter((id) => id !== n.id);
                     if (src && src.isConnected) src.click();
                     // the same notice twice: one answer settles every copy
@@ -6374,20 +6393,154 @@
 
     function noteSoftKeys() {
         const n = noteShownNote();
-        // an app's own notification (appNote) may bring its own soft keys
-        const own = n && appNotes.get(n.id);
+        if (!n) return { left: null, right: null };
+        const closable = !!n.toast.querySelector('.toast-close');
+        // an update notice that can be acted on: the update's own actions (Install Now / Restart Now | Later)
+        if (isUpdateNote(n) && !updateFailure(n)) {
+            const spec = updateNoteSpec();
+            if (spec) return { left: { label: spec.action.text, action: () => { hideNote(); spec.action.run(); } }, right: { label: 'Later', action: hideNote } };
+        }
+        // an app's own notification (appNote) may bring its own soft keys or actions
+        const own = appNotes.get(n.id);
         if (own && own.softKeys) {
             const keys = typeof own.softKeys === 'function' ? own.softKeys() : own.softKeys;
-            if (keys) return { left: keys.left || null, right: keys.right || null };
+            if (keys) return { left: menuOrHide(keys.left || null), right: menuOrHide(keys.right || null) };
+    /*
+     * THE NOTIFICATION STANDARD (Yukimi, Nov 20 2026: "they must follow a standard, no deviation at all"). Every
+     * notification on the phone is Windows Mobile's SHNotificationAdd notification, as the 6.1 and 6.5 emulators draw
+     * real ones (references: ~/.cache/claude-run/wmnotify/ref, posted with SHNotificationAdd / CeSetUserNotificationEx):
+     *  - the bubble docks on the soft key bar: a title band with the caption (what it is about: "Updates"; a
+     *    reminder's is "10:03 | Reminder"; "< 1 of N >" when several wait), then the HTML body: text and links.
+     *  - the title bar shows the notification's glyph (the speech bubble for several); a tap on it opens the strip
+     *    of their icons; Today's left soft key reads Notification while one waits hidden.
+     *  - its two soft keys are the notification's own (SHNOTIFICATIONDATA rgskn / skm). What a notice can do is on
+     *    them, never as buttons in the body (a toast's buttons become its soft keys here):
+     *      nothing to do ............... Hide | Dismiss          (the system's own default: Hide on the left)
+     *      one action .................. <Action> | Dismiss      (View | Dismiss, Show | Dismiss)
+     *      an action that can wait ..... <Action> | Later        (Updates: Install Now | Later, Restart Now | Later)
+     *      work running ................ Hide | Cancel           (a receive, a copy: the bar in the body)
+     *      more than fits .............. <Action> | Menu         (Reply | Menu; the Menu: the other actions, Hide, Dismiss)
+     *      options, no main action ..... Dismiss | Menu          (the device's reminder: Dismiss | Menu with Snooze ...)
+     *    "Menu" only with a menu that has items: an empty one is Hide. A notice that cannot be dismissed (a bar
+     *    running) has no Dismiss.
+     *  - Hide (and Later): the bubble goes, the glyph stays, the next unseen notice comes up; a tap on the glyph
+     *    brings it back. Dismiss: the notice is gone.
+     *  - when one pops: on arrival with its class's sound, unless its class has Display message off; update
+     *    notices never pop (they wait on the update icon; a tap brings them up).
+     * One API: wmShell.notification({ title, html, icon, event, silent, actions: [{ text, action, later }], softKeys,
+     * menu, progress, detail }) (appNote); toasts that reach the phone go through the same keys (noteSoftKeys).
+     */
+    const LATER_LABEL = /^(later|not now|skip|postpone|remind me later)$/i;
+    const END_LABEL = /^(dismiss|close|ok|cancel|no|ignore)$/i;
+
+    /** The keys for a notice's actions ({ text, action }), by the standard above. */
+    function standardKeys(actions, n, closable) {
+        const hide = { label: 'Hide', action: hideNote };
+        const dismiss = closable ? { label: 'Dismiss', icon: BARS651 ? 'dismiss' : undefined, action: () => dismissNote(n) } : null;
+        const list = (actions || []).filter((a) => a && String(a.text || '').trim());
+        const later = list.find((a) => a.later || LATER_LABEL.test(String(a.text).trim()));
+        const end = list.find((a) => a !== later && END_LABEL.test(String(a.text).trim()));
+        const acts = list.filter((a) => a !== later && a !== end);
+        const key = (a) => ({ label: String(a.text).trim(), action: () => { if (typeof a.action === 'function') a.action(); queueNotes(); } });
+        // Later is Hide unless the notice's own Later does something of its own
+        const laterKey = later ? { label: 'Later', action: () => { if (typeof later.action === 'function') later.action(); else hideNote(); queueNotes(); } } : null;
+        const endKey = end ? key(end) : dismiss;
+        if (!acts.length) return { left: hide, right: laterKey || endKey };
+        if (acts.length === 1) return { left: key(acts[0]), right: laterKey || endKey || hide };
+        const menu = [...acts.slice(1).map((a) => ({ label: String(a.text).trim(), action: key(a).action })), '-', { label: 'Hide', action: hideNote }];
+        if (endKey) menu.push({ label: endKey.label, action: endKey.action });
+        return { left: key(acts[0]), right: { label: 'Menu', icon: BARS651 ? 'menu' : undefined, menu } };
+    }
+
+    /** A key whose Menu has no items is no Menu: Hide in its place (the standard: "Menu" only with items). */
+    function menuOrHide(key) {
+        if (!key || !key.menu) return key;
+        let items = key.menu;
+        try { if (typeof items === 'function') items = items(); } catch (_) { items = null; }
+        const real = Array.isArray(items) ? items.filter((i) => i && i !== '-') : [];
+        return real.length ? key : { label: 'Hide', action: hideNote };
+    }
+
+    /** The toast's own buttons as actions (clicking the toast's button runs its handler and closes it as it says). */
+    function toastActions(n) {
+        return [...n.toast.querySelectorAll('.toast-buttons button')].map((b) => ({
+            text: (b.textContent || '').trim(),
+            action: () => { const dupes = n.ids.filter((id) => id !== n.id); if (b.isConnected) b.click(); dupes.forEach((id) => { if (typeof window.removeGlassToast === 'function') window.removeGlassToast(id); }); }
+        }));
+    }
+
         }
-        // progress toasts have no close button: they end on their own
-        const closable = !!(n && n.toast.querySelector('.toast-close'));
-        return {
-            left: { label: 'Hide', action: hideNote },
-            // 6.5.1 (#850) notices: on the bottom button bar Dismiss is the device's picture button
-            // (classicblue_bubble_dismiss, the reminder bubble's); Hide stays a text bubble (device)
-            right: closable ? { label: 'Dismiss', icon: BARS651 ? 'dismiss' : undefined, action: () => dismissNote(n) } : null
-        };
+        if (own && own.actions) return standardKeys(typeof own.actions === 'function' ? own.actions() : own.actions, n, closable);
+        return standardKeys(toastActions(n), n, closable);
+    }
+
+    // ---- the update notification (Yukimi, Nov 20 2026: it had no Install now / Later) ----
+
+    /** A stalled download or a failed check: its own words and Hide | Dismiss (or its Retry), not the update's actions. */
+    function updateFailure(n) {
+        return !!n && !updateNoteIds.has(n.id) && (n.type === 'error' || n.type === 'warning' && !n.toast.querySelector('.toast-buttons') || /stalled|failed|retry|service worker|cache error/i.test(String(n.title || '')));
+    }
+
+    /**
+     * What the updates waiting allow, for the standard notification: { title, html, action: { text, run } } or null.
+     * Downloaded and needing a restart: Restart Now (serviceWorkerManager.forceRestart, with Continuity's confirm);
+     * downloaded and applying live: Install Now; counted, not downloaded (#951): Install Now (installAvailableUpdates).
+     */
+    function updateNoteSpec() {
+        const sw = window.serviceWorkerManager;
+        if (!sw) return null;
+        let pending = false;
+        try { pending = typeof sw.hasPendingUpdates === 'function' && !!sw.hasPendingUpdates(); } catch (_) { pending = false; }
+        if (pending && sw.pendingUpdateKind === 'apply' && typeof sw.applyStaticCacheUpdate === 'function') {
+            return { title: 'Updates', html: 'Updates are ready to install. They install without a restart.', action: { text: 'Install Now', run: () => { void sw.applyStaticCacheUpdate(sw.pendingApplyFiles); } } };
+        }
+        if (pending && typeof sw.forceRestart === 'function') {
+            const files = Number(sw.pendingUpdateFilesTotal);
+            let html = `Updates are ready to install${Number.isFinite(files) && files > 0 ? ` (${files.toLocaleString()} ${files === 1 ? 'file' : 'files'})` : ''}. Melaton restarts to install them.`;
+            // Continuity connected (#798): the restart's warning before Restart Now (Yukimi, Nov 14), the restart's own words
+            const mc = window.melatonContinuity;
+            if (mc && typeof mc.active === 'function' && mc.active()) {
+                let both = false;
+                try { both = typeof mc.updateScope === 'function' && mc.updateScope(Array.from(sw.pendingUpdateUrls || [])) === 'both'; } catch (_) { both = false; }
+                html += `<br><br>${both ? 'These updates also restart your Continuity-enabled PC. Programs that are open on it will close. Save your work there before you continue.'
+                    : 'Your Continuity-enabled PC stays on and reconnects when your Pocket PC is ready.'}`;
+            }
+            return { title: 'Updates', html, action: { text: 'Restart Now', run: () => sw.forceRestart() } };
+        }
+        let avail = 0;
+        try { avail = typeof sw.availableUpdateCount === 'function' ? sw.availableUpdateCount() : 0; } catch (_) { avail = 0; }
+        if (avail > 0 && typeof sw.installAvailableUpdates === 'function') {
+            return { title: 'Updates', html: `${avail === 1 ? '1 update is' : `${avail} updates are`} available for Melaton.`, action: { text: 'Install Now', run: () => { void sw.installAvailableUpdates(); } } };
+        }
+        return null;
+    }
+
+    /**
+     * The update icon's notification: the waiting update notice when there is one, else the standard "Updates"
+     * notification made now (it never pops by itself: a tap on the icon, Today's Notification key or the app's popup
+     * brings it). Resolves the note's id, or null when nothing waits.
+     */
+    let updateNote = null;
+    function showUpdateNote() {
+        const waiting = notes.find((x) => isUpdateNote(x) && !updateFailure(x));
+        if (waiting) { showNote(waiting.id); return waiting.id; }
+        const spec = updateNoteSpec();
+        if (!spec) {
+            const failed = notes.find(isUpdateNote);
+            if (failed) { showNote(failed.id); return failed.id; }
+            return null;
+        }
+        if (!updateNote || !document.getElementById(updateNote.id)) {
+            updateNote = appNote({ title: spec.title, html: spec.html, icon: 'status-update', event: 'update', silent: true, update: true });
+        }
+        if (!updateNote) return null;
+        updateNote.show();
+        return updateNote.id;
+    }
+
+    /** The updates went (installed, the restart ran): the update notification goes with them. */
+    function dropUpdateNote() {
+        if (updateNote && !updateNoteSpec()) { const n = updateNote; updateNote = null; n.close(); }
     }
 
     /**
@@ -6408,7 +6561,7 @@
     const appNotes = new Map(); // toast id -> { icon, softKeys }
     function appNote(opts = {}) {
         if (typeof window.showGlassToast !== 'function') return null;
-        const st = { icon: opts.icon || null, softKeys: opts.softKeys || null, event: opts.event || null, silent: !!opts.silent };
+        const st = { icon: opts.icon || null, softKeys: opts.softKeys || null, actions: opts.actions || null, event: opts.event || null, silent: !!opts.silent };
         const bar = opts.progress != null && opts.progress !== false;
         let id = null;
         try {
@@ -6426,6 +6579,7 @@
         const live = () => el.isConnected && !el.classList.contains('removing');
         const mine = () => { const n = noteOf(id); return !!n && noteShownNote() === n; };
         const setBar = (v) => { if (bar && typeof window.updateGlassToastProgress === 'function') window.updateGlassToastProgress(id, Math.max(0, Math.min(100, Number(v) || 0))); };
+        if (opts.update) updateNoteIds.add(id);
         setBar(opts.progress);
         queueNotes();
         return {
@@ -6445,6 +6599,7 @@
             shown: () => live() && mine(),
             close() {
                 const up = mine();
+                if (o.actions !== undefined) { st.actions = o.actions || null; if (mine()) renderSoftKeys(); }
                 appNotes.delete(id);
                 if (typeof window.removeGlassToast === 'function') window.removeGlassToast(id);
                 if (up) noteShown = null;
@@ -6453,6 +6608,7 @@
         };
     }
 
+                updateNoteIds.delete(id);
     /** The title bar icon: hides an open bubble; one notification comes back, several open the tray. */
     /** The mail / text / Messenger icon with notifications of its class waiting: the newest one opens (a second tap closes it). */
     function messageIconTap(role) {
@@ -7246,35 +7402,14 @@
                 bubble({ title: 'Updates', role, anchor, sections: [line, { html: bar }], buttons: [{ text: 'Hide' }] });
                 return;
             }
-            // a waiting update notice (stalled, applied, check failed ...) comes up from its icon
-            const waiting = notes.find(isUpdateNote);
-            if (waiting) { if (capture) return; closeBubble(); showNote(waiting.id); return; }
-            const sw = window.serviceWorkerManager;
-            const avail = sw && !sw.hasPendingUpdates() && typeof sw.availableUpdateCount === 'function' ? sw.availableUpdateCount() : 0;
-            if (avail > 0) {
-                // counted, not downloaded (#951): Install now, or the restart downloads and installs them
-                const msg = `${avail === 1 ? '1 update is' : `${avail} updates are`} available. Install them now, or Melaton installs them when it restarts.`;
-                bubble({ title: 'Updates', role, anchor, sections: [msg, { links: [
-                    { label: 'Install', action: () => { closeBubble(); void sw.installAvailableUpdates(); } },
-                    { label: 'Restart Now', action: () => { closeBubble(); sw.forceRestart(); } }
-                ] }], buttons: [{ text: 'Hide' }] });
-                return;
-            }
-            const n = sw && Number(sw.pendingUpdateFilesTotal);
-            const text = `Updates are ready to install${Number.isFinite(n) && n > 0 ? ` (${n.toLocaleString()} ${n === 1 ? 'file' : 'files'})` : ''}. Melaton restarts to install them.`;
-            const links = sw && typeof sw.forceRestart === 'function' ? [{ label: 'Restart Now', action: () => { closeBubble(); sw.forceRestart(); } }] : [];
-            // Continuity connected (#798): the restart's warning here too, before Restart Now (Yukimi, Nov 14);
-            // the same words as the restart's own question (melatonContinuity confirmUpdateRestart)
-            const warn = [];
-            const mc = window.melatonContinuity;
-            if (mc && typeof mc.active === 'function' && mc.active()) {
-                let both = false;
-                try { both = typeof mc.updateScope === 'function' && mc.updateScope(Array.from((sw && sw.pendingUpdateUrls) || [])) === 'both'; } catch (_) { both = false; }
-                warn.push({ html: `<div class="wm-bubble-warn">${both
-                    ? 'These updates also restart your Continuity-enabled PC. Programs that are open on it will close. Save your work there before you continue.'
-                    : 'Your Continuity-enabled PC stays on and reconnects when your Pocket PC is ready.'}</div>` });
-            }
-            bubble({ title: 'Updates', role, anchor, sections: [text, ...warn, ...(links.length ? [{ links }] : [])], buttons: [{ text: 'Hide' }] });
+            // anything else is the update's notification (the standard: Install Now / Restart Now | Later, or a waiting
+            // notice's own words), never a bubble of links (Yukimi, Nov 20 2026)
+            if (capture) return;
+            closeBubble();
+            // a second tap on the icon puts it away again
+            const up = noteShownNote();
+            if (!update && up && isUpdateNote(up)) { hideNote(); return; }
+            showUpdateNote();
         } else if (role === 'prints') {
             const n = printsInProgress();
             bubble({ title: 'Prints', role, anchor, sections: [n ? `${n} ${n === 1 ? 'print is' : 'prints are'} in progress.` : 'No prints in progress.', { links: [{ label: 'Pictures', action: () => open('gallery') }] }], buttons: [{ text: 'Hide' }] });
@@ -12639,6 +12774,10 @@
         dropdown: (anchor, items, align, onClose) => showDropdown(anchor, items, align, onClose),
         /** Settings > Today > Wallpaper > Use (#799): 'workspace' | 'selected' | 'android', and whether Android's can be used here. */
         todayWallSource: () => todayWallSource(),
+        /** THE notification API (the standard above noteSoftKeys): { title, html, icon, event, silent, actions, softKeys, progress, detail }. */
+        notification: (opts) => appNote(opts || {}),
+        /** The update icon's notification (Install Now / Restart Now | Later); null when no update waits. */
+        showUpdateNote: () => showUpdateNote(),
         androidWallAvailable: () => androidWallAvailable(),
         androidWallUrl: () => androidWallUrl(),
         closeMenus: () => closeMenus(),

@@ -6202,6 +6202,9 @@ class ServiceWorkerManager {
 
     showUpdateAvailableTrayPrompt(message) {
         if (!this._isDesktopTrayMode()) {
+            // the phone: the title bar's update icon carries it, and a tap on it shows the standard notification with
+            // Install Now | Later (wmShell showUpdateNote); a toast here popped untitled with no actions (Yukimi, Nov 20 2026)
+            if (window.uiShell === 'mobile') return;
             if (typeof showGlassToast === 'function') {
                 showGlassToast('info', null, message || 'Updates are available.', false, 8000, '<i class="fas fa-download"></i>');
             }
