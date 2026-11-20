@@ -9042,7 +9042,7 @@
      * icon: 'error' | 'warning' | 'info' | 'question' | null.
      */
     let msgBoxCancel = null;
-    function messageBox({ title = 'Melaton Mobile', text = '', icon = null, buttons = [{ text: 'ok', value: true }], cancelValue = false, input = null, modal = false, titleAction = null, onOpen = null } = {}) {
+    function messageBox({ title = 'Melaton Mobile', text = '', icon = null, buttons = [{ text: 'ok', value: true }], cancelValue = false, input = null, modal = false, titleAction = null, onOpen = null, kind = null } = {}) {
         // an ok-only box that does not answer something the user just did (it came on its own, later)
         // is a WM notification instead; one that answers a tap stays a message box (WM's rule)
         if (buttons.length === 1 && !input && !modal && !answersUser()) {
@@ -9054,7 +9054,7 @@
             const layer = shell.querySelector('.wm-msgbox-layer');
             const okOnly = buttons.length === 1;
             layer.innerHTML = `
-                <div class="wm-msgbox" role="alertdialog" aria-modal="true">
+                <div class="wm-msgbox${kind === 'dialog' ? ' is-dialog' : ''}" role="alertdialog" aria-modal="true">
                     <div class="wm-msgbox-title"><span>${escapeHtml(title)}</span>${okOnly ? '<button type="button" class="wm-title-action" data-kind="ok" aria-label="OK"></button>' : titleAction ? `<button type="button" class="wm-title-action" data-kind="${titleAction.kind === 'ok' ? 'ok' : 'close'}" aria-label="${titleAction.kind === 'ok' ? 'OK' : 'Close'}"></button>` : ''}</div>
                     <div class="wm-msgbox-body">${icon ? imgTag(`msgbox-${icon}`) : ''}<div class="wm-msgbox-text"></div></div>
                     ${okOnly ? '' : '<div class="wm-msgbox-buttons"></div>'}
@@ -9111,7 +9111,20 @@
             // the first paint (recorded): 6.1 an empty outline, 6.5 the first text line only with
             // the buttons right under it; whole a tick later (wm-stage.css)
             const painted = layer.querySelector('.wm-msgbox');
-            // the device's place (37.5 % down, wm-shell.css) unless the box is too tall to sit there
+            // 6.5's system box is as wide as its widest text line (wm65.css): the text wraps at its 150 units,
+            // then takes the width of its longest line
+            const msgText = painted.querySelector('.wm-msgbox-text');
+            if (WM65 && kind !== 'dialog' && msgText && !field) {
+                const range = document.createRange();
+                range.selectNodeContents(msgText);
+                const left = msgText.getBoundingClientRect().left;
+                let wide = 0;
+                for (const q of range.getClientRects()) wide = Math.max(wide, q.right - left);
+                if (wide) msgText.style.width = `${Math.ceil(wide)}px`;
+            }
+            // the device's place (37.5 % down, wm-shell.css) unless the box is too tall to sit there; a
+            // program's own question dialog (kind 'dialog': File Explorer's Confirm File Delete) is centred
+            if (layer.classList.contains('is-dialog') !== (kind === 'dialog')) layer.classList.toggle('is-dialog', kind === 'dialog');
             {
                 const cs = getComputedStyle(layer);
                 const room = layer.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);

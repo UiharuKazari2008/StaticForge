@@ -815,6 +815,74 @@ html.ui-mobile[data-wm-version="6.5"] #confirmationDialog .modal-content button:
     color: #fff !important;
 }
 
+/* ---- the system message box (MessageBox: Notes' and Tasks' Delete, Windows Media's Delete from Library;
+ * VGA captures halved, #975; ~/.cache/claude-run/wmwmp/shell65). The rules above draw a program's own
+ * question dialog (messageBox kind 'dialog': File Explorer's Confirm File Delete). The system box is as wide
+ * as its text: the text wraps at 150 units and the frame is its widest line and 63.5 units (1 frame, 6.5 to
+ * the 32-unit icon, 10 to the text, 12.5 after it, 1 frame); a 1-unit black frame rounded 6 units with a
+ * soft shadow right and below; a 20.5-unit caption shaded top to bottom over a 1-unit grey rule, the title
+ * Tahoma 11.5 regular 3.5 units in; the icon 8 units under the rule, the text beside it 2 units lower
+ * (centred on it while shorter, Tahoma 11.5 on a 14.5 pitch: the device's lines measure 23 px, not 24);
+ * the buttons a centred pair 9.5 units under the text and 10 above the frame, each
+ * 56 x 28 with its frame, 5.5 apart, bold 12, the default one in a 2-unit frame. Its middle sits 2 units
+ * above the 6.1 place (VGA row 249). ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox:not(.is-dialog) {
+    width: max-content !important;
+    max-width: 100% !important;
+    border-radius: calc(6 * var(--wm-px));
+    overflow: hidden;
+    box-shadow: calc(2 * var(--wm-px)) calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) rgba(0, 0, 0, 0.45);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox-layer:not(.wm-progress-layer):not(.is-tall):not(.is-dialog) > .wm-msgbox:not(.is-dialog) {
+    top: calc(37.5% - 2 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox:not(.is-dialog) .wm-msgbox-title {
+    height: calc(20.5 * var(--wm-px)) !important;
+    padding: 0 calc(3 * var(--wm-px)) 0 calc(3.5 * var(--wm-px)) !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #b5b6b5;
+    font-size: calc(11.5 * var(--wm-px));
+    background: linear-gradient(to bottom, color-mix(in srgb, var(--wm65-band-from) 40%, var(--wm65-band-to)), var(--wm65-band-to)) !important;
+    font-weight: normal;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox:not(.is-dialog) .wm-msgbox-body {
+    align-items: flex-start;
+    gap: calc(10 * var(--wm-px));
+    padding: calc(8 * var(--wm-px)) calc(12.5 * var(--wm-px)) 0 calc(6.5 * var(--wm-px));
+}
+
+/* a box with only the caption's ok (no button row) keeps 8 units under its text */
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox:not(.is-dialog) > .wm-msgbox-body:last-child {
+    padding-bottom: calc(8 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox:not(.is-dialog) .wm-msgbox-body img + .wm-msgbox-text {
+    margin-top: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox:not(.is-dialog) .wm-msgbox-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: calc(32 * var(--wm-px));
+    max-width: calc(150 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) 0 calc(3.5 * var(--wm-px));
+    font-size: calc(11.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox:not(.is-dialog) .wm-msgbox-buttons {
+    gap: calc(5.5 * var(--wm-px));
+    padding: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) calc(10 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-msgbox:not(.is-dialog) .wm-msgbox-buttons button {
+    min-width: calc(56 * var(--wm-px));
+    height: calc(28 * var(--wm-px));
+}
+
 /* ---- status bubbles and notifications (Yukimi, Nov 13: artifacts round the frames). Drawn as the
  * 6.5 emulator draws them (~/.cache/wm65/ref/notify b1.png, n1.png), in CSS, not 9-sliced art: the
  * theme's toast border and title art cut at a fractional --wm-px left see-through seams across the

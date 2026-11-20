@@ -959,6 +959,7 @@
         const yes = await sh.messageBox({
             title: e ? 'Confirm File Delete' : 'Confirm Multiple File Delete',
             icon: 'warning',
+            kind: 'dialog',
             text: e ? `Are you sure you want to delete '${e.name}'?` : `Are you sure you want to delete these ${list.length} ${noun(list)}?`,
             buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }],
             cancelValue: false
@@ -1018,7 +1019,7 @@
 
     async function removeFolder(path, name) {
         const yes = await sh.messageBox({
-            title: 'Confirm Folder Delete', icon: 'warning',
+            title: 'Confirm Folder Delete', icon: 'warning', kind: 'dialog',
             text: `Are you sure you want to remove the folder '${name}' and all its contents?`,
             buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false
         });

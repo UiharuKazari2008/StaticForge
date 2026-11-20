@@ -1755,7 +1755,8 @@
             text: !one ? `Are you sure you want to delete these ${ok.length} items?`
                 : (folder ? `Are you sure you want to remove the folder '${one.name}' and all its contents?` : `Are you sure you want to delete '${one.name}'?`),
             buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }],
-            cancelValue: false
+            cancelValue: false,
+            kind: 'dialog'
         });
         if (!yes) return;
         // WM's wait cursor until the items are gone and the folder is listed again
