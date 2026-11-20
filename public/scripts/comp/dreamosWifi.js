@@ -138,6 +138,13 @@
         "wlanconn:107": {"t":"","w":317,"h":143,"f":["Segoe UI",9],"s":1220542528,"c":[[339,"B",31,5,250,27,1342242830,"&Diagnose the problem",0],[340,"B",31,42,250,27,1342242830,"&Connect to a different network",0]]},
         "netshell:24050": {"t":"General","w":227,"h":215,"f":["MS Shell Dlg",8],"s":1086849096,"c":[[-1,"S",7,9,37,8,1342308352,"Connection",0],[23501,"S",17,21,100,8,1342308352,"IPv4 Connectivity:",0],[23502,"S",110,21,100,8,1342308352,"None",4096],[23503,"S",17,32,100,8,1342308352,"IPv6 Connectivity:",0],[23504,"S",110,32,100,8,1342308352,"None",4096],[1032,"S",17,43,100,8,1342308352,"Media State:",0],[1007,"S",73,43,137,8,1342308352,"Disconnected",4096],[24016,"S",17,54,100,8,1342308352,"SSID:",0],[24018,"S",73,54,137,8,1342308352,"",4096],[1033,"S",17,65,100,8,1342308352,"Duration:",0],[1008,"S",73,65,137,8,1342308352,"00:00:00",4096],[1034,"S",17,76,100,8,1342308352,"Speed:",0],[1009,"S",73,76,137,8,1342308352,"0 bps",4096],[1043,"S",17,91,100,8,1342308352,"Signal Quality:",0],[1044,"S",190,84,20,1,1342177294,"",0],[23506,"B",17,106,50,14,1342242816,"D&etails...",0],[24020,"B",70,106,90,14,1342242816,"&Wireless Properties",0],[1035,"S",54,145,41,8,1342308352,"Sent",4096],[1030,"S",99,149,13,1,1342177288,"",0],[1010,"S",121,138,20,20,1342177283,"",0],[1031,"S",156,149,13,1,1342177288,"",0],[1036,"S",174,145,35,8,1342308352,"Received",4096],[1023,"S",17,165,34,8,1342308352,"Bytes:",0],[1003,"S",52,165,63,8,1342308352,"0",4096],[1028,"S",134,165,1,21,1342177288,"",0],[1029,"S",134,165,1,10,1342177288,"",0],[1005,"S",149,165,61,8,1342308352,"0",4096],[1027,"S",17,177,32,8,1342308352,"Errors:",0],[1012,"S",69,177,46,8,1342308352,"0",4096],[1013,"S",164,177,46,8,1342308352,"0",4096],[-1,"S",7,127,25,8,1342308352,"Activity",0],[-1,"S",35,130,184,1,1342177296,"",0],[-1,"S",48,13,172,1,1342177296,"",0],[1026,"B",7,192,55,14,1342242816,"&Properties",0],[1025,"B",65,192,55,14,1342242816,"&Disable",0],[23505,"B",123,192,55,14,1342242816,"Dia&gnose",0]]},
         "netshell:24300": {"t":"Network Connection Details","w":240,"h":250,"f":["MS Shell Dlg",8],"s":2160591040,"c":[[65535,"S",7,7,95,8,1342308352,"Network Connection &Details:",0],[24301,"SysListView32",7,17,226,198,1352728577,"List1",512],[65535,"S",7,221,226,1,1342181392,"",0],[1,"B",184,227,50,14,1342242817,"&Close",0]]},
+        "tcpipcfg:2308": {"t":"IP Settings","w":252,"h":218,"f":["MS Shell Dlg",8],"s":1355284552,"c":[[-1,"B",7,7,238,81,1342177287,"IP add&resses",0],[1016,"SysListView32",16,20,220,43,1350664205,"Generic1",0],[1017,"B",78,67,50,14,1342242816,"&Add...",0],[1018,"B",132,67,50,14,1342242816,"&Edit...",0],[1019,"B",186,67,50,14,1342242816,"Remo&ve",0],[-1,"B",7,92,238,81,1342177287,"De&fault gateways:",0],[1004,"SysListView32",16,105,220,43,1350664205,"Generic1",0],[1020,"B",78,152,50,14,1342242816,"A&dd...",0],[1021,"B",132,152,50,14,1342242816,"Edi&t...",0],[1022,"B",186,152,50,14,1342242816,"Re&move",0],[-1,"B",7,180,238,31,1342177287,"",0],[1030,"B",13,180,66,9,1342242819,"A&utomatic metric",0],[1073,"S",15,195,57,8,1342308352,"I&nterface metric:",0],[1029,"E",80,193,50,12,1350639744,"",0]]},
+        "tcpipcfg:2322": {"t":"DNS","w":252,"h":238,"f":["MS Shell Dlg",8],"s":1354760264,"c":[[-1,"S",7,7,167,8,1342308352,"D&NS server addresses, in order of use:",0],[1040,"L",7,17,214,36,1352728835,"",0],[1041,"B",63,57,50,14,1342242816,"&Add...",0],[1042,"B",117,57,50,14,1342242816,"&Edit...",0],[1043,"B",171,57,50,14,1342242816,"Remo&ve",0],[1044,"B",227,17,18,16,1342242880,"Up",0],[1045,"B",227,37,18,16,1342242880,"Down",0],[1059,"S",7,77,224,17,1342308352,"The following three settings are applied to all connections with TCP/IP enabled. For resolution of unqualified names:",0],[1046,"B",7,97,230,10,1342383113,"Append &primary and connection specific DNS suffixes",0],[1047,"B",20,109,201,10,1342252035,"Append parent suffi&xes of the primary DNS suffix",0],[1048,"B",7,121,201,10,1342252041,"Append t&hese DNS suffixes (in order):",0],[1049,"L",7,133,214,36,1352728835,"",0],[1050,"B",63,173,50,14,1342242816,"A&dd...",0],[1051,"B",117,173,50,14,1342242816,"Edi&t...",0],[1052,"B",171,173,50,14,1342242816,"Re&move",0],[1053,"B",227,133,18,16,1342242880,"Up",0],[1054,"B",227,153,18,16,1342242880,"Down",0],[1032,"S",7,197,100,8,1342308352,"DNS &suffix for this connection:",0],[1031,"msctls_netaddress",108,194,113,14,1350631552,"",0],[1057,"B",7,209,214,12,1342242819,"&Register this connection's addresses in DNS",0],[1058,"B",7,220,214,12,1342242819,"&Use this connection's DNS suffix in DNS registration",0]]},
+        "tcpipcfg:2324": {"t":"WINS","w":252,"h":218,"f":["MS Shell Dlg",8],"s":1354760264,"c":[[-1,"B",7,7,238,78,1342177287,"&WINS addresses, in order of use:",0],[1060,"L",16,20,193,39,1352728835,"",0],[1061,"B",51,64,50,14,1342242816,"&Add...",0],[1062,"B",105,64,50,14,1342242816,"&Edit...",0],[1063,"B",159,64,50,14,1342242816,"Remo&ve",0],[1064,"B",218,20,18,16,1342242880,"&Up",0],[1065,"B",218,40,18,16,1342242880,"&Down",0],[1072,"S",7,89,238,18,1342308352,"If LMHOSTS lookup is enabled, it applies to all connections for which TCP/IP is enabled.",0],[1066,"B",7,111,107,10,1342242819,"Enable &LMHOSTS lookup",0],[1067,"B",155,109,90,14,1342242816,"I&mport LMHOSTS...",0],[-1,"B",7,131,238,80,1342177287,"NetBIOS setting",0],[1074,"S",31,152,205,27,1342308352,"Use NetBIOS setting from the DHCP server. If static IP address is used or the DHCP server does not provide NetBIOS setting, enable NetBIOS over TCP/IP.",0],[1070,"B",14,142,153,10,1342373897,"De&fault:",0],[1068,"B",14,182,169,10,1342242825,"E&nable NetBIOS over TCP/IP",0],[1069,"B",14,195,169,10,1342242825,"Di&sable NetBIOS over TCP/IP",0]]},
+        "netshell:16001": {"t":"Select Network Feature Type","w":200,"h":153,"f":["MS Shell Dlg",8],"s":2160591040,"c":[[15006,"SysListView32",7,26,186,40,1350680589,"",0],[15009,"B",86,132,50,14,1342242817,"&Add...",0],[2,"B",143,132,50,14,1342242816,"Cancel",0],[-1,"S",7,15,186,8,1342308352,"&Click the type of network feature you want to install:",0],[-1,"B",7,70,186,52,1342177287,"Description",0],[15019,"S",16,83,168,32,1342308352,"",0]]},
+        "netshell:10751": {"t":"Sharing","w":227,"h":189,"f":["MS Shell Dlg",8],"s":2160591040,"c":[[103,"B",7,8,213,97,1342177287,"Internet Connection Sharing",0],[104,"B",7,8,213,117,1073741831,"Internet Connection Sharing",0],[115,"B",7,8,213,52,1073741831,"Internet Connection Sharing",0],[105,"B",14,24,194,16,1342252035,"Allow other &network users to connect through this computer's Internet connection",0],[106,"S",26,47,189,8,1208090624,"&Home networking connection:",0],[107,"C",26,58,189,50,1075904515,"",0],[108,"E",26,58,189,12,1073809536,"",512],[109,"B",14,58,188,16,1342252035,"All&ow other network users to control or disable the shared Internet connection",0],[110,"S",15,78,194,1,1207959568,"",0],[111,"SysLink",15,82,138,20,1342242816,"<A>Using ICS (Internet Connection Sharing)</A>",0],[112,"B",164,82,50,14,1342242816,"Settin&gs...",0]]},
+        "netshell:24100": {"t":"General","w":227,"h":215,"f":["MS Shell Dlg",8],"s":1086849096,"c":[[23501,"S",17,21,100,8,1342308352,"IPv4 Connectivity:",0],[23502,"S",110,21,100,8,1342308352,"None",4096],[23503,"S",17,33,100,8,1342308352,"IPv6 Connectivity:",0],[23504,"S",110,33,100,8,1342308352,"None",4096],[1032,"S",17,45,100,8,1342308352,"Media State:",0],[1007,"S",73,45,137,8,1342308352,"Disconnected",4096],[1033,"S",17,57,100,8,1342308352,"Duration:",0],[1008,"S",73,57,137,8,1342308352,"00:00:00",4096],[1034,"S",17,69,100,8,1342308352,"Speed:",0],[1009,"S",73,69,137,8,1342308352,"0 bps",4096],[23506,"B",17,83,50,14,1342242816,"D&etails...",0],[1035,"S",54,127,41,8,1342308352,"Sent",4096],[1030,"S",99,131,13,1,1342177288,"",0],[1010,"S",121,120,21,20,1342177283,"#210",0],[1031,"S",156,131,13,1,1342177288,"",0],[1036,"S",174,127,35,8,1342308352,"Received",4096],[1023,"S",17,149,34,8,1342308352,"Bytes:",0],[1003,"S",52,149,63,8,1342308352,"0",4096],[1028,"S",134,149,1,30,1342177288,"",0],[1029,"S",134,149,1,10,1342177288,"",0],[1005,"S",149,149,61,8,1342308352,"0",4096],[1037,"S",17,161,43,8,1342308352,"Compression:",0],[1004,"S",73,161,42,8,1342308352,"0 %",4096],[1006,"S",168,161,42,8,1342308352,"0 %",4096],[1027,"S",17,172,32,8,1342308352,"Errors:",0],[1012,"S",69,172,46,8,1342308352,"0",4096],[1013,"S",164,172,46,8,1342308352,"0",4096],[-1,"S",7,106,25,8,1342308352,"Activity",0],[-1,"S",35,110,184,1,1342177296,"",0],[-1,"S",7,9,37,8,1342308352,"Connection",0],[-1,"S",50,13,170,1,1342177296,"",0],[1026,"B",7,192,55,14,1342242816,"&Properties",0],[1025,"B",65,192,55,14,1342242816,"&Disable",0],[23505,"B",123,192,55,14,1342242816,"Dia&gnose",0]]},
+        "netshell:24200": {"t":"Details","w":227,"h":215,"f":["MS Shell Dlg",8],"s":1086849096,"c":[[24202,"B",162,131,50,14,1342242816,"&Suspend",0],[24206,"C",16,111,196,45,1344340227,"",0],[24203,"S",17,134,85,8,1342308352,"Number of active devices:",0],[24204,"S",110,134,20,8,1342308352,"0",0],[24205,"SysListView32",7,7,213,77,1350631425,"List1",0],[24201,"S",9,99,26,8,1342308352,"Devices",0],[24207,"S",47,102,172,1,1342177296,"",0]]},
         "netshell:16004": {"t":"Networking","w":227,"h":226,"f":["MS Shell Dlg",8],"s":1220542528,"c":[[65535,"S",7,7,48,8,1342308352,"Connect using:",0],[15021,"E",7,18,213,18,1484785792,"",0],[15003,"E",28,21,182,12,1342179456,"",0],[16006,"S",12,20,16,16,1073741827,"",0],[15031,"B",160,39,60,14,1342242816,"&Configure...",0],[16055,"S",7,54,213,8,1342308352,"This c&onnection uses the following items:",0],[15007,"SysListView32",7,66,213,86,1350680589,"",0],[15008,"B",7,156,67,14,1342242816,"I&nstall...",0],[15012,"B",80,156,67,14,1342242816,"&Uninstall",0],[15011,"B",153,156,67,14,1342242816,"P&roperties",0],[16056,"B",7,173,213,42,1342177287,"Description",0],[15020,"S",16,184,196,28,1342308352,"",0]]},
         "wlanui:17052": {"t":"Connection","w":235,"h":213,"f":["MS Shell Dlg",8],"s":1086849224,"c":[[15080,"S",9,14,48,8,1342308352,"Name:",0],[15081,"S",82,14,140,8,1342324864,"Profile name",0],[1101,"S",9,27,48,8,1342308352,"SSID:",0],[15071,"S",9,40,48,8,1342308352,"Network Type:",0],[1100,"S",82,27,140,8,1342324864,"some ssid network",0],[15073,"S",82,40,140,8,1342324736,"??? network",0],[1127,"S",9,53,70,8,1342308352,"Network Availability:",0],[1128,"S",82,53,140,8,1342324736,"some rights",0],[1104,"B",10,77,206,10,1342252035,"Connect auto&matically when this network is in range",0],[1105,"B",10,90,206,12,1342252035,"Connect to a more &preferred network if available",0],[1106,"B",10,103,206,10,1342252035,"C&onnect even if the network is not broadcasting",0],[15075,"B",10,116,206,10,1342242819,"&Enable %s connection settings",0],[1107,"B",21,129,50,15,1342242816,"&Configure...",0]]},
         "wlanui:17053": {"t":"Security","w":235,"h":245,"f":["MS Shell Dlg",8],"s":1220542536,"c":[[1110,"S",9,21,67,10,1342308352,"S&ecurity type:",0],[1111,"C",81,19,123,80,1344339971,"",0],[1113,"S",9,38,63,10,1342308352,"E&ncryption type:",0],[1112,"C",81,36,123,53,1344339971,"",0],[1114,"S",9,55,68,8,1073872896,"Network security &key",0],[1115,"E",81,53,123,14,1082196128,"",0],[1116,"E",81,53,123,14,1082196096,"",0],[1117,"B",81,73,77,10,1073807363,"S&how characters",0],[1126,"S",9,93,67,10,1073872896,"Key &Index:",0],[1125,"C",81,91,20,80,1344339971,"",0],[1124,"B",155,53,50,15,1342242816,"&Configure...",0],[1118,"S",9,85,200,8,1342308352,"Ch&oose a network authentication method:",0],[1119,"C",9,95,143,70,1344339971,"",0],[1120,"B",155,94,50,15,1342242816,"&Settings...",0],[1121,"B",10,112,178,16,1342251011,"C&ache user information for subsequent connections to this network",0]]},
@@ -797,8 +804,11 @@
             // Windows-style device name; tun VPNs go to the VPN group, the rest are Local Area Connections
             const names = customNames();
             let wifis = 0;
-            const labels = uniqueLabels(ifaces);
-            return ifaces.filter((x) => x.nc).map((x) => {
+            const phantom = (x) => x.present === false && x.kind === 'mobile' && x.name === 'rmnet0' && x.alias === 'rmnet0';
+            const labels = uniqueLabels(ifaces.filter((x) => !phantom(x)));
+            // (an app build before DSApp 9f5427c names a data interface it never saw "rmnet0", not present: no such
+            // adapter exists, so it is not listed)
+            return ifaces.filter((x) => x.nc && !phantom(x)).map((x) => {
                 const id = String(x.alias || x.name);
                 const a = { iface: String(x.name), id, kind: x.kind, label: labels.get(x) || x.label || '', mac: x.mac || '', enabled: x.enabled !== false, row: x, present: x.present !== false };
                 let base;
@@ -982,59 +992,121 @@
     // ---- an adapter's Properties (netshell 16004 "Networking") and TCP/IPv4 Properties (tcpipcfg 2323 / 2334) -------
 
     // the items Vista lists that Melaton's adapters have; descriptions: tcpipcfg 50002 / 50001
+    // a connection's items, in the VM's order with their class pictures (SetupDiLoadClassIcon: NetClient, NetService,
+    // NetTrans) and descriptions read off the VM (#952); core: no Uninstall (TCP/IP), props: has its own dialog here
     const ITEMS = [
-        { id: 'ipv6', name: 'Internet Protocol Version 6 (TCP/IPv6)', text: 'TCP/IP version 6. The latest version of the internet protocol that provides communication across diverse interconnected networks.' },
-        { id: 'ipv4', name: 'Internet Protocol Version 4 (TCP/IPv4)', text: 'Transmission Control Protocol/Internet Protocol. The default wide area network protocol that provides communication across diverse interconnected networks.' }
+        { id: 'client', icon: 'class-netclient-16', name: 'Client for Microsoft Networks', text: 'Allows your computer to access resources on a Microsoft network.' },
+        { id: 'qos', icon: 'class-netservice-16', name: 'QoS Packet Scheduler', text: 'Quality of Service Packet Scheduler.  This component provides network traffic control, including rate-of-flow and prioritization services.' },
+        { id: 'share', icon: 'class-netservice-16', name: 'File and Printer Sharing for Microsoft Networks', text: 'Allows other computers to access resources on your computer using a Microsoft network.' },
+        { id: 'ipv6', icon: 'class-nettrans-16', core: true, name: 'Internet Protocol Version 6 (TCP/IPv6)', text: 'TCP/IP version 6. The latest version of the internet protocol that provides communication across diverse interconnected networks.' },
+        { id: 'ipv4', icon: 'class-nettrans-16', core: true, props: true, name: 'Internet Protocol Version 4 (TCP/IPv4)', text: 'Transmission Control Protocol/Internet Protocol. The default wide area network protocol that provides communication across diverse interconnected networks.' },
+        { id: 'lltdio', icon: 'class-nettrans-16', name: 'Link-Layer Topology Discovery Mapper I/O Driver', text: 'Used to discover and locate other PCs, devices, and network infrastructure components on the network.  Also used to determine network bandwidth.' },
+        { id: 'rspndr', icon: 'class-nettrans-16', name: 'Link-Layer Topology Discovery Responder', text: 'Allows this PC to be discovered and located on the network.' }
+    ];
+    // Install...'s feature types (netshell 16001)
+    const FEATURES = [
+        { id: 'client', icon: 'class-netclient-16', name: 'Client', text: 'A client provides access to computers and files on the network you are connecting to.' },
+        { id: 'service', icon: 'class-netservice-16', name: 'Service', text: 'A service provides additional features such as file and printer sharing.' },
+        { id: 'protocol', icon: 'class-nettrans-16', name: 'Protocol', text: 'A protocol is a language your computer uses to communicate with other computers.' }
     ];
 
     // the status sheet's caption: the connection's own icon (#952: the house was the network location, not the adapter;
     // a cable connection, the modem in LAN mode and the Café Miniport show netshell's LAN connection, a tunnel the VPN's)
     const adapterIcon = (a) => (a && a.kind === 'wifi' ? `${NET}/netshell-wireless-16.png` : a && a.kind === 'vpn' ? `${NET}/ncpa-vpn-16.png` : `${NET}/ncpa-lan-16.png`);
 
+    /** A list view of [{ id, icon, name }] rows with ticked boxes (the binding is the system's: a click selects the row,
+     *  the tick stays), the first selected; onPick(row id) on a selection. */
+    function itemList(lv, rows, onPick, boxes = true) {
+        const body = lv && lv.querySelector('.vdt-lv-body');
+        if (!body) return;
+        body.innerHTML = rows.map((it, i) => `<div class="vdt-lv-row dwf-item${i === 0 ? ' is-selected' : ''}" data-value="${esc(it.id)}">`
+            + `${boxes ? '<input type="checkbox" checked tabindex="-1">' : ''}${img(it.icon, 'dwf-item-icon')}<span>${esc(it.name)}</span></div>`).join('');
+        body.querySelectorAll('input[type=checkbox]').forEach((b) => b.addEventListener('click', (ev) => ev.preventDefault()));
+        const pick = (row) => {
+            body.querySelectorAll('.is-selected').forEach((n) => n.classList.remove('is-selected'));
+            row.classList.add('is-selected');
+            onPick(row.dataset.value);
+        };
+        body.addEventListener('click', (ev) => { const row = ev.target.closest('.vdt-lv-row'); if (row) pick(row); });
+        lv.addEventListener('keydown', (ev) => {
+            if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+            ev.preventDefault();
+            const cur = body.querySelector('.is-selected');
+            const next = cur && (ev.key === 'ArrowDown' ? cur.nextElementSibling : cur.previousElementSibling);
+            if (next) pick(next);
+        });
+        if (body.firstElementChild) onPick(body.firstElementChild.dataset.value);
+    }
+
+    /** Install... (netshell 16001 Select Network Feature Type): Client, Service, Protocol. Melaton's network features
+     *  are the system's own, so Add... says there are none to add. */
+    async function installFeature(owner) {
+        const V = await kit();
+        const k = 'netshell:16001';
+        V.openDialog({
+            id: 'dreamosNetFeatureType',
+            key: k,
+            owner,
+            bareCaption: true,
+            buttons: {
+                15009: () => { void message('There are no other network features to install. The ones this computer has are part of Melaton.', 'Select Network Feature Type', 'info'); }
+            },
+            init: (c) => itemList(c.holder(15006), FEATURES, (id) => { const f = FEATURES.find((x) => x.id === id); c.text(15019, f ? f.text : ''); }, false)
+        });
+    }
+
     async function adapterProperties(owner, a) {
         const V = await kit();
         const ad = a || wifiAdapter();
         const k = 'netshell:16004';
+        const H = 'netshell:10751';
+        // Sharing (Internet Connection Sharing) is there when another connection could share this one, as on Vista
+        const others = adapters().filter((x) => x !== ad && (x.id || x.iface) !== (ad.id || ad.iface) && x.kind !== 'vpn');
+        const pages = [{ key: k, overrides: { 16006: { image: `${NET}/class-net-16.png` } } }];
+        // (netshell 10751 as Vista lays it out with a home network to pick: the taller group, Home networking connection and
+        // its list under the first box, the rest moved down past them)
+        if (others.length) pages.push({ key: H, overrides: { 103: { skip: true }, 115: { skip: true }, 108: { skip: true }, 105: { disabled: true }, 106: { disabled: true }, 107: { disabled: true }, 109: { disabled: true, nudge: [0, 32, 0, 0] }, 110: { nudge: [0, 32, 0, 0] }, 111: { nudge: [0, 32, 0, 0] }, 112: { disabled: true, nudge: [0, 32, 0, 0] } } });
         V.openSheet({
             id: 'dreamosAdapterProps',
             title: fill(N.props, ad.conn),
             icon: adapterIcon(ad),
+            captionIcon: true, // the connection's icon in the caption, as on the VM
             owner,
             noApply: true,
-            pages: [{ key: k, overrides: { 16006: { skip: true }, 15031: { disabled: true }, 15008: { disabled: true }, 15012: { disabled: true }, 15011: { disabled: true } } }],
+            pages,
             init: (c) => {
                 c.set(15003, ad.label || (ad.kind === 'wifi' ? (state().wifi || {}).device : '') || ad.iface || ad.conn, k);
+                c.show(16006, true, k);
                 // GDI fits "Connect using:" in its 48 DLU; the browser's Tahoma is a little wider: keep it on one line
                 c.content.querySelectorAll('.vdt-static').forEach((st) => { if (/^Connect using:/.test(st.textContent)) st.classList.add('vdt-nowrap'); });
-                const lv = c.holder(15007, k);
-                const body = lv && lv.querySelector('.vdt-lv-body');
-                if (!body) return;
-                ITEMS.forEach((it, i) => {
-                    const row = doc.createElement('div');
-                    row.className = `vdt-lv-row dwf-item${i === 0 ? ' is-selected' : ''}`;
-                    row.dataset.value = it.id;
-                    const box = doc.createElement('input');
-                    box.type = 'checkbox';
-                    box.checked = true;
-                    box.disabled = true;
-                    box.id = `dwf-item-${i}`;
-                    const lab = doc.createElement('label');
-                    lab.htmlFor = box.id;
-                    lab.textContent = it.name;
-                    row.append(box, lab);
-                    body.appendChild(row);
+                let sel = ITEMS[0];
+                itemList(c.holder(15007, k), ITEMS, (id) => {
+                    sel = ITEMS.find((x) => x.id === id) || ITEMS[0];
+                    c.text(15020, sel.text, k);
+                    c.enable(15012, !sel.core, k);
+                    c.enable(15011, !!sel.props, k);
                 });
-                // Properties opens the selected item's own dialog: TCP/IPv4 here (IPv6 has none in Melaton)
-                const pick = () => {
-                    const row = lv.querySelector('.vdt-lv-row.is-selected');
-                    const it = ITEMS.find((x) => row && x.id === row.dataset.value) || ITEMS[0];
-                    c.text(15020, it.text, k);
-                    c.enable(15011, it.id === 'ipv4', k);
-                };
-                pick();
-                lv.addEventListener('change', pick);
-                lv.addEventListener('dblclick', (ev) => { const row = ev.target.closest('.vdt-lv-row'); if (row && row.dataset.value === 'ipv4') void ipv4Properties(ad, c.modal); });
-                c.on(15011, 'click', () => { void ipv4Properties(ad, c.modal); }, k);
+                const lv = c.holder(15007, k);
+                if (lv) lv.addEventListener('dblclick', (ev) => { const row = ev.target.closest('.vdt-lv-row'); if (row && row.dataset.value === 'ipv4') void ipv4Properties(ad, c.modal); });
+                c.on(15011, 'click', () => { if (sel.props) void ipv4Properties(ad, c.modal); }, k);
+                // Configure...: the adapter's own sheet in Device Manager (cplDeviceManager openAdapter)
+                const dm = root.melatonDeviceManager;
+                c.enable(15031, !!(dm && typeof dm.openAdapter === 'function'), k);
+                c.on(15031, 'click', () => {
+                    const m = root.melatonDeviceManager;
+                    if (m && typeof m.openAdapter === 'function') void Promise.resolve(m.openAdapter(ad.kind === 'miniport' ? 'miniport' : ad.iface)).then((ok) => { if (!ok) void message(`${ad.label || ad.conn} is not in Device Manager.`, fill(N.props, ad.conn), 'info'); });
+                }, k);
+                c.on(15008, 'click', () => { void installFeature(c.modal); }, k);
+                c.on(15012, 'click', async () => {
+                    const yes = await ask(`Uninstalling a component removes it from all network connections.\n\nAre you sure you want to uninstall ${sel.name}?`, fill(N.props, ad.conn), 'warning');
+                    if (yes) void message(`${sel.name} cannot be uninstalled: it is part of Melaton's network.`, fill(N.props, ad.conn), 'info');
+                }, k);
+                if (others.length) {
+                    [104, 106, 107].forEach((id) => c.show(id, true, H));
+                    c.options(107, others.map((x) => x.conn), others[0].conn, H);
+                    c.set(109, true, H);
+                    c.on(111, 'click', () => call('openHelpAndSupport', 'internet-connection-sharing'), H);
+                }
             }
         });
     }
@@ -1083,6 +1155,69 @@
             { title, icon: icon === 'warning' ? 'fas fa-exclamation-triangle' : 'fas fa-question-circle', sound: true })).then((v) => v === true);
     }
 
+    /**
+     * Advanced TCP/IP Settings (tcpipcfg 2308 IP Settings, 2322 DNS, 2324 WINS), filled as the VM fills them (#952): a
+     * DHCP connection lists "DHCP Enabled" and no static gateway or DNS server (they come from the DHCP server), a
+     * connection with fixed addresses (the modem's links, a static setting) lists them with their masks, gateway
+     * (metric Automatic) and DNS servers; DNS suffix for this connection is the static one (none). The lists show what
+     * the host has; what Melaton cannot set from here (WINS, LMHOSTS, metrics) is shown and greyed.
+     */
+    async function ipv4Advanced(a, owner) {
+        const V = await kit();
+        const IP = 'tcpipcfg:2308';
+        const D = 'tcpipcfg:2322';
+        const W = 'tcpipcfg:2324';
+        const info = adapterInfo(a);
+        const cfg = info.config && typeof info.config === 'object' ? info.config : null;
+        const st = statusWins.get(a.id || a.iface) || { a, stats: null };
+        const x = (await readStats(st)) || {};
+        const r = a.row || {};
+        const dhcp = a.kind === 'miniport' ? true : x.dhcp !== undefined ? !!x.dhcp : r.dhcp !== undefined ? !!r.dhcp : (a.kind === 'mobile' || a.kind === 'ipa') ? false : !(cfg && cfg.mode === 'static');
+        const v4 = ((Array.isArray(x.ip) && x.ip.length ? x.ip : info.ip) || []).map(splitCidr).filter((p) => p.address);
+        const gw = x.gateway || r.gateway || (cfg && cfg.gateway) || '';
+        const dnsList = (Array.isArray(x.dns) && x.dns.length ? x.dns : Array.isArray(r.dns) ? r.dns : (cfg && cfg.dns) || []).filter((d) => !String(d).includes(':'));
+        const table = (lv, cols, rows) => {
+            const head = lv && lv.querySelector('.vdt-lv-header');
+            const body = lv && lv.querySelector('.vdt-lv-body');
+            if (!body) return;
+            if (head) head.innerHTML = cols.map(([t, w]) => `<span class="vdt-lv-col" style="width:${w}px">${esc(t)}</span>`).join('');
+            body.innerHTML = rows.map((row) => `<div class="vdt-lv-row">${row.map((v, i) => `<span style="width:${cols[i][1]}px">${esc(v)}</span>`).join('')}</div>`).join('');
+        };
+        const listBox = (lb, rows) => {
+            const e = lb && (lb.classList.contains('vdt-listbox') ? lb : lb.querySelector('.vdt-listbox'));
+            if (e) e.innerHTML = rows.map((v) => `<div class="vdt-lb-row" data-value="${esc(v)}" role="option"><span>${esc(v)}</span></div>`).join('');
+        };
+        // the order buttons are BS_ICON: tcpipcfg's green arrows, no label
+        const arrows = (up, down) => ({ [up]: { image: '/static_images/vista-dlg/tcpipcfg-up-16.png', text: '', disabled: true }, [down]: { image: '/static_images/vista-dlg/tcpipcfg-down-16.png', text: '', disabled: true } });
+        const off = (ids) => Object.fromEntries(ids.map((id) => [id, { disabled: true }]));
+        V.openSheet({
+            id: 'dreamosIpv4Advanced',
+            title: 'Advanced TCP/IP Settings',
+            owner,
+            bareCaption: true,
+            help: true,
+            noApply: true,
+            pages: [
+                { key: IP, overrides: off([1017, 1018, 1019, 1020, 1021, 1022, 1030, 1073, 1029]) },
+                { key: D, overrides: { ...off([1041, 1042, 1043, 1046, 1047, 1048, 1050, 1051, 1052, 1057, 1058, 1032]), ...arrows(1044, 1045), ...arrows(1053, 1054), 1031: { html: '<input type="text" class="tbp-ctl tbp-edit vdt-edit dwf-dns-suffix" disabled>', cls: 'dwf-netaddress' } } },
+                { key: W, overrides: { ...off([1061, 1062, 1063, 1066, 1067, 1070, 1068, 1069, 1074]), ...arrows(1064, 1065) } }
+            ],
+            init: (c) => {
+                table(c.holder(1016, IP), [['IP address', 165], ['Subnet mask', 160]], dhcp ? [['DHCP Enabled', '']] : v4.map((p) => [p.address, p.prefix !== null ? maskOf(p.prefix) : '']));
+                table(c.holder(1004, IP), [['Gateway', 165], ['Metric', 160]], !dhcp && gw ? [[gw, 'Automatic']] : []);
+                c.set(1030, true, IP);
+                listBox(c.holder(1040, D), dhcp ? [] : dnsList);
+                c.set(1046, true, D);
+                c.set(1047, true, D);
+                c.set(1057, true, D);
+                c.set(1058, false, D);
+                listBox(c.holder(1060, W), []);
+                c.set(1066, true, W);
+                c.set(1070, true, W);
+            }
+        });
+    }
+
     async function ipv4Properties(a, owner) {
         const V = await kit();
         const G = 'tcpipcfg:2323';
@@ -1114,7 +1249,7 @@
             help: true,
             noApply: true,
             pages: [
-                { key: G, overrides: { 1015: { disabled: true } } },
+                { key: G },
                 // Automatic private IP address only: the host keeps no user-configured alternate
                 { key: A, overrides: { 1071: { disabled: true }, 1072: { disabled: true }, 1073: { disabled: true }, 1074: { disabled: true }, 1075: { disabled: true }, 1076: { disabled: true }, 1077: { disabled: true }, 1078: { disabled: true }, 1079: { disabled: true }, 1080: { disabled: true }, 1081: { disabled: true }, 1082: { disabled: true }, 1083: { disabled: true }, 1084: { disabled: true }, 1085: { disabled: true } } }
             ],
@@ -1136,6 +1271,8 @@
                 c.set(1070, true, A);
                 c.enable(1070, allowed, A);
                 [1000, 1001, 1009, 1010].forEach((id) => c.on(id, 'change', () => sync(c), G));
+                // Advanced...: the connection's addresses, gateways, DNS and WINS as TCP/IP holds them (#952)
+                c.on(1015, 'click', () => { void ipv4Advanced(a, c.modal); }, G);
                 // the subnet mask fills itself in from the address's class when it gets the focus empty, as on the VM
                 const mask = c.holder(1003, G);
                 if (mask) {
@@ -1196,9 +1333,11 @@
     const statusWins = new Map(); // iface -> { ctx, a, key, timer, stats, since }
 
     // The VPN sheet's Details tab: rasdlg's page (a Property / Value list over the General page's 227 x 215 DLU)
-    const VPN_DETAILS = 'rasdlg:details';
-    const VPN_DETAILS_LIST = 24301;
-    const VPN_DETAILS_TPL = { t: 'Details', w: 227, h: 215, f: ['MS Shell Dlg', 8], s: 1086849096, c: [[VPN_DETAILS_LIST, 'SysListView32', 7, 7, 213, 200, 1352728577, 'List1', 512]] };
+    // (#952) a VPN's status is Vista's own RAS sheet: netshell 24100 (General: Connection, Activity) and 24200 (Details:
+    // the Property / Value list, Devices with the miniport, Number of active devices, Suspend)
+    const VPN_GENERAL = 'netshell:24100';
+    const VPN_DETAILS = 'netshell:24200';
+    const VPN_DETAILS_LIST = 24205;
 
     /** The Café Miniport / Nightshade connection's status (Network Connections' VPN tile, the Center's View status). */
     // the Café Miniport's adapter when this page rides on it (#952), else the Nightshade link as a VPN connection
@@ -1278,7 +1417,9 @@
         const kind = st.a.kind;
         // the Café Miniport reaches the domain's intranet only (#952): Local, never Internet; Limited when its measured
         // rate is too low
-        set(23502, kind === 'miniport' ? (info.connected ? (info.limited ? S.limited : S.local) : S.notConnected) : ipv4Text(info, x));
+        // (the Nightshade link as a VPN reaches the same intranet: Local too)
+        const intranet = kind === 'miniport' || (kind === 'vpn' && !st.a.row);
+        set(23502, intranet ? (info.connected ? (info.limited ? S.limited : S.local) : S.notConnected) : ipv4Text(info, x));
         set(23504, kind === 'vpn' || kind === 'miniport' ? S.notConnected : ipv6Text(info, x));
         set(1007, info.connected || (info.enabled && info.carrier) ? S.enabled : info.enabled ? S.disconnected : N.disabled);
         // the wireless sheet's SSID; the mobile one names the provider there (the carrier, its data class, Roaming)
@@ -1370,6 +1511,11 @@
         st.detailsKey = key;
         const lv = st.ctx.holder(VPN_DETAILS_LIST, VPN_DETAILS);
         if (lv) fillPropertyList(lv, rows);
+        // Devices: the connection's miniport, and how many of its devices are up (RAS's multilink count)
+        const dev = rows[0] ? String(rows[0][1] || '') : '';
+        st.ctx.options(24206, dev ? [dev] : [], dev, VPN_DETAILS);
+        const up = r ? !!r.connected : !!f.connected;
+        st.ctx.text(24204, up ? '1' : '0', VPN_DETAILS);
     }
 
     /** A Property / Value list (netshell's Details list, the VPN's Details tab). */
@@ -1584,8 +1730,9 @@
         // (#952) the modem is a Local Area Connection with the app's v2 list: no signal meter (VZAccess Manager has it)
         const meter = wifi || (kind === 'mobile' && !ad.row);
         const vpn = kind === 'vpn';
-        const k = meter ? 'netshell:24050' : 'netshell:23500';
-        const right = [23502, 23504, 1007, 24018, 1008, 1009, 1003, 1005];
+        const k = vpn ? VPN_GENERAL : meter ? 'netshell:24050' : 'netshell:23500';
+        // the values sit right-aligned in the LAN / wireless sheets; RAS's sheet draws them where the template has them
+        const right = vpn ? [23502, 23504] : [23502, 23504, 1007, 24018, 1008, 1009, 1003, 1005];
         const icon = adapterIcon(ad);
         // the activity picture: the two screens (netshell 1915) under the adapter's mark, at 48 px (1913 wireless,
         // netshell 110 broadband, 108 the VPN's server)
@@ -1602,13 +1749,15 @@
             overrides[24020] = { skip: true };
         }
         if (vpn) {
-            // RAS's sheet: its Details are a tab, not a button; Disable is Disconnect; nothing to set for the link here
+            // RAS's sheet: its Details are a tab, not a button; Disable is Disconnect; nothing to set for the link here.
+            // Compression and Errors are counts the page cannot see (the socket's own framing): left out, as on the LAN sheet
             overrides[23506] = { skip: true };
             overrides[1026] = { disabled: true };
             overrides[1025] = { text: 'Dis&connect' };
+            [1037, 1004, 1006, 1029].forEach((id) => { overrides[id] = { skip: true }; });
         }
         const pages = [{ key: k, overrides }];
-        if (vpn) pages.push({ key: VPN_DETAILS, tpl: VPN_DETAILS_TPL });
+        if (vpn) pages.push({ key: VPN_DETAILS, overrides: { 24202: { disabled: true } } });
         const st = { ctx: null, a: ad, key: k, timer: null, stats: null, since: Date.now(), reading: false, detailsKey: '' };
         const ctx = V.openSheet({
             id: `dreamosNetStatus-${String(ad.id || ad.iface || 'wifi').replace(/[^a-z0-9]/gi, '_')}`,
@@ -1928,7 +2077,7 @@
         mwnDragWire();
         // Control Panel keeps the first registration of a page id: its body asks this file's current copy (a live
         // update of this file replaces window.dreamosWifi), so the page and the handlers below never part
-        cp.registerPage(MWN, { kind: 'folder', title: () => S.manage, icon16: `${NET}/wlanpref-manage-16.png`, tasks: () => '', body: () => (root.dreamosWifi && root.dreamosWifi._manageBody ? root.dreamosWifi._manageBody() : '') });
+        cp.registerPage(MWN, { kind: 'folder', parent: 'cat-network', title: () => S.manage, icon16: `${NET}/wlanpref-manage-16.png`, tasks: () => '', body: () => (root.dreamosWifi && root.dreamosWifi._manageBody ? root.dreamosWifi._manageBody() : '') });
         if (K && K.handlers) {
             K.handlers[MWN] = {
                 pick(t) {
@@ -2074,7 +2223,7 @@
         }
         return `<div class="cpl-fbar" role="toolbar">
             <button type="button" class="cpl-fbar-btn" data-cpl-vpage="organize"><img src="${EXPLORER}/organize.png" alt="">Organize<span class="cpl-fbar-glyph"></span></button>
-            <button type="button" class="cpl-fbar-btn" data-cpl-vpage="views"><img src="${EXPLORER}/views-tiles.png" srcset="${EXPLORER}/views-tiles.png 1x, ${EXPLORER}/views-tiles@2x.png 2x" alt="">Views<span class="cpl-fbar-glyph"></span></button>
+            <button type="button" class="cpl-fbar-btn" data-cpl-vpage="views"><img src="${EXPLORER}/views-${ncView()}.png" srcset="${EXPLORER}/views-${ncView()}.png 1x, ${EXPLORER}/views-${ncView()}@2x.png 2x" alt="">Views<span class="cpl-fbar-glyph"></span></button>
             ${cmds}
             <button type="button" class="cpl-fbar-help" data-cpl-vpage="help" data-topic="network-connections"><img src="${EXPLORER}/help-16.png" alt=""></button>
         </div>`;
@@ -2085,17 +2234,102 @@
             + `<span class="dwf-nc-text"><span class="dwf-nc-name">${esc(r.conn)}</span><span class="vdt-graytext">${esc(r.status)}</span><span class="vdt-graytext">${esc(r.device)}</span></span></div>`;
     }
 
+    // ---- Views (#952): the VM's seven views of Network Connections (Explorer's slider menu, vfsVirtualGrid.js
+    // vistaViewsMenu); Tiles is the folder's own. Kept per computer, as Vista keeps a folder's view.
+    const VIEW_KEY = 'dreamos.ncpa.view';
+    const VIEWS = new Set(['icons-xl', 'icons-lg', 'icons-md', 'icons-sm', 'list', 'details', 'tiles']);
+    function ncView() {
+        let v = '';
+        try { v = root.localStorage.getItem(VIEW_KEY) || ''; } catch (_) { v = ''; }
+        return VIEWS.has(v) ? v : 'tiles';
+    }
+    function setNcView(v) {
+        if (!VIEWS.has(v)) return;
+        try { root.localStorage.setItem(VIEW_KEY, v); } catch (_) { /* private window */ }
+        nc.html = '';
+        ncRerender();
+    }
+    const icon16 = (kind) => (kind === 'wifi' ? `${NET}/netshell-wireless-16.png` : kind === 'vpn' ? `${NET}/ncpa-vpn-16.png` : `${NET}/ncpa-lan-16.png`);
+
+    /** The Details view's columns for a row, as the VM fills them (Connectivity "Access to Local and Internet",
+     *  Network Category "Private network", Owner "System" or the user who made the connection, Type the group). */
+    function ncDetails(r, type) {
+        let connectivity = '';
+        let category = '';
+        if (r.connected) {
+            const info = r.a && r.kind !== 'vpn' ? adapterInfo(r.a) : null;
+            const local = r.kind === 'miniport' || (r.kind === 'vpn' && !r.a) || (info && info.row && !info.dataLink && r.kind !== 'vpn');
+            connectivity = local || !reachesInternet() ? 'Access to Local only' : 'Access to Local and Internet';
+            category = r.kind === 'miniport' || (r.kind === 'vpn' && !r.vo && !(r.a && r.a.row)) ? 'Domain network' : 'Private network';
+        }
+        let owner = 'System';
+        if (r.vo) {
+            const acc = root.meletonAccounts;
+            owner = r.vo.owner || (acc && typeof acc.name === 'function' ? acc.name() : '') || '';
+        }
+        const lease = nightshadeLease();
+        const hostAddr = r.vo ? r.vo.host : (r.kind === 'vpn' && !r.a ? ((lease && lease.domain) || '') : '');
+        return [r.conn, r.status, r.device, connectivity, category, owner, type, hostAddr];
+    }
+
+    function ncItem(r, view, type) {
+        const sel = r.key === nc.sel ? ' is-selected' : '';
+        const attrs = `data-cpl-vpage="pick" data-id="${esc(r.key)}" tabindex="0"`;
+        if (view === 'tiles') return ncTile(r);
+        if (view === 'details') {
+            return `<div class="dwf-nc-drow${sel}" ${attrs}>${ncDetails(r, type).map((v, i) => `<span class="dwf-nc-dcol dwf-nc-dcol${i}">${i === 0 ? `<img src="${icon16(r.kind)}" alt="" draggable="false">` : ''}<span class="${i === 0 ? 'dwf-nc-name' : ''}">${esc(v)}</span></span>`).join('')}</div>`;
+        }
+        if (view === 'list' || view === 'icons-sm') {
+            return `<div class="dwf-nc-small${sel}" ${attrs}><img src="${icon16(r.kind)}" alt="" draggable="false"><span class="dwf-nc-name">${esc(r.conn)}</span></div>`;
+        }
+        // Medium / Large / Extra Large Icons: the picture over its name
+        return `<div class="dwf-nc-icon dwf-nc-icon-${view}${sel}" ${attrs}>${connPicture(r.kind, r.look)}<span class="dwf-nc-name">${esc(r.conn)}</span></div>`;
+    }
+
+    // ---- Organize (#952): the VM's menu for this folder, through Control Panel's shared Organize button (cplPages3.js
+    // organizeMenu: organizeOwn, organizeItems; a pick runs handler cpl-org:<name>); what the folder cannot do is greyed
+    function ncOrganizeItems() {
+        const r = ncRow();
+        const nightshade = !!r && r.kind === 'vpn' && !r.vo && !(r.a && r.a.row);
+        return [
+            { text: 'New Folder', action: 'cpl-org:none', disabled: true },
+            { separator: true },
+            { text: 'Cut', icon: 'fas fa-cut', action: 'cpl-org:none', disabled: true },
+            { text: 'Copy', icon: 'fas fa-copy', action: 'cpl-org:none', disabled: true },
+            { text: 'Paste', icon: 'fas fa-paste', action: 'cpl-org:none', disabled: true },
+            { text: 'Undo', action: 'cpl-org:none', disabled: true },
+            { text: 'Redo', action: 'cpl-org:none', disabled: true },
+            { separator: true },
+            { text: 'Select All', action: 'cpl-org:orgSelectAll', disabled: !ncRows().length },
+            { separator: true },
+            // Layout: this folder has no panes or menu bar to show here (greyed, as the panes it does not have)
+            { text: 'Layout', hasSubmenu: true, submenu: ['Menu Bar', 'Details Pane', 'Preview Pane', 'Navigation Pane'].map((t) => ({ text: t, action: 'cpl-org:none', disabled: true })) },
+            { text: 'Folder and Search Options', action: 'cpl-org:orgFolderOptions' },
+            { separator: true },
+            { text: 'Delete', icon: 'fas fa-xmark', action: 'cpl-org:vodelete', disabled: !(r && r.vo && !r.connected) },
+            { text: 'Rename', action: 'cpl-org:orgRename', disabled: !r || nightshade },
+            { text: 'Remove Properties', action: 'cpl-org:none', disabled: true },
+            { text: 'Properties', action: 'cpl-org:settings', disabled: !r },
+            { separator: true },
+            { text: 'Close', action: 'cpl-org:orgClose' }
+        ];
+    }
+
     function ncBody() {
         const rows = ncRows();
         if (!rows.some((x) => x.key === nc.sel)) nc.sel = null;
+        const view = ncView();
         // Tiles, grouped by type as the VM shows them
         // (#952) with the app's v2 list the modem is a Local Area Connection (LAN mode); an older app's mobile row stays Broadband
         const v2 = rows.some((x) => x.a && x.a.row);
         const lanLike = (x) => x.kind === 'wifi' || x.kind === 'ethernet' || (v2 || x.kind === 'miniport' ? LAN_KINDS.has(x.kind) : false);
         const groups = [[N.lan, rows.filter(lanLike)], [N.broadband, rows.filter((x) => x.kind === 'mobile' && !lanLike(x))], [N.vpnGroup, rows.filter((x) => x.kind === 'vpn')]].filter((g) => g[1].length);
         const head = `<div class="cpl-flist-head dwf-nc-head">${N.cols.map((t, i) => `<span class="dwf-nc-col dwf-nc-col${i}">${esc(t)}</span>`).join('')}<span class="cpl-flist-rest"></span></div>`;
-        const body = groups.map(([t, rs]) => `<div class="vdt-lv-group">${esc(t)} (${rs.length})</div><div class="cpl-flist-icons dwf-nc-tiles">${rs.map(ncTile).join('')}</div>`).join('');
-        return `${ncBar(rows)}<div class="cpl-flist dwf-nc-list">${head}${body}</div><div class="cpl-fstatus">${rows.length} item${rows.length === 1 ? '' : 's'}</div>`;
+        // List is one run of names without groups (the VM's); every other view keeps the groups
+        const body = view === 'list'
+            ? `<div class="cpl-flist-icons dwf-nc-items dwf-nc-view-list">${groups.flatMap(([t, rs]) => rs.map((r) => ncItem(r, view, t))).join('')}</div>`
+            : groups.map(([t, rs]) => `<div class="vdt-lv-group">${esc(t)} (${rs.length})</div><div class="cpl-flist-icons dwf-nc-tiles dwf-nc-items dwf-nc-view-${view}">${rs.map((r) => ncItem(r, view, t)).join('')}</div>`).join('');
+        return `${ncBar(rows)}<div class="cpl-flist dwf-nc-list" data-nc-view="${view}">${head}${body}</div><div class="cpl-fstatus">${rows.length} item${rows.length === 1 ? '' : 's'}</div>`;
     }
 
     /** Redraw the page when it shows and its markup changed (a push that changes nothing writes nothing). */
@@ -2149,7 +2383,7 @@
             return;
         }
         const win = t && t.closest('.cpl-instance');
-        const tile = win && win.querySelector(`.dwf-nc-tile[data-id="${CSS.escape(r.key)}"]`);
+        const tile = win && win.querySelector(`.dwf-nc-list [data-cpl-vpage="pick"][data-id="${CSS.escape(r.key)}"]`);
         const name = tile && tile.querySelector('.dwf-nc-name');
         if (!name) return;
         nc.renaming = r.key;
@@ -2196,7 +2430,7 @@
         const K = root.cplPages;
         if (!cp || typeof cp.registerPage !== 'function') return false;
         // the body asks this file's current copy (a live update replaces window.dreamosWifi), see registerManage
-        cp.registerPage(NC, { kind: 'folder', title: () => N.title, icon16: `${NET}/netcenter-16.png`, tasks: () => '', body: () => (root.dreamosWifi && root.dreamosWifi._connectionsBody ? root.dreamosWifi._connectionsBody() : '') });
+        cp.registerPage(NC, { kind: 'folder', parent: 'cat-network', title: () => N.title, icon16: `${NET}/netcenter-16.png`, tasks: () => '', body: () => (root.dreamosWifi && root.dreamosWifi._connectionsBody ? root.dreamosWifi._connectionsBody() : '') });
         // (the handlers are this copy's, replaced by a newer copy's on its first open, as the page's body is)
         if (K && K.handlers) {
             const go = (fn) => () => { const r = ncRow(); if (r) fn(r); };
@@ -2204,7 +2438,7 @@
                 pick(t) {
                     if (nc.renaming) return;
                     nc.sel = t.dataset.id;
-                    t.closest('.cpl-flist').querySelectorAll('.dwf-nc-tile.is-selected').forEach((n) => n.classList.remove('is-selected'));
+                    t.closest('.cpl-flist').querySelectorAll('[data-cpl-vpage="pick"].is-selected').forEach((n) => n.classList.remove('is-selected'));
                     t.classList.add('is-selected');
                     const win = t.closest('.cpl-instance');
                     const bar = win && win.querySelector('.cpl-fbar');
@@ -2240,7 +2474,33 @@
                     }
                     if (r0 && r0.a && r0.a.row && vpnControl(r0.a.row, false)) return;
                     const r = ncRow(); const h = host(); if (r && r.a && r.a.row && h && typeof h.openVpnApp === 'function') { h.openVpnApp(r.a.iface); return; } if (root.nightshadeClient && typeof root.nightshadeClient.open === 'function') root.nightshadeClient.open(); },
-                organize() {}, views() {}
+                organize() {},
+                organizeOwn: true,
+                organizeItems: () => ncOrganizeItems(),
+                orgSelectAll() {
+                    // one connection at a time here: the first, as a click on it would
+                    const cp = root.melatonControlPanel;
+                    const win = cp && typeof cp.currentWindow === 'function' ? cp.currentWindow() : null;
+                    const first = win && win.querySelector('.dwf-nc-list [data-cpl-vpage="pick"]');
+                    if (first && root.cplPages.handlers[NC].pick) root.cplPages.handlers[NC].pick(first);
+                },
+                orgFolderOptions() { const cp = root.melatonControlPanel; if (cp && typeof cp.doAction === 'function') cp.doAction('dialog:folder-options'); },
+                orgRename() {
+                    const cp = root.melatonControlPanel;
+                    const win = cp && typeof cp.currentWindow === 'function' ? cp.currentWindow() : null;
+                    ncRename(win && win.querySelector('.cpl-fbar'));
+                },
+                orgClose() { const cp = root.melatonControlPanel; if (cp && typeof cp.close === 'function') cp.close(); },
+                // Views: a click on its face steps through the views, its ▾ drops the slider (Explorer's split button)
+                views(t, ev) {
+                    const vm = root.vistaViewsMenu;
+                    const owner = { get: ncView, set: setNcView };
+                    if (!vm) return;
+                    const box = t.getBoundingClientRect();
+                    const glyph = (ev && ev.target && ev.target.closest && ev.target.closest('.cpl-fbar-glyph')) || (ev && ev.clientX > box.right - 20);
+                    if (glyph || typeof vm.next !== 'function') vm.toggle(t, owner);
+                    else setNcView(vm.next(ncView()));
+                }
             };
             if (root.cplSort && typeof root.cplSort.columns === 'function') root.cplSort.columns(NC, N.cols);
             if (typeof K.wire === 'function') K.wire();

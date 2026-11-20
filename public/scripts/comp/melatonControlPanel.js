@@ -623,7 +623,9 @@
         el('.cpl-back').disabled = back.length === 0;
         el('.cpl-forward').disabled = forward.length === 0;
         el('.cpl-recent').disabled = back.length === 0 && forward.length === 0;
-        el('.cpl-address').innerHTML = renderAddress(page);
+        const address = el('.cpl-address');
+        address.innerHTML = renderAddress(page);
+        fitAddress(address);
         syncCaptionIcon(page);
         el('.cpl-tasks').innerHTML = page.tasks();
         // a wrapped task-pane name: its row is 1 px shorter (cpl-catalog.css); measured once the
@@ -662,6 +664,7 @@
             if (!bar.isConnected) { barObserver.unobserve(bar); return; }
             const w = Math.round(e.contentRect.width);
             if (barSizes.get(bar) === w) return;
+            if (bar.classList.contains('cpl-address')) { fitAddress(bar); return; }
             fitBar(bar);
         });
     }) : null;
@@ -769,8 +772,56 @@
         if (typeof root.updateTaskbarActiveStates === 'function') root.updateTaskbarActiveStates();
     }
 
+    // ---- the address bar's trail, folded as Vista folds it (#952) -----------------------------------------------------
+    //
+    // Vista draws the trail with a trailing ▸; when the box is too narrow it drops the trailing ▸ first, then folds the
+    // crumbs from the left into « (a menu of them, nearest first), as Explorer's (explorerVistaChrome.js
+    // layoutBreadcrumb) and the VM's Network Connections at 800 / 600 / 450 px ("« Network and Internet ▸ Network
+    // Connections", "« Network Connections"). Refitted when the box's width changes (the bar observer below).
+    const SEP = '<span class="cpl-crumb-sep" aria-hidden="true">&#9656;</span>';
+    function fitAddress(host) {
+        if (!host || !host._crumbs) return;
+        const { icon, crumbs } = host._crumbs;
+        const cm = root.contextMenu;
+        const old = host.querySelector(':scope > .cpl-crumb-overflow');
+        if (old && cm && typeof cm.detachClickMenuFromElement === 'function') cm.detachClickMenuFromElement(old);
+        const crumb = (c) => `<button type="button" class="cpl-crumb" data-cpl-action="nav" data-cpl-arg="${esc(c.id)}">${esc(c.label)}</button>`;
+        const draw = (folded, trailing) => {
+            host.innerHTML = icon + (folded ? '<button type="button" class="cpl-crumb-overflow" title="Previous locations" aria-label="Previous locations"></button>' : SEP)
+                + crumbs.slice(folded).map((c, i) => (i ? SEP : '') + crumb(c)).join('') + (trailing ? SEP : '');
+        };
+        const fits = () => host.scrollWidth <= host.clientWidth;
+        draw(0, true);
+        if (barObserver) barObserver.observe(host);
+        barSizes.set(host, Math.round(host.getBoundingClientRect().width));
+        if (!host.clientWidth) return; // not on screen yet: the observer fits it when it shows
+        if (fits()) return;
+        draw(0, false);
+        let folded = 0;
+        while (!fits() && folded < crumbs.length - 1) { folded += 1; draw(folded, false); }
+        const more = host.querySelector(':scope > .cpl-crumb-overflow');
+        if (more && cm && typeof cm.attachClickMenuToElement === 'function') {
+            cm.attachClickMenuToElement(more, {
+                position: 'anchor',
+                anchorAlign: 'start',
+                sections: [{ type: 'list', items: crumbs.slice(0, folded).reverse().map((c) => ({ text: c.label, action: `cpl-nav:${c.id}` })) }],
+                onAction: (action) => { if (String(action).startsWith('cpl-nav:')) { const btn = host.querySelector('.cpl-crumb'); if (btn) { btn.dataset.cplArg = String(action).slice(8); btn.click(); } } }
+            });
+        }
+    }
+
     function renderAddress(page) {
-        const crumbs = [`<img class="cpl-address-icon cpl-address-img" src="${esc(addressIcon(page))}" alt="" draggable="false">`];
+        const host = modal && modal.querySelector('.cpl-address');
+        const icon = `<img class="cpl-address-icon cpl-address-img" src="${esc(addressIcon(page))}" alt="" draggable="false">`;
+        const list = [{ id: 'home', label: 'Control Panel' }];
+        if (current !== 'home') {
+            const trail = [];
+            for (let id = page.parent; id && pages[id] && id !== 'home' && !trail.includes(id); id = pages[id].parent) trail.unshift(id);
+            trail.forEach((id) => list.push({ id, label: pages[id].title() }));
+            list.push({ id: current, label: page.title() });
+        }
+        if (host) host._crumbs = { icon, crumbs: list };
+        const crumbs = [icon];
         crumbs.push('<span class="cpl-crumb-sep" aria-hidden="true">&#9656;</span>');
         crumbs.push(`<button type="button" class="cpl-crumb" data-cpl-action="nav" data-cpl-arg="home">Control Panel</button>`);
         if (current !== 'home') {
@@ -1317,6 +1368,8 @@
     }
 
     pages.network = {
+        // Vista's address: Control Panel > Network and Internet > Network and Sharing Center (#952)
+        parent: 'cat-network',
         title: () => 'Network and Server Center',
         tasks: () => {
             const state = linkState();

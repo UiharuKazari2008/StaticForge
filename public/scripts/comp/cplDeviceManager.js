@@ -610,7 +610,7 @@
         cats.forEach((c) => c.devices.forEach((d, i) => {
             const k = keyOf(c.name, d);
             now.add(k);
-            const inf = c.info[i];
+            const inf = c.info ? c.info[i] : null; // (a browser's classes have no per-device facts)
             // not remembered: non-present rows the app already reports, and names that change with a reading (the
             // virtual disk's size, a radio's "(turned off)")
             if (inf && (inf.hidden || (inf.live && inf.live.kind === 'quota'))) return;
@@ -623,6 +623,7 @@
             let c = cats.find((x) => x.name === s.cat);
             if (!c) { c = { name: s.cat, icon: s.icon, devices: [], info: [] }; cats.push(c); }
             c.devices.push(s.name);
+            if (!c.info) c.info = c.devices.slice(0, -1).map(() => null);
             c.info.push({ hidden: true, manufacturer: '', location: '' });
         });
         const keys = Object.keys(seen);
@@ -1344,6 +1345,23 @@
         await refresh();
     }
 
+    /** (#952) Network Connections' Configure...: a network adapter's own Properties sheet, by its kernel name (the
+     *  Café Miniport's: 'miniport'). false when this computer has no such adapter. */
+    async function openAdapter(ifaceName) {
+        const fl = root.featureLoader;
+        await Promise.resolve(fl && typeof fl.loadFeature === 'function' ? fl.loadFeature('vista_dialog_templates') : null);
+        tree = withHidden(await categories());
+        const ci = tree.findIndex((c) => c.name === 'Network adapters');
+        if (ci < 0) return false;
+        const infos = tree[ci].info || [];
+        let di = infos.findIndex((i) => i && (ifaceName === 'miniport' ? i.miniport : i.iface && (i.iface.name === ifaceName || i.iface.alias === ifaceName)));
+        // a browser's list has no per-device facts: the Miniport by its name
+        if (di < 0 && ifaceName === 'miniport') di = tree[ci].devices.findIndex((n, i) => / Miniport /.test(` ${n} `) && !(infos[i] && infos[i].hidden));
+        if (di < 0) return false;
+        openProperties(device(ci, di));
+        return true;
+    }
+
     root.openDeviceManager = openDeviceManager;
-    root.melatonDeviceManager = { open: openDeviceManager, categories, gpuName, computerName, deviceHardware, sizeText, processorRows, archOf, installedRam, screenSize };
+    root.melatonDeviceManager = { open: openDeviceManager, openAdapter, categories, gpuName, computerName, deviceHardware, sizeText, processorRows, archOf, installedRam, screenSize };
 })(typeof window !== 'undefined' ? window : globalThis);

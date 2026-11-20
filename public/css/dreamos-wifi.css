@@ -372,3 +372,150 @@ body.desktop-mode :is(#dreamosWifiConnectModal, #dreamosWifiAdd, #dreamosVpnWiza
     flex: none;
     margin: 0 2px 0 0;
 }
+
+/* Network Connections' other views (#952, the VM's): Details (Name 320 px, the rest 192 px, a 16 px icon before the
+   name, one 22 px row each), Small Icons and List (16 px icon and name, 240 px cells), Medium / Large / Extra Large
+   Icons (the picture over its name) */
+/* (every view but Tiles has the Details columns' widths in its header, as on the VM) */
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-list:not([data-nc-view="tiles"]) .dwf-nc-head > .dwf-nc-col0 { width: 320px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-list:not([data-nc-view="tiles"]) .dwf-nc-head > .dwf-nc-col:not(.dwf-nc-col0) { width: 192px; }
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-flist-icons.dwf-nc-view-details {
+    display: block;
+    gap: 0;
+    padding: 0;
+    margin: 0;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-drow {
+    display: flex;
+    align-items: center;
+    width: max-content;
+    height: 22px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    white-space: nowrap;
+    cursor: var(--c-default);
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-dcol {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 192px;
+    box-sizing: border-box;
+    padding: 0 6px 0 1px;
+    overflow: hidden;
+}
+
+/* the VM's: the 16 px icon 10 px into the Name column, each value 2 px into its column */
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-dcol0 {
+    width: 319px;
+    gap: 0;
+    padding-left: 5px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-dcol > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-flist-icons:is(.dwf-nc-view-list, .dwf-nc-view-icons-sm) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    padding: 3px 4px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-view-list {
+    flex-direction: column;
+    flex-wrap: wrap;
+    align-content: flex-start;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-small {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    width: max-content;
+    min-width: 0;
+    max-width: 240px;
+    height: 17px;
+    box-sizing: border-box;
+    padding: 0 3px 0 2px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    white-space: nowrap;
+    cursor: var(--c-default);
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-view-icons-sm .dwf-nc-small {
+    width: 240px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) :is(.dwf-nc-drow, .dwf-nc-small) img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) :is(.dwf-nc-view-icons-md, .dwf-nc-view-icons-lg, .dwf-nc-view-icons-xl) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 4px 6px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 74px;
+    box-sizing: border-box;
+    padding: 2px 2px 4px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    text-align: center;
+    cursor: var(--c-default);
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon .dwf-nc-name {
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon-icons-lg { width: 112px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon-icons-lg .dwf-nc-pic { width: 96px; height: 96px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon-icons-lg .dwf-nc-pic img { width: 96px; height: 96px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon-icons-xl { width: 270px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon-icons-xl .dwf-nc-pic { width: 256px; height: 256px; }
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon-icons-xl .dwf-nc-pic img { width: 256px; height: 256px; }
+
+:is(#melatonControlPanelModal, .cpl-instance) :is(.dwf-nc-drow, .dwf-nc-small, .dwf-nc-icon):hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) :is(.dwf-nc-drow, .dwf-nc-small, .dwf-nc-icon).is-selected {
+    background: linear-gradient(#dcebfc, #c1dbfc);
+    border-color: #7da2ce;
+}
+
+/* an item's class picture in a connection's item list (netshell 16004, rasdlg 158; #952) */
+.vdt-client .vdt-lv-row.dwf-item img.dwf-item-icon {
+    width: 16px;
+    height: 16px;
+    margin: 0 3px 0 1px;
+}
+
+.vdt-client .dwf-netaddress input {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+/* Advanced TCP/IP Settings' order arrows, greyed while they cannot be used (the VM's pale arrows) */
+#dreamosIpv4Advanced button:disabled > img {
+    opacity: 0.45;
+}

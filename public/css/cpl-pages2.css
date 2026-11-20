@@ -1805,3 +1805,43 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-vtable tr:last-child:not(.is-head) td {
     border-bottom: 0;
 }
+
+/* the address bar's « (melatonControlPanel fitAddress, #952): the crumbs folded off the left, as Explorer's
+   (vista-explorer.css .explorer-crumb-overflow: the VM's two 2 px chevrons, 8x5) */
+body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cpl-instance) .modal-window-title-toolbar .cpl-crumb-overflow {
+    position: relative;
+    flex: none;
+    width: 14px;
+    min-width: 0;
+    height: 20px;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    cursor: var(--c-default);
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cpl-instance) .modal-window-title-toolbar .cpl-crumb-overflow::before {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 7px;
+    width: 8px;
+    height: 5px;
+    background: #000;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5'%3E%3Cpath d='M2 0h2v1H3v1H2v1h1v1h1v1H2V4H1V3H0V2h1V1h1zM6 0h2v1H7v1H6v1h1v1h1v1H6V4H5V3H4V2h1V1h1z'/%3E%3C/svg%3E") no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5'%3E%3Cpath d='M2 0h2v1H3v1H2v1h1v1h1v1H2V4H1V3H0V2h1V1h1zM6 0h2v1H7v1H6v1h1v1h1v1H6V4H5V3H4V2h1V1h1z'/%3E%3C/svg%3E") no-repeat;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cpl-instance) .modal-window-title-toolbar .cpl-crumb-overflow:hover {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
+/* a crumb or a ▸ never shrinks: the trail folds instead */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-address > :is(.cpl-crumb, .cpl-crumb-sep, .cpl-address-icon) {
+    flex: none;
+}

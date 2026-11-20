@@ -568,10 +568,17 @@
         dhcp.nic = v;
         return v;
     }
+    /** The computer's name as Windows would take it (melatonHostName, modalUtils.js): the device's Device ID on the
+     *  phone, its DeX window and DreamOS (Control Panel > System's), else none (the server names a browser itself). */
     function computerName() {
         const id = root.melatonDeviceIdentity;
-        try { const n = id && typeof id.identity === 'function' ? id.identity() : null; if (n && n.name) return String(n.name); } catch (_) { /* below */ }
-        return '';
+        let name = '';
+        try {
+            const me = id && typeof id.get === 'function' ? id.get() : (id && typeof id.identity === 'function' ? id.identity() : null);
+            name = me && me.name ? String(me.name) : '';
+        } catch (_) { name = ''; }
+        if (!name) return '';
+        return typeof root.melatonHostName === 'function' ? root.melatonHostName(name) : name;
     }
     async function requestLease() {
         const c = root.wsClient;

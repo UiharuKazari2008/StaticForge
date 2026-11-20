@@ -46,6 +46,9 @@
         "connect:299": {"t":"","w":317,"h":143,"f":["Segoe UI",9],"s":1220542528,"c":[[1701,"S",60,10,48,48,1342179331,"#11100",0],[1702,"S",88,10,118,48,1342179331,"#11103",0],[1703,"S",210,10,48,48,1342179331,"#11104",0],[1704,"S",210,10,48,48,1342179331,"#11105",0],[1401,"B",30,55,235,23,1342242830,"&Try again",0],[1402,"B",30,81,235,23,1342242830,"&Diagnose the problem",0],[1403,"B",30,107,235,32,1342242830,"&Set up the connection anyway",0],[1404,"B",30,75,235,23,1342242830,"Connect &now",0],[1051,"S",30,75,220,50,1342308352,"You need to set up an Internet connection before you can connect.",0]]},
         "rasdlg:113": {"t":"Connecting %1...","w":217,"h":60,"f":["MS Shell Dlg",8],"s":2428502208,"c":[[1417,"S",7,7,20,20,1342177283,"#563",0],[1097,"S",39,7,171,32,1342308480,"",0],[2,"B",84,39,50,14,1342242816,"Cancel",0]]},
         "rasdlg:111": {"t":"Error Connecting to %1","w":281,"h":228,"f":["MS Shell Dlg",8],"s":2429026496,"c":[[1068,"S",7,7,20,20,1342308355,"#32515",0],[1070,"S",40,10,216,92,1342308352,"",0],[1,"B",29,200,104,14,1342373889,"Do not dial=88",0],[2,"B",135,200,54,14,1342242816,"&Close",0],[1069,"B",209,200,54,14,1342242816,"&Diagnose",0],[1712,"B",28,134,62,10,1342242819,"&Enable logging",0],[1638,"S",14,134,10,10,1342177283,"",0],[1716,"SysLink",38,144,143,14,1342242816,"For logging options, see <A>diagnostics</A>",0],[1735,"S",28,108,225,20,1342308352,"If you continue to receive error messages, you can enable logging for analysis.",0],[1736,"S",38,162,232,31,1342308352,"Logging options can also be accessed by clicking the Remote Access Preferences menu item under the Advanced menu of the Network Connection Folder.",0]]},
+        "rasdlg:502": {"t":"PPP Settings","w":212,"h":68,"f":["MS Shell Dlg",8],"s":2160591040,"c":[[1423,"B",7,7,198,10,1342252035,"&Enable LCP extensions",0],[1424,"B",7,20,198,10,1342252035,"E&nable software compression",0],[1557,"B",7,33,198,10,1342252035,"Negotiate &multi-link for single-link connections",0],[1,"B",99,49,50,14,1342242817,"OK",0],[2,"B",155,49,50,14,1342242816,"Cancel",0]]},
+        "rasdlg:570": {"t":"IPsec Settings","w":246,"h":97,"f":["MS Shell Dlg",8],"s":2160591040,"c":[[1,"B",132,77,50,14,1342242817,"OK",0],[2,"B",187,77,50,14,1342242816,"Cancel",0],[1602,"S",20,22,30,12,1342308352,"&Key:",0],[1605,"E",42,21,172,12,1350631552,"",0],[1604,"B",8,8,206,8,1342177289,"Use &preshared key for authentication",0],[1775,"B",8,40,206,8,1342177289,"Use &certificate for authentication",0],[1776,"B",19,54,220,17,1342252035,"&Verify the Name and Usage attributes of the server’s certificate",0]]},
+        "rasdlg:105": {"t":"Advanced Security Settings","w":245,"h":233,"f":["MS Shell Dlg",8],"s":2160591048,"c":[[1547,"B",7,38,231,165,1342177287,"Logon security",0],[1546,"S",7,7,229,10,1342308352,"&Data encryption:",0],[1495,"C",7,17,231,76,1344339971,"",0],[1544,"B",14,50,207,8,1342373897,"Use &Extensible Authentication Protocol (EAP)",0],[1545,"B",14,94,173,10,1342242825,"Allow these &protocols",0],[1034,"C",24,62,201,42,1344340227,"",0],[1035,"B",175,77,50,14,1342242816,"P&roperties",0],[1491,"B",28,108,200,10,1342383107,"&Unencrypted password (PAP)",0],[1494,"B",28,122,200,10,1342252035,"&Challenge Handshake Authentication Protocol (CHAP)",0],[1492,"B",28,136,200,10,1342252035,"M&icrosoft CHAP Version 2 (MS-CHAP v2)",0],[1549,"B",40,150,188,19,1342252035,"&Automatically use my Windows logon name and password (and domain, if any)",0],[1752,"B",15,178,213,20,1342252035,"&When connected, prevent sharing of this connection with other users on this computer",0],[1,"B",131,210,50,14,1342242817,"OK",0],[2,"B",186,210,50,14,1342242816,"Cancel",0]]},
         // Connect to a workplace's pages, measured on the VM (Segoe UI 9: x * 7/4, y * 15/8 from the page's corner)
         "dsvpn:how": {"t":"","w":317,"h":143,"f":["Segoe UI",9],"s":1220542528,"c":[[1401,"B",2,1,298,33,1342242830,"Use my &Internet connection (VPN)\nConnect using a virtual private network (VPN) connection through the Internet.",0],[1711,"S",15,38,27,26,1342179331,"",0],[1712,"S",55,51,33,1,1342177280,"",0],[1713,"S",98,38,27,26,1342179331,"",0],[1714,"S",138,51,33,1,1342177280,"",0],[1715,"S",180,38,29,26,1342179331,"",0],[1402,"B",2,69,298,33,1342242830,"&Dial directly\nConnect directly to a phone number without going through the Internet.",0],[1721,"S",15,102,27,26,1342179331,"",0],[1722,"S",55,115,33,1,1342177280,"",0],[1725,"S",98,102,29,26,1342179331,"",0],[1501,"SysLink",1,135,120,10,1342242816,"<A>What is a VPN connection?</A>",0]]},
         "dsvpn:addr": {"t":"","w":317,"h":143,"f":["Segoe UI",9],"s":1220542528,"c":[[1051,"S",1,3,290,9,1342308352,"Your network administrator can give you this address.",0],[1061,"S",1,23,80,9,1342308352,"&Internet address:",0],[1062,"E",89,20,174,13,1350631552,"",0],[1063,"S",1,42,80,9,1342308352,"D&estination name:",0],[1064,"E",89,39,174,13,1350631552,"",0],[1065,"B",15,77,200,10,1342242819,"Use a &smart card",0],[1066,"S",3,92,9,9,1342179331,"",0],[1067,"B",15,90,250,10,1342242819,"&Allow other people to use this connection",0],[1068,"S",24,102,270,9,1342308352,"This option allows anyone with access to this computer to use this connection.",0],[1069,"B",15,114,270,10,1342242819,"&Don't connect now; just set it up so I can connect later",0]]},
@@ -250,6 +253,7 @@
             smartCard: !!a.smartCard,
             allUsers: !!a.allUsers,
             created: Date.now(),
+            owner: (root.meletonAccounts && typeof root.meletonAccounts.name === 'function' ? root.meletonAccounts.name() : '') || '',
             options: { progress: true, prompt: true, includeDomain: true, redial: 3, interval: '1 minute', idle: 'never', redialDropped: true },
             security: { verify: a.smartCard ? 'smartcard' : 'secured', autoLogon: false, encrypt: true }
         };
@@ -421,13 +425,15 @@
             id: `dreamosVpnProps-${o.id}`,
             title: `${o.name} Properties`,
             icon: `${NET}/ncpa-vpn-16.png`,
+            captionIcon: true,
             owner,
             noApply: true,
             pages: [
                 { key: G },
-                { key: O, overrides: { 1748: { skip: true }, 1744: { skip: true } } },
-                { key: S, overrides: { 1180: { disabled: true }, 1539: { disabled: true } } },
-                { key: N, overrides: { 1598: { disabled: true }, 1252: { disabled: true }, 1254: { disabled: true } } },
+                // Redial attempts has its up-down at run time (the VM's), 0 - 999999999
+                { key: O, overrides: { 1748: { skip: true }, 1744: { skip: true }, 1287: { spin: [0, 999999999] } } },
+                { key: S },
+                { key: N, overrides: { 1252: { disabled: true }, 1254: { disabled: true } } },
                 // the VM's Sharing page for a VPN: the taller group (104), the greyed "Establish a dial-up connection ..."
                 // where the home network combo would be, the rest 35 px lower
                 { key: H, overrides: { 103: { skip: true }, 104: { nudge: [0, 0, 0, 8] }, 115: { skip: true }, 106: { html: '<label class="dsvpn-fake-check is-disabled"><input type="checkbox" disabled><span>Establish a dial-up connection whenever a computer on my network attempts to access the Internet</span></label>', cls: 'dsvpn-establish', nudge: [-17, 4, 23, 18] }, 107: { skip: true }, 108: { skip: true }, 109: { nudge: [0, 35, 0, 0] }, 110: { nudge: [0, 35, 0, 0] }, 111: { nudge: [0, 35, 0, 0] }, 112: { disabled: true, nudge: [0, 35, 0, 0] } } }
@@ -446,10 +452,21 @@
                 c.options(1739, [], undefined, O);
                 c.enable(1739, false, O);
                 c.set(1286, opt.redialDropped !== false, O);
-                c.enable(1419, false, O);
+                c.on(1419, 'click', () => { void pppSettings(o.id, c.modal); }, O);
                 const sec = o.security || {};
-                c.set(1540, true, S);
-                c.set(1541, false, S);
+                const adv = !!(o.security && o.security.advanced);
+                c.set(1540, !adv, S);
+                c.set(1541, adv, S);
+                const secSync = () => {
+                    const on = !!c.get(1541, S);
+                    [1537, 1178, 1174, 1169].forEach((cid) => c.enable(cid, !on, S));
+                    [1539, 1180].forEach((cid) => c.enable(cid, on, S));
+                };
+                c.on(1540, 'change', secSync, S);
+                c.on(1541, 'change', secSync, S);
+                c.on(1180, 'click', () => { void advancedSecurity(o.id, c.modal); }, S);
+                c.on(1598, 'click', () => { void ipsecSettings(o.id, c.modal); }, N);
+                root.requestAnimationFrame(secSync);
                 c.options(1178, [{ value: 'secured', text: 'Require secured password' }, { value: 'smartcard', text: 'Use smart card' }], sec.verify || 'secured', S);
                 c.set(1174, !!sec.autoLogon, S);
                 c.set(1169, sec.encrypt !== false, S);
@@ -459,7 +476,8 @@
                 if (body) {
                     // the items drawn as the VM draws them (bound, ticked); the binding is the system's, so a click selects
                 // the row and leaves the tick as it is
-                body.innerHTML = ITEMS.map(([k, name], i) => `<div class="vdt-lv-row dwf-item${i === 0 ? ' is-selected' : ''}" data-value="${k}"><input type="checkbox" checked tabindex="-1" id="dsvpn-it-${o.id}-${k}"><label for="dsvpn-it-${o.id}-${k}">${esc(name)}</label></div>`).join('');
+                const pic = { ipv6: 'class-nettrans-16', ipv4: 'class-nettrans-16', share: 'class-netservice-16', qos: 'class-netservice-16', client: 'class-netclient-16' };
+                body.innerHTML = ITEMS.map(([k, name], i) => `<div class="vdt-lv-row dwf-item${i === 0 ? ' is-selected' : ''}" data-value="${k}"><input type="checkbox" checked tabindex="-1" id="dsvpn-it-${o.id}-${k}"><img class="dwf-item-icon" src="${NET}/${pic[k]}.png" srcset="${NET}/${pic[k]}@2x.png 2x" alt="" draggable="false"><label for="dsvpn-it-${o.id}-${k}">${esc(name)}</label></div>`).join('');
                 body.querySelectorAll('input[type=checkbox]').forEach((b) => b.addEventListener('click', (ev) => ev.preventDefault()));
                     const pick = (row) => {
                         body.querySelectorAll('.is-selected').forEach((n) => n.classList.remove('is-selected'));
@@ -474,9 +492,6 @@
                 c.show(106, true, H);
                 c.show(104, true, H);
                 c.set(105, false, H);
-                // the caption carries the connection's icon, as on the VM
-                const main = c.modal.querySelector('.modal-window-title > div');
-                if (main && !main.querySelector('.icon-image')) main.insertAdjacentHTML('afterbegin', `<img class="icon-image" src="${NET}/ncpa-vpn-16.png" alt="">`);
                 const host = c.el(1427, G);
                 if (host) root.requestAnimationFrame(() => { try { host.focus(); host.select(); } catch (_) { /* gone */ } });
                 c.set(109, true, H);
@@ -495,9 +510,86 @@
                         progress: !!c.get(1284, O), prompt: !!c.get(1554, O), includeDomain: !!c.get(1555, O),
                         redial: Math.max(0, Math.min(999999999, Number(c.get(1287, O)) || 0)), interval: c.get(1292, O), idle: c.get(1291, O), redialDropped: !!c.get(1286, O)
                     },
-                    security: { verify: c.get(1178, S) || 'secured', autoLogon: !!c.get(1174, S), encrypt: !!c.get(1169, S) }
+                    security: { ...(get(o.id) || o).security, verify: c.get(1178, S) || 'secured', autoLogon: !!c.get(1174, S), encrypt: !!c.get(1169, S), advanced: !!c.get(1541, S) }
                 });
                 return true;
+            }
+        });
+    }
+
+    // ---- PPP Settings (rasdlg 502), IPsec Settings (570), Advanced Security Settings (105): the VM's defaults; kept with
+    // the connection (never the preshared key) -------------------------------------------------------------------------
+
+    async function pppSettings(id, owner) {
+        const o = get(id);
+        if (!o) return;
+        const V = await kit();
+        const ppp = o.ppp || { lcp: true, compression: false, multilink: false };
+        V.openDialog({
+            id: `dreamosVpnPpp-${id}`, key: 'rasdlg:502', owner, bareCaption: true,
+            init: (c) => { c.set(1423, !!ppp.lcp); c.set(1424, !!ppp.compression); c.set(1557, !!ppp.multilink); },
+            ok: (c) => { update(id, { ppp: { lcp: !!c.get(1423), compression: !!c.get(1424), multilink: !!c.get(1557) } }); }
+        });
+    }
+
+    async function ipsecSettings(id, owner) {
+        const o = get(id);
+        if (!o) return;
+        const V = await kit();
+        const ip = o.ipsec || { psk: false, verify: true };
+        V.openDialog({
+            id: `dreamosVpnIpsec-${id}`, key: 'rasdlg:570', owner, bareCaption: true,
+            init: (c) => {
+                c.set(1604, !!ip.psk);
+                c.set(1775, !ip.psk);
+                c.set(1776, ip.verify !== false);
+                c.set(1605, session.get(`${id}:psk`) || '');
+                const sync = () => { const psk = !!c.get(1604); c.enable(1605, psk); c.enable(1602, psk); c.enable(1776, !psk); };
+                c.on(1604, 'change', sync);
+                c.on(1775, 'change', sync);
+                sync();
+            },
+            ok: (c) => {
+                const psk = !!c.get(1604);
+                if (psk) session.set(`${id}:psk`, String(c.get(1605) || ''));
+                update(id, { ipsec: { psk, verify: !!c.get(1776) } });
+            }
+        });
+    }
+
+    const ENCRYPTION = [
+        { value: 'none', text: 'No encryption allowed (server will disconnect if it requires encryption)' },
+        { value: 'optional', text: 'Optional encryption (connect even if no encryption)' },
+        { value: 'require', text: 'Require encryption (disconnect if server declines)' },
+        { value: 'max', text: 'Maximum strength encryption (disconnect if server declines)' }
+    ];
+
+    async function advancedSecurity(id, owner) {
+        const o = get(id);
+        if (!o) return;
+        const V = await kit();
+        const a = (o.security && o.security.custom) || { encryption: 'require', eap: false, pap: false, chap: false, mschapv2: true, autoLogon: false };
+        V.openDialog({
+            id: `dreamosVpnAdvSec-${id}`, key: 'rasdlg:105', owner, bareCaption: true,
+            overrides: { 1752: { skip: true }, 1035: { disabled: true } },
+            init: (c) => {
+                c.options(1495, ENCRYPTION, a.encryption || 'require');
+                c.options(1034, [], undefined);
+                c.set(1544, !!a.eap);
+                c.set(1545, !a.eap);
+                c.set(1491, !!a.pap); c.set(1494, !!a.chap); c.set(1492, a.mschapv2 !== false); c.set(1549, !!a.autoLogon);
+                const sync = () => {
+                    const eap = !!c.get(1544);
+                    c.enable(1034, eap);
+                    [1491, 1494, 1492].forEach((cid) => c.enable(cid, !eap));
+                    c.enable(1549, !eap && !!c.get(1492));
+                };
+                [1544, 1545, 1492].forEach((cid) => c.on(cid, 'change', sync));
+                sync();
+            },
+            ok: (c) => {
+                const now = get(id) || o;
+                update(id, { security: { ...(now.security || {}), custom: { encryption: c.get(1495), eap: !!c.get(1544), pap: !!c.get(1491), chap: !!c.get(1494), mschapv2: !!c.get(1492), autoLogon: !!c.get(1549) } } });
             }
         });
     }

@@ -82,8 +82,11 @@
         const cols = pageColumns[page] || ['Name'];
         const st = sortState[page] || { col: -1, direction: 'asc' };
         const items = [];
-        if (root.vistaSortByMenu) items.push(root.vistaSortByMenu(cols.map((t, i) => [String(i), t]), String(st.col), st.direction, 'cpl-sort'));
+        // a page whose Organize menu is the VM's own list says so (organizeOwn: Network Connections, #952)
+        const own = !!(handlers[page] && handlers[page].organizeOwn);
+        if (root.vistaSortByMenu && !own) items.push(root.vistaSortByMenu(cols.map((t, i) => [String(i), t]), String(st.col), st.direction, 'cpl-sort'));
         const extra = handlers[page] && typeof handlers[page].organizeItems === 'function' ? handlers[page].organizeItems() : [];
+        if (own) return extra;
         if (extra.length) items.push({ separator: true }, ...extra);
         return items;
     }
