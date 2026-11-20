@@ -99,12 +99,26 @@
         note.hidden = !(loaded && !keys().length);
         note.textContent = 'No expanders. Use Menu > New Expander to add one.';
         const d = data();
-        box.querySelector('.wex-rows').innerHTML = shown.map((k) => {
+        const rowsHtml = () => shown.map((k) => {
             const sel = k === selected;
             return `<div class="wsk-row${sel ? ' is-selected' : ''}" role="option" aria-selected="${sel}" data-key="${esc(k)}">`
                 + `<span class="wsk-ico"><img ${K.artAttrs(ICON)} alt="" draggable="false"></span>`
                 + `<span class="wsk-name">!${esc(k)}</span><span class="wsk-sub">${esc(subLine(d[k]))}</span></div>`;
         }).join('');
+        // back from an expander to the same list: the rows are already there, only the selection is set (a long
+        // list built again cost ~150 ms on the A53 for every back, #961)
+        const rows = box.querySelector('.wex-rows');
+        // (the icon's markup too: a theme or version switch draws it again)
+        const base = K.artAttrs(ICON) + shown.map((k) => `\u0002${k}\u0001${subLine(d[k])}`).join('');
+        if (rows._wexBase === base) {
+            rows.querySelectorAll('.wsk-row').forEach((r) => {
+                const on = r.dataset.key === selected;
+                if (r.classList.contains('is-selected') !== on) { r.classList.toggle('is-selected', on); r.setAttribute('aria-selected', String(on)); }
+            });
+            return;
+        }
+        rows.innerHTML = rowsHtml();
+        rows._wexBase = base;
     }
 
     function renderItem() {

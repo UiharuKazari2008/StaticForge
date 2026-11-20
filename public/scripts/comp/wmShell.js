@@ -4662,24 +4662,58 @@
      * shown or hidden, or the battery's glyph changing (charging), refits in the same task, before
      * the frame is drawn. The fit's own writes (the group icon, the kept room) are dropped.
      */
+    /**
+     * #wmShell.has-msgbox while one of its dialog layers is up (wm-programs.css: a drop-down opened from a control in
+     * the dialog is drawn over it). A class, not #wmShell:has(> .wm-msgbox-layer:not([hidden])): that rule made every
+     * hidden change anywhere in the shell restyle all of it (~22 ms each on the A53, #961).
+     */
+    function watchMsgboxLayers() {
+        if (!shell || shell._wmMsgboxWatch) return;
+        const sync = () => {
+            const on = !!shell.querySelector(':scope > .wm-msgbox-layer:not([hidden])');
+            if (shell.classList.contains('has-msgbox') !== on) shell.classList.toggle('has-msgbox', on);
+        };
+        sync();
+        // a layer added or removed (the shell's own children only), or one shown or hidden
+        const mo = new MutationObserver((list) => {
+            if (list.some((m) => m.type === 'childList' || (m.target.parentElement === shell && m.target.classList.contains('wm-msgbox-layer')))) sync();
+        });
+        mo.observe(shell, { childList: true });
+        const moHidden = new MutationObserver((list) => {
+            if (list.some((m) => m.target.parentElement === shell && m.target.classList.contains('wm-msgbox-layer'))) sync();
+        });
+        moHidden.observe(shell, { subtree: true, attributes: true, attributeFilter: ['hidden'] });
+        shell._wmMsgboxWatch = mo;
+    }
+
     let statusFitting = false;
     function watchStatusIcons() {
         const status = shell && shell.querySelector('.wm-titlebar');
         if (!status || status._wmFitWatch) return;
+        // the X / ok's kept place (wm-shell.css .wm-titlebar.wm-no-action): a class, not :has(> .wm-title-action[hidden]) -
+        // that rule made every hidden change anywhere in the shell restyle all of it (~22 ms each on the A53, three per
+        // back, #961)
+        const syncNoAction = () => {
+            const a = status.querySelector(':scope > .wm-title-action');
+            const on = !!(a && a.hidden);
+            if (status.classList.contains('wm-no-action') !== on) status.classList.toggle('wm-no-action', on);
+        };
+        syncNoAction();
         const mo = new MutationObserver((list) => {
+            syncNoAction();
             if (statusFitting) return;
             // data-icon: only the battery's (charging or not); the data arrows change it with every packet
             // the X / ok showing or going (opening Start, an app): its room changes what fits, refitted before that
             // frame too (Yukimi, Nov 17 recording: one frame squeezed all six icons left of the new X, then the
             // charging battery stepped aside and they jumped back)
-            const counts = (m) => m.target.classList && ((m.target.classList.contains('wm-status-icon') && m.target.dataset.role !== 'notify'
+            const counts = (m) => m.type === 'attributes' && m.target.classList && ((m.target.classList.contains('wm-status-icon') && m.target.dataset.role !== 'notify'
                 && (m.attributeName === 'hidden' || m.target.dataset.role === 'battery'))
                 || (m.target.classList.contains('wm-title-action') && m.attributeName === 'hidden'));
             if (!list.some(counts)) return;
             statusFitting = true;
             try { fitStatusNow(); snapStatusIcons(); } finally { mo.takeRecords(); statusFitting = false; }
         });
-        mo.observe(status, { subtree: true, attributes: true, attributeFilter: ['hidden', 'data-icon'] });
+        mo.observe(status, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'data-icon'] });
         status._wmFitWatch = mo;
     }
 
@@ -11457,6 +11491,12 @@
             if (p && !p.isDestroying && typeof p.close === 'function') { p.close(); return; }
         } catch (_) { /* fall through */ }
         if (typeof hideLightbox === 'function') hideLightbox();
+        // a viewer left on screen without its instance (closed while it zoomed open): its own close
+        // button is dead and back found nothing to close, so the phone stayed on the picture (#960)
+        const live = viewerPswp();
+        const liveEl = live && live.element;
+        for (const el of [...openViewers]) if (el.classList.contains('pswp') && el !== liveEl) el.remove();
+        checkViewer();
     }
 
     function viewerSlides() {
@@ -12280,6 +12320,7 @@
         watchDevice();
         watchToasts();
         watchStatusIcons();
+        watchMsgboxLayers();
         watchActiveSyncTransfers();
         watchSystemSounds();
         watchRequestBusy();

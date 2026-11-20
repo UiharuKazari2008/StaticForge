@@ -630,7 +630,7 @@ html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="right"]::before { rig
     padding-bottom: calc(4 * var(--wm-px));
 }
 
-.wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status {
+.wm-titlebar.wm-no-action > .wm-status {
     padding-right: calc(25 * var(--wm-px) + var(--wm-bar-edge));
 }
 
@@ -642,7 +642,7 @@ html.ui-mobile[data-wm-version="6.5"] #wmShell > .wm-titlebar.wm-status-full > .
     padding-right: calc(5.5 * var(--wm-px) + var(--wm-bar-edge)) !important;
 }
 
-html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status {
+html.ui-mobile[data-wm-app="today"] .wm-titlebar.wm-no-action > .wm-status {
     padding-right: calc(28 * var(--wm-px) + var(--wm-bar-edge));
 }
 
