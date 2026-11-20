@@ -2718,6 +2718,12 @@ function updatePackContentType(url) {
     const looked = express.static.mime.lookup(String(url).split('?')[0]);
     return looked || type;
 }
+// the log names what a pack lacked and why (a deleted file still on a client's list, a path behind sign-in)
+function updatePackMissingNote(missing) {
+    if (!missing || !missing.length) return '';
+    const shown = missing.slice(0, 5).map((m) => `${m.url} ${m.reason}`).join(', ');
+    return `: ${shown}${missing.length > 5 ? `, +${missing.length - 5} more` : ''}`;
+}
 app.post('/install/meletonfx.zip', async (req, res) => {
     const startedAt = Date.now();
     const body = req.body && typeof req.body === 'object' ? req.body : {};
@@ -2756,7 +2762,7 @@ app.post('/install/meletonfx.zip', async (req, res) => {
     // nothing in the manifest by those names: 404 (a zip that names what it lacks answers anything else)
     if (!planned.files && planned.missing.every((m) => m.reason === 'not-found')) {
         await planned.close();
-        console.log(`📦 [update-pack] ${getRealIP(req)} asked ${requested.length}, none packable (${planned.missing.length} missing)`);
+        console.log(`📦 [update-pack] ${getRealIP(req)} asked ${requested.length}, none packable (${planned.missing.length} missing${updatePackMissingNote(planned.missing)})`);
         return res.status(404).json({ success: false, error: 'no matching files', missing: planned.missing.slice(0, 50) });
     }
     res.setHeader('Content-Type', 'application/zip');
@@ -2773,7 +2779,7 @@ app.post('/install/meletonfx.zip', async (req, res) => {
         console.error(`📦 [update-pack] ${getRealIP(req)} send failed: ${error.message}`);
         if (!res.headersSent) res.status(500).end(); else res.destroy();
     }
-    console.log(`📦 [update-pack] ${getRealIP(req)} ${planned.files} files (${planned.copied} copied, ${planned.packed} packed now, ${planned.missing.length} missing) ${planned.total} bytes zip, ${planned.bytes} bytes of files, ${planMs} ms to plan, ${Date.now() - startedAt} ms${sent ? '' : ' (client left)'}${req.get('x-update-pack') ? ` [${String(req.get('x-update-pack')).slice(0, 40)}]` : ''}`);
+    console.log(`📦 [update-pack] ${getRealIP(req)} ${planned.files} files (${planned.copied} copied, ${planned.packed} packed now, ${planned.missing.length} missing${updatePackMissingNote(planned.missing)}) ${planned.total} bytes zip, ${planned.bytes} bytes of files, ${planMs} ms to plan, ${Date.now() - startedAt} ms${sent ? '' : ' (client left)'}${req.get('x-update-pack') ? ` [${String(req.get('x-update-pack')).slice(0, 40)}]` : ''}`);
 });
 
 // Melaton Update > Applied Updates (#774): the packages, their size, and which this client has

@@ -1250,6 +1250,21 @@ class ServiceWorkerManager {
         try { document.dispatchEvent(new CustomEvent('melaton:updates-available', { detail: { count: n, files: this.availableUpdates.length } })); } catch (_) { /* no listeners */ }
     }
 
+    /**
+     * The server's whole list is in hand (a check): what was counted as available and is no longer on it - a file
+     * deleted since, or a version a newer one replaced - is not an update any more (#951). _noteAvailableUpdates only
+     * ever added, so the A53 and the Fold asked for two deleted test videos at every install and restart for hours.
+     */
+    _pruneAvailableToManifest(rows) {
+        if (!Array.isArray(rows) || !rows.length || !Array.isArray(this.availableUpdates) || !this.availableUpdates.length) return;
+        const now = new Map(rows.map((f) => [f && f.url, f && f.hash]));
+        const stale = this.availableUpdates.filter((f) => now.get(f.url) !== f.hash);
+        if (!stale.length) return;
+        console.log(`[update] ${stale.length} waiting update(s) are no longer on the server's list`, stale.slice(0, 5).map((f) => f.url));
+        if (this._failedDownloads) stale.forEach((f) => this._failedDownloads.delete(f.url));
+        this._clearAvailableUpdates(stale);
+    }
+
     /** Install updates (Melaton Update's button, the balloon): download what is available now; the classifier then
      *  applies what can apply live and leaves the rest for a restart. */
     async installAvailableUpdates() {
@@ -2441,6 +2456,7 @@ class ServiceWorkerManager {
                 await this._staticFilesUnchanged(noToast, swState);
             } else if (result.ok) {
                 this._recordUpdateCheck();
+                this._pruneAvailableToManifest(result.rows);
                 await this.updateStaticCache(result.rows, noToast);
             } else if (!noToast) {
                 // an answer that is not the list (the server still compiling, an error page): the page's red box, not
@@ -2479,9 +2495,13 @@ class ServiceWorkerManager {
             // no stored list to compare with: take the list itself
             const full = await this._fetchManifestResult({ full: true });
             if (full.error) throw full.error;
-            if (full.ok) await this.updateStaticCache(full.rows, noToast);
+            if (full.ok) {
+                this._pruneAvailableToManifest(full.rows);
+                await this.updateStaticCache(full.rows, noToast);
+            }
             return;
         }
+        this._pruneAvailableToManifest(stored);
         // asked for, no worker, or a download running (its progress, stall and service pack checks)
         if (!noToast || !this.swRegistration || !this.swRegistration.active
             || this.isUpdating || (swState && swState.isDownloading)) {
