@@ -54,6 +54,8 @@ const DORMANT_HOLD = new Map([
     ['inbox_updated', (d) => (d.reason === 'ack' ? false : null)],
     // the envelope icons' "new since last opened" (#907, messageNew.js): whole state, the newest only
     ['msg_new_state', 'last'],
+    // Messaging account order and names (#978, messagingAccountPrefs.js): whole state, the newest only
+    ['msg_account_prefs', 'last'],
     // weather (#890 round 5): whole-state pushes, the page keeps only the newest of each; the alert and
     // the rain alarm notifications (weather_alert_issued, weather_rain_alarm) are never held
     ['weather_rain_status', 'last'],
@@ -195,6 +197,8 @@ const BROADCAST_ALL = new Set([
     'note_created', 'note_updated', 'note_deleted', 'note_content_updated',
     'gallery_updated', 'workspace_image_added', 'dynamic_generation_progress_update',
     'tm_event', 'ma_event',
+    // Messaging account order and names (#978): Messaging on the phone, mail and Messenger on the desktop
+    'msg_account_prefs',
     // location_places_changed (#907): Home / Work for wmLocation, which desktop pages (Weather, backgrounds) load too
     'location_places_changed',
     // novelManager.js loads in both shells: the desktop Novel window and the phone Dream Studio Rentan

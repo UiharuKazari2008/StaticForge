@@ -266,7 +266,8 @@ function smsThread(p) {
         isGroup: !!p.isGroup,
         date: m.date || Date.now(),
         service: m.service || (account && account.service) || '',
-        account: account ? (account.identity || account.service || 'Text Messaging') : 'Text Messaging'
+        // the account line: the name the user gave it in Messaging (#978), else the Apple ID / number / service
+        account: account ? (account.accountName || account.identity || account.service || 'Text Messaging') : 'Text Messaging'
     };
 }
 

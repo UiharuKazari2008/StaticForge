@@ -93,7 +93,29 @@
     const acctById = (id) => accts.find((a) => a.id === id) || null;
     const acct = () => acctById(accountId);
     const feat = (k, a) => { const x = a || acct(); return !!(x && x.features && x.features[k]); };
-    const folderOf = (id) => FOLDERS.find((f) => f.id === id) || FOLDERS[0];
+    /**
+     * A folder by id: the device's three, or a community folder of an app account (#978, Discord): 'community'
+     * (Communities), 'community:<server>' (a server), 'community:<server>:<channel>' (a channel), named from the
+     * account's communities list.
+     */
+    const isCommunity = (id) => /^community(:[a-f0-9]{1,16}(:[a-f0-9]{1,16})?)?$/.test(String(id || ''));
+    function folderOf(id, a) {
+        const f = FOLDERS.find((x) => x.id === id);
+        if (f || !isCommunity(id)) return f || FOLDERS[0];
+        const x = a || acct();
+        const label = (x && x.communitiesLabel) || 'Communities';
+        const [, sid, cid] = String(id).split(':');
+        const sv = sid && x && Array.isArray(x.communities) ? x.communities.find((c) => c.id === sid) : null;
+        const ch = sv && cid ? (sv.channels || []).find((c) => c.id === `${sid}:${cid}`) : null;
+        return { id, label: (ch && ch.name) || (sv && sv.name) || label, icon: 'msg-folder-folder' };
+    }
+    const knownFolder = (f) => FOLDERS.some((x) => x.id === f) || isCommunity(f);
+    /** Whether a message the server filed in [f] ('inbox', 'unknown', 'community:<server>:<channel>') can be in the folder on screen. */
+    function inFolder(f) {
+        if (!f || folder === 'sent') return true;
+        if (isCommunity(folder)) return String(f) === folder || String(f).startsWith(`${folder}:`);
+        return String(f) === folder;
+    }
     const msgByGuid = (g) => (conv ? conv.messages.find((m) => m.guid === g) : null) || null;
     const chatByGuid = (g) => chats.find((c) => c.guid === g) || null;
     /**
@@ -245,6 +267,8 @@
                     c.last = m;
                 }
                 listChanged(c);
+            } else if (!updated && !inFolder(d.folder)) {
+                // another folder's conversation (a Discord server's while the Inbox shows, #978): this list has not changed
             } else if (!updated && loaded && page) {
                 refresh({ quiet: true });
             } else if (!updated) {
@@ -399,7 +423,8 @@
         return `<div class="wch-row wtm-row${sel ? ' is-selected' : ''}${unread ? ' is-unread' : ''}${c.isGroup ? ' is-group' : ''}" role="option" aria-selected="${sel}" data-guid="${esc(c.guid)}">`
             + `<span class="wch-ico" data-ico="${unread ? 'msg-unread' : 'msg-read'}"></span>`
             // RCS chats and businesses (RBM agents, Apple Business Chat) marked after the name
-            + `<span class="wch-namecell"><span class="wch-name">${esc(chatTitle(c))}</span>${c.business || c.service === 'RCS' ? `<span class="wtm-tag">${[c.business ? 'Business' : '', c.service === 'RCS' ? 'RCS' : ''].filter(Boolean).join(', ')}</span>` : ''}</span>`
+            // in a server's folder (#978) a channel's conversation goes by the channel ("#staff-chat"), the server is the folder
+            + `<span class="wch-namecell"><span class="wch-name">${esc(folder.startsWith('community:') && c.community && c.community.channel ? c.community.channel : chatTitle(c))}</span>${c.business || c.service === 'RCS' ? `<span class="wtm-tag">${[c.business ? 'Business' : '', c.service === 'RCS' ? 'RCS' : ''].filter(Boolean).join(', ')}</span>` : ''}</span>`
             + `<span class="wch-date">${esc(listDate(m && m.date))}</span><span class="wch-size">${sizeText(bytes)}</span>`
             + `<span class="wch-last">${esc(summary(m, c, c.isGroup))}</span></div>`;
     }
@@ -412,7 +437,7 @@
         if (unpaired(a)) return PAIR_NOTE;
         if (a && a.status !== 'connected') return `${(a && a.name) || TITLE} is not connected${a.error ? `: ${a.error}` : '.'}`;
         if (folder === 'unknown') return 'No messages from unknown senders.';
-        if (folder === 'sent') return 'No messages.';
+        if (folder === 'sent' || isCommunity(folder)) return 'No messages.';
         return feat('newChat') ? 'To start a conversation, tap Menu, then New.' : 'No messages.';
     }
 
@@ -543,7 +568,7 @@
     const selectedChat = () => (selectedGuid ? chatByGuid(selectedGuid) : null);
 
     function setFolder(f) {
-        folder = FOLDERS.some((x) => x.id === f) ? f : 'inbox';
+        folder = knownFolder(f) ? f : 'inbox';
         chats = [];
         loaded = false;
         selectedGuid = null;
@@ -1664,7 +1689,7 @@
         accountId = next;
         sh.open(APP_ID);
         if (layers.length) { if (view() === 'conv') leaveConv(); layers = []; newDraft = null; media = null; showLayer(); sh.syncHistory(); }
-        const nf = FOLDERS.some((x) => x.id === f) ? f : 'inbox';
+        const nf = knownFolder(f) ? f : 'inbox';
         if (changed || nf !== folder) { folder = nf; chats = []; loaded = false; selectedGuid = null; }
         renderList();
         refresh({ quiet: loaded });
@@ -1680,7 +1705,7 @@
         let c = chatByGuid(guid);
         if (!c) { try { c = await tm().chat(a.id, guid); } catch (_) { c = null; } }
         if (!c) return false;
-        const f = c.known === false ? 'unknown' : 'inbox';
+        const f = c.community && c.community.id ? `community:${c.community.id}` : c.known === false ? 'unknown' : 'inbox';
         if (f !== folder) { folder = f; chats = []; loaded = false; }
         sh.open(APP_ID);
         if (!loaded) refresh({ quiet: true });

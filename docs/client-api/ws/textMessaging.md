@@ -18,7 +18,7 @@ Every packet is **admin only** (authenticated, `userType === 'admin'`). Others g
 | `tm_account_save` | Create/update an account -> `{ account }`. Destructive. |
 | `tm_account_delete` | `{ id }`. Destructive. |
 | `tm_settings_save` | Global settings (e.g. `notifyUnknown`) -> `{ settings }`. |
-| `tm_chats` | `{ accountId, folder?, limit?, offset? }`. Unknown chats are the Unknown Senders folder. |
+| `tm_chats` | `{ accountId, folder?, limit?, offset? }`. Unknown chats are the Unknown Senders folder. `folder` `community`, `community:<server>` or `community:<server>:<channel>` lists an app account's community conversations (#978); the Inbox and Unknown Senders leave those out. |
 | `tm_chat` | `{ accountId, chatGuid }` -> `{ chat }`. |
 | `tm_messages` | `{ accountId, chatGuid, limit? (≤200, default 50), before? }`. |
 | `tm_send` | `{ accountId, chatGuid? or addresses[], text, replyTo?, subject?, effect?, tempGuid? }`. |
@@ -40,7 +40,7 @@ Every packet is **admin only** (authenticated, `userType === 'admin'`). Others g
 
 ## Android app accounts (#885)
 
-`tm_account_save { kind: 'android', package, label?, username?, channels?, enabled?, settings: { notify } }` makes an account from an Android app (Discord = `com.discord`). `channels` (notification channel ids) limits it to those channels; an app can have several accounts this way, at most one without a list (it takes every other channel), and a channel belongs to one account (`CHANNEL_TAKEN`). A new Discord account is two: `app-discord` "Discord" = `directMessages` and `app-discord-servers` "Discord servers" = its server channels (an older single Discord account is split once at start). `username` names the signed-in account (`''` = the app's own, from MessagingStyle's user); the account's `name` is then `<label> (<username>)`. The account also reports `label`, `username`, `ownUsername`, `defaultUsername`, `channels` and `channelChoices` ([{ id, name, seen }]). `modules/textMessagingAndroid.js` takes that app's notifications from the partnered phone (ActiveSync `notify.posted` / `notify.removed`, sent while "Send notifications" is on). Each MessagingStyle conversation (else the notification's title) becomes a chat, and each line becomes a message.
+`tm_account_save { kind: 'android', package, label?, username?, channels?, enabled?, settings: { notify } }` makes an account from an Android app (Discord = `com.discord`). `channels` (notification channel ids) limits it to those channels; an app can have several accounts this way, at most one without a list (it takes every other channel), and a channel belongs to one account (`CHANNEL_TAKEN`). Discord is one account (#978, Nov 20): its direct messages are the Inbox and its server channels (`COMMUNITIES` in `textMessagingAndroid.js`) the **Communities** folder. A chat from a server channel carries `community: { id, server, serverId, channel, channelId }` (from its title, "<server> #<channel>"); the account carries `communitiesLabel` ("Communities"), `communities: [{ id, name, unread, channels: [{ id, name, unread }] }]` and `communityUnread` (with the summary's counts; `unread` counts the Inbox and Communities). A `message` event of such a chat has `folder: 'community:<server>:<channel>'`. The two accounts the Nov 18 default split made (`app-discord` = `directMessages`, `app-discord-servers` = the server channels) are merged into `app-discord` once at start, their conversations, messages and pictures included. `username` names the signed-in account (`''` = the app's own): the account's `username` is that, else MessagingStyle's user, else the app's account in Android's account list (device op `apps.accounts`, DSApp `ActiveSyncAccounts`, falling back to Remote Commands `dumpsys account`); Messaging shows it under the account's name ("Android app" when nothing is known). The account's `name` is its label (or its Messaging Account display name). The account also reports `label`, `username`, `ownUsername`, `defaultUsername`, `channels` and `channelChoices` ([{ id, name, seen }]). `modules/textMessagingAndroid.js` takes that app's notifications from the partnered phone (ActiveSync `notify.posted` / `notify.removed`, sent while "Send notifications" is on). Each MessagingStyle conversation (else the notification's title) becomes a chat, and each line becomes a message.
 
 - `tm_send` in such a chat uses the notification's quick reply (device op `notify.reply`). It works only while the phone shows the notification: `chat.canReply` says so, and otherwise the reply is refused with `NO_REPLY`. New conversations, attachments, reactions, edits and threads are not supported.
 - Open in <app>: `chat.open { key, device }` is the newest notification's tap target. It is kept after the notification is gone, because the phone keeps the intent too (newest 300). On that phone the page calls `AndroidActiveSync.openNotification(key)`, else `AndroidApps.launch(package)`. Elsewhere it uses `tm_open` (device op `notify.open`, falling back to `apps.manage { action: 'open' }`). The phone's "Conversation with <name>" link and Melaton Messenger's conversation title do this, and so does Menu > Open in <app>.
@@ -49,6 +49,17 @@ Every packet is **admin only** (authenticated, `userType === 'admin'`). Others g
 - `settings.notify` is off by default because the app's own notification is on the phone already. Events from these accounts carry `native: true` and never go to `tm.notify` or the notification inbox.
 - Message pictures: a line's picture from the phone ("Sent a video": MessagingStyle data URI or the big picture, a small JPEG sent once) is the message's attachment (`attachments[0]`, `GET /api/textmessaging/:accountId/attachment/<chat>.<message>.jpg`).
 - Pictures: `GET /api/textmessaging/:accountId/avatar/app` is the app's icon and `.../avatar/<chatGuid>` the conversation's picture. `GET /api/textmessaging/android-icon/:package` serves an icon for the app list.
+
+## Account order and names (#978)
+
+Messaging's account order and the names the user gives accounts (`modules/messagingAccountPrefs.js`, handler `315-messagingAccountPrefsHandler.js`, admins only), one record kept in config.json `messagingAccounts`:
+
+| Request | Body -> reply |
+|---|---|
+| `msg_account_prefs_get` | `{}` -> `{ order, names }` |
+| `msg_account_prefs_save` | `{ order?, names? }` -> `{ order, names }`. `order` replaces the order (account keys); `names` is a patch, `''` = the account's own name. |
+
+Keys: `tm:<id>`, `sms` (Dreamscape Messenger), `mail` (Dreamscape Mail), `imap:<id>`, `dir:<persona>`. An account missing from `order` keeps its place after the account it follows in the default order. A change is pushed to the other admin pages as `msg_account_prefs { order, names }` (held as the newest only for a sleeping phone page). A renamed Text Messaging or IMAP account comes back in `tm_accounts` / `ma_accounts` with `name` = the new name and `accountName` (IMAP `displayName` stays the From name), and its module sends its `account` event so the other clients read their lists again.
 
 ## Events
 

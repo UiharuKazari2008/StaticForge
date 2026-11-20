@@ -3722,9 +3722,10 @@ const doveImapEscape = function (text) {
 const doveImapAccount = function (id) {
     return doveImap.accounts.find((account) => account.id === id) || null;
 };
-// The folder list shows the account by its address (two accounts may share a display name)
+// The folder list shows the account by the name the user gave it in Messaging (#978), else its address (two
+// accounts may share a display name)
 const doveImapAccountLabel = function (account) {
-    return (account && (account.email || account.name || account.id)) || '';
+    return (account && (account.accountName || account.email || account.name || account.id)) || '';
 };
 // Windows Mail's From: box, "address (account)": the provider's name, else the mail server
 const doveImapFromText = function (account) {

@@ -238,7 +238,7 @@
     /** The account's name as the title bar gives it. */
     function accountTitle() {
         if (isImap()) return imapName(imapAcct(imapId)) || 'E-mail';
-        return isMail() ? MAIL_ACCOUNT : personaName(dirP);
+        return isMail() ? acctName('mail', MAIL_ACCOUNT) : acctName(`dir:${dirP}`, personaName(dirP));
     }
 
     /** What the status line names: the account, or the agent's mailbox under Other Mailboxes. */
@@ -367,7 +367,8 @@
         return tmAccts;
     }
     const onTmAccount = () => { loadTmAccounts(true).then(tmRepaint); };
-    const onTmUnread = () => tmRepaint();
+    // the counts came with the accounts' summary: the list as the client keeps it (no read), with the folders' counts (#978)
+    const onTmUnread = () => { loadTmAccounts(false).then(tmRepaint); };
     function wireTm() {
         const t = tmApi();
         if (!t || t === tmWiredTo || typeof t.on !== 'function') return;
@@ -395,7 +396,8 @@
     let imapWiredTo = null;
     const maApi = () => window.mailAccounts || null;
     const imapAcct = (id) => imapAccts.find((a) => a.id === id) || null;
-    const imapName = (a) => (a ? String(a.displayName || a.name || a.email || '').trim() : '');
+    // the account's name: the one the user gave it (#978), else its From name, else the address
+    const imapName = (a) => (a ? String(acctName(`imap:${a.id}`, '') || a.accountName || a.displayName || a.name || a.email || '').trim() : '');
     function imapUnread(id) {
         const m = maApi();
         try {
@@ -707,20 +709,107 @@
         return img(n);
     }
 
-    /** The accounts in the picker's order: Text Messaging (each account), Dreamscape Messenger, Dreamscape Mail, the Director personas. */
+    // ---- account order and names (#978, Yukimi Nov 20 2026): the user's own, kept on the server
+    // (messagingAccountPrefs.js, msg_account_prefs_get / _save) and pushed to every page as msg_account_prefs;
+    // read on the first show and after a new link, never on a timer
+    let acctPrefs = { order: [], names: {} };
+    let prefsRead = false;
+    let prefsReading = null;
+    /** The name the user gave the account, else [fallback]. */
+    const acctName = (key, fallback) => (acctPrefs.names && acctPrefs.names[key]) || fallback;
+    function takePrefs(d) {
+        if (!d || typeof d !== 'object') return;
+        const next = { order: Array.isArray(d.order) ? d.order.map(String) : [], names: d.names && typeof d.names === 'object' ? Object.assign({}, d.names) : {} };
+        if (JSON.stringify(next) === JSON.stringify(acctPrefs)) return;
+        acctPrefs = next;
+        tmRepaint();
+        if (page && isCurrent() && top() !== 'accounts') ws.setTitle(titleText());
+        renderBar();
+    }
+    let prefsTriedAt = 0;
+    function loadPrefs() {
+        if (prefsRead || prefsReading) return prefsReading || Promise.resolve();
+        prefsTriedAt = Date.now();
+        prefsReading = send('msg_account_prefs_get', {}, true).then((r) => {
+            const d = (r && r.data) || r;
+            if (d && d.success !== false) { prefsRead = true; takePrefs(d); }
+        }, () => { /* offline: the default order and names until the next show */ }).finally(() => { prefsReading = null; });
+        return prefsReading;
+    }
+    /** Save { order?, names? } (names: a patch, '' = the account's own name); the page shows it at once. */
+    async function savePrefs(patch) {
+        const was = acctPrefs;
+        const next = { order: Array.isArray(patch.order) ? patch.order.slice() : was.order, names: Object.assign({}, was.names) };
+        if (patch.names) for (const [k, v] of Object.entries(patch.names)) { if (String(v || '').trim()) next.names[k] = String(v).trim(); else delete next.names[k]; }
+        takePrefs(next);
+        try {
+            const r = await send('msg_account_prefs_save', patch);
+            const d = (r && r.data) || r;
+            if (!d || d.success === false) throw new Error((d && d.error) || 'The accounts could not be saved.');
+            prefsRead = true;
+            takePrefs(d);
+            return acctPrefs;
+        } catch (err) {
+            takePrefs(was);
+            throw err;
+        }
+    }
+    /**
+     * The accounts in the user's order: the ones placed (Move Up / Move Down) in that order, and an account not
+     * placed yet (added later) after the account it follows in the default order.
+     */
+    function inOrder(list) {
+        const order = acctPrefs.order || [];
+        if (!order.length) return list;
+        const rank = new Map(order.map((k, i) => [k, i]));
+        const out = list.filter((a) => rank.has(a.key)).sort((a, b) => rank.get(a.key) - rank.get(b.key));
+        list.forEach((a, i) => {
+            if (rank.has(a.key)) return;
+            let at = 0;
+            for (let j = i - 1; j >= 0; j--) { const k = out.indexOf(list[j]); if (k >= 0) { at = k + 1; break; } }
+            out.splice(at, 0, a);
+        });
+        return out;
+    }
+    /** Move Up / Move Down (the picker's Menu): the account one place up or down, kept for every device. */
+    function moveAccount(key, by) {
+        const keys = accounts().map((a) => a.key);
+        const i = keys.indexOf(key);
+        const j = i + by;
+        if (i < 0 || j < 0 || j >= keys.length) return;
+        keys.splice(j, 0, keys.splice(i, 1)[0]);
+        if (top() === 'accounts') pickIndex = j;
+        savePrefs({ order: keys }).catch((err) => ws.messageBox({ title: 'Messaging', icon: 'error', text: `The account order could not be saved. ${(err && err.message) || ''}`.trim() }));
+    }
+
+    /** The accounts in the picker's order: Text Messaging (each account), Dreamscape Messenger, Dreamscape Mail, the Director personas; then the user's order (#978). */
     function accounts() {
+        // the user's order and names: read once (Options, the 6.5 Today ask before Messaging showed), a failed read after a minute
+        if (!prefsRead && !prefsReading && Date.now() - prefsTriedAt > 60000) loadPrefs();
         // before Messaging read them itself: the logon step's snapshot (textMessagingClient.js)
         if (!tmAccts.length) {
             const t = window.textMessaging;
             const snap = t && typeof t.snapshot === 'function' ? t.snapshot() : null;
             if (snap && Array.isArray(snap.accounts)) tmAccts = snap.accounts.filter((a) => a && a.enabled !== false);
         }
-        const tms = tmAccts.map((a) => { const l = tmLabel(a); return { key: `tm:${a.id}`, name: l.title, icon: tmIcon(a), sub: l.subline, dim: true, unread: tmUnread(a.id) }; });
-        return tms.concat([
-            { key: 'sms', name: SMS_ACCOUNT, icon: 'app-chat', sub: chatUserName, dim: !!chatUserName, unread: smsUnread() },
-            { key: 'mail', name: MAIL_ACCOUNT, icon: 'msg-acct-outlook', sub: mailAddress(), dim: true, unread: mailUnread() }
+        const tms = tmAccts.map((a) => { const l = tmLabel(a); return { key: `tm:${a.id}`, name: acctName(`tm:${a.id}`, l.title), icon: tmIcon(a), sub: l.subline, dim: true, unread: tmUnread(a.id), renamed: !!(a.accountName || acctPrefs.names[`tm:${a.id}`]) }; });
+        return inOrder(tms.concat([
+            { key: 'sms', name: acctName('sms', SMS_ACCOUNT), icon: 'app-chat', sub: chatUserName, dim: !!chatUserName, unread: smsUnread() },
+            { key: 'mail', name: acctName('mail', MAIL_ACCOUNT), icon: 'msg-acct-outlook', sub: mailAddress(), dim: true, unread: mailUnread() }
         ]).concat(imapAccts.map((a) => ({ key: `imap:${a.id}`, name: imapName(a), icon: 'msg-acct-mail', sub: a.email || '', dim: true, unread: imapUnread(a.id) })))
-            .concat(personas().map(([p, n]) => ({ key: `dir:${p}`, name: n, icon: `today-persona-${p}`, sub: 'Director', dim: true, unread: 0 })));
+            .concat(personas().map(([p, n]) => ({ key: `dir:${p}`, name: acctName(`dir:${p}`, n), icon: `today-persona-${p}`, sub: 'Director', dim: true, unread: 0 }))));
+    }
+
+    /** An account's own name (before the user renamed it) and the name it has now: Options' Account display name (#978). */
+    function accountNames(key) {
+        const k = String(key || '');
+        let own = '';
+        if (k === 'sms') own = SMS_ACCOUNT;
+        else if (k === 'mail') own = MAIL_ACCOUNT;
+        else if (k.startsWith('dir:')) own = personaName(k.slice(4));
+        else if (k.startsWith('imap:')) { const a = imapAcct(k.slice(5)); own = a ? String(a.displayName || a.email || '') : ''; }
+        else if (k.startsWith('tm:')) { const a = tmAccts.find((x) => x.id === k.slice(3)); own = a ? String(a.defaultName || tmLabel(a).title || '') : ''; }
+        return { own, name: acctName(k, ''), shown: acctName(k, own) };
     }
 
     const currentKey = () => (isImap() ? `imap:${imapId}` : isMail() ? 'mail' : `dir:${dirP}`);
@@ -1672,7 +1761,26 @@
                 const t = tmApi();
                 let u = null;
                 try { u = t && typeof t.unread === 'function' ? (t.unread().byAccount || {})[a.key.slice(3)] : null; } catch (_) { u = null; }
-                children = tf.map((f) => ({ key: `${a.key}/${f.id}`, label: f.label, icon: f.icon, count: u ? (f.id === 'inbox' ? u.unread || 0 : f.id === 'unknown' ? u.unknownUnread || 0 : 0) : 0 }));
+                const ta = tmAccts.find((x) => `tm:${x.id}` === a.key);
+                const commUnread = (ta && Number(ta.communityUnread)) || 0;
+                children = tf.map((f) => ({ key: `${a.key}/${f.id}`, label: f.label, icon: f.icon, count: u ? (f.id === 'inbox' ? Math.max(0, (u.unread || 0) - commUnread) : f.id === 'unknown' ? u.unknownUnread || 0 : 0) : 0 }));
+                // an app's servers (#978, Discord): Communities, a folder per server, a folder per channel under it
+                if (ta && ta.communitiesLabel && Array.isArray(ta.communities) && ta.communities.length) {
+                    children.push({
+                        key: `${a.key}/community`,
+                        label: ta.communitiesLabel,
+                        icon: 'msg-folder-folder',
+                        count: commUnread,
+                        children: ta.communities.map((sv) => ({
+                            key: `${a.key}/community:${sv.id}`,
+                            label: sv.name,
+                            icon: 'msg-folder-folder',
+                            count: Number(sv.unread) || 0,
+                            children: (sv.channels || []).map((ch) => ({ key: `${a.key}/community:${ch.id}`, label: ch.name, icon: 'msg-folder-folder', count: Number(ch.unread) || 0, children: [] }))
+                        }))
+                    });
+                }
+                children = sortByLabel(children);
             }
             else if (a.key === 'mail') {
                 const box = mailboxes.find((b) => b.owner === human());
@@ -1698,10 +1806,12 @@
             } else if (a.key.startsWith('imap:')) children = imapTreeNodes(a.key.slice(5), (p) => `${a.key}/${p}`);
             else if (a.key.startsWith('dir:')) children = DIR_FOLDERS.map((f) => ({ key: `${a.key}/${f.id}`, label: f.label, icon: f.icon }));
             // several Text Messaging accounts share the name: the tree tells them apart by the Apple ID / number
-            const label = a.key.startsWith('tm:') && tmAccts.length > 1 && a.sub ? `${a.name} (${a.sub})` : a.name;
+            // (not one the user named, #978)
+            const label = a.key.startsWith('tm:') && tmAccts.length > 1 && a.sub && !a.renamed ? `${a.name} (${a.sub})` : a.name;
             return { key: a.key, label, icon: 'msg-folder-account', children };
         });
-        return sortByLabel(nodes).map((n) => Object.assign(n, { current: n.key === cur.acct }));
+        // alphabetical as the device sorts them, unless the user ordered the accounts (#978: the order applies here too)
+        return ((acctPrefs.order || []).length ? nodes : sortByLabel(nodes)).map((n) => Object.assign(n, { current: n.key === cur.acct }));
     }
 
     /** The key of the folder on screen, as the tree names it. */
@@ -1757,6 +1867,8 @@
         expanded.clear();
         expanded.add(o.acct === 'sms' || String(o.acct || '').startsWith('tm:') ? o.acct : currentKey());
         if (curKey.startsWith('box:')) { expanded.add('mail'); expanded.add('mail/other'); expanded.add(curKey.split('/')[0]); }
+        // a community folder (#978): the way down to it through Communities and its server is open
+        { const m = /^(tm:[^/]+)\/community(?::([^:]+))?/.exec(curKey); if (m) { expanded.add(`${m[1]}/community`); if (m[2]) expanded.add(`${m[1]}/community:${m[2]}`); } }
         // an IMAP folder deep in the server's tree: the way down to it is open
         if (isImap() && o.acct === currentKey()) imapAncestors(folder).forEach((p) => expanded.add(`imap:${imapId}/${p}`));
         // the IMAP accounts' folders come from the server: the tree fills in as they arrive
@@ -1841,7 +1953,7 @@
         tmShown = tmAccts.length;
         const cur = currentKey();
         const rows = accounts().map((a) => ({
-            two: true, icon: a.icon, name: a.name, unread: a.unread, sub: a.sub, dim: a.dim,
+            key: a.key, two: true, icon: a.icon, name: a.name, unread: a.unread, sub: a.sub, dim: a.dim,
             current: a.key === cur,
             go: () => {
                 if (a.key === 'sms') { goTo('sms'); return; }
@@ -1873,7 +1985,7 @@
             const f = folderOf(t.id, FOLDERS);
             return { icon: f.icon, name: f.label, indent: 1, current: t.id === first, go: () => moveTo(t.id) };
         });
-        rows.unshift({ icon: 'msg-folder-account', name: MAIL_ACCOUNT, indent: 0, go: () => null });
+        rows.unshift({ icon: 'msg-folder-account', name: acctName('mail', MAIL_ACCOUNT), indent: 0, go: () => null });
         pickRows('move', rows);
     }
 
@@ -1897,7 +2009,7 @@
         const view = page.querySelector('.msg-view[data-view="manage"]');
         const sync = syncMap();
         const rows = sortByLabel(FOLDERS.map((f) => ({ key: f.id, label: f.label, icon: f.icon, sync: f.sync })));
-        view.querySelector('.mt-tree').innerHTML = `<div class="mt-row" style="--depth:0" aria-expanded="true"><i class="mt-c is-first is-last" style="--d:0"></i><i class="mt-h" style="--d:0"></i><button type="button" class="mt-box is-open" tabindex="-1" style="--d:0" aria-label="Collapse"></button><span class="mt-ico">${img('msg-folder-account')}</span><span class="mt-label">${esc(MAIL_ACCOUNT)}</span></div>`
+        view.querySelector('.mt-tree').innerHTML = `<div class="mt-row" style="--depth:0" aria-expanded="true"><i class="mt-c is-first is-last" style="--d:0"></i><i class="mt-h" style="--d:0"></i><button type="button" class="mt-box is-open" tabindex="-1" style="--d:0" aria-label="Collapse"></button><span class="mt-ico">${img('msg-folder-account')}</span><span class="mt-label">${esc(acctName('mail', MAIL_ACCOUNT))}</span></div>`
             + rows.map((r, i) => `<div class="mt-row${r.key === folder ? ' is-current' : ''}${r.sync ? ' has-check' : ''}" style="--depth:1" data-key="${r.key}"><i class="mt-c${i === rows.length - 1 ? ' is-last' : ''}" style="--d:1"></i><i class="mt-h" style="--d:1"></i>${r.sync ? `<input type="checkbox" class="mt-check" data-key="${r.key}" aria-label="Synchronize ${esc(r.label)}"${sync[r.key] !== false ? ' checked' : ''}>` : ''}<span class="mt-ico">${img(r.icon)}</span><span class="mt-label">${esc(r.label)}</span></div>`).join('');
     }
 
@@ -2313,7 +2425,7 @@
         renderAtts();
         // 6.1: "Name <address> (account)" over two lines; 6.5 names the account in brackets
         const ia = imapFrom ? imapAcct(imapFrom) : null;
-        const acctLabel = ia ? imapName(ia) : MAIL_ACCOUNT;
+        const acctLabel = ia ? imapName(ia) : acctName('mail', MAIL_ACCOUNT);
         const fromAddr = ia ? `${ia.displayName || ownerName()} <${ia.email}>` : `${ownerName()} <${mailAddress()}>`;
         view.querySelector('.msg-from-addr').textContent = is65() ? `(${acctLabel})` : `${fromAddr} (${acctLabel})`;
         view.querySelector('[name="to"]').value = init.to || '';
@@ -3054,12 +3166,29 @@
         ];
     }
 
+    /** "Select an Account"'s Menu: Options..., Delete, and Move Up / Move Down for the highlighted account (#978). */
+    function pickerMenu() {
+        const host = page && page.querySelector('.msg-view[data-view="accounts"] .msg-pick');
+        const rows = (host && host._rows) || [];
+        const r = rows[pickIndex];
+        const n = accounts().length;
+        const i = r && r.key ? accounts().findIndex((a) => a.key === r.key) : -1;
+        return [
+            optionsItem(),
+            { label: 'Delete', disabled: true },
+            '-',
+            { label: 'Move Up', disabled: i <= 0, action: () => moveAccount(r.key, -1) },
+            { label: 'Move Down', disabled: i < 0 || i >= n - 1, action: () => moveAccount(r.key, 1) }
+        ];
+    }
+
     function softKeys() {
         const t = top();
         if (t === 'accounts') {
             return {
                 left: { label: 'Select', action: () => pickActivate('accounts', pickIndex) },
-                right: { label: 'Menu', menu: () => [optionsItem(), { label: 'Delete', disabled: true }] }
+                // Move Up / Move Down (#978): the highlighted account one place up or down, for every device
+                right: { label: 'Menu', menu: () => pickerMenu() }
             };
         }
         if (t === 'move') {
@@ -3293,6 +3422,7 @@
             ws.dropdown(sortBtn, sortItems(), 'right', () => { sortBtn.setAttribute('aria-expanded', 'false'); renderBar(); });
         });
         p.querySelectorAll('.msg-pick').forEach((host) => {
+            const v0 = host.closest('.msg-view').dataset.view;
             host.addEventListener('click', (e) => {
                 const row = e.target.closest('.msg-pick-row');
                 if (!row) return;
@@ -3300,6 +3430,20 @@
                 if (v === 'sender') { mailSender(); return; }
                 pickActivate(v, Number(row.dataset.n));
             });
+            // "Select an Account": tap and hold an account for Move Up / Move Down (#978), the row highlighted as
+            // the Menu soft key's items act on it. The shell's hold ring sends the contextmenu when it is whole and
+            // takes the lift's click (wmShell bindHoldRing)
+            if (v0 === 'accounts') {
+                host.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    const row = e.target.closest('.msg-pick-row');
+                    const r = row && (host._rows || [])[Number(row.dataset.n)];
+                    if (!r || !r.key) return;
+                    pickIndex = Number(row.dataset.n);
+                    host.querySelectorAll('.msg-pick-row').forEach((el) => el.classList.toggle('is-selected', el === row));
+                    ws.menuAt(e.clientX, e.clientY, pickerMenu().slice(3));
+                });
+            }
         });
         p.querySelector('.msg-manage-box').addEventListener('change', (e) => {
             const box = e.target.closest('.mt-check');
@@ -3515,7 +3659,11 @@
         // the server's copies of new mail (#876): a missed one joins the note; one read elsewhere leaves it
         inboxAdopt,
         inboxDrop,
-        imapAccounts: () => imapAccts.map((a) => ({ id: a.id, name: imapName(a), email: a.email, unread: imapUnread(a.id) }))
+        imapAccounts: () => imapAccts.map((a) => ({ id: a.id, name: imapName(a), email: a.email, unread: imapUnread(a.id) })),
+        // account order and names (#978): Options' Account display name, the 6.5 Today's mail panel
+        accountNames, accountName: (key, fallback) => acctName(String(key || ''), fallback),
+        saveAccountName: (key, name) => savePrefs({ names: { [String(key || '')]: String(name || '').trim() } }),
+        loadAccountPrefs: () => loadPrefs()
     };
 
     /** Messaging on its "Select an Account" list, open or not. */
@@ -3553,7 +3701,11 @@
         };
         setTimeout(untilBound, 3000);
         // a new link: the mailboxes and the list on screen may have missed pushes (read on the next show)
-        if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', () => { listDirty = true; mailboxesDirty = true; rewire(); }, { signal: appScopeSignal });
+        if (window.wsClient && typeof window.wsClient.on === 'function') {
+            window.wsClient.on('connected', () => { listDirty = true; mailboxesDirty = true; prefsRead = false; rewire(); }, { signal: appScopeSignal });
+            // the account order and names changed on another device (#978): pushed, the newest only
+            window.wsClient.on('msg_account_prefs', (m) => { prefsRead = true; takePrefs((m && m.data) || m); }, { signal: appScopeSignal });
+        }
         document.addEventListener('wmAppChange', rewire, { signal: appScopeSignal });
         ws.registerApp({
             id: APP_ID,
@@ -3584,6 +3736,7 @@
                 if (Date.now() - smsReadAt > SHOW_READ_MS) { smsReadAt = Date.now(); refreshSms(); }
                 refreshTm();
                 refreshImap();
+                loadPrefs();
                 // the list read again only when it may have changed while away (a push skipped while hidden,
                 // a new link), it is another list than the one read, or that read is old; a Director list
                 // always (#890: the whole list on every switch back). Behind the picker without the wait cursor

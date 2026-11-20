@@ -11,7 +11,7 @@ const textMessaging = require('../../textMessaging');
  *   tm_account_save  { id?, kind, url, password?, enabled, package?, label?, username?, channels? }   { account }
  *   tm_account_delete { id }
  *   tm_settings_save { notifyUnknown }
- *   tm_chats    { accountId, folder: inbox|unknown|all, limit, offset }   { chats, more }
+ *   tm_chats    { accountId, folder: inbox|unknown|all|community[:<server>[:<channel>]], limit, offset }   { chats, more }
  *   tm_chat     { accountId, chatGuid }                                   { chat }
  *   tm_messages { accountId, chatGuid, limit, before }                    { messages, more }
  *   tm_send     { accountId, chatGuid | addresses[], text, replyTo, subject, effect, tempGuid }

@@ -288,8 +288,12 @@ function accountOut(a) {
     let st = null;
     try { st = store.stats(a.id); } catch (_) { st = null; }
     const inbox = (() => { try { return store.getFolder(a.id, 'INBOX'); } catch (_) { return null; } })();
+    // Messaging's Account display name (#978, messagingAccountPrefs.js 'imap:<id>'): the account's name on screen;
+    // displayName stays the From name
+    let accountName = '';
+    try { accountName = require('./messagingAccountPrefs').nameOf(`imap:${a.id}`); } catch (_) { accountName = ''; }
     return {
-        id: a.id, email: a.email, displayName: a.displayName || '', name: a.displayName || a.email, kind: 'imap',
+        id: a.id, email: a.email, displayName: a.displayName || '', name: accountName || a.displayName || a.email, accountName, kind: 'imap',
         imap: Object.assign({}, a.imap), smtp: Object.assign({}, a.smtp), enabled: a.enabled !== false, settings: Object.assign({ notify: true, saveSent: 'auto' }, a.settings || {}),
         hasPassword: !!secretFor(a.id).password, hasSmtpPassword: !!secretFor(a.id).smtpPassword, status: r ? r.status : (a.enabled === false ? 'disabled' : 'error'), error: r ? (r.error || r.syncError || '') : '',
         unread: inbox ? inbox.unseen : null,
@@ -299,6 +303,9 @@ function accountOut(a) {
 }
 
 // ---- public API ----
+
+/** Messaging renamed the account (#978): its clients read the account list again. */
+function accountRenamed(id) { broadcast({ event: 'account', accountId: String(id || '') }); }
 
 function listAccounts() { return { accounts: readConfig().accounts.map(accountOut), presets: PRESETS.map(({ domains, ...p }) => Object.assign({ domains }, p)) }; }
 
@@ -372,6 +379,7 @@ function deleteAccount(id) {
     stopAccount(id);
     try { store.forgetAccount(id); } catch (_) { /* store closed */ }
     broadcast({ event: 'account', accountId: id, removed: true });
+    try { require('./messagingAccountPrefs').forget(`imap:${id}`); } catch (_) { /* best effort */ }
     return { ok: true };
 }
 
@@ -685,7 +693,7 @@ function unreadSummary() {
 
 module.exports = {
     init, listAccounts, testAccount, saveAccount, deleteAccount, listFolders, listMessages, getMessage, setFlags, move, remove, send, fetchRaw, ensureFolder,
-    attachment, addUpload, search, syncStatus, resync, unreadSummary, presetFor, PRESETS, saveDraft,
+    attachment, addUpload, search, syncStatus, resync, unreadSummary, presetFor, PRESETS, saveDraft, accountRenamed,
     // tests (scripts/test-ws-phone-round5.js): a sync's events and who gets them
     _test: { runSync, setResources: (r) => { gr = r; } }
 };

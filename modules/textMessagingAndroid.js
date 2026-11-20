@@ -36,9 +36,16 @@
  * Channels (Yukimi, Nov 18: "separate server messages and direct messages ... via their notification channel"):
  * an account can be limited to some of the app's notification channels (account.channels, the channel ids the
  * phone sends with each notification). A notification goes to the account of its package that lists its channel,
- * else to the one with no list, else to the first (its id sorts first). Discord is split by default: "Discord"
- * = directMessages, "Discord servers" = its server channels (DEFAULT_SPLITS, ids read off the Fold's
- * dumpsys notification on Nov 18). The channels each app used are remembered (channelsOf) for the settings page.
+ * else to the one with no list, else to the first (its id sorts first). The channels each app used are remembered
+ * (channelsOf) for the settings page.
+ *
+ * Communities (Yukimi, Nov 20, #978: "group Discord and Discord servers into a single account ... the servers as a
+ * folder named Communities whose subfolders are the servers"): Discord is one account again. Its direct messages
+ * are the Inbox; a conversation from a server channel (COMMUNITIES: the channel ids the Fold's Discord posts server
+ * messages on) is a community conversation: normalizeChat gives it community { id, server, serverId, channel,
+ * channelId } from the conversation's title ("<server> #<channel>", an event's "... in <server>"), and the
+ * Inbox / Unknown Senders folders leave it out (textMessaging.listChats folder 'community[:server[:channel]]').
+ * The two accounts made by the old split (Nov 18) are merged into one at start (textMessaging.mergeSplits).
  *
  * Pictures (Yukimi, Nov 18: "an image like for 'Sent a video' ... show it inline"): a MessagingStyle line's
  * picture (line.image) or the notification's big picture (d.picture) comes once from the phone as a small JPEG;
@@ -64,12 +71,23 @@ const MAX_CHANNELS = 40;
 const CHANNEL_RE = /^[^\u0000-\u001f]{1,200}$/;
 const GENERIC_ME = /^(you|me|myself|自分)$/i;
 
-/** Apps split into accounts by notification channel unless the user chose otherwise (one account each). */
+/**
+ * The old default split of an app into accounts by notification channel (Nov 18): only to find and merge the
+ * accounts it made (#978). New accounts are no longer split.
+ */
 const DEFAULT_SPLITS = {
     'com.discord': [
         { suffix: '', label: 'Discord', channels: ['directMessages'] },
         { suffix: '-servers', label: 'Discord servers', channels: ['messages', 'forumThreadCreated', 'guildEventLive', 'stageLive', 'polls', 'other'] }
     ]
+};
+
+/**
+ * Apps whose server / community conversations are a folder of the account (#978): the notification channels
+ * those come on, and the folder's name. A conversation of another channel (Discord's directMessages) is the Inbox.
+ */
+const COMMUNITIES = {
+    'com.discord': { label: 'Communities', channels: ['messages', 'forumThreadCreated', 'guildEventLive', 'stageLive', 'polls', 'other'] }
 };
 
 /** Channel names where the phone cannot send them (a listener reads names only as a companion device). */
@@ -173,7 +191,7 @@ function noteApp(d) {
     const meRaw = d.conv && typeof d.conv === 'object' ? str(d.conv.me, 80).trim() : '';
     const me = meRaw && !GENERIC_ME.test(meRaw) ? meRaw : ((was && was.me) || '');
     if (!newChannel && was && was.label === label && was.icon === icon && (was.me || '') === me && Date.now() - was.at < 60 * 60 * 1000) return;
-    r[pkg] = { label, at: Date.now(), icon, channels, me };
+    r[pkg] = Object.assign({ label, at: Date.now(), icon, channels, me }, was && was.acct ? { acct: was.acct } : {});
     const keys = Object.keys(r);
     const now = Date.now();
     keys.forEach((k) => { if (now - r[k].at > RECENT_KEEP_MS) delete r[k]; });
@@ -210,6 +228,113 @@ function learnApp({ package: pkg, label, icon } = {}) {
 function appLabel(pkg) { const r = loadRecent()[pkg]; return r ? realLabel(r.label, pkg) : ''; }
 /** The app's signed-in user as its notifications name it (MessagingStyle's user), or ''. */
 function appUser(pkg) { const r = loadRecent()[pkg]; return (r && r.me) || ''; }
+/** The app's account on the phone as Android lists it (AccountManager / dumpsys account, #978), or ''. */
+function appAccount(pkg) { const r = loadRecent()[pkg]; return (r && r.acct) || ''; }
+
+// ---------------------------------------------------------------- the apps' accounts on the phone (#978)
+//
+// Yukimi, Nov 20: the "Android app" line under an app account becomes the user's own name in that app. The
+// notifications' MessagingStyle user (appUser) names most messengers; the rest come from Android's account
+// list: the phone's apps.accounts op (DSApp ActiveSyncAccounts: AccountManager, then dumpsys account through
+// Shizuku / its own ADB), else the server's Remote Commands (device.adbShell) when the phone allows them.
+// Asked once per phone per server start, and again after ACCOUNTS_EVERY_MS at the next connection.
+
+const ACCOUNTS_EVERY_MS = 12 * 60 * 60 * 1000;
+const ACCOUNTS_CMD = "dumpsys account | grep -E 'Account \\{|AuthenticatorDescription'";
+const accountsAsked = new Map(); // device id -> ms
+
+/** `dumpsys account` lines -> [{ name, type, package }] (package: the account type's authenticator). */
+function parseDumpsysAccounts(text) {
+    const owners = new Map();
+    const seen = new Map();
+    for (const line of String(text || '').split('\n')) {
+        const a = /AuthenticatorDescription \{type=([^}]+)\}, ComponentInfo\{([^/}]+)\//.exec(line);
+        if (a && !owners.has(a[1].trim())) owners.set(a[1].trim(), a[2].trim());
+        if (!/^\s*Account \{/.test(line)) continue;
+        const m = /Account \{name=(.*), type=([^}\s]+)\}/.exec(line);
+        if (m && m[1].trim()) seen.set(`${m[2]}|${m[1].trim()}`, { name: m[1].trim(), type: m[2] });
+    }
+    return [...seen.values()].map((x) => Object.assign(x, owners.has(x.type) ? { package: owners.get(x.type) } : {}));
+}
+
+/** The name an account of [pkg] shows as the user: not the app's own name ("Signal"), not a bare number id. */
+function accountNameFor(pkg, list) {
+    const own = (Array.isArray(list) ? list : []).filter((a) => a && a.package === pkg && typeof a.name === 'string');
+    const label = String(appLabel(pkg) || '').toLowerCase();
+    const good = own.map((a) => a.name.trim()).filter((n) => n && n.length <= 120 && n.toLowerCase() !== label && !/^\d{1,6}$/.test(n));
+    return good[0] || '';
+}
+
+/** Read the phone's accounts and keep each listed app's user name (recent[pkg].acct). Returns the packages that changed. */
+async function learnAccounts(deviceId) {
+    const id = String(deviceId || '');
+    if (!id || Date.now() - (accountsAsked.get(id) || 0) < ACCOUNTS_EVERY_MS) return [];
+    accountsAsked.set(id, Date.now());
+    let list = null;
+    try {
+        const res = await activeSync().serverCall(resources(), null, id, 'apps.accounts', {}, { timeoutMs: 30000 });
+        if (res && Array.isArray(res.accounts) && res.accounts.length) list = res.accounts;
+    } catch (_) { list = null; }
+    if (!list) {
+        try {
+            const res = await require('./deviceAdb').shell(resources(), id, ACCOUNTS_CMD);
+            if (res && res.output) list = parseDumpsysAccounts(res.output);
+        } catch (_) { list = null; }
+    }
+    if (!list) { accountsAsked.set(id, Date.now() - ACCOUNTS_EVERY_MS + 30 * 60 * 1000); return []; }
+    const r = loadRecent();
+    const pkgs = new Set(list.map((a) => a && a.package).filter((p) => PACKAGE_RE.test(String(p || ''))));
+    const changed = [];
+    for (const pkg of new Set([...pkgs, ...Object.keys(r)])) {
+        if (!r[pkg] && ![...providers].some((p) => p.pkg === pkg)) continue;
+        const name = accountNameFor(pkg, list);
+        const was = r[pkg] ? r[pkg].acct || '' : '';
+        if (name === was) continue;
+        if (!r[pkg]) r[pkg] = { label: appLabel(pkg) || pkg, at: Date.now(), icon: hasAppIcon(pkg), channels: {}, me: '' };
+        if (name) r[pkg].acct = name; else delete r[pkg].acct;
+        changed.push(pkg);
+    }
+    if (changed.length) saveRecent();
+    return changed;
+}
+
+/**
+ * A conversation's community (#978): { id, server, serverId, channel, channelId } when it comes from one of the
+ * app's server channels (COMMUNITIES), else null. Its title names the server and the channel ("Midwest Safety
+ * Squad #daily-polls"); an event's ("Your event is starting in Asmongold") only the server. A conversation
+ * stored before its channel was kept: the merged servers account's are marked community, the rest go by the title.
+ */
+function communityOf(pkg, c) {
+    const spec = COMMUNITIES[pkg];
+    if (!spec || !c) return null;
+    const title = String(c.title || '').trim();
+    const ch = String(c.channel || '');
+    const at = title.lastIndexOf(' #');
+    const event = /\bin (.+)$/.exec(title);
+    const on = ch ? spec.channels.includes(ch) : (c.community === true || at > 0 || /^your event\b/i.test(title));
+    if (!on) return null;
+    let server = '';
+    let channel = '';
+    if (at > 0) { server = title.slice(0, at).trim(); channel = title.slice(at + 1).trim(); }
+    else if (event && (/^(guildEventLive|stageLive)$/.test(ch) || /^your event\b/i.test(title))) server = event[1].trim();
+    else server = String(c.sub || '').trim() || title || 'Other';
+    const serverId = hash(server.toLowerCase(), 10);
+    const channelId = channel ? hash(channel.toLowerCase(), 10) : '';
+    return { id: channelId ? `${serverId}:${channelId}` : serverId, server, serverId, channel, channelId };
+}
+
+/** The folder a community conversation is in for a folder id 'community', 'community:<server>' or 'community:<server>:<channel>'. */
+function inCommunityFolder(community, folder) {
+    if (!community) return false;
+    const f = String(folder || '');
+    if (f === 'community') return true;
+    const [, sid, cid] = f.split(':');
+    if (!sid || community.serverId !== sid) return false;
+    return !cid || community.channelId === cid;
+}
+
+/** An app's communities folder name ('Communities'), or '' when the app has none. */
+function communitiesLabel(pkg) { return COMMUNITIES[pkg] ? COMMUNITIES[pkg].label : ''; }
 /** The app's notification channels: the ones it posted on lately and the known ones, [{ id, name, seen }]. */
 function channelsOf(pkg) {
     const r = loadRecent()[pkg];
@@ -304,8 +429,8 @@ class AndroidAppProvider {
 
     identity() { return this.deviceName || ''; }
 
-    /** Who is signed in to the app: the account's own name for it, else what the app's notifications say. */
-    get username() { return this.ownUsername || appUser(this.pkg); }
+    /** Who is signed in to the app: the account's own name for it, else what the app's notifications say, else Android's account list. */
+    get username() { return this.ownUsername || appUser(this.pkg) || appAccount(this.pkg); }
 
     features() {
         // reply = a reply to one message (threads); quickReply = the notification's own reply
@@ -359,6 +484,10 @@ class AndroidAppProvider {
      * Nov 17), instead of waiting for its next notification.
      */
     async learnFrom(deviceId) {
+        // the apps' users from the phone's account list (#978): once per phone for every app account
+        learnAccounts(deviceId).then((changed) => {
+            for (const p of providers) if (changed.includes(p.pkg)) p.emit('account', {});
+        }, (error) => this.log(`accounts: ${error.message}`));
         if (this.ownLabel && hasAppIcon(this.pkg)) return;
         if (appLabel(this.pkg) && hasAppIcon(this.pkg)) return;
         try {
@@ -430,6 +559,8 @@ class AndroidAppProvider {
             title: str(conv.title || (isGroup ? '' : (lines.find((l) => !l.me) || {}).sender) || d.title || realLabel(d.app, this.pkg) || this.label, 200),
             sub: str(d.sub, 120),
             isGroup,
+            // the notification channel it came on: a community conversation or the Inbox (#978)
+            channel: typeof d.channel === 'string' && CHANNEL_RE.test(d.channel) ? d.channel : ((prev && prev.channel) || ''),
             key: str(d.key, 300),
             device: String(deviceId || (prev && prev.device) || ''),
             actions,
@@ -591,7 +722,9 @@ class AndroidAppProvider {
             // Open in <app> (#885): the notification's own tap target on the phone that posted it, else the app
             package: this.pkg,
             app: realLabel(c.app, this.pkg) || this.label,
-            open: c.openKey ? { key: c.openKey, device: c.openDevice || c.device || '' } : null
+            open: c.openKey ? { key: c.openKey, device: c.openDevice || c.device || '' } : null,
+            // a server channel's conversation (#978): in the account's Communities folder, not its Inbox
+            community: communityOf(this.pkg, c)
         };
     }
 
@@ -744,6 +877,10 @@ class AndroidAppProvider {
     async test() { return { ok: true }; }
 }
 
-function _reset() { providers.clear(); caughtUp.clear(); recent = null; cacheDir = null; tapped = false; }
+function _reset() { providers.clear(); caughtUp.clear(); accountsAsked.clear(); recent = null; cacheDir = null; tapped = false; }
 
-module.exports = { AndroidAppProvider, recentApps, appIcon, hasAppIcon, appLabel, appUser, channelsOf, cleanChannels, DEFAULT_SPLITS, realLabel, learnApp, PACKAGE_RE, _reset, _setCacheDir: (d) => { cacheDir = d; } };
+module.exports = {
+    AndroidAppProvider, recentApps, appIcon, hasAppIcon, appLabel, appUser, appAccount, channelsOf, cleanChannels, DEFAULT_SPLITS, COMMUNITIES, realLabel, learnApp, PACKAGE_RE,
+    communityOf, inCommunityFolder, communitiesLabel, parseDumpsysAccounts, accountNameFor, learnAccounts,
+    _reset, _setCacheDir: (d) => { cacheDir = d; }
+};

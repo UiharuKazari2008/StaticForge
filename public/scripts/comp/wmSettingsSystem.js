@@ -1278,8 +1278,60 @@
         });
     }
 
+    /**
+     * Account display name (#978, Yukimi Nov 20 2026: "allow any account in Messaging to be renamed"): the field
+     * at the top of every account's settings, in WM E-mail Setup's words ("Account display name:", "The name for
+     * this account on this device."). Empty = the account's own name. Kept on the server for every device
+     * (wmMessaging.saveAccountName); the address and the sign-in never change.
+     */
+    function accountNameHtml(d, key) {
+        const M = window.wmMessaging;
+        if (!d.acctName || d.acctName.key !== key) {
+            const n = M && typeof M.accountNames === 'function' ? M.accountNames(key) : { own: '', name: '' };
+            d.acctName = { key, value: n.name || '', own: n.own || '' };
+            d.acctNameInitial = d.acctName.value;
+        }
+        return `${ui.sub('Account display name:')}
+            ${ui.edit('msgopt-acctname', d.acctName.value, `maxlength="60" spellcheck="false" placeholder="${ui.esc(d.acctName.own)}" aria-label="Account display name"`).replace('class="wm-edit"', 'class="wm-edit wm-msgopt-acctname"')}
+            ${ui.text('The name for this account on this device.')}`;
+    }
+    function bindAccountName(el, d) {
+        const box = el.querySelector('#msgopt-acctname');
+        if (box) box.addEventListener('input', (e) => { d.acctName.value = e.target.value; });
+    }
+    /** ok on an account's page: its new name, when it changed (false: it could not be saved). */
+    async function commitAccountName(d) {
+        const n = d.acctName;
+        if (!n || String(n.value || '').trim() === String(d.acctNameInitial || '').trim()) return true;
+        const M = window.wmMessaging;
+        try {
+            if (!M || typeof M.saveAccountName !== 'function') throw new Error('Messaging is not running.');
+            await M.saveAccountName(n.key, String(n.value || '').trim());
+            d.acctNameInitial = n.value;
+            return true;
+        } catch (err) {
+            const s1 = sh();
+            if (s1 && typeof s1.messageBox === 'function') await s1.messageBox({ title: 'Messaging', icon: 'error', text: `The account name could not be saved. ${(err && err.message) || ''}`.trim() });
+            return false;
+        }
+    }
+
     function messagingSubRender(el, d) {
         if (d.sub === 'new') { messagingNewRender(el, d); return; }
+        // Dreamscape Messenger, Dreamscape Mail, a Director persona (#978): the account's name; Messenger's own
+        // settings one button away (a tap on it used to open them straight)
+        if (String(d.sub).startsWith('acct:')) {
+            const key = String(d.sub).slice(5);
+            el.innerHTML = `${accountNameHtml(d, key)}
+                ${key === 'sms' ? ui.buttons([['chat-opts', 'Messenger Options...']]) : ''}`;
+            bindAccountName(el, d);
+            const b = el.querySelector('[data-act="chat-opts"]');
+            if (b) b.addEventListener('click', async () => {
+                if (!(await commitAccountName(d))) return;
+                if (typeof wmSettings.openChatOptions === 'function') wmSettings.openChatOptions('messaging-options');
+            });
+            return;
+        }
         if (String(d.sub).startsWith('tm:')) {
             const a = tmAccountFor(d.sub);
             if (!a) { el.innerHTML = ui.note('This account is not available right now.'); return; }
@@ -1296,7 +1348,9 @@
                 const others = (snapAccounts().filter((x) => x.kind === 'android' && x.package === a.package && x.id !== a.id));
                 const takenBy = (id) => others.find((x) => (x.channels || []).includes(id));
                 const uid = 'tmo-username';
-                el.innerHTML = `${ui.text(`${label}${a.identity ? ` (${a.identity})` : ''}`)}
+                el.innerHTML = `${accountNameHtml(d, d.sub)}
+                    ${ui.gap()}
+                    ${ui.text(`${label}${a.identity ? ` (${a.identity})` : ''}`)}
                     ${ui.row('User name:', ui.edit(uid, d.tmOpts.username, `maxlength="80" spellcheck="false" placeholder="${ui.esc(a.defaultUsername || 'None')}" aria-label="User name"`), { for: uid })}
                     ${ui.check('tmo-notify', 'Show a Messaging notification for new messages', d.tmOpts.notify)}
                     ${choices.length ? `${ui.text('Notification channels:')}
@@ -1304,6 +1358,7 @@
                     ${ui.note(d.tmOpts.channels.length ? 'Only these channels show in this account.' : `None selected: every channel${others.length ? ' no other account takes' : ''} shows in this account.`)}` : ''}
                     ${ui.note(`${label} shows its own notification on the phone as well.`)}
                     ${ui.buttons([['tm-split', 'New Account for Other Channels', !d.tmOpts.channels.length], ['tm-remove', 'Remove Account']])}`;
+                bindAccountName(el, d);
                 el.querySelector('input[name="tmo-notify"]').addEventListener('change', (e) => { d.tmOpts.notify = e.target.checked; });
                 el.querySelector(`#${uid}`).addEventListener('input', (e) => { d.tmOpts.username = e.target.value; });
                 el.querySelectorAll('input[data-ch]').forEach((box) => box.addEventListener('change', () => {
@@ -1349,9 +1404,12 @@
             if (!d.tmOpts) { d.tmOpts = Object.assign({}, a.settings || {}); d.tmOptsInitial = JSON.stringify(d.tmOpts); }
             const priv = !!(a.server && a.server.privateApi);
             const opts = a.kind === 'bluebubbles' ? TM_OPTS : TM_OPTS.slice(0, 1);
-            el.innerHTML = `${ui.text(`${a.name}${a.identity ? ` (${a.identity})` : ''}`)}
+            el.innerHTML = `${accountNameHtml(d, d.sub)}
+                ${ui.gap()}
+                ${ui.text(`${a.defaultName || a.name}${a.identity ? ` (${a.identity})` : ''}`)}
                 ${opts.map(([k, label]) => ui.check(`tmo-${k}`, label, d.tmOpts[k] !== false, !priv && ['usePrivateApi', 'sendReadReceipts', 'sendTyping'].includes(k) ? 'disabled' : '')).join('')}
                 ${ui.note('Server address and password: Control Panel > Dreamscape CardSpace on the desktop.')}`;
+            bindAccountName(el, d);
             opts.forEach(([k]) => {
                 const box = el.querySelector(`input[name="tmo-${k}"]`);
                 if (box) box.addEventListener('change', (e) => { d.tmOpts[k] = e.target.checked; });
@@ -1376,8 +1434,11 @@
             }
             const a = d.maAcct;
             if (!a) { el.innerHTML = ui.note('This account is not available right now.'); return; }
-            el.innerHTML = `${ui.text(`${a.displayName || a.email}${a.displayName ? ` (${a.email})` : ''}`)}
+            el.innerHTML = `${accountNameHtml(d, d.sub)}
+                ${ui.gap()}
+                ${ui.text(`${a.displayName || a.email}${a.displayName ? ` (${a.email})` : ''}`)}
                 ${ui.check('mao-notify', 'Receive notifications for new messages', d.maOpts.notify)}`;
+            bindAccountName(el, d);
             el.querySelector('input[name="mao-notify"]').addEventListener('change', (e) => { d.maOpts.notify = e.target.checked; });
             return;
         }
@@ -1412,7 +1473,8 @@
         d.rerender = api.rerender;
         if (tab === 'accounts' && d.sub) { messagingSubRender(el, d); return; }
         if (tab === 'accounts') {
-            const rows = messagingAccounts().map((a) => ({ key: a.key && /^(tm|imap):/.test(String(a.key)) ? a.key : a.label, label: `${a.radio ? '* ' : '\u2002 '}${a.label}`, selected: d.acctSel === a.label }));
+            // in the user's order, by the names the user gave them (#978)
+            const rows = messagingAccounts().map((a) => ({ key: a.key, label: `${a.radio ? '* ' : '\u2002 '}${a.label}`, selected: d.acctSel === a.key }));
             rows.push({ key: '__new', label: '\u2002 New Account...', selected: d.acctSel === '__new' });
             el.innerHTML = `${ui.text('Tap an account to change settings.')}
                 ${ui.listbox(rows, { maxHeight: 210 }).replace('class="wm-listbox"', 'class="wm-listbox wm-msgopt-accts"')}
@@ -1420,6 +1482,7 @@
                 ${ui.check('picker', 'Display account picker when opening Messaging', d.picker)}`;
             ui.bindListbox(el.querySelector('.wm-listbox'), async (key) => {
                 d.acctSel = key;
+                d.acctName = null; // read again from what Messaging has now (#978)
                 const m = window.wmMessaging;
                 // New Account... (#885): an Android app, or the e-mail explanation from there
                 if (key === '__new') { void m; d.sub = 'new'; d.newApps = null; d.newAsked = false; d.newPick = null; api.rerender(); return; }
@@ -1427,13 +1490,14 @@
                 if (String(key).startsWith('tm:')) { d.sub = key; d.tmOpts = null; api.rerender(); return; }
                 // a mail account (IMAP, #789): Receive notifications for new messages (Yukimi, Nov 14)
                 if (String(key).startsWith('imap:')) { d.sub = key; d.maOpts = null; api.rerender(); return; }
-                // the device opens a tapped account's settings: Dreamscape Messenger's own pages (#763,
-                // named Text Messages before #779); what was changed here is kept first (ok on those
-                // pages comes back to this tab)
-                if (key === 'Dreamscape Messenger' && typeof wmSettings.openChatOptions === 'function') {
+                // the device opens a tapped account's settings: Dreamscape Messenger, Dreamscape Mail and the
+                // Director personas show their Account display name (#978); Messenger's own pages (#763) are
+                // its Messenger Options... button. What was changed on this tab is kept first.
+                if (key === 'sms' || key === 'mail' || String(key).startsWith('dir:')) {
                     const keys = await messagingOptionsCommit(d);
                     if (Array.isArray(keys) && keys.length) ui.changed(keys);
-                    wmSettings.openChatOptions('messaging-options');
+                    d.sub = `acct:${key}`;
+                    api.rerender();
                 }
             });
             el.querySelector('input[name="picker"]').addEventListener('change', (e) => { d.picker = e.target.checked; });
@@ -1510,6 +1574,8 @@
     async function messagingOptionsCommit(d) {
         // ok on Signatures / Security: save the signature, back to the Accounts tab
         if (d.sub) {
+            // an account's page: its Account display name first (#978)
+            if (/^(acct:|tm:|imap:)/.test(String(d.sub)) && !(await commitAccountName(d))) return false;
             // New Account... (#885): ok adds the chosen Android app
             if (d.sub === 'new' && d.newPick) {
                 const t = window.textMessaging;

@@ -71,6 +71,9 @@
     // resumes the launcher: 16 ms on the Fold7); hidden longer, the user was in another app
     const AWAY_MS = 700;
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    // the e-mail panel's account line: Dreamscape Mail by the name the user gave it in Messaging (#978); the IMAP
+    // accounts' names come with their account list
+    const acctLine = (name) => { const M = window.wmMessaging; return name === 'Dreamscape Mail' && M && typeof M.accountName === 'function' ? M.accountName('mail', name) : name; };
     // wm65 art by name ('ti-2051'); 's:owner' / 'x:app-studio-lg' / 'p:wren' = a 6.5 Start icon / a 6.1 set
     // icon / a Director persona's picture; 'w:rain' = a weather condition (ti-w-*)
     // icon in the panel icons' frame with their mirror image (ti-s-*, ti-x-*: made for the items 6.5
@@ -229,7 +232,7 @@
             return {
                 label: 'e-mail', count: n ? String(n) : '', icon: 'ti-2008',
                 pages: list.length
-                    ? list.map((m) => ({ title: m.subject || '(no subject)', line2: [m.from, mailWhen(m.at)].filter(Boolean).join(', '), line3: m.account, onTap: () => m.open(go) }))
+                    ? list.map((m) => ({ title: m.subject || '(no subject)', line2: [m.from, mailWhen(m.at)].filter(Boolean).join(', '), line3: acctLine(m.account), onTap: () => m.open(go) }))
                     : [{ title: 'No New E-mails' }],
                 softKey: { label: 'Messaging', action: accounts },
                 onTap: go
@@ -343,7 +346,7 @@
             const imap = M && typeof M.accounts === 'function'
                 ? Promise.resolve(M.accounts()).then((d) => Promise.all(((d && d.accounts) || []).filter((a) => a && a.enabled !== false).map((a) => Promise.resolve(M.messages(a.id, 'INBOX', { limit: MAIL_PAGES, unseenOnly: true }))
                     .then((r) => ((r && r.messages) || []).filter((m) => !m.seen).map((m) => ({
-                        subject: m.subject, from: mailFrom({ from: (m.from && m.from[0]) || m.sender }), at: Number(m.date) || 0, account: a.displayName || a.name || a.email,
+                        subject: m.subject, from: mailFrom({ from: (m.from && m.from[0]) || m.sender }), at: Number(m.date) || 0, account: a.accountName || a.displayName || a.name || a.email,
                         open: (go) => { if (W && typeof W.openImapMessage === 'function') W.openImapMessage(a.id, m.folder || 'INBOX', m.uid, m); else go(); }
                     })), () => [])))).then((lists) => [].concat(...lists), () => [])
                 : Promise.resolve([]);

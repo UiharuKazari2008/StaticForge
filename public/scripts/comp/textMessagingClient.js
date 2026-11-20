@@ -179,8 +179,9 @@
     /** The account's line in pickers: the title, and the Apple ID / phone number under it. */
     function label(account) {
         const a = account || {};
-        // an Android app account (#885): what it is, never the phone it reads (Yukimi, Nov 16)
-        if (a.kind === 'android') return { title: a.name || 'Android app', subline: a.status === 'disabled' ? 'Turned off' : 'Android app' };
+        // an Android app account (#885): what it is, never the phone it reads (Yukimi, Nov 16); under it the user's
+        // own name in that app, "Android app" only when nothing names it (Yukimi, Nov 20, #978)
+        if (a.kind === 'android') return { title: a.name || 'Android app', subline: a.status === 'disabled' ? 'Turned off' : (String(a.username || '').trim() || 'Android app') };
         let subline = a.identity || '';
         if (!subline) subline = a.status === 'connected' ? (a.service || '') : (a.status === 'disabled' ? 'Turned off' : (a.error || 'Not connected'));
         return { title: a.name || 'Text Messaging', subline };

@@ -6,7 +6,10 @@
  * Config (config.json textMessaging):  { accounts: [{ id, kind, url, enabled }], notifyUnknown }
  *   kind 'android' (#885): { id, kind, package, label, username, channels, enabled, settings: { notify } } - an
  *   Android app's notifications on the partnered phone as conversations (modules/textMessagingAndroid.js);
- *   channels limits it to some of the app's notification channels (Discord: direct messages / servers, Nov 18)
+ *   channels limits it to some of the app's notification channels. Discord is one account: its server channels
+ *   are the Communities folder (#978; the Nov 18 split into "Discord" / "Discord servers" is merged back at start).
+ * The account's name on screen can be the user's own (Messaging's Account display name, #978:
+ * messagingAccountPrefs.js 'tm:<id>'): accountOut's name is that, accountName the same ('' = none), defaultName its own.
  * Secrets (secure.config.json textMessaging.keys[]): { name: <account id>, password }
  *
  * Chat (provider-neutral):
@@ -368,36 +371,65 @@ function init(globalResources) {
     if (globalResources) gr = globalResources;
     if (started) return;
     started = true;
-    splitDefaults();
+    mergeSplits();
     for (const a of readConfig().accounts) startAccount(a);
     dreamscapeContacts().catch(() => {});
     scheduleReconcile();
 }
 
 /**
- * An app split by notification channel by default (Discord, Yukimi Nov 18): its one account made before the split
- * (no channel list stored at all) becomes the first part, and the other parts are added. Once only: a list the user
- * cleared ([]) stays cleared.
+ * One Discord account again (Yukimi, Nov 20 2026, #978: "group Discord and Discord servers into a single account"):
+ * the accounts the Nov 18 default split made (the first part's channels and a second account whose channels are the
+ * split's other part) become the first one, taking every channel; the servers' conversations move into it, marked as
+ * community conversations, with their pictures. A split the user made by hand (other channels, other names) stays.
  */
-function splitDefaults() {
+function mergeSplits() {
     try {
         const cfg = readConfig();
         let changed = false;
+        const same = (a, b) => JSON.stringify(androidApps.cleanChannels(a).slice().sort()) === JSON.stringify(b.slice().sort());
         for (const pkg of Object.keys(androidApps.DEFAULT_SPLITS)) {
-            const mine = cfg.accounts.filter((a) => a.kind === 'android' && a.package === pkg);
-            if (mine.length !== 1 || Array.isArray(mine[0].channels)) continue;
             const [first, ...rest] = androidApps.DEFAULT_SPLITS[pkg];
-            mine[0].channels = first.channels.slice();
-            for (const part of rest) {
-                let id = `${mine[0].id}${part.suffix}`.slice(0, 29);
-                for (let n = 2; cfg.accounts.some((a) => a.id === id); n += 1) id = `${`${mine[0].id}${part.suffix}`.slice(0, 29)}${n}`;
-                cfg.accounts.push({ id, kind: 'android', url: '', package: pkg, label: part.label, channels: part.channels.slice(), enabled: mine[0].enabled !== false, settings: Object.assign({}, mine[0].settings || {}) });
-            }
+            const mine = cfg.accounts.filter((a) => a.kind === 'android' && a.package === pkg);
+            const main = mine.find((a) => same(a.channels, first.channels));
+            if (!main) continue;
+            const parts = rest.map((part) => mine.find((a) => a !== main && same(a.channels, part.channels) && String(a.id).startsWith(main.id))).filter(Boolean);
+            if (parts.length !== rest.length) continue;
+            for (const part of parts) moveAccountCopy(part.id, main.id);
+            main.channels = [];
+            cfg.accounts = cfg.accounts.filter((a) => !parts.includes(a));
+            // the old servers account's place and name in Messaging go with it
+            for (const part of parts) { try { require('./messagingAccountPrefs').forget(`tm:${part.id}`); } catch (_) { /* best effort */ } }
             changed = true;
-            log(`${pkg}: split into ${rest.length + 1} accounts by notification channel`);
+            log(`${pkg}: ${parts.map((a) => a.id).join(', ')} merged into ${main.id} (Communities)`);
         }
         if (changed) writeConfig(cfg);
-    } catch (error) { log(`channel split failed: ${error.message}`); }
+    } catch (error) { log(`account merge failed: ${error.message}`); }
+}
+
+/** The server's copy of one account's conversations moved into another (mergeSplits): newer conversation wins, messages kept. */
+function moveAccountCopy(from, to) {
+    if (!storeOpen()) return;
+    const rows = store.listChats(from, { limit: 100000 });
+    for (const row of rows) {
+        const raw = Object.assign({}, row.raw, { community: true });
+        const have = store.getChat(to, row.guid);
+        const keep = have && (have.raw.lastDate || 0) > (raw.lastDate || 0)
+            ? Object.assign({}, have.raw, { community: true, readAt: Math.max(have.raw.readAt || 0, raw.readAt || 0) })
+            : Object.assign(raw, { readAt: Math.max(raw.readAt || 0, (have && have.raw.readAt) || 0) });
+        store.putChats(to, [{ guid: row.guid, raw: keep, lastDate: keep.lastDate || row.lastDate || 0 }]);
+        const msgs = store.listMessages(from, row.guid, { limit: 100000 });
+        store.putMessages(to, msgs.map((m) => ({ guid: m.guid, chatGuid: m.chatGuid || row.guid, date: m.date || 0, text: m.text || '', raw: m })));
+    }
+    // conversation pictures and message pictures (.cache/textmessaging-android/<account>/...)
+    try {
+        let cacheDir = null;
+        try { cacheDir = resources().getPath('cache'); } catch (_) { cacheDir = path.join(__dirname, '..', '.cache'); }
+        const src = path.join(cacheDir, 'textmessaging-android', from);
+        const dst = path.join(cacheDir, 'textmessaging-android', to);
+        if (fs.existsSync(src)) { fs.cpSync(src, dst, { recursive: true, force: false, errorOnExist: false }); fs.rmSync(src, { recursive: true, force: true }); }
+    } catch (error) { log(`move pictures ${from} -> ${to}: ${error.message}`); }
+    store.forgetAccount(from);
 }
 
 function provider(accountId) {
@@ -452,6 +484,7 @@ async function onProviderEvent(accountId, event, payload) {
             const ds = await dreamscapeContacts();
             if (m && !m.fromMe && m.sender && !m.sender.name) { const n = ds.get(handleKey(m.sender.address)); if (n) m.sender.name = n; }
             let known = m && m.fromMe ? true : null;
+            let community = null; // a server channel's conversation (#978): its folder is Communities, not the Inbox
             if (known == null) {
                 const p = providers.get(accountId);
                 let chat = null;
@@ -464,7 +497,7 @@ async function onProviderEvent(accountId, event, payload) {
                 if (chat && !(chat.participants || []).length && !chat.isGroup && m && m.sender && m.sender.address) {
                     chat.participants = [{ address: m.sender.address, name: m.sender.name || '', service: m.service || '' }];
                 }
-                if (chat) { decorateParticipants(chat, ds); out.chatTitle = chat.title; out.isGroup = chat.isGroup; }
+                if (chat) { decorateParticipants(chat, ds); out.chatTitle = chat.title; out.isGroup = chat.isGroup; community = chat.community || null; }
                 known = chat ? isKnownChat(accountId, chat, ds) : !!(m && m.sender && (m.sender.name));
                 if (!known && chat && p) {
                     // a reply of yours further back makes it known too
@@ -476,7 +509,7 @@ async function onProviderEvent(accountId, event, payload) {
             }
             delete out.chat;
             out.known = known;
-            out.folder = known ? 'inbox' : 'unknown';
+            out.folder = community && community.id ? `community:${community.id}` : known ? 'inbox' : 'unknown';
             const acctRow = readConfig().accounts.find((x) => x.id === accountId);
             const acctNotify = acctRow && acctRow.kind === 'android'
                 ? !!(acctRow.settings && acctRow.settings.notify === true)
@@ -507,16 +540,24 @@ function onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
 // ---- public API ----
 
+/** The name the user gave the account in Messaging (#978), '' when none. */
+function accountNameOf(id) { try { return require('./messagingAccountPrefs').nameOf(`tm:${id}`); } catch (_) { return ''; } }
+
 function accountOut(a) {
     const p = providers.get(a.id);
     const s = summaries.get(a.id);
+    const accountName = accountNameOf(a.id);
     if (a.kind === 'android') {
         const label = androidApps.realLabel(a.label, a.package) || androidApps.appLabel(a.package) || a.package || 'Android app';
-        // the signed-in user beside the app names it among others (Yukimi, Nov 18): its own, else the app's notifications'
-        const username = String(a.username || '').trim() || androidApps.appUser(a.package);
+        // the signed-in user names the account under the app (Yukimi, Nov 18 / Nov 20 #978): its own, else the
+        // app's notifications', else Android's account list; Messaging shows it as the account's second line
+        const username = String(a.username || '').trim() || androidApps.appUser(a.package) || androidApps.appAccount(a.package);
         return {
-            id: a.id, kind: 'android', name: username ? `${label} (${username})` : label, service: label, url: '', package: a.package || '', label,
-            username, ownUsername: String(a.username || '').trim(), defaultUsername: androidApps.appUser(a.package),
+            id: a.id, kind: 'android', name: accountName || label, defaultName: label, accountName, service: label, url: '', package: a.package || '', label,
+            username, ownUsername: String(a.username || '').trim(), defaultUsername: androidApps.appUser(a.package) || androidApps.appAccount(a.package),
+            // the app's server conversations as a folder (#978): its name and the servers with their channels and counts
+            communitiesLabel: androidApps.communitiesLabel(a.package), communities: s && s.value.communities ? s.value.communities : [],
+            communityUnread: s && s.value.communityUnread != null ? s.value.communityUnread : null,
             channels: androidApps.cleanChannels(a.channels), channelChoices: androidApps.channelsOf(a.package),
             icon: androidApps.hasAppIcon(a.package) ? `/api/textmessaging/${encodeURIComponent(a.id)}/avatar/app` : '',
             enabled: a.enabled !== false, hasPassword: true,
@@ -526,11 +567,14 @@ function accountOut(a) {
             settings: Object.assign({ notify: false }, a.settings || {}), sync: syncInfo(a.id, p), server: null
         };
     }
+    // BlueBubbles accounts read as Apple iMessage (Yukimi, Nov 13); RCS keeps Text Messaging
+    const defaultName = a.kind === 'bluebubbles' ? 'Apple iMessage' : 'Text Messaging';
     return {
         id: a.id,
         kind: a.kind,
-        // BlueBubbles accounts read as Apple iMessage (Yukimi, Nov 13); RCS keeps Text Messaging
-        name: a.kind === 'bluebubbles' ? 'Apple iMessage' : 'Text Messaging',
+        name: accountName || defaultName,
+        defaultName,
+        accountName,
         service: a.kind === 'bluebubbles' ? 'iMessage' : 'RCS',
         url: a.url || '',
         enabled: a.enabled !== false,
@@ -615,7 +659,7 @@ function saveAccount(input) {
 /**
  * An Android app account (#885): { id?, package, label?, username?, channels?, enabled, settings: { notify } }.
  * An app can have several accounts when they are split by notification channel (channels: ids); at most one of
- * them takes every other channel (no list). A new Discord account is split by default (DEFAULT_SPLITS).
+ * them takes every other channel (no list). Discord's server channels are its Communities folder (#978), not an account.
  */
 function saveAndroidAccount(body, cfg, id0) {
     let id = id0;
@@ -624,12 +668,6 @@ function saveAndroidAccount(body, cfg, id0) {
     if (!androidApps.PACKAGE_RE.test(pkg)) throw Object.assign(new Error('Choose the Android app.'), { code: 'NO_PACKAGE' });
     const siblings = cfg.accounts.filter((a) => a.kind === 'android' && a.package === pkg && a.id !== id);
     const prevRow = at0 >= 0 ? cfg.accounts[at0] : null;
-    // a brand-new account of an app split by default: its parts, made together
-    if (!id && !siblings.length && body.channels === undefined && androidApps.DEFAULT_SPLITS[pkg]) {
-        const parts = androidApps.DEFAULT_SPLITS[pkg];
-        const out = parts.map((part, i) => saveAndroidAccount(Object.assign({}, body, { label: i === 0 ? (body.label || part.label) : part.label, channels: part.channels, idSuffix: part.suffix }), readConfig(), ''));
-        return out[0];
-    }
     const channels = body.channels !== undefined ? androidApps.cleanChannels(body.channels) : androidApps.cleanChannels(prevRow && prevRow.channels);
     // another account of an app takes chosen channels; only one of them takes the rest (no list)
     if (!channels.length && siblings.length && (!id || siblings.some((a) => !androidApps.cleanChannels(a.channels).length))) {
@@ -693,8 +731,12 @@ function deleteAccount(id) {
     stopAccount(id);
     try { if (storeOpen()) store.forgetAccount(id); } catch (error) { log(`store forget failed: ${error.message}`); }
     broadcast({ event: 'account', accountId: id, removed: true });
+    try { require('./messagingAccountPrefs').forget(`tm:${id}`); } catch (_) { /* best effort */ }
     return { ok: true };
 }
+
+/** Messaging renamed the account (#978): its clients read the account list again. */
+function accountRenamed(id) { broadcast({ event: 'account', accountId: String(id || '') }); }
 
 function saveSettings(input) {
     const cfg = readConfig();
@@ -714,14 +756,46 @@ async function listChats(accountId, { folder = 'all', limit = 50, offset = 0 } =
     if (!offset) {
         // unread messages (as e-mail counts them), not conversations
         const sum = (list) => list.reduce((n, c) => n + (c.unread ? Math.max(1, Number(c.unreadCount) || 1) : 0), 0);
-        const value = { unread: sum(chats.filter((c) => c.known)), unknownUnread: sum(chats.filter((c) => !c.known)) };
+        const comm = chats.filter((c) => c.community);
+        // unread counts the account's every folder (the Inbox and Communities, #978); unknownUnread, Unknown Senders
+        const value = { unread: sum(chats.filter((c) => c.known || c.community)), unknownUnread: sum(chats.filter((c) => !c.known && !c.community)) };
+        if (p.kind === 'android' && androidApps.communitiesLabel(p.pkg)) {
+            value.communityUnread = sum(comm);
+            value.communities = communityFolders(comm, sum);
+        }
         summaries.set(accountId, { at: Date.now(), value });
     }
     if (folder === 'all') return { chats, more: chats.length >= (Number(limit) || 50) };
-    const all = folder === 'inbox' ? chats.filter((c) => c.known) : chats.filter((c) => !c.known);
+    // the Inbox and Unknown Senders leave out the community conversations (#978); 'community[:server[:channel]]' lists those
+    const f = String(folder || '');
+    const all = f.startsWith('community') ? chats.filter((c) => androidApps.inCommunityFolder(c.community, f))
+        : f === 'inbox' ? chats.filter((c) => c.known && !c.community) : chats.filter((c) => !c.known && !c.community);
     const from = Number(offset) || 0;
     const n = Math.min(Number(limit) || 50, 200);
     return { chats: all.slice(from, from + n), more: all.length > from + n };
+}
+
+/**
+ * An account's community folders (#978): [{ id, name, unread, channels: [{ id, name, unread }] }], servers by name;
+ * channel ids are '<server>:<channel>' (the folder ids are 'community:' + these).
+ */
+function communityFolders(chats, sum) {
+    const servers = new Map();
+    for (const c of chats) {
+        const k = c.community;
+        if (!servers.has(k.serverId)) servers.set(k.serverId, { id: k.serverId, name: k.server, list: [], channels: new Map() });
+        const s = servers.get(k.serverId);
+        s.list.push(c);
+        if (k.channelId) {
+            if (!s.channels.has(k.channelId)) s.channels.set(k.channelId, { id: k.id, name: k.channel, list: [] });
+            s.channels.get(k.channelId).list.push(c);
+        }
+    }
+    const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    return [...servers.values()].map((s) => ({
+        id: s.id, name: s.name, unread: sum(s.list),
+        channels: [...s.channels.values()].map((ch) => ({ id: ch.id, name: ch.name, unread: sum(ch.list) })).sort(byName)
+    })).sort(byName);
 }
 
 /** Unread counts for every account (pickers, Today, tray), cached briefly. */
@@ -1047,9 +1121,9 @@ function _reset() {
 
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
-    recentAndroidApps, action, androidAppIcon, openInApp, androidPopupPackages,
+    recentAndroidApps, action, androidAppIcon, openInApp, androidPopupPackages, accountRenamed,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing, syncStatus, syncChats, resync,
     downloadAttachment, attachmentSeen, resolveName, handleKey, contactsChanged, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset,
     // tests (scripts/test-ws-phone-round5.js): a provider's event and who gets it
-    _test: { onProviderEvent, vcfHandles, setResources: (r) => { gr = r; }, setProvider: (id, p) => providers.set(id, p) }
+    _test: { onProviderEvent, vcfHandles, mergeSplits, accountOut, setResources: (r) => { gr = r; }, setProvider: (id, p) => providers.set(id, p) }
 };
