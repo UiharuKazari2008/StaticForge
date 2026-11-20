@@ -709,6 +709,42 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     opacity: 0.4;
 }
 
+/* the drop-down part carries the click-menu's role="button" (contextMenu.attachClickMenuToElement), which the shared
+   Vista push-button rule matches (75 px minimum width, a full border, flex display): inside the split button it is only
+   the arrow strip and the label stays one line (#963, the DeX showed "S / et Default" squeezed to 3 px). #_ outranks
+   the shared rule's long selector */
+.tbp-client .tbp-button.cpl-snd-split > .cpl-snd-split-text:not(#_) {
+    display: block;
+    align-self: center;
+    height: auto;
+    line-height: 13px;
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.tbp-client .tbp-button.cpl-snd-split > .cpl-snd-split-arrow:not(#_) {
+    display: block;
+    flex: none;
+    width: 15px;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    padding: 0;
+    margin: 3px 0;
+    border: 0;
+    border-left: 1px solid rgb(0 0 0 / 22%);
+    border-radius: 0;
+    box-shadow: inset 1px 0 0 rgb(255 255 255 / 70%);
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23000'/%3E%3C/svg%3E") center / 7px 4px no-repeat;
+}
+
+.tbp-client .tbp-button.cpl-snd-split > .cpl-snd-split-arrow:not(#_)::before,
+.tbp-client .tbp-button.cpl-snd-split > .cpl-snd-split-arrow:not(#_)::after {
+    content: none;
+}
+
 /* a device's Properties (#963, mmsys dialogs 121 / 123 / 126): VM Speakers Properties, 414 x 459 like Sound */
 .tbp-client.cpl-snd-props .cpl-snd-icon img {
     display: block;
