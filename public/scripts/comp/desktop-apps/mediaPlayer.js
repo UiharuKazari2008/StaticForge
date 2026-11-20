@@ -266,10 +266,14 @@ function mediaPlayerBodyHtml() {
         + '<div class="wmp-page">'
         // Now Playing
         + '<div class="wmp-view wmp-now-playing" data-view="now-playing">'
+        + '<div class="wmp-stagecol">'
         + '<div class="wmp-stage" data-kind="">'
         + '<video preload="metadata" playsinline></video>'
         + '<img class="wmp-stage-art" src="' + WMP_ART + '/art-music.png" alt="">'
         + '<p class="wmp-stage-status hidden"></p>'
+        + '</div>'
+        // the enhancements pane under the stage (Graphic Equalizer: mediaPlayerAudio.js fills it)
+        + '<div class="wmp-settings hidden" role="region"></div>'
         + '</div>'
         + '<div class="wmp-listpane">'
         + '<button type="button" class="wmp-listpane-arrow" title="Hide List Pane" aria-label="Hide List Pane"></button>'
@@ -559,12 +563,14 @@ async function mediaPlayerPlayIndex(player, index, options) {
     player.blobUrl = player.preload && player.preload.url === url ? url : null;
     if (player.preload && player.preload.url === url) player.preload = null;
     else mediaPlayerQueue.drop(player);
-    media.src = url;
+    // a cross-origin source would play silent through the Graphic Equalizer's graph: mediaPlayerAudio.js lets the element go first
+    const out = player.audio ? player.audio.beforeSource(url) : media;
+    out.src = url;
     if (lastBlob && lastBlob !== url) URL.revokeObjectURL(lastBlob);
     mediaPlayerSyncNow(player);
     mediaPlayerSyncTransport(player);
     if (!(options && options.paused)) {
-        const pending = media.play();
+        const pending = out.play();
         if (pending && pending.catch) pending.catch((err) => {
             // AbortError: a newer source; NotAllowedError: the browser wants a click first (the file stays open, paused)
             if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) { mediaPlayerSyncTransport(player); return; }
@@ -831,30 +837,29 @@ const mediaPlayerBar = (function () {
     /** Press and hold previous / next: rewind / fast-forward while held (the orb shows play meanwhile); a click steps.
         A video's buttons are Rewind / Fast forward themselves. */
     function mediaPlayerWireSeekButtons(player) {
-        const media = player.el.media;
         const stopSeeking = () => {
             if (!player.seeking) return;
             const btn = player.seeking.btn;
             clearInterval(player.seeking.timer);
-            media.playbackRate = 1;
+            player.el.media.playbackRate = 1;
             btn.classList.remove('is-seeking');
             player.seeking = null;
             mediaPlayerSyncTransport(player);
         };
         const startSeeking = (btn, dir) => {
-            if (!media.getAttribute('src') || !Number.isFinite(media.duration)) return false;
+            if (!player.el.media.getAttribute('src') || !Number.isFinite(player.el.media.duration)) return false;
             btn.classList.add('is-seeking');
             // fast-forward plays at 5x; rewind steps back (browsers cannot play backwards)
             if (dir > 0) {
-                media.playbackRate = 5;
-                if (media.paused) media.play().catch(() => {});
+                player.el.media.playbackRate = 5;
+                if (player.el.media.paused) player.el.media.play().catch(() => {});
             }
             player.seeking = {
                 btn, dir,
                 timer: dir < 0 ? setInterval(() => {
                     // a hidden window does not rewind on its own (phone-power-client)
                     if (document.hidden) { stopSeeking(); return; }
-                    try { media.currentTime = Math.max(0, media.currentTime - 1.5); } catch (err) { /* not seekable */ }
+                    try { player.el.media.currentTime = Math.max(0, player.el.media.currentTime - 1.5); } catch (err) { /* not seekable */ }
                 }, 250) : 0
             };
             mediaPlayerSyncTransport(player);
@@ -888,7 +893,6 @@ const mediaPlayerBar = (function () {
                 if (!mediaPlayerStep(player, dir) && dir > 0) mediaPlayerStop(player);
             });
         });
-        media.addEventListener('pause', () => { if (player.seeking && player.seeking.dir > 0) stopSeeking(); });
         player.stopSeeking = stopSeeking;
     }
 
@@ -945,7 +949,65 @@ const mediaPlayerBar = (function () {
         el.style.setProperty('--wmp-focus-r', (p + w - 1) & 1 ? '1px' : '0px');
     }
 
+    /** The media element's own events (the stage's <video>). mediaPlayerAudio (mediaPlayerAudio.js) swaps the element for a
+        fresh one when its Web Audio graph is torn down (a browser ties an element to one AudioContext for good), so
+        everything that listens to it is wired here and reads player.el.media at the time. */
+    function mediaPlayerWireMedia(player, media) {
+        media.addEventListener('play', () => { player.stopped = false; mediaPlayerSyncTransport(player); });
+        media.addEventListener('pause', () => mediaPlayerSyncTransport(player));
+        media.addEventListener('ended', () => {
+            if (!mediaPlayerStep(player, 1)) mediaPlayerSyncTransport(player);
+        });
+        media.addEventListener('timeupdate', () => {
+            mediaPlayerSyncClock(player);
+            if (!media.paused) mediaPlayerQueue.maybe(player);
+            if (!player.nowTimer) mediaPlayerBar.syncNowLine(player);
+        });
+        // "Media changing..." until the first frame
+        media.addEventListener('loadeddata', () => {
+            if (!player.changing) return;
+            player.changing = false;
+            mediaPlayerSyncTransport(player);
+        });
+        media.addEventListener('loadedmetadata', () => mediaPlayerSyncTransport(player));
+        media.addEventListener('durationchange', () => mediaPlayerSyncClock(player));
+        media.addEventListener('loadeddata', () => mediaPlayerPaintFrame(player, true));
+        media.addEventListener('seeked', () => {
+            if (!player.scrubbing) mediaPlayerPaintFrame(player, true);
+        });
+        media.addEventListener('volumechange', () => mediaPlayerSyncTransport(player));
+        media.addEventListener('error', () => {
+            if (player.clearEpoch === player.epoch) return;
+            if (!media.getAttribute('src')) return;
+            player.changing = false;
+            mediaPlayerStatus(player, DESKTOP_MEDIA_ASSIST);
+            mediaPlayerSyncTransport(player);
+        });
+        media.addEventListener('click', () => mediaPlayerToggle(player));
+        media.addEventListener('dblclick', () => mediaPlayerFullScreen(player));
+        // a fast-forward ends with a pause
+        media.addEventListener('pause', () => { if (player.seeking && player.seeking.dir > 0) player.stopSeeking(); });
+    }
+
+    /** A fresh <video> in place of the stage's, with the same volume and mute, wired as the first was. */
+    function mediaPlayerSwapMedia(player) {
+        const old = player.el.media;
+        const media = document.createElement('video');
+        media.preload = 'metadata';
+        media.playsInline = true;
+        media.volume = old.volume;
+        media.muted = old.muted;
+        old.pause();
+        old.removeAttribute('src');
+        old.load();
+        old.replaceWith(media);
+        player.el.media = media;
+        mediaPlayerWireMedia(player, media);
+        return media;
+    }
+
     return {
+        wireMedia: mediaPlayerWireMedia, swapMedia: mediaPlayerSwapMedia,
         nowLines: mediaPlayerNowLines, syncNowLine: mediaPlayerSyncNowLine, wireSeekButtons: mediaPlayerWireSeekButtons, seekValue: mediaPlayerSeekValue,
         // WMP 11's window limits on the VM: 374 wide at least; under 201 high it folds to the transport (96)
         syncCompact: mediaPlayerSyncCompact, setVolumePopup: mediaPlayerSetVolumePopup, syncFocus: mediaPlayerSyncFocus,
@@ -1701,12 +1763,13 @@ function mediaPlayerMenuItems(player, tab) {
     ];
     if (tab === 'now-playing') {
         return [
-            { text: 'Show List Pane', action: 'toggle-listpane', indicatorStyle: 'dot', checked: player.listPane },
-            { separator: true },
-            { text: 'Shuffle', action: 'shuffle', indicatorStyle: 'dot', checked: player.shuffle },
-            { text: 'Repeat', action: 'repeat', indicatorStyle: 'dot', checked: player.repeat },
+            { text: 'Show List Pane', action: 'toggle-listpane', showIndicator: true, indicatorMark: 'check', checked: player.listPane },
             { separator: true }
-        ].concat(open, [
+        ].concat(player.audio ? player.audio.menuItems() : [], [
+            { text: 'Shuffle', action: 'shuffle', showIndicator: true, indicatorMark: 'check', checked: player.shuffle },
+            { text: 'Repeat', action: 'repeat', showIndicator: true, indicatorMark: 'check', checked: player.repeat },
+            { separator: true }
+        ], open, [
             { separator: true },
             { text: 'Clear Now Playing List', icon: 'fas fa-xmark', action: 'clear', disabled: !player.items.length },
             { text: 'View Full Screen', icon: 'fas fa-expand', action: 'fullscreen', disabled: !player.items.length }
@@ -1714,8 +1777,8 @@ function mediaPlayerMenuItems(player, tab) {
     }
     if (tab === 'library') {
         return [
-            { text: 'Music', action: 'category:music', indicatorStyle: 'dot', checked: player.library.category === 'music' },
-            { text: 'Video', action: 'category:video', indicatorStyle: 'dot', checked: player.library.category === 'video' },
+            { text: 'Music', action: 'category:music', showIndicator: true, indicatorMark: 'radio', checked: player.library.category === 'music' },
+            { text: 'Video', action: 'category:video', showIndicator: true, indicatorMark: 'radio', checked: player.library.category === 'video' },
             { separator: true }
         ].concat(open, [{ separator: true }, { text: 'Refresh', icon: 'fas fa-sync', action: 'refresh' }]);
     }
@@ -1737,6 +1800,7 @@ function mediaPlayerRunAction(player, action) {
     else if (action === 'refresh') mediaPlayerLibrary.loadLibrary(player, true);
     else if (action.indexOf('category:') === 0) mediaPlayerSetCategory(player, action.slice(9));
     else if (action.indexOf('remove:') === 0) mediaPlayerRemove(player, Number(action.slice(7)));
+    else if (player.audio) player.audio.runAction(action);
 }
 
 function mediaPlayerAttachMenus(player) {
@@ -1784,11 +1848,11 @@ function mediaPlayerAttachMenus(player) {
                     { text: player.el.media.paused ? 'Play' : 'Pause', icon: player.el.media.paused ? 'fas fa-play' : 'fas fa-pause', action: 'play-pause', disabled: !player.items.length },
                     { text: 'Stop', icon: 'fas fa-stop', action: 'stop', disabled: !player.el.media.getAttribute('src') },
                     { separator: true },
-                    { text: 'Shuffle', action: 'shuffle', indicatorStyle: 'dot', checked: player.shuffle },
-                    { text: 'Repeat', action: 'repeat', indicatorStyle: 'dot', checked: player.repeat },
+                    { text: 'Shuffle', action: 'shuffle', showIndicator: true, indicatorMark: 'check', checked: player.shuffle },
+                    { text: 'Repeat', action: 'repeat', showIndicator: true, indicatorMark: 'check', checked: player.repeat },
                     { separator: true },
                     { text: 'Full Screen', icon: 'fas fa-expand', action: 'fullscreen', disabled: !player.items.length },
-                    { text: 'Show List Pane', action: 'toggle-listpane', indicatorStyle: 'dot', checked: player.listPane },
+                    { text: 'Show List Pane', action: 'toggle-listpane', showIndicator: true, indicatorMark: 'check', checked: player.listPane },
                     { separator: true },
                     { text: 'Open File...', icon: 'fas fa-folder-open', action: 'open-file' },
                     { text: 'Open URL...', icon: 'fas fa-link', action: 'open-url' }
@@ -1809,8 +1873,8 @@ function mediaPlayerAttachMenus(player) {
             sections: [{
                 type: 'list',
                 items: [
-                    { text: 'Shuffle', action: 'shuffle', indicatorStyle: 'dot', checked: player.shuffle },
-                    { text: 'Repeat', action: 'repeat', indicatorStyle: 'dot', checked: player.repeat },
+                    { text: 'Shuffle', action: 'shuffle', showIndicator: true, indicatorMark: 'check', checked: player.shuffle },
+                    { text: 'Repeat', action: 'repeat', showIndicator: true, indicatorMark: 'check', checked: player.repeat },
                     { separator: true },
                     { text: 'Clear List', icon: 'fas fa-xmark', action: 'clear', disabled: !player.items.length }
                 ]
@@ -1854,8 +1918,8 @@ function mediaPlayerAttachMenus(player) {
             sections: [{
                 type: 'list',
                 items: [
-                    { text: 'Music', action: 'category:music', icon: 'fas fa-music', indicatorStyle: 'dot', checked: player.library.category === 'music' },
-                    { text: 'Video', action: 'category:video', icon: 'fas fa-film', indicatorStyle: 'dot', checked: player.library.category === 'video' },
+                    { text: 'Music', action: 'category:music', icon: 'fas fa-music', showIndicator: true, indicatorMark: 'radio', checked: player.library.category === 'music' },
+                    { text: 'Video', action: 'category:video', icon: 'fas fa-film', showIndicator: true, indicatorMark: 'radio', checked: player.library.category === 'video' },
 
                 ]
             }],
@@ -1940,26 +2004,25 @@ function mediaPlayerSliderValue(track, clientX) {
 }
 
 function mediaPlayerWireSliders(player) {
-    const media = player.el.media;
     const seek = player.el.seek;
     seek.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0 || !Number.isFinite(media.duration) || !media.duration) return;
+        if (e.button !== 0 || !Number.isFinite(player.el.media.duration) || !player.el.media.duration) return;
         e.preventDefault();
         seek.setPointerCapture(e.pointerId);
         player.scrubbing = true;
-        player.scrubTime = mediaPlayerBar.seekValue(seek, e.clientX) * media.duration;
+        player.scrubTime = mediaPlayerBar.seekValue(seek, e.clientX) * player.el.media.duration;
         mediaPlayerSyncClock(player);
     });
     seek.addEventListener('pointermove', (e) => {
         if (!player.scrubbing) return;
-        player.scrubTime = mediaPlayerBar.seekValue(seek, e.clientX) * media.duration;
+        player.scrubTime = mediaPlayerBar.seekValue(seek, e.clientX) * player.el.media.duration;
         mediaPlayerSyncClock(player);
     });
     const endScrub = (e) => {
         if (!player.scrubbing) return;
         player.scrubbing = false;
         try {
-            media.currentTime = mediaPlayerBar.seekValue(seek, e.clientX) * media.duration;
+            player.el.media.currentTime = mediaPlayerBar.seekValue(seek, e.clientX) * player.el.media.duration;
         } catch (err) { /* not seekable */ }
         mediaPlayerSyncClock(player);
     };
@@ -1974,11 +2037,11 @@ function mediaPlayerWireSliders(player) {
         mediaPlayerSyncClock(player);
     });
     seek.addEventListener('keydown', (e) => {
-        if (!Number.isFinite(media.duration)) return;
+        if (!Number.isFinite(player.el.media.duration)) return;
         const step = e.key === 'ArrowRight' ? 5 : e.key === 'ArrowLeft' ? -5 : 0;
         if (!step) return;
         e.preventDefault();
-        media.currentTime = Math.max(0, Math.min(media.duration, media.currentTime + step));
+        player.el.media.currentTime = Math.max(0, Math.min(player.el.media.duration, player.el.media.currentTime + step));
     });
 
     player.el.volumes.forEach((volume) => {
@@ -2004,11 +2067,11 @@ function mediaPlayerWireSliders(player) {
             const step = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 0.05 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -0.05 : 0;
             if (!step) return;
             e.preventDefault();
-            mediaPlayerSetVolume(player, media.volume + step);
+            mediaPlayerSetVolume(player, player.el.media.volume + step);
         });
         volume.addEventListener('wheel', (e) => {
             e.preventDefault();
-            mediaPlayerSetVolume(player, media.volume + (e.deltaY < 0 ? 0.05 : -0.05));
+            mediaPlayerSetVolume(player, player.el.media.volume + (e.deltaY < 0 ? 0.05 : -0.05));
         }, { passive: false });
     });
 }
@@ -2156,40 +2219,8 @@ function createDesktopMediaPlayer() {
     };
     player.urlDialog = mediaPlayerBuildUrlDialog(player);
 
-    const media = el.media;
-    media.volume = 1;
-    media.addEventListener('play', () => { player.stopped = false; mediaPlayerSyncTransport(player); });
-    media.addEventListener('pause', () => mediaPlayerSyncTransport(player));
-    media.addEventListener('ended', () => {
-        if (!mediaPlayerStep(player, 1)) mediaPlayerSyncTransport(player);
-    });
-    media.addEventListener('timeupdate', () => {
-        mediaPlayerSyncClock(player);
-        if (!media.paused) mediaPlayerQueue.maybe(player);
-        if (!player.nowTimer) mediaPlayerBar.syncNowLine(player);
-    });
-    // "Media changing..." until the first frame
-    media.addEventListener('loadeddata', () => {
-        if (!player.changing) return;
-        player.changing = false;
-        mediaPlayerSyncTransport(player);
-    });
-    media.addEventListener('loadedmetadata', () => mediaPlayerSyncTransport(player));
-    media.addEventListener('durationchange', () => mediaPlayerSyncClock(player));
-    media.addEventListener('loadeddata', () => mediaPlayerPaintFrame(player, true));
-    media.addEventListener('seeked', () => {
-        if (!player.scrubbing) mediaPlayerPaintFrame(player, true);
-    });
-    media.addEventListener('volumechange', () => mediaPlayerSyncTransport(player));
-    media.addEventListener('error', () => {
-        if (player.clearEpoch === player.epoch) return;
-        if (!media.getAttribute('src')) return;
-        player.changing = false;
-        mediaPlayerStatus(player, DESKTOP_MEDIA_ASSIST);
-        mediaPlayerSyncTransport(player);
-    });
-    media.addEventListener('click', () => mediaPlayerToggle(player));
-    media.addEventListener('dblclick', () => mediaPlayerFullScreen(player));
+    el.media.volume = 1;
+    mediaPlayerBar.wireMedia(player, el.media);
 
     el.tabs.forEach((tab) => {
         tab.querySelector('.wmp-tab-label').addEventListener('click', () => mediaPlayerShowView(player, tab.dataset.tab));
@@ -2203,7 +2234,7 @@ function createDesktopMediaPlayer() {
     el.shuffle.addEventListener('click', () => mediaPlayerSetShuffle(player, !player.shuffle));
     el.repeat.addEventListener('click', () => mediaPlayerSetRepeat(player, !player.repeat));
     el.mute.addEventListener('click', () => {
-        media.muted = !media.muted;
+        player.el.media.muted = !player.el.media.muted;
         mediaPlayerSyncTransport(player);
     });
     el.fullscreen.addEventListener('click', () => mediaPlayerFullScreen(player));
@@ -2341,6 +2372,8 @@ function createDesktopMediaPlayer() {
         if (e.target !== modal || e.animationName !== 'modalSlideOut') return;
         mediaPlayerClear(player);
         if (melatonFullscreen.element() === el.stage) void melatonFullscreen.exit();
+        // the Web Audio graph (Graphic Equalizer, visualizations) goes with the window: mediaPlayerAudio.js
+        if (player.audio) player.audio.close();
     });
 
     mediaPlayerSetListPane(player, true);
@@ -2359,6 +2392,11 @@ function createDesktopMediaPlayer() {
     }
     mediaPlayerShowView(player, 'now-playing');
     document.body.appendChild(modal);
+    // the Graphic Equalizer and the visualizations attach here (mediaPlayerAudio.js runs in its own scope: what it
+    // needs of this file goes on the player)
+    player.swapMedia = () => mediaPlayerBar.swapMedia(player);
+    player.showView = (view) => mediaPlayerShowView(player, view);
+    document.dispatchEvent(new CustomEvent('melaton:wmp-player', { detail: player }));
     return player;
 }
 

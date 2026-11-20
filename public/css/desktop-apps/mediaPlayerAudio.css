@@ -1,0 +1,236 @@
+/* Melaton Media Player: WMP 11's enhancements pane under the Now Playing stage (the Graphic Equalizer),
+   1:1 with the Vista VM at 96 DPI. Script: public/scripts/comp/desktop-apps/mediaPlayerAudio.js.
+   Art: wmploc.dll bitmaps in static_images/vista-wmp/eq (see the script's header). */
+
+#desktopMediaPlayer .wmp-stagecol {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* the pane: mediacenter.settingsHeight, 138px with its 3px edge, black (svSettings) */
+#desktopMediaPlayer .wmp-settings {
+    position: relative;
+    flex: none;
+    height: 138px;
+    overflow: hidden;
+    background: #000 url('/static_images/vista-wmp/eq/edge.png') no-repeat 0 0 / 100% 3px;
+    font: 11px Tahoma, 'Segoe UI', sans-serif;
+    color: #fff;
+    user-select: none;
+}
+
+#desktopMediaPlayer .wmp-settings.hidden {
+    display: none;
+}
+
+#desktopMediaPlayer .wmp-set-head > button,
+#desktopMediaPlayer .wmp-eq button {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    min-width: 0;
+    min-height: 0;
+    font: inherit;
+    color: inherit;
+    cursor: default;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+/* the previous / next enhancement orbs (wmploc 1726-1728, 1723-1725) and the close box (522-524) */
+#desktopMediaPlayer .wmp-set-prev,
+#desktopMediaPlayer .wmp-set-next {
+    position: absolute;
+    top: 4px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    background: url('/static_images/vista-wmp/eq/prev.png') no-repeat !important;
+}
+
+#desktopMediaPlayer .wmp-set-next {
+    left: 21px;
+    background-image: url('/static_images/vista-wmp/eq/next.png') !important;
+}
+
+#desktopMediaPlayer .wmp-set-prev:hover { background-image: url('/static_images/vista-wmp/eq/prev-hot.png') !important; }
+#desktopMediaPlayer .wmp-set-prev:active { background-image: url('/static_images/vista-wmp/eq/prev-down.png') !important; }
+#desktopMediaPlayer .wmp-set-next:hover { background-image: url('/static_images/vista-wmp/eq/next-hot.png') !important; }
+#desktopMediaPlayer .wmp-set-next:active { background-image: url('/static_images/vista-wmp/eq/next-down.png') !important; }
+
+#desktopMediaPlayer .wmp-set-title {
+    position: absolute;
+    top: 5px;
+    left: 43px;
+    font-weight: bold;
+    line-height: 13px;
+    white-space: nowrap;
+}
+
+#desktopMediaPlayer .wmp-set-close {
+    position: absolute;
+    top: 4px;
+    right: 3px;
+    width: 17px;
+    height: 16px;
+    background: url('/static_images/vista-wmp/eq/close.png') no-repeat !important;
+}
+
+#desktopMediaPlayer .wmp-set-close:hover { background-image: url('/static_images/vista-wmp/eq/close-hot.png') !important; }
+#desktopMediaPlayer .wmp-set-close:active { background-image: url('/static_images/vista-wmp/eq/close-down.png') !important; }
+
+/* links: g_kLinkColor, g_kDisabledColor (SettingsCommon.js) */
+#desktopMediaPlayer .wmp-eq-link {
+    position: absolute;
+    top: 23px;
+    line-height: 13px;
+    color: #abd5fd !important;
+    text-decoration: underline;
+    text-underline-offset: 1px;
+    white-space: nowrap;
+}
+
+#desktopMediaPlayer .wmp-eq-link:disabled {
+    color: #9f9f9f !important;
+}
+
+#desktopMediaPlayer .wmp-eq-link:focus-visible {
+    outline: 1px dotted #fff;
+    outline-offset: 0;
+}
+
+#desktopMediaPlayer .wmp-eq-onoff { left: 10px; }
+#desktopMediaPlayer .wmp-eq-reset { left: 74px; }
+#desktopMediaPlayer .wmp-eq-preset { left: 184px; }
+
+/* the drop-down arrow left of the preset (nextPreset_dropDownArrow): 7x4, the link colour */
+#desktopMediaPlayer .wmp-eq-preset::before {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 6px;
+    width: 7px;
+    height: 4px;
+    background: #abd5fd;
+    clip-path: polygon(0 0, 7px 0, 4px 4px, 3px 4px);
+}
+
+#desktopMediaPlayer .wmp-eq-menu-at {
+    position: absolute;
+    left: -8px;
+    top: 0;
+    width: 1px;
+    height: 2px;
+    pointer-events: none;
+}
+
+#desktopMediaPlayer .is-off .wmp-eq-preset::before {
+    display: none;
+}
+
+/* the sliders' backdrop (wmploc 2167: tracks, ticks, the faint level boxes) */
+#desktopMediaPlayer .wmp-eq-sliders {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#desktopMediaPlayer .wmp-eq-sliders > * {
+    pointer-events: auto;
+}
+
+#desktopMediaPlayer .wmp-eq-sliders::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 43px;
+    width: 358px;
+    height: 60px;
+    background: url('/static_images/vista-wmp/eq/sliders.png') no-repeat;
+}
+
+#desktopMediaPlayer .wmp-eq-radio {
+    position: absolute;
+    left: 10px;
+    width: 13px;
+    height: 13px;
+    background: url('/static_images/vista-wmp/eq/radio.png') no-repeat !important;
+}
+
+#desktopMediaPlayer .wmp-eq-radio:hover { background-image: url('/static_images/vista-wmp/eq/radio-hot.png') !important; }
+#desktopMediaPlayer .wmp-eq-radio.is-on { background-image: url('/static_images/vista-wmp/eq/radio-on.png') !important; }
+
+#desktopMediaPlayer .wmp-eq-st {
+    position: absolute;
+    left: 30px;
+    width: 18px;
+    height: 18px;
+    background: no-repeat;
+}
+
+#desktopMediaPlayer .wmp-eq-st-off { background-image: url('/static_images/vista-wmp/eq/st-off.png'); }
+#desktopMediaPlayer .wmp-eq-st-loose { background-image: url('/static_images/vista-wmp/eq/st-loose.png'); }
+#desktopMediaPlayer .wmp-eq-st-tight { background-image: url('/static_images/vista-wmp/eq/st-tight.png'); }
+#desktopMediaPlayer .wmp-eq-st-off:hover { background-image: url('/static_images/vista-wmp/eq/st-off-hot.png'); }
+#desktopMediaPlayer .wmp-eq-st-loose:hover { background-image: url('/static_images/vista-wmp/eq/st-loose-hot.png'); }
+#desktopMediaPlayer .wmp-eq-st-tight:hover { background-image: url('/static_images/vista-wmp/eq/st-tight-hot.png'); }
+
+/* a band: the slider's 16px column over its track; the thumb (wmploc 1799, hot 1798, down 1797) */
+#desktopMediaPlayer .wmp-eq-band {
+    position: absolute;
+    top: 43px;
+    width: 16px;
+    height: 60px;
+    outline: none;
+}
+
+#desktopMediaPlayer .wmp-eq-thumb {
+    position: absolute;
+    left: 0;
+    top: var(--wmp-eq-y, 26px);
+    width: 16px;
+    height: 8px;
+    background: url('/static_images/vista-wmp/eq/thumb.png') no-repeat;
+}
+
+#desktopMediaPlayer .wmp-eq-band:hover .wmp-eq-thumb,
+#desktopMediaPlayer .wmp-eq-band:focus-visible .wmp-eq-thumb { background-image: url('/static_images/vista-wmp/eq/thumb-hot.png'); }
+#desktopMediaPlayer .wmp-eq-band.is-down .wmp-eq-thumb { background-image: url('/static_images/vista-wmp/eq/thumb-down.png'); }
+
+#desktopMediaPlayer .is-off .wmp-eq-thumb {
+    display: none;
+}
+
+#desktopMediaPlayer .wmp-eq-label {
+    position: absolute;
+    top: 105px;
+    font-size: 9px;
+    line-height: 11px;
+    white-space: nowrap;
+    transform: translateX(-50%);
+}
+
+/* turned off: DisabledGray, black at alpha 0x60 over the sliders, radios and labels */
+#desktopMediaPlayer .wmp-eq-gray {
+    display: none;
+    position: absolute;
+    left: 10px;
+    top: 43px;
+    width: 358px;
+    height: 76px;
+    background: rgb(0 0 0 / 37.6%);
+    pointer-events: none;
+}
+
+#desktopMediaPlayer .is-off .wmp-eq-gray {
+    display: block;
+}
