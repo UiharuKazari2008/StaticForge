@@ -308,31 +308,27 @@ function mediaPlayerBodyHtml() {
         // Rip / Burn / Sync / Online Stores
         + '<div class="wmp-view wmp-blank hidden" data-view="blank"><p></p></div>'
         + '</div>'
-        // transport (the glass)
+        // transport (the glass): WMP 11's full-mode bar, laid out in css/desktop-apps/mediaPlayer.css; tooltips as the VM's
         + '<div class="wmp-transport">'
-        + '<div class="wmp-seek" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><div class="wmp-seek-fill"></div><div class="wmp-seek-thumb"></div></div>'
-        + '<div class="wmp-transport-row">'
-        + '<div class="wmp-now-side">'
-        + '<div class="wmp-now"><div class="wmp-now-thumb"><canvas width="36" height="24"></canvas><img src="' + WMP_ART + '/art-music.png" alt=""></div><span class="wmp-now-title"></span></div>'
-        + '<span class="wmp-time">00:00</span>'
-        + '</div>'
+        + '<div class="wmp-seek" title="Seek" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><div class="wmp-seek-fill"></div><div class="wmp-seek-tip"></div><div class="wmp-seek-thumb"></div></div>'
+        + '<div class="wmp-now"><div class="wmp-now-thumb"><canvas width="33" height="22"></canvas><img src="' + WMP_ART + '/art-music.png" alt=""></div><span class="wmp-now-title"></span></div>'
+        + '<span class="wmp-time"></span>'
         + '<div class="wmp-pill">'
-        + '<button type="button" class="wmp-tbtn wmp-shuffle" title="Turn Shuffle On" aria-pressed="false"></button>'
-        + '<button type="button" class="wmp-tbtn wmp-repeat" title="Turn Repeat On" aria-pressed="false"></button>'
-        + '<span class="wmp-pill-rule"></span>'
-        + '<button type="button" class="wmp-tbtn wmp-stop" title="Stop" disabled></button>'
+        + '<button type="button" class="wmp-tbtn wmp-shuffle" title="Turn shuffle on" aria-pressed="false"></button>'
+        + '<button type="button" class="wmp-tbtn wmp-repeat" title="Turn repeat on" aria-pressed="false"></button>'
         + '<div class="wmp-group">'
-        + '<button type="button" class="wmp-tbtn wmp-prev" title="Previous" disabled></button>'
-        + '<button type="button" class="wmp-orbbtn wmp-play" title="Play" disabled><span class="wmp-orb-halo"></span><span class="wmp-orb-face"></span></button>'
-        + '<button type="button" class="wmp-tbtn wmp-next" title="Next" disabled></button>'
+        + '<button type="button" class="wmp-tbtn wmp-stop" title="Stop" disabled></button>'
+        + '<button type="button" class="wmp-prev" title="Previous (press and hold to rewind)" disabled></button>'
+        + '<button type="button" class="wmp-play" title="Play"><span class="wmp-orb-halo"></span></button>'
+        + '<button type="button" class="wmp-next" title="Press and hold to fast-forward" disabled></button>'
         + '</div>'
         + '<button type="button" class="wmp-tbtn wmp-mute" title="Mute" aria-pressed="false"></button>'
-        + '<div class="wmp-volume" role="slider" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div class="wmp-volume-track"><div class="wmp-volume-fill"></div></div><div class="wmp-volume-thumb"></div></div>'
+        + '<div class="wmp-volume" title="Volume" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div class="wmp-volume-track"></div><div class="wmp-volume-fill"></div><div class="wmp-volume-thumb"></div></div>'
         + '</div>'
         + '<div class="wmp-stack">'
-        + '<button type="button" class="wmp-fullscreen" title="View Full Screen" aria-label="View Full Screen"></button>'
-        + '<button type="button" class="wmp-compact" title="Switch to Compact Mode" aria-label="Switch to Compact Mode"></button>'
-        + '</div>'
+        + '<button type="button" class="wmp-fullscreen" title="View full screen" aria-label="View full screen" disabled></button>'
+        // the VM shows no tooltip on this one
+        + '<button type="button" class="wmp-compact" aria-label="Switch to compact mode"></button>'
         + '</div>'
         + '</div>'
         + '<input type="file" class="hidden wmp-file" multiple accept="audio/*,video/*,.mp3,.ogg,.wav,.aac,.m4a,.flac,.mp4,.webm">';
@@ -416,8 +412,11 @@ function mediaPlayerAdd(player, entries, play) {
             file: entry.file || null,
             vfs: entry.vfs || null,
             art: entry.art || '',
+            title: entry.title || '',
             artist: entry.artist || '',
             album: entry.album || '',
+            composer: entry.composer || '',
+            size: entry.size || 0,
             kind: mediaPlayerKindFor(entry.name || desktopMediaNameFromUrl(entry.url), entry.mime || (entry.file && entry.file.type) || '')
         });
     });
@@ -427,6 +426,8 @@ function mediaPlayerAdd(player, entries, play) {
 }
 
 function mediaPlayerReleaseSource(player) {
+    if (player.stopSeeking) player.stopSeeking();
+    player.changing = false;
     player.epoch += 1;
     player.clearEpoch = player.epoch;
     const media = player.el.media;
@@ -482,13 +483,17 @@ async function mediaPlayerPlayIndex(player, index, options) {
     player.clearEpoch = -1;
     player.el.stage.dataset.kind = item.kind;
     mediaPlayerPaintFrame(player, false);
+    player.stopped = false;
+    player.changing = true;
+    player.nowLine = 0;
     media.src = url;
     mediaPlayerSyncNow(player);
     mediaPlayerSyncTransport(player);
     if (!(options && options.paused)) {
         const pending = media.play();
         if (pending && pending.catch) pending.catch((err) => {
-            if (err && err.name === 'AbortError') return;
+            // AbortError: a newer source; NotAllowedError: the browser wants a click first (the file stays open, paused)
+            if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) { mediaPlayerSyncTransport(player); return; }
             mediaPlayerStatus(player, 'Media Player cannot play the file.');
         });
     }
@@ -517,14 +522,23 @@ function mediaPlayerStep(player, step) {
 
 function mediaPlayerToggle(player) {
     const media = player.el.media;
+    if (player.seeking) {
+        // play ends a rewind / fast-forward at normal speed
+        player.stopSeeking();
+        if (media.paused) media.play().catch(() => {});
+        return;
+    }
     if (!media.getAttribute('src')) {
         if (player.items.length) mediaPlayerPlayIndex(player, player.index >= 0 ? player.index : 0);
+        // nothing in Now Playing: WMP 11 plays what the Library shows
+        else mediaPlayerLibrary.playShown(player);
         return;
     }
     if (media.paused || media.ended) {
         const pending = media.play();
         if (pending && pending.catch) pending.catch((err) => {
-            if (err && err.name === 'AbortError') return;
+            // AbortError: a newer source; NotAllowedError: the browser wants a click first (the file stays open, paused)
+            if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) { mediaPlayerSyncTransport(player); return; }
             mediaPlayerStatus(player, 'Media Player cannot play the file.');
         });
         return;
@@ -631,8 +645,6 @@ function mediaPlayerSyncNow(player) {
     const title = item ? mediaPlayerTitle(item.name) : '';
     player.el.listpaneTitle.textContent = title;
     player.el.listpaneTitle.title = item ? item.name : '';
-    player.el.nowTitle.textContent = title;
-    player.el.nowTitle.title = item ? item.name : '';
     const art = item && item.kind === 'video' ? 'art-video' : 'art-music';
     // a library song shows its album art (WMP 11's List Pane and the transport's thumbnail), anything else WMP's note
     const cover = item && item.kind !== 'video' && item.art ? item.art : '';
@@ -643,7 +655,7 @@ function mediaPlayerSyncNow(player) {
         img.classList.toggle('is-cover', !!cover);
     });
     player.el.listpane.classList.toggle('has-item', !!item);
-    player.el.now.classList.toggle('has-item', !!item);
+    mediaPlayerBar.syncNowLine(player);
 }
 
 function mediaPlayerSyncTransport(player) {
@@ -652,24 +664,31 @@ function mediaPlayerSyncTransport(player) {
     const hasSource = !!media.getAttribute('src');
     const playing = hasSource && !media.paused && !media.ended;
     const n = player.items.length;
-    el.play.disabled = !n && !hasSource;
-    el.play.classList.toggle('is-playing', playing);
+    const item = mediaPlayerCurrent(player);
+    const video = !!(item && item.kind === 'video' && hasSource);
+    // WMP 11 keeps play enabled with nothing loaded (it plays the Library's view); stop only while a file is open
+    el.play.classList.toggle('is-playing', playing && !player.seeking);
     el.play.title = playing ? 'Pause' : 'Play';
-    el.stop.disabled = !hasSource;
-    el.prev.disabled = !n || mediaPlayerNextIndex(player, -1) === -1;
-    el.next.disabled = !n || mediaPlayerNextIndex(player, 1) === -1;
+    el.stop.disabled = !hasSource || player.stopped;
+    el.prev.disabled = !n || (!video && mediaPlayerNextIndex(player, -1) === -1);
+    // Next stays enabled while anything is listed (on the last item it ends playback, as WMP 11 does)
+    el.next.disabled = !n;
+    el.prev.title = video ? 'Rewind' : 'Previous (press and hold to rewind)';
+    el.next.title = video ? 'Fast forward' : 'Press and hold to fast-forward';
+    el.transport.classList.toggle('is-video', video);
+    el.fullscreen.disabled = !video;
     el.shuffle.setAttribute('aria-pressed', String(player.shuffle));
-    el.shuffle.title = player.shuffle ? 'Turn Shuffle Off' : 'Turn Shuffle On';
+    el.shuffle.title = player.shuffle ? 'Turn shuffle off' : 'Turn shuffle on';
     el.repeat.setAttribute('aria-pressed', String(player.repeat));
-    el.repeat.title = player.repeat ? 'Turn Repeat Off' : 'Turn Repeat On';
-    const level = media.muted || media.volume === 0 ? 'mute' : media.volume < 0.34 ? 'low' : media.volume < 0.67 ? 'mid' : 'high';
+    el.repeat.title = player.repeat ? 'Turn repeat off' : 'Turn repeat on';
+    const level = media.muted ? 'mute' : media.volume === 0 ? 'zero' : media.volume < 0.34 ? 'low' : media.volume < 0.67 ? 'mid' : 'high';
     el.mute.dataset.level = level;
     el.mute.setAttribute('aria-pressed', String(media.muted));
     el.mute.title = media.muted ? 'Sound' : 'Mute';
     const volumePct = Math.round(media.volume * 100);
-    el.volume.style.setProperty('--wmp-volume', volumePct + '%');
     el.volume.style.setProperty('--wmp-volume-frac', String(media.volume));
     el.volume.setAttribute('aria-valuenow', String(volumePct));
+    mediaPlayerBar.syncNowLine(player);
     mediaPlayerSyncClock(player);
 }
 
@@ -677,16 +696,141 @@ function mediaPlayerSyncClock(player) {
     const media = player.el.media;
     const duration = Number.isFinite(media.duration) ? media.duration : 0;
     const now = player.scrubbing ? player.scrubTime : (Number.isFinite(media.currentTime) ? media.currentTime : 0);
-    const pct = duration > 0 ? Math.min(100, (now / duration) * 100) : 0;
-    player.el.seek.style.setProperty('--wmp-seek', pct + '%');
-    player.el.seek.setAttribute('aria-valuemax', String(Math.round(duration)));
-    player.el.seek.setAttribute('aria-valuenow', String(Math.round(now)));
-    player.el.seek.classList.toggle('is-ready', duration > 0);
-    const shown = desktopMediaClock(now);
-    // nothing loaded: no time beside the controls (WMP 11 shows it only while a file is open)
-    const text = media.currentSrc ? (shown.length < 5 ? '0' + shown : shown) : '';
+    const frac = duration > 0 ? Math.min(1, now / duration) : 0;
+    const seek = player.el.seek;
+    seek.style.setProperty('--wmp-seek-frac', frac.toFixed(5));
+    seek.setAttribute('aria-valuemax', String(Math.round(duration)));
+    seek.setAttribute('aria-valuenow', String(Math.round(now)));
+    // stopped (or nothing open): the bare groove, as the VM shows it
+    const open = !!media.getAttribute('src') && !player.stopped;
+    seek.classList.toggle('is-ready', open && duration > 0);
+    seek.classList.toggle('is-scrubbing', !!player.scrubbing);
+    // the elapsed time as WMP 11 writes it (00:01, 1:02:05), only while a file is open
+    let text = '';
+    if (open && media.currentSrc && !player.changing) {
+        const shown = desktopMediaClock(now);
+        text = shown.length < 5 ? '0' + shown : shown;
+    }
     if (player.el.time.textContent !== text) player.el.time.textContent = text;
 }
+
+// The bar's own helpers (#956), one namespace (app-scope): the rotating now-playing line, press-and-hold
+// previous / next, the seek groove's value.
+const mediaPlayerBar = (function () {
+    /** The title beside the thumbnail: "Media changing..." while a file opens, then its title, artist, composer and
+        album in turn (3.25 s each on the VM) while it plays; nothing when stopped. */
+    function mediaPlayerNowLines(item) {
+        if (!item) return [];
+        const lines = [item.title || mediaPlayerTitle(item.name)];
+        if (item.kind !== 'video') {
+            if (item.artist) lines.push(item.artist);
+            if (item.composer) lines.push(item.composer + ' [Composer]');
+            if (item.album) lines.push(item.album);
+        }
+        return lines.filter(Boolean);
+    }
+
+    function mediaPlayerSyncNowLine(player) {
+        const media = player.el.media;
+        const item = mediaPlayerCurrent(player);
+        const open = !!item && !!media.getAttribute('src') && !player.stopped;
+        const lines = open ? mediaPlayerNowLines(item) : [];
+        let text = '';
+        if (open && player.changing) text = 'Media changing...';
+        else if (lines.length) text = lines[(player.nowLine || 0) % lines.length];
+        if (player.el.nowTitle.textContent !== text) player.el.nowTitle.textContent = text;
+        player.el.now.classList.toggle('has-item', open && !player.changing);
+        // the thumbnail's tooltip: the bit rate it plays at (the file's size over its length)
+        const size = item && (item.size || (item.file && item.file.size)) || 0;
+        const kbps = open && size && media.duration > 0 && Number.isFinite(media.duration) ? Math.round(size * 8 / media.duration / 1000) : 0;
+        player.el.nowThumb.title = kbps ? 'Playing at ' + kbps + ' Kbps' : '';
+        // rotate only while it plays and the window is shown (no timer otherwise: phone-power-client)
+        const rotate = open && !player.changing && lines.length > 1 && !media.paused && !document.hidden;
+        if (rotate && !player.nowTimer) {
+            player.nowTimer = setTimeout(function tick() {
+                player.nowTimer = 0;
+                player.nowLine = (player.nowLine || 0) + 1;
+                mediaPlayerSyncNowLine(player);
+            }, 3250);
+        } else if (!rotate && player.nowTimer) {
+            clearTimeout(player.nowTimer);
+            player.nowTimer = 0;
+        }
+    }
+
+    /** Press and hold previous / next: rewind / fast-forward while held (the orb shows play meanwhile); a click steps.
+        A video's buttons are Rewind / Fast forward themselves. */
+    function mediaPlayerWireSeekButtons(player) {
+        const media = player.el.media;
+        const stopSeeking = () => {
+            if (!player.seeking) return;
+            const btn = player.seeking.btn;
+            clearInterval(player.seeking.timer);
+            media.playbackRate = 1;
+            btn.classList.remove('is-seeking');
+            player.seeking = null;
+            mediaPlayerSyncTransport(player);
+        };
+        const startSeeking = (btn, dir) => {
+            if (!media.getAttribute('src') || !Number.isFinite(media.duration)) return false;
+            btn.classList.add('is-seeking');
+            // fast-forward plays at 5x; rewind steps back (browsers cannot play backwards)
+            if (dir > 0) {
+                media.playbackRate = 5;
+                if (media.paused) media.play().catch(() => {});
+            }
+            player.seeking = {
+                btn, dir,
+                timer: dir < 0 ? setInterval(() => {
+                    // a hidden window does not rewind on its own (phone-power-client)
+                    if (document.hidden) { stopSeeking(); return; }
+                    try { media.currentTime = Math.max(0, media.currentTime - 1.5); } catch (err) { /* not seekable */ }
+                }, 250) : 0
+            };
+            mediaPlayerSyncTransport(player);
+            return true;
+        };
+        [[player.el.prev, -1], [player.el.next, 1]].forEach(([btn, dir]) => {
+            let hold = 0;
+            let held = false;
+            btn.addEventListener('pointerdown', (e) => {
+                if (e.button !== 0 || btn.disabled) return;
+                held = false;
+                const video = player.el.transport.classList.contains('is-video');
+                if (video) return;
+                hold = setTimeout(() => { hold = 0; held = startSeeking(btn, dir); }, 400);
+            });
+            const release = () => {
+                if (hold) { clearTimeout(hold); hold = 0; }
+                if (player.seeking && player.seeking.btn === btn && !player.el.transport.classList.contains('is-video')) stopSeeking();
+            };
+            btn.addEventListener('pointerup', release);
+            btn.addEventListener('pointerleave', release);
+            btn.addEventListener('pointercancel', release);
+            btn.addEventListener('click', () => {
+                if (held) { held = false; return; }
+                if (player.el.transport.classList.contains('is-video')) {
+                    // a video: Rewind / Fast forward toggle; play returns to normal speed
+                    if (player.seeking && player.seeking.btn === btn) stopSeeking();
+                    else { stopSeeking(); startSeeking(btn, dir); }
+                    return;
+                }
+                if (!mediaPlayerStep(player, dir) && dir > 0) mediaPlayerStop(player);
+            });
+        });
+        media.addEventListener('pause', () => { if (player.seeking && player.seeking.dir > 0) stopSeeking(); });
+        player.stopSeeking = stopSeeking;
+    }
+
+    /** The seek groove's value: its thumb (17px) travels from 7px in to 7px short of the far end. */
+    function mediaPlayerSeekValue(seek, clientX) {
+        const rect = seek.getBoundingClientRect();
+        if (rect.width <= 31) return 0;
+        return Math.max(0, Math.min(1, (clientX - rect.left - 15.5) / (rect.width - 31)));
+    }
+
+    return { nowLines: mediaPlayerNowLines, syncNowLine: mediaPlayerSyncNowLine, wireSeekButtons: mediaPlayerWireSeekButtons, seekValue: mediaPlayerSeekValue };
+})();
 
 // ---- views and history ----
 
@@ -863,7 +1007,7 @@ const mediaPlayerLibrary = (function () {
         const map = (x) => ({
             key: 'local:' + x.hash, kind: '', title: x.title || mediaPlayerTitle(x.name), artist: x.artist || '', albumArtist: x.albumArtist || '',
             album: x.album || '', genre: x.genre || '', year: x.year || 0, track: x.track || 0, disc: x.disc || 0, composer: x.composer || '',
-            duration: x.duration || 0, added: x.added || 0, mime: x.mime || '', name: x.name || '',
+            duration: x.duration || 0, added: x.added || 0, mime: x.mime || '', name: x.name || '', size: x.size || 0,
             url: base ? base + '/media/file/' + encodeURIComponent(x.id) : '', art: x.art && base ? base + '/media/art/' + x.hash : ''
         });
         return {
@@ -1157,8 +1301,16 @@ const mediaPlayerLibrary = (function () {
         return g.tracks.slice().sort((a, b) => (a.album || '').localeCompare(b.album || '') || (a.disc - b.disc) || (a.track - b.track));
     }
 
+    /** Play with an empty Now Playing list: the tracks the Library shows (its rows, or every group's tracks). */
+    function mediaPlayerPlayShown(player) {
+        const lib = player.library;
+        let tracks = (lib.rows || []).filter((t) => t && t.url);
+        if (!tracks.length) tracks = (lib.groups || []).reduce((all, g) => all.concat((g && g.tracks) || []), []);
+        if (tracks.length) mediaPlayerPlayTracks(player, tracks, false);
+    }
+
     function mediaPlayerPlayTracks(player, tracks, add) {
-        const entries = tracks.filter((t) => t.url).map((t) => ({ name: t.title, url: t.url, mime: t.mime, art: t.art, artist: t.artist, album: t.album }));
+        const entries = tracks.filter((t) => t.url).map((t) => ({ name: t.title, title: t.title, url: t.url, mime: t.mime, art: t.art, artist: t.artist, album: t.album, composer: t.composer, size: t.size }));
         if (!entries.length) return;
         if (!add) mediaPlayerClear(player);
         mediaPlayerAdd(player, entries, !add);
@@ -1195,7 +1347,7 @@ const mediaPlayerLibrary = (function () {
         signal: appScopeSignal, loadLibrary: mediaPlayerLoadLibrary, renderTree: mediaPlayerRenderTree, setRating: mediaPlayerSetRating,
         ratingOf: mediaPlayerRatingOf, groups: mediaPlayerGroups, length: mediaPlayerLength, setCategory: mediaPlayerSetCategory,
         renderCrumbs: mediaPlayerRenderCrumbs, renderLibrary: mediaPlayerRenderLibrary, nav: mediaPlayerNav,
-        activateRow: mediaPlayerActivateRow, loadFolder: mediaPlayerLoadFolder
+        activateRow: mediaPlayerActivateRow, loadFolder: mediaPlayerLoadFolder, playShown: mediaPlayerPlayShown
     };
 })();
 function mediaPlayerSetCategory(player, category) { return mediaPlayerLibrary.setCategory(player, category); }
@@ -1436,23 +1588,28 @@ function mediaPlayerWireSliders(player) {
         e.preventDefault();
         seek.setPointerCapture(e.pointerId);
         player.scrubbing = true;
-        player.scrubTime = mediaPlayerSliderValue(seek, e.clientX) * media.duration;
+        player.scrubTime = mediaPlayerBar.seekValue(seek, e.clientX) * media.duration;
         mediaPlayerSyncClock(player);
     });
     seek.addEventListener('pointermove', (e) => {
         if (!player.scrubbing) return;
-        player.scrubTime = mediaPlayerSliderValue(seek, e.clientX) * media.duration;
+        player.scrubTime = mediaPlayerBar.seekValue(seek, e.clientX) * media.duration;
         mediaPlayerSyncClock(player);
     });
     const endScrub = (e) => {
         if (!player.scrubbing) return;
         player.scrubbing = false;
         try {
-            media.currentTime = mediaPlayerSliderValue(seek, e.clientX) * media.duration;
+            media.currentTime = mediaPlayerBar.seekValue(seek, e.clientX) * media.duration;
         } catch (err) { /* not seekable */ }
         mediaPlayerSyncClock(player);
     };
     seek.addEventListener('pointerup', endScrub);
+    seek.addEventListener('lostpointercapture', () => {
+        if (!player.scrubbing) return;
+        player.scrubbing = false;
+        mediaPlayerSyncClock(player);
+    });
     seek.addEventListener('pointercancel', () => {
         player.scrubbing = false;
         mediaPlayerSyncClock(player);
@@ -1473,14 +1630,17 @@ function mediaPlayerWireSliders(player) {
         e.preventDefault();
         volume.setPointerCapture(e.pointerId);
         volDrag = true;
+        volume.classList.add('is-dragging');
         mediaPlayerSetVolume(player, mediaPlayerSliderValue(track, e.clientX));
     });
     volume.addEventListener('pointermove', (e) => {
         if (volDrag) mediaPlayerSetVolume(player, mediaPlayerSliderValue(track, e.clientX));
     });
-    const endVol = () => { volDrag = false; };
+    const endVol = () => { volDrag = false; volume.classList.remove('is-dragging'); };
     volume.addEventListener('pointerup', endVol);
     volume.addEventListener('pointercancel', endVol);
+    // a release the window never saw (another window took the pointer) must not leave the thumb pressed
+    volume.addEventListener('lostpointercapture', endVol);
     volume.addEventListener('keydown', (e) => {
         const step = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 0.05 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -0.05 : 0;
         if (!step) return;
@@ -1637,7 +1797,16 @@ function createDesktopMediaPlayer() {
     media.addEventListener('ended', () => {
         if (!mediaPlayerStep(player, 1)) mediaPlayerSyncTransport(player);
     });
-    media.addEventListener('timeupdate', () => mediaPlayerSyncClock(player));
+    media.addEventListener('timeupdate', () => {
+        mediaPlayerSyncClock(player);
+        if (!player.nowTimer) mediaPlayerBar.syncNowLine(player);
+    });
+    // "Media changing..." until the first frame
+    media.addEventListener('loadeddata', () => {
+        if (!player.changing) return;
+        player.changing = false;
+        mediaPlayerSyncTransport(player);
+    });
     media.addEventListener('loadedmetadata', () => mediaPlayerSyncTransport(player));
     media.addEventListener('durationchange', () => mediaPlayerSyncClock(player));
     media.addEventListener('loadeddata', () => mediaPlayerPaintFrame(player, true));
@@ -1648,6 +1817,7 @@ function createDesktopMediaPlayer() {
     media.addEventListener('error', () => {
         if (player.clearEpoch === player.epoch) return;
         if (!media.getAttribute('src')) return;
+        player.changing = false;
         mediaPlayerStatus(player, DESKTOP_MEDIA_ASSIST);
         mediaPlayerSyncTransport(player);
     });
@@ -1662,8 +1832,7 @@ function createDesktopMediaPlayer() {
 
     el.play.addEventListener('click', () => mediaPlayerToggle(player));
     el.stop.addEventListener('click', () => mediaPlayerStop(player));
-    el.prev.addEventListener('click', () => mediaPlayerStep(player, -1));
-    el.next.addEventListener('click', () => mediaPlayerStep(player, 1));
+    mediaPlayerBar.wireSeekButtons(player);
     el.shuffle.addEventListener('click', () => mediaPlayerSetShuffle(player, !player.shuffle));
     el.repeat.addEventListener('click', () => mediaPlayerSetRepeat(player, !player.repeat));
     el.mute.addEventListener('click', () => {
@@ -1861,6 +2030,6 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         WMP_TABS, WMP_BLANK_PAGES, WMP_TYPE_NAMES, mediaPlayerKindFor, mediaPlayerCanPlay, mediaPlayerTitle,
         mediaPlayerTypeName, mediaPlayerNextIndex, mediaPlayerMenuItems, mediaPlayerLibrary,
-        mediaPlayerBodyHtml, findDesktopMediaRow, desktopMediaClock, desktopMediaNameFromUrl
+        mediaPlayerBodyHtml, findDesktopMediaRow, desktopMediaClock, desktopMediaNameFromUrl, mediaPlayerNowLines: mediaPlayerBar.nowLines
     };
 }

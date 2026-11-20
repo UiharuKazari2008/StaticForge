@@ -88,13 +88,21 @@ assert.ok(!mu.includes("launchId: 'music'") && !mu.includes("launchId: 'video'")
 assert.ok(read('public/scripts/comp/galleryActions.js').includes("text: 'Open in Media Player'"));
 assert.ok(read('public/scripts/comp/desktop-apps/emotion.js').includes("resultBadge.title = 'Open in Media Player'"));
 const css = read('public/css/desktop-apps/mediaPlayer.css');
-assert.ok(css.includes('--window-frame-bottom: 66px;'), 'the frame extends 66px into the client for the transport');
+assert.ok(css.includes('--window-frame-bottom: 60px;'), 'the frame extends 60px into the client for the transport (the VM)');
 assert.ok(read('public/css/aero-glass.css').includes('--window-frame-bottom: 0px;') && read('public/css/modal-window-title-toolbar.css').includes('bottom: calc(var(--window-frame-inset) + var(--window-frame-bottom, 0px) - 2px);'), 'the frame honours the extension');
 assert.ok(css.includes('height: 36px;') && css.includes('#7a8295 0, #7a8295 1px, #626c88 1px, #393f4d 16px, #151516 16px'), "the tab strip's measured gradient");
-assert.ok(css.includes('width: 401px;') && css.includes('border: 1px solid #9eacbf;'), "the pill's size and edge");
-assert.ok(css.includes("url('/static_images/vista-wmp/orb.png')") && css.includes("url('/static_images/vista-wmp/orb-halo.png')"), 'the orb and its halo');
-assert.ok(css.includes('#84c5ff, #84c5ff 1px, #0f41cd 1px, #0f41cd 3px, #6e96ff 3px'), "the seek line's played colours");
-['play', 'pause', 'next', 'prev', 'stop', 'shuffle', 'shuffle-on', 'repeat', 'repeat-on', 'orb', 'orb-hot', 'orb-down', 'orb-halo', 'thumb', 'volume-high', 'volume-mute', 'button-hot', 'view-stack', 'star', 'nav-library', 'nav-songs', 'nav-video', 'art-music', 'art-video', 'app-16']
+// the bar (#956): wmploc's art placed where the VM draws it, around the client's centre
+assert.ok(css.includes('left: calc(50% - 279px);') && css.includes('width: 558px;'), 'the pill (2164) centred');
+assert.ok(css.includes('left: 171px;') && css.includes('width: 182px;'), 'the transport group (4153) at -108');
+assert.ok(css.includes('right: calc(50% + 217px);'), 'the elapsed time 217px left of the centre');
+const theme = read('public/css/themes/vista/media-player.css');
+['transport-pill', 'transport-group', 'transport-orbface', 'transport-orbface-hot', 'transport-orbface-down', 'transport-prevbar-hot', 'transport-nextbar-down', 'transport-stop-hot', 'seek-groove', 'seek-fill', 'seek-tip', 'seek-thumb', 'volume-fill', 'button-hot', 'button-down', 'orb-halo']
+    .forEach((name) => assert.ok(theme.includes("url('/static_images/vista-wmp/" + name + ".png')"), name + ' in the theme'));
+assert.ok(!/#[0-9a-f]{3,8}\b|rgb\(/i.test(css.slice(css.indexOf('/* ---- the transport'), css.indexOf('/* ---- compact mode')).replace(/\/\*[\s\S]*?\*\//g, '')), 'no colour literal in the bar layout (ui-standard)');
+assert.ok(html.includes('title="Turn shuffle on"') && html.includes('title="Previous (press and hold to rewind)"') && html.includes('title="Press and hold to fast-forward"') && html.includes('title="View full screen"') && html.includes('title="Seek"'), "the VM's tooltips");
+assert.deepStrictEqual(mp.mediaPlayerNowLines({ title: 'Amanda', artist: 'Aisha Duo', composer: 'Luca Gusella', album: 'Quiet Songs' }), ['Amanda', 'Aisha Duo', 'Luca Gusella [Composer]', 'Quiet Songs'], 'the rotating line');
+assert.deepStrictEqual(mp.mediaPlayerNowLines({ name: 'Bear.webm', kind: 'video', artist: 'x' }), ['Bear'], 'a video shows its title only');
+['play', 'pause', 'next', 'prev', 'stop', 'shuffle', 'shuffle-on', 'repeat', 'repeat-on', 'transport-pill', 'transport-group', 'transport-orbface', 'orb-halo', 'seek-groove', 'thumb', 'volume-high', 'volume-mute', 'button-hot', 'view-stack', 'star', 'nav-library', 'nav-songs', 'nav-video', 'art-music', 'art-video', 'app-16']
     .forEach((name) => assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-wmp', name + '.png')), name + '.png shipped'));
 assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/app_icons/media_player.png')), 'the app icon');
 assert.ok(!fs.existsSync(path.join(ROOT, 'public/scripts/comp/desktop-apps/mediaPlayers.js')), 'the old script is gone');

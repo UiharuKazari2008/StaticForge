@@ -12,3 +12,145 @@
     --wmp-tile-sel: linear-gradient(#dcebfc, #c1dbf7);
     --wmp-tile-sel-edge: #99defd;
 }
+
+/* ---- the transport: wmploc.dll's art (layout: css/desktop-apps/mediaPlayer.css, #956) ----
+   2164 the pill, 4153 / 4155 / 4154 the transport group normal / hot / pressed cut by its region map
+   (4157: stop, previous, the orb, next), 4160 the orb's halo, 4162-4165 play / pause, 4166-4173 next /
+   previous / rewind / fast-forward, 4174-4177 shuffle / repeat, 4179 / 4180 stop, 4724 / 4725 the hot
+   and pressed square, 5244-5248 the speaker, 5240 the volume's played part, 3885 / 3887 / 3886 its
+   thumb, 446 / 447 / 456 the seek groove, played part and tip, 448-450 the seek thumb, 4606-4609 the
+   full screen / compact stack normal / pressed / hot / disabled. */
+
+#desktopMediaPlayer {
+    --wmp-now-text: #002963;
+    --wmp-now-art-shadow: 1px 1px 0 rgb(0 0 0 / 35%);
+}
+
+#desktopMediaPlayer :is(.wmp-now-title, .wmp-time) {
+    color: var(--wmp-now-text);
+}
+
+#desktopMediaPlayer .wmp-now-thumb :is(img, canvas) {
+    box-shadow: var(--wmp-now-art-shadow);
+}
+
+#desktopMediaPlayer .wmp-seek {
+    border-color: transparent;
+    border-image: image-set(url('/static_images/vista-wmp/seek-groove.png') 1x, url('/static_images/hidpi/125/vista-wmp/seek-groove.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/seek-groove.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/seek-groove.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/seek-groove.png') 2x) 0 9 fill / 0 9px stretch;
+}
+
+#desktopMediaPlayer .wmp-seek-fill {
+    border-color: transparent;
+    border-image: image-set(url('/static_images/vista-wmp/seek-fill.png') 1x, url('/static_images/hidpi/125/vista-wmp/seek-fill.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/seek-fill.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/seek-fill.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/seek-fill.png') 2x) 0 9 fill / 0 9px stretch;
+}
+
+#desktopMediaPlayer .wmp-seek-tip { background: image-set(url('/static_images/vista-wmp/seek-tip.png') 1x, url('/static_images/hidpi/125/vista-wmp/seek-tip.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/seek-tip.png') 1.5294x, url('/static_images/hidpi/175/vista-wmp/seek-tip.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/seek-tip.png') 2x) no-repeat; }
+#desktopMediaPlayer .wmp-seek-thumb { background: image-set(url('/static_images/vista-wmp/seek-thumb.png') 1x, url('/static_images/hidpi/125/vista-wmp/seek-thumb.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/seek-thumb.png') 1.5294x, url('/static_images/hidpi/175/vista-wmp/seek-thumb.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/seek-thumb.png') 2x) no-repeat; }
+#desktopMediaPlayer .wmp-seek-thumb:hover { background-image: image-set(url('/static_images/vista-wmp/seek-thumb-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/seek-thumb-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/seek-thumb-hot.png') 1.5294x, url('/static_images/hidpi/175/vista-wmp/seek-thumb-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/seek-thumb-hot.png') 2x); }
+#desktopMediaPlayer .wmp-seek.is-scrubbing .wmp-seek-thumb { background-image: image-set(url('/static_images/vista-wmp/seek-thumb-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/seek-thumb-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/seek-thumb-down.png') 1.5294x, url('/static_images/hidpi/175/vista-wmp/seek-thumb-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/seek-thumb-down.png') 2x); }
+
+#desktopMediaPlayer .wmp-pill { background-image: image-set(url('/static_images/vista-wmp/transport-pill.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-pill.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-pill.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-pill.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-pill.png') 2x); }
+#desktopMediaPlayer .wmp-group { background-image: image-set(url('/static_images/vista-wmp/transport-group.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-group.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-group.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-group.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-group.png') 2x); }
+
+/* shuffle, repeat, mute: the glyph over the hot / pressed square */
+#desktopMediaPlayer .wmp-shuffle { background-image: image-set(url('/static_images/vista-wmp/shuffle.png') 1x, url('/static_images/hidpi/125/vista-wmp/shuffle.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/shuffle.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/shuffle.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/shuffle.png') 2x); }
+#desktopMediaPlayer .wmp-shuffle[aria-pressed="true"] { background-image: image-set(url('/static_images/vista-wmp/shuffle-on.png') 1x, url('/static_images/hidpi/125/vista-wmp/shuffle-on.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/shuffle-on.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/shuffle-on.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/shuffle-on.png') 2x); }
+#desktopMediaPlayer .wmp-repeat { background-image: image-set(url('/static_images/vista-wmp/repeat.png') 1x, url('/static_images/hidpi/125/vista-wmp/repeat.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/repeat.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/repeat.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/repeat.png') 2x); }
+#desktopMediaPlayer .wmp-repeat[aria-pressed="true"] { background-image: image-set(url('/static_images/vista-wmp/repeat-on.png') 1x, url('/static_images/hidpi/125/vista-wmp/repeat-on.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/repeat-on.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/repeat-on.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/repeat-on.png') 2x); }
+#desktopMediaPlayer .wmp-mute[data-level="high"] { background-image: image-set(url('/static_images/vista-wmp/volume-high.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-high.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-high.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-high.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-high.png') 2x); }
+#desktopMediaPlayer .wmp-mute[data-level="mid"] { background-image: image-set(url('/static_images/vista-wmp/volume-mid.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-mid.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-mid.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-mid.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-mid.png') 2x); }
+#desktopMediaPlayer .wmp-mute[data-level="low"] { background-image: image-set(url('/static_images/vista-wmp/volume-low.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-low.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-low.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-low.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-low.png') 2x); }
+#desktopMediaPlayer .wmp-mute[data-level="zero"] { background-image: image-set(url('/static_images/vista-wmp/volume-zero.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-zero.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-zero.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-zero.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-zero.png') 2x); }
+#desktopMediaPlayer .wmp-mute[data-level="mute"] { background-image: image-set(url('/static_images/vista-wmp/volume-mute.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-mute.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-mute.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-mute.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-mute.png') 2x); }
+
+#desktopMediaPlayer :is(.wmp-shuffle, .wmp-repeat, .wmp-mute):hover {
+    background-image: var(--wmp-glyph), image-set(url('/static_images/vista-wmp/button-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/button-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/button-hot.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/button-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/button-hot.png') 2x);
+}
+
+#desktopMediaPlayer :is(.wmp-shuffle, .wmp-repeat, .wmp-mute):hover:active {
+    background-image: var(--wmp-glyph), image-set(url('/static_images/vista-wmp/button-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/button-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/button-down.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/button-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/button-down.png') 2x);
+}
+
+#desktopMediaPlayer .wmp-shuffle { --wmp-glyph: image-set(url('/static_images/vista-wmp/shuffle.png') 1x, url('/static_images/hidpi/125/vista-wmp/shuffle.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/shuffle.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/shuffle.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/shuffle.png') 2x); }
+#desktopMediaPlayer .wmp-shuffle[aria-pressed="true"] { --wmp-glyph: image-set(url('/static_images/vista-wmp/shuffle-on.png') 1x, url('/static_images/hidpi/125/vista-wmp/shuffle-on.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/shuffle-on.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/shuffle-on.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/shuffle-on.png') 2x); }
+#desktopMediaPlayer .wmp-repeat { --wmp-glyph: image-set(url('/static_images/vista-wmp/repeat.png') 1x, url('/static_images/hidpi/125/vista-wmp/repeat.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/repeat.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/repeat.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/repeat.png') 2x); }
+#desktopMediaPlayer .wmp-repeat[aria-pressed="true"] { --wmp-glyph: image-set(url('/static_images/vista-wmp/repeat-on.png') 1x, url('/static_images/hidpi/125/vista-wmp/repeat-on.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/repeat-on.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/repeat-on.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/repeat-on.png') 2x); }
+#desktopMediaPlayer .wmp-mute[data-level="high"] { --wmp-glyph: image-set(url('/static_images/vista-wmp/volume-high.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-high.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-high.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-high.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-high.png') 2x); }
+#desktopMediaPlayer .wmp-mute[data-level="mid"] { --wmp-glyph: image-set(url('/static_images/vista-wmp/volume-mid.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-mid.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-mid.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-mid.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-mid.png') 2x); }
+#desktopMediaPlayer .wmp-mute[data-level="low"] { --wmp-glyph: image-set(url('/static_images/vista-wmp/volume-low.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-low.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-low.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-low.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-low.png') 2x); }
+#desktopMediaPlayer .wmp-mute[data-level="zero"] { --wmp-glyph: image-set(url('/static_images/vista-wmp/volume-zero.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-zero.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-zero.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-zero.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-zero.png') 2x); }
+#desktopMediaPlayer .wmp-mute[data-level="mute"] { --wmp-glyph: image-set(url('/static_images/vista-wmp/volume-mute.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-mute.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-mute.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-mute.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-mute.png') 2x); }
+
+/* the group's buttons: the glyph (1px above the face, as the VM draws it) over the face of the state */
+#desktopMediaPlayer .wmp-stop {
+    background: image-set(url('/static_images/vista-wmp/stop.png') 1x, url('/static_images/hidpi/125/vista-wmp/stop.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/stop.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/stop.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/stop.png') 2x) no-repeat 0 -1px;
+}
+
+#desktopMediaPlayer .wmp-stop:disabled {
+    background-image: image-set(url('/static_images/vista-wmp/stop-disabled.png') 1x, url('/static_images/hidpi/125/vista-wmp/stop-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/stop-disabled.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/stop-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/stop-disabled.png') 2x);
+}
+
+#desktopMediaPlayer .wmp-stop:hover:not(:disabled) {
+    background: image-set(url('/static_images/vista-wmp/stop.png') 1x, url('/static_images/hidpi/125/vista-wmp/stop.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/stop.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/stop.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/stop.png') 2x) no-repeat 0 -1px, image-set(url('/static_images/vista-wmp/transport-stop-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-stop-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-stop-hot.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/transport-stop-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-stop-hot.png') 2x) no-repeat 0 0;
+}
+
+#desktopMediaPlayer .wmp-stop:hover:active:not(:disabled) {
+    background: image-set(url('/static_images/vista-wmp/stop.png') 1x, url('/static_images/hidpi/125/vista-wmp/stop.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/stop.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/stop.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/stop.png') 2x) no-repeat 0 -1px, image-set(url('/static_images/vista-wmp/transport-stop-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-stop-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-stop-down.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/transport-stop-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-stop-down.png') 2x) no-repeat 0 0;
+}
+
+#desktopMediaPlayer .wmp-prev { --wmp-glyph: image-set(url('/static_images/vista-wmp/prev.png') 1x, url('/static_images/hidpi/125/vista-wmp/prev.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/prev.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/prev.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/prev.png') 2x); --wmp-face: image-set(url('/static_images/vista-wmp/transport-prevbar.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-prevbar.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-prevbar.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-prevbar.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-prevbar.png') 2x); }
+#desktopMediaPlayer .wmp-prev:disabled { --wmp-glyph: image-set(url('/static_images/vista-wmp/prev-disabled.png') 1x, url('/static_images/hidpi/125/vista-wmp/prev-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/prev-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/prev-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/prev-disabled.png') 2x); }
+#desktopMediaPlayer .wmp-next { --wmp-glyph: image-set(url('/static_images/vista-wmp/next.png') 1x, url('/static_images/hidpi/125/vista-wmp/next.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/next.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/next.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/next.png') 2x); --wmp-face: image-set(url('/static_images/vista-wmp/transport-nextbar.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-nextbar.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-nextbar.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-nextbar.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-nextbar.png') 2x); }
+#desktopMediaPlayer .wmp-next:disabled { --wmp-glyph: image-set(url('/static_images/vista-wmp/next-disabled.png') 1x, url('/static_images/hidpi/125/vista-wmp/next-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/next-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/next-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/next-disabled.png') 2x); }
+#desktopMediaPlayer .wmp-transport.is-video .wmp-prev,
+#desktopMediaPlayer .wmp-prev.is-seeking { --wmp-glyph: image-set(url('/static_images/vista-wmp/rewind.png') 1x, url('/static_images/hidpi/125/vista-wmp/rewind.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/rewind.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/rewind.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/rewind.png') 2x); }
+#desktopMediaPlayer .wmp-transport.is-video .wmp-next,
+#desktopMediaPlayer .wmp-next.is-seeking { --wmp-glyph: image-set(url('/static_images/vista-wmp/fastforward.png') 1x, url('/static_images/hidpi/125/vista-wmp/fastforward.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/fastforward.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/fastforward.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/fastforward.png') 2x); }
+#desktopMediaPlayer .wmp-prev:hover:not(:disabled) { --wmp-face: image-set(url('/static_images/vista-wmp/transport-prevbar-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-prevbar-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-prevbar-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-prevbar-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-prevbar-hot.png') 2x); }
+#desktopMediaPlayer .wmp-next:hover:not(:disabled) { --wmp-face: image-set(url('/static_images/vista-wmp/transport-nextbar-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-nextbar-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-nextbar-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-nextbar-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-nextbar-hot.png') 2x); }
+#desktopMediaPlayer .wmp-prev:is(:hover:active, .is-seeking):not(:disabled) { --wmp-face: image-set(url('/static_images/vista-wmp/transport-prevbar-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-prevbar-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-prevbar-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-prevbar-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-prevbar-down.png') 2x); }
+#desktopMediaPlayer .wmp-next:is(:hover:active, .is-seeking):not(:disabled) { --wmp-face: image-set(url('/static_images/vista-wmp/transport-nextbar-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-nextbar-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-nextbar-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-nextbar-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-nextbar-down.png') 2x); }
+
+#desktopMediaPlayer .wmp-prev {
+    background: var(--wmp-glyph) no-repeat 2px -1px, var(--wmp-face) no-repeat 0 0;
+}
+
+#desktopMediaPlayer .wmp-next {
+    background: var(--wmp-glyph) no-repeat -1px -1px, var(--wmp-face) no-repeat 0 0;
+}
+
+#desktopMediaPlayer .wmp-play {
+    --wmp-glyph: image-set(url('/static_images/vista-wmp/play.png') 1x, url('/static_images/hidpi/125/vista-wmp/play.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/play.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/play.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/play.png') 2x);
+    --wmp-face: image-set(url('/static_images/vista-wmp/transport-orbface.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-orbface.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-orbface.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-orbface.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-orbface.png') 2x);
+}
+
+#desktopMediaPlayer .wmp-play.is-playing { --wmp-glyph: image-set(url('/static_images/vista-wmp/pause.png') 1x, url('/static_images/hidpi/125/vista-wmp/pause.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/pause.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/pause.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/pause.png') 2x); }
+#desktopMediaPlayer .wmp-play:disabled { --wmp-glyph: image-set(url('/static_images/vista-wmp/play-disabled.png') 1x, url('/static_images/hidpi/125/vista-wmp/play-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/play-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/play-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/play-disabled.png') 2x); }
+#desktopMediaPlayer .wmp-play:hover:not(:disabled) { --wmp-face: image-set(url('/static_images/vista-wmp/transport-orbface-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-orbface-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-orbface-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-orbface-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-orbface-hot.png') 2x); }
+#desktopMediaPlayer .wmp-play:hover:active:not(:disabled) { --wmp-face: image-set(url('/static_images/vista-wmp/transport-orbface-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/transport-orbface-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/transport-orbface-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/transport-orbface-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/transport-orbface-down.png') 2x); }
+
+#desktopMediaPlayer .wmp-play::after {
+    background-image: var(--wmp-glyph), var(--wmp-face);
+    background-position: 0 -1px, 0 0;
+}
+
+#desktopMediaPlayer .wmp-orb-halo { background-image: image-set(url('/static_images/vista-wmp/orb-halo.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb-halo.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb-halo.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb-halo.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb-halo.png') 2x); }
+
+#desktopMediaPlayer .wmp-volume-fill { background-image: image-set(url('/static_images/vista-wmp/volume-fill.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-fill.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-fill.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/volume-fill.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-fill.png') 2x); }
+#desktopMediaPlayer .wmp-volume-thumb { background-image: image-set(url('/static_images/vista-wmp/thumb.png') 1x, url('/static_images/hidpi/125/vista-wmp/thumb.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/thumb.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/thumb.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/thumb.png') 2x); }
+#desktopMediaPlayer .wmp-volume:hover .wmp-volume-thumb { background-image: image-set(url('/static_images/vista-wmp/thumb-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/thumb-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/thumb-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/thumb-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/thumb-hot.png') 2x); }
+#desktopMediaPlayer .wmp-volume.is-dragging .wmp-volume-thumb { background-image: image-set(url('/static_images/vista-wmp/thumb-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/thumb-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/thumb-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/thumb-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/thumb-down.png') 2x); }
+
+#desktopMediaPlayer .wmp-stack button { background-image: image-set(url('/static_images/vista-wmp/view-stack.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-stack.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-stack.png') 1.5238x, url('/static_images/hidpi/175/vista-wmp/view-stack.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-stack.png') 2x); }
+#desktopMediaPlayer .wmp-stack button:hover:not(:disabled) { background-image: image-set(url('/static_images/vista-wmp/view-stack-hot-bottom.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-stack-hot-bottom.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-stack-hot-bottom.png') 1.5238x, url('/static_images/hidpi/175/vista-wmp/view-stack-hot-bottom.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-stack-hot-bottom.png') 2x); }
+#desktopMediaPlayer .wmp-stack button:hover:active:not(:disabled) { background-image: image-set(url('/static_images/vista-wmp/view-stack-hot-top.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-stack-hot-top.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-stack-hot-top.png') 1.5238x, url('/static_images/hidpi/175/vista-wmp/view-stack-hot-top.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-stack-hot-top.png') 2x); }
+#desktopMediaPlayer .wmp-stack button:disabled { background-image: image-set(url('/static_images/vista-wmp/view-stack-disabled.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-stack-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-stack-disabled.png') 1.5238x, url('/static_images/hidpi/175/vista-wmp/view-stack-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-stack-disabled.png') 2x); }
+
+#desktopMediaPlayer :is(.wmp-pill, .wmp-group, .wmp-tbtn, .wmp-volume-fill, .wmp-volume-thumb, .wmp-orb-halo, .wmp-stack button),
+#desktopMediaPlayer .wmp-play::after {
+    background-repeat: no-repeat;
+}
+
+#desktopMediaPlayer .wmp-compact {
+    background-position: 0 -22px;
+}

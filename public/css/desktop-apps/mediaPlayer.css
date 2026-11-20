@@ -28,7 +28,7 @@
 #desktopMediaPlayer {
     /* the transport is frame glass extended into the client (aero-glass.css
        --window-frame-bottom): the frame paints under it and the client edge closes above it */
-    --window-frame-bottom: 66px;
+    --window-frame-bottom: 60px;
     --wmp-font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
     --wmp-link: #1e5bb8;
     --wmp-text: #000;
@@ -399,8 +399,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     height: 64px;
 }
 
-#desktopMediaPlayer .wmp-listpane-icon,
-#desktopMediaPlayer .wmp-now-thumb img {
+#desktopMediaPlayer .wmp-listpane-icon {
     position: absolute;
     inset: 0;
     margin: auto;
@@ -943,96 +942,115 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     font: var(--wmp-font);
 }
 
-/* ---- the transport (on the frame glass; the frame's client edge runs along its top) ---- */
+/* ---- the transport (on the frame glass; the frame's client edge runs along its top) ----
+   WMP 11's full-mode bar, measured on the VM (wmplayer.exe 1000x706 and 630-1000 px wide, 96 dpi; #956,
+   ~/.cache/vista-vm/wmp-bar). Every part is wmploc.dll's own art (themes/vista/media-player.css), placed
+   where the VM draws it. Coordinates are from the bar's top (the client edge) and the client's centre:
+   - seek groove (446, nine-sliced) 1px down, 8px in from both sides; the played part (447) and its tip
+     (456) inside it, 7px in; the thumb (448 / hot 449 / pressed 450) replaces the tip on hover
+   - the pill (2164, 558x68) centred; shuffle and repeat at -182 / -151, the transport group (4153, its
+     buttons cut by the region map 4157: stop, previous, the orb, next) at -108, mute at +84, the
+     volume's played part (5240) at +113, its thumb (3885) at +117 to +175
+   - thumbnail 33x33 (album art) or 33x22 (a video frame) at 8px, the title at 58px, the elapsed time
+     right-aligned 217px left of the centre; full screen over compact (4606-4609) 28px from the right */
 
 #desktopMediaPlayer .wmp-transport {
     position: relative;
     flex: none;
-    height: 66px;
-    box-sizing: border-box;
+    height: 60px;
 }
 
-/* the seek line: 4px, two rows under the client edge, the played part blue */
+/* :where keeps the reset below the theme's art (themes/vista/media-player.css) */
+#desktopMediaPlayer :where(.wmp-transport button) {
+    position: absolute;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    outline: none;
+    cursor: var(--c-default);
+}
+
+#desktopMediaPlayer :where(.wmp-transport button)::before,
+#desktopMediaPlayer :where(.wmp-transport button:not(.wmp-play))::after {
+    content: none;
+}
+
+/* the seek bar */
 #desktopMediaPlayer .wmp-seek {
     position: absolute;
-    top: 4px;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(#8492a2, #8492a2 1px, #c7d8ef 1px, #d5e3f3);
-    cursor: var(--c-default);
+    top: 1px;
+    left: 8px;
+    right: 8px;
+    height: 9px;
+    border-style: solid;
+    border-width: 0 9px;
+    box-sizing: border-box;
     outline: none;
+    cursor: var(--c-default);
+}
+
+/* --wmp-seek-x: the tip's left edge, 7px in at the start, 17px short of the groove's inner end at the end */
+#desktopMediaPlayer .wmp-seek :is(.wmp-seek-fill, .wmp-seek-tip, .wmp-seek-thumb) {
+    --wmp-seek-x: calc(7px + (100% + 18px - 31px) * var(--wmp-seek-frac, 0));
+    position: absolute;
+    display: none;
+    height: 9px;
+}
+
+#desktopMediaPlayer .wmp-seek.is-ready :is(.wmp-seek-fill, .wmp-seek-tip) {
+    display: block;
 }
 
 #desktopMediaPlayer .wmp-seek-fill {
-    position: absolute;
     top: 0;
-    left: 0;
-    bottom: 0;
-    width: var(--wmp-seek, 0%);
-    background: linear-gradient(#84c5ff, #84c5ff 1px, #0f41cd 1px, #0f41cd 3px, #6e96ff 3px);
-}
-
-#desktopMediaPlayer .wmp-seek-thumb {
-    position: absolute;
-    top: -5px;
-    left: var(--wmp-seek, 0%);
-    width: 12px;
-    height: 13px;
-    margin-left: -6px;
-    background: image-set(url('/static_images/vista-wmp/thumb.png') 1x, url('/static_images/hidpi/125/vista-wmp/thumb.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/thumb.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/thumb.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/thumb.png') 2x) no-repeat center;
-    opacity: 0;
-    transition: opacity 0.15s;
-}
-
-#desktopMediaPlayer .wmp-seek.is-ready:hover .wmp-seek-thumb,
-#desktopMediaPlayer .wmp-seek.is-ready:focus-visible .wmp-seek-thumb {
-    opacity: 1;
-}
-
-#desktopMediaPlayer .wmp-seek:active .wmp-seek-thumb {
-    background-image: image-set(url('/static_images/vista-wmp/thumb-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/thumb-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/thumb-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/thumb-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/thumb-down.png') 2x);
-    opacity: 1;
-}
-
-/* the pill sits at the window's centre; the now-playing side and the stack side share the rest */
-#desktopMediaPlayer .wmp-transport-row {
-    position: absolute;
-    top: 8px;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    align-items: center;
-}
-
-#desktopMediaPlayer .wmp-now-side {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    height: 100%;
-}
-
-/* now playing: 36x24 thumbnail at 14px, the title after it */
-#desktopMediaPlayer .wmp-now {
-    flex: 1 1 auto;
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    height: 100%;
-    padding-left: 6px;
+    left: -9px;
+    width: calc(var(--wmp-seek-x) + 9px);
+    border-style: solid;
+    border-width: 0 9px;
     box-sizing: border-box;
 }
 
+#desktopMediaPlayer .wmp-seek-tip,
+#desktopMediaPlayer .wmp-seek-thumb {
+    left: calc(var(--wmp-seek-x) - 9px);
+    width: 17px;
+}
+
+#desktopMediaPlayer .wmp-seek-tip {
+    top: 0;
+}
+
+#desktopMediaPlayer .wmp-seek-thumb {
+    top: 1px;
+}
+
+#desktopMediaPlayer .wmp-seek.is-ready:is(:hover, .is-scrubbing) .wmp-seek-thumb {
+    display: block;
+}
+
+#desktopMediaPlayer .wmp-seek.is-ready:is(:hover, .is-scrubbing) .wmp-seek-tip {
+    display: none;
+}
+
+/* now playing: the thumbnail, the title (rotating through its tags) and the elapsed time */
 #desktopMediaPlayer .wmp-now-thumb {
-    position: relative;
-    flex: none;
-    width: 36px;
-    height: 24px;
-    background: #000;
-    box-shadow: 0 0 0 1px hsl(0 0% 0% / 40%), 0 1px 2px hsl(0 0% 0% / 40%);
+    position: absolute;
+    left: 8px;
+    top: 18px;
+    width: 33px;
+    height: 33px;
+    overflow: visible;
     visibility: hidden;
+}
+
+#desktopMediaPlayer .wmp-now-thumb.has-frame {
+    top: 23px;
+    height: 22px;
 }
 
 #desktopMediaPlayer .wmp-now.has-item .wmp-now-thumb {
@@ -1040,333 +1058,168 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 }
 
 #desktopMediaPlayer .wmp-now-thumb canvas {
-    display: block;
-    width: 36px;
-    height: 24px;
+    display: none;
+    width: 33px;
+    height: 22px;
 }
 
-#desktopMediaPlayer .wmp-now-thumb img {
-    width: 20px;
-    height: 20px;
+#desktopMediaPlayer .wmp-now-thumb.has-frame canvas {
+    display: block;
+}
+
+#desktopMediaPlayer .wmp-now-thumb img,
+#desktopMediaPlayer .wmp-now-thumb img.is-cover {
+    position: static;
+    display: block;
+    width: 33px;
+    height: 33px;
+    margin: 0;
+    object-fit: cover;
+}
+
+#desktopMediaPlayer .wmp-now-title,
+#desktopMediaPlayer .wmp-time {
+    position: absolute;
+    top: 28px;
+    height: 15px;
+    font: var(--wmp-font);
+    line-height: 15px;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 #desktopMediaPlayer .wmp-now-title {
-    min-width: 0;
-    margin-left: 16px;
-    color: #002963;
-    font: var(--wmp-font);
-    white-space: nowrap;
-    overflow: hidden;
+    left: 58px;
+    right: calc(50% + 273px);
     text-overflow: ellipsis;
 }
 
 #desktopMediaPlayer .wmp-time {
-    flex: none;
-    width: 60px;
-    margin-right: 16px;
-    color: #002963;
-    font: var(--wmp-font);
+    right: calc(50% + 217px);
+    width: 56px;
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
 
-/* the pill */
+/* the pill and what it holds */
 #desktopMediaPlayer .wmp-pill {
-    position: relative;
-    flex: none;
-    display: flex;
-    align-items: center;
-    width: 401px;
-    height: 35px;
-    padding: 0 12px 0 14px;
-    border: 1px solid #9eacbf;
-    border-radius: 18px;
-    background: linear-gradient(#dbe8f7, #c9dff6 35%, #c5dcf5 65%, #cadff6);
-    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 75%), inset 0 -1px 0 hsl(0 0% 100% / 40%), 0 1px 0 hsl(0 0% 100% / 45%);
-    box-sizing: border-box;
+    position: absolute;
+    left: calc(50% - 279px);
+    top: 0;
+    width: 558px;
+    height: 60px;
 }
 
 #desktopMediaPlayer .wmp-tbtn {
-    flex: none;
+    top: 22px;
     width: 25px;
     height: 25px;
-    min-width: 0;
-    min-height: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 3px;
-    background: no-repeat center;
-    box-shadow: none;
-    cursor: var(--c-default);
 }
 
-/* the glossy light-blue square on hover (wmploc 4724 / 4725) */
-#desktopMediaPlayer .wmp-tbtn:hover:not(:disabled) {
-    background-color: transparent;
-    box-shadow: none;
+#desktopMediaPlayer .wmp-shuffle { left: 97px; }
+#desktopMediaPlayer .wmp-repeat { left: 128px; }
+#desktopMediaPlayer .wmp-mute { left: 363px; }
+
+#desktopMediaPlayer .wmp-group {
+    position: absolute;
+    left: 171px;
+    top: 9px;
+    width: 182px;
+    height: 51px;
 }
 
-#desktopMediaPlayer .wmp-tbtn:hover:not(:disabled)::before,
-#desktopMediaPlayer .wmp-tbtn:active:not(:disabled)::before {
+#desktopMediaPlayer .wmp-group .wmp-stop {
+    left: 2px;
+    top: 13px;
+}
+
+#desktopMediaPlayer .wmp-group :is(.wmp-prev, .wmp-next) {
+    top: 13px;
+    width: 53px;
+    height: 25px;
+}
+
+#desktopMediaPlayer .wmp-group .wmp-prev { left: 36px; }
+#desktopMediaPlayer .wmp-group .wmp-next { left: 127px; }
+
+/* the orb: its face and glyph on ::after, the halo (4160) behind them while hot */
+#desktopMediaPlayer .wmp-group .wmp-play {
+    left: 87px;
+    top: 4px;
+    width: 42px;
+    height: 43px;
+    border-radius: 50%;
+}
+
+#desktopMediaPlayer .wmp-group .wmp-play::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: image-set(url('/static_images/vista-wmp/button-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/button-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/button-hot.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/button-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/button-hot.png') 2x) no-repeat center;
-    z-index: -1;
-}
-
-#desktopMediaPlayer .wmp-tbtn:active:not(:disabled)::before {
-    background-image: image-set(url('/static_images/vista-wmp/button-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/button-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/button-down.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/button-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/button-down.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-tbtn {
-    position: relative;
-    isolation: isolate;
-}
-
-#desktopMediaPlayer .wmp-shuffle {
-    margin-left: 2px;
-    background-image: image-set(url('/static_images/vista-wmp/shuffle.png') 1x, url('/static_images/hidpi/125/vista-wmp/shuffle.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/shuffle.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/shuffle.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/shuffle.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-shuffle[aria-pressed="true"] {
-    background-image: image-set(url('/static_images/vista-wmp/shuffle-on.png') 1x, url('/static_images/hidpi/125/vista-wmp/shuffle-on.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/shuffle-on.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/shuffle-on.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/shuffle-on.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-repeat {
-    margin-left: 5px;
-    background-image: image-set(url('/static_images/vista-wmp/repeat.png') 1x, url('/static_images/hidpi/125/vista-wmp/repeat.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/repeat.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/repeat.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/repeat.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-repeat[aria-pressed="true"] {
-    background-image: image-set(url('/static_images/vista-wmp/repeat-on.png') 1x, url('/static_images/hidpi/125/vista-wmp/repeat-on.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/repeat-on.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/repeat-on.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/repeat-on.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-pill-rule {
-    flex: none;
-    width: 1px;
-    height: 23px;
-    margin: 0 8px 0 14px;
-    background: linear-gradient(hsl(0 0% 100% / 0%), #a5b5c8 25%, #a5b5c8 75%, hsl(0 0% 100% / 0%));
-}
-
-#desktopMediaPlayer .wmp-stop {
-    background-image: image-set(url('/static_images/vista-wmp/stop.png') 1x, url('/static_images/hidpi/125/vista-wmp/stop.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/stop.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/stop.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/stop.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-stop:disabled {
-    background-image: image-set(url('/static_images/vista-wmp/stop-disabled.png') 1x, url('/static_images/hidpi/125/vista-wmp/stop-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/stop-disabled.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/stop-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/stop-disabled.png') 2x);
-}
-
-/* the grey group: previous, the orb, next */
-#desktopMediaPlayer .wmp-group {
-    position: relative;
-    flex: none;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 144px;
-    height: 28px;
-    margin-left: 9px;
-    padding: 0 6px;
-    border: 1px solid #6c7583;
-    border-radius: 7px;
-    background: linear-gradient(#aab6c4, #96a4b2 50%, #8f9dab);
-    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 45%), inset 0 -1px 0 hsl(0 0% 0% / 10%);
-    box-sizing: border-box;
-}
-
-#desktopMediaPlayer .wmp-prev,
-#desktopMediaPlayer .wmp-next {
-    width: 53px;
-    height: 25px;
-    border-radius: 5px;
-}
-
-#desktopMediaPlayer .wmp-prev {
-    background-image: image-set(url('/static_images/vista-wmp/prev.png') 1x, url('/static_images/hidpi/125/vista-wmp/prev.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/prev.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/prev.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/prev.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-prev:disabled {
-    background-image: image-set(url('/static_images/vista-wmp/prev-disabled.png') 1x, url('/static_images/hidpi/125/vista-wmp/prev-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/prev-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/prev-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/prev-disabled.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-next {
-    background-image: image-set(url('/static_images/vista-wmp/next.png') 1x, url('/static_images/hidpi/125/vista-wmp/next.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/next.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/next.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/next.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-next:disabled {
-    background-image: image-set(url('/static_images/vista-wmp/next-disabled.png') 1x, url('/static_images/hidpi/125/vista-wmp/next-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/next-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/next-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/next-disabled.png') 2x);
-}
-
-#desktopMediaPlayer :is(.wmp-prev, .wmp-next):hover:not(:disabled)::before,
-#desktopMediaPlayer :is(.wmp-prev, .wmp-next):active:not(:disabled)::before {
-    background: linear-gradient(hsl(0 0% 100% / 55%), hsl(0 0% 100% / 25%) 50%, hsl(0 0% 100% / 10%) 50%, hsl(0 0% 100% / 30%));
-    border-radius: 5px;
-}
-
-/* the orb: 38x39 over the 52px halo, overflowing the group */
-#desktopMediaPlayer .wmp-orbbtn {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 52px;
-    height: 52px;
-    min-width: 0;
-    min-height: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: none;
-    box-shadow: none;
-    transform: translate(-50%, -50%);
-    cursor: var(--c-default);
-    z-index: 1;
 }
 
 #desktopMediaPlayer .wmp-orb-halo {
     position: absolute;
-    inset: 0;
-    background: image-set(url('/static_images/vista-wmp/orb-halo.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb-halo.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb-halo.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb-halo.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb-halo.png') 2x) no-repeat center;
+    left: -5px;
+    top: -4px;
+    width: 52px;
+    height: 52px;
     opacity: 0;
     transition: opacity 0.15s;
+    pointer-events: none;
 }
 
-#desktopMediaPlayer .wmp-orbbtn:hover:not(:disabled) .wmp-orb-halo {
+#desktopMediaPlayer .wmp-play:hover:not(:disabled) .wmp-orb-halo {
     opacity: 1;
 }
 
-#desktopMediaPlayer .wmp-orb-face {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 38px;
-    height: 39px;
-    margin: -19px 0 0 -19px;
-    background: image-set(url('/static_images/vista-wmp/orb.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb.png') 2x) no-repeat center;
-}
-
-#desktopMediaPlayer .wmp-orbbtn:hover:not(:disabled) .wmp-orb-face {
-    background-image: image-set(url('/static_images/vista-wmp/orb-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb-hot.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-orbbtn:active:not(:disabled) .wmp-orb-face {
-    background-image: image-set(url('/static_images/vista-wmp/orb-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/orb-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/orb-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/orb-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/orb-down.png') 2x);
-}
-
-/* the glyph on the orb: play (42x43 art centred, drawn at 20px) or pause */
-#desktopMediaPlayer .wmp-orb-face::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: image-set(url('/static_images/vista-wmp/play.png') 1x, url('/static_images/hidpi/125/vista-wmp/play.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/play.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/play.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/play.png') 2x) no-repeat center / 21px auto;
-}
-
-#desktopMediaPlayer .wmp-orbbtn.is-playing .wmp-orb-face::after {
-    background-image: image-set(url('/static_images/vista-wmp/pause.png') 1x, url('/static_images/hidpi/125/vista-wmp/pause.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/pause.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/pause.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/pause.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-orbbtn:disabled .wmp-orb-face {
-    filter: saturate(0.3) brightness(1.15);
-}
-
-#desktopMediaPlayer .wmp-orbbtn:disabled .wmp-orb-face::after {
-    background-image: image-set(url('/static_images/vista-wmp/play-disabled.png') 1x, url('/static_images/hidpi/125/vista-wmp/play-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/play-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/play-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/play-disabled.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-mute {
-    margin-left: 10px;
-}
-
-#desktopMediaPlayer .wmp-mute[data-level="high"] { background-image: image-set(url('/static_images/vista-wmp/volume-high.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-high.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-high.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-high.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-high.png') 2x); }
-#desktopMediaPlayer .wmp-mute[data-level="mid"] { background-image: image-set(url('/static_images/vista-wmp/volume-mid.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-mid.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-mid.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-mid.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-mid.png') 2x); }
-#desktopMediaPlayer .wmp-mute[data-level="low"] { background-image: image-set(url('/static_images/vista-wmp/volume-low.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-low.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-low.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-low.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-low.png') 2x); }
-#desktopMediaPlayer .wmp-mute[data-level="mute"] { background-image: image-set(url('/static_images/vista-wmp/volume-mute.png') 1x, url('/static_images/hidpi/125/vista-wmp/volume-mute.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/volume-mute.png') 1.52x, url('/static_images/hidpi/175/vista-wmp/volume-mute.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/volume-mute.png') 2x); }
-
-/* volume: an 80px line, blue up to the thumb */
+/* volume: the played part up to the thumb's centre, over the pill's own groove */
 #desktopMediaPlayer .wmp-volume {
-    position: relative;
-    flex: none;
+    position: absolute;
+    left: 392px;
+    top: 22px;
     width: 80px;
     height: 25px;
-    margin-left: 4px;
-    cursor: var(--c-default);
     outline: none;
+    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-volume-track {
     position: absolute;
-    left: 6px;
-    right: 6px;
-    top: 11px;
-    height: 3px;
-    background: linear-gradient(#b9cde6, #e6eef8 50%, #c6ddf5);
-    box-shadow: 0 0 0 1px hsl(214 30% 70% / 50%);
+    left: 10px;
+    top: 0;
+    width: 58px;
+    height: 100%;
 }
 
 #desktopMediaPlayer .wmp-volume-fill {
     position: absolute;
     left: 0;
-    top: 0;
-    bottom: 0;
-    width: var(--wmp-volume, 100%);
-    background: linear-gradient(#6b8ee1, #0636ac 50%, #3556c0);
+    top: 6px;
+    width: calc(10px + 58px * var(--wmp-volume-frac, 1));
+    height: 13px;
 }
 
 #desktopMediaPlayer .wmp-volume-thumb {
     position: absolute;
+    left: calc(4px + 58px * var(--wmp-volume-frac, 1));
     top: 6px;
-    left: calc(6px + (100% - 12px) * var(--wmp-volume-frac, 1));
     width: 12px;
     height: 13px;
-    margin-left: -6px;
-    background: image-set(url('/static_images/vista-wmp/thumb.png') 1x, url('/static_images/hidpi/125/vista-wmp/thumb.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/thumb.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/thumb.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/thumb.png') 2x) no-repeat center;
 }
 
-#desktopMediaPlayer .wmp-volume:hover .wmp-volume-thumb {
-    background-image: image-set(url('/static_images/vista-wmp/thumb-hot.png') 1x, url('/static_images/hidpi/125/vista-wmp/thumb-hot.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/thumb-hot.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/thumb-hot.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/thumb-hot.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-volume:active .wmp-volume-thumb {
-    background-image: image-set(url('/static_images/vista-wmp/thumb-down.png') 1x, url('/static_images/hidpi/125/vista-wmp/thumb-down.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/thumb-down.png') 1.5x, url('/static_images/hidpi/175/vista-wmp/thumb-down.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/thumb-down.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-mute[aria-pressed="true"] ~ .wmp-volume .wmp-volume-fill {
-    opacity: 0.35;
-}
-
-/* full screen over compact, at the right edge (wmploc 4606-4609, 21x43) */
+/* full screen over compact: one 21x43 sprite per state, each button showing its half */
 #desktopMediaPlayer .wmp-stack {
-    position: relative;
-    flex: none;
+    position: absolute;
+    right: 7px;
+    top: 16px;
     width: 21px;
     height: 43px;
-    margin: 0 10px 0 auto;
-    justify-self: end;
-    background: image-set(url('/static_images/vista-wmp/view-stack.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-stack.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-stack.png') 1.5238x, url('/static_images/hidpi/175/vista-wmp/view-stack.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-stack.png') 2x) no-repeat center;
-}
-
-#desktopMediaPlayer .wmp-stack:has(.wmp-fullscreen:hover) {
-    background-image: image-set(url('/static_images/vista-wmp/view-stack-hot-top.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-stack-hot-top.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-stack-hot-top.png') 1.5238x, url('/static_images/hidpi/175/vista-wmp/view-stack-hot-top.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-stack-hot-top.png') 2x);
-}
-
-#desktopMediaPlayer .wmp-stack:has(.wmp-compact:hover) {
-    background-image: image-set(url('/static_images/vista-wmp/view-stack-hot-bottom.png') 1x, url('/static_images/hidpi/125/vista-wmp/view-stack-hot-bottom.png') 1.25x, url('/static_images/hidpi/150/vista-wmp/view-stack-hot-bottom.png') 1.5238x, url('/static_images/hidpi/175/vista-wmp/view-stack-hot-bottom.png') 1.75x, url('/static_images/hidpi/200/vista-wmp/view-stack-hot-bottom.png') 2x);
 }
 
 #desktopMediaPlayer .wmp-stack button {
-    position: absolute;
     left: 0;
     width: 21px;
     height: 21px;
-    min-width: 0;
-    min-height: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
-    cursor: var(--c-default);
 }
 
 #desktopMediaPlayer .wmp-fullscreen {
@@ -1374,7 +1227,7 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 }
 
 #desktopMediaPlayer .wmp-compact {
-    bottom: 0;
+    top: 22px;
 }
 
 /* ---- compact mode (Ctrl+2): stage and transport only ---- */
