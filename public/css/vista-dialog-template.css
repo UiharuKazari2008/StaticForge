@@ -625,6 +625,8 @@ body.desktop-mode .modal.vdt-wizard .vdt-wizard-back {
     border: 0;
     border-radius: 50%;
     background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 0;
+    background-size: var(--vs-nav-bs-orb, auto);
+    zoom: var(--vs-nav-k, 1); /* Vista keeps the travel band at its 120 DPI size at 144 / 168 DPI (#986) */
     box-shadow: none;
 }
 

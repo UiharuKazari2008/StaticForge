@@ -25,6 +25,9 @@
     'use strict';
 
     const ART = '/static_images/vista-explorer';
+    // art outside vista-explorer is named '../<folder>/<file>'; the src carries the canonical path, so the
+    // HiDPI tier sheets (exact img[src] matches) and the browser cache see one name for it (#986)
+    const artSrc = (f) => (f.startsWith('../') ? `/static_images/${f.slice(3)}` : `${ART}/${f}`);
 
     // Vista's type names by extension (HKCR friendly names); others read "<EXT> File"
     const EXT_TYPES = {
@@ -401,7 +404,7 @@
             const modal = this.app && this.app.modal;
             const img = modal && modal.querySelector(':scope > .modal-window-title img.icon-image');
             if (!img) return;
-            const src = `${ART}/${this.crumbIcon || 'crumb-folder.png'}`;
+            const src = artSrc(this.crumbIcon || 'crumb-folder.png');
             if (img.getAttribute('src') === src) return;
             img.setAttribute('src', src);
             // Vista's 16 px place pictures have no 32 px twins here: one picture, no srcset
@@ -678,8 +681,8 @@
                 folder: ['../vista-icons/explorer/folder-16.png', '../vista-icons/explorer/folder-32.png']
             };
             const [one, two] = icons[name] || icons.folder;
-            const srcset = two ? ` srcset="${ART}/${one} 1x, ${ART}/${two} 2x"` : '';
-            return `<img class="explorer-tree-icon" src="${ART}/${one}"${srcset} alt="" draggable="false">`;
+            const srcset = two ? ` srcset="${artSrc(one)} 1x, ${artSrc(two)} 2x"` : '';
+            return `<img class="explorer-tree-icon" src="${artSrc(one)}"${srcset} alt="" draggable="false">`;
         }
 
         rootSpecs() {

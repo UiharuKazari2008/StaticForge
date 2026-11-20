@@ -87,6 +87,42 @@ const TIERS = [
 ];
 const WEB_HIDPI = '/static_images/hidpi';
 
+// Vista's system small icon (SM_CXSMICON / SHIL_SYSSMALL) at each tier's DPI, read on a Vista clone at 120 / 144 /
+// 168 / 192 DPI (#986): 22 / 26 / 30 / 36 px, not 16 x scale (the shell's own small list, Explorer's details view,
+// is 20 / 24 / 28 / 32). Every 16 px icon also gets a copy at that size, hidpi/<tier>/@sysicon/<path>, and the
+// tier's img.css draws it, at --vs-smicon, in the places Vista uses the system small icon.
+const SYSICON = { 125: 22, 150: 26, 175: 30, 200: 36 };
+const SYSICON_DIR = '@sysicon';
+// measured on the clone at 120 / 144 DPI: Explorer's navigation pane (Favorite Links and the Folders tree) draws
+// 22 / 26 px icons; its details view 20 / 24; MMC consoles (Device Manager) keep 16 px at true size
+const SYSICON_CONTEXTS = ['.explorer-favorite-link', '.explorer-tree-label'];
+const isSysIcon = (p) => p.w === 16 && p.h === 16 && !p.vo && !p.slices;
+
+// Explorer's travel band (the back / forward orbs, Recent Pages and the groove round them) is one control that
+// Vista sizes from its Navigation art, not from the DPI: at 144 and 168 DPI it keeps the 120 DPI orbs at their
+// own size and the groove hugs them, and only at 192 DPI does the art stretch (x1.6, TRUESIZESTRETCHMARK).
+// So the band's tier copies are made at the band's own scale, and where that differs from the tier's
+// (150 / 175 %) the tier's img.css sets --vs-nav-k (zoom on the band's boxes) and --vs-nav-bs-* (the art's
+// size in CSS px) for the stylesheets that draw it (#986).
+const NAV_BAND = { 'vista-explorer/nav-back.png': 'orb', 'vista-explorer/nav-forward.png': 'orb', 'vista-explorer/recent-pages.png': 'recent', 'vista-explorer/travel-gutter.png': 'gutter' };
+function bandScale(t) {
+    if (!themeParts) themeParts = msstylesDpiParts();
+    const nav = themeParts.find((q) => q.cls === 'Navigation' && q.part === 1);
+    if (!nav) return t.s;
+    const dpi = Math.round(96 * t.s);
+    const im = vistaImageAt(nav.images, dpi);
+    const ratio = dpi / im.dpi;
+    const stretch = nav.tsst === 2 && nav.stretchMark != null && ratio >= 1 + nav.stretchMark / 100;
+    return (im.dpi / 96) * (stretch ? ratio : 1);
+}
+
+// the box round a picture's visible pixels (alpha over half): { x, y, w, h }
+async function contentBox(spec) {
+    const out = await magick([spec, '-alpha', 'extract', '-threshold', '50%', '-format', '%@', 'info:']);
+    const m = /(\d+)x(\d+)\+(\d+)\+(\d+)/.exec(String(out));
+    return m ? { w: +m[1], h: +m[2], x: +m[3], y: +m[4] } : null;
+}
+
 // the desktop's art; the phone's (wm61, wm65, wm-android) has its own @2x / @4x packages, the Vista
 // games their own HiDPI build (build-vista-games-hidpi.sh), gadget packages draw in their own frames
 const INCLUDE = /^(?:vista-(?!gadgets\/|games\/)[a-z0-9-]+|window-controls|activesync|account-pictures|melaton|cpu|xyridian)\//;
@@ -494,6 +530,7 @@ async function planOne(rel, slices) {
     plan.outExt = ext === '.gif' || ext === '.bmp' ? '.png' : ext;
     // best first: Vista's own image for that DPI, the icon's own larger frames, a larger copy in the tree
     const vo = await matchTheme(rel, m);
+    if (NAV_BAND[rel]) plan.band = NAV_BAND[rel];
     if (vo) { plan.method = 'vista'; plan.vo = vo; return plan; }
     const sl = slices.get(rel);
     if (sl) plan.slices = sl;
@@ -600,6 +637,7 @@ async function aiUpscale(file) {
 }
 
 function tierDims(p, t) {
+    if (p.band) t = { id: t.id, s: bandScale(t) };
     if (p.vo) return { w: Math.round(p.vo.cell[0] * t.s) * (p.w / p.vo.cell[0]), h: Math.round(p.vo.cell[1] * t.s) * (p.h / p.vo.cell[1]) };
     return { w: Math.max(1, Math.round(p.w * t.s)), h: Math.max(1, Math.round(p.h * t.s)) };
 }
@@ -624,9 +662,8 @@ async function buildOne(p) {
                 aiFile = null; record.m = 'soft';
             }
         }
-        for (const t of TIERS) {
-            const { w, h } = tierDims(p, t);
-            const out = path.join(dir, `${t.id}${p.outExt}`);
+        // one copy at (w, h) for tier t (t.s: the scale the methods size by)
+        const make = async (t, w, h, out) => {
             let used = record.m;
             if (p.vo) {
                 // the image Vista draws at this tier's DPI, each cell at its own size centred in the tier's cell
@@ -645,16 +682,39 @@ async function buildOne(p) {
                 const cw = w; const ch = h / take.length;
                 const cells = [];
                 used = im.dpi === 96 ? 'vista-true' : 'vista';
+                // the art at the size Vista draws it: its own, or stretched evenly by the DPI ratio
+                const art = path.join(tmp, 'art.png');
+                if (stretch) {
+                    await magick([f, ...FILTER.soft, '-resize', `${Math.round(scw * ratio)}x${Math.round(sch * ratio) * p.vo.cells}!`, `PNG32:${art}`]);
+                    used = 'vista-stretch';
+                } else await magick([f, `PNG32:${art}`]);
+                const aw = stretch ? Math.round(scw * ratio) : scw; const ah = stretch ? Math.round(sch * ratio) : sch;
+                // larger than the cell (the orbs' 120 DPI cells are 38x38, mostly margin): the cell is cut from it
+                // where the 1x art's visible part sits, scaled - never shrunk, so the orb keeps Vista's size
+                let at = null;
+                if (aw > cw || ah > ch) {
+                    const one = await contentBox(`${path.join(SI, p.rel)}[${p.w}x${p.vo.index == null ? p.h / p.vo.cells : p.h}+0+0]`);
+                    const big = await contentBox(`${art}[${aw}x${ah}+0+0]`);
+                    const k = cw / p.vo.cell[0];
+                    if (one && big && big.w <= cw && big.h <= ch) {
+                        // the visible part where the 1x has it (scaled), kept inside the cell
+                        const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+                        at = {
+                            x: clamp(Math.round(one.x * k) - big.x, -big.x, cw - big.x - big.w),
+                            y: clamp(Math.round(one.y * k) - big.y, -big.y, ch - big.y - big.h)
+                        };
+                    }
+                }
                 for (const i of take) {
                     const c = path.join(tmp, `c${i}.png`);
-                    if (stretch) {
-                        const tw = Math.min(cw, Math.round(scw * ratio)); const th = Math.min(ch, Math.round(sch * ratio));
-                        await magick([`${f}[${scw}x${sch}+0+${i * sch}]`, ...FILTER.soft, '-resize', `${tw}x${th}!`, '-background', 'none', '-gravity', 'center', '-extent', `${cw}x${ch}`, `PNG32:${c}`]);
-                        used = 'vista-stretch';
-                    } else if (scw <= cw && sch <= ch) {
-                        await magick([`${f}[${scw}x${sch}+0+${i * sch}]`, '-background', 'none', '-gravity', 'center', '-extent', `${cw}x${ch}`, `PNG32:${c}`]);
+                    const cell = `${art}[${aw}x${ah}+0+${i * ah}]`;
+                    if (aw <= cw && ah <= ch) {
+                        await magick([cell, '-background', 'none', '-gravity', 'center', '-extent', `${cw}x${ch}`, `PNG32:${c}`]);
+                    } else if (at) {
+                        await magick(['-size', `${cw}x${ch}`, 'xc:none', '(', cell, '+repage', ')', '-geometry', `${at.x >= 0 ? '+' : ''}${at.x}${at.y >= 0 ? '+' : ''}${at.y}`, '-compose', 'over', '-composite', `PNG32:${c}`]);
+                        if (!stretch) used = 'vista-true';
                     } else {
-                        await resize(`${f}[${scw}x${sch}+0+${i * sch}]`, cw, ch, 'down', c);
+                        await resize(cell, cw, ch, 'down', c);
                         used = 'vista-down';
                     }
                     cells.push(c);
@@ -683,8 +743,24 @@ async function buildOne(p) {
                 if (p.slices) await slice9(src, aiFile && how === 'ai' ? p.w * 4 : p.w, aiFile && how === 'ai' ? p.h * 4 : p.h, aiFile && how === 'ai' ? 4 : 1, p.slices, w, h, mode, out, tmp);
                 else await resize(src, w, h, mode, out);
             }
+            return used;
+        };
+        for (const t of TIERS) {
+            const { w, h } = tierDims(p, t);
+            const out = path.join(dir, `${t.id}${p.outExt}`);
+            const used = await make(t, w, h, out);
             const om = await sharp(out).metadata();
             record.t[t.id] = { w: om.width, h: om.height, m: used };
+        }
+        // the system small icon size of each tier (SYSICON), from the same source
+        if (isSysIcon(p)) {
+            record.sys = {};
+            for (const t of TIERS) {
+                const size = SYSICON[t.id];
+                const out = path.join(dir, `${t.id}-sys${p.outExt}`);
+                const used = await make({ id: t.id, s: size / 16 }, size, size, out);
+                record.sys[t.id] = { w: size, h: size, m: used };
+            }
         }
         fs.writeFileSync(done, JSON.stringify(record));
         return record;
@@ -737,7 +813,7 @@ async function build() {
     await pool(work, JOBS, async (p) => {
         let rec;
         try { rec = await buildOne(p); } catch (err) { console.warn(`  ${p.rel}: ${err.message.split('\n')[0]}`); return; }
-        const entry = { w: p.w, h: p.h, x: p.outExt === path.extname(p.rel).toLowerCase() ? undefined : p.outExt, m: rec.m, t: {} };
+        const entry = { w: p.w, h: p.h, x: p.outExt === path.extname(p.rel).toLowerCase() ? undefined : p.outExt, m: rec.m, s: rec.sys ? 1 : undefined, t: {} };
         for (const t of TIERS) {
             const v = rec.t[t.id];
             entry.t[t.id] = { w: v.w, h: v.h };
@@ -756,15 +832,32 @@ async function build() {
             const bytes = fs.readFileSync(path.join(k, `${t.id}${p.outExt}`));
             sizes[t.id] += bytes.length;
             if (writeIfChanged(path.join(OUT, String(t.id), p.rel.replace(/\.[a-z]+$/i, p.outExt)), bytes)) written++;
+            if (p.rec.sys) {
+                const sys = fs.readFileSync(path.join(k, `${t.id}-sys${p.outExt}`));
+                sizes[t.id] += sys.length;
+                if (writeIfChanged(path.join(OUT, String(t.id), SYSICON_DIR, p.rel.replace(/\.[a-z]+$/i, p.outExt)), sys)) written++;
+            }
         }
     }
     // the <img> overrides, one sheet per tier
     for (const t of TIERS) {
-        const lines = [`/* generated by scripts/build-hidpi-assets.js (Yozora #921): <img> art at ${t.s}x */`];
+        const lines = [`/* generated by scripts/build-hidpi-assets.js (Yozora #921, #986): <img> art at ${t.s}x */`];
+        // Vista's system small icon at this DPI in CSS px (22 px at 125 % = 17.6px); 16px where no tier sheet is linked
+        const sysPx = Number((SYSICON[t.id] / t.s).toFixed(4));
+        lines.push(`:root{--vs-smicon:${sysPx}px}`);
+        const bk = Number((bandScale(t) / t.s).toFixed(4));
+        if (Math.abs(bk - 1) > 1e-3) {
+            const size = (rel) => { const e = index.a[rel]; return e ? `${e.w}px ${e.h}px` : 'auto'; };
+            lines.push(`:root{--vs-nav-k:${bk};--vs-nav-bs-orb:${size('vista-explorer/nav-back.png')};--vs-nav-bs-recent:${size('vista-explorer/recent-pages.png')};--vs-nav-bs-gutter:${size('vista-explorer/travel-gutter.png')}}`);
+        }
+        const ctx = `:is(${SYSICON_CONTEXTS.join(',')})`;
         for (const [rel, e] of Object.entries(index.a).sort()) {
             const d = density(e, t);
             if (!d) continue;
-            lines.push(`img[src="/static_images/${rel}"]{content:image-set(url(${variantUrl(rel, e.x || path.extname(rel), t.id)}) ${d}x)}`);
+            const ext = e.x || path.extname(rel);
+            lines.push(`img[src="/static_images/${rel}"]{content:image-set(url(${variantUrl(rel, ext, t.id)}) ${d}x)}`);
+            // in Vista's system small icon places, the copy at that size (natural size still 16 css px)
+            if (e.s) lines.push(`${ctx} img[src="/static_images/${rel}"]{content:image-set(url(${WEB_HIDPI}/${t.id}/${SYSICON_DIR}/${rel.replace(/\.[a-z]+$/i, ext)}) ${Number((SYSICON[t.id] / 16).toFixed(4))}x)}`);
         }
         const css = Buffer.from(`${lines.join('\n')}\n`);
         sizes[t.id] += css.length;
@@ -783,7 +876,7 @@ function cacheDirOf(p) {
     if (p.sib) p.sib.forEach((s) => extra.push(fs.readFileSync(path.join(SI, s.rel))));
     if (p.icon) Object.values(p.icon.frames).forEach((f) => extra.push(fs.readFileSync(path.join(VISTA_INDEX, f))));
     if (p.vo) p.vo.images.forEach((im) => extra.push(fs.readFileSync(path.join(AERO, im.file))));
-    const key = sha(Buffer.concat([Buffer.from(`${VERSION}|${p.method}|${JSON.stringify(p.slices || null)}|${JSON.stringify(p.vo || null)}|${JSON.stringify(p.matte || null)}|`), srcBytes, ...extra]));
+    const key = sha(Buffer.concat([Buffer.from(`${VERSION}|${p.method}|${isSysIcon(p) ? `sys${JSON.stringify(SYSICON)}|` : ''}${p.band ? `band${JSON.stringify(TIERS.map(bandScale))}|` : ''}${JSON.stringify(p.slices || null)}|${JSON.stringify(p.vo || null)}|${JSON.stringify(p.matte || null)}|`), srcBytes, ...extra]));
     const dir = path.join(CACHE, 'v', key.slice(0, 2), key);
     cacheKeys.set(p.rel, dir);
     return dir;

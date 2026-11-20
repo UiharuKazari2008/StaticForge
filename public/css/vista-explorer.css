@@ -39,6 +39,8 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     align-items: flex-start;
     align-self: center;
     background: image-set(url('/static_images/vista-explorer/travel-gutter.png') 1x, url('/static_images/hidpi/125/vista-explorer/travel-gutter.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/travel-gutter.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/travel-gutter.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/travel-gutter.png') 2x) no-repeat 0 0;
+    background-size: var(--vs-nav-bs-gutter, auto);
+    zoom: var(--vs-nav-k, 1); /* Vista keeps the travel band at its 120 DPI size at 144 / 168 DPI (#986) */
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -54,6 +56,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, :is(#melatonCo
     padding: 0;
     margin: 0 0 0 -1px;
     background: image-set(url('/static_images/vista-explorer/recent-pages.png') 1x, url('/static_images/hidpi/125/vista-explorer/recent-pages.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/recent-pages.png') 1.5385x, url('/static_images/hidpi/175/vista-explorer/recent-pages.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/recent-pages.png') 2x) no-repeat 0 0;
+    background-size: var(--vs-nav-bs-recent, auto);
+    zoom: var(--vs-nav-k, 1); /* Vista keeps the travel band at its 120 DPI size at 144 / 168 DPI (#986) */
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -81,6 +85,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     border: 0;
     border-radius: 50%;
     background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 0;
+    background-size: var(--vs-nav-bs-orb, auto);
     box-shadow: none;
     filter: none;
     opacity: 1;
@@ -661,9 +666,10 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     cursor: var(--c-default);
 }
 
+/* Vista's system small icon: 16 px, 22 / 26 / 30 / 36 px at 125-200 % (--vs-smicon from the tier's img.css, #986) */
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-favorite-link img {
-    width: 16px;
-    height: 16px;
+    width: var(--vs-smicon, 16px);
+    height: var(--vs-smicon, 16px);
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-favorite-link:hover {
@@ -842,8 +848,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-tree-icon {
     flex: none;
-    width: 16px;
-    height: 16px;
+    width: var(--vs-smicon, 16px);
+    height: var(--vs-smicon, 16px);
 }
 
 @media (hover: hover) {
@@ -1285,6 +1291,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal,
     align-items: flex-start;
     align-self: center;
     background: image-set(url('/static_images/vista-explorer/travel-gutter.png') 1x, url('/static_images/hidpi/125/vista-explorer/travel-gutter.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/travel-gutter.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/travel-gutter.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/travel-gutter.png') 2x) no-repeat 0 0;
+    background-size: var(--vs-nav-bs-gutter, auto);
+    zoom: var(--vs-nav-k, 1); /* Vista keeps the travel band at its 120 DPI size at 144 / 168 DPI (#986) */
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -1299,6 +1307,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal,
     border: 0;
     border-radius: 50%;
     background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 0;
+    background-size: var(--vs-nav-bs-orb, auto);
     box-shadow: none;
     filter: none;
     opacity: 1;
@@ -1493,6 +1502,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     align-items: flex-start;
     align-self: center;
     background: image-set(url('/static_images/vista-explorer/travel-gutter.png') 1x, url('/static_images/hidpi/125/vista-explorer/travel-gutter.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/travel-gutter.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/travel-gutter.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/travel-gutter.png') 2x) no-repeat 0 0;
+    background-size: var(--vs-nav-bs-gutter, auto);
+    zoom: var(--vs-nav-k, 1); /* Vista keeps the travel band at its 120 DPI size at 144 / 168 DPI (#986) */
     border: 0;
     border-radius: 0;
     box-shadow: none;
@@ -1507,6 +1518,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     border: 0;
     border-radius: 50%;
     background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 0;
+    background-size: var(--vs-nav-bs-orb, auto);
     box-shadow: none;
     filter: none;
     opacity: 1;
@@ -1545,6 +1557,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
 body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar :is(.cpl-back, .cpl-forward):is(:disabled, .disabled):hover,
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(:is(#tagWikiSearchBackBtn, [data-grimoire-part="tagWikiSearchBackBtn"]), :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"])):is(:disabled, .disabled):hover {
     background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x, url('/static_images/hidpi/125/vista-explorer/nav-back.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/nav-back.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/nav-back.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/nav-back.png') 2x) no-repeat 0 -81px !important;
+    background-size: var(--vs-nav-bs-orb, auto) !important;
     box-shadow: none !important;
     filter: none !important;
     opacity: 1 !important;
