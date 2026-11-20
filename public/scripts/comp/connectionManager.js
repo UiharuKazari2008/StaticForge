@@ -69,9 +69,8 @@ async function handleLogout(options = {}) {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                action: 'logout'
-            })
+            // keepSiteAccess: the desktop's Log off keeps this computer's site key (web_server.js 'logout')
+            body: JSON.stringify(options.keepSiteAccess ? { action: 'logout', data: { keepSiteAccess: true } } : { action: 'logout' })
         });
         if (response.ok) {
             // Clear authentication-related data from localStorage

@@ -3105,7 +3105,11 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
         case 'logout':
             req.session.destroy(() => {
                 res.clearCookie('connect.sid');
-                siteAccessPublic.clearDskCookie(res);
+                // The desktop's Log off (winlogonPower.js, keepSiteAccess) signs the user out, not the computer: the
+                // site key stays, so the logon that follows can reach the server and ask the password. Without it the
+                // installed copy's logon (straight to /app, no BIOS gateway) got the cover for /status and its socket,
+                // and sat on "Please wait..." for good (Fold DeX window, Nov 20 2026)
+                if (!(data && data.keepSiteAccess === true)) siteAccessPublic.clearDskCookie(res);
                 res.json({ success: true, message: 'Logged out successfully' });
             });
             break;

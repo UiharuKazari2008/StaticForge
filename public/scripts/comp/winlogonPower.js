@@ -426,7 +426,8 @@ function startWinlogonPowerWork(kind, onCommit) {
         if (window.cachedLogon && typeof window.cachedLogon.markLoggedOff === 'function') window.cachedLogon.markLoggedOff();
         // handleLogout: public/scripts/comp/connectionManager.js (stays put; the logon is next). An installed copy
         // logs off without its server too (the mark above keeps the desktop shut); a plain tab needs the server
-        jobs.push(Promise.resolve().then(() => handleLogout({ redirect: false })).then((ok) => {
+        // keepSiteAccess: the user signs out, the computer keeps its site key - the logon that follows reaches the server
+        jobs.push(Promise.resolve().then(() => handleLogout({ redirect: false, keepSiteAccess: true })).then((ok) => {
             if (!ok && !winlogonInstalledCopy()) throw new Error('Could not log off. You are still signed in.');
         }));
     }

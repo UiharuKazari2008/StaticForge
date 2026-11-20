@@ -1685,10 +1685,11 @@ class WebSocketClient {
             return this._profileSyncEvent('done', { source: hits.length ? 'cache' : 'server', applied: [] });
         }
         const changed = await this._readServerProfile(hits).catch(() => null);
+        // a read that failed (a server just restarted, a request cut) is not a conflict: asked again at the next reconnect
+        if (!changed) return this._profileSyncEvent('unknown');
         let reason = null;
         let applied = null;
-        if (!changed) reason = 'loaderfailed';
-        else if (this._profileHeldWrites) reason = 'held';
+        if (this._profileHeldWrites) reason = 'held';
         else if (changed.length > WebSocketClient.PROFILE_LIVE_MAX) reason = 'toomany';
         else {
             const r = await this._applyProfilePieces(changed).catch(() => ({ ok: false, reason: 'loaderfailed' }));
@@ -3337,6 +3338,12 @@ class WebSocketClient {
         return false;
     }
 
+    /** A write the user made (transient activation: a press or key a moment ago); a browser without the API: true. */
+    _userMadeThisChange() {
+        const ua = typeof navigator !== 'undefined' ? navigator.userActivation : null;
+        return ua ? ua.isActive === true : true;
+    }
+
     /** Signed in, out of an offline boot, and the server's copy of the user's settings has loaded. */
     _userSettingsWritable() {
         return this.socketAuthenticated === true && !this._offlineBoot && !this._profileHold && window.userGlobalSettingsHydrated === true;
@@ -4607,6 +4614,9 @@ class WebSocketClient {
             response = await fetch('/status', {
                 method: 'OPTIONS',
                 cache: 'no-cache',
+                // the client knock (modules/siteGate.js hasClientKnock): a computer without the site key gets the
+                // status (siteAccess.passed false) instead of the cover's 404, so the logon can tell (_siteGateRefused)
+                headers: { 'X-Dreamscape-Client': 'melaton-logon' },
                 signal: AbortSignal.timeout(WebSocketClient.TIMEOUT_VERSION_CHECK)
             });
         } catch (error) {
@@ -4622,7 +4632,31 @@ class WebSocketClient {
         }
         const data = await response.json();
         this._noteNightshadeReach(null);
+        if (this._siteGateRefused(data)) return null;
         return data;
+    }
+
+    /**
+     * The server's site gate does not let this computer in (no site key and no session: an older server's Log off cleared
+     * the key, or the key went stale). Nothing on the logon can get past it - the status, the socket and the password
+     * all meet the cover - so the logon waited on "Please wait..." for good (Fold DeX window after Log off, Nov 20 2026).
+     * The BIOS asks the Gateway Password (/launch, melatonBoot.js requireGateway) and comes back here. Once per minute
+     * at most, so a gateway that does not take never loops; true while refused (the status is not used).
+     */
+    _siteGateRefused(data) {
+        const gate = data && data.siteAccess;
+        if (!gate || !gate.configured || gate.passed !== false) return false;
+        if (this.initializationCompleted || !this._shouldUsePreStartupDialog()) return true;
+        let last = 0;
+        try { last = Number(sessionStorage.getItem('melatonGatewayFromLogon')) || 0; } catch (_) { last = Date.now(); }
+        if (Date.now() - last < 60000) return true;
+        try { sessionStorage.setItem('melatonGatewayFromLogon', String(Date.now())); } catch (_) { return true; }
+        console.warn('[logon] the site gate does not let this computer in: the BIOS asks the Gateway Password');
+        try { suppressWebSocketReconnectForReload(); } catch (_) { /* go anyway */ }
+        // exitConfirmation.js: no "leave this page?" on the way
+        if (typeof bypassConfirmation !== 'undefined') bypassConfirmation = true;
+        location.replace('/launch');
+        return true;
     }
 
     async pingHost() {
@@ -10169,8 +10203,11 @@ class WebSocketClient {
         // a desktop that is not signed in with the server's copy of the user's settings never writes them (Nov 19
         // 2026): an offline boot or a desktop on defaults would push those defaults over the real ones
         if (WebSocketClient.USER_SETTINGS_WRITES.has(type) && !this._userSettingsWritable()) {
-            // a change made in a session from the cached profile: the reconnect cannot overwrite it quietly (#910)
-            if (this._profileHold) this._profileHeldWrites = (this._profileHeldWrites || 0) + 1;
+            // a change made in a session from the cached profile: the reconnect cannot overwrite it quietly (#910). Only
+            // the user's own changes count (a press or key within the browser's activation window): the boot's and the
+            // shell's own saves (window places after a resize, a layout pass, a settings echo) are not edits, and the
+            // DeX window counted them, so a server restart's reconnect said "out of sync" with nothing changed (Nov 20 2026)
+            if (this._profileHold && this._userMadeThisChange()) this._profileHeldWrites = (this._profileHeldWrites || 0) + 1;
             console.warn(`[settings] ${type} held back: this desktop does not have the server's settings yet`);
             return Promise.resolve({ success: false, heldBack: true });
         }
