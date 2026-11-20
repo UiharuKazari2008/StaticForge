@@ -578,7 +578,9 @@
         if (dhcp.asking || !c || typeof c.sendMessage !== 'function') return dhcp.lease;
         dhcp.asking = true;
         try {
-            const r = await c.sendMessage('nightshade_dhcp', { nic: adapterNic(), host: computerName() }, false);
+            // the failure is this code's (an older server without the packet: no address yet), never an error box
+            const send = () => c.sendMessage('nightshade_dhcp', { nic: adapterNic(), host: computerName() }, false);
+            const r = await (typeof c.handlesErrors === 'function' ? c.handlesErrors(send) : send());
             const d = r && r.lease ? r : (r && r.data) || r;
             if (d && d.success !== false && d.lease && d.lease.ip) {
                 dhcp.lease = { ...d.lease, at: Date.now() };

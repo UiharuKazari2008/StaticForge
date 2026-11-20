@@ -18,7 +18,13 @@ registerWsInboundHandler({
         }
         // The link speed probe (#952, melatonNetworkDialogs.js) handles its own failure: a server without the packet
         // just leaves the Café Miniport's Speed at Not Available.
-        if (message.requestType === 'link_speed_probe' || message.requestType === 'link_speed_report') {
+        if (message.requestType === 'link_speed_probe' || message.requestType === 'link_speed_report' || message.requestType === 'nightshade_dhcp') {
+            return;
+        }
+        // A packet this server does not know yet (a page newer than the server it reaches, between an update and the
+        // server's restart) is never the user's problem: logged, the caller's promise rejected as always, no box (#952)
+        if (message.message === 'Unknown message type') {
+            console.warn('[ws] the server does not know', message.requestType || message.details || 'a packet', 'yet');
             return;
         }
         // Desktop: a .NET-style "Unhandled exception" window in Windows wording instead of a toast
