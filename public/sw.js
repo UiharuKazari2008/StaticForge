@@ -5,10 +5,18 @@ importScripts('/dist/workbox/workbox-sw.js');
 // never touch those: no route, no respondWith, or video and byte-range requests fail ("no-response").
 // Registered before any Workbox route, so this listener runs first and keeps the event from it.
 const SW_BYPASS_HOSTS = new Set(['appassets.androidplatform.net']);
+// This machine's own services on another port - DreamOS's CaféReady host bridge (http://127.0.0.1:<port>, the kiosk's
+// shell extension) - are the browser's to reach, never this worker's (#910, Nov 20 2026). Passed through here (the
+// catch-all route's fetch(request)), the shell bridge's event stream carried EventSource's own Cache-Control header as a
+// page header: the host's CORS preflight refused it, so the stream failed and reconnected every 3 s for good and the
+// page never heard a pushed change - the Mac's network icon kept "Excellent" and "Local and Internet" with its Wi-Fi
+// dead. The same keeps a stuck host's requests off the worker.
+const SW_BYPASS_LOOPBACK = new Set(['127.0.0.1', 'localhost', '[::1]']);
 self.addEventListener('fetch', (event) => {
-  let host = '';
-  try { host = new URL(event.request.url).hostname; } catch (_err) { return; }
-  if (SW_BYPASS_HOSTS.has(host)) event.stopImmediatePropagation();
+  let url = null;
+  try { url = new URL(event.request.url); } catch (_err) { return; }
+  if (SW_BYPASS_HOSTS.has(url.hostname)) event.stopImmediatePropagation();
+  else if (url.origin !== self.location.origin && SW_BYPASS_LOOPBACK.has(url.hostname)) event.stopImmediatePropagation();
 });
 
 // Fast path for the page's own scripts and stylesheets, asked for by hash (#817).

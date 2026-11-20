@@ -2395,6 +2395,9 @@ class ServiceWorkerManager {
             return;
         }
         if (!window.isLoginPage && !this.bootComplete && !this._bootOrchestrating) {
+            // the desktop started without the server (its start check is still waiting for it): a check someone asked
+            // for says so instead of leaving Melaton Update on "Preparing system to update..." for good (#910)
+            if (!noToast) this._foregroundCheckFailed('the server did not answer when Melaton started');
             return;
         }
         try {
@@ -2429,7 +2432,9 @@ class ServiceWorkerManager {
             // Make the actual request. It sends the digest this cache was last found in sync with
             // (#890): unchanged, the server answers a bodyless 304 instead of the whole list (~1.3 MB
             // JSON) that every boot's quiet check downloaded seconds after the boot check's own 304.
-            const result = await this._fetchManifestResult();
+            // a check someone asked for with no link to the server waits less for the list (the page says so sooner)
+            const linked = !!(window.wsClient && typeof window.wsClient.isConnected === 'function' && window.wsClient.isConnected());
+            const result = await this._fetchManifestResult(noToast || linked ? undefined : { timeoutMs: 10000 });
             if (result.error) throw result.error;
             if (result.outcome === 'unchanged') {
                 this._recordUpdateCheck();
@@ -2437,6 +2442,10 @@ class ServiceWorkerManager {
             } else if (result.ok) {
                 this._recordUpdateCheck();
                 await this.updateStaticCache(result.rows, noToast);
+            } else if (!noToast) {
+                // an answer that is not the list (the server still compiling, an error page): the page's red box, not
+                // a check that never ends
+                this._foregroundCheckFailed(result.outcome === 'compiling' ? 'the server is still preparing the update files' : 'the server did not send the list of files');
             }
         } catch (error) {
             console.error('Failed to check static file updates:', error);
@@ -2444,6 +2453,16 @@ class ServiceWorkerManager {
                 this._showServiceWorkerTrayPopup('checking', { kind: 'sw-update', message: 'Failed to check for updates. Please try again.', progress: 0 });
             }
         }
+    }
+
+    /**
+     * A check someone asked for ended without an answer (#910, Nov 20 2026: the Mac's Melaton Update sat on "Preparing
+     * system to update..." while the server was unreachable): Melaton Update's red "could not search for new updates"
+     * box (cplUpdate.js classify reads "Failed"), with Vista's code for a server it cannot connect to.
+     */
+    _foregroundCheckFailed(why) {
+        if (typeof this.foregroundUpdateView !== 'function') return;
+        this._showServiceWorkerTrayPopup('checking', { kind: 'sw-update', message: `Failed to check for updates: ${why} (code 80072EFD). Please try again.`, progress: 0 });
     }
     
     /**
@@ -4941,11 +4960,20 @@ class ServiceWorkerManager {
                     this.foregroundUpdateView('preparing', { message: 'Preparing system to update...', progress: 0, filesTotal: 0 });
                 }
                 if (window.wsClient && window.wsClient.isConnected()) {
-                    const result = await window.wsClient.refreshServerCache();
+                    // bounded: a link that stopped answering (the Mac's dead Wi-Fi under a Miniport that still read as up,
+                    // Nov 20 2026) otherwise waited in the reconnect queue for up to 10 minutes
+                    let cap = 0;
+                    const refresh = window.wsClient.refreshServerCache();
+                    refresh.catch(() => { /* answered late, after the cap: already reported */ });
+                    const result = await Promise.race([
+                        refresh,
+                        new Promise((_, reject) => { cap = setTimeout(() => reject(new Error('the server did not answer in 90 seconds')), 90000); })
+                    ]).finally(() => clearTimeout(cap));
                     console.log('Server cache refresh result:', result);
                     if (result && result.success === false) {
                         const err = result.error || result.message || 'The server did not finish preparing.';
-                        this._showServiceWorkerTrayPopup('checking', { kind: 'sw-update', message: err, progress: 0 });
+                        if (typeof this.foregroundUpdateView === 'function') this._foregroundCheckFailed(String(err));
+                        else this._showServiceWorkerTrayPopup('checking', { kind: 'sw-update', message: err, progress: 0 });
                         return result;
                     }
                     await this.checkStaticFileUpdates();
@@ -4955,11 +4983,10 @@ class ServiceWorkerManager {
                 }
             } catch (error) {
                 console.error('Error refreshing server cache:', error);
-                this._showServiceWorkerTrayPopup('checking', {
-                    kind: 'sw-update',
-                    message: error && error.message ? error.message : 'Failed to prepare the system to update.',
-                    progress: 0
-                });
+                // a timeout on a link that stopped answering read as "Checking for updates..." for good (classify
+                // looks for failed / could not / error): always the failed box
+                if (typeof this.foregroundUpdateView === 'function') this._foregroundCheckFailed(error && error.message ? error.message : 'the system could not be prepared to update');
+                else this._showServiceWorkerTrayPopup('checking', { kind: 'sw-update', message: 'Failed to prepare the system to update.', progress: 0 });
             } finally {
                 this._refreshAndCheckRunning = null;
             }

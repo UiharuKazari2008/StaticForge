@@ -81,13 +81,37 @@
     }
     if (root.DreamOSNetwork && typeof root.DreamOSNetwork.get === 'function') {
         const n = root.DreamOSNetwork;
+        // The page's reads of the host's network never take more than READS of its connections (#910, Nov 20 2026): with
+        // the Mac's Wi-Fi firmware dead each read waited on iwd, every Refresh of Connect to a network added more, and
+        // once the browser's six connections to the host were all waiting, the shell bridge's synchronous reads
+        // (AndroidHardware, the secure store) stopped the whole page until one answered - clicks did nothing, then all
+        // opened at once. A read already on its way is shared, not asked again; writes (connect, forget...) go at once.
+        const READS = 2;
+        let reading = 0;
+        const waiting = [];
+        const inFlight = new Map();
+        const nextRead = () => {
+            while (reading < READS && waiting.length) {
+                const job = waiting.shift();
+                reading += 1;
+                Promise.resolve().then(job.fn).then(job.resolve, job.reject).then(() => { reading -= 1; nextRead(); });
+            }
+        };
+        const read = (key, fn) => {
+            if (inFlight.has(key)) return inFlight.get(key);
+            const p = new Promise((resolve, reject) => { waiting.push({ fn, resolve, reject }); nextRead(); });
+            inFlight.set(key, p);
+            const done = () => { if (inFlight.get(key) === p) inFlight.delete(key); };
+            p.then(done, done);
+            return p;
+        };
         register('network', {
             id: 'dreamos', priority: 30,
             available: () => true,
             get: () => n.get(),
             subscribe: evt('dreamosnet', (d) => d),
             onScan: evt('dreamosnetscan', (d) => d),
-            networks: () => n.networks(), scan: () => n.scan(), connect: (s, p, o) => n.connect(s, p, o),
+            networks: () => read('networks', () => n.networks()), scan: () => read('scan', () => n.scan()), connect: (s, p, o) => n.connect(s, p, o),
             disconnect: () => n.disconnect(), forget: (s) => n.forget(s), autoConnect: (s, on) => n.autoConnect(s, on),
             radio: (on) => n.radio(on),
             // Instant Hotspot (cafeready hotspot.rs, docs/client-api/instant-hotspot.md): a bonded phone's hotspot

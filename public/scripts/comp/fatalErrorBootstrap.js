@@ -1295,6 +1295,12 @@
                 ev.preventDefault();
                 return;
             }
+            // already told in its own words (featureLoader.js tellCannotOpen: a program whose files could not be
+            // reached while the server was away): no "has stopped working" on top
+            if (r && typeof r === 'object' && r.melatonShown === true) {
+                ev.preventDefault();
+                return;
+            }
             var errorUrl = parseScriptUrlFromStack(stack);
             presentFatal(normalizeDetail(message, reason, '', '', '', stack, errorUrl), { error: r, kind: 'rejection' });
         } catch (e) { /* ignore */ }

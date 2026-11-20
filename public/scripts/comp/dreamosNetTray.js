@@ -3,9 +3,10 @@
  * (window.DreamOSNetwork + 'dreamosnet' events, cafeready wifi.rs), drawn the way the network icon shows it:
  *
  *   wired (a cable with an address)   the usual network icon (pnidui.dll's two screens), websocket.js's globe
- *   Wi-Fi connected                   pnidui.dll's signal bars (13 = no bar lit ... 18 = five), the limited ones with
- *                                     pnidui 30's small warning when the network wants a sign-in (dreamosPortal.js)
- *                                     or reaches nothing beyond it
+ *   Wi-Fi connected                   pnidui.dll's signal bars (13 = no bar lit ... 18 = five) from the station's live
+ *                                     signal (none when the host cannot read it), the limited ones with pnidui 30's small
+ *                                     warning when the network wants a sign-in (dreamosPortal.js), reaches nothing beyond
+ *                                     it, or the host reports the station failing (wifi.failing)
  *   Wi-Fi on but nothing joined, off  pnidui.dll 19 (Not Connected); joining trades pnidui 25 / 26
  *   mobile data (the Android app)     the same bars for the carrier's signal; the tip and the flyout name the carrier, its
  *                                     data class (5G, LTE) and Roaming, as Windows 7 lists a mobile broadband link (#945)
@@ -108,7 +109,11 @@
         out.connecting = !wired && !net && wifi.present && /connecting|roaming/.test(String(wifi.state || ''));
         // the wireless adapter when nothing is connected: radio off, joining, or on and free
         out.radio = out.kind === 'none' && wifi.present ? (wifi.radio === false || wifi.state === 'off' ? 'off' : out.connecting ? 'connecting' : 'idle') : null;
-        out.limited = out.kind !== 'none' && !internet(s);
+        // the host's word that the station is failing (cafeready wifi.rs: its diagnostics do not answer, its scans
+        // fail, or the network check gets nothing through - the Mac's dead Wi-Fi firmware on Nov 20 2026 read as
+        // "Excellent" and "Local and Internet"): Vista's limited look, whatever else says online
+        out.failing = out.kind === 'wifi' && !!(wifi.failing && typeof wifi.failing === 'object');
+        out.limited = out.kind !== 'none' && (out.failing || !internet(s));
         out.access = out.kind === 'none' ? '' : out.limited ? 'Local only' : 'Local and Internet';
         out.category = out.kind === 'none' ? null
             : out.kind === 'mobile' ? 'public'

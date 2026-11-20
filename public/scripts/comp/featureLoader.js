@@ -104,7 +104,7 @@ const FEATURE_MANIFEST = {
         hot: true,
         styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css', 'css/themes/vista/filetypes.css', 'css/melaton-apps.css', 'css/themes/vista/explorer-contacts.css', 'css/explorer-contacts.css', 'css/explorer-phone.css'],
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
-        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerSequenzia.js', 'scripts/comp/vcard.js', 'scripts/comp/explorerContacts.js', 'scripts/comp/phoneStorageBridge.js', 'scripts/comp/explorerPhoneDrive.js', 'scripts/comp/explorerHostDrive.js', 'scripts/comp/explorerApplet.js']
+        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerSequenzia.js', 'scripts/comp/vcard.js', 'scripts/comp/explorerContacts.js', 'scripts/comp/phoneStorageBridge.js', 'scripts/comp/explorerPhoneDrive.js', 'scripts/comp/explorerHostDrive.js', 'scripts/comp/explorerNetwork.js', 'scripts/comp/explorerApplet.js']
     },
     // 7-Zip's dialogs and progress window (explorerArchive.js): Taskbar Properties' Vista controls (tbp-*)
     seven_zip_dialogs: {
@@ -563,6 +563,11 @@ const FEATURE_MANIFEST = {
  * nothing depends on it, it overrides nothing shared.
  */
 class FeatureLoader {
+    // the longest a program waits for its files' version names before it loads the kept copy by path (_versionedAssetUrl)
+    static HASH_WAIT_MS = 1500;
+    // programs whose "cannot open" box is on screen (tellCannotOpen)
+    static cannotOpenShown = new Set();
+
     constructor() {
         this.loadedFeatures = new Set();
         this.loadingPromises = new Map();
@@ -718,7 +723,20 @@ class FeatureLoader {
         if (this.loadedFeatures.has(name)) return true;
         if (this.loadingPromises.has(name)) return this.loadingPromises.get(name);
 
-        const promise = (async () => {
+        const promise = this._loadFeatureNow(name).catch((err) => {
+            // a load that failed is not kept: the next click tries again (it was kept for good, so a program that
+            // could not load while the server was away never opened again until a restart)
+            if (this.loadingPromises.get(name) === promise) this.loadingPromises.delete(name);
+            if (FeatureLoader.unreachable(err) && !(err && err.melatonShown)) FeatureLoader.tellCannotOpen(name, err);
+            throw err;
+        });
+
+        this.loadingPromises.set(name, promise);
+        return promise;
+    }
+
+    async _loadFeatureNow(name) {
+        {
             const feature = FEATURE_MANIFEST[name];
             if (!feature) {
                 console.warn(`Feature loader: unknown feature "${name}"`);
@@ -773,10 +791,35 @@ class FeatureLoader {
             this.loadingPromises.delete(name);
             console.log(`✅ Feature "${name}" successfully loaded.`);
             return true;
-        })();
+        }
+    }
 
-        this.loadingPromises.set(name, promise);
-        return promise;
+    /** A load that failed because a file did not come (no server, no copy kept), not because its code is broken. */
+    static unreachable(err) {
+        const m = String((err && err.message) || err || '');
+        return (err instanceof TypeError && /fetch|network/i.test(m)) || /did not load|Failed to load script|HTTP \d{3}/.test(m);
+    }
+
+    /**
+     * A program that could not load says so, as Vista does when a program's files cannot be reached, instead of doing
+     * nothing (Yukimi, Nov 20 2026: clicks on the Mac "won't open" while the server was away). One box per program at
+     * a time; the error is marked shown so the page's error handler (fatalErrorBootstrap.js) does not add "has stopped
+     * working" for a caller that did not catch it.
+     */
+    static tellCannotOpen(name, err) {
+        if (err && typeof err === 'object') err.melatonShown = true;
+        const shown = FeatureLoader.cannotOpenShown;
+        if (shown.has(name) || typeof window.showConfirmationDialog !== 'function') return;
+        shown.add(name);
+        const title = name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const offline = !(window.wsClient && typeof window.wsClient.isConnected === 'function' && window.wsClient.isConnected());
+        const why = offline
+            ? 'Melaton cannot reach the server, and this program is not on this computer yet.'
+            : 'One of its files did not load.';
+        Promise.resolve(window.showConfirmationDialog(
+            `<p>${title} cannot open.</p><p>${why} Check your network connection, and then try again.</p>`,
+            [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title, icon: 'fas fa-circle-xmark' }
+        )).catch(() => {}).then(() => shown.delete(name));
     }
 
     isLoaded(name) {
@@ -788,12 +831,21 @@ class FeatureLoader {
         const pathOnly = clean.split('?')[0];
         let hash = null;
         // hashForStaticPath: public/scripts/comp/serviceWorkerManager.js
+        // It answers from the cache's own row; only a file the cache has no hash for asks the server for the file list
+        // (up to 30 s). A program never waits for that (installed-boot-zero-wait, #910 Nov 20 2026): past HASH_WAIT_MS
+        // the bare path goes, which the service worker answers with the kept copy.
         if (typeof serviceWorkerManager !== 'undefined' && serviceWorkerManager
             && typeof serviceWorkerManager.hashForStaticPath === 'function') {
+            let timer = 0;
             try {
-                hash = await serviceWorkerManager.hashForStaticPath(pathOnly);
+                hash = await Promise.race([
+                    serviceWorkerManager.hashForStaticPath(pathOnly),
+                    new Promise((resolve) => { timer = setTimeout(() => resolve(null), FeatureLoader.HASH_WAIT_MS); })
+                ]);
             } catch (_) {
                 hash = null;
+            } finally {
+                clearTimeout(timer);
             }
         }
         if (!hash) return pathOnly;
@@ -862,6 +914,40 @@ class FeatureLoader {
 }
 
 window.featureLoader = new FeatureLoader();
+
+/*
+ * Clicks made while the page could not run are dropped, not replayed (#910, Nov 20 2026). On the Mac the page stood
+ * still for up to 25 s at a time (the shell bridge's synchronous reads waited on a CaféReady stuck behind a dead Wi-Fi
+ * firmware); every click made meanwhile was kept by the browser and ran the moment it could, so the programs clicked
+ * in vain all opened at once. A press the page sees more than STALE_INPUT_MS after it was made is one of those: it,
+ * and the release and click that follow it, go nowhere. A fresh press ends that. Discrete events only (presses,
+ * releases, clicks), capture on window, passive where they may be (no scroll waits on them).
+ */
+(function dropStaleInput() {
+    const STALE_INPUT_MS = 1500;
+    let swallowing = false;
+    const stale = (e) => e.isTrusted && e.timeStamp > 0 && performance.now() - e.timeStamp > STALE_INPUT_MS;
+    const drop = (e) => {
+        e.stopImmediatePropagation();
+        if (e.cancelable && !e.defaultPrevented && /click|contextmenu/.test(e.type)) e.preventDefault();
+    };
+    let told = 0;
+    const tell = (e) => {
+        if (Date.now() - told < 5000) return;
+        told = Date.now();
+        console.warn(`[input] a ${e.type} ${Math.round(performance.now() - e.timeStamp)} ms old was dropped: the page could not run when it was made`);
+    };
+    const on = (type, fn, passive) => {
+        // app-scope: allow page lifetime (every program's input passes here; the loader lives as long as the page)
+        window.addEventListener(type, fn, { capture: true, passive });
+    };
+    ['pointerdown', 'mousedown', 'touchstart'].forEach((type) => on(type, (e) => {
+        swallowing = stale(e);
+        if (swallowing) { tell(e); drop(e); }
+    }, true));
+    ['pointerup', 'mouseup', 'touchend'].forEach((type) => on(type, (e) => { if (swallowing || stale(e)) drop(e); }, true));
+    ['click', 'dblclick', 'auxclick', 'contextmenu'].forEach((type) => on(type, (e) => { if (swallowing || stale(e)) drop(e); }, false));
+})();
 
 /** Cartograph entry — loads explorerApplet.js then opens. */
 async function openExplorerApplet(path) {

@@ -79,8 +79,9 @@ The state follows DreamOS's `window.DreamOSNetwork.get()`:
   wifi: {
     present: true, device: 'wlan0', radio: true,
     state: 'connected' | 'connecting' | 'disconnected' | 'off', scanning: false,
-    network: { name, security: 'psk'|'open'|'8021x'|'wep', signal, signalPercent: 0-100, known, autoConnect } | null,
-    ip: ['192.168.1.20']
+    network: { name, security: 'psk'|'open'|'8021x'|'wep', signal, signalPercent: 0-100 | null, known, autoConnect } | null,
+    ip: ['192.168.1.20'],
+    failing: { reason: 'no traffic', since: 1795190117000 } | null   // the station connected but not working
   },
   ethernet: [{ name, carrier: true, speedMbps, state, ip: [] }],
   mobile: {                // optional: mobile data, shown as Vista's "Mobile Broadband Connection"
@@ -91,17 +92,26 @@ The state follows DreamOS's `window.DreamOSNetwork.get()`:
 }
 ```
 
+DreamOS reads the signal from the station's live diagnostics (iwd's `RSSI`), not the last scan: `signal` and
+`signalPercent` are `null` when the host cannot read them. `wifi.failing` is set while the station is connected but
+not working: its diagnostics do not answer, a scan fails, or the host's network check gets nothing through while its
+Miniport link is down. While it is set, `online` is `false` (unless a wired link carries the machine), and the tray
+shows the limited look (Vista's yellow warning, "Access: Local only") whatever else says online. On Nov 20 2026 the
+Mac's Wi-Fi firmware hung and the icon still said "Excellent" and "Local and Internet".
+
 The tray shows the first connection it finds, in this order:
 
 1. wired;
 2. Wi-Fi;
 3. mobile.
 
-When none is connected, it shows the not-connected icon. Its look is limited when a captive portal is up or the browser says it is offline.
+When none is connected, it shows the not-connected icon. Its look is limited when a captive portal is up, the host reports the Wi-Fi station failing (`wifi.failing`), or the host (else the browser) says it is offline.
 
 Actions (each returns a Promise; `{ error }` when refused):
 
 - `networks()` returns `{ networks: [{ name, security, signalPercent, connected, known, autoConnect }] }`, strongest first.
+  On DreamOS the page keeps at most two of its reads (`networks()`, `scan()`) on the way to the host at once, and a
+  read already on its way is shared: the shell bridge's synchronous reads must always find a free connection to the host.
 - `scan()` starts a scan. The list arrives through `onScan(fn)`, which returns an unsubscribe function.
 - `connect(ssid, passphrase?, { hidden }?)`, `disconnect()`, `forget(ssid)`, `autoConnect(ssid, on)`, `radio(on)`. `hidden`: Manually connect's "Connect even if the network is not broadcasting" (DreamOS: iwd ConnectHiddenNetwork).
 - Instant Hotspot (DreamOS, optional): `hotspot()`, `onHotspot(fn)`, `hotspotConnect()`, `hotspotDisconnect()`. See [instant-hotspot.md](instant-hotspot.md).

@@ -40,7 +40,26 @@
     const INFO_MS = 5 * 60 * 1000;
     const hw = () => root.AndroidHardware || null;
     const has = (name) => { const h = hw(); return !!(h && typeof h[name] === 'function'); };
-    const json = (name) => { try { return JSON.parse(hw()[name]()); } catch (_) { return null; } };
+    // A synchronous read waits for its answer with the page stopped. On DreamOS the shell bridge's reads queued behind
+    // the host's other requests while CaféReady waited on a dead Wi-Fi firmware (Nov 20 2026, #910): each tick froze the
+    // page for up to 25 s and every click made meanwhile opened at once afterwards. A read that takes longer than
+    // SLOW_READ_MS (a healthy one is ~1 ms on DreamOS, ~170 ms for getInfo on the Fold) stops the bridge's reads for
+    // STALL_MS; the views keep their last sample until then.
+    const SLOW_READ_MS = 400;
+    const STALL_MS = 60000;
+    let stalledUntil = 0;
+    const stalled = () => Date.now() < stalledUntil;
+    const json = (name) => {
+        if (stalled()) return null;
+        const t0 = performance.now();
+        try { return JSON.parse(hw()[name]()); } catch (_) { return null; } finally {
+            const took = performance.now() - t0;
+            if (took > SLOW_READ_MS) {
+                stalledUntil = Date.now() + STALL_MS;
+                console.warn(`[devicePerf] AndroidHardware.${name}() took ${Math.round(took)} ms: the bridge's reads stop for ${STALL_MS / 1000} s`);
+            }
+        }
+    };
     const num = (v) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null);
 
     const subs = new Set();
@@ -69,7 +88,9 @@
     /** The parts that never change, from one getInfo() (only when no sample said them yet). */
     function fixedInfo(info) {
         if (fixed) return fixed;
-        const i = info || json('getInfo') || {};
+        const i = info || json('getInfo');
+        // no answer (the bridge's reads stopped, see json): this once, without keeping it
+        if (!i) return { device: null, name: 'Processor', arch: '' };
         fixed = { device: i.device || null, name: (i.soc && (i.soc.name || i.soc.model)) || (i.cpu && i.cpu.model) || 'Processor', arch: (i.soc && i.soc.arch) || '' };
         if (!memCache && i.memory) { memCache = i.memory; memAt = Date.now(); }
         return fixed;
@@ -206,6 +227,7 @@
         if (ms && !timer) {
             const id = setInterval(() => { // perf: allow a live view's sampling at its update speed while it shows (older apps without startPerformance)
                 if (!seen() || !activeSubs().length) { sync(); return; }
+                if (stalled()) return;
                 deliver(normalise(readBridge(), 'bridge'), false);
             }, ms);
             timer = { id, ms };
@@ -223,6 +245,7 @@
 
     function refresh() {
         if (!available()) return null;
+        if (stalled()) return last;
         let raw = null;
         if (has('getPerformance')) { raw = json('getPerformance'); if (raw) fixedInfo(); }
         const sample = normalise(raw || readBridge(), raw ? 'push' : 'bridge');
