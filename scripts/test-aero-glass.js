@@ -50,6 +50,7 @@ const document = {
     createElement: (t) => new Element(t),
     querySelectorAll: (sel) => {
         if (sel === '[data-aero-contrast]') return contrastSurfaces;
+        if (sel === '.modal') return modals; // live's per-window textures (clear / compose)
         assert.strictEqual(sel, '.modal:not(.hidden):not(.hidden-alt)');
         return modals.filter((m) => !m.classList.contains('hidden') && !m.classList.contains('hidden-alt'));
     },
@@ -183,19 +184,19 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     document.body.computedVars['--desktop-wallpaper'] = 'url(/images/wall.png)';
     document.body.computedVars['--desktop-wallpaper-position'] = 'center 26%';
     assert.strictEqual(await api.rebuildWallpaper(), true);
-    assert.match(root.style.getPropertyValue('--aero-wallpaper'), /^url\("blob:test-\d+"\)$/);
+    assert.match(T.copyVar('--aero-wallpaper'), /^url\("blob:test-\d+"\)$/);
     assert.strictEqual(root.style.getPropertyValue('--aero-vw'), '1920px');
     assert.strictEqual(root.style.getPropertyValue('--aero-vh'), '1112px');
-    assert.strictEqual(root.style.getPropertyValue('--aero-cover-w'), '1920px');
-    assert.strictEqual(root.style.getPropertyValue('--aero-cover-h'), '1280px');
-    assert.strictEqual(root.style.getPropertyValue('--aero-cover-x'), '0px');
-    assert.strictEqual(root.style.getPropertyValue('--aero-cover-y'), '-44px');
+    assert.strictEqual(T.copyVar('--aero-cover-w'), '1920px');
+    assert.strictEqual(T.copyVar('--aero-cover-h'), '1280px');
+    assert.strictEqual(T.copyVar('--aero-cover-x'), '0px');
+    assert.strictEqual(T.copyVar('--aero-cover-y'), '-44px');
     const blurs = drawCalls.filter((c) => /blur\(\d+px\)/.test(c.filter)).map((c) => parseInt(c.filter.match(/blur\((\d+)px\)/)[1], 10));
     assert.strictEqual(blurs.length, 2, 'frame copy and lighter taskbar copy each get one blur pass');
     assert.ok(blurs[1] < blurs[0], 'taskbar copy is blurred less than the frame copy');
     assert.ok(drawCalls.filter((c) => c.filter === 'none').length >= 9, 'image plus clamped edges drawn before the blur pass');
-    const firstBlob = root.style.getPropertyValue('--aero-wallpaper');
-    const firstLight = root.style.getPropertyValue('--aero-wallpaper-light');
+    const firstBlob = T.copyVar('--aero-wallpaper');
+    const firstLight = T.copyVar('--aero-wallpaper-light');
     assert.match(firstLight, /^url\("blob:test-\d+"\)$/);
     assert.notStrictEqual(firstLight, firstBlob);
 
@@ -224,11 +225,11 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     document.body.computedVars['--desktop-wallpaper'] = 'url("/images/other.png")';
     document.body.computedVars['--desktop-wallpaper-position'] = 'center';
     assert.strictEqual(await api.rebuildWallpaper(), true);
-    const secondBlob = root.style.getPropertyValue('--aero-wallpaper');
+    const secondBlob = T.copyVar('--aero-wallpaper');
     assert.notStrictEqual(secondBlob, firstBlob);
-    assert.strictEqual(root.style.getPropertyValue('--aero-cover-w'), '1920px');
-    assert.strictEqual(root.style.getPropertyValue('--aero-cover-h'), '1920px');
-    assert.strictEqual(root.style.getPropertyValue('--aero-cover-y'), '-404px');
+    assert.strictEqual(T.copyVar('--aero-cover-w'), '1920px');
+    assert.strictEqual(T.copyVar('--aero-cover-h'), '1920px');
+    assert.strictEqual(T.copyVar('--aero-cover-y'), '-404px');
     await sleep(20);
     assert.ok(revoked.includes(firstBlob.slice(5, -2)), 'previous blob URL revoked');
     assert.ok(revoked.includes(firstLight.slice(5, -2)), 'previous light blob URL revoked');
@@ -237,14 +238,14 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     window.innerWidth = 1000; window.innerHeight = 500;
     window.listeners.resize.forEach((fn) => fn());
     await sleep(T.config.resizeDebounceMs + 20);
-    assert.strictEqual(root.style.getPropertyValue('--aero-cover-w'), '1000px');
-    assert.strictEqual(root.style.getPropertyValue('--aero-cover-y'), '-250px');
+    assert.strictEqual(T.copyVar('--aero-cover-w'), '1000px');
+    assert.strictEqual(T.copyVar('--aero-cover-y'), '-250px');
 
     // ---- failure: missing image falls back to tinted frames ----
     document.body.computedVars['--desktop-wallpaper'] = 'url(/images/bad.png)';
     assert.strictEqual(await api.rebuildWallpaper(), false);
-    assert.strictEqual(root.style.getPropertyValue('--aero-wallpaper'), '');
-    assert.strictEqual(root.style.getPropertyValue('--aero-wallpaper-light'), '');
+    assert.strictEqual(T.copyVar('--aero-wallpaper'), '');
+    assert.strictEqual(T.copyVar('--aero-wallpaper-light'), '');
     assert.strictEqual(T.state.failedUrl, 'http://localhost:9220/images/bad.png');
     const tokenAfterFail = T.state.buildToken;
     assert.strictEqual(await T.ensureFrosted({ force: false }), false);
@@ -259,7 +260,7 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     // ---- no wallpaper: var removed, mode stays frosted ----
     delete document.body.computedVars['--desktop-wallpaper'];
     assert.strictEqual(await api.rebuildWallpaper(), false);
-    assert.strictEqual(root.style.getPropertyValue('--aero-wallpaper'), '');
+    assert.strictEqual(T.copyVar('--aero-wallpaper'), '');
     assert.strictEqual(api.getMode(), 'frosted');
 
     // ---- live and basic track the origin too: the screen-anchored streaks read it (#407) ----
@@ -268,6 +269,16 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     m._aeroX = undefined;
     assert.strictEqual(api.syncModal(m), true);
     assert.notStrictEqual(m.style.getPropertyValue('--aero-x'), '');
+
+    // ---- live recipe: app.css backdrop-filter radius at the wallpaper's cover scale ----
+    const liveRecipe = T.computeRecipe('live', 1920, 1200, 960, 1920, 1200);
+    assert.strictEqual(liveRecipe.blur, 2.5, '5 CSS px at a half-size copy');
+    assert.strictEqual(liveRecipe.lightBlur, 5, 'taskbar 10 CSS px');
+    assert.strictEqual(liveRecipe.filter, 'saturate(3) contrast(1.5) brightness(1.2)');
+    assert.strictEqual(T.computeRecipe('live', 1920, 1200, 960, 3840, 2400).blur, 1.25, 'a bigger screen blurs less of the copy');
+    assert.strictEqual(T.computeRecipe('frosted', 1920, 1200, 960, 1920, 1200).filter, 'saturate(1.2)', 'frosted unchanged');
+    // no unfiltered copy (tests have no wallpaper): compose draws nothing and leaves frames on the shared copy
+    assert.strictEqual(await T.composeBackdrops(), 0);
 
     // ---- surface contrast: light / dark glyphs from the glass under the bar ----
     assert.deepStrictEqual(T.parseCssColor('rgb(255, 0, 51)'), [1, 0, 0.2, 1]);

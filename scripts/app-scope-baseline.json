@@ -48,9 +48,6 @@
  "public/scripts/comp/activeSyncStudio.js": {
   "owner-less-listener": 1
  },
- "public/scripts/comp/aeroGlass.js": {
-  "owner-less-listener": 2
- },
  "public/scripts/comp/agentClientBridge.js": {
   "owner-less-listener": 2,
   "owner-less-ws": 2,

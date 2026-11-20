@@ -6,13 +6,24 @@
               wallpaper by aeroGlass.js) is painted under each frame at viewport cover
               size, offset by the window's own origin (--aero-x / --aero-y). Dragging
               adds --modal-drag-x / -y in CSS. No window pays a per-frame backdrop-filter.
-     live     the backdrop-filter path app.css ships; untouched here except the
-              maximized dark frame.
+     live     the same cached paint, the copy made with live's own blur and colour recipe;
+              a window over other windows also gets --aero-backdrop, its own texture of the
+              wallpaper and the windows behind it, redrawn only when the stack changes. No frame
+              and no taskbar runs a backdrop-filter at rest (Yukimi, Nov 20 2026); menus and
+              other transient chrome keep the live blur app.css gives them.
      basic    performance mode: static tinted frames with the same geometry, borders
               and shadows. html.disable-blur is kept in sync so older rules still apply.
 
    Link after desktop-shell.css and windows-classic-theme.css, before hidden.css.
    Yozora #400. */
+
+/* A window's own backdrop texture (live, aeroGlass.js composeBackdrops). Not inherited: a new
+   texture restyles the frame paint (::before takes it with an explicit inherit), never the
+   window's subtree. */
+@property --aero-backdrop {
+    syntax: '*';
+    inherits: false;
+}
 
 :root {
     /* Maximized is the Vista dark frame with a touch of texture left. */
@@ -144,6 +155,13 @@ html[data-glass="frosted"] .gallery.has-context-open-item .gallery-item:not(.con
     --aero-streaks-size: var(--aero-vw, 100vw) var(--aero-vh, 100vh);
 }
 
+/* live: the active frame is the full workspace glass colour, as the backdrop-filter frame was,
+   and the client area takes no extra shade (live never had one) */
+html[data-glass="live"] .modal {
+    --aero-tint-active: var(--aero-frame-base);
+    --aero-body-shade-layer: none;
+}
+
 /* A window can opt out of the frame texture */
 .modal[data-aero-texture="off"] {
     --aero-wedges: none, none;
@@ -176,6 +194,7 @@ html[data-glass="basic"] .modal {
    its panels leave the body translucent. :where() keeps the specificity unchanged. */
 
 html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed))),
+html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed))),
 html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed))) {
     background-color: transparent;
     -webkit-backdrop-filter: none;
@@ -185,6 +204,7 @@ html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-them
 }
 
 html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before,
+html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before,
 html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before {
     content: '';
     position: absolute;
@@ -211,8 +231,11 @@ html[data-glass="basic"] body:not(.windows-classic-theme) .modal:not(.alert-them
     box-shadow: var(--aero-frame-highlight);
 }
 
-/* frosted adds the wallpaper layer under the tint, aligned to the desktop */
-html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before {
+/* frosted and live add the wallpaper layer under the tint, aligned to the desktop; live lays a
+   window's own texture (the windows behind it, --aero-backdrop) over it, sized to the border box */
+html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before,
+html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed)))::before {
+    --aero-backdrop: inherit;
     background-image:
         var(--aero-frame-wash), var(--aero-frame-wash), var(--aero-frame-wash),
         var(--aero-body-shade-layer),
@@ -221,6 +244,7 @@ html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-th
         var(--aero-streaks),
         var(--aero-shade),
         linear-gradient(var(--aero-tint), var(--aero-tint)),
+        var(--aero-backdrop, none),
         var(--aero-wallpaper, none);
     background-size:
         var(--aero-strip-side-size), var(--aero-strip-side-size), var(--aero-strip-bottom-size),
@@ -230,6 +254,7 @@ html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-th
         var(--aero-streaks-size),
         100% 100%,
         100% 100%,
+        calc(100% + 2px) calc(100% + 2px),
         var(--aero-cover-w, 100vw) var(--aero-cover-h, 100vh);
     background-position:
         0 var(--modal-title-chrome-height, 27px), 100% var(--modal-title-chrome-height, 27px), var(--window-frame-inset, 0px) 100%,
@@ -239,25 +264,16 @@ html[data-glass="frosted"] body:not(.windows-classic-theme) .modal:not(.alert-th
         var(--aero-streaks-pos),
         0 0,
         0 0,
+        -1px -1px,
         calc(var(--aero-cover-x, 0px) - var(--aero-x, 0px) - var(--modal-drag-x, 0px) - 1px)
         calc(var(--aero-cover-y, 0px) - var(--aero-y, 0px) - var(--modal-drag-y, 0px) - 1px);
 }
 
-/* live: the same texture over the backdrop-filter glass, on the window's own background
-   (app.css keeps the background-color and the blur) */
-html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme):not(.warning-theme):not(.success-theme):not(:where(#manualModal:not(.windowed))) {
-    background-image:
-        var(--aero-frame-wash), var(--aero-frame-wash), var(--aero-frame-wash),
-        var(--aero-wedges),
-        var(--aero-streaks),
-        var(--aero-shade);
-    background-size:
-        var(--aero-strip-side-size), var(--aero-strip-side-size), var(--aero-strip-bottom-size),
-        100% 100%, 100% 100%, var(--aero-streaks-size), 100% 100%;
-    background-position:
-        0 var(--modal-title-chrome-height, 27px), 100% var(--modal-title-chrome-height, 27px), var(--window-frame-inset, 0px) 100%,
-        0 0, 0 0, var(--aero-streaks-pos), 0 0;
-    background-repeat: no-repeat;
+/* While a window moves or resizes, the windows behind it are wherever it was when the texture
+   was made: it shows the shared copy, which slides with the desktop, until the move settles and
+   aeroGlass.js composes again. */
+html[data-glass="live"] body:not(.windows-classic-theme) .modal:is([data-dragging="true"], [data-resizing="true"]):not(.alert-theme):not(.warning-theme):not(.success-theme)::before {
+    --aero-backdrop: none;
 }
 
 /* Inactive windows keep faint glass: same image, calmer tint and sheen (Vista inactive frame). Set where
@@ -266,6 +282,7 @@ html[data-glass="live"] body:not(.windows-classic-theme) .modal:not(.alert-theme
    every element of the window at each focus change (848 in Studio on Modernia, Nov 19 2026). A maximized
    window keeps its dark tint (below) and its sheen goes calm, as before. */
 html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window)::before,
+html[data-glass="live"] body.desktop-mode .modal:not(.active-window)::before,
 html[data-glass="basic"] body.desktop-mode .modal:not(.active-window)::before,
 html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window) :is([data-aero-surface], .round-button),
 html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) :is([data-aero-surface], .round-button) {
@@ -273,6 +290,7 @@ html[data-glass="basic"] body.desktop-mode .modal:not(.active-window) :is([data-
 }
 
 html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window):not(.modal-maximized)::before,
+html[data-glass="live"] body.desktop-mode .modal:not(.active-window):not(.modal-maximized)::before,
 html[data-glass="basic"] body.desktop-mode .modal:not(.active-window):not(.modal-maximized)::before,
 html[data-glass="frosted"] body.desktop-mode .modal:not(.active-window):not(.modal-maximized) :is([data-aero-surface], .round-button),
 html[data-glass="basic"] body.desktop-mode .modal:not(.active-window):not(.modal-maximized) :is([data-aero-surface], .round-button) {
@@ -315,6 +333,7 @@ html[data-glass="basic"] body.desktop-mode .modal .modal-window-title-main.windo
 
 /* The frame paint covers the (transparent) border ring so nothing of the desktop shows at the edges */
 html[data-glass="frosted"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme)::before,
+html[data-glass="live"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme)::before,
 html[data-glass="basic"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme)::before {
     inset: -1px;
 }
@@ -377,13 +396,9 @@ html[data-glass="frosted"] #galleryWindow [data-aero-surface] {
 
 /* A maximized frame stays dark whether or not it has focus (the inactive tint above skips it) */
 html[data-glass="frosted"] body .modal.modal-maximized,
+html[data-glass="live"] body .modal.modal-maximized,
 html[data-glass="basic"] body .modal.modal-maximized {
     --aero-tint: var(--aero-tint-maximized);
-}
-
-/* live keeps its blur (the "touch of glass") under a near-black fill */
-html[data-glass="live"] body:not(.windows-classic-theme) .modal.modal-maximized:not(.alert-theme):not(.warning-theme):not(.success-theme) {
-    background-color: var(--aero-tint-maximized);
 }
 
 /* The taskbar follows the foreground maximized window, as Vista did (flag: scripts/comp/rootStateFlags.js) */
@@ -396,9 +411,11 @@ body.desktop-mode.has-active-maximized-window .desktop-taskbar::after {
 
 /* ---------- taskbar ---------- */
 
-/* frosted: the lighter-blur wallpaper copy, pinned to the bottom edge of the viewport, under
-   the same dark fill as live (95/92/90 %, Yukimi 2026-10-12: frosted is an optimised live) */
-html[data-glass="frosted"] .desktop-taskbar::after {
+/* frosted and live: the lighter-blur wallpaper copy (live's is made with the taskbar's own 10 px
+   saturate 2.5 recipe), pinned to the bottom edge of the viewport, under the same dark fill as
+   live (95/92/90 %, Yukimi 2026-10-12: frosted is an optimised live) */
+html[data-glass="frosted"] .desktop-taskbar::after,
+html[data-glass="live"] .desktop-taskbar::after {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background:
