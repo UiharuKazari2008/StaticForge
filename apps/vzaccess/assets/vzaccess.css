@@ -171,14 +171,8 @@
 .vz-root .vz-cover .vz-fill { flex: 1; }
 .vz-root .vz-tech { font-weight: bold; font-size: 13px; margin-right: 3px; }
 .vz-root .vz-tech-mark { flex: none; height: 15px; width: auto; margin-right: 5px; }
-.vz-root .vz-roam {
-    width: 0;
-    height: 0;
-    margin-right: 4px;
-    border-left: 7px solid transparent;
-    border-right: 7px solid transparent;
-    border-bottom: 12px solid var(--vz-extended);
-}
+.vz-root .vz-roam { flex: none; width: 20px; height: 16px; margin-right: 4px; }
+.vz-root .vz-sig { display: flex; flex: none; }
 .vz-root .vz-conn { gap: 8px; }
 .vz-root .vz-conn .vz-fill { flex: 1; }
 .vz-root .vz-conn img { flex: none; margin-right: 2px; }
@@ -199,20 +193,61 @@
 .vz-root .vz-status .vz-vpn { grid-column: 3; grid-row: 1; }
 .vz-root .vz-status .vz-cmd { grid-column: 3; grid-row: 2; }
 
-/* ---- About VZAccess Manager and WWAN Device Info (the program's own child windows) ---- */
-.vz-window.vz-info-window.vz-info-window { width: 534px; }
+/* no device: the box holds 7.6's "Device not available" beside the device's not-available icon */
+.vz-root .vz-device:has(> .vz-na) { display: flex; gap: 8px; padding: 0 10px; }
+.vz-root .vz-device .vz-na-text { flex: 1; text-align: center; }
+
+/* ---- WWAN Device Info (the program's own child window) ---- */
+.vz-window.vz-info-window.vz-info-window { width: 420px; }
 .vz-root.vz-info { height: auto; padding: 10px 12px 0; }
-.vz-root .vz-about { display: grid; grid-template-columns: 1fr 161px; align-items: start; margin-bottom: 12px; }
-.vz-root .vz-about-text { line-height: 14px; user-select: text; }
-.vz-root .vz-about-logo { width: 161px; height: 61px; margin-top: 18px; }
-.vz-root .vz-about-head { margin-bottom: 3px; }
-.vz-root .vz-props { flex: none; height: 290px; }
-.vz-root .vz-props .vz-row { grid-template-columns: 130px 1fr; min-height: 17px; }
+.vz-root .vz-props { flex: none; height: 380px; overflow-y: auto; }
+.vz-root .vz-props .vz-row { grid-template-columns: 150px 1fr; min-height: 17px; user-select: text; }
 .vz-root .vz-props .vz-row:first-child { background: var(--vz-row-sel); }
 .vz-root.vz-info .vista-dialog-footer { display: flex; justify-content: flex-end; margin: 10px -12px 0; padding: 8px 12px; }
 .vz-root .vz-durrow { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .vz-root .vz-durrow output { flex: 1; min-width: 0; }
 .vz-root .vz-durrow .vz-reset { flex: none; min-width: 72px; height: 22px; }
 
-/* the connect warning (a shell message box): 7.x's triangle beside the text */
-.vz-warn { display: grid; grid-template-columns: 32px 1fr; gap: 12px; align-items: start; }
+/* ---- View > Minimum: 7.6's compact window (218 x 211 with its frame on the VM; help graphics/min-view.png) ---- */
+.vz-root .vz-mini { display: none; }
+.vz-window.vz-min.vz-min { width: 218px; }
+.vz-window.vz-min .vz-root { height: auto; padding-bottom: 6px; }
+.vz-window.vz-min .vz-root > menu[role="tablist"],
+.vz-window.vz-min .vz-root > .vz-panel,
+.vz-window.vz-min .vz-root > .vz-status { display: none; }
+.vz-window.vz-min .vz-root > .naxt-menubar { padding-right: 0; }
+/* the logo over the menu, as 7.6 drew it under its caption */
+.vz-window.vz-min .vz-root .vz-logo { order: -1; position: static; align-self: flex-end; width: 130px; height: auto; margin: 2px 6px 0 0; }
+.vz-window.vz-min .vz-root .vz-mini { display: flex; flex-direction: column; gap: 4px; margin: 4px 5px 0; }
+.vz-root .vz-mini .vz-box { padding: 0 6px; }
+.vz-root .vz-mcover { flex-direction: column; align-items: stretch; height: 58px; padding: 0 !important; }
+.vz-root .vz-mline { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px; font-size: 14px; }
+.vz-root .vz-mline b { font-weight: bold; }
+.vz-root .vz-mconn { border-top: 1px solid var(--vz-box-edge); font-size: 12px; }
+.vz-root .vz-mconn .vz-fill { flex: 1; }
+.vz-root .vz-mtech { display: flex; align-items: center; gap: 2px; }
+.vz-root .vz-mdevice { height: 28px; gap: 6px; }
+.vz-root .vz-mdevice .num { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.vz-root .vz-mdevice .vz-lan { font-weight: bold; font-size: 11px; }
+.vz-root .vz-mbtns { display: flex; gap: 4px; }
+.vz-root .vz-mini button { flex: 1; box-sizing: border-box; height: 27px; padding: 0 2px; white-space: nowrap; }
+.vz-root .vz-mini button.vz-red::before, .vz-root .vz-mini button.vz-red::after { display: none; }
+.vz-root .vz-mini button.vz-red { border: 1px solid var(--vz-red-edge); border-radius: 3px; background: var(--vz-red-face); color: var(--vz-red-text); box-shadow: inset 0 0 0 1px var(--vz-btn-inner); }
+.vz-root .vz-mini button.vz-red:hover:not(:disabled) { background: var(--vz-red-hot); }
+.vz-root .vz-mini button.vz-red:active:not(:disabled) { background: var(--vz-red-down); }
+
+/* ---- the program's dialogs drawn by the kit from its own templates (Session Log, Filter, About, Usage, Warning!) ---- */
+.vz-dlg .vz-dlg-link { color: var(--vz-link); text-decoration: underline; cursor: pointer; }
+.vz-dlg .vz-dlg-link:focus-visible { outline: 1px dotted var(--vz-link); }
+.vz-dlg .vdt-lv-row > span.vz-r, .vz-dlg .vdt-lv-col.vz-r { text-align: right; }
+.vz-dlg .vdt-lv-col:last-child { flex: 1 0 auto; }
+/* Session Log's columns, as wide as on the VM */
+.vz-dlg .vz-c0 { width: 150px; }
+.vz-dlg .vz-c1 { width: 110px; }
+.vz-dlg .vz-c2, .vz-dlg .vz-c3, .vz-dlg .vz-c4 { width: 75px; }
+.vz-dlg .vz-c5 { width: 90px; }
+.vz-dlg .vdt-richedit { white-space: normal; overflow: hidden; border: 0; background: transparent; box-shadow: none; }
+.vz-dlg .vdt-richedit p { margin: 0 0 1em; }
+.vz-dlg .vz-dlg-url { color: var(--vz-url); text-decoration: underline; cursor: pointer; }
+.vz-dlg .vz-about-logo { display: block; width: 160px; height: 60px; }
+.vz-dlg .vdt-custom .vz-usage { box-sizing: border-box; height: 100%; padding: 8px; border: 1px solid var(--vz-field-edge); background: var(--vz-box-face); overflow: auto; user-select: text; }

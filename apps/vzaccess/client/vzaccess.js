@@ -6,6 +6,15 @@
  * Locations tabs, and the status area (Coverage Indicator, Connection Status with its timer, the device's mode,
  * model and number, Start VPN and Connect / Disconnect WWAN).
  *
+ * #953: checked against the real 7.6.3.1 (2642f) installed on the Vista VM (~/.cache/vzam-ref/vm shots, its
+ * VZAMres.dll dumped to ~/.cache/vzam-ref/res and the help CHM to ~/.cache/vzam-ref/chm): the art is the program's
+ * own (VZAMres PNG / bitmap resources, the exe's icons), the menus are its RT_MENU 100 and 537 (tray), and Session
+ * Log, Session Log Filter, About, Usage and Warning! are its own dialog templates (5_428, 5_540, 5_101, 5_498,
+ * 5_465) drawn by Melaton's dialog kit. View > Minimum is 7.6's compact window. The tray icon is the program's
+ * (green edge connected, red idle); one click opens the tray menu, a double click the window (the help's own words).
+ *   Cell details  AndroidCellular.getCellInfo() (DSApp claude/cell-metrics): read when WWAN Device Info opens or
+ *                 the meter is pointed at (at most every 10 s), never on a timer
+ *
  * The modem is the phone's:
  *   WWAN state    AndroidDeviceStatus.cellular ('androiddevicestatus' pushes: carrier, data class, bars, roaming,
  *                 data on / active / moving, number), read once when the window opens, then pushed
@@ -25,7 +34,7 @@
     'use strict';
 
     const doc = document;
-    const VERSION = '7.6.3.1 (2642d)';
+    const VERSION = '7.6.3.1 (2642f)';
     const A = '/melaton-apps/vzaccess/assets';
     const PREFS_KEY = 'vzaccess.prefs';
     const SESSION_KEY = 'vzaccess.session';
@@ -39,6 +48,35 @@
     const readJson = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch (_) { return d; } };
     const writeJson = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* private mode */ } };
     const num = (n, d = 2) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+    /**
+     * VZAccess Manager's own dialog templates (VZAMres.dll RT_DIALOG, ~/.cache/vzam-ref/tools/tpl.py): Session Log 428,
+     * Session Log Filter 540, About 101, Usage 498 (its WebBrowser control is a plain pane here), Warning! 465.
+     * Drawn by Melaton's dialog kit (vistaDialogTemplate.js) as the VM draws them.
+     */
+    const TPL = {"vzam:428":{"t":"Session Log","w":380,"h":162,"f":["MS Shell Dlg 2",8],"s":2160861248,"c":[[415,"SysListView32",7,8,366,110,1350633472,"",0],[1212,"B",7,121,366,16,1342177287,"",0],[1113,"S",10,125,260,8,1342325504,"",0],[1213,"S",286,125,85,8,1342374402,"* View Important Notice",0],[503,"B",7,142,42,14,1342242816,"&Export",0],[504,"B",51,142,42,14,1342242816,"&Clear",0],[505,"B",95,142,42,14,1342242816,"&Filter",0],[1,"B",324,142,50,14,1342242817,"Close",0]]},"vzam:540":{"t":"Session Log Filter","w":268,"h":127,"f":["MS Shell Dlg 2",8],"s":2160599232,"c":[[1232,"S",15,7,246,14,1342308352,"Use the following items to filter through the session log.",0],[1020,"B",17,25,68,10,1342242819,"&Connection:",0],[1065,"C",91,25,170,78,1344339971,"",0],[1021,"B",17,49,67,10,1342242819,"De&vice:",0],[1067,"C",91,49,170,79,1344339971,"",0],[1022,"B",17,72,39,10,1342242819,"&Date",0],[-1,"S",65,73,21,8,1342308352,"&From:",0],[1069,"SysDateTimePick32",91,72,70,15,1342242848,"",0],[-1,"S",175,72,14,8,1342308352,"&To:",0],[1071,"SysDateTimePick32",192,72,70,15,1342242848,"",0],[1,"B",157,107,50,14,1342242817,"OK",0],[2,"B",211,107,50,14,1342242816,"Cancel",0]]},"vzam:101":{"t":"About VZAccess Manager","w":257,"h":242,"f":["MS Shell Dlg 2",8],"s":2160855104,"c":[[1,"B",200,221,50,14,1342242817,"OK",0],[-1,"S",7,7,144,17,1342308352,"VZAccess Manager\r\nPowered By QuickLink Mobile Technology",0],[-1,"S",7,30,95,21,1342308352,"Copyright © 2006-2011\r\nSmith Micro Software, Inc.",0],[425,"S",7,52,204,26,1342308352,"Version 7.0.0 ( Alpha build)\r\nConsumer Release",0],[386,"SysListView32",7,91,243,125,1350633472,"",0],[-1,"S",7,82,91,8,1342308352,"Hardware information:",0],[387,"S",129,30,110,26,1342308352,"Static",0]]},"vzam:498":{"t":"Usage","w":226,"h":159,"f":["MS Shell Dlg 2",8],"s":2429296708,"c":[[1,"B",169,138,50,14,1342242817,"Close",0],[499,"{8856F961-340A-11D0-A96B-00C04FD705A2}",7,7,212,125,1342177280,"",0],[511,"E",7,7,212,125,1084233732,"",0],[497,"B",7,135,149,18,1073815555,"&Do not show my Usage information on connection",0]]},"vzam:465":{"t":"Warning!","w":231,"h":148,"f":["MS Shell Dlg 2",8],"s":2160591040,"c":[[1,"B",120,127,50,14,1342242817,"&Continue",0],[2,"B",174,127,50,14,1342242816,"Cancel",0],[466,"B",35,109,161,10,1342242819,"&Don't show this message again",0],[464,"S",7,7,21,20,1342177294,"",0],[1009,"RICHEDIT50W",35,7,190,98,1342179332,"",0]]}};
+
+    /** The dialog kit (loaded on demand) with the templates above. */
+    function kit() {
+        const fl = root.featureLoader;
+        const ready = fl && typeof fl.loadFeature === 'function' ? fl.loadFeature('vista_dialog_templates') : Promise.resolve();
+        return Promise.resolve(ready).then(() => {
+            if (!root.vistaDialogTemplate) throw new Error('vistaDialogTemplate is not loaded');
+            root.vistaDialogTemplates = Object.assign(root.vistaDialogTemplates || {}, TPL);
+            return root.vistaDialogTemplate;
+        });
+    }
+
+    /** "3,284 KB", as the Session Log counts bytes (whole kilobytes, grouped). */
+    const kbText = (n) => `${Math.round((Number(n) || 0) / 1024).toLocaleString('en-US')} KB`;
+    /** "11/19/2026 6:47 PM" */
+    const whenText = (t) => new Date(t).toLocaleString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(',', '');
+    /** "0:05:12" (a session's Duration); "0:05" (the log's total, h:mm) */
+    const hmsShort = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`; };
+    const hmShort = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 3600)}:${pad(Math.floor(s / 60) % 60)}`; };
+    /** Session Log's columns (their widths, the VM's, are vzaccess.css .vz-c0 ... .vz-c5) and right-aligned ones */
+    const LOG_COLS = [['Connection', false], ['Date/Time', false], ['Duration', true], ['Bytes Received', true], ['Bytes Sent', true], ['Total Bytes', true]];
+    const dbm = (v, unit = 'dBm') => (v == null || !Number.isFinite(Number(v)) ? '' : `${v} ${unit}`);
 
     /** "415-693-8432", as 7.6 writes My #. */
     function phoneText(raw) {
@@ -56,15 +94,20 @@
     }
 
     /**
-     * The Coverage Indicator for the phone's data class (VZAM's own wording: "Mobile Broadband (4G LTE)",
-     * "Mobile Broadband (EV-RevA)", "NationalAccess (1xRTT)"); 5G, which 7.6 never knew, in the same form.
+     * The Coverage Indicator for the phone's data class, in VZAM's own form ("<H2>Mobile Broadband<H3> (4G LTE)",
+     * string 1363; "(EV-RevA)", "NationalAccess (1xRTT)"). The radio's own names in the brackets (Yukimi, #953): LTE,
+     * LTE Advanced (LTE+ / carrier aggregation), NR, NR Advanced (5G-A), NR mmWave (5G UW mmWave, or any NR cell in FR2
+     * as the cell details say). The marks by the bars are Verizon's (Yukimi's artwork; 7.6.3 has no 4G LTE badge of its
+     * own: its "4G" is drawn text).
      */
-    function coverageOf(type) {
+    function coverageOf(type, fr) {
         const t = String(type || '').toUpperCase();
-        // 4G LTE, 5G and 5G Ultra Wideband: Verizon's own marks (Yukimi's artwork, assets/tech-*), where 7.6 had its bold "4G"
-        if (/5G\s*-?\s*(UW|A)|UWB/.test(t)) return { html: '<b>Mobile Broadband</b> (5G Ultra Wideband)', tech: '5G UW', mark: '5guw' };
-        if (/5G|NR/.test(t)) return { html: '<b>Mobile Broadband</b> (5G)', tech: '5G', mark: '5g' };
-        if (/LTE/.test(t)) return { html: '<b>Mobile Broadband</b> (4G LTE)', tech: '4G LTE', mark: '4glte' };
+        const nr = /5G|NR/.test(t);
+        if ((nr && fr === 'FR2') || /5G\s*-?\s*UW|UWB|MMWAVE/.test(t)) return { html: '<b>Mobile Broadband</b> (NR mmWave)', tech: '5G UW', mark: '5guw' };
+        if (/5G\s*-?\s*A|NR\s*-?\s*A/.test(t)) return { html: '<b>Mobile Broadband</b> (NR Advanced)', tech: '5G UW', mark: '5guw' };
+        if (nr) return { html: '<b>Mobile Broadband</b> (NR)', tech: '5G', mark: '5g' };
+        if (/LTE\s*\+|LTE-?A/.test(t)) return { html: '<b>Mobile Broadband</b> (LTE Advanced)', tech: '4G LTE', mark: '4glte' };
+        if (/LTE/.test(t)) return { html: '<b>Mobile Broadband</b> (LTE)', tech: '4G LTE', mark: '4glte' };
         if (/HSPA|3G|UMTS|EVDO|EHRPD/.test(t)) return { html: '<b>Mobile Broadband</b> (EV-RevA)', tech: '3G' };
         if (/EDGE|GPRS|1X|CDMA/.test(t)) return { html: '<span class="vz-national">National</span><b>Access</b> (1xRTT)', tech: '2G' };
         return { html: '<b>Mobile Broadband</b>', tech: '' };
@@ -97,6 +140,10 @@
             this.netSel = 'wwan';
             this.stats = { last: null, rx: [], tx: [], maxRx: 0, maxTx: 0, base: null, rxRate: 0, txRate: 0 };
             this.offs = [];
+            this.mini = !!readJson(PREFS_KEY, {}).minimum; // View > Minimum (7.6 opens in the view it closed in)
+            this.cellInfo = null; // AndroidCellular.getCellInfo(), read when asked
+            this.cellAt = 0;
+            this.dialogs = new Map(); // the kit's dialogs open now (id -> ctx), closed with the program
             this.readCellular();
             this.build();
             this.subscribe();
@@ -107,6 +154,28 @@
         // ---------------------------------------------------------------- the modem (the phone)
 
         provider() { return (root.melatonTray && root.melatonTray.provider('network')) || null; }
+
+        /**
+         * The modem's radio details (DSApp CellularBridge, window.AndroidCellular): read when WWAN Device Info opens or
+         * the signal meter is pointed at, at most every 10 s unless forced; never on a timer. null on an older app.
+         */
+        readCellInfo(force) {
+            const b = root.AndroidCellular;
+            if (!b || typeof b.getCellInfo !== 'function') return null;
+            if (!force && this.cellInfo && Date.now() - this.cellAt < 10000) return this.cellInfo;
+            try { this.cellInfo = parse(b.getCellInfo()); } catch (_) { this.cellInfo = null; }
+            this.cellAt = Date.now();
+            return this.cellInfo;
+        }
+
+        /** The meter's tooltip: the bars, and the signal's own figures when the modem gave them. */
+        signalTip(w) {
+            const ci = this.cellInfo;
+            const parts = [`Signal: ${w.bars || 0} of 4 bars`];
+            if (ci && ci.lte && ci.lte.rsrp != null) parts.push(`LTE RSRP ${ci.lte.rsrp} dBm${ci.lte.rssnr != null ? `, SINR ${ci.lte.rssnr} dB` : ''}`);
+            if (ci && ci.nr && ci.nr.ssRsrp != null) parts.push(`NR SS-RSRP ${ci.nr.ssRsrp} dBm${ci.nr.ssSinr != null ? `, SS-SINR ${ci.nr.ssSinr} dB` : ''}`);
+            return parts.join('\n');
+        }
 
         readCellular() {
             const b = root.AndroidDeviceStatus;
@@ -119,7 +188,8 @@
             const c = this.cell;
             const p = this.provider();
             const m = p && typeof p.get === 'function' ? ((p.get() || {}).mobile || null) : null;
-            if (!c || c.present === false || c.simState === 'absent') return { present: false, connected: false, state: 'Device not detected' };
+            // no modem: 7.6's "Not Connected" and "Device not available" (strings 209)
+            if (!c || c.present === false || c.simState === 'absent') return { present: false, connected: false, state: 'Not Connected', bars: 0, type: '' };
             const connected = !!(c.dataEnabled !== false && c.dataActive) || !!(m && m.connected);
             const name = typeof root.melatonCarrierName === 'function' ? root.melatonCarrierName(c.operator || 'Verizon') : (c.operator || 'Verizon Wireless');
             // the meter's four bars: Android's 0-4 level, else its five-step one scaled
@@ -169,17 +239,59 @@
 
         session() { return readJson(SESSION_KEY, null); }
 
-        /** The connection began or ended (as the phone reports it): the timer and the Session Log follow. */
+        /** One read of the modem link's byte counters (the provider's stats('rmnet0')), or null. */
+        async linkBytes() {
+            const p = this.provider();
+            if (!p || typeof p.stats !== 'function') return null;
+            let x = null;
+            try { x = await p.stats('rmnet0'); } catch (_) { x = null; }
+            if (!x || x.error || (x.kind && x.kind !== 'mobile')) return null;
+            return { rx: Number(x.rxBytes) || 0, tx: Number(x.txBytes) || 0 };
+        }
+
+        /**
+         * The connection began or ended (as the phone reports it): the timer and the Session Log follow. A session
+         * is recorded from the transitions VZAccess Manager sees while it runs (in the window or the tray): its start,
+         * the link's counters then, and at the end the bytes since. One that ended while the program was closed ends
+         * when the program was last running (as 7.x logged only what it saw).
+         */
         noteConnection(w) {
             const s = this.session();
-            if (w.connected && !s) writeJson(SESSION_KEY, { start: Date.now() });
-            if (!w.connected && s) {
-                const log = readJson(LOG_KEY, []);
-                const st = this.stats;
-                log.unshift({ start: s.start, end: Date.now(), rx: st.base ? st.sessionRx || 0 : 0, tx: st.base ? st.sessionTx || 0 : 0, type: w.type || '' });
-                writeJson(LOG_KEY, log.slice(0, 50));
-                writeJson(SESSION_KEY, null);
+            const first = !this.sawStart;
+            this.sawStart = true;
+            if (w.connected && !s) {
+                const ses = { start: Date.now(), carrier: w.carrier || 'Verizon Wireless', tech: coverageOf(w.type).tech, device: this.model() };
+                writeJson(SESSION_KEY, ses);
+                // the counters at the start (one read, as the connection begins)
+                void this.linkBytes().then((b) => {
+                    const cur = this.session();
+                    if (b && cur && cur.start === ses.start && cur.rx0 == null) writeJson(SESSION_KEY, Object.assign(cur, { rx0: b.rx, tx0: b.tx }));
+                });
+                return;
             }
+            if (!w.connected && s && !this.ending) {
+                this.ending = true;
+                const end = s.seen && first ? s.seen : Date.now();
+                // the last counters seen (Statistics, the tray) if the link has gone by now
+                const last = this.stats.last;
+                void this.linkBytes().then((b) => {
+                    const now = b || (last ? { rx: last.rx, tx: last.tx } : null);
+                    const rx = now && s.rx0 != null && now.rx >= s.rx0 ? now.rx - s.rx0 : 0;
+                    const tx = now && s.tx0 != null && now.tx >= s.tx0 ? now.tx - s.tx0 : 0;
+                    const log = readJson(LOG_KEY, []);
+                    log.unshift({ start: s.start, end, rx, tx, type: 'WWAN', connection: `${s.carrier || 'Verizon Wireless'} - VZAccess`, tech: s.tech || '', device: s.device || '' });
+                    writeJson(LOG_KEY, log.slice(0, 200));
+                    writeJson(SESSION_KEY, null);
+                    this.ending = false;
+                    if (this.logCtx) this.fillLog(this.logCtx);
+                });
+            }
+        }
+
+        /** The program is closing: an open session remembers when it was last seen. */
+        noteExit() {
+            const s = this.session();
+            if (s) writeJson(SESSION_KEY, Object.assign(s, { seen: Date.now() }));
         }
 
         // ---------------------------------------------------------------- the window
@@ -207,10 +319,10 @@
                     </div>
                     <img class="vz-logo" src="${A}/vzw-logo.png" alt="Verizon Wireless" draggable="false">
                     <menu role="tablist">
-                        <button type="button" role="tab" data-tab="networks" aria-selected="true"><img src="${A}/tab-networks.png" alt="" draggable="false">Networks</button>
-                        <button type="button" role="tab" data-tab="statistics" aria-selected="false"><img src="${A}/tab-statistics.png" alt="" draggable="false">Statistics</button>
-                        <button type="button" role="tab" data-tab="txt" aria-selected="false"><img src="${A}/tab-txt.png" alt="" draggable="false">TXT Messaging</button>
-                        <button type="button" role="tab" data-tab="wloc" aria-selected="false"><img src="${A}/tab-wifiloc.png" alt="" draggable="false">Wi-Fi Locations</button>
+                        <button type="button" role="tab" data-tab="networks" aria-selected="true"><img src="${A}/tab-networks.png" data-on="tab-networks" data-off="tab-networks-off" alt="" draggable="false">Networks</button>
+                        <button type="button" role="tab" data-tab="statistics" aria-selected="false"><img src="${A}/tab-statistics-off.png" data-on="tab-statistics" data-off="tab-statistics-off" alt="" draggable="false">Statistics</button>
+                        <button type="button" role="tab" data-tab="txt" aria-selected="false"><img src="${A}/tab-txt-off.png" data-on="tab-txt" data-off="tab-txt-off" alt="" draggable="false">TXT Messaging</button>
+                        <button type="button" role="tab" data-tab="wloc" aria-selected="false"><img src="${A}/tab-wifiloc.png" data-on="tab-wifiloc" data-off="tab-wifiloc" alt="" draggable="false">Wi-Fi Locations</button>
                     </menu>
                     <article role="tabpanel" class="vz-panel">
                         <div class="vz-page is-shown" data-page="networks">
@@ -272,12 +384,18 @@
                     </article>
                     <div class="vz-status">
                         <div class="vz-box vz-cover" data-f="cover"></div>
-                        <div class="vz-box vz-device">
-                            <img src="${A}/envelope.png" alt="" draggable="false" data-f="envelope"><span class="mode"><b>LAN</b><span data-f="model"></span></span>
-                            <img src="${A}/phone.png" alt="" draggable="false"><span class="num" data-f="number">My #:</span>
-                        </div>
+                        <div class="vz-box vz-device" data-f="device"></div>
                         <button type="button" class="vz-vpn" data-vz="vpn"></button>
                         <div class="vz-box vz-conn"><span data-f="state"></span><span class="vz-fill"></span><span data-f="timer">00:00:00</span><img data-f="arrows" src="${A}/arrows-off.png" alt="" draggable="false"></div>
+                        <button type="button" class="vz-cmd" data-vz="wwan"></button>
+                    </div>
+                    <div class="vz-mini">
+                        <div class="vz-box vz-mcover">
+                            <div class="vz-mline" data-f="mcover"></div>
+                            <div class="vz-mline vz-mconn"><span class="vz-mtech" data-f="mtech"></span><span class="vz-fill"></span><span data-f="mtimer">00:00:00</span><img data-f="marrows" src="${A}/arrows-off.png" alt="" draggable="false"></div>
+                        </div>
+                        <div class="vz-box vz-mdevice" data-f="mdevice"></div>
+                        <div class="vz-mbtns"><button type="button" data-vz="usage" data-f="musage"><u>U</u>sage</button><button type="button" class="vz-vpn" data-vz="vpn"></button></div>
                         <button type="button" class="vz-cmd" data-vz="wwan"></button>
                     </div>
                 </div>`;
@@ -299,9 +417,22 @@
                 else if (row.dataset.key.startsWith('wifi:') || row.dataset.key.startsWith('known:')) void this.command('wconnect');
                 else if (row.dataset.key.startsWith('txt:')) void this.command('open-txt');
             }, sig);
+            // the menu's accelerators (VZAMres menu 100): F4 Connect, F5 Refresh, Ctrl+K Diagnostics, Ctrl+N Detect Device
             m.addEventListener('keydown', (ev) => {
-                if (ev.key === 'Enter' && ev.target.closest('.vz-notice')) { ev.preventDefault(); void this.command('notice'); }
-                if (ev.key === 'F1') { ev.preventDefault(); void this.command('help'); }
+                if (ev.key === 'Enter' && ev.target.closest('.vz-notice')) { ev.preventDefault(); void this.command('notice'); return; }
+                const k = ev.ctrlKey && !ev.altKey && !ev.shiftKey ? `^${ev.key.toLowerCase()}` : (!ev.ctrlKey && !ev.altKey ? ev.key : '');
+                const a = { F4: 'wwan', F5: 'detect', '^k': 'devinfo', '^n': 'detect' }[k];
+                if (a) { ev.preventDefault(); void this.command(a); }
+            }, sig);
+            // the device box: a double click shows its details (WWAN Device Info)
+            m.addEventListener('dblclick', (ev) => { if (ev.target.closest('.vz-device, .vz-mdevice')) void this.command('devinfo'); }, sig);
+            // the meter: its tooltip reads the modem's figures when pointed at (not on a timer)
+            m.addEventListener('pointerover', (ev) => {
+                const meter = ev.target.closest('.vz-cover .vz-sig, .vz-mconn .vz-sig');
+                if (!meter || !root.AndroidCellular) return;
+                this.readCellInfo();
+                const t = this.signalTip(this.wwan());
+                if (meter.title !== t) meter.title = t;
             }, sig);
             m.querySelectorAll('.naxt-menu-title').forEach((t) => {
                 if (!root.contextMenu || typeof root.contextMenu.attachClickMenuToElement !== 'function') return;
@@ -322,8 +453,10 @@
             }, sig);
             this.q = q;
             this.m = m;
+            this.root = m.querySelector('.vz-root');
+            this.setMini(this.mini, true);
             if (!this.trayOnly) this.show();
-            this.makeTray(m);
+            this.makeTray();
         }
 
         /** The window on screen (from the tray, the Start menu or a second launch). */
@@ -336,6 +469,20 @@
             m.classList.remove('hidden');
             this.paintSoon();
             this.place(m);
+        }
+
+        /**
+         * View > Minimum: 7.6's compact window (the coverage box with the bars, timer and data arrows, the device box,
+         * Usage / Start VPN and Connect WWAN under the menu); chosen again, the Full view. Remembered.
+         */
+        setMini(on, quiet) {
+            this.mini = !!on;
+            this.modal.classList.toggle('vz-min', this.mini);
+            if (!quiet) {
+                writeJson(PREFS_KEY, Object.assign(readJson(PREFS_KEY, {}), { minimum: this.mini }));
+                if (this.mini && this.tab === 'statistics') this.drawGraph();
+                this.paintSoon();
+            }
         }
 
         /** Back to the notification area (the window closes; the program keeps running in the tray). */
@@ -362,40 +509,65 @@
             }
         }
 
-        makeTray(m) {
-            // the notification area: VZAM's antenna, red while connected (the User Guide's tray menu)
+        makeTray() {
+            // the notification area: the program's icon, its edge green while connected and red while not (the help's
+            // "Using the System Tray Icon"). A click opens the Minimum View (Yukimi, #953); a double click the window in
+            // its last view, as 7.6; the right button VZAMres menu 537
+            const menu = {
+                sections: [{ type: 'list', initfn: (s) => { s.items = this.trayMenu(); } }],
+                onAction: (a) => {
+                    if (a === 'show') { this.show(); return; }
+                    if (a.startsWith('tab:')) { this.setMini(false); this.show(); this.showTab(a.slice(4)); return; }
+                    void this.command(a);
+                }
+            };
             this.trayIcon = this.app.tray({
                 title: 'VZAccess Manager',
-                icon: `${A}/tab-networks-off.png`,
-                onClick: () => { this.show(); },
-                menu: {
-                    sections: [{ type: 'list', initfn: (s) => {
-                        s.items = [
-                            { text: 'Show Application', action: 'show', default: true },
-                            { separator: true },
-                            { text: 'Networks', action: 'tab:networks' },
-                            { text: 'Statistics', action: 'tab:statistics' },
-                            { text: 'TXT Messaging', action: 'tab:txt' },
-                            { separator: true },
-                            { text: 'Preferences...', action: 'prefs' },
-                            { text: 'About VZAccess Manager', action: 'about' },
-                            { separator: true },
-                            { text: 'Exit', action: 'exit' }
-                        ];
-                    } }],
-                    onAction: (a) => {
-                        if (a === 'show') { this.show(); return; }
-                        if (a.startsWith('tab:')) { this.show(); this.showTab(a.slice(4)); return; }
-                        void this.command(a);
-                    }
-                }
+                icon: `${A}/tray-idle.png`,
+                onClick: () => {
+                    if (this.trayClickTimer) return;
+                    // wait out a double click's second press
+                    this.trayClickTimer = setTimeout(() => { this.trayClickTimer = 0; if (!this.mini) this.setMini(true); this.show(); }, 250);
+                },
+                menu
             });
+            if (this.trayIcon) {
+                this.trayIcon.addEventListener('dblclick', () => {
+                    clearTimeout(this.trayClickTimer);
+                    this.trayClickTimer = 0;
+                    this.show();
+                }, { signal: this.app.signal });
+            }
+        }
+
+        /** VZAMres menu 537 (the tray's), as 7.6.3.1 shows it: TXT Messaging and Power Device only with a device. */
+        trayMenu() {
+            const w = this.wwan();
+            return [
+                { text: 'Show Application', action: 'show', default: true },
+                { separator: true },
+                { text: 'Networks', action: 'tab:networks' },
+                { text: 'Statistics', action: 'tab:statistics' },
+                ...(w.present ? [{ text: 'TXT Messaging', action: 'tab:txt' }] : []),
+                { text: 'Wi-Fi Locations', action: 'tab:wloc' },
+                { separator: true },
+                { text: 'Preferences...', action: 'prefs' },
+                ...(w.present ? [{ text: 'Power Device', action: 'power', showIndicator: true, checked: !!w.on }] : []),
+                { separator: true },
+                { text: 'Check for Updates...', action: 'updates' },
+                { text: 'About VZAccess Manager...', action: 'about' },
+                { separator: true },
+                { text: 'Exit', action: 'exit' }
+            ];
         }
 
         destroy() {
             this.offs.forEach((off) => { try { off(); } catch (_) { /* gone */ } });
             this.offs = [];
             clearTimeout(this.pendingTimer);
+            clearTimeout(this.trayClickTimer);
+            this.dialogs.forEach((ctx) => { try { ctx.close(); } catch (_) { /* gone */ } });
+            this.dialogs.clear();
             const m = this.modal;
             try { call('closeModal', m); } catch (_) { /* gone */ }
             setTimeout(() => m.remove(), 400);
@@ -461,8 +633,10 @@
 
         tick() {
             const s = this.session();
-            this.setText(this.f('timer'), s ? hms(Date.now() - s.start) : '00:00:00');
-            if (this.tab === 'statistics') void this.sample();
+            const t = s ? hms(Date.now() - s.start) : '00:00:00';
+            this.setText(this.f('timer'), t);
+            this.setText(this.f('mtimer'), t);
+            if (this.tab === 'statistics' && !this.mini) void this.sample();
             const w = this.wwan();
             // Connected - Dormant comes 20 s after the data stops moving
             if (w.connected && !w.moving && this.idleSince && Date.now() - this.idleSince > 20000) this.setText(this.f('state'), w.state);
@@ -478,36 +652,61 @@
             this.noteConnection(w);
             if (this.pending === 'connecting' && w.connected) this.endPending();
             if (this.pending === 'disconnecting' && !w.connected) this.endPending();
-            // Coverage Indicator: the network, its technology label, roaming, the bars
-            const cov = coverageOf(w.type);
-            const tip = `Signal: ${w.bars || 0} of 4 bars`;
-            this.setHtml(this.f('cover'), !w.present
-                ? '<span>Device not detected</span>'
-                : w.searching ? '<span>Searching for network...</span>'
-                    : `<span>${cov.html}</span><span class="vz-fill"></span>${w.roaming ? '<span class="vz-roam" title="Extended Network"></span>' : ''}${cov.mark ? `<img class="vz-tech-mark" src="${A}/tech-${cov.mark}-15.png" srcset="${A}/tech-${cov.mark}-30.png 2x" alt="${esc(cov.tech)}" draggable="false">` : cov.tech ? `<span class="vz-tech">${esc(cov.tech)}</span>` : ''}<span title="${esc(tip)}">${meterHtml(w.bars)}</span>`);
-            // Connection Status, the timer, the data arrows
+            // the FR2 (mmWave) answer comes from the cell details, if they were read
+            const ci = this.cellInfo;
+            const cov = coverageOf(w.type, ci && ci.frequencyRange);
+            const ext = w.roaming ? ' Extended Network' : '';
+            // the Coverage Indicator: the network and its radio (strings 1363, 3061), roaming, the mark and the bars
+            const mark = cov.mark ? `<img class="vz-tech-mark" src="${A}/tech-${cov.mark}-15.png" srcset="${A}/tech-${cov.mark}-30.png 2x" alt="${esc(cov.tech)}" draggable="false">` : cov.tech ? `<span class="vz-tech">${esc(cov.tech)}</span>` : '';
+            const roam = w.roaming ? `<img class="vz-roam" src="${A}/roam-extended.png" alt="" title="Extended Network" draggable="false">` : '';
+            const meter = `<span class="vz-sig" title="${esc(this.signalTip(w))}">${meterHtml(w.bars)}</span>`;
+            const covText = !w.present ? '' : w.searching ? '<span>Searching for network</span>' : `<span title="${esc(`Coverage - ${cov.html.replace(/<[^>]+>/g, '')}${ext}`)}">${cov.html}</span>`;
+            const live = w.present && !w.searching;
+            this.setHtml(this.f('cover'), live ? `${covText}<span class="vz-fill"></span>${roam}${mark}${meter}` : covText);
+            this.setHtml(this.f('mcover'), covText);
+            this.setHtml(this.f('mtech'), live ? `${mark}${meter}${roam}` : '');
+            // Connection Status, the timer, the data arrows (up, down or both as the data moves)
             this.setText(this.f('state'), w.state);
             const arrows = `${A}/${w.connected && w.moving ? 'arrows' : 'arrows-off'}.png`;
-            if (this.f('arrows').getAttribute('src') !== arrows) this.f('arrows').setAttribute('src', arrows);
-            // the device: mode, model, number
-            this.setText(this.f('model'), w.present ? this.model() : '');
-            this.setText(this.f('number'), `My #: ${w.present ? phoneText(w.number) : ''}`);
-            // Start VPN and the command button
+            ['arrows', 'marrows'].forEach((k) => { const el = this.f(k); if (el && el.getAttribute('src') !== arrows) el.setAttribute('src', arrows); });
+            // the device: 7.6's box (TXT envelope, LAN, the model; the device's state icon, My #), else "Device not available"
+            const unread = !!(this.cell && this.cell.unreadTexts);
+            const envelope = `<img src="${A}/${unread ? 'envelope-new' : 'envelope'}.png" alt="" draggable="false">`;
+            const devIcon = !w.present ? 'device-na' : /lock|pin|puk/i.test(w.sim || '') ? 'device-locked' : 'phone';
+            const number = `My #: ${w.present ? phoneText(w.number) : ''}`;
+            this.setHtml(this.f('device'), w.present
+                ? `${envelope}<span class="mode"><b>LAN</b><span>${esc(this.model())}</span></span><img src="${A}/${devIcon}.png" alt="" draggable="false"><span class="num">${esc(number)}</span>`
+                : `<img class="vz-na" src="${A}/device-na.png" alt="" draggable="false"><span class="vz-na-text">Device not available</span>`);
+            this.setHtml(this.f('mdevice'), w.present
+                ? `<img src="${A}/${devIcon}.png" alt="" draggable="false"><span class="num">${esc(number)}</span>${envelope}<b class="vz-lan">LAN</b>`
+                : `<img src="${A}/device-na.png" alt="" draggable="false"><span>Device not available</span>`);
+            // TXT Messaging is a device's (7.6 shows its tab only with one)
+            const txtTab = this.q('button[data-tab="txt"]');
+            if (txtTab) txtTab.hidden = !w.present;
+            if (!w.present && this.tab === 'txt') this.showTab('networks');
+            // Start VPN and the command button (Connect WWAN / Disconnect WWAN, strings 769-770; "Connect" with no device)
             const vpn = this.vpn();
-            const vb = this.q('[data-vz="vpn"]');
-            this.setHtml(vb, vpn && vpn.connected ? 'S<u>t</u>op VPN' : '<u>S</u>tart VPN');
-            vb.disabled = !vpn || !w.connected;
-            const cb = this.q('[data-vz="wwan"]');
+            this.m.querySelectorAll('[data-vz="vpn"]').forEach((vb) => {
+                this.setHtml(vb, vpn && vpn.connected ? 'S<u>t</u>op VPN' : '<u>S</u>tart VPN');
+                vb.disabled = !vpn || !w.connected;
+            });
+            const mu = this.f('musage');
+            if (mu) { mu.hidden = !w.present; mu.disabled = !w.connected; }
+            this.m.classList.toggle('vz-nodev', !w.present);
             const disconnect = w.connected || this.pending === 'connecting';
-            this.setHtml(cb, disconnect ? '<u>D</u>isconnect WWAN' : '<u>C</u>onnect WWAN');
-            cb.classList.toggle('vz-red', disconnect);
-            cb.disabled = !w.present || w.airplane || !!this.pending;
-            // the tray: red antenna while connected
+            this.m.querySelectorAll('[data-vz="wwan"]').forEach((cb) => {
+                this.setHtml(cb, !w.present ? 'Connect' : disconnect ? '<u>D</u>isconnect WWAN' : '<u>C</u>onnect WWAN');
+                cb.classList.toggle('vz-red', disconnect);
+                cb.disabled = !w.present || w.airplane || !!this.pending;
+            });
+            // the tray: the program's icon, its edge green while connected; the tooltip names the link, its radio and bars
             if (this.trayIcon) {
                 const img = this.trayIcon.querySelector('img');
-                const src = `${A}/${w.connected ? 'tab-networks' : 'tab-networks-off'}.png`;
+                const src = `${A}/${w.connected ? 'tray-connected' : 'tray-idle'}.png`;
                 if (img && img.getAttribute('src') !== src) img.setAttribute('src', src);
-                this.trayIcon.title = w.present ? `VZAccess Manager\n${w.carrier} - VZAccess: ${w.state}` : 'VZAccess Manager\nDevice not detected';
+                const tip = !w.present ? 'VZAccess Manager\nDevice not available'
+                    : `VZAccess Manager\n${w.carrier} - VZAccess: ${w.state}${live ? `\n${cov.tech || w.type || ''} ${w.bars} of 4 bars${ext}` : ''}`;
+                if (this.trayIcon.title !== tip) this.trayIcon.title = tip;
             }
             this.paintNetworks(w);
         }
@@ -526,7 +725,9 @@
             const p = this.provider();
             const st = p && typeof p.get === 'function' ? (p.get() || {}) : {};
             const wifi = st.wifi || {};
-            const current = wifi.state === 'connected' && wifi.network ? wifi.network : null;
+            // the Wi-Fi radio off: no Wi-Fi networks (the last scan is not what is around now)
+            const wifiOff = wifi.radio === false || wifi.state === 'off' || wifi.present === false;
+            const current = !wifiOff && wifi.state === 'connected' && wifi.network ? wifi.network : null;
             const rows = [];
             if (w.present) {
                 rows.push({
@@ -543,17 +744,17 @@
                 const name = String(n.name || n.ssid || '');
                 if (!name || seen.has(name)) return;
                 seen.add(name);
-                rows.push({ key: `wifi:${name}`, icon: 'wifi', name, status: connected ? 'Connected' : '', bars: barsOfPercent(n.signalPercent), on: connected, secure: n.secured || n.security });
+                rows.push({ key: `wifi:${name}`, icon: connected ? 'wifi-on' : 'wifi', name, status: connected ? 'Connected' : '', bars: barsOfPercent(n.signalPercent), on: connected, secure: n.secured || n.security });
             };
             if (current) wifiRow(current, true);
-            (this.scan || []).forEach((n) => wifiRow(n, false));
+            if (!wifiOff) (this.scan || []).forEach((n) => wifiRow(n, false));
             const html = rows.length
                 ? rows.map((r) => `<div class="vz-row${r.on ? ' is-on' : ''}${this.netSel === r.key ? ' is-selected' : ''}" role="option" data-key="${esc(r.key)}" title="${r.secure ? 'Secured network' : ''}">
                         <span><img src="${A}/${r.icon}.png" alt="" draggable="false"><span class="vz-name">${esc(r.name)}</span></span>
                         <span>${esc(r.status)}</span>
                         <span>${meterHtml(r.bars)}</span><span></span>
                     </div>`).join('')
-                : '<div class="vz-empty">Device not detected</div>';
+                : '';
             this.setHtml(this.f('netrows'), html);
         }
 
@@ -581,7 +782,14 @@
 
         showTab(tab) {
             this.tab = tab;
-            this.modal.querySelectorAll('button[role="tab"]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === tab)));
+            this.modal.querySelectorAll('button[role="tab"]').forEach((t) => {
+                const on = t.dataset.tab === tab;
+                t.setAttribute('aria-selected', String(on));
+                // 7.6's tab art: the selected tab's in colour, the others' grey (VZAMres PNG 1178-1185)
+                const img = t.querySelector('img');
+                const src = `${A}/${on ? img.dataset.on : img.dataset.off}.png`;
+                if (img.getAttribute('src') !== src) img.setAttribute('src', src);
+            });
             this.modal.querySelectorAll('.vz-page').forEach((p) => p.classList.toggle('is-shown', p.dataset.page === tab));
             if (tab === 'statistics') { void this.sample(); this.drawGraph(); }
             if (tab === 'txt') void this.loadTexts();
@@ -731,51 +939,74 @@
 
         // ---------------------------------------------------------------- menus and commands
 
+        /** VZAMres menu 100, as 7.6.3.1 shows it: Tools follows the tab; device items only with a device. */
         menu(name) {
             const w = this.wwan();
-            const vpn = this.vpn();
+            const tab = (t, text) => ({ text, action: `tab:${t}`, showIndicator: true, indicatorMark: 'radio', checked: !this.mini && this.tab === t });
             switch (name) {
                 case 'file': return [
-                    w.connected ? { text: 'Disconnect WWAN', action: 'wwan', disabled: !!this.pending } : { text: 'Connect WWAN', action: 'wwan', disabled: !w.present || w.airplane || !!this.pending },
-                    { text: 'Connect Wi-Fi...', action: 'wconnect' },
-                    { separator: true },
-                    { text: vpn && vpn.connected ? 'Stop VPN' : 'Start VPN', action: 'vpn', disabled: !vpn || !w.connected },
+                    { text: w.connected ? 'Disconnect' : 'Connect', subtext: 'F4', action: 'wwan', disabled: !w.present || w.airplane || !!this.pending },
                     { separator: true },
                     { text: 'Exit', action: 'exit' }];
                 case 'view': return [
-                    { text: 'Networks', action: 'tab:networks', showIndicator: true, indicatorMark: 'radio', checked: this.tab === 'networks' },
-                    { text: 'Statistics', action: 'tab:statistics', showIndicator: true, indicatorMark: 'radio', checked: this.tab === 'statistics' },
-                    { text: 'TXT Messaging', action: 'tab:txt', showIndicator: true, indicatorMark: 'radio', checked: this.tab === 'txt' },
-                    { text: 'Wi-Fi Locations', action: 'tab:wloc', showIndicator: true, indicatorMark: 'radio', checked: this.tab === 'wloc' },
+                    tab('networks', 'Networks'),
+                    tab('statistics', 'Statistics'),
+                    ...(w.present ? [tab('txt', 'TXT Messaging')] : []),
+                    tab('wloc', 'Wi-Fi Locations'),
                     { separator: true },
-                    { text: 'Refresh', action: 'detect' }];
+                    { text: 'Refresh', subtext: 'F5', action: 'detect' },
+                    { separator: true },
+                    { text: 'Minimum', action: 'minimum', showIndicator: true, checked: this.mini }];
                 case 'tools':
-                    if (this.tab === 'statistics') return [{ text: 'Reset', action: 'reset' }];
-                    if (this.tab === 'txt') return [{ text: 'Compose', action: 'compose' }, { text: 'Get New', action: 'getnew' }, { text: 'Reply', action: 'reply', disabled: !this.txtSel }];
-                    return [{ text: 'Usage', action: 'usage' }, { text: 'My Verizon', action: 'myverizon' }];
+                    if (!this.mini && this.tab === 'statistics') return [{ text: 'Reset', action: 'reset' }];
+                    if (!this.mini && this.tab === 'txt') {
+                        return [
+                            { text: 'Compose...', action: 'compose' },
+                            { text: 'Get New...', action: 'getnew' },
+                            { text: 'Reply...', action: 'reply', disabled: !this.txtSel },
+                            { text: 'Forward...', action: 'forward', disabled: !this.txtSel }];
+                    }
+                    if (!this.mini && this.tab === 'wloc') return [{ text: 'Update Locations...', action: 'wrefresh' }];
+                    return [
+                        ...(w.present ? [{ text: 'Usage...', action: 'usage' }] : []),
+                        { text: 'My Verizon...', action: 'myverizon' }];
                 case 'options': return [
                     { text: 'Preferences...', action: 'prefs' },
                     { separator: true },
+                    { text: 'Diagnostics...', subtext: 'Ctrl-K', action: 'devinfo', disabled: !w.present },
                     { text: 'Session Log...', action: 'log' },
                     { separator: true },
-                    { text: 'Detect Device...', action: 'detect' },
-                    { separator: true },
-                    { text: 'Power Off WWAN Device', action: 'poweroff', disabled: !w.present || !w.on }];
+                    { text: 'Detect Device...', subtext: 'Ctrl-N', action: 'detect' },
+                    ...(w.present ? [{ separator: true }, { text: 'Power Device', action: 'power', showIndicator: true, checked: !!w.on }] : [])];
                 case 'help': return [
-                    { text: 'Check for Updates', action: 'updates' },
+                    { text: 'Check for Updates...', action: 'updates' },
                     { separator: true },
-                    { text: 'About VZAccess Manager', action: 'about' },
-                    { text: 'WWAN Device Info', action: 'devinfo', disabled: !w.present }];
+                    { text: 'Support...', action: 'support' },
+                    { text: 'About VZAccess Manager...', action: 'about' }];
                 default: return [];
             }
         }
 
         async command(a) {
-            if (a.startsWith('tab:')) { this.showTab(a.slice(4)); return; }
+            if (a.startsWith('tab:')) { if (this.mini) this.setMini(false); this.showTab(a.slice(4)); return; }
             switch (a) {
                 case 'exit': this.app.exit(); return;
                 case 'wwan': await this.toggleWwan(); return;
-                case 'poweroff': if (this.wwan().on) await this.toggleWwan(true); return;
+                case 'minimum': this.setMini(!this.mini); return;
+                // Power Device: the modem's data on or off (no warning when turning it on: 7.6 asks only on Connect)
+                case 'power': {
+                    const w = this.wwan();
+                    if (!w.present || this.pending) return;
+                    if (w.on) { await this.toggleWwan(true); return; }
+                    await this.setData(true);
+                    this.paintSoon();
+                    return;
+                }
+                case 'support': {
+                    const url = 'https://www.verizon.com/support/';
+                    if (typeof root.openGrimoireUrl === 'function') Promise.resolve().then(() => root.openGrimoireUrl(url)).catch(() => {});
+                    return;
+                }
                 case 'vpn': {
                     const cp = root.melatonControlPanel;
                     if (cp && typeof cp.toggleConnection === 'function') { try { cp.toggleConnection(); } catch (_) { /* nothing */ } }
@@ -795,7 +1026,8 @@
                     this.paintStats(null);
                     return;
                 }
-                case 'notice': return this.message('Important Notice', 'The statistics shown are an estimate of the data sent and received by this computer over the Verizon Wireless network. They are not the data usage Verizon Wireless bills. To see the usage on your account, click Usage on the Networks tab or go to My Verizon.', 'info');
+                // strings 726-729: Statistics' Important Notice
+                case 'notice': return this.message('Important Notice', 'The Session Logs should not be used to estimate or monitor data usage during your billing cycle as the bytes depicted on the "Session Log" are not representative of actual billable data usage when data is transmitted and received on the Verizon Wireless Network.\n\nPlease use the "My Verizon" button to view billed data usage.', 'info');
                 case 'compose': case 'open-txt': case 'reply': case 'forward': return this.openTexts();
                 case 'getnew': return this.loadTexts();
                 case 'wconnect': {
@@ -809,7 +1041,6 @@
                 case 'updates': return this.message('VZAccess Manager', 'VZAccess Manager is up to date.', 'info');
                 case 'about': return this.about();
                 case 'devinfo': return this.deviceInfo();
-                case 'help': return undefined;
                 default: return undefined;
             }
         }
@@ -839,33 +1070,72 @@
             this.paintSoon();
         }
 
-        async connectWarning() {
-            if (typeof root.showConfirmationDialog !== 'function') return true;
-            let box = null;
-            // the check box makes it a task dialog (no icon of the shell's): 7.x's warning triangle is drawn in the message
-            const html = '<div class="vz-warn"><img src="/static_images/vista-icons/msgbox-warning-32.png" alt="" width="32" height="32" draggable="false"><div>ATTENTION<br><br>You are about to establish a Mobile Broadband or NationalAccess connection.  Charges apply in accordance with your subscription to Verizon Wireless\' NationalAccess/Mobile Broadband.<br><br>'
-                + '<span class="win7"><input type="checkbox" id="vzNoWarn"><label for="vzNoWarn">Don\'t show this message again</label></span></div></div>';
-            const r = await root.showConfirmationDialog(html, [{ text: 'Continue', value: true }, { text: 'Cancel', value: false }], null, {
-                title: 'Warning!',
-                icon: 'fas fa-exclamation-triangle',
-                onDialogReady: () => { box = doc.getElementById('vzNoWarn'); }
-            });
-            if (r && box && box.checked) writeJson(PREFS_KEY, Object.assign(readJson(PREFS_KEY, {}), { noConnectWarning: true }));
-            return !!r;
+        /**
+         * The kit's dialog for one of the program's templates, owned by its window and closed with the program; a
+         * second open of the same one brings it forward.
+         */
+        async dialog(id, opts) {
+            const open = this.dialogs.get(id);
+            if (open && open.modal && open.modal.isConnected) { call('bringModalToFront', open.modal); return open; }
+            let k = null;
+            try { k = await kit(); } catch (_) { return null; }
+            if (this.app.signal.aborted) return null;
+            const close = opts.close;
+            const ctx = k.openDialog(Object.assign({ id, owner: this.m && !this.m.classList.contains('hidden') ? this.m : null, icon: `${A}/vzaccess-16.png`, bareCaption: true }, opts, {
+                close: (c) => { this.dialogs.delete(id); if (typeof close === 'function') close(c); }
+            }));
+            if (!ctx) return null;
+            ctx.modal.classList.add('vz-dlg');
+            this.dialogs.set(id, ctx);
+            return ctx;
         }
 
-        /** Usage: 7.6's estimate box. The phone keeps its mobile counters from its last start (not a billing month). */
+        /** Warning! (VZAMres dialog 465): before a connection, unless "Don't show this message again" was ticked. */
+        connectWarning() {
+            return new Promise((resolve) => {
+                let answer = false;
+                void this.dialog('vzAccessWarning', {
+                    key: 'vzam:465',
+                    overrides: { 464: { image: '/static_images/vista-icons/msgbox-warning-32.png' } },
+                    init: (ctx) => {
+                        ctx.html(1009, '<p>ATTENTION</p><p>You are about to establish a Mobile Broadband or NationalAccess connection.&nbsp; Charges apply in accordance with your subscription to Verizon Wireless\' NationalAccess/Mobile Broadband.</p>'
+                            + '<p>To see our current pricing for Mobile Broadband, please visit <a class="vz-dlg-url" tabindex="0">http://www.verizonwireless.com/b2c/mobileoptions</a></p>');
+                        const a = ctx.holder(1009).querySelector('.vz-dlg-url');
+                        a.addEventListener('click', () => { if (typeof root.openGrimoireUrl === 'function') Promise.resolve().then(() => root.openGrimoireUrl('https://www.verizon.com/plans/')).catch(() => {}); });
+                    },
+                    ok: (ctx) => {
+                        answer = true;
+                        if (ctx.get(466)) writeJson(PREFS_KEY, Object.assign(readJson(PREFS_KEY, {}), { noConnectWarning: true }));
+                    },
+                    close: () => resolve(answer)
+                }).then((ctx) => { if (!ctx) resolve(true); });
+            });
+        }
+
+        /**
+         * Usage (VZAMres dialog 498): 7.6 showed Verizon's page in it; here the estimate from the phone's own mobile
+         * counters (kept from its last start, not a billing month), in 7.6's words. Strings 307, 311 when it cannot.
+         */
         async usage() {
-            const p = this.provider();
-            let x = null;
-            if (p && typeof p.stats === 'function') { try { x = await p.stats('rmnet0'); } catch (_) { x = null; } }
-            if (!x || x.error || (x.kind && x.kind !== 'mobile')) return this.message('Usage', 'Usage information is not available.', 'info');
-            const d = new Date();
-            let h = d.getHours();
-            const ap = h >= 12 ? 'PM' : 'AM';
-            h = h % 12 || 12;
-            const gb = ((Number(x.rxBytes) || 0) + (Number(x.txBytes) || 0)) / 1e9;
-            return this.message('Usage', `Est as of ${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(h)}:${pad(d.getMinutes())}${ap}: Data Usage: ${gb.toFixed(3)}GB.`, 'info');
+            const w = this.wwan();
+            let text = '';
+            if (!w.present) text = 'Device not available. A device is required to retrieve your usage information.';
+            else if (!w.connected) text = 'This option is only available when you are connected to the Verizon network. Please click Connect and then try again.';
+            else {
+                const b = await this.linkBytes();
+                if (!b) text = 'There was an error while attempting to retrieve your usage information.';
+                else {
+                    const d = new Date();
+                    let h = d.getHours();
+                    const ap = h >= 12 ? 'PM' : 'AM';
+                    h = h % 12 || 12;
+                    text = `Est as of ${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(h)}:${pad(d.getMinutes())}${ap}: Data Usage: ${((b.rx + b.tx) / 1e9).toFixed(3)}GB.`;
+                }
+            }
+            await this.dialog('vzAccessUsage', {
+                key: 'vzam:498',
+                init: (ctx) => { ctx.html(499, `<div class="vz-usage">${esc(text)}</div>`); }
+            });
         }
 
         /** Preferences > Application (the User Guide's page): kept for this program. */
@@ -882,11 +1152,148 @@
             writeJson(PREFS_KEY, Object.assign(p, { runAtStartup: v('vzPrefStart'), popup: v('vzPrefPopup'), noConnectWarning: !v('vzPrefWarn') }));
         }
 
-        sessionLog() {
-            const log = readJson(LOG_KEY, []);
-            if (!log.length) return this.message('Session Log', 'There are no sessions in the log.', 'info');
-            const lines = log.slice(0, 15).map((s) => `${new Date(s.start).toLocaleString('en-US')}  ${hms(s.end - s.start)}  ${s.type || 'WWAN'}  Sent ${bytesText(s.tx)}  Received ${bytesText(s.rx)}`);
-            return this.message('Session Log', lines.join('\n'), 'info');
+        /** The log's sessions that pass Session Log Filter. */
+        logRows() {
+            const f = this.logFilter || {};
+            return readJson(LOG_KEY, []).filter((r) => r && (!f.connection || r.connection === f.connection)
+                && (!f.device || (r.device || '') === f.device)
+                && (!f.from || r.start >= f.from) && (!f.to || r.start < f.to + 86400000));
+        }
+
+        /** Session Log (VZAMres dialog 428): the sessions, their totals, Export, Clear, Filter. */
+        async sessionLog() {
+            const ctx = await this.dialog('vzAccessSessionLog', {
+                key: 'vzam:428',
+                buttons: {
+                    503: () => void this.exportLog(),
+                    504: (c) => void this.clearLog(c),
+                    505: () => void this.logFilterDialog()
+                },
+                close: () => { this.logCtx = null; },
+                init: (c) => {
+                    const lv = c.holder(415);
+                    const head = lv.querySelector('.vdt-lv-header');
+                    head.innerHTML = LOG_COLS.map(([t, right], i) => `<span class="vdt-lv-col vz-c${i}${right ? ' vz-r' : ''}">${esc(t)}</span>`).join('');
+                    // the list's selection (one row, as the list view's)
+                    lv.addEventListener('click', (ev) => {
+                        const row = ev.target.closest('.vdt-lv-row');
+                        lv.querySelectorAll('.vdt-lv-row.is-selected').forEach((r) => r.classList.remove('is-selected'));
+                        if (row) row.classList.add('is-selected');
+                    });
+                    const note = c.holder(1213);
+                    note.classList.add('vz-dlg-link');
+                    note.tabIndex = 0;
+                    const notice = () => void this.message('Important Notice', [
+                        'The Session Logs should not be used to estimate or monitor data usage during your billing cycle. Please use the Usage button in the Network Tab to view estimated data usage for your current billing cycle.',
+                        "The Session Log displays the 'Bytes Sent' and 'Bytes Received' from either the Mobile Broadband device or your computer\u2019s operating system and will differ from the information displayed from the 'Usage ' button. The bytes depicted on the 'Session Log' are not representative of actual billable data usage when data is transmitted and received on the Verizon Wireless Network. Additionally, the Session Log may contain information for multiple Mobile Broadband devices or may not include data usage in certain scenarios such as when the Mobile Broadband device is used on a different computer or VZAccess Manager is not used to enable the Mobile Broadband network connection (for example LAN mode or when an alternative interface/application is used)."
+                    ].join('\n\n'), 'info');
+                    note.addEventListener('click', notice);
+                    note.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); notice(); } });
+                }
+            });
+            if (!ctx) return;
+            this.logCtx = ctx;
+            this.fillLog(ctx);
+        }
+
+        fillLog(ctx) {
+            const lv = ctx.holder(415);
+            if (!lv) return;
+            const rows = this.logRows();
+            const all = readJson(LOG_KEY, []);
+            const body = lv.querySelector('.vdt-lv-body');
+            body.innerHTML = rows.map((r) => {
+                const cells = [r.connection || 'Verizon Wireless - VZAccess', whenText(r.start), hmsShort(r.end - r.start), kbText(r.rx), kbText(r.tx), kbText((r.rx || 0) + (r.tx || 0))];
+                return `<div class="vdt-lv-row" role="option">${cells.map((v, i) => `<span class="vz-c${i}${LOG_COLS[i][1] ? ' vz-r' : ''}">${esc(v)}</span>`).join('')}</div>`;
+            }).join('');
+            const bytes = rows.reduce((n, r) => n + (r.rx || 0) + (r.tx || 0), 0);
+            const ms = rows.reduce((n, r) => n + Math.max(0, r.end - r.start), 0);
+            // string 'X sessions, X KB, duration: X' with 7.6's trailing " *" (the Important Notice)
+            ctx.text(1113, `${rows.length} sessions, ${kbText(bytes)}, duration: ${hmShort(ms)} *`);
+            ctx.enable(503, rows.length > 0);
+            ctx.enable(504, all.length > 0);
+            ctx.enable(505, all.length > 0);
+        }
+
+        async clearLog(ctx) {
+            if (typeof root.showConfirmationDialog !== 'function') return;
+            const yes = await root.showConfirmationDialog('Are you sure you want to clear the entire session log?', [{ text: 'Yes', value: true }, { text: 'No', value: false }], null, { title: 'VZAccess Manager', icon: 'fas fa-question-circle' });
+            if (!yes) return;
+            writeJson(LOG_KEY, []);
+            this.logFilter = null;
+            this.fillLog(ctx);
+        }
+
+        /** Export: the log (as filtered) to a .csv in Melaton's file system, through Save As. */
+        async exportLog() {
+            if (typeof root.studioOpenFolderDialog !== 'function') return;
+            const rows = this.logRows();
+            const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+            const csv = [LOG_COLS.map((c) => q(c[0])).join(',')].concat(rows.map((r) => [r.connection || '', whenText(r.start), hmsShort(r.end - r.start), r.rx || 0, r.tx || 0, (r.rx || 0) + (r.tx || 0)].map(q).join(','))).join('\r\n');
+            const vfs = root.vfsClient;
+            await root.studioOpenFolderDialog('save', {
+                startPath: '/',
+                host: {
+                    title: 'Export',
+                    typeLabel: 'CSV (Comma delimited) (*.csv)',
+                    acceptType: 'user-file',
+                    suggestName: () => 'SessionLog.csv',
+                    onSave: async (info) => {
+                        let name = String(info.name || '').trim();
+                        if (!name || !vfs || typeof vfs.uploadFile !== 'function') return false;
+                        if (!/\.csv$/i.test(name)) name += '.csv';
+                        const bytes = new TextEncoder().encode(csv);
+                        let bin = '';
+                        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+                        try { await vfs.uploadFile(info.path || '/', btoa(bin), name, 'text/csv'); return true; } catch (err) {
+                            await this.message('VZAccess Manager', `Cannot save ${name}.\n${(err && err.message) || ''}`, 'warning');
+                            return false;
+                        }
+                    }
+                }
+            });
+        }
+
+        /** Session Log Filter (VZAMres dialog 540): by connection, device and date. */
+        async logFilterDialog() {
+            const all = readJson(LOG_KEY, []);
+            const uniq = (k) => Array.from(new Set(all.map((r) => r[k] || '').filter(Boolean)));
+            const f = this.logFilter || {};
+            await this.dialog('vzAccessLogFilter', {
+                key: 'vzam:540',
+                owner: this.logCtx ? this.logCtx.modal : null,
+                init: (ctx) => {
+                    const conns = uniq('connection');
+                    const devs = uniq('device');
+                    ctx.options(1065, conns, f.connection || conns[0] || '');
+                    ctx.options(1067, devs, f.device || devs[0] || '');
+                    ctx.set(1020, !!f.connection);
+                    ctx.set(1021, !!f.device);
+                    ctx.set(1022, !!(f.from || f.to));
+                    const day = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d; };
+                    const first = all.length ? Math.min(...all.map((r) => r.start)) : Date.now();
+                    ctx.set(1069, day(f.from || first));
+                    ctx.set(1071, day(f.to || Date.now()));
+                    const sync = () => {
+                        ctx.enable(1065, !!ctx.get(1020) && conns.length > 0);
+                        ctx.enable(1067, !!ctx.get(1021) && devs.length > 0);
+                        ctx.enable(1069, !!ctx.get(1022));
+                        ctx.enable(1071, !!ctx.get(1022));
+                    };
+                    [1020, 1021, 1022].forEach((id) => ctx.on(id, 'change', sync));
+                    sync();
+                },
+                ok: (ctx) => {
+                    const d = (id) => { const v = ctx.get(id); return v instanceof Date ? v.getTime() : 0; };
+                    this.logFilter = {
+                        connection: ctx.get(1020) ? ctx.get(1065) || '' : '',
+                        device: ctx.get(1021) ? ctx.get(1067) || '' : '',
+                        from: ctx.get(1022) ? d(1069) : 0,
+                        to: ctx.get(1022) ? d(1071) : 0
+                    };
+                    if (this.logCtx) this.fillLog(this.logCtx);
+                }
+            });
         }
 
         openTexts() {
@@ -895,36 +1302,88 @@
             if (apps && typeof apps.launch === 'function') { void apps.launch({ packageId: 'messenger' }).catch(() => {}); }
         }
 
-        /** About VZAccess Manager: 7.6.3.1's box, with the modem's own facts under Hardware information. */
-        about() {
+        /** The modem's facts (About's Hardware information, WWAN Device Info's first rows). */
+        hardwareRows() {
             const w = this.wwan();
-            const hw = this.hardware() || {};
-            const d = hw.device || {};
-            const rows = [
-                ['Manufacturer', d.manufacturer || ''], ['Model', d.model || ''], ['Modem Name', d.marketName || d.model || ''],
-                ['Phone Number', w.number ? `(${phoneText(w.number).slice(0, 3)}) ${phoneText(w.number).slice(4)}` : ''],
-                ['Network', w.present ? w.carrier : ''], ['Technology', w.present ? (w.type || '') : ''],
-                ['Signal', w.present ? `${w.bars} of 4 bars` : ''], ['Roaming', w.present ? (w.roaming ? 'Extended Network' : 'Home') : ''],
-                ['SIM', w.sim === 'ready' ? 'Ready' : (w.sim || '')]
-            ];
-            this.infoWindow('vzAccessAboutModal', 'About VZAccess Manager', `
-                <div class="vz-about">
-                    <div class="vz-about-text">VZAccess Manager<br>Powered By QuickLink Mobile Technology<br><br>Copyright &copy; 2006-2011<br>Smith Micro Software, Inc.<br><br>Version ${esc(VERSION)}<br>Consumer Release</div>
-                    <img class="vz-about-logo" src="${A}/smithmicro-logo.png" alt="Smith Micro Software" draggable="false">
-                </div>
-                <div class="vz-about-head">Hardware information:</div>
-                ${this.propList(rows)}`);
-        }
-
-        deviceInfo() {
-            const w = this.wwan();
-            const hw = this.hardware() || {};
-            const d = hw.device || {};
-            this.infoWindow('vzAccessDeviceModal', 'WWAN Device Info', this.propList([
+            const d = (this.hardware() || {}).device || {};
+            if (!w.present) return [];
+            return [
                 ['Manufacturer', d.manufacturer || ''], ['Model', d.model || ''], ['Device', d.marketName || ''],
                 ['Phone Number', phoneText(w.number)], ['Network', w.carrier || ''], ['Technology', w.type || ''],
-                ['Signal', `${w.bars} of 4 bars`], ['Roaming', w.roaming ? 'Extended Network' : 'Home'], ['SIM', w.sim === 'ready' ? 'Ready' : (w.sim || '')]
-            ]));
+                ['Signal', `${w.bars} of 4 bars`], ['Roaming', w.roaming ? 'Extended Network' : 'Home'],
+                ['SIM', w.sim === 'ready' ? 'Ready' : (w.sim || '')]
+            ];
+        }
+
+        /** About VZAccess Manager (VZAMres dialog 101): the version, Smith Micro's logo, the hardware information. */
+        async about() {
+            await this.dialog('vzAccessAbout', {
+                key: 'vzam:101',
+                overrides: { 425: { text: `Version ${VERSION}\r\nConsumer Release` } },
+                init: (ctx) => {
+                    ctx.html(387, `<img class="vz-about-logo" src="${A}/smithmicro-logo.png" alt="Smith Micro Software" draggable="false">`);
+                    const lv = ctx.holder(386);
+                    lv.classList.add('no-header');
+                    const rows = this.hardwareRows().filter(([, v]) => v);
+                    lv.querySelector('.vdt-lv-body').innerHTML = (rows.length ? rows.map(([k, v]) => `${k}: ${v}`) : ['Device not available'])
+                        .map((t) => `<div class="vdt-lv-row" role="option"><span>${esc(t)}</span></div>`).join('');
+                }
+            });
+        }
+
+        /**
+         * WWAN Device Info (Options > Diagnostics, or a double click on the device box): the modem, then its radio as
+         * AndroidCellular reads it when this opens (DSApp claude/cell-metrics): network type and NR mode, carrier
+         * aggregation, the LTE and NR signal figures, and the serving cells' band, channel and identities.
+         */
+        deviceInfo() {
+            const ci = this.readCellInfo(true);
+            const rows = this.hardwareRows();
+            if (ci) {
+                const lte = ci.lte || {};
+                const nr = ci.nr || {};
+                const cells = Array.isArray(ci.cells) ? ci.cells : [];
+                const served = cells.filter((c) => c.registered);
+                const list = (k) => served.map((c) => c[k]).filter((v) => v != null && v !== '');
+                const bands = served.map((c) => (Array.isArray(c.bands) ? c.bands.map((b) => `${c.type === 'NR' ? 'n' : 'B'}${b}`).join('/') : '')).filter(Boolean);
+                const bw = Array.isArray(ci.bandwidthsKhz) ? ci.bandwidthsKhz.map((k) => `${k / 1000} MHz`).join(' + ') : '';
+                const add = (k, v) => { if (v != null && v !== '') rows.push([k, String(v)]); };
+                add('Network Type', `${ci.rat || ''}${ci.nrMode ? ` (NR ${ci.nrMode === 'SA' ? 'Standalone' : 'Non-Standalone'})` : ''}`);
+                add('Carrier Aggregation', ci.carrierAggregation == null ? '' : ci.carrierAggregation ? `Yes${bw ? ` (${bw})` : ''}` : `No${bw ? ` (${bw})` : ''}`);
+                add('Frequency Range', ci.frequencyRange === 'FR2' ? 'FR2 (mmWave)' : ci.frequencyRange === 'FR1' ? 'FR1 (Sub-6 GHz)' : '');
+                add('MCC-MNC', ci.mcc ? `${ci.mcc}-${ci.mnc || ''}` : '');
+                add('LTE RSRP', dbm(lte.rsrp));
+                add('LTE RSRQ', dbm(lte.rsrq, 'dB'));
+                add('LTE SINR', dbm(lte.rssnr, 'dB'));
+                add('LTE RSSI', dbm(lte.rssi));
+                add('LTE CQI', lte.cqi);
+                add('NR SS-RSRP', dbm(nr.ssRsrp));
+                add('NR SS-RSRQ', dbm(nr.ssRsrq, 'dB'));
+                add('NR SS-SINR', dbm(nr.ssSinr, 'dB'));
+                add('NR CSI-RSRP', dbm(nr.csiRsrp));
+                add('NR CSI-SINR', dbm(nr.csiSinr, 'dB'));
+                if (ci.other) add(`${ci.other.type} Signal`, dbm(ci.other.dbm));
+                add('Band', bands.join(', '));
+                add('EARFCN', served.filter((c) => c.type === 'LTE').map((c) => c.earfcn).filter((v) => v != null).join(', '));
+                add('NR-ARFCN', served.filter((c) => c.type === 'NR').map((c) => c.nrarfcn).filter((v) => v != null).join(', '));
+                add('PCI', list('pci').join(', '));
+                add('TAC', list('tac').join(', '));
+                add('Cell ID', served.map((c) => c.ci != null ? c.ci : c.nci).filter((v) => v != null).join(', '));
+                const miss = Array.isArray(ci.missing) ? ci.missing : [];
+                if (miss.includes('location')) add('Cell Details', 'Not available (Dreamscape needs Location, and Location turned on)');
+                if (miss.includes('phone')) add('Network Details', 'Not available (Dreamscape needs the Phone permission)');
+            }
+            if (!rows.length) rows.push(['Device', 'Device not available']);
+            const old = doc.getElementById('vzAccessDeviceModal');
+            if (old) {
+                // open already: the new reading replaces the old
+                const body = old.querySelector('.vz-props');
+                if (body) body.outerHTML = this.propList(rows);
+                call('bringModalToFront', old);
+                return;
+            }
+            this.infoWindow('vzAccessDeviceModal', 'WWAN Device Info', this.propList(rows));
+            this.paintSoon();
         }
 
         propList(rows) {
@@ -974,7 +1433,7 @@
         if (typeof root.desktopAppCreateWindow !== 'function') { app.exit(); return; }
         const m = new Manager(app);
         running = m;
-        app.onExit(() => { if (running === m) running = null; m.destroy(); });
+        app.onExit(() => { if (running === m) running = null; m.noteExit(); m.destroy(); });
     }
 
     /** The desktop left Verizon (androidTrayProviders.js): a copy only in the tray goes; an open window stays. */

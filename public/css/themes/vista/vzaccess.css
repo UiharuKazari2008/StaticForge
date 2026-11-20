@@ -2,7 +2,8 @@
    VZAccess Manager 7.6.3.1 on Windows 7 (~/.cache/vzam-ref, the AnandTech captures). The layout is
    apps/vzaccess/assets/vzaccess.css; the app's private colours live only here (ui-standard section 6). */
 
-.vz-window {
+.vz-window,
+.vz-dlg {
     --vz-client: #f2f2f2;
     --vz-box-face: #fff;
     --vz-box-edge: #5794bf;
@@ -33,5 +34,6 @@
     --vz-field-rx: #ffe6e6;
     --vz-field-edge: #a5a5a5;
     --vz-link: #e00000;
+    --vz-url: #0000ff;
     --vz-connected: #008000;
 }
