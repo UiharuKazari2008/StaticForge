@@ -587,6 +587,17 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     outline: none;
 }
 
+/* more devices than fit (a headset, Bluetooth and HDMI beside the speaker): the list scrolls, as Vista's (#963) */
+.tbp-client .tbp-list.cpl-pers-devices {
+    display: block;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.tbp-client .cpl-pers-device + .cpl-pers-device {
+    margin-top: 2px;
+}
+
 .tbp-client .cpl-pers-device {
     position: relative;
     box-sizing: border-box;
@@ -664,6 +675,112 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
 
 .tbp-client .cpl-pers-meter i.is-lit {
     background: #3cc23c;
+}
+
+/* a device's Properties (#963, mmsys dialogs 121 / 123 / 126): VM Speakers Properties, 414 x 459 like Sound */
+.tbp-client.cpl-snd-props .cpl-snd-icon img {
+    display: block;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-ctl-icon img {
+    display: block;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-ctl-name,
+.tbp-client.cpl-snd-props .cpl-snd-ctl-vendor {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* the vendor line is Vista's link colour (it opens the maker's site there; here it is plain text) */
+.tbp-client.cpl-snd-props .cpl-snd-ctl-vendor {
+    color: #0066cc;
+}
+
+.tbp-client.cpl-snd-props .cpl-pers-combo.is-disabled {
+    color: #838383;
+    pointer-events: none;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-track {
+    display: flex;
+    align-items: center;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-track input {
+    position: relative;
+    width: 100%;
+    margin: 0;
+}
+
+/* mmsys's level trackbar: the volume wedge (#d5dfe5, rising to the right) on the groove, ticks at both ends and the
+   middle; the thumb points up (TBS_TOP) */
+.tbp-client.cpl-snd-props .cpl-snd-track::before,
+.tbp-client.cpl-snd-props .cpl-snd-track::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-track::before {
+    left: 1px;
+    right: 1px;
+    top: 0;
+    height: 11px;
+    background: #d5dfe5;
+    clip-path: polygon(0 100%, 100% 0, 100% 100%);
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-track::after {
+    left: 0;
+    right: 0;
+    top: -2px;
+    height: 13px;
+    background:
+        linear-gradient(#c5ccd0, #c5ccd0) left top / 1px 100% no-repeat,
+        linear-gradient(#c5ccd0, #c5ccd0) center top / 1px 100% no-repeat,
+        linear-gradient(#c5ccd0, #c5ccd0) right top / 1px 100% no-repeat;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-track:has(input:disabled)::before {
+    background: #e6eaed;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-value {
+    box-sizing: border-box;
+    padding: 0 4px;
+    text-align: right;
+    background: #fff;
+}
+
+/* the mute toggle and Test carry their mmsys pictures; Vista buttons keep position: relative (pulse / hot layers) */
+.tbp-client.cpl-snd-props .cpl-snd-mute {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-mute img,
+.tbp-client.cpl-snd-props .cpl-snd-test-glyph {
+    position: relative;
+    inset: auto;
+    display: block;
+    flex: none;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-test {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 0 4px;
+}
+
+.tbp-client.cpl-snd-props button:disabled img {
+    opacity: 0.45;
+    filter: grayscale(1);
 }
 
 /* Program Events: a tree view, 16 px rows, dotted lines, the speaker where an event has a sound

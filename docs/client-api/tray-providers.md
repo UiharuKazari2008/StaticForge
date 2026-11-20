@@ -140,6 +140,41 @@ While a volume provider is in use, `tabVolume.js` works as follows:
 - The tab's own gain stays at 1, so audio is not turned down twice.
 - Changes made elsewhere, such as the volume keys, come back through `subscribe`.
 
+## audio devices (Control Panel > Sound, #963)
+
+Sound's Playback and Recording tabs, each device's Properties (General / Levels / Advanced) and the tray volume menu's
+Playback devices / Recording devices list the computer's own sound devices. The page side is
+`public/scripts/comp/audioDevices.js` (`window.melatonAudioDevices`), loaded with Control Panel; it reads the platform's
+bridge directly, not through `melatonTray.register`. The platform is asked to push only while the Sound dialog is open.
+
+Android (DSApp `AudioDevicesBridge`, `window.AndroidAudioDevices`):
+
+- `get()` returns JSON `{ v: 1, device: { manufacturer, model, marketName }, outputs: [dev], inputs: [dev],
+  media: { id, pct, muted }, comm, micMuted, canComm: [id] }`. Each `dev` is `{ id, type, name, address, channels: [],
+  rates: [], encodings: [], btClass }`: AudioManager.getDevices, `type` in HardwareInfoBridge's names
+  (`builtin_speaker`, `bluetooth_a2dp`, `hdmi`, ...), `name` the product name (the Bluetooth device's name, the monitor's
+  EDID name). `media.id` is the output media plays on (getAudioDevicesForAttributes(USAGE_MEDIA)); `comm` the
+  communication device; `canComm` the outputs setCommunicationDevice takes.
+- `watch(on)`: while on, AudioDeviceCallback, the communication-device listener and the volume / mute broadcasts push
+  `androidaudiodevices` (detail = the same object), only when it changed. Off when the page is off screen (onStop).
+- `setCommunicationDevice(id)` (`-1` clears) returns a boolean; `setMedia(pct, muted)` (`-1` keeps) and
+  `setMicMute(on)` return the new state.
+
+DreamOS (CaféReady `audio.rs`, `window.DreamOSAudio`): the volume state gains `outputs` / `inputs`, PipeWire's sinks and
+sources read with `pw-dump`: `{ id, name, description, card, cardLongName, alsaCard, bus: 'pci' | 'usb' | 'bluetooth',
+api: 'alsa' | 'bluez5', address, formFactor, port: { name, description, type, available: 'yes' | 'no' | 'unknown' },
+isDefault, volume, muted, channels, rate, format }`. `devices()` asks for a fresh read (also done on a `sound` uevent);
+`setDefault(id)` (`wpctl set-default`); `set({ id, volume?, muted? })` sets one device.
+
+What the page draws (Vista's names and mmsys.cpl pictures): Speakers / Headphones / Headset Earphone / Headset Microphone
+/ Handset / Microphone (Microphone Array for several built-in mics) / Line In / Line Out / Digital Output Device (HDMI or
+SPDIF), the hardware under it (the phone's marketing name for built-in devices, the Bluetooth or HDMI device's name,
+PipeWire's description), the green check on the default, the level meter on the default output, Not plugged in (a jack
+port reports unavailable) and Disconnected (paired Bluetooth audio that is away, shown with the list's Show Disconnected
+Devices). Set Default: Android takes it for a headset microphone (setCommunicationDevice) and for a disconnected
+Bluetooth device (it connects, and Android plays media on it); where media plays is otherwise Android's choice, so the
+button is greyed with that reason. A plain browser keeps Built-In Sound Output / Input.
+
 ## bluetooth (trayBluetooth.js: one icon for every provider)
 
 Vista shows Bluetooth as a notification icon of its own, left of the system icons, with a right-click menu. The planned state:

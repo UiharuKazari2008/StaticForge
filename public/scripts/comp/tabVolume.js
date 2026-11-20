@@ -364,8 +364,11 @@
         const sections = [{
             type: 'list',
             items: [
-                { text: 'Open Volume Mixer', icon: 'fas fa-sliders', action: 'volume-mixer' },
-                { text: 'Sounds', icon: 'fas fa-music', action: 'volume-sounds' }
+                // Vista's SndVolSSO menu: no icons (#963: Playback / Recording devices open Sound on their tab)
+                { text: 'Open Volume Mixer', action: 'volume-mixer' },
+                { text: 'Playback devices', action: 'volume-sound:playback' },
+                { text: 'Recording devices', action: 'volume-sound:recording' },
+                { text: 'Sounds', action: 'volume-sound:sounds' }
             ]
         }];
         sources.forEach((src) => {
@@ -379,8 +382,14 @@
             sections,
             onAction: (action, target, item) => {
                 if (action === 'volume-mixer') { showFlyout(); return; }
-                if (action === 'volume-sounds') {
-                    if (window.personalizationDialogs && typeof window.personalizationDialogs.openSound === 'function') window.personalizationDialogs.openSound();
+                const snd = /^volume-sound:(\w+)$/.exec(String(action || ''));
+                if (snd) {
+                    // the Sound dialog lives in Control Panel's scripts: loaded first when the tray asks before it
+                    const fl = window.featureLoader;
+                    Promise.resolve(window.personalizationDialogs || !fl ? null : fl.loadFeature('control_panel')).catch(() => null).then(() => {
+                        const pd = window.personalizationDialogs;
+                        if (pd && typeof pd.openSound === 'function') pd.openSound(snd[1]);
+                    });
                     return;
                 }
                 const m = /^volume-src:([^:]+):(.*)$/.exec(String(action || ''));

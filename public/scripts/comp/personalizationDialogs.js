@@ -952,124 +952,347 @@
 
     let soundDlg = null;
 
-    // ---- Playback / Recording: the browser's own output and input (Yukimi 2026-10-21) ----------
-    // Vista's tile list (mmsys dialogs 110 / 111): the 48 px device icon with the default-device
-    // check, the name, the hardware and the state, and a level meter. The hardware is named after
-    // the browser ("Microsoft Edge Sound Device"); the devices are Built-In Sound Output / Input.
+    // ---- Playback / Recording: the device client's own sound devices (#963) -----------------------
+    // Vista's tile list (mmsys dialogs 110 / 111): the 48 px device icon with the default-device check,
+    // the name, the hardware and the state, and a level meter. The devices are the computer's own
+    // (melatonAudioDevices, audioDevices.js): the Android app's outputs and inputs, DreamOS's PipeWire
+    // sinks and sources; a plain browser shows its Built-In Sound Output / Input as before.
 
-    /** The browser's name, from its client hints when it has them, else from the user agent. */
+    const audio = () => root.melatonAudioDevices || null;
+    const DEVICE_ICONS = {
+        speakers: 'device-speakers-48.png', headphones: 'device-headphones-48.png', headset: 'device-headset-48.png',
+        handset: 'device-handset-48.png', microphone: 'device-microphone-48.png', line: 'device-line-48.png',
+        digital: 'device-digital-48.png', hdmi: 'device-hdmi-48.png'
+    };
+    // mmsys 335 / 336; a paired device that is away is Disconnected (the list menu's Show Disconnected Devices)
+    const STATE_TEXT = { working: 'Working', unplugged: 'Not plugged in', disconnected: 'Disconnected' };
+    let showDisconnected = false;
+
+    /** The browser's name (audioDevices.js), for the plain browser's devices. */
     function browserName() {
-        const nav = root.navigator || {};
-        const brands = (nav.userAgentData && nav.userAgentData.brands) || [];
-        const known = [
-            [/Edge/i, 'Microsoft Edge'], [/Opera|OPR/i, 'Opera'], [/Brave/i, 'Brave'], [/Vivaldi/i, 'Vivaldi'],
-            [/Yandex/i, 'Yandex Browser'], [/Google Chrome/i, 'Google Chrome']
-        ];
-        for (const [re, name] of known) if (brands.some((b) => re.test(b.brand))) return name;
-        const ua = String(nav.userAgent || '');
-        if (/Edg\//.test(ua)) return 'Microsoft Edge';
-        if (/OPR\//.test(ua)) return 'Opera';
-        if (/Firefox\//.test(ua)) return 'Mozilla Firefox';
-        if (/Chrome\//.test(ua)) return brands.some((b) => /Chromium/i.test(b.brand)) && !/Google/i.test(ua) ? 'Chromium' : 'Google Chrome';
-        if (/Safari\//.test(ua)) return 'Safari';
-        return 'Web Browser';
+        const A = audio();
+        return A ? A.browserName() : 'Web Browser';
     }
 
-    const DEVICES = {
-        playback: { name: 'Built-In Sound Output', icon: 'device-speakers-48.png' },
-        recording: { name: 'Built-In Sound Input', icon: 'device-microphone-48.png' }
-    };
+    function deviceList(kind) {
+        const A = audio();
+        const all = A ? A.list(kind) : [];
+        return all.filter((d) => showDisconnected || d.state !== 'disconnected');
+    }
+
+    function deviceRow(d) {
+        // the default's green check (mmsys PNG 240); unplugged: the red arrow (249); unavailable: the grey one (248)
+        const mark = d.state === 'unplugged' ? ['device-unplugged-16.png', 'Not plugged in']
+            : d.state === 'disconnected' ? ['device-disabled-16.png', 'Disconnected']
+            : d.isDefault ? ['device-default-16.png', 'Default device'] : null;
+        return `
+                <div class="cpl-pers-device${d.state !== 'working' ? ' is-unplugged' : ''}" data-device="${d.flow}" data-id="${esc(d.id)}">
+                    <span class="cpl-pers-device-icon"><img src="${ART}/${DEVICE_ICONS[d.kind] || DEVICE_ICONS.speakers}" width="48" height="48" alt="" draggable="false">${mark ? `<img class="cpl-pers-device-default" src="${ART}/${mark[0]}" width="16" height="16" alt="${mark[1]}" draggable="false">` : ''}</span>
+                    <span class="cpl-pers-device-text">
+                        <span class="cpl-pers-device-name">${esc(d.name)}</span>
+                        <span class="cpl-pers-device-sub">${esc(d.description)}</span>
+                        <span class="cpl-pers-device-sub cpl-pers-device-state">${STATE_TEXT[d.state] || 'Working'}</span>
+                    </span>
+                    ${d.flow === 'playback' && d.isDefault && d.state === 'working' ? `<span class="cpl-pers-meter" aria-hidden="true">${'<i></i>'.repeat(10)}</span>` : ''}
+                </div>`;
+    }
 
     function devicesPage(kind) {
-        const dev = DEVICES[kind];
         return `
             ${text(7, 7, 245, 12, `Select a ${kind} device below to modify its settings:`)}
-            <div class="tbp-ctl tbp-list cpl-pers-devices" style="${dlu(7, 21, 238, 171)}" tabindex="0" aria-label="${kind} devices">
-                <div class="cpl-pers-device" data-device="${kind}">
-                    <span class="cpl-pers-device-icon"><img src="${ART}/${dev.icon}" width="48" height="48" alt="" draggable="false"><img class="cpl-pers-device-default" src="${ART}/device-default-16.png" width="16" height="16" alt="Default device" draggable="false"></span>
-                    <span class="cpl-pers-device-text">
-                        <span class="cpl-pers-device-name">${esc(dev.name)}</span>
-                        <span class="cpl-pers-device-sub">${esc(browserName())} Sound Device</span>
-                        <span class="cpl-pers-device-sub cpl-pers-device-state">Working</span>
-                    </span>
-                    <span class="cpl-pers-meter" aria-hidden="true">${'<i></i>'.repeat(10)}</span>
-                </div>
-            </div>
+            <div class="tbp-ctl tbp-list cpl-pers-devices" style="${dlu(7, 21, 238, 171)}" tabindex="0" aria-label="${kind} devices" data-kind="${kind}">${deviceList(kind).map(deviceRow).join('')}</div>
             ${button(7, 199, 50, 14, '<u>C</u>onfigure', 'device-configure')}
             ${button(131, 199, 60, 14, '<u>S</u>et Default', 'device-default')}
             ${button(195, 199, 50, 14, '<u>P</u>roperties', 'device-properties')}`;
     }
 
-    /** Select (or clear) a tab's device row; the buttons follow, as Vista's do. */
-    function selectDevice(page, on) {
-        const row = page.querySelector('.cpl-pers-device');
-        if (!row) return;
-        // a class, not role=option / aria-selected: 7.css paints those rows blue
-        row.classList.toggle('is-selected', on);
-        // Configure: there is no speaker setup to run; Set Default: it already is the default
+    function selectedDevice(page) {
+        const row = page.querySelector('.cpl-pers-device.is-selected');
+        const A = audio();
+        return row && A ? A.find(row.dataset.id) : null;
+    }
+
+    /** Select a tab's device row (or none); the buttons follow, as Vista's do. */
+    function selectDevice(page, id) {
+        page.querySelectorAll('.cpl-pers-device').forEach((r) => {
+            // a class, not role=option / aria-selected: 7.css paints those rows blue
+            r.classList.toggle('is-selected', !!id && r.dataset.id === id);
+        });
+        const d = id ? selectedDevice(page) : null;
+        // Configure: there is no speaker setup to run; Set Default: what the platform allows
         page.querySelector('[data-action="device-configure"]').disabled = true;
-        page.querySelector('[data-action="device-default"]').disabled = true;
-        page.querySelector('[data-action="device-properties"]').disabled = !on;
+        const def = page.querySelector('[data-action="device-default"]');
+        def.disabled = !d || d.isDefault || !d.canSetDefault;
+        def.title = d && !d.isDefault && !d.canSetDefault ? d.setDefaultNote || '' : '';
+        page.querySelector('[data-action="device-properties"]').disabled = !d || d.state === 'disconnected';
+    }
+
+    /** Draws a tab's list again from the platform's devices, keeping the selection. */
+    function renderDevices(page) {
+        const list = page.querySelector('.cpl-pers-devices');
+        if (!list) return;
+        const sel = page.querySelector('.cpl-pers-device.is-selected');
+        const keep = sel ? sel.dataset.id : null;
+        list.innerHTML = deviceList(list.dataset.kind).map(deviceRow).join('');
+        selectDevice(page, keep && list.querySelector(`.cpl-pers-device[data-id="${CSS.escape(keep)}"]`) ? keep : null);
+    }
+
+    function deviceMenu(page, ev) {
+        const cm = root.contextMenu;
+        if (!cm || typeof cm.attachToElement !== 'function') return;
+        const row = ev.target.closest('.cpl-pers-device');
+        if (row) selectDevice(page, row.dataset.id);
+        const d = row ? selectedDevice(page) : null;
+        const kind = page.querySelector('.cpl-pers-devices').dataset.kind;
+        // mmsys menus 601 (playback) / 602 (recording) on a device, 603 on the empty list
+        const items = [];
+        if (d) {
+            items.push({ text: kind === 'playback' ? 'Configure Speakers...' : 'Configure Speech Recognition...', action: 'configure', disabled: true });
+            if (kind === 'playback') items.push({ text: 'Test', action: 'test', disabled: !(d.isDefault && d.state === 'working') });
+            items.push({ text: 'Disable', action: 'disable', disabled: true });
+            items.push({ text: 'Set as Default Device', action: 'default', disabled: d.isDefault || !d.canSetDefault });
+            items.push({ separator: true });
+        }
+        items.push({ text: 'Show Disabled Devices', action: 'show-disabled', showIndicator: true, checked: false, disabled: true });
+        items.push({ text: 'Show Disconnected Devices', action: 'show-disconnected', showIndicator: true, checked: showDisconnected });
+        if (d) { items.push({ separator: true }); items.push({ text: 'Properties', action: 'properties', disabled: d.state === 'disconnected' }); }
+        cm.attachToElement(page.querySelector('.cpl-pers-devices'), {
+            sections: [{ type: 'list', items }],
+            onAction: (action) => {
+                if (action === 'test') testDevice();
+                else if (action === 'default') setDefaultDevice(page);
+                else if (action === 'properties') deviceProperties(page);
+                else if (action === 'show-disconnected') {
+                    showDisconnected = !showDisconnected;
+                    if (soundDlg) soundDlg.content.querySelectorAll('.tbp-page').forEach(renderDevices);
+                }
+            }
+        });
+        // the document's contextmenu handler opens it (attachToElement marks the list): no showMenu here, or the
+        // second open would toggle it shut
+    }
+
+    /** The default output's test: the Default Beep through the desktop's sounds. */
+    function testDevice() {
+        const S = sounds();
+        if (S && typeof S.play === 'function') S.play('dialog');
+    }
+
+    function setDefaultDevice(page) {
+        const d = selectedDevice(page);
+        const A = audio();
+        if (!d || !A) return;
+        A.setDefault(d.id).then((r) => {
+            if (r && r.error) message('Sound', r.error, page.closest('.modal'), 'warning');
+            renderDevices(page);
+        });
     }
 
     function wireDevices(content) {
         content.querySelectorAll('.tbp-page').forEach((page) => {
-            if (!page.querySelector('.cpl-pers-device')) return;
-            selectDevice(page, false);
             const list = page.querySelector('.cpl-pers-devices');
-            list.addEventListener('click', (ev) => selectDevice(page, !!ev.target.closest('.cpl-pers-device')));
+            if (!list) return;
+            selectDevice(page, null);
+            list.addEventListener('click', (ev) => {
+                const row = ev.target.closest('.cpl-pers-device');
+                selectDevice(page, row ? row.dataset.id : null);
+            });
             list.addEventListener('dblclick', (ev) => { if (ev.target.closest('.cpl-pers-device')) deviceProperties(page); });
+            list.addEventListener('contextmenu', (ev) => deviceMenu(page, ev));
             list.addEventListener('keydown', (ev) => {
-                if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Home') { ev.preventDefault(); selectDevice(page, true); }
+                const rows = [...list.querySelectorAll('.cpl-pers-device')];
+                if (!rows.length) return;
+                const at = rows.findIndex((r) => r.classList.contains('is-selected'));
+                let next = -1;
+                if (ev.key === 'ArrowDown') next = Math.min(rows.length - 1, at + 1);
+                else if (ev.key === 'ArrowUp') next = Math.max(0, at < 0 ? 0 : at - 1);
+                else if (ev.key === 'Home') next = 0;
+                else if (ev.key === 'End') next = rows.length - 1;
+                else if (ev.key === 'Enter' && at >= 0) { ev.preventDefault(); ev.stopPropagation(); deviceProperties(page); return; }
+                if (next < 0) return;
+                ev.preventDefault();
+                selectDevice(page, rows[next].dataset.id);
+                rows[next].scrollIntoView({ block: 'nearest' });
             });
         });
-        // the input: "Not plugged in" when the browser reports no microphone (no permission is asked)
-        const md = root.navigator && root.navigator.mediaDevices;
-        if (md && typeof md.enumerateDevices === 'function') {
-            md.enumerateDevices().then((list) => {
-                const hasInput = list.some((d) => d.kind === 'audioinput');
-                const row = content.querySelector('.cpl-pers-device[data-device="recording"]');
-                if (!row || hasInput) return;
-                row.querySelector('.cpl-pers-device-state').textContent = 'Not plugged in';
-                row.classList.add('is-unplugged');
-                // Vista's red down arrow (mmsys PNG 249) in place of the default check
-                const mark = row.querySelector('.cpl-pers-device-default');
-                mark.src = `${ART}/device-unplugged-16.png`;
-                mark.alt = 'Not plugged in';
-            }).catch(() => {});
-        }
+        // the platform pushes its changes (a headset plugged in, a Bluetooth device connected) while the dialog is open
+        const A = audio();
+        if (A && soundDlg) soundDlg.offDevices = A.onChange(() => {
+            if (!soundDlg) return;
+            soundDlg.content.querySelectorAll('.tbp-page').forEach(renderDevices);
+            restartMeter();
+            Object.values(devicePropsOpen).forEach((p) => p.refresh());
+        });
     }
 
+    function onDeviceAction(action, b) {
+        const page = b.closest('.tbp-page');
+        if (action === 'device-properties') { deviceProperties(page); return true; }
+        if (action === 'device-default') { setDefaultDevice(page); return true; }
+        return false;
+    }
+
+    // ---- a device's Properties (mmsys dialogs 121 General, 123 Levels, 126 Advanced) -------------
+
+    const devicePropsOpen = {};
+
+    function propsGeneral(d) {
+        const jacks = d.jacks && d.jacks.length ? d.jacks : null;
+        const jackH = 32 + (jacks ? 11 * (jacks.length - 1) : 0);
+        return `
+            <div class="tbp-ctl cpl-snd-icon" style="${dlu(20, 10, 32, 32)}"><img src="${ART}/${DEVICE_ICONS[d.kind] || DEVICE_ICONS.speakers}" width="48" height="48" alt="" draggable="false"></div>
+            <input type="text" class="tbp-ctl tbp-edit cpl-snd-name" style="${dlu(74, 10, 164, 12)}" maxlength="64" value="${esc(d.name)}" aria-label="Name">
+            ${button(74, 25, 64, 14, 'Change <u>I</u>con...', 'snd-icon')}
+            ${group(7, 50, 238, 42, 'Controller Information')}
+            <div class="tbp-ctl cpl-snd-ctl-icon" style="${dlu(18, 64, 22, 22)}"><img src="${ART}/controller-32.png" width="32" height="32" alt="" draggable="false"></div>
+            ${text(52, 63, 132, 11, esc(d.controller.name), 'cpl-snd-ctl-name')}
+            ${text(52, 75, 132, 11, esc(d.controller.vendor), 'cpl-snd-ctl-vendor')}
+            ${button(188, 61, 50, 14, '<u>P</u>roperties', 'snd-ctl-properties')}
+            ${group(7, 98, 238, jackH, 'Jack Information')}
+            ${jacks ? jacks.map((j, i) => text(20, 113 + 11 * i, 213, 11, esc(j))).join('') : text(20, 113, 213, 11, 'No Jack Information Available')}
+            ${text(9, 201, 70, 14, 'Device usage:')}
+            <div class="tbp-ctl cpl-pers-combo cpl-snd-usage is-disabled" style="${dlu(82, 199, 162)}" role="combobox" tabindex="-1" aria-disabled="true" aria-label="Device usage"><span class="cpl-pers-combo-text">Use this device (enable)</span></div>`;
+    }
+
+    function propsLevels(d) {
+        // the endpoint's own level (VM: a 230 x 30 group at 6,24 px with the trackbar, the value, mute and Balance)
+        return `
+            <div class="tbp-group cpl-snd-level" style="left:8px;top:24px;width:344px;height:46px;"><span class="tbp-group-label">${esc(d.vistaName || d.name)}</span></div>
+            <div class="tbp-ctl cpl-snd-track" style="left:32px;top:42px;width:154px;height:24px;"><input type="range" class="cpl-snd-range vista-trackbar-top" min="0" max="100" step="1" aria-label="${esc(d.name)} level"></div>
+            <input type="text" class="tbp-ctl tbp-edit cpl-snd-value" style="left:195px;top:40px;width:49px;height:17px;" readonly aria-label="Level">
+            <button type="button" class="tbp-ctl tbp-button cpl-snd-mute" style="left:255px;top:39px;width:22px;height:22px;" data-action="snd-mute" aria-label="Mute"><img src="${ART}/level-speaker-16.png" width="18" height="16" alt="" draggable="false"></button>
+            <button type="button" class="tbp-ctl tbp-button" style="left:285px;top:39px;width:58px;height:22px;" data-action="snd-balance" disabled>Balance</button>`;
+    }
+
+    function propsAdvanced(d) {
+        return `
+            ${group(7, 7, 238, 60, 'Default Format')}
+            ${text(16, 20, 221, 24, 'Select the sample rate and bit depth to be used when running in shared mode.')}
+            ${combo('cpl-snd-format', 16, 44, 168, 'Default Format')}
+            <button type="button" class="tbp-ctl tbp-button cpl-snd-test" style="${dlu(188, 43, 50, 14, 1)}" data-action="snd-test"><img class="cpl-snd-test-glyph" src="${ART}/test-play-16.png" width="16" height="16" alt="" draggable="false"><span><u>T</u>est</span></button>
+            ${group(7, 74, 238, 46, 'Exclusive Mode')}
+            ${check('cplSndExcl1', 16, 89, 220, 10, 'Allow applications to take exclusive control of this device')}
+            ${check('cplSndExcl2', 16, 103, 220, 10, 'Give exclusive mode applications priority')}
+            ${button(7, 196, 80, 14, 'Restore <u>D</u>efaults', 'snd-restore')}`;
+    }
+
+    /** Opens (or brings back) the selected device's Properties. */
     function deviceProperties(page) {
-        const row = page.querySelector('.cpl-pers-device');
-        if (!row) return;
-        const name = row.querySelector('.cpl-pers-device-name').textContent;
-        const hw = row.querySelectorAll('.cpl-pers-device-sub')[0].textContent;
-        const unplugged = row.classList.contains('is-unplugged');
-        message(`${name} Properties`, `${hw}: ${unplugged ? 'this device is not plugged in.' : 'this device is working properly.'} Its volume follows the browser and the computer's own sound settings.`, page.closest('.modal'));
+        const d = selectedDevice(page);
+        if (!d || d.state === 'disconnected') return;
+        if (devicePropsOpen[d.id]) { callGlobal('openModal', devicePropsOpen[d.id].modal); return; }
+        const A = audio();
+        units = TAHOMA;
+        let renamed = null;
+        const sheet = makeSheet({
+            id: `soundDeviceProps-${d.id.replace(/[^A-Za-z0-9_-]/g, '_')}`,
+            title: `${d.name} Properties`,
+            cls: 'cpl-pers-sound-sheet cpl-snd-props',
+            icon: `${ART}/sound-16.png`,
+            tabs: ['General', 'Levels', 'Advanced'],
+            selected: 0,
+            pages: [propsGeneral(d), propsLevels(d), propsAdvanced(d)],
+            onApply: () => {
+                if (renamed !== null && A) A.rename(d.id, renamed);
+                renamed = null;
+            },
+            onClose: () => { delete devicePropsOpen[d.id]; },
+            onAction: (action) => {
+                const cur = A && A.find(d.id);
+                if (!cur) return;
+                if (action === 'snd-mute' && cur.canMute) A.setLevel(cur.id, { muted: !cur.muted }).then(paint);
+                else if (action === 'snd-test') testDevice();
+            }
+        });
+        const c = sheet.content;
+        // the controls Melaton cannot change here are greyed, as Vista greys what a driver does not offer
+        ['snd-icon', 'snd-ctl-properties', 'snd-restore'].forEach((a) => { const b = c.querySelector(`[data-action="${a}"]`); if (b) b.disabled = true; });
+        c.querySelectorAll('#cplSndExcl1, #cplSndExcl2').forEach((i) => { i.checked = true; i.disabled = true; });
+        const nameBox = c.querySelector('.cpl-snd-name');
+        nameBox.addEventListener('input', () => { renamed = nameBox.value; sheet.setDirty(true); });
+        const range = c.querySelector('.cpl-snd-range');
+        let dragging = false;
+        range.addEventListener('pointerdown', () => { dragging = true; });
+        range.addEventListener('pointerup', () => { dragging = false; });
+        range.addEventListener('input', () => {
+            c.querySelector('.cpl-snd-value').value = range.value;
+            if (A) A.setLevel(d.id, { volume: Number(range.value) });
+        });
+        // Default Format: the formats the device reports (Android's rates / encodings, PipeWire's format); the
+        // platform's mixer chooses, so the others are listed greyed
+        const fmtItems = () => {
+            const cur = A && A.find(d.id);
+            const list = (cur && cur.formats && cur.formats.length ? cur.formats : (cur && cur.format ? [cur.format] : []));
+            return list.map((f) => ({ value: A.formatText(f, d.flow), text: A.formatText(f, d.flow), disabled: !(cur.format && f.rate === cur.format.rate && f.bits === cur.format.bits) }));
+        };
+        const fmtSync = wireCombo(c.querySelector('.cpl-snd-format'), fmtItems, () => {
+            const cur = A && A.find(d.id);
+            return cur && cur.format ? A.formatText(cur.format, d.flow) : '';
+        }, () => {});
+        function paint() {
+            const cur = A && A.find(d.id);
+            if (!cur) return;
+            const vol = cur.volume;
+            range.disabled = !cur.canSetVolume;
+            if (!dragging) range.value = String(vol === null ? 0 : vol);
+            c.querySelector('.cpl-snd-value').value = vol === null ? '' : String(Math.round(vol));
+            const mute = c.querySelector('.cpl-snd-mute');
+            mute.disabled = !cur.canMute;
+            mute.setAttribute('aria-pressed', cur.muted ? 'true' : 'false');
+            mute.querySelector('img').src = `${ART}/${cur.muted ? 'level-muted-16.png' : 'level-speaker-16.png'}`;
+            const test = c.querySelector('[data-action="snd-test"]');
+            test.disabled = !(cur.flow === 'playback' && cur.isDefault && cur.state === 'working');
+            const fmt = c.querySelector('.cpl-snd-format');
+            fmt.classList.toggle('is-disabled', !cur.format);
+            fmtSync();
+        }
+        paint();
+        const tv = root.tabVolume;
+        const offTv = tv && typeof tv.onChange === 'function' && d.platform === 'browser' ? tv.onChange(paint) : null;
+        devicePropsOpen[d.id] = { modal: sheet.modal, refresh: paint, off: offTv };
+        const finish = sheet.finish;
+        sheet.finish = () => { if (offTv) offTv(); finish(); };
+        showWindow(sheet.modal, page.closest('.modal'));
+        nameBox.focus();
+        nameBox.select();
     }
 
-    /** The level meters: the output follows every desktop sound (desktopSounds.outputLevel); the
-        input stays still, as no microphone is opened. */
+    /** The level meter: the default output follows every desktop sound (desktopSounds.outputLevel), every frame
+        while a sound plays and the Playback tab is in view; idle, it looks four times a second. */
+    let meterTimer = 0;
+    function restartMeter() {
+        if (!soundDlg) return;
+        if (soundDlg.meterRaf) root.cancelAnimationFrame(soundDlg.meterRaf);
+        if (meterTimer) clearTimeout(meterTimer);
+        soundDlg.meterRaf = 0;
+        meterTimer = 0;
+        runMeters(soundDlg.content);
+    }
+
     function runMeters(content) {
         const S = sounds();
-        const bars = content.querySelectorAll('.cpl-pers-device[data-device="playback"] .cpl-pers-meter i');
         let shown = -1;
+        let quiet = 0;
         const tick = () => {
-            if (!soundDlg || soundDlg.content !== content) return;
+            soundDlg.meterRaf = 0;
+            meterTimer = 0;
+            if (!soundDlg || soundDlg.content !== content || soundDlg.modal.classList.contains('hidden')) return;
+            const bars = content.querySelectorAll('.cpl-pers-device[data-device="playback"] .cpl-pers-meter i');
             const page = bars.length && bars[0].closest('.tbp-page');
-            if (page && !page.hidden) {
-                const level = S && typeof S.outputLevel === 'function' ? S.outputLevel() : 0;
-                // a decibel scale, as Vista's meters: -50 dB lights nothing, 0 dB all ten
-                const db = level > 0 ? 20 * Math.log10(level) : -100;
-                const lit = Math.max(0, Math.min(10, Math.round((db + 50) / 5)));
-                if (lit !== shown) {
-                    shown = lit;
-                    // lit from the bottom up
-                    bars.forEach((b, i) => b.classList.toggle('is-lit', 9 - i < lit));
-                }
+            // nothing to draw: the tab is hidden or the default output has no meter; a tab switch restarts it
+            if (!page || page.hidden) return;
+            const level = S && typeof S.outputLevel === 'function' ? S.outputLevel() : 0;
+            // a decibel scale, as Vista's meters: -50 dB lights nothing, 0 dB all ten
+            const db = level > 0 ? 20 * Math.log10(level) : -100;
+            const lit = Math.max(0, Math.min(10, Math.round((db + 50) / 5)));
+            if (lit !== shown) {
+                shown = lit;
+                // lit from the bottom up
+                bars.forEach((b, i) => b.classList.toggle('is-lit', 9 - i < lit));
             }
-            soundDlg.meterRaf = root.requestAnimationFrame(tick);
+            quiet = lit ? 0 : quiet + 1;
+            if (quiet > 60) meterTimer = setTimeout(tick, 250);
+            else soundDlg.meterRaf = root.requestAnimationFrame(tick);
         };
         tick();
     }
@@ -1178,9 +1401,16 @@
         if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
     }
 
-    function openSound() {
+    /** Sound; tab 'playback' | 'recording' | 'sounds' (the tray's Playback devices / Recording devices / Sounds). */
+    function openSound(tab) {
         if (!doc) return;
-        if (soundDlg) { callGlobal('openModal', soundDlg.modal); return; }
+        const TABS = { playback: 0, recording: 1, sounds: 2 };
+        const want = Object.prototype.hasOwnProperty.call(TABS, tab) ? TABS[tab] : null;
+        if (soundDlg) {
+            if (want !== null) { const t = soundDlg.content.querySelector(`.tbp-tab[data-tab="${want}"]`); if (t) t.click(); }
+            callGlobal('openModal', soundDlg.modal);
+            return;
+        }
         const P = pers();
         const cur = P ? P.get() : { soundScheme: 'default', sounds: {}, startupSound: true };
         const S = sounds();
@@ -1194,7 +1424,7 @@
             cls: 'cpl-pers-sound-sheet',
             icon: `${ART}/sound-16.png`,
             tabs: ['Playback', 'Recording', 'Sounds'],
-            selected: 2,
+            selected: want === null ? 2 : want,
             pages: [devicesPage('playback'), devicesPage('recording'), soundsPage()],
             onApply: () => {
                 const p = soundDlg.pending;
@@ -1204,10 +1434,12 @@
             },
             onClose: () => {
                 if (soundDlg && soundDlg.meterRaf) root.cancelAnimationFrame(soundDlg.meterRaf);
+                if (meterTimer) { clearTimeout(meterTimer); meterTimer = 0; }
+                if (soundDlg && soundDlg.offDevices) soundDlg.offDevices();
                 soundDlg = null;
             },
             onAction: (action, b) => {
-                if (action === 'device-properties') { deviceProperties(b.closest('.tbp-page')); return; }
+                if (onDeviceAction(action, b)) return;
                 if (action === 'sound-test') {
                     const file = soundDlg.selected ? pendingFile(soundDlg.selected) : '';
                     if (file && S && typeof S.playFile === 'function') S.playFile(file);
@@ -1261,6 +1493,8 @@
         });
         syncSoundControls();
         wireDevices(c);
+        // the meter runs only while the Playback tab is in view
+        c.querySelector('.tbp-tabs').addEventListener('click', () => restartMeter());
         showWindow(sheet.modal);
         runMeters(c);
     }
