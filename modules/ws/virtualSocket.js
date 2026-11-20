@@ -223,6 +223,22 @@ function acceptMiniport(ws, req, info, connect) {
     try { ws.send(JSON.stringify({ type: 'miniport_ready', at: Date.now(), tz: SERVER_ZONE })); } catch (_) { /* gone */ }
     // the desktop's time zone, name and data: a DreamOS host's /etc/localtime follows it (melatonTimeZone.js)
     require('../melatonTimeZone').sendTo(ws);
+    // a DreamOS host names its device id: the update channel the server assigned it and that channel's release, so a
+    // roaming machine is repointed and offered a release as it connects (dreamosUpdates.js, CaféReady firmware.rs)
+    let device = '';
+    try { device = new URL(String((req && req.url) || ''), 'http://x').searchParams.get('device') || ''; } catch (_) { device = ''; }
+    if (/^[0-9a-f]{32}$/.test(device)) {
+        ws._dsDevice = device;
+        sendUpdateChannel(ws);
+    }
+}
+
+/** miniport_update_channel to one DreamOS host's carrier (at connect, on a publish of its channel, on a new assignment). */
+function sendUpdateChannel(ws) {
+    if (!ws || !ws._dsDevice) return;
+    require('../dreamosUpdates').channelFrame(ws._dsDevice).then((f) => {
+        if (f && ws.readyState === 1) ws.send(JSON.stringify(f));
+    }).catch(() => { /* the next connect sends it */ });
 }
 
 /** Every live Miniport carrier (clientCertificates.js tells a revoked client's carrier and closes it, #922). */
@@ -230,4 +246,4 @@ function forEachMiniport(fn) {
     for (const ws of miniports) { try { fn(ws); } catch (_) { /* one carrier's failure is not the others' */ } }
 }
 
-module.exports = { VirtualSocket, handle, closeAll, sendCoalesced, acceptMiniport, forEachMiniport };
+module.exports = { VirtualSocket, handle, closeAll, sendCoalesced, acceptMiniport, forEachMiniport, sendUpdateChannel };

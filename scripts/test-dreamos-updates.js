@@ -101,6 +101,32 @@ async function get(p, params, headers = {}) {
     assert.strictEqual((await publish('dev', { manifest: old, signature: sign(old), key: 'ruiko-1', allowOlder: true })).code, 200, 'explicit rollback');
     assert.strictEqual((await get('/api/dreamos/channel/:channel', { channel: 'nope' })).code, 404);
 
+    // channel assignments: admin only, a device id and a channel name; the carrier frame names the channel's release
+    const dev = 'ab'.repeat(16);
+    const assign = async (device, body, who = admin) => {
+        const [r, p] = mk();
+        handlers['PUT /api/dreamos/assign/:device']({ ...who, params: { device }, headers: {}, body }, r);
+        return p;
+    };
+    const seen = [];
+    route.events.on('assign', (e) => seen.push(e));
+    assert.strictEqual((await assign(dev, { channel: 'dev' }, { userType: 'user' })).code, 403);
+    assert.strictEqual((await assign('xyz', { channel: 'dev' })).code, 400);
+    assert.strictEqual((await assign(dev, { channel: '../dev' })).code, 400);
+    assert.strictEqual((await route.channelFrame(dev)).channel, null, 'no assignment yet');
+    assert.strictEqual((await assign(dev, { channel: 'dev' })).code, 200);
+    assert.deepStrictEqual(seen, [{ device: dev, channel: 'dev' }]);
+    const f = await route.channelFrame(dev);
+    assert.strictEqual(f.type, 'miniport_update_channel');
+    assert.strictEqual(f.channel, 'dev');
+    assert.strictEqual(f.released, JSON.parse(old).released, 'the channel release as published');
+    assert.strictEqual(`"${f.sha256}"`, (await get('/api/dreamos/channel/:channel', { channel: 'dev' })).headers.ETag);
+    const list = await (() => { const [r, p] = mk(); handlers['GET /api/dreamos/assign']({ ...admin, params: {}, headers: {} }, r); return p; })();
+    assert.deepStrictEqual(list.body.devices, { [dev]: 'dev' });
+    assert.strictEqual((await assign(dev, { channel: null })).code, 200);
+    assert.strictEqual((await route.channelFrame(dev)).channel, null, 'assignment ended');
+    assert.strictEqual(await route.channelFrame('nope'), null);
+
     fs.rmSync(dir, { recursive: true, force: true });
     console.log('test-dreamos-updates: ok');
 })().catch((e) => { console.error(e); process.exit(1); });

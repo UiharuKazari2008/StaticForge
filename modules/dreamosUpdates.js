@@ -21,6 +21,15 @@
  *
  * A publish emits 'channel' on `events` ({ channel, sha256 }) so the CaféReady link can push "update available" to
  * connected laptops (no polling - server-push-not-polling).
+ *
+ * Channel assignments (a roaming machine is repointed from here, not by editing its dreamos.conf):
+ *   GET /api/dreamos/assign               admin: { devices: { <device id>: channel } }
+ *   PUT /api/dreamos/assign/:device       admin: { channel: "<name>" | null } (null ends the assignment)
+ * A DreamOS host's Miniport carrier names its device id (?miniport=1&device=<32 hex>, CaféReady identity.rs); at
+ * every connect, and whenever its channel is published or its assignment changes, the carrier gets
+ *   { type: 'miniport_update_channel', channel: name | null, released, sha256 }
+ * and CaféReady keeps the channel (on its own server) and checks when the channel or the release is new to it
+ * (firmware.rs server_channel). An assignment emits 'assign' on `events` ({ device, channel }).
  */
 
 const fs = require('fs');
@@ -49,6 +58,40 @@ function root() { return module.exports._root || ROOT; }
 function objectsDir() { return path.join(root(), 'objects'); }
 function channelsDir() { return path.join(root(), 'channels'); }
 function keysFile() { return path.join(root(), 'trusted-keys.json'); }
+function assignFile() { return path.join(root(), 'assignments.json'); }
+
+const DEVICE_RE = /^[0-9a-f]{32}$/;
+let assignCache = null; // { mtimeMs, file, devices: { id: channel } }
+
+// assignments.json: { devices: { <device id>: <channel> } }
+async function assignments() {
+    let st;
+    try { st = await fsp.stat(assignFile()); } catch (_) { return {}; }
+    if (assignCache && assignCache.mtimeMs === st.mtimeMs && assignCache.file === assignFile()) return assignCache.devices;
+    let devices = {};
+    try {
+        const doc = JSON.parse(await fsp.readFile(assignFile(), 'utf8'));
+        for (const [id, ch] of Object.entries((doc && doc.devices) || {})) if (DEVICE_RE.test(id) && CHANNEL_RE.test(String(ch))) devices[id] = String(ch);
+    } catch (_) { devices = {}; }
+    assignCache = { mtimeMs: st.mtimeMs, file: assignFile(), devices };
+    return devices;
+}
+
+/** The carrier frame for a DreamOS host's device id (null when it names none): its channel and that channel's release. */
+async function channelFrame(device) {
+    if (!DEVICE_RE.test(String(device || ''))) return null;
+    const channel = (await assignments())[device] || null;
+    let released = null;
+    let sha256 = null;
+    if (channel) {
+        const c = await readChannel(channel);
+        if (c) {
+            sha256 = c.etag.slice(1, -1);
+            try { released = JSON.parse(c.bytes.toString('utf8')).released || null; } catch (_) { released = null; }
+        }
+    }
+    return { type: 'miniport_update_channel', channel, released, sha256 };
+}
 
 // trusted-keys.json: { keys: [{ id, ed25519: "<base64url raw public key>" }] } - edited by hand on the server
 async function trustedKeys() {
@@ -201,6 +244,27 @@ function mount(app, authMiddleware) {
         req.pipe(out);
     });
 
+    app.get('/api/dreamos/assign', auth, async (req, res) => {
+        if (!isAdminUser(req)) return fail(res, 403, 'FORBIDDEN', 'Only an administrator can see DreamOS channel assignments.');
+        res.json({ success: true, devices: await assignments() });
+    });
+
+    app.put('/api/dreamos/assign/:device', auth, json, async (req, res) => {
+        if (!isAdminUser(req)) return fail(res, 403, 'FORBIDDEN', 'Only an administrator can assign DreamOS channels.');
+        const device = String(req.params.device || '');
+        if (!DEVICE_RE.test(device)) return fail(res, 400, 'BAD_DEVICE', 'A device id is 32 lower-case hex digits.');
+        const body = req.body || {};
+        const channel = body.channel === null ? null : String(body.channel || '');
+        if (channel !== null && !CHANNEL_RE.test(channel)) return fail(res, 400, 'BAD_CHANNEL', 'Channel names are lower-case letters, digits and dashes.');
+        const devices = { ...(await assignments()) };
+        if (channel === null) delete devices[device]; else devices[device] = channel;
+        await fsp.mkdir(root(), { recursive: true });
+        await writeAtomic(assignFile(), JSON.stringify({ devices }, null, 2));
+        assignCache = null;
+        events.emit('assign', { device, channel });
+        res.json({ success: true, device, channel });
+    });
+
     app.put('/api/dreamos/channel/:channel', auth, json, async (req, res) => {
         if (!isAdminUser(req)) return fail(res, 403, 'FORBIDDEN', 'Only an administrator can publish DreamOS releases.');
         const channel = String(req.params.channel || '');
@@ -241,4 +305,4 @@ function mount(app, authMiddleware) {
     });
 }
 
-module.exports = { mount, events, _root: null, _test: { setRoot, checkManifest, trustedKeys, readChannel } };
+module.exports = { mount, events, channelFrame, assignments, _root: null, _test: { setRoot, checkManifest, trustedKeys, readChannel } };

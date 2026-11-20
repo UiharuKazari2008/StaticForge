@@ -20,6 +20,17 @@ function registerPackets(handlersCtx) {
         ws.once('close', () => watching.delete(ws));
     }, { owner: 'dreamosUpdates' });
 
+    // DreamOS hosts' own carriers (CaféReady's Miniport, no page needed): the frame with their channel's release, to
+    // those assigned the channel just published, and to a host whose assignment changed (virtualSocket.js)
+    const carriers = (match) => {
+        const vs = require('../virtualSocket');
+        vs.forEachMiniport((ws) => { if (ws._dsDevice && match(ws)) vs.sendUpdateChannel(ws); });
+    };
+    dreamosUpdates.events.on('assign', (e) => carriers((ws) => ws._dsDevice === (e && e.device)));
+    dreamosUpdates.events.on('channel', (e) => {
+        dreamosUpdates.assignments().then((devices) => carriers((ws) => devices[ws._dsDevice] === (e && e.channel))).catch(() => {});
+    });
+
     dreamosUpdates.events.on('channel', (e) => {
         const packet = { type: 'dreamos_channel', data: { channel: e && e.channel }, timestamp: new Date().toISOString() };
         for (const ws of watching) {
