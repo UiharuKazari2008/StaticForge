@@ -330,7 +330,7 @@
         { id: 'default-programs', name: 'Default Programs', art: 'default-programs', cats: ['programs'], tip: 'Choose the programs that Melaton uses by default.', open: 'page:default-programs' },
         { id: 'device-manager', name: 'Device Manager', art: 'device-manager', cats: ['hardware', 'system'], tip: 'View and update your hardware settings and driver software.', open: 'call:openDeviceManager' },
         { id: 'ease-of-access', name: 'Ease of Access Center', art: 'ease-of-access-center', cats: ['access', 'appearance'], tip: 'Make your computer easier to use.', open: 'page:ease-of-access' },
-        { id: 'folder-options', name: 'Folder Options', art: 'folder-options', cats: ['appearance'], tip: 'Customize how folders and files are displayed in Cartograph.', open: 'dialog:folder-options' },
+        { id: 'folder-options', name: 'Folder Options', art: 'folder-options', cats: ['appearance'], tip: 'Customize how folders and files are displayed in Melaton Explorer.', open: 'dialog:folder-options' },
         { id: 'fonts', name: 'Fonts', art: 'fonts', cats: ['appearance'], tip: 'Add, change, and manage fonts on your computer.', open: 'page:fonts' },
         { id: 'game-controllers', name: 'Game Controllers', art: 'game-controllers', cats: ['hardware'], tip: 'Set up and test game controllers.', open: 'dialog:game-controllers' },
         { id: 'melaton-search', name: 'Indexing Options', art: 'indexing-options', cats: ['system'], tip: 'Change how Melaton indexes to enable faster searches.' },

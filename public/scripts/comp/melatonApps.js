@@ -343,7 +343,8 @@
                 const img = document.createElement('img');
                 img.className = 'icon-image';
                 img.alt = '';
-                img.src = o.icon || app.icon || '/static_images/vista-icons/application-48.png';
+                // a package that set no icon: Windows' generic program icon (shell32.dll 0, #954)
+                img.src = o.icon || app.icon || '/static_images/vista-icons/generic-exe-48.png';
                 const text = document.createElement('span');
                 text.textContent = o.title || pkg.title;
                 main.append(img, text);
@@ -405,7 +406,7 @@
                 trayIcon.dataset.melatonSegment = segmentKey(pkg.base);
                 trayIcon.title = o.title || pkg.title;
                 const img = document.createElement('img');
-                img.src = o.icon || app.icon || '/static_images/vista-icons/application-16.png';
+                img.src = o.icon || app.icon || '/static_images/vista-icons/generic-exe-16.png';
                 img.alt = '';
                 img.width = 16;
                 img.height = 16;

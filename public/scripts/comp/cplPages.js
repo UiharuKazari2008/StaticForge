@@ -710,7 +710,7 @@
         { id: 'lumen', name: 'Lumen', publisher: 'Dreamscape', icon: '/static_images/app_icons/32/vista-photo-viewer.webp', text: 'Lumen shows pictures one at a time.', types: ['.png', '.jpg', '.jpeg', '.webp', '.gif'] },
         { id: 'paint', name: 'Paint', publisher: 'Xyridian Corporation', icon: '/static_images/app_icons/32/vista-paint.webp', text: 'Paint creates and edits pictures in layers.', types: ['.bmp', '.png'] },
         { id: 'media-player', name: 'Melaton Media Player', publisher: 'Xyridian Corporation', icon: '/static_images/app_icons/32/media_player.webp', text: 'Melaton Media Player plays music and video.', types: ['.mp3', '.wav', '.mp4', '.webm', '.ogg'] },
-        { id: 'cartograph', name: 'Cartograph', publisher: 'Xyridian Corporation', icon: '/static_images/app_icons/32/vista-explorer.webp', text: 'Cartograph browses the files and folders on the server.', types: ['folder', '.7z', '.zip'] }
+        { id: 'cartograph', name: 'Melaton Explorer', publisher: 'Xyridian Corporation', icon: '/static_images/app_icons/32/vista-explorer.webp', text: 'Melaton Explorer browses the files and folders on this computer and the server.', types: ['folder', '.7z', '.zip'] }
     ];
 
     pages['default-programs'] = {

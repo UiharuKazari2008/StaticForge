@@ -759,6 +759,8 @@
     <!-- desktop only: the phone never draws it (Nov 18 phone memory pass) -->
     <template data-shell="desktop"><link rel="stylesheet" href="/css/vista-taskbar.css"></template><script>writeShellTags()</script>
     <!-- Nightshade Network Client (#895): the service's connection manager, opened from its tray icon -->
+    <link rel="stylesheet" href="/css/themes/vista/open-with.css">
+    <link rel="stylesheet" href="/css/open-with.css">
     <link rel="stylesheet" href="/css/themes/vista/nightshade-client.css">
     <link rel="stylesheet" href="/css/nightshade-client.css">
     <link rel="stylesheet" href="/css/system-font.css">
@@ -5878,7 +5880,7 @@ Examples:
             <div class="modal-window-title-main">
                 <i class="fas fa-folder-open icon-fa"></i>
                 <img src="/static_images/app_icons/24/vista-explorer.webp" srcset="/static_images/app_icons/24/vista-explorer.webp 1x, /static_images/app_icons/48/vista-explorer.webp 2x" alt="" class="icon-image" />
-                <span id="explorerTitleLabel">Cartograph</span>
+                <span id="explorerTitleLabel">Computer</span>
             </div>
             <div class="modal-window-title-toolbar">
                 <div class="button-group naxt-nav-group">
@@ -7512,6 +7514,7 @@ Examples:
     <script src="scripts/comp/runpodTray.js"></script>
     <!-- ActiveSync (#747): this tab's peer (a device inside the Android app, a computer on the desktop), then the desktop's tray icon -->
     <script src="scripts/comp/activeSyncAgent.js"></script>
+    <script src="scripts/comp/openWithDialog.js"></script>
     <script src="scripts/comp/melatonContinuity.js"></script>
     <script src="scripts/comp/textMessagingClient.js"></script>
     <script src="scripts/comp/mailAccountsClient.js"></script>

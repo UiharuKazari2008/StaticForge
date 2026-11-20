@@ -244,8 +244,9 @@
                         if (tile) this.select(tile.dataset.drive);
                         config.sections = [{
                             type: 'list',
+                            // a phone disk can be renamed (its .label file, #954), as Vista renames a drive
                             items: tile
-                                ? [{ text: 'Open', action: `computer-open:${tile.dataset.drive}` }]
+                                ? [{ text: 'Open', action: `computer-open:${tile.dataset.drive}` }].concat(this.phoneDrive(tile.dataset.drive) && root.explorerPhoneDrive && root.explorerPhoneDrive.setDiskLabel ? [{ separator: true }, { text: 'Rename', action: `computer-rename:${tile.dataset.drive}` }] : [])
                                 : [{ text: 'Refresh', action: 'computer-refresh' }]
                         }];
                     },
@@ -267,10 +268,26 @@
         onMenuAction(action) {
             const a = String(action || '');
             if (a.startsWith('computer-open:')) this.openDrive(a.slice('computer-open:'.length));
+            else if (a.startsWith('computer-rename:')) void this.renameDrive(a.slice('computer-rename:'.length));
             else if (a === 'computer-refresh') this.show({ reload: true });
         }
 
-        drive(letter) {
+        /** Rename a phone disk: its label, kept in a .label file at its root (explorerPhoneDrive.setDiskLabel). */
+        async renameDrive(key) {
+            const d = this.phoneDrive(key);
+            const pd = root.explorerPhoneDrive;
+            if (!d || !pd || typeof root.showInputDialog !== 'function') return;
+            const rootId = String(key).replace(/^phone:/, '');
+            const current = typeof pd.diskLabel === 'function' ? pd.diskLabel(rootId) : d.name;
+            const next = await root.showInputDialog('Type a name for this disk:', current, '', null, null, { title: 'Rename' });
+            if (next == null || String(next).trim() === current) return;
+            try { await pd.setDiskLabel(rootId, next); } catch (e) {
+                if (typeof root.showConfirmationDialog === 'function') void root.showConfirmationDialog(String((e && e.message) || e), [{ text: 'OK', value: true }], null, { title: 'Rename', icon: 'error' });
+            }
+            this.show({ reload: true });
+        }
+
+                drive(letter) {
             return DRIVES.find((d) => d.letter === letter) || null;
         }
 

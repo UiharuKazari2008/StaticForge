@@ -272,7 +272,7 @@
             id: p.launchId,
             name: p.text,
             icon: p.imageIcon && typeof root.resolveAppIconPath === 'function' ? root.resolveAppIconPath(p.imageIcon, 16) : `${ITEMS}/programs-and-features-16.png`,
-            publisher: /^(Studio|Gallery|Dovecote|Melaton Journal|Notion|Grimoire|Lumen|Glancewell|Ledge|Agora|Atelier|Spellcaster|Phasewalker|Director|Chat|Periscope|Runes|Cartograph|eMotion)/i.test(p.text) ? 'Dreamscape' : 'Xyridian Corporation'
+            publisher: /^(Studio|Gallery|Dovecote|Melaton Journal|Notion|Grimoire|Lumen|Glancewell|Ledge|Agora|Atelier|Spellcaster|Phasewalker|Director|Chat|Periscope|Runes|eMotion)/i.test(p.text) ? 'Dreamscape' : 'Xyridian Corporation'
         })).sort((a, b) => a.name.localeCompare(b.name));
     }
 
@@ -501,14 +501,14 @@
 
     const AUTOPLAY = 'HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\Explorer\\AutoplayHandlers\\UserChosenExecuteHandlers';
     const MEDIA = [
-        ['AudioCD', 'Audio CD', ['Play audio CD using Melaton Media Player', 'Open folder to view files using Cartograph', 'Take no action', 'Ask me every time']],
+        ['AudioCD', 'Audio CD', ['Play audio CD using Melaton Media Player', 'Open folder to view files using Melaton Explorer', 'Take no action', 'Ask me every time']],
         ['EnhancedAudioCD', 'Enhanced audio CD', ['Play audio CD using Melaton Media Player', 'Take no action', 'Ask me every time']],
         ['DVDMovie', 'DVD movie', ['Play DVD movie using Melaton Media Player', 'Take no action', 'Ask me every time']],
         ['Software', 'Software and games', ['Install or run program', 'Take no action', 'Ask me every time']],
-        ['Pictures', 'Pictures', ['Import pictures to the Gallery', 'View pictures using Lumen', 'Open folder to view files using Cartograph', 'Take no action', 'Ask me every time']],
-        ['Video', 'Video files', ['Play video using Melaton Media Player', 'Open folder to view files using Cartograph', 'Take no action', 'Ask me every time']],
-        ['Audio', 'Audio files', ['Play audio files using Melaton Media Player', 'Open folder to view files using Cartograph', 'Take no action', 'Ask me every time']],
-        ['MixedContent', 'Mixed content', ['Open folder to view files using Cartograph', 'Take no action', 'Ask me every time']]
+        ['Pictures', 'Pictures', ['Import pictures to the Gallery', 'View pictures using Lumen', 'Open folder to view files using Melaton Explorer', 'Take no action', 'Ask me every time']],
+        ['Video', 'Video files', ['Play video using Melaton Media Player', 'Open folder to view files using Melaton Explorer', 'Take no action', 'Ask me every time']],
+        ['Audio', 'Audio files', ['Play audio files using Melaton Media Player', 'Open folder to view files using Melaton Explorer', 'Take no action', 'Ask me every time']],
+        ['MixedContent', 'Mixed content', ['Open folder to view files using Melaton Explorer', 'Take no action', 'Ask me every time']]
     ];
 
     pages.autoplay = {

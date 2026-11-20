@@ -584,7 +584,7 @@ function studioSaveFolderRenderCrumbs(displayPath) {
     const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
     let html = '<i class="fas fa-folder cpl-address-icon" aria-hidden="true"></i>';
     html += '<span class="cpl-crumb-sep" aria-hidden="true">&#9656;</span>';
-    html += '<button type="button" class="cpl-crumb" data-crumb-path="/">Cartograph</button>';
+    html += '<button type="button" class="cpl-crumb" data-crumb-path="/">Computer</button>';
     parts.forEach((part, i) => {
         const label = labels.length === parts.length ? labels[i] : part;
         const path = `/${parts.slice(0, i + 1).join('/')}`;

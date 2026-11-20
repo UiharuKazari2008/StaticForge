@@ -1256,6 +1256,9 @@ class ExplorerApplet {
         if (typeof explorerPhoneDrive !== 'undefined' && this._canCutCopyItem(item)) {
             const sendTo = explorerPhoneDrive.sendToMenuItem(item);
             if (sendTo) items.push(sendTo);
+            // Open on phone (#954): the file opens in one of the phone's apps
+            const onPhone = explorerPhoneDrive.openOnPhoneMenuItem ? explorerPhoneDrive.openOnPhoneMenuItem(item) : null;
+            if (onPhone) items.push(onPhone);
         }
         return items;
     }
@@ -4128,10 +4131,13 @@ class ExplorerApplet {
     }
 
     updateLocationLabels(stats) {
-        const displayName = stats?.displayName || this._fallbackDisplayName(this.currentPath);
+        // the VFS root is the system drive: "Local Disk (C:)", as Vista names its window (#954)
+        const rootName = this.currentPath === '/' && window.ExplorerComputerView ? window.ExplorerComputerView.ROOT_NAME : null;
+        const displayName = rootName || stats?.displayName || this._fallbackDisplayName(this.currentPath);
         const displayPath = stats?.displayPath || this._fallbackDisplayPath(this.currentPath);
         if (this.el.titleLabel) {
-            this.el.titleLabel.textContent = `${displayName} — Cartograph`;
+            // Vista's Explorer window is named by its folder alone (the taskbar button reads the same, #954)
+            this.el.titleLabel.textContent = displayName;
         }
         if (this.el.addressBar && document.activeElement !== this.el.addressBar) {
             this.el.addressBar.value = displayPath;
@@ -4162,7 +4168,7 @@ class ExplorerApplet {
             return parts[parts.length - 1];
         }
         if (parts[0] === 'Workspaces' && parts.length === 1) return 'Workspaces';
-        return parts[parts.length - 1] || 'Cartograph';
+        return parts[parts.length - 1] || 'Computer';
     }
 
     _fallbackDisplayPath(path) {
@@ -4534,7 +4540,9 @@ class ExplorerApplet {
             this._populateNoteIconBox(box, item);
             return;
         }
-        if (item.targetKind === 'image' || item.targetKind === 'scrap' || item.previewImageFilename || item.galleryPreview) {
+        // a phone's pictures and videos are photos too: Vista's thumbnail frame at their own aspect, not a cropped square (#954)
+        const phoneMedia = item.targetKind === 'phone-entry' && item.previewUrl && /^(image|video)\//.test(item.mimeType || '');
+        if (item.targetKind === 'image' || item.targetKind === 'scrap' || item.previewImageFilename || item.galleryPreview || phoneMedia) {
             this._populateGalleryImageIconBox(box, item);
             return;
         }
@@ -4642,7 +4650,8 @@ class ExplorerApplet {
                     }
                     openImageInViewer(src, item.name, {});
                 } else {
-                    await this.downloadSelectionItem(item);
+                    // no program for it: what "Open With" was set to, else Vista's "cannot open this file" (#954)
+                    await this._openUnknownFile(item);
                 }
             }
         } finally {
@@ -4662,6 +4671,74 @@ class ExplorerApplet {
     }
 
     /** Text files open in Notepad unless Default Programs gave their type to another program. */
+    /**
+     * A file Melaton has no program for (#954): the program Open With's "Always use" set for its type, else Vista's
+     * "Melaton cannot open this file" -> Open With (openWithDialog.js) with the desktop's programs and Android Runtime
+     * (the phone's own apps, explorerPhoneDrive.openOnPhone). Downloading stays in the context menu.
+     */
+    async _openUnknownFile(item) {
+        const ASSOC = 'HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\Explorer\\FileExts';
+        const ext = ((item.name || '').match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase();
+        const reg = window.melatonRegistry;
+        const assoc = reg && ext ? reg.get(ASSOC, ext, '') : '';
+        if (assoc && await this._openFileWith(item, assoc)) return;
+        const ow = window.melatonOpenWith;
+        if (!ow) { await this.downloadSelectionItem(item); return; }
+        const how = await ow.cannotOpen(item.name);
+        if (how === 'web') {
+            if (typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.webSearchFor) explorerPhoneDrive.webSearchFor(item.name);
+            return;
+        }
+        if (how !== 'list') return;
+        const icon = (n) => `/static_images/app_icons/32/${n}.webp`;
+        const programs = [
+            { id: 'notepad', name: 'Notepad', publisher: 'Xyridian Corporation', icon: icon('vista-notepad') },
+            { id: 'wordpad', name: 'WordPad', publisher: 'Xyridian Corporation', icon: icon('vista-wordpad') },
+            { id: 'paint', name: 'Paint', publisher: 'Xyridian Corporation', icon: icon('vista-paint') },
+            { id: 'lumen', name: 'Lumen', publisher: 'Dreamscape', icon: icon('vista-photo-viewer') }
+        ];
+        const onPhone = typeof explorerPhoneDrive !== 'undefined' && explorerPhoneDrive.openOnPhoneMenuItem && explorerPhoneDrive.openOnPhoneMenuItem(item);
+        if (onPhone) programs.push(ow.ANDROID_RUNTIME);
+        // (Vista ticks "Always use..." when the type has no program yet)
+        const pick = await ow.choose({ fileName: item.name, programs, selected: onPhone ? 'android' : 'notepad', always: true });
+        if (!pick) return;
+        if (pick.always && ext && reg) { try { await reg.set(ASSOC, { [ext]: pick.id }); } catch (_) { /* this time only */ } }
+        await this._openFileWith(item, pick.id);
+    }
+
+    /** Opens a computer file in a program by its Open With id; false when that program cannot take it here. */
+    async _openFileWith(item, id) {
+        const file = { id: item.targetId || item.id, name: item.name, path: this.currentPath };
+        switch (id) {
+            case 'notepad':
+                await loadNotepadManager();
+                if (!window.notepadVista) return false;
+                await window.notepadVista.openFile(item, this.currentPath);
+                return true;
+            case 'wordpad':
+                if (!window.melatonApps) return false;
+                await window.melatonApps.launch({ packageId: 'wordpad', args: { file } });
+                return true;
+            case 'paint':
+                await featureLoader.loadFeature('paint');
+                if (!window.openMelatonPaint) return false;
+                await window.openMelatonPaint({ vfsFile: { id: file.id, name: item.name, path: this.currentPath } });
+                return true;
+            case 'lumen': {
+                const resp = await vfsClient.downloadFile(item.targetId);
+                if (!resp || !resp.downloadUrl) return false;
+                openImageInViewer(resp.downloadUrl, item.name, {});
+                return true;
+            }
+            case 'android':
+                if (typeof explorerPhoneDrive === 'undefined' || !explorerPhoneDrive.openOnPhone) return false;
+                await explorerPhoneDrive.openOnPhone(this, [item]);
+                return true;
+            default:
+                return false;
+        }
+    }
+
     async openInNotepad(item) {
         const ext = ((item.name || '').match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase();
         const reg = window.melatonRegistry;

@@ -455,7 +455,7 @@
             showEnc();
             ctx.on(2229, 'click', () => { ctx.store.encrypted = true; showEnc(); ctx.dirty(); }, 'cscui:1360');
             ctx.on(2213, 'click', () => { ctx.store.encrypted = false; showEnc(); ctx.dirty(); }, 'cscui:1360');
-            ctx.text(2231, 'Melaton reaches the server through the domain network connection. When it is slow, Cartograph works from its cache until the connection is fast again.', 'cscui:1361');
+            ctx.text(2231, 'Melaton reaches the server through the domain network connection. When it is slow, Melaton Explorer works from its cache until the connection is fast again.', 'cscui:1361');
             const ud = ctx.holder(2159, 'cscui:1361');
             if (ud) { ud.dataset.min = '1'; ud.dataset.max = '60'; }
             helpLinks(ctx, 'offline-files');

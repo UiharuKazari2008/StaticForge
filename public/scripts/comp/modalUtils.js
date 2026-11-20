@@ -5655,6 +5655,13 @@ function appIconRefFromImg(img) {
  * Icon for a window that has none of its own: the parent's or owner's (up the chain), then
  * MODAL_APPLICATION_ICONS by id.
  */
+// the icon of a window that set none (user32.dll IDI_APPLICATION on the Vista VM) and of a program that was built
+// without one (shell32.dll 0, the generic program icon) (#954)
+const MELATON_DEFAULT_WINDOW_ICON = '/static_images/vista-icons/default-app-16.png';
+const MELATON_GENERIC_PROGRAM_ICON = '/static_images/vista-icons/generic-exe-16.png';
+window.MELATON_DEFAULT_WINDOW_ICON = MELATON_DEFAULT_WINDOW_ICON;
+window.MELATON_GENERIC_PROGRAM_ICON = MELATON_GENERIC_PROGRAM_ICON;
+
 function resolveInheritedAppIcon(modal) {
     const seen = new Set([modal.id]);
     let ownerId = modalIconOwnerId(modal);
@@ -5688,7 +5695,11 @@ function ensureModalApplicationIcon(modal) {
 
     const main = modal.querySelector(':scope > .modal-window-title > .modal-window-title-main');
     if (!main) return;
-    if (main.querySelector(':scope > img.icon-image:not([data-inherited-icon])')) return;
+    if (main.querySelector(':scope > img.icon-image:not([data-inherited-icon])')) {
+        // its own icon arrived after an inherited / default one: only its own stays
+        main.querySelectorAll(':scope > img[data-inherited-icon]').forEach((n) => n.remove());
+        return;
+    }
 
     const imageIcon = resolveInheritedAppIcon(modal);
     const current = main.querySelector(':scope > img[data-inherited-icon]');
@@ -5699,14 +5710,20 @@ function ensureModalApplicationIcon(modal) {
         return;
     }
     delete modal.dataset.taskbarIcon;
-    // nothing resolved: keep what an earlier open inherited rather than fall back to the glyph
-    if (!imageIcon || (current && current.dataset.inheritedIcon === imageIcon)) return;
+    // nothing resolved: keep what an earlier open inherited; never the bare glyph - a window that set no icon shows
+    // Windows' own default one (user32 IDI_APPLICATION, the window picture; #954)
+    if (!imageIcon && current) return;
+    // (dialogs - the shell's message / task box and other Vista dialogs - draw no caption icon on Vista: no default)
+    const dialog = modal.id === 'confirmationDialog' || !!modal.dataset.vistaDialog;
+    const resolved = imageIcon || (dialog ? '' : MELATON_DEFAULT_WINDOW_ICON);
+    if (!resolved) return;
+    if (current && current.dataset.inheritedIcon === resolved) return;
 
     const holder = document.createElement('div');
-    holder.innerHTML = renderAppIconImg(imageIcon, '', APP_ICON_DISPLAY_PX.caption);
+    holder.innerHTML = renderAppIconImg(resolved, '', APP_ICON_DISPLAY_PX.caption);
     const img = holder.firstElementChild;
     if (!img) return;
-    img.dataset.inheritedIcon = imageIcon;
+    img.dataset.inheritedIcon = resolved;
     const iconEl = main.querySelector(':scope > i');
     if (iconEl && !iconEl.classList.contains('icon-fa')) iconEl.classList.add('icon-fa');
     if (current) {
@@ -6666,7 +6683,7 @@ const startMenuLaunchables = [
     { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', appMenu: true, action: async () => { /* public/scripts/comp/featureLoader.js */ await openNaxtApplet(); } },
     { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'vista-journal.png', text: 'Melaton Journal', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.handleNewNote(); } } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'vista-messenger.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
-    { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'vista-explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
+    { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'vista-explorer.png', text: 'Melaton Explorer', appMenu: true, action: () => { openExplorerApplet(); } },
     { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'remote_desktop.png', text: 'Remote Desktop Manager', appMenu: true, action: async () => { await featureLoader.loadFeature('remote_desktop'); /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
     // Remote Desktop Connection (mstsc.exe, whose icon this is): quick connections through Guacamole
     { launchId: 'remote-desktop-connection', icon: 'fas fa-desktop', imageIcon: 'vista-remote-desktop.png', text: 'Remote Desktop Connection', appMenu: true, action: async () => { await featureLoader.loadFeature('remote_desktop_connection'); /* public/scripts/comp/desktop-apps/remoteDesktopConnection.js */ remoteDesktopConnection.open(); } },
@@ -8614,7 +8631,7 @@ function getStartMenuPlacesAll() {
     };
     return [
         { id: 'user', text: startMenuUserName(), action: () => openExplorerApplet() },
-        { id: 'cartograph', text: 'Cartograph', imageIcon: 'vista-explorer.png', action: launch('explorer') },
+        { id: 'cartograph', text: 'Melaton Explorer', imageIcon: 'vista-explorer.png', action: launch('explorer') },
         { id: 'gallery', text: 'Gallery', imageIcon: 'art.png', desktopOnly: true, action: launch('workspace') },
         { id: 'notion', text: 'Melaton Journal', imageIcon: 'vista-journal.png', action: launch('notebook') },
         // Vista's Games place: the Games Explorer (public/scripts/comp/desktop-apps/vista-games/gamesExplorer.js)

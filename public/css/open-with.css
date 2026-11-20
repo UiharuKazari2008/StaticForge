@@ -1,0 +1,56 @@
+/* Open With and "Melaton cannot open this file" (#954; public/scripts/comp/openWithDialog.js), laid out as
+   openwith.exe / shell32 on the Vista VM (~/.cache/vista-vm/openwith). Colours: css/themes/vista/open-with.css. */
+
+#confirmationDialog .mow { font-size: 12px; line-height: 15px; text-align: left; }
+#confirmationDialog .mow-head { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 12px; }
+#confirmationDialog .mow-icon { width: 32px; height: 32px; flex: none; }
+#confirmationDialog .mow-head-text { display: flex; flex-direction: column; gap: 9px; padding-top: 1px; }
+#confirmationDialog .mow-file { display: flex; gap: 14px; }
+#confirmationDialog .mow-text { margin: 0 0 12px; }
+#confirmationDialog .mow-ask { margin-bottom: 6px; }
+#confirmationDialog .mow-radio { margin: 0 0 4px; }
+
+/* the program list: two columns of 236 x 43 tiles in a sunken white box, scrolling */
+#confirmationDialog .mow-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: 43px;
+    gap: 0 2px;
+    height: 222px;
+    padding: 2px;
+    margin: 0 0 8px;
+    overflow-y: auto;
+    background: var(--mow-list-face);
+}
+#confirmationDialog .mow-prog {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-sizing: border-box;
+    min-width: 0;
+    height: 41px;
+    margin: 1px 0;
+    padding: 0 4px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: default;
+}
+#confirmationDialog .mow-prog::before,
+#confirmationDialog .mow-prog::after { display: none; }
+#confirmationDialog .mow-prog:hover { background: var(--mow-hot-face); border-color: var(--mow-hot-edge); }
+#confirmationDialog .mow-prog.is-selected { background: var(--mow-sel-face); border-color: var(--mow-sel-edge); }
+#confirmationDialog .mow-prog > img { width: 32px; height: 32px; flex: none; }
+#confirmationDialog .mow-prog-text { display: flex; flex-direction: column; min-width: 0; }
+#confirmationDialog .mow-prog-name,
+#confirmationDialog .mow-prog-pub { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#confirmationDialog .mow-prog-pub { color: var(--mow-pub); }
+
+#confirmationDialog .mow-label { display: block; margin: 0 0 4px; }
+#confirmationDialog .mow-desc { display: block; width: 100%; box-sizing: border-box; margin: 0 0 8px; }
+#confirmationDialog .mow-row { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px; }
+#confirmationDialog .mow-link { color: var(--mow-link); }
+#confirmationDialog .mow-web { margin: 0; }

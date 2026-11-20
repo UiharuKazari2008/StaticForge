@@ -624,6 +624,7 @@
         el('.cpl-forward').disabled = forward.length === 0;
         el('.cpl-recent').disabled = back.length === 0 && forward.length === 0;
         el('.cpl-address').innerHTML = renderAddress(page);
+        syncCaptionIcon(page);
         el('.cpl-tasks').innerHTML = page.tasks();
         // a wrapped task-pane name: its row is 1 px shorter (cpl-catalog.css); measured once the
         // window shows (render runs before openModal on the first open)
@@ -663,6 +664,17 @@
             if (it) return cat.art(it.art, 16);
         }
         return '/static_images/app_icons/16/vista-control-panel.webp';
+    }
+
+    /** The window's caption and taskbar icon follow the page (#954), as the address bar's does. */
+    function syncCaptionIcon(page) {
+        const img = modal && modal.querySelector(':scope > .modal-window-title img.icon-image');
+        if (!img) return;
+        const src = addressIcon(page);
+        if (img.getAttribute('src') === src) return;
+        img.setAttribute('src', src);
+        img.removeAttribute('srcset');
+        if (typeof root.updateTaskbarActiveStates === 'function') root.updateTaskbarActiveStates();
     }
 
     function renderAddress(page) {

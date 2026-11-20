@@ -51,7 +51,7 @@
 
     /** "/" as Vista names it: the system drive, Local Disk (C:) (explorerComputerView.js). */
     function rootLabel() {
-        return (root.ExplorerComputerView && root.ExplorerComputerView.ROOT_NAME) || 'Cartograph';
+        return (root.ExplorerComputerView && root.ExplorerComputerView.ROOT_NAME) || 'Computer';
     }
 
     class ExplorerVistaChrome {
@@ -365,10 +365,27 @@
             if (root.explorerContacts && root.explorerContacts.isPath(current)) this.crumbIcon = '../vista-contacts/folder-16.png';
             if (phone) this.crumbIcon = root.explorerPhoneDrive.crumbIcon(current);
             if (root.explorerSequenzia && current === root.explorerSequenzia.ROOT) this.crumbIcon = 'drive-network-16.png';
+            this.syncCaptionIcon();
             this.layoutBreadcrumb();
             this.watchBreadcrumbWidth();
             this.highlightFavorite();
             this.syncTree();
+        }
+
+        /**
+         * The window's caption and taskbar icon are the folder's (#954), as Vista's Explorer shows the place it is at:
+         * Computer, a drive, a phone, Contacts, a folder. The same picture the address bar starts with.
+         */
+        syncCaptionIcon() {
+            const modal = this.app && this.app.modal;
+            const img = modal && modal.querySelector(':scope > .modal-window-title img.icon-image');
+            if (!img) return;
+            const src = `${ART}/${this.crumbIcon || 'crumb-folder.png'}`;
+            if (img.getAttribute('src') === src) return;
+            img.setAttribute('src', src);
+            // Vista's 16 px place pictures have no 32 px twins here: one picture, no srcset
+            img.removeAttribute('srcset');
+            if (typeof root.updateTaskbarActiveStates === 'function') root.updateTaskbarActiveStates();
         }
 
         /** Vista drops the trailing ▸ first, then folds crumbs from the left into « (a menu of them). */
@@ -677,8 +694,13 @@
             const open = (key) => () => view.openDrive(key);
             // the phone's own drives inside the app; lettered on a hybrid phone's DeX window (#798: D: is
             // its internal storage, a hard disk; E:, F: ... cards and USB), drives before devices as in Vista
+            // (#954) a phone disk is a fixed or removable disk (the Windows-logo picture is the system drive's alone), and
+            // it opens into its folders like Local Disk does
             (view.phoneDrives ? view.phoneDrives() : []).forEach((d) => {
-                list.push({ label: d.letter ? `${d.name} (${d.letter}:)` : d.name, icon: d.hdd ? 'drive' : 'removable', path: d.path || null, leaf: true, action: open(d.key) });
+                const spec = { label: d.letter ? `${d.name} (${d.letter}:)` : d.name, icon: d.hdd ? 'fixed' : 'removable', path: d.path || null, action: open(d.key) };
+                if (d.path && !d.block && root.explorerPhoneDrive && typeof root.explorerPhoneDrive.folders === 'function') spec.children = () => this.phoneFolderSpecs(d.path);
+                else spec.leaf = true;
+                list.push(spec);
             });
             // Portable Devices: each ActiveSync phone, opening to its storages (Computer ▸ <device>)
             (view.portableDevices ? view.portableDevices() : []).forEach((d) => {
@@ -694,6 +716,16 @@
                 list.push({ label: d.name, icon: d.online ? 'network' : 'network-off', path: d.path || null, leaf: true, action: open(d.key) });
             });
             return list;
+        }
+
+        /** A phone folder's sub-folders as tree nodes (explorerPhoneDrive.folders: no watcher, no app). */
+        async phoneFolderSpecs(path) {
+            let rows = [];
+            try { rows = await root.explorerPhoneDrive.folders(path); } catch (_err) { rows = []; }
+            return rows.map((r) => {
+                this.labels.set(r.path, r.name);
+                return { label: r.name, icon: 'folder', path: r.path, children: () => this.phoneFolderSpecs(r.path) };
+            });
         }
 
         /** A device's storages for its tree node; the phone becomes the one phoneStorage shows. */

@@ -332,6 +332,22 @@
         return out(sortItems(items, app.sortField, app.sortDirection), 'This folder is empty.');
     }
 
+    /**
+     * A phone folder's sub-folders for Explorer's Folders tree (#954): [{ name, path }], no watcher and no app
+     * attached (the tree only names folders; the window on screen keeps its own listing and watch).
+     */
+    async function folders(path) {
+        const st = await ensureState();
+        if (blocker(st)) return [];
+        const p = parse(path);
+        if (!p.root) return rootsOf(st).map((r) => ({ name: rootName(r.id), path: pathFor(r.id, '/') }));
+        const result = await PS().call('list', { root: p.root, path: p.path });
+        const hidden = shownHidden();
+        return (result.entries || []).filter((e) => e.dir && (hidden || !e.hidden))
+            .map((e) => ({ name: e.name, path: pathFor(p.root, e.path) }))
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    }
+
     // ---- labels, breadcrumb ----------------------------------------------------------------
 
     /** "Phone" on the phone itself; on a desktop the connected device's name. */
@@ -359,10 +375,53 @@
         return i < 0 ? '' : String.fromCharCode(Math.min(90, 68 + i));
     }
 
-    /** "Internal storage (D:)", as Vista names a removable disk. */
+    // ---- disk labels (#954): a disk's name is its label - the text of a .label file at its root - else Vista's
+    // "Local Disk" (a fixed disk) or "Removable Disk"; renaming the disk writes the file. Read once per disk (one small
+    // fetch through the app's file URL) and kept; a rename updates it at once.
+    const LABEL_FILE = '.label';
+    const labels = new Map();       // rootId -> label ('' none)
+    const labelReads = new Map();   // rootId -> Promise
+    function readLabel(rootId) {
+        if (labels.has(rootId) || labelReads.has(rootId)) return;
+        const ps = PS();
+        if (!ps || typeof ps.fileUrl !== 'function') { labels.set(rootId, ''); return; }
+        const read = (async () => {
+            let text = '';
+            try {
+                const url = ps.fileUrl(rootId, `/${LABEL_FILE}`);
+                const res = url ? await fetch(url, { cache: 'no-store' }) : null;
+                if (res && res.ok) text = (await res.text()).split(/\r?\n/)[0].trim().slice(0, 32);
+            } catch (_) { text = ''; }
+            labels.set(rootId, text);
+            labelReads.delete(rootId);
+            // the names drawn before the label was known: draw again
+            if (text) apps.forEach((app) => { try { renderNav(app); if (app.computer && app._isComputerPath && app._isComputerPath()) app.computer.render(); } catch (_) { /* gone */ } });
+        })();
+        labelReads.set(rootId, read);
+    }
+    function diskLabel(rootId) {
+        readLabel(rootId);
+        const own = labels.get(rootId);
+        if (own) return own;
+        const r = rootInfo(rootId);
+        return r && r.kind !== 'internal' ? 'Removable Disk' : 'Local Disk';
+    }
+    /** Rename a disk: its .label file at the root (written, or emptied for Vista's default name). */
+    async function setDiskLabel(rootId, label) {
+        const ps = PS();
+        const text = String(label || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 32);
+        if (!ps || typeof ps.write !== 'function') throw new Error('This disk cannot be renamed.');
+        const file = new File([text], LABEL_FILE, { type: 'text/plain' });
+        await ps.write(rootId, '/', file, { name: LABEL_FILE, conflict: 'replace' });
+        labels.set(rootId, text);
+        apps.forEach((app) => { try { renderNav(app); } catch (_) { /* gone */ } });
+        return text;
+    }
+
+    /** "Local Disk (D:)" - the disk's label (.label) or Vista's default, with its letter. */
     function rootName(rootId) {
         const r = rootInfo(rootId);
-        const name = r ? (r.name || r.id) : rootId;
+        const name = r ? diskLabel(r.id) : rootId;
         const letter = driveLetter(rootId);
         return letter ? `${name} (${letter}:)` : name;
     }
@@ -490,7 +549,26 @@
             await openWith(app, item);
             return;
         }
-        await openInApp(app, item, programFor(item.name, item.mimeType));
+        const program = programFor(item.name, item.mimeType);
+        // set to open with Android Runtime (Open With's "Always use"): the phone's own app (#954)
+        if (program === 'android') { await open(app, item, 'android'); return; }
+        // no program for it: Vista's "cannot open this file" first, then Open With (openWithDialog.js)
+        if (!program && root.melatonOpenWith) {
+            const how = await root.melatonOpenWith.cannotOpen(item.name);
+            if (how === 'list') await openWith(app, item);
+            else if (how === 'web') webSearchFor(item.name);
+            return;
+        }
+        await openInApp(app, item, program);
+    }
+
+    /** "Use the Web service to find the correct program": Melaton's Internet Search for the file type. */
+    function webSearchFor(name) {
+        const ext = extOf(name).replace(/^\./, '');
+        const q = ext ? `.${ext} file program` : `${name} file program`;
+        // Grimoire, Melaton's browser (featureLoader.js openGrimoireUrl), with a search for the file type
+        if (typeof root.openGrimoireUrl === 'function') { void root.openGrimoireUrl(`https://www.bing.com/search?q=${encodeURIComponent(q)}`); return; }
+        toast('info', `Search the Web for "${q}" to find a program for this file.`);
     }
 
     // ---- phone files in Dreamscape's own apps ----------------------------------------------------
@@ -531,7 +609,7 @@
     function programFor(name, mime) {
         const reg = root.melatonRegistry;
         const assoc = reg ? reg.get(ASSOC, extOf(name), '') : '';
-        if (assoc && PROGRAMS[assoc]) return assoc;
+        if (assoc && (PROGRAMS[assoc] || assoc === 'android')) return assoc;
         return { image: 'lumen', media: 'media-player', text: 'notepad', pdf: 'viewer' }[kindOf(name, mime)] || null;
     }
 
@@ -650,19 +728,21 @@
     }
 
     /** Open With: Dreamscape's programs, the type's own first; Android's app is the last choice. */
+    /** Vista's Open With (openWithDialog.js, #954): the desktop's programs and the phone's own (Android Runtime). */
     async function openWith(app, item) {
-        if (typeof root.showConfirmationDialog !== 'function') return;
+        const ow = root.melatonOpenWith;
+        if (!ow) return;
         const kind = kindOf(item.name, item.mimeType);
         const fits = { image: ['lumen', 'paint'], media: ['media-player'], text: ['notepad'], pdf: ['viewer'], other: ['notepad', 'viewer'] }[kind];
         const order = [...new Set([programFor(item.name, item.mimeType), ...fits].filter(Boolean))];
-        const options = order.map((id, i) => ({ text: PROGRAMS[id].name, value: id, className: i === 0 ? 'btn-primary' : 'btn-secondary' }));
-        options.push({ text: 'Android app…', value: 'android', className: 'btn-secondary' });
-        options.push({ text: 'Cancel', value: null, className: 'btn-secondary' });
-        const intro = programFor(item.name, item.mimeType) ? 'Choose the program you want to use to open this file:' : 'Dreamscape has no program set for this type of file. Choose one to open it with:';
-        const choice = await confirmDialog(`${intro}\n\n${item.name}`, options);
-        if (!choice) return;
-        if (choice === 'android') await open(app, item, 'android');
-        else await openInApp(app, item, choice);
+        const programs = order.map((id) => ({ id, name: PROGRAMS[id].name, publisher: 'Xyridian Corporation', icon: PROGRAMS[id].icon })).concat([ow.ANDROID_RUNTIME]);
+        // (Vista ticks "Always use..." when the type has no program yet)
+        const pick = await ow.choose({ fileName: item.name, programs, selected: programFor(item.name, item.mimeType) || 'android', always: !programFor(item.name, item.mimeType) });
+        if (!pick) return;
+        const ext = extOf(item.name);
+        if (pick.always && ext && root.melatonRegistry) { try { await root.melatonRegistry.set(ASSOC, { [ext]: pick.id }); } catch (_) { /* this time only */ } }
+        if (pick.id === 'android') await open(app, item, 'android');
+        else await openInApp(app, item, pick.id);
     }
 
     /** PDFs (and anything a frame shows) in a Vista window of their own, read from the file URL. */
@@ -1101,6 +1181,49 @@
     }
 
     /**
+     * "Open on phone" (#954) for a file on this computer: the phone it opens on - the Continuity phone this window
+     * runs on, else the connected ActiveSync phone (the first online partner) - or null when there is none.
+     */
+    function phoneForOpen() {
+        const ps = PS();
+        if (!ps) return null;
+        if (!ps.remote) return available() ? { ps, deviceId: null } : null;
+        if (typeof ps.devices !== 'function') return null;
+        const list = ps.devices();
+        const pick = list.find((d) => d.online && d.partner) || list.find((d) => d.online) || null;
+        return pick ? { ps, deviceId: pick.deviceId, name: pick.name } : null;
+    }
+    function openOnPhoneMenuItem(item) {
+        if (!item || isEntry(item) || item.kind === 'folder' || !phoneForOpen()) return null;
+        return { icon: 'fas fa-mobile-screen', text: 'Open on phone', action: `${ACTION}open-on-phone` };
+    }
+    /**
+     * Copies the file into the phone's ActiveSync folder (as Send To does) and opens it there with Android's own
+     * chooser: the phone lists the apps that open its type (Android Runtime in Open With).
+     */
+    async function openOnPhone(app, items) {
+        const target = phoneForOpen();
+        const file = (items || []).find((i) => i && !isEntry(i) && i.kind !== 'folder');
+        if (!target || !file) { toast('warning', 'No phone is connected to open this file on.'); return; }
+        const { ps } = target;
+        if (target.deviceId) ps.select(target.deviceId);
+        let st = null;
+        try { st = ps.remote ? await ps.hello() : await ensureState(); } catch (err) { toast('error', errText(err)); return; }
+        const block = blocker(st);
+        if (block) { toast('warning', block.text); return; }
+        const dir = ps.receivedDir || '/ActiveSync';
+        const r = (typeof ps.receivedRoot === 'function' && ps.receivedRoot(st)) || rootsOf(st).find((x) => x.kind === 'internal') || rootsOf(st)[0];
+        if (!r) { toast('warning', 'The phone has no storage to open this file from.'); return; }
+        try { await ps.call('mkdir', { root: r.id, path: dir }); } catch (_err) { /* it is there */ }
+        await app.deliverItemsToPath(app._itemRefs([file]), pathFor(r.id, dir), 'copy', { sourcePath: app.currentPath });
+        try {
+            await ps.call('open', { root: r.id, path: `${dir}/${file.name}`, chooser: true });
+        } catch (err) {
+            toast('error', errText(err));
+        }
+    }
+
+    /**
      * Copies the selection into the device's ActiveSync folder (Yukimi, Nov 18: ActiveSync's own folder
      * at the root of internal storage, not Download), under the usual progress dialog.
      */
@@ -1125,6 +1248,10 @@
         const what = action.slice(ACTION.length);
         if (what.startsWith('sendto:')) {
             await sendTo(app, many, what.slice(7));
+            return;
+        }
+        if (what === 'open-on-phone') {
+            await openOnPhone(app, many);
             return;
         }
         try {
@@ -1509,7 +1636,7 @@
         const toPhone = isPath(navPath) && navPath !== TRASH;
         if (!fromPhone && !toPhone) return false;
         if (refs.some(isEntryRef) && !fromPhone) {
-            toast('warning', 'Copy phone items and Cartograph items separately');
+            toast('warning', 'Copy phone items and computer items separately');
             return true;
         }
         const sourcePath = options.sourcePath || app.currentPath;
@@ -1636,7 +1763,7 @@
             key: `phone:${r.id}`,
             name: rootName(r.id),
             // the name without its drive letter: Computer letters the drives itself (#945: "(D:) (D:)")
-            label: r.name || r.id,
+            label: diskLabel(r.id),
             icon: 'drive-removable',
             total: Number(r.total) || 0,
             free: Number(r.free) || 0,
@@ -1672,6 +1799,9 @@
         attach,
         leave,
         list,
+        folders,
+        diskLabel,
+        setDiskLabel,
         displayName,
         displayPath,
         crumbs,
@@ -1681,6 +1811,9 @@
         isWritable,
         open,
         openInApp,
+        webSearchFor,
+        openOnPhone,
+        openOnPhoneMenuItem,
         readNai,
         openInStudio,
         openProperties,

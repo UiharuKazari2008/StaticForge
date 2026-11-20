@@ -42,7 +42,7 @@ const APPLICATION_ENTRIES = [
     { id: 'event-viewer', name: 'Periscope', icon: 'fas fa-wave-square', openTarget: 'applet', appletId: 'event-viewer', adminOnly: true },
     { id: 'expanders', name: 'Expanders', icon: 'fas fa-book-font', openTarget: 'applet', appletId: 'expanders' },
     { id: 'favorites', name: 'Favorites', icon: 'fas fa-star', openTarget: 'applet', appletId: 'favorites' },
-    { id: 'explorer', name: 'Cartograph', icon: 'fas fa-folder-open', openTarget: 'applet', appletId: 'explorer' },
+    { id: 'explorer', name: 'Melaton Explorer', icon: 'fas fa-folder-open', openTarget: 'applet', appletId: 'explorer' },
     { id: 'encyclopedia', name: 'Grimoire', icon: 'fas fa-book', openTarget: 'applet', appletId: 'encyclopedia' },
     { id: 'import', name: 'Import', icon: 'nai-import', openTarget: 'applet', appletId: 'import' },
     { id: 'keychain', name: 'Keychain', icon: 'fas fa-key-skeleton-left-right', openTarget: 'dsap', dsapUrl: 'dsap://security.dreamscape.jp/auth', adminOnly: true },
@@ -1080,7 +1080,7 @@ class VfsSystemProvider {
             mimeType: 'application/x-sqlite3',
             size: st.size,
             modifiedAt: Math.floor(st.mtimeMs / 1000),
-            message: `${name} is a SQLite database (${this._formatBytes(st.size)}). Direct editing is not available from Cartograph.`,
+            message: `${name} is a SQLite database (${this._formatBytes(st.size)}). Direct editing is not available from Melaton Explorer.`,
             readOnly: true
         };
     }

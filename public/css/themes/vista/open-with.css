@@ -1,0 +1,10 @@
+/* Open With (#954), Vista theme: openwith.exe's colours as the VM draws them. Layout: css/open-with.css. */
+#confirmationDialog .mow {
+    --mow-pub: #6d6d6d;
+    --mow-list-face: #fff;
+    --mow-sel-face: linear-gradient(#f1f8fd, #d5effc);
+    --mow-sel-edge: #99defd;
+    --mow-hot-face: linear-gradient(#fafdfe, #e8f5fd);
+    --mow-hot-edge: #b8e6fb;
+    --mow-link: #0066cc;
+}
