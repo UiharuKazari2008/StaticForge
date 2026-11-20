@@ -3712,6 +3712,19 @@ body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.mi
     animation: modalSlideIn var(--window-open-duration) cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
+/* A message box (the shell's Vista MessageBox, confirmationDialog.js) grows in opaque: under the shared fade its white
+   body stayed see-through over a white window while the frame and the default button showed, a pale rounded box that
+   read as "a giant button" (Yukimi, Nov 20 2026, #910). The second animation holds opacity at 1 for the open; the
+   grow-in keeps the motion (and its animationend, modalUtils.js openingAnimationHandler). */
+#confirmationDialog.modal.opening {
+    animation: modalSlideIn var(--window-open-duration) cubic-bezier(0.25, 0.46, 0.45, 0.94), messageBoxOpaque var(--window-open-duration) linear;
+}
+
+@keyframes messageBoxOpaque {
+    from { opacity: 1; }
+    to { opacity: 1; }
+}
+
 #manualModal:not(.windowed).opening {
     animation: modalFadeIn 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
