@@ -354,6 +354,11 @@ const FEATURE_MANIFEST = {
         styles: ['css/taskbar-properties.css'],
         scripts: ['scripts/comp/taskbarProperties.js']
     },
+    // the device's own CPU / memory / processes on a device client (Yozora #946): Task Manager, Performance
+    // Monitor, the Sidebar's CPU Meter and hosted gadgets read it instead of the server's figures
+    device_perf: {
+        scripts: ['scripts/comp/devicePerf.js']
+    },
     // Vista's own dialog templates and their renderer (Yozora #632): Control Panel's sheets,
     // Notepad's and Paint's dialogs draw from these
     vista_dialog_templates: {
