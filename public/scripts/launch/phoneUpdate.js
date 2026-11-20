@@ -211,7 +211,9 @@
                 if (small || !engine.needsInstaller(e, found.files)) {
                     if (postInstallTopUps < 1) {
                         postInstallTopUps += 1;
-                        await silent(engine, e, found, workerOk).catch(() => null);
+                        // bounded: the running app fetches whatever is still left (the top-up held "Software updated
+                        // 100%" for 10+ minutes on the emulator once)
+                        await Promise.race([silent(engine, e, found, workerOk).catch(() => null), sleep(90000)]);
                         justInstalled = true;
                         continue;
                     }

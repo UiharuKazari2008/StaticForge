@@ -745,7 +745,7 @@
     let shutTimer = 0;
     function showShuttingDown() {
         // a restart for updates shows the phone's install window first; the PC's shutdown is part of it, never a box of
-        // its own in front of it (Yukimi, Nov 20 2026)
+        // its own in front of it (Yukimi, Nov 20 2026, #951)
         if (!isPhone() || restartingForUpdates) return;
         clearTimeout(shutTimer);
         // at most the DeX window's longest sequence (its updates install on the way down): then it is gone anyway
