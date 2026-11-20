@@ -366,6 +366,9 @@ class ContextMenuController {
      */
     _keepsBrowserContextMenu(el) {
         if (!el || !el.closest) return false;
+        // a text field without a menu of its own: left for its Edit menu (_openFieldEditMenu, after the field's own handlers)
+        const own = el.closest('input, textarea, [contenteditable]');
+        if (own && this._isTextInputContextMenuTarget(own) && [null, 'melaton-edit'].includes(own.getAttribute('data-context-menu'))) return true;
         if (el.closest('[data-context-menu]')) return false;
         const field = el.closest('input, textarea, [contenteditable="true"], [contenteditable=""]');
         if (field) return this._isTextInputContextMenuTarget(field);
@@ -381,6 +384,169 @@ class ContextMenuController {
         } catch (_) {
             return false;
         }
+    }
+
+    /**
+     * A text field's own menu (Yukimi, Nov 20 2026): a right-click or long press in an input, textarea or
+     * contenteditable with no menu of its own opens the system's Edit menu - Vista's on the desktop (user32 menu 1:
+     * Undo | Cut Copy Paste Delete | Select All | the reading-order items), WM's on the phone shell (the emulators'
+     * tap-and-hold: Undo | Cut Copy Paste Clear | Select All). Never the browser's. Returns true when it opened one.
+     */
+    _openFieldEditMenu(e) {
+        const t = e.target;
+        const field = t && t.closest ? t.closest('input, textarea, [contenteditable]') : null;
+        if (!field || !this._isTextInputContextMenuTarget(field)) return false;
+        // a field with a menu of its own keeps it
+        const own = field.getAttribute('data-context-menu');
+        if (own && own !== 'melaton-edit') return false;
+        const ed = this._fieldEditState(field);
+        const run = (cmd, arg) => this._fieldEditRun(field, ed, cmd, arg);
+        const mobileShell = document.documentElement.classList.contains('ui-mobile') && window.wmShell && typeof window.wmShell.menuAt === 'function' && document.getElementById('wmShell');
+        e.preventDefault();
+        e._melatonEditMenu = true;
+        if (mobileShell) {
+            window.wmShell.menuAt(e.clientX, e.clientY, [
+                { label: 'Undo', disabled: ed.readOnly, action: () => run('undo') },
+                '-',
+                { label: 'Cut', disabled: !ed.canCut, action: () => run('cut') },
+                { label: 'Copy', disabled: !ed.canCopy, action: () => run('copy') },
+                { label: 'Paste', disabled: ed.readOnly, action: () => run('paste') },
+                { label: 'Clear', disabled: !ed.canCut, action: () => run('delete') },
+                '-',
+                { label: 'Select All', disabled: !ed.hasText, action: () => run('selectAll') }
+            ]);
+            return true;
+        }
+        const U = ContextMenuController.UNICODE_CONTROLS;
+        const items = [
+            { text: 'Undo', action: 'edit:undo', disabled: ed.readOnly || !ed.canUndo },
+            { separator: true },
+            { text: 'Cut', action: 'edit:cut', disabled: !ed.canCut },
+            { text: 'Copy', action: 'edit:copy', disabled: !ed.canCopy },
+            { text: 'Paste', action: 'edit:paste', disabled: ed.readOnly },
+            { text: 'Delete', action: 'edit:delete', disabled: !ed.canCut },
+            { separator: true },
+            { text: 'Select All', action: 'edit:selectAll', disabled: !ed.hasText },
+            { separator: true },
+            { text: 'Right to left Reading order', action: 'edit:rtl', showIndicator: true, indicatorMark: 'check', checked: ed.rtl },
+            // a browser field cannot draw its control characters: shown as Vista shows it, never on
+            { text: 'Show Unicode control characters', action: 'edit:showControls', disabled: true },
+            { text: 'Insert Unicode control character', disabled: ed.readOnly, submenu: U.map(([abbr, name, ch]) => ({ text: abbr, subtext: name, accel: true, action: 'edit:insert', ch })) }
+        ];
+        this.configs = this.configs || makeMenuConfigBag();
+        const config = {
+            sections: [{ type: 'list', items }],
+            onAction: (action, target, item) => {
+                if (action === 'edit:insert') run('insert', item && item.ch);
+                else if (action.startsWith('edit:')) run(action.slice(5));
+            }
+        };
+        this.configs['melaton-edit'] = config;
+        field.setAttribute('data-context-menu', 'melaton-edit');
+        this.showMenu(e, field, this._isTouchGeneratedContextMenu(e), true);
+        // Paste greys when the clipboard holds no text, where the page may read it without asking
+        if (!ed.readOnly) this._fieldEditPasteCheck(items[4]);
+        return true;
+    }
+
+    _fieldEditState(field) {
+        const isInput = field.tagName === 'INPUT';
+        const isArea = field.tagName === 'TEXTAREA';
+        const plain = isInput || isArea;
+        const readOnly = plain ? (field.readOnly || field.disabled) : !field.isContentEditable;
+        let start = null;
+        let end = null;
+        let range = null;
+        let selText = '';
+        if (plain) {
+            try { start = field.selectionStart; end = field.selectionEnd; } catch (_) { /* number / email have none */ }
+            if (start !== null && end !== null) selText = String(field.value).slice(start, end);
+            else if (document.activeElement === field) selText = String(window.getSelection() || '');
+        } else {
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount && field.contains(sel.anchorNode)) {
+                range = sel.getRangeAt(0).cloneRange();
+                selText = String(sel);
+            }
+        }
+        const text = plain ? String(field.value || '') : String(field.textContent || '');
+        const password = isInput && String(field.type).toLowerCase() === 'password';
+        let canUndo = true;
+        try { if (document.activeElement === field) canUndo = document.queryCommandEnabled('undo'); } catch (_) { /* keep it on */ }
+        return {
+            plain, readOnly, start, end, range, selText,
+            hasText: text.length > 0,
+            // an ES_PASSWORD edit never gives its text away
+            canCopy: !!selText && !password,
+            canCut: !!selText && !readOnly && !password,
+            canUndo,
+            rtl: getComputedStyle(field).direction === 'rtl'
+        };
+    }
+
+    _fieldEditRestore(field, ed) {
+        try { field.focus({ preventScroll: true }); } catch (_) { /* gone */ }
+        if (ed.plain && ed.start !== null) {
+            try { field.setSelectionRange(ed.start, ed.end); } catch (_) { /* no selection API */ }
+        } else if (ed.range) {
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(ed.range);
+        }
+    }
+
+    async _fieldEditRun(field, ed, cmd, arg) {
+        if (!field.isConnected) return;
+        this._fieldEditRestore(field, ed);
+        // insertText / delete go through the editor, so the field's own undo holds every change
+        const exec = (c, v) => { try { return document.execCommand(c, false, v); } catch (_) { return false; } };
+        switch (cmd) {
+            case 'undo': exec('undo'); break;
+            case 'copy':
+            case 'cut':
+                // the editor's own command first (still inside the click: allowed, and a cut stays undoable)
+                if (exec(cmd)) break;
+                try { await this._fieldEditClip(navigator.clipboard.writeText(ed.selText)); } catch (_) { return; }
+                if (cmd === 'cut') { this._fieldEditRestore(field, ed); exec('delete'); }
+                break;
+            case 'paste': {
+                let text = null;
+                try { text = await this._fieldEditClip(navigator.clipboard.readText()); } catch (_) { /* not allowed: the editor's own paste */ }
+                this._fieldEditRestore(field, ed);
+                if (text === null) exec('paste');
+                else if (text) exec('insertText', text);
+                break;
+            }
+            case 'delete': exec('delete'); break;
+            case 'selectAll':
+                if (ed.plain) { try { field.select(); } catch (_) { exec('selectAll'); } } else exec('selectAll');
+                break;
+            case 'rtl':
+                field.dir = ed.rtl ? 'ltr' : 'rtl';
+                break;
+            case 'insert':
+                if (arg) exec('insertText', arg);
+                break;
+            default: break;
+        }
+    }
+
+    /** A clipboard promise that cannot hang the command (an unfocused page, a permission never answered). */
+    _fieldEditClip(promise) {
+        return Promise.race([promise, new Promise((resolve, reject) => setTimeout(() => reject(new Error('clipboard timeout')), 1500))]);
+    }
+
+    _fieldEditPasteCheck(pasteItem) {
+        if (!navigator.permissions || !navigator.clipboard || typeof navigator.clipboard.readText !== 'function') return;
+        navigator.permissions.query({ name: 'clipboard-read', allowWithoutGesture: false }).then((p) => {
+            if (!p || p.state !== 'granted') return null;
+            return this._fieldEditClip(navigator.clipboard.readText()).then((text) => {
+                if (text || !pasteItem._element || !this.isOpen) return;
+                pasteItem.disabled = true;
+                pasteItem._element.classList.add('disabled');
+                pasteItem._element.setAttribute('aria-disabled', 'true');
+            });
+        }).catch(() => { /* unknown: Paste stays on */ });
     }
 
     /**
@@ -996,7 +1162,7 @@ class ContextMenuController {
                 }
             }
             if (e.button === 2) {
-                const target = e.target.closest('[data-context-menu]');
+                const target = e.target.closest('[data-context-menu]:not([data-context-menu="melaton-edit"])');
                 if (target) {
                     e.preventDefault();
                 }
@@ -1010,8 +1176,15 @@ class ContextMenuController {
             this._openClickMenuFromPointer(e, target, false);
         }, true);
 
+        // A text field's Edit menu, once the field's own handlers have had the event (one that took it prevented it)
+        // app-scope: allow page lifetime (the shell's menu controller, loaded once from app.html, as its other listeners)
+        document.addEventListener('contextmenu', (e) => {
+            if (!e.defaultPrevented) this._openFieldEditMenu(e);
+        });
+
         // Desktop right-click
         document.addEventListener('contextmenu', (e) => {
+            if (e._melatonEditMenu) return;
             const target = e.target.closest('[data-context-menu]');
             if (!target) return;
             if (!this._shouldAllowContextMenuOpen(e, target)) return;
@@ -1034,7 +1207,10 @@ class ContextMenuController {
         // Touch events for long-press (context) and tap (click menu)
         document.addEventListener('touchstart', (e) => {
             const clickTarget = e.target.closest('[data-click-menu]');
-            const contextTarget = e.target.closest('[data-context-menu]');
+            // a text field's long press is its Edit menu's (the browser's contextmenu brings it), not a holder's
+            const editField = e.target.closest('input, textarea, [contenteditable]');
+            const fieldEdit = !!editField && this._isTextInputContextMenuTarget(editField) && [null, 'melaton-edit'].includes(editField.getAttribute('data-context-menu'));
+            const contextTarget = fieldEdit ? null : e.target.closest('[data-context-menu]');
             const target = clickTarget || contextTarget;
             if (!target || e.touches.length !== 1) return;
 
@@ -2323,6 +2499,19 @@ class ContextMenuController {
             }
         }
     }
+
+    /** The Edit menu's Insert Unicode control character submenu, as user32.dll.mui menu 1 lists it. */
+    static UNICODE_CONTROLS = [
+        ['LRM', 'Left-to-right mark', '‎'], ['RLM', 'Right-to-left mark', '‏'],
+        ['ZWJ', 'Zero width joiner', '‍'], ['ZWNJ', 'Zero width non-joiner', '‌'],
+        ['LRE', 'Start of left-to-right embedding', '‪'], ['RLE', 'Start of right-to-left embedding', '‫'],
+        ['LRO', 'Start of left-to-right override', '‭'], ['RLO', 'Start of right-to-left override', '‮'],
+        ['PDF', 'Pop directional formatting', '‬'], ['NADS', 'National digit shapes substitution', '⁮'],
+        ['NODS', 'Nominal (European) digit shapes', '⁯'], ['ASS', 'Activate symmetric swapping', '⁫'],
+        ['ISS', 'Inhibit symmetric swapping', '⁪'], ['AAFS', 'Activate Arabic form shaping', '⁭'],
+        ['IAFS', 'Inhibit Arabic form shaping', '⁬'], ['RS', 'Record Separator (Block separator)', '\u001E'],
+        ['US', 'Unit Separator (Segment separator)', '\u001F']
+    ];
 
     /** "Ctrl+N", "Ctrl+Shift+V", "Alt+F4", "F5", "Del", "Esc": an accelerator, not a description. */
     static isAccelerator(text) {
@@ -3682,6 +3871,8 @@ class ContextMenuController {
                         const subtextElement = document.createElement('span');
                         subtextElement.className = 'context-menu-item-subtext';
                         subtextElement.textContent = typeof subItem.subtext === 'function' ? subItem.subtext(target) : subItem.subtext;
+                        // a second column on the row (accel: true, or an accelerator): the Edit menu's control-character names
+                        if (subItem.accel || ContextMenuController.isAccelerator(subtextElement.textContent)) subtextElement.dataset.accel = '';
                         textContainer.appendChild(subtextElement);
 
                         subItemElement.appendChild(textContainer);
