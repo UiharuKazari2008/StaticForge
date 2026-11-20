@@ -1357,7 +1357,9 @@
     function speed(mbps) {
         const v = Number(mbps);
         if (!Number.isFinite(v) || v <= 0 || mbps === null) return S.notAvailable;
-        return v >= 1000 ? `${(v / 1000).toFixed(1)} Gbps` : `${v.toFixed(1)} Mbps`; // netshell 23032 / 23033
+        // netshell 23031 / 23032 / 23033: under a megabit the rate is in Kbps (a cellular link's first estimate), not "0.0 Mbps"
+        if (v < 1) return `${(v * 1000).toFixed(1)} Kbps`;
+        return v >= 1000 ? `${(v / 1000).toFixed(1)} Gbps` : `${v.toFixed(1)} Mbps`;
     }
 
     /** Internet behind the link: dreamosNetTray's one answer (sign-in page, the host's word, the server socket; the
