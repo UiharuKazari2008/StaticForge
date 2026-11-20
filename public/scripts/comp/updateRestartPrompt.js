@@ -117,8 +117,11 @@
     let started = 0;
     let placing = null; // the resize listener while the prompt is up
 
+    // the countdown waits for the person to be at the computer (PopoverManager.presence, as the tray balloons do)
+    let presenceWait = null;
     function clearTimers() {
         if (placing) { placing.abort(); placing = null; }
+        if (presenceWait) { presenceWait(); presenceWait = null; }
         clearTimeout(remindTimer);
         remindTimer = 0;
         clearInterval(tickTimer);
@@ -131,6 +134,24 @@
     function schedule(delayMs) {
         clearTimeout(remindTimer);
         remindTimer = setTimeout(() => { remindTimer = 0; if (settings().auto) void show(); }, Math.max(0, Number(delayMs) || 0));
+    }
+
+    // Install updates automatically (#951, Yukimi Nov 20 2026): updates installed by themselves restart an hour later,
+    // the countdown starting when the person is at the computer. One timer, not a poll.
+    const AUTO_RESTART_AFTER_MS = 60 * 60 * 1000;
+    function scheduleAuto() {
+        if (!settings().auto) return;
+        schedule(AUTO_RESTART_AFTER_MS);
+    }
+
+    /**
+     * The person installed the updates (Melaton Update's Install updates): the restart warning follows at once, with
+     * its countdown, whatever the mode - Vista's "Restart your computer to finish installing important updates" after
+     * the install finishes. Postpone keeps its Remind me in choices.
+     */
+    function afterInstall() {
+        clearTimeout(remindTimer);
+        remindTimer = setTimeout(() => { remindTimer = 0; void show({ countdown: true }); }, 1500);
     }
 
     function kit() {
@@ -163,13 +184,19 @@
         remindTimer = setTimeout(() => { remindTimer = 0; void show(); }, m * 60 * 1000);
     }
 
-    /** The dialog (one at a time). The countdown runs only with the automatic restart on. */
-    async function show() {
+    /** The dialog (one at a time). The countdown runs with the automatic restart on, or when the person installed. */
+    async function show(opts = {}) {
         if (ctx || !eligible()) return;
+        const auto = settings().auto || opts.countdown === true;
+        // a countdown starts only with the person at the computer: away, the dialog waits and opens when they are back
+        const pm = root.PopoverManager;
+        if (auto && pm && pm.presence && typeof pm.presence.present === 'function' && !pm.presence.present()) {
+            if (!presenceWait) presenceWait = pm.presence.whenPresent(() => { presenceWait = null; void show(opts); });
+            return;
+        }
         const V = await kit();
         if (!V || typeof V.openDialog !== 'function' || ctx || !eligible()) return;
         styles();
-        const auto = settings().auto;
         const esc = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
         let remind = '240';
         // the window in use keeps the keyboard (Vista shows the prompt without taking the focus)
@@ -312,5 +339,5 @@
         });
     }
 
-    root.melatonRestartPrompt = { schedule, show, cancel, settings, save, confirmRestart };
+    root.melatonRestartPrompt = { schedule, scheduleAuto, afterInstall, show, cancel, settings, save, confirmRestart };
 })(typeof window !== 'undefined' ? window : globalThis);

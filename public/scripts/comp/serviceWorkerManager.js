@@ -1265,6 +1265,8 @@ class ServiceWorkerManager {
             if (mc && typeof mc.phoneTakesInstall === 'function' && await mc.phoneTakesInstall()) return null;
         }
         const list = Array.isArray(this.availableUpdates) ? this.availableUpdates.slice() : [];
+        // the person asked for the install (Melaton Update, the balloon): its restart warning follows the download (#951)
+        if (window.isDesktop && window.uiShell !== 'mobile') this._userInstallAsked = Date.now();
         // Try again after "Some updates were not installed" (#951): a fresh set of tries
         this.updateInstallFailure = null;
         this._failedRetryRound = 0;
@@ -5596,9 +5598,17 @@ class ServiceWorkerManager {
             return;
         }
 
-        // Vista's automatic updates restart dialog (updateRestartPrompt.js, #945): with the automatic restart on it
-        // opens after the balloon with its countdown; off, the balloon alone asks
-        if (window.melatonRestartPrompt) window.melatonRestartPrompt.schedule(4000);
+        // Vista's automatic updates restart dialog (updateRestartPrompt.js, #945/#951): after the person's own Install
+        // updates it follows at once with its countdown; installed automatically, it counts down an hour later (with the
+        // person at the computer); otherwise the balloon alone asks. The DeX window follows the phone's restart
+        const prompt = window.melatonRestartPrompt;
+        if (prompt && !this._isContinuityDexWindow()) {
+            const asked = this._userInstallAsked && Date.now() - this._userInstallAsked < 30 * 60 * 1000;
+            this._userInstallAsked = 0;
+            if (asked && typeof prompt.afterInstall === 'function') prompt.afterInstall();
+            else if (typeof prompt.scheduleAuto === 'function') prompt.scheduleAuto();
+            else prompt.schedule(4000);
+        }
         // Desktop mode: tray popup completion prompt
         if (this._isDesktopTrayMode()) {
             const filesTotal = this.pendingUpdateFilesTotal || this.trayPopup.filesTotal || 0;
