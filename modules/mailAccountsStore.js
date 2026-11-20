@@ -49,7 +49,28 @@ function open(cacheDir) {
             position INTEGER NOT NULL DEFAULT 0, match TEXT NOT NULL DEFAULT '{}', actions TEXT NOT NULL DEFAULT '{}',
             created INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL DEFAULT 0, hits INTEGER NOT NULL DEFAULT 0, last_hit INTEGER);
     `);
+    ftsByRowid();
     return db;
+}
+
+/**
+ * The text index row of a message is the message's own rowid (#959, as textMessagingStore): account, folder
+ * and uid are UNINDEXED there, so deleting by them read the whole index (bodies included) once per message
+ * written. Built once (the server and the sync worker both open the store). The messages rowids are
+ * implicit: never VACUUM this file without clearing the fts_rowid mark.
+ */
+function ftsByRowid() {
+    const mark = () => db.prepare("SELECT value FROM state WHERE account = '' AND key = 'fts_rowid'").get();
+    const m0 = mark();
+    if (m0 && m0.value === '1') return;
+    db.transaction(() => {
+        const m1 = mark();
+        if (m1 && m1.value === '1') return;
+        db.exec(`DELETE FROM messages_fts;
+            INSERT INTO messages_fts (rowid, subject, sender, recipients, body, account, folder, uid)
+                SELECT rowid, COALESCE(subject, ''), COALESCE(sender, ''), COALESCE(recipients, ''), substr(CASE WHEN COALESCE(text, '') != '' THEN text ELSE COALESCE(snippet, '') END, 1, 200000), account, folder, uid FROM messages;`);
+        db.prepare("INSERT INTO state (account, key, value) VALUES ('', 'fts_rowid', '1') ON CONFLICT(account, key) DO UPDATE SET value = excluded.value").run();
+    }).immediate();
 }
 
 function d() {
@@ -102,7 +123,7 @@ function recount(account, p) {
 function removeFolder(account, p) {
     statsChanged(account);
     d().transaction(() => {
-        d().prepare('DELETE FROM messages_fts WHERE account = ? AND folder = ?').run(account, p);
+        d().prepare('DELETE FROM messages_fts WHERE rowid IN (SELECT rowid FROM messages WHERE account = ? AND folder = ?)').run(account, p);
         d().prepare('DELETE FROM messages WHERE account = ? AND folder = ?').run(account, p);
         d().prepare('DELETE FROM folders WHERE account = ? AND path = ?').run(account, p);
     })();
@@ -112,7 +133,7 @@ function removeFolder(account, p) {
 function clearFolder(account, p) {
     statsChanged(account);
     d().transaction(() => {
-        d().prepare('DELETE FROM messages_fts WHERE account = ? AND folder = ?').run(account, p);
+        d().prepare('DELETE FROM messages_fts WHERE rowid IN (SELECT rowid FROM messages WHERE account = ? AND folder = ?)').run(account, p);
         d().prepare('DELETE FROM messages WHERE account = ? AND folder = ?').run(account, p);
     })();
 }
@@ -127,8 +148,9 @@ function putMessages(account, folder, rows) {
         ON CONFLICT(account, folder, uid) DO UPDATE SET msgid = excluded.msgid, date = excluded.date, sender = excluded.sender, recipients = excluded.recipients,
         subject = excluded.subject, flags = excluded.flags, seen = excluded.seen, flagged = excluded.flagged, size = excluded.size, snippet = excluded.snippet,
         has_att = excluded.has_att, env = excluded.env, att = excluded.att, text = excluded.text, html = excluded.html, body = excluded.body`);
-    const delF = d().prepare('DELETE FROM messages_fts WHERE account = ? AND folder = ? AND uid = ?');
-    const insF = d().prepare('INSERT INTO messages_fts (subject, sender, recipients, body, account, folder, uid) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const idOf = d().prepare('SELECT rowid AS id FROM messages WHERE account = ? AND folder = ? AND uid = ?');
+    const delF = d().prepare('DELETE FROM messages_fts WHERE rowid = ?');
+    const insF = d().prepare('INSERT INTO messages_fts (rowid, subject, sender, recipients, body, account, folder, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
     d().transaction((list) => {
         for (const r of list) {
             const flags = Array.isArray(r.flags) ? r.flags : [];
@@ -136,8 +158,10 @@ function putMessages(account, folder, rows) {
                 subject: r.subject || '', flags: JSON.stringify(flags), seen: flags.includes('\\Seen') ? 1 : 0, flagged: flags.includes('\\Flagged') ? 1 : 0,
                 size: Number(r.size) || 0, snippet: r.snippet || '', has_att: (r.att || []).some((a) => !a.inline) ? 1 : 0, env: JSON.stringify(r.env || {}),
                 att: JSON.stringify(r.att || []), text: r.text || null, html: r.html || null, body: r.body ? 1 : 0 });
-            delF.run(account, folder, r.uid);
-            insF.run(r.subject || '', r.sender || '', r.recipients || '', (r.text || r.snippet || '').slice(0, 200000), account, folder, r.uid);
+            const row = idOf.get(account, folder, r.uid);
+            if (!row) continue;
+            delF.run(row.id);
+            insF.run(row.id, r.subject || '', r.sender || '', r.recipients || '', (r.text || r.snippet || '').slice(0, 200000), account, folder, r.uid);
         }
     })(rows);
 }
@@ -162,10 +186,18 @@ function flagMap(account, folder) {
 function deleteMessages(account, folder, list) {
     statsChanged(account);
     if (!list || !list.length) return 0;
-    const delM = d().prepare('DELETE FROM messages WHERE account = ? AND folder = ? AND uid = ?');
-    const delF = d().prepare('DELETE FROM messages_fts WHERE account = ? AND folder = ? AND uid = ?');
+    const idOf = d().prepare('SELECT rowid AS id FROM messages WHERE account = ? AND folder = ? AND uid = ?');
+    const delM = d().prepare('DELETE FROM messages WHERE rowid = ?');
+    const delF = d().prepare('DELETE FROM messages_fts WHERE rowid = ?');
     let n = 0;
-    d().transaction(() => { for (const u of list) { n += delM.run(account, folder, u).changes; delF.run(account, folder, u); } })();
+    d().transaction(() => {
+        for (const u of list) {
+            const r = idOf.get(account, folder, u);
+            if (!r) continue;
+            n += delM.run(r.id).changes;
+            delF.run(r.id);
+        }
+    })();
     return n;
 }
 
@@ -235,7 +267,7 @@ function search(term, { account = null, limit = 40 } = {}) {
     const q = words.map((w) => `"${w.replace(/"/g, '')}"*`).join(' AND ');
     const args = [q];
     let sql = `SELECT m.account, m.folder, ${LIST_COLS.split(', ').map((c) => `m.${c}`).join(', ')} FROM messages_fts f
-        JOIN messages m ON m.account = f.account AND m.folder = f.folder AND m.uid = f.uid WHERE messages_fts MATCH ?`;
+        JOIN messages m ON m.rowid = f.rowid WHERE messages_fts MATCH ?`;
     if (account) { sql += ' AND f.account = ?'; args.push(account); }
     sql += ' ORDER BY m.date DESC LIMIT ?';
     args.push(limit);

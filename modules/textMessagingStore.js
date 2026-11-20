@@ -44,7 +44,27 @@ function open(cacheDir) {
         CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(text, account UNINDEXED, guid UNINDEXED, tokenize = 'unicode61 remove_diacritics 2');
         CREATE TABLE IF NOT EXISTS state (account TEXT NOT NULL, key TEXT NOT NULL, value TEXT, PRIMARY KEY (account, key));
     `);
+    ftsByRowid();
     return db;
+}
+
+/**
+ * The text index row of a message is the message's own rowid (#959). Its account and guid columns are
+ * UNINDEXED, so `DELETE ... WHERE account = ? AND guid = ?` read the whole index for every row: checking one
+ * conversation against the Mac (60 rows) held the server's main thread for 2.4 s with ~47,000 messages, and
+ * every phone waited. Built once here (both the server and the sync worker open the store; the first one
+ * builds it). The messages table's rowids are implicit: a VACUUM would renumber them, so never VACUUM this
+ * file without clearing the fts_rowid mark below.
+ */
+function ftsByRowid() {
+    const done = db.prepare("SELECT value FROM state WHERE account = '' AND key = 'fts_rowid'").get();
+    if (done && done.value === '1') return;
+    db.transaction(() => {
+        const again = db.prepare("SELECT value FROM state WHERE account = '' AND key = 'fts_rowid'").get();
+        if (again && again.value === '1') return;
+        db.exec("DELETE FROM messages_fts; INSERT INTO messages_fts (rowid, text, account, guid) SELECT rowid, text, account, guid FROM messages WHERE text != '';");
+        db.prepare("INSERT INTO state (account, key, value) VALUES ('', 'fts_rowid', '1') ON CONFLICT(account, key) DO UPDATE SET value = excluded.value").run();
+    }).immediate();
 }
 
 function d() {
@@ -98,9 +118,9 @@ function markChatSynced(account, guid, synced) {
 function deleteChat(account, guid) {
     countChanged(account);
     const tx = d().transaction(() => {
-        const guids = d().prepare('SELECT guid FROM messages WHERE account = ? AND chat_guid = ?').all(account, guid).map((r) => r.guid);
-        const delFts = d().prepare('DELETE FROM messages_fts WHERE account = ? AND guid = ?');
-        for (const g of guids) delFts.run(account, g);
+        const ids = d().prepare('SELECT rowid AS id FROM messages WHERE account = ? AND chat_guid = ?').all(account, guid).map((r) => r.id);
+        const delFts = d().prepare('DELETE FROM messages_fts WHERE rowid = ?');
+        for (const id of ids) delFts.run(id);
         d().prepare('DELETE FROM messages WHERE account = ? AND chat_guid = ?').run(account, guid);
         d().prepare('DELETE FROM chats WHERE account = ? AND guid = ?').run(account, guid);
     });
@@ -113,25 +133,39 @@ function chatCount(account) {
 
 // ---- messages ----
 
-/** rows: [{ guid, chatGuid, date, text, raw }] (insert or replace; the text index follows). */
+/**
+ * rows: [{ guid, chatGuid, date, text, raw }] (insert or replace; the text index follows). A row stored
+ * exactly as it is now is left alone (a conversation checked against the Mac sends back mostly the same
+ * rows); the text index is written only when the text changed.
+ */
 function putMessages(account, rows) {
-    countChanged(account);
     const db0 = d();
+    const cur = db0.prepare('SELECT rowid AS id, chat_guid, date, text, raw FROM messages WHERE account = ? AND guid = ?');
     const ins = db0.prepare(`INSERT INTO messages (account, guid, chat_guid, date, text, raw) VALUES (@account, @guid, @chat, @date, @text, @raw)
         ON CONFLICT(account, guid) DO UPDATE SET chat_guid = excluded.chat_guid, date = excluded.date, text = excluded.text, raw = excluded.raw`);
-    const delFts = db0.prepare('DELETE FROM messages_fts WHERE account = ? AND guid = ?');
-    const insFts = db0.prepare('INSERT INTO messages_fts (text, account, guid) VALUES (?, ?, ?)');
+    const delFts = db0.prepare('DELETE FROM messages_fts WHERE rowid = ?');
+    const insFts = db0.prepare('INSERT INTO messages_fts (rowid, text, account, guid) VALUES (?, ?, ?, ?)');
     let n = 0;
+    let added = false;
     db0.transaction((list) => {
         for (const r of list) {
             if (!r || !r.guid || !r.chatGuid) continue;
             const text = String(r.text || '');
-            ins.run({ account, guid: r.guid, chat: r.chatGuid, date: Number(r.date) || 0, text, raw: JSON.stringify(r.raw) });
-            delFts.run(account, r.guid);
-            if (text) insFts.run(text, account, r.guid);
+            const raw = JSON.stringify(r.raw);
+            const date = Number(r.date) || 0;
+            const old = cur.get(account, r.guid);
+            if (old && old.chat_guid === r.chatGuid && old.date === date && old.text === text && old.raw === raw) continue;
+            const info = ins.run({ account, guid: r.guid, chat: r.chatGuid, date, text, raw });
+            const id = old ? old.id : Number(info.lastInsertRowid);
+            if (!old) added = true;
+            if (!old || old.text !== text) {
+                delFts.run(id);
+                if (text) insFts.run(id, text, account, r.guid);
+            }
             n += 1;
         }
     })(rows);
+    if (added) countChanged(account);
     return n;
 }
 
@@ -172,7 +206,7 @@ function search(term, { account = null, limit = 40 } = {}) {
     if (!words.length) return [];
     const q = words.map((w) => `"${w.replace(/"/g, '')}"*`).join(' AND ');
     const args = [q];
-    let sql = `SELECT m.account, m.guid, m.chat_guid, m.date, m.raw FROM messages_fts f JOIN messages m ON m.account = f.account AND m.guid = f.guid WHERE messages_fts MATCH ?`;
+    let sql = `SELECT m.account, m.guid, m.chat_guid, m.date, m.raw FROM messages_fts f JOIN messages m ON m.rowid = f.rowid WHERE messages_fts MATCH ?`;
     if (account) { sql += ' AND f.account = ?'; args.push(account); }
     sql += ' ORDER BY m.date DESC LIMIT ?';
     args.push(limit);
@@ -192,10 +226,18 @@ function guidsBetween(account, chatGuids, from, to) {
 function deleteMessages(account, guids) {
     countChanged(account);
     if (!guids || !guids.length) return 0;
-    const delM = d().prepare('DELETE FROM messages WHERE account = ? AND guid = ?');
-    const delF = d().prepare('DELETE FROM messages_fts WHERE account = ? AND guid = ?');
+    const idOf = d().prepare('SELECT rowid AS id FROM messages WHERE account = ? AND guid = ?');
+    const delM = d().prepare('DELETE FROM messages WHERE rowid = ?');
+    const delF = d().prepare('DELETE FROM messages_fts WHERE rowid = ?');
     let n = 0;
-    d().transaction(() => { for (const g of guids) { n += delM.run(account, g).changes; delF.run(account, g); } })();
+    d().transaction(() => {
+        for (const g of guids) {
+            const r = idOf.get(account, g);
+            if (!r) continue;
+            n += delM.run(r.id).changes;
+            delF.run(r.id);
+        }
+    })();
     return n;
 }
 
