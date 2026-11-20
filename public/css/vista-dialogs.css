@@ -207,22 +207,22 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"
    the icon column (25 + 32 + 8) + the text + 39 px. The client is white over the grey footer with no
    gap between them; the icon at 25, 26; one line of text on the icon's centre line (its line box 8 px
    under the icon's top), more lines from the icon's top; 26 px under the icon or the last line. */
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"].modal {
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog="message"].modal {
     width: var(--vista-message-width, auto) !important;
     min-width: 0;
     max-width: calc(100vw - 40px);
 }
 
 /* the caption keeps room for the title and the close button only (Vista: title + 8, the button 42 px, 7 px in) */
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog] > .modal-window-title > .modal-window-title-main {
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog] > .modal-window-title > .modal-window-title-main {
     padding-right: 58px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content {
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog="message"] > .modal-content {
     gap: 0;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message {
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message {
     display: grid;
     grid-template-columns: 32px minmax(0, 1fr);
     column-gap: 8px;
@@ -252,11 +252,11 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dia
     margin: 0;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message::before {
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message::before {
     align-self: start;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message > .vista-dialog-text {
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message > .vista-dialog-text {
     max-width: 380px;
     padding-bottom: 1px;
     overflow-wrap: anywhere;
@@ -270,6 +270,63 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dia
     margin-bottom: 0;
 }
 
+/* The boot message box (bootMessageBox.js: logon and lock errors before the shell's dialogs run) in
+   Vista Basic / Aero: the same MessageBox layout - white over the 49 px grey footer, the icon at 25, 26,
+   the text 8 px beside it in 15 px lines (the message, a blank line, the detail), 26 px under, buttons
+   88x26 on the right 8 px apart (#970). Windows Classic keeps desktop-boot.css's centred XP box. */
+body.theme-vista #bootMessageBox {
+    min-width: 0;
+    max-width: calc(100vw - 40px);
+}
+
+body.theme-vista #bootMessageBox .boot-message-box-content {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    background: #fff;
+    line-height: 15px;
+}
+
+body.theme-vista #bootMessageBox .boot-message-box-body {
+    align-items: center;
+    gap: 8px;
+    min-height: 84px;
+    box-sizing: border-box;
+    padding: 26px 39px 26px 25px;
+}
+
+body.theme-vista #bootMessageBox .boot-message-box-icon {
+    align-self: flex-start;
+}
+
+body.theme-vista #bootMessageBox .boot-message-box-text {
+    max-width: 380px;
+    padding: 0 0 1px;
+}
+
+body.theme-vista #bootMessageBox .boot-message-box-text p {
+    margin: 0;
+    line-height: 15px;
+}
+
+body.theme-vista #bootMessageBox .boot-message-box-text p:not(:empty) ~ p:not(:empty) {
+    margin-top: 15px;
+}
+
+body.theme-vista #bootMessageBox .boot-message-box-buttons {
+    justify-content: flex-end;
+    gap: 8px;
+    margin: 0;
+    padding: 12px 8px 11px;
+    background: #f0f0f0;
+}
+
+body.theme-vista #bootMessageBox .boot-message-box-buttons button {
+    min-width: 88px;
+    height: 26px;
+    line-height: 24px;
+}
+
 /* the input dialog and the richer confirmations (enhance, studio change, explore publish, any
    form inside): a task dialog, white content and the grey footer, no icon */
 body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-content {
@@ -280,9 +337,10 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dia
     background: #fff;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-content > .confirmation-message {
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog="task"] > .modal-content > .confirmation-message {
     margin: 0;
-    padding: 18px 22px;
+    /* TaskDialog's content margins as on the VM: the first line's box 15 px down, 10 px in, 16 px over the footer */
+    padding: 15px 10px 16px;
     text-align: left;
     /* TaskDialog's content text, as the message box's (the app's 0.9rem made "Name:" 14 px on a
        fractional line and the window a fractional height) */
@@ -292,18 +350,19 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dia
 
 /* a task dialog's caption shows its owner's picture (ensureModalApplicationIcon) or none, never the
    caller's Font Awesome glyph (it pushed the title 22 px right, to a fractional x) */
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-window-title > .modal-window-title-main > i {
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog="task"] > .modal-window-title > .modal-window-title-main > i {
     display: none;
 }
 
 /* TaskDialog's footer as on the VM (comctl32 TaskDialog, #970): 40 px, the buttons' faces 66x21 at
    least, 8 px apart, 11 px from the right edge and 9 px under the footer's top */
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-content > .vista-dialog-footer {
+body.theme-vista.desktop-mode #confirmationDialog[data-vista-dialog="task"] > .modal-content > .vista-dialog-footer,
+body.theme-vista.desktop-mode #studioSaveNameModal[data-vista-dialog="task"] > .modal-content > .vista-dialog-footer {
     padding: 8px 10px 9px;
     gap: 6px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-content > .vista-dialog-footer button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn) {
+#confirmationDialog[data-vista-dialog="task"] > .modal-content > .vista-dialog-footer button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn) {
     min-width: 68px;
 }
 
@@ -336,7 +395,7 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-di
 
 body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] > .modal-content > .studio-save-name-label {
     margin: 0;
-    padding: 18px 22px 5px;
+    padding: 15px 10px 5px;
     color: #000;
     font-weight: 400;
     line-height: 15px;
@@ -344,13 +403,13 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-di
 
 body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] > .modal-content > #studioSaveNameInput {
     width: auto;
-    margin: 0 22px 18px;
+    margin: 0 10px 16px;
 }
 
 /* the name suggestions: the text box's AutoComplete list, white, the selection Vista's blue */
 body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] > .modal-content > #studioSaveNameSuggestions {
     width: auto;
-    margin: -17px 22px 18px;
+    margin: -15px 10px 16px;
     padding: 1px 0;
     background: #fff;
     border: 1px solid #828790;
