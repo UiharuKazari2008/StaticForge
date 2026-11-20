@@ -644,6 +644,98 @@
         // a folder page (Printers, Fonts, Administrative Tools) has Explorer's panes (cplPages3.js)
         if (page.kind) modal.dataset.pageKind = page.kind;
         else delete modal.dataset.pageKind;
+        fitCommandBars(main);
+    }
+
+    // ---- the command bar's overflow (#952, Yukimi Nov 20 2026) -----------------------------------------------------
+    //
+    // Vista's command bar (a folder page's .cpl-fbar: Network Connections, Printers, Administrative Tools ...) never squeezes a button:
+    // each is its icon and whole label at its own width, and what does not fit before the help button goes under »
+    // at the bar's end, a menu of the hidden commands with their icons (measured on the VM's Network Connections at
+    // 1050 / 800 / 600 / 450 px: the » box is 23 px wide right after the last button that fits). Menu buttons
+    // (Organize, Views: a ▾ glyph) stay. The bar is fitted when a page draws it and when its width changes.
+    const BAR_SEL = '.cpl-fbar';
+    const barSizes = new WeakMap(); // bar -> the width it was last fitted at
+    const barObserver = typeof ResizeObserver === 'function' ? new ResizeObserver((entries) => {
+        entries.forEach((e) => {
+            const bar = e.target;
+            if (!bar.isConnected) { barObserver.unobserve(bar); return; }
+            const w = Math.round(e.contentRect.width);
+            if (barSizes.get(bar) === w) return;
+            fitBar(bar);
+        });
+    }) : null;
+
+    function fitBar(bar) {
+        if (!bar || !bar.isConnected) return;
+        const items = Array.from(bar.children).filter((b) => b.matches('.cpl-fbar-btn') && !b.classList.contains('cpl-fbar-more'));
+        let more = bar.querySelector(':scope > .cpl-fbar-more');
+        items.forEach((b) => { if (b.dataset.cplOver) { b.hidden = false; delete b.dataset.cplOver; } });
+        if (more) more.hidden = true;
+        const width = bar.clientWidth;
+        barSizes.set(bar, Math.round(bar.getBoundingClientRect().width));
+        if (!width || !items.length) return;
+        // the help button sits at the bar's end (margin-left: auto): the commands end before it
+        const help = bar.querySelector(':scope > .cpl-fbar-help');
+        const limit = bar.getBoundingClientRect().right - (parseFloat(getComputedStyle(bar).paddingRight) || 0) - (help ? help.getBoundingClientRect().width : 0);
+        const shown = items.filter((b) => !b.hidden);
+        if (!shown.length || shown[shown.length - 1].getBoundingClientRect().right <= limit) return;
+        if (!more) {
+            more = doc.createElement('button');
+            more.type = 'button';
+            more.className = 'cpl-fbar-btn cpl-fbar-more';
+            more.title = 'More commands';
+            more.setAttribute('aria-haspopup', 'menu');
+            more.innerHTML = '<span class="cpl-fbar-chevrons" aria-hidden="true"></span>';
+            const cm = root.contextMenu;
+            if (cm && typeof cm.attachClickMenuToElement === 'function') {
+                cm.attachClickMenuToElement(more, {
+                    position: 'anchor',
+                    anchorAlign: 'start',
+                    sections: [{
+                        type: 'list',
+                        className: 'cpl-fbar-menu',
+                        initfn: (s) => {
+                            s.items = Array.from(bar.children).filter((b) => b.dataset.cplOver).map((b, i) => {
+                                const img = b.querySelector('img');
+                                const x2 = img && /(\S+)\s+2x/.exec(img.getAttribute('srcset') || '');
+                                return { text: b.textContent.trim(), action: `cpl-over-${i}`, image: img ? img.getAttribute('src') : undefined, image2x: x2 ? x2[1] : undefined, disabled: b.disabled, _btn: b };
+                            });
+                        }
+                    }],
+                    onAction: (action, target, item) => {
+                        const i = Number(String(action).replace('cpl-over-', ''));
+                        const b = (item && item._btn) || Array.from(bar.children).filter((x) => x.dataset.cplOver)[i];
+                        if (b && !b.disabled) b.click();
+                    }
+                });
+            }
+        }
+        // the » box goes right after the last button that stays
+        more.hidden = false;
+        const pinned = (b) => !!b.querySelector('.cpl-fbar-glyph');
+        const fits = () => {
+            const last = shown[shown.length - 1];
+            if (last.nextElementSibling !== more) last.after(more);
+            return more.getBoundingClientRect().right <= limit;
+        };
+        while (shown.length > 1 && !pinned(shown[shown.length - 1]) && !fits()) {
+            const b = shown.pop();
+            b.hidden = true;
+            b.dataset.cplOver = '1';
+        }
+        if (!items.some((b) => b.dataset.cplOver)) more.hidden = true;
+        else if (shown[shown.length - 1].nextElementSibling !== more) shown[shown.length - 1].after(more);
+    }
+
+    /** Fit every command bar under el (a page's own redraw of its bar calls this too). */
+    function fitCommandBars(el) {
+        if (!el || !doc) return;
+        const bars = el.matches && el.matches(BAR_SEL) ? [el] : Array.from(el.querySelectorAll(BAR_SEL));
+        bars.forEach((bar) => {
+            fitBar(bar);
+            if (barObserver) barObserver.observe(bar);
+        });
     }
 
     /** A page from outside (see the header): ids already taken are refused. */
@@ -2018,6 +2110,7 @@
         registerPage,
         taskLinkHtml: (label, action, arg) => taskLink(label, action, arg),
         openStatusDialog,
+        fitCommandBars,
         connectionFacts,
         toggleConnection,
         openCustomizeDialog,

@@ -168,6 +168,59 @@
     margin-left: auto;
 }
 
+/* (#952) a command never shrinks: each is its icon and whole label; what does not fit goes under the » box
+   (melatonControlPanel fitBar), 23 px wide on the VM with its two white chevrons centred */
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-fbar, .cpl-pf-bar) {
+    min-width: 0;
+    overflow: hidden;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help) {
+    flex: none;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn)[hidden] {
+    display: none;
+}
+
+/* Views is a split button, as Explorer's (vista-explorer.css #explorerViewsDropdownBtn): the arrow half 20 px */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn[data-cpl-vpage="views"] {
+    padding-right: 4px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn[data-cpl-vpage="views"] .cpl-fbar-glyph {
+    margin-left: 9px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn.cpl-fbar-more {
+    justify-content: center;
+    width: 23px;
+    padding: 0 0 2px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn.cpl-fbar-more:active {
+    padding: 1px 0 1px 1px;
+}
+
+/* the » box while its menu is open: the open face (Explorer's, VM) */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn:is(.context-open, [aria-expanded="true"]) {
+    border-image: image-set(url('/static_images/vista-explorer/cmdbar-open.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-open.png') 1.2222x, url('/static_images/hidpi/150/vista-explorer/cmdbar-open.png') 1.5556x, url('/static_images/hidpi/175/vista-explorer/cmdbar-open.png') 1.7778x, url('/static_images/hidpi/200/vista-explorer/cmdbar-open.png') 2x) 0 4 fill / 0 4px;
+}
+
+/* its menu shows each command's whole label, as the VM's does */
+.context-menu .cpl-fbar-menu .context-menu-item-text {
+    max-width: none;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-chevrons {
+    display: block;
+    width: 8px;
+    height: 5px;
+    margin-top: 1px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' shape-rendering='crispEdges' fill='%23fff'%3E%3Cpath d='M0 0h2v1H0zM4 0h2v1H4zM1 1h2v1H1zM5 1h2v1H5zM2 2h2v1H2zM6 2h2v1H6zM1 3h2v1H1zM5 3h2v1H5zM0 4h2v1H0zM4 4h2v1H4z'/%3E%3C/svg%3E") no-repeat;
+    filter: drop-shadow(1px 1px 0 hsl(200 80% 10% / 45%));
+}
+
 /* Programs and Features as the VM draws it (1000 x 700): the title 33 px in, the light command bar
    from 88 px down across the pane, the list view under it to the pane's edges (rows of 19, its
    column lines and the sorted column's white running to the bottom) */

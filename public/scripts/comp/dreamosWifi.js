@@ -1815,6 +1815,7 @@
                     const win = t.closest('.cpl-instance');
                     const bar = win && win.querySelector('.cpl-fbar');
                     if (bar) bar.outerHTML = mwnBar(mwnList());
+                    fitBars(win);
                 },
                 open(id) { void networkProperties(id); },
                 add() { void mwnAdd(); },
@@ -1857,6 +1858,12 @@
         return { key: 'vpn', kind: 'vpn', conn: ns.name, status: ns.connected ? N.connected : N.disconnectedVpn, device, look: ns.connected ? 'on' : 'off', connected: ns.connected };
     }
 
+    /** The redrawn command bar keeps Vista's overflow: what does not fit goes under » (melatonControlPanel). */
+    function fitBars(win) {
+        const cp = root.melatonControlPanel;
+        if (win && cp && typeof cp.fitCommandBars === 'function') cp.fitCommandBars(win);
+    }
+
     function ncRows() {
         const list = adapters();
         const rows = list.map((a) => {
@@ -1893,7 +1900,7 @@
         }
         return `<div class="cpl-fbar" role="toolbar">
             <button type="button" class="cpl-fbar-btn" data-cpl-vpage="organize"><img src="${EXPLORER}/organize.png" alt="">Organize<span class="cpl-fbar-glyph"></span></button>
-            <button type="button" class="cpl-fbar-btn" data-cpl-vpage="views"><img src="${EXPLORER}/views-details.png" alt="">Views<span class="cpl-fbar-glyph"></span></button>
+            <button type="button" class="cpl-fbar-btn" data-cpl-vpage="views"><img src="${EXPLORER}/views-tiles.png" srcset="${EXPLORER}/views-tiles.png 1x, ${EXPLORER}/views-tiles@2x.png 2x" alt="">Views<span class="cpl-fbar-glyph"></span></button>
             ${cmds}
             <button type="button" class="cpl-fbar-help" data-cpl-vpage="help" data-topic="network-connections"><img src="${EXPLORER}/help-16.png" alt=""></button>
         </div>`;
@@ -2017,6 +2024,7 @@
                     const win = t.closest('.cpl-instance');
                     const bar = win && win.querySelector('.cpl-fbar');
                     if (bar) bar.outerHTML = ncBar(ncRows());
+                    fitBars(win);
                 },
                 open(id) { ncOpen(id); },
                 connectto() { void openConnect(); },

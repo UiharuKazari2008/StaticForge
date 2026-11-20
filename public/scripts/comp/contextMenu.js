@@ -1789,10 +1789,15 @@ class ContextMenuController {
                     }
                 }
             } else {
-                // Default icon + text behavior
-                if (item.icon) {
+                // Default icon + text behavior; item.image: a picture's URL (a command bar's overflow
+                // menu shows each hidden command's own icon, #952), drawn as desktop-menu-icon's 16 px picture
+                if (item.icon || item.image) {
                     const iconElement = document.createElement('i');
-                    iconElement.className = `${item.icon}`;
+                    iconElement.className = item.icon ? `${item.icon}` : 'desktop-menu-icon';
+                    if (item.image && !item.icon) {
+                        const u = (x) => `url("${String(x).replace(/["\\]/g, '')}")`;
+                        iconElement.style.backgroundImage = item.image2x ? `image-set(${u(item.image)} 1x, ${u(item.image2x)} 2x)` : u(item.image);
+                    }
                     itemElement.appendChild(iconElement);
                 }
 
