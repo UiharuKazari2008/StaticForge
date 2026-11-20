@@ -28,8 +28,16 @@
     const KEY = 'HKCU\\Software\\Xyridian\\Melaton\\Windows Contacts';
     const reg = (n, d) => (root.melatonRegistry ? root.melatonRegistry.get(KEY, n, d) : d);
     const setReg = (v) => { if (root.melatonRegistry) void root.melatonRegistry.set(KEY, v); };
-    const ICON16 = '/static_images/app_icons/16/vista-contacts.webp';
     const ART = '/static_images/vista-contacts';
+    // each window's caption and taskbar icon as the VM shows them (#955): a contact's Properties the contact card, a
+    // group's the group, Import / Export / Print their command pictures, Add Members the group, New Call the card
+    const WIN_ICON = {
+        contact: `${ART}/contact-16.png`,
+        group: `${ART}/group-16.png`,
+        import: `${ART}/cmd-import.png`,
+        export: `${ART}/cmd-export.png`,
+        print: `${ART}/cmd-print.png`
+    };
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const vfs = () => root.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null); // eslint-disable-line no-undef
@@ -256,7 +264,10 @@
         const ctx0 = D.openSheet({
             id: `wconProps_${c.uid.replace(/[^a-z0-9]/gi, '')}`,
             title,
-            icon: ICON16,
+            icon: c.group ? WIN_ICON.group : WIN_ICON.contact,
+            // the contact's own card in the caption, as on the VM; without it the shell gave the sheet its owner's
+            // icon (the Contacts folder) in the caption and on the taskbar (#955)
+            captionIcon: true,
             owner: owner(),
             pages,
             start: c.group ? P.group : (isNew ? P.name : P.sum),
@@ -515,7 +526,7 @@
             id: 'wconPick',
             key: 'wab32res:106',
             title: 'Add Members to Contact Group', // 4030
-            icon: ICON16,
+            icon: WIN_ICON.group,
             owner: ownerEl,
             overrides: { 7020: hide, 7021: hide, 7022: hide, 7009: hide, 7030: hide, 7031: hide, 7032: hide, 7005: hide, 7034: hide, 7004: hide, 7033: hide, 2786: hide, 7002: hide },
             init: (ctx) => {
@@ -578,7 +589,7 @@
         D.openDialog({
             id: imp ? 'wconImport' : 'wconExport',
             key: imp ? 'wab32res:1101' : 'wab32res:1105',
-            icon: ICON16,
+            icon: imp ? WIN_ICON.import : WIN_ICON.export,
             owner: owner(),
             init: (ctx) => {
                 // strings 1501 / 1511
@@ -730,7 +741,7 @@
         D.openDialog({
             id: 'wconCall',
             key: 'wab32res:6012',
-            icon: ICON16,
+            icon: WIN_ICON.contact,
             owner: owner(),
             init: (ctx) => {
                 ctx.set(6067, VC().displayName(c));
@@ -755,7 +766,7 @@
         // the options panel under Print's own buttons
         const tpl = { ...base, t: 'Print', h: base.h + 22, c: base.c.concat([[1, 'B', base.w - 108, base.h + 3, 50, 14, 0x50010001, 'Print', 0], [2, 'B', base.w - 54, base.h + 3, 50, 14, 0x50010000, 'Cancel', 0]]) };
         D.openDialog({
-            id: 'wconPrint', tpl, icon: ICON16, owner: owner(),
+            id: 'wconPrint', tpl, icon: WIN_ICON.print, owner: owner(),
             init: (ctx) => {
                 ctx.set(list.length ? 1057 : 1056, true);
                 ctx.set(60, true);

@@ -278,7 +278,10 @@
         box.dataset.contactStamp = stamp;
         void framedPicture(c, side).then((url) => {
             if (box.dataset.contactStamp !== stamp) return;
-            box.innerHTML = `<img class="explorer-contact-picture" src="${url}" alt="" style="width:${side}px;height:${side}px"><img class="explorer-contact-badge" src="${ART}/contact-16.png" alt="">`;
+            // the contact badge marks a picture that is a photo (the VM: a card with no photo shows only the default
+            // picture), and never in the details pane
+            const badge = c.photo && !box.classList.contains('explorer-details-icon') ? `<img class="explorer-contact-badge" src="${ART}/contact-16.png" alt="">` : '';
+            box.innerHTML = `<img class="explorer-contact-picture" src="${url}" alt="" style="width:${side}px;height:${side}px">${badge}`;
         });
         return true;
     }
@@ -395,11 +398,15 @@
         const stamp = `${c.uid}|${c.photo ? c.photo.length : 0}|${V().displayName(c)}|${c.chatId || ''}|${c.chatDeleted || ''}`;
         if (pane.dataset.uid === stamp) return;
         pane.dataset.uid = stamp;
+        // Windows Contacts' preview (the VM, #955): the framed picture (no badge) stays at the top; under it the
+        // name, the company lines and the card's addresses, numbers and web sites scroll
         pane.innerHTML = `<div class="explorer-preview-contact">
-            <div class="explorer-preview-picture"><img class="explorer-preview-photo" alt=""><img class="explorer-preview-badge" src="${ART}/contact-32.png" alt=""></div>
-            <div class="explorer-preview-name">${esc(V().displayName(c))}</div>
-            ${c.group ? '' : '<a href="#" class="explorer-preview-link" data-contact-action="open">Trusted Contact</a>'}
-            ${isPersona(c) ? '<div class="explorer-preview-persona"></div>' : ''}
+            <div class="explorer-preview-picture"><img class="explorer-preview-photo" alt=""></div>
+            <div class="explorer-preview-scroll">
+                <div class="explorer-preview-name">${esc(V().displayName(c))}</div>
+                ${summaryHtml(c)}
+                ${isPersona(c) ? '<div class="explorer-preview-persona"></div>' : ''}
+            </div>
         </div>`;
         if (isPersona(c)) {
             const box = pane.querySelector('.explorer-preview-persona');
@@ -418,12 +425,48 @@
                 });
             }
         }
-        void framedPicture(c, 128).then((url) => {
+        void framedPicture(c, 96).then((url) => {
             const img = pane.querySelector('.explorer-preview-photo');
             if (img && pane.dataset.uid === stamp) img.src = url;
         });
-        const link = pane.querySelector('.explorer-preview-link');
-        if (link) link.addEventListener('click', (ev) => { ev.preventDefault(); void run(app, 'open', [one]); });
+        pane.querySelectorAll('a[data-contact-mail]').forEach((a) => a.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            void run(app, 'email', [one]);
+        }));
+        pane.querySelectorAll('a[data-contact-web]').forEach((a) => a.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            const url = a.dataset.contactWeb;
+            // Melaton's own browser (Alchemy, openGrimoireUrl), as other programs open a page
+            if (typeof root.openGrimoireUrl === 'function') Promise.resolve().then(() => root.openGrimoireUrl(url)).catch(() => {});
+        }));
+    }
+
+    /**
+     * The card's summary under the name, Windows Contacts' preview pane (the VM): the nickname, company, department
+     * and job title in grey, then "E-mail addresses:" (the preferred one marked), "Phone numbers:" with their kinds,
+     * "Home address:" / "Work address:" a part a line, and "Websites:" with Personal / Business under each.
+     */
+    function summaryHtml(c) {
+        if (c.group) return '';
+        const out = [];
+        // the nickname, then the company, department and job title (the VM: "VanillyNeko / VanillyNeko / Owner")
+        const grey = [c.nickname, c.work.company, c.work.department, c.work.title].filter(Boolean);
+        if (grey.length) out.push(`<div class="explorer-preview-sub">${grey.map((g) => `<div>${esc(g)}</div>`).join('')}</div>`);
+        const sect = (label, body) => out.push(`<div class="explorer-preview-sect"><div class="explorer-preview-label">${esc(label)}</div>${body}</div>`);
+        if (c.emails.length) {
+            const pref = c.prefEmail || 0;
+            sect('E-mail addresses:', c.emails.map((e, i) => `<div><a href="#" data-contact-mail="${esc(e)}">${esc(e)}</a>${i === pref && c.emails.length > 1 ? ' (Preferred)' : ''}</div>`).join(''));
+        }
+        // Vista's order: the business fax and phone, the mobile, the personal phone and fax, the pager
+        const phones = [[c.work.fax, 'Fax, Business'], [c.work.phone, 'Business'], [c.home.mobile, 'Cell'], [c.home.phone, 'Personal'], [c.home.fax, 'Fax, Personal'], [c.work.pager, 'Pager']]
+            .filter(([n]) => n);
+        if (phones.length) sect('Phone numbers:', phones.map(([n, k]) => `<div>${esc(n)} (${esc(k)})</div>`).join(''));
+        const addr = (a) => [a.street, a.city, a.region, a.postal, a.country].filter(Boolean).map((l) => `<div>${esc(l)}</div>`).join('');
+        if (addr(c.home)) sect('Home address:', addr(c.home));
+        if (addr(c.work)) sect('Work address:', addr(c.work));
+        const webs = [[c.home.url, 'Personal'], [c.work.url, 'Business']].filter(([u]) => u);
+        if (webs.length) sect('Websites:', webs.map(([u, k]) => `<div><a href="#" data-contact-web="${esc(u)}">${esc(u)}</a></div><div>(${esc(k)})</div>`).join(''));
+        return out.join('');
     }
 
     // ---- the command bar ---------------------------------------------------------------------

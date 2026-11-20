@@ -1,0 +1,8 @@
+/* Contacts folder, Vista theme (#955): the preview pane's contact summary colours, as Windows Contacts draws them on
+   the VM (grey labels and company lines, blue links, the black values). The layout is css/explorer-contacts.css. */
+
+#explorerModal {
+    --wcon-preview-grey: #8d8d8d;
+    --wcon-preview-link: #0066cc;
+    --wcon-preview-text: #000;
+}

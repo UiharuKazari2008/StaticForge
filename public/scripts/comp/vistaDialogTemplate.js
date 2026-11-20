@@ -1265,7 +1265,8 @@
         const extra = (rows.length - 1) * TAB_ROW;
         const cw = pw + 20;
         const ch = ph + 69 + extra;
-        const { modal, content } = makeWindow(opts.id, opts.title, { icon: opts.icon, bareCaption: !!opts.bareCaption, segoe: u.segoe, help: opts.help });
+        // captionIcon: the sheet's own icon in the caption (a contact's Properties: the contact card), not the owner's
+        const { modal, content } = makeWindow(opts.id, opts.title, { icon: opts.icon, captionIcon: !!opts.captionIcon, bareCaption: !!opts.bareCaption, segoe: u.segoe, help: opts.help });
         content.style.width = `${cw}px`;
         content.style.height = `${ch}px`;
         content.style.font = u.font;
