@@ -362,7 +362,15 @@ const PopoverManager = {
             popoverData.onClick = onClick;
         }
         const shownData = this.activePopovers.get(element);
-        if (shownData) shownData.popover.classList.toggle('tray-balloon', trayBalloon);
+        if (shownData) {
+            const pop = shownData.popover;
+            pop.classList.toggle('tray-balloon', trayBalloon);
+            // Vista's balloon layout (service-worker-tray.css): the icon at the top left, the title and the text beside it
+            const iconEl = trayBalloon ? pop.querySelector('.popover-header > img, .popover-header > i') : null;
+            const small = !!(iconEl && iconEl.tagName === 'IMG' && Number(iconEl.getAttribute('width')) > 0 && Number(iconEl.getAttribute('width')) <= 16);
+            pop.classList.toggle('tb-icon', !!iconEl && !small);
+            pop.classList.toggle('tb-icon-small', small);
+        }
         
         // Show the popover (use requestAnimationFrame to ensure DOM is ready)
         requestAnimationFrame(() => {
@@ -644,6 +652,15 @@ const PopoverManager = {
      */
     _positionPopover(popoverData) {
         const { element, popover } = popoverData;
+        if (popover.classList.contains('tray-balloon')) {
+            // Vista's balloon is 2 px shorter when its text is one line (measured on the VM); the height is read below
+            const prev = popover.style.display;
+            if (!popover.classList.contains('show')) popover.style.display = 'block';
+            const body = popover.querySelector('.popover-body');
+            popover.classList.remove('tb-one-line');
+            popover.classList.toggle('tb-one-line', !!body && body.getClientRects().length > 0 && body.offsetHeight <= 15);
+            popover.style.display = prev;
+        }
         let rect = element.getBoundingClientRect();
         if (rect.width < 1 || rect.height < 1) {
             const chev = document.getElementById('trayOverflowBtn');
