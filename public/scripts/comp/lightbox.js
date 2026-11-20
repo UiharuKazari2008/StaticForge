@@ -383,7 +383,10 @@ function preparePhotoSwipeDesktopShellBeforeOpen() {
     if (!shell || !document.body.classList.contains('desktop-mode')) return;
     shell.classList.add('windowed');
     wirePhotoSwipeShellControlsOnce();
-    openModal(shell);
+    // the gallery's window is already open: the viewer takes it over (glancewellLibrary.js)
+    const libraryShown = !!(window.glancewellLibrary && glancewellLibrary.isOpen());
+    if (window.glancewellLibrary) glancewellLibrary.enterViewer();
+    if (!libraryShown || shell.classList.contains('hidden')) openModal(shell);
     // Lumen's slide show paints full screen from the first frame (no Glancewell window first)
     if (glancewellShow.lumenStart) {
         glancewellShow.savedStyle = shell.getAttribute('style');
@@ -395,11 +398,16 @@ function preparePhotoSwipeDesktopShellBeforeOpen() {
     requestAnimationFrame(() => syncPhotoSwipeShellRestoreStripVisibility());
 }
 
-function teardownPhotoSwipeDesktopShell() {
+function teardownPhotoSwipeDesktopShell(lastSlideData) {
     disconnectPhotoSwipeMountResizeObserver();
     const shell = getPhotoSwipeShell();
     if (!shell || shell.classList.contains('hidden')) return;
     if (!document.body.classList.contains('desktop-mode')) return;
+    // the gallery (glancewellLibrary.js) owns the window: the viewer closes back to it, as Vista's does
+    if (window.glancewellLibrary && glancewellLibrary.active() && !shell.classList.contains('wpg-slideshow')) {
+        glancewellLibrary.showFromViewer(lastSlideData || null);
+        return;
+    }
     // Save windowed layout before close so the next open can restore it
     if (shell.classList.contains('windowed')) {
         shell.setAttribute('data-modal-moved', 'true');
@@ -470,6 +478,7 @@ const glancewellShow = {
  */
 function glancewellCurrentPicture() {
     const p = getActivePhotoSwipe();
+    if (!p && window.glancewellLibrary && glancewellLibrary.isOpen()) return glancewellLibrary.currentPicture();
     const slide = p && p.currSlide ? p.currSlide.data || {} : {};
     const inner = slide.data || slide;
     if (inner.isStandalone) {
@@ -580,9 +589,15 @@ function glancewellFileSizeText(bytes) {
 function renderGlancewellInfo() {
     const shell = getPhotoSwipeShell();
     const pane = shell && shell.querySelector('.wpg-info');
+    const p = getActivePhotoSwipe();
+    // Photo Gallery's Info pane (glancewellLibrary.js): name, date, size, tags, caption; the prompt is in Properties
+    if (window.glancewellLibrary) {
+        if (!p) glancewellLibrary.renderInfo();
+        else glancewellLibrary.renderViewerInfo(p.currSlide && p.currSlide.data, glancewellCurrentPicture());
+        return;
+    }
     if (!pane || typeof renderPhotoGalleryInfoPane !== 'function') return;
     const pic = glancewellCurrentPicture();
-    const p = getActivePhotoSwipe();
     const img = p && p.currSlide && p.currSlide.content ? p.currSlide.content.element : null;
     // the file's date and size for Vista's "4/25/2005 12:00 AM" / "648 KB (1024 x 768)" lines:
     // the gallery record's mtime and size, else the epoch the print's name starts with
@@ -606,7 +621,10 @@ function setGlancewellInfoOpen(open) {
     if (pane) pane.classList.toggle('hidden', !open);
     const btn = shell.querySelector('[data-gw="info"]');
     if (btn) btn.setAttribute('aria-pressed', open ? 'true' : 'false');
-    if (open) renderGlancewellInfo();
+    if (!open) return;
+    renderGlancewellInfo();
+    // the Info pane is the gallery's (glancewellLibrary.js), loaded on first use
+    if (!window.glancewellLibrary && window.featureLoader) void featureLoader.loadFeature('glancewell_library').then(() => renderGlancewellInfo(), () => {});
 }
 
 /** Drop the current picture from the open list (after Delete) and show the next one. */
@@ -865,17 +883,20 @@ function positionGlancewellZoomThumb(pop, s) {
     const thumb = pop.querySelector('.wpg-zoom-thumb');
     if (!thumb) return;
     const t = GLANCEWELL_ZOOM_TRAVEL;
-    const centre = t.bottom - (t.bottom - t.top) * glancewellZoomFraction(s);
+    const lib = glancewellLibraryZoom();
+    const centre = t.bottom - (t.bottom - t.top) * (lib ? lib.zoomFraction() : glancewellZoomFraction(s));
     thumb.style.top = `${Math.round(centre - 5.5)}px`;
 }
 
 function glancewellZoomFromPointer(pop, clientY) {
     const p = getActivePhotoSwipe();
     const s = p && p.currSlide;
-    if (!s) return;
     const t = GLANCEWELL_ZOOM_TRAVEL;
     const y = clientY - pop.getBoundingClientRect().top - pop.clientTop;
     const f = Math.max(0, Math.min(1, (t.bottom - y) / (t.bottom - t.top)));
+    const lib = glancewellLibraryZoom();
+    if (lib) { lib.setZoomFraction(f); positionGlancewellZoomThumb(pop, null); return; }
+    if (!s) return;
     const fitZoom = glancewellFitZoom(s);
     const max = Math.max(fitZoom, s.zoomLevels.max || 4);
     s.zoomTo(fitZoom + (max - fitZoom) * f);
@@ -899,10 +920,16 @@ function onGlancewellZoomOutside(e) {
     closeGlancewellZoomPopup();
 }
 
+/** The gallery's zoom: the thumbnails' size (glancewellLibrary.js zoomFraction / setZoomFraction). */
+function glancewellLibraryZoom() {
+    return !getActivePhotoSwipe() && window.glancewellLibrary && glancewellLibrary.isOpen() ? glancewellLibrary : null;
+}
+
 function toggleGlancewellZoomPopup(btn) {
     const shell = getPhotoSwipeShell();
     const p = getActivePhotoSwipe();
-    if (!shell || !p || !p.currSlide) return;
+    const lib = glancewellLibraryZoom();
+    if (!shell || (!lib && (!p || !p.currSlide))) return;
     let pop = shell.querySelector('.wpg-zoom-pop');
     if (!pop) {
         pop = document.createElement('div');
@@ -924,6 +951,8 @@ function toggleGlancewellZoomPopup(btn) {
         });
         pop.addEventListener('wheel', (e) => {
             e.preventDefault();
+            const lib = glancewellLibraryZoom();
+            if (lib) { lib.setZoomFraction(lib.zoomFraction() + (e.deltaY < 0 ? 0.08 : -0.08)); positionGlancewellZoomThumb(pop, null); return; }
             const s = getActivePhotoSwipe() && getActivePhotoSwipe().currSlide;
             if (!s) return;
             const fitZoom = glancewellFitZoom(s);
@@ -944,7 +973,7 @@ function toggleGlancewellZoomPopup(btn) {
     pop.style.top = `${Math.round(r.top + r.height / 2 - shellRect.top - shell.clientTop - 85)}px`;
     // the button stays in its normal face under the popup (VM)
     pop.classList.remove('hidden');
-    positionGlancewellZoomThumb(pop, p.currSlide);
+    positionGlancewellZoomThumb(pop, lib ? null : p.currSlide);
     document.addEventListener('pointerdown', onGlancewellZoomOutside, true);
 }
 
@@ -985,6 +1014,14 @@ function glancewellMenuItems(key) {
     const meta = pic.metadata || {};
     const gallery = !!pic.filename;
     const scraps = typeof currentGalleryView !== 'undefined' && currentGalleryView === 'scraps';
+    if (key === 'file' && window.glancewellLibrary && glancewellLibrary.isOpen()) return glancewellLibrary.fileMenuItems();
+    if (key === 'email') {
+        // E-mail sends the picture with Dovecote or Messenger (Yukimi, Nov 20 2026)
+        return [
+            { text: 'Dovecote...', action: 'gw-email-dovecote', disabled: !pic.src && !gallery },
+            { text: 'Messenger...', action: 'gw-email-messenger', disabled: !pic.src && !gallery }
+        ];
+    }
     if (key === 'file') {
         return [
             { text: 'Copy', action: 'gw-copy' },
@@ -1007,11 +1044,23 @@ function glancewellMenuItems(key) {
             { text: 'Expand Canvas...', action: 'gw-expand', disabled: !gallery }
         ];
     }
-    if (key === 'burn') {
+    // Burn has no disc to burn (Yukimi, Nov 20 2026); its old commands are on the picture's right-click menu
+    if (key === 'burn') return [];
+    if (key === 'picture') {
         return [
-            { text: 'Pin', action: 'gw-pin', disabled: !gallery },
+            { text: 'Add to Favorites', action: 'gw-pin', disabled: !gallery },
             { text: 'Add to Desktop', action: 'gw-desktop', disabled: !gallery },
-            { text: 'New Reference', action: 'gw-reference' }
+            { text: 'New Reference', action: 'gw-reference' },
+            { separator: true },
+            { text: 'Set as Desktop Background', action: 'gw-wallpaper', disabled: !gallery },
+            { text: 'Copy', action: 'gw-copy' },
+            { separator: true },
+            { text: 'Open in DreamStudio', action: 'gw-studio', disabled: !gallery },
+            { text: 'Edit in Paint', action: 'gw-paint', disabled: !pic.src && !gallery },
+            { text: 'Open in Lumen', action: 'gw-lumen', disabled: !gallery },
+            { text: 'Create Persona', action: 'gw-persona', disabled: !gallery },
+            { separator: true },
+            { text: 'Properties', action: 'gw-properties', disabled: !gallery }
         ];
     }
     if (key === 'open') {
@@ -1032,6 +1081,10 @@ const GLANCEWELL_GALLERY_ACTIONS = new Set(['gw-fix', 'gw-studio', 'gw-reroll', 
 /** One command or menu row, by action; ImageViewer's own methods do the work (glancewellViewerCall). */
 async function runGlancewellAction(action, event) {
     const p = getActivePhotoSwipe();
+    if (!p && window.glancewellLibrary && glancewellLibrary.isOpen()) {
+        if (glancewellLibrary.handleControl(String(action).replace(/^gw-/, ''))) return;
+        if (await glancewellLibrary.runFileAction(action, event)) return;
+    }
     const pic = glancewellCurrentPicture();
     // a picture opened by URL has no gallery file and no print parameters: Studio, the prints and
     // the movie have nothing to load (openManualModalWithContent threw "No filename available")
@@ -1080,15 +1133,18 @@ async function runGlancewellAction(action, event) {
             else if (pic.src) void editImageInPaint(pic.src, 'Picture');
             break;
         case 'gw-persona': void glancewellViewerCall('startChat'); break;
-        case 'gw-email':
-            // askWrenAboutImage: public/scripts/comp/director.js
-            if (pic.filename && typeof askWrenAboutImage === 'function') askWrenAboutImage(pic.filename);
+        case 'gw-email-dovecote':
+        case 'gw-email-messenger':
+            // glancewellSendPicture: public/scripts/comp/glancewellLibrary.js (a new message with the picture attached)
+            if (window.glancewellSendPicture) void window.glancewellSendPicture(action === 'gw-email-dovecote' ? 'dovecote' : 'messenger', pic);
             break;
         case 'gw-movie': glancewellViewerCall('animate', event); break;
         case 'gw-info': setGlancewellInfoOpen(!glancewellInfoOpen); break;
         case 'gw-gallery':
             // Back To Gallery shows the picture in the gallery and closes the viewer, as in Vista
             if (!p) break;
+            // the gallery owns the window: closing the viewer goes back to it (teardownPhotoSwipeDesktopShell)
+            if (window.glancewellLibrary && glancewellLibrary.active()) { p.close(); break; }
             await glancewellViewerCall('jumpToInWorkspace');
             // isGalleryWindowHidden: public/scripts/comp/modalUtils.js
             if (document.getElementById('galleryWindow') && !isGalleryWindowHidden() && !p.isDestroying) p.close();
@@ -1171,7 +1227,12 @@ function wireGlancewellChromeOnce() {
     shell.dataset.gwWired = 'true';
     const on = (key, fn) => {
         const btn = shell.querySelector(`[data-gw="${key}"]`);
-        if (btn) btn.addEventListener('click', (e) => { e.preventDefault(); fn(btn); });
+        if (btn) btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // the gallery's own pill (glancewellLibrary.js): next / previous select, Delete deletes the selection
+            if (!getActivePhotoSwipe() && window.glancewellLibrary && glancewellLibrary.isOpen() && glancewellLibrary.handleControl(key, btn)) return;
+            fn(btn);
+        });
     };
     const withSwipe = (fn) => () => { const p = getActivePhotoSwipe(); if (p) fn(p); };
     on('gallery', () => void runGlancewellAction('gw-gallery'));
@@ -1194,6 +1255,20 @@ function wireGlancewellChromeOnce() {
     on('delete', () => void runGlancewellAction('gw-scrap'));
     wireGlancewellSlideShowMenu();
     wireGlancewellToolbar(shell);
+    // the picture's right-click menu in the viewer (Dreamscape's actions, Yukimi Nov 20 2026)
+    // (on .wpg-main: the mount's own attribute belongs to the slide show menu, wireGlancewellSlideShowMenu)
+    const main = shell.querySelector('.wpg-main');
+    if (main && typeof contextMenu !== 'undefined' && contextMenu) {
+        const config = {
+            sections: [],
+            beforeShow: (event) => {
+                const onPicture = event && event.target && event.target.closest && event.target.closest('#photoSwipeMount');
+                config.sections = onPicture && getActivePhotoSwipe() && !glancewellShow.on ? [{ type: 'list', items: glancewellMenuItems('picture') }] : [];
+            },
+            onAction: (action, target, item, event) => void runGlancewellAction(action, event)
+        };
+        contextMenu.attachToElement(main, config);
+    }
 }
 
 /** Hook one PhotoSwipe instance into the chrome (both open paths). */
@@ -1211,6 +1286,10 @@ function attachGlancewellChrome(pswp) {
     pswp.on('afterInit', () => {
         syncGlancewellChrome();
         layoutGlancewellToolbar();
+        if (window.glancewellStartSlideShow) {
+            window.glancewellStartSlideShow = false;
+            playGlancewellSlideShow();
+        }
         const start = glancewellShow.lumenStart;
         if (start) {
             glancewellShow.lumenStart = null;
@@ -1875,7 +1954,8 @@ async function openStandalonePhotoSwipe(dataSource, index, options) {
                 delete window.pswp;
             }
             if (useDesktopShell) {
-                teardownPhotoSwipeDesktopShell();
+                const last = pswp.currSlide && pswp.currSlide.data ? (pswp.currSlide.data.data || pswp.currSlide.data) : null;
+                teardownPhotoSwipeDesktopShell(last);
             }
             pswp.destroy();
         });

@@ -1,0 +1,784 @@
+/* Glancewell's gallery (glancewellLibrary.js, Yozora #446): Windows Photo Gallery's library view 1:1 with the Vista VM
+   (~/.cache/vista-vm/wpg/shots/21-gallery.png, 96 dpi). Everything on #eef3fa:
+     the tree on the left, 18 px rows, the 16 px icons of PhotoLibraryResources BITMAP 205 (lib-tree-16.png; 20 px
+       BITMAP 1814 at 1.25x and up), 10 px a level, the expander 14 px in, the icon 24 px, the label 45 px;
+     the view bar 36 px (view button 35x21 and the search box 237x21, 12 px from the right);
+     group headers in #919498 with a #b2b6bb rule and the collapse arrow; thumbnails in a white 3 px frame with a grey
+       edge and a soft shadow, the selection #deebf9 with a #b5d8fb edge;
+     the status line 18 px; the Info pane 203 px (vista-photo-gallery.css .wpg-info).
+   The band's Back / Forward orbs (PNG 14019 / 14020, four frames: disabled, normal, hot, pressed) stand where Back To
+   Gallery is in the viewer. */
+
+body.theme-vista #photoSwipeWindow.wpg-mode-library .wpg-toolbar .wpg-back,
+body.theme-vista #photoSwipeWindow:not(.wpg-mode-library) .wpg-lib-nav,
+body.theme-vista #photoSwipeWindow.wpg-mode-library #photoSwipeMount {
+    display: none !important;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-nav {
+    display: flex;
+    flex: none;
+    gap: 0;
+    margin: 2px 6px 0 0;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-toolbar .wpg-lib-nav button {
+    width: 30px;
+    height: 29px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: url("/static_images/vista-photo-gallery/lib-nav-back.png") -30px 0 / 120px 29px no-repeat;
+    box-shadow: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-toolbar .wpg-lib-nav .wpg-lib-nav-fwd {
+    width: 29px;
+    background-image: url("/static_images/vista-photo-gallery/lib-nav-fwd.png");
+    background-size: 116px 29px;
+    background-position: -29px 0;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-toolbar .wpg-lib-nav button:hover:not(:disabled) { background-position-x: -60px; }
+body.theme-vista #photoSwipeWindow .wpg-toolbar .wpg-lib-nav .wpg-lib-nav-fwd:hover:not(:disabled) { background-position-x: -58px; }
+body.theme-vista #photoSwipeWindow .wpg-toolbar .wpg-lib-nav button:active:not(:disabled) { background-position-x: -90px; }
+body.theme-vista #photoSwipeWindow .wpg-toolbar .wpg-lib-nav .wpg-lib-nav-fwd:active:not(:disabled) { background-position-x: -87px; }
+body.theme-vista #photoSwipeWindow .wpg-toolbar .wpg-lib-nav button:disabled { background-position-x: 0; }
+
+/* the pill's second button resets the thumbnails' size in the gallery (PNG 4127, 26x25 frames) */
+body.theme-vista #photoSwipeWindow.wpg-mode-library .wpg-fit {
+    --wpg-art: url("/static_images/vista-photo-gallery/reset-size.png");
+    --wpg-w: 26px;
+    width: 26px;
+}
+
+/* ---- the gallery ---- */
+
+body.theme-vista #photoSwipeWindow .wpg-lib {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    background: #eef3fa;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib[hidden] {
+    display: none;
+}
+
+/* the tree */
+body.theme-vista #photoSwipeWindow .wpg-lib-tree {
+    flex: 0 0 197px;
+    box-sizing: border-box;
+    padding: 5px 0 8px;
+    overflow: auto;
+    outline: none;
+    user-select: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 18px;
+    padding-left: calc(14px + var(--depth, 0) * 10px);
+    white-space: nowrap;
+    cursor: var(--c-default, default);
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-twisty {
+    flex: none;
+    width: 10px;
+    height: 18px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-twisty.is-open {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Cpath d='M6 0V6H0z' fill='%23262626'/%3E%3C/svg%3E") 1px 7px / 6px 6px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-twisty.is-closed {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='9'%3E%3Cpath d='M.5.5l4 4-4 4z' fill='none' stroke='%23a6a6a6'/%3E%3C/svg%3E") 2px 5px / 5px 9px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node:hover .wpg-lib-twisty.is-closed {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='9'%3E%3Cpath d='M.5.5l4 4-4 4z' fill='none' stroke='%231cc4f7'/%3E%3C/svg%3E");
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
+    background: image-set(url("/static_images/vista-photo-gallery/lib-tree-16.png") 1x, url("/static_images/vista-photo-gallery/lib-tree-20.png") 1.25x) calc(var(--i, 0) * -16px) 0 / 384px 16px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node-icon.is-device {
+    background: url("/static_images/vista-explorer/portable-device-16.png") 0 0 / 16px 16px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node-label {
+    padding: 0 3px 1px 2px;
+    line-height: 16px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node:hover .wpg-lib-node-label {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node.is-current .wpg-lib-node-label {
+    background: linear-gradient(#f1f7fe, #d5e8fd);
+    border-color: #7da2ce;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node.is-italic .wpg-lib-node-label {
+    font-style: italic;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node.is-disabled {
+    color: #6d6d6d;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node-edit {
+    width: 120px;
+    height: 16px;
+    padding: 0 2px;
+    border: 1px solid #000;
+    font: inherit;
+    background: #fff;
+    outline: none;
+}
+
+/* the body: the view bar, the thumbnails, the status line */
+body.theme-vista #photoSwipeWindow .wpg-lib-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-bar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 13px;
+    height: 36px;
+    padding: 0 12px 0 0;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-viewbtn {
+    display: flex;
+    align-items: center;
+    width: 35px;
+    height: 21px;
+    min-width: 0;
+    padding: 0 0 0 2px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-viewbtn:is(:hover, .context-open) {
+    background: linear-gradient(#fafbfd, #e3ecf9);
+    border-color: #a8bad1;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-viewbtn-icon {
+    width: 18px;
+    height: 16px;
+    background: url("/static_images/vista-photo-gallery/lib-view.png") -18px 0 / 72px 16px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-viewbtn-drop {
+    width: 13px;
+    height: 16px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23000'/%3E%3C/svg%3E") 4px 7px / 7px 4px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-search {
+    position: relative;
+    display: flex;
+    flex: 0 1 237px;
+    min-width: 120px;
+    height: 21px;
+    box-sizing: border-box;
+    border: 1px solid #abadb3;
+    border-top-color: #707070;
+    background: #fff;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-search input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 19px;
+    margin: 0;
+    padding: 0 4px;
+    border: 0;
+    outline: none;
+    background: transparent;
+    font: italic 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    color: #000;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-search input:not(:placeholder-shown) {
+    font-style: normal;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-search input::-webkit-search-cancel-button {
+    display: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-search-go,
+body.theme-vista #photoSwipeWindow .wpg-lib-search-drop {
+    flex: none;
+    width: 18px;
+    height: 19px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: image-set(url("/static_images/vista-start/search-glyph.png") 1x, url("/static_images/hidpi/200/vista-start/search-glyph.png") 2x) center no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-search-drop {
+    width: 14px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23000'/%3E%3C/svg%3E") center / 7px 4px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-scroll {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    outline: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-canvas {
+    position: relative;
+    min-height: 100%;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-empty {
+    position: absolute;
+    top: 46px;
+    left: 0;
+    right: 0;
+    color: #6d6d6d;
+    text-align: center;
+    white-space: pre-line;
+    pointer-events: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-empty[hidden] {
+    display: none;
+}
+
+/* group headers */
+body.theme-vista #photoSwipeWindow .wpg-lib-group {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    height: 18px;
+    color: #919498;
+    cursor: var(--c-default, default);
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-group-label {
+    flex: none;
+    padding-right: 6px;
+    white-space: nowrap;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-group:hover .wpg-lib-group-label {
+    color: #1e3287;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-group-rule {
+    flex: 1 1 auto;
+    height: 1px;
+    background: #b2b6bb;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-group-arrow {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    min-width: 0;
+    margin-left: 4px;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 4h7L3.5 0z' fill='%23919498'/%3E%3C/svg%3E") center / 7px 4px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-group-arrow.is-collapsed {
+    transform: rotate(180deg);
+}
+
+/* thumbnails: the picture in its frame, centred on the size's box */
+body.theme-vista #photoSwipeWindow .wpg-lib-cell {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: var(--c-default, default);
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-cell:hover {
+    background: linear-gradient(rgba(250, 251, 253, 0.6), rgba(233, 241, 252, 0.6));
+    border-color: #d8e6f9;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-cell.is-selected {
+    background: #deebf9;
+    border-color: #b5d8fb;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-scroll:focus-visible .wpg-lib-cell.is-focus,
+body.theme-vista #photoSwipeWindow .wpg-lib-scroll:focus .wpg-lib-cell.is-focus {
+    outline: 1px dotted #000;
+    outline-offset: 1px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-frame {
+    position: absolute;
+    left: 9px;
+    top: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--box);
+    height: var(--box);
+    pointer-events: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-img {
+    display: block;
+    max-width: calc(var(--box) - 6px);
+    max-height: calc(var(--box) - 6px);
+    border: 3px solid #fff;
+    background: #fff;
+    box-shadow: 0 0 0 1px #c3c5c9, 1px 1px 3px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    transition: opacity 0.12s linear;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-cell.is-loaded .wpg-lib-img {
+    opacity: 1;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-cell.is-broken .wpg-lib-img {
+    width: calc(var(--box) * 0.6);
+    height: calc(var(--box) * 0.45);
+    opacity: 1;
+}
+
+/* a video's frame is the film strip (PNG 7009 / 7010) */
+body.theme-vista #photoSwipeWindow .wpg-lib-frame.is-video .wpg-lib-img {
+    border: 0;
+    box-shadow: none;
+    border-image: url("/static_images/vista-photo-gallery/lib-film-wide.png") 4 14 fill / 4px 14px stretch;
+    padding: 4px 14px;
+    box-sizing: content-box;
+    max-width: calc(var(--box) - 28px);
+}
+
+/* Thumbnails with Text: the date under the picture; Tiles: the details beside it */
+body.theme-vista #photoSwipeWindow .wpg-lib-text {
+    position: absolute;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    pointer-events: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib[data-view="text"] .wpg-lib-text {
+    left: 2px;
+    right: 2px;
+    bottom: 3px;
+    text-align: center;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib[data-view="tiles"] .wpg-lib-text {
+    left: calc(var(--box) + 15px);
+    right: 4px;
+    top: 8px;
+    line-height: 16px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib[data-view="tiles"] .wpg-lib-text > div {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-t-dim {
+    color: #6d6d6d;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-t-cap {
+    pointer-events: auto;
+}
+
+/* the status line */
+body.theme-vista #photoSwipeWindow .wpg-lib-status {
+    flex: none;
+    height: 18px;
+    padding: 0 0 0 16px;
+    line-height: 16px;
+    white-space: nowrap;
+}
+
+/* Table of Contents: the groups down the left, the band over those in view */
+body.theme-vista #photoSwipeWindow .wpg-lib-toc {
+    position: absolute;
+    left: 0;
+    z-index: 1;
+    width: 142px;
+    box-sizing: border-box;
+    padding: 6px 12px 0 18px;
+    overflow: hidden;
+    border-right: 1px solid #c5ccd4;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-toc[hidden] {
+    display: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-up {
+    height: 12px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5'%3E%3Cpath d='M.5 4.5l4-4 4 4' fill='none' stroke='%23a6a6a6'/%3E%3C/svg%3E") 60% 0 / 9px 5px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    padding: 4px 4px 3px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    font: inherit;
+    color: #000;
+    text-align: right;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-row.is-visible {
+    background: #b9daf9;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-ticks {
+    width: calc(var(--n, 1) * 3px);
+    height: 3px;
+    margin-top: 2px;
+    background: repeating-linear-gradient(to right, #78a4d6 0 2px, transparent 2px 3px);
+}
+
+/* the hover preview (PhotoLibraryResources: the picture, its name and date, size and dimensions) */
+body.theme-vista #photoSwipeWindow .wpg-lib-tip {
+    position: absolute;
+    z-index: 6;
+    box-sizing: border-box;
+    min-width: 200px;
+    max-width: 280px;
+    padding: 4px;
+    border: 1px solid #767676;
+    border-radius: 3px;
+    background: linear-gradient(#fff, #e4e5f0);
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.35);
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    color: #575757;
+    pointer-events: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-tip[hidden] {
+    display: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-tip-pic {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 3px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-tip-pic img {
+    display: block;
+    max-width: 256px;
+    max-height: 192px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-tip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    white-space: nowrap;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-tip-row > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- the Info pane (both modes once the gallery is loaded) ---- */
+
+body.theme-vista #photoSwipeWindow .wpg-info.wpg-lib-info {
+    display: flex;
+    flex-direction: column;
+    padding: 30px 10px 10px;
+    text-align: center;
+    background: #eef3fa;
+    box-shadow: -1px 0 0 #c5ccd4;
+    margin-left: 1px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-info.wpg-lib-info.hidden {
+    display: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-info .wpg-lib-i-close {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 17px;
+    height: 16px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: url("/static_images/vista-photo-gallery/lib-info-close.png") -17px 0 / 68px 16px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-info .wpg-lib-i-close::after {
+    content: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-info .wpg-lib-i-close:hover { background-position-x: -34px; }
+body.theme-vista #photoSwipeWindow .wpg-lib-info .wpg-lib-i-close:active { background-position-x: -51px; }
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-thumb {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 6px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-thumb img {
+    display: block;
+    max-width: 64px;
+    max-height: 64px;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #c3c5c9, 1px 1px 3px rgba(0, 0, 0, 0.35);
+    -webkit-box-reflect: below 2px linear-gradient(transparent 55%, rgba(255, 255, 255, 0.35));
+    margin-bottom: 18px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-stack {
+    position: relative;
+    height: 84px;
+    margin-bottom: 6px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-stack img {
+    position: absolute;
+    left: 50%;
+    top: 4px;
+    max-width: 60px;
+    max-height: 60px;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #c3c5c9, 1px 1px 3px rgba(0, 0, 0, 0.35);
+    transform: translateX(-50%) rotate(-6deg);
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-stack img:nth-child(2) { transform: translateX(-46%) rotate(4deg); }
+body.theme-vista #photoSwipeWindow .wpg-lib-i-stack img:nth-child(3) { transform: translateX(-50%); }
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-name,
+body.theme-vista #photoSwipeWindow .wpg-lib-i-line {
+    color: #1e5ebc;
+    line-height: 22px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-none {
+    margin-top: 6px;
+    color: #6d6d6d;
+    line-height: 16px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-tags {
+    margin: 16px 0 0;
+    text-align: left;
+    border-bottom: 1px solid #dfe5ec;
+    padding-bottom: 4px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-addtag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    height: 20px;
+    padding: 0 2px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font: inherit;
+    color: #000;
+    text-align: left;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-addtag:hover {
+    color: #1e5ebc;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-addtag-icon {
+    flex: none;
+    width: 15px;
+    height: 14px;
+    background: url("/static_images/vista-photo-gallery/lib-tag-add.png") -15px 0 / 60px 14px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-addtag:hover .wpg-lib-i-addtag-icon { background-position-x: -30px; }
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-tagedit {
+    width: 100%;
+    box-sizing: border-box;
+    height: 20px;
+    margin: 2px 0;
+    padding: 0 3px;
+    border: 1px solid #abadb3;
+    font: inherit;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-tag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 18px;
+    padding: 0 2px 0 4px;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-tag:hover {
+    background: url("/static_images/vista-photo-gallery/lib-tag.png") -100px 0;
+    background: linear-gradient(#f2f7fd, #e1ecfa);
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-tag-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-photo-gallery/lib-tag.png") 0 0 / 16px 16px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-tag-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-tag-name.is-some {
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-tag-x {
+    flex: none;
+    width: 17px;
+    height: 16px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: url("/static_images/vista-photo-gallery/lib-info-close.png") -17px 0 / 68px 16px no-repeat;
+    visibility: hidden;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-tag:hover .wpg-lib-i-tag-x { visibility: visible; }
+body.theme-vista #photoSwipeWindow .wpg-lib-i-tag-x:hover { background-position-x: -34px; }
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-spacer {
+    flex: 1 1 auto;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-caption {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    min-height: 22px;
+    padding: 2px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font: inherit;
+    color: #000;
+    white-space: normal;
+    word-break: break-word;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-caption-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-photo-gallery/lib-caption.png") -16px 0 / 64px 16px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-caption:not(.is-empty) .wpg-lib-i-caption-icon {
+    display: none;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-caption:hover {
+    color: #1e5ebc;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-i-capedit {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 2px 3px;
+    border: 1px solid #abadb3;
+    font: inherit;
+    resize: none;
+}
+
+/* Change Time Taken (dialog 1472) and Options in the shared message box */
+.wpg-lib-time p {
+    margin: 0 0 10px;
+}
+
+.wpg-lib-time .wpg-lib-time-row {
+    display: flex;
+    gap: 8px;
+}
+
+.wpg-lib-time .wpg-lib-time-row > span:first-child {
+    flex: 0 0 80px;
+    text-align: right;
+}
+
+.wpg-lib-time .wpg-lib-time-h {
+    width: 44px;
+}
+
+.wpg-lib-options .wpg-lib-options-h {
+    margin: 0 0 6px;
+}

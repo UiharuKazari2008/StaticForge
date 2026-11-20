@@ -129,6 +129,11 @@ const FEATURE_MANIFEST = {
         styles: ['css/compiled-prompt-lcd.css'],
         scripts: ['scripts/comp/compiledPromptInspector.js']
     },
+    // Glancewell's gallery (Windows Photo Gallery, #446): the library, its sources and the shared Info pane
+    glancewell_library: {
+        styles: ['css/themes/vista/glancewell-library.css'],
+        scripts: ['scripts/comp/glancewellSources.js', 'scripts/comp/glancewellLibrary.js']
+    },
     image_prompt_inspector: {
         hot: true,
         html: 'templates/image-prompt-inspector.html',

@@ -18,6 +18,7 @@
  *
  *   melatonApps.launch({ packageId: 'messenger', args: { accountId, chatGuid } })   open a chat
  *   melatonApps.launch({ packageId: 'messenger', args: { compose: { to } } })       write to an address
+ *   melatonApps.launch({ packageId: 'messenger', args: { attach: [File] } })         files for the next conversation opened
  *   melatonApps.define('messenger', start)
  */
 (function (root) {
@@ -495,7 +496,9 @@
             this.cursor = null;
             this.selected = null;
             this.setReply(null, true);
-            this.attachQueue = [];
+            // a picture sent here from another program (Glancewell's E-mail) waits for the conversation it goes to
+            this.attachQueue = this.heldAttach && this.features().attachments !== false ? this.heldAttach.splice(0) : [];
+            this.heldAttach = null;
             this.renderAttachments();
             this.q('.mm-input').value = '';
             this.threadNote = 'Loading...';
@@ -615,6 +618,11 @@
 
         applyArgs(args) {
             const a = args || {};
+            // { attach: [File] }: the files wait on the next conversation opened (or the one on screen)
+            if (Array.isArray(a.attach) && a.attach.length) {
+                if (this.chatGuid && !this.compose) this.addAttachments(a.attach);
+                else this.heldAttach = a.attach.slice();
+            }
             if (a.compose) { this.newMessage(a.compose.to || '', a.compose.accountId); return; }
             if (a.chatGuid) void this.openChat(a.chatGuid, a.accountId);
         }

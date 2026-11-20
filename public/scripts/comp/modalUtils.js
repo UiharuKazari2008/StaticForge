@@ -7041,6 +7041,8 @@ function buildToolsSubmenuItems(opts) {
         { launchId: 'contacts', icon: 'fas fa-address-book', imageIcon: 'vista-contacts.png', text: 'Melaton Contacts', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'contacts' }) },
         // Melaton Weather (Yozora #792): the phone's Weather in a desktop window (wmWeather.js openDesktop)
         { launchId: 'weather', icon: 'fas fa-cloud-sun', imageIcon: 'melaton-weather.png', text: 'Melaton Weather', appMenuLocation: 'tools', desktopOnly: true, action: () => { if (window.wmWeather && typeof window.wmWeather.openDesktop === 'function') window.wmWeather.openDesktop(); } },
+        // Glancewell (Windows Photo Gallery, Yozora #446): the gallery in the Glancewell window (glancewellLibrary.js)
+        { launchId: 'glancewell', icon: 'fas fa-images', imageIcon: 'vista-photo-gallery.png', text: 'Glancewell', appMenuLocation: 'tools', desktopOnly: true, action: async () => { await featureLoader.loadFeature('glancewell_library'); window.glancewellLibrary.open(); } },
         // Melaton Calendar (Yozora #632; apps/calendar, a system package)
         { launchId: 'calendar', icon: 'fas fa-calendar', imageIcon: 'vista-calendar.png', text: 'Melaton Calendar', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'calendar' }) },
         // Accessories > Snipping Tool (Yozora #632; apps/snipping, a system package)
@@ -8357,6 +8359,7 @@ const START_MENU_SYSTEM_PLACES = {
     weather: { at: 'top' },                        // Melaton Weather (#792): beside Calendar and Contacts
     contacts: { at: 'top' },                       // Windows Contacts
     camera: { at: 'top' },                         // Melaton Camera (#910): where Vista keeps Windows Photo Gallery / Movie Maker
+    glancewell: { at: 'top' },                     // Windows Photo Gallery (#446)
     'media-player': { at: 'top' },                 // Windows Media Player
     'adobe-reader': { at: 'top' },                 // Adobe Reader 8 (#910): its installer's "Adobe Reader 8.lnk" in Programs
     'remote-desktop-connection': { at: 'accessories' },
