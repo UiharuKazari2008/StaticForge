@@ -207,6 +207,11 @@
             const r = st && st.routes;
             return r && typeof r === 'object' ? r : null;
         }
+        /** A message with the app's own finding (routes.problem: the router's last exception or what it lacked). */
+        function withProblem(text) {
+            const R = routing();
+            return R && R.problem ? `${text}\n\nDetails: ${R.problem}` : text;
+        }
         // a short watch outside the Sound dialog (the tray menu's switch): the app opens its router and pushes the routes
         let tempWatch = false;
         let tempTimer = 0;
@@ -241,14 +246,14 @@
         function selectRoute(dev) {
             let ok = false;
             try { ok = !!B.selectRoute(String(dev.routeId)); } catch (_) { ok = false; }
-            if (!ok) return Promise.resolve({ error: 'This output is no longer offered.' });
+            if (!ok) return Promise.resolve({ error: withProblem('Android no longer offers this output.') });
             return new Promise((resolve) => {
                 const end = Date.now() + 5000;
                 const check = () => {
                     const R = routing();
                     const sel = R && Array.isArray(R.items) ? R.items.find((x) => x.selected) : null;
                     if (sel && sel.id === dev.routeId) return resolve({});
-                    if (R && R.error) return resolve({ error: R.error });
+                    if (R && R.error) return resolve({ error: withProblem(R.error) });
                     if (Date.now() > end) return resolve({});
                     routeWaiters.push(check);
                 };
@@ -457,6 +462,8 @@
                         const R2 = routing() || R;
                         const cur = list('playback').find((x) => x.stableKey === dev.stableKey) || dev;
                         if (R2.allowed === true && cur.routeId) return selectRoute(cur);
+                        // routing is allowed but Android offered no route for this output: say why instead of a panel
+                        if (R2.allowed === true) return { error: withProblem('Android did not offer this output as a place to play media.') };
                         if (R2.allowed !== true && R2.canGrant && typeof B.allowRouting === 'function') {
                             // allowed once through the app's shell; the move follows when the app says it may
                             return new Promise((resolve) => {
@@ -469,7 +476,7 @@
                         // no way to choose from here: Android's own Media output panel
                         let shown = false;
                         try { shown = typeof B.showOutputPanel === 'function' && !!B.showOutputPanel(); } catch (_) { shown = false; }
-                        return shown ? {} : { error: R2.error || 'Android did not allow Melaton to choose where media plays.' };
+                        return shown ? {} : { error: withProblem(R2.error || 'Android did not allow Melaton to choose where media plays.') };
                     }).finally(endTempWatch);
                 }
                 if (dev.commPartner === null || dev.commPartner === undefined) return Promise.resolve({ error: dev.setDefaultNote || 'Android does not allow it.' });
