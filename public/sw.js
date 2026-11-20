@@ -1757,6 +1757,43 @@ async function refreshShellCandidates(ms = 1500) {
   return { app, launch };
 }
 
+/**
+ * A restart's commit (#951): the candidate's scripts and stylesheets the cache does not hold under the hash it names
+ * are fetched now and stored, when the bytes are that hash. The server recompiles a file on request (auto-recompile)
+ * and its /app then names the new hash, though no notify listed it: the client's update never had it, the candidate
+ * was never complete, and every restart booted the old /app (old ?sha=, old code) - the Fold, Nov 20 (vista-explorer.css
+ * and vista-file-dialog.css kept trayPower.js's update from loading). Bounded: at most 80 files, 4 at a time.
+ */
+async function fillShellRefs(key, ms) {
+  const cache = await caches.open(LAUNCH_SHELL_CACHE);
+  const next = await cache.match(key + SHELL_NEXT_SUFFIX);
+  if (!next) return 0;
+  const want = [];
+  for (const ref of shellFileRefs(await next.clone().text())) {
+    const row = await matchStaticShell(ref.path);
+    if (!row || row.headers.get('x-file-hash') !== ref.sha) want.push(ref);
+    if (want.length > 80) return 0;
+  }
+  if (!want.length) return 0;
+  const statics = await caches.open(STATIC_CACHE);
+  let stored = 0;
+  const one = async (ref) => {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), ms);
+    try {
+      const r = await fetch(ref.path, { cache: 'no-store', credentials: 'same-origin', signal: ctl.signal });
+      if (!r || r.status !== 200) return;
+      const body = await r.arrayBuffer();
+      if ((await sha256Hex(body)) !== ref.sha) return;
+      await statics.put(new Request(ref.path), staticCacheResponseWithHash(body, r, ref.sha));
+      stored += 1;
+    } catch (_err) { /* the candidate stays held */ } finally { clearTimeout(timer); }
+  };
+  for (let i = 0; i < want.length; i += 4) await Promise.all(want.slice(i, i + 4).map(one));
+  console.log(`[update] shell commit: ${stored} of ${want.length} file(s) the new ${key} names were fetched`);
+  return stored;
+}
+
 /** SHELL_COMMIT from a page: the cache is in sync, so the candidates' files are here now. */
 async function commitShells(refresh = false, ms = 1500) {
   let fresh = refresh ? await refreshShellCandidates(ms).catch(() => ({})) : {};
@@ -1769,6 +1806,9 @@ async function commitShells(refresh = false, ms = 1500) {
     app = app || fresh.app === true || (await promoteShell(APP_SHELL_KEY).catch(() => false));
     launch = launch || fresh.launch === true || (await promoteShell(LAUNCH_SHELL_KEY).catch(() => false));
   }
+  // still incomplete: the few files it names that no update listed come down now (fillShellRefs)
+  if (refresh && !app && (await fillShellRefs(APP_SHELL_KEY, ms).catch(() => 0)) > 0) app = await promoteShell(APP_SHELL_KEY).catch(() => false);
+  if (refresh && !launch && (await fillShellRefs(LAUNCH_SHELL_KEY, ms).catch(() => 0)) > 0) launch = await promoteShell(LAUNCH_SHELL_KEY).catch(() => false);
   return { app, launch };
 }
 

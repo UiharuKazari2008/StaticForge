@@ -205,6 +205,7 @@
 
     const SUB = 'desktop';
     let phoneReadyNow = false;
+    let phoneHeardAt = 0;
     let lastReadySent = null;
     // the window's role and the phone's hybrid state do not change while a page lives: asked once
     let dwCached = null;
@@ -316,6 +317,7 @@
         if (typeof c.manualReconnect === 'function') c.manualReconnect();
     }
     api.on('phone-ready', (m) => {
+        phoneHeardAt = Date.now();
         const was = phoneReadyNow;
         phoneReadyNow = !!m.ready;
         // the bonded desktop's Melaton Update shows the phone's updater (#900)
@@ -402,8 +404,10 @@
             kind: sw.pendingUpdateKind || null,
             files: sw.pendingUpdateFilesTotal || urls.length,
             urls: urls.slice(0, 4000),
-            // updates counted, not downloaded (#951): the DeX window shows the same count
-            available: typeof sw.availableUpdateCount === 'function' ? sw.availableUpdateCount() : 0
+            // updates counted, not downloaded (#951): the DeX window shows the same count, and judges by their files
+            // whether a restart for them restarts it too
+            available: typeof sw.availableUpdateCount === 'function' ? sw.availableUpdateCount() : 0,
+            availableUrls: (Array.isArray(sw.availableUpdates) ? sw.availableUpdates : []).map((f) => f && f.url).filter(Boolean).slice(0, 4000)
         };
     }
     let updateRelayTimer = null;
@@ -455,6 +459,7 @@
         sw.pendingUpdateKind = state.kind || (local.size ? 'restart' : null);
         sw.pendingUpdateFuse = !!state.pending || local.size > 0;
         sw._mirroredAvailable = Number(state.available) || 0;
+        sw._mirroredAvailableUrls = Array.isArray(state.availableUrls) ? state.availableUrls : [];
         if (typeof sw._syncUpdatesWaitingMark === 'function') sw._syncUpdatesWaitingMark();
         if (typeof sw._notifyTrayIconUpdate === 'function') sw._notifyTrayIconUpdate();
         // the update page, if open, shows the phone's progress
@@ -803,7 +808,27 @@
     // phone's update restart then cut it off (Yukimi, Nov 14).
     const phoneWindowPending = () => isDw() && !phoneReadyNow && api.peers().includes('phone');
     const askPhone = () => { if (Date.now() - lastAsk > 2000) { lastAsk = Date.now(); api.post({ type: 'phone-ready?' }); } };
+    // the DeX window's BIOS waits for a phone page that speaks (installing: "not ready"), never for one that is silent:
+    // with the phone's screens off its WebView is frozen and answers nothing, and the DeX window stayed at "Waiting for
+    // I/O message..." for good (installed-boot-zero-wait, #951). 30 s without a word from it while waiting: boot on
+    let phoneWaitSince = 0;
+    const PHONE_SILENT_MS = 30000;
+    const phoneSilent = () => {
+        if (!phoneWaitSince) phoneWaitSince = Date.now();
+        const silentFor = Date.now() - Math.max(phoneWaitSince, phoneHeardAt);
+        if (silentFor < PHONE_SILENT_MS) return false;
+        if (!phoneSilentLogged) { phoneSilentLogged = true; console.warn('[continuity] the phone page has not answered for 30 s (asleep, screens off?): this window starts without it'); }
+        return true;
+    };
+    let phoneSilentLogged = false;
     api.phoneReady = () => {
+        const ready = phoneReadyRaw();
+        if (ready) { phoneWaitSince = 0; return true; }
+        // the Miniport's own link still coming up is not the phone page's silence
+        if (miniport.available() && !miniport.up) return false;
+        return isDw() && phoneSilent();
+    };
+    const phoneReadyRaw = () => {
         // with the Miniport the DeX window needs its link (#815), and the phone window when one is there
         // a refused Miniport goes on to the BIOS's own session check (its disk read error / the PIN)
         if (miniport.available()) {

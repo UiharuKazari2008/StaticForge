@@ -610,6 +610,9 @@ function forgetDirectorReopen() {
             // waiting updates only: a phone restart does not wait on the server for more
             // the server's newer files join this restart (#951): it is a shut down, not a start, so the list may be
             // asked (bounded); before, a phone restart installed only what was waiting and the next start found more
+            // a plan worked out earlier (a power menu's shield, an earlier check) may predate what is counted now: the
+            // restart plans afresh (#951: a phone restart installed nothing of 27 counted files)
+            if (waiting && typeof updater.forgetShutdownPlan === 'function') updater.forgetShutdownPlan();
             const plan = waiting ? await winlogonUpdatePlan(updater, updater.planShutdownInstall()) : null;
             if (plan) {
                 // Windows Mobile installs before the restart, under its own box: no Welcome screen, no

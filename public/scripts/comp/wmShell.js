@@ -6517,7 +6517,16 @@
         let avail = 0;
         try { avail = typeof sw.availableUpdateCount === 'function' ? sw.availableUpdateCount() : 0; } catch (_) { avail = 0; }
         if (avail > 0 && typeof sw.installAvailableUpdates === 'function') {
-            return { title: 'Updates', html: `${avail === 1 ? '1 update is' : `${avail} updates are`} available for Melaton.`, action: { text: 'Install Now', run: () => { void sw.installAvailableUpdates(); } } };
+            // Install Now installs as Windows Mobile installs a package (#951, Yukimi Nov 20: "the phone has never restarted
+            // for the updates"): what needs a restart runs the restart at once - wceload's install window downloads and
+            // installs, then the soft reset (and the Continuity PC in its order); pictures and styles alone install live
+            let needsRestart = false;
+            try {
+                const files = Array.isArray(sw.availableUpdates) ? sw.availableUpdates : [];
+                needsRestart = typeof sw.classifyStaticCacheUpdate === 'function' && sw.classifyStaticCacheUpdate(files) === 'restart';
+            } catch (_) { needsRestart = false; }
+            const html = `${avail === 1 ? '1 update is' : `${avail} updates are`} available for Melaton.${needsRestart ? ' Melaton restarts to install them.' : ''}`;
+            return { title: 'Updates', html, action: { text: 'Install Now', run: () => { if (needsRestart && typeof sw.forceRestart === 'function') sw.forceRestart(); else void sw.installAvailableUpdates(); } } };
         }
         return null;
     }

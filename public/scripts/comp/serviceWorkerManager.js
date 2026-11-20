@@ -5653,6 +5653,9 @@ class ServiceWorkerManager {
     _restartUpdateUrls() {
         const urls = new Set(this.pendingUpdateUrls || []);
         (Array.isArray(this.availableUpdates) ? this.availableUpdates : []).forEach((f) => { if (f && f.url) urls.add(f.url); });
+        // a DeX window: the phone's counted files too (#951: without them it judged it needed no restart, and its
+        // Restart Now restarted only the phone)
+        if (this._isContinuityDexWindow()) (this._mirroredAvailableUrls || []).forEach((u) => urls.add(u));
         return Array.from(urls);
     }
 
@@ -5679,14 +5682,19 @@ class ServiceWorkerManager {
             return;
         }
         const plan = opts.plan || null;
-        // Continuity, both windows restart (Yukimi, Nov 18 2026): this DeX window's shutdown sequence first, then the
-        // phone restarts, then both start together (melatonContinuity.syncedRestart)
-        if (this._isContinuityDexWindow() && plan && plan.self && plan.other && mcw && typeof mcw.syncedRestart === 'function') {
-            const n = this.pendingUpdateFilesTotal || (this.pendingUpdateUrls ? this.pendingUpdateUrls.size : 0);
-            this.recordUpdateHistory({ name: n ? `Melaton update (${n} ${n === 1 ? 'file' : 'files'})` : 'Melaton update', status: 'Successful', importance: 'Important' });
-            this.resetPendingUpdateFuse();
-            if (mcw.syncedRestart()) { console.log('🔄 Restart for updates: this DeX window shuts down, then the phone, then both start'); return; }
+        // Continuity, both windows restart from this DeX window (Yukimi, Nov 20 2026): the phone runs it in the one order -
+        // its install window first, then this window's shutdown, then this window waits at its BIOS for the phone
+        // (restartViaPhone with restartDex below; the phone asks this window to shut down). A phone page that does not
+        // answer (asleep): this window restarts and installs by itself (its own count, #951)
+        let phoneSilent = false;
+        if (this._isContinuityDexWindow() && plan && plan.other && mcw && typeof mcw.phoneAwake === 'function' && !opts.phoneChecked) {
+            mcw.phoneAwake().then((awake) => {
+                if (!awake) { this._dexOwnUpdates = true; console.log('[update] the phone page does not answer: this DeX window restarts by itself'); }
+                this.forceRestart(Object.assign({}, opts, { plan: awake ? plan : { self: true, other: false }, phoneChecked: true }));
+            });
+            return;
         }
+        if (this._isContinuityDexWindow() && plan && !plan.other && opts.phoneChecked) phoneSilent = true;
         // the phone restarting both (Yukimi, Nov 20 2026): (1) the phone's install window (wceload's "Installing Melaton
         // Mobile update...") shows first, (2) only then the DeX window runs its shutdown sequence, (3) the DeX window
         // waits at its BIOS until the phone has started again on the new set (holdDexForRestart). A program kept open
@@ -5711,7 +5719,7 @@ class ServiceWorkerManager {
         if (this._isContinuityDexWindow()) {
             // the phone needs the restart: it restarts, and this window with it only when it needs it too;
             // only this computer needs it: it restarts alone and the phone stays up (falls through)
-            if ((!plan || plan.other) && window.melatonContinuity.restartViaPhone('updates', plan ? { restartDex: !!plan.self } : undefined)) {
+            if (!phoneSilent && (!plan || plan.other) && window.melatonContinuity.restartViaPhone('updates', plan ? { restartDex: !!plan.self } : undefined)) {
                 console.log(`🔄 Restart for updates: the phone restarts${plan && !plan.self ? ', this DeX window stays up' : ', this DeX window follows it'}`);
                 if (!plan || plan.self) this.resetPendingUpdateFuse();
                 return;
