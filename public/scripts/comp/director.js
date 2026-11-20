@@ -3041,7 +3041,18 @@ class Director {
 
         // Chat buttons
         if (this.directorSendBtn) {
-            this.directorSendBtn.addEventListener('click', () => this.sendMessage());
+            // the desktop keeps typing in the box after a send (Yukimi, Nov 20 2026: every send took the focus off the
+            // input): a mouse press on Send never moves the focus to the button, and the box has it back after the click.
+            // The phone keeps its own behaviour (focusing would raise the keyboard).
+            const keepTyping = () => !!window.isDesktop && window.uiShell !== 'mobile';
+            this.directorSendBtn.addEventListener('mousedown', (e) => { if (keepTyping() && e.button === 0) e.preventDefault(); });
+            this.directorSendBtn.addEventListener('click', () => {
+                const ret = this.sendMessage();
+                if (keepTyping() && this.directorChatInput && !this.directorChatInput.disabled) {
+                    this.directorChatInput.focus({ preventScroll: true });
+                }
+                return ret;
+            });
         }
 
         this.registerComposerHotkeys();
