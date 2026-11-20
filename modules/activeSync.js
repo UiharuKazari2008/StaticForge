@@ -25,6 +25,11 @@
  * The live half lives on the socket's clientInfo (info.as), so the online list is always the open
  * sockets. A device may hold several sockets (WebView and service): a call goes to the service
  * when it lists the op, else to the newest socket that does.
+ *
+ * A DreamOS machine (#910, modules/cafeReadyHost.js) is a device too: CaféReady says hello as speaker
+ * "host" (platform "cafeready") on its Melaton Café Miniport's sub "activesync", signed in as an
+ * administrator. It is partnered by that sign-in; what the server may ask of it is what the machine
+ * itself allows (its "Allow remote commands" setting, reported in its status).
  */
 
 const Database = require('better-sqlite3');
@@ -36,7 +41,8 @@ const WebSocket = require('ws');
 const { socketLink, socketLinkUnanswered, probeSocketLink } = require('./wsSocketHeartbeat');
 
 const KINDS = new Set(['device', 'computer']);
-const SPEAKERS = new Set(['webview', 'service']);
+// host: CaféReady on a DreamOS machine (modules/cafeReadyHost.js), its own native link like a phone's service
+const SPEAKERS = new Set(['webview', 'service', 'host']);
 // what a phone can grant; an op's group is the part before its first dot
 const PERMISSIONS = ['files', 'session', 'clipboard', 'control', 'notify', 'screen', 'sync'];
 const OP_GROUP = {
@@ -51,7 +57,9 @@ const OP_GROUP = {
     apps: 'control', // apps.install: an .apk on the phone offered to Android's installer (#795)
     notify: 'notify',
     screen: 'screen',
-    sync: 'sync'
+    sync: 'sync',
+    // a DreamOS machine's own commands (modules/cafeReadyHost.js): only through the server's admin routes, never as_call
+    host: 'control'
 };
 // a guest connection never syncs: sync items belong to a partnership
 const GUEST_PERMISSIONS = PERMISSIONS.filter((p) => p !== 'sync');
@@ -213,6 +221,8 @@ function sanitizeStatus(raw) {
     if (raw.continuity === true) out.continuity = true;
     // the owner's description of the phone (Settings > About > Device ID, #829)
     if (typeof raw.description === 'string' && raw.description.trim()) out.description = clampString(raw.description.trim(), 128);
+    // a DreamOS machine's own facts (CaféReady: base, slot, addresses, power, what it allows; modules/cafeReadyHost.js)
+    if (isPlainObject(raw.host)) out.host = require('./cafeReadyHost').sanitizeHost(raw.host);
     return out;
 }
 
@@ -278,6 +288,10 @@ function getDb(globalResources) {
             PRIMARY KEY (owner, name)
         );
     `);
+    // what the device is (#910): '' a phone with the Dreamscape app, 'cafeready' a DreamOS machine
+    if (!db.prepare('PRAGMA table_info(as_devices)').all().some((c) => c.name === 'platform')) {
+        db.exec("ALTER TABLE as_devices ADD COLUMN platform TEXT NOT NULL DEFAULT ''");
+    }
     return db;
 }
 
@@ -307,6 +321,7 @@ function setPrimary(globalResources, wsServer, deviceId, owner = PRIMARY_OWNER) 
         const row = rowOf(globalResources, id);
         if (!row) throw fail('UNKNOWN_DEVICE', 'No such device.');
         if (!row.partner) throw fail('NOT_PARTNER', 'Only a device with a partnership can be the primary device.');
+        if (row.platform === 'cafeready') throw fail('NOT_PHONE', 'A computer cannot be the primary device.');
         d.prepare("INSERT INTO as_prefs (owner, name, value) VALUES (?, 'primary', ?) ON CONFLICT (owner, name) DO UPDATE SET value = excluded.value").run(owner, id);
         logEvent(globalResources, id, 'info', 'Set as the primary device');
     } else {
@@ -422,7 +437,8 @@ function serviceOnly(kind, op) {
  */
 function socketFor(wsServer, kind, id, op) {
     const all = liveSockets(wsServer, kind, id).filter((s) => !op || socketAnswers(s.info, op));
-    const service = all.find((s) => s.info.as.speaker === 'service') || null;
+    // a DreamOS machine's CaféReady (speaker host) is its native link, as a phone's service is
+    const service = all.find((s) => s.info.as.speaker === 'service' || s.info.as.speaker === 'host') || null;
     if (serviceOnly(kind, op)) return service;
     return service || all[0] || null;
 }
@@ -470,6 +486,8 @@ function describeDevice(globalResources, wsServer, row) {
         model: row.model,
         os: row.os,
         app: row.app,
+        // '' / android: a phone with the Dreamscape app; cafeready: a DreamOS machine (modules/cafeReadyHost.js)
+        platform: row.platform || 'android',
         online: live.length > 0,
         session: sess ? sess.session : null,
         speakers: live.map((s) => s.info.as.speaker),
@@ -489,7 +507,7 @@ function describeDevice(globalResources, wsServer, row) {
         // the owner's primary device (#979): Device Center and the tray stay on it while it is connected
         primary: !!row.partner && primaryOf(globalResources) === row.device_id,
         // ADB on port 5555 from this server (#818): state ready / unauthorized / unreachable / off ...
-        adb: adbStatusOf(globalResources, row.device_id),
+        adb: row.platform === 'cafeready' ? null : adbStatusOf(globalResources, row.device_id),
         // the wallpapers kept for Device Center (#827): a new stamp means new pictures
         wallpapersAt: wallpapersStampOf(globalResources, row.device_id)
     };
@@ -641,7 +659,7 @@ function scheduleUpdated(globalResources, wsServer) {
         const ownSend = new Map(); // deviceId -> whether its sockets get this one
         server.broadcast({ type: 'as_peers_updated', data, timestamp: new Date().toISOString() }, (info) => {
             if (!(info && info.authenticated && info.userType === 'admin' && info.as)) return false;
-            if (info.as.speaker === 'service') return false;
+            if (info.as.speaker === 'service' || info.as.speaker === 'host') return false;
             if (info.as.kind !== 'device') return true;
             const id = info.as.id;
             if (!ownSend.has(id)) {
@@ -696,6 +714,10 @@ function hello(globalResources, wsServer, clientInfo, data) {
     const prev = rowOf(globalResources, id);
     // the background link is a partner's: a guest is connected only while its app is open (Yukimi, Nov 12)
     if (as.speaker === 'service' && !(prev && prev.partner)) throw fail('NOT_PARTNER', 'The background connection needs a partnership.');
+    // a DreamOS machine: only its own Miniport's sub, signed in as an administrator, for the device id it connected with
+    // (cafeReadyHost.checkHello throws what is wrong); partnered by that sign-in
+    const host = as.speaker === 'host';
+    if (host) require('./cafeReadyHost').checkHello(server, clientInfo, id);
     const model = clampString(src.model, 64);
     const os = clampString(src.os, 64);
     const app = clampString(src.app, 64);
@@ -707,6 +729,10 @@ function hello(globalResources, wsServer, clientInfo, data) {
     } else {
         d.prepare('INSERT INTO as_devices (device_id, name, model, os, app, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)')
             .run(id, name, model, os, app, now, now);
+    }
+    if (host) {
+        d.prepare("UPDATE as_devices SET platform = 'cafeready', partner = 1, permissions = ? WHERE device_id = ?").run(JSON.stringify(require('./cafeReadyHost').PERMISSIONS), id);
+        as.platform = 'cafeready';
     }
     const row = rowOf(globalResources, id);
     as.name = row.name;
@@ -728,8 +754,9 @@ function hello(globalResources, wsServer, clientInfo, data) {
     if (as.status) d.prepare('UPDATE as_devices SET last_status = ? WHERE device_id = ?').run(JSON.stringify(as.status), id);
     if (as.status && as.status.continuity) noteContinuity(globalResources, id);
     if (!wasOnline) logEvent(globalResources, id, 'info', `Connected (${as.speaker})`);
-    // ADB on 5555 (#818): look for the phone where this socket comes from
-    try { require('./deviceAdb').noteOnline(globalResources, server, id); } catch (err) { console.warn('[activeSync] adb detect:', err.message); }
+    // ADB on 5555 (#818): look for the phone where this socket comes from (a DreamOS machine has none)
+    if (!host) { try { require('./deviceAdb').noteOnline(globalResources, server, id); } catch (err) { console.warn('[activeSync] adb detect:', err.message); } }
+    else { try { require('./cafeReadyHost').noteHello(globalResources, clientInfo, as); } catch (err) { console.warn('[activeSync] CaféReady hello:', err.message); } }
     scheduleUpdated(globalResources, server);
     // server modules that want a phone the moment it connects (Messaging's Android app accounts catch up, #885)
     // test: a test device (modules/testDevices.js, the Android emulator): its session is remembered so its page is fenced
@@ -866,6 +893,8 @@ async function call(globalResources, wsServer, clientInfo, data) {
     if (me.kind === 'computer') {
         const row = rowOf(globalResources, to);
         if (!row) throw fail('UNKNOWN_DEVICE', 'No such device.');
+        // a DreamOS machine's commands go through the server's routes, which check and audit them (cafeReadyHost.js)
+        if (opGroupName(op) === 'host') throw fail('NOT_PERMITTED', 'Ask the server (/api/activesync/host/...) for this.');
         const online = liveSockets(server, 'device', to).length > 0;
         if (!online) {
             if (src.queue === true && row.partner && QUEUEABLE.has(op)) return enqueue(globalResources, server, row, op, args, me.name);
@@ -874,6 +903,7 @@ async function call(globalResources, wsServer, clientInfo, data) {
         checkDeviceOp(server, to, op);
         const target = socketFor(server, 'device', to, op);
         if (!target) throw noSocketError(server, to, op);
+        if (target.info.as.speaker === 'host') require('./cafeReadyHost').auditCall(globalResources, row, op, args, `${me.name} (as_call)`);
         const res = await sendRequest(server, target, fromOf(clientInfo), op, args, timeoutMs);
         if (!res.ok) throw fail(res.error.code, res.error.message);
         if (target.info.as.speaker === 'service') { try { noteReceivedLive(globalResources, server, to, op, args, me.name); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }
@@ -906,6 +936,7 @@ async function serverCall(globalResources, wsServer, deviceId, op, args, opts = 
     const target = socketFor(server, 'device', deviceId, op);
     if (!target) throw noSocketError(server, deviceId, op);
     const timeoutMs = Math.min(opts.maxTimeoutMs || CALL_TIMEOUT_MAX_MS, Math.max(1000, Number(opts.timeoutMs) || CALL_TIMEOUT_MS));
+    if (target.info.as.speaker === 'host') require('./cafeReadyHost').auditCall(globalResources, rowOf(globalResources, deviceId), op, args, opts.fromName || 'the server');
     const res = await sendRequest(server, target, { kind: 'computer', id: '', name: clampString(opts.fromName, 64) || hostName() }, op, args, timeoutMs);
     if (!res.ok) throw fail(res.error.code, res.error.message);
     if (target.info.as.speaker === 'service') { try { noteReceivedLive(globalResources, server, deviceId, op, args, opts.fromName || hostName()); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }

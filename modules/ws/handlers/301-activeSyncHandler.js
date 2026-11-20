@@ -33,9 +33,11 @@ function registerPackets(handlersCtx) {
             return;
         }
         const service = !!(clientInfo && clientInfo.as && clientInfo.as.speaker === 'service');
+        // a DreamOS machine's CaféReady (speaker host, modules/cafeReadyHost.js) reads none of the list either
+        const host = !!(clientInfo && clientInfo.as && clientInfo.as.speaker === 'host');
         // only administrators see the other peers; the app's background link reads none of the list
         // (ActiveSyncLink: success, session, permissions), so it is not sent the 8 KB of it (#890)
-        if (!isAdmin(clientInfo) || service) { res.devices = res.device ? [res.device] : []; res.computers = []; }
+        if (!isAdmin(clientInfo) || service || host) { res.devices = res.device ? [res.device] : []; res.computers = []; }
         reply(ws, 'as_hello_response', message, res);
         if (res.kind === 'device' && res.session === 'partner') {
             activeSync.deliverQueue(gr(), wsServer, res.id).catch((error) => console.warn('[activeSync] queue delivery failed:', error.message));

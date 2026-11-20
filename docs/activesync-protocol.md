@@ -245,3 +245,66 @@ permission (no All files access).
   a computer showing that library reads it again. No polling.
 - The device description says `media: true` when a socket of the phone answers `media.list`; a phone whose app
   does not yet (DSApp branch `claude/media-share`) shows "needs an update" in Media Player.
+
+## DreamOS machines (CaféReady, #910)
+
+Yukimi, Nov 20 2026: "we should design in ActiveSync with the server like the phones have, to push and get data from
+registered CaféReady clients." A DreamOS computer (the Mac that roams) is an ActiveSync device over the link its
+CaféReady host already keeps to the server, the Melaton Café Miniport (`wss://<host>/?miniport=1&device=<id>`). Nothing
+needs its LAN address: the server reaches it wherever it is. Server: `modules/cafeReadyHost.js`; machine: DreamOS
+`cafeready/src/activesync.rs` (+ `screencopy.rs`).
+
+**Link.** The server's `miniport_ready` says `activeSyncHost: 1`; only then does CaféReady open the light sub
+`activesync` (an older server would take the hello for a phone's page waiting for a partnership). The sub stays open
+whatever the pages do, so the Miniport no longer closes at its idle timeout while ActiveSync is on. No page can take the
+sub: the shell bridge maps it to `desktop` and the Miniport refuses it.
+
+**Hello.** `as_hello { kind: 'device', speaker: 'host', platform: 'cafeready', id (identity.rs, 32 hex), name (the host
+name; nameSet), model (SMBIOS product, e.g. MacBookPro11,4), os ('DreamOS 0.2.44 (slot A)'), app ('CaféReady <version>'),
+ops, status }`. The server takes it only from a Miniport sub-client, signed in as an administrator, for the id the
+carrier connected with; it partners the machine by that sign-in (`files`, `control`) and stores `platform = 'cafeready'`.
+No ADB detection, no notices, credits, status snapshots or peer lists go to it (those are the phones' `service` links).
+
+**Status.** `as_status` when something in it changed (the machine's own network and power watches; at most every 5 s,
+no timer): `battery { level, charging, plugged }`, `wifi { enabled, connected, level, ssid }`, `active` (wifi |
+ethernet), `storage [{ id: 'data', name: 'Local Disk', total, free }]` and `host { base, slot, cafeready, kernel, vendor,
+channel, power: ac | battery, online, addresses[], interfaces [{ name, kind, up, ip, ip6, ssid, signal }],
+serverAddress[], serverSource, allow { commands, screenshots, killSwitch }, uptime }`. Device Center and the MCP tools
+show the last one while the machine is away (online false, lastSeen).
+
+**Operations** (server -> machine, `as_request` / `as_reply`; the machine checks each again and has the last word):
+
+| Op | Args | Answer |
+| --- | --- | --- |
+| `status.get` | | the status above |
+| `host.shell` | `{ command, root?, timeoutMs? }` (8000 characters; 1 s to 10 min, default 60 s) | `{ output, error, exitCode, timedOut, truncated, user, ms }`: `/bin/sh -c` as the desktop user (dream) or root, its own process group killed at the timeout, 512 KB per stream |
+| `host.screenshot` | `{ token, output? }` | posts the screen to `POST /api/activesync/host/<id>/blob/<token>` (`X-Blob-Kind: png` from grim, or `rgb` gzipped raw RGB with `X-Width` / `X-Height` from CaféReady's own wlr-screencopy client); answers `{ via, width, height, bytes }` |
+| `host.diagnostics` | `{ token, boot: 0 \| -1, lines }` | posts a text bundle (`X-Blob-Kind: text`, gzipped): versions, `systemctl --failed`, the journal (warnings and worse), iwd's state and saved networks, networkctl, routes and resolver, the server address cache, dmesg's tail, disks and memory, power, CaféReady's own log; cookies, passphrases and tokens cut |
+| `host.config` | `{ updateChannel?: name \| https://server/name \| '' (default), serverAddress?: address \| 'refresh' \| 'clear' }` | the machine's `updateChannel`, resolved `channel`, `url`, `serverAddress` state, `allow`. `UPDATE_CHANNEL` is written to the boot partition's dreamos.conf (and its /run copy); `REMOTE_COMMANDS` cannot be set |
+| `host.packages` | | `{ packages [{ label, package, version, kind: component \| pack }], base, update }` |
+| `storage.stat` / `storage.list` | `{ root: 'fs', path }` | an entry `{ name, path, dir, size, mtime, mode, uid, gid, link }` / `{ entries, more }` (5000 at most) |
+| `stream.send` / `stream.receive` | as for a phone, root `fs` (the whole file system) | through `modules/activeSyncTransfers.js`: `GET /api/activesync/file/<id>/fs/<path>` (Range) and `POST /api/activesync/upload/<id>/begin { root: 'fs', dir, name, size, conflict, mkdirs }` ... `commit`; 4 GB a file at most; the machine pulls in ranges and resumes; a file it writes belongs to the folder's owner |
+
+`as_call` from a computer tab refuses `host.*` (`NOT_PERMITTED`): those go through the server's routes, which check the
+machine's consent and write each command down.
+
+**Server routes** (administrators): `POST /api/activesync/host/:deviceId/shell { command, root, timeoutMs }`,
+`GET .../screenshot[?output=N]` (image/png), `GET .../diagnostics[?boot=-1&lines=N]` (text/plain), `GET | PUT .../config
+{ updateChannel, serverAddress }`, `GET .../packages`. MCP: `device_shell { device, command, root?, timeout? }` (seconds),
+`device_screenshot { device }`, `device_packages { device }` take a DreamOS machine by id or name (a machine is never
+picked when the device is left out). Every command, file transfer and setting change is written to the server log and to
+the device's ActiveSync log: the operation, who asked, and for a shell command only its first word, its length and a
+SHA-256 prefix (never its words, which may hold a secret).
+
+**Consent** (as a phone's Remote Commands in Android Bridge > Advanced Tools, which is off until the user turns it on):
+
+- **Allow remote commands** (shell, files, settings, diagnostics): off by default. **Allow screenshots**: on by default,
+  as a phone's Screenshots feature. Both live on the machine (`/var/lib/cafeready/state/activesync.json`) and are set
+  there only: `sudo cafeready send activesync allow '{"commands":true}'`, or the page through the shell bridge (`GET` /
+  `POST /v1/activesync { op: 'allow', commands, screenshots, enabled }`). The machine reports them in its status; the
+  server refuses at once what they do not allow (`NOT_ALLOWED`, `SCREENSHOTS_OFF`) and never changes them.
+- **Kill switch:** `REMOTE_COMMANDS=off` in the boot partition's dreamos.conf (read from its /run copy, so it takes effect
+  at the next start, or at once when the /run copy is edited too) refuses every command (`REMOTE_COMMANDS_OFF`)
+  whatever the settings say. Nothing over the network writes it.
+- **Origin:** the machine takes requests only from the server's socket on its own sub, only `from.kind: computer`. Bodies
+  travel over HTTPS with the Miniport's session in a 0600 header file, never on a command line or in the journal.

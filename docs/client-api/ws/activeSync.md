@@ -16,6 +16,15 @@ their partnerships persist.
 
 Only a partner may hold the service's socket: its `as_hello` is refused with `NOT_PARTNER` for any other device.
 
+A **DreamOS machine** (#910) is a device too: its CaféReady host says hello as speaker `host` with `platform:
+'cafeready'`, only over its Miniport's light sub `activesync`, signed in as an administrator, for the device id its
+Miniport connected with (else `NOT_PERMITTED` / `BAD_ID`). It is partnered by that sign-in (`files`, `control`), never
+the primary device, and reads no peer list. Device descriptions carry `platform` (`android` | `cafeready`); a machine's
+`status.host` has its base, slot, CaféReady version, update channel, addresses, interfaces, power source, the server
+address it uses and `allow { commands, screenshots, killSwitch }`. Its `host.*` operations are the server's
+(`/api/activesync/host/...`, admin, audited); `as_call` refuses them. See
+[activesync-protocol.md](../../activesync-protocol.md), "DreamOS machines".
+
 A device is `pending` from its hello until a computer chose how to connect and the phone's user agreed: `guest` (this
 connection only) or `partner` (stored; later hellos connect at once). Several sockets of one device share that state.
 
@@ -27,7 +36,7 @@ Permissions a phone grants (an operation's group is the part before its first do
 | `files` | `storage.*`, `stream.*` |
 | `session` | `studio.*` |
 | `clipboard` | `clipboard.*`, `open.*` |
-| `control` | `device.*` |
+| `control` | `device.*`, `host.*` (a DreamOS machine, through the server only) |
 | `notify` | `notify.*` |
 | `screen` | `screen.*` |
 | `sync` (partners only) | `sync.*` |
@@ -40,7 +49,7 @@ Signed-in sessions (read-only PIN included):
 
 | Request type | Response | Notes |
 | --- | --- | --- |
-| `as_hello` | `as_hello_response` | `{ kind, id, name?, ops[], speaker: 'webview' \| 'service', model?, os?, app?, status? }`. `ops` are the operations this socket answers (`storage.list`, or `storage.*`). Returns `{ success, kind, id, name, session, permissions, device, devices, computers }`; a refusal is `{ success: false, code, error }`. A computer without a `name` is named after the host. Only administrators get other peers in the lists. A partner's queue goes out after its hello |
+| `as_hello` | `as_hello_response` | `{ kind, id, name?, ops[], speaker: 'webview' \| 'service' \| 'host', platform?, model?, os?, app?, status? }`. `ops` are the operations this socket answers (`storage.list`, or `storage.*`). Returns `{ success, kind, id, name, session, permissions, device, devices, computers }`; a refusal is `{ success: false, code, error }`. A computer without a `name` is named after the host. Only administrators get other peers in the lists. A partner's queue goes out after its hello |
 | `as_status` | none | Device only, fire-and-forget: `{ status: { battery { level, charging, plugged, saver }, wifi { enabled, connected, level 0-4, ssid }, cellular { present, operator, level, dataType, roaming, airplane }, active, storage [{ id, name, total, free }], foreground, shell '6.1' \| '6.5', program { name, kind melaton \| android }, screen inner \| cover, foldable } }`. Unknown fields stay null. Device descriptions also carry `lastSync` (a partner's data relayed or its queue delivered, at most once a minute) and `wallpapersAt` (#827) |
 | `as_reply` | none | The answer to an `as_request`: `{ callId, ok, result }` or `{ callId, ok: false, error: { code, message } }` |
 | `as_event` | none | A peer's news for the other kind: `{ event: 'group.name', detail }` (the payload is `detail`, never `data`). A device's events need the group's permission and reach administrators' computers |

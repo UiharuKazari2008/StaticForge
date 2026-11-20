@@ -476,21 +476,34 @@ async function shell(globalResources, deviceId, command) {
     return phoneCall(globalResources, deviceId, 'device.adbShell', { command: cmd }, 60000);
 }
 
-/** device_shell for agents: { device?, command } -> the phone's answer (device as in device_screenshot). */
+/**
+ * The device an agent named: an ActiveSync device id or name (any case), a phone or a DreamOS machine (#910,
+ * cafeReadyHost.js); omitted = the one phone online (a DreamOS machine is only ever named).
+ */
+function agentDevice(all, input) {
+    const want = String(input.device || input.deviceId || '').trim().toLowerCase();
+    if (want) return all.find((d) => d.deviceId === want) || all.find((d) => String(d.name || '').toLowerCase() === want) || all.find((d) => String(d.model || '').toLowerCase() === want) || null;
+    const phones = all.filter((d) => d.online && d.platform !== 'cafeready');
+    return phones.length === 1 ? phones[0] : null;
+}
+const isComputer = (dev) => !!dev && dev.platform === 'cafeready';
+const deviceChoices = (all) => all.map((d) => ({ deviceId: d.deviceId, name: d.name, online: d.online, platform: d.platform }));
+
+/** device_shell for agents: { device?, command, root?, timeout? } -> the device's answer (device as in device_screenshot). */
 async function agentShell(globalResources, input = {}) {
     const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
-    const want = String(input.device || '').trim().toLowerCase();
-    const dev = want ? (all.find((d) => d.deviceId === want) || all.find((d) => String(d.name || '').toLowerCase() === want)) : (all.filter((d) => d.online).length === 1 ? all.find((d) => d.online) : null);
-    if (!dev) return { success: false, code: 'CHOOSE_DEVICE', devices: all.map((d) => ({ deviceId: d.deviceId, name: d.name, online: d.online })) };
+    const dev = agentDevice(all, input);
+    if (!dev) return { success: false, code: 'CHOOSE_DEVICE', devices: deviceChoices(all) };
+    if (isComputer(dev)) return require('./cafeReadyHost').agentShell(globalResources, dev, input);
     return { success: true, device: dev.name, ...(await shell(globalResources, dev.deviceId, input.command)) };
 }
 
 /** device_packages for agents (#823): list (system?) or manage { package, action } through the phone. */
 async function agentPackages(globalResources, input = {}) {
     const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
-    const want = String(input.device || '').trim().toLowerCase();
-    const dev = want ? (all.find((d) => d.deviceId === want) || all.find((d) => String(d.name || '').toLowerCase() === want)) : (all.filter((d) => d.online).length === 1 ? all.find((d) => d.online) : null);
-    if (!dev) return { success: false, code: 'CHOOSE_DEVICE', devices: all.map((d) => ({ deviceId: d.deviceId, name: d.name, online: d.online })) };
+    const dev = agentDevice(all, input);
+    if (!dev) return { success: false, code: 'CHOOSE_DEVICE', devices: deviceChoices(all) };
+    if (isComputer(dev)) return require('./cafeReadyHost').agentPackages(globalResources, dev, input);
     if (input.action) {
         if (input.action !== 'open' && !allowed(globalResources, dev.deviceId, 'install')) return { success: false, code: 'NOT_ALLOWED', error: 'Install Android Applications is not an allowed feature for this phone.' };
         return { success: true, device: dev.name, ...(await phoneCall(globalResources, dev.deviceId, 'apps.manage', { package: String(input.package || ''), action: String(input.action) }, 60000)) };
@@ -523,13 +536,10 @@ async function agentScreenshot(globalResources, input = {}) {
         return { deviceId: d.deviceId, name: d.name, model: d.model, online: d.online, partner: d.partner, adb };
     };
     const want = String(input.device || input.deviceId || '').trim().toLowerCase();
-    let dev = null;
-    if (want) dev = all.find((d) => d.deviceId === want) || all.find((d) => String(d.name || '').toLowerCase() === want) || all.find((d) => String(d.model || '').toLowerCase() === want) || null;
-    else {
-        const online = all.filter((d) => d.online);
-        if (online.length === 1) dev = online[0];
-    }
-    if (!dev) return { meta: { success: false, code: want ? 'NO_SUCH_DEVICE' : 'CHOOSE_DEVICE', error: want ? `No ActiveSync device called ${input.device}.` : 'Name a device.', devices: all.map((d) => brief(d, null)) }, images: [] };
+    const dev = agentDevice(all, input);
+    if (!dev) return { meta: { success: false, code: want ? 'NO_SUCH_DEVICE' : 'CHOOSE_DEVICE', error: want ? `No ActiveSync device called ${input.device}.` : 'Name a device.', devices: all.map((d) => (isComputer(d) ? { deviceId: d.deviceId, name: d.name, model: d.model, platform: d.platform, online: d.online } : brief(d, null))) }, images: [] };
+    // a DreamOS machine (#910): its compositor's screen, through CaféReady
+    if (isComputer(dev)) return require('./cafeReadyHost').agentScreenshot(globalResources, dev, input);
     if (!allowed(globalResources, dev.deviceId, 'screenshots')) return { meta: { success: false, code: 'SCREENSHOTS_OFF', device: brief(dev, null), hint: 'Screenshots are turned off for this phone (Device Center / Android Bridge).' }, images: [] };
     local = dev.online ? await phoneStatus(globalResources, dev.deviceId) : null;
     const st = local && local.listening ? { state: 'phone' } : await detect(globalResources, dev.deviceId, { force: !!input.detect });

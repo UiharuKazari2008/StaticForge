@@ -1421,7 +1421,7 @@ const TOOL_DEFS = [
     {
         name: 'device_screenshot',
         core: true,
-        description: 'Screenshot an ActiveSync phone over ADB (port 5555, from the Dreamscape server): its inner, cover or DeX / external screen, or all of them. device = ActiveSync device id or name (e.g. "Galaxy Fold"); omit with one phone online. display = inner | cover | external | main | all | a display id; default the inner / main screen. Returns JPEGs (max 1600 px) plus the display list. When ADB is not ready (unauthorized = the phone must tap Always allow; unreachable = 5555 not listening) or no device is named, returns the phones and their ADB states instead.',
+        description: 'Screenshot an ActiveSync device. A DreamOS computer (platform cafeready): its screen through CaféReady over the Miniport (needs its Allow screenshots, on by default; display = an output number). A phone over ADB (port 5555, from the Dreamscape server): its inner, cover or DeX / external screen, or all of them. device = ActiveSync device id or name (e.g. "Galaxy Fold"); omit with one phone online. display = inner | cover | external | main | all | a display id; default the inner / main screen. Returns JPEGs (max 1600 px) plus the display list. When ADB is not ready (unauthorized = the phone must tap Always allow; unreachable = 5555 not listening) or no device is named, returns the phones and their ADB states instead.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1436,7 +1436,7 @@ const TOOL_DEFS = [
     {
         name: 'device_shell',
         core: true,
-        description: 'Run one adb shell command on an ActiveSync phone through its own local ADB (127.0.0.1:5555 on the phone), relayed over ActiveSync. Needs the phone\'s Remote Commands feature (Android Bridge > Advanced Tools). device = ActiveSync device id or name; omit with one phone online. Returns { output, error, exitCode }.',
+        description: 'Run one shell command on an ActiveSync device. A phone: adb shell through its own local ADB (127.0.0.1:5555 on the phone), relayed over ActiveSync; needs the phone\'s Remote Commands feature (Android Bridge > Advanced Tools). A DreamOS computer (platform cafeready, e.g. the roaming Mac): /bin/sh -c on the machine over its Miniport, as its user (dream) or root=true, timeout in seconds (default 60, max 600); needs "Allow remote commands" turned on at that computer. device = ActiveSync device id or name; omit with one phone online (a computer is always named). Returns { output, error, exitCode } (a computer adds timedOut, truncated, user).',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1444,14 +1444,16 @@ const TOOL_DEFS = [
             required: ['command'],
             properties: {
                 device: { type: 'string', description: 'ActiveSync device id or name' },
-                command: { type: 'string', description: 'The shell command (as after adb shell)' }
+                command: { type: 'string', description: 'The shell command (as after adb shell on a phone; sh -c on a DreamOS computer)' },
+                root: { type: 'boolean', description: 'DreamOS computer only: run as root instead of the desktop user' },
+                timeout: { type: 'number', description: 'DreamOS computer only: seconds before the command is killed (default 60, max 600)' }
             }
         }
     },
     {
         name: 'device_packages',
         core: true,
-        description: 'An ActiveSync phone\'s installed Android programs (Package Management). Without action: the list (label, package, version, size, system, enabled); system=true adds system programs, filter narrows by name or package. With action (uninstall | disable | enable | stop | clear | open) and package: does it over the phone\'s Developer Bridge (its own local ADB) (needs Install Android Applications in Android Bridge > Advanced Tools; open does not). device = ActiveSync device id or name.',
+        description: 'An ActiveSync phone\'s installed Android programs (Package Management). Without action: the list (label, package, version, size, system, enabled); system=true adds system programs, filter narrows by name or package. With action (uninstall | disable | enable | stop | clear | open) and package: does it over the phone\'s Developer Bridge (its own local ADB) (needs Install Android Applications in Android Bridge > Advanced Tools; open does not). A DreamOS computer (platform cafeready): its components (CaféReady, the browser) and hardware packs, with the base version and update state; no actions. device = ActiveSync device id or name.',
         scope: 'generation',
         inputSchema: {
             type: 'object',

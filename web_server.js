@@ -2354,6 +2354,8 @@ require('./modules/videosKickChat').mount(app, authMiddleware, (res) => sendNgin
 require('./modules/activeSyncScreen').mount(app, authMiddleware, globalResources);
 // modules/deviceAdb.js — ADB on 5555 from this server: phone screenshots, displays, installs (Yozora #818)
 require('./modules/deviceAdb').mount(app, authMiddleware, globalResources);
+// modules/cafeReadyHost.js — DreamOS machines in ActiveSync: shell, screenshot, diagnostics, config over the Miniport (#910)
+require('./modules/cafeReadyHost').mount(app, authMiddleware, globalResources);
 // test devices (the Android emulator harness): fenced test lane for notices, admin only
 require('./modules/testDevicesRoute').mount(app, authMiddleware, globalResources);
 // modules/activeSyncWallpapers.js — the phones' wallpapers kept for Device Center (Yozora #827)

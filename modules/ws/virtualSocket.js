@@ -220,7 +220,9 @@ function acceptMiniport(ws, req, info, connect) {
     ws.on('error', () => { /* close follows */ });
     console.log(`🔌 Melaton Miniport connected: session ${String(info.sessionId || '').slice(0, 8)}… (${info.clientIP || 'unknown'})`);
     // at / tz: the server's clock and time zone (a DreamOS host takes both, CaféReady clock.rs; #910)
-    try { ws.send(JSON.stringify({ type: 'miniport_ready', at: Date.now(), tz: SERVER_ZONE })); } catch (_) { /* gone */ }
+    // activeSyncHost: this server takes a DreamOS machine's CaféReady as an ActiveSync device on its sub "activesync"
+    // (modules/cafeReadyHost.js); a CaféReady opens that sub only when the server says so (#910)
+    try { ws.send(JSON.stringify({ type: 'miniport_ready', at: Date.now(), tz: SERVER_ZONE, activeSyncHost: 1 })); } catch (_) { /* gone */ }
     // the desktop's time zone, name and data: a DreamOS host's /etc/localtime follows it (melatonTimeZone.js)
     require('../melatonTimeZone').sendTo(ws);
     // a DreamOS host names its device id: the update channel the server assigned it and that channel's release, so a
