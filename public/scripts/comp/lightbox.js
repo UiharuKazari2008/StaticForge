@@ -676,12 +676,19 @@ function onGlancewellSlideShowPointerMove() {
     glancewellShow.idleTimer = setTimeout(() => setGlancewellPointerIdle(true), GLANCEWELL_POINTER_IDLE_MS);
 }
 
+/** A slide show keeps the screen on while it shows, as Vista's (DreamOS: mediaAwake.js; elsewhere nothing). */
+function holdGlancewellSlideShowScreen(on) {
+    const ma = window.melatonMediaAwake;
+    if (ma && typeof ma.hold === 'function') ma.hold('slide-show', on ? 'display' : '');
+}
+
 function playGlancewellSlideShow() {
     const shell = getPhotoSwipeShell();
     const p = getActivePhotoSwipe();
     if (!shell || !p) return;
     if (!glancewellShow.on) {
         glancewellShow.on = true;
+        holdGlancewellSlideShowScreen(true);
         // full screen on black; the window's place and size come back on Exit
         glancewellShow.savedStyle = shell.getAttribute('style');
         glancewellShow.savedOptions = {
@@ -711,6 +718,7 @@ function playGlancewellSlideShow() {
 
 /** After a show closed with the window (Lumen's): back to the window's own layout for the next open. */
 function resetGlancewellSlideShowShell() {
+    holdGlancewellSlideShowScreen(false);
     const shell = getPhotoSwipeShell();
     if (!shell || !shell.classList.contains('wpg-slideshow')) return;
     const mount = getPhotoSwipeMount();
@@ -748,6 +756,7 @@ function fillGlancewellSlideShowSlide(p) {
 
 function exitGlancewellSlideShow() {
     if (!glancewellShow.on) return;
+    holdGlancewellSlideShowScreen(false);
     // Lumen's show closes on Exit and hands Lumen the picture it stopped on
     if (glancewellShow.lumenExit) {
         const onExit = glancewellShow.lumenExit;

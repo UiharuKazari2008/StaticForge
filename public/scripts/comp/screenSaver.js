@@ -87,6 +87,10 @@
     /** A visible video that is playing (Media Player, a gallery video): Vista holds the saver off. */
     function videoPlaying() {
         if (!doc) return false;
+        // DreamOS: a video that is seen, as Vista's saver waits while a program holds the display - not music in
+        // Windows Media Player's <video>, a minimised or covered one (mediaAwake.js)
+        const ma = root.melatonMediaAwake;
+        if (ma && typeof ma.videoSeen === 'function') return ma.videoSeen();
         return Array.from(doc.querySelectorAll('video')).some((v) => !v.paused && !v.ended && v.readyState > 2 && v.getClientRects().length > 0);
     }
 
@@ -925,6 +929,8 @@
         state.canvas = canvas;
         state.showing = reason;
         state.shownAt = Date.now();
+        // the dialog's Preview keeps the screen on until it ends (DreamOS, mediaAwake.js); a saver on idle does not
+        if (reason === 'preview') previewHold(true);
         state.startPoint = null;
         state.engine = makeEngine(canvas, id, extra || {});
         if (state.engine && state.engine.transparent) cover.classList.add('is-transparent');
@@ -940,8 +946,14 @@
         return true;
     }
 
+    function previewHold(on) {
+        const ma = root.melatonMediaAwake;
+        if (ma && typeof ma.hold === 'function') ma.hold('screen-saver-preview', on ? 'display' : '');
+    }
+
     function hide(fromInput) {
         const was = state.showing;
+        if (was === 'preview') previewHold(false);
         if (state.engine) state.engine.stop();
         if (state.cover && state.cover.parentNode) state.cover.parentNode.removeChild(state.cover);
         state.engine = null;
