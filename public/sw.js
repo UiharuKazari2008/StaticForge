@@ -1,4 +1,7 @@
 importScripts('/dist/workbox/workbox-sw.js');
+// fflate (public/scripts/vendor, MIT): the update packs' unzip (#951, updatePackRound). Imported here because a worker
+// can only import while it installs; it is ~34 KB, parsed from the browser's code cache.
+importScripts('/scripts/vendor/fflate.js');
 
 // The Android app's phone storage (window.AndroidPhoneStorage, explorerPhoneDrive.js) serves files
 // from https://appassets.androidplatform.net/phone-storage/... inside the WebView. The worker must
@@ -406,12 +409,11 @@ function scheduleImageCachePolicyEnforcement(delayMs = IMAGE_POLICY_ENFORCE_DEBO
   }, delayMs);
 }
 
-// One file must not hold the installer: each fetch has its own timeout.
-const STATIC_FILE_FETCH_TIMEOUT_MS = 20000;
-// A file that does not come down (a timeout, a dropped link, 5xx, the server's 503 while it starts, a 404 from a
-// server that was not serving yet) is tried again inside the same download after the others, with these waits
-// (a Retry-After from the server counts when longer, at most 30 s). A download across a server restart lost every
-// picture it fetched while the server started: 26 notifications on the Fold, Nov 19, and the art was missing (#951).
+// A file that does not come down (its pack timed out or broke off, 5xx, the server's 503 while it starts, a file the
+// server does not have yet, an entry damaged in transfer) is tried again inside the same download after the others,
+// with these waits (a Retry-After from the server counts when longer, at most 30 s). Every file due again goes into
+// one more pack (#951), never a request of its own. A download across a server restart lost every picture it fetched
+// while the server started: 26 notifications on the Fold, Nov 19, and the art was missing (#951).
 // Only after the last try is it failed: reported in STATIC_CACHE_COMPLETE.failed, never as an updated file, never
 // a message per file; the page keeps it pending and its update flow fetches it again.
 const STATIC_FILE_RETRY_DELAYS_MS = [2000, 5000, 10000, 20000, 30000];
@@ -475,7 +477,10 @@ function freshDownloadState() {
         requesters: new Set(),
         // #951: files waiting for another try, and those that failed after their last try
         retry: [],
-        failedFiles: []
+        failedFiles: [],
+        // #951: the pack being fetched (url -> hash), and the highest count posted (it never goes back)
+        inflight: null,
+        shown: 0
     };
 }
 
@@ -1770,7 +1775,8 @@ async function refreshShellCandidates(ms = 1500) {
  * are fetched now and stored, when the bytes are that hash. The server recompiles a file on request (auto-recompile)
  * and its /app then names the new hash, though no notify listed it: the client's update never had it, the candidate
  * was never complete, and every restart booted the old /app (old ?sha=, old code) - the Fold, Nov 20 (vista-explorer.css
- * and vista-file-dialog.css kept trayPower.js's update from loading). Bounded: at most 80 files, 4 at a time.
+ * and vista-file-dialog.css kept trayPower.js's update from loading). Bounded: at most 80 files, in one pack (#951; they
+ * were 4 requests at a time), given ms to answer and ms more between its bytes.
  */
 async function fillShellRefs(key, ms) {
   const cache = await caches.open(LAUNCH_SHELL_CACHE);
@@ -1785,20 +1791,24 @@ async function fillShellRefs(key, ms) {
   if (!want.length) return 0;
   const statics = await caches.open(STATIC_CACHE);
   let stored = 0;
-  const one = async (ref) => {
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), ms);
-    try {
-      const r = await fetch(ref.path, { cache: 'no-store', credentials: 'same-origin', signal: ctl.signal });
-      if (!r || r.status !== 200) return;
-      const body = await r.arrayBuffer();
-      if ((await sha256Hex(body)) !== ref.sha) return;
-      await statics.put(new Request(ref.path), staticCacheResponseWithHash(body, r, ref.sha));
-      stored += 1;
-    } catch (_err) { /* the candidate stays held */ } finally { clearTimeout(timer); }
-  };
-  for (let i = 0; i < want.length; i += 4) await Promise.all(want.slice(i, i + 4).map(one));
-  console.log(`[update] shell commit: ${stored} of ${want.length} file(s) the new ${key} names were fetched`);
+  const pack = await fetchUpdatePack(want.map((ref) => ({ url: ref.path, hash: ref.sha })), {
+    purpose: 'shell commit',
+    headTimeoutMs: ms,
+    idleTimeoutMs: ms
+  });
+  if (pack.ok) {
+    const byPath = new Map(want.map((ref) => [ref.path, ref]));
+    await eachUpdatePackEntry(pack, byPath, async (row, payload, bodyHash) => {
+      const ref = byPath.get(row.url);
+      // only the bytes the page names; the candidate stays held otherwise
+      if (!ref || bodyHash !== ref.sha) return;
+      try {
+        await statics.put(new Request(ref.path), updatePackRow(row, payload, ref.sha));
+        stored += 1;
+      } catch (_err) { /* the candidate stays held */ }
+    });
+  }
+  console.log(`[update] shell commit: ${stored} of ${want.length} file(s) the new ${key} names came in one pack${pack.ok ? '' : ` (${pack.error})`}`);
   return stored;
 }
 
@@ -2607,7 +2617,7 @@ function checkStallDetection() {
             if (now - lastHeartbeatTime > 10000) {
                 lastHeartbeatTime = now;
                 // Snapshot before matchAll — downloadState is reset when the download finishes
-                const completedNow = downloadState.completed;
+                const completedNow = Math.max(downloadState.completed, Number(downloadState.shown) || 0);
                 const totalNow = downloadState.total;
                 const currentFileNow = downloadState.currentFile;
                 self.clients.matchAll().then(clients => {
@@ -2690,6 +2700,184 @@ function staticCacheResponseWithHash(bodyBuffer, response, hash) {
     });
 }
 
+// ---- update packs (#951, Nov 20 2026) ----------------------------------------------------------------------------
+// Yukimi: "verify that all update clients are using ZIP-based updates with extraction and are not requesting each file
+// one by one". Every download this worker makes for the static cache is one pack per round: it posts the files it needs
+// ({ url, hash }) to the server (web_server.js POST /install/meletonfx.zip, modules/updatePack.js), reads one zip
+// (progress by bytes), unzips it here with fflate, checks each entry against the hash pack.json names for its bytes and
+// writes the rows (staticCacheResponseWithHash's headers: x-file-hash, the type, no Vary). Callers: cacheStaticFiles
+// (CACHE_STATIC_FILES: Melaton Update, the automatic mode, segment installs, /launch's silent update, the background
+// updater, phoneUpdate.js), fillShellRefs (the restart's shell commit) and phonePrefetchPass (the phone's Wi-Fi art).
+// The requests that stay single, on purpose: the /app and /launch shell pages (navigations, refreshShellCandidates /
+// keptFirst), the manifest (OPTIONS /), /sw.js and its imports (the browser's), a page's own request for a file the
+// cache does not hold (the strategies' miss path), the protected fonts (behind sign-in, PROTECTED_FONT_CACHE),
+// DELETE_AND_PRECACHE (the cache viewer's one file) and the Setup games' media (its own zips, launchGames*.js).
+const UPDATE_PACK_URL = '/install/meletonfx.zip';
+// one pack holds at most this many manifest bytes / files; a larger round is a few packs in a row (the worker holds
+// one pack's zip and its inflated batch at a time)
+const UPDATE_PACK_MAX_BYTES = 24 * 1024 * 1024;
+const UPDATE_PACK_MAX_FILES = 1500;
+// the server reads and compresses the files no built pack holds before it answers (inside the 30 s the pages call a
+// stall, checkStallDetection); then bytes must keep coming
+const UPDATE_PACK_HEAD_TIMEOUT_MS = 25000;
+const UPDATE_PACK_IDLE_TIMEOUT_MS = 25000;
+// entries are inflated and stored this many bytes at a time, the worker yielding in between
+const UPDATE_PACK_EXTRACT_BYTES = 4 * 1024 * 1024;
+
+/** The next pack's files off the front of queue (manifest order kept): at most the byte and file caps, at least one. */
+function takeUpdatePackBatch(queue, maxFiles = UPDATE_PACK_MAX_FILES, maxBytes = UPDATE_PACK_MAX_BYTES) {
+    const batch = [];
+    let bytes = 0;
+    while (queue.length && batch.length < maxFiles) {
+        const size = Number(queue[0].size) || 0;
+        if (batch.length && bytes + size > maxBytes) break;
+        bytes += size;
+        batch.push(queue.shift());
+    }
+    return batch;
+}
+
+async function readUpdatePackBody(response, total, onChunk) {
+    if (!response.body || typeof response.body.getReader !== 'function') {
+        const all = new Uint8Array(await response.arrayBuffer());
+        onChunk(all.byteLength);
+        return all;
+    }
+    const reader = response.body.getReader();
+    // Content-Length known: one buffer filled as chunks arrive
+    let into = total > 0 ? new Uint8Array(total) : null;
+    const chunks = [];
+    let got = 0;
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (into && got + value.byteLength > into.byteLength) {
+            chunks.push(into.subarray(0, got));
+            into = null;
+        }
+        if (into) into.set(value, got);
+        else chunks.push(value);
+        got += value.byteLength;
+        onChunk(got);
+    }
+    if (into) {
+        if (got !== into.byteLength) throw new Error(`the pack broke off at ${got} of ${into.byteLength} bytes`);
+        return into;
+    }
+    const all = new Uint8Array(got);
+    let at = 0;
+    for (const c of chunks) { all.set(c, at); at += c.byteLength; }
+    return all;
+}
+
+/**
+ * One pack for files. options: { signal, onBytes(received, total), priority, purpose, headTimeoutMs, idleTimeoutMs }.
+ * Resolves { ok: true, bytes, rows: Map(url -> pack.json row), missing: Map(url -> reason) } or { ok: false, status,
+ * error, retryAfterMs, aborted }. It never throws.
+ */
+async function fetchUpdatePack(files, options = {}) {
+    const lib = self.fflate;
+    if (!lib || typeof lib.unzipSync !== 'function') return { ok: false, status: 0, error: 'no unzip in the worker' };
+    const parent = options.signal || null;
+    const ctl = new AbortController();
+    const onParent = () => ctl.abort();
+    if (parent) {
+        if (parent.aborted) ctl.abort();
+        else parent.addEventListener('abort', onParent);
+    }
+    let timedOut = false;
+    let timer = setTimeout(() => { timedOut = true; ctl.abort(); }, options.headTimeoutMs || UPDATE_PACK_HEAD_TIMEOUT_MS);
+    const poke = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => { timedOut = true; ctl.abort(); }, options.idleTimeoutMs || UPDATE_PACK_IDLE_TIMEOUT_MS);
+    };
+    try {
+        const init = {
+            method: 'POST',
+            cache: 'no-store',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-Update-Pack': String(options.purpose || 'update') },
+            body: JSON.stringify({ files: files.map((file) => ({ url: file.url, hash: file.hash })) }),
+            signal: ctl.signal
+        };
+        if (options.priority) init.priority = options.priority;
+        const response = await fetch(UPDATE_PACK_URL, init);
+        if (response.status !== 200) {
+            return { ok: false, status: response.status, error: `HTTP ${response.status}`, retryAfterMs: retryAfterMs(response) };
+        }
+        const total = Number(response.headers.get('content-length')) || 0;
+        poke();
+        const bytes = await readUpdatePackBody(response, total, (got) => {
+            poke();
+            if (options.onBytes) options.onBytes(got, total);
+        });
+        clearTimeout(timer);
+        const meta = lib.unzipSync(bytes, { filter: (entry) => entry.name === 'pack.json' })['pack.json'];
+        if (!meta) return { ok: false, status: 200, error: 'not a pack (no pack.json)' };
+        const listing = JSON.parse(lib.strFromU8(meta));
+        const rows = new Map();
+        for (const row of (listing && listing.files) || []) if (row && row.url && row.entry) rows.set(row.url, row);
+        const missing = new Map();
+        for (const m of (listing && listing.missing) || []) if (m && m.url) missing.set(m.url, String(m.reason || ''));
+        return { ok: true, bytes, rows, missing };
+    } catch (error) {
+        const aborted = !!(parent && parent.aborted);
+        return {
+            ok: false,
+            status: 0,
+            aborted,
+            error: aborted ? 'cancelled' : timedOut ? 'the pack timed out' : `network error (${(error && error.message) || error})`
+        };
+    } finally {
+        clearTimeout(timer);
+        if (parent) parent.removeEventListener('abort', onParent);
+    }
+}
+
+/**
+ * The pack's entries for wanted urls, inflated UPDATE_PACK_EXTRACT_BYTES at a time: each([row, payload, sha256 of the
+ * payload]) in pack order. The pack's bytes are dropped as it goes (pack.bytes = null at the end).
+ */
+async function eachUpdatePackEntry(pack, wanted, each) {
+    const lib = self.fflate;
+    const batches = [];
+    let batch = null;
+    for (const row of pack.rows.values()) {
+        if (!wanted.has(row.url)) continue;
+        if (!batch || batch.bytes >= UPDATE_PACK_EXTRACT_BYTES) {
+            batch = { names: new Map(), bytes: 0 };
+            batches.push(batch);
+        }
+        batch.names.set(row.entry, row);
+        batch.bytes += Number(row.size) || 64 * 1024;
+    }
+    for (const { names } of batches) {
+        const entries = lib.unzipSync(pack.bytes, { filter: (entry) => names.has(entry.name) });
+        for (const [name, row] of names) {
+            const payload = entries[name];
+            if (!payload) continue;
+            await each(row, payload, await sha256Hex(payload));
+        }
+        // the worker answers its pages' requests between batches
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    pack.bytes = null;
+}
+
+/** The static cache row for a pack entry: the type the server serves it with, the hash it is stored under. */
+function updatePackRow(row, payload, storeHash) {
+    const headers = new Headers({
+        'content-type': row.type || getContentTypeFromPath(String(row.url).split('?')[0]),
+        'content-length': String(payload.byteLength)
+    });
+    return staticCacheResponseWithHash(payload, new Response(null, { status: 200, headers }), storeHash);
+}
+
+/** The hash a pack entry is stored under: its body's SHA-256, or the manifest's where that is not a body hash. */
+function updatePackStoreHash(url, row, bodyHash) {
+    return hasBodyHash(url) ? bodyHash : String(row.hash || '');
+}
+
 // Cache static files from server
 // A download's per-file progress goes out at most every STATIC_PROGRESS_POST_MS, the last count of a
 // burst trailing (#890). One post per file was a clients.matchAll() and a message to every window per
@@ -2742,7 +2930,7 @@ function noteInstallFileDone(fileUrl, absentReason) {
     }
     downloadState.completed++;
     downloadState.lastProgressTime = Date.now();
-    postStaticCacheProgress(downloadState.completed, downloadState.total, fileUrl);
+    postDownloadProgress(0, fileUrl);
 }
 
 /**
@@ -2760,6 +2948,7 @@ function mergeIntoRunningDownload(files, requester) {
             || (downloadState.retry || []).find((f) => f.url === file.url);
         if (queued) { queued.hash = file.hash; continue; }
         if (downloadState.doneHash.get(file.url) === file.hash) continue;
+        if (downloadState.inflight && downloadState.inflight.get(file.url) === file.hash) continue;
         downloadState.queue.push(Object.assign({}, file));
         downloadState.files.push(file);
         added++;
@@ -2767,6 +2956,103 @@ function mergeIntoRunningDownload(files, requester) {
     downloadState.total += added;
     if (added) postStaticCacheProgress(downloadState.completed, downloadState.total, downloadState.currentFile);
     return true;
+}
+
+/** The count the pages see: never back down (the pack's bytes run ahead of the files stored from it). */
+function postDownloadProgress(provisional, currentFile) {
+    downloadState.shown = Math.max(Number(downloadState.shown) || 0, downloadState.completed, provisional || 0);
+    postStaticCacheProgress(Math.min(downloadState.shown, downloadState.total), downloadState.total, currentFile);
+}
+
+/**
+ * One pack of the running download (#951): fetched, unzipped, each entry checked and stored. A file the pack did not
+ * carry, or carried damaged, goes back for another try (retryOrFailStaticFile: one more pack later, never alone).
+ * 'done', 'aborted' (the download was cancelled) or 'too-large' (413: the caller splits the list).
+ */
+async function cacheUpdatePack(cache, batch, signal) {
+    const sizes = batch.map((file) => Number(file.size) || 0);
+    const batchBytes = sizes.reduce((a, b) => a + b, 0);
+    const before = downloadState.completed;
+    downloadState.inflight = new Map(batch.map((file) => [file.url, file.hash]));
+    downloadState.currentFile = batch[0].url;
+    downloadState.lastProgressTime = Date.now();
+    try {
+        const pack = await fetchUpdatePack(batch, {
+            signal,
+            purpose: `sw ${batch.length}`,
+            onBytes: (got, total) => {
+                downloadState.lastProgressTime = Date.now();
+                // the pages weigh the count by the files' sizes in list order (updateEngine.download): the files whose
+                // share of the pack has arrived count as done while it downloads
+                const want = total > 0 ? (got / total) * batchBytes : 0;
+                let n = 0;
+                for (let sum = 0; n < batch.length && sum + sizes[n] <= want; n++) sum += sizes[n];
+                postDownloadProgress(before + Math.min(n, batch.length - 1), batch[Math.min(n, batch.length - 1)].url);
+            }
+        });
+        if (signal.aborted || pack.aborted) return 'aborted';
+        downloadState.lastProgressTime = Date.now();
+        if (!pack.ok) {
+            if (pack.status === 413 && batch.length > 1) return 'too-large';
+            // nothing by those names on the server (404) or the whole pack failed: every file waits for one more pack
+            const reason = pack.status === 404 ? '404' : `pack ${pack.error}`;
+            console.warn(`[update] a pack of ${batch.length} file(s): ${pack.error}`);
+            for (const file of batch) retryOrFailStaticFile(file, reason, pack.retryAfterMs || 0);
+            return 'done';
+        }
+        const byUrl = new Map(batch.map((file) => [file.url, file]));
+        const stored = new Set();
+        const damaged = new Set();
+        await eachUpdatePackEntry(pack, byUrl, async (row, payload, bodyHash) => {
+            if (signal.aborted) return;
+            const file = byUrl.get(row.url);
+            // pack.json names the hash of the bytes the server zipped: anything else broke on the way
+            if (row.body && bodyHash !== row.body) {
+                damaged.add(file.url);
+                return;
+            }
+            try {
+                const storeHash = updatePackStoreHash(file.url, row, bodyHash);
+                if (storeHash !== file.hash) {
+                    console.warn(`${file.url}: the server sent ${storeHash.slice(0, 12)}, not the manifest's ${String(file.hash).slice(0, 12)}`);
+                }
+                const cacheKey = new Request(file.url);
+                // The new bytes replace the row in one write (#924). The purge first is only for a row an old strategy
+                // stored with Vary, which put() would leave beside the new one.
+                const prior = await cache.match(cacheKey, { ignoreVary: true });
+                if (prior && prior.headers.get('vary')) await purgeStaticCacheEntries(cache, file.url);
+                await cache.put(cacheKey, updatePackRow(row, payload, storeHash));
+                downloadState.doneHash.set(file.url, storeHash);
+                if (storeHash !== file.hash) {
+                    // not an update the page can restart into: reported apart, never as updated (#951)
+                    downloadState.mismatched.push({ url: file.url, hash: file.hash, got: storeHash });
+                } else {
+                    downloadState.updatedFiles = downloadState.updatedFiles.filter((f) => f.url !== file.url);
+                    downloadState.updatedFiles.push({ url: file.url, hash: file.hash });
+                }
+                stored.add(file.url);
+                downloadState.completed++;
+                downloadState.lastProgressTime = Date.now();
+                postDownloadProgress(0, file.url);
+            } catch (cacheError) {
+                // the cache write failed (storage): tried again like the rest (#951)
+                damaged.add(file.url);
+                console.warn(`[update] ${file.url}: not stored (${cacheError && cacheError.message})`);
+            }
+        });
+        if (signal.aborted) return 'aborted';
+        for (const file of batch) {
+            if (stored.has(file.url)) continue;
+            const why = pack.missing.get(file.url);
+            if (why === 'auth') noteInstallFileDone(file.url, 'auth');
+            else if (why === 'not-found') retryOrFailStaticFile(file, '404');
+            else if (damaged.has(file.url)) retryOrFailStaticFile(file, 'damaged in the pack');
+            else retryOrFailStaticFile(file, why === 'unresolved' ? 'not on the server yet' : 'not in the pack');
+        }
+        return 'done';
+    } finally {
+        downloadState.inflight = null;
+    }
 }
 
 async function cacheStaticFiles(files, silent = false, requester = '') {
@@ -2825,6 +3111,8 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
         downloadState.absentFiles = [];
         downloadState.retry = [];
         downloadState.failedFiles = [];
+        downloadState.inflight = null;
+        downloadState.shown = 0;
         
         // Start stall detection
         startStallDetection();
@@ -2842,142 +3130,35 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
         const cache = await caches.open(STATIC_CACHE);
         const signal = downloadAbort.signal;
         
-        // Cache files one by one to track progress; the queue grows when a later request merges in (#951)
+        // One pack per round (#951): the files due go out as one list, a few packs in a row only past
+        // UPDATE_PACK_MAX_BYTES; what did not come down waits in downloadState.retry and goes back as one more pack.
+        // The queue grows when a later request merges in (#951).
+        let packMaxFiles = UPDATE_PACK_MAX_FILES;
         while (downloadState.queue.length || downloadState.retry.length) {
-            if (!downloadState.queue.length) {
-                await nextStaticRetry(signal);
-                if (signal.aborted) {
-                    console.log('Download cancelled by user');
-                    return;
-                }
-                continue;
-            }
-            const file = downloadState.queue.shift();
-            // Check if download was cancelled
             if (signal.aborted) {
                 console.log('Download cancelled by user');
                 return;
             }
-            
-            downloadState.currentFile = file.url;
-
-            // Do not store auth-gated files. A 200 cached here would be served after logout.
-            if (isAuthGatedManifestFile(file)) {
-                noteInstallFileDone(file.url, 'auth');
+            if (!downloadState.queue.length) {
+                await nextStaticRetry(signal);
                 continue;
             }
-            
-            // Update lastProgressTime when starting a new file (even if fetch hasn't completed yet)
-            // This helps detect if we're stuck on a single file
-            downloadState.lastProgressTime = Date.now();
-            
-            try {
-                const isRouteEntry = file.type === 'route'
-                    || file.url === '/'
-                    || file.url === '/app'
-                    || file.url === '/launch'
-                    || file.url === '/index.html';
-                const fetchHeaders = {
-                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                };
-                if (isRouteEntry) {
-                    fetchHeaders['X-SW-Bypass-Cache'] = '1';
-                }
-                // Per-file timeout so a missing or slow file cannot stall the install.
-                const fileAbort = new AbortController();
-                const timeoutId = setTimeout(() => fileAbort.abort(), STATIC_FILE_FETCH_TIMEOUT_MS);
-                const onParentAbort = () => fileAbort.abort();
-                if (signal) {
-                    if (signal.aborted) fileAbort.abort();
-                    else signal.addEventListener('abort', onParentAbort);
-                }
-                let response;
-                try {
-                    response = await fetch(file.url, {
-                      cache: 'no-store',
-                      signal: fileAbort.signal,
-                      headers: fetchHeaders
-                    });
-                } catch (error) {
-                    if (signal && signal.aborted) {
-                        console.log('Download aborted');
-                        return;
-                    }
-                    retryOrFailStaticFile(file, error && error.name === 'AbortError'
-                        ? `timed out after ${STATIC_FILE_FETCH_TIMEOUT_MS} ms` : `network error (${(error && error.message) || error})`);
-                    continue;
-                } finally {
-                    clearTimeout(timeoutId);
-                    if (signal) signal.removeEventListener('abort', onParentAbort);
-                }
-                
-                // Update progress time after fetch completes (even if it fails)
-                downloadState.lastProgressTime = Date.now();
-                
-                if (response.status === 404) {
-                    retryOrFailStaticFile(file, '404');
-                    continue;
-                }
-
-                if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
-                    try {
-                        const body = await response.arrayBuffer();
-                        // Stored under the hash of what arrived (NON_BODY_HASH_PATHS); a body that
-                        // is not the manifest's stays a mismatch, so the next check fetches it again
-                        let storeHash = file.hash;
-                        if (hasBodyHash(file.url)) {
-                            storeHash = await sha256Hex(body);
-                            if (storeHash !== file.hash) {
-                                console.warn(`${file.url}: the server sent ${storeHash.slice(0, 12)}, not the manifest's ${String(file.hash).slice(0, 12)}`);
-                            }
-                        }
-                        const cacheKey = new Request(file.url);
-                        // The new bytes replace the row in one write (#924). The purge first is only for
-                        // a row an old strategy stored with Vary, which put() would leave beside the new
-                        // one: every row this download writes has none, so nothing is deleted before the
-                        // put and a worker killed here (a power-off mid-install) still leaves a copy.
-                        const before = await cache.match(cacheKey, { ignoreVary: true });
-                        if (before && before.headers.get('vary')) await purgeStaticCacheEntries(cache, file.url);
-                        await cache.put(cacheKey, staticCacheResponseWithHash(body, response, storeHash));
-
-                        const cachedResponse = await cache.match(cacheKey, { ignoreVary: true });
-                        const newHash = cachedResponse && cachedResponse.headers.get('x-file-hash');
-                        downloadState.doneHash.set(file.url, newHash || '');
-                        if (newHash !== file.hash) {
-                            console.warn(`Hash mismatch! Expected: ${file.hash}, Got: ${newHash}`);
-                            // not an update the page can restart into: reported apart, never as updated (#951)
-                            downloadState.mismatched.push({ url: file.url, hash: file.hash, got: newHash || '' });
-                        } else {
-                            downloadState.updatedFiles = downloadState.updatedFiles.filter((f) => f.url !== file.url);
-                            downloadState.updatedFiles.push({ url: file.url, hash: file.hash });
-                        }
-
-                        downloadState.completed++;
-                        downloadState.lastProgressTime = Date.now();
-                        postStaticCacheProgress(downloadState.completed, downloadState.total, file.url);
-                    } catch (cacheError) {
-                        // the body broke off or the cache write failed (storage): tried again like a fetch (#951)
-                        if (signal && signal.aborted) return;
-                        retryOrFailStaticFile(file, `not stored (${cacheError && cacheError.message})`);
-                    }
-                } else if (response.ok) {
-                    // the server marked it uncacheable: not an update, and another try would not change it
-                    console.warn(`[update] ${file.url}: the server's copy is not cacheable`);
-                    downloadState.failedFiles.push({ url: file.url, hash: file.hash, reason: 'uncacheable' });
-                    noteInstallFileDone(file.url, 'failed');
-                } else {
-                    // 5xx, the server's 503 while it starts, 408 / 429, the front proxy's error page: another try (#951)
-                    retryOrFailStaticFile(file, `HTTP ${response.status}`, retryAfterMs(response));
-                }
-            } catch (error) {
-                // Check if error is due to abort
-                if (error.name === 'AbortError') {
-                    console.log('Download aborted');
-                    return;
-                }
-                retryOrFailStaticFile(file, `failed (${error && error.message})`);
+            // Do not store auth-gated files. A 200 cached here would be served after logout.
+            const batch = takeUpdatePackBatch(downloadState.queue, packMaxFiles).filter((file) => {
+                if (!isAuthGatedManifestFile(file)) return true;
+                noteInstallFileDone(file.url, 'auth');
+                return false;
+            });
+            if (!batch.length) continue;
+            const outcome = await cacheUpdatePack(cache, batch, signal);
+            if (outcome === 'aborted') {
+                console.log('Download aborted');
+                return;
+            }
+            if (outcome === 'too-large') {
+                // a server with a lower cap: the same files again in smaller packs
+                packMaxFiles = Math.max(1, Math.floor(batch.length / 2));
+                downloadState.queue.unshift(...batch);
             }
         }
         
@@ -3662,7 +3843,7 @@ async function phoneOptionalList(internal) {
   const hash = response.headers.get('X-Manifest-Hash') || '';
   const rows = files
     .filter((file) => file && file.url && file.hash && isPhoneWifiPath(pathOfUrl(file.url)))
-    .map((file) => ({ url: String(file.url), hash: String(file.hash) }));
+    .map((file) => ({ url: String(file.url), hash: String(file.hash), size: Number(file.size) || 0 }));
   // the core digest moves with every code update: when the 'wifi' rows themselves are the kept ones,
   // the kept pass result stands (no 1,480-row cache walk after each update), under the new digest
   const same = !!kept && sameOptionalRows(kept.rows, rows);
@@ -3681,6 +3862,9 @@ function sameOptionalRows(a, b) {
   return b.every((row) => byUrl.get(row.url) === row.hash);
 }
 
+// a row kept from before rows carried their size counts as this much when the pass splits its packs
+const PHONE_PREFETCH_SIZE_GUESS = 512 * 1024;
+
 async function phonePrefetchPass() {
   const internal = await caches.open(INTERNAL_CACHE);
   const list = await phoneOptionalList(internal);
@@ -3688,37 +3872,43 @@ async function phonePrefetchPass() {
   const { record } = list;
   if (!list.fresh && record.complete && Date.now() - (Number(record.checkedAt) || 0) < PHONE_PREFETCH_RECHECK_MS) return;
   const cache = await caches.open(STATIC_CACHE);
+  // the files it lacks (one cache lookup each), then one pack per UPDATE_PACK_MAX_BYTES, low priority (#951; they were
+  // one request per picture)
+  const queue = [];
+  for (const row of record.rows) {
+    const kept = await cache.match(pathOfUrl(row.url), { ignoreVary: true });
+    if (!(kept && kept.headers.get('x-file-hash') === row.hash)) queue.push({ url: row.url, hash: row.hash, size: Number(row.size) || PHONE_PREFETCH_SIZE_GUESS });
+  }
   let fetched = 0;
   let missed = 0;
   let stopped = false;
-  for (const row of record.rows) {
+  let packs = 0;
+  while (queue.length) {
     if (workerNetwork() !== 'unmetered' || downloadState.isDownloading) {
       stopped = true;
       break;
     }
-    const pathname = pathOfUrl(row.url);
-    const kept = await cache.match(pathname, { ignoreVary: true });
-    if (kept && kept.headers.get('x-file-hash') === row.hash) continue;
-    let response = null;
-    try {
-      response = await fetch(row.url, { cache: 'no-store', priority: 'low' });
-    } catch (_) {
-      stopped = true;
-      break;
-    }
-    if (!response.ok) {
-      missed += 1;
+    const batch = takeUpdatePackBatch(queue);
+    const pack = await fetchUpdatePack(batch, { priority: 'low', purpose: 'wifi prefetch' });
+    packs += 1;
+    if (!pack.ok) {
+      // offline or timed out: stop; the server's error: the rest of this pass may still come down
+      if (!pack.status) { stopped = true; break; }
+      missed += batch.length;
       continue;
     }
-    const body = await response.arrayBuffer();
-    // a copy that is not the manifest's (a stale server copy) is left for the next pass
-    if (await sha256Hex(body) !== row.hash) {
-      missed += 1;
-      continue;
-    }
-    await purgeStaticCacheEntries(cache, row.url);
-    await cache.put(new Request(row.url), staticCacheResponseWithHash(body, response, row.hash));
-    fetched += 1;
+    const byUrl = new Map(batch.map((row) => [row.url, row]));
+    let stored = 0;
+    await eachUpdatePackEntry(pack, byUrl, async (entry, payload, bodyHash) => {
+      const row = byUrl.get(entry.url);
+      // a copy that is not the manifest's (a stale server copy) is left for the next pass
+      if (bodyHash !== row.hash) return;
+      await purgeStaticCacheEntries(cache, row.url);
+      await cache.put(new Request(row.url), updatePackRow(entry, payload, row.hash));
+      stored += 1;
+    });
+    fetched += stored;
+    missed += batch.length - stored;
     await new Promise((resolve) => setTimeout(resolve, PHONE_PREFETCH_GAP_MS));
   }
   if (!stopped && !missed) {
@@ -3726,7 +3916,7 @@ async function phonePrefetchPass() {
     record.checkedAt = Date.now();
     if (record.hash) await writePhoneOptionalRecord(internal, record);
   }
-  perfLog(`phonePrefetch rows=${record.rows.length} fetched=${fetched} missed=${missed}${stopped ? ' stopped' : ''}`);
+  perfLog(`phonePrefetch rows=${record.rows.length} packs=${packs} fetched=${fetched} missed=${missed}${stopped ? ' stopped' : ''}`);
 }
 
 /** One pass at a time, on Wi-Fi only. */

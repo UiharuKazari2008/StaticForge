@@ -2701,8 +2701,25 @@ app.get('/install/meletonfx.zip', (req, res) => {
     sendInstallPack(res, pack);
 });
 
-// A short manifest body packs only those files. Longer than subsetMax: 413, client uses GET.
+// One update round = one pack (Yozora #951): the installer, sw.js CACHE_STATIC_FILES (every in-app install, the boot
+// screen's silent update, the background updater), the shell commit's top-up and the phone's Wi-Fi prefetch post the
+// files they need ({ files: [{ url, hash }] }) and get one zip of just those (modules/updatePack.js: entries copied
+// out of the built packs as they are, the rest compressed now; streamed). Longer than subsetMax: 413, the installer
+// then uses GET (its package set's full pack). 503 + Retry-After while the server compiles. One log line per pack.
+const updatePack = require('./modules/updatePack');
+const updatePackByUrl = new WeakMap(); // manifest -> Map(url -> row)
+function updatePackContentType(url) {
+    const type = melatonUpdateEngine.contentType(url);
+    if (type !== 'application/octet-stream' && type.indexOf('charset') < 0) {
+        const charset = express.static.mime.charsets.lookup(type);
+        return charset ? `${type}; charset=${charset}` : type;
+    }
+    if (type !== 'application/octet-stream') return type;
+    const looked = express.static.mime.lookup(String(url).split('?')[0]);
+    return looked || type;
+}
 app.post('/install/meletonfx.zip', async (req, res) => {
+    const startedAt = Date.now();
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const requested = Array.isArray(body.files) ? body.files : null;
     if (!requested) {
@@ -2712,31 +2729,51 @@ app.post('/install/meletonfx.zip', async (req, res) => {
     if (requested.length > max) {
         return res.status(413).json({ success: false, error: 'list too large', useFullPack: true, max });
     }
-    const byUrl = new Map(buildServiceWorkerCacheManifest().map((file) => [file.url, file]));
-    const manifest = [];
-    const seen = new Set();
-    for (const item of requested) {
-        const url = item && item.url;
-        if (!url || seen.has(url)) continue;
-        seen.add(url);
-        const row = byUrl.get(url);
-        if (row) manifest.push(row);
+    if (!runtimeCompileComplete) {
+        res.set('Retry-After', '5');
+        return res.status(503).json({ success: false, error: 'Runtime assets are compiling', retryAfter: 5 });
     }
-    if (!manifest.length) {
-        return res.status(404).json({ success: false, error: 'no matching files' });
+    const manifest = buildServiceWorkerCacheManifest();
+    let byUrl = updatePackByUrl.get(manifest);
+    if (!byUrl) {
+        byUrl = new Map(manifest.map((file) => [file.url, file]));
+        updatePackByUrl.set(manifest, byUrl);
     }
-    let built = null;
+    let planned = null;
     try {
-        built = await meletonInstallPack.buildSubset({
-            manifest,
-            resolveFile: resolveInstallPackFile
+        planned = await updatePack.plan({
+            manifestByUrl: byUrl,
+            requested,
+            resolveFile: resolveInstallPackFile,
+            // rows behind sign-in stay out (the static cache never keeps them; the pack is served before logon)
+            allowAuth: () => false,
+            contentType: updatePackContentType
         });
-        res.setHeader('X-Pack-Subset', '1');
-        sendInstallPack(res, built, built.cleanup);
     } catch (error) {
-        if (built && built.cleanup) built.cleanup();
-        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
+        console.error(`📦 [update-pack] ${getRealIP(req)} failed: ${error.message}`);
+        return res.status(500).json({ success: false, error: error.message });
     }
+    // nothing in the manifest by those names: 404 (a zip that names what it lacks answers anything else)
+    if (!planned.files && planned.missing.every((m) => m.reason === 'not-found')) {
+        await planned.close();
+        console.log(`📦 [update-pack] ${getRealIP(req)} asked ${requested.length}, none packable (${planned.missing.length} missing)`);
+        return res.status(404).json({ success: false, error: 'no matching files', missing: planned.missing.slice(0, 50) });
+    }
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Length', String(planned.total));
+    res.setHeader('X-Pack-Hash', planned.hash);
+    res.setHeader('X-Pack-Subset', '1');
+    res.setHeader('X-Pack-Files', String(planned.files));
+    res.setHeader('Cache-Control', 'no-store');
+    const planMs = Date.now() - startedAt;
+    let sent = false;
+    try {
+        sent = await updatePack.send(res, planned);
+    } catch (error) {
+        console.error(`📦 [update-pack] ${getRealIP(req)} send failed: ${error.message}`);
+        if (!res.headersSent) res.status(500).end(); else res.destroy();
+    }
+    console.log(`📦 [update-pack] ${getRealIP(req)} ${planned.files} files (${planned.copied} copied, ${planned.packed} packed now, ${planned.missing.length} missing) ${planned.total} bytes zip, ${planned.bytes} bytes of files, ${planMs} ms to plan, ${Date.now() - startedAt} ms${sent ? '' : ' (client left)'}${req.get('x-update-pack') ? ` [${String(req.get('x-update-pack')).slice(0, 40)}]` : ''}`);
 });
 
 // Melaton Update > Applied Updates (#774): the packages, their size, and which this client has

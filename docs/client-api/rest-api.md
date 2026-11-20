@@ -573,13 +573,27 @@ material), `Content-Length`, `Cache-Control: no-store`.
 
 ### `POST /install/meletonfx.zip`
 
-**No auth.** Body `{ "files": [{ "url", "hash" }] }`. When the list is at most `subsetMax` (120),
-the server packs only the matching manifest rows and answers the same zip shape, plus
-`X-Pack-Subset: 1`. `X-Pack-Hash` is the sha256 of those rows (the server's hashes).
+**No auth.** The update pack (#951): every client download for the static cache is one of these per round, not a
+request per file - the installer (`updateEngine.copyPack`), the service worker's `CACHE_STATIC_FILES` (Melaton
+Update, the automatic mode, segment installs, the boot screen's silent update, the background updater,
+`phoneUpdate.js`), the restart's shell commit and the phone's Wi-Fi prefetch (`sw.js` `fetchUpdatePack`).
 
-**413** `{ "useFullPack": true, "max": 120 }` when the list is longer. The client then `GET`s the full pack.
+Body `{ "files": [{ "url", "hash" }] }`, at most `subsetMax` (4000) rows; the worker sends at most 1500 files /
+24 MB of manifest bytes per pack. The answer is one zip of the matching manifest rows (`modules/updatePack.js`):
+an entry a built pack (`pack.zip`, the package sets' `pack-<name>.zip`) holds at the manifest hash is copied out of
+it as it is (no recompression); the rest are read from disk and compressed now (deflate, stored for images, fonts
+and media). Local headers carry real sizes (no data descriptors); `Content-Length` is known and the body streams.
+`pack.json` comes first: `{ v: 2, hash, files: [{ entry, url, hash, body, size, type }], missing: [{ url, reason }] }`
+- `hash` is the manifest's, `body` the SHA-256 of the entry's bytes (the client checks it), `type` the
+`Content-Type` the file is served with; `missing` reasons are `not-found` (not in the manifest), `auth` (behind
+sign-in, never in a pack) and `unresolved` (in the manifest, no file on disk yet). Headers: `X-Pack-Subset: 1`,
+`X-Pack-Files`, `X-Pack-Hash` (sha256 of the manifest rows asked for, the server's hashes). The optional
+`X-Update-Pack` request header names the caller in the server log, which has one `📦 [update-pack]` line per pack
+(files, copied / packed now / missing, bytes, time).
 
-**404** when none of the urls are in the manifest. **400** when `files` is missing.
+**503** `Retry-After: 5` while runtime assets compile. **413** `{ "useFullPack": true, "max" }` when the list is
+longer than `subsetMax` (the installer then `GET`s its full pack). **404** when none of the urls are in the
+manifest. **400** when `files` is missing.
 
 ### `POST /install/product-key`
 

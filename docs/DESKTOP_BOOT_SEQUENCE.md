@@ -169,7 +169,7 @@ against `static-cache-v2` with the same rule as `serviceWorkerManager.getFilesNe
   Recovery gets), Windows Setup on the plain aurora
   (`#melatonInstall`, `css/launch-install.css`). "Installing Melaton...", the checklist and
   two-step strip (1 Collecting information, 2 Installing Melaton), each line doing real work:
-  - Copying Melaton files: one zip. Up to 120 files, the client `POST`s that list and the server
+  - Copying Melaton files: one zip. Up to 4000 files, the client `POST`s that list and the server
     packs only those (`413` falls back to the full pack). More than that is `GET /install/meletonfx.zip`.
     The server writes the full zip when it recreates the service-worker manifest (deflate level 9 for
     text, stored for images and fonts). Progress is bytes received. 60 s without a chunk = stalled.
@@ -184,7 +184,8 @@ against `static-cache-v2` with the same rule as `serviceWorkerManager.getFilesNe
   - Installing updates: images, fonts, and the rest of what was written. Same post-write check.
   - Completing installation: the install record, `navigator.storage.persist()`, leftover
     `/app` wizard session key cleared.
-  Up to 20 files still download one by one behind the boot screen (`CACHE_STATIC_FILES`).
+  Up to 20 files download behind the boot screen through the worker (`CACHE_STATIC_FILES`), which asks for
+  them as one subset pack too (`POST /install/meletonfx.zip`, #951), as every in-app update does.
   Failure: a Vista Basic message box (Retry stays in Setup and resumes; Cancel → the boot menu with
   "The installation of Melaton was cancelled."). Done: the window closes, 2 s on the aurora
   (`installLingerMs`), black for 3 s (`rebootBlackMs`), `/launch` again, which POSTs and then

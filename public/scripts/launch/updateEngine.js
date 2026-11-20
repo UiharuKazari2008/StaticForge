@@ -10,6 +10,7 @@
  *                         claims clients on activate); progress messages only reach controlled pages
  *   download(env, files)  CACHE_STATIC_FILES to the worker, progress by bytes (files go in manifest
  *                         order, so bytes done = the first n files), no progress for stallMs = stalled.
+ *                         The worker fetches them as one subset pack per round (sw.js cacheUpdatePack, #951).
  *                         Used for a small silent update. The installer does not use this.
  *   copyPack(env)         one GET /install/meletonfx.zip (the pack built when assets were recreated)
  *   expandPack(env)       compare the server manifest to the service worker cache, extract and store
@@ -771,27 +772,31 @@
         try {
             let res = null;
             let expectedSource = manifest || [];
+            const subsetRequest = () => env.fetch(PACK_URL, {
+                method: 'POST',
+                cache: 'no-store',
+                headers: { 'Content-Type': 'application/json', 'X-Update-Pack': 'installer' },
+                body: JSON.stringify({ files: wanted.map((file) => ({ url: file.url, hash: file.hash })) })
+            });
+            let request = () => env.fetch(PACK_URL, { cache: 'no-store' });
             if (useSubset) {
-                res = await env.fetch(PACK_URL, {
-                    method: 'POST',
-                    cache: 'no-store',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ files: wanted.map((file) => ({ url: file.url, hash: file.hash })) })
-                });
+                res = await subsetRequest();
                 if (res && res.status === 413) {
                     res = null;
                 } else {
                     expectedSource = wanted;
+                    request = subsetRequest;
                 }
             }
-            if (!res) res = await env.fetch(PACK_URL, { cache: 'no-store' });
-            // 503 while the server rebuilds a pack that went stale. Wait it out here.
+            if (!res) res = await request();
+            // 503 while the server compiles or rebuilds a pack that went stale. Wait it out here, asking the same
+            // pack again (#951: the subset's 503 used to fall over to the whole pack)
             for (let waited = 0; res && res.status === 503 && waited < config.packReadyWaitMs;) {
                 const after = Number(res.headers && res.headers.get && res.headers.get('retry-after')) || 5;
                 const pause = Math.min(Math.max(after, 1), 15) * 1000;
                 await env.sleep(pause);
                 waited += pause;
-                res = await env.fetch(PACK_URL, { cache: 'no-store' });
+                res = await request();
             }
             if (!res || !res.ok) {
                 const status = res && res.status;

@@ -48,9 +48,10 @@ function world() {
     const navigated = [];
     const client = { url: 'http://x/app', postMessage: (m) => posted.push(m), navigate: async (u) => { navigated.push(u); } };
     const ctx = {
-        Response, Headers, URL, Map, Set, Promise, Date, AbortController, setTimeout, clearTimeout, console,
+        Response, Headers, URL, Map, Set, Promise, Date, AbortController, setTimeout, clearTimeout, console, JSON, Uint8Array, crypto: globalThis.crypto,
+        Request: class extends Request { constructor(u, init) { super(new URL(u, 'http://x'), init); } },
         caches: { open },
-        self: { location: { origin: 'http://x' }, navigator: { userAgent: 'Chromium DreamOS/0.2' }, clients: { matchAll: async () => [client], get: async () => client } },
+        self: { location: { origin: 'http://x' }, navigator: { userAgent: 'Chromium DreamOS/0.2' }, clients: { matchAll: async () => [client], get: async () => client }, fflate: require('fflate') },
         fetch: null,
         respondWithSavedAsset: (request, row) => row,
         hashedScriptRow: async () => null,
@@ -66,6 +67,11 @@ function world() {
         'let scriptCodeCacheOpen = null; let scriptCodeKeyIndex = null;',
         fnSource('openScriptCodeCache'), fnSource('scriptCodeKeys'), fnSource('isAuthGatedStaticPath'), fnSource('matchStaticShell'),
         fnSource('shellFileRefs'), fnSource('shellFileMissing'), fnSource('keepShell'), fnSource('promoteShell'), fnSource('commitShells'),
+        // the restart's top-up: one pack (#951)
+        fnSource('fillShellRefs'), constSource('UPDATE_PACK_URL'), constSource('UPDATE_PACK_HEAD_TIMEOUT_MS'), constSource('UPDATE_PACK_IDLE_TIMEOUT_MS'),
+        constSource('UPDATE_PACK_EXTRACT_BYTES'), constSource('SAVED_ASSET_CACHE_CONTROL'), fnSource('retryAfterMs'), fnSource('readUpdatePackBody'),
+        fnSource('fetchUpdatePack'), fnSource('eachUpdatePackEntry'), fnSource('updatePackRow'), fnSource('staticCacheResponseWithHash'),
+        fnSource('getContentTypeFromPath'), fnSource('sha256Hex'),
         constSource('SHELL_MISSING_SUFFIX'), fnSource('promoteBeforeStart'), fnSource('refreshShellCandidates'),
         fnSource('answerHashedAsset'), fnSource('earlierScriptCopy'), fnSource('fetchMissingHashedAsset'), fnSource('reportMissingAsset'),
         'this.api = { shellFileRefs, keepShell, commitShells, answerHashedAsset, promoteBeforeStart, refreshShellCandidates, SHELL_CRITICAL_PATHS };'
@@ -200,6 +206,34 @@ const shell = (html) => new Response(html, { status: 200, headers: { 'x-melaton-
     // the server unreachable: the commit still runs with what is held
     w.ctx.fetch = async () => { throw new Error('offline'); };
     assert.strictEqual((await w.api.commitShells(true)).app, false, 'nothing new to switch, and no hang');
+
+    // ---- #951: the candidate names files no update listed: they come down in ONE pack, kept when the bytes are that hash ----
+    w = world();
+    const stat5 = await w.open('static');
+    const kept5 = await w.open('shell');
+    const { zipSync, strToU8 } = require('fflate');
+    const crypto = require('crypto');
+    const bootBytes = strToU8('window.desktopBoot = 1;');
+    const appBytes = strToU8('app();');
+    const D = crypto.createHash('sha256').update(bootBytes).digest('hex');
+    const E = crypto.createHash('sha256').update(appBytes).digest('hex');
+    await stat5.put('/css/x.css', row(C));
+    await kept5.put('/app', shell(page(A, A)));
+    const asked = [];
+    w.ctx.fetch = async (key, init) => {
+        if (key === '/app') return shell(page(D, E));
+        asked.push([key, init && init.method, JSON.parse(init.body).files.map((f) => f.url)]);
+        const listing = { v: 2, files: [
+            { entry: 'scripts/comp/desktopBoot.js', url: '/scripts/comp/desktopBoot.js', hash: D, body: D, size: bootBytes.length },
+            { entry: 'scripts/app.js', url: '/scripts/app.js', hash: E, body: E, size: appBytes.length, type: 'application/javascript; charset=UTF-8' }
+        ], missing: [] };
+        const zip = zipSync({ 'pack.json': strToU8(JSON.stringify(listing)), 'scripts/comp/desktopBoot.js': bootBytes, 'scripts/app.js': appBytes });
+        return new Response(zip, { status: 200, headers: { 'content-length': String(zip.length) } });
+    };
+    assert.strictEqual((await w.api.commitShells(true)).app, true, 'the top-up completes the candidate');
+    assert.deepStrictEqual(asked, [['/install/meletonfx.zip', 'POST', ['/scripts/comp/desktopBoot.js', '/scripts/app.js']]], 'one pack, not a request per file');
+    assert.strictEqual((await stat5.match('/scripts/app.js')).headers.get('x-file-hash'), E);
+    assert.strictEqual(await (await kept5.match('/app')).text(), page(D, E), 'the restart boots the new /app');
 
     // the pages keep these in step with the worker
     const boot = fs.readFileSync(path.join(__dirname, '..', 'public', 'scripts', 'launch', 'melatonBoot.js'), 'utf8');

@@ -252,6 +252,26 @@ function prefetchWorld(opts) {
         downloadState: { isDownloading: false },
         perfLog: () => {}, perfSpan: (n, fn) => fn(),
         sha256Hex: sha,
+        // the pack helpers (#951): one POST per pack, recorded; entries handed over as sw.js's do
+        takeUpdatePackBatch: (queue) => {
+            const batch = [];
+            let bytes = 0;
+            while (queue.length && (!batch.length || bytes + queue[0].size <= 24 * 1024 * 1024)) { bytes += queue[0].size; batch.push(queue.shift()); }
+            return batch;
+        },
+        fetchUpdatePack: async (files, init) => {
+            calls.push('PACK ' + files.map((f) => f.url).join(',') + (init && init.priority ? ' ' + init.priority : ''));
+            if (opts.onGet) opts.onGet(files, conn, ctx);
+            return { ok: true, rows: new Map(files.map((f) => [f.url, { url: f.url, entry: f.url.slice(1) }])), missing: new Map(), bytes: true };
+        },
+        eachUpdatePackEntry: async (pack, wanted, each) => {
+            for (const row of pack.rows.values()) {
+                if (!wanted.has(row.url)) continue;
+                const payload = body(server[row.url]);
+                await each(row, payload, await sha(payload));
+            }
+        },
+        updatePackRow: (row, payload, hash) => ({ hash }),
         purgeStaticCacheEntries: async (cache, url) => { calls.push('purge ' + url); },
         staticCacheResponseWithHash: (b, res, hash) => ({ hash }),
         caches: { open: async (name) => (name === 'internal'
@@ -265,7 +285,7 @@ function prefetchWorld(opts) {
             if (method === 'OPTIONS') {
                 calls.push('OPTIONS ' + (init.headers['X-Melaton-Packages'] || '') + (init.headers['X-Manifest-Hash'] ? ' ' + init.headers['X-Manifest-Hash'] : ''));
                 if (init.headers['X-Manifest-Hash'] === opts.digest) return { ok: false, status: 304, headers: headers({ 'x-manifest-hash': opts.digest }) };
-                const rows = await Promise.all(Object.entries(server).map(async ([u, text]) => ({ url: u, hash: await sha(body(text)) })));
+                const rows = await Promise.all(Object.entries(server).map(async ([u, text]) => ({ url: u, hash: await sha(body(text)), size: opts.size || 1000 })));
                 return { ok: true, status: 200, headers: headers({ 'x-manifest-hash': opts.digest }), json: async () => rows.concat([{ url: '/scripts/app.js', hash: 'zz' }]) };
             }
             calls.push('GET ' + url + (init && init.priority ? ' ' + init.priority : ''));
@@ -311,14 +331,14 @@ function hintWorld({ mobile, pathname, type, bridge, asleep }) {
     };
     const have = await sha(new TextEncoder().encode('photo-1').buffer);
 
-    // on Wi-Fi: the core list (X-Melaton-Packages: none), then the missing files one by one, low priority
+    // on Wi-Fi: the core list (X-Melaton-Packages: none), then the missing files in one pack, low priority (#951)
     let w = prefetchWorld({ server, digest: 'L1', cached: { [PHOTO]: have } });
     await w.api.runPhonePrefetch();
     assert.deepStrictEqual(w.calls.filter((c) => !c.startsWith('purge')), [
         'OPTIONS none',
-        'GET /static_images/wallpapers/photos/usa/b.webp low', 'put /static_images/wallpapers/photos/usa/b.webp',
-        `GET ${SIDEBAR} low`, `put ${SIDEBAR}`
-    ], 'the file it has is not fetched again; app files are not its business');
+        `PACK /static_images/wallpapers/photos/usa/b.webp,${SIDEBAR} low`,
+        'put /static_images/wallpapers/photos/usa/b.webp', `put ${SIDEBAR}`
+    ], 'the file it has is not fetched again; app files are not its business; one request for the rest');
     const record = JSON.parse(w.internal.get('/internal/sw-phone-optional-v1').b);
     assert.strictEqual(record.complete, true, 'a pass with nothing missed is complete');
     assert.strictEqual(record.rows.length, 3, 'only the phone-optional rows are kept');
@@ -332,7 +352,7 @@ function hintWorld({ mobile, pathname, type, bridge, asleep }) {
     const changed = Object.assign({}, server, { [PHOTO]: 'photo-1b' });
     w = prefetchWorld({ server: changed, digest: 'L2', internal: w.internal, cached: { [PHOTO]: have } });
     await w.api.runPhonePrefetch();
-    assert.ok(w.calls.includes(`GET ${PHOTO} low`), 'a file whose hash changed is fetched again');
+    assert.ok(w.calls.some((c) => c.startsWith('PACK ') && c.includes(PHOTO)), 'a file whose hash changed is fetched again');
 
     // a code update moves the core digest, the 'wifi' rows stay: the complete pass stands (no cache
     // walk, nothing fetched) and the record takes the new digest (#890)
@@ -351,10 +371,11 @@ function hintWorld({ mobile, pathname, type, bridge, asleep }) {
     await w.api.runPhonePrefetch();
     assert.deepStrictEqual(w.calls, [], 'no request off Wi-Fi');
 
-    // the network leaves Wi-Fi mid-pass: it stops, and the pass is not complete
-    w = prefetchWorld({ server, digest: 'L1', onGet: (url, conn) => { conn.type = 'cellular'; } });
+    // the network leaves Wi-Fi mid-pass: it stops after the pack in flight, and the pass is not complete
+    // (20 MB files: one per pack)
+    w = prefetchWorld({ server, digest: 'L1', size: 20 * 1024 * 1024, onGet: (files, conn) => { conn.type = 'cellular'; } });
     await w.api.runPhonePrefetch();
-    assert.strictEqual(w.calls.filter((c) => c.startsWith('GET')).length, 1, 'stops after the file in flight');
+    assert.strictEqual(w.calls.filter((c) => c.startsWith('PACK')).length, 1, 'stops after the pack in flight');
     assert.strictEqual(JSON.parse(w.internal.get('/internal/sw-phone-optional-v1').b).complete, false);
 
     // the worker cannot see the type: the page's hint decides
@@ -363,13 +384,13 @@ function hintWorld({ mobile, pathname, type, bridge, asleep }) {
     assert.deepStrictEqual(w.calls, [], 'unknown: nothing');
     w.api.notePhoneNetwork('unmetered');
     await w.api.runPhonePrefetch();
-    assert.ok(w.calls.filter((c) => c.startsWith('GET')).length === 3, 'the page says Wi-Fi: fetched');
+    assert.ok(w.calls.filter((c) => c.startsWith('PACK')).length === 1 && w.calls.filter((c) => c.startsWith('put')).length === 3, 'the page says Wi-Fi: fetched');
 
     // an update download running: the prefetch steps aside
     w = prefetchWorld({ server, digest: 'L1' });
     w.ctx.downloadState.isDownloading = true;
     await w.api.runPhonePrefetch();
-    assert.strictEqual(w.calls.filter((c) => c.startsWith('GET')).length, 0, 'no prefetch during an update download');
+    assert.strictEqual(w.calls.filter((c) => c.startsWith('PACK')).length, 0, 'no prefetch during an update download');
 
     // the message wiring
     assert.ok(/type === 'PHONE_PREFETCH'\) \{[\s\S]{0,200}notePhoneNetwork\(event\.data\.network\);\s*event\.waitUntil\(heldAtMost\(runPhonePrefetch\(\)\)\);/.test(swSrc), 'PHONE_PREFETCH starts a pass under waitUntil');
