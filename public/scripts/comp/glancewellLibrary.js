@@ -1683,14 +1683,106 @@
                 if (root.featureLoader) await root.featureLoader.loadFeature('control_panel').catch(() => {});
                 if (root.personalizationDialogs) root.personalizationDialogs.openScreenSaver();
                 return true;
-            case 'gwf-share':
-                if (root.explorerPhoneDrive && typeof root.explorerPhoneDrive.sendFiles === 'function') await root.explorerPhoneDrive.sendFiles(items.map((it) => ({ name: it.name, url: it.full() })));
-                return true;
+            case 'gwf-share': await shareWithDevice(items); return true;
+            case 'gwf-import': await importFromDevice(); return true;
             case 'gwf-options': openOptions(); return true;
             case 'gwf-exit': if (typeof root.closeModal === 'function') root.closeModal(S.shell); return true;
             case 'gwi-copy': case 'gwi-properties': { const it = S.focus ? itemsById.get(S.focus) : items[0]; if (it) await itemAction(action, it); return true; }
             default: void event; return false;
         }
+    }
+
+    /** A connected ActiveSync phone: the only one, or the one picked in a box (null when none or cancelled). */
+    async function pickDevice(verb) {
+        const list = SRC().devices();
+        if (!list.length) return null;
+        if (list.length === 1) return list[0];
+        const id = await dialog(`${esc(verb)} which device?`, list.map((d) => ({ text: d.label, value: d.id })).concat([{ text: 'Cancel', value: null }]), { icon: ICONS.question });
+        return list.find((d) => d.id === id) || null;
+    }
+
+    /** The phone's storage, picked and ready (activeSyncRemoteStorage.js). */
+    async function deviceStore(dev) {
+        const ps = root.phoneStorage;
+        if (!ps || !ps.remote) return null;
+        if (ps.deviceId !== dev.deviceId && typeof ps.select === 'function') ps.select(dev.deviceId);
+        const st = await ps.hello();
+        const r = st && st.enabled && st.access && !st.locked && typeof ps.receivedRoot === 'function' ? ps.receivedRoot(st) : null;
+        return r ? { ps, rootId: r.id } : null;
+    }
+
+    /** File > Share With Devices: the selected pictures copied to the phone's ActiveSync folder. */
+    async function shareWithDevice(items) {
+        if (!items.length) return;
+        const dev = await pickDevice('Share with');
+        if (!dev) return;
+        let store = null;
+        try { store = await deviceStore(dev); } catch (_) { store = null; }
+        if (!store) { await message(`${dev.label} does not share its storage right now. Turn on phone storage in the app on the device, then try again.`, 'warning'); return; }
+        const dir = store.ps.receivedDir || '/ActiveSync';
+        let sent = 0;
+        for (const it of items) {
+            S.el.status.textContent = `Copying ${sent + 1} of ${items.length} to ${dev.label}...`;
+            try {
+                const blob = await (await fetch(it.full(), { credentials: 'same-origin' })).blob();
+                await store.ps.write(store.rootId, dir, new File([blob], it.name, { type: blob.type }), { name: it.name, conflict: 'rename', mkdirs: true, deviceId: dev.deviceId });
+                sent++;
+            } catch (err) {
+                await message(`${it.name} could not be copied to ${dev.label}.\n${errorText(err)}`, 'error');
+                break;
+            }
+        }
+        renderStatus();
+        if (sent) await message(`${sent === 1 ? '1 item was' : `${sent} items were`} copied to ${dev.label} (${dir.replace(/^\//, '')}).`, 'info');
+    }
+
+    /**
+     * File > Import from Camera or Scanner: a phone's camera roll (DCIM\Camera, else every album) copied into the
+     * VFS folder "Imported Pictures", leaving out pictures already there by name; the folder joins Folders.
+     */
+    async function importFromDevice() {
+        const dev = await pickDevice('Import from');
+        if (!dev || !vfs()) return;
+        let albums = [];
+        try { albums = await dev.albums(true); } catch (_) { albums = []; }
+        const camera = albums.filter((a) => /\/DCIM\/Camera$/i.test(a.path));
+        const pick = camera.length ? camera : albums;
+        let items = [];
+        for (const a of pick) { try { items = items.concat(await dev.list({ album: a })); } catch (_) { /* skipped */ } }
+        if (!items.length) { await message(`No new pictures or videos were found on ${dev.label}.`, 'info'); return; }
+        const NAME = 'Imported Pictures';
+        let folder = S.watched.find((f) => f.name === NAME);
+        if (!folder) {
+            try {
+                const res = await vfs().createFolder('/', NAME);
+                const made = res && (res.folder || res.item || res);
+                const path = (made && (made.navPath || (made.id ? `/${made.id}` : null))) || null;
+                if (!path) throw new Error('The folder could not be made.');
+                S.watched = await SRC().get('folders').setWatched({ add: [{ folder: path, name: NAME }] });
+                folder = S.watched.find((f) => f.name === NAME);
+            } catch (err) { await message(errorText(err), 'error'); return; }
+        }
+        let have = new Set();
+        try { have = new Set((((await vfs().listDirectory(folder.folder, { offset: 0, limit: 5000 })) || {}).items || []).map((e) => e.name)); } catch (_) { /* empty */ }
+        const todo = items.filter((it) => !have.has(it.name));
+        if (!todo.length) { await message(`No new pictures or videos were found on ${dev.label}.`, 'info'); return; }
+        let done = 0;
+        for (const it of todo) {
+            S.el.status.textContent = `Importing ${done + 1} of ${todo.length} from ${dev.label}...`;
+            try {
+                const blob = await (await fetch(it.full(), { credentials: 'same-origin' })).blob();
+                const data = await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, '')); r.onerror = () => resolve(''); r.readAsDataURL(blob); });
+                await vfs().uploadFile(folder.folder, data, it.name, blob.type || 'image/jpeg');
+                done++;
+            } catch (err) {
+                await message(`${it.name} could not be imported.\n${errorText(err)}`, 'error');
+                break;
+            }
+        }
+        renderStatus();
+        for (const k of S.loaded.keys()) if (k.startsWith('folders')) S.loaded.get(k).stale = true;
+        renderTree();
+        if (done) await showNode({ root: 'folders', kind: 'folder', value: folder.folder, label: NAME });
     }
 
     /** File > Options: the tooltip previews (General); the rest of the page is the VM's. */
