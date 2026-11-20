@@ -5,7 +5,9 @@
  * density of the display the desktop is on.
  *
  *   power      AndroidDeviceStatus.battery ('androiddevicestatus') + AndroidHardware.getBattery() for the time left
- *              (read only when a push comes, never on a timer); plans Balanced / Power saver = Android's battery saver
+ *              (read only when a push comes, never on a timer); a docked NexDock's own battery (AndroidHome.getDockStatus,
+ *              myNexDock's provider, read with each push and on 'androiddock') is Battery #2 as in Vista's flyout for two
+ *              packs, the phone Battery #1, the total the two averaged (the dock reports no capacity); plans Balanced / Power saver = Android's battery saver
  *              (AndroidDevice.setRadio('saver'))
  *   network    AndroidWifi ('androidwifi', 'androidwifiscan', results 'androidwifiresult') + AndroidDeviceStatus.cellular
  *              as Mobile broadband (mobileData(on) = AndroidDevice.setRadio('data')); joins, leaves, forget, the radio and
@@ -111,13 +113,35 @@
             const charge = Number(info.chargeCounterUah) || 0;
             if (!plugged && cur > 1000 && charge > 0) m.minutesLeft = Math.round(charge / cur * 60);
             if (charging && Number(info.chargeTimeRemainingMs) > 0) m.minutesToFull = Math.round(Number(info.chargeTimeRemainingMs) / 60000);
+            // the dock's battery (NexDock): a second pack
+            const dock = dockBattery();
+            if (dock) {
+                m.packs = [
+                    { percent, plugged, charging, full },
+                    { percent: dock.level, plugged: dock.charging || dock.level >= 100 && plugged, charging: dock.charging && dock.level < 100, full: dock.level >= 100 && (dock.charging || plugged) }
+                ];
+                m.percent = Math.round((percent + dock.level) / 2);
+                m.full = m.packs.every((x) => x.full);
+                m.charging = !m.full && m.packs.some((x) => x.charging);
+                // the time left was the phone's alone: unknown for the two
+                m.minutesLeft = null;
+                m.minutesToFull = null;
+            }
             return m;
         };
+        /** The dock's battery { level, charging } while one is connected and reports it, else null. */
+        function dockBattery() {
+            const row = parse(call('AndroidHome', 'getDockStatus'));
+            const lv = row && Number(row.connected) === 1 ? Number(row.battery_percent) : NaN;
+            if (!Number.isFinite(lv) || row.battery_percent === null || row.battery_percent === '') return null;
+            return { level: Math.max(0, Math.min(100, Math.round(lv))), charging: String(row.charge_state || '') === 'charging' };
+        }
         const update = () => {
             const saver = !!(status && status.battery && status.battery.saver);
             const b = status && status.battery;
             // what the icon and flyout draw: whole percent, plug, charge, saver (never the live current)
-            const key = b ? `${b.level}|${b.plugged}|${b.charging}|${b.status}|${saver}` : '';
+            const d = dockBattery();
+            const key = b ? `${b.level}|${b.plugged}|${b.charging}|${b.status}|${saver}|${d ? `${d.level}${d.charging}` : ''}` : '';
             if (key === powerKey) return;
             powerKey = key;
             power = build();
@@ -128,6 +152,8 @@
             saverOn = saver;
         };
         statusListeners.push(update);
+        // the dock's changes (the phone window hears them; another window reads the dock with the phone's pushes)
+        listen('androiddock', () => update());
         update();
         tray.register('power', {
             id: 'android', priority: 20, kind: 'android',

@@ -462,7 +462,7 @@
         return {
             percent: st.full ? 100 : n(st.percent), plugged: !!st.plugged, charging: !!st.charging, full: !!st.full,
             protect: !!st.protect, minutesLeft: n(st.minutesLeft), minutesToFull: n(st.minutesToFull),
-            packs: Array.isArray(st.packs) ? st.packs.map((b) => ({ percent: n(b.percent), plugged: !!st.plugged, charging: !!b.charging, full: !!b.full, protect: false, minutesLeft: null, minutesToFull: null })) : undefined
+            packs: Array.isArray(st.packs) ? st.packs.map((b) => ({ percent: n(b.percent), plugged: b.plugged === undefined ? !!st.plugged : !!b.plugged, charging: !!b.charging, full: !!b.full, protect: false, minutesLeft: null, minutesToFull: null })) : undefined
         };
     }
 
