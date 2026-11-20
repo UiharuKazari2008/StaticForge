@@ -384,7 +384,7 @@
 #vzAccessPrefs .vdt-listview.is-disabled { color: var(--vz-dim); }
 /* 7.6's own push buttons (the VM's pixels, assets/prefs/btn*.png: a blue rounded edge over white shading to grey; the
    default one ringed in light blue; hot, pressed and greyed), and its edit boxes (blue outside, a sunken line inside) */
-#vzAccessPrefs .vdt-client button.vdt-button:not(#_) { border: 6px solid transparent; border-width: 0 6px; border-image: url(prefs/btn.png) 0 6 fill / 0 6px repeat; background: none; box-shadow: none; border-radius: 0; min-width: 0; padding: 0; color: var(--vz-text); font: inherit; line-height: 20px; }
+#vzAccessPrefs .vdt-client button.vdt-button:not(#_) { overflow: visible; white-space: nowrap; text-align: center; border: 6px solid transparent; border-width: 0 6px; border-image: url(prefs/btn.png) 0 6 fill / 0 6px repeat; background: none; box-shadow: none; border-radius: 0; min-width: 0; padding: 0; color: var(--vz-text); font: inherit; line-height: 20px; }
 #vzAccessPrefs .vdt-client button.vdt-button:not(#_)::before, #vzAccessPrefs .vdt-client button.vdt-button:not(#_)::after { display: none; }
 #vzAccessPrefs .vdt-client button.vdt-button[data-dialog-primary]:not(#_) { border-image-source: url(prefs/btn-def.png); }
 #vzAccessPrefs .vdt-client button.vdt-button:not(#_):hover:enabled { border-image-source: url(prefs/btn-hot.png); }
@@ -407,3 +407,5 @@
 #vzAccessPrefs .vdt-listview.no-header .vdt-lv-header:not(#_) { display: none; }
 #vzAccessPrefs .vdt-listview.no-header .vdt-lv-row { line-height: 20px; }
 #vzAccessPrefs .vdt-listview .vdt-lv-row.is-selected { background: var(--vz-tree-sel); }
+/* the narrow "..." buttons: the edges drawn over a thinner border so the dots keep their room */
+#vzAccessPrefs .vdt-client button.vdt-button:is([data-vdt-id="532"], [data-vdt-id="584"], [data-vdt-id="32075"]):not(#_) { border-width: 0 1px; letter-spacing: -1px; }
