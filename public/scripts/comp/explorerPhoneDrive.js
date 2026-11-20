@@ -1237,10 +1237,10 @@
         }
         if (item.targetKind === 'phone-drive') {
             if (item.id.startsWith('phone-state:') && !item.phone.action) return [{ type: 'list', items: [{ icon: 'fas fa-rotate', text: 'Refresh', action: `${ACTION}refresh` }] }];
-            return [{ type: 'list', items: [{ icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open' }] }];
+            return [{ type: 'list', items: [{ icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open', className: 'context-menu-item-default' }] }];
         }
         const file = !item.phone.dir;
-        const items = [{ icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open' }];
+        const items = [{ icon: 'fas fa-folder-open', text: 'Open', action: 'explorer-open', className: 'context-menu-item-default' }];
         if (file) {
             items.push({ icon: 'fas fa-up-right-from-square', text: 'Open with…', action: `${ACTION}open-with` });
             // from a computer the file opens on the device's own screen, in its Android app

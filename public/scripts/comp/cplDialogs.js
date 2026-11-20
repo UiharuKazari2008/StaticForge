@@ -561,10 +561,10 @@
         return `<div class="taskbar-clock-face cpl-dt-clock">
             <img src="/static_images/vista-taskbar/clock-face.png" alt="" width="128" height="128" draggable="false">
             <svg class="taskbar-clock-hands" viewBox="0 0 128 128" aria-hidden="true">
-                <line class="hand-hour" x1="64" y1="64" x2="64" y2="34"></line>
-                <line class="hand-minute" x1="64" y1="64" x2="64" y2="20"></line>
-                <line class="hand-second" x1="64" y1="72" x2="64" y2="16"></line>
-                <circle cx="64" cy="64" r="2.5"></circle>
+                <line class="hand-hour" x1="64" y1="64" x2="64" y2="31"></line>
+                <line class="hand-minute" x1="64" y1="64" x2="64" y2="19"></line>
+                <line class="hand-second" x1="64" y1="74" x2="64" y2="19"></line>
+                <circle cx="64" cy="64" r="1.75"></circle>
             </svg>
             <img class="taskbar-clock-gloss" src="/static_images/vista-taskbar/clock-gloss.png" alt="" width="128" height="128" draggable="false">
         </div>`;

@@ -1930,7 +1930,9 @@ class DesktopShortcutsManager {
                         {
                             icon: 'fas fa-folder-open',
                             text: 'Open',
-                            action: 'open-note'
+                            action: 'open-note',
+                            // the default verb, bold as on Vista (#973)
+                            className: 'context-menu-item-default'
                         },
                         {
                             icon: 'fas fa-book',
@@ -2347,7 +2349,8 @@ class DesktopShortcutsManager {
                         {
                             icon: 'fas fa-folder-open',
                             text: 'Open',
-                            action: 'open-system-folder-shortcut'
+                            action: 'open-system-folder-shortcut',
+                            className: 'context-menu-item-default'
                         }
                     ]
                 }
@@ -2364,7 +2367,8 @@ class DesktopShortcutsManager {
                         {
                             icon: 'fas fa-folder-open',
                             text: 'Open',
-                            action: 'open-folder-shortcut'
+                            action: 'open-folder-shortcut',
+                            className: 'context-menu-item-default'
                         },
                         {
                             icon: 'fas fa-i-cursor',

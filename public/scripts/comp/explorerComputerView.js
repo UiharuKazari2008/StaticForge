@@ -246,7 +246,7 @@
                             type: 'list',
                             // a phone disk can be renamed (its .label file, #954), as Vista renames a drive
                             items: tile
-                                ? [{ text: 'Open', action: `computer-open:${tile.dataset.drive}` }].concat(this.phoneDrive(tile.dataset.drive) && root.explorerPhoneDrive && root.explorerPhoneDrive.setDiskLabel ? [{ separator: true }, { text: 'Rename', action: `computer-rename:${tile.dataset.drive}` }] : [])
+                                ? [{ text: 'Open', action: `computer-open:${tile.dataset.drive}`, className: 'context-menu-item-default' }].concat(this.phoneDrive(tile.dataset.drive) && root.explorerPhoneDrive && root.explorerPhoneDrive.setDiskLabel ? [{ separator: true }, { text: 'Rename', action: `computer-rename:${tile.dataset.drive}` }] : [])
                                 : [{ text: 'Refresh', action: 'computer-refresh' }]
                         }];
                     },

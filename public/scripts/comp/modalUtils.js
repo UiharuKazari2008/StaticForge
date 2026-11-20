@@ -2445,30 +2445,6 @@ function resetModalToViewportCenter(modal) {
     modal.removeAttribute('data-modal-moved');
 }
 
-function resetModalWindowLayout(modal) {
-    if (!modal) {
-        return;
-    }
-
-    const windowKey = getWindowPositionKey(modal);
-    if (windowKey && globalWindowPositions[windowKey]) {
-        delete globalWindowPositions[windowKey];
-    }
-
-    if (isModalMaximized(modal)) {
-        restoreModalFromMaximize(modal);
-    }
-
-    clearModalPixelAnchor(modal);
-    modal.style.removeProperty('width');
-    modal.style.removeProperty('height');
-    modal.removeAttribute('data-window-position-restored');
-
-    resetModalToViewportCenter(modal);
-    ensureModalEdgesWithinWorkArea(modal);
-    debouncedSaveWindowPositions();
-}
-
 function ensureModalEdgesWithinWorkArea(modal, edgeMarginPx) {
     if (!modal || modal.classList.contains('hidden') || isModalMaximized(modal)) {
         return;
@@ -6296,6 +6272,44 @@ function closeTaskbarGroupMenu() {
 }
 
 // Taskbar item context menu
+/**
+ * Vista's window menu (the system menu a taskbar button opens; the VM's Notepad, #973): Restore / Move / Size / Minimize /
+ * Maximize, a separator, Close in bold with Alt+F4, each greyed by the window's state; a window with neither a minimize
+ * nor a maximize box (a dialog) has only Move and Close. bottomItems: the caption buttons found (minimize, maximize,
+ * close). A window's own title-bar commands follow after a separator, as programs append theirs.
+ */
+function buildVistaWindowMenuItems(modal, bottomItems) {
+    const minimizeItem = bottomItems.find(item => item.action === 'taskbar-window-minimize');
+    const maximizeItem = bottomItems.find(item => item.action === 'taskbar-window-maximize' && !item.hidden);
+    const closeItem = bottomItems.find(item => item.action === 'taskbar-window-close');
+    const maximized = isModalMaximized(modal);
+    const minimized = modal.classList.contains('minimised');
+    const resizable = !!modal.querySelector('.resize-handle');
+    const glyph = (name) => `vista-sysmenu-glyph vista-sysmenu-${name}`;
+    const orderedBottomItems = [];
+    if (minimizeItem || maximizeItem) {
+        orderedBottomItems.push(
+            { icon: glyph('restore'), text: 'Restore', action: 'taskbar-window-restore', disabled: !(maximized || minimized) },
+            { text: 'Move', action: 'taskbar-window-move', disabled: maximized || minimized },
+            { text: 'Size', action: 'taskbar-window-size', disabled: maximized || minimized || !resizable },
+            { icon: glyph('minimize'), text: 'Minimize', action: 'taskbar-window-minimize', disabled: !minimizeItem || minimized || (minimizeItem && minimizeItem.disabled) },
+            { icon: glyph('maximize'), text: 'Maximize', action: 'taskbar-window-maximize', disabled: !maximizeItem || maximized || (maximizeItem && maximizeItem.disabled) }
+        );
+    } else {
+        orderedBottomItems.push({ text: 'Move', action: 'taskbar-window-move', disabled: minimized });
+    }
+    orderedBottomItems.push({ separator: true });
+    orderedBottomItems.push({
+        icon: glyph('close'),
+        text: 'Close',
+        action: 'taskbar-window-close',
+        subtext: 'Alt+F4',
+        className: 'context-menu-item-default',
+        disabled: !!(closeItem && closeItem.disabled)
+    });
+    return orderedBottomItems;
+}
+
 function showTaskbarItemContextMenu(e, modal, taskbarItem) {
     e.preventDefault();
     e.stopPropagation();
@@ -6390,42 +6404,8 @@ function showTaskbarItemContextMenu(e, modal, taskbarItem) {
         });
     }
 
-    // Add window layout actions to bottom items
-    bottomItems.unshift({
-        icon: 'fa-regular fa-compress-arrows-alt',
-        text: 'Center',
-        action: 'taskbar-window-center'
-    });
-    bottomItems.unshift({
-        icon: 'fas fa-undo',
-        text: 'Reset',
-        action: 'taskbar-window-reset'
-    });
-
-    // Reorder bottom items: Center, Reset, Minimize, Maximize, Close
-    const orderedBottomItems = [];
-    const centerItem = bottomItems.find(item => item.action === 'taskbar-window-center');
-    const resetItem = bottomItems.find(item => item.action === 'taskbar-window-reset');
-    const minimizeItem = bottomItems.find(item => item.action === 'taskbar-window-minimize');
-    const maximizeItem = bottomItems.find(item => item.action === 'taskbar-window-maximize');
-    const closeItem = bottomItems.find(item => item.action === 'taskbar-window-close');
-
-    if (centerItem) orderedBottomItems.push(centerItem);
-    if (resetItem) orderedBottomItems.push(resetItem);
-    if (minimizeItem) orderedBottomItems.push(minimizeItem);
-    if (maximizeItem && !maximizeItem.hidden) orderedBottomItems.push(maximizeItem);
-
-    // Add separator before close: the window menu's default command, bold, with its accelerator (Vista's system
-    // menu: Close in Segoe UI Bold, Alt+F4 at the right; the VM's taskbar button menu, #973)
-    if (closeItem) {
-        closeItem.className = 'context-menu-item-default';
-        closeItem.subtext = 'Alt+F4';
-        orderedBottomItems.push({ separator: true });
-        orderedBottomItems.push(closeItem);
-    }
-
-    // Combine regular items with bottom items
-    const allItems = [...menuItems, ...orderedBottomItems];
+    const orderedBottomItems = buildVistaWindowMenuItems(modal, bottomItems);
+    const allItems = menuItems.length ? [...orderedBottomItems, { separator: true }, ...menuItems] : orderedBottomItems;
 
     const menuConfigId = `taskbar-window-controls-${modal.id}`;
     taskbarItem.dataset.contextMenu = menuConfigId;
@@ -6530,39 +6510,10 @@ function showTaskbarGroupContextMenu(e, groupItem, modals) {
                 }
             });
 
-            // Add window layout actions to bottom items
-            bottomItems.unshift({
-                icon: 'fa-regular fa-compress-arrows-alt',
-                text: 'Center',
-                action: 'taskbar-window-center'
-            });
-            bottomItems.unshift({
-                icon: 'fas fa-undo',
-                text: 'Reset',
-                action: 'taskbar-window-reset'
-            });
-
-            // Reorder bottom items: Center, Reset, Minimize, Maximize, Close
-            const orderedBottomItems = [];
-            const centerItem = bottomItems.find(item => item.action === 'taskbar-window-center');
-            const resetItem = bottomItems.find(item => item.action === 'taskbar-window-reset');
-            const minimizeItem = bottomItems.find(item => item.action === 'taskbar-window-minimize');
-            const maximizeItem = bottomItems.find(item => item.action === 'taskbar-window-maximize');
-            const closeItem = bottomItems.find(item => item.action === 'taskbar-window-close');
-
-            if (centerItem) orderedBottomItems.push(centerItem);
-            if (resetItem) orderedBottomItems.push(resetItem);
-            if (minimizeItem) orderedBottomItems.push(minimizeItem);
-            if (maximizeItem && !maximizeItem.hidden) orderedBottomItems.push(maximizeItem);
-
-            // Add separator before close
-            if (closeItem) {
-                orderedBottomItems.push({ separator: true });
-                orderedBottomItems.push(closeItem);
-            }
-
-            // Combine regular items with bottom items
-            menuItems.push(...orderedBottomItems);
+            // the active window's own menu: Vista's window menu, then its title-bar commands (#973)
+            const own = menuItems.splice(0);
+            menuItems.push(...buildVistaWindowMenuItems(activeModalInGroup, bottomItems));
+            if (own.length) menuItems.push({ separator: true }, ...own);
         }
     }
 
@@ -6729,6 +6680,79 @@ document.addEventListener('contextMenuAction', (e) => {
         return;
     }
 
+    /**
+     * The window menu's Move and Size (Vista's SC_MOVE / SC_SIZE from the keyboard): the window follows the arrow keys, 8 px
+     * a press, through the same drag / resize code the mouse uses (synthetic presses on the caption or the chosen edge's
+     * handle); Enter or a click keeps it, Esc puts it back. Size takes its edge from the first arrow (Left: the left edge,
+     * and so on), as Vista does. The pointer shows the move / size arrows meanwhile; the real mouse does not move it.
+     */
+    function startWindowKeyboardTrack(modal, mode) {
+        if (!modal || modal.classList.contains('hidden') || isModalMaximized(modal)) return;
+        const caption = modal.querySelector('.modal-window-title');
+        if (!caption) return;
+        const STEP = 8;
+        const root = document.documentElement;
+        const fire = (type, el, x, y) => el.dispatchEvent(new MouseEvent(type, {
+            bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0, buttons: type === 'mouseup' ? 0 : 1
+        }));
+        let start = null;
+        let x = 0;
+        let y = 0;
+        const begin = (el, px, py) => {
+            start = { x: px, y: py };
+            x = px;
+            y = py;
+            fire('mousedown', el, px, py);
+        };
+        const cls = mode === 'move' ? 'window-kbd-move' : 'window-kbd-size';
+        root.classList.add(cls);
+        const stopReal = (e) => { if (e.isTrusted) { e.stopPropagation(); e.preventDefault(); } };
+        const finish = (cancel) => {
+            document.removeEventListener('keydown', onKey, true);
+            document.removeEventListener('mousedown', onDown, true);
+            document.removeEventListener('mousemove', stopReal, true);
+            root.classList.remove(cls);
+            if (!start) return;
+            if (cancel) fire('mousemove', document, start.x, start.y);
+            fire('mouseup', document, cancel ? start.x : x, cancel ? start.y : y);
+        };
+        const DIRS = { ArrowLeft: [-1, 0, 'w'], ArrowRight: [1, 0, 'e'], ArrowUp: [0, -1, 'n'], ArrowDown: [0, 1, 's'] };
+        function onKey(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.key === 'Escape' || e.key === 'Enter') {
+                finish(e.key === 'Escape');
+                return;
+            }
+            const d = DIRS[e.key];
+            if (!d) return;
+            if (!start) {
+                const handle = mode === 'size' && modal.querySelector(`.resize-handle.${d[2]}`);
+                if (mode === 'size' && !handle) return;
+                const r = (handle || caption).getBoundingClientRect();
+                begin(handle || caption, r.left + r.width / 2, r.top + (handle ? r.height / 2 : Math.min(10, r.height / 2)));
+                // Size: the first arrow only picks the edge (the pointer goes to it), the next ones move it
+                if (handle) return;
+            }
+            x += d[0] * STEP;
+            y += d[1] * STEP;
+            fire('mousemove', document, x, y);
+        }
+        function onDown(e) {
+            if (!e.isTrusted) return;
+            e.preventDefault();
+            e.stopPropagation();
+            finish(false);
+        }
+        document.addEventListener('keydown', onKey, true);
+        document.addEventListener('mousedown', onDown, true);
+        document.addEventListener('mousemove', stopReal, true);
+        if (mode === 'move') {
+            const r = caption.getBoundingClientRect();
+            begin(caption, r.left + r.width / 2, r.top + Math.min(10, r.height / 2));
+        }
+    }
+
     if (!action.startsWith('taskbar-window-')) return;
 
     const modalId = target.dataset.taskbarModal;
@@ -6742,14 +6766,20 @@ document.addEventListener('contextMenuAction', (e) => {
             handleWindowMaximizeAction(modal);
             break;
 
-        case 'taskbar-window-center':
-            clearModalPixelAnchor(modal);
-            setModalOffsetPx(modal, 0, 0, { snap: true, settle: true });
-            modal.removeAttribute('data-modal-moved');
+        case 'taskbar-window-restore':
+            if (modal.classList.contains('minimised')) {
+                restoreMinimizedModal(modal, target);
+            } else if (isModalMaximized(modal)) {
+                handleWindowMaximizeAction(modal);
+            }
             break;
 
-        case 'taskbar-window-reset':
-            resetModalWindowLayout(modal);
+        case 'taskbar-window-move':
+            startWindowKeyboardTrack(modal, 'move');
+            break;
+
+        case 'taskbar-window-size':
+            startWindowKeyboardTrack(modal, 'size');
             break;
 
         case 'taskbar-window-minimize':

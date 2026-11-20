@@ -2345,7 +2345,17 @@ class ContextMenuController {
      * longest accelerator (right-aligned), whatever row they are in.
      */
     _win32Columns(menu) {
-        if (!menu || !menu.classList.contains('context-menu-win32')) return;
+        if (!menu) return;
+        if (!menu.classList.contains('context-menu-win32')) {
+            // a context menu with an accelerator (the window menu's Alt+F4) lines its accelerators up the same way: one
+            // column after the longest label (labels measured as text: they stretch in their column, #973)
+            if (!menu.querySelector('.context-menu-item-subtext[data-accel]')) return;
+            menu.style.removeProperty('--w32-text');
+            const range = document.createRange();
+            const width = (e) => { range.selectNodeContents(e); return range.getBoundingClientRect().width; };
+            menu.style.setProperty('--w32-text', `${Math.ceil(Math.max(0, ...Array.from(menu.querySelectorAll('.context-menu-item-text'), width)))}px`);
+            return;
+        }
         menu.style.removeProperty('--w32-text');
         menu.style.removeProperty('--w32-accel');
         const widest = (sel) => Math.ceil(Math.max(0, ...Array.from(menu.querySelectorAll(sel), (e) => e.getBoundingClientRect().width)));

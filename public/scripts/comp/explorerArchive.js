@@ -1277,7 +1277,7 @@
         const sel = selection(explorer, item);
         const single = sel.length === 1;
         const items = [];
-        if (single) items.push({ icon: item.kind === 'folder' ? 'fas fa-folder-open' : 'fas fa-external-link', text: 'Open', action: 'explorer-7z-entry-open' });
+        if (single) items.push({ icon: item.kind === 'folder' ? 'fas fa-folder-open' : 'fas fa-external-link', text: 'Open', action: 'explorer-7z-entry-open', className: 'context-menu-item-default' });
         items.push({ icon: 'fas fa-file-export', text: 'Extract files...', action: 'explorer-7z-entry-extract' });
         items.push({ icon: 'fas fa-download', text: 'Download', action: 'explorer-7z-entry-download' });
         items.push({ separator: true });

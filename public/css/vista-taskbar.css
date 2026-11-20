@@ -837,23 +837,26 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-clock:focus-visible {
     stroke-linecap: round;
 }
 
+/* the hands as timedate.cpl draws them over its face on the VM (#973; the flyout and Date and Time alike): hour and
+   minute 2 px #3a3a3a, 33 and 45 px long, the second hand a thin grey line 45 px out with a 10 px tail (not blue), a
+   small black hub; the gloss over them pales the parts under its curve */
 .taskbar-clock-hands .hand-hour {
-    stroke: #1e1e1e;
-    stroke-width: 3;
+    stroke: #3a3a3a;
+    stroke-width: 2;
 }
 
 .taskbar-clock-hands .hand-minute {
-    stroke: #1e1e1e;
+    stroke: #3a3a3a;
     stroke-width: 2;
 }
 
 .taskbar-clock-hands .hand-second {
-    stroke: #3f6b8f;
+    stroke: #999;
     stroke-width: 1;
 }
 
 .taskbar-clock-hands circle {
-    fill: #1e1e1e;
+    fill: #000;
 }
 
 .taskbar-clock-digital {

@@ -114,7 +114,7 @@
     function entryMenuSections(explorer, item) {
         const sel = selection(explorer, item);
         const items = [];
-        if (sel.length === 1) items.push({ icon: item.kind === 'folder' ? 'fas fa-folder-open' : 'fas fa-external-link', text: 'Open', action: `${ACTION}open` });
+        if (sel.length === 1) items.push({ icon: item.kind === 'folder' ? 'fas fa-folder-open' : 'fas fa-external-link', text: 'Open', action: `${ACTION}open`, className: 'context-menu-item-default' });
         if (sel.some(isEntry)) items.push({ icon: 'fas fa-download', text: 'Download', action: `${ACTION}download` });
         return [{ type: 'list', items }];
     }

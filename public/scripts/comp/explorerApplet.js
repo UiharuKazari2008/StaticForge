@@ -1311,7 +1311,23 @@ class ExplorerApplet {
             }
         }
 
-        return result.length ? result : this.buildEmptyContextMenuSections();
+        if (!result.length) return this.buildEmptyContextMenuSections();
+        this._markDefaultVerb(result);
+        return result;
+    }
+
+    /**
+     * Vista draws a shell item's default verb - what a double-click does - in bold (SetMenuDefaultItem: a folder's and
+     * a document's Open, the VM's Explorer #973): the first list's Open-type row, when it has one.
+     */
+    _markDefaultVerb(sections) {
+        const list = sections.find((s) => s && s.type === 'list' && Array.isArray(s.items));
+        if (!list) return;
+        const verb = list.items.find((i) => i && !i.separator
+            && (/^explorer-(open|navigate)$/.test(i.action || '') || /^(Open|Play|Preview|Edit|Install|Run|Explore)$/.test(i.text || '')));
+        if (verb && !/\bcontext-menu-item-default\b/.test(verb.className || '')) {
+            verb.className = `${verb.className || ''} context-menu-item-default`.trim();
+        }
     }
 
     _getExplorerMoveWorkspaceOptions() {

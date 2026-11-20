@@ -91,10 +91,16 @@ body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.con
 
 /* an accelerator (contextMenu.js data-accel: "Alt+F4") sits at the row's right in the menu's text, as on the VM's
    window menu, not under the label */
-body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.context-menu-win32) .context-menu-item-text-container:has(> .context-menu-item-subtext[data-accel]) {
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.context-menu-win32) .context-menu-item > .context-menu-item-text-container:has(> .context-menu-item-subtext[data-accel]) {
     flex-direction: row;
     align-items: baseline;
     gap: 34px;
+    /* the accelerator column ends 23 px from the border (the VM's window menu) */
+    margin-right: 8px;
+}
+
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.context-menu-win32) .context-menu-item-text-container:has(> .context-menu-item-subtext[data-accel]) > .context-menu-item-text {
+    min-width: var(--w32-text, 0);
 }
 
 body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.context-menu-win32) .context-menu-item-subtext[data-accel] {
@@ -776,4 +782,57 @@ body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus] .n
    every Win32 menu bar of a light client, whether it takes the skin above or draws its own band */
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"]:not(.active-window) .naxt-menubar[role="menubar"], .modal:not(.active-window) .naxt-menubar[data-win32-menus]) .naxt-menu-title:not(#_):not(#__) {
     color: #6d6d6d;
+}
+
+/* ---------- the window menu (modalUtils.js buildVistaWindowMenuItems) ----------
+   Vista's 8 px Restore / Minimize / Maximize / Close marks, cut from the VM's Notepad window menu, 9 px into the row
+   and 7 px down, greyed on a disabled row; Move and Size have none. The pointer while Move / Size track the arrow keys
+   (modalUtils.js startWindowKeyboardTrack) is the move / size arrows. */
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item > i.vista-sysmenu-glyph {
+    height: 16px;
+    background: no-repeat 12px 5px / 8px 8px;
+    color: transparent;
+    font-size: 0;
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item > i.vista-sysmenu-restore {
+    background-image: image-set(url('/static_images/vista-controls/sysmenu-restore.png') 1x, url('/static_images/hidpi/125/vista-controls/sysmenu-restore.png') 1.25x, url('/static_images/hidpi/150/vista-controls/sysmenu-restore.png') 1.5x, url('/static_images/hidpi/175/vista-controls/sysmenu-restore.png') 1.75x, url('/static_images/hidpi/200/vista-controls/sysmenu-restore.png') 2x);
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item.disabled > i.vista-sysmenu-restore {
+    background-image: image-set(url('/static_images/vista-controls/sysmenu-restore-disabled.png') 1x, url('/static_images/hidpi/125/vista-controls/sysmenu-restore-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-controls/sysmenu-restore-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-controls/sysmenu-restore-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-controls/sysmenu-restore-disabled.png') 2x);
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item > i.vista-sysmenu-minimize {
+    background-image: image-set(url('/static_images/vista-controls/sysmenu-minimize.png') 1x, url('/static_images/hidpi/125/vista-controls/sysmenu-minimize.png') 1.25x, url('/static_images/hidpi/150/vista-controls/sysmenu-minimize.png') 1.5x, url('/static_images/hidpi/175/vista-controls/sysmenu-minimize.png') 1.75x, url('/static_images/hidpi/200/vista-controls/sysmenu-minimize.png') 2x);
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item.disabled > i.vista-sysmenu-minimize {
+    background-image: image-set(url('/static_images/vista-controls/sysmenu-minimize-disabled.png') 1x, url('/static_images/hidpi/125/vista-controls/sysmenu-minimize-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-controls/sysmenu-minimize-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-controls/sysmenu-minimize-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-controls/sysmenu-minimize-disabled.png') 2x);
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item > i.vista-sysmenu-maximize {
+    background-image: image-set(url('/static_images/vista-controls/sysmenu-maximize.png') 1x, url('/static_images/hidpi/125/vista-controls/sysmenu-maximize.png') 1.25x, url('/static_images/hidpi/150/vista-controls/sysmenu-maximize.png') 1.5x, url('/static_images/hidpi/175/vista-controls/sysmenu-maximize.png') 1.75x, url('/static_images/hidpi/200/vista-controls/sysmenu-maximize.png') 2x);
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item.disabled > i.vista-sysmenu-maximize {
+    background-image: image-set(url('/static_images/vista-controls/sysmenu-maximize-disabled.png') 1x, url('/static_images/hidpi/125/vista-controls/sysmenu-maximize-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-controls/sysmenu-maximize-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-controls/sysmenu-maximize-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-controls/sysmenu-maximize-disabled.png') 2x);
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item > i.vista-sysmenu-close {
+    background-image: image-set(url('/static_images/vista-controls/sysmenu-close.png') 1x, url('/static_images/hidpi/125/vista-controls/sysmenu-close.png') 1.25x, url('/static_images/hidpi/150/vista-controls/sysmenu-close.png') 1.5x, url('/static_images/hidpi/175/vista-controls/sysmenu-close.png') 1.75x, url('/static_images/hidpi/200/vista-controls/sysmenu-close.png') 2x);
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item.disabled > i.vista-sysmenu-close {
+    background-image: image-set(url('/static_images/vista-controls/sysmenu-close-disabled.png') 1x, url('/static_images/hidpi/125/vista-controls/sysmenu-close-disabled.png') 1.25x, url('/static_images/hidpi/150/vista-controls/sysmenu-close-disabled.png') 1.5x, url('/static_images/hidpi/175/vista-controls/sysmenu-close-disabled.png') 1.75x, url('/static_images/hidpi/200/vista-controls/sysmenu-close-disabled.png') 2x);
+}
+
+html.window-kbd-move,
+html.window-kbd-move * {
+    cursor: var(--c-move, move) !important;
+}
+
+html.window-kbd-size,
+html.window-kbd-size * {
+    cursor: var(--c-move, move) !important;
 }
