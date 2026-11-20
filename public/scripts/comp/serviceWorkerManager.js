@@ -1127,7 +1127,7 @@ class ServiceWorkerManager {
             const timer = setTimeout(() => finish(null), timeoutMs);
             try {
                 navigator.serviceWorker.addEventListener('message', onMsg);
-                worker.postMessage({ type: 'SHELL_COMMIT', requestId, refresh: opts.refresh === true });
+                worker.postMessage({ type: 'SHELL_COMMIT', requestId, refresh: opts.refresh === true, fetchMs: Number(opts.fetchMs) || undefined });
             } catch (_) { finish(null); }
         });
     }
@@ -1223,7 +1223,8 @@ class ServiceWorkerManager {
     availableUpdateCount() {
         // a Continuity DeX window shows the phone's count (melatonContinuity mirrorUpdateState): the phone's updater
         // counts, downloads and installs for both
-        if (this._isContinuityDexWindow()) return Number(this._mirroredAvailable) || 0;
+        // + what it counted itself while the phone page did not answer (#951)
+        if (this._isContinuityDexWindow()) return Math.max(Number(this._mirroredAvailable) || 0, Array.isArray(this.availableUpdates) && this.availableUpdates.length ? this.availableUpdateGroups().length : 0);
         return Array.isArray(this.availableUpdates) && this.availableUpdates.length ? this.availableUpdateGroups().length : 0;
     }
 
@@ -1254,8 +1255,14 @@ class ServiceWorkerManager {
     async installAvailableUpdates() {
         if (this._isContinuityDexWindow()) {
             const mc = window.melatonContinuity;
-            if (mc && typeof mc.phoneInstallUpdates === 'function') mc.phoneInstallUpdates();
-            return null;
+            const own = Array.isArray(this.availableUpdates) && this.availableUpdates.length > 0;
+            // the phone installs for both while its page answers; asleep (the inner screen off), this window installs
+            // what it counted itself (#951)
+            if (!own) {
+                if (mc && typeof mc.phoneInstallUpdates === 'function') mc.phoneInstallUpdates();
+                return null;
+            }
+            if (mc && typeof mc.phoneTakesInstall === 'function' && await mc.phoneTakesInstall()) return null;
         }
         const list = Array.isArray(this.availableUpdates) ? this.availableUpdates.slice() : [];
         // Try again after "Some updates were not installed" (#951): a fresh set of tries
@@ -2365,10 +2372,17 @@ class ServiceWorkerManager {
         // Continuity (#900, Yukimi Nov 17): the bonded desktop's Melaton Update is an interface to the
         // phone's updater (the phone / CaféReady service downloads and installs): Check for updates asks
         // the phone, whose update state comes back as it changes (melatonContinuity 'update-state')
+        // The phone page asleep (the Fold's inner screen off freezes its WebView): this window checks and counts itself
+        // (#951) - same origin, same worker and cache - instead of reporting the phone's 0 and staying on old files
         if (this._isContinuityDexWindow()) {
             const mc = window.melatonContinuity;
-            if (mc && typeof mc.phoneCheckForUpdates === 'function') return mc.phoneCheckForUpdates(noToast);
-            return;
+            const awake = !!(mc && typeof mc.phoneAwake === 'function' ? await mc.phoneAwake() : mc);
+            if (awake && mc && typeof mc.phoneCheckForUpdates === 'function') {
+                this._dexOwnUpdates = false;
+                return mc.phoneCheckForUpdates(noToast);
+            }
+            if (!this._dexOwnUpdates) console.log('[update] the phone page does not answer: this DeX window checks for updates itself');
+            this._dexOwnUpdates = true;
         }
         if (!window.isLoginPage && this._isBeforeDesktop()) {
             await this._holdCacheUpdateUntilDesktop(null, noToast);
@@ -5256,7 +5270,8 @@ class ServiceWorkerManager {
         const plan = { updates: [], manifest: null, hash: '', installer: false, firmware: [] };
         this._shutdownPlan = (async () => {
             // the phone's updater owns the shared cache (Continuity); agent tabs have no worker
-            if (this.agentSession || this._isContinuityDexWindow()) return plan;
+            // (a DeX window whose phone page did not answer installs its own count, #951)
+            if (this.agentSession || (this._isContinuityDexWindow() && !this._dexOwnUpdates)) return plan;
             // the machine's own firmware updates, staged by its system agent (DreamOS): installed after Melaton's
             plan.firmware = this._firmwareWaiting().slice();
             (this._updateBatches || []).forEach((batch) => plan.updates.push({ files: batch.files.slice(), downloaded: true, batch }));
@@ -6036,6 +6051,9 @@ class ServiceWorkerManager {
                 this._clearLegacyInstallWizardSession();
                 document.body.classList.remove('initializing');
                 this._resolveBootComplete();
+                // once, after the start: the phone's state, or this window's own check when the phone page is asleep
+                // (#951: a DeX window started on old boot scripts and stayed on them while the inner screen was off)
+                setTimeout(() => { void this.checkStaticFileUpdates(true).catch(() => {}); }, 15000);
                 return null;
             }
 
@@ -6260,4 +6278,22 @@ class ServiceWorkerManager {
 }
 
 // Create global instance
+// The update page's hook (cplUpdate, Settings > System on the phone): states and balloons go to it only while it is on
+// screen. A page that went without unregistering (closed from the taskbar, its window restarted) took every later
+// balloon silently; a hook with isAlive() that answers false is dropped here on first use (#951)
+Object.defineProperty(ServiceWorkerManager.prototype, 'foregroundUpdateView', {
+    configurable: true,
+    get() {
+        const fn = this.__foregroundUpdateView;
+        if (typeof fn !== 'function') return null;
+        if (typeof fn.isAlive === 'function') {
+            let alive = false;
+            try { alive = !!fn.isAlive(); } catch (_) { alive = false; }
+            if (!alive) { this.__foregroundUpdateView = null; return null; }
+        }
+        return fn;
+    },
+    set(fn) { this.__foregroundUpdateView = typeof fn === 'function' ? fn : null; }
+});
+
 window.serviceWorkerManager = new ServiceWorkerManager();

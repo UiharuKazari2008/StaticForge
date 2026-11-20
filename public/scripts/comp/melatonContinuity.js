@@ -469,8 +469,10 @@
     api.on('update-state', (m) => mirrorUpdateState(m.state));
     // the DeX window's Install updates (#951): the phone downloads and installs what it counted
     api.phoneInstallUpdates = () => (isDw() && api.peers().includes('phone') ? api.post({ type: 'update-install' }) : false);
-    api.on('update-install', () => {
+    api.on('update-install', (m) => {
         if (!isPhone()) return;
+        // the DeX window waits for this to know the phone took it (an asleep phone page answers nothing, #951)
+        if (m && m.rid) answer(m, { ok: true });
         watchUpdateState();
         const sw = root.serviceWorkerManager;
         if (sw && typeof sw.installAvailableUpdates === 'function') void sw.installAvailableUpdates();
@@ -482,6 +484,19 @@
         mirrorUpdateState(state);
         return state;
     };
+    /**
+     * The DeX window: does the phone page answer now? With the Fold's inner screen off its WebView is frozen and asks
+     * go unanswered; the DeX window's updater then works on its own (same origin, same worker and cache) instead of
+     * waiting behind it (installed-boot-zero-wait / cafeready-background, #951). The answer is mirrored on the way.
+     */
+    api.phoneAwake = async (ms = 2500) => {
+        if (!isDw() || !api.peers().includes('phone')) return false;
+        const state = await api.ask('update-state?', {}, ms);
+        if (state) mirrorUpdateState(state);
+        return !!state;
+    };
+    /** The DeX window's Install updates when the phone may be asleep: true once the phone took it. */
+    api.phoneTakesInstall = async (ms = 2500) => (isDw() && api.peers().includes('phone') ? !!(await api.ask('update-install', {}, ms)) : false);
     /** The DeX window, once the bond is up: the phone's update state now (then each change follows). */
     api.syncUpdateState = async () => {
         if (!isDw() || !api.peers().includes('phone')) return;

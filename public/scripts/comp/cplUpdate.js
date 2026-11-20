@@ -119,8 +119,8 @@
         if (manager.servicePack && manager.servicePack.label) return { state: 'upgrade', message: manager.servicePack.label };
         if (manager.pendingApplyFiles && manager.pendingApplyFiles.length) return { state: 'ready' };
         if (manager.hasPendingUpdates && manager.hasPendingUpdates()) return { state: 'restart' };
-        // files that still did not download after the background tries (#951): wucltux's red "Some updates were not
-        // installed", once, here only (never a notification); Try again downloads them now
+        // files that still did not download after the worker's tries and the page's background rounds (#951): wucltux's
+        // red "Some updates were not installed", on this page only (never a notification); Try again downloads them now
         if (manager.updateInstallFailure && manager.updateInstallFailure.count > 0) return { state: 'notinstalled', message: String(manager.updateInstallFailure.count) };
         // counted, not downloaded (#951, Check for updates but let me choose)
         const n = typeof manager.availableUpdateCount === 'function' ? manager.availableUpdateCount() : 0;
@@ -376,10 +376,15 @@
         if (fw()) fw().onChange(() => paint(), fwWatch ? fwWatch.signal : null);
         const manager = sw();
         if (manager) {
-            manager.foregroundUpdateView = (state, info) => {
+            const own = (state, info) => {
                 view = { state: classify(state, info && info.message), message: info && info.message, progress: info && info.progress, filesTotal: info && info.filesTotal };
                 paint();
             };
+            // the page closed any way but Control Panel's own close (the taskbar, the window restarted, another page):
+            // the manager drops the hook instead of routing every later state and balloon to it (serviceWorkerManager
+            // foregroundUpdateView getter, #951)
+            own.isAlive = () => !!(main === el && el.isConnected && !el.closest('[hidden], .hidden'));
+            manager.foregroundUpdateView = own;
         }
         view = { ...{ message: '', progress: 0, filesTotal: 0 }, ...(pendingView || initialState()) };
         pendingView = null;

@@ -647,7 +647,9 @@ function forgetDirectorReopen() {
                 await Promise.race([m.attachToDownloadProgress({ stallMs: 20000 }), winlogonDelay(60000)]);
             }
         } catch (_) { /* the commit below keeps the old shell if files are missing */ }
-        await m.commitShellAndWait({ refresh: true, timeoutMs: 2500 });
+        // the server's newest /app (~550 KB) over a phone's link: up to 8 s per fetch, two at most (#951)
+        const r = await m.commitShellAndWait({ refresh: true, fetchMs: 8000, timeoutMs: 18000 });
+        if (!r || !r.app) console.warn('[update] the restart keeps the previous /app: the new one is not complete in the cache', r);
     }
 
     window.winlogonUpdates = {

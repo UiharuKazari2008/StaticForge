@@ -1741,6 +1741,8 @@ async function promoteShell(key) {
  * code) and then asked for a second restart. Bounded; offline or slow, the candidates already held are used.
  */
 async function refreshShellCandidates(ms = 1500) {
+  // ms: the restart's commit gives it longer (8 s): /app is ~550 KB, and over the phone's link 1.5 s cut it off, so
+  // the restart kept the stale candidate and booted the old /app (the Fold, Nov 20: installed, still old code, #951)
   const one = async (key, mark) => {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), ms);
@@ -1756,10 +1758,17 @@ async function refreshShellCandidates(ms = 1500) {
 }
 
 /** SHELL_COMMIT from a page: the cache is in sync, so the candidates' files are here now. */
-async function commitShells(refresh = false) {
-  const fresh = refresh ? await refreshShellCandidates().catch(() => ({})) : {};
-  const app = (await promoteShell(APP_SHELL_KEY).catch(() => false)) || fresh.app === true;
-  const launch = (await promoteShell(LAUNCH_SHELL_KEY).catch(() => false)) || fresh.launch === true;
+async function commitShells(refresh = false, ms = 1500) {
+  let fresh = refresh ? await refreshShellCandidates(ms).catch(() => ({})) : {};
+  let app = (await promoteShell(APP_SHELL_KEY).catch(() => false)) || fresh.app === true;
+  let launch = (await promoteShell(LAUNCH_SHELL_KEY).catch(() => false)) || fresh.launch === true;
+  // a candidate older than the cache (the tree changed while the update installed: the page names a hash the cache
+  // has since replaced) never becomes complete; the server's page is asked once more, which names what the cache holds
+  if (refresh && (!app || !launch)) {
+    fresh = await refreshShellCandidates(ms).catch(() => ({}));
+    app = app || fresh.app === true || (await promoteShell(APP_SHELL_KEY).catch(() => false));
+    launch = launch || fresh.launch === true || (await promoteShell(LAUNCH_SHELL_KEY).catch(() => false));
+  }
   return { app, launch };
 }
 
@@ -2308,7 +2317,7 @@ self.addEventListener('message', (event) => {
     } else if (event.data && event.data.type === 'SHELL_COMMIT') {
         // the page proved the cache in sync: the held shells switch with their files (#924)
         const source = event.source;
-        event.waitUntil(commitShells(event.data.refresh === true).then((result) => {
+        event.waitUntil(commitShells(event.data.refresh === true, Math.min(10000, Number(event.data.fetchMs) || 1500)).then((result) => {
             if (source && event.data.requestId) source.postMessage({ type: 'SHELL_COMMITTED', requestId: event.data.requestId, app: result.app, launch: result.launch });
         }));
     } else if (event.data && event.data.type === 'GET_DOWNLOAD_STATE') {

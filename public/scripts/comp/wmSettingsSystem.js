@@ -2011,6 +2011,8 @@
             if (d.watch && !d.watch.seen()) { d.viewStale = true; return; }
             if (d.rerender) d.rerender();
         };
+        // dropped by the manager once the page is gone (serviceWorkerManager foregroundUpdateView getter, #951)
+        view.isAlive = () => el.isConnected && !el.closest('[hidden]');
         m.foregroundUpdateView = view;
         if (d.watch) d.watch.end();
         let timer = 0;
