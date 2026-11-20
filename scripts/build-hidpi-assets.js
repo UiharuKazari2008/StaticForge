@@ -13,14 +13,25 @@
  * only its own tier: the four folders are the asset packages hidpi-125 ... hidpi-200
  * (public/scripts/launch/assetPackages.js), picked from devicePixelRatio.
  *
+ * What Vista itself draws at 120 / 144 / 192 DPI is the reference (#986, checked on a Vista clone at 120 DPI):
+ * theme art is never upscaled - aero.msstyles carries per-DPI images and uxtheme picks one by MINDPI and
+ * draws it at its own size - and an icon slot takes the icon's next larger frame, reduced (a 16 px icon at
+ * 120 DPI is its 32 px drawing at 20 px). Upscaling the 1x art is the last resort, not the rule.
+ *
  * Where each variant comes from, best first (the "m" field of index.json):
- *   vista       Vista's own art at that density: aero.msstyles' 120 / 192 DPI images (VISTA_ORIGINALS)
- *               or the frame of that exact size in the Vista icon group the 1x icon was cut from (found
- *               by matching its pixels against the icon groups of Vista's DLLs, --index-vista)
+ *   vista       Vista's own art at that density: for theme art (the 1x is one of aero.msstyles' per-DPI
+ *               images, or one state cell of it, matched by pixels) the image Vista picks at the tier's DPI
+ *               (largest MINDPI <= DPI), centred at its own size in the tier's cell ('vista-true': the 96 DPI
+ *               image itself, as the tree's +/- at 120 DPI; 'vista-stretch': TRUESIZESCALINGTYPE DPI past its
+ *               TRUESIZESTRETCHMARK, stretched by DPI / MINDPI as uxtheme does); for icons the frame of that
+ *               exact size in the Vista icon group the 1x was cut from (found by matching its pixels against
+ *               the icon groups of Vista's DLLs, --index-vista; a 1x captured from the screen is matched over
+ *               the colour behind it, up to 1 px off, and its copies are drawn over the same colour)
  *   vista-down  an exact Hermite downscale of a larger Vista frame (how Vista itself draws a 20 px icon
  *               at 120 DPI from the 32 px frame; explorer-tree note: Hermite matches the VM to 0.5 %)
- *   sibling     a larger copy of the same art already in the tree (foo-32.png for foo-16.png, foo@2x.png),
- *               used as it is when it has the target size, else Hermite-downscaled
+ *   sibling     a larger copy of the same art already in the tree (foo-32.png for foo-16.png, foo@2x.png;
+ *               icon sizes only - a trailing resource id is not a size - and only when its shape is the
+ *               1x's), used as it is when it has the target size, else Hermite-downscaled
  *   slice9      nine-slice (border-image) art: each of the nine pieces is scaled on its own, so the slice
  *               geometry stays exact at every tier (slices from the CSS that uses it)
  *   pixel       hard-edged art (few colours, alpha only 0 / 255: glyphs, cursors' masks, 1-bit art):
@@ -85,13 +96,97 @@ const MAX_AREA = 600000; // bigger art is shown scaled down already (logos, mark
 const MAX_SIDE = 256; // art at least this big both ways (256 px icon frames, logos): Vista has nothing larger
 // and an upscale adds bytes, not sharpness
 
-// Vista's own art at other densities. aero.msstyles (PREMULTIPLIED) holds 96 / 120 / 192 DPI copies of a
-// few parts; the cells are re-gridded to round(cell x scale) so CSS background positions keep stepping.
+// Vista's own art at other densities (#986). aero.msstyles (PREMULTIPLIED) gives 69 parts two to four images,
+// each with a MINDPI: uxtheme draws the image with the largest MINDPI <= the screen's DPI at its own size
+// (check box 13 / 16 / 25 px at 96 / 118 / 185, Start orb 96 / 120 / 144 / 192, tree +/- 96 / 133 / 150 - so
+// at 120 DPI the tree keeps its 96 DPI glyph) and never stretches it to the DPI. Every 1x asset cut from one
+// of those images (the whole strip or one state cell) is matched by its pixels; its tier copy is the image
+// Vista picks at the tier's DPI, each cell centred in round(cell x scale) (true size, as Vista draws it), and
+// reduced only where Vista's own image is larger than that cell (Vista grows the control instead).
 const AERO = path.join(os.homedir(), '.cache/vista-vm/aero');
-const VISTA_ORIGINALS = {
-    'vista-controls/checkbox.png': { cell: [13, 13], frames: { 120: 'IMAGE_509.png', 192: 'IMAGE_510.png' } },
-    'vista-controls/radio.png': { cell: [13, 13], frames: { 120: 'IMAGE_517.png', 192: 'IMAGE_518.png' } }
-};
+const TMT_IMAGEFILE1 = 3002; // ..3006 = IMAGEFILE1..5
+const TMT_MINDPI1 = 2420; // ..2424 = MINDPI1..5
+const TMT_IMAGECOUNT = 2401;
+const TMT_TRUESIZESTRETCHMARK = 2419; // % past the image's own size at which a true-size image stretches
+const TMT_TRUESIZESCALINGTYPE = 4015; // 2 = TSST_DPI: stretched by screen DPI / the image's MINDPI
+
+// the parts of aero.msstyles' Normal variant that carry per-DPI images: [{ cls, part, state, count, images: [{ id, dpi }] }]
+function msstylesDpiParts() {
+    const cmap = path.join(AERO, 'CMAP_CMAP.bin'); const variant = path.join(AERO, 'VARIANT_NORMAL.bin');
+    if (!fs.existsSync(cmap) || !fs.existsSync(variant)) return [];
+    // class names are UTF-16, each padded with NULs to 8 bytes; a record's class is the index among the names
+    const classes = fs.readFileSync(cmap).toString('utf16le').split('\0').filter(Boolean);
+    const v = fs.readFileSync(variant);
+    const parts = new Map();
+    for (let o = 0; o + 32 <= v.length;) {
+        const [name, , cls, part, state, short, , size] = Array.from({ length: 8 }, (_, i) => v.readInt32LE(o + i * 4));
+        o += 32;
+        let value = short;
+        if (size && !short) { value = size >= 4 ? v.readInt32LE(o) : 0; o = (o + size + 7) & ~7; }
+        const key = `${cls}|${part}|${state}`;
+        if (!parts.has(key)) parts.set(key, { cls: classes[cls] || String(cls), part, state, props: new Map() });
+        parts.get(key).props.set(name, value);
+    }
+    const out = [];
+    for (const p of parts.values()) {
+        const images = [];
+        for (let i = 0; i < 5; i++) {
+            const id = p.props.get(TMT_IMAGEFILE1 + i); const dpi = p.props.get(TMT_MINDPI1 + i);
+            if (id && dpi) images.push({ id, dpi, file: `IMAGE_${id}.png` });
+        }
+        if (images.length < 2 || !images.every((im) => fs.existsSync(path.join(AERO, im.file)))) continue;
+        out.push({ cls: p.cls, part: p.part, state: p.state, count: p.props.get(TMT_IMAGECOUNT) || 1, tsst: p.props.get(TMT_TRUESIZESCALINGTYPE) || 0, stretchMark: p.props.has(TMT_TRUESIZESTRETCHMARK) ? p.props.get(TMT_TRUESIZESTRETCHMARK) : null, images: images.sort((a, b) => a.dpi - b.dpi) });
+    }
+    return out;
+}
+
+// the image Vista draws at a DPI: the largest MINDPI at or below it (the 96 DPI image below the first)
+function vistaImageAt(images, dpi) {
+    let pick = images[0];
+    for (const im of images) if (im.dpi <= dpi) pick = im;
+    return pick;
+}
+
+const unpremultipliedCache = new Map();
+async function aeroPixels(file) {
+    if (!unpremultipliedCache.has(file)) {
+        unpremultipliedCache.set(file, (async () => {
+            const px = await rgba(path.join(AERO, file));
+            for (let i = 0; i < px.data.length; i += 4) {
+                const a = px.data[i + 3];
+                for (let c = 0; c < 3; c++) px.data[i + c] = a === 0 ? 0 : Math.min(255, Math.round(px.data[i + c] * 255 / a));
+            }
+            return px;
+        })());
+    }
+    return unpremultipliedCache.get(file);
+}
+
+// a 1x asset that is one of those images (whole strip) or one cell of it, matched by pixels
+let themeParts = null;
+async function matchTheme(rel, m) {
+    if (!themeParts) themeParts = msstylesDpiParts();
+    const px = await rgba(path.join(SI, rel));
+    const seen = new Set();
+    for (const p of themeParts) {
+        const base = p.images[0];
+        if (seen.has(base.id)) continue;
+        seen.add(base.id);
+        const img = await aeroPixels(base.file);
+        if (img.w !== m.w || img.h % m.h) continue;
+        const cells = img.h / m.h;
+        for (let i = 0; i < cells; i++) {
+            const cell = { data: img.data.subarray(i * m.h * img.w * 4, (i + 1) * m.h * img.w * 4) };
+            if (diff(px.data, cell.data) < 2) {
+                // a whole strip steps by the part's own state count; a cut cell is one cell of `cells`
+                const whole = cells === 1;
+                const n = whole ? (m.h % Math.max(1, p.count) ? 1 : Math.max(1, p.count)) : cells;
+                return { part: `${p.cls}:${p.part}:${p.state}`, tsst: p.tsst, stretchMark: p.stretchMark, images: p.images.map(({ id, dpi, file }) => ({ id, dpi, file })), cells: n, index: whole ? null : i, cell: [m.w, whole ? m.h / n : m.h] };
+            }
+        }
+    }
+    return null;
+}
 
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
@@ -278,18 +373,59 @@ function diff(a, b) {
     return sum / (a.length);
 }
 
+// a 1x icon captured from the screen is opaque: the frame drawn over the colour behind it (the colour of the
+// capture where the frame is clear), sometimes cut a pixel off centre (fav-documents). Compared over the
+// frame's own pixels at shifts of up to 1 px; null when the frame has no clear pixel.
+function diffMatted(cap, frame, size) {
+    let best = null;
+    for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+            // the frame's pixel under capture pixel (x, y), clear outside the frame
+            const at = (x, y) => { const fx = x - dx; const fy = y - dy; return fx < 0 || fy < 0 || fx >= size || fy >= size ? -1 : (fy * size + fx) * 4; };
+            let r = 0; let g = 0; let b = 0; let n = 0;
+            for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+                const f = at(x, y); const i = (y * size + x) * 4;
+                if (f < 0 || frame[f + 3] === 0) { r += cap[i]; g += cap[i + 1]; b += cap[i + 2]; n++; }
+            }
+            if (n < 4) continue;
+            const matte = [r / n, g / n, b / n];
+            let sum = 0; let m = 0;
+            for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+                const f = at(x, y); const i = (y * size + x) * 4;
+                const a = f < 0 ? 0 : frame[f + 3] / 255;
+                if (!a) continue;
+                for (let c = 0; c < 3; c++) sum += Math.abs(cap[i + c] - (frame[f + c] * a + matte[c] * (1 - a)));
+                m += 3;
+            }
+            if (m && (!best || sum / m < best.d)) best = { d: sum / m, matte: matte.map(Math.round) };
+        }
+    }
+    return best;
+}
+
 async function matchVista(px) {
     if (px.w !== px.h || px.w > 64) return null;
+    let opaque = true;
+    for (let i = 3; i < px.data.length; i += 4) if (px.data[i] !== 255) { opaque = false; break; }
     let best = null;
     for (const c of await vistaFrames(px.w)) {
-        const d = diff(px.data, c.px.data);
-        if (!best || d < best.d) best = { d, g: c.g };
-        if (d === 0) break;
+        if (opaque) {
+            const r = diffMatted(px.data, c.px.data, px.w);
+            if (r && (!best || r.d < best.d)) best = { d: r.d, g: c.g, matte: r.matte };
+        } else {
+            const d = diff(px.data, c.px.data);
+            if (!best || d < best.d) best = { d, g: c.g };
+            if (d === 0) break;
+        }
     }
-    // an icon extracted at its own size is the frame; a little drift (a rescaled /icon export) still counts
-    if (process.env.HIDPI_DEBUG && best) console.error(`match ${px.w} d=${best.d.toFixed(2)} ${best.g.file}#${best.g.gid}`);
-    return best && best.d < 1.5 ? best : null;
+    // an icon extracted at its own size is the frame; a little drift (a rescaled /icon export) still counts.
+    // A screen capture also carries the matte's rounding and ClearType-free edge blending: 3 levels per channel.
+    if (process.env.HIDPI_DEBUG && best) console.error(`match ${px.w} d=${best.d.toFixed(2)} ${best.g.file}#${best.g.gid}${best.matte ? ' matted' : ''}`);
+    return best && best.d < (best.matte ? 3 : 1.5) ? best : null;
 }
+
+// the frame sizes icons come in (a file name's trailing number is only a size when it is one of these)
+const ICON_SIZES = new Set([10, 12, 13, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 42, 44, 48, 52, 56, 60, 64, 72, 80, 96, 128, 192, 256]);
 
 // ---------------------------------------------------------------- siblings in the tree
 function siblings(rel, m) {
@@ -305,15 +441,17 @@ function siblings(rel, m) {
         if (fs.existsSync(p)) out.push({ rel: path.join(dir, `${stem}${suf}${ext}`), k });
     }
     // foo-16.png -> foo-32.png, foo-48.png ... (same art at a larger size: a whole multiple of the
-    // dimensions, so atlases of icons qualify too)
+    // dimensions, so atlases of icons qualify too). Only icon sizes on both sides and a real step up: a
+    // trailing number is as often a resource id (inetcpl-4483 / inetcpl-4498 are the magnifier and the RSS
+    // feed icon, "1.0033x" apart by name), which made 33 tier copies the wrong icon (#986).
     const mm = /^(.*?[-_])(\d+)(\.[a-z]+)$/i.exec(base);
-    if (mm) {
+    if (mm && ICON_SIZES.has(Number(mm[2]))) {
         const n = Number(mm[2]);
         let names = [];
         try { names = fs.readdirSync(abs); } catch (_) { names = []; }
         for (const name of names) {
             const s = new RegExp(`^${mm[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)\\.(?:png|webp)$`, 'i').exec(name);
-            if (!s || Number(s[1]) <= n) continue;
+            if (!s || !ICON_SIZES.has(Number(s[1])) || Number(s[1]) < n * 1.25) continue;
             out.push({ rel: path.join(dir, name), k: Number(s[1]) / n });
         }
     }
@@ -325,6 +463,27 @@ function siblings(rel, m) {
     }).sort((a, b) => a.k - b.k);
 }
 
+// a larger copy only counts when it is the same art: brought down to the 1x size, its shape (alpha above
+// half) must cover the 1x's to 40 % or more (contact-48 is the card drawn small on a larger canvas,
+// remote-access-48 another picture; 16 vs 32 redraws of one icon stay well above it)
+async function sameShape(px, sib) {
+    let clear = 0;
+    for (let i = 3; i < px.data.length; i += 4) if (px.data[i] < 128) clear++;
+    if (!sib.length || clear < px.data.length / 4 * 0.05) return sib; // an opaque 1x: nothing to compare
+    const out = [];
+    for (const s of sib) {
+        const { data } = await sharp(path.join(SI, s.rel)).ensureAlpha().resize(px.w, px.h, { kernel: 'cubic', fit: 'fill' }).raw().toBuffer({ resolveWithObject: true });
+        let both = 0; let either = 0;
+        for (let i = 3; i < data.length; i += 4) {
+            const a = px.data[i] >= 128; const b = data[i] >= 128;
+            if (a && b) both++;
+            if (a || b) either++;
+        }
+        if (!either || both / either >= 0.4) out.push(s);
+    }
+    return out;
+}
+
 // ---------------------------------------------------------------- planning
 async function planOne(rel, slices) {
     const m = await meta(rel);
@@ -333,20 +492,26 @@ async function planOne(rel, slices) {
     const plan = { rel, w: m.w, h: m.h, format: m.format, sources: [] };
     const ext = path.extname(rel).toLowerCase();
     plan.outExt = ext === '.gif' || ext === '.bmp' ? '.png' : ext;
-    if (VISTA_ORIGINALS[rel]) { plan.method = 'vista'; plan.vo = VISTA_ORIGINALS[rel]; return plan; }
+    // best first: Vista's own image for that DPI, the icon's own larger frames, a larger copy in the tree
+    const vo = await matchTheme(rel, m);
+    if (vo) { plan.method = 'vista'; plan.vo = vo; return plan; }
     const sl = slices.get(rel);
     if (sl) plan.slices = sl;
-    const sib = siblings(rel, m);
-    if (sib.length) { plan.method = 'sibling'; plan.sib = sib; return plan; }
     const px = await rgba(path.join(SI, rel));
     const a = analyse(px);
     if (!sl) {
         const v = await matchVista(px);
         if (v) {
             const sizes = Object.keys(v.g.frames).map(Number).filter((s) => s > m.w);
-            if (sizes.length) { plan.method = 'vista'; plan.icon = v.g; plan.iconDiff = v.d; return plan; }
+            if (sizes.length) {
+                plan.method = 'vista'; plan.icon = v.g; plan.iconDiff = v.d;
+                if (v.matte) plan.matte = v.matte;
+                return plan;
+            }
         }
     }
+    const sib = await sameShape(px, siblings(rel, m));
+    if (sib.length) { plan.method = 'sibling'; plan.sib = sib; return plan; }
     if (a.softAlpha === 0 && a.colours <= 64) plan.method = 'pixel';
     else if (!sl && m.w >= 96 && m.h >= 96 && a.opaque > 0.97 && a.colours > 4000) plan.method = 'ai';
     else plan.method = 'soft';
@@ -464,20 +629,30 @@ async function buildOne(p) {
             const out = path.join(dir, `${t.id}${p.outExt}`);
             let used = record.m;
             if (p.vo) {
-                // Vista's 120 DPI copy at 1.25, its 192 DPI copy at 2x (cells padded), downscaled between
-                const want = t.s;
-                const k = want <= 1.25 ? 120 : 192;
-                const f = await unpremultiplied(path.join(AERO, p.vo.frames[k]), tmp);
+                // the image Vista draws at this tier's DPI, each cell at its own size centred in the tier's cell
+                // ('vista-true': the 96 DPI image itself, as Vista keeps it below the part's next MINDPI);
+                // reduced only where Vista's image is larger than the cell
+                const dpi = Math.round(96 * t.s);
+                const im = vistaImageAt(p.vo.images, dpi);
+                const f = await unpremultiplied(path.join(AERO, im.file), tmp);
                 const fm = await sharp(f).metadata();
-                const n = p.h / p.vo.cell[1];
-                const scw = fm.width; const sch = fm.height / n;
-                const cw = w; const ch = h / n;
+                const scw = fm.width; const sch = Math.round(fm.height / p.vo.cells);
+                // TSST_DPI with a stretch mark: past that share over the image's own DPI Vista stretches it by
+                // the DPI ratio (the nav buttons' 120 DPI art at 192 DPI: x1.6); below it, true size
+                const ratio = dpi / im.dpi;
+                const stretch = p.vo.tsst === 2 && p.vo.stretchMark != null && ratio >= 1 + p.vo.stretchMark / 100;
+                const take = p.vo.index == null ? Array.from({ length: p.vo.cells }, (_, i) => i) : [p.vo.index];
+                const cw = w; const ch = h / take.length;
                 const cells = [];
-                for (let i = 0; i < n; i++) {
+                used = im.dpi === 96 ? 'vista-true' : 'vista';
+                for (const i of take) {
                     const c = path.join(tmp, `c${i}.png`);
-                    if (scw <= cw && sch <= ch) {
-                        await magick([`${f}[${scw}x${sch}+0+${i * sch}]`, '-background', 'none', '-gravity', 'northwest', '-extent', `${cw}x${ch}`, `PNG32:${c}`]);
-                        used = 'vista';
+                    if (stretch) {
+                        const tw = Math.min(cw, Math.round(scw * ratio)); const th = Math.min(ch, Math.round(sch * ratio));
+                        await magick([`${f}[${scw}x${sch}+0+${i * sch}]`, ...FILTER.soft, '-resize', `${tw}x${th}!`, '-background', 'none', '-gravity', 'center', '-extent', `${cw}x${ch}`, `PNG32:${c}`]);
+                        used = 'vista-stretch';
+                    } else if (scw <= cw && sch <= ch) {
+                        await magick([`${f}[${scw}x${sch}+0+${i * sch}]`, '-background', 'none', '-gravity', 'center', '-extent', `${cw}x${ch}`, `PNG32:${c}`]);
                     } else {
                         await resize(`${f}[${scw}x${sch}+0+${i * sch}]`, cw, ch, 'down', c);
                         used = 'vista-down';
@@ -493,6 +668,8 @@ async function buildOne(p) {
                 if (exact) { await magick([src, ...outArgs(out)]); used = 'vista'; }
                 else if (bigger) { await resize(src, w, h, 'down', out); used = 'vista-down'; }
                 else { await resize(src, w, h, 'soft', out); used = 'soft'; }
+                // a captured 1x is the icon over its background: the tier copy too, over the same colour
+                if (p.matte) await magick([out, '-background', `rgb(${p.matte.join(',')})`, '-flatten', ...outArgs(out)]);
             } else if (p.sib) {
                 const s = p.sib.find((x) => Math.abs(x.k - t.s) < 1e-6) || p.sib.find((x) => x.k > t.s) || p.sib[p.sib.length - 1];
                 const sf = path.join(SI, s.rel);
@@ -605,8 +782,8 @@ function cacheDirOf(p) {
     const extra = [];
     if (p.sib) p.sib.forEach((s) => extra.push(fs.readFileSync(path.join(SI, s.rel))));
     if (p.icon) Object.values(p.icon.frames).forEach((f) => extra.push(fs.readFileSync(path.join(VISTA_INDEX, f))));
-    if (p.vo) Object.values(p.vo.frames).forEach((f) => extra.push(fs.readFileSync(path.join(AERO, f))));
-    const key = sha(Buffer.concat([Buffer.from(`${VERSION}|${p.method}|${JSON.stringify(p.slices || null)}|${JSON.stringify(p.vo || null)}|`), srcBytes, ...extra]));
+    if (p.vo) p.vo.images.forEach((im) => extra.push(fs.readFileSync(path.join(AERO, im.file))));
+    const key = sha(Buffer.concat([Buffer.from(`${VERSION}|${p.method}|${JSON.stringify(p.slices || null)}|${JSON.stringify(p.vo || null)}|${JSON.stringify(p.matte || null)}|`), srcBytes, ...extra]));
     const dir = path.join(CACHE, 'v', key.slice(0, 2), key);
     cacheKeys.set(p.rel, dir);
     return dir;
