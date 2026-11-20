@@ -7230,7 +7230,7 @@ Examples:
                 <div class="taskbar-tray-icon hidden" id="activeSyncTrayIcon" title="Melaton Mobile Device Center">
                     <img src="/static_images/activesync/activesync-idle-16.png" alt="" width="16" height="16" draggable="false">
                 </div>
-                <!-- Sync Center: the Nightshade Profile partnership's syncs (nightshadeProfileSync.js, #976) -->
+                <!-- Sync Center: every partnership's syncs (syncCenter.js: Nightshade Profile, Offline Files, #976) -->
                 <div class="taskbar-tray-icon hidden" id="nightshadeSyncTrayIcon" title="Sync Center" data-state="idle">
                     <span class="nps-tray-glyph" aria-hidden="true"></span>
                 </div>
@@ -7473,6 +7473,8 @@ Examples:
     <!-- app packages run as unloadable segments, so one updates without a restart (#872) -->
     <script src="scripts/comp/melatonSegments.js"></script>
     <script src="scripts/comp/melatonApps.js"></script>
+    <!-- Sync Center's partnerships (#976): the registry every partnership joins, its tray icon and balloons -->
+    <script src="scripts/comp/syncCenter.js"></script>
     <script src="scripts/comp/desktopShortcuts.js"></script>
     <!-- Vista's desktop icon view: sizes, Auto Arrange / Align to Grid, Sort By, the desktop menu (desktop-icon-view.css) -->
     <!-- desktop only (#817): the desktop icon grid; desktopShortcuts and modalUtils check window.desktopIconView -->

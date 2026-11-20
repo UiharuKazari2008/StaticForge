@@ -21,12 +21,10 @@
  *                         second; Sync now at once), shows the real steps and closes itself when the sync completes
  *                         as cscui's does. Close only closes the window; the sync goes on. A change pushed by
  *                         another computer (source 'push') animates the tray icon only, as Vista's background syncs.
- *   The tray icon         Sync Center's (SyncCenter.dll: the green arrows turning (icons 23-30) while it syncs, the
- *                         completed (31), error (32) and conflict (41) states); shown once the partnership exists on
- *                         this computer; click: Sync Center; right-click: Open Sync Center, Sync All, View sync
- *                         conflicts, View sync results.
- *   Balloons              SyncCenter.dll.mui 6980-6987: "Nightshade Profile is now set up to sync" (the first sync on
- *                         this computer), "Sync conflicts have occurred", "Sync errors have occurred".
+ *   Sync Center           the partnership is registered with Sync Center's registry (syncCenter.js, melatonSyncCenter,
+ *                         id 'nightshade-profile'), which draws Sync Center's tray icon (the green arrows while it
+ *                         syncs, completed / error / conflict) and raises its balloons (set up, conflicts, errors) for
+ *                         every partnership.
  *   Conflicts             the profile out of sync (websocket.js outofsync: the session's own changes, too many
  *                         changes to apply live, or a piece that cannot be applied live) replaces the old User Profile
  *                         Service box (ownsConflict). Sync Center lists the conflict; Resolve opens Vista's Resolve
@@ -38,7 +36,7 @@
  *                         melatonProfileSync), with the last sync time Sync Center shows.
  *
  *   window.nightshadeProfileSync = { ownsConflict, partnership(), conflict(), results(), syncNow(), resolve(),
- *                                    show(), openSyncCenter(view), on(fn) }
+ *                                    show(), openSyncCenter(view), on(fn) }   (and its melatonSyncCenter entry)
  * Desktop pages only (Melaton Mobile has no desktop profile).
  */
 (function (root) {
@@ -67,10 +65,7 @@
     // SyncCenter.dll.mui / cscui.dll.mui / shell32.dll.mui (Windows -> Melaton, Offline Files -> Nightshade Profile)
     const S = {
         close: 'If you click Close, this operation will continue.  You can continue working while this completes, and monitor progress in ',
-        failed: 'Unable to sync at this time.  Please try again.',
-        setUp: [`${NAME} is now set up to sync`, 'Check this icon anytime for sync status, or click to open Sync Center.'],
-        conflicts: ['Sync conflicts have occurred', 'When you see this icon, click it to open Sync Center and check the conflicts.'],
-        errors: ['Sync errors have occurred', 'When you see this icon, click it to open Sync Center and check the errors.']
+        failed: 'Unable to sync at this time.  Please try again.'
     };
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -106,14 +101,10 @@
         save();
     }
 
+    // Sync Center's registry (syncCenter.js) redraws the tray, the balloons and an open Sync Center
     const listeners = new Set();
     function changed() {
         listeners.forEach((fn) => { try { fn(); } catch (_) { /* a page gone */ } });
-        // an open Sync Center page draws the new state (cplPages2.js)
-        const cp = root.melatonControlPanel;
-        if (cp && typeof cp.currentPage === 'function' && cp.currentPage() === 'sync-center' && typeof cp.isOpen === 'function' && cp.isOpen()) {
-            try { cp.navigate('sync-center', { replace: true }); } catch (_) { /* closed */ }
-        }
     }
 
     // ---- the run in progress ----------------------------------------------------------------------------------
@@ -184,11 +175,10 @@
         // a sync that stops reporting (its request waits for a reconnect) stops the turning arrows and the marquee
         // after STALL_MS: one timeout per step, no polling (phone-power-client)
         clearTimeout(stallTimer);
-        stallTimer = run && run.phase !== 'done' ? setTimeout(() => { if (run && run.phase !== 'done') { run.stalled = true; paintTray(); paintWindow(); } }, STALL_MS) : 0;
+        stallTimer = run && run.phase !== 'done' ? setTimeout(() => { if (run && run.phase !== 'done') { run.stalled = true; changed(); paintWindow(); } }, STALL_MS) : 0;
         if (run) run.stalled = false;
-        paintTray();
         paintWindow();
-        // an open Sync Center draws the step (one redraw a frame at most)
+        // the tray and an open Sync Center draw the step (one redraw a frame at most)
         if (!redraw) redraw = root.requestAnimationFrame(() => { redraw = 0; changed(); });
     }
     let redraw = 0;
@@ -201,9 +191,8 @@
         clearTimeout(showTimer);
         showTimer = 0;
         const s = load();
-        const firstSync = !s.setUp && result !== 'error';
-        if (result !== 'error') s.setUp = true;
-        s.last = { at: Date.now(), result, source };
+        // a background refresh that failed (another computer's change) leaves the partnership's state as it was
+        if (!(result === 'error' && source === 'push')) s.last = { at: Date.now(), result, source };
         const applied = names(d.applied);
         if (result === 'ok') {
             r.read = r.total;
@@ -222,10 +211,7 @@
             addResult(source === 'push' ? 'warning' : 'error', NAME, `${S.failed} ${dc()} did not answer over the ${net()}; your profile syncs again when it reconnects.`);
         }
         save();
-        // Vista's tray balloons (SyncCenter.dll.mui 6980-6987); a push's failed cache refresh says nothing
-        if (firstSync && result === 'ok') balloon('info', S.setUp, null);
-        else if (result === 'conflict') balloon('warning', S.conflicts, 'conflicts');
-        else if (result === 'error' && source !== 'push') balloon('error', S.errors, 'results');
+        // the tray icon and Vista's balloons (set up, conflicts, errors) follow from partnership(): syncCenter.js
         changed();
         // cscui's dialog closes by itself when its operation completes without errors
         if (result === 'ok' && win) closeLater();
@@ -372,72 +358,10 @@
         }
     }
 
-    // ---- the tray icon ------------------------------------------------------------------------------------------
-
-    let icon = null;
-    function trayIcon() {
-        if (icon && icon.isConnected) return icon;
-        icon = doc.getElementById('nightshadeSyncTrayIcon');
-        if (!icon) return null;
-        icon.addEventListener('click', () => openSyncCenter(conflict ? 'conflicts' : (load().last && load().last.result === 'error' ? 'results' : '')), { signal: appScopeSignal });
-        if (root.contextMenu && typeof root.contextMenu.attachToElement === 'function') {
-            root.contextMenu.attachToElement(icon, {
-                sections: [{
-                    type: 'list',
-                    initfn: (s) => {
-                        s.items = [
-                            { text: 'Open Sync Center', action: 'open', default: true },
-                            { separator: true },
-                            { text: 'Sync All', action: 'sync', disabled: !!(run && run.phase !== 'done') },
-                            { text: 'View sync conflicts', action: 'conflicts' },
-                            { text: 'View sync results', action: 'results' }
-                        ];
-                    }
-                }],
-                onAction: (a) => {
-                    if (a === 'sync') void syncNow();
-                    else openSyncCenter(a === 'open' ? '' : a);
-                }
-            });
-        }
-        return icon;
-    }
-
-    function paintTray() {
-        const el = trayIcon();
-        if (!el) return;
-        const s = load();
-        const busy = !!(run && run.phase !== 'done');
-        const state = busy ? (run.stalled ? 'waiting' : 'syncing') : conflict ? 'conflict' : (s.last && s.last.result === 'error') ? 'error' : s.last ? 'done' : 'idle';
-        if (el.dataset.state !== state) el.dataset.state = state;
-        // SyncCenter.dll.mui 6982 "Sync in progress: %ws"
-        const tip = state === 'syncing' ? `Sync in progress: ${NAME}` : state === 'conflict' ? S.conflicts[0] : state === 'error' ? S.errors[0] : 'Sync Center';
-        if (el.title !== tip) el.title = tip;
-        // shown once the partnership exists on this computer (Vista keeps Sync Center's icon from then on)
-        if ((s.setUp || busy || state === 'error') && el.classList.contains('hidden')) {
-            // revealTrayIconElement: public/scripts/comp/trayIndicators.js
-            if (typeof root.revealTrayIconElement === 'function') root.revealTrayIconElement(el); else el.classList.remove('hidden');
-        }
-    }
-
-    function balloon(type, words, view) {
-        const el = trayIcon();
-        if (!el || !root.PopoverManager || typeof root.PopoverManager.showPopover !== 'function') return;
-        paintTray();
-        root.PopoverManager.showPopover(el, type, esc(words[0]), esc(words[1]), false, 10000,
-            `<img src="${ART}/sync-center-32.png" alt="" width="32" height="32">`, null,
-            { popupId: 'sync-center', position: 'top', arrowPosition: 'bottom-right', onClick: () => openSyncCenter(view || '') });
-    }
-
     // ---- Sync Center ----------------------------------------------------------------------------------------------
 
     function openSyncCenter(view) {
-        const fl = root.featureLoader;
-        const ready = fl && typeof fl.loadFeature === 'function' ? fl.loadFeature('control_panel') : Promise.resolve();
-        void Promise.resolve(ready).then(() => {
-            const cp = root.melatonControlPanel;
-            if (cp && typeof cp.doAction === 'function') cp.doAction(view ? `page:sync-center:${view}` : 'page:sync-center');
-        });
+        if (root.melatonSyncCenter) root.melatonSyncCenter.open(view);
     }
 
     /** Sync now (Sync Center's Sync / Sync All): websocket.js syncProfileNow; the window shows it. */
@@ -460,9 +384,10 @@
         else if (s.last && s.last.result === 'error') status = 'Sync failed with 1 error';
         else if (s.last) status = `Last sync on ${when(s.last.at)}`;
         return {
-            name: NAME, status, busy, percent: busy ? percent(run) : 0, marquee: busy && !!run.marquee,
-            category: 'Profile', domain: dc(), network: net(), last: s.last || null, conflicts: conflict ? 1 : 0,
-            errors: s.last && s.last.result === 'error' ? 1 : 0
+            name: NAME, status, busy, percent: busy ? percent(run) : 0, marquee: busy && !!run.marquee && !run.stalled,
+            stalled: busy && !!run.stalled, category: 'Profile', last: s.last || null, conflicts: conflict ? 1 : 0,
+            errors: s.last && s.last.result === 'error' ? 1 : 0, icon: '/static_images/vista-icons/nightshade-16.png',
+            detail: `Your user profile on ${dc()}, the domain controller, synced with this computer over the ${net()}.`
         };
     }
 
@@ -550,8 +475,20 @@
     root.addEventListener('storage', (ev) => {
         if (ev.key !== KEY) return;
         store = null;
-        if (desktop()) { paintTray(); changed(); }
+        if (desktop()) changed();
     }, { signal: appScopeSignal });
+
+    /** Sync Center's view of the conflict (syncCenter.js contract). */
+    function conflicts() {
+        if (!conflict) return [];
+        return [{ id: 'profile', name: 'Your profile', path: `${NAME} (${dc()})`, detail: conflictText(conflict), localAt: null, serverAt: revisionTime(conflict.server) || conflict.at }];
+    }
+
+    function clearResults() {
+        load().results = [];
+        save();
+        changed();
+    }
 
     root.nightshadeProfileSync = {
         // websocket.js _checkProfileSync: the User Profile Service box stays away, this file shows the conflict
@@ -567,14 +504,18 @@
         pieceName
     };
 
-    // the icon's state from the last session on this computer, once the desktop is up (no request: local only)
-    let wired = false;
-    const wire = () => {
-        const ws = root.wsClient;
-        if (wired || !ws || typeof ws.on !== 'function') return;
-        wired = true;
-        ws.on('connected', () => { if (desktop()) paintTray(); });
-        if (desktop()) paintTray();
-    };
-    if (doc.readyState === 'complete') wire(); else root.addEventListener('load', wire, { once: true, signal: appScopeSignal });
+    // the Nightshade Profile partnership in Sync Center (syncCenter.js, loaded before this file)
+    if (root.melatonSyncCenter) {
+        root.melatonSyncCenter.register({
+            id: 'nightshade-profile',
+            partnership,
+            conflicts,
+            results: () => load().results.slice(),
+            syncNow,
+            resolve: () => resolve(),
+            clearResults,
+            on: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }
+        });
+    }
+
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -694,10 +694,11 @@
         <div class="dcl-sd-links"><a href="#" class="cpl-vlink" data-cpl-vpage="usage">Manage disk space used by your offline files</a><a href="#" class="cpl-vlink" data-cpl-vpage="cleanup">Free up space used by Melaton (Disk Cleanup)</a></div></div></div>`;
     }
 
-    // Sync Center (SyncCenter.dll.mui's strings): the partnerships, the conflicts and the sync results. The Nightshade
-    // Profile partnership (#976, nightshadeProfileSync.js) is the user's profile on the domain controller; Offline Files
-    // is this computer's offline copies (#945).
-    const NPS = () => root.nightshadeProfileSync || null;
+    // Sync Center (SyncCenter.dll.mui's strings): the partnerships, the conflicts and the sync results of every
+    // partnership in Sync Center's registry (syncCenter.js, melatonSyncCenter: Nightshade Profile, Offline Files, ...;
+    // docs/client-api/sync-center.md). Without an 'offline-files' partnership the server's replicas stand for Offline
+    // Files as before (#945).
+    const SC = () => root.melatonSyncCenter || null;
     const SYNCMGR = 'HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\SyncMgr';
     let syncView = 'partnerships';
     let syncSel = '';
@@ -706,41 +707,69 @@
         const d = new Date(ms);
         return `${d.toLocaleDateString('en-US')} ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
     }
+    function syncParts() {
+        return (SC() ? SC().list() : []).map((p) => {
+            let s = null;
+            try { s = p.partnership(); } catch (_) { s = null; }
+            return s ? { p, s } : null;
+        }).filter(Boolean);
+    }
     function syncPartnerships() {
-        const p = NPS() ? NPS().partnership() : null;
+        const all = syncParts();
+        const legacy = !all.some((x) => x.p.id === 'offline-files');
         const off = reg(SYNCMGR, 'LastSync', '');
-        const sel = (id) => (syncSel === id ? ' is-selected' : '');
-        // the row's bar (nightshade-profile-sync.css: Vista's trough and fill in 5 % steps, data-pct), the marquee while
-        // the domain controller is being reached
-        const pct = p ? Math.round(p.percent / 5) * 5 : 0;
-        const bar = !p || !p.busy ? ''
-            : `<div class="nps-cpl-bar${p.marquee ? ' nps-marquee' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100"${p.marquee ? '' : ` aria-valuenow="${p.percent}" data-pct="${pct}"`}><div></div></div>`;
-        return `<div class="cpl-pf-bar">${syncSel === 'profile'
-            ? `<button type="button" class="cpl-pf-cmd" data-cpl-vpage="syncprofile"${p && p.busy ? ' disabled' : ''}>Sync</button>${p && p.conflicts ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="conflicts">View Conflicts</button>' : ''}${p && p.errors ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="results">View Errors</button>' : ''}`
-            : '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="syncall">Sync All</button><button type="button" class="cpl-pf-cmd" data-cpl-vpage="schedule">Schedule</button>'}</div>
+        const cur = all.find((x) => x.p.id === syncSel) || null;
+        const row = ({ p, s }) => {
+            // the row's bar (nightshade-profile-sync.css: Vista's trough and fill in 5 % steps, data-pct), the marquee
+            // while the partnership waits for its other side
+            const pct = Math.round((Number(s.percent) || 0) / 5) * 5;
+            const bar = !s.busy ? ''
+                : `<div class="nps-cpl-bar${s.marquee ? ' nps-marquee' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100"${s.marquee ? '' : ` aria-valuenow="${Number(s.percent) || 0}" data-pct="${pct}"`}><div></div></div>`;
+            return `<tr class="${syncSel === p.id ? 'is-selected' : ''}" data-cpl-vpage="select" data-sync="${esc(p.id)}"><td><img src="${esc(s.icon || '/static_images/vista-sync/sync-center-16.png')}" alt=""> ${esc(s.name)}</td><td>${esc(s.status)}</td><td>${esc(s.category || '')}</td><td>${bar}</td></tr>`;
+        };
+        const bar = cur
+            ? `${typeof cur.p.syncNow === 'function' ? `<button type="button" class="cpl-pf-cmd" data-cpl-vpage="syncone"${cur.s.busy ? ' disabled' : ''}>Sync</button>` : ''}${cur.s.conflicts ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="conflicts">View Conflicts</button>' : ''}${cur.s.errors ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="results">View Errors</button>' : ''}`
+            : '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="syncall">Sync All</button><button type="button" class="cpl-pf-cmd" data-cpl-vpage="schedule">Schedule</button>';
+        return `<div class="cpl-pf-bar">${bar}</div>
             <table class="cpl-vtable nps-cpl-table"><tr class="is-head"><td>Name</td><td>Status</td><td>Category</td><td>Progress</td></tr>
-            ${p ? `<tr class="nps-cpl-row${sel('profile')}" data-cpl-vpage="select" data-sync="profile"><td><img src="/static_images/vista-icons/nightshade-16.png" alt=""> ${esc(p.name)}</td><td>${esc(p.status)}</td><td>${esc(p.category)}</td><td>${bar}</td></tr>` : ''}
-            <tr class="${sel('offline').trim()}" data-cpl-vpage="select" data-sync="offline"><td><img src="/static_images/vista-cpl/items/sync-center-16.png" alt=""> Offline Files</td><td>${esc(off ? `Last sync on ${off}` : 'Ready for first sync')}</td><td>Folders</td><td></td></tr></table>
-            ${p && syncSel === 'profile' ? `<div class="nps-cpl-detail"><img src="/static_images/vista-icons/nightshade-48.png" alt=""><div><b>${esc(p.name)}</b><br>Your user profile on ${esc(p.domain)}, the domain controller, synced with this computer over the ${esc(p.network)}.<br>Status: ${esc(p.status)}${p.last ? `<br>Last sync: ${esc(syncWhen(p.last.at))}` : ''}<br>Conflicts: ${p.conflicts}&nbsp;&nbsp;&nbsp;Errors: ${p.errors}</div></div>` : ''}
-            ${syncDetails()}`;
+            ${all.map(row).join('')}
+            ${legacy ? `<tr class="${syncSel === 'offline' ? 'is-selected' : ''}" data-cpl-vpage="select" data-sync="offline"><td><img src="/static_images/vista-cpl/items/sync-center-16.png" alt=""> Offline Files</td><td>${esc(off ? `Last sync on ${off}` : 'Ready for first sync')}</td><td>Folders</td><td></td></tr>` : ''}</table>
+            ${cur ? `<div class="nps-cpl-detail"><img src="${esc(String(cur.s.icon || '/static_images/vista-sync/sync-center-16.png').replace(/-16\.png$/, '-48.png'))}" alt="" onerror="this.style.visibility='hidden'"><div><b>${esc(cur.s.name)}</b>${cur.s.detail ? `<br>${esc(cur.s.detail)}` : ''}<br>Status: ${esc(cur.s.status)}${cur.s.last && cur.s.last.at ? `<br>Last sync: ${esc(syncWhen(cur.s.last.at))}` : ''}<br>Conflicts: ${Number(cur.s.conflicts) || 0}&nbsp;&nbsp;&nbsp;Errors: ${Number(cur.s.errors) || 0}</div></div>` : ''}
+            ${legacy ? syncDetails() : ''}`;
+    }
+    function syncConflictRows() {
+        const out = [];
+        syncParts().forEach(({ p, s }) => {
+            let list = [];
+            try { list = typeof p.conflicts === 'function' ? p.conflicts() || [] : []; } catch (_) { list = []; }
+            list.forEach((c) => out.push({ p, s, c, key: `${p.id}::${c.id}` }));
+        });
+        return out;
     }
     function syncConflicts() {
-        const c = NPS() ? NPS().conflict() : null;
+        const rows = syncConflictRows();
+        const sel = rows.find((r) => r.key === syncSel);
         return `<h1 class="cpl-vtitle">These items are in conflict and did not sync</h1>
             <p class="cpl-vtext">Select one or more sync conflicts. Then click Resolve to view the details of each conflict and decide how to resolve them.</p>
-            <div class="cpl-pf-bar">${c && syncSel === 'conflict' ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="resolve">Resolve</button>' : ''}</div>
-            ${c ? `<table class="cpl-vtable nps-cpl-table"><tr class="is-head"><td>Name</td><td>Partnership</td><td>Details</td></tr>
-                <tr class="${syncSel === 'conflict' ? 'is-selected' : ''}" data-cpl-vpage="select" data-sync="conflict" data-dbl="resolve"><td><img src="/static_images/vista-sync/status-conflict-16.png" alt=""> Your profile</td><td>Nightshade Profile</td><td>${esc(c.text)}</td></tr></table>`
+            <div class="cpl-pf-bar">${sel && typeof sel.p.resolve === 'function' ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="resolve">Resolve</button>' : ''}</div>
+            ${rows.length ? `<table class="cpl-vtable nps-cpl-table"><tr class="is-head"><td>Name</td><td>Partnership</td><td>Details</td></tr>
+                ${rows.map((r) => `<tr class="${r.key === syncSel ? 'is-selected' : ''}" data-cpl-vpage="select" data-sync="${esc(r.key)}" data-dbl="resolve"><td><img src="/static_images/vista-sync/status-conflict-16.png" alt=""> ${esc(r.c.name)}</td><td>${esc(r.s.name)}</td><td>${esc(r.c.detail || r.c.path || '')}</td></tr>`).join('')}</table>`
         : '<p class="cpl-vtext">There are currently no sync conflicts.</p>'}`;
     }
     function syncResults() {
-        const list = NPS() ? NPS().results() : [];
+        const list = [];
+        syncParts().forEach(({ p, s }) => {
+            let r = [];
+            try { r = typeof p.results === 'function' ? p.results() || [] : []; } catch (_) { r = []; }
+            r.forEach((x) => list.push({ ...x, partnership: s.name }));
+        });
+        list.sort((a, b) => (b.at || 0) - (a.at || 0));
         const icon = (k) => (k === 'error' ? 'status-error-16.png' : k === 'conflict' || k === 'warning' ? 'status-conflict-16.png' : 'status-done-16.png');
         return `<h1 class="cpl-vtitle">Review errors, warnings, and other sync information</h1>
             <p class="cpl-vtext">These are the results of your most recent sync activity.</p>
             <div class="cpl-pf-bar">${list.length ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="clearresults">Delete</button>' : ''}</div>
             ${list.length ? `<table class="cpl-vtable nps-cpl-table"><tr class="is-head"><td>Name</td><td>Partnership</td><td>Category</td><td>Details</td><td>Date</td></tr>
-                ${list.map((r) => `<tr><td><img src="/static_images/vista-sync/${icon(r.kind)}" alt=""> ${esc(SYNC_KIND[r.kind] || 'Info')}</td><td>${esc(r.item)}</td><td>${esc(r.kind === 'conflict' ? 'Conflict' : 'Sync')}</td><td>${esc(r.text)}</td><td>${esc(syncWhen(r.at))}</td></tr>`).join('')}</table>`
+                ${list.map((r) => `<tr><td><img src="/static_images/vista-sync/${icon(r.kind)}" alt=""> ${esc(r.item || SYNC_KIND[r.kind] || 'Info')}</td><td>${esc(r.partnership)}</td><td>${esc(SYNC_KIND[r.kind] || 'Info')}</td><td>${esc(r.text)}</td><td>${esc(r.at ? syncWhen(r.at) : '')}</td></tr>`).join('')}</table>`
         : '<p class="cpl-vtext">There are currently no sync errors or warnings.</p>'}`;
     }
 
@@ -753,7 +782,7 @@
         body: () => {
             // the catalog / tray links 'page:sync-center:results' / 'conflicts'
             const arg = CP() && CP().pageArg('sync-center');
-            if (arg === 'results' || arg === 'conflicts') { syncView = arg; syncSel = arg === 'conflicts' ? 'conflict' : ''; }
+            if (arg === 'results' || arg === 'conflicts') { syncView = arg; syncSel = arg === 'conflicts' ? (syncConflictRows()[0] || {}).key || '' : ''; }
             const inner = syncView === 'conflicts' ? syncConflicts() : syncView === 'results' ? syncResults()
                 : `<h1 class="cpl-vtitle">Keep your information in sync</h1>
                     <p class="cpl-vtext">View recent sync activity, sync now, or change your sync settings.</p>${syncPartnerships()}`;
@@ -762,27 +791,37 @@
     };
     handlers['sync-center'] = {
         async syncall() {
-            if (NPS()) void NPS().syncNow();
+            if (SC()) SC().syncAll();
             // the replicas are the server's sync partnership (Data Management > Replication)
-            if (R()) await R().set(SYNCMGR, { LastSync: new Date().toLocaleString('en-US') });
+            if (R() && !(SC() && SC().get('offline-files'))) await R().set(SYNCMGR, { LastSync: new Date().toLocaleString('en-US') });
             rerender();
         },
-        syncprofile() { if (NPS()) void NPS().syncNow(); },
+        syncone() {
+            const p = SC() && SC().get(syncSel);
+            if (p && typeof p.syncNow === 'function') void Promise.resolve(p.syncNow()).catch(() => {});
+        },
         select(t, ev) {
             // a double-click on a conflict resolves it (Vista's default verb there)
-            if (ev && ev.detail >= 2 && t.dataset.dbl === 'resolve') { if (NPS()) void NPS().resolve(); return; }
+            if (ev && ev.detail >= 2 && t.dataset.dbl === 'resolve') { syncSel = t.dataset.sync || ''; handlers['sync-center'].resolve(); return; }
             if (syncSel === (t.dataset.sync || '')) return;
             syncSel = t.dataset.sync || '';
             rerender();
         },
-        resolve() { if (NPS()) void NPS().resolve(); },
+        resolve() {
+            const k = String(syncSel);
+            const at = k.indexOf('::');
+            const id = at < 0 ? k : k.slice(0, at);
+            const cid = at < 0 ? '' : k.slice(at + 2);
+            const p = SC() && SC().get(id);
+            if (p && typeof p.resolve === 'function') p.resolve(cid);
+        },
         clearresults() {
-            try { root.localStorage.setItem('melatonProfileSync', JSON.stringify({ ...JSON.parse(root.localStorage.getItem('melatonProfileSync') || '{}'), results: [] })); } catch (_) { /* private mode */ }
+            if (SC()) SC().list().forEach((p) => { if (typeof p.clearResults === 'function') p.clearResults(); });
             rerender();
         },
         schedule() { callGlobal('openDataManagementDsap', 'replication'); },
         partnerships() { syncView = 'partnerships'; syncSel = ''; rerender(); },
-        conflicts() { syncView = 'conflicts'; syncSel = 'conflict'; rerender(); },
+        conflicts() { syncView = 'conflicts'; syncSel = (syncConflictRows()[0] || {}).key || ''; rerender(); },
         usage() { const cp = CP(); if (cp) cp.doAction('dialog:offline-files:disk'); },
         cleanup() { callGlobal('openDiskCleanup'); },
         results() { syncView = 'results'; syncSel = ''; rerender(); },
