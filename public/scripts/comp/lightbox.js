@@ -2052,8 +2052,50 @@ async function showLightbox(input) {
     // Prepare data source for PhotoSwipe with proper dimensions from metadata
     const dataSource = getLightboxDataSource();
 
+    // PhotoSwipe's loadAndOpen does nothing while any viewer is open (window.pswp), so a gallery
+    // click with Glancewell up was dropped: show the picture in the open window instead
+    const open = getActivePhotoSwipe();
+    if (open && open === lightbox.pswp && !glancewellShow.on) {
+        showInOpenGlancewell(open, imageIndex, dataSource);
+        return;
+    }
+    if (open || window.pswp) {
+        // A standalone viewer (a URL, Director prints) holds the window: end it, then open the gallery
+        const prev = open || window.pswp;
+        let done = false;
+        const go = () => {
+            if (done) return;
+            done = true;
+            clearTimeout(fallback);
+            if (window.pswp === prev) delete window.pswp;
+            requestAnimationFrame(() => lightbox.loadAndOpen(imageIndex, dataSource));
+        };
+        // one already destroyed (or stuck closing) never sends destroy again
+        const fallback = setTimeout(go, 800);
+        if (typeof prev.on === 'function') prev.on('destroy', go);
+        if (typeof prev.close === 'function') prev.close();
+        return;
+    }
+
     // Update PhotoSwipe data source
     lightbox.loadAndOpen(imageIndex, dataSource);
+}
+
+/** The gallery's Glancewell is open: swap in the current list, go to the picture, raise the window. */
+function showInOpenGlancewell(p, imageIndex, dataSource) {
+    p.options.dataSource = dataSource;
+    // cached slides are keyed by index; the list may have changed order since the window opened
+    p.contentLoader.destroy();
+    p.goTo(imageIndex);
+    const n = p.getNumItems();
+    [imageIndex - 1, imageIndex, imageIndex + 1].forEach((i) => {
+        if (n > 0) p.refreshSlideContent(((i % n) + n) % n);
+    });
+    const shell = getPhotoSwipeShell();
+    if (shell && document.body.classList.contains('desktop-mode')) {
+        if (shell.classList.contains('minimised') && typeof restoreMinimizedModal === 'function') restoreMinimizedModal(shell);
+        openModal(shell);
+    }
 }
 
 // Hide lightbox (PhotoSwipe handles this automatically)

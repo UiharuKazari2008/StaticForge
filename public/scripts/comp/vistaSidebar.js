@@ -1239,7 +1239,7 @@ const vsbSlideMount = function (inst) {
         play.title = inst.paused ? 'Play' : 'Pause';
         vsbSlideSchedule(inst);
     });
-    reveal.addEventListener('click', () => { vsbSlideOpenGlancewell(inst); });
+    reveal.addEventListener('click', () => { vsbSlideOpenViewer(inst); });
     view.addEventListener('click', () => vsbSlideFlyout(inst));
     vsbSlideApply(inst);
 };
@@ -1306,36 +1306,17 @@ const vsbGalleryHit = function (names) {
     return null;
 };
 
-const vsbSlideOpenGlancewell = function (inst) {
+// View opens the frame's picture in Lumen, one window per picture, so it never takes over the
+// gallery's single Glancewell window (a gallery click could not reach Glancewell while the gadget's
+// picture held it). The gallery row when it is loaded carries the metadata Lumen's info pane shows;
+// otherwise the frame's own item names the file (Workspaces defers its catalog, galleryImagesLoad.js).
+const vsbSlideOpenViewer = function (inst) {
     const image = vsbSlideImage(inst);
     if (!image) return;
     const names = [image.upscaled, image.original, image.filename].filter(Boolean);
-    const hit = vsbGalleryHit(names);
-    // showLightbox / openStandalonePhotoSwipe: public/scripts/comp/lightbox.js
-    if (hit) {
-        showLightbox({ filename: hit.filename || hit.upscaled || hit.original });
-        return;
-    }
-    // Workspaces defers its catalog until the window opens (galleryImagesLoad.js),
-    // so the frame's picture is often not in allImages yet. Open that gallery file as a one-slide
-    // Glancewell, like a Director print off the loaded page (mcpActivityClient.js): the slide names
-    // the file, so Edit, Print and Delete work from it and load its parameters by filename.
-    // resolveGalleryFullImageUrl: public/scripts/comp/assetUrlResolver.js
-    const item = inst.history[inst.cursor];
-    const url = resolveGalleryFullImageUrl(item || image);
-    if (!url) return;
-    const width = Number((item && item.width) || image.width) || 0;
-    const height = Number((item && item.height) || image.height) || 0;
-    const slide = { src: url, width, height, filename: names[0], original: image.original, upscaled: image.upscaled };
-    const open = () => openStandalonePhotoSwipe([slide], 0);
-    if (width > 0 && height > 0) {
-        void open();
-        return;
-    }
-    const probe = new Image();
-    probe.onload = () => { slide.width = probe.naturalWidth || 1024; slide.height = probe.naturalHeight || 1024; void open(); };
-    probe.onerror = () => { slide.width = 1024; slide.height = 1024; void open(); };
-    probe.src = url;
+    const hit = vsbGalleryHit(names) || image;
+    // openGalleryImageInViewer: public/scripts/comp/imageViewer.js (Lumen)
+    if (typeof openGalleryImageInViewer === 'function') openGalleryImageInViewer(hit);
 };
 
 /** The picture on screen as the gallery's own image object when it is loaded, otherwise built from the frame's item. */
