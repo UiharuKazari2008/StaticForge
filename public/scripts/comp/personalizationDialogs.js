@@ -1189,13 +1189,13 @@
     const FX_DEFAULTS = {
         disableAll: false,
         bassManagement: { on: true, crossover: 1800, invert: false },
-        bassBoost: { on: true, frequency: 250, level: 6 },
-        lowFrequencyProtection: { on: true, cutoff: 100 },
+        bassBoost: { on: true, frequency: 450, level: 12 },
+        lowFrequencyProtection: { on: true, cutoff: 120 },
         loudness: { on: false, release: 4 }
     };
     const FX_CROSSOVER = [1000, 1200, 1500, 1800, 2000, 2500, 3000];
-    const FX_BOOST_FREQ = [100, 125, 150, 175, 200, 250, 300, 350, 400];
-    const FX_BOOST_LEVEL = [3, 6, 9, 12];
+    const FX_BOOST_FREQ = [100, 125, 150, 175, 200, 250, 300, 350, 400, 450, 500, 600];
+    const FX_BOOST_LEVEL = [3, 6, 9, 12, 15];
     const FX_CUTOFF = [50, 60, 70, 80, 90, 100, 120, 150, 200];
 
     function fxClone(t) {
@@ -1226,8 +1226,9 @@
     }
 
     /** The Enhancements tab's state and controls; `changed()` marks the sheet dirty. Applied with the sheet's Apply. */
-    function wireEnhancements(c, A, changed) {
-        const fx = { pending: fxClone(A && A.speakers()), selected: FX[0].id, dirty: false };
+    function wireEnhancements(c, A, changed, d) {
+        // the speaker configuration CaféReady reports (the woofers' sink; no driver on this hardware plays full range)
+        const fx = { pending: fxClone(A && A.speakers()), selected: FX[0].id, dirty: false, woofers: !!(d && d.woofers), fullRange: (d && d.fullRange) || 'None' };
         const list = c.querySelector('.cpl-snd-fx');
         const paint = () => {
             const off = fx.pending.disableAll;
@@ -1303,9 +1304,9 @@
             html = `
                 ${group(4, 4, 210, 36, 'Current Speaker Configuration')}
                 ${text(8, 16, 94, 10, 'Full Range Speakers:', 'cpl-snd-fx-label')}
-                ${text(110, 16, 100, 10, 'None')}
+                ${text(110, 16, 100, 10, esc(fx.fullRange))}
                 ${text(8, 28, 94, 10, 'Subwoofer:', 'cpl-snd-fx-label')}
-                ${text(110, 28, 100, 10, 'Present')}
+                ${text(110, 28, 100, 10, fx.woofers ? 'Present' : 'Not Present')}
                 ${group(4, 44, 210, 92, 'Settings')}
                 ${text(8, 59, 94, 10, 'Crossover:', 'cpl-snd-fx-label')}
                 ${combo('cpl-fx-a', 110, 57, 98, 'Crossover')}
@@ -1426,7 +1427,7 @@
             }
         });
         const c = sheet.content;
-        if (d.dsp) fx = wireEnhancements(c, A, () => sheet.setDirty(true));
+        if (d.dsp) fx = wireEnhancements(c, A, () => sheet.setDirty(true), d);
         // the controls Melaton cannot change here are greyed, as Vista greys what a driver does not offer
         ['snd-icon', 'snd-ctl-properties'].forEach((a) => { const b = c.querySelector(`[data-action="${a}"]`); if (b) b.disabled = true; });
         c.querySelector('[data-action="snd-restore"]').disabled = !d.canSetFormat;

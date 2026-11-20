@@ -338,7 +338,7 @@
                     },
                     jacks: linuxJack(d),
                     format: f, formats, canSetFormat: offered.length > 1,
-                    dsp: !!d.dsp,
+                    dsp: !!d.dsp, woofers: !!d.woofers, fullRange: typeof d.fullRange === 'string' ? d.fullRange : 'None',
                     platform: 'dreamos'
                 };
             });
