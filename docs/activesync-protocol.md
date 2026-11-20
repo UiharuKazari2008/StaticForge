@@ -7,14 +7,42 @@ service in DSApp-Kotlin) needs to know to join.
 ## One protocol, two speakers on the phone
 
 - **WebView** (`speaker: "webview"`): `public/scripts/comp/activeSyncAgent.js` inside the app, while the app is open.
-  It can ask the user things, so `partnership.propose`, trash, restore and opening a file are its alone.
+  It can ask the user things, so `partnership.propose`, Studio's session, opening a link and the screen viewer's
+  consent are its alone. It serves no file op and no phone data to a computer.
 - **Service** (`speaker: "service"`): the app's own foreground service on its own socket, with the same session cookie
   and the same device id. It keeps the device reachable while the WebView is gone. It lists only the operations it
-  serves itself (`status.*`, `storage.*`, `stream.*`, `device.ring`, ...). It never answers `partnership.propose`.
+  serves itself (`status.*`, `storage.*`, `stream.*`, `media.*`, `apps.*`, `notify.*`, `device.ring`, ...). It never
+  answers `partnership.propose`.
 
 Both say `as_hello` with the same `id`. The server treats them as one device: one connection state, one permission
 set; a call goes to the service when it lists the operation (it keeps running while the WebView is paused), else to
 the WebView.
+
+**Files and phone data are the service's alone (StaticForge #981, rule cafeready-background).** Yukimi, Nov 20 2026:
+"I have to wake the phone's screen to delete files in Explorer over ActiveSync. It should never have been using the
+WebView or relied on the WebView to do any file access over ActiveSync." The groups `storage`, `stream`, `media`, `apps`
+and `notify`, and `status.bluetooth` / `device.bluetooth`, go to the service socket only (`modules/activeSync.js`
+`serviceOnly`): never to the page, whatever its hello lists. With no service socket that lists the op the call fails
+`UNSUPPORTED` with what is missing (the app needs an update; a guest connection has no service; the service is not
+connected). A queued file (`stream.receive`, `apps.install`) waits for the service's hello. Device Center's `media`
+flag counts the service's `media.list` only.
+
+| Op | Before #981 | Since |
+|---|---|---|
+| `storage.hello` `list` `stat` `mkdir` `rename` `move` `copy` `delete`, `stream.send` / `receive` | service, page fallback | service only |
+| `storage.trash` `trashList` `restore` (Explorer's Delete, the Phone trash, Restore) | **page only** | service (`ActiveSyncFiles.kt`, MediaStore trash) |
+| `storage.watch` / `unwatch`, event `storage.changed` | **page only** | service (FileObserver, 400 ms debounce) |
+| event `storage.config` | **page only** (on resume) | service (the sharing settings' prefs, All files access on the next status) |
+| `storage.handlers` `open` `defaults` (Open With) | page; service on DSApp `claude/open-with` | service only |
+| `media.*` | service (DSApp `claude/media-share`) | service only |
+| `apps.*`, `notify.*` | service, page fallback | service only |
+| `status.bluetooth`, `device.bluetooth` (Control Panel > Bluetooth Devices) | **page only** | service (`ActiveSyncBluetooth.kt`) |
+| `status.get`, `clipboard.set`, `device.ring` | service, page fallback | unchanged |
+| `partnership.propose`, `studio.*`, `open.url` / `open.item`, `screen.start` / `stop`, `status.wallpapers` (apps before #827) | page | page: someone at the phone answers them |
+
+`storage.trash` answers `[{ path, trashed, reason? }]` as before; a folder (`folder`), a file MediaStore does not index
+(`not_indexed`) or one Android trashes only after a confirmation on the phone (`confirm`: the service cannot ask, the
+screen may be off) stays, and Explorer offers to delete it permanently (`storage.delete`).
 
 ## A service's life
 

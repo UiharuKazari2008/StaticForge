@@ -26,10 +26,9 @@
  *                                      channels); setNotifySettings(deviceId, apps) saves the user's choices
  *
  * Device side: reports its status (battery, Wi-Fi, cellular, storage) on change, asks the user when a
- * computer proposes a connection or a partnership, and serves status.*, storage.* (the app's
- * phone storage bridge, loaded here when Explorer never was), stream.send / stream.receive (file
- * bodies over HTTP, modules/activeSyncTransfers.js), clipboard.set and device.ring. Other files add their own operations
- * (Studio's session, streams).
+ * computer proposes a connection or a partnership, and serves status.*, clipboard.set and device.ring. A computer's
+ * file work (storage.*, stream.* with the bodies over HTTP, modules/activeSyncTransfers.js) is the app's background
+ * service's alone (#981), never this page's. Other files add their own operations (Studio's session).
  */
 (function (root) {
     'use strict';
@@ -721,128 +720,23 @@
                 })).then(() => {
                 const loaded = root.phoneStorage;
                 if (!loaded || !loaded.available) throw err('disabled', 'Phone storage is not shared.');
-                // what changes on the phone, for the computers that watch a folder
-                loaded.on('changed', (m) => { emit('storage.changed', m); refreshStorageSoon(); });
-                loaded.on('config', () => { emit('storage.config', null); refreshStorageRoots().then(pushStatus); });
+                // this phone's own free space and roots (computers hear of changes from the app's service, #981)
+                loaded.on('changed', () => refreshStorageSoon());
+                loaded.on('config', () => { refreshStorageRoots().then(pushStatus); });
                 return loaded;
             }).catch((e) => { storageLoading = null; throw e; });
         }
         return storageLoading;
     }
 
-    const STREAM_CHUNK = 1024 * 1024;
-
-    function postChunk(transferId, seq, bytes, end, head) {
-        return fetch(`/api/activesync/transfer/${transferId}/chunk?seq=${seq}${end ? '&end=1' : ''}`, {
-            method: 'POST', credentials: 'same-origin', body: bytes,
-            headers: Object.assign({ 'Content-Type': 'application/octet-stream' }, head || {})
-        }).then((r) => r.status);
-    }
-
-    /** stream.send: one of this phone's files, posted to the server in order (modules/activeSyncTransfers.js). */
-    async function streamSend(args) {
-        const ps = await storage();
-        await ps.hello();
-        const url = ps.fileUrl(String(args.root || ''), String(args.path || ''), args.thumb ? { thumb: args.thumb } : {});
-        if (!url) throw err('disabled', 'Phone storage is not shared.');
-        const res = await fetch(url, args.range ? { headers: { Range: String(args.range) } } : {});
-        if (!res.ok) throw err(res.status === 404 ? 'ENOENT' : 'io', res.status === 404 ? 'The file is not on the device any more.' : `The device could not read the file (${res.status}).`);
-        const head = { 'x-as-status': String(res.status === 206 ? 206 : 200), 'x-as-type': res.headers.get('Content-Type') || 'application/octet-stream' };
-        const length = res.headers.get('Content-Length');
-        if (length != null && length !== '') head['x-as-length'] = length;
-        const range = res.headers.get('Content-Range');
-        if (range) head['x-as-range'] = range;
-        const modified = Date.parse(res.headers.get('Last-Modified') || '');
-        if (Number.isFinite(modified)) head['x-as-mtime'] = String(modified);
-        const reader = res.body.getReader();
-        let seq = 0;
-        let sent = 0;
-        let buf = new Uint8Array(0);
-        const flush = async (end) => {
-            const status = await postChunk(args.transferId, seq, buf, end, seq === 0 ? head : null);
-            if (status === 410) return false; // the computer stopped reading
-            if (status !== 200) throw err('io', `The server did not take the file (${status}).`);
-            seq += 1;
-            sent += buf.length;
-            buf = new Uint8Array(0);
-            return true;
-        };
-        for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            let part = value;
-            while (part.length) {
-                const room = STREAM_CHUNK - buf.length;
-                const take = part.subarray(0, room);
-                const next = new Uint8Array(buf.length + take.length);
-                next.set(buf);
-                next.set(take, buf.length);
-                buf = next;
-                part = part.subarray(take.length);
-                if (buf.length >= STREAM_CHUNK && !(await flush(false))) { try { await reader.cancel(); } catch (_) { /* closed */ } return { bytes: sent, stopped: true }; }
-            }
-        }
-        await flush(true);
-        return { bytes: sent };
-    }
-
-    /** stream.receive: a file waiting on the server, pulled in ranges and written through the bridge. */
-    async function streamReceive(args) {
-        const ps = await storage();
-        const size = Number(args.size) || 0;
-        const base = `/api/activesync/transfer/${args.transferId}/data`;
-        // the bridge's write() reads a File by slices: these come from the server as it asks
-        const lazy = {
-            size,
-            name: String(args.name || 'file'),
-            lastModified: args.mtime || Date.now(),
-            slice(start, end) {
-                return {
-                    arrayBuffer: async () => {
-                        if (end <= start) return new ArrayBuffer(0);
-                        const r = await fetch(base, { credentials: 'same-origin', headers: { Range: `bytes=${start}-${end - 1}` } });
-                        if (!r.ok) throw err('io', `The file could not be fetched (${r.status}).`);
-                        return r.arrayBuffer();
-                    }
-                };
-            }
-        };
-        let lastNote = 0;
-        const entry = await ps.write(String(args.root || ''), String(args.dir || '/'), lazy, {
-            name: lazy.name, conflict: args.conflict || 'fail', mtime: args.mtime || undefined,
-            onProgress(written, total) {
-                const now = Date.now();
-                if (now - lastNote < 250 && written < total) return;
-                lastNote = now;
-                emit('stream.progress', { transferId: args.transferId, written, total });
-            }
-        });
-        return entry;
-    }
-
-    /**
-     * A transfer this page drives (stream.send / stream.receive: the page reads or writes the file and
-     * moves it over HTTP) keeps the page running with the screen off until it ends (#890): the app pauses
-     * a sleeping page's JavaScript, and a paused page stops mid-file (melatonContinuity.holdAwake).
-     */
-    function heldAwake(fn) {
-        return async (args, from) => {
-            const mc = root.melatonContinuity;
-            const hold = !!(mc && typeof mc.holdAwake === 'function');
-            if (hold) mc.holdAwake('activesync-transfer', true);
-            try {
-                return await fn(args, from);
-            } finally {
-                if (hold) mc.holdAwake('activesync-transfer', false);
-            }
-        };
-    }
+    // A computer's file work on this phone (storage.*, stream.send / stream.receive, Android's trash, watched folders)
+    // is the app's background service's alone (DSApp ActiveSyncLink / ActiveSyncFiles, StaticForge #981, rule
+    // cafeready-background): the server never sends it here, so it works with the screen off and no page running.
+    // Yukimi, Nov 20 2026: "It should never have been using the WebView or relied on the WebView to do any file
+    // access over ActiveSync." The bridge above stays for this phone's own status (its storage roots).
 
     function registerDeviceOps() {
         registerOp('status.get', () => deviceStatus());
-        registerOp('stream.send', heldAwake(streamSend));
-        // a file written to the phone changes its free space (#890: no timer reads it any more)
-        registerOp('stream.receive', heldAwake((args, from) => Promise.resolve(streamReceive(args, from)).finally(refreshStorageSoon)));
 
         // the computer's user chose how to connect; this device's user agrees or not
         registerOp('partnership.propose', async (args, from) => {
@@ -853,28 +747,6 @@
                 : `Allow ${computer} to connect to this device?\n\n${computer} will be able to browse this device and exchange information with it until it is disconnected.`;
             const accept = await confirmOnPhone('ActiveSync', text);
             return { accept: accept === true };
-        });
-
-        // phone storage: the app's bridge, the same operations File Explorer uses on the phone itself
-        // 'open' shows the file in an Android app on the phone (a chosen one with component); 'handlers' lists the apps
-        // that open a file and 'defaults' opens Android's default-apps page (Open With, #954; the app's service link
-        // answers these itself when it runs); watch / unwatch keep a folder's changes coming
-        const STORAGE_OPS = ['hello', 'list', 'stat', 'mkdir', 'rename', 'delete', 'trash', 'trashList', 'restore', 'move', 'copy', 'open', 'handlers', 'defaults'];
-        // a computer follows the folder (remote): the app keeps its observer behind other programs and with
-        // the screen off (phoneStorageBridge.js: local-only watches stop there, #890)
-        registerOp('storage.watch', async (args) => (await storage()).watch(String(args.root || ''), String(args.path || '/'), { remote: true }));
-        registerOp('storage.unwatch', async (args) => { await (await storage()).unwatch(String(args.root || ''), String(args.path || '/'), { remote: true }); return true; });
-        // what a computer changes on the phone moves its free space (#890: no timer reads it any more)
-        const STORAGE_WRITES = new Set(['mkdir', 'rename', 'delete', 'trash', 'restore', 'move', 'copy']);
-        STORAGE_OPS.forEach((op) => {
-            registerOp(`storage.${op}`, async (args) => {
-                const ps = await storage();
-                const res = await ps.call(op, args || {});
-                if (STORAGE_WRITES.has(op)) refreshStorageSoon();
-                // the app's local file URLs carry a per-launch token and mean nothing off the phone
-                if (op === 'hello' && res && typeof res === 'object') { const copy = Object.assign({}, res); delete copy.baseUrl; return copy; }
-                return res;
-            });
         });
 
         // clipboard.set and open.url: public/scripts/comp/activeSyncClipboard.js (both kinds of peer)

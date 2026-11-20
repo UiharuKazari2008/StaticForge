@@ -93,8 +93,9 @@ The phone reports its writing as `as_event` `stream.progress { transferId, writt
 ## Operations in use
 
 Device: `status.get`, `partnership.propose`, `storage.hello|list|stat|mkdir|rename|delete|trash|trashList|restore|move|copy|open|handlers|defaults|watch|unwatch`
-(the app's phone storage bridge, #698, loaded by the peer when Explorer never was; `hello` without its local `baseUrl`;
-events `storage.changed`, `storage.config`; Open With, #954: `handlers` lists the phone's apps for a file or type with
+(the app's background service link, DSApp `ActiveSyncLink` / `ActiveSyncFiles`, alone since #981: never the phone's
+page, so they work with the screen off; `hello` without a local `baseUrl`; events `storage.changed`, `storage.config`;
+see [activesync-protocol.md](../../activesync-protocol.md#one-protocol-two-speakers-on-the-phone); Open With, #954: `handlers` lists the phone's apps for a file or type with
 their icons as `iconData`, `open { component, action }` opens it in one of them, `defaults` shows Android's own default-apps
 page; the app's service link answers these three itself when its `storage.hello` says `features.openWith`), `stream.send`, `stream.receive`, `studio.getSession`, `studio.setSession { session }`,
 `clipboard.set { text }`, `device.ring`.

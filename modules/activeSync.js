@@ -402,14 +402,43 @@ function socketAnswers(info, op) {
     return ops.includes(op) || ops.includes(`${opGroupName(op)}.*`);
 }
 
+// A computer's work on the phone's files and data goes to the app's background service only, never to the phone's
+// page (StaticForge #981, rule cafeready-background). Yukimi, Nov 20 2026: "I have to wake the phone's screen to
+// delete files in Explorer over ActiveSync. It should never have been using the WebView or relied on the WebView to
+// do any file access over ActiveSync." The page's socket stays open while the WebView is paused (screen off, the app
+// behind others), so an op sent there waited for the screen; the service keeps running.
+const SERVICE_ONLY_GROUPS = new Set(['storage', 'stream', 'media', 'apps', 'notify']);
+const SERVICE_ONLY_OPS = new Set(['status.bluetooth', 'device.bluetooth']);
+
+function serviceOnly(kind, op) {
+    return kind === 'device' && !!op && (SERVICE_ONLY_GROUPS.has(opGroupName(op)) || SERVICE_ONLY_OPS.has(op));
+}
+
 /**
  * The socket of a peer that answers this op, newest first. The app's service goes first for what it
  * lists: it is native and keeps running while the WebView is paused in the background with its
- * socket still open. Everything else (questions, trash, opening a file) is the WebView's alone.
+ * socket still open. File and phone-data ops (serviceOnly) are the service's alone; what needs someone at
+ * the phone (the partnership question, Studio, opening a link, the screen viewer's consent) is the page's.
  */
 function socketFor(wsServer, kind, id, op) {
     const all = liveSockets(wsServer, kind, id).filter((s) => !op || socketAnswers(s.info, op));
-    return all.find((s) => s.info.as.speaker === 'service') || all[0] || null;
+    const service = all.find((s) => s.info.as.speaker === 'service') || null;
+    if (serviceOnly(kind, op)) return service;
+    return service || all[0] || null;
+}
+
+/** Why no socket of the device takes the op: the error a caller throws (the code stays UNSUPPORTED). */
+function noSocketError(wsServer, deviceId, op) {
+    if (!serviceOnly('device', op)) return fail('UNSUPPORTED', 'The device does not support this.');
+    const live = liveSockets(wsServer, 'device', deviceId);
+    const sess = deviceSession(wsServer, deviceId);
+    if (live.some((s) => s.info.as.speaker === 'service')) {
+        return fail('UNSUPPORTED', 'Dreamscape on the device needs an update for this: its background service does not do it yet.');
+    }
+    if (sess && sess.session === 'guest') {
+        return fail('UNSUPPORTED', 'Set up a partnership with the device for this: a guest connection has no background service.');
+    }
+    return fail('UNSUPPORTED', "Dreamscape's background service on the device is not connected. It reconnects by itself; check that the app's notification is there.");
 }
 
 /** A device's connection state, shared by its sockets: the most established one wins. */
@@ -445,7 +474,7 @@ function describeDevice(globalResources, wsServer, row) {
         session: sess ? sess.session : null,
         speakers: live.map((s) => s.info.as.speaker),
         // the phone shares its media library (#956): its app answers media.list (DSApp ActiveSyncMedia)
-        media: live.some((s) => socketAnswers(s.info, 'media.list')),
+        media: live.some((s) => s.info.as.speaker === 'service' && socketAnswers(s.info, 'media.list')),
         // a test device (modules/testDevices.js, the emulators): Media Player lists it only while it is connected
         test: isTestDevice(row.device_id),
         partner: !!row.partner,
@@ -844,7 +873,7 @@ async function call(globalResources, wsServer, clientInfo, data) {
         }
         checkDeviceOp(server, to, op);
         const target = socketFor(server, 'device', to, op);
-        if (!target) throw fail('UNSUPPORTED', 'The device does not support this.');
+        if (!target) throw noSocketError(server, to, op);
         const res = await sendRequest(server, target, fromOf(clientInfo), op, args, timeoutMs);
         if (!res.ok) throw fail(res.error.code, res.error.message);
         if (target.info.as.speaker === 'service') { try { noteReceivedLive(globalResources, server, to, op, args, me.name); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }
@@ -875,7 +904,7 @@ async function serverCall(globalResources, wsServer, deviceId, op, args, opts = 
     if (!isOpName(op)) throw fail('BAD_OP', 'op must look like group.name');
     checkDeviceOp(server, deviceId, op);
     const target = socketFor(server, 'device', deviceId, op);
-    if (!target) throw fail('UNSUPPORTED', 'The device does not support this.');
+    if (!target) throw noSocketError(server, deviceId, op);
     const timeoutMs = Math.min(opts.maxTimeoutMs || CALL_TIMEOUT_MAX_MS, Math.max(1000, Number(opts.timeoutMs) || CALL_TIMEOUT_MS));
     const res = await sendRequest(server, target, { kind: 'computer', id: '', name: clampString(opts.fromName, 64) || hostName() }, op, args, timeoutMs);
     if (!res.ok) throw fail(res.error.code, res.error.message);
@@ -1028,7 +1057,10 @@ async function deliverQueue(globalResources, wsServer, deviceId) {
         if (!sess || sess.session !== 'partner') break;
         const need = OP_GROUP[opGroupName(item.op)];
         const target = socketFor(server, 'device', deviceId, item.op);
-        if ((need && !sess.permissions.includes(need)) || !target) {
+        const allowed = !need || sess.permissions.includes(need);
+        // a file for the phone waits for the app's background service (#981): the page's hello does not deliver it
+        if (allowed && !target && serviceOnly('device', item.op) && !liveSockets(server, 'device', deviceId).some((s) => s.info.as.speaker === 'service')) break;
+        if (!allowed || !target) {
             d.prepare('DELETE FROM as_queue WHERE id = ?').run(item.id);
             logEvent(globalResources, deviceId, 'warning', `Not delivered (not allowed on the device): ${item.op}`);
             for (const fn of queueListeners) {

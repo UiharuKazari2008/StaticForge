@@ -150,6 +150,8 @@ async function main() {
     assert.strictEqual(r.status, 409);
     assert.strictEqual(r.json.code, 'NOT_CONNECTED');
     await as.partnership(gr, server, pc.info, { action: 'propose', deviceId: DEV, mode: 'partner', name: 'Phone' });
+    // a partner's files are its app's background service's alone (#981): this socket says hello again as that service
+    as.hello(gr, server, phone.info, { kind: 'device', id: DEV, name: 'Phone', speaker: 'service', ops: ['stream.*', 'storage.*', 'apps.*'] });
 
     // who may ask
     r = await request(port, 'GET', `/api/activesync/file/${DEV}/primary/DCIM/a.mp4`, { session: 'readonly:x' });
@@ -260,7 +262,7 @@ async function main() {
     const replyTo = phone2.info;
     // the handler above answers through phone.info: point it at the new socket
     phone.info = replyTo;
-    as.hello(gr, server, phone2.info, { kind: 'device', id: DEV, name: 'Phone', ops: ['partnership.*', 'stream.*', 'storage.*', 'apps.*'] });
+    as.hello(gr, server, phone2.info, { kind: 'device', id: DEV, name: 'Phone', speaker: 'service', ops: ['stream.*', 'storage.*', 'apps.*'] });
     assert.strictEqual(await as.deliverQueue(gr, server, DEV), 1);
     assert.strictEqual(phone.received.data.toString(), 'hello');
     assert.strictEqual(fs.readdirSync(path.join(tmpDir, 'activesync-transfers')).length, 0);

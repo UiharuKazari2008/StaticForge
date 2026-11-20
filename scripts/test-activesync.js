@@ -117,6 +117,7 @@ async function main() {
         if (op === 'partnership.propose') return { accept: true, permissions: ['files', 'sync', 'nonsense'] };
         if (op === 'storage.list') return { entries: [{ name: 'DCIM', dir: true }] };
         if (op === 'status.get') return { battery: { level: 80 } };
+        if (op === 'stream.send' || op === 'storage.trash') throw new Error('a file op reached the page');
         throw Object.assign(new Error('nope'), { code: 'EFAIL' });
     });
     r = await as.partnership(gr, server, pc.info, { action: 'propose', deviceId: DEV, mode: 'guest' });
@@ -125,14 +126,16 @@ async function main() {
     assert.deepStrictEqual(r.device.permissions, ['files'], 'a guest never gets sync, unknown names drop');
     assert.strictEqual(r.device.partner, false);
 
-    r = await as.call(gr, server, pc.info, { to: DEV, op: 'storage.list', args: { root: 'primary', path: '' } });
-    assert.deepStrictEqual(r.result.entries, [{ name: 'DCIM', dir: true }]);
+    // the phone's files are the app's background service's alone (#981), and a guest has none: never the page's
+    await assert.rejects(as.call(gr, server, pc.info, { to: DEV, op: 'storage.list', args: { root: 'primary', path: '' } }),
+        (e) => e.code === 'UNSUPPORTED' && /partnership/.test(e.message));
+    await rejects(as.serverCall(gr, server, DEV, 'stream.send', { root: 'primary', path: '/a.jpg' }), 'UNSUPPORTED');
     r = await as.call(gr, server, pc.info, { to: DEV, op: 'status.get' });
     assert.strictEqual(r.result.battery.level, 80, 'status needs no permission');
     await rejects(as.call(gr, server, pc.info, { to: DEV, op: 'studio.getSession' }), 'NOT_PERMITTED');
     await rejects(as.call(gr, server, pc.info, { to: DEV, op: 'screen.capture' }), 'NOT_PERMITTED');
     // the phone's own error comes back with its code
-    await rejects(as.call(gr, server, pc.info, { to: DEV, op: 'storage.delete', args: {} }), 'EFAIL');
+    await rejects(as.call(gr, server, pc.info, { to: DEV, op: 'status.wallpapers', args: {} }), 'EFAIL');
     // too large
     await rejects(as.call(gr, server, pc.info, { to: DEV, op: 'storage.list', args: { blob: 'x'.repeat(1100000) } }), 'TOO_LARGE');
     // a guest is not queued for
@@ -193,16 +196,22 @@ async function main() {
     r = as.hello(gr, server, svc.info, { kind: 'device', id: DEV, name: 'x', speaker: 'service', ops: ['status.*', 'storage.list', 'device.ring'] });
     assert.strictEqual(r.session, 'partner');
     assert.deepStrictEqual(r.device.speakers.sort(), ['service', 'webview']);
-    // an op both list goes to the service (native, alive while the WebView is paused); one only the
-    // WebView lists goes to the WebView
+    // an op both list goes to the service (native, alive while the WebView is paused); a file op only the
+    // WebView lists does not go to the WebView (#981: the service needs an update); other ops still do
     let svcAsked = 0;
     answer(svc, () => { svcAsked += 1; return { entries: [] }; });
     await as.call(gr, server, pc.info, { to: DEV, op: 'storage.list', args: {} });
     assert.strictEqual(svcAsked, 1);
     const gotBefore = got.length;
-    await as.call(gr, server, pc.info, { to: DEV, op: 'storage.stat', args: {} });
+    await assert.rejects(as.call(gr, server, pc.info, { to: DEV, op: 'storage.stat', args: {} }),
+        (e) => e.code === 'UNSUPPORTED' && /needs an update/.test(e.message));
+    await assert.rejects(as.call(gr, server, pc.info, { to: DEV, op: 'notify.list', args: {} }), (e) => e.code === 'UNSUPPORTED');
     assert.strictEqual(svcAsked, 1);
-    assert.strictEqual(got.length, gotBefore + 1, 'the WebView answered what the service does not list');
+    assert.strictEqual(got.length, gotBefore, 'the WebView is never asked for a file op');
+    await as.call(gr, server, pc.info, { to: DEV, op: 'studio.getSession', args: {} });
+    assert.strictEqual(got.length, gotBefore + 1, 'the WebView answers what needs it (Studio)');
+    // Media Player lists the phone only when its service answers media.list (the page's list does not count)
+    assert.strictEqual(as.list(gr, server).devices.find((d) => d.deviceId === DEV).media, false);
     server.clients.delete(svc.ws);
     as.onSocketClosed(gr, server, svc.info);
 
@@ -229,9 +238,10 @@ async function main() {
     r = await as.call(gr, server, pc.info, { to: DEV, op: 'clipboard.set', args: { text: 'b' }, queue: true });
     assert.strictEqual(r.queued, true);
     await as.call(gr, server, pc.info, { to: DEV, op: 'notify.show', args: { text: 'c' }, queue: true });
+    await as.call(gr, server, pc.info, { to: DEV, op: 'stream.receive', args: { transferId: 't1', root: 'internal', dir: '/Download', name: 'a.txt', size: 1 }, queue: true });
     await rejects(as.call(gr, server, pc.info, { to: DEV, op: 'storage.list', args: {}, queue: true }), 'OFFLINE');
     await rejects(as.call(gr, server, pc.info, { to: DEV, op: 'clipboard.set', args: { text: 'x' } }), 'OFFLINE');
-    assert.strictEqual(as.list(gr, server).devices.find((d) => d.deviceId === DEV).queued, 3);
+    assert.strictEqual(as.list(gr, server).devices.find((d) => d.deviceId === DEV).queued, 4);
 
     const phone3 = connect();
     const delivered = [];
@@ -240,15 +250,26 @@ async function main() {
         if (op === 'clipboard.set') throw Object.assign(new Error('clipboard is busy'), { code: 'BUSY' });
         return true;
     });
-    // notify is granted but this socket does not list it: dropped with a log line, not kept forever
-    r = as.hello(gr, server, phone3.info, { kind: 'device', id: DEV, name: 'whatever the phone says', ops: ['status.*', 'studio.*', 'clipboard.*', 'partnership.*'] });
+    // the page's hello delivers what is the page's; notify.show and the file wait for the app's service (#981)
+    r = as.hello(gr, server, phone3.info, { kind: 'device', id: DEV, name: 'whatever the phone says', ops: ['status.*', 'studio.*', 'clipboard.*', 'partnership.*', 'stream.*'] });
     assert.strictEqual(r.session, 'partner');
     assert.strictEqual(r.name, 'Yukimis Fold', 'a partner keeps its partnership name');
     assert.strictEqual(await as.deliverQueue(gr, server, DEV), 2);
     assert.deepStrictEqual(delivered.map((d) => d.op), ['studio.setSession', 'clipboard.set']);
     assert.strictEqual(delivered[0].from.name, 'LUMINA-XR7');
     assert.ok(delivered[0].from.queuedAt > 0);
+    assert.strictEqual(as.list(gr, server).devices.find((d) => d.deviceId === DEV).queued, 2);
+    // the service comes: notify.show, which it does not list, is dropped with a log line; the file goes to it
+    const svc3 = connect();
+    const svcGot = [];
+    answer(svc3, (op) => { svcGot.push(op); return { name: 'a.txt' }; });
+    as.hello(gr, server, svc3.info, { kind: 'device', id: DEV, name: 'x', speaker: 'service', ops: ['status.*', 'stream.receive'] });
+    assert.strictEqual(await as.deliverQueue(gr, server, DEV), 1);
+    assert.deepStrictEqual(svcGot, ['stream.receive']);
+    assert.strictEqual(delivered.length, 2, 'the page took no file');
     assert.strictEqual(as.list(gr, server).devices.find((d) => d.deviceId === DEV).queued, 0);
+    server.clients.delete(svc3.ws);
+    as.onSocketClosed(gr, server, svc3.info);
     const log = as.getLog(gr, DEV, 50).map((e) => e.text);
     assert.ok(log.some((t) => /Refused by the device: clipboard\.set/.test(t)));
     assert.ok(log.some((t) => /Not delivered.*notify\.show/.test(t)));
