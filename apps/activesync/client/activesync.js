@@ -12,6 +12,13 @@
  *   connected             the tiles; a tile opens under the pointer and lists its tasks. Other files
  *                         add tasks with melatonActiveSync.addTask(tile, task)
  *   notifications         the device's own notifications (activeSyncNotifications.js), with Dismiss
+ *   manage                WMDC's "Manage a partnership": the device's name and "Make this my primary device" (#979):
+ *                         the primary is the device this window, the tray icon and the gadgets stay on; another device
+ *                         that connects only joins the list (the crumbs' menu), and the primary away is Not Connected
+ *   nfsettings            "Change notification settings" (#979): the partnership's apps, each expandable to its
+ *                         Android notification channels, with "Send to this computer" and "Show in the notification
+ *                         area", and "Handled by <program>" where another Melaton program already brings them
+ *                         (modules/activeSyncNotifyFilter.js; the phone itself keeps back what is not sent)
  *   bread crumbs          Home > Quick Connect (a guest) or Home > the partnership's name; with
  *                         several devices the last crumb is a menu of them
  *
@@ -133,6 +140,15 @@
                 const offN = root.activeSyncNotifications.on(() => this.render());
                 app.signal.addEventListener('abort', offN);
             }
+            // a partnership's notification settings changed or a new app / channel showed up on the phone (#979):
+            // the settings page reads them again (pushed by the server, never polled)
+            if (a) {
+                const offE = a.on('event', (e) => {
+                    if (!e || !e.from || e.from.kind !== 'server' || e.event !== 'notify.filter' || !e.detail) return;
+                    if (this.page === 'nfsettings' && this.nf && this.nf.deviceId === e.detail.deviceId) void this.loadNotifySettings(true);
+                });
+                app.signal.addEventListener('abort', offE);
+            }
             this.render();
         }
 
@@ -197,9 +213,36 @@
                 if (tile) this.openTile(tile.dataset.tile);
             }, sig);
             q('.asdc-stage').addEventListener('mouseleave', () => this.openTile(null), sig);
+            // the settings pages (#979): check boxes, a program opened to its channels, the name being typed
+            q('.asdc-body').addEventListener('change', (ev) => {
+                const t = ev.target;
+                if (t.matches('input[data-nf-key]') && this.nf && this.nf.apps) {
+                    this.nfSet(t.dataset.nfPkg, t.dataset.nfCh || null, t.dataset.nfKey, t.checked);
+                    this.render();
+                } else if (t.matches('input[data-asdc-manage="primary"]') && this.manage) {
+                    this.manage.primary = t.checked;
+                }
+            }, sig);
+            q('.asdc-body').addEventListener('input', (ev) => {
+                if (ev.target.matches('input[data-asdc-manage="name"]') && this.manage) this.manage.name = ev.target.value;
+            }, sig);
+            q('.asdc-body').addEventListener('click', (ev) => {
+                const l = ev.target.closest('a[data-nf-open]');
+                if (!l || !this.nf) return;
+                ev.preventDefault();
+                const pkg = l.dataset.nfOpen;
+                if (this.nf.open.has(pkg)) this.nf.open.delete(pkg); else this.nf.open.add(pkg);
+                this.render();
+                const again = this.el(`.asdc-body a[data-nf-open="${CSS.escape(pkg)}"]`);
+                if (again) again.focus({ preventScroll: true });
+            }, sig);
             q('.asdc-device').addEventListener('click', () => this.toggleFold(), sig);
             m.addEventListener('keydown', (ev) => {
-                if (ev.key === 'Enter' && ev.target.matches('.asdc-page input[type="text"]')) { ev.preventDefault(); void this.command('setup-go'); }
+                if (ev.key === 'Enter' && ev.target.matches('.asdc-page input[type="text"]')) {
+                    ev.preventDefault();
+                    if (this.page === 'manage') void this.command('manage-save');
+                    else if (this.page === 'setup') void this.command('setup-go');
+                }
                 if ((ev.key === 'Backspace' && !ev.target.matches('input')) || (ev.altKey && ev.key === 'ArrowLeft')) { if (this.page && !this.busy) { ev.preventDefault(); void this.command('back'); } }
             }, sig);
             if (root.contextMenu) {
@@ -248,12 +291,15 @@
             return a ? a.state().devices : [];
         }
 
-        /** The device this window shows: the chosen one, else the first connected, else none. */
+        /**
+         * The device this window shows: the chosen one (a balloon, the crumbs' menu), else the primary device whether
+         * it is connected or not (#979: another device never takes the window over), else the first connected.
+         */
         device() {
             const list = this.devices();
             const chosen = this.deviceId && list.find((d) => d.deviceId === this.deviceId);
             if (chosen && (chosen.online || chosen.partner)) return chosen;
-            return list.find((d) => d.online) || null;
+            return list.find((d) => d.primary) || list.find((d) => d.online) || null;
         }
 
         select(deviceId) {
@@ -263,12 +309,16 @@
             this.render();
         }
 
-        tasks(tile, dev) {
+        tasks(tile, dev, partner) {
             const out = [];
             // the phone this DeX window runs on, as a hybrid device (#798): no connection to set up or end
             const local = isContinuityDevice(dev);
+            // a partnership's own settings are kept on the server: they can change while the device is away (#979)
+            const pdev = dev || (partner && partner.partner ? partner : null);
             if (tile === 'settings') {
                 if (dev && dev.online && !dev.partner && !local) out.push({ id: 'setup', text: 'Set up your device', icon: 'setup-32.png' });
+                // WMDC's TaskConfigureDesktopPartnership, with its own art
+                if (pdev && pdev.partner) out.push({ id: 'manage', text: 'Manage a partnership', icon: 'manage-partnership-32.png' });
                 if (!local) out.push({ id: 'connection', text: 'Connection settings', icon: 'connection-32.png' });
                 // Vista's System applet art: "View basic information about your computer" (#827)
                 if (dev) out.push({ id: 'info', text: 'Device information', icon: '/static_images/vista-cpl/items/system-32.png' });
@@ -278,6 +328,10 @@
                 const n = root.activeSyncNotifications.count(dev.deviceId);
                 // Vista keeps the notification area's settings under Taskbar and Start Menu: its art (#827)
                 out.push({ id: 'notifications', text: n ? `View notifications on your device (${n})` : 'View notifications on your device', icon: '/static_images/vista-cpl/items/taskbar-and-start-menu-32.png' });
+            }
+            if (tile === 'programs' && pdev && pdev.partner) {
+                // Vista's notification area settings art, as the notifications above (#979)
+                out.push({ id: 'nfsettings', text: 'Change notification settings', icon: '/static_images/vista-cpl/items/taskbar-and-start-menu-32.png' });
             }
             for (const t of extraTasks[tile] || []) {
                 if (!dev || (typeof t.when === 'function' && !t.when(dev))) continue;
@@ -431,10 +485,12 @@
             const connected = !!(dev && dev.online);
             const established = connected && (dev.session === 'guest' || dev.session === 'partner');
             // a page that needs the device ends when it goes
-            if (this.page && this.page !== 'info' && this.page !== 'done' && !this.page.startsWith('more:') && !connected) { this.page = null; this.busy = false; }
+            const partnerPage = this.page === 'manage' || this.page === 'nfsettings';
+            if (this.page && this.page !== 'info' && this.page !== 'done' && !partnerPage && !this.page.startsWith('more:') && !connected) { this.page = null; this.busy = false; }
+            if (partnerPage && !(dev && dev.partner)) this.page = null;
             if (this.page === 'info' && !dev) this.page = null;
             if (this.page === 'notifications' && !(dev && dev.online)) this.page = null;
-            if (this.page && this.page.startsWith('more:') && !this.tasks(this.page.slice(5), connected ? dev : null).length) this.page = null;
+            if (this.page && this.page.startsWith('more:') && !this.tasks(this.page.slice(5), connected ? dev : null, dev).length) this.page = null;
 
             // bread crumbs
             const crumbs = ['<span>Home</span>'];
@@ -444,6 +500,9 @@
                 crumbs.push(`<img src="${A}/breadcrumb-arrow.png" alt="">`, others.length > 1 ? `<span class="asdc-crumb-menu">${esc(label)}</span>` : `<span>${esc(label)}</span>`);
             } else if (others.length > 1) {
                 crumbs.push(`<img src="${A}/breadcrumb-arrow.png" alt="">`, `<span class="asdc-crumb-menu">${esc(dev ? dev.name : 'Devices')}</span>`);
+            }
+            if (this.page === 'manage' || this.page === 'nfsettings') {
+                crumbs.push(`<img src="${A}/breadcrumb-arrow.png" alt="">`, `<span>${this.page === 'manage' ? 'Manage a Partnership' : 'Notification Settings'}</span>`);
             }
             const crumbBox = this.el('.asdc-crumbs');
             if (crumbBox.dataset.html !== crumbs.join('')) {
@@ -456,7 +515,7 @@
                         onAction: (action) => this.select(action),
                         sections: [{ type: 'list', initfn: (sec) => {
                             const cur = this.device();
-                            sec.items = this.devices().filter((d) => d.online || d.partner).map((d) => ({ text: d.online ? d.name : `${d.name} (not connected)`, action: d.deviceId, checked: !!(cur && cur.deviceId === d.deviceId) }));
+                            sec.items = this.devices().filter((d) => d.online || d.partner).map((d) => ({ text: `${d.name}${d.primary ? ' (primary)' : ''}${d.online ? '' : ' (not connected)'}`, action: d.deviceId, checked: !!(cur && cur.deviceId === d.deviceId) }));
                         } }]
                     });
                 }
@@ -477,14 +536,29 @@
             else if (this.page === 'done') html = `<div class="asdc-page"><h2>You have created a new Melaton Mobile partnership</h2><p>${esc(`${dev ? dev.name : 'Your device'} connects on its own from now on, whenever the Dreamscape app is running on it.`)}</p><div class="asdc-page-buttons"><button type="button" class="btn-standard primary" data-asdc="back">Done</button></div></div>`;
             else if (this.page === 'info') html = this.infoPage(dev);
             else if (this.page === 'notifications') html = this.notificationsPage(dev);
+            else if (this.page === 'manage') html = this.managePage(dev);
+            else if (this.page === 'nfsettings') html = this.notifySettingsPage(dev);
             else if (this.page && this.page.startsWith('more:')) html = this.morePage(dev, connected);
             else if (connected && !established) html = this.choicePage();
             else html = this.tilesPage(dev, connected);
+            // the settings page has the whole stage: no picture or status beside its list (#979)
+            const wide = this.page === 'nfsettings';
+            if (this.el('.asdc-stage').classList.contains('is-wide-page') !== wide) this.el('.asdc-stage').classList.toggle('is-wide-page', wide);
             if (body.dataset.html !== html) {
-                // keep what is being typed when a status report redraws nothing new
+                // keep what is being typed when a status report redraws nothing new; a list keeps its place and the
+                // focused box (#979)
+                const list = body.querySelector('.asdc-nf-list');
+                const scroll = list ? list.scrollTop : 0;
+                const focusId = doc.activeElement && body.contains(doc.activeElement) ? doc.activeElement.id : '';
+                const samePage = body.dataset.page === (this.page || '');
                 body.dataset.html = html;
+                body.dataset.page = this.page || '';
                 body.innerHTML = html;
-                const field = body.querySelector('.asdc-page input[type="text"]');
+                const nl = body.querySelector('.asdc-nf-list');
+                if (nl && samePage) nl.scrollTop = scroll;
+                const again = focusId && samePage ? body.querySelector(`#${CSS.escape(focusId)}`) : null;
+                if (again) again.focus({ preventScroll: true });
+                const field = !again && body.querySelector('.asdc-page input[type="text"]');
                 if (field) { field.focus({ preventScroll: true }); field.select(); }
             }
             this.applyOpen();
@@ -553,7 +627,7 @@
         }
 
         tilesPage(dev, connected) {
-            const tiles = TILES.map((t) => ({ t, tasks: this.tasks(t.id, connected ? dev : null) })).filter((x) => x.tasks.length);
+            const tiles = TILES.map((t) => ({ t, tasks: this.tasks(t.id, connected ? dev : null, dev) })).filter((x) => x.tasks.length);
             return `<div class="asdc-tiles">${tiles.map(({ t, tasks }) => `
                 <div class="asdc-tile" data-tile="${t.id}">
                     <img src="${A}/${t.icon}" alt="">
@@ -567,7 +641,7 @@
         morePage(dev, connected) {
             const id = this.page.slice(5);
             const tile = TILES.find((t) => t.id === id);
-            const tasks = tile ? this.tasks(id, connected ? dev : null) : [];
+            const tasks = tile ? this.tasks(id, connected ? dev : null, dev) : [];
             return `<div class="asdc-page asdc-more-page"><h2>${esc(tile ? tile.title : '')}</h2>
                 <div class="asdc-more-list">${tasks.map((k) => `<button type="button" class="asdc-item" data-asdc="task" data-task="${esc(k.id)}"><img src="${k.icon.includes('/') ? esc(k.icon) : `${A}/${k.icon}`}" alt=""><span>${esc(k.text)}</span></button>`).join('')}</div></div>`;
         }
@@ -647,7 +721,144 @@
                 </li>`).join('');
             return `<div class="asdc-page asdc-page--wide" style="top:60px"><h2>Notifications on ${esc(dev.name)}</h2>
                 ${list.length ? `<ul class="asdc-notes">${rows}</ul>` : '<p>There are no notifications on your device.</p>'}
-                <div class="asdc-page-buttons"><button type="button" class="btn-standard primary" data-asdc="back">Close</button></div></div>`;
+                <div class="asdc-page-buttons">${dev.partner ? '<button type="button" class="btn-standard" data-asdc="nfsettings">Settings...</button>' : ''}<button type="button" class="btn-standard primary" data-asdc="back">Close</button></div></div>`;
+        }
+
+        /**
+         * WMDC's "Manage a Partnership" (ConfigureDesktopPartnershipTitle / SubTitle): the partnership's name, and the
+         * primary device (#979, Yukimi: "my Fold is my main device and I don't want any device to kick it away").
+         */
+        managePage(dev) {
+            const m = this.manage && this.manage.deviceId === dev.deviceId ? this.manage : (this.manage = { deviceId: dev.deviceId, name: dev.name, primary: !!dev.primary, error: '' });
+            return `<div class="asdc-page win7 asdc-manage">
+                <h2>Manage a Partnership</h2>
+                <p>Edit the settings shared between your device and the PC</p>
+                <label for="asdcDeviceName">Device name:</label>
+                <input type="text" id="asdcDeviceName" maxlength="40" value="${esc(m.name)}" spellcheck="false" autocomplete="off" data-asdc-manage="name">
+                <div class="asdc-error">${esc(m.error || '')}</div>
+                <div class="asdc-manage-primary"><input type="checkbox" id="asdcPrimary" data-asdc-manage="primary"${m.primary ? ' checked' : ''}><label for="asdcPrimary">Make this my primary device</label></div>
+                <p class="asdc-manage-note">Device Center, the notification area and the Sidebar gadgets stay on your primary device, and show it as not connected while it is away. Other devices that connect are added to the list without taking its place.</p>
+                <div class="asdc-page-buttons"><button type="button" class="btn-standard primary" data-asdc="manage-save">Save</button><button type="button" class="btn-standard" data-asdc="back">Cancel</button></div>
+            </div>`;
+        }
+
+        // ---------------------------------------------------------------- notification settings (#979)
+
+        /** The page's data: the server's list, with the user's unsaved changes kept over a reload. */
+        async loadNotifySettings(again) {
+            const a = as();
+            const dev = this.device();
+            if (!a || !dev || typeof a.notifySettings !== 'function') return;
+            const id = dev.deviceId;
+            if (!again || !this.nf || this.nf.deviceId !== id) this.nf = { deviceId: id, apps: null, edits: {}, open: new Set(), error: '', saving: false };
+            try {
+                const res = await a.notifySettings(id);
+                if (this.app.signal.aborted || !this.nf || this.nf.deviceId !== id) return;
+                this.nf.apps = Array.isArray(res.apps) ? res.apps : [];
+                this.nf.error = '';
+            } catch (e) {
+                if (this.nf && this.nf.deviceId === id) this.nf.error = (e && e.message) || 'The settings could not be read.';
+            }
+            this.render();
+        }
+
+        /** An app's or channel's value with the unsaved change over it. */
+        nfValue(pkg, ch, key) {
+            const nf = this.nf;
+            const e = nf.edits[pkg] || {};
+            const app = nf.apps.find((x) => x.package === pkg);
+            if (!ch) return Object.prototype.hasOwnProperty.call(e, key) ? e[key] : app[key];
+            const ce = (e.ch && e.ch[ch]) || {};
+            const c = app.channels.find((x) => x.id === ch);
+            return Object.prototype.hasOwnProperty.call(ce, key) ? ce[key] : c[key];
+        }
+
+        nfSet(pkg, ch, key, value) {
+            const e = this.nf.edits[pkg] || (this.nf.edits[pkg] = {});
+            if (!ch) e[key] = value;
+            else { e.ch = e.ch || {}; (e.ch[ch] = e.ch[ch] || {})[key] = value; }
+        }
+
+        notifySettingsPage(dev) {
+            const nf = this.nf && this.nf.deviceId === dev.deviceId ? this.nf : null;
+            if (!nf) { void this.loadNotifySettings(false); return '<div class="asdc-page asdc-nf"><h2>Change notification settings</h2><p>Please wait...</p></div>'; }
+            if (!nf.apps) return `<div class="asdc-page asdc-nf"><h2>Change notification settings</h2><p>${esc(nf.error || 'Please wait...')}</p></div>`;
+            let n = 0;
+            const box = (pkg, ch, key, on, disabled, label) => {
+                n += 1;
+                const id = `asdcNf${n}`;
+                return `<input type="checkbox" id="${id}" data-nf-pkg="${esc(pkg)}" data-nf-ch="${esc(ch || '')}" data-nf-key="${key}" aria-label="${esc(label)}"${on ? ' checked' : ''}${disabled ? ' disabled' : ''}><label for="${id}"></label>`;
+            };
+            const rows = [];
+            for (const a of nf.apps) {
+                const send = this.nfValue(a.package, null, 'send');
+                const tray = this.nfValue(a.package, null, 'tray');
+                const open = nf.open.has(a.package);
+                const note = a.handledBy ? `Handled by ${a.handledBy}` : a.why;
+                const icon = a.icon ? `<img src="${esc(a.icon)}" alt="" width="16" height="16">` : `<img src="${A}/item-32.png" alt="" width="16" height="16">`;
+                const name = `${icon}<span class="asdc-nf-name">${esc(a.app)}</span>${note ? `<span class="asdc-nf-note">${esc(note)}</span>` : ''}`;
+                // the program's channels open under it from a link (the kit has no tree expander yet, #851 slice 3)
+                const more = a.channels.length ? `<a href="#" data-nf-open="${esc(a.package)}" aria-expanded="${open}">${open ? 'Hide channels' : `Channels (${a.channels.length})`}</a>` : '';
+                const first = `<span class="asdc-nf-leaf" title="${esc(a.package)}">${name}</span>${more}`;
+                rows.push(`<tr class="asdc-nf-app">
+                    <td><div class="asdc-nf-cell">${first}</div></td>
+                    <td>${box(a.package, '', 'send', send, false, `${a.app}: Send to this computer`)}</td>
+                    <td>${box(a.package, '', 'tray', send && tray, !send, `${a.app}: Show in the notification area`)}</td></tr>`);
+                if (!open) continue;
+                for (const c of a.channels) {
+                    const cs = this.nfValue(a.package, c.id, 'send');
+                    const ct = this.nfValue(a.package, c.id, 'tray');
+                    // a channel says why only where it differs from its program
+                    const cnote0 = c.handledBy ? `Handled by ${c.handledBy}` : c.why;
+                    const cnote = cnote0 === note ? '' : cnote0;
+                    const label = c.name || c.id;
+                    rows.push(`<tr class="asdc-nf-channel">
+                        <td><span class="asdc-nf-ch" title="${esc(c.id)}"><span class="asdc-nf-name">${esc(label)}</span>${cnote ? `<span class="asdc-nf-note">${esc(cnote)}</span>` : ''}</span></td>
+                        <td>${box(a.package, c.id, 'send', send && cs, !send, `${a.app}, ${label}: Send to this computer`)}</td>
+                        <td>${box(a.package, c.id, 'tray', send && cs && tray && ct, !(send && cs && tray), `${a.app}, ${label}: Show in the notification area`)}</td></tr>`);
+                }
+            }
+            const changed = Object.keys(nf.edits).length > 0;
+            return `<div class="asdc-page win7 asdc-nf">
+                <h2>Change notification settings</h2>
+                <p>Choose which notifications ${esc(dev.name)} sends to this computer, and which of them show in the notification area. Notifications that are not sent stay on the device.</p>
+                <div class="asdc-nf-list">${nf.apps.length ? `<table>
+                    <thead><tr><th>Program</th><th>Send to this computer</th><th>Show in the notification area</th></tr></thead>
+                    <tbody>${rows.join('')}</tbody></table>` : '<p>No notifications have come from this device yet. Programs are added here as they post notifications.</p>'}</div>
+                <div class="asdc-error">${esc(nf.error || '')}</div>
+                <div class="asdc-page-buttons"><button type="button" class="btn-standard" data-asdc="nf-defaults"${nf.saving ? ' disabled' : ''}>Restore Defaults</button><button type="button" class="btn-standard primary" data-asdc="nf-save"${nf.saving || !changed ? ' disabled' : ''}>Save</button><button type="button" class="btn-standard" data-asdc="back">Cancel</button></div>
+            </div>`;
+        }
+
+        /** What the page sends: every app the user touched, whole (the server stores only differences from the defaults). */
+        nfPayload(defaults) {
+            const out = {};
+            for (const a of this.nf.apps) {
+                if (!defaults && !this.nf.edits[a.package]) continue;
+                const o = { send: defaults ? a.def.send : this.nfValue(a.package, null, 'send'), tray: defaults ? a.def.tray : this.nfValue(a.package, null, 'tray'), ch: {} };
+                for (const c of a.channels) o.ch[c.id] = { send: defaults ? c.def.send : this.nfValue(a.package, c.id, 'send'), tray: defaults ? c.def.tray : this.nfValue(a.package, c.id, 'tray') };
+                out[a.package] = o;
+            }
+            return out;
+        }
+
+        async nfSave(defaults) {
+            const a = as();
+            const nf = this.nf;
+            if (!a || !nf || !nf.apps || nf.saving) return;
+            nf.saving = true;
+            this.render();
+            try {
+                const res = await a.setNotifySettings(nf.deviceId, this.nfPayload(defaults));
+                if (this.nf !== nf) return;
+                nf.apps = Array.isArray(res.apps) ? res.apps : nf.apps;
+                nf.edits = {};
+                nf.error = '';
+            } catch (e) {
+                nf.error = (e && e.message) || 'The settings could not be saved.';
+            }
+            nf.saving = false;
+            this.render();
         }
 
         openTile(id) {
@@ -692,6 +903,11 @@
             if (cmd === 'setup') { this.page = 'setup'; this.setupError = ''; this.pendingName = ''; this.render(); return; }
             if (cmd === 'info') { this.page = 'info'; this.render(); return; }
             if (cmd === 'notifications') { this.page = 'notifications'; this.render(); return; }
+            if (cmd === 'manage') { this.manage = null; this.page = 'manage'; this.render(); return; }
+            if (cmd === 'nfsettings') { this.nf = null; this.page = 'nfsettings'; this.render(); return; }
+            if (cmd === 'nf-save') { await this.nfSave(false); return; }
+            if (cmd === 'nf-defaults') { await this.nfSave(true); return; }
+            if (cmd === 'manage-save' && dev && this.manage) { await this.manageSave(dev); return; }
             if (cmd === 'notif-dismiss' && dev && root.activeSyncNotifications) {
                 try { await root.activeSyncNotifications.dismiss(dev.deviceId, el.dataset.key); } catch (e) { await this.messageBox((e && e.message) || 'The notification could not be dismissed.', null, 'error'); }
                 return;
@@ -723,6 +939,29 @@
                 try { await a.endPartnership(dev.deviceId); } catch (e) { await this.messageBox(e.message || 'Could not save Partnership Settings', null, 'error'); }
                 this.render();
             }
+        }
+
+        /** Manage a Partnership > Save: the name (WMDC's own refusals) and the primary device (#979). */
+        async manageSave(dev) {
+            const a = as();
+            const m = this.manage;
+            const name = String(m.name || '').trim();
+            if (!name) m.error = 'Please enter a name for your device.';
+            else if (/[^\p{L}\p{N} _-]/u.test(name)) m.error = 'Device names cannot include punctuation or symbols. Please choose a different name.';
+            else m.error = '';
+            if (m.error) { this.el('.asdc-body').dataset.html = ''; this.render(); return; }
+            try {
+                if (name !== dev.name) await a.update(dev.deviceId, { name });
+                if (m.primary !== !!dev.primary && typeof a.setPrimary === 'function') await a.setPrimary(m.primary ? dev.deviceId : '');
+            } catch (e) {
+                m.error = e && e.code === 'NAME_IN_USE' ? e.message : '';
+                if (m.error) { this.el('.asdc-body').dataset.html = ''; this.render(); return; }
+                await this.messageBox((e && e.message) || 'Could not save Partnership Settings', null, 'error');
+                return;
+            }
+            this.manage = null;
+            this.page = null;
+            this.render();
         }
 
         async propose(dev, mode, opts) {

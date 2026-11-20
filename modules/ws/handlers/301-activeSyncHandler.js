@@ -1,5 +1,6 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const activeSync = require('../../activeSync');
+const notifyFilter = require('../../activeSyncNotifyFilter');
 
 // ActiveSync (Yozora #747, modules/activeSync.js, docs/activesync-protocol.md): a phone (device) and
 // a desktop tab (computer) say hello, then call each other through the server. Hello, status,
@@ -146,6 +147,44 @@ function registerPackets(handlersCtx) {
             reply(ws, 'as_log_response', message, { success: true, entries: activeSync.getLog(gr(), isAdmin(clientInfo) ? String(src.deviceId || own || '') : own, src.limit) });
         } catch (error) {
             reply(ws, 'as_log_response', message, { ...refused(error), entries: [] });
+        }
+    });
+
+    // a partnership's notification settings (#979): the phone's apps and channels with what is sent and what shows a
+    // balloon; compact: only the map activeSyncNotifications.js applies
+    notifyFilter.tap(gr());
+    const deviceOf = (src) => String((src && src.deviceId) || '').toLowerCase();
+    reg('as_notify_settings', async ({ ws, message, clientInfo }) => {
+        const src = body(message);
+        const deviceId = deviceOf(src);
+        if (!isAdmin(clientInfo) || !activeSync.isPeerId(deviceId)) { reply(ws, 'as_notify_settings_response', message, { success: false, code: 'INSUFFICIENT_PERMISSIONS' }); return; }
+        try {
+            reply(ws, 'as_notify_settings_response', message, src.compact ? { success: true, deviceId, eff: notifyFilter.compact(deviceId) } : { success: true, ...notifyFilter.settings(deviceId) });
+        } catch (error) {
+            reply(ws, 'as_notify_settings_response', message, refused(error));
+        }
+    });
+
+    reg('as_notify_settings_set', async ({ ws, message, clientInfo }) => {
+        const src = body(message);
+        const deviceId = deviceOf(src);
+        if (!isAdmin(clientInfo) || !activeSync.isPeerId(deviceId)) { reply(ws, 'as_notify_settings_set_response', message, { success: false, code: 'INSUFFICIENT_PERMISSIONS' }); return; }
+        try {
+            const row = activeSync.deviceRow(gr(), deviceId);
+            if (!row || !row.partner) throw Object.assign(new Error('The device has no partnership.'), { code: 'NOT_PARTNER' });
+            reply(ws, 'as_notify_settings_set_response', message, { success: true, ...notifyFilter.save(deviceId, { apps: src.apps }) });
+        } catch (error) {
+            reply(ws, 'as_notify_settings_set_response', message, refused(error));
+        }
+    });
+
+    // the primary device (#979): '' clears it
+    reg('as_set_primary', async ({ ws, message, clientInfo, wsServer }) => {
+        if (!isAdmin(clientInfo)) { reply(ws, 'as_set_primary_response', message, { success: false, code: 'INSUFFICIENT_PERMISSIONS', error: 'Admin access required' }); return; }
+        try {
+            reply(ws, 'as_set_primary_response', message, { success: true, primary: activeSync.setPrimary(gr(), wsServer, deviceOf(body(message))) });
+        } catch (error) {
+            reply(ws, 'as_set_primary_response', message, refused(error));
         }
     });
 

@@ -19,6 +19,11 @@
  *   activeSync.propose(deviceId, mode, { name, syncItems })   'partner' | 'guest'; { accepted, device }
  *   activeSync.update(deviceId, changes) / endPartnership(deviceId) / forget(deviceId) / log(deviceId)
  *   activeSync.device(id)              a device from the list
+ *   activeSync.primary()               the owner's primary device (#979) or null; setPrimary(deviceId | '') stores it on
+ *                                      the server. pick(list) = the primary when it is in list, else list[0] (or null):
+ *                                      every view that chooses "the phone" by itself goes through it
+ *   activeSync.notifySettings(deviceId, { compact })   a partnership's notification settings (#979, the phone's apps and
+ *                                      channels); setNotifySettings(deviceId, apps) saves the user's choices
  *
  * Device side: reports its status (battery, Wi-Fi, cellular, storage) on change, asks the user when a
  * computer proposes a connection or a partnership, and serves status.*, storage.* (the app's
@@ -979,6 +984,11 @@
         /** The current transfer as the server sees it (#822): { active, files, filesDone, up, down, startedAt, done } or null. */
         transferProgress: () => (remote ? Object.assign({}, remote, { active: remoteActive() }) : null),
         device: (id) => st.devices.find((d) => d.deviceId === id) || null,
+        primary: () => st.devices.find((d) => d.primary) || null,
+        pick: (list) => { const l = Array.isArray(list) ? list : []; return l.find((d) => d && d.primary) || l[0] || null; },
+        setPrimary: (deviceId) => send('as_set_primary', { deviceId: deviceId || '' }).then((res) => send('as_list', {}).then((l) => { takeLists(l); fire('state', state()); return res.primary || ''; })),
+        notifySettings: (deviceId, opts) => send('as_notify_settings', { deviceId, ...(opts && opts.compact ? { compact: true } : {}) }),
+        setNotifySettings: (deviceId, apps) => send('as_notify_settings_set', { deviceId, apps }),
         refresh: () => send('as_list', {}).then((res) => { takeLists(res); fire('state', state()); return state(); }),
         edition,
         myEdition: () => myEdition(null).name,

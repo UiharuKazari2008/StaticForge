@@ -140,6 +140,24 @@ notifications off so a message does not ring twice.
 
 Both need the `notify` permission and a notification the phone still shows (`gone` otherwise). Older apps do not advertise them (`UNSUPPORTED`).
 
+## Notification settings (StaticForge #979)
+
+Each partnership has notification settings on the server (`modules/activeSyncNotifyFilter.js`; Device Center's
+"Change notification settings"). The server compiles them for the phone, which filters **before** describing or
+sending anything:
+
+| Op (server -> device) | Args | Does |
+|---|---|---|
+| `notify.filter` | `{ v, d, keep[], p: { <package>: 0 }, c: { <package>: { <channel>: 0 } } }` | keeps the filter (app prefs) and answers `{ v }`. A notification of a package in `p`, or of a channel in `c`, is not posted, removed or listed to the computer; `keep` packages always go (server features read them: Messenger's Android app accounts, Melaton Videos); `d` is what an unnamed package does (1). Advertised in the hello's `ops`; sent after an `as_hello` whose `nfv` (the version the app holds, `''` before the first) differs, and on every change |
+
+| Event (device -> server) | Detail | When |
+|---|---|---|
+| `notify.seen` | `{ package, app, channel, channelName, importance, icon? }` | once per package and channel the filter keeps back, so Device Center lists it; never the words; never relayed to computers |
+
+`notify.posted` carries `channelName` and `importance` (the channel's, from the listener's ranking) when the app
+has them. A computer gets a `notify.posted` only when the settings send it, with `tray: false` when it should not
+show a balloon. The filter is cleared when the partnership ends.
+
 ## Programs (Yozora #795)
 
 An Android program (`.apk`) sent from the computer is offered to Android's package installer. Android always asks

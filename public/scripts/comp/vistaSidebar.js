@@ -3026,7 +3026,8 @@ const vsbMobileDevice = function (inst) {
     const as = window.activeSync;
     const list = as && as.kind === 'computer' ? as.state().devices : [];
     const want = inst.g.settings.deviceId;
-    return (want && list.find((d) => d.deviceId === want))
+    // the primary device (#979) before any other, connected or not: another phone never takes the gadget over
+    return (want && list.find((d) => d.deviceId === want)) || list.find((d) => d.primary)
         || list.find((d) => d.online && d.partner) || list.find((d) => d.online) || list.find((d) => d.partner) || null;
 };
 
@@ -3047,7 +3048,7 @@ const vsbMobileOptions = {
     html(set, inst) {
         const as = window.activeSync;
         const list = as && as.kind === 'computer' ? as.state().devices.filter((d) => d.partner || d.online) : [];
-        const opts = [['', 'The connected phone']].concat(list.map((d) => [d.deviceId, d.online ? d.name : `${d.name} (not connected)`]));
+        const opts = [['', list.some((d) => d.primary) ? 'The primary device' : 'The connected phone']].concat(list.map((d) => [d.deviceId, d.online ? d.name : `${d.name} (not connected)`]));
         // Mobile Notifications: how many rows, the apps' icons, a Dismiss button on each row (#827)
         const count = inst && inst.g.type === 'mobilenotify'
             ? `<div class="group"><label for="vsbMobileCount">Notifications to show:</label><select class="vdt-select" id="vsbMobileCount">${vsbOptions(VSB_MNOT_COUNTS.map((n) => [n, String(n)]), vsbMnotCount(set))}</select></div>

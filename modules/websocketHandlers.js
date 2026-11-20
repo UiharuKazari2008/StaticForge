@@ -379,6 +379,9 @@ class WebSocketMessageHandlers {
             'as_call',
             'as_partnership',
             'as_forget',
+            // a partnership's notification settings and the primary device (#979)
+            'as_notify_settings_set',
+            'as_set_primary',
             'workspace_create',
             'workspace_delete',
             'workspace_rename',

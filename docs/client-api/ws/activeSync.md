@@ -47,7 +47,7 @@ Signed-in sessions (read-only PIN included):
 | `as_synced` | `as_synced_response` | `{ deviceId?, summary? }`: stamps the device's last sync (a device stamps itself) |
 | `as_log` | `as_log_response` | `{ deviceId?, limit? }` -> `{ entries: [{ at, level, text }] }`, newest first; a device reads its own |
 
-Administrators (also refused for read-only sessions as destructive: `as_call`, `as_partnership`, `as_forget`):
+Administrators (also refused for read-only sessions as destructive: `as_call`, `as_partnership`, `as_forget`, `as_notify_settings_set`, `as_set_primary`):
 
 | Request type | Response | Notes |
 | --- | --- | --- |
@@ -55,13 +55,16 @@ Administrators (also refused for read-only sessions as destructive: `as_call`, `
 | `as_call` | `as_call_response` | `{ to, op, args?, timeoutMs?, queue? }` relays one request to the other kind and returns `{ success, result }`. `queue: true` keeps a queueable operation (`studio.setSession`, `clipboard.set`, `open.item`, `notify.show`, `stream.receive`) for an offline partner: `{ success, queued: true }`. Codes: `UNKNOWN_DEVICE`, `OFFLINE`, `NOT_CONNECTED` (still pending), `NOT_PERMITTED`, `UNSUPPORTED` (no socket lists the op), `UNKNOWN_OP`, `TOO_LARGE` (1 MB of args; 256 KB queued), `QUEUE_FULL` (50), `TIMEOUT`, `DISCONNECTED`, or the other side's own code |
 | `as_partnership` | `as_partnership_response` | `action: 'propose'` `{ deviceId, mode: 'partner' \| 'guest', name?, syncItems? }` asks the phone (`partnership.propose`, up to 2 minutes) -> `{ accepted, device }`; `'update'` `{ deviceId, name?, syncItems?, settings? }` (a device updates its own `permissions`); `'end'` `{ deviceId }` (a device ends its own). `NAME_IN_USE` when another partner has the name |
 | `as_forget` | `as_forget_response` | `{ deviceId }`: an offline device's record, queue and log |
+| `as_notify_settings` | `as_notify_settings_response` | `{ deviceId, compact? }` (#979, `modules/activeSyncNotifyFilter.js`): the partnership's notification settings `{ apps: [{ package, app, icon, kind: 'noise' \| 'handled' \| 'real', why, handledBy, keep, def: { send, tray }, send, tray, lastSeen, channels: [{ id, name, importance, kind, why, handledBy, def, send, tray, posts, lastSeen }] }], v }`; `compact: true` -> `{ eff: { v, apps: { <package>: { s, t, ch: { <channel>: [s, t] } } } } }` (channel values already include the app's) |
+| `as_notify_settings_set` | `as_notify_settings_set_response` | `{ deviceId, apps: { <package>: { send, tray, ch: { <channel>: { send, tray } } } } }`: the user's choices (stored as differences from the defaults), a partner only; returns the settings as above and pushes the new filter to the phone and the computers |
+| `as_set_primary` | `as_set_primary_response` | `{ deviceId }` (`''` clears) -> `{ primary }` (#979): the owner's primary device, a partner only (`NOT_PARTNER`); device descriptions carry `primary: true`. Ending the partnership or forgetting the device clears it |
 
 Pushed by the server:
 
 | Type | Notes |
 | --- | --- |
 | `as_request` | `{ callId, from: { kind, id, name, queuedAt? }, op, args }`: answer with `as_reply` |
-| `as_event` | `{ from, event, detail }`; from kind `server`: `partnership.changed` `{ session, permissions, name, syncItems }` to the device; to a partnered device's service socket, `inbox.notice` (a notification inbox notice plus `user`, `pageConnected`) and `inbox.cleared { id }` ([notificationInbox.md](./notificationInbox.md), #876) |
+| `as_event` | `{ from, event, detail }`; from kind `server`: `notify.filter` `{ deviceId, eff }` to administrators' computers when a partnership's notification map changed (#979); `partnership.changed` `{ session, permissions, name, syncItems }` to the device; to a partnered device's service socket, `inbox.notice` (a notification inbox notice plus `user`, `pageConnected`) and `inbox.cleared { id }` ([notificationInbox.md](./notificationInbox.md), #876) |
 | `as_peers_updated` | `{ devices, computers }` to administrators that said hello, coalesced (250 ms), only when something other than the clocks changed. A phone's sockets get it only when something its own page reads changed (another peer, or its own session, permissions or name: its own status report does not come back to it, #890); the app's background link never gets it |
 | `as_credits` | To the app's background link (speaker `service`) only (#890): `{ free, paid, daysLeft }`, all strings (`daysLeft` `''` when unknown): free and paid Anlas and the subscription's days left, the values of `GET /android/background-notification`. Once right after its `as_hello`, then whenever they change (checked with the server's 10 s status read). The app need not ask over HTTP while its link is up |
 

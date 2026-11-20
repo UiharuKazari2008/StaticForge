@@ -66,7 +66,8 @@
 
     function pick() {
         const list = usable();
-        return list.find((d) => d.deviceId === chosen) || list[0] || null;
+        // the one chosen in Explorer, else the primary device (#979), else the first connected
+        return list.find((d) => d.deviceId === chosen) || (typeof as.pick === 'function' ? as.pick(list) : list[0]) || null;
     }
 
     /** The device in use follows what is connected; a change is a 'config' for Explorer. */

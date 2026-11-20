@@ -1046,6 +1046,8 @@ class WebSocketClient {
         'as_log',
         'as_synced',
         'as_forget',
+        // a partnership's notification map, read when a phone connects (#979)
+        'as_notify_settings',
         'get_generation_quips',
         'get_generation_quips_status',
         'get_generation_quips_wiki',

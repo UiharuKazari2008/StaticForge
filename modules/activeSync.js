@@ -271,8 +271,51 @@ function getDb(globalResources) {
             seen INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS as_received_device ON as_received (device_id, id);
+        CREATE TABLE IF NOT EXISTS as_prefs (
+            owner TEXT NOT NULL,
+            name TEXT NOT NULL,
+            value TEXT NOT NULL,
+            PRIMARY KEY (owner, name)
+        );
     `);
     return db;
+}
+
+// ---------------------------------------------------------------- the primary device (#979)
+//
+// Yukimi, Nov 20 2026: "a setting for selecting the primary phone so when new devices show up they do not take over
+// Mobile Device Center; they just show up in the list". One partnered device per owner (the administrators who list
+// devices) is the primary: Device Center, the tray icon, the Sidebar gadgets and the phone drive stay on it whenever
+// it is connected, show it as Not Connected while it is away, and other devices only join the lists.
+const PRIMARY_OWNER = 'admin';
+let primaryCache = null; // { owner: deviceId | '' }
+
+function primaryOf(globalResources, owner = PRIMARY_OWNER) {
+    if (!primaryCache) primaryCache = {};
+    if (!Object.prototype.hasOwnProperty.call(primaryCache, owner)) {
+        const row = getDb(globalResources).prepare("SELECT value FROM as_prefs WHERE owner = ? AND name = 'primary'").get(owner);
+        primaryCache[owner] = row && isPeerId(row.value) ? row.value : '';
+    }
+    return primaryCache[owner];
+}
+
+/** deviceId '' clears it. Only a partnered device can be the primary. */
+function setPrimary(globalResources, wsServer, deviceId, owner = PRIMARY_OWNER) {
+    const id = String(deviceId || '').toLowerCase();
+    const d = getDb(globalResources);
+    if (id) {
+        const row = rowOf(globalResources, id);
+        if (!row) throw fail('UNKNOWN_DEVICE', 'No such device.');
+        if (!row.partner) throw fail('NOT_PARTNER', 'Only a device with a partnership can be the primary device.');
+        d.prepare("INSERT INTO as_prefs (owner, name, value) VALUES (?, 'primary', ?) ON CONFLICT (owner, name) DO UPDATE SET value = excluded.value").run(owner, id);
+        logEvent(globalResources, id, 'info', 'Set as the primary device');
+    } else {
+        d.prepare("DELETE FROM as_prefs WHERE owner = ? AND name = 'primary'").run(owner);
+    }
+    if (!primaryCache) primaryCache = {};
+    primaryCache[owner] = id;
+    scheduleUpdated(globalResources, wsServerOf(globalResources, wsServer));
+    return id;
 }
 
 function rowOf(globalResources, deviceId) {
@@ -414,6 +457,8 @@ function describeDevice(globalResources, wsServer, row) {
         firstSeen: row.first_seen,
         lastSeen: live.length ? Date.now() : row.last_seen,
         lastSync: row.last_sync || null,
+        // the owner's primary device (#979): Device Center and the tray stay on it while it is connected
+        primary: !!row.partner && primaryOf(globalResources) === row.device_id,
         // ADB on port 5555 from this server (#818): state ready / unauthorized / unreachable / off ...
         adb: adbStatusOf(globalResources, row.device_id),
         // the wallpapers kept for Device Center (#827): a new stamp means new pictures
@@ -602,6 +647,8 @@ function hello(globalResources, wsServer, clientInfo, data) {
         kind, id, name,
         speaker: SPEAKERS.has(src.speaker) ? src.speaker : 'webview',
         ops: cleanOps(src.ops),
+        // the notification filter the phone holds (#979, activeSyncNotifyFilter.js): a new one goes out only when it differs
+        nfv: clampString(src.nfv, 40),
         since: now,
         session: null,
         permissions: [],
@@ -660,7 +707,7 @@ function hello(globalResources, wsServer, clientInfo, data) {
     // from the household's notices before its own hello, and taps that take a phone's data into the household skip it
     const test = kind === 'device' && isTestDevice(id);
     if (test) { try { require('./testDevices').noteHello({ id, sessionId: clientInfo.sessionId }); } catch (_) { /* no fence module */ } }
-    if (kind === 'device') for (const fn of helloTaps) { try { fn({ id, speaker: as.speaker, session: as.session, name: as.name, sessionId: clientInfo.sessionId || null, test }); } catch (_) { /* the tap's own fault */ } }
+    if (kind === 'device') for (const fn of helloTaps) { try { fn({ id, speaker: as.speaker, session: as.session, name: as.name, sessionId: clientInfo.sessionId || null, test, ops: as.ops, nfv: as.nfv }); } catch (_) { /* the tap's own fault */ } }
     const peers = list(globalResources, server);
     // the page has this list now: the broadcast its hello sets off is not sent back to it unless it
     // differs in what the page reads (scheduleUpdated)
@@ -1009,6 +1056,28 @@ async function deliverQueue(globalResources, wsServer, deviceId) {
 
 const deviceEventTaps = [];
 const helloTaps = [];
+const endTaps = [];
+let relayFilter = null;
+/** fn(globalResources, device, eventName, detail) -> the detail computers get, or undefined to keep it from them (#979). */
+function setRelayFilter(fn) { relayFilter = typeof fn === 'function' ? fn : null; }
+/** fn(deviceId) after a partnership ended (its per-partnership state goes with it, #979). */
+function onPartnershipEnded(fn) { if (typeof fn === 'function') endTaps.push(fn); }
+
+/**
+ * An as_event from the server to the administrators' computers (#979: a partnership's notification filter changed).
+ * The packet is built once for every socket.
+ */
+function tellComputers(globalResources, wsServer, name, detail) {
+    const server = wsServerOf(globalResources, wsServer);
+    if (!server) return 0;
+    const msg = { type: 'as_event', data: { from: { kind: 'server', id: '', name: '' }, event: name, detail }, timestamp: new Date().toISOString() };
+    let n = 0;
+    for (const s of liveSockets(server, 'computer')) {
+        if (s.info.userType !== 'admin') continue;
+        try { server.sendToClient(s.ws, msg); n += 1; } catch (_) { /* closing */ }
+    }
+    return n;
+}
 /** A test device (modules/testDevices.js): partnered for tests, fenced from the household's notices. */
 function isTestDevice(id) { try { return require('./testDevices').isTestDevice(id); } catch (_) { return false; } }
 /** fn({ id, speaker, session, name }) after a device's socket said as_hello (before its reply is sent). */
@@ -1038,7 +1107,14 @@ function event(globalResources, wsServer, clientInfo, data) {
     if (me.kind === 'device') for (const tap of deviceEventTaps) { if (test && name !== 'inbox.posted') continue; try { tap(name, src.detail == null ? null : src.detail, me); } catch (_) { /* the tap's own fault */ } }
     // news for the server only: a notice's delivery confirmation (notificationInbox, #908) goes to no computer
     if (me.kind === 'device' && name === 'inbox.posted') return 0;
-    const msg = { type: 'as_event', data: { from: fromOf(clientInfo), event: name, detail: src.detail == null ? null : src.detail }, timestamp: new Date().toISOString() };
+    let detail = src.detail == null ? null : src.detail;
+    // the partnership's notification filter (#979): a notification it does not send to computers stops here (the
+    // server's own modules above still took it), the rest carry whether they show in the notification area
+    if (me.kind === 'device' && relayFilter) {
+        try { detail = relayFilter(globalResources, me, name, detail); } catch (err) { console.warn('[activeSync] relay filter failed:', err.message); }
+        if (detail === undefined) return 0;
+    }
+    const msg = { type: 'as_event', data: { from: fromOf(clientInfo), event: name, detail }, timestamp: new Date().toISOString() };
     let n = 0;
     for (const s of liveSockets(server, me.kind === 'device' ? 'computer' : 'device')) {
         if (me.kind === 'device' && s.info.userType !== 'admin') continue;
@@ -1149,6 +1225,9 @@ async function partnership(globalResources, wsServer, clientInfo, data) {
         d.prepare("UPDATE as_devices SET partner = 0, permissions = '[]', sync_items = '[]', settings = '{}', last_sync = NULL WHERE device_id = ?").run(deviceId);
         releaseQueue(globalResources, deviceId);
         if (row.partner) logEvent(globalResources, deviceId, 'info', me.kind === 'device' ? 'Partnership ended on the device' : 'Partnership ended');
+        // no partnership, no primary device and no notification settings (#979)
+        if (primaryOf(globalResources) === deviceId) setPrimary(globalResources, server, '');
+        for (const fn of endTaps) { try { fn(deviceId); } catch (_) { /* the tap's own fault */ } }
         if (deviceSession(server, deviceId)) {
             setDeviceSession(server, deviceId, 'pending', []);
             notifyDevice(server, deviceId, 'partnership.changed', { session: 'pending', permissions: [] }, clientInfo);
@@ -1380,6 +1459,8 @@ function forget(globalResources, wsServer, deviceId) {
     const res = d.prepare('DELETE FROM as_devices WHERE device_id = ?').run(deviceId);
     releaseQueue(globalResources, deviceId);
     d.prepare('DELETE FROM as_log WHERE device_id = ?').run(deviceId);
+    if (primaryOf(globalResources) === deviceId) setPrimary(globalResources, server, '');
+    for (const fn of endTaps) { try { fn(deviceId); } catch (_) { /* the tap's own fault */ } }
     scheduleUpdated(globalResources, server);
     return res.changes > 0;
 }
@@ -1390,6 +1471,7 @@ function resetForTests(databasesPath) {
     }
     db = null;
     dbPath = null;
+    primaryCache = null;
     lastWsServer = null;
     if (broadcastTimer) clearTimeout(broadcastTimer);
     broadcastTimer = null;
@@ -1403,6 +1485,13 @@ function resetForTests(databasesPath) {
 
 module.exports = {
     onDeviceEvent,
+    primaryOf,
+    setPrimary,
+    setRelayFilter,
+    onPartnershipEnded,
+    tellComputers,
+    /** The ActiveSync database (activeSyncNotifyFilter.js keeps its tables beside the devices, #979). */
+    db: getDb,
     AsError,
     PERMISSIONS,
     GUEST_PERMISSIONS,

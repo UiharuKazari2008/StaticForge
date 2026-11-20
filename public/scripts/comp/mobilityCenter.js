@@ -227,7 +227,8 @@
         try { list = (a.state().devices || []).filter((d) => d && d.partner); } catch (_) { return null; }
         if (!list.length) return null;
         const cid = continuityId();
-        const dev = (cid && list.find((d) => String(d.deviceId).toLowerCase() === cid)) || list.find((d) => d.online) || list[0];
+        // the Continuity phone, then the primary device (#979), then a connected partner
+        const dev = (cid && list.find((d) => String(d.deviceId).toLowerCase() === cid)) || list.find((d) => d.primary) || list.find((d) => d.online) || list[0];
         return { dev, local: !!(cid && String(dev.deviceId).toLowerCase() === cid), count: list.length };
     }
 

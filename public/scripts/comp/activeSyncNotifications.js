@@ -16,6 +16,11 @@
  * Center on the device's notifications (apps/activesync page 'notifications');
  * HKCU\...\Melaton Mobile Device Center\ShowNotifications = 0 keeps the list without popups.
  * Desktop tabs only (activeSync.kind === 'computer').
+ *
+ * The partnership's notification settings (#979, modules/activeSyncNotifyFilter.js): what an app or channel does not
+ * send to this computer is left out of the list (the phone already keeps most of it back; an older app does not), and
+ * one without "Show in the notification area" never pops up. With a primary device set (activeSync.primary()), only
+ * the primary's notifications pop up; the other devices' are listed in Device Center.
  */
 (function (root) {
     'use strict';
@@ -28,6 +33,7 @@
     const lists = new Map();    // deviceId -> Map(key -> notification)
     const icons = new Map();    // deviceId -> Map(package -> data URL)
     const synced = new Set();   // devices whose current list was asked for since they connected
+    const filters = new Map();  // deviceId -> the partnership's map { v, apps: { pkg: { s, t, ch: { id: [s, t] } } } } (#979)
     const listeners = [];
     let showing = null;         // { deviceId, key } of the popup on screen
 
@@ -57,8 +63,52 @@
             title: String(raw.title || '').slice(0, 200),
             text: String(raw.text || '').slice(0, 1000),
             time: Number(raw.time) || Date.now(),
+            channel: typeof raw.channel === 'string' ? raw.channel.slice(0, 200) : '',
             icon: icon || icons.get(deviceId).get(pkg) || null
         };
+    }
+
+    /** What the partnership's settings say for one notification: { send, tray } (#979; all on before the map came). */
+    function rule(deviceId, n) {
+        const f = filters.get(deviceId);
+        const e = f && f.apps ? f.apps[n.package] : null;
+        if (!e) return { send: true, tray: true };
+        const c = n.channel && e.ch ? e.ch[n.channel] : null;
+        return c ? { send: !!c[0], tray: !!c[1] } : { send: !!e.s, tray: !!e.t };
+    }
+
+    /** The map came or changed: what it no longer sends leaves the list (and its popup). */
+    function takeFilter(deviceId, eff) {
+        if (!eff || typeof eff !== 'object' || !eff.apps) return;
+        const was = filters.get(deviceId);
+        if (was && was.v === eff.v) return;
+        filters.set(deviceId, eff);
+        const list = lists.get(deviceId);
+        let gone = false;
+        for (const n of list ? [...list.values()] : []) {
+            if (rule(deviceId, n).send) continue;
+            list.delete(n.key);
+            gone = true;
+            if (showing && showing.deviceId === deviceId && showing.key === n.key) {
+                const anchor = trayIcon();
+                if (anchor && root.PopoverManager && typeof root.PopoverManager.hide === 'function') root.PopoverManager.hide(anchor);
+                showing = null;
+            }
+        }
+        if (gone) changed(deviceId);
+    }
+
+    function loadFilter(deviceId) {
+        if (typeof as.notifySettings !== 'function') return Promise.resolve();
+        return as.notifySettings(deviceId, { compact: true }).then((res) => takeFilter(deviceId, res && res.eff), () => { /* an older server: everything shows */ });
+    }
+
+    /** Popups: the setting's own word, and with a primary device set only the primary's (#979). */
+    function popsUp(deviceId, n, raw) {
+        if (raw && raw.tray === false) return false;
+        if (!rule(deviceId, n).tray) return false;
+        const p = typeof as.primary === 'function' ? as.primary() : null;
+        return !p || p.deviceId === deviceId;
     }
 
     function listOf(deviceId) {
@@ -86,12 +136,13 @@
     function posted(device, raw) {
         const n = take(device.deviceId, raw);
         if (!n) return;
+        if (!rule(device.deviceId, n).send) return;
         const list = listOf(device.deviceId);
         const fresh = !list.has(n.key) || list.get(n.key).text !== n.text || list.get(n.key).title !== n.title;
         list.delete(n.key);
         list.set(n.key, n);
         while (list.size > MAX_PER_DEVICE) list.delete(list.keys().next().value);
-        if (fresh) popup(device, n);
+        if (fresh && popsUp(device.deviceId, n, raw)) popup(device, n);
         changed(device.deviceId);
     }
 
@@ -113,6 +164,7 @@
     /** What the phone shows now, once per connection (no popups for what was already there). */
     async function sync(d) {
         synced.add(d.deviceId);
+        await loadFilter(d.deviceId);
         let res = null;
         try {
             res = await as.call(d.deviceId, 'notify.list', {}, { timeoutMs: 15000 });
@@ -122,7 +174,7 @@
         const list = new Map();
         for (const raw of (res && res.notifications) || []) {
             const n = take(d.deviceId, raw);
-            if (n) list.set(n.key, n);
+            if (n && rule(d.deviceId, n).send) list.set(n.key, n);
         }
         lists.set(d.deviceId, list);
         changed(d.deviceId);
@@ -140,6 +192,7 @@
             if (live.has(id)) continue;
             synced.delete(id);
             icons.delete(id);
+            filters.delete(id);
             if (lists.delete(id)) changed(id);
             if (showing && showing.deviceId === id) {
                 const anchor = trayIcon();
@@ -150,6 +203,11 @@
     });
 
     as.on('event', (e) => {
+        // the server: a partnership's notification settings changed (#979)
+        if (e && e.from && e.from.kind === 'server' && e.event === 'notify.filter' && e.detail && typeof e.detail.deviceId === 'string') {
+            if (synced.has(e.detail.deviceId)) takeFilter(e.detail.deviceId, e.detail.eff);
+            return;
+        }
         if (!e || !e.from || e.from.kind !== 'device') return;
         if (e.event === 'notify.posted') {
             const d = as.device(e.from.id);

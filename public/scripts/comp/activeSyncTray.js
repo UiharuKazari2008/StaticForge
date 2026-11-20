@@ -9,7 +9,10 @@
  *   balloons  a device connected / disconnected (HKCU\...\Melaton Mobile Device Center\NotifyOnConnect),
  *             battery low (15% and under, not charging, once until it charges again), battery fully
  *             charged (100% while charging, once per charge); a click opens Device Center at that device
- *   new device   one that waits for the choice opens Device Center (OpenOnConnect)
+ *   new device   one that waits for the choice opens Device Center (OpenOnConnect); with a primary device set (#979) a
+ *                new device never takes Device Center over: a balloon says it connected, and a click opens it there
+ *   primary      the icon is the primary device's: green while it is connected, grey while it is away (other
+ *                devices only add their line to the tooltip and the menu)
  */
 (function (root) {
     'use strict';
@@ -62,7 +65,7 @@
                     initfn: (s) => {
                         const devices = a.state().devices.filter((d) => d.online || d.partner);
                         s.items = [{ text: 'Open Melaton Mobile Device Center', action: 'open', default: true }];
-                        if (devices.length) s.items.push({ separator: true }, ...devices.map((d) => ({ text: line(d), action: `dev:${d.deviceId}` })));
+                        if (devices.length) s.items.push({ separator: true }, ...devices.map((d) => ({ text: d.primary && devices.length > 1 ? `${line(d)} (primary)` : line(d), action: `dev:${d.deviceId}` })));
                         // the folder files sent to a phone go to (activeSyncRemoteStorage.js openReceived)
                         const sharing = devices.filter((d) => d.online && (d.permissions || []).includes('files'));
                         if (sharing.length && root.phoneStorage && typeof root.phoneStorage.openReceived === 'function') {
@@ -96,7 +99,11 @@
         const known = st.devices.filter((d) => d.online || d.partner);
         const online = known.filter((d) => d.online);
         const img = el.querySelector('img');
-        if (img) img.src = `${ART}/${online.length ? 'activesync-16.png' : 'activesync-idle-16.png'}`;
+        // the primary device's state when one is set (#979): another phone connecting does not light the icon
+        const primary = known.find((d) => d.primary);
+        const lit = primary ? primary.online : online.length > 0;
+        const src = `${ART}/${lit ? 'activesync-16.png' : 'activesync-idle-16.png'}`;
+        if (img && img.getAttribute('src') !== src) img.src = src;
         el.title = known.length ? `Melaton Mobile Device Center\n${known.map(line).join('\n')}` : 'Melaton Mobile Device Center';
         if (known.length && el.classList.contains('hidden')) {
             // revealTrayIconElement: public/scripts/comp/trayIndicators.js
@@ -114,7 +121,10 @@
             // the first list after a (re)connect is the state of things, not news
             if (!first) {
                 if (d.online && !(was && was.online)) {
-                    if (d.session === 'pending') { if (setting('OpenOnConnect')) openCenter(d.deviceId); }
+                    // a primary device is set and this is another one: it joins the list, Device Center stays (#979)
+                    const other = st.devices.some((x) => x.primary && x.deviceId !== d.deviceId);
+                    if (d.session === 'pending' && !other) { if (setting('OpenOnConnect')) openCenter(d.deviceId); }
+                    else if (d.session === 'pending') { if (setting('OpenOnConnect') || setting('NotifyOnConnect')) balloon('info', 'New device connected', `${d.name} is connected. Click here to set it up in Device Center.`, d.deviceId); }
                     else if (setting('NotifyOnConnect')) balloon('success', 'Device connected', `${d.name} is connected.`, d.deviceId);
                 } else if (!d.online && was && was.online && was.session !== 'pending') {
                     if (setting('NotifyOnConnect')) balloon('info', 'Device disconnected', `${d.name} is no longer connected.`, d.deviceId);

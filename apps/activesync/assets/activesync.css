@@ -203,3 +203,28 @@ body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.mo
 .asdc-about-logo i { position: absolute; left: 70px; top: 15px; font: normal 36px/1 'Segoe UI', sans-serif; font-style: normal; letter-spacing: -.5px; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
 .asdc-about-facts { position: absolute; left: 12px; top: 61px; white-space: nowrap; text-shadow: 0 1px 1px rgba(0, 0, 0, .25); }
 .asdc-about-notice { position: absolute; left: 9px; top: 127px; width: 398px; height: 75px; box-sizing: border-box; padding: 3px 6px; overflow-y: scroll; border: 1px solid rgba(255, 255, 255, .55); background: rgba(118, 196, 60, .55); font: normal 11px/14px 'Segoe UI', Tahoma, sans-serif; }
+
+/* ---- Manage a Partnership, notification settings (#979) ---- */
+.asdc-manage .asdc-manage-primary { margin: 4px 0 8px; }
+.asdc-root .asdc-manage .asdc-manage-note { margin: 0 0 0 20px; font-size: 13px; line-height: 17px; }
+/* the settings list has the whole stage under the logo: the picture and the status step aside */
+.asdc-stage.is-wide-page .asdc-device, .asdc-stage.is-wide-page .asdc-status, .asdc-stage.is-wide-page .asdc-sync { visibility: hidden; }
+.asdc-page.asdc-nf { left: 24px; top: 92px; width: 736px; }
+.asdc-root .asdc-nf p { margin-bottom: 8px; }
+.asdc-nf-list { height: 276px; overflow-y: auto; }
+.asdc-nf-list table { width: 100%; }
+.asdc-nf-list th:nth-child(2), .asdc-nf-list td:nth-child(2) { width: 136px; }
+.asdc-nf-list th:nth-child(3), .asdc-nf-list td:nth-child(3) { width: 172px; }
+.asdc-nf-list td { height: 22px; padding: 0 8px; vertical-align: middle; }
+.asdc-nf-list td:nth-child(n+2) label { display: inline-flex; vertical-align: middle; margin-left: 20px; min-height: 13px; }
+.asdc-nf-list .asdc-nf-cell { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.asdc-nf-list .asdc-nf-leaf, .asdc-nf-list .asdc-nf-ch { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
+.asdc-nf-list .asdc-nf-leaf img { width: 16px; height: 16px; flex: none; }
+.asdc-nf-list .asdc-nf-cell > a { flex: none; }
+.asdc-nf-list .asdc-nf-ch { padding-left: 22px; }
+.asdc-nf-list .asdc-nf-name { flex: none; }
+.asdc-nf-list .asdc-nf-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; opacity: .62; }
+.asdc-nf-list .asdc-nf-note::before { content: '\2014  '; }
+.asdc-nf .asdc-page-buttons { margin-top: 8px; }
+.asdc-nf .asdc-error { min-height: 0; margin: 4px 0 0; }
+.asdc-nf .asdc-page-buttons [data-asdc="nf-defaults"] { margin-right: auto; }
