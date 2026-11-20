@@ -102,7 +102,7 @@ const FEATURE_MANIFEST = {
     },
     explorer: {
         hot: true,
-        styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css', 'css/melaton-apps.css', 'css/themes/vista/explorer-contacts.css', 'css/explorer-contacts.css', 'css/explorer-phone.css'],
+        styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css', 'css/themes/vista/filetypes.css', 'css/melaton-apps.css', 'css/themes/vista/explorer-contacts.css', 'css/explorer-contacts.css', 'css/explorer-phone.css'],
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
         scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerSequenzia.js', 'scripts/comp/vcard.js', 'scripts/comp/explorerContacts.js', 'scripts/comp/phoneStorageBridge.js', 'scripts/comp/explorerPhoneDrive.js', 'scripts/comp/explorerHostDrive.js', 'scripts/comp/explorerApplet.js']
     },

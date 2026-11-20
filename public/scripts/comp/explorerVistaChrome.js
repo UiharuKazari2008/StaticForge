@@ -41,7 +41,25 @@
         lzma: 'lzma Archive', zst: 'zst Archive', z: 'z Archive', cab: 'cab Archive', iso: 'iso Archive',
         wim: 'wim Archive', arj: 'arj Archive', lzh: 'lzh Archive', lha: 'lha Archive', cpio: 'cpio Archive',
         rpm: 'rpm Archive', deb: 'deb Archive', dmg: 'dmg Archive', xar: 'xar Archive', vhd: 'vhd Archive',
-        squashfs: 'squashfs Archive', '001': '001 Archive'
+        squashfs: 'squashfs Archive', '001': '001 Archive',
+        // the rest of Vista's own names, read from the VM's shell (SHGetFileInfo type names, #446 follow-up)
+        aif: 'AIFF Format Sound', ani: 'Animated Cursor', asf: 'Windows Media Audio/Video file',
+        asx: 'Windows Media Audio/Video playlist', au: 'AU Format Sound', avi: 'Video Clip',
+        bat: 'Melaton Batch File', cer: 'Security Certificate', chm: 'Compiled HTML Help file',
+        cmd: 'Melaton Command Script', com: 'MS-DOS Application', cpl: 'Control Panel Item', cur: 'Cursor',
+        dll: 'Application Extension', 'dvr-ms': 'Microsoft Recorded TV Show', emf: 'Paintbrush Picture',
+        eml: 'Melaton Mail E-Mail Message', exe: 'Application', fon: 'Font File', gadget: 'Melaton Gadget',
+        hlp: 'Help File', hta: 'HTML Application', ics: 'iCalendar File', inf: 'Setup Information',
+        ini: 'Configuration Settings', jnt: 'Journal Document', lnk: 'Shortcut', log: 'Text Document',
+        mht: 'MHTML Document', mid: 'MIDI Sequence', mpg: 'Movie Clip', msi: 'Melaton Installer Package',
+        msstyles: 'Melaton Visual Style File', msu: 'Microsoft Update Standalone Package',
+        nfo: 'System Information File', nws: 'Melaton Mail News Message', ocx: 'ActiveX Control',
+        otf: 'OpenType Font File', p7b: 'PKCS #7 Certificates', pfx: 'Personal Information Exchange',
+        reg: 'Registration Entries', rtf: 'Rich Text Format', scr: 'Screen Saver', sys: 'System File',
+        theme: 'Melaton Theme File', ttf: 'TrueType Font File', url: 'Internet Shortcut', vbs: 'VBScript Script File',
+        vcf: 'vCard File', wdp: 'Windows Media Photo', wma: 'Windows Media Audio file', wmf: 'Paintbrush Picture',
+        wmv: 'Windows Media Audio/Video file', wpl: 'Windows Media playlist', wri: 'Write Document',
+        wsf: 'Melaton Script File', xml: 'XML Document', xps: 'XPS document', xsl: 'XSL Stylesheet'
     };
 
     function esc(text) {

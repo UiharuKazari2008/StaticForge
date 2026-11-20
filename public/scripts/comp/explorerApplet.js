@@ -114,6 +114,27 @@ const EXPLORER_WORKSPACE_LIST_SORT_OPTIONS = [
 ];
 
 class ExplorerApplet {
+    // Vista's file type icons (css/themes/vista/filetypes.css, ripped from the VM's shell image lists): extension -> icon key.
+    // Archives keep 7-Zip's icons (vista-7zip.css) and a PDF Adobe Reader's (vista-explorer.css), so neither is here.
+    static VISTA_FILE_TYPES = Object.freeze({
+        '3gp': 'media', aac: 'media', aif: 'media', asf: 'media', asx: 'media', au: 'media', avi: 'avi', avif: 'image',
+        bat: 'bat', bmp: 'bmp', cer: 'cer', chm: 'chm', cmd: 'cmd', com: 'exe', contact: 'contact', cpl: 'dll',
+        css: 'css', csv: 'txt', dib: 'bmp', dll: 'dll', 'dvr-ms': 'dvr-ms', emf: 'wmf', eml: 'eml', exe: 'exe',
+        flac: 'media', flv: 'media', fon: 'fon', gadget: 'gadget', gif: 'gif', heic: 'image', hlp: 'hlp', hta: 'hta',
+        htm: 'htm', html: 'htm', ico: 'image', ics: 'ics', inf: 'ini', ini: 'ini', jfif: 'jpg', jnt: 'jnt', jpeg: 'jpg',
+        jpg: 'jpg', js: 'js', json: 'txt', log: 'txt', m3u: 'media', m4a: 'media', m4v: 'media', md: 'txt', mht: 'htm',
+        mid: 'media', mkv: 'media', mov: 'media', mp3: 'mp3', mp4: 'media', mpg: 'mpg', msi: 'msi', msstyles: 'msstyles',
+        msu: 'msu', nfo: 'nfo', nws: 'nws', ocx: 'dll', oga: 'media', ogg: 'media', opus: 'media', otf: 'font',
+        p7b: 'cer', pfx: 'pfx', png: 'png', psd: 'image', reg: 'reg', rtf: 'rtf', scr: 'exe', svg: 'image', sys: 'dll',
+        theme: 'msstyles', tif: 'bmp', tiff: 'bmp', ttf: 'font', txt: 'txt', url: 'url', vbs: 'vbs', vcf: 'contact',
+        wav: 'wav', wdp: 'wdp', webm: 'media', webp: 'image', wma: 'wma', wmf: 'wmf', wmv: 'wmv', wpl: 'wpl', wri: 'rtf',
+        wsf: 'vbs', xml: 'xml', xps: 'xps', xsl: 'xsl'
+    });
+
+    // pictures Vista frames as photos at their own aspect (vista-explorer.css .desktop-shortcut-photo), not icons
+    static FRAMED_PICTURE = /^image\/(?!svg|x-icon|vnd\.microsoft\.icon)/i;
+    static FRAMED_PICTURE_EXT = /\.(jpe?g|jfif|png|gif|bmp|webp|avif|heic|tiff?)$/i;
+
     constructor() {
         this.modal = null;
         this.currentPath = '/';
@@ -4462,6 +4483,7 @@ class ExplorerApplet {
         icon.dataset.kind = this.isFolderItem(item) ? 'folder' : 'file';
         // a PDF shows Adobe Reader's document icon (PDFFile_8.ico, vista-explorer.css; #910)
         if (icon.dataset.kind === 'file' && /\.pdf$/i.test(item.name || '')) icon.dataset.ftype = 'pdf';
+        this._applyVistaFileType(icon, item);
         box.innerHTML = '';
         box.appendChild(icon);
         // Vista's live folder: the folder's pictures stand in it (item.previews from vfsManager.js,
@@ -4536,6 +4558,21 @@ class ExplorerApplet {
         pre.src = nextSrc;
     }
 
+    /** Vista's icon for the file's type (VISTA_FILE_TYPES, themes/vista/filetypes.css); archives and PDFs have their own. */
+    _applyVistaFileType(icon, item) {
+        if (icon.dataset.kind !== 'file' || icon.dataset.ftype || icon.classList.contains('fa-file-zipper')) return;
+        const m = /\.([a-z0-9-]+)$/i.exec(item?.name || '');
+        const key = m && ExplorerApplet.VISTA_FILE_TYPES[m[1].toLowerCase()];
+        if (key) icon.dataset.ftype = key;
+    }
+
+    /** A picture file with a preview (a VFS file, this machine's drives, Sequenzia, an archive's): Vista's photo frame. */
+    _isFramedPicture(item) {
+        if (!item?.previewUrl || this.isFolderItem(item)) return false;
+        const mime = item.mimeType || '';
+        return mime ? ExplorerApplet.FRAMED_PICTURE.test(mime) : ExplorerApplet.FRAMED_PICTURE_EXT.test(item.name || '');
+    }
+
     _populatePreviewIconBox(box, item) {
         const img = box.querySelector(':scope > img.explorer-item-preview-img');
         const icon = box.querySelector(':scope > i.explorer-item-type-icon');
@@ -4549,6 +4586,7 @@ class ExplorerApplet {
         const typeIcon = document.createElement('i');
         typeIcon.className = `${item.icon || 'fas fa-file'} explorer-item-type-icon`;
         typeIcon.dataset.kind = this.isFolderItem(item) ? 'folder' : 'file';
+        this._applyVistaFileType(typeIcon, item);
         box.appendChild(typeIcon);
         const fresh = document.createElement('img');
         fresh.className = 'explorer-item-preview-img';
@@ -4599,7 +4637,15 @@ class ExplorerApplet {
         }
         // a phone's pictures and videos are photos too: Vista's thumbnail frame at their own aspect, not a cropped square (#954)
         const phoneMedia = item.targetKind === 'phone-entry' && item.previewUrl && /^(image|video)\//.test(item.mimeType || '');
-        if (item.targetKind === 'image' || item.targetKind === 'scrap' || item.previewImageFilename || item.galleryPreview || phoneMedia) {
+        // so is any other picture file with a preview: VFS uploads, this machine's drives, Sequenzia, archives
+        // Small Icons, List and Details show a picture file's type icon (JPEG Image, PNG Image), as Vista does
+        const smallBox = box.classList.contains('explorer-item-icon-box-sm') || box.classList.contains('explorer-item-icon-box-row');
+        const framedPicture = this._isFramedPicture(item);
+        if (framedPicture && smallBox) {
+            this._populateDefaultIconBox(box, item);
+            return;
+        }
+        if (item.targetKind === 'image' || item.targetKind === 'scrap' || item.previewImageFilename || item.galleryPreview || phoneMedia || framedPicture) {
             this._populateGalleryImageIconBox(box, item);
             return;
         }
