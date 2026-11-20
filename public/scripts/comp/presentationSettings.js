@@ -49,8 +49,22 @@
         return list;
     }
 
-    /** A picture picked with Browse (a gallery print, file:<name>) or saved before: its own row. */
+    /** A picture file picked with Browse: url:<the VFS file's address>#<its name> (web_server.js <vfs>/files/:id). */
+    function fileRowPath(item) {
+        const client = root.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null); // eslint-disable-line no-undef
+        const base = client && typeof client.getBasePath === 'function' ? client.getBasePath() : null;
+        const id = item && (item.targetId || item.id);
+        return base && id ? `url:${base}/files/${encodeURIComponent(id)}#${encodeURIComponent(item.name || id)}` : null;
+    }
+
+    /** A picture picked with Browse (a picture file, or a gallery print file:<name>) or saved before: its own row. */
     function extraRow(path) {
+        const f = /^url:(\/[^#]+\/files\/[^#]+)#(.*)$/.exec(path || '');
+        if (f) {
+            let name = f[2];
+            try { name = decodeURIComponent(name); } catch (_) { /* as stored */ }
+            return { path, name: name.replace(/\.[^.]+$/, ''), icon: `${ART}/picture-16.png`, thumb: f[1] };
+        }
         const m = /^file:(.+)$/.exec(path || '');
         if (!m) return null;
         /* global localStudioPreviewUrl, localGalleryImageUrl */
@@ -161,20 +175,27 @@
             });
         };
 
+        // Browse...: Vista's Open dialog on the files (Computer, the workspace's folders, network drives), the
+        // gallery's prints through Favorite Links > Gallery (studioSession.js studioOpenFolderDialog)
+        const PICTURE_EXT = /\.(png|jpe?g|jpe|jfif|gif|bmp|dib|webp|avif|tiff?|ico)$/i;
+        const isPictureFile = (item) => !!(item && item.targetKind === 'user-file'
+            && (/^image\//.test(item.mimeType || '') || PICTURE_EXT.test(item.name || '')));
+        const isGalleryPrint = (item) => !!(item && (item.targetKind === 'image' || item.targetKind === 'scrap') && item.targetId);
         const browse = (ctx) => {
             if (typeof root.studioOpenFolderDialog !== 'function') return;
             const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || ''; // eslint-disable-line no-undef
             void root.studioOpenFolderDialog('open-vfs', {
                 owner: ctx.modal,
-                startPath: ws ? `/Workspaces/${ws}` : '/',
+                startPath: ws ? `/Workspaces/${ws}/Desktop` : '/',
                 host: {
                     // PresentationSettings.exe.mui 1006, 1009
                     title: 'Browse',
-                    typeLabel: 'All Picture Files',
+                    rememberKey: 'presentationsettings|browse',
+                    types: [{ label: 'All Picture Files (*.bmp; *.dib; *.jpg; *.jpeg; *.jpe; *.jfif; *.gif; *.png; *.webp; *.tif; *.tiff; *.ico)' }],
                     rejectMessage: 'Choose a picture',
-                    acceptItem: (item) => !!(item && item.targetKind === 'image' && item.targetId),
+                    acceptItem: (item) => isPictureFile(item) || isGalleryPrint(item),
                     onOpen(item) {
-                        const row = extraRow(`file:${item.targetId}`);
+                        const row = extraRow(isGalleryPrint(item) ? `file:${item.targetId}` : fileRowPath(item));
                         if (!row) return;
                         if (!rows.some((r) => r.path === row.path)) {
                             rows.push(row);

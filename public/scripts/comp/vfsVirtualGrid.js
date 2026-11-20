@@ -35,6 +35,8 @@ class VfsVirtualGrid {
         this.labelFor = options.labelFor || null;
         this.columnText = options.columnText || null;
         this.tileLines = options.tileLines || null;
+        // false: one item at a time (a file dialog whose program takes one file); Ctrl / Shift / marquee pick one
+        this.multiSelect = options.multiSelect !== false;
         this.items = [];
         this.selectedIds = new Set();
         this.anchorIndex = null;
@@ -166,6 +168,10 @@ class VfsVirtualGrid {
         if (this._interactionBlocked || event.button !== 0) return;
         if (event.target.closest('.explorer-item, .custom-scrollbar-thumb, .custom-scrollbar, .explorer-load-more-foot')) return;
         if (!this.container.contains(event.target)) return;
+        if (!this.multiSelect) {
+            this.clearSelection();
+            return;
+        }
 
         const addToSelection = event.ctrlKey || event.metaKey;
         const baseSelection = addToSelection ? new Set(this.selectedIds) : new Set();
@@ -565,11 +571,77 @@ class VfsVirtualGrid {
     }
 
     selectAll() {
+        if (!this.multiSelect) return;
         this.items.forEach(i => {
             if (!i.isUploadPlaceholder) this.selectedIds.add(i.id);
         });
         this._updateSelectionClasses();
         this.onSelectionChange(this.getSelectedItems());
+    }
+
+    setMultiSelect(on) {
+        this.multiSelect = on !== false;
+        if (!this.multiSelect && this.selectedIds.size > 1) {
+            const first = this.getSelectedItems()[0];
+            this.selectedIds = new Set(first ? [first.id] : []);
+            this._updateSelectionClasses();
+            this.onSelectionChange(this.getSelectedItems());
+        }
+    }
+
+    /** Keyboard selection: the item at index (extend: Shift, from the anchor), scrolled into view. */
+    selectIndex(index, options = {}) {
+        if (!this.items.length) return;
+        const idx = Math.max(0, Math.min(this.items.length - 1, index));
+        const row = this.items[idx];
+        if (!row || row.isUploadPlaceholder) return;
+        if (options.extend && this.multiSelect && this.anchorIndex !== null) {
+            const lo = Math.min(this.anchorIndex, idx);
+            const hi = Math.max(this.anchorIndex, idx);
+            this.selectedIds.clear();
+            for (let i = lo; i <= hi; i++) if (this.items[i] && !this.items[i].isUploadPlaceholder) this.selectedIds.add(this.items[i].id);
+        } else {
+            this.selectedIds.clear();
+            this.selectedIds.add(row.id);
+            this.anchorIndex = idx;
+        }
+        this.focusIndex = idx;
+        this._updateSelectionClasses();
+        this.scrollIndexIntoView(idx);
+        this.onSelectionChange(this.getSelectedItems());
+    }
+
+    /** The index keyboard moves start from: the last one picked, else the first selected. */
+    currentIndex() {
+        if (Number.isInteger(this.focusIndex) && this.items[this.focusIndex] && this.selectedIds.has(this.items[this.focusIndex].id)) return this.focusIndex;
+        return this.items.findIndex(i => this.selectedIds.has(i.id));
+    }
+
+    /** Arrow-key steps: a row in Details / List, a cell sideways and a row of cells up / down in the icon views. */
+    columnCount() {
+        return this._getColumnCount();
+    }
+
+    /** Rows a Page Up / Page Down moves. */
+    pageRows() {
+        const mode = this._getMode();
+        const el = this._getScrollEl();
+        return Math.max(1, Math.floor((el ? el.clientHeight : 300) / mode.rowHeight) - 1);
+    }
+
+    scrollIndexIntoView(index) {
+        const el = this._getScrollEl();
+        if (!el) return;
+        const mode = this._getMode();
+        const row = Math.floor(index / this._getColumnCount());
+        const top = row * mode.rowHeight;
+        if (top < el.scrollTop) el.scrollTop = top;
+        else if (top + mode.rowHeight > el.scrollTop + el.clientHeight) el.scrollTop = top + mode.rowHeight - el.clientHeight;
+    }
+
+    /** The element drawn for an item, if it is in the window. */
+    elementFor(itemId) {
+        return this.contentEl.querySelector(`.explorer-item[data-item-id="${CSS.escape(String(itemId))}"]`);
     }
 
     _pruneSelection() {
@@ -942,6 +1014,10 @@ class VfsVirtualGrid {
         }
         index = this._resolveIndex(item, index);
         if (index < 0) return;
+        if (!this.multiSelect) {
+            this.selectIndex(index);
+            return;
+        }
         if (e.ctrlKey || e.metaKey) {
             if (this.selectedIds.has(item.id)) this.selectedIds.delete(item.id);
             else this.selectedIds.add(item.id);

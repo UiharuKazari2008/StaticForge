@@ -220,18 +220,16 @@
 
     function vfs() { return root.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null); } // eslint-disable-line no-undef
 
-    /** A folder chosen with the file dialog (its Save mode: the name box is not used). */
+    /** A folder chosen with the file dialog's Select Folder form (Folder: / Select Folder). */
     function chooseFolder(w, title, start) {
         return new Promise((resolve) => {
             if (typeof root.studioOpenFolderDialog !== 'function') { resolve(null); return; }
-            void root.studioOpenFolderDialog('save', {
+            void root.studioOpenFolderDialog('folder', {
                 owner: w.modal,
                 startPath: start || '/',
                 host: {
                     title,
-                    typeLabel: 'Folder',
-                    acceptType: 'user-file',
-                    suggestName: () => '(this folder)',
+                    rememberKey: `paint-batch|${title}`,
                     onSave(info) { resolve(info.path || '/'); return true; },
                     onCancel() { resolve(null); }
                 }

@@ -50,11 +50,6 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     cursor: text;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .cpl-address-icon {
-    flex: none;
-    background: image-set(url("/static_images/vista-explorer/crumb-folder.png") 1x, url("/static_images/hidpi/125/vista-explorer/crumb-folder.png") 1.25x, url("/static_images/hidpi/150/vista-explorer/crumb-folder.png") 1.5x, url("/static_images/hidpi/175/vista-explorer/crumb-folder.png") 1.75x, url("/static_images/hidpi/200/vista-explorer/crumb-folder.png") 2x) no-repeat center / 16px 16px;
-}
-
 body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .cpl-crumb-sep {
     flex: none;
 }
@@ -68,14 +63,39 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     background: transparent;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .cpl-address::after {
-    content: '';
+/* the history ▾ at the right end: a button (studioSession.js lists the places visited) */
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .fd-address-drop {
+    position: relative;
+    inset: auto;
     flex: none;
+    box-sizing: border-box;
+    width: 17px;
+    min-width: 0;
+    height: 20px;
+    min-height: 0;
+    margin: 0 -21px 0 auto;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    cursor: default;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .fd-address-drop::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 7px;
     width: 7px;
     height: 4px;
-    margin: 0 -19px 0 auto;
     background: #000;
     clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .fd-address-drop:is(:hover, .context-open) {
+    background: linear-gradient(#f2f9fd, #e1f1fb 45%, #c9e7f9 55%, #d9eefb);
+    border-color: #8fcdf2;
 }
 
 /* typing a path: the box takes the crumbs' place */
@@ -134,8 +154,152 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     min-height: 0;
 }
 
-#studioSaveFolderModal .explorer-folders-bar {
-    pointer-events: none;
+/* Folders: Cartograph's tree (explorerVistaChrome.js) in the nav pane; Favorite Links folds above it */
+#studioSaveFolderModal .explorer-nav-pane {
+    display: flex;
+    flex-direction: column;
+}
+
+#studioSaveFolderModal .explorer-nav-pane.folders-open .explorer-favorites {
+    flex: 0 0 auto;
+}
+
+/* the list takes the keys: no browser focus ring on it (the selection shows where the keys go) */
+#studioSaveFolderModal #studioSaveFolderGrid:focus {
+    outline: none;
+}
+
+/* a place on Computer (Local Disk (C:), a network drive): its 16 px picture in the row */
+#studioSaveFolderModal .fd-place-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+}
+
+/* Rename in place: Vista's edit box over the name (black frame, white field) */
+#studioSaveFolderModal .fd-renaming {
+    position: relative;
+    overflow: visible;
+}
+
+#studioSaveFolderModal .fd-rename-box {
+    position: absolute;
+    left: -2px;
+    top: 50%;
+    z-index: 2;
+    box-sizing: border-box;
+    min-width: 120px;
+    width: calc(100% + 4px);
+    height: 18px;
+    margin: -9px 0 0;
+    padding: 0 2px;
+    background: #fff;
+    border: 1px solid #000;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 16px;
+    outline: none;
+}
+
+/* the address: the place's own 16 px picture, then the crumbs; each crumb's ▸ lists the folders there */
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .fd-crumb-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0 2px 0 3px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar button.fd-crumb-sep {
+    position: relative;
+    inset: auto;
+    flex: none;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    height: 20px;
+    margin: 0;
+    padding: 0 3px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font-size: 9px;
+    line-height: 18px;
+    cursor: default;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar button.fd-crumb-sep:is(:hover, .context-open) {
+    background: linear-gradient(#f2f9fd, #e1f1fb 45%, #c9e7f9 55%, #d9eefb);
+    border-color: #8fcdf2;
+}
+
+/* « : the crumbs folded off the left of a long trail (a menu of them) */
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .fd-crumb-overflow {
+    position: relative;
+    inset: auto;
+    flex: none;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    height: 20px;
+    margin: 0;
+    padding: 0 4px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 18px;
+    cursor: default;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .fd-crumb-overflow:is(:hover, .context-open) {
+    background: linear-gradient(#f2f9fd, #e1f1fb 45%, #c9e7f9 55%, #d9eefb);
+    border-color: #8fcdf2;
+}
+
+#studioSaveFolderModal .modal-window-title-toolbar :is(.fd-crumb-sep, .cpl-crumb, .fd-address-drop)[hidden] {
+    display: none;
+}
+
+/* File name's suggestions: Vista's autocomplete list under the box */
+#studioSaveFolderModal .fd-suggest {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    z-index: 5;
+    box-sizing: border-box;
+    max-height: 170px;
+    overflow-y: auto;
+    padding: 1px;
+    background: #fff;
+    border: 1px solid #646464;
+    box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.25);
+}
+
+#studioSaveFolderModal .fd-suggest[hidden] {
+    display: none;
+}
+
+#studioSaveFolderModal .fd-suggest-row {
+    padding: 0 3px;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 17px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+#studioSaveFolderModal .fd-suggest-row:is(:hover, .is-selected) {
+    background: #3399ff;
+    color: #fff;
 }
 
 #studioSaveFolderModal .explorer-view-pane:not([data-view="details"]) .explorer-details-header {
@@ -249,8 +413,12 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     height: 23px;
     min-height: 0;
     margin: 0;
+    /* the shared select padding (5.4px top and bottom) cut the text in half in a 21 px box */
+    padding-top: 0;
+    padding-bottom: 0;
     color: #000;
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 19px;
     white-space: nowrap;
 }
 
@@ -396,6 +564,42 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
 
 #studioSaveFolderModal[data-file-dialog-mode="open"] .fd-button {
     top: 34px;
+}
+
+/* ---- Select Folder (a program picking a folder): Folder: and its box, Select Folder / Cancel ---- */
+
+#studioSaveFolderModal[data-file-dialog-mode="folder"] .fd-bottom {
+    height: 68px;
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="folder"] :is(.fd-expando, .fd-type-label, .fd-type, .fd-name-drop) {
+    display: none;
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="folder"] .fd-name-label {
+    top: 10px;
+    right: calc(100% - 157px);
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="folder"] .fd-name-combo {
+    left: 164px;
+    right: 15px;
+    top: 7px;
+    height: 22px;
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="folder"] .fd-name-combo > input {
+    height: 22px;
+    padding-right: 3px;
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="folder"] .fd-button {
+    top: 34px;
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="folder"] .fd-save {
+    width: 89px;
+    right: 102px;
 }
 
 /* off the Vista desktop (Classic, or the app outside desktop mode) the same layout in grey */

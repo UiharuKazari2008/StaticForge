@@ -364,9 +364,10 @@
         const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : ''; // eslint-disable-line no-undef
         return root.studioOpenFolderDialog('save', {
             startPath: (this.file && this.file.path) || (ws ? `/Workspaces/${ws}` : '/'),
+            forceStart: !!(this.file && this.file.path),
             host: {
                 title: 'Save As',
-                typeLabel: 'Text Documents (*.txt)',
+                types: [{ label: 'Text Documents (*.txt)' }, { label: 'All Files (*.*)' }],
                 acceptType: 'user-file',
                 suggestName: () => (self.file ? self.file.name : (self.note ? `${self.note.name}.txt` : '*.txt')),
                 async onSave(info) {
@@ -399,7 +400,7 @@
             startPath: (this.file && this.file.path) || (ws ? `/Workspaces/${ws}` : '/'),
             host: {
                 title: 'Open',
-                typeLabel: 'Text Documents (*.txt)',
+                types: [{ label: 'Text Documents (*.txt)' }, { label: 'All Files (*.*)' }],
                 rejectMessage: 'Choose a text document',
                 acceptItem: (item) => item && (item.targetKind === 'note' || (item.targetKind === 'user-file' && isTextItem(item))),
                 async onOpen(item, folderPath) {

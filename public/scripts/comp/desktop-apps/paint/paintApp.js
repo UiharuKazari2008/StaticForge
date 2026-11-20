@@ -1996,6 +1996,7 @@
             void root.studioOpenFolderDialog(mode, {
                 owner: this.modal,
                 startPath: mode === 'open-gallery' && ws ? `/Workspaces/${ws}/Pictures` : (this.file && this.file.path) || (ws ? `/Workspaces/${ws}` : '/'),
+                forceStart: mode === 'open-gallery',
                 host: {
                     title: 'Open',
                     typeLabel: 'All Picture Files',
@@ -2083,9 +2084,25 @@
                 void root.studioOpenFolderDialog('save', {
                     owner: this.modal,
                     startPath: (this.file && this.file.path) || (ws ? `/Workspaces/${ws}` : '/'),
+                    forceStart: !!(this.file && this.file.path),
                     host: {
                         title: 'Save As',
-                        typeLabel: 'Graphic Session Document, everything kept (*.gsd); Photoshop Document (*.psd); PNG (*.png); JPEG (*.jpg); 24-bit Bitmap (*.bmp); WebP (*.webp); Melaton Paint Image (*.mpi)',
+                        // one type per format; picking one changes the name's extension (the dialog's type list)
+                        types: [
+                            { label: 'Graphic Session Document, everything kept (*.gsd)', ext: 'gsd' },
+                            { label: 'Photoshop Document (*.psd)', ext: 'psd' },
+                            { label: 'PNG (*.png)', ext: 'png' },
+                            { label: 'JPEG (*.jpg; *.jpeg)', ext: 'jpg' },
+                            { label: '24-bit Bitmap (*.bmp)', ext: 'bmp' },
+                            { label: 'WebP (*.webp)', ext: 'webp' },
+                            { label: 'Melaton Paint Image (*.mpi)', ext: 'mpi' }
+                        ],
+                        defaultType: (() => {
+                            const ext = String((self.file && self.file.name) || '').match(/\.([a-z0-9]+)$/i);
+                            const order = ['gsd', 'psd', 'png', 'jpg', 'bmp', 'webp', 'mpi'];
+                            const at = ext ? order.indexOf(ext[1].toLowerCase() === 'jpeg' ? 'jpg' : ext[1].toLowerCase()) : -1;
+                            return at >= 0 ? at : (self.needsSession() ? 0 : 2);
+                        })(),
                         acceptType: 'user-file',
                         suggestName: () => (self.file ? self.file.name : `${self.name === 'Untitled' ? 'untitled' : self.name}${self.needsSession() ? '.gsd' : '.png'}`),
                         async onSave(info) {

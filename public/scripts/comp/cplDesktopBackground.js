@@ -17,8 +17,8 @@
  *                        A selected photo shows its credit under the list: title, photographer,
  *                        license and a link to the original on Flickr or Wikimedia Commons
  *
- * Browse... uploads a picture (modalUtils.js uploadCustomWallpaper) and selects it under Your
- * Uploads. "How should the picture be positioned?" holds the wallpaper's horizontal and vertical
+ * Browse... opens Vista's Open dialog on the picture files (and the gallery, its Favorite Links >
+ * Gallery) and selects the picture under Selected Picture. "How should the picture be positioned?" holds the wallpaper's horizontal and vertical
  * alignment (moved here from the old Personalize page, 2026-10-21; Manual adds a slider). OK (or a
  * double-click) sets the workspace's wallpaper and position (setDesktopWallpaper) and goes back;
  * Cancel goes back unchanged.
@@ -235,7 +235,7 @@
             const all = galleryWallpapers(gallery);
             return gallery.groups.map((g) => group(g, all.filter((w) => w.group === g))).join('');
         }
-        if (!state.uploads.length) return '<p class="cpl-db-empty">No uploads yet. Click Browse to upload a picture.</p>';
+        if (!state.uploads.length) return '<p class="cpl-db-empty">No uploads yet.</p>';
         return group('Your Uploads', state.uploads.map((u) => ({ id: u.id, url: u.url, thumb: u.url, name: u.name })), { remove: true });
     }
 
@@ -243,12 +243,11 @@
         const label = (LOCATIONS.find(([id]) => id === state.location) || LOCATIONS[0])[1];
         return `
             <h1 class="cpl-page-title">Choose a desktop background</h1>
-            <p class="cpl-intro">Click a picture to make it your desktop background. To use a picture that's not listed, click Browse to upload it.</p>
+            <p class="cpl-intro">Click a picture to make it your desktop background. To use a picture that's not listed, click Browse to find it.</p>
             <div class="cpl-db-location">
                 <span>Location</span>
                 <button type="button" class="cpl-db-combo" data-cpl-db="location">${esc(label)}</button>
                 <button type="button" class="cpl-wu-button" data-cpl-db="browse">Browse...</button>
-                <input type="file" accept="image/*" class="hidden" data-cpl-db-file>
             </div>
             <div class="cpl-db-grid">${gridHtml()}</div>
             ${GALLERIES.some((g) => g.id === state.location) ? `<div class="cpl-db-credit" aria-live="polite">${creditHtml(state.selected)}</div>` : ''}
@@ -353,6 +352,44 @@
         cpl.navigate('personalization');
     }
 
+    /**
+     * Browse...: Vista's Open dialog (studioSession.js studioOpenFolderDialog) on the computer's picture files,
+     * the gallery's prints through its Favorite Links > Gallery; the picture shows under Selected Picture, picked.
+     */
+    function browse() {
+        const dialog = root.studioOpenFolderDialog;
+        if (typeof dialog !== 'function') return;
+        const client = root.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null); // eslint-disable-line no-undef
+        const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || ''; // eslint-disable-line no-undef
+        const PICTURE_EXT = /\.(png|jpe?g|jpe|jfif|gif|bmp|dib|webp|avif|tiff?)$/i;
+        const isFile = (item) => !!(item && item.targetKind === 'user-file' && (/^image\//.test(item.mimeType || '') || PICTURE_EXT.test(item.name || '')));
+        const isPrint = (item) => !!(item && (item.targetKind === 'image' || item.targetKind === 'scrap') && item.targetId);
+        void dialog('open-vfs', {
+            owner: main ? main.closest('.modal') : null,
+            startPath: ws ? `/Workspaces/${ws}/Desktop` : '/',
+            host: {
+                title: 'Browse',
+                rememberKey: 'desktop-background|browse',
+                types: [{ label: 'All Picture Files (*.bmp; *.dib; *.jpg; *.jpeg; *.jpe; *.jfif; *.gif; *.png; *.webp; *.tif; *.tiff)' }],
+                rejectMessage: 'Choose a picture',
+                acceptItem: (item) => isFile(item) || isPrint(item),
+                onOpen(item) {
+                    let path = null;
+                    if (isPrint(item)) path = `file:${item.targetId}`;
+                    else {
+                        const base = client && typeof client.getBasePath === 'function' ? client.getBasePath() : null;
+                        if (base) path = `url:${base}/files/${encodeURIComponent(item.targetId || item.id)}`;
+                    }
+                    const url = path ? pathToUrl(path) : null;
+                    if (!url) return;
+                    state.pending = { path, url };
+                    state.selected = url;
+                    paint();
+                }
+            }
+        });
+    }
+
     async function apply() {
         const url = state.selected || null;
         /* global setDesktopWallpaper */
@@ -388,20 +425,7 @@
             return;
         }
         if (action === 'browse') {
-            const input = main.querySelector('[data-cpl-db-file]');
-            if (!input) return;
-            input.onchange = async () => {
-                const file = input.files && input.files[0];
-                if (!file || !file.type.startsWith('image/')) return;
-                /* global uploadCustomWallpaper */
-                const res = typeof uploadCustomWallpaper === 'function' ? await uploadCustomWallpaper(file) : null;
-                await loadUploads();
-                state.location = 'uploads';
-                const item = res && res.historyItem;
-                state.selected = item ? item.url : (state.uploads[0] && state.uploads[0].url) || state.selected;
-                paint();
-            };
-            input.click();
+            browse();
             return;
         }
         if (action === 'remove') {

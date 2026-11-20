@@ -920,12 +920,15 @@
      */
     function studioDialog(mode, options) {
         const host = options.host || null;
-        const save = mode === 'save';
+        // 'folder' (pick a folder, the desktop's Select Folder): WM's Save As on the folder, the name box naming it
+        const folderPick = mode === 'folder';
+        const save = mode === 'save' || folderPick;
         const acceptType = (host && host.acceptType) || 'request';
         const sameType = (i) => !!(i && i.shortcutType === acceptType && i.kind !== 'folder');
         const isImage = (i) => i.targetKind === 'image' || i.targetKind === 'scrap' || i.shortcutType === 'image';
         let accept;
-        if (host && typeof host.acceptItem === 'function') accept = (i) => host.acceptItem(i);
+        if (folderPick) accept = () => false;
+        else if (host && typeof host.acceptItem === 'function') accept = (i) => host.acceptItem(i);
         else if (host && host.acceptType) accept = sameType;
         else if (save) accept = sameType;
         else if (mode === 'open-gallery') accept = isImage;
@@ -950,6 +953,7 @@
             pictures: mode === 'open-gallery',
             accept,
             suggestName: () => {
+                if (folderPick) return '(this folder)';
                 if (host && typeof host.suggestName === 'function') return host.suggestName();
                 try { if (typeof studioSessionPresetName === 'function') return studioSessionPresetName(); } catch (_) { /* none */ } // eslint-disable-line no-undef
                 return '';
@@ -968,7 +972,9 @@
                     overwrite = hit ? (hit.isDesktopShortcut ? { overwriteId: hit.id } : { overwriteEntryId: hit.id }) : {};
                 }
                 if (host && typeof host.onSave === 'function') {
-                    const ok = await host.onSave({ path: info.path, name: info.name, overwrite, workspaceId: info.workspaceId });
+                    const ok = await host.onSave(folderPick
+                        ? { path: info.path, name: '', folder: true, workspaceId: info.workspaceId }
+                        : { path: info.path, name: info.name, overwrite, workspaceId: info.workspaceId });
                     if (ok) settled();
                     return ok;
                 }

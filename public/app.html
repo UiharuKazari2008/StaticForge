@@ -6108,7 +6108,7 @@ Examples:
                 <div class="button-group naxt-nav-group">
                     <button type="button" id="studioSaveFolderBackBtn" class="btn-secondary toolbar-input-segment cpl-back" title="Back" disabled><i class="fas fa-arrow-left"></i></button>
                     <button type="button" id="studioSaveFolderForwardBtn" class="btn-secondary toolbar-input-segment cpl-forward" title="Forward" disabled><i class="fas fa-arrow-right"></i></button>
-                    <button type="button" class="btn-secondary toolbar-input-segment explorer-recent-pages-btn cpl-recent" title="Recent Pages" aria-label="Recent Pages" disabled></button>
+                    <button type="button" id="studioSaveFolderRecentBtn" class="btn-secondary toolbar-input-segment explorer-recent-pages-btn cpl-recent" title="Recent Pages" aria-label="Recent Pages" disabled></button>
                 </div>
                 <div class="button-group cpl-address-group fd-address-group">
                     <!-- the crumbs; a click on the empty part types a path in the box under them -->
@@ -6157,11 +6157,16 @@ Examples:
                     <div class="explorer-favorites">
                         <div class="explorer-nav-heading">Favorite Links</div>
                         <ul id="studioSaveFolderLinks" class="explorer-favorite-links"></ul>
+                        <button type="button" id="studioSaveFolderLinksMore" class="explorer-favorites-more hidden">More <span aria-hidden="true">&raquo;</span></button>
                     </div>
-                    <div class="explorer-folders">
-                        <button type="button" class="explorer-folders-bar" tabindex="-1" aria-expanded="false">
+                    <!-- Folders: Cartograph's namespace tree (explorerVistaChrome.js), opened down to the folder on screen -->
+                    <div id="studioSaveFolderFolders" class="explorer-folders">
+                        <button type="button" id="studioSaveFolderFoldersBar" class="explorer-folders-bar" aria-expanded="false">
                             <span>Folders</span><span class="explorer-folders-chevron" aria-hidden="true"></span>
                         </button>
+                        <div class="explorer-folders-tree">
+                            <ul id="studioSaveFolderTree" class="explorer-tree" role="tree"></ul>
+                        </div>
                     </div>
                 </aside>
                 <div class="explorer-view-pane" data-view="details">
@@ -6172,7 +6177,7 @@ Examples:
                         <button type="button" class="explorer-details-sort-col" data-sort-field="type"><span class="explorer-details-col-label">Type</span><i class="explorer-details-sort-icon fas fa-sort" aria-hidden="true"></i></button>
                         <button type="button" class="explorer-details-sort-col" data-sort-field="size"><span class="explorer-details-col-label">Size</span><i class="explorer-details-sort-icon fas fa-sort" aria-hidden="true"></i></button>
                     </div>
-                    <div id="studioSaveFolderGrid" class="explorer-grid-host"></div>
+                    <div id="studioSaveFolderGrid" class="explorer-grid-host" tabindex="0" role="listbox" aria-label="Items"></div>
                 </div>
             </div>
             <div class="fd-bottom">

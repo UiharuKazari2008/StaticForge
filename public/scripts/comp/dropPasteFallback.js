@@ -185,15 +185,15 @@
         }
         const one = files.length === 1;
         const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : '';
-        // studioOpenFolderDialog: studioSession.js (the Vista Save As dialog)
-        return studioOpenFolderDialog('save', {
+        // studioOpenFolderDialog: studioSession.js (the Vista Save As dialog; several files, which keep
+        // their own names, pick a folder with its Select Folder form)
+        return studioOpenFolderDialog(one ? 'save' : 'folder', {
             startPath: ws ? `/Workspaces/${ws}` : '/',
             host: {
-                title: 'Save As',
+                title: one ? 'Save As' : 'Save to Folder',
                 typeLabel: 'All Files (*.*)',
                 acceptType: 'user-file',
-                // several files keep their own names: the box only names the folder
-                suggestName: () => (one ? files[0].name : '(this folder)'),
+                suggestName: () => (one ? files[0].name : ''),
                 async onSave(info) {
                     let list = files;
                     if (one) {
