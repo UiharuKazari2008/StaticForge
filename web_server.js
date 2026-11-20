@@ -2821,7 +2821,7 @@ function publicStatusExtras(req) {
         useVistaLogon,
         logonPicture: useVistaLogon ? accountPictures.logonPictureUrl(config) : null,
         // User Accounts' "Decrease Login Time by skipping Minimum Login Time": kept by the client for its next start
-        skipMinimumLogonTime: config.skipMinimumLogonTime === true,
+        skipMinimumLogonTime: config.skipMinimumLogonTime !== false, // on unless turned off (Yukimi, Nov 20 2026)
         // the Administrator's name for the Welcome screen and the logon dialog (User Accounts'
         // Change the account name), shown before anyone signs in
         logonName: accountPictures.accountName(config, 'administrator'),

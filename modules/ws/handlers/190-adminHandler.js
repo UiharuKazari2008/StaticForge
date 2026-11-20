@@ -529,7 +529,7 @@ async function handleGetPinSettings(handlersCtx, ws, message, clientInfo, wsServ
                 success: true,
                 userPinLoginEnabled: config.userPinLoginEnabled !== false,
                 useVistaLogon: config.useVistaLogon === true,
-                skipMinimumLogonTime: config.skipMinimumLogonTime === true,
+                skipMinimumLogonTime: config.skipMinimumLogonTime !== false,
                 adminPinConfigured: isPinConfigured(secureConfig.loginPin),
                 userPinConfigured: isPinConfigured(secureConfig.readOnlyPin)
             },
@@ -677,7 +677,7 @@ async function handleSetUseVistaLogon(handlersCtx, ws, message, clientInfo, wsSe
 
 /**
  * User Accounts "Decrease Login Time by skipping Minimum Login Time" (Yukimi, Nov 20 2026, #910): one server-wide
- * choice beside Use Vista Logon, read from /status and kept by every client for its next start. On, the logon's
+ * choice beside Use Vista Logon, on unless turned off, read from /status and kept by every client for its next start. On, the logon's
  * scripted minimum durations (the connection dialog's beats, the Welcome holds) are skipped: each status shows only
  * as long as it is true.
  */

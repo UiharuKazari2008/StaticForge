@@ -1599,11 +1599,12 @@ class WebSocketClient {
      * still show for as long as they are true.
      */
     _skipMinimumLogon() {
-        try { return localStorage.getItem('melatonSkipLogonMinimum') === '1'; } catch (_) { return false; }
+        // on unless the server said off (Yukimi, Nov 20 2026: on by default)
+        try { return localStorage.getItem('melatonSkipLogonMinimum') !== '0'; } catch (_) { return true; }
     }
 
     _setSkipMinimumLogon(on) {
-        try { if (on) localStorage.setItem('melatonSkipLogonMinimum', '1'); else localStorage.removeItem('melatonSkipLogonMinimum'); } catch (_) { /* storage off */ }
+        try { localStorage.setItem('melatonSkipLogonMinimum', on ? '1' : '0'); } catch (_) { /* storage off */ }
     }
 
     async _completeOfflineLogon() {
