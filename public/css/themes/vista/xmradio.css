@@ -1082,3 +1082,8 @@
 #xmRadioModal .xr-radio[data-body="gloss"] .xr-g-bottom::after { content: ""; grid-column: 7; grid-row: 1; background: linear-gradient(#1a1b1e, #070708); border-block: 1px solid #000; }
 #xmRadioModal .xr-radio[data-body="gloss"] .xr-g-bottom::before { content: ""; grid-column: 5; grid-row: 1; background: linear-gradient(#1a1b1e, #070708); border-block: 1px solid #000; }
 #xmRadioModal .xr-radio[data-body="gloss"] .xr-g-knob { margin-bottom: -66px; }
+/* the Roady's characters are tall and narrow (its 5 x 7 dots drawn about twice as tall as wide; Yukimi: "squished"):
+   the dot font stood upright at 1.45 x its height, the lines' boxes grown to hold them */
+#xmRadioModal .xr-radio[data-display="dotlcd"] :is(.xr-d-l1, .xr-d-l2) { font-size: 36px; line-height: 56px; height: 56px; transform: scaleY(1.45); transform-origin: 50% 55%; letter-spacing: 0.02em; }
+#xmRadioModal .xr-radio[data-display="dotlcd"] .xr-d-main { margin-top: 0; }
+#xmRadioModal .xr-radio[data-display="dotlcd"] .xr-d-top [data-f="sig"] { order: -1; margin-right: auto; }
