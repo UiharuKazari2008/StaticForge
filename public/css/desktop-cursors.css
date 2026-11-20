@@ -40,17 +40,22 @@ html {
 }
 
 /* With a pointer scheme (melatonPointerScheme.js sets data-pointer-scheme), what the page used to leave to
-   the browser (cursor: auto, links) is the scheme's too, as Vista has it: the arrow over everything, the text
-   beam over edit fields only. The browser's own pointers otherwise show through - Android's on the DeX window.
-   :where() keeps these at zero specificity, so every app rule still wins. */
-:where(html[data-pointer-scheme]) {
-    cursor: var(--c-default);
+   the browser (cursor: auto - app.css gives every element var(--c-auto)) is the scheme's too, as Vista has it:
+   the arrow over everything, the hand over links, the text beam over edit fields only. Otherwise the browser's
+   own pointers show through between Vista's - Android's on the DeX window. Only --c-auto changes, so every
+   app rule that names a cursor still wins. */
+html[data-pointer-scheme] {
+    --c-auto: var(--c-default);
 }
 :where(html[data-pointer-scheme]) :where(a:any-link) {
-    cursor: var(--c-pointer);
+    --c-auto: var(--c-pointer);
 }
 :where(html[data-pointer-scheme]) :where(textarea, [contenteditable]:not([contenteditable="false"]),
     input:not([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="range"],
     [type="color"], [type="file"], [type="image"], [type="hidden"])) {
-    cursor: var(--c-text);
+    --c-auto: var(--c-text);
+}
+/* pages without app.css */
+:where(html[data-pointer-scheme], html[data-pointer-scheme] *) {
+    cursor: var(--c-auto);
 }

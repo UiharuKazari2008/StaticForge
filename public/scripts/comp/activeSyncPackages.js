@@ -34,7 +34,7 @@
 .as-pkg-bar label { display: inline-flex; align-items: center; gap: 4px; }
 .as-pkg-list { flex: 1; overflow: auto; }
 .as-pkg-list table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
-.as-pkg-list th { position: sticky; top: 0; z-index: 1; height: 24px; padding: 0 6px; text-align: left; font-weight: normal; color: #4c607a; background: linear-gradient(#fff, #fff 45%, #f3f4f6 46%, #eef0f3); border-bottom: 1px solid #d5d5d5; border-right: 1px solid #e3e6ea; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+.as-pkg-list th { position: sticky; top: 0; z-index: 1; height: 24px; padding: 0 6px; text-align: left; font-weight: normal; color: #4c607a; background: linear-gradient(#fff, #fff 45%, #f3f4f6 46%, #eef0f3); border-bottom: 1px solid #d5d5d5; border-right: 1px solid #e3e6ea; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: var(--c-default, default); }
 .as-pkg-list th:hover { background: linear-gradient(#f3faff, #e3f2fd 45%, #d8edfc 46%, #d3ebfc); border-right-color: #bfe0f8; }
 .as-pkg-list th.is-sorted::after { content: ''; display: inline-block; margin-left: 6px; border: 4px solid transparent; vertical-align: middle; }
 .as-pkg-list th.is-sorted.is-asc::after { border-bottom-color: #8a98a8; margin-top: -4px; }

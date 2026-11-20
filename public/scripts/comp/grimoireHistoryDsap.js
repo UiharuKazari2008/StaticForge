@@ -189,7 +189,7 @@
         .gh-title:hover { text-decoration: underline; }
         .gh-site, .gh-time { color: #6d6d6d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .gh-time { text-align: right; }
-        .gh-remove { visibility: hidden; border: 0; background: none; color: #8a8a8a; font-size: 14px; line-height: 14px; padding: 0; min-width: 0; min-height: 0; cursor: pointer; }
+        .gh-remove { visibility: hidden; border: 0; background: none; color: #8a8a8a; font-size: 14px; line-height: 14px; padding: 0; min-width: 0; min-height: 0; cursor: var(--c-pointer, pointer); }
         .gh-row:hover .gh-remove { visibility: visible; }
         .gh-remove:hover { color: #c00; }
         .gh-empty { color: #6d6d6d; padding: 24px 0; }

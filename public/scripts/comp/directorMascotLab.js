@@ -15,12 +15,12 @@
   display: flex; flex-direction: column; background: rgba(18, 20, 30, 0.94); color: #eef; border: 1px solid #7fd0ff; font: 12px/1.35 'Segoe UI', sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.6); }
 #directorMascotLab.dml-min .dml-body { display: none; }
 html.ui-mobile #directorMascotLab { top: auto; bottom: 46px; left: 4px; right: 4px; width: auto; max-width: none; max-height: 40vh; }
-#directorMascotLab .dml-head { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: #1d2a72; font-weight: 600; cursor: default; }
+#directorMascotLab .dml-head { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: #1d2a72; font-weight: 600; cursor: var(--c-default, default); }
 #directorMascotLab .dml-head span { flex: 1; }
 #directorMascotLab .dml-body { overflow-y: auto; padding: 6px 8px 8px; overscroll-behavior: contain; }
 #directorMascotLab h4 { margin: 8px 0 3px; font: 600 10px 'Segoe UI', sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #9fd8ff; }
 #directorMascotLab .dml-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-#directorMascotLab button { min-height: 26px; padding: 3px 8px; border: 1px solid #5f79d8; border-radius: 0; background: #141c58; color: #eef; font: inherit; cursor: pointer; }
+#directorMascotLab button { min-height: 26px; padding: 3px 8px; border: 1px solid #5f79d8; border-radius: 0; background: #141c58; color: #eef; font: inherit; cursor: var(--c-pointer, pointer); }
 #directorMascotLab button:active, #directorMascotLab button.is-on { background: #d23a22; border-color: #f2664a; }
 #directorMascotLab input[type=range] { flex: 1; min-width: 120px; }
 #directorMascotLab label { display: inline-flex; align-items: center; gap: 4px; }

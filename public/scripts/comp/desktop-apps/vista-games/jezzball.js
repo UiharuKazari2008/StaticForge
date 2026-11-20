@@ -647,7 +647,7 @@
             this.game.speed = settings.speed === 'SLOW' ? JZ.SLOW : JZ.FAST;
             this.started = false;
             this.cursor = 'default';
-            this.canvas.style.cursor = 'default';
+            this.canvas.style.cursor = 'var(--c-default, default)';
             this.resizeClient(true);
         }
 
@@ -870,7 +870,8 @@
             const css = c === 'ns' ? 'ns-resize' : 'ew-resize';
             if (css !== this.cursor) {
                 this.cursor = css;
-                this.canvas.style.cursor = css;
+                // the pointer scheme's double arrows (melatonPointerScheme.js), the keyword without one
+                this.canvas.style.cursor = `var(--c-${css}, ${css})`;
             }
         }
 
