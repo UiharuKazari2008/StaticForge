@@ -10,10 +10,14 @@
  *   melatonAudioDevices.setDefault(id)        Promise<{ error? }>
  *   melatonAudioDevices.setLevel(id, patch)   patch { volume?: 0-100, muted?: bool }: Promise<{ error? }>
  *   melatonAudioDevices.rename(id, name)      the name shown in the list (kept on this computer, as Vista keeps it)
+ *   melatonAudioDevices.setFormat(id, f)      f { bits, rate }: the device's Default Format (DreamOS); Promise<{ error? }>
+ *   melatonAudioDevices.speakers()            the Speakers' Enhancements tuning (DreamOS on the MacBook Pro 11,x, CaféReady
+ *                                             speakers.rs) or null; setSpeakers(patch) -> Promise<{ error? }>
  *
  * A device: { id, flow, kind, name, description, state: 'working' | 'unplugged' | 'disconnected', isDefault,
  *   canSetDefault, setDefaultNote, volume (0-100 | null), muted (bool | null), canSetVolume, canMute,
- *   controller: { name, vendor }, jacks: [text], format: { channels, bits, rate } | null, formats: [format] }
+ *   controller: { name, vendor }, jacks: [text], format: { channels, bits, rate } | null, formats: [format], canSetFormat,
+ *   dsp (the Speakers filter: its Enhancements tab) }
  * kind is the picture: speakers | headphones | headset | handset | microphone | line | digital | hdmi.
  *
  * Sources, each pushed by its platform and never polled:
@@ -316,7 +320,11 @@
             return raw.map((d) => {
                 const [name, kind] = linuxKind(d, flow);
                 const port = d.port || {};
-                const f = d.rate ? { channels: num(d.channels) || 2, bits: /s24|s32|f32/i.test(String(d.format || '')) ? 24 : 16, rate: Number(d.rate) } : null;
+                const bits = num(d.bits) || (/s24/i.test(String(d.format || '')) ? 24 : /s32|f32/i.test(String(d.format || '')) ? 32 : 16);
+                const f = d.rate ? { channels: num(d.channels) || 2, bits, rate: Number(d.rate) } : null;
+                // what the hardware offers (CaféReady reads the node's EnumFormat); the current one at least
+                const offered = Array.isArray(d.formats) ? d.formats.filter((x) => x && num(x.bits) && num(x.rate)).map((x) => ({ channels: num(d.channels) || 2, bits: Number(x.bits), rate: Number(x.rate) })) : [];
+                const formats = offered.length ? offered : (f ? [f] : []);
                 return {
                     id: `p${d.id}`, nativeId: d.id, flow, kind, name,
                     description: d.description || d.card || d.name || 'Sound device',
@@ -329,7 +337,8 @@
                         vendor: d.api === 'bluez5' || d.bus === 'bluetooth' ? `Bluetooth${d.address ? ` ${String(d.address).toUpperCase()}` : ''}` : (d.bus === 'usb' ? 'USB Audio (ALSA)' : (d.alsaCard !== undefined && d.alsaCard !== null ? `ALSA card ${d.alsaCard}` : 'PipeWire'))
                     },
                     jacks: linuxJack(d),
-                    format: f, formats: f ? [f] : [],
+                    format: f, formats, canSetFormat: offered.length > 1,
+                    dsp: !!d.dsp,
                     platform: 'dreamos'
                 };
             });
@@ -349,6 +358,16 @@
             },
             setLevel(dev, patch) {
                 return Promise.resolve(A.set(Object.assign({ id: dev.nativeId }, patch))).then((r) => (r && r.error ? r : {}), (e) => ({ error: String(e) }));
+            },
+            setFormat(dev, f) {
+                return Promise.resolve(A.set({ id: dev.nativeId, format: { bits: Number(f.bits), rate: Number(f.rate) } })).then((r) => (r && r.error ? r : {}), (e) => ({ error: String(e) }));
+            },
+            speakers() {
+                const t = state().speakers;
+                return t && typeof t === 'object' ? t : null;
+            },
+            setSpeakers(patch) {
+                return Promise.resolve(A.set({ speakers: patch })).then((r) => (r && r.error ? r : {}), (e) => ({ error: String(e) }));
             }
         };
     }
@@ -475,6 +494,20 @@
         setLevel(id, patch) {
             const d = find(id);
             return d ? source().setLevel(d, patch || {}) : Promise.resolve({ error: 'The device you are configuring has been removed.' });
+        },
+        setFormat(id, f) {
+            const d = find(id);
+            const s = source();
+            if (!d) return Promise.resolve({ error: 'The device you are configuring has been removed.' });
+            return typeof s.setFormat === 'function' ? s.setFormat(d, f || {}) : Promise.resolve({ error: 'The format of this device cannot be changed.' });
+        },
+        speakers() {
+            const s = source();
+            return typeof s.speakers === 'function' ? s.speakers() : null;
+        },
+        setSpeakers(patch) {
+            const s = source();
+            return typeof s.setSpeakers === 'function' ? s.setSpeakers(patch || {}) : Promise.resolve({ error: 'This device has no enhancements.' });
         },
         rename(id, name) {
             const d = find(id);

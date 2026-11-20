@@ -783,6 +783,61 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     filter: grayscale(1);
 }
 
+/* Enhancements (SysFxUI.dll dialog 200, DreamOS's Speakers): a list view with check boxes (LVS_EX_CHECKBOXES, list
+   mode), the focused selection in the system highlight; greyed under "Disable all enhancements" */
+.tbp-client.cpl-snd-props .cpl-snd-fx {
+    padding: 1px 0;
+    outline: none;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-fx-row {
+    gap: 3px;
+    height: 17px;
+    padding-left: 2px;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-fx-row label span {
+    padding: 0 2px 1px;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-fx-row.is-selected label span {
+    background: #f0f0f0;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-fx:focus .cpl-snd-fx-row.is-selected label span {
+    background: #3399ff;
+    color: #fff;
+}
+
+.tbp-client.cpl-snd-props .cpl-snd-fx.is-disabled label span {
+    color: #838383;
+    background: none;
+}
+
+/* the dialogs' right-aligned labels (SS_RIGHT) and centred ones (SS_CENTER) */
+.tbp-client .tbp-static.cpl-snd-fx-label {
+    text-align: right;
+}
+
+.tbp-client .tbp-static.cpl-snd-fx-center {
+    text-align: center;
+}
+
+.tbp-client.cpl-snd-fx-dlg .cpl-fx-track {
+    display: flex;
+    align-items: center;
+}
+
+.tbp-client.cpl-snd-fx-dlg .cpl-fx-track input {
+    width: 100%;
+    margin: 0;
+}
+
+.tbp-client.cpl-snd-fx-dlg .cpl-pers-combo.is-disabled {
+    color: #838383;
+    pointer-events: none;
+}
+
 /* Program Events: a tree view, 16 px rows, dotted lines, the speaker where an event has a sound
    (mmsys bitmap 221: program, blank, speaker, playing speaker, warning) */
 .tbp-client .cpl-pers-events {

@@ -163,8 +163,19 @@ Android (DSApp `AudioDevicesBridge`, `window.AndroidAudioDevices`):
 DreamOS (CaféReady `audio.rs`, `window.DreamOSAudio`): the volume state gains `outputs` / `inputs`, PipeWire's sinks and
 sources read with `pw-dump`: `{ id, name, description, card, cardLongName, alsaCard, bus: 'pci' | 'usb' | 'bluetooth',
 api: 'alsa' | 'bluez5', address, formFactor, port: { name, description, type, available: 'yes' | 'no' | 'unknown' },
-isDefault, volume, muted, channels, rate, format }`. `devices()` asks for a fresh read (also done on a `sound` uevent);
-`setDefault(id)` (`wpctl set-default`); `set({ id, volume?, muted? })` sets one device.
+isDefault, volume, muted, channels, rate, format, bits, formats: [{ bits, rate }], dsp }`. `devices()` asks for a fresh
+read (also done on a `sound` uevent); `setDefault(id)` (`wpctl set-default`); `set({ id, volume?, muted? })` sets one
+device; `set({ id, format: { bits, rate } })` sets its Default Format (the ALSA node's audio.format / audio.rate, kept in
+a WirePlumber drop-in; Advanced lists `formats`, the ones its hardware offers, and Restore Defaults picks 24 bit or the
+deepest offered at 48 kHz).
+
+The MacBook Pro 11,x (#910, DreamOS `speakers.rs`): `dsp: true` marks "Speakers", the filter-chain that splits the sound
+between the tweeters and the woofers. Its Properties gain Vista's Enhancements tab (SysFxUI.dll dialog 200 with its
+Settings dialogs 201 / 202 / 210): Bass Management (crossover, invert polarity), Bass Boost (frequency, level), Low
+Frequency Protection (cutoff), Loudness Equalization (release time) and Disable all enhancements, read from the state's
+`speakers` and applied with `set({ speakers: { disableAll, bassManagement: { on, crossover, invert }, bassBoost: { on,
+frequency, level }, lowFrequencyProtection: { on, cutoff }, loudness: { on, release } } })`. The card sink under it is
+listed as Headphones (its headphone route: Not plugged in without a plug); the jack moves the default between the two.
 
 What the page draws (Vista's names and mmsys.cpl pictures): Speakers / Headphones / Headset Earphone / Headset Microphone
 / Handset / Microphone (Microphone Array for several built-in mics) / Line In / Line Out / Digital Output Device (HDMI or

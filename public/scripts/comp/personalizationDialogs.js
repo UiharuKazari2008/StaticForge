@@ -1176,6 +1176,205 @@
             ${button(7, 196, 80, 14, 'Restore <u>D</u>efaults', 'snd-restore')}`;
     }
 
+    // ---- Enhancements (SysFxUI.dll dialog 200; DreamOS's Speakers filter on the MacBook Pro 11,x, CaféReady speakers.rs)
+
+    // Vista's names and descriptions (SysFxUI string table 1120-1155); what the filter does for each
+    const FX = [
+        { id: 'bassManagement', name: 'Bass Management', desc: 'Bass Management enhances or redirects frequencies below a specified crossover point to reduce loss or distortion of bass signals.', settings: 'Bass Management Settings' },
+        { id: 'bassBoost', name: 'Bass Boost', desc: 'Boosts the lowest frequencies that can be played by the device and removes frequencies below that', settings: 'Bass Boost Settings' },
+        { id: 'lowFrequencyProtection', name: 'Low Frequency Protection', desc: 'Low Frequency Protection eliminates frequencies below a specified cutoff to reduce audio distortion', settings: 'Low Frequency Protection Settings' },
+        { id: 'loudness', name: 'Loudness Equalization', desc: 'Loudness Equalization uses understanding of human hearing to reduce perceived volume differences.', settings: 'Loudness Equalization Settings' }
+    ];
+    // the tuning a machine starts with (CaféReady speakers.rs defaults): the crossover where the Mac's two drivers meet
+    const FX_DEFAULTS = {
+        disableAll: false,
+        bassManagement: { on: true, crossover: 1800, invert: false },
+        bassBoost: { on: true, frequency: 250, level: 6 },
+        lowFrequencyProtection: { on: true, cutoff: 100 },
+        loudness: { on: false, release: 4 }
+    };
+    const FX_CROSSOVER = [1000, 1200, 1500, 1800, 2000, 2500, 3000];
+    const FX_BOOST_FREQ = [100, 125, 150, 175, 200, 250, 300, 350, 400];
+    const FX_BOOST_LEVEL = [3, 6, 9, 12];
+    const FX_CUTOFF = [50, 60, 70, 80, 90, 100, 120, 150, 200];
+
+    function fxClone(t) {
+        const base = JSON.parse(JSON.stringify(FX_DEFAULTS));
+        if (!t || typeof t !== 'object') return base;
+        base.disableAll = !!t.disableAll;
+        FX.forEach((f) => { if (t[f.id] && typeof t[f.id] === 'object') Object.assign(base[f.id], t[f.id]); });
+        return base;
+    }
+
+    function propsEnhancements() {
+        return `
+            ${text(12, 7, 238, 33, 'Select the enhancements to apply for your current speaker configuration.\u00a0Changes may not take effect until the next time you start playback.')}
+            ${check('cplSndFxOff', 12, 40, 238, 10, '<u>D</u>isable all enhancements')}
+            <div class="tbp-ctl tbp-tree cpl-snd-fx" style="${dlu(12, 53, 231, 48)}" tabindex="0" aria-label="Enhancements">
+                ${FX.map((f) => `<div class="tbp-tree-row cpl-snd-fx-row" data-fx="${f.id}"><input type="checkbox" id="cplSndFx-${f.id}" tabindex="-1"><label for="cplSndFx-${f.id}"><span>${esc(f.name)}</span></label></div>`).join('')}
+            </div>
+            ${group(7, 108, 238, 75, 'Enhancement Properties')}
+            ${text(9, 120, 62, 8, 'Description:', 'cpl-snd-fx-label')}
+            ${text(73, 120, 165, 34, '', 'cpl-snd-fx-desc')}
+            ${text(9, 155, 62, 8, 'Provider:', 'cpl-snd-fx-label')}
+            ${text(73, 155, 150, 8, '', 'cpl-snd-fx-provider')}
+            ${text(9, 169, 62, 8, 'Status:', 'cpl-snd-fx-label')}
+            ${text(73, 169, 92, 8, '', 'cpl-snd-fx-status')}
+            ${button(189, 165, 50, 14, '<u>S</u>ettings...', 'snd-fx-settings')}
+            ${button(7, 197, 70, 14, '<u>R</u>estore Defaults', 'snd-fx-restore')}
+            ${button(189, 197, 54, 14, '<u>P</u>review', 'snd-fx-preview')}`;
+    }
+
+    /** The Enhancements tab's state and controls; `changed()` marks the sheet dirty. Applied with the sheet's Apply. */
+    function wireEnhancements(c, A, changed) {
+        const fx = { pending: fxClone(A && A.speakers()), selected: FX[0].id, dirty: false };
+        const list = c.querySelector('.cpl-snd-fx');
+        const paint = () => {
+            const off = fx.pending.disableAll;
+            c.querySelector('#cplSndFxOff').checked = off;
+            list.classList.toggle('is-disabled', off);
+            list.setAttribute('aria-disabled', String(off));
+            list.querySelectorAll('.cpl-snd-fx-row').forEach((r) => {
+                const box = r.querySelector('input');
+                box.checked = !!fx.pending[r.dataset.fx].on;
+                box.disabled = off;
+                r.classList.toggle('is-selected', r.dataset.fx === fx.selected);
+            });
+            const f = FX.find((x) => x.id === fx.selected);
+            const on = !off && fx.pending[f.id].on;
+            c.querySelector('.cpl-snd-fx-desc').textContent = f.desc;
+            c.querySelector('.cpl-snd-fx-provider').textContent = 'DreamOS';
+            c.querySelector('.cpl-snd-fx-status').textContent = on ? 'Enabled' : 'Disabled';
+            c.querySelector('[data-action="snd-fx-settings"]').disabled = !on;
+        };
+        const touch = () => { fx.dirty = true; changed(); paint(); };
+        c.querySelector('#cplSndFxOff').addEventListener('change', (ev) => { fx.pending.disableAll = ev.target.checked; touch(); });
+        list.addEventListener('click', (ev) => {
+            const r = ev.target.closest('.cpl-snd-fx-row');
+            if (!r || fx.pending.disableAll) return;
+            fx.selected = r.dataset.fx;
+            const box = ev.target.closest('input');
+            if (box) { fx.pending[r.dataset.fx].on = box.checked; touch(); return; }
+            paint();
+        });
+        list.addEventListener('dblclick', (ev) => { if (ev.target.closest('.cpl-snd-fx-row') && !ev.target.closest('input')) openFxSettings(fx, list.closest('.modal'), touch); });
+        list.addEventListener('keydown', (ev) => {
+            if (fx.pending.disableAll) return;
+            const at = FX.findIndex((x) => x.id === fx.selected);
+            if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+                ev.preventDefault();
+                fx.selected = FX[Math.max(0, Math.min(FX.length - 1, at + (ev.key === 'ArrowDown' ? 1 : -1)))].id;
+                paint();
+            } else if (ev.key === ' ') {
+                ev.preventDefault();
+                fx.pending[fx.selected].on = !fx.pending[fx.selected].on;
+                touch();
+            }
+        });
+        fx.paint = paint;
+        fx.action = (action, owner) => {
+            if (action === 'snd-fx-settings') { openFxSettings(fx, owner, touch); return true; }
+            if (action === 'snd-fx-restore') { fx.pending = fxClone(null); touch(); return true; }
+            if (action === 'snd-fx-preview') { testDevice(); return true; }
+            return false;
+        };
+        fx.apply = () => {
+            if (!fx.dirty || !A) return;
+            fx.dirty = false;
+            A.setSpeakers(fx.pending).then((r) => { if (r && r.error) message('Sound', r.error, owner(), 'warning'); });
+        };
+        const owner = () => list.closest('.modal');
+        paint();
+        return fx;
+    }
+
+    /** An enhancement's Settings dialog (SysFxUI 201 Bass Management, 202 Bass Boost / Low Frequency Protection,
+        210 Loudness Equalization); OK writes into the tab's pending tuning. */
+    function openFxSettings(fx, ownerModal, done) {
+        const f = FX.find((x) => x.id === fx.selected);
+        if (!f || fx.pending.disableAll || !fx.pending[f.id].on) return;
+        const p = JSON.parse(JSON.stringify(fx.pending[f.id]));
+        units = TAHOMA;
+        const hz = (v) => ({ value: v, text: `${v} Hz` });
+        let html;
+        let size;
+        if (f.id === 'bassManagement') {
+            size = [216, 164];
+            html = `
+                ${group(4, 4, 210, 36, 'Current Speaker Configuration')}
+                ${text(8, 16, 94, 10, 'Full Range Speakers:', 'cpl-snd-fx-label')}
+                ${text(110, 16, 100, 10, 'None')}
+                ${text(8, 28, 94, 10, 'Subwoofer:', 'cpl-snd-fx-label')}
+                ${text(110, 28, 100, 10, 'Present')}
+                ${group(4, 44, 210, 92, 'Settings')}
+                ${text(8, 59, 94, 10, 'Crossover:', 'cpl-snd-fx-label')}
+                ${combo('cpl-fx-a', 110, 57, 98, 'Crossover')}
+                ${text(8, 78, 94, 8, 'Room Size:', 'cpl-snd-fx-label')}
+                <div class="tbp-ctl cpl-pers-combo is-disabled" style="${dlu(110, 76, 98)}" role="combobox" tabindex="-1" aria-disabled="true" aria-label="Room Size"><span class="cpl-pers-combo-text"></span></div>
+                ${check('cplFxInvert', 110, 100, 98, 10, 'Invert Subwoofer Polarity')}
+                ${button(100, 144, 50, 14, 'OK', 'fx-ok')}
+                ${button(158, 144, 50, 14, 'Cancel', 'fx-cancel')}`;
+        } else if (f.id === 'loudness') {
+            size = [216, 106];
+            html = `
+                ${text(8, 8, 208, 18, 'Configure Loudness Equalization Settings')}
+                ${text(62, 30, 92, 8, 'Release Time', 'cpl-snd-fx-center')}
+                <div class="tbp-ctl cpl-fx-track" style="${dlu(62, 40, 92, 24)}"><input type="range" class="cpl-fx-release" min="0" max="8" step="1" aria-label="Release Time"></div>
+                ${text(52, 68, 40, 10, 'Short', 'cpl-snd-fx-center')}
+                ${text(124, 68, 40, 10, 'Long', 'cpl-snd-fx-center')}
+                ${button(100, 84, 50, 14, 'OK', 'fx-ok')}
+                ${button(158, 84, 50, 14, 'Cancel', 'fx-cancel')}`;
+        } else {
+            size = [216, 80];
+            const boost = f.id === 'bassBoost';
+            html = `
+                ${text(8, 14, 54, 10, boost ? 'Frequency:' : 'Cutoff:', 'cpl-snd-fx-label')}
+                ${combo('cpl-fx-a', 70, 12, 140, boost ? 'Frequency' : 'Cutoff')}
+                ${boost ? `${text(8, 35, 54, 8, 'Boost Level:', 'cpl-snd-fx-label')}${combo('cpl-fx-b', 70, 32, 140, 'Boost Level')}` : ''}
+                ${button(100, 60, 50, 14, 'OK', 'fx-ok')}
+                ${button(158, 60, 50, 14, 'Cancel', 'fx-cancel')}`;
+        }
+        const { modal, content, close } = makeWindow(`soundFxSettings-${f.id}`, f.settings, 'cpl-snd-fx-dlg', null, false);
+        content.style.width = `${Math.round(size[0] * units.x)}px`;
+        content.style.height = `${bottomPx(0, size[1])}px`;
+        content.innerHTML = html;
+        ownerModal.setAttribute('inert', '');
+        const finish = (ok) => {
+            if (ok) { fx.pending[f.id] = p; done(); }
+            ownerModal.removeAttribute('inert');
+            closeWindow(modal);
+            callGlobal('openModal', ownerModal);
+        };
+        const a = content.querySelector('.cpl-fx-a');
+        if (f.id === 'bassManagement') {
+            wireCombo(a, () => FX_CROSSOVER.map(hz), () => p.crossover, (v) => { p.crossover = Number(v); });
+            const inv = content.querySelector('#cplFxInvert');
+            inv.checked = !!p.invert;
+            inv.addEventListener('change', () => { p.invert = inv.checked; });
+        } else if (f.id === 'bassBoost') {
+            wireCombo(a, () => FX_BOOST_FREQ.map(hz), () => p.frequency, (v) => { p.frequency = Number(v); });
+            wireCombo(content.querySelector('.cpl-fx-b'), () => FX_BOOST_LEVEL.map((v) => ({ value: v, text: `${v} dB` })), () => p.level, (v) => { p.level = Number(v); });
+        } else if (f.id === 'lowFrequencyProtection') {
+            wireCombo(a, () => FX_CUTOFF.map(hz), () => p.cutoff, (v) => { p.cutoff = Number(v); });
+        } else {
+            const r = content.querySelector('.cpl-fx-release');
+            r.value = String(p.release);
+            r.addEventListener('input', () => { p.release = Number(r.value); });
+        }
+        content.addEventListener('click', (ev) => {
+            const b = ev.target.closest('[data-action]');
+            if (!b || b.disabled) return;
+            if (b.dataset.action === 'fx-ok') finish(true);
+            else if (b.dataset.action === 'fx-cancel') finish(false);
+        });
+        close.addEventListener('click', () => finish(false));
+        modal.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); finish(false); }
+            else if (ev.key === 'Enter' && !ev.target.matches('button, [role="combobox"]')) { ev.preventDefault(); finish(true); }
+        });
+        showWindow(modal, ownerModal);
+    }
+
     /** Opens (or brings back) the selected device's Properties. */
     function deviceProperties(page) {
         const d = selectedDevice(page);
@@ -1184,29 +1383,53 @@
         const A = audio();
         units = TAHOMA;
         let renamed = null;
+        // the Speakers filter (DreamOS, MacBook Pro 11,x) has Vista's Enhancements tab, between Levels and Advanced
+        const tabs = d.dsp ? ['General', 'Levels', 'Enhancements', 'Advanced'] : ['General', 'Levels', 'Advanced'];
+        const pages = d.dsp ? [propsGeneral(d), propsLevels(d), propsEnhancements(), propsAdvanced(d)] : [propsGeneral(d), propsLevels(d), propsAdvanced(d)];
+        let fx = null;
+        let pendingFormat = null;
         const sheet = makeSheet({
             id: `soundDeviceProps-${d.id.replace(/[^A-Za-z0-9_-]/g, '_')}`,
             title: `${d.name} Properties`,
             cls: 'cpl-pers-sound-sheet cpl-snd-props',
             icon: `${ART}/sound-16.png`,
-            tabs: ['General', 'Levels', 'Advanced'],
+            tabs,
             selected: 0,
-            pages: [propsGeneral(d), propsLevels(d), propsAdvanced(d)],
+            pages,
             onApply: () => {
                 if (renamed !== null && A) A.rename(d.id, renamed);
                 renamed = null;
+                if (fx) fx.apply();
+                if (pendingFormat && A) {
+                    const f = pendingFormat;
+                    pendingFormat = null;
+                    A.setFormat(d.id, f).then((r) => { if (r && r.error) message('Sound', r.error, sheet.modal, 'warning'); });
+                }
             },
             onClose: () => { delete devicePropsOpen[d.id]; },
             onAction: (action) => {
+                if (fx && fx.action(action, sheet.modal)) return;
                 const cur = A && A.find(d.id);
                 if (!cur) return;
                 if (action === 'snd-mute' && cur.canMute) A.setLevel(cur.id, { muted: !cur.muted }).then(paint);
                 else if (action === 'snd-test') testDevice();
+                else if (action === 'snd-restore' && cur.canSetFormat) {
+                    // the hardware's own default: 24 bit (or the deepest offered), 48 kHz
+                    const offered = cur.formats || [];
+                    const bits = offered.some((f) => f.bits === 24) ? 24 : Math.max(...offered.map((f) => f.bits));
+                    const def = offered.find((f) => f.bits === bits && f.rate === 48000) || offered.find((f) => f.bits === bits);
+                    const same = def && cur.format && def.bits === cur.format.bits && def.rate === cur.format.rate;
+                    pendingFormat = same ? null : def || null;
+                    if (pendingFormat) sheet.setDirty(true);
+                    fmtSync();
+                }
             }
         });
         const c = sheet.content;
+        if (d.dsp) fx = wireEnhancements(c, A, () => sheet.setDirty(true));
         // the controls Melaton cannot change here are greyed, as Vista greys what a driver does not offer
-        ['snd-icon', 'snd-ctl-properties', 'snd-restore'].forEach((a) => { const b = c.querySelector(`[data-action="${a}"]`); if (b) b.disabled = true; });
+        ['snd-icon', 'snd-ctl-properties'].forEach((a) => { const b = c.querySelector(`[data-action="${a}"]`); if (b) b.disabled = true; });
+        c.querySelector('[data-action="snd-restore"]').disabled = !d.canSetFormat;
         c.querySelectorAll('#cplSndExcl1, #cplSndExcl2').forEach((i) => { i.checked = true; i.disabled = true; });
         const nameBox = c.querySelector('.cpl-snd-name');
         nameBox.addEventListener('input', () => { renamed = nameBox.value; sheet.setDirty(true); });
@@ -1220,15 +1443,26 @@
         });
         // Default Format: the formats the device reports (Android's rates / encodings, PipeWire's format); the
         // platform's mixer chooses, so the others are listed greyed
+        // DreamOS sets any format its hardware offers (CaféReady audio.rs set_format, on Apply); elsewhere the platform's
+        // mixer chooses, so the others are listed greyed
         const fmtItems = () => {
             const cur = A && A.find(d.id);
             const list = (cur && cur.formats && cur.formats.length ? cur.formats : (cur && cur.format ? [cur.format] : []));
-            return list.map((f) => ({ value: A.formatText(f, d.flow), text: A.formatText(f, d.flow), disabled: !(cur.format && f.rate === cur.format.rate && f.bits === cur.format.bits) }));
+            const shown = pendingFormat || (cur && cur.format);
+            return list.map((f) => ({ value: A.formatText(f, d.flow), text: A.formatText(f, d.flow), format: f,
+                disabled: !(cur.canSetFormat || (shown && f.rate === shown.rate && f.bits === shown.bits)) }));
         };
         const fmtSync = wireCombo(c.querySelector('.cpl-snd-format'), fmtItems, () => {
             const cur = A && A.find(d.id);
-            return cur && cur.format ? A.formatText(cur.format, d.flow) : '';
-        }, () => {});
+            const shown = pendingFormat || (cur && cur.format);
+            return shown ? A.formatText(shown, d.flow) : '';
+        }, (v, item) => {
+            const cur = A && A.find(d.id);
+            const f = item && item.format;
+            if (!f || !cur || !cur.canSetFormat) return;
+            pendingFormat = cur.format && f.bits === cur.format.bits && f.rate === cur.format.rate ? null : f;
+            if (pendingFormat) sheet.setDirty(true);
+        });
         function paint() {
             const cur = A && A.find(d.id);
             if (!cur) return;
