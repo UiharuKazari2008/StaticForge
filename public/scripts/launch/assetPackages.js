@@ -16,6 +16,9 @@
  * and 'source': the animation frames the strips and the status atlas are built from (no client
  * loads them; scripts/build-wm-sprite-strips.sh, build-wm-status-atlas.py), shipped to nobody.
  *
+ * Media Player's older visualizations: wmpvis-classic, public/scripts/comp/desktop-apps/wmpvis/, added by
+ * Media Player's Download Visualizations (mediaPlayerViz.js) and removed in Applied Updates.
+ *
  * The desktop's HiDPI art (#921, DreamOS fractional scaling): hidpi-125 / hidpi-150 / hidpi-175 /
  * hidpi-200 are public/static_images/hidpi/<tier>/, the 1.25x ... 2x copies of the Vista art
  * (scripts/build-hidpi-assets.js). A desktop page (also a phone's DeX window) keeps the one tier its
@@ -79,6 +82,9 @@
     // the desktop's HiDPI art (#921): one package per density
     const HIDPI_TIERS = [125, 150, 175, 200];
     for (const t of HIDPI_TIERS) PACKAGES.push({ id: `hidpi-${t}`, label: `Melaton Desktop (for ${t}% scaling)`, version: 'desktop', tier: t / 100 });
+    // Media Player's older visualizations (Windows Media Player 9 Series / 10: Spikes ...), from Download
+    // Visualizations (mediaPlayerViz.js); never automatic
+    PACKAGES.push({ id: 'wmpvis-classic', label: 'Media Player Visualizations (Windows Media Player 9 Series and 10)', version: 'desktop', tier: 1 });
     const IDS = new Set(PACKAGES.map((p) => p.id));
     const HIDPI_ART = /^\/static_images\/hidpi\/(125|150|175|200)\//;
     // the animation frames: built into strips / the status atlas, loaded by nobody
@@ -111,6 +117,7 @@
     }
     function packageOf(url) {
         const u = String(url || '').split('?')[0];
+        if (/^\/scripts\/comp\/desktop-apps\/wmpvis\//.test(u)) return 'wmpvis-classic';
         const hd = HIDPI_ART.exec(u);
         if (hd) return `hidpi-${hd[1]}`;
         // the build's own list of the HiDPI art (scripts/build-hidpi-assets.js): no client reads it

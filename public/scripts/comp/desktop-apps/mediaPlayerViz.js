@@ -325,7 +325,7 @@
 
         function runAction(action) {
             if (String(action).indexOf('vis:') === 0) setChoice(action.slice(4));
-            else if (action === 'vis-download') document.dispatchEvent(new CustomEvent('melaton:wmp-vis-download', { detail: player }));
+            else if (action === 'vis-download') void downloadVisualizations();
         }
 
         const mo = new MutationObserver(sync);
@@ -356,6 +356,65 @@
         return host;
     }
 
+    // ---- the older collections: the 'wmpvis-classic' package (assetPackages.js), Download Visualizations ----
+
+    const CLASSIC = 'wmpvis-classic';
+    const CLASSIC_KEY = 'wmpvis:classic';
+    const CLASSIC_SCRIPTS = ['/scripts/comp/desktop-apps/wmpvis/classic.js'];
+
+    function classicInstalled() {
+        const pk = window.melatonPackages;
+        try { return !!(pk && typeof pk.current === 'function' && pk.current().includes(CLASSIC)); } catch (_) { return false; }
+    }
+
+    /** Run the package's renderers (a segment of their own: they register with the event above). */
+    async function loadClassic() {
+        const seg = window.melatonSegments;
+        if (!seg || typeof seg.load !== 'function' || !classicInstalled()) return false;
+        try {
+            // this file may have been loaded again (a live update): the package registers with the new copy
+            if (typeof seg.get === 'function' && seg.get(CLASSIC_KEY)) seg.unload(CLASSIC_KEY, 'update');
+            await seg.load({ key: CLASSIC_KEY, label: 'Media Player Visualizations', scripts: CLASSIC_SCRIPTS });
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    const mb = (b) => (Number(b || 0) / 1048576).toFixed(1) + ' MB';
+
+    async function downloadVisualizations() {
+        const ask = typeof window.showConfirmationDialog === 'function' ? window.showConfirmationDialog : null;
+        const pk = window.melatonPackages;
+        const sw = window.serviceWorkerManager;
+        if (!ask || !pk) return;
+        if (classicInstalled()) {
+            await ask('The visualizations from Windows Media Player 9 Series and 10 are installed. To remove them, open Control Panel, Melaton Update, Applied updates.', [{ text: 'OK', value: true }]);
+            return;
+        }
+        let size = '';
+        try {
+            const j = await (await fetch('/install/packages', { cache: 'no-store', credentials: 'same-origin' })).json();
+            const row = j && Array.isArray(j.packages) ? j.packages.find((p) => p.id === CLASSIC) : null;
+            if (row && row.bytes > 0) size = ' (' + mb(row.bytes) + ')';
+        } catch (_) { /* the size stays out */ }
+        const go = await ask('Melaton Update has the visualizations from Windows Media Player 9 Series and 10: Spikes (Spike, Amoeba)' + size + '. Download and install them now?', [{ text: 'Download', value: true }, { text: 'Cancel', value: false }]);
+        if (!go) return;
+        const change = pk.pin(CLASSIC);
+        let done = null;
+        if (sw && typeof sw.applyPackageChange === 'function' && change && change.added && change.added.length) {
+            done = await sw.applyPackageChange(change, {
+                confirmLarge: ({ bytes }) => ask('The visualizations are ' + mb(bytes) + '. Melaton must restart to install them. Restart now?', [{ text: 'Restart now', value: true }, { text: 'Later', value: false }])
+            }).catch(() => null);
+        }
+        if (done && (done.action === 'later' || done.action === 'restart')) return;
+        if (await loadClassic()) {
+            await ask('The visualizations are installed. Choose them from Now Playing, Visualizations.', [{ text: 'OK', value: true }]);
+        } else {
+            await ask('Media Player could not install the visualizations. Try again after Melaton has checked for updates.', [{ text: 'OK', value: true }]);
+        }
+    }
+
     function attach(player) {
         if (!player || !player.audio || player.viz) return;
         const host = createHost(player);
@@ -367,6 +426,7 @@
         audio.state.runAction = (action) => host.runAction(action);
         audio.state.onPlay = () => host.sync();
         audio.state.onPause = () => host.sync();
+        if (classicInstalled() && !collections.some((c) => c.pkg === CLASSIC)) void loadClassic();
     }
 
     document.addEventListener('melaton:wmp-vis-register', (e) => register(e.detail), { signal: appScopeSignal });
