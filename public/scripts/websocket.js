@@ -885,6 +885,7 @@ class WebSocketClient {
     static NIGHTSHADE_PROBE_EVERY_MS = 60000;
     static NIGHTSHADE_BALLOON_MS = 5000; // a quiet reconnect inside this shows no balloon
     static OFFLINE_LOGON_AFTER_MS = 10000; // no server this long at boot: the offline logon (#899)
+    static BOOT_GATE_MAX_MS = 10000; // the logon waits this long at most for serviceWorkerManager's boot gate
     // the installed app: "Please wait..." while the server is tried this long, then the logon from the cached profile
     // (#910, Yukimi Nov 20 2026: the password box with nothing before it said nothing about what was going on)
     static INSTALLED_LOGON_GRACE_MS = 2000;
@@ -2091,6 +2092,9 @@ class WebSocketClient {
         // Continuity (#798): a hybrid phone's DeX window has no logon server of its own to lose; its
         // connection is the phone's, which comes back (a rebond, a network change): it waits, never this box
         if (this._isContinuityDexWindow()) return false;
+        // the offline logon's password box is up (#899): it stays, the dial goes on behind it (a stuck CONNECTING socket's
+        // watchdog put the no-logon-servers message over it, Nov 20 2026)
+        if (this._offlineLogonReady) return false;
         return !!(this.vistaLogon
             && this._shouldUsePreStartupDialog()
             && !this._vistaLogonError
@@ -2950,6 +2954,22 @@ class WebSocketClient {
         if (window.DreamOSBoot && window.DreamOSBoot.native) {
             requestAnimationFrame(() => requestAnimationFrame(() => window.DreamOSBoot.ready('logon')));
         }
+    }
+
+    /** serviceWorkerManager's boot gate, bounded (one timer): the logon goes on and the check finishes behind it. */
+    _awaitBootGate() {
+        const swm = window.serviceWorkerManager;
+        if (!swm || swm.bootComplete) return Promise.resolve();
+        let timer = null;
+        return Promise.race([
+            Promise.resolve(swm.ensureBootComplete()).catch(() => {}),
+            new Promise((resolve) => {
+                timer = setTimeout(() => {
+                    console.warn(`[boot] the offline cache check has not finished after ${WebSocketClient.BOOT_GATE_MAX_MS} ms (${swm.bootPhase || 'unknown'}): the logon goes on, the check finishes behind it`);
+                    resolve();
+                }, WebSocketClient.BOOT_GATE_MAX_MS);
+            })
+        ]).finally(() => clearTimeout(timer));
     }
 
     _waitForTealHold() {
@@ -5712,9 +5732,11 @@ class WebSocketClient {
                     this.triggerEvent('resynced');
                 }
 
-                // Boot gate owns update checks — block handoff/init until cache sync finishes
+                // Boot gate owns update checks — block handoff/init until cache sync finishes, for at most BOOT_GATE_MAX_MS:
+                // a gate that never settles (a check left "blocked", a worker that never activates, a server-ready poll)
+                // kept the logon at "Please wait..." for good with the socket open and the phase still dialing (Nov 20 2026)
                 if (!this.initializationCompleted && window.serviceWorkerManager) {
-                    await window.serviceWorkerManager.ensureBootComplete();
+                    await this._awaitBootGate();
                 }
 
                 if (connectEpoch !== this._connectEpoch || this.ws !== connectedSocket) return;
