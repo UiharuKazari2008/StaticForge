@@ -6555,6 +6555,8 @@ class WebSocketClient {
                 const pending = this.pendingRequests.get(message.requestId);
                 // The packet that failed, for the exception report (mainframeExceptionDialog.js)
                 message.requestType = pending.type;
+                // a caller that reports the failure itself (handlesErrors): no "Unhandled exception" window as well
+                if (pending.callerHandlesErrors) message.callerHandles = true;
                 const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
                 if (generationTypes.has(pending.type)) {
                     this.clearStreamingStepQueues(null, true);
@@ -9958,6 +9960,20 @@ class WebSocketClient {
         };
     }
 
+    /**
+     * Requests sent inside fn() are the caller's to report: a server error rejects the promise as always, and the
+     * desktop's "Unhandled exception" window (120-infrastructureInbound.js) stays away, so the user sees one error,
+     * the caller's (Vista's file dialog, #964). fn must send synchronously; its result is returned.
+     */
+    handlesErrors(fn) {
+        this._callerHandlesErrors = (this._callerHandlesErrors || 0) + 1;
+        try {
+            return fn();
+        } finally {
+            this._callerHandlesErrors -= 1;
+        }
+    }
+
     sendMessage(type, data = {}, showBanner = true) {
         if (type !== 'ping') {
             this.recordUserActivity();
@@ -10085,6 +10101,8 @@ class WebSocketClient {
                 type,
                 showBanner: effectiveShowBanner,
                 silentTicker,
+                // sent inside handlesErrors(): the caller shows its own message for a server error
+                callerHandlesErrors: (this._callerHandlesErrors || 0) > 0,
                 timestamp: Date.now(),
                 socket: requestSocket,
                 counted: !silentTicker

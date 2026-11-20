@@ -2731,7 +2731,10 @@ class ExplorerApplet {
         if (sortBtn) {
             contextMenu.attachClickMenuToElement(sortBtn, this.sortClickMenuConfig);
         }
-        if (viewsBtn) {
+        // Vista's Views: a split button, the face cycling the views and the ▾ the slider menu (vfsVirtualGrid.js)
+        if (viewsBtn && window.vistaViewsMenu) {
+            window.vistaViewsMenu.attach(viewsBtn, { get: () => this.viewMode, set: (mode) => this.setViewMode(mode) });
+        } else if (viewsBtn) {
             contextMenu.attachClickMenuToElement(viewsBtn, this.viewsClickMenuConfig);
         }
     }

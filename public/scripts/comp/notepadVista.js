@@ -308,6 +308,8 @@
 
     proto.save = async function () {
         const box = this.textarea();
+        // a file opened read-only (the Open dialog's Open as read-only) is saved under another name
+        if (this.file && this.file.readOnly) return this.saveAs();
         if (this.file) return this.writeFile(box.value);
         if (this.note || this.kind === 'note') return original.saveNoteContent.call(this, box.value);
         return this.saveAs();
@@ -403,14 +405,14 @@
                 types: [{ label: 'Text Documents (*.txt)' }, { label: 'All Files (*.*)' }],
                 rejectMessage: 'Choose a text document',
                 acceptItem: (item) => item && (item.targetKind === 'note' || (item.targetKind === 'user-file' && isTextItem(item))),
-                async onOpen(item, folderPath) {
+                async onOpen(item, folderPath, how) {
                     if (item.targetKind === 'note') {
                         await self.manager.openExistingNote(item.targetId);
                         return;
                     }
                     // Vista opens it in this window when it is Untitled and untouched
                     const reuse = !self.note && !self.file && !self.hasUnsavedChanges && !self.textarea().value;
-                    await root.notepadVista.openFile(item, folderPath, reuse ? self : null);
+                    await root.notepadVista.openFile(item, folderPath, reuse ? self : null, how);
                 }
             }
         });
@@ -747,7 +749,7 @@
         return np;
     }
 
-    async function openFile(item, folderPath, reuse) {
+    async function openFile(item, folderPath, reuse, how) {
         const mgr = root.notepadManager;
         if (!mgr || !item) return null;
         const already = Array.from(mgr.notepads.values()).find((n) => n.file && n.file.id === item.id);
@@ -767,7 +769,7 @@
         }
         const np = reuse || mgr.createBlankNotepad();
         np.kind = 'file';
-        np.file = { id: item.id, name: item.name, path: folderPath || '' };
+        np.file = { id: item.id, name: item.name, path: folderPath || '', readOnly: !!(how && how.readOnly) };
         np.note = null;
         const box = np.textarea();
         box.value = text;

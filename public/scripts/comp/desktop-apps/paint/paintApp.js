@@ -1908,8 +1908,9 @@
         }
 
         /** A VFS file: a Graphic Session Document, a Melaton Paint Image, or a picture. */
-        async openVfsFile(id, name, path) {
-            const file = { id, name, path };
+        async openVfsFile(id, name, path, readOnly) {
+            // Open as read-only (the Open dialog's split button): Save goes to Save As
+            const file = { id, name, path, readOnly: !!readOnly };
             let notes = [];
             try {
                 await this.withProgress(`Opening ${name}`, async (p) => {
@@ -2003,10 +2004,10 @@
                     rejectMessage: 'Choose a picture',
                     acceptItem: (item) => !!item && (item.targetKind === 'image' || item.targetKind === 'scrap' || item.shortcutType === 'image'
                         || (item.targetKind === 'user-file' && (/^image\//.test(item.mimeType || '') || /\.(png|jpe?g|gif|bmp|webp|mpi|gsd|psd)$/i.test(item.name || '')))),
-                    async onOpen(item, folderPath) {
+                    async onOpen(item, folderPath, how) {
                         if (!await self.confirmDiscard()) return;
                         if (item.targetKind === 'user-file') {
-                            await self.openVfsFile(item.id, item.name, folderPath);
+                            await self.openVfsFile(item.id, item.name, folderPath, !!(how && how.readOnly));
                         } else {
                             const name = item.previewImageFilename || item.targetId || (item.shortcutData && item.shortcutData.filename);
                             await self.openUrl(`/images/${encodeURIComponent(name)}`, item.name || name, null);
@@ -2058,7 +2059,7 @@
         async save() {
             this.commitFloating();
             this.finishText();
-            if (!this.file || !this.file.id) return this.saveAs();
+            if (!this.file || !this.file.id || this.file.readOnly) return this.saveAs();
             try {
                 const type = this.typeFor(this.file.name);
                 await this.withProgress(`Saving ${this.file.name}`, async (p) => {

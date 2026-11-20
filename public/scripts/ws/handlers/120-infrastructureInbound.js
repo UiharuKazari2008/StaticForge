@@ -10,6 +10,10 @@ registerWsInboundHandler({
         if (message.requestType === 'get_novelai_explore_gallery' || message.requestType === 'get_novelai_explore_post') {
             return;
         }
+        // The caller shows its own error for this request (wsClient.handlesErrors): one error, not two (#964)
+        if (message.callerHandles) {
+            return;
+        }
         // A metadata miss (deleted or unknown image) is handled by every caller (getImageMetadata
         // toast in galleryView.js, Omegasearch detail error, desktopShortcuts viewer fallback), so it
         // is not an unhandled exception (Yozora #614).

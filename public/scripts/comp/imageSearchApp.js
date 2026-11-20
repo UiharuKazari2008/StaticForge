@@ -461,7 +461,8 @@
                 onAction: (a, target, item) => onAction(a, item, target)
             });
             click(this.$('.isx-cmd-organize'), () => this.organizeItems(), (a) => this.action(a));
-            this.$('.isx-cmd-views').addEventListener('click', (ev) => { ev.stopPropagation(); viewsMenu.toggle(this); });
+            // Explorer's split Views button and slider menu (vfsVirtualGrid.js vistaViewsMenu)
+            if (root.vistaViewsMenu) root.vistaViewsMenu.attach(this.$('.isx-cmd-views'), { get: () => this.viewMode, set: (id) => this.setViewMode(id) });
             click(this.$('.isx-cmd-tools'), () => this.toolsItems(), (a) => this.action(a));
             click(this.$('.isx-cmd-preview'), () => [
                 { text: 'Open in Window', action: 'window' },
@@ -1780,7 +1781,7 @@
 
         close() {
             propsDialog.close();
-            viewsMenu.close();
+            if (root.vistaViewsMenu) root.vistaViewsMenu.close();
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;
             app = null;
@@ -1866,92 +1867,6 @@
         }
         return parts.join('') || `<span class="isx-muted">${hl(usage.displayText || '')}</span>`;
     }
-
-    // ---- Views: Explorer's slider menu (VM: the seven views down a trackbar, the thumb at the current
-    // one; drag it or pick a row). Row centres and rules as measured on the VM (1x). ------------------------
-
-    const VIEWS_MENU_ROWS = { 'icons-xl': 26, 'icons-lg': 68, 'icons-md': 98, 'icons-sm': 144, list: 176, details: 208, tiles: 239 };
-    const viewsMenu = {
-        el: null,
-        owner: null,
-        dragging: false,
-
-        build() {
-            const el = doc.createElement('div');
-            el.className = 'isx-views-menu';
-            el.setAttribute('role', 'menu');
-            el.hidden = true;
-            el.innerHTML = `<div class="isx-vm-track"></div><span class="isx-vm-thumb"></span>${
-                VIEW_MODES.map((v) => `<button type="button" class="isx-vm-item" role="menuitemradio" data-mode="${v.id}" style="top:${VIEWS_MENU_ROWS[v.id] - 11}px"><img src="${EX}/views-${v.id}.png" srcset="${EX}/views-${v.id}.png 1x, ${EX}/views-${v.id}@2x.png 2x" alt="">${esc(v.label)}</button>`).join('')
-            }${[160, 192, 224].map((y) => `<div class="isx-vm-rule" style="top:${y}px"></div>`).join('')}`;
-            doc.body.appendChild(el);
-            this.el = el;
-            el.addEventListener('click', (ev) => {
-                const b = ev.target.closest('.isx-vm-item');
-                if (b && this.owner) { this.owner.setViewMode(b.dataset.mode); this.close(); }
-            });
-            const pick = (clientY) => {
-                const top = el.getBoundingClientRect().top;
-                const y = clientY - top;
-                let best = null;
-                Object.entries(VIEWS_MENU_ROWS).forEach(([id, cy]) => { if (!best || Math.abs(cy - y) < Math.abs(best[1] - y)) best = [id, cy]; });
-                if (best && this.owner && this.owner.viewMode !== best[0]) this.owner.setViewMode(best[0]);
-                this.sync();
-            };
-            const onDown = (ev) => {
-                ev.preventDefault();
-                this.dragging = true;
-                el.setPointerCapture(ev.pointerId);
-                pick(ev.clientY);
-            };
-            el.querySelector('.isx-vm-track').addEventListener('pointerdown', onDown);
-            el.querySelector('.isx-vm-thumb').addEventListener('pointerdown', onDown);
-            el.addEventListener('pointermove', (ev) => { if (this.dragging) pick(ev.clientY); });
-            el.addEventListener('pointerup', () => { if (this.dragging) { this.dragging = false; this.close(); } });
-            doc.addEventListener('pointerdown', (ev) => {
-                if (!el.hidden && !el.contains(ev.target) && !(this.owner && this.owner.$('.isx-cmd-views').contains(ev.target))) this.close();
-            }, true);
-            doc.addEventListener('keydown', (ev) => {
-                if (el.hidden) return;
-                if (ev.key === 'Escape') { ev.preventDefault(); this.close(); return; }
-                if (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return;
-                ev.preventDefault();
-                const i = VIEW_MODES.findIndex((v) => v.id === this.owner.viewMode);
-                const next = VIEW_MODES[Math.max(0, Math.min(VIEW_MODES.length - 1, i + (ev.key === 'ArrowDown' ? 1 : -1)))];
-                this.owner.setViewMode(next.id);
-                this.sync();
-            }, true);
-        },
-
-        sync() {
-            if (!this.el || !this.owner) return;
-            const cur = this.owner.viewMode;
-            this.el.querySelector('.isx-vm-thumb').style.top = `${VIEWS_MENU_ROWS[cur] - 4}px`;
-            this.el.querySelectorAll('.isx-vm-item').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === cur)));
-        },
-
-        toggle(owner) {
-            if (this.el && !this.el.hidden && this.owner === owner) { this.close(); return; }
-            if (!this.el || !this.el.isConnected) this.build();
-            this.owner = owner;
-            const btn = owner.$('.isx-cmd-views');
-            const r = btn.getBoundingClientRect();
-            this.el.style.left = `${Math.round(r.left)}px`;
-            this.el.style.top = `${Math.round(r.bottom)}px`;
-            const z = Number(getComputedStyle(owner.modal).zIndex) || 1000;
-            this.el.style.zIndex = String(z + 50);
-            this.el.hidden = false;
-            btn.classList.add('context-open');
-            this.sync();
-        },
-
-        close() {
-            if (!this.el || this.el.hidden) return;
-            this.el.hidden = true;
-            this.dragging = false;
-            if (this.owner) this.owner.$('.isx-cmd-views').classList.remove('context-open');
-        }
-    };
 
     // ---- the Properties sheet (the DSAP's detail view) --------------------------------------------------
 

@@ -560,9 +560,15 @@ function studioSaveFolderOverwrite(name) {
         ['icons-md', 'Medium Icons'],
         ['icons-sm', 'Small Icons'],
         ['list', 'List'],
-        ['details', 'Details']
+        ['details', 'Details'],
+        ['tiles', 'Tiles']
     ];
     const STUDIO_SAVE_FOLDER_ART = '/static_images/vista-explorer';
+
+    /** A VFS request whose server error this dialog reports itself (one Vista error box, no exception window). */
+    function studioSaveFolderQuiet(fn) {
+        return wsClient && typeof wsClient.handlesErrors === 'function' ? wsClient.handlesErrors(fn) : fn();
+    }
 
     function studioSaveFolderModalEl() {
         return document.getElementById('studioSaveFolderModal');
@@ -704,7 +710,7 @@ function studioSaveFolderOverwrite(name) {
         const icon = document.querySelector('#studioSaveFolderViewsBtn .explorer-command-icon');
         if (icon) {
             // the Views button shows the current view's icon (as Cartograph's does)
-            const art = mode === 'details' ? 'views-details' : 'views-icons-lg';
+            const art = `views-${STUDIO_SAVE_FOLDER_VIEWS.some(([m]) => m === mode) ? mode : 'icons-lg'}`;
             icon.src = `${STUDIO_SAVE_FOLDER_ART}/${art}.png`;
             icon.srcset = `${STUDIO_SAVE_FOLDER_ART}/${art}.png 1x, ${STUDIO_SAVE_FOLDER_ART}/${art}@2x.png 2x`;
         }
@@ -727,13 +733,13 @@ function studioSaveFolderOverwrite(name) {
         const path = state.path;
         try {
             const sort = studioSaveFolderSort();
-            const result = await vfsClient.listDirectory(path, {
+            const result = await studioSaveFolderQuiet(() => vfsClient.listDirectory(path, {
                 offset: state.items.length,
                 limit: STUDIO_SAVE_FOLDER_PAGE,
                 sortField: sort.field,
                 sortDirection: sort.direction,
                 search: state.search || ''
-            });
+            }));
             if (token !== state.navToken) return;
             const more = (result && result.items) || [];
             state.items = state.items.concat(more);
@@ -777,6 +783,16 @@ function studioSaveFolderOverwrite(name) {
             fdTypeLabel: 'Local Disk'
         }];
         const computer = (explorer && explorer.computer) || studioSaveFolderComputerStub();
+        // the phone's own drives (inside the Android app / a hybrid phone's DeX window), lettered as Computer does
+        (typeof computer.phoneDrives === 'function' ? computer.phoneDrives() : []).forEach((d) => {
+            if (!d.path || d.block) return;
+            items.push({ id: `fd-${d.key}`, name: d.letter ? `${d.name} (${d.letter}:)` : d.name, kind: 'folder', navPath: d.path, fdIcon: d.hdd ? 'drive-fixed-16.png' : 'drive-removable-16.png', fdTypeLabel: d.hdd ? 'Local Disk' : 'Removable Disk' });
+        });
+        // Portable Devices: each phone over ActiveSync, opening to its storages
+        (typeof computer.portableDevices === 'function' ? computer.portableDevices() : []).forEach((d) => {
+            if (!window.ExplorerComputerView) return;
+            items.push({ id: `fd-${d.key}`, name: d.name, kind: 'folder', navPath: window.ExplorerComputerView.devicePath(d.deviceId), fdIcon: 'portable-device-16.png', fdTypeLabel: 'Portable Media Player' });
+        });
         const nets = computer && typeof computer.networkDrives === 'function' ? computer.networkDrives() : [];
         nets.forEach((d) => {
             if (!d.path) return;
@@ -794,8 +810,18 @@ function studioSaveFolderOverwrite(name) {
         const view = window.ExplorerComputerView;
         const crumbs = [{ label: 'Computer', path: studioSaveFolderComputerPath() }];
         let icon = 'crumb-folder.png';
+        const deviceId = studioSaveFolderDeviceId(path);
+        const phone = studioSaveFolderIsPhonePath(path);
         if (studioSaveFolderAtComputer(path)) {
             icon = 'computer-16.png';
+        } else if (deviceId) {
+            const view = studioSaveFolderComputerStub();
+            crumbs.push({ label: typeof view.deviceName === 'function' ? view.deviceName(deviceId) : 'Portable Device', path });
+            icon = 'portable-device-16.png';
+        } else if (phone) {
+            // Computer ▸ <device> ▸ Internal storage ▸ DCIM (explorerPhoneDrive.js)
+            window.explorerPhoneDrive.crumbs(path).forEach((c) => crumbs.push(c));
+            icon = window.explorerPhoneDrive.crumbIcon(path);
         } else {
             const parts = path.split('/').filter(Boolean);
             const labels = String(displayPath || '').split('/').filter(Boolean);
@@ -878,7 +904,7 @@ function studioSaveFolderOverwrite(name) {
             folders = studioSaveFolderComputerItems().map((it) => ({ name: it.name, path: it.navPath }));
         } else {
             try {
-                const result = await vfsClient.listDirectory(path, { offset: 0, limit: 200, sortField: 'name', sortDirection: 'asc' });
+                const result = await studioSaveFolderQuiet(() => vfsClient.listDirectory(path, { offset: 0, limit: 200, sortField: 'name', sortDirection: 'asc' }));
                 folders = ((result && result.items) || []).map((it) => ({ name: it.name, path: studioSaveFolderNavPath(it, path) })).filter((f) => f.path);
             } catch (_err) { /* an empty menu */ }
         }
@@ -1007,18 +1033,62 @@ function studioSaveFolderOverwrite(name) {
         return chrome;
     }
 
-    /** Computer's drives without Cartograph's Computer page: Local Disk (C:) and the network drives. */
+    /**
+     * Computer's drives as Cartograph's Computer shows them (explorerComputerView.js): Cartograph's own view when it
+     * has been opened, else one of its kind on this dialog (phoneDrives / portableDevices / networkDrives read the
+     * phone, ActiveSync and Sequenzia themselves); opening a drive goes there in this dialog.
+     */
     function studioSaveFolderComputerStub() {
-        const seq = () => (window.explorerSequenzia ? window.explorerSequenzia.computerDrives() : []);
-        return {
-            phoneDrives: () => [],
-            portableDevices: () => [],
-            networkDrives: seq,
-            openDrive: (key) => {
-                const d = seq().find((n) => n.key === key);
-                if (d && d.path) studioSaveFolderNavigate(d.path);
-            }
+        const explorer = studioSaveFolderExplorer();
+        if (explorer && explorer.computer) return explorer.computer;
+        const View = window.ExplorerComputerView;
+        if (!View) {
+            return { phoneDrives: () => [], portableDevices: () => [], networkDrives: () => (window.explorerSequenzia ? window.explorerSequenzia.computerDrives() : []), openDrive: () => {} };
+        }
+        if (!studioSaveFolderState.computerView) {
+            const view = Object.create(View.prototype);
+            view.app = studioSaveFolderPhoneApp();
+            view.openDrive = (key) => {
+                const all = [...view.phoneDrives(), ...view.networkDrives()];
+                const d = all.find((n) => n.key === key);
+                if (d && d.path && !d.block) studioSaveFolderNavigate(d.path);
+            };
+            studioSaveFolderState.computerView = view;
+        }
+        return studioSaveFolderState.computerView;
+    }
+
+    /** This dialog as an "app" for the phone drive (explorerPhoneDrive.js list / watch). */
+    function studioSaveFolderPhoneApp() {
+        const state = studioSaveFolderState;
+        if (state.phoneApp) return state.phoneApp;
+        state.phoneApp = {
+            modal: null,
+            computer: null,
+            get currentPath() { return state.path; },
+            get sortField() { return studioSaveFolderSort().field; },
+            get sortDirection() { return studioSaveFolderSort().direction; },
+            navigateTo: (path) => studioSaveFolderNavigate(path),
+            softRefresh: () => studioSaveFolderNavigate(state.path, { history: false, keepSearch: true }),
+            _isComputerPath: () => studioSaveFolderAtComputer()
         };
+        return state.phoneApp;
+    }
+
+    function studioSaveFolderIsPhonePath(path) {
+        return !!(window.explorerPhoneDrive && window.explorerPhoneDrive.isPath(path));
+    }
+
+    /** A portable device's page (Computer ▸ <device>): its storages. */
+    function studioSaveFolderDeviceId(path) {
+        const View = window.ExplorerComputerView;
+        return View && typeof View.deviceIdOf === 'function' ? View.deviceIdOf(path) : null;
+    }
+
+    /** Places of the dialog's own: Computer, a device page, the phone; not VFS folders (no New Folder there). */
+    function studioSaveFolderIsVfs(path) {
+        const p = path || studioSaveFolderState.path;
+        return !studioSaveFolderAtComputer(p) && !studioSaveFolderDeviceId(p) && !studioSaveFolderIsPhonePath(p);
     }
 
     function studioSaveFolderToggleTree() {
@@ -1048,6 +1118,8 @@ function studioSaveFolderOverwrite(name) {
         }
         const moved = state.path !== target;
         state.path = target;
+        const newFolder = document.getElementById('studioSaveFolderNewFolderBtn');
+        if (newFolder) newFolder.disabled = !studioSaveFolderIsVfs(target);
         state.hasMore = false;
         if (moved) state.glob = null;
         studioSaveFolderSyncTravel();
@@ -1065,17 +1137,44 @@ function studioSaveFolderOverwrite(name) {
             studioSaveFolderSyncFolderName();
             return;
         }
+        // a phone place is listed by the phone drive (explorerPhoneDrive.js), a device page by ActiveSync
+        if (window.explorerPhoneDrive && !studioSaveFolderIsPhonePath(target)) window.explorerPhoneDrive.leave(studioSaveFolderPhoneApp());
+        const deviceId = studioSaveFolderDeviceId(target);
+        if (deviceId || studioSaveFolderIsPhonePath(target)) {
+            try {
+                let items = [];
+                if (deviceId) {
+                    const Chrome = window.ExplorerVistaChrome;
+                    const specs = Chrome ? await Chrome.prototype.deviceStorageSpecs.call({}, deviceId) : [];
+                    items = specs.map((sp) => ({ id: `fd-storage:${sp.path}`, name: sp.label, kind: 'folder', navPath: sp.path, fdIcon: sp.icon === 'fixed' ? 'drive-fixed-16.png' : 'drive-removable-16.png', fdTypeLabel: 'Storage' }));
+                } else {
+                    const result = await window.explorerPhoneDrive.list(studioSaveFolderPhoneApp(), target);
+                    items = (result && result.items) || [];
+                    const q = (state.search || '').toLowerCase();
+                    if (q) items = items.filter((it) => String(it.name || '').toLowerCase().includes(q));
+                }
+                if (token !== state.navToken) return;
+                state.items = items;
+                studioSaveFolderShowItems();
+                studioSaveFolderSyncFolderName();
+                studioSaveFolderRenderCrumbs(null);
+            } catch (err) {
+                if (token !== state.navToken) return;
+                await studioSaveFolderMessage(`${studioSaveFolderLabelFor(target)}\n\n${(err && err.message) || 'The device is not available.'}`, 'error');
+            }
+            return;
+        }
         if (!wsClient || !wsClient.isConnected()) return;
         try {
             // the order Cartograph uses (its headers, Organize > Sort By), and the dialog's own changes to it
             const sort = studioSaveFolderSort();
-            const result = await vfsClient.listDirectory(target, {
+            const result = await studioSaveFolderQuiet(() => vfsClient.listDirectory(target, {
                 offset: 0,
                 limit: STUDIO_SAVE_FOLDER_PAGE,
                 sortField: sort.field,
                 sortDirection: sort.direction,
                 search: state.search || ''
-            });
+            }));
             if (token !== state.navToken) return;
             // a path typed by its names (Downloads) becomes the folder's own (its id): New Folder, saves and
             // the tree work on that
@@ -1091,7 +1190,7 @@ function studioSaveFolderOverwrite(name) {
             studioSaveFolderShowItems();
             studioSaveFolderSyncFolderName();
             try {
-                const stats = await vfsClient.getPathStats(state.path);
+                const stats = await studioSaveFolderQuiet(() => vfsClient.getPathStats(state.path));
                 if (token !== state.navToken) return;
                 const displayPath = stats && (stats.displayPath || (stats.stats && stats.stats.displayPath));
                 if (displayPath) {
@@ -1123,6 +1222,14 @@ function studioSaveFolderOverwrite(name) {
     function studioSaveFolderUp() {
         const path = studioSaveFolderState.path;
         if (studioSaveFolderAtComputer(path)) return;
+        if (studioSaveFolderDeviceId(path)) {
+            studioSaveFolderNavigate(studioSaveFolderComputerPath());
+            return;
+        }
+        if (studioSaveFolderIsPhonePath(path)) {
+            studioSaveFolderNavigate(window.explorerPhoneDrive.parentOf(path) || studioSaveFolderComputerPath());
+            return;
+        }
         if (path === '/' || (window.explorerSequenzia && path === window.explorerSequenzia.ROOT)) {
             studioSaveFolderNavigate(studioSaveFolderComputerPath());
             return;
@@ -1222,12 +1329,12 @@ function studioSaveFolderOverwrite(name) {
     /** New Folder: "New Folder", "New Folder (2)" ... in the current folder, then its name to type (Vista). */
     async function studioSaveFolderNewFolder() {
         const state = studioSaveFolderState;
-        if (studioSaveFolderAtComputer()) return;
+        if (!studioSaveFolderIsVfs()) return;
         const taken = new Set(state.items.map((item) => String(item.name || '').toLowerCase()));
         let name = 'New Folder';
         for (let n = 2; taken.has(name.toLowerCase()) && n < 100; n += 1) name = `New Folder (${n})`;
         try {
-            await vfsClient.createFolder(state.path, name);
+            await studioSaveFolderQuiet(() => vfsClient.createFolder(state.path, name));
             await studioSaveFolderNavigate(state.path, { history: false, keepSearch: true });
             const index = (state.shown || []).findIndex((item) => item.name === name && studioSaveFolderIsFolder(item));
             if (index >= 0) {
@@ -1299,8 +1406,8 @@ function studioSaveFolderOverwrite(name) {
                 return;
             }
             try {
-                if (item.targetKind === 'vfs-folder') await vfsClient.renameFolder(item.targetId, name);
-                else await vfsClient.renameFile(item.targetId, name);
+                if (item.targetKind === 'vfs-folder') await studioSaveFolderQuiet(() => vfsClient.renameFolder(item.targetId, name));
+                else await studioSaveFolderQuiet(() => vfsClient.renameFile(item.targetId, name));
             } catch (err) {
                 await studioSaveFolderMessage(`Cannot rename ${item.name}: ${(err && err.message) || 'the name was not accepted.'}`, 'error');
             }
@@ -1340,7 +1447,7 @@ function studioSaveFolderOverwrite(name) {
                     ...(sortBy ? [sortBy] : []),
                     { text: 'Refresh', action: 'fd-refresh' },
                     { separator: true },
-                    { text: 'New', submenu: [{ text: 'Folder', action: 'fd-new-folder' }], disabled: studioSaveFolderAtComputer() }
+                    { text: 'New', submenu: [{ text: 'Folder', action: 'fd-new-folder' }], disabled: !studioSaveFolderIsVfs() }
                 ]
             }];
         }
@@ -1491,8 +1598,10 @@ function studioSaveFolderOverwrite(name) {
         let html;
         if (mode === 'folder') html = 'Select Folder';
         else if (mode === 'save') html = folderPicked && listFocused ? '<u>O</u>pen' : '<u>S</u>ave';
-        else html = '<u>O</u>pen';
+        // Open is a split button: its ▾ offers Open and Open as read-only (Vista's common dialog)
+        else html = '<u>O</u>pen<span class="fd-split" data-fd-split aria-hidden="true"></span>';
         if (btn.innerHTML !== html) btn.innerHTML = html;
+        btn.classList.toggle('fd-has-split', studioSaveFolderIsOpenMode());
     }
 
     /** Autocomplete: the names in this folder that start with what is typed (Vista's suggestion list). */
@@ -1823,7 +1932,27 @@ function studioSaveFolderOverwrite(name) {
         });
         $('studioSaveFolderCancelBtn')?.addEventListener('click', () => studioSaveFolderDismiss());
         $('closeStudioSaveFolderBtn')?.addEventListener('click', () => studioSaveFolderDismiss());
-        $('studioSaveFolderSaveBtn')?.addEventListener('click', () => studioSaveFolderPrimary());
+        const primaryBtn = $('studioSaveFolderSaveBtn');
+        if (primaryBtn) {
+            primaryBtn.addEventListener('click', (e) => {
+                if (e.target.closest('[data-fd-split]')) return;
+                studioSaveFolderPrimary();
+            });
+            if (contextMenu) {
+                // the split's ▾: its menu attached as the pointer goes down, so the click opens it
+                primaryBtn.addEventListener('pointerdown', (e) => {
+                    const split = e.target.closest('[data-fd-split]');
+                    if (!split || split.dataset.clickMenu) return;
+                    contextMenu.attachClickMenuToElement(split, {
+                        sections: [{ type: 'list', items: [
+                            { text: 'Open', action: 'fd-open', className: 'context-menu-item-default' },
+                            { text: 'Open as read-only', action: 'fd-open-ro' }
+                        ] }],
+                        onAction: (action) => studioSaveFolderPrimary({ readOnly: action === 'fd-open-ro' })
+                    });
+                }, true);
+            }
+        }
         const typeSelect = $('studioSaveFolderType');
         if (typeSelect) {
             typeSelect.addEventListener('change', () => {
@@ -1911,7 +2040,7 @@ function studioSaveFolderOverwrite(name) {
                             const sel = studioSaveFolderState.grid ? studioSaveFolderState.grid.getSelectedItems() : [];
                             const fixed = !sel.length || sel.some((item) => item.fdIcon || item.system || item.protected);
                             section.items = [
-                                { text: 'New Folder', action: 'fd-new-folder', disabled: studioSaveFolderAtComputer() },
+                                { text: 'New Folder', action: 'fd-new-folder', disabled: !studioSaveFolderIsVfs() },
                                 { separator: true },
                                 ...(sortBy ? [sortBy, { separator: true }] : []),
                                 { text: 'Select All', action: 'fd-select-all', disabled: !studioSaveFolderState.grid || !studioSaveFolderState.grid.multiSelect },
@@ -1939,24 +2068,10 @@ function studioSaveFolderOverwrite(name) {
                 });
             });
             studioSaveFolderSyncSortHeader();
+            // Views: Explorer's split button (the face cycles, the ▾ drops the slider menu; vfsVirtualGrid.js)
             const views = $('studioSaveFolderViewsBtn');
-            if (views) {
-                contextMenu.attachClickMenuToElement(views, {
-                    sections: [{
-                        type: 'list',
-                        initfn: function (section) {
-                            section.items = STUDIO_SAVE_FOLDER_VIEWS.map(([mode, text]) => ({
-                                text,
-                                action: `fd-view:${mode}`,
-                                indicatorStyle: 'dot',
-                                checked: mode === studioSaveFolderState.viewMode
-                            }));
-                        }
-                    }],
-                    onAction: (action) => {
-                        if (action.startsWith('fd-view:')) studioSaveFolderSetView(action.slice(8));
-                    }
-                });
+            if (views && window.vistaViewsMenu) {
+                window.vistaViewsMenu.attach(views, { get: () => studioSaveFolderState.viewMode, set: (mode) => studioSaveFolderSetView(mode) });
             }
             // File name ▾: the suggested name and the files of this type in the folder
             const drop = $('studioSaveFolderNameDrop');
@@ -2030,6 +2145,8 @@ function studioSaveFolderOverwrite(name) {
 
     /** The host hears Cancel once (host.onCancel), however the dialog went away. */
     function studioSaveFolderSettle(host) {
+        // the phone folder on screen stops being watched with the dialog
+        if (window.explorerPhoneDrive && studioSaveFolderState.phoneApp) window.explorerPhoneDrive.leave(studioSaveFolderState.phoneApp);
         if (host && !host._settled) {
             host._settled = true;
             if (typeof host.onCancel === 'function') host.onCancel();
@@ -2173,6 +2290,9 @@ function studioSaveFolderOverwrite(name) {
         const text = String(typed || '').trim().replace(/\\/g, '/');
         if (!text) return null;
         if (/^computer$/i.test(text)) return { folder: studioSaveFolderComputerPath() };
+        // the phone's places: phone://..., "D:\DCIM", "<phone>/Internal storage/..." (explorerPhoneDrive.js)
+        const phonePath = window.explorerPhoneDrive && typeof window.explorerPhoneDrive.resolveInput === 'function' ? window.explorerPhoneDrive.resolveInput(String(typed || '').trim()) : null;
+        if (phonePath) return { folder: phonePath };
         if (/[*?]/.test(text) && !text.includes('/')) {
             const src = text.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
             return { glob: new RegExp(`^${src}$`, 'i') };
@@ -2204,7 +2324,7 @@ function studioSaveFolderOverwrite(name) {
         const dir = `/${parts.join('/')}`;
         if (text.endsWith('/')) return { folder: `${dir === '/' ? '' : dir}/${name}` };
         try {
-            const result = await vfsClient.listDirectory(dir, { offset: 0, limit: 500, sortField: 'name', sortDirection: 'asc', search: '' });
+            const result = await studioSaveFolderQuiet(() => vfsClient.listDirectory(dir, { offset: 0, limit: 500, sortField: 'name', sortDirection: 'asc', search: '' }));
             const folder = ((result && result.items) || []).find((item) => studioSaveFolderNavPath(item, dir) && String(item.name || '').toLowerCase() === name.toLowerCase());
             if (folder) return { folder: studioSaveFolderNavPath(folder, dir) };
             return { folder: dir, name, move: true };
@@ -2224,7 +2344,7 @@ function studioSaveFolderOverwrite(name) {
         }
         if (mode === 'save') await studioSaveFolderConfirm();
         else if (mode === 'folder') await studioSaveFolderPickFolder();
-        else await studioSaveFolderOpenSelected();
+        else await studioSaveFolderOpenSelected({ readOnly: !!options.readOnly });
     }
 
     /** Double-click / Enter / the menu's Open on an item. */
@@ -2354,7 +2474,7 @@ function studioSaveFolderOverwrite(name) {
         }
     }
 
-    async function studioSaveFolderOpenSelected() {
+    async function studioSaveFolderOpenSelected(how = {}) {
         const state = studioSaveFolderState;
         const selected = state.selected || [];
         const host = state.host;
@@ -2383,7 +2503,7 @@ function studioSaveFolderOverwrite(name) {
                 if (nameInput) { nameInput.focus(); nameInput.select(); }
                 return;
             }
-            await studioOpenFolderItem(item);
+            await studioOpenFolderItem(item, how);
             return;
         }
         // a host that takes several files at once (host.onOpenMany: Alchemy's multiple file chooser)
@@ -2394,7 +2514,7 @@ function studioSaveFolderOverwrite(name) {
                 host._settled = true;
                 studioSaveFolderRemember();
                 if (modal) closeModal(modal);
-                void host.onOpenMany(files, state.path);
+                void host.onOpenMany(files, state.path, how);
                 return;
             }
         }
@@ -2404,7 +2524,7 @@ function studioSaveFolderOverwrite(name) {
             if (nameInput) nameInput.focus();
             return;
         }
-        await studioOpenFolderItem(item);
+        await studioOpenFolderItem(item, how);
     }
 
     async function studioOpenSessionFromImage(filename, workspaceId) {
@@ -2420,7 +2540,7 @@ function studioSaveFolderOverwrite(name) {
         await openManualModalWithContent({ type: 'image', image: image });
     }
 
-    async function studioOpenFolderItem(item) {
+    async function studioOpenFolderItem(item, how = {}) {
         if (!item) return;
         const nav = studioSaveFolderNavPath(item, studioSaveFolderState.path);
         if (nav) {
@@ -2435,7 +2555,8 @@ function studioSaveFolderOverwrite(name) {
                 host._settled = true;
                 studioSaveFolderRemember();
                 if (hostModal) closeModal(hostModal);
-                await host.onOpen(item, studioSaveFolderState.path);
+                // how.readOnly: Open as read-only (the program saves elsewhere, where it can)
+                await host.onOpen(item, studioSaveFolderState.path, { readOnly: !!how.readOnly });
                 return;
             }
             await studioSaveFolderMessage(`${item.name || ''}\n${host.rejectMessage || 'This file can\'t be opened here.'}`, 'warning');

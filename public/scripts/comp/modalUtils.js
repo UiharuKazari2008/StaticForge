@@ -3441,6 +3441,13 @@ function openModal(modal) {
     // Start decoding this window's art if no launcher warmed it yet (assetPreload.js, Yozora #518)
     if (modal.id && window.assetPreload && assetPreload.warmWindow) assetPreload.warmWindow(modal.id);
 
+    // Still fading out from a close: that close finishes now (hidden, out of the stack), then the window opens
+    // afresh; otherwise the close's end would hide the window just opened (#964)
+    if (modal.classList.contains('closing') && typeof modal._finishClose === 'function') {
+        modal._finishClose();
+        modal.classList.remove('closing');
+    }
+
     // Check if modal is already open (not hidden and not hidden-alt)
     const isAlreadyOpen = !modal.classList.contains('hidden') && !modal.classList.contains('hidden-alt');
     // Manual modal is blocked from stacking only when not windowed AND not in desktop-mode
@@ -3838,24 +3845,32 @@ function closeMainModal(modal) {
         debouncedUpdateTaskbarWindows();
     };
 
-    // Return a Promise that resolves when the animation completes
+    // Return a Promise that resolves when the animation completes. Each close has its own token: a window
+    // opened again while it is still fading out finishes this close at once (openModal calls
+    // modal._finishClose), and a late animationend / timeout of an earlier close never hides the new one (#964)
+    const closeToken = (modal._closeToken || 0) + 1;
+    modal._closeToken = closeToken;
     return new Promise((resolve) => {
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            modal.removeEventListener('animationend', animationEndHandler);
+            if (modal._finishClose === finish) delete modal._finishClose;
+            cleanup();
+            resolve();
+        };
         // Wait for animation to complete using animationend event
         const animationEndHandler = (e) => {
             // Only handle closing animations on this modal
-            if (e.target === modal && (e.animationName === 'modalSlideOut' || e.animationName === 'modalSlideOutTopAnchor' || e.animationName === 'modalFadeOut') && modal.classList.contains('closing')) {
-                modal.removeEventListener('animationend', animationEndHandler);
-                cleanup();
-                resolve();
+            if (e.target === modal && (e.animationName === 'modalSlideOut' || e.animationName === 'modalSlideOutTopAnchor' || e.animationName === 'modalFadeOut') && modal.classList.contains('closing') && modal._closeToken === closeToken) {
+                finish();
             }
         };
+        modal._finishClose = finish;
         modal.addEventListener('animationend', animationEndHandler);
         setTimeout(() => {
-            if (modal.classList.contains('closing')) {
-                modal.removeEventListener('animationend', animationEndHandler);
-                cleanup();
-                resolve();
-            }
+            if (!done && modal._closeToken === closeToken && modal.classList.contains('closing')) finish();
         }, 600);
     });
 }

@@ -607,3 +607,44 @@ body.windows-classic-theme #studioSaveFolderModal .fd-bottom {
     background: var(--ButtonFace, #d4d0c8);
     border-top-color: var(--ButtonShadow, #808080);
 }
+
+/* ---- Open's split button (VM, Notepad's Open: a #a0a0a0 rule 14 px from the right edge, 3 px in from
+   top and bottom, the 9x5 arrow 3 px right of it at +8; the caption centred in the part left of it) ---- */
+
+#studioSaveFolderModal .fd-save.fd-has-split {
+    padding-right: 15px;
+}
+
+#studioSaveFolderModal .fd-save .fd-split {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+    width: 15px;
+    cursor: default;
+}
+
+#studioSaveFolderModal .fd-save .fd-split::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 3px;
+    bottom: 3px;
+    border-left: 1px solid #a0a0a0;
+}
+
+#studioSaveFolderModal .fd-save .fd-split::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 8px;
+    width: 9px;
+    height: 5px;
+    background: #000;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+#studioSaveFolderModal .fd-save:disabled .fd-split::after {
+    background: #a0a0a0;
+}

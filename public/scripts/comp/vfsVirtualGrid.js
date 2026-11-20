@@ -1092,3 +1092,132 @@ class VfsVirtualGrid {
         this._refreshViewLayout();
     }
 }
+
+/**
+ * Explorer's Views button (Vista VM, Nov 20 2026): a split button. A click on its face steps through
+ * List, Details, Tiles and Large Icons; its ▾ drops the slider menu (the seven views down a trackbar,
+ * the thumb at the current one: drag it, click the track or pick a row; arrows move it, Enter / Escape
+ * close it). Row centres and rules measured on the VM at 1x. Shared by the file dialog
+ * (studioSession.js) and Image Search (imageSearchApp.js); styles in vista-explorer.css.
+ *
+ *   vistaViewsMenu.attach(button, { get: () => mode, set: (mode) => {} })   wires a Views button
+ *   vistaViewsMenu.toggle(button, owner) / close()
+ */
+(function (root) {
+    const ART = '/static_images/vista-explorer';
+    const ROWS = { 'icons-xl': 26, 'icons-lg': 68, 'icons-md': 98, 'icons-sm': 144, list: 176, details: 208, tiles: 239 };
+    const ORDER = ['icons-xl', 'icons-lg', 'icons-md', 'icons-sm', 'list', 'details', 'tiles'];
+    // the face's cycle (VM: Large Icons > List > Details > Tiles > Large Icons)
+    const CYCLE = ['list', 'details', 'tiles', 'icons-lg'];
+    const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const state = { el: null, button: null, owner: null, dragging: false, onDoc: null, onKey: null };
+
+    function build() {
+        const el = document.createElement('div');
+        el.className = 'vista-views-menu';
+        el.setAttribute('role', 'menu');
+        el.hidden = true;
+        el.innerHTML = `<div class="vvm-track"></div><span class="vvm-thumb"></span>${ORDER.map((id) => `<button type="button" class="vvm-item" role="menuitemradio" data-mode="${id}" style="top:${ROWS[id] - 11}px"><img src="${ART}/views-${id}.png" srcset="${ART}/views-${id}.png 1x, ${ART}/views-${id}@2x.png 2x" alt="" draggable="false">${esc(EXPLORER_VIEW_MODES[id].label)}</button>`).join('')}${[160, 192, 224].map((y) => `<div class="vvm-rule" style="top:${y}px"></div>`).join('')}`;
+        document.body.appendChild(el);
+        el.addEventListener('click', (ev) => {
+            const b = ev.target.closest('.vvm-item');
+            if (b && state.owner) {
+                state.owner.set(b.dataset.mode);
+                close();
+            }
+        });
+        const pick = (clientY) => {
+            const y = clientY - el.getBoundingClientRect().top;
+            let best = null;
+            ORDER.forEach((id) => { if (!best || Math.abs(ROWS[id] - y) < Math.abs(ROWS[best] - y)) best = id; });
+            if (best && state.owner && state.owner.get() !== best) state.owner.set(best);
+            sync();
+        };
+        const onDown = (ev) => {
+            ev.preventDefault();
+            state.dragging = true;
+            el.setPointerCapture(ev.pointerId);
+            pick(ev.clientY);
+        };
+        el.querySelector('.vvm-track').addEventListener('pointerdown', onDown);
+        el.querySelector('.vvm-thumb').addEventListener('pointerdown', onDown);
+        el.addEventListener('pointermove', (ev) => { if (state.dragging) pick(ev.clientY); });
+        el.addEventListener('pointerup', () => { if (state.dragging) { state.dragging = false; close(); } });
+        state.el = el;
+    }
+
+    function sync() {
+        if (!state.el || !state.owner) return;
+        const cur = state.owner.get();
+        state.el.querySelector('.vvm-thumb').style.top = `${(ROWS[cur] || ROWS['icons-lg']) - 4}px`;
+        state.el.querySelectorAll('.vvm-item').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === cur)));
+    }
+
+    function close() {
+        if (!state.el || state.el.hidden) return;
+        state.el.hidden = true;
+        state.dragging = false;
+        if (state.button) state.button.classList.remove('context-open');
+        // the page listeners live only while the menu is open
+        if (state.onDoc) document.removeEventListener('pointerdown', state.onDoc, true);
+        if (state.onKey) document.removeEventListener('keydown', state.onKey, true);
+        state.onDoc = null;
+        state.onKey = null;
+    }
+
+    function toggle(button, owner) {
+        if (state.el && !state.el.hidden && state.button === button) { close(); return; }
+        close();
+        if (!state.el || !state.el.isConnected) build();
+        state.button = button;
+        state.owner = owner;
+        const r = button.getBoundingClientRect();
+        const el = state.el;
+        el.hidden = false;
+        // under the button, flipped above it when the screen ends first (as Vista's menus do)
+        const h = el.offsetHeight;
+        el.style.left = `${Math.round(r.left)}px`;
+        el.style.top = `${Math.round(r.bottom + h > window.innerHeight && r.top - h >= 0 ? r.top - h : r.bottom)}px`;
+        const win = button.closest('.modal');
+        const z = win ? Number(getComputedStyle(win).zIndex) || 1000 : 1000;
+        el.style.zIndex = String(z + 50);
+        button.classList.add('context-open');
+        sync();
+        state.onDoc = (ev) => {
+            if (!el.contains(ev.target) && !button.contains(ev.target)) close();
+        };
+        state.onKey = (ev) => {
+            if (ev.key === 'Escape' || ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); close(); return; }
+            if (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            const i = Math.max(0, ORDER.indexOf(owner.get()));
+            owner.set(ORDER[Math.max(0, Math.min(ORDER.length - 1, i + (ev.key === 'ArrowDown' ? 1 : -1)))]);
+            sync();
+        };
+        document.addEventListener('pointerdown', state.onDoc, true);
+        document.addEventListener('keydown', state.onKey, true);
+    }
+
+    /** The next view of the face's cycle. */
+    function next(mode) {
+        const i = CYCLE.indexOf(mode);
+        return CYCLE[(i + 1) % CYCLE.length];
+    }
+
+    /** A Views button: the face cycles, the ▾ (the last 14 px, its glyph) drops the slider menu. */
+    function attach(button, owner) {
+        if (!button || button.dataset.vistaViews) return;
+        button.dataset.vistaViews = '1';
+        button.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const r = button.getBoundingClientRect();
+            const onArrow = ev.target.closest('.explorer-command-glyph, .isx-cmd-glyph') || (ev.clientX && ev.clientX > r.right - 14);
+            if (onArrow) { toggle(button, owner); return; }
+            close();
+            owner.set(next(owner.get()));
+        });
+    }
+
+    root.vistaViewsMenu = { attach, toggle, close, next };
+})(window);
