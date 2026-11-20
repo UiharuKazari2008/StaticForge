@@ -3989,15 +3989,18 @@ class ContextMenuController {
 
         // Calculate final positions with real dimensions
         let submenuX, submenuY, submenuDirection;
+        // the desktop's menus open their submenus as Vista does (the VM's View submenu, #973): the first row level with
+        // the parent row (its border and 2 px pad above it), overlapping the parent menu's right edge by 6 px
+        const vistaPlacement = document.body.classList.contains('desktop-mode');
 
         // Vertical positioning - align with parent content area
         if (vertical === 'down') {
             // Position below parent, accounting for parent's visual alignment
-            submenuY = parentRect.top + 2;
+            submenuY = vistaPlacement ? parentRect.top - 3 : parentRect.top + 2;
             submenuDirection = 'below';
         } else {
             // Position above parent, ensuring proper visual alignment
-            submenuY = parentRect.bottom - submenuHeight;
+            submenuY = parentRect.bottom - submenuHeight + (vistaPlacement ? 3 : 0);
             submenuDirection = 'above';
         }
 
@@ -4006,12 +4009,12 @@ class ContextMenuController {
             submenuX = parentCenterX - (submenuWidth / 2);
             submenuDirection += '-mobile';
         } else {
-            submenuX = parentRect.right + 2;
+            submenuX = parentRect.right + (vistaPlacement ? -3 : 2);
             submenuDirection = 'right';
 
             // Check if submenu would go off the right edge
             if (submenuX + submenuWidth > viewportWidth - 10) {
-                submenuX = parentRect.left - submenuWidth - 2;
+                submenuX = parentRect.left - submenuWidth + (vistaPlacement ? 3 : -2);
                 submenuDirection = 'left';
             }
         }

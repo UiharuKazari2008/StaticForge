@@ -29,10 +29,15 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
 
 /* ---------- context menus: Vista's menu ---------- */
 
+/* Measured on the Vista VM (#973; the desktop's menu, its View submenu, Notepad's File menu): a #979797 border, 2 px
+   of #f5f5f5, then the #f0f0f0 face; Segoe UI 9 pt rows of 22 px, labels 36 px from the border, separators of 8 px with
+   the etched line (#e0e0e0 over #fff) 4 px down from the gutter's edge to the inner edge, the gutter's line (#e2e3e3 /
+   #fff) 26 px into the face, a check or bullet in a 22 px box at the row's start, the submenu arrow 9 px from the
+   inner edge. They were 27 px rows of 13 px text. */
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) {
     padding: 2px;
-    background: #f0f0f0;
-    border: 1px solid hsl(0 0% 0% / 40%);
+    background: linear-gradient(to right, #f1f1f1 26px, #f0f0f0 26px) content-box, #f5f5f5;
+    border: 1px solid #979797;
     border-radius: 0;
     box-shadow: 4px 4px 3px -2px hsl(0 0% 0% / 50%);
     color: #000;
@@ -52,20 +57,59 @@ body.desktop-mode :is(.context-menu.context-menu-opening, .context-menu-submenu)
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item {
     --vista-menu-gutter: 26px;
     position: relative;
-    padding: 2px 10px 2px 0;
+    min-height: 22px;
+    box-sizing: border-box;
+    padding: 1px 11px 3px 0;
     border: 1px solid transparent;
     border-radius: 3px;
     color: #000;
-    font-size: 13px;
-    /* 13 px x 1.6 = 20.8 px, rounded up so every row starts on a whole pixel */
-    line-height: 21px;
+    font-size: 12px;
+    /* 1 + 1 + 16 + 3 + 1: a 22 px row, the label's capitals 6 px under its top as on the VM */
+    line-height: 16px;
     font-weight: 400;
-    gap: 8px;
+    gap: 3px;
 }
 
-/* submenu labels set their own 1.4 (18.2 px) and subtext 0.75em x 1.4 (13.65 px): rounded up */
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu) .context-menu-item :is(.context-menu-item-text-container, .context-menu-item-text) {
+    line-height: 16px;
+}
+
+/* Vista sizes a menu to its longest label: 36 px from the border to the label, 55 px from the label's end to the
+   border (the VM's desktop menu 166 px around "Paste Shortcut", its View submenu 196 around "Show Desktop Icons"),
+   the submenu arrow inside that room; no fixed minimum */
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.context-menu-win32) {
+    min-width: 0;
+}
+
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.context-menu-win32) .context-menu-item > :is(.context-menu-item-text-container, .context-menu-item-text) {
+    margin-right: 41px;
+}
+
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.context-menu-win32) .context-menu-item.has-submenu > :is(.context-menu-item-text-container, .context-menu-item-text) {
+    margin-right: 37px;
+}
+
+/* an accelerator (contextMenu.js data-accel: "Alt+F4") sits at the row's right in the menu's text, as on the VM's
+   window menu, not under the label */
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.context-menu-win32) .context-menu-item-text-container:has(> .context-menu-item-subtext[data-accel]) {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 34px;
+}
+
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.context-menu-win32) .context-menu-item-subtext[data-accel] {
+    margin: 0 0 0 auto;
+    color: inherit;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 16px;
+    opacity: 1;
+    white-space: nowrap;
+}
+
+/* submenu labels set their own 1.4 */
 body.desktop-mode:not(.windows-classic-theme) .context-menu-submenu .context-menu-item-text {
-    line-height: 19px;
+    line-height: 16px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item-subtext {
@@ -77,9 +121,9 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
     position: absolute;
     top: -1px;
     bottom: -1px;
-    left: var(--vista-menu-gutter);
+    left: calc(var(--vista-menu-gutter) - 1px);
     width: 2px;
-    box-shadow: inset 1px 0 hsl(0 0% 0% / 15%), inset -1px 0 #fff;
+    box-shadow: inset 1px 0 #e2e3e3, inset -1px 0 #fff;
     pointer-events: none;
 }
 
@@ -91,7 +135,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
     flex: none;
     width: var(--vista-menu-gutter);
     min-width: var(--vista-menu-gutter);
-    margin: 0 2px 0 0;
+    /* the picture 6 px from the border (the VM's Personalize), the label still in the text column */
+    margin: 0 6px 0 -4px;
     text-align: center;
     justify-content: center;
 }
@@ -113,8 +158,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
 
 /* items without an icon start their text after the gutter, like Vista's */
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item:not(:has(> i:first-child, > .workspace-color-indicator:first-child, > img:first-child)) {
-    /* icon box + its 2 px margin + the 8 px gap, so all text starts in one column */
-    padding-left: calc(var(--vista-menu-gutter) + 10px);
+    /* icon box + its 2 px margin + the 3 px gap, so all text starts in one column (36 px from the border) */
+    padding-left: calc(var(--vista-menu-gutter) + 5px);
 }
 
 /* icon rows and grids: Vista's toolbar buttons (bare, the light-blue hot box under the pointer) */
@@ -148,8 +193,9 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item:hover:not(.disabled),
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item.keyboard-selected,
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item.context-menu-item-highlighted:not(.disabled) {
-    background: linear-gradient(hsl(0 0% 100% / 60%), hsl(216 41% 93% / 80%) 90%, hsl(0 0% 100% / 80%)) !important;
-    border: 1px solid #aaddfa !important;
+    /* the VM's hot row: #a8d8eb edge, #ebf1f4 to #daebf3 inside, a lighter last line */
+    background: linear-gradient(#ebf1f4, #e7eff3 1px, #daebf3 calc(100% - 3px), #e3eff4 calc(100% - 1px)) !important;
+    border: 1px solid #a8d8eb !important;
     color: #000 !important;
     font-weight: 400;
     font-variation-settings: normal;
@@ -168,10 +214,41 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-separator {
+    position: relative;
     height: 2px;
-    margin: 3px 0 2px 30px;
+    margin: 4px 0 2px 28px;
     background: none;
-    box-shadow: inset 0 1px hsl(0 0% 0% / 15%), inset 0 -1px #fff;
+    box-shadow: inset 0 1px #e0e0e0, inset 0 -1px #fff;
+}
+
+/* the gutter's line runs on past a separator, as on the VM */
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.context-menu-win32) .context-menu-separator:not(:has(span))::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    bottom: -2px;
+    left: -2px;
+    width: 2px;
+    box-shadow: inset 1px 0 #e2e3e3, inset -1px 0 #fff;
+}
+
+/* a checked or chosen row: the VM's 22 px box with Vista's check (menu-check, cut from WordPad's View menu) or
+   bullet (menu-bullet, the desktop's View menu), at the row's start in place of its picture */
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu) .context-menu-item-mark:is([data-kind="check"], [data-kind="radio"]) {
+    left: -1px;
+    top: -1px;
+    bottom: auto;
+    width: 22px;
+    height: 22px;
+    background: image-set(url('/static_images/vista-controls/menu-check.png') 1x, url('/static_images/hidpi/125/vista-controls/menu-check.png') 1.2727x, url('/static_images/hidpi/150/vista-controls/menu-check.png') 1.5x, url('/static_images/hidpi/175/vista-controls/menu-check.png') 1.7727x, url('/static_images/hidpi/200/vista-controls/menu-check.png') 2x) no-repeat;
+}
+
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu) .context-menu-item-mark[data-kind="radio"] {
+    background-image: image-set(url('/static_images/vista-controls/menu-bullet.png') 1x, url('/static_images/hidpi/125/vista-controls/menu-bullet.png') 1.2727x, url('/static_images/hidpi/150/vista-controls/menu-bullet.png') 1.5x, url('/static_images/hidpi/175/vista-controls/menu-bullet.png') 1.7727x, url('/static_images/hidpi/200/vista-controls/menu-bullet.png') 2x);
+}
+
+body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu) .context-menu-item-mark:is([data-kind="check"], [data-kind="radio"])::before {
+    content: none;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-separator:has(span) {

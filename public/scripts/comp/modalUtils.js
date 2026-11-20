@@ -6415,8 +6415,11 @@ function showTaskbarItemContextMenu(e, modal, taskbarItem) {
     if (minimizeItem) orderedBottomItems.push(minimizeItem);
     if (maximizeItem && !maximizeItem.hidden) orderedBottomItems.push(maximizeItem);
 
-    // Add separator before close
+    // Add separator before close: the window menu's default command, bold, with its accelerator (Vista's system
+    // menu: Close in Segoe UI Bold, Alt+F4 at the right; the VM's taskbar button menu, #973)
     if (closeItem) {
+        closeItem.className = 'context-menu-item-default';
+        closeItem.subtext = 'Alt+F4';
         orderedBottomItems.push({ separator: true });
         orderedBottomItems.push(closeItem);
     }
