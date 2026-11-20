@@ -2572,6 +2572,26 @@ function clearWindowAttention(modalId) {
 window.requestWindowAttention = requestWindowAttention;
 window.clearWindowAttention = clearWindowAttention;
 
+/**
+ * Activation follows Vista (#970): one window is active, the one in use. "On top" (topmost) is a z-order
+ * property, not an activation state: an on-top window (Date and Time, a message box) goes inactive when
+ * another window is activated, and a dialog's owner goes inactive under its dialog and is active again
+ * when the dialog closes. Real tool windows (.tool-window: Studio's Find / Emphasis, the Jump Index, the
+ * on-screen keyboard) keep Vista's palette rule: they show active with their owner, and the on-top ones
+ * stay active (a palette never takes the activation away, so its first click is never swallowed by the
+ * inactive-window focus overlay).
+ */
+function isPaletteToolWindow(modal) {
+    return !!modal && modal.classList.contains('tool-window');
+}
+
+function keepsActiveOnTop(modal) {
+    return !!modal && modal.classList.contains('on-top') && isPaletteToolWindow(modal);
+}
+
+/** Where an owned dialog hands the activation back when it closes: the window that was active under it. */
+const dialogActivationReturn = new WeakMap();
+
 function setActiveWindow(modalId) {
     if (modalId) {
         const modal = typeof modalId === 'string' ? document.getElementById(modalId) : modalId;
@@ -2585,24 +2605,28 @@ function setActiveWindow(modalId) {
             return;
         }
 
-        // Check if this is a tool window
-        if (isToolWindow(modal)) {
+        // Check if this is a tool window (a palette; an owned dialog is activated as a window of its own)
+        if (isPaletteToolWindow(modal)) {
             // Tool windows don't remove active class from main window
             // Just add active class to this tool window
             modal.classList.add('active-window');
             currentActiveWindowId = modal.id;
             // Don't update mainActiveWindowId - preserve the main window's active state
         } else {
-            // Regular window - remove active-window class from all other modals (including tool windows)
-            // But preserve active-window class on on-top modals.
+            // An owned dialog remembers the window it takes the activation from, to give it back on close
+            if (isToolWindow(modal) && !modal.classList.contains('active-window')) {
+                const from = mainActiveWindowId && mainActiveWindowId !== modal.id ? document.getElementById(mainActiveWindowId) : null;
+                if (from && !from.classList.contains('hidden')) dialogActivationReturn.set(modal, from);
+            }
+            // Regular window - remove active-window class from all other modals (including tool windows
+            // that are not its own, except the on-top palettes).
             // Windows that stay active are skipped: a remove + add on the same window still makes
             // Chrome restyle its whole subtree (~50 ms for Director on Yukimi's PC per click).
             const linkedToolWindows = getLinkedToolWindows(modal);
             document.querySelectorAll('.modal.active-window').forEach(m => {
                 if (m === modal || linkedToolWindows.includes(m)) return;
                 if (m.id === 'windowsStartupModal' || m.id === 'connectionDialModal') return;
-                // Don't remove active-window from on-top modals
-                if (!m.classList.contains('on-top')) {
+                if (!keepsActiveOnTop(m)) {
                     m.classList.remove('active-window');
                 }
             });
@@ -2621,19 +2645,18 @@ function setActiveWindow(modalId) {
             updateWindowUsageStack(modal);
         }
 
-        // Ensure all on-top modals have active-window class (doesn't affect taskbar)
-        document.querySelectorAll('.modal.on-top').forEach(onTopModal => {
+        // On-top palettes stay active (doesn't affect taskbar)
+        document.querySelectorAll('.modal.on-top.tool-window:not(.active-window)').forEach(onTopModal => {
             onTopModal.classList.add('active-window');
         });
     } else {
-        // Clear active window - remove from all modals except on-top modals
-        document.querySelectorAll('.modal').forEach(modal => {
-            if (!modal.classList.contains('on-top')) {
+        // Clear active window - remove from all modals except on-top palettes
+        document.querySelectorAll('.modal.active-window').forEach(modal => {
+            if (!keepsActiveOnTop(modal)) {
                 modal.classList.remove('active-window');
             }
         });
-        // Ensure on-top modals still have active-window class
-        document.querySelectorAll('.modal.on-top').forEach(onTopModal => {
+        document.querySelectorAll('.modal.on-top.tool-window:not(.active-window)').forEach(onTopModal => {
             onTopModal.classList.add('active-window');
         });
         currentActiveWindowId = null;
@@ -3781,14 +3804,23 @@ function closeMainModal(modal) {
 
         // If closing a tool window, restore the main active window
         if (isToolWindow(modal)) {
+            const wasActive = modal.classList.contains('active-window');
             // Remove active class from the tool window
             modal.classList.remove('active-window');
 
             // Clean up the parent link
             modal.removeAttribute('data-parent-modal-id');
 
-            // Restore main active window if it exists and is still visible
-            if (mainActiveWindowId) {
+            // An owned dialog that had the activation gives it back to the window it took it from (Vista:
+            // the owner is active again when its dialog closes), unless another window took it meanwhile
+            const back = dialogActivationReturn.get(modal);
+            dialogActivationReturn.delete(modal);
+            const shown = (m) => m && m.isConnected && !m.classList.contains('hidden') && !m.classList.contains('closing');
+            if (!isPaletteToolWindow(modal) && (wasActive || mainActiveWindowId === modal.id || !mainActiveWindowId)) {
+                if (mainActiveWindowId === modal.id) mainActiveWindowId = null;
+                const next = shown(back) ? back : modalStack.slice().reverse().find((m) => m !== modal && shown(m) && !isPaletteToolWindow(m));
+                if (next && !document.querySelector('.modal.active-window:not(.on-top.tool-window)')) setActiveWindow(next);
+            } else if (mainActiveWindowId) {
                 const mainActiveModal = document.getElementById(mainActiveWindowId);
                 if (mainActiveModal && !mainActiveModal.classList.contains('hidden')) {
                     mainActiveModal.classList.add('active-window');
@@ -3927,7 +3959,7 @@ function bumpModalZIndexToFront(modal) {
     modal.setAttribute('data-modal-z-index', String(zIndex));
     modal.setAttribute('data-modal-stack-position', String(modalStack.length));
     modal.style.zIndex = zIndex;
-    if (isOnTop) {
+    if (keepsActiveOnTop(modal)) {
         modal.classList.add('active-window');
     }
 }
@@ -4020,8 +4052,8 @@ function updateModalStackZIndexes(options) {
         modal.style.zIndex = zIndex;
     });
 
-    // Ensure all on-top modals have active-window class (doesn't affect taskbar)
-    document.querySelectorAll('.modal.on-top').forEach(onTopModal => {
+    // On-top palettes stay active (doesn't affect taskbar)
+    document.querySelectorAll('.modal.on-top.tool-window:not(.active-window)').forEach(onTopModal => {
         onTopModal.classList.add('active-window');
     });
 
@@ -4029,13 +4061,12 @@ function updateModalStackZIndexes(options) {
         return;
     }
 
-    // When z-indexes change, the top window (last in stack) should be active
+    // When z-indexes change, the top window (last in stack) should be active - an on-top window too
+    // (topmost is z-order, not activation, #970); an on-top palette is already active and is left alone
     // But don't override main active window if the top modal is a tool window
-    // Also don't change active state for on-top modals (they always stay active)
     if (modalStack.length > 0) {
         const topModal = modalStack[modalStack.length - 1];
-        // Skip setting active window if it's an on-top modal (they're always active)
-        if (!topModal.classList.contains('on-top')) {
+        if (!keepsActiveOnTop(topModal) && !topModal.classList.contains('hidden') && !topModal.classList.contains('closing')) {
             // Only update if it's a moveable window with a title bar
             const hasTitleBar = topModal.querySelector('.modal-window-title') !== null;
             // Manual modal is blocked from being active only when not windowed AND not in desktop-mode
