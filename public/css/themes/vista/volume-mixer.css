@@ -1,0 +1,107 @@
+/*
+ * Volume Mixer (volumeMixer.js, #980): the Vista theme's colours, font and art, read off the VM's sndvol.exe at
+ * 96 DPI. The track bar is sndvol's own custom draw: a channel (#b0b0b0 rule below the thumb, #dfdfdf above, #e7eaea
+ * well with a #fdfdfd highlight), the taper wedge (#d5dfe5 below the thumb, #eef2f5 above), 1 px #f3f3f3 ticks, the
+ * device's meter (#33cb33 to #339a33 with lighter edges; #c3c5c5 for the held peak and while muted), and the theme's
+ * TRACKBAR THUMBRIGHT (aero.msstyles IMAGE_796: normal, hot, pressed, focused, disabled). The master line and the
+ * column separators are the group box's #d5dfe5.
+ */
+
+.sndvol-window {
+    --sndvol-rule: #d5dfe5;
+    --sndvol-chan-dark: #b0b0b0;
+    --sndvol-chan-light: #dfdfdf;
+    --sndvol-well: #e7eaea;
+    --sndvol-well-hi: #fdfdfd;
+    --sndvol-well-edge: #eaeff2;
+    --sndvol-well-up: #f5f7f7;
+    --sndvol-well-hi-up: #fefefe;
+    --sndvol-edge-up: #f7f9fa;
+    --sndvol-chan-foot: #fcfcfc;
+    --sndvol-wedge-up: #eef2f5;
+    --sndvol-wedge-down: #d5dfe5;
+    --sndvol-tick: #f3f3f3;
+    --sndvol-tick-dark: #dbdbdb;
+    --sndvol-tick-foot: #cfcfcf;
+    --sndvol-meter-top: #33cb33;
+    --sndvol-meter-bottom: #339a33;
+    --sndvol-meter-edge-l: #84bf85;
+    --sndvol-meter-edge-r: #8dc78d;
+    --sndvol-meter-held: #c3c5c5;
+}
+
+body .sndvol-window[data-window-client] > .modal-content.sndvol-client.sndvol-client {
+    background: #fff;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+.sndvol-window .sndvol-line,
+.sndvol-window .sndvol-line-device {
+    background: var(--sndvol-rule);
+}
+
+.sndvol-window .sndvol-col-app {
+    border-right-color: var(--sndvol-rule);
+}
+
+.sndvol-window .sndvol-name {
+    color: #000;
+}
+
+/* The channel and the wedge are pale above the level the slider can reach without moving another (the master for
+   an application, the top for the device) and darker below it; the channel has a top rule and a pale foot row. */
+.sndvol-window .sndvol-channel {
+    --split: var(--sndvol-tick-hi, 0px);
+    box-sizing: border-box;
+    border-top: 1px solid var(--sndvol-chan-light);
+    border-bottom: 1px solid var(--sndvol-chan-foot);
+    background:
+        linear-gradient(to bottom, var(--sndvol-chan-light) 0 var(--split), var(--sndvol-chan-dark) var(--split)) 0 0 / 1px 100% no-repeat,
+        linear-gradient(to bottom, var(--sndvol-well-hi-up) 0 var(--split), var(--sndvol-well-hi) var(--split)) right 1px top 0 / 1px 100% no-repeat,
+        linear-gradient(to bottom, var(--sndvol-edge-up) 0 var(--split), var(--sndvol-well-edge) var(--split)) right 0 top 0 / 1px 100% no-repeat,
+        linear-gradient(to bottom, var(--sndvol-well-up) 0 var(--split), var(--sndvol-well) var(--split));
+}
+.sndvol-window .sndvol-slider-device .sndvol-channel {
+    border-top-color: var(--sndvol-chan-dark);
+}
+
+.sndvol-window .sndvol-wedge {
+    background: linear-gradient(to bottom, var(--sndvol-wedge-up) 0 var(--sndvol-tick-hi, 0px), var(--sndvol-wedge-down) var(--sndvol-tick-hi, 0px));
+}
+
+.sndvol-window .sndvol-tick {
+    background: linear-gradient(to bottom, var(--sndvol-tick-dark) 0 1px, var(--sndvol-tick) 1px);
+}
+.sndvol-window .sndvol-tick-zero {
+    background: var(--sndvol-tick-foot);
+}
+
+.sndvol-window .sndvol-meter {
+    background:
+        linear-gradient(to right, var(--sndvol-meter-edge-l) 0 1px, transparent 1px calc(100% - 1px), var(--sndvol-meter-edge-r) calc(100% - 1px)),
+        linear-gradient(to bottom, var(--sndvol-meter-top), var(--sndvol-meter-bottom));
+}
+.sndvol-window .sndvol-meter-hold,
+.sndvol-window.is-muted .sndvol-meter {
+    background: var(--sndvol-meter-held);
+}
+
+/* TRACKBAR THUMBRIGHT: normal 0, hot -11, pressed -22, focused -33, disabled -44 */
+.sndvol-window .sndvol-thumb {
+    background: image-set(url("/static_images/vista-controls/trackbar-thumb-right.png") 1x, url("/static_images/hidpi/125/vista-controls/trackbar-thumb-right.png") 1.25x, url("/static_images/hidpi/150/vista-controls/trackbar-thumb-right.png") 1.5x, url("/static_images/hidpi/175/vista-controls/trackbar-thumb-right.png") 1.75x, url("/static_images/hidpi/200/vista-controls/trackbar-thumb-right.png") 2x) 0 0 / 19px 55px no-repeat;
+}
+.sndvol-window .sndvol-slider:focus .sndvol-thumb { background-position-y: -33px; }
+.sndvol-window .sndvol-slider:hover .sndvol-thumb { background-position-y: -11px; }
+.sndvol-window .sndvol-slider.is-pressed .sndvol-thumb { background-position-y: -22px; }
+.sndvol-window .sndvol-slider:is(.is-greyed, .is-disabled) .sndvol-thumb { background-position-y: -44px; }
+
+/* the focus rectangle: the track bar control's own, dotted */
+.sndvol-window .sndvol-slider:focus-visible,
+.sndvol-window .sndvol-slider:focus {
+    outline: 1px dotted #000;
+    outline-offset: -1px;
+}
+.sndvol-window .sndvol-slider:not(:focus-visible):focus {
+    outline-color: #000;
+}

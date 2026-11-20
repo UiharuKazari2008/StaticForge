@@ -109,8 +109,21 @@
         inflight: Object.create(null),
         // WAV bytes fetched ahead (prefetch before there is a context): decoded once one is made
         fetched: Object.create(null),
-        bound: false
+        bound: false,
+        // the Volume Mixer's "Melaton Sounds" column (#980): this scheme's own level (0-100) and mute, applied after
+        // the master (tabVolume) like any other application's; kept on this computer
+        level: 100,
+        muted: false,
+        levelGain: null,
+        mixerFns: []
     };
+    const LEVEL_KEY = 'desktop-sounds-level';
+    try {
+        const raw = win && win.localStorage ? win.localStorage.getItem(LEVEL_KEY) : null;
+        const saved = raw ? JSON.parse(raw) : null;
+        if (saved && Number.isFinite(Number(saved.level))) state.level = Math.max(0, Math.min(100, Math.round(Number(saved.level))));
+        if (saved) state.muted = saved.muted === true;
+    } catch (_err) { /* private mode: full level */ }
 
     // A running AudioContext keeps the audio device open and its render thread going while it plays
     // nothing (on a phone the audio output stays awake, #890). It is made on the first sound (or the
@@ -299,14 +312,35 @@
         });
     }
 
-    /** Every sound passes one analyser on its way out: the Sound dialog's Playback level meter. */
+    /** Every sound passes one analyser on its way out: the Sound dialog's Playback level meter. In front of it, the
+     *  Mixer's level for Melaton Sounds (#980), so the meter shows what is heard. */
     function outputNode(ctx) {
         if (!state.analyser && ctx.createAnalyser) {
             state.analyser = ctx.createAnalyser();
             state.analyser.fftSize = 512;
             state.analyser.connect(ctx.destination);
         }
-        return state.analyser || ctx.destination;
+        const out = state.analyser || ctx.destination;
+        if (!state.levelGain && ctx.createGain) {
+            state.levelGain = ctx.createGain();
+            state.levelGain.gain.value = mixerGain();
+            state.levelGain.connect(out);
+        }
+        return state.levelGain || out;
+    }
+
+    function mixerGain() {
+        return state.muted ? 0 : state.level / 100;
+    }
+
+    /** The Volume Mixer's Melaton Sounds column: level 0-100 and mute (#980). */
+    function mixerSet(patch) {
+        const p = patch || {};
+        if (p.level !== undefined && Number.isFinite(Number(p.level))) state.level = Math.max(0, Math.min(100, Math.round(Number(p.level))));
+        if (p.muted !== undefined) state.muted = !!p.muted;
+        if (state.levelGain) state.levelGain.gain.value = mixerGain();
+        try { if (win && win.localStorage) win.localStorage.setItem(LEVEL_KEY, JSON.stringify({ level: state.level, muted: state.muted })); } catch (_err) { /* private mode */ }
+        state.mixerFns.slice().forEach((fn) => { try { fn(); } catch (_err) { /* a listener failed */ } });
     }
 
     /** The output's level now, 0-1 (peak of the last few ms; 0 before anything has played). */
@@ -499,6 +533,16 @@
         playFile,
         resolveFile,
         outputLevel,
+        // the Volume Mixer (#980): Melaton Sounds' own level and mute, and whether a sound plays now (its meter runs then)
+        mixerLevel: () => state.level,
+        mixerMuted: () => state.muted,
+        mixerSet,
+        onMixerChange(fn) {
+            if (typeof fn !== 'function') return () => {};
+            state.mixerFns.push(fn);
+            return () => { const i = state.mixerFns.indexOf(fn); if (i >= 0) state.mixerFns.splice(i, 1); };
+        },
+        isPlaying: () => state.playing > 0,
         unlock,
         prefetch,
         bind,

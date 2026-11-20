@@ -28,6 +28,10 @@
     let flyout = null;
     const sources = [];
     const changeListeners = [];
+    const sourceListeners = [];
+    function notifySources() {
+        sourceListeners.slice().forEach((fn) => { try { fn(); } catch (_err) { /* a listener failed */ } });
+    }
     // the computer's volume (a tray provider: DreamOS, the Android app's desktop), or null: the tab's own.
     // trayProviders.js loads before this file; a provider registered later takes over through onChange.
     let hwAudio = null;
@@ -294,6 +298,8 @@
             + '</div>'
             + '<div class="volume-flyout-mixer">Mixer</div>';
         document.body.appendChild(flyout);
+        // the footer link opens the Mixer, as SndVolSSO's does (#980)
+        flyout.querySelector('.volume-flyout-mixer').addEventListener('click', (e) => { e.stopPropagation(); openMixer(); });
 
         const range = flyout.querySelector('.volume-flyout-range');
         range.addEventListener('input', () => {
@@ -423,7 +429,7 @@
         cm.attachToElement(icon, {
             sections,
             onAction: (action, target, item) => {
-                if (action === 'volume-mixer') { showFlyout(); return; }
+                if (action === 'volume-mixer') { openMixer(); return; }
                 const out = /^volume-out:(.+)$/.exec(String(action || ''));
                 if (out) { switchOutput(out[1]); return; }
                 const snd = /^volume-sound:(\w+)$/.exec(String(action || ''));
@@ -442,6 +448,16 @@
             }
         });
         cm.showMenu(e, icon);
+    }
+
+    /** Vista's Volume Mixer (sndvol, #980): its own feature, loaded the first time it is asked for. */
+    function openMixer() {
+        hideFlyout();
+        const fl = window.featureLoader;
+        Promise.resolve(window.melatonVolumeMixer || !fl ? null : fl.loadFeature('volume_mixer')).catch(() => null).then(() => {
+            const m = window.melatonVolumeMixer;
+            if (m && typeof m.open === 'function') m.open();
+        });
     }
 
     function wireIcon() {
@@ -468,13 +484,24 @@
             if (!src || !src.id || sources.some((s) => s.id === src.id)) return;
             sources.push(src);
             paintFlyout();
+            notifySources();
         },
         refresh() {
             if (flyout && !flyout.classList.contains('hidden')) {
                 paintFlyout();
                 positionFlyout();
             }
+            notifySources();
         },
+        // the Volume Mixer's application columns (#980): the registered sources, and a call when one changed
+        // (registerSource / refresh); returns its unsubscribe
+        sources: () => sources.slice(),
+        onSourcesChange(fn) {
+            if (typeof fn !== 'function') return () => {};
+            sourceListeners.push(fn);
+            return () => { const i = sourceListeners.indexOf(fn); if (i >= 0) sourceListeners.splice(i, 1); };
+        },
+        openMixer,
         // returns an unsubscribe function (a window that listens while it is open: Melaton Mobility Center)
         onChange(fn) {
             if (typeof fn !== 'function') return () => {};

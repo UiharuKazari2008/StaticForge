@@ -905,7 +905,8 @@
         openScreenSaverSettings: () => root.personalizationDialogs && root.personalizationDialogs.openScreenSaver(),
         openThemeSettings: () => root.personalizationDialogs && root.personalizationDialogs.openTheme(),
         openStartMenuProperties: () => root.taskbarSettings && root.taskbarSettings.openProperties('start'),
-        openVolumeMixer: () => root.personalizationDialogs && root.personalizationDialogs.openSound(),
+        // Sound > Adjust system volume: Vista's Volume Mixer (sndvol, volumeMixer.js #980)
+        openVolumeMixer: () => (root.tabVolume && typeof root.tabVolume.openMixer === 'function' ? root.tabVolume.openMixer() : root.personalizationDialogs && root.personalizationDialogs.openSound()),
         // Presentation Settings (presentationSettings.js, #958)
         openPresentationSettings: () => callGlobal('openPresentationSettings'),
         toggleMelatonConnectDialog: () => net() && net().connect && net().connect.open(),

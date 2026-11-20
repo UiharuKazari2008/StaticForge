@@ -204,6 +204,29 @@ Devices). Set Default: Android takes it for a headset microphone (setCommunicati
 Bluetooth device (it connects, and Android plays media on it); with Media output routes (above) Set Default moves
 playback to any output but the earpiece. An older app without routes greys it with the reason. A plain browser keeps Built-In Sound Output / Input.
 
+## Volume Mixer applications (#980)
+
+`public/scripts/comp/volumeMixer.js` (feature `volume_mixer`, Vista's sndvol) shows the device's master (tabVolume:
+the tray volume provider, else the tab's level), its peak meter and one column per application. Applications are
+Melaton Sounds (desktopSounds `mixerLevel` / `mixerMuted` / `mixerSet`), each window with a sound or video element that
+has played (the element's volume / muted), `tabVolume.registerSource` apps (`tabVolume.sources()`,
+`onSourcesChange`), and the device client's own:
+
+- Android (DSApp `AudioSessions`, on `window.AndroidAudioDevices`): `watchSessions(on, iconPx)` while the Mixer is open
+  and seen pushes `androidaudiosessions` = `{ v: 1, shell, control: 'samsung' | 'none', error?, items: [{ uid, package,
+  label, icon, state: 'playing' | 'paused' | 'stopped', usage, volume (0-100 of the media volume | null), muted,
+  canSetVolume, sessions: [audio session id] }] }` (the apps with a media player open, read through the app's shell:
+  dumpsys audio's playback configurations; `icon` an AndroidAppIcons URL at `iconPx`) and `androidaudiometers`
+  `{ device: 0-1000 }` (a Visualizer peak on the output mix, 20 Hz, only when it moved). `sessions()` answers the last
+  state. `setAppVolume(uid, pct)` / `setAppMute(uid, on)`: Samsung's AudioService app volume (Sound Assistant's) through
+  the shell (`service call audio` with the firmware's IAudioService codes); `control: 'none'` (no shell, or a phone
+  without it) greys the columns with the reason.
+- DreamOS (CaféReady `audio.rs`, `window.DreamOSAudio`): `streams(on)`; while on, the state carries `streams`
+  (PipeWire's playback streams by program: `{ id, ids, app, binary, pid, media, icon, volume, muted, state, self }`,
+  `self` = the shell's browser, not listed) read again on every graph change (`pw-dump --monitor`), and
+  `dreamosaudiometer` `{ device: 0-1000 }` comes from the default sink's monitor. `set({ id, volume?, muted? })` sets a
+  stream as it sets a device.
+
 ## bluetooth (trayBluetooth.js: one icon for every provider)
 
 Vista shows Bluetooth as a notification icon of its own, left of the system icons, with a right-click menu. The planned state:

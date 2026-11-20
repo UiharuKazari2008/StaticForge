@@ -1,0 +1,227 @@
+/*
+ * Volume Mixer (volumeMixer.js, #980): the layout of Vista's sndvol.exe, measured on the VM at 96 DPI
+ * (~/.cache/vista-vm/mixer-ref). Client coordinates below the menu bar: the group boxes' frames at y 20-296
+ * (Device x 11-122, Applications x 124 to 11 px from the right); each column's origin at y 34; the icon at 36, the
+ * name's first line at 73 (two 15 px lines), the track bar's control rect at 107-250 with its channel at 119-238 (the
+ * thumb's centre travels 118 px), the mute button at 251 (30 x 28). Application columns are 109 px plus a 1 px
+ * separator, from x 128. The colours and art are the Vista theme's (themes/vista/volume-mixer.css).
+ */
+
+.sndvol-window .sndvol-client {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+}
+
+.sndvol-window .sndvol-body {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 311px;
+}
+
+/* the group boxes are only their frames: the columns sit on the client's coordinates */
+.sndvol-window fieldset.sndvol-device,
+.sndvol-window fieldset.sndvol-apps {
+    position: absolute;
+    top: 11px;
+    height: 287px;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+.sndvol-window fieldset.sndvol-device {
+    left: 11px;
+    width: 112px;
+}
+.sndvol-window fieldset.sndvol-apps {
+    left: 124px;
+    right: 11px;
+}
+.sndvol-window fieldset > legend {
+    margin-left: 7px;
+    padding: 0 2px;
+    line-height: 15px;
+}
+
+/* the master's level, a line through both groups */
+.sndvol-window .sndvol-line {
+    position: absolute;
+    height: 1px;
+    top: calc(85px + var(--sndvol-master, 0px));
+    pointer-events: none;
+}
+.sndvol-window .sndvol-line-device {
+    left: 75px;
+    width: 46px;
+    top: calc(119px + var(--sndvol-master, 0px));
+}
+
+/* ---- a column: the device's, an application's ---- */
+.sndvol-window .sndvol-col {
+    position: absolute;
+    top: 34px;
+    height: 246px;
+}
+.sndvol-window .sndvol-col-device {
+    left: 11px;
+    width: 112px;
+}
+.sndvol-window .sndvol-icon {
+    position: absolute;
+    top: 2px;
+    left: 35px;
+    width: 32px;
+    height: 32px;
+}
+.sndvol-window .sndvol-col-device .sndvol-icon {
+    left: 40px;
+}
+.sndvol-window .sndvol-name {
+    position: absolute;
+    top: 39px;
+    left: 5px;
+    width: 91px;
+    line-height: 15px;
+    max-height: 30px;
+    text-align: center;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow-wrap: anywhere;
+    user-select: none;
+}
+.sndvol-window .sndvol-col-device .sndvol-name {
+    left: 8px;
+}
+
+/* the application columns: a scrolling strip inside the Applications group */
+.sndvol-window .sndvol-scroll {
+    position: absolute;
+    top: 34px;
+    left: 128px;
+    right: 15px;
+    bottom: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+.sndvol-window .sndvol-scroll > .sndvol-line {
+    left: 0;
+    min-width: 100%;
+    width: calc(var(--sndvol-cols, 1) * 110px);
+}
+.sndvol-window .sndvol-cols {
+    position: relative;
+    display: flex;
+    height: 246px;
+}
+.sndvol-window .sndvol-col-app {
+    position: relative;
+    top: 0;
+    flex: 0 0 109px;
+    width: 109px;
+    box-sizing: content-box;
+    border-right: 1px solid transparent;
+}
+
+/* ---- the track bar: sndvol's own drawing (channel with the meter, the taper wedge, ticks) under the theme's
+   TRACKBAR THUMBRIGHT ---- */
+.sndvol-window .sndvol-slider {
+    position: absolute;
+    top: 73px;
+    left: 39px;
+    width: 30px;
+    height: 144px;
+    box-sizing: border-box;
+    touch-action: none;
+    outline: none;
+}
+.sndvol-window .sndvol-col-device .sndvol-slider {
+    left: 40px;
+}
+.sndvol-window .sndvol-slider > i {
+    position: absolute;
+    display: block;
+    pointer-events: none;
+}
+.sndvol-window .sndvol-channel {
+    top: 12px;
+    height: 120px;
+    left: 8px;
+    width: 5px;
+}
+.sndvol-window .sndvol-slider-device .sndvol-channel {
+    left: 6px;
+    width: 7px;
+}
+.sndvol-window .sndvol-wedge {
+    top: 12px;
+    height: 120px;
+    left: 13px;
+    width: 11px;
+    clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.sndvol-window .sndvol-tick {
+    left: 13px;
+    width: 14px;
+    height: 2px;
+}
+.sndvol-window .sndvol-tick-zero {
+    top: 131px;
+    height: 1px;
+}
+.sndvol-window .sndvol-tick-hi {
+    top: calc(12px + var(--sndvol-tick-hi, 0px));
+}
+.sndvol-window .sndvol-tick-lo {
+    top: calc(12px + var(--sndvol-tick-lo, 59px));
+}
+.sndvol-window .sndvol-thumb {
+    left: 3px;
+    top: calc(7px + var(--sndvol-pos, 0px));
+    width: 19px;
+    height: 11px;
+}
+
+/* the device's peak meter in its channel: the level and the grey peak that holds above it, drawn by scale */
+.sndvol-window .sndvol-channel > i {
+    position: absolute;
+    left: 1px;
+    width: 5px;
+    bottom: 0;
+    height: 100%;
+    transform-origin: 50% 100%;
+}
+.sndvol-window .sndvol-meter {
+    transform: scaleY(var(--sndvol-level, 0));
+}
+.sndvol-window .sndvol-meter-hold {
+    transform: scaleY(var(--sndvol-hold, 0));
+}
+
+/* the mute button: a push button with sndvol's 16 px icon, pressed while muted */
+.sndvol-window .sndvol-mute {
+    position: absolute;
+    top: 217px;
+    left: 39px;
+    width: 30px;
+    min-width: 30px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.sndvol-window .sndvol-col-device .sndvol-mute {
+    left: 40px;
+}
+.sndvol-window .sndvol-mute > img {
+    position: relative;
+    width: 20px;
+    height: 18px;
+    pointer-events: none;
+}

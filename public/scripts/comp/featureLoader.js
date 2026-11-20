@@ -401,6 +401,12 @@ const FEATURE_MANIFEST = {
         hot: true,
         scripts: ['scripts/comp/dreamosFirmware.js']
     },
+    // Vista's Volume Mixer (sndvol, #980): the tray volume menu's Open Volume Mixer, the flyout's Mixer link and
+    // Control Panel's Adjust system volume (tabVolume.openMixer)
+    volume_mixer: {
+        styles: ['css/themes/vista/volume-mixer.css', 'css/volume-mixer.css'],
+        scripts: ['scripts/comp/volumeMixer.js']
+    },
     control_panel: {
         hot: true,
         depends: ['vista_dialog_templates', 'dreamos_firmware'],
