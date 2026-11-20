@@ -1,11 +1,12 @@
 /* Nightshade Profile in Sync Center (#976; public/scripts/comp/nightshadeProfileSync.js).
 
    The progress window is Vista's Offline Files sync dialog (cscui.dll's task dialog, "Always Available Offline"),
-   measured on the VM capture (516 x 258 window, 500 x 222 client): the 32 px sync arrows at 10,9; the main
+   measured on the VM capture (516 x 258 window, 500 x 222 client): the 32 px sync arrows at 10,10; the main
    instruction (Segoe UI 12 pt, #003399) from x 52, its line at y 10; the content (9 pt, 15 px lines) at y 45; the item
    line after one empty line (y 90); the 15 px progress bar at 52,121, 438 px wide (11 px from the edge); the command
    band under a #dfdfdf edge at y 146 (40 px: the 66 x 21 buttons 9 px down, 8 px apart, 11 px from the edge); a
-   second #dfdfdf / white edge and the 33 px footer band, empty until it names errors or conflicts.
+   second #dfdfdf / white edge and the 33 px footer band (y 187-221), which cscui's dialog shows empty while it works
+   (measured: the VM's window is 258 px tall with it) and fills with the errors / conflicts line.
 
    The Resolve Conflict dialog is shell32's conflict dialog (the Copy File capture: 450 px client): the main
    instruction 16 px in at y 16, the sub line at 40, each choice a 418 x 120 block 16 px in (61, then 129 px down) with
@@ -38,14 +39,14 @@
     position: relative;
     box-sizing: border-box;
     min-height: 146px;
-    padding: 10px 11px 11px 52px;
+    padding: 10px 11px 10px 52px;
 }
 
 /* cscui.dll icon 8 (the blue sync arrows) */
 #nightshadeProfileSyncDialog .nps-icon {
     position: absolute;
     left: 10px;
-    top: 9px;
+    top: 10px;
     width: 32px;
     height: 32px;
     background: image-set(url("/static_images/vista-sync/sync-progress-32.png") 1x, url("/static_images/vista-sync/sync-progress-40.png") 1.25x, url("/static_images/vista-sync/sync-progress-48.png") 1.5x, url("/static_images/vista-sync/sync-progress-56.png") 1.75x, url("/static_images/vista-sync/sync-progress-64.png") 2x) no-repeat 0 0 / 32px 32px;
@@ -58,14 +59,14 @@
 }
 
 #nightshadeProfileSyncDialog .nps-text {
-    margin-top: 14px;
+    margin-top: 15px;
     padding-right: 13px;
 }
 
 /* the item being synced: after one empty line of the content */
 #nightshadeProfileSyncDialog .nps-line {
     min-height: 15px;
-    margin-top: 15px;
+    margin-top: 14px;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -157,7 +158,7 @@
     align-items: flex-start;
     gap: 8px;
     box-sizing: border-box;
-    min-height: 34px;
+    min-height: 35px;
     padding: 9px 11px 9px 10px;
     border-top: 1px solid var(--nps-band-edge);
     box-shadow: inset 0 1px 0 var(--nps-client);
@@ -216,7 +217,7 @@
     width: 418px;
     min-height: 120px;
     margin: 0 16px 9px;
-    padding: 7px 8px 8px 25px;
+    padding: 7px 8px 8px 23px;
     border: 1px solid transparent;
     border-radius: 3px;
     background: transparent;
@@ -230,8 +231,8 @@
 #nightshadeResolveConflictDialog .nrc-option:not(#_)::before {
     content: "";
     position: absolute;
-    left: 4px;
-    top: 11px;
+    left: 3px;
+    top: 10px;
     width: 20px;
     height: 20px;
     /* the Vista button face's hot layer (::before) is see-through at rest: this one is the glyph */
@@ -242,14 +243,14 @@
 
 #nightshadeResolveConflictDialog .nrc-option:not(#_)::after { content: none; }
 
-@media (hover: hover) {
-    #nightshadeResolveConflictDialog .nrc-option:not(#_):hover {
-        border-color: var(--nrc-hot-edge);
-        background: linear-gradient(var(--nrc-hot-top), var(--nrc-hot-bottom));
-        box-shadow: inset 0 0 0 1px var(--nrc-hot-inner);
-    }
-    #nightshadeResolveConflictDialog .nrc-option:not(#_):hover::before { background-position: 0 -20px; }
+/* the hot choice (not behind (hover: hover): the DeX window's WebView reports a touch screen's hover: none) */
+#nightshadeResolveConflictDialog .nrc-option:not(#_):hover {
+    border-color: var(--nrc-hot-edge);
+    background: linear-gradient(var(--nrc-hot-top), var(--nrc-hot-bottom));
+    box-shadow: inset 0 0 0 1px var(--nrc-hot-inner);
 }
+
+#nightshadeResolveConflictDialog .nrc-option:not(#_):hover::before { background-position: 0 -20px; }
 
 #nightshadeResolveConflictDialog .nrc-option:not(#_):active::before { background-position: 0 -40px; }
 
@@ -272,7 +273,7 @@
 #nightshadeResolveConflictDialog .nrc-card {
     display: flex;
     gap: 11px;
-    margin: 4px 0 0 10px;
+    margin: 3px 0 0 10px;
 }
 
 #nightshadeResolveConflictDialog .nrc-card > img {
