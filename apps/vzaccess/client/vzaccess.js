@@ -25,8 +25,19 @@
  *   Start VPN     the Nightshade Network (melatonControlPanel.connectionFacts / toggleConnection)
  *   TXT Messaging the Text Messaging accounts (textMessaging.js): its conversations, newest first
  *
+ * On DreamOS (#953, Yukimi Nov 20 2026: "detect if the phone is connected as hotspot and use VZAccess Manager to show
+ * its status on that PC as if it's a mobile broadband card") the device is a phone's hotspot (CaféReady wwan.rs, the
+ * network provider's `mobile`, docs/client-api/phone-broadband.md):
+ *   WWAN state    the provider's mobile: the phone's bars, data class, carrier, battery (the Instant Hotspot link's,
+ *                 else the phone's own ActiveSync status), Connected and its start; pushed
+ *   Connect       wwanConnect() / wwanDisconnect(): join the phone's hotspot again / leave it (an Instant Hotspot
+ *                 phone turns it off)
+ *   Statistics    the session's bytes, pushed by the host every 2 s at most only while the window is seen
+ *                 (wwanWatch, held while seen and released when not), never read on the tick
+ *
  * Power (phone-power-client): nothing runs while the window is closed; while it is open and seen, one tick a
- * second draws the timer and, on Statistics, reads the counters for the graph. Seen again, it draws at once.
+ * second draws the timer and, on Statistics, reads the counters for the graph (DreamOS: only draws what was pushed).
+ * Seen again, it draws at once.
  *
  *   melatonApps.define('vzaccess', start)
  */
@@ -222,6 +233,20 @@
 
         provider() { return (root.melatonTray && root.melatonTray.provider('network')) || null; }
 
+        /** DreamOS (#953): the network provider when the device is a phone's hotspot (wwan.rs), else null. */
+        hostWwan() {
+            if (root.AndroidDeviceStatus) return null;
+            const p = this.provider();
+            return p && typeof p.wwan === 'function' ? p : null;
+        }
+
+        /** DreamOS: the provider's mobile (a phone's hotspot) or null. */
+        hostMobile() {
+            const p = this.hostWwan();
+            const m = p ? ((p.get() || {}).mobile || null) : null;
+            return m && m.present && m.via !== undefined ? m : null;
+        }
+
         /**
          * The modem's radio details (DSApp CellularBridge, window.AndroidCellular): read when WWAN Device Info opens or
          * the signal meter is pointed at, at most every 10 s unless forced; never on a timer. null on an older app.
@@ -245,6 +270,18 @@
         }
 
         readCellular() {
+            if (this.hostWwan()) {
+                // DreamOS: the phone behind the hotspot, as the Android app's cellular block reads
+                const m = this.hostMobile();
+                const ph = (m && m.phone) || {};
+                this.cell = m ? {
+                    present: true, operator: m.carrier, level: ph.bars, dataType: ph.dataType || m.generation || '', roaming: !!m.roaming,
+                    dataEnabled: true, dataActive: !!m.connected, dataMoving: false, phoneNumber: ph.number || '', simState: 'ready',
+                    battery: ph.battery, charging: !!ph.charging, phoneName: ph.name || '', phoneModel: ph.model || '', ssid: m.ssid || '',
+                    hostState: m.state || '', searching: false
+                } : null;
+                return;
+            }
             const b = root.AndroidDeviceStatus;
             if (!b || typeof b.getState !== 'function') { this.cell = null; return; }
             try { const s = parse(b.getState()); this.cell = s && s.cellular ? s.cellular : null; } catch (_) { this.cell = null; }
@@ -257,12 +294,15 @@
             const m = p && typeof p.get === 'function' ? ((p.get() || {}).mobile || null) : null;
             // no modem: 7.6's "Not Connected" and "Device not available" (strings 209)
             if (!c || c.present === false || c.simState === 'absent') return { present: false, connected: false, state: 'Not Connected', bars: 0, type: '' };
-            const connected = !!(c.dataEnabled !== false && c.dataActive) || !!(m && m.connected);
+            const connected = c.hostState !== undefined ? !!c.dataActive : (!!(c.dataEnabled !== false && c.dataActive) || !!(m && m.connected));
             const name = typeof root.melatonCarrierName === 'function' ? root.melatonCarrierName(c.operator || 'Verizon') : (c.operator || 'Verizon Wireless');
             // the meter's four bars: Android's 0-4 level, else its five-step one scaled
             const level = Number.isFinite(Number(c.level)) ? Number(c.level) : Number(c.level5) * 4 / 5;
             const searching = !!c.searching || (!c.operator && !connected);
             let state = connected ? 'Connected' : 'Not Connected';
+            // DreamOS: the host's own word while it joins or leaves the phone's hotspot
+            if (c.hostState === 'connecting' && !connected) state = 'Connecting';
+            if (c.hostState === 'disconnecting' && connected) state = 'Disconnecting';
             if (this.pending === 'connecting' && !connected) state = 'Connecting';
             if (this.pending === 'disconnecting' && connected) state = 'Disconnecting';
             if (connected && !this.pending && !c.dataMoving && this.idleSince && Date.now() - this.idleSince > 20000) state = 'Connected - Dormant';
@@ -279,8 +319,16 @@
                 moving: !!c.dataMoving,
                 searching,
                 number: c.phoneNumber || '',
-                sim: c.simState || ''
+                sim: c.simState || '',
+                // DreamOS: the phone's battery as it reports it (null when it does not say)
+                battery: c.battery != null && Number.isFinite(Number(c.battery)) ? Math.round(Number(c.battery)) : null,
+                charging: !!c.charging
             };
+        }
+
+        /** "Battery: 80%" (charging), for the device's tooltips; '' without a figure. */
+        batteryText(w) {
+            return w && w.battery != null ? `Battery: ${w.battery}%${w.charging ? ' (charging)' : ''}` : '';
         }
 
         hardware() {
@@ -289,12 +337,17 @@
         }
 
         model() {
+            // DreamOS: the device is the phone whose hotspot this is
+            if (this.hostWwan()) return (this.cell && (this.cell.phoneModel || this.cell.phoneName)) || '';
             const hw = this.hardware();
             const d = hw && hw.device;
             return (d && (d.model || d.marketName)) || '';
         }
 
         setData(on) {
+            const hw = this.hostWwan();
+            // DreamOS: join the phone's hotspot again, or leave it (an Instant Hotspot phone turns it off)
+            if (hw) return Promise.resolve(on ? hw.wwanConnect() : hw.wwanDisconnect()).catch(() => null);
             const p = this.provider();
             if (p && typeof p.mobileData === 'function') return Promise.resolve(p.mobileData(!!on)).catch(() => null);
             const d = root.AndroidDevice;
@@ -308,6 +361,12 @@
 
         /** One read of the modem link's byte counters (the provider's stats('rmnet0')), or null. */
         async linkBytes() {
+            // DreamOS: the session's bytes the host keeps (pushed)
+            if (this.hostWwan()) {
+                const m = this.hostMobile();
+                const b = this.pushed || (m && m.bytes);
+                return b ? { rx: Math.round(Number(b.rx) || 0), tx: Math.round(Number(b.tx) || 0) } : null;
+            }
             const p = this.provider();
             if (!p || typeof p.stats !== 'function') return null;
             let x = null;
@@ -327,8 +386,13 @@
             const first = !this.sawStart;
             this.sawStart = true;
             if (w.connected && !s) {
-                const ses = { start: Date.now(), carrier: w.carrier || 'Verizon Wireless', tech: coverageOf(w.type).tech, device: this.model() };
+                // DreamOS: the host knows when the phone network came up, and counts its bytes from then
+                const hm = this.hostWwan() ? this.hostMobile() : null;
+                const since = hm && Number(hm.since) > 0 && Number(hm.since) <= Date.now() ? Number(hm.since) : 0;
+                const ses = { start: since || Date.now(), carrier: w.carrier || 'Verizon Wireless', tech: coverageOf(w.type).tech, device: this.model() };
+                if (since) { ses.rx0 = 0; ses.tx0 = 0; }
                 writeJson(SESSION_KEY, ses);
+                if (since) return;
                 // the counters at the start (one read, as the connection begins)
                 void this.linkBytes().then((b) => {
                     const cur = this.session();
@@ -667,7 +731,8 @@
                 this.paintSoon();
             }, sig);
             if (root.melatonTray && typeof root.melatonTray.onChange === 'function') {
-                const off = root.melatonTray.onChange('network', () => this.paintSoon());
+                // (DreamOS: the phone's hotspot is the network provider's mobile, read again on each push)
+                const off = root.melatonTray.onChange('network', () => { if (this.hostWwan()) this.readCellular(); this.paintSoon(); });
                 if (typeof off === 'function') this.offs.push(off);
             }
             const p = this.provider();
@@ -693,7 +758,20 @@
             let tick = null;
             // (in the tray only, nothing ticks: the pushes keep the tray icon right)
             const seen = () => this.shown && !doc.hidden && doc.documentElement.dataset.screenOff === undefined && !this.app.signal.aborted && !this.modal.classList.contains('minimised');
+            // DreamOS: the session's bytes come from the host only while the window is seen (wwanWatch, every 2 s at most)
+            let watchOff = null;
+            const watch = (on) => {
+                const hw = this.hostWwan();
+                if (on && !watchOff && hw && typeof hw.wwanWatch === 'function') {
+                    watchOff = hw.wwanWatch((b) => {
+                        this.pushed = b && typeof b === 'object' ? { rx: Number(b.rx) || 0, tx: Number(b.tx) || 0 } : null;
+                        if (this.pushed) this.takeBytes(this.pushed.rx, this.pushed.tx, null);
+                    });
+                } else if (!on && watchOff) { try { watchOff(); } catch (_) { /* gone */ } watchOff = null; }
+            };
+            this.app.signal.addEventListener('abort', () => watch(false));
             const sync = () => {
+                watch(seen());
                 if (seen() && !tick) {
                     this.tick();
                     tick = setInterval(() => {
@@ -762,12 +840,15 @@
             const unread = !!(this.cell && this.cell.unreadTexts);
             const envelope = `<img src="${A}/${unread ? 'envelope-new' : 'envelope'}.png" alt="" draggable="false">`;
             const devIcon = !w.present ? 'device-na' : /lock|pin|puk/i.test(w.sim || '') ? 'device-locked' : 'phone';
+            // DreamOS: the phone's battery, on its icon's tooltip (the phone sharing its hotspot reports it)
+            const batt = this.batteryText(w);
+            const devTip = batt ? ` title="${esc(`${this.model()}\n${batt}`)}"` : '';
             const number = `My #: ${w.present ? phoneText(w.number) : ''}`;
             this.setHtml(this.f('device'), w.present
-                ? `${envelope}<span class="mode"><b>LAN</b><span>${esc(this.model())}</span></span><img src="${A}/${devIcon}.png" alt="" draggable="false"><span class="num">${esc(number)}</span>`
+                ? `${envelope}<span class="mode"><b>LAN</b><span>${esc(this.model())}</span></span><img src="${A}/${devIcon}.png" alt=""${devTip} draggable="false"><span class="num">${esc(number)}</span>`
                 : `<img class="vz-na" src="${A}/device-na.png" alt="" draggable="false"><span class="vz-na-text">Device not available</span>`);
             this.setHtml(this.f('mdevice'), w.present
-                ? `<img src="${A}/${devIcon}.png" alt="" draggable="false"><span class="num">${esc(number)}</span>${envelope}<b class="vz-lan">LAN</b>`
+                ? `<img src="${A}/${devIcon}.png" alt=""${devTip} draggable="false"><span class="num">${esc(number)}</span>${envelope}<b class="vz-lan">LAN</b>`
                 : `<img src="${A}/device-na.png" alt="" draggable="false"><span>Device not available</span>`);
             // TXT Messaging is a device's (7.6 shows its tab only with one)
             const txtTab = this.q('button[data-tab="txt"]');
@@ -794,7 +875,7 @@
                 const src = `${A}/${w.connected ? 'tray-connected' : 'tray-idle'}.png`;
                 if (img && img.getAttribute('src') !== src) img.setAttribute('src', src);
                 const tip = !w.present ? 'VZAccess Manager\nDevice not available'
-                    : `VZAccess Manager\n${w.carrier} - VZAccess: ${w.state}${live ? `\n${cov.tech || w.type || ''} ${w.bars} of 4 bars${ext}` : ''}`;
+                    : `VZAccess Manager\n${w.carrier} - VZAccess: ${w.state}${live ? `\n${cov.tech || w.type || ''} ${w.bars} of 4 bars${ext}` : ''}${batt ? `\n${batt}` : ''}`;
                 if (this.trayIcon.title !== tip) this.trayIcon.title = tip;
             }
             this.paintNetworks(w);
@@ -834,9 +915,11 @@
                 });
             }
             const seen = new Set();
+            // DreamOS: the phone's own hotspot is the WWAN row above, not a Wi-Fi network
+            const hostSsid = this.hostWwan() && this.cell ? this.cell.ssid : '';
             const wifiRow = (n, connected) => {
                 const name = String(n.name || n.ssid || '');
-                if (!name || seen.has(name)) return;
+                if (!name || seen.has(name) || (hostSsid && name === hostSsid)) return;
                 // "Display only preferred wireless networks": the saved ones (and the one in use)
                 if (onlyPreferred && !connected && !known.has(name)) return;
                 seen.add(name);
@@ -911,18 +994,46 @@
         // ---------------------------------------------------------------- Statistics
 
         async sample() {
+            // DreamOS: what the host pushed (takeBytes) is drawn; nothing is read here
+            if (this.hostWwan()) {
+                // the host sends only when bytes moved (every 2 s at most): nothing for over 3.5 s is a quiet link (0 kbps)
+                const st = this.stats;
+                const now = Date.now();
+                if (st.last && now - st.last.at > 3500) {
+                    st.rxRate = 0; st.txRate = 0;
+                    st.rx.push(0); st.tx.push(0);
+                    if (st.rx.length > GRAPH_POINTS) { st.rx.shift(); st.tx.shift(); }
+                    st.last = Object.assign({}, st.last, { at: now });
+                }
+                this.paintStats(this.hostStatsFacts());
+                return;
+            }
             const p = this.provider();
             if (!p || typeof p.stats !== 'function') { this.paintStats(null); return; }
             let x = null;
             try { x = await p.stats('rmnet0'); } catch (_) { x = null; }
             // an older app answers with the Wi-Fi's figures: not the modem's
             if (!x || x.error || (x.kind && x.kind !== 'mobile')) { this.paintStats(null); return; }
+            this.takeBytes(Number(x.rxBytes) || 0, Number(x.txBytes) || 0, x);
+        }
+
+        /** DreamOS: the phone network's addresses for Statistics (the Wi-Fi link's: the hotspot hands them out). */
+        hostStatsFacts() {
+            const m = this.hostMobile();
+            const p = this.hostWwan();
+            const net = p ? (p.get() || {}) : {};
+            const w = net.wifi || {};
+            return m && m.connected ? { ip: Array.isArray(m.ip) && m.ip.length ? m.ip : (w.ip || []), ip6: w.ip6 || [] } : null;
+        }
+
+        /** New counters (a read, or the host's push): the rates, the graph and this session's totals. */
+        takeBytes(rx, tx, x) {
             const st = this.stats;
             const now = Date.now();
-            const rx = Number(x.rxBytes) || 0;
-            const tx = Number(x.txBytes) || 0;
-            // the counters run from the phone's start: this session's totals are what came since it began (or Reset)
-            if (!st.base || rx < st.base.rx || tx < st.base.tx) st.base = { rx, tx };
+            if (x === null) x = this.hostStatsFacts();
+            // the counters run from the phone's start: this session's totals are what came since it began (or Reset);
+            // DreamOS's are the session's already (wwan.rs counts from its start)
+            if (!st.base || rx < st.base.rx || tx < st.base.tx) st.base = this.hostWwan() && !st.last ? { rx: 0, tx: 0 } : { rx, tx };
             // two reads close together (a tab switch and the tick): too short an interval for a rate
             if (st.last && now - st.last.at < 500) return;
             if (st.last && now > st.last.at) {
@@ -1895,6 +2006,15 @@
             const w = this.wwan();
             const d = (this.hardware() || {}).device || {};
             if (!w.present) return [];
+            // DreamOS: the device is the phone sharing its hotspot
+            if (this.hostWwan()) {
+                const c = this.cell || {};
+                return [
+                    ['Device', c.phoneName || ''], ['Model', c.phoneModel || ''], ['Connection', c.ssid ? `Wi-Fi hotspot (${c.ssid})` : ''],
+                    ['Phone Number', phoneText(w.number)], ['Network', w.carrier || ''], ['Technology', w.type || ''],
+                    ['Signal', `${w.bars} of 4 bars`], ['Roaming', w.roaming ? 'Extended Network' : 'Home'], ['Battery', this.batteryText(w).replace(/^Battery: /, '')]
+                ];
+            }
             return [
                 ['Manufacturer', d.manufacturer || ''], ['Model', d.model || ''], ['Device', d.marketName || ''],
                 ['Phone Number', phoneText(w.number)], ['Network', w.carrier || ''], ['Technology', w.type || ''],

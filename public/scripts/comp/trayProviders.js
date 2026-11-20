@@ -105,11 +105,64 @@
             p.then(done, done);
             return p;
         };
+        // A phone's hotspot as this computer's mobile broadband (#953; cafeready wwan.rs, docs/client-api/
+        // phone-broadband.md): the host says when the Wi-Fi is a phone's hotspot (an Instant Hotspot session, or
+        // Android's DHCP option in the lease) and the state gains `mobile` for it, as a mobile broadband card's: the
+        // tray, Network Connections and VZAccess Manager show it so. The phone's battery and signal are the Instant
+        // Hotspot link's, else the phone's own ActiveSync status (the server tells which partner phone it is:
+        // modules/phoneTether.js, the device's `hotspot`). All pushed; nothing is read on a timer.
+        const W = root.DreamOSWwan && typeof root.DreamOSWwan.get === 'function' ? root.DreamOSWwan : null;
+        // the phone last found sharing its hotspot: its own status still shows while the computer is not on it (VZAccess
+        // Manager keeps a card's signal while disconnected)
+        let lastPhoneId = null;
+        const wwanPhone = (w) => {
+            const as = root.activeSync;
+            const list = as && typeof as.state === 'function' ? ((as.state() || {}).devices || []) : [];
+            const d = list.find((x) => x && x.hotspot && x.hotspot.ssid && x.hotspot.ssid === w.ssid)
+                || (!w.connected && lastPhoneId ? list.find((x) => x && x.deviceId === lastPhoneId) : null) || null;
+            if (d) lastPhoneId = d.deviceId;
+            const st = (d && d.status) || {};
+            const c = st.cellular || {};
+            const ih = w.phone && typeof w.phone === 'object' ? w.phone : null;
+            const bars = ih && Number.isFinite(Number(ih.bars)) ? Number(ih.bars) : (Number.isFinite(Number(c.level)) ? Number(c.level) : null);
+            return {
+                deviceId: d ? d.deviceId : null,
+                name: (ih && ih.name) || (d && d.name) || '', model: (d && d.model) || '',
+                battery: ih && ih.battery != null ? Number(ih.battery) : (st.battery && st.battery.level != null ? Number(st.battery.level) : null),
+                charging: ih ? !!ih.charging : !!(st.battery && st.battery.charging),
+                bars, dataType: (ih && ih.network) || c.dataType || '', operator: (ih && ih.operator) || c.operator || '',
+                roaming: !!c.roaming, number: c.phoneNumber || ''
+            };
+        };
+        const withMobile = (base) => {
+            const w = W ? W.get() : null;
+            if (!w || !w.present || !base || typeof base !== 'object') return base;
+            const ph = wwanPhone(w);
+            const carrier = typeof root.melatonCarrierName === 'function' && ph.operator ? root.melatonCarrierName(ph.operator) : (ph.operator || 'Verizon Wireless');
+            return Object.assign({}, base, {
+                mobile: {
+                    present: true, connected: !!w.connected, on: true, state: w.state, via: w.via || (w.last && w.last.via) || null,
+                    ssid: w.ssid || (w.last && w.last.ssid) || '', device: w.device || '', carrier,
+                    signalPercent: ph.bars == null ? null : ph.bars * 25, bars: ph.bars, generation: ph.dataType, roaming: ph.roaming,
+                    phone: ph, since: w.since || null, bytes: w.bytes || null, ip: w.ip || [], canConnect: !!w.canConnect
+                }
+            });
+        };
+        const netSubscribe = (fn) => {
+            const again = () => fn(withMobile(n.get()));
+            const offs = [evt('dreamosnet', () => null)(again)];
+            if (W) offs.push(evt('dreamoswwan', () => null)(again));
+            // the phone's own status (battery, signal) through ActiveSync, once its agent is up (it loads after this file)
+            let asOff = null;
+            const hookAs = () => { const as = root.activeSync; if (!asOff && as && typeof as.on === 'function') asOff = as.on('state', () => { if (W && W.get().present) again(); }) || (() => {}); };
+            if (W) { hookAs(); if (!asOff && root.document) root.document.addEventListener('DOMContentLoaded', hookAs, { once: true }); }
+            return () => { offs.forEach((off) => off()); if (typeof asOff === 'function') asOff(); };
+        };
         register('network', {
             id: 'dreamos', priority: 30,
             available: () => true,
-            get: () => n.get(),
-            subscribe: evt('dreamosnet', (d) => d),
+            get: () => withMobile(n.get()),
+            subscribe: netSubscribe,
             onScan: evt('dreamosnetscan', (d) => d),
             networks: () => read('networks', () => n.networks()), scan: () => read('scan', () => n.scan()), connect: (s, p, o) => n.connect(s, p, o),
             disconnect: () => n.disconnect(), forget: (s) => n.forget(s), autoConnect: (s, on) => n.autoConnect(s, on),
@@ -120,8 +173,47 @@
                 onHotspot: evt('dreamoshotspot', (d) => d),
                 hotspotConnect: () => root.DreamOSHotspot.connect(),
                 hotspotDisconnect: () => root.DreamOSHotspot.disconnect()
+            } : {}),
+            // the phone's hotspot as mobile broadband (VZAccess Manager): leave it / join it again, and its bytes while
+            // the program's window is seen (watch returns its release)
+            ...(W ? {
+                wwan: () => W.get(),
+                wwanConnect: () => W.connect(),
+                wwanDisconnect: () => W.disconnect(),
+                wwanWatch: (fn) => (typeof W.watch === 'function' ? W.watch(fn) : () => {})
             } : {})
         });
+        // VZAccess Manager in the notification area while the computer is on a phone's hotspot (7.x's Run at Startup,
+        // Preferences > Application; as androidTrayProviders.js starts it on a Verizon phone), once the desktop is up
+        if (W) {
+            let vzOn = false;
+            let tries = 0;
+            let timer = 0;
+            const go = () => {
+                if (!vzOn) return;
+                const reg = root.melatonRegistry;
+                const atStartup = reg && typeof reg.get === 'function' ? reg.get('HKCU\\Software\\Smith Micro\\VZAM - Verizon Wireless', 'RunAtStartup', 1) : 1;
+                if (Number(atStartup) === 0) return;
+                const apps = root.melatonApps;
+                const later = () => { if (vzOn && tries < 5) { clearTimeout(timer); timer = setTimeout(go, 5000 * 2 ** tries); tries += 1; } };
+                if (!apps || typeof apps.launch !== 'function' || !(root.wsClient && root.wsClient.initializationCompleted)) { later(); return; }
+                if (typeof apps.running === 'function' && apps.running().some((a) => a.packageId === 'vzaccess')) return;
+                void Promise.resolve(apps.launch({ packageId: 'vzaccess', args: { tray: true } })).catch((err) => { if (!(err && err.melatonAppFault)) later(); });
+            };
+            const follow = () => {
+                const on = !!W.get().connected;
+                if (on === vzOn) return;
+                vzOn = on;
+                clearTimeout(timer);
+                if (on) {
+                    try { if (root.localStorage.getItem('melatonVzaccessSeen') !== '1') root.localStorage.setItem('melatonVzaccessSeen', '1'); } catch (_) { /* private mode */ }
+                    tries = 0;
+                    timer = setTimeout(go, 3000);
+                }
+            };
+            evt('dreamoswwan', () => null)(follow);
+            follow();
+        }
     }
     if (root.DreamOSBluetooth && typeof root.DreamOSBluetooth.get === 'function') {
         // BlueZ through the CaféReady host (tray2): { present, on, devices: [...] }, pushed as 'dreamosbt'

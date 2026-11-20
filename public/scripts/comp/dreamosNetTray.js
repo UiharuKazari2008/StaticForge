@@ -9,7 +9,9 @@
  *                                     it, or the host reports the station failing (wifi.failing)
  *   Wi-Fi on but nothing joined, off  pnidui.dll 19 (Not Connected); joining trades pnidui 25 / 26
  *   mobile data (the Android app)     the same bars for the carrier's signal; the tip and the flyout name the carrier, its
- *                                     data class (5G, LTE) and Roaming, as Windows 7 lists a mobile broadband link (#945)
+ *                                     data class (5G, LTE) and Roaming, as Windows 7 lists a mobile broadband link (#945);
+ *                                     on DreamOS a phone's hotspot is one too (#953: the Wi-Fi joined to it is not shown
+ *                                     as Wi-Fi), with VZAccess Manager's tray icon for its signal
  *   no adapter connected at all       pnidui.dll 19, "Not Connected"
  *
  * The icon itself is drawn by vista-glass-controls.css from #modemTrayIcon[data-link][data-bars][data-limited],
@@ -90,8 +92,11 @@
         if (!s) return null;
         const wifi = s.wifi || {};
         const wired = wiredLink(s);
-        const net = wifi.present && wifi.state === 'connected' && wifi.network ? wifi.network : null;
         const mobile = s.mobile && s.mobile.present && s.mobile.connected ? s.mobile : null;
+        // (#953) a phone's hotspot (DreamOS wwan.rs, trayProviders.js) is the computer's mobile broadband, as a Verizon
+        // card was through VZAccess Manager: not a Wi-Fi network here
+        const tethered = !!(mobile && mobile.via && wifi.network && mobile.ssid === wifi.network.name);
+        const net = !tethered && wifi.present && wifi.state === 'connected' && wifi.network ? wifi.network : null;
         let out;
         if (wired) {
             out = { kind: 'wired', name: 'Local Area Connection', bars: 0 };

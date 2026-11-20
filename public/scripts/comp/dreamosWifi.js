@@ -955,13 +955,19 @@
             // iface: the kernel name the app reads (rmnet_data1 changes between connections); id: the stable key
             // (the app's alias wlan0 / rmnet0) for renamed connections, open sheets and the selection (#945)
             list = ifaces.map((x) => ({ iface: String(x.name), id: String(x.alias || x.name), kind: x.kind, label: x.label || '', mac: x.mac || '', enabled: x.enabled !== false }));
+            // (#953) a phone's hotspot on DreamOS (wwan.rs, trayProviders.js): the Mobile Broadband Connection, as Vista
+            // listed a Verizon card's through VZAccess Manager; its counters and addresses are the Wi-Fi link's
+            const pm = phoneModem(s);
+            if (pm) list.push(pm);
         } else {
             list = [];
             if (host() && w.present) list.push({ iface: w.device || 'wlan0', id: w.device || 'wlan0', kind: 'wifi', label: '', mac: w.mac || '', enabled: w.radio !== false });
             (Array.isArray(s.ethernet) ? s.ethernet : []).forEach((e, i) => {
                 if (e) list.push({ iface: e.name || `eth${i}`, id: e.name || `eth${i}`, kind: 'ethernet', label: '', mac: e.mac || '', enabled: e.state !== 'disabled' });
             });
-            if (s.mobile && s.mobile.present) list.push({ iface: 'mobile', id: 'rmnet0', kind: 'mobile', label: '', mac: '', enabled: s.mobile.on !== false });
+            const pm = phoneModem(s);
+            if (pm) list.push(pm);
+            else if (s.mobile && s.mobile.present) list.push({ iface: 'mobile', id: 'rmnet0', kind: 'mobile', label: '', mac: '', enabled: s.mobile.on !== false });
         }
         const names = customNames();
         let lans = 0;
@@ -971,6 +977,15 @@
             if (a.kind === 'mobile') base = MOBILE;
             return { ...a, key: a.id, base, conn: names[a.id] || base };
         }).concat(miniportAdapter() ? [miniportAdapter()] : []);
+    }
+
+    /** (#953) DreamOS on a phone's hotspot (wwan.rs): its Mobile Broadband adapter, the phone as the card. */
+    function phoneModem(s) {
+        const m = s && s.mobile;
+        if (!m || !m.present || !m.via) return null;
+        const w = s.wifi || {};
+        const ph = m.phone || {};
+        return { iface: m.device || w.device || 'wlan0', id: 'wwan', kind: 'mobile', label: `${ph.model || ph.name || 'Verizon Wireless'} Mobile Broadband`, mac: w.mac || '', enabled: true };
     }
 
     /** Device names as Device Manager / Network Connections show them: a second adapter with the same description is
@@ -1052,7 +1067,7 @@
         const on = a.enabled && m.on !== false;
         // the carrier's signal is there with data on or off (the radio is up); data flows only when connected
         const row = ifaceRow(a);
-        return { enabled: on, carrier: !!m.connected, connected: on && !!m.connected, network: m.carrier || '', ip: rowList(row, 'ip'), ip6: rowList(row, 'ip6'), mac: (row && row.mac) || '', speedMbps: null, config: null, net: null, mobile: m };
+        return { enabled: on, carrier: !!m.connected, connected: on && !!m.connected, network: m.carrier || '', ip: rowList(row, 'ip').length ? rowList(row, 'ip') : (m.connected && Array.isArray(m.ip) ? m.ip : []), ip6: rowList(row, 'ip6'), mac: (row && row.mac) || '', speedMbps: null, config: null, net: null, mobile: m };
     }
 
     /** The Nightshade / Café Miniport link (melatonControlPanel.connectionFacts), as a VPN adapter's facts. */

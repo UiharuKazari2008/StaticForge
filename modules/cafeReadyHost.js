@@ -85,6 +85,12 @@ function sanitizeHost(raw) {
     const sharing = require('./networkShares').sanitizeSharing(raw.sharing);
     if (sharing) out.sharing = sharing;
     if (Number.isFinite(Number(raw.uptime))) out.uptime = Math.max(0, Math.round(Number(raw.uptime)));
+    // a phone's hotspot the machine is on (CaféReady wwan.rs; modules/phoneTether.js tells which phone, #953)
+    const t = raw.tether;
+    if (t && typeof t === 'object' && t.ssid) {
+        out.tether = { via: t.via === 'instant-hotspot' ? 'instant-hotspot' : 'hotspot', ssid: clamp(t.ssid, 64), mac: clamp(t.mac, 32), since: Number.isFinite(Number(t.since)) ? Number(t.since) : null };
+        if (t.phone && typeof t.phone === 'object') out.tether.phone = { bt: clamp(t.phone.bt, 32), name: clamp(t.phone.name, 64) };
+    }
     return out;
 }
 

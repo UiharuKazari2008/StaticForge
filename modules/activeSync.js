@@ -509,8 +509,14 @@ function describeDevice(globalResources, wsServer, row) {
         // ADB on port 5555 from this server (#818): state ready / unauthorized / unreachable / off ...
         adb: row.platform === 'cafeready' ? null : adbStatusOf(globalResources, row.device_id),
         // the wallpapers kept for Device Center (#827): a new stamp means new pictures
-        wallpapersAt: wallpapersStampOf(globalResources, row.device_id)
+        wallpapersAt: wallpapersStampOf(globalResources, row.device_id),
+        // DreamOS machines on this phone's hotspot (modules/phoneTether.js): { ssid, computers, how } or null (#953)
+        hotspot: row.platform === 'cafeready' ? null : hotspotOf(row.device_id)
     };
+}
+
+function hotspotOf(deviceId) {
+    try { return require('./phoneTether').hotspotOf(deviceId); } catch (_) { return null; }
 }
 
 function wallpapersStampOf(globalResources, deviceId) {
@@ -780,6 +786,8 @@ function status(globalResources, wsServer, clientInfo, data) {
     if (!st) return false;
     clientInfo.as.status = st;
     const id = clientInfo.as.id;
+    // a DreamOS machine on a phone's hotspot (host.tether, CaféReady wwan.rs): which partner phone it is (#953)
+    if (st.host) { try { require('./phoneTether').hostStatus(globalResources, wsServerOf(globalResources, wsServer), id, clientInfo.as.name, st.host.tether); } catch (err) { console.warn('[activeSync] tether:', err.message); } }
     if (st.continuity) noteContinuity(globalResources, id);
     const last = statusWrites.get(id) || 0;
     if (st.at - last >= STATUS_WRITE_MS) {
@@ -807,6 +815,8 @@ function onSocketClosed(globalResources, wsServer, clientInfo) {
         }
     }
     if (as.kind === 'device') {
+        // a DreamOS machine's last socket gone: it is on no phone's hotspot any more as far as we know (#953)
+        if (as.speaker === 'host' && !liveSockets(server, 'device', as.id).some((s) => s.info !== clientInfo)) { try { require('./phoneTether').hostGone(globalResources, server, as.id); } catch (_) { /* none */ } }
         try {
             const d = getDb(globalResources);
             if (as.status) d.prepare('UPDATE as_devices SET last_status = ?, last_seen = ? WHERE device_id = ?').run(JSON.stringify(as.status), Date.now(), as.id);

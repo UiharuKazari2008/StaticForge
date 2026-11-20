@@ -71,3 +71,8 @@ when a cable comes up, when iwd moves to a saved network, or when the phone stop
 
 Without `DreamOSHotspot` (a browser, the phone, the Android desktop), the provider has no `hotspot*` methods and
 nothing is shown.
+
+## VZAccess Manager
+
+While the computer is on a phone's hotspot (an Instant Hotspot session or any other join), VZAccess Manager and Network
+Connections show it as a mobile broadband card. See [phone-broadband.md](phone-broadband.md).
