@@ -362,16 +362,22 @@
         if (!A || typeof A.list !== 'function') return [];
         try { if (typeof A.refresh === 'function') A.refresh(); } catch (_err) { /* the platform answers later */ }
         let list = [];
-        try { list = A.list('playback').filter((d) => d.state === 'working'); } catch (_err) { list = []; }
+        // the outputs media can play on (not the earpiece, which only calls use)
+        try { list = A.list('playback').filter((d) => d.state === 'working' && (d.isDefault || d.canSetDefault)); } catch (_err) { list = []; }
         if (list.length < 2) return [];
+        const label = (d) => {
+            const full = d.description && d.description !== d.name ? `${d.name} (${d.description})` : d.name;
+            // the menu is at most 300 px: a long one goes by its hardware ("NexDock (HDMI)")
+            if (full.length <= 34 || !d.description) return full;
+            return d.kind === 'hdmi' ? `${d.description} (HDMI)` : d.description;
+        };
         return list.map((d) => ({
-            text: d.description && d.description !== d.name ? `${d.name} (${d.description})` : d.name,
+            text: label(d),
             action: 'volume-out:' + d.id,
             showIndicator: true,
             indicatorMark: 'radio',
             checked: !!d.isDefault,
-            disabled: !d.isDefault && !d.canSetDefault,
-            menuItemClass: 'volume-menu-output'
+            disabled: false
         }));
     }
 
