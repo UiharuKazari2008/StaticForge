@@ -1,5 +1,5 @@
 /**
- * Glancewell's video playback: Windows Photo Gallery's viewer for a video (Yozora #446; PhotoViewer.dll, checked on the
+ * Melaton Photo Gallery's video playback: Windows Photo Gallery's viewer for a video (Yozora #446; PhotoViewer.dll, checked on the
  * Vista VM with Bear.wmv, Nov 20 2026).
  *
  *   the video     fitted in the viewer, up and down (the renderer stretches it as Photo Gallery does): 13 px from the
@@ -233,7 +233,7 @@
         if (!box || box.querySelector('.wpg-video-error')) return;
         const msg = doc.createElement('div');
         msg.className = 'wpg-video-error';
-        msg.textContent = 'Glancewell can’t open this picture or video. This file format is not supported, or the file is not available right now.';
+        msg.textContent = 'Photo Gallery can’t open this picture or video. This file format is not supported, or the file is not available right now.';
         box.appendChild(msg);
         syncButtons();
     }
@@ -328,7 +328,7 @@
         ev.preventDefault();
     }
 
-    /** Hook one PhotoSwipe instance (lightbox.js openStandalonePhotoSwipe, Glancewell's window only). */
+    /** Hook one PhotoSwipe instance (lightbox.js openStandalonePhotoSwipe, Melaton Photo Gallery's window only). */
     function attach(p) {
         if (!p || p._glancewellVideo) return;
         p._glancewellVideo = true;

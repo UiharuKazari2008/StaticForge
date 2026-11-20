@@ -8,7 +8,7 @@
      message boxes ...), which already set Segoe UI on their client; the variables follow here too
    - the Windows-analogue apps that still draw on the dark client: Personalize, Runes' value and
      checkpoint dialogs, the Save dialogs, the PIN prompt, the On-Screen Keyboard, Control Panel,
-     Lumen (Photo Viewer) and Glancewell (slide show)
+     Lumen (Photo Viewer) and Melaton Photo Gallery (slide show)
    Inside them --font-primary and --font-mono are re-pointed, so rules that name the workspace
    variables draw the system faces as well (Consolas is Vista's fixed-width face). */
 

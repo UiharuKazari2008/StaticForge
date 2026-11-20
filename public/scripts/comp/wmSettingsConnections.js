@@ -965,7 +965,7 @@
     const OPEN_WITH = [
         ['ledge', 'Ledge', 'One desk that holds several prints.'],
         ['lumen', 'Lumen', 'A viewer window for each print.'],
-        ['glancewell', 'Glancewell', 'The gallery slideshow, opened at the print.'],
+        ['glancewell', 'Melaton Photo Gallery', 'The gallery slideshow, opened at the print.'],
         ['disabled', 'Do not open', 'Prints are saved to the gallery and nothing opens.']
     ];
     const PRINTS = [1, 2, 3, 4, 5, 6, 7, 8];

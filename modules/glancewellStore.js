@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Glancewell (Windows Photo Gallery) library data (Yozora #446): what the gallery itself keeps about a picture,
+ * Melaton Photo Gallery (Windows Photo Gallery) library data (Yozora #446): what the gallery itself keeps about a picture,
  * apart from the picture's own store.
  *
  *   tags        the user's tags (nested: a tag may sit under another, "Select top-level tag"), by id

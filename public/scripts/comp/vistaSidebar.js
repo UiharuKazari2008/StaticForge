@@ -1307,7 +1307,7 @@ const vsbGalleryHit = function (names) {
 };
 
 // View opens the frame's picture in Lumen, one window per picture, so it never takes over the
-// gallery's single Glancewell window (a gallery click could not reach Glancewell while the gadget's
+// gallery's single Melaton Photo Gallery window (a gallery click could not reach Melaton Photo Gallery while the gadget's
 // picture held it). The gallery row when it is loaded carries the metadata Lumen's info pane shows;
 // otherwise the frame's own item names the file (Workspaces defers its catalog, galleryImagesLoad.js).
 const vsbSlideOpenViewer = function (inst) {

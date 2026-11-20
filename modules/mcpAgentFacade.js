@@ -618,7 +618,7 @@ const TOOL_DEFS = [
     {
         name: 'list_clients',
         core: true,
-        description: 'List open Studio tabs for this application key. Most recently used first. Each client has in_workspace. false means that tab is not in the paired session workspace: do not use Studio (get_studio_state, apply_studio_changes, print_studio, open_in_studio). Glancewell, Lumen, and show_chat_image are still fine. Call request_workspace_switch to ask the user to switch. get_studio_state already returns this list when more than one tab is connected.',
+        description: 'List open Studio tabs for this application key. Most recently used first. Each client has in_workspace. false means that tab is not in the paired session workspace: do not use Studio (get_studio_state, apply_studio_changes, print_studio, open_in_studio). Melaton Photo Gallery, Lumen, and show_chat_image are still fine. Call request_workspace_switch to ask the user to switch. get_studio_state already returns this list when more than one tab is connected.',
         scope: 'generation',
         inputSchema: { type: 'object', properties: {} }
     },
@@ -638,7 +638,7 @@ const TOOL_DEFS = [
     {
         name: 'get_studio_state',
         core: true,
-        description: 'Current Studio prompt, UC, characters, params, open filename, dynamicGeneration (Studio Rentan toggles plus resolved time/weather/season/location, baked and bakedUntil; you bake it before an agent print), and attached director prompt. After apply/get the bound tab stores a checkpoint — later calls return only the delta (diff:true). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. Auto-binds the single connected tab. If several tabs are open, returns needsClientChoice and clients (most recently used first) — ask the user which clientId, then bind_session. Also returns settings on a full snapshot: live sampler/resolution/model enums plus quality, UC, and NSFW preset id, name, and true prompt.config strings. Then use get_generated_image on filename to see the picture. change.tokens is the live prompt and UC token usage (ofLimit, ofRecommended). If dynamicGeneration or director is present you must integrate it. For other open windows (Lumen, Glancewell, Grimoire, gallery selection) call get_open_windows. Do not call this when a client has in_workspace false. Call request_workspace_switch first. Glancewell, Lumen, and show_chat_image stay available.',
+        description: 'Current Studio prompt, UC, characters, params, open filename, dynamicGeneration (Studio Rentan toggles plus resolved time/weather/season/location, baked and bakedUntil; you bake it before an agent print), and attached director prompt. After apply/get the bound tab stores a checkpoint — later calls return only the delta (diff:true). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. Auto-binds the single connected tab. If several tabs are open, returns needsClientChoice and clients (most recently used first) — ask the user which clientId, then bind_session. Also returns settings on a full snapshot: live sampler/resolution/model enums plus quality, UC, and NSFW preset id, name, and true prompt.config strings. Then use get_generated_image on filename to see the picture. change.tokens is the live prompt and UC token usage (ofLimit, ofRecommended). If dynamicGeneration or director is present you must integrate it. For other open windows (Lumen, Melaton Photo Gallery, Grimoire, gallery selection) call get_open_windows. Do not call this when a client has in_workspace false. Call request_workspace_switch first. Melaton Photo Gallery, Lumen, and show_chat_image stay available.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -651,7 +651,7 @@ const TOOL_DEFS = [
     {
         name: 'get_open_windows',
         core: true,
-        description: 'List open windows on the bound Dreamscape tab and their current data. Each window: id, kind, title, active, minimised, and left/top/width/height as viewport percent (0–100, from top-left) when the client reports them. Lumen: filename. Glancewell: current filename plus nearby files. Grimoire: address + page text. Gallery: selected filenames. Studio: open filename/model. Auto-binds like get_studio_state. includeImage (default true) attaches one Grok webp for the focused file. Prefer get_session_state view=live for Studio+windows together. Change a window with set_window.',
+        description: 'List open windows on the bound Dreamscape tab and their current data. Each window: id, kind, title, active, minimised, and left/top/width/height as viewport percent (0–100, from top-left) when the client reports them. Lumen: filename. Melaton Photo Gallery: current filename plus nearby files. Grimoire: address + page text. Gallery: selected filenames. Studio: open filename/model. Auto-binds like get_studio_state. includeImage (default true) attaches one Grok webp for the focused file. Prefer get_session_state view=live for Studio+windows together. Change a window with set_window.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -659,7 +659,7 @@ const TOOL_DEFS = [
             properties: {
                 includeImage: {
                     type: 'boolean',
-                    description: 'Attach a Grok-sized webp for the focused image (active Lumen/Glancewell/gallery selection). Default true.'
+                    description: 'Attach a Grok-sized webp for the focused image (active Lumen/Melaton Photo Gallery/gallery selection). Default true.'
                 }
             }
         }
@@ -857,7 +857,7 @@ const TOOL_DEFS = [
     {
         name: 'request_workspace_switch',
         core: true,
-        description: 'Ask the user to switch to this Director session\'s workspace so you can use Studio. Shows a card with a 90 second countdown. Returns status accepted, declined, or timeout. Timeout counts as declined. Call this when a client has in_workspace false and you need Studio. Do not use Studio while it is false. Glancewell, Lumen, and show_chat_image are still fine without switching. Already in the workspace returns accepted without a card. A chat that is not paired to a workspace (Yozora\'s) passes workspace: the card then asks the user to switch the client there.',
+        description: 'Ask the user to switch to this Director session\'s workspace so you can use Studio. Shows a card with a 90 second countdown. Returns status accepted, declined, or timeout. Timeout counts as declined. Call this when a client has in_workspace false and you need Studio. Do not use Studio while it is false. Melaton Photo Gallery, Lumen, and show_chat_image are still fine without switching. Already in the workspace returns accepted without a card. A chat that is not paired to a workspace (Yozora\'s) passes workspace: the card then asks the user to switch the client there.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1174,7 +1174,7 @@ const TOOL_DEFS = [
     {
         name: 'get_session_state',
         core: true,
-        description: 'Session snapshot. Default view=live (clients, windows, Studio) — small enough to call often. Always includes remoteAccess (desktop Remote Access Settings), tagCutoff (tag-suggest date cutoff per model family; read this, do not assume a date), and vfsPath/vfsMount (mounted | absent | unknown for the vfs/ files mount). After apply/get the bound tab stores a checkpoint; later live checks return only the Studio delta (studio.diff). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. view=catalog is slim settings (current-model quality/UC ids, no per-model string dump). view=full is live plus slim catalog plus promptGuide/NAX/memory pointers. Full per-model quality/UC strings live on get_studio_state.settings — do not pull those on every chat. studio.dynamicGeneration includes toggles plus resolved time/weather/season/location. hasClients false or studioReachable false → generate_image. clients[].in_workspace is false when that tab is outside the paired session workspace: do not use Studio then, call request_workspace_switch, and keep using Glancewell, Lumen, and show_chat_image. includeImage default false (never attach a Lumen file that is not Studio filename).',
+        description: 'Session snapshot. Default view=live (clients, windows, Studio) — small enough to call often. Always includes remoteAccess (desktop Remote Access Settings), tagCutoff (tag-suggest date cutoff per model family; read this, do not assume a date), and vfsPath/vfsMount (mounted | absent | unknown for the vfs/ files mount). After apply/get the bound tab stores a checkpoint; later live checks return only the Studio delta (studio.diff). unchanged means keep your last snapshot. Pass full:true only if you lost that snapshot. view=catalog is slim settings (current-model quality/UC ids, no per-model string dump). view=full is live plus slim catalog plus promptGuide/NAX/memory pointers. Full per-model quality/UC strings live on get_studio_state.settings — do not pull those on every chat. studio.dynamicGeneration includes toggles plus resolved time/weather/season/location. hasClients false or studioReachable false → generate_image. clients[].in_workspace is false when that tab is outside the paired session workspace: do not use Studio then, call request_workspace_switch, and keep using Melaton Photo Gallery, Lumen, and show_chat_image. includeImage default false (never attach a Lumen file that is not Studio filename).',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1187,7 +1187,7 @@ const TOOL_DEFS = [
                 },
                 includeImage: {
                     type: 'boolean',
-                    description: 'Attach a Grok webp for the Studio open filename only. Default false. Never attaches a focused Lumen/Glancewell file that is not Studio filename.'
+                    description: 'Attach a Grok webp for the Studio open filename only. Default false. Never attaches a focused Lumen/Melaton Photo Gallery file that is not Studio filename.'
                 },
                 full: { type: 'boolean', description: 'Force a full Studio snapshot. Default false.' }
             }
@@ -2584,7 +2584,7 @@ const TOOL_DEFS = [
     {
         name: 'open_in_glancewell',
         core: true,
-        description: 'Open one image or a group in Glancewell (lightbox). Pass filenames for a swipeable set. Still available when in_workspace is false.',
+        description: 'Open one image or a group in Melaton Photo Gallery (lightbox). Pass filenames for a swipeable set. Still available when in_workspace is false.',
         scope: 'gallery',
         inputSchema: {
             type: 'object',
@@ -5689,7 +5689,7 @@ function refuseStudioOutsideWorkspace(globalResources, req) {
         code: 'NOT_IN_WORKSPACE',
         in_workspace: false,
         workspaceId: paired,
-        error: 'This client is not in the session workspace. Do not use Studio. Call request_workspace_switch. Glancewell, Lumen, and show_chat_image are still available.'
+        error: 'This client is not in the session workspace. Do not use Studio. Call request_workspace_switch. Melaton Photo Gallery, Lumen, and show_chat_image are still available.'
     }, true);
 }
 
@@ -5824,7 +5824,7 @@ async function runDirectorSessionTool(globalResources, name, input, req) {
             chatId,
             next: answer.accepted
                 ? 'They switched into the session workspace. Studio tools are allowed.'
-                : 'They did not switch. Timeout counts as declined. Do not use Studio. Glancewell, Lumen, and show_chat_image are still fine.'
+                : 'They did not switch. Timeout counts as declined. Do not use Studio. Melaton Photo Gallery, Lumen, and show_chat_image are still fine.'
         });
     }
     if (name === 'offer_workspace_switch') {
@@ -6687,7 +6687,7 @@ async function collectSessionState(globalResources, req, input) {
             out.studio = null;
             out.studioBlocked = true;
             out.studioReachable = false;
-            out.next = 'in_workspace is false. Do not use Studio. Call request_workspace_switch. Glancewell, Lumen, and show_chat_image are still fine. Generation and notes already write to the session workspace.';
+            out.next = 'in_workspace is false. Do not use Studio. Call request_workspace_switch. Melaton Photo Gallery, Lumen, and show_chat_image are still fine. Generation and notes already write to the session workspace.';
         }
         if (view === 'full') {
             out.settings = sessionSettingsCatalog(globalResources, out.studio && out.studio.model);
@@ -9221,7 +9221,7 @@ async function callTool(globalResources, req, name, args) {
             focusedFilename,
             next: focusedFilename
                 ? 'Focused file is this result\'s webp (unless includeImage false). Call get_generated_image for NovelAI metadata. Gallery selected: delete_images / scrap_images / toggle_favorite. Grimoire text is windows[].data.text.'
-                : 'No focused image. Read windows[].data (gallery selected, Grimoire text, Lumen/Glancewell filename).'
+                : 'No focused image. Read windows[].data (gallery selected, Grimoire text, Lumen/Melaton Photo Gallery filename).'
         };
         if (wantImage && focusedFilename) {
             try {

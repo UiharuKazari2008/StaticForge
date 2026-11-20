@@ -496,7 +496,7 @@
             this.cursor = null;
             this.selected = null;
             this.setReply(null, true);
-            // a picture sent here from another program (Glancewell's E-mail) waits for the conversation it goes to
+            // a picture sent here from another program (Melaton Photo Gallery's E-mail) waits for the conversation it goes to
             this.attachQueue = this.heldAttach && this.features().attachments !== false ? this.heldAttach.splice(0) : [];
             this.heldAttach = null;
             this.renderAttachments();

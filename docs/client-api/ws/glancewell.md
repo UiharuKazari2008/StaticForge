@@ -1,7 +1,7 @@
-# Glancewell library (client WS)
+# Melaton Photo Gallery library (client WS)
 
 Modules: `modules/glancewellStore.js`, `modules/ws/handlers/316-glancewellHandler.js` (Yozora #446, Nov 20 2026).
-Glancewell is Windows Photo Gallery. This store holds what the gallery keeps about a picture beyond the
+Melaton Photo Gallery is Windows Photo Gallery. This store holds what the gallery keeps about a picture beyond the
 picture's own store: the user's tags (nested), captions, a moved date taken (Change Time Taken), the Pictures
 root's Favorites, and the Folders root's watched VFS folders. It lives in its own database, `glancewell.db`.
 
@@ -76,7 +76,7 @@ Tag names may not contain `/` or `;`; the error text is WPG's own.
 
 ## Videos (`public/scripts/comp/glancewellVideo.js`)
 
-Glancewell plays videos in its viewer with Photo Gallery's controls: Play / Pause, Stop, a seek bar, and the keys H, K and Home. It uses no packets of its own:
+Melaton Photo Gallery plays videos in its viewer with Photo Gallery's controls: Play / Pause, Stop, a seek bar, and the keys H, K and Home. It uses no packets of its own:
 
 - A **Folders** video has no VFS preview. When a listed folder holds videos, the client sends `media_library_get` once (Media Player's library, [mediaLibrary.md](./mediaLibrary.md)). Each video's `art` frame becomes the thumbnail, and its `width` / `height` / `duration` fill Info. The file plays from `<vfsPath>/media/file/<id>`, which answers HTTP Range so the viewer can seek. `/files/` streams without Range.
 - A **phone or partner device** video plays from its storage URL (`/api/activesync/file/...` passes the Range header to the device). The entry's `duration` (ms) is the length shown.

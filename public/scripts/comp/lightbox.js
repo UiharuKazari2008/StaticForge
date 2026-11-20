@@ -353,7 +353,7 @@ function wirePhotoSwipeShellControlsOnce() {
         maxBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            // Glancewell is a Vista window: Maximize fills the work area like any window
+            // Melaton Photo Gallery is a Vista window: Maximize fills the work area like any window
             // (toggleModalMaximize: public/scripts/comp/modalUtils.js); full screen is the slide show
             if (shell.classList.contains('wpg-glancewell') && document.body.classList.contains('desktop-mode')) {
                 toggleModalMaximize(shell);
@@ -387,7 +387,7 @@ function preparePhotoSwipeDesktopShellBeforeOpen() {
     const libraryShown = !!(window.glancewellLibrary && glancewellLibrary.isOpen());
     if (window.glancewellLibrary) glancewellLibrary.enterViewer();
     if (!libraryShown || shell.classList.contains('hidden')) openModal(shell);
-    // Lumen's slide show paints full screen from the first frame (no Glancewell window first)
+    // Lumen's slide show paints full screen from the first frame (no Melaton Photo Gallery window first)
     if (glancewellShow.lumenStart) {
         glancewellShow.savedStyle = shell.getAttribute('style');
         shell.classList.add('wpg-slideshow');
@@ -444,7 +444,7 @@ function attachStandalonePhotoSwipeShellRestoreUi(pswp) {
     });
 }
 
-// ---- Glancewell windowed is Vista's Windows Photo Gallery viewer (app.html #photoSwipeWindow,
+// ---- Melaton Photo Gallery windowed is Vista's Windows Photo Gallery viewer (app.html #photoSwipeWindow,
 // vista-photo-gallery.css, like Lumen): the command band and the control pill drive the open
 // PhotoSwipe; the Info pane shows the picture's generation parameters (imageViewer.js
 // renderPhotoGalleryInfoPane). Play Slide Show is Vista's basic slide show: full screen on black,
@@ -535,7 +535,7 @@ function syncGlancewellChrome() {
     const title = document.getElementById('photoSwipeWindowTitle');
     if (title) {
         const name = String(pic.title || '').replace(/\.[a-z0-9]{2,5}$/i, '');
-        title.textContent = name ? `${name} - Glancewell` : 'Glancewell';
+        title.textContent = name ? `${name} - Melaton Photo Gallery` : 'Melaton Photo Gallery';
     }
     const count = typeof p.getNumItems === 'function' ? p.getNumItems() : 0;
     const prev = shell.querySelector('[data-gw="previous"]');
@@ -1191,7 +1191,7 @@ GW.rotateGlancewellPicture = async function (dir) {
             }
         });
     } catch (err) {
-        if (typeof showConfirmationDialog === 'function') await showConfirmationDialog(String((err && err.message) || 'You cannot rotate this image.'), [{ text: 'OK', value: true }], null, { title: 'Glancewell', icon: 'fas fa-circle-xmark' });
+        if (typeof showConfirmationDialog === 'function') await showConfirmationDialog(String((err && err.message) || 'You cannot rotate this image.'), [{ text: 'OK', value: true }], null, { title: 'Melaton Photo Gallery', icon: 'fas fa-circle-xmark' });
     }
 };
 
@@ -1408,7 +1408,7 @@ function attachGlancewellChrome(pswp) {
     wireGlancewellChromeOnce();
     if (window.glancewellVideo) glancewellVideo.attach(pswp);
     // PhotoSwipe listens for keys on the whole document: arrows, z and Tab only reach it while
-    // the Glancewell window is the active window and the key is not typed into a field
+    // the Melaton Photo Gallery window is the active window and the key is not typed into a field
     pswp.on('keydown', (ev) => {
         const t = ev.originalEvent && ev.originalEvent.target;
         const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
@@ -1571,7 +1571,7 @@ async function initializePhotoSwipe() {
                 // Esc goes through the window (onPhotoSwipeWindowEscapeKeydown): an open menu closes first
                 lightbox.options.escKey = false;
                 lightbox.options.getViewportSizeFn = () => getPhotoSwipeMountViewportSize();
-                // Desktop window stack: allow focus/typing in other modals while Glancewell stays open
+                // Desktop window stack: allow focus/typing in other modals while Melaton Photo Gallery stays open
                 lightbox.options.trapFocus = false;
                 lightbox.options.returnFocus = false;
                 return new Promise((resolve) => requestAnimationFrame(resolve));
@@ -2060,7 +2060,7 @@ async function openStandalonePhotoSwipe(dataSource, index, options) {
             preloaderDelay: 2000,
             // Melaton Mobile (#709): the picture sits between the WM title bar and soft-key bar
             // (26 px each, times --wm-px), as in WM 6.1's picture view; desktop options unchanged
-            // Glancewell's videos (glancewellVideo.js) keep Photo Gallery's margins and the seek bar's strip
+            // Melaton Photo Gallery's videos (glancewellVideo.js) keep Photo Gallery's margins and the seek bar's strip
             ...(window.uiShell === 'mobile' ? { paddingFn: wmViewerPadding } : { paddingFn: GW.slidePadding }),
             errorMsg: '<div class="pswp__error-msg">Image not found</div>',
             closeTitle: 'Close (Esc)',
@@ -2119,7 +2119,7 @@ async function openStandalonePhotoSwipe(dataSource, index, options) {
 /**
  * One slide for a picture known only by its URL. It carries no filename, base, original or
  * upscaled, so nothing takes the URL for a gallery file (a metadata request for "/images/x.png"
- * failed as "Image not found"); title is the name Glancewell's caption shows.
+ * failed as "Image not found"); title is the name Melaton Photo Gallery's caption shows.
  */
 function standaloneUrlSlide(url, width, height, title) {
     return {
@@ -2197,7 +2197,7 @@ async function showLightbox(input) {
             }
         } else if (input.url) {
             // A picture by URL alone (a Sidebar frame's file, a reference, a preview): no gallery
-            // record and no metadata, so Glancewell shows it without asking the server about it.
+            // record and no metadata, so Melaton Photo Gallery shows it without asking the server about it.
             // Dimensions come from the picture itself when the caller has none.
             if (!input.width || !input.height) {
                 const tempImg = new Image();
@@ -2282,7 +2282,7 @@ async function showLightbox(input) {
     const dataSource = getLightboxDataSource();
 
     // PhotoSwipe's loadAndOpen does nothing while any viewer is open (window.pswp), so a gallery
-    // click with Glancewell up was dropped: show the picture in the open window instead
+    // click with Melaton Photo Gallery up was dropped: show the picture in the open window instead
     const open = getActivePhotoSwipe();
     if (open && open === lightbox.pswp && !glancewellShow.on) {
         showInOpenGlancewell(open, imageIndex, dataSource);
@@ -2310,7 +2310,7 @@ async function showLightbox(input) {
     lightbox.loadAndOpen(imageIndex, dataSource);
 }
 
-/** The gallery's Glancewell is open: swap in the current list, go to the picture, raise the window. */
+/** The gallery's Melaton Photo Gallery is open: swap in the current list, go to the picture, raise the window. */
 function showInOpenGlancewell(p, imageIndex, dataSource) {
     p.options.dataSource = dataSource;
     // cached slides are keyed by index; the list may have changed order since the window opened
@@ -2329,8 +2329,8 @@ function showInOpenGlancewell(p, imageIndex, dataSource) {
 
 // Hide lightbox (PhotoSwipe handles this automatically)
 function hideLightbox() {
-    // Glancewell on the desktop is a window of its own: DreamStudio and a delete leave it open
-    // (a delete from Glancewell drops the picture from its list instead)
+    // Melaton Photo Gallery on the desktop is a window of its own: DreamStudio and a delete leave it open
+    // (a delete from Melaton Photo Gallery drops the picture from its list instead)
     const shell = getPhotoSwipeShell();
     if (document.body.classList.contains('desktop-mode') && shell && shell.classList.contains('windowed')) return;
     if (lightbox && lightbox.pswp) {

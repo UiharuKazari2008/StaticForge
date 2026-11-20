@@ -140,7 +140,7 @@ light in markup. None of them opens during boot.
 | `windowsStartupModal` | boot: startup progress box | `app.html:1098` | light + .win7 | light | no | no | host shell |  | A |  |
 | `bootUiDebugWindow` | boot debugger (dev only: Step / Step Over) | `app.html:1128` | no client | see-through (`bootUiDebugWindow.png`) | no | yes | tool |  | C | developer tool, text on bare glass |
 | `connectionDialModal` | boot: Connecting... (VPN) | `app.html:1162` | no client | light | no | yes | host shell | Vista "Connecting to ..." dialog | A | vpn-dialog class, classic boot dialog by design |
-| `photoSwipeWindow` | open a picture from Workspaces (Glancewell) | `app.html:1341` | light | not opened (no client element to read) | no | yes | custom (media) | Windows Photo Gallery Viewer | B | light, own wpg client, no .win7 |
+| `photoSwipeWindow` | open a picture from Workspaces (Melaton Photo Gallery) | `app.html:1341` | light | not opened (no client element to read) | no | yes | custom (media) | Windows Photo Gallery Viewer | B | light, own wpg client, no .win7 |
 | `galleryJumpIndexTool` | Workspaces: Visual Index | `app.html:1409` | light | light | no | yes | tool |  | B | light, no .win7 |
 | `novelEditorTool` | Studio: Novel | `app.html:1458` | light + .win7 | light | no | yes | tool |  | A |  |
 | `novelProgressTool` | Studio: Novel Generation | `app.html:1501` | light + .win7 | light | no | yes | tool |  | A |  |

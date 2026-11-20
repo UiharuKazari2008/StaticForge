@@ -109,9 +109,9 @@
 
     const cardOf = (id) => cards().find((c) => c.id === id) || null;
 
-    // ---------------------------------------------------------------- Favorites (Glancewell, #446)
+    // ---------------------------------------------------------------- Favorites (Melaton Photo Gallery, #446)
 
-    // the pictures marked Favorite in Glancewell's Pictures root (in DeX, or on a computer under this phone's
+    // the pictures marked Favorite in Melaton Photo Gallery's Pictures root (in DeX, or on a computer under this phone's
     // ActiveSync root): a folder of the phone's own card, so every picture keeps its real path and actions
     const FAV_PATH = '@favorites';
     const isFav = (l) => !!(l && l.path === FAV_PATH);
@@ -284,7 +284,7 @@
     function watch() {
         const ps = PS();
         if (!ps || typeof ps.watch !== 'function') return;
-        // Favorites is no folder on the card: Glancewell's change push refreshes it
+        // Favorites is no folder on the card: Melaton Photo Gallery's change push refreshes it
         const next = loc && !isFav(loc) ? `${loc.root}\n${loc.path}` : null;
         if (next === watched) return;
         if (watched) { const [r, p] = watched.split('\n'); try { ps.unwatch(r, p); } catch (_) { /* gone */ } }
@@ -1201,7 +1201,7 @@
         ps.on('changed', onFolderChanged);
         document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake) catchUpShown(); }, { signal: appScopeSignal });
         ps.on('config', async () => { await loadHello(false); if (loc && !cardOf(loc.root)) loc = null; refreshSoon(); });
-        // Glancewell's Favorites changed (server push): the Favorites folder reads them again while it is open
+        // Melaton Photo Gallery's Favorites changed (server push): the Favorites folder reads them again while it is open
         const wsc = window.wsClient;
         if (wsc && typeof wsc.on === 'function') {
             wsc.on('glancewell_changed', (m) => {

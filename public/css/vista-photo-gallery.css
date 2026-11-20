@@ -1,4 +1,4 @@
-/* Lumen (and Glancewell) as Vista's Windows Photo Gallery, 1:1 with the Vista VM (Photo Gallery's
+/* Lumen (and Melaton Photo Gallery) as Vista's Windows Photo Gallery, 1:1 with the Vista VM (Photo Gallery's
    viewer at 700x560, 96 dpi, 2026-10-22). Art: PhotoLibraryResources.dll PNGs, four frames across
    (0 disabled, 1 normal, 2 hot, 3 pressed), in public/static_images/vista-photo-gallery/.
    Client coordinates of the viewer:
@@ -163,7 +163,7 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     background-position: -32px 0 !important;
 }
 
-/* Glancewell's command group: lightbox.js layoutGlancewellToolbar centres it in the band or lines
+/* Melaton Photo Gallery's command group: lightbox.js layoutGlancewellToolbar centres it in the band or lines
    it up after Back; the commands that do not fit fold under » (more.png 12x19 frames, its ink
    636-644 px into the VM's 700 px window, the glass face around it like any command) */
 .wpg-glancewell .wpg-toolbar .wpg-icon {
@@ -439,7 +439,7 @@ body.windows-classic-theme .wpg-viewer .wpg-main .image-container {
     background: #fff;
 }
 
-/* ---- Glancewell (#photoSwipeWindow): windowed it is the same viewer around PhotoSwipe (the
+/* ---- Melaton Photo Gallery (#photoSwipeWindow): windowed it is the same viewer around PhotoSwipe (the
    pictures on #eef3fa, PhotoSwipe's own bars and arrows hidden: the band and the pill drive it);
    full screen (not .windowed) is the slide show without the frame. ---- */
 
@@ -478,7 +478,7 @@ body.desktop-mode #photoSwipeWindow.wpg-glancewell:not(.windowed) .wpg-main {
     min-height: 0;
 }
 
-/* Glancewell's zoom popup: Vista's "Change the display size" slider over the zoom button (VM: 32x103,
+/* Melaton Photo Gallery's zoom popup: Vista's "Change the display size" slider over the zoom button (VM: 32x103,
    #646464 edge, #f0f0f0 face, a soft shadow right and down; the channel's four columns 13 px in from
    11 px down for 80 px; the right-pointing thumb 20x11, 6 px in; lightbox.js positions it) */
 body.desktop-mode #photoSwipeWindow.wpg-glancewell .wpg-zoom-pop {
@@ -516,7 +516,7 @@ body.desktop-mode #photoSwipeWindow.wpg-glancewell .wpg-zoom-thumb {
     pointer-events: none;
 }
 
-/* Glancewell's slide show: Vista's basic slide show, the picture fitted on black, no chrome; the
+/* Melaton Photo Gallery's slide show: Vista's basic slide show, the picture fitted on black, no chrome; the
    pointer hides while idle (lightbox.js playGlancewellSlideShow) */
 body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow {
     background: #000 !important;

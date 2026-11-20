@@ -11,7 +11,7 @@
  *   display   a <video> that has a picture (videoWidth > 0), is playing (not paused, not ended) and is seen: in a
  *             shown page, not under display: none (a minimised window), visibility: hidden or opacity 0, inside the
  *             screen and not covered all over by another window. A muted looping video is decoration and does not
- *             count. Full screen counts like any other. Also held while a feature says so: Glancewell's and Lumen's
+ *             count. Full screen counts like any other. Also held while a feature says so: Melaton Photo Gallery's and Lumen's
  *             slide show, the screen saver's Preview (melatonMediaAwake.hold).
  *   system    media playing with sound (not muted, volume above 0, not a looping game or ambient track): music in
  *             Windows Media Player, a video whose window is minimised. The screen dims and turns off as usual; the

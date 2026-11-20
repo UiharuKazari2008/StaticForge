@@ -2583,7 +2583,7 @@ class VfsManager {
             return vfsDatabase.createFolder({ scope: 'workspace', workspaceId: parsed.workspaceId, name: trimmed, parentId: null });
         }
         // a folder inside a folder: a workspace's, the Desktop's, or one at the root of the drive (/{folderId}/...:
-        // New Folder in Explorer and Glancewell's Import into a root folder failed with "Cannot create folder" before)
+        // New Folder in Explorer and Melaton Photo Gallery's Import into a root folder failed with "Cannot create folder" before)
         if (parsed.type === 'user-folder' || parsed.type === 'desktop-folder' || parsed.type === 'root-user-folder') {
             const parent = await vfsDatabase.getFolderById(parsed.folderId);
             if (!parent) throw new Error('Parent folder not found');

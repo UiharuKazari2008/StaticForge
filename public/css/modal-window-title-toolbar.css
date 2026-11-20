@@ -1386,7 +1386,7 @@ body:not(.desktop-mode) .modal .modal-window-controls .modal-maximize-auto {
    glass, then a 1 px light and a 1 px dark line around the client area (::after below).
    Windows only (a caption), desktop mode only; maximized frames sit off-screen, so no inset.
    Windowed Studio takes the border too (its padding is set by id, so it gets its own rule
-   below); the fullscreen Studio editor, Glancewell and the virtual keyboard are left out, as
+   below); the fullscreen Studio editor, Melaton Photo Gallery and the virtual keyboard are left out, as
    is any window with data-window-frame="flush" (aero-glass.css then sees no inset, 0).
    .window-has-caption = has a direct .modal-window-title child (scripts/comp/rootStateFlags.js; a
    :has(> .modal-window-title) here cost ~20 ms per DOM change inside any big open window). */

@@ -593,7 +593,7 @@ function computeModalRectMorph(fromRect, toRect, computedStyle) {
     };
 }
 
-// Windows whose caption already carries their own maximize (gallery mode, Glancewell fullscreen, Studio editor)
+// Windows whose caption already carries their own maximize (gallery mode, Melaton Photo Gallery fullscreen, Studio editor)
 const MODAL_CUSTOM_MAXIMIZE_SELECTOR = '#maximizeGalleryBtn, #maximizePhotoSwipeBtn, #restoreManualBtn';
 
 /**
@@ -649,7 +649,7 @@ function wireModalMaximizeButton(modal) {
     updateModalMaximizeButtonIcon(modal);
 }
 
-/** Taskbar / programmatic maximize — .modal-work-area-maximize (Lumen) vs custom handlers (Glancewell fullscreen, gallery mode, etc.) */
+/** Taskbar / programmatic maximize — .modal-work-area-maximize (Lumen) vs custom handlers (Melaton Photo Gallery fullscreen, gallery mode, etc.) */
 function handleWindowMaximizeAction(modal) {
     if (!modal) {
         return;
@@ -667,7 +667,7 @@ function handleWindowMaximizeAction(modal) {
         maximizeGalleryWindow();
         return;
     }
-    // Glancewell (PhotoSwipe shell) — fullscreen via togglePhotoSwipeShellWindowed, not work-area maximize
+    // Melaton Photo Gallery (PhotoSwipe shell) — fullscreen via togglePhotoSwipeShellWindowed, not work-area maximize
     if (modal.id === 'photoSwipeWindow' && typeof togglePhotoSwipeShellWindowed === 'function') {
         togglePhotoSwipeShellWindowed();
     }
@@ -757,7 +757,7 @@ function shouldPersistWindowPosition(modal) {
     if (modal.id === 'galleryWindow' && modal.classList.contains('windowed')) {
         return true;
     }
-    // Glancewell shell — only persist layout while windowed (public/scripts/comp/lightbox.js)
+    // Melaton Photo Gallery shell — only persist layout while windowed (public/scripts/comp/lightbox.js)
     if (modal.dataset.windowIdentifier === 'photoSwipeShell') {
         return modal.classList.contains('windowed');
     }
@@ -6851,7 +6851,7 @@ const startMenuLaunchables = [
     {
         launchId: 'workspace',
         icon: 'fas fa-film-canister',
-        imageIcon: 'art.png', // Workspaces keeps its own icon (Yukimi); Photo Gallery's went to Glancewell
+        imageIcon: 'art.png', // Workspaces keeps its own icon (Yukimi); Photo Gallery's went to Melaton Photo Gallery
         text: 'Workspaces',
         fullName: 'Dreamscape Workspaces',
         desktopOnly: true,
@@ -7041,8 +7041,8 @@ function buildToolsSubmenuItems(opts) {
         { launchId: 'contacts', icon: 'fas fa-address-book', imageIcon: 'vista-contacts.png', text: 'Melaton Contacts', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'contacts' }) },
         // Melaton Weather (Yozora #792): the phone's Weather in a desktop window (wmWeather.js openDesktop)
         { launchId: 'weather', icon: 'fas fa-cloud-sun', imageIcon: 'melaton-weather.png', text: 'Melaton Weather', appMenuLocation: 'tools', desktopOnly: true, action: () => { if (window.wmWeather && typeof window.wmWeather.openDesktop === 'function') window.wmWeather.openDesktop(); } },
-        // Glancewell (Windows Photo Gallery, Yozora #446): the gallery in the Glancewell window (glancewellLibrary.js)
-        { launchId: 'glancewell', icon: 'fas fa-images', imageIcon: 'vista-photo-gallery.png', text: 'Glancewell', appMenuLocation: 'tools', desktopOnly: true, action: async () => { await featureLoader.loadFeature('glancewell_library'); window.glancewellLibrary.open(); } },
+        // Melaton Photo Gallery (Windows Photo Gallery, Yozora #446): the gallery in the Melaton Photo Gallery window (glancewellLibrary.js)
+        { launchId: 'glancewell', icon: 'fas fa-images', imageIcon: 'vista-photo-gallery.png', text: 'Melaton Photo Gallery', appMenuLocation: 'tools', desktopOnly: true, action: async () => { await featureLoader.loadFeature('glancewell_library'); window.glancewellLibrary.open(); } },
         // Melaton Calendar (Yozora #632; apps/calendar, a system package)
         { launchId: 'calendar', icon: 'fas fa-calendar', imageIcon: 'vista-calendar.png', text: 'Melaton Calendar', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'calendar' }) },
         // Accessories > Snipping Tool (Yozora #632; apps/snipping, a system package)
@@ -10017,9 +10017,10 @@ function normalizeRemoteAccessGenerationMethodClient(raw) {
 }
 
 function normalizeRemoteAccessOpenGeneratedClient(raw) {
-    const value = String(raw || '').toLowerCase();
+    const value = String(raw || '').toLowerCase().replace(/[\s_-]+/g, '');
     if (value === 'ledge') return 'ledge';
-    if (value === 'glancewell') return 'glancewell';
+    // the stored value stays 'glancewell' (Melaton Photo Gallery, remoteAccessSettings.js)
+    if (value === 'glancewell' || value === 'photogallery' || value === 'melatonphotogallery') return 'glancewell';
     if (value === 'lumen') return 'lumen';
     if (value === 'disabled' || value === 'off' || value === 'none') return 'disabled';
     return 'ledge';

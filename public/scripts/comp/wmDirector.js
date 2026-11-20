@@ -496,7 +496,7 @@
 
     /**
      * The Director app left (hide): when that was Back to the view it opened over, the picture view
-     * comes back too, as the desktop's Glancewell/Lumen stay open behind their Ask Wren.
+     * comes back too, as the desktop's Melaton Photo Gallery/Lumen stay open behind their Ask Wren.
      */
     function restoreViewer() {
         const ret = viewerReturn;

@@ -1,4 +1,4 @@
-/* Glancewell's Fix pane (glancewellFix.js, Yozora #446): Windows Photo Gallery's Fix 1:1 with the Vista VM
+/* Melaton Photo Gallery's Fix pane (glancewellFix.js, Yozora #446): Windows Photo Gallery's Fix 1:1 with the Vista VM
    (~/.cache/vista-vm/wpg/shots/pane-4x-*.png). The pane is the Info pane's place, 203 px on #eef3fa fading from
    #d9e3f0; each tool a 33 px row (PhotoViewer.dll PNG 8001-8062, 22x21 frames: disabled, normal, hot, pressed),
    the open one in a white rounded box (#c5ccd4 edge, 5 px radius), its sliders Vista trackbars (the window is a light

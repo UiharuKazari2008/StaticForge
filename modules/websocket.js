@@ -202,7 +202,7 @@ const BROADCAST_ALL = new Set([
     'tm_event', 'ma_event',
     // Messaging account order and names (#978): Messaging on the phone, mail and Messenger on the desktop
     'msg_account_prefs',
-    // the Glancewell library store (#446): tags, captions, favourites; the phone keeps Pictures Favorites from it
+    // the Melaton Photo Gallery library store (#446): tags, captions, favourites; the phone keeps Pictures Favorites from it
     'glancewell_changed',
     // location_places_changed (#907): Home / Work for wmLocation, which desktop pages (Weather, backgrounds) load too
     'location_places_changed',

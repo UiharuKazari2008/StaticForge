@@ -1,4 +1,4 @@
-// Jules GH #389: Glancewell slides fall back to metadata width/height only when the image's own size is missing.
+// Jules GH #389: Melaton Photo Gallery slides fall back to metadata width/height only when the image's own size is missing.
 'use strict';
 const assert = require('assert');
 const fs = require('fs');

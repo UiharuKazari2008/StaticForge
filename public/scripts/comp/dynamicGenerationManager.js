@@ -650,7 +650,7 @@ function setupDynamicGenerationContextMenus() {
                             src: img.src,
                             width: img.naturalWidth || 1024,
                             height: img.naturalHeight || 1024,
-                            // a preview by URL: no filename, so Glancewell asks no metadata (lightbox.js standaloneUrlSlide)
+                            // a preview by URL: no filename, so Melaton Photo Gallery asks no metadata (lightbox.js standaloneUrlSlide)
                             data: {
                                 title: 'Enshutsuka Preview',
                                 isStandalone: true

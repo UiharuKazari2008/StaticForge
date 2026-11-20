@@ -211,7 +211,7 @@ Director sessions carry a `workspaceId` so chat history, image search, and Studi
 Agents have two user-facing workspace tools through `modules/mcpAgentFacade.js`:
 
 - `offer_workspace_switch { workspaceId, reason }` appends a persistent `workspace-offer` card and broadcasts `director_workspace_offer`. Clicking the card opens that workspace, but the tool response warns the agent to keep passing `workspace` explicitly on later calls.
-- `request_workspace_switch { reason }` uses the chat's paired workspace, appends a `workspace-switch` card, and waits up to 90 seconds. The client sends `director_workspace_switch_result`; timeout is treated as declined. Accepted switches let the agent use Studio tools, while declined/timeout means it must avoid Studio and keep to workspace-safe tools such as Glancewell, Lumen, and `show_chat_image`.
+- `request_workspace_switch { reason }` uses the chat's paired workspace, appends a `workspace-switch` card, and waits up to 90 seconds. The client sends `director_workspace_switch_result`; timeout is treated as declined. Accepted switches let the agent use Studio tools, while declined/timeout means it must avoid Studio and keep to workspace-safe tools such as Melaton Photo Gallery, Lumen, and `show_chat_image`.
 
 ## Tool payloads, forms, and the inspector
 

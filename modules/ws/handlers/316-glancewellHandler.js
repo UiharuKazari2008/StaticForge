@@ -2,7 +2,7 @@ const wsPacketRegistry = require('../wsPacketRegistry');
 const store = require('../../glancewellStore');
 const fix = require('../../glancewellFix');
 
-// Glancewell (Windows Photo Gallery, Yozora #446): tags, captions, date taken, Pictures Favorites and the Folders
+// Melaton Photo Gallery (Windows Photo Gallery, Yozora #446): tags, captions, date taken, Pictures Favorites and the Folders
 // watched list (modules/glancewellStore.js). Writes push glancewell_changed to every signed-in client; nothing polls.
 
 let gr = null;
@@ -45,13 +45,13 @@ function registerPackets(handlersCtx) {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             const { ws, message, clientInfo } = ctx;
             if (!canUse(clientInfo)) {
-                handlersCtx.sendError(ws, 'Not allowed', 'Glancewell needs a signed-in account', message.requestId);
+                handlersCtx.sendError(ws, 'Not allowed', 'Melaton Photo Gallery needs a signed-in account', message.requestId);
                 return;
             }
             try {
                 reply(handlersCtx, ws, message, await fn(message, ctx));
             } catch (error) {
-                handlersCtx.sendError(ws, error.message || 'Glancewell request failed', error.message, message.requestId);
+                handlersCtx.sendError(ws, error.message || 'Melaton Photo Gallery request failed', error.message, message.requestId);
             }
         }, { owner: 'glancewell', ...meta });
     };

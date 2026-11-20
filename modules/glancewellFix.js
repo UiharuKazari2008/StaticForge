@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Glancewell's Fix (Windows Photo Gallery's Fix pane, Yozora #446) saving a fixed print.
+ * Melaton Photo Gallery's Fix (Windows Photo Gallery's Fix pane, Yozora #446) saving a fixed print.
  *
  *   overwrite   the print's file takes the fixed pixels. Its PNG text chunks (the prompt, seed and parameters)
  *               carry over, and the first original is kept for Revert to Original, as Photo Gallery keeps

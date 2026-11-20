@@ -98,7 +98,7 @@
     // ---------------------------------------------------------------- windows given a WM form
 
     /**
-     * A picture's metadata Properties (imagePromptInspector.js: Glancewell's File > Properties,
+     * A picture's metadata Properties (imagePromptInspector.js: Melaton Photo Gallery's File > Properties,
      * Studio's View Image Data, Explorer's Properties of a print) as a WM property page: "Properties"
      * in the title bar (the file name is on the page), the command bar's Copy / Edit / Open /
      * Metadata / Find and the Computed toggle in the Menu soft key, Prompt / Director / UC as WM's

@@ -1,5 +1,5 @@
 /**
- * Glancewell's galleries (Windows Photo Gallery, Yozora #446): where the library's pictures come from. Each root of
+ * Melaton Photo Gallery's galleries (Windows Photo Gallery, Yozora #446): where the library's pictures come from. Each root of
  * the navigation tree is one source (Yukimi, Nov 20 2026: four separate roots, plus a root per ActiveSync device):
  *
  *   pictures   Pictures: this device's own picture library (the Android app's MediaStore in DeX; the phone's cards)

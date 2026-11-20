@@ -1165,7 +1165,7 @@ function openPreciseReferencePreview(refData) {
             showError('No image found');
             return;
         }
-        // Lumen applet (imageViewer.js) — not PhotoSwipe / Glancewell shell
+        // Lumen applet (imageViewer.js) — not PhotoSwipe / Melaton Photo Gallery shell
         if (typeof openReferenceImageInViewer === 'function') {
             openReferenceImageInViewer({
                 type: 'cache',

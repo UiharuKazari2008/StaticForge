@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Glancewell Fix (modules/glancewellFix.js, Yozora #446): a fixed print keeps the original's PNG text chunks.
+// Melaton Photo Gallery Fix (modules/glancewellFix.js, Yozora #446): a fixed print keeps the original's PNG text chunks.
 const assert = require('assert');
 const sharp = require('sharp');
 const { textChunks, withTextChunks } = require('../modules/glancewellFix');

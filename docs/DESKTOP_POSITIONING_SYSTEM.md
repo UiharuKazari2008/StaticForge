@@ -296,7 +296,7 @@ collisionOffsets = new Map()
 
 # Window geometry (desktop windows)
 
-Windows (`.modal` with a title bar, the windowed workspace shell, Lumen, Glancewell…) are
+Windows (`.modal` with a title bar, the windowed workspace shell, Lumen, Melaton Photo Gallery…) are
 persisted globally in `windowPositions` (WS `workspace_update_window_positions`). Helpers:
 `public/scripts/comp/windowGeometry.js`; callers in `modalUtils.js`. Yozora #403.
 

@@ -198,7 +198,7 @@ class ImageViewerManager {
 }
 
 /**
- * Photo Gallery's Info pane (Glancewell, vista-photo-gallery.css): the thumbnail, the name,
+ * Photo Gallery's Info pane (Melaton Photo Gallery, vista-photo-gallery.css): the thumbnail, the name,
  * the date and size, the generation parameters and the prompts. The full metadata comes from the
  * Properties loader (imagePromptInspector.js) when the record lacks it.
  * @param {Element} pane the .wpg-info element
@@ -302,7 +302,7 @@ function lumenGalleryList() {
     return cache.pending;
 }
 
-/** PhotoSwipe slides for a list of gallery rows (Lumen's slide show and Open > Glancewell). */
+/** PhotoSwipe slides for a list of gallery rows (Lumen's slide show and Open > Melaton Photo Gallery). */
 function lumenSlidesFromRows(rows) {
     return rows.map((row) => {
         const name = row.upscaled || row.original || row.filename;
@@ -826,7 +826,7 @@ class ImageViewer {
      * vista-photo-gallery.css). Its menus carry Lumen's own actions (handleContextMenuAction):
      * File (copies, wallpaper, Properties = the generation parameters, delete, Exit), Print (Dreamscape's
      * prints are generations: new pictures from this one), E-mail (send it to Wren), Burn (keep it:
-     * pin, desktop, reference), Open (DreamStudio, Glancewell, the gallery, a chat). The pill zooms,
+     * pin, desktop, reference), Open (DreamStudio, Melaton Photo Gallery, the gallery, a chat). The pill zooms,
      * toggles actual size / fit, steps through the gallery, plays Photo Viewer's slide show, rotates and deletes.
      */
     setupToolbarButtons() {
@@ -883,7 +883,7 @@ class ImageViewer {
             ]);
             menu('open', [
                 { text: 'DreamStudio', action: 'image-viewer-creator' },
-                { text: 'Glancewell', action: 'image-viewer-slideshow' },
+                { text: 'Melaton Photo Gallery', action: 'image-viewer-slideshow' },
                 { text: 'Paint', action: 'image-viewer-edit-in-paint' },
                 { text: 'Gallery', action: 'image-viewer-jump-workspace', disabled: !gallery },
                 { separator: true },
@@ -1791,7 +1791,7 @@ class ImageViewer {
         if (typeof showLightbox === 'function') {
             const filename = this.getImageFilename();
             const place = this.galleryPlace();
-            // a picture the gallery window has not loaded: Glancewell over Lumen's own list
+            // a picture the gallery window has not loaded: Melaton Photo Gallery over Lumen's own list
             // (openStandalonePhotoSwipe: public/scripts/comp/lightbox.js)
             if (place && place.list === this.galleryRows && typeof openStandalonePhotoSwipe === 'function') {
                 void openStandalonePhotoSwipe(lumenSlidesFromRows(place.list), place.index);

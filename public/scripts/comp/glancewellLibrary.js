@@ -1,6 +1,6 @@
 /**
- * Glancewell's library: Windows Photo Gallery's gallery view, 1:1 with the Vista VM (Yozora #446; captures in
- * ~/.cache/vista-vm/wpg/shots, strings and menus from PhotoLibraryResources.dll.mui). It lives in the Glancewell
+ * Melaton Photo Gallery's library: Windows Photo Gallery's gallery view, 1:1 with the Vista VM (Yozora #446; captures in
+ * ~/.cache/vista-vm/wpg/shots, strings and menus from PhotoLibraryResources.dll.mui). It lives in the Melaton Photo Gallery
  * window (#photoSwipeWindow, lightbox.js) next to the viewer, as in Vista: the window shows the gallery, a picture
  * opens in the viewer in the same window, and Back To Gallery comes back here.
  *
@@ -1510,7 +1510,7 @@
         return undefined;
     }
 
-    /** Files Glancewell can rename: VFS files, a phone's pictures, references (their display name); prints keep the gallery's names. */
+    /** Files Melaton Photo Gallery can rename: VFS files, a phone's pictures, references (their display name); prints keep the gallery's names. */
     function canRename(it) {
         return !!it && (it.source === 'folders' || it.source === 'refs' || it.source === 'pictures' || String(it.source).startsWith('device:'));
     }
@@ -1543,7 +1543,7 @@
         renderStatus();
     }
 
-    /** Pictures whose file Glancewell can write back (prints, VFS files, phone pictures; not references or videos). */
+    /** Pictures whose file Melaton Photo Gallery can write back (prints, VFS files, phone pictures; not references or videos). */
     function canRotate(it) {
         return !!it && !it.video && it.source !== 'refs' && it.source !== 'url';
     }
@@ -1729,7 +1729,7 @@
         S.el.lib.hidden = false;
         S.shell.classList.add('wpg-mode-library');
         const title = doc.getElementById('photoSwipeWindowTitle');
-        if (title) title.textContent = 'Glancewell';
+        if (title) title.textContent = 'Melaton Photo Gallery';
         S.layout = null;
         renderTree();
         syncNav();
@@ -2134,10 +2134,10 @@
         const days = [[0, 'Never'], [1, 'One day'], [7, 'One week'], [30, 'One month'], [182, 'Six months'], [365, 'One year']];
         const general = kit.text(12, 8, 228, 8, 'Tooltips') + kit.check('gwoTips', 22, 19, 218, 14, 'Show picture and video previews in tooltips') +
             '<div class="tbp-ctl gwo-rule" data-dlu="12,44,233,1"></div>' + kit.text(12, 47, 228, 8, 'Original Pictures') +
-            kit.text(22, 60, 213, 32, 'When you fix a picture in Glancewell, Melaton saves a copy of the original in case you want to revert. These originals can take up a lot of disk space.') +
+            kit.text(22, 60, 213, 32, 'When you fix a picture in Photo Gallery, Melaton saves a copy of the original in case you want to revert. These originals can take up a lot of disk space.') +
             kit.text(22, 100, 206, 8, 'Move originals to Recycle Bin after:') + sel('gwo-days', 22, 111, 71, days, cur.originalsDays) +
             '<div class="tbp-ctl gwo-rule" data-dlu="13,131,233,1"></div>' + kit.text(12, 134, 228, 8, 'Automatic updates') +
-            kit.check('gwoUpdates', 22, 145, 218, 14, 'Tell me when updates to Glancewell are available') + kit.button(22, 162, 90, 14, 'Check for updates', 'gwo-check');
+            kit.check('gwoUpdates', 22, 145, 218, 14, 'Tell me when updates to Melaton Photo Gallery are available') + kit.button(22, 162, 90, 14, 'Check for updates', 'gwo-check');
         const imp = cur.import || importSettings();
         const ex = (fv, nv) => {
             const f = (FOLDER_NAMES.find((x) => x[0] === fv) || FOLDER_NAMES[0])[2];
@@ -2154,7 +2154,7 @@
             kit.text(16, 99, 52, 8, 'Example:') + kit.text(69, 99, 174, 8, esc(ex(imp.folderName, imp.fileName)), 'gwo-example') +
             kit.text(16, 114, 218, 8, 'Other options:') +
             kit.check('gwoPrompt', 24, 125, 218, 10, 'Prompt for a tag on import') + kit.check('gwoErase', 24, 137, 218, 10, 'Always erase from camera after importing') +
-            kit.check('gwoRotate', 24, 149, 218, 10, 'Rotate pictures on import') + kit.check('gwoOpen', 24, 161, 218, 10, 'Open Glancewell after import') +
+            kit.check('gwoRotate', 24, 149, 218, 10, 'Rotate pictures on import') + kit.check('gwoOpen', 24, 161, 218, 10, 'Open Melaton Photo Gallery after import') +
             kit.button(7, 200, 62, 14, 'Restore defaults', 'gwo-defaults');
         const read = (c) => ({
             tooltips: c.querySelector('#gwoTips').checked,
@@ -2171,7 +2171,7 @@
             }
         });
         const sheet = kit.makeSheet({
-            id: 'glancewellOptionsDialog', title: 'Glancewell Options', cls: 'gwo-sheet', icon: '/static_images/app_icons/vista-photo-gallery.png',
+            id: 'glancewellOptionsDialog', title: 'Photo Gallery Options', cls: 'gwo-sheet', icon: '/static_images/app_icons/vista-photo-gallery.png',
             tabs: ['General', 'Import'], selected: 0, pages: [general, importPage],
             onApply: async () => {
                 try {
@@ -2200,7 +2200,7 @@
                 } else if (action === 'gwo-check') {
                     // updates come with Melaton's own (Windows Update in Control Panel)
                     if (root.melatonControlPanel && typeof root.melatonControlPanel.open === 'function') root.melatonControlPanel.open('Microsoft.WindowsUpdate');
-                    else void message('Glancewell is up to date.', 'info');
+                    else void message('Photo Gallery is up to date.', 'info');
                 }
             }
         });
@@ -2220,7 +2220,7 @@
     const ICONS = { info: 'fas fa-circle-info', warning: 'fas fa-triangle-exclamation', error: 'fas fa-circle-xmark', question: 'fas fa-circle-question' };
     function dialog(html, buttons, config = {}) {
         if (typeof root.showConfirmationDialog !== 'function') return Promise.resolve(null);
-        const cfg = Object.assign({ title: 'Glancewell', owner: S.shell }, config);
+        const cfg = Object.assign({ title: 'Melaton Photo Gallery', owner: S.shell }, config);
         // confirmationDialog.js calls onDialogReady(signal): ours take the dialog element (and the signal for listeners)
         if (typeof config.onDialogReady === 'function') {
             const ready = config.onDialogReady;
@@ -2239,7 +2239,7 @@
         return dialog(textHtml(text), [{ text: 'OK', value: true }], { icon: ICONS[icon] || ICONS.info });
     }
     async function confirmBox(text, title) {
-        return (await dialog(textHtml(text), [{ text: 'Yes', value: true }, { text: 'No', value: false }], { title: title || 'Glancewell', icon: ICONS.warning })) === true;
+        return (await dialog(textHtml(text), [{ text: 'Yes', value: true }, { text: 'No', value: false }], { title: title || 'Melaton Photo Gallery', icon: ICONS.warning })) === true;
     }
     const errorText = (err) => (err && (err.message || err.error)) || 'Something went wrong.';
 

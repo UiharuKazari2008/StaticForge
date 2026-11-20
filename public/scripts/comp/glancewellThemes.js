@@ -1,5 +1,5 @@
 /**
- * Glancewell's slide show themes: Windows Photo Gallery's 14 (Yozora #446; Yukimi, Nov 20 2026: all of them).
+ * Melaton Photo Gallery's slide show themes: Windows Photo Gallery's 14 (Yozora #446; Yukimi, Nov 20 2026: all of them).
  *
  *   Classic, Fade, Black and white, Sepia     PhotoClassic.dll: the picture fitted on black; Fade and the tinted ones
  *                                              cross-fade, Classic cuts

@@ -10,7 +10,7 @@
  *   Remote Desktop     -> Generation: the three radio buttons are the default generation method
  *                         (detached / studio / auto). Select Users... becomes Open With..., a
  *                         Remote Desktop Users-sized dialog (remotepg 513) that picks where
- *                         generated images open (Ledge / Lumen / Glancewell / do not open).
+ *                         generated images open (Ledge / Lumen / Melaton Photo Gallery / do not open).
  *
  * Opened by Control Panel's Remote Access item, System's "Remote settings" and every
  * openRemoteAccessSettingsModal() caller (Start menu, desktop menu, Run). Changes go to a pending
@@ -36,7 +36,7 @@
     const OPEN_WITH = [
         { id: 'ledge', name: 'Ledge', icon: `${ICONS}/stack.webp`, text: 'One desk that holds several prints.' },
         { id: 'lumen', name: 'Lumen', icon: `${ICONS}/vista-photo-viewer.webp`, text: 'A viewer window for each print.' },
-        { id: 'glancewell', name: 'Glancewell', icon: `${ICONS}/vista-photo-gallery.webp`, text: 'The gallery slideshow, opened at the print.' },
+        { id: 'glancewell', name: 'Melaton Photo Gallery', icon: `${ICONS}/vista-photo-gallery.webp`, text: 'The gallery slideshow, opened at the print.' },
         { id: 'disabled', name: 'Do not open', icon: '', text: 'Prints are saved to the gallery and nothing opens.' }
     ];
     const PRINTS = [1, 2, 3, 4, 5, 6, 7, 8];

@@ -1885,6 +1885,8 @@ async function main() {
         minPrintsPerTurn: 1,
         maxPrintsPerTurn: 8
     });
+    // the program's display name maps to the same stored value
+    assert.strictEqual(normalizeRemoteAccessSettings({ openGeneratedImages: 'Melaton Photo Gallery' }).openGeneratedImages, 'glancewell');
 
     // OAuth 2.1 tests
     // modules/mcpOAuthProvider.js

@@ -11812,8 +11812,8 @@
                     const shown = item && (item.filename || item.original);
                     if (shown && setTodayBackgroundFn) items.push({ label: 'Set as Today Background', action: () => setTodayBackgroundFn(shown, item) });
                     if (shown) items.push({ label: 'Move To', submenu: () => moveToItems(shown) });
-                    // Edit: the picture in DreamStudio (Glancewell's Open > DreamStudio, imageViewer.js
-                    // openInCreator) or with the Director (Glancewell's E-mail: askWrenAboutImage); each
+                    // Edit: the picture in DreamStudio (Melaton Photo Gallery's Open > DreamStudio, imageViewer.js
+                    // openInCreator) or with the Director (Melaton Photo Gallery's E-mail: askWrenAboutImage); each
                     // opens its app over the viewer, Back returns here
                     const editPic = item && (item.filename || item.original);
                     const canStudio = !!(editPic && typeof window.openManualModalWithContent === 'function');
@@ -11824,7 +11824,7 @@
                             { label: 'Director', disabled: !canDirector, action: () => window.askWrenAboutImage(editPic) }
                         ] });
                     }
-                    // Glancewell's Copy Lookback (imageViewer.js): a ref to paste to a model
+                    // Melaton Photo Gallery's Copy Lookback (imageViewer.js): a ref to paste to a model
                     if (shown && typeof window.copyLookbackImage === 'function') items.push({ label: 'Copy Lookback', action: () => window.copyLookbackImage(shown) });
                     // the device's Menu: ... Edit | Properties | Options...: Pictures & Videos'
                     // Properties page (wmFileExplorer.js); ok / Cancel bring the picture back

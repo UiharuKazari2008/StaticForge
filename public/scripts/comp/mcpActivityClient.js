@@ -1,8 +1,8 @@
 /**
- * Remote Access tray (2 min) + Periscope Event Viewer log + open Lumen / Glancewell from MCP.
+ * Remote Access tray (2 min) + Periscope Event Viewer log + open Lumen / Melaton Photo Gallery from MCP.
  * Periscope: public/scripts/comp/logViewerApplet.js
  * Tray generating: public/scripts/comp/trayIndicators.js
- * Lumen / Glancewell: public/scripts/comp/lightbox.js, public/scripts/comp/imageViewer.js
+ * Lumen / Melaton Photo Gallery: public/scripts/comp/lightbox.js, public/scripts/comp/imageViewer.js
  */
 
 const MCP_ACTIVITY_TTL_MS = 2 * 60 * 1000;

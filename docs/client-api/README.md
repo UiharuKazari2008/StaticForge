@@ -95,7 +95,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Client certificates (Key Manager's store; protocol in [../client-certificates.md](../client-certificates.md)) | [ws/clientCertificates.md](./ws/clientCertificates.md) | 2 |
 | Status hub (server-push status feeds, boot notes) | [ws/statusHub.md](./ws/statusHub.md) | 4 (+ feed pushes) |
 | Ledge desks (images an agent put on a desk; owner client only) | [ws/ledge.md](./ws/ledge.md) | 7 (+ `ledge_state` push) |
-| Glancewell library (Photo Gallery tags, captions, favorites, watched folders, Fix saves, Options, imports) | [ws/glancewell.md](./ws/glancewell.md) | 17 (+ `glancewell_changed` push) |
+| Melaton Photo Gallery library (Photo Gallery tags, captions, favorites, watched folders, Fix saves, Options, imports) | [ws/glancewell.md](./ws/glancewell.md) | 17 (+ `glancewell_changed` push) |
 | Location (Home / Work, place lookup and reverse lookup) | [ws/location.md](./ws/location.md) | 4 (+ `location_places_changed` broadcast) |
 | DreamOS updates (firmware release push) | [ws/dreamosUpdates.md](./ws/dreamosUpdates.md) | 1 (+ `dreamos_channel` push) |
 | Network folder and shared folders (DreamOS computers, `\\PC` shares) | [ws/networkShares.md](./ws/networkShares.md) | 2 (+ `net_computers_updated` push) |

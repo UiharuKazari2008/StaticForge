@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Glancewell library store (modules/glancewellStore.js, Yozora #446) on a temporary database.
+// Melaton Photo Gallery library store (modules/glancewellStore.js, Yozora #446) on a temporary database.
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');

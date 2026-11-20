@@ -21,9 +21,10 @@ function normalizeDefaultGenerationMethod(raw) {
 }
 
 function normalizeOpenGeneratedImages(raw) {
-    const value = String(raw || '').toLowerCase();
+    const value = String(raw || '').toLowerCase().replace(/[\s_-]+/g, '');
     if (value === 'ledge') return 'ledge';
-    if (value === 'glancewell') return 'glancewell';
+    // 'glancewell' stays the stored value; the program's name is Melaton Photo Gallery (Yukimi, Nov 20 2026)
+    if (value === 'glancewell' || value === 'photogallery' || value === 'melatonphotogallery') return 'glancewell';
     if (value === 'lumen') return 'lumen';
     if (value === 'disabled' || value === 'off' || value === 'none') return 'disabled';
     return 'ledge';

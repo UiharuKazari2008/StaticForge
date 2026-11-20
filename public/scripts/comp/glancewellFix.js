@@ -1,5 +1,5 @@
 /**
- * Glancewell's Fix: Windows Photo Gallery's Fix pane (Yozora #446), 1:1 with the Vista VM (shots 40-45 in
+ * Melaton Photo Gallery's Fix: Windows Photo Gallery's Fix pane (Yozora #446), 1:1 with the Vista VM (shots 40-45 in
  * ~/.cache/vista-vm/wpg/shots; strings 8012-8128, icons PNG 8001-8062 of PhotoViewer.dll).
  *
  * The pane replaces the Info pane at the right of the viewer: Auto Adjust, Adjust Exposure (Brightness, Contrast),
@@ -581,7 +581,7 @@
                 ...(canOverwrite ? [{ text: 'Save Copy', value: 'copy' }] : []),
                 { text: 'Save As...', value: 'saveas' },
                 { text: 'Cancel', value: null }
-            ], null, { title: 'Glancewell', icon: 'fas fa-circle-question', owner: shell() })
+            ], null, { title: 'Melaton Photo Gallery', icon: 'fas fa-circle-question', owner: shell() })
             : null;
         if (!choice) return false;
         const ok = await save(choice);
@@ -614,7 +614,7 @@
         } catch (err) {
             F.el.wait.hidden = true;
             if (typeof root.showConfirmationDialog === 'function') {
-                await root.showConfirmationDialog(esc((err && err.message) || 'Changes to this picture have not been saved.'), [{ text: 'OK', value: true }], null, { title: 'Glancewell', icon: 'fas fa-circle-xmark', owner: shell() });
+                await root.showConfirmationDialog(esc((err && err.message) || 'Changes to this picture have not been saved.'), [{ text: 'OK', value: true }], null, { title: 'Melaton Photo Gallery', icon: 'fas fa-circle-xmark', owner: shell() });
             }
             return false;
         } finally {
@@ -723,7 +723,7 @@
             close();
         } catch (err) {
             // WPG 8098
-            if (typeof root.showConfirmationDialog === 'function') await root.showConfirmationDialog("Photo Gallery can't revert this picture because a problem has occurred.", [{ text: 'OK', value: true }], null, { title: 'Glancewell', icon: 'fas fa-circle-xmark', owner: shell() });
+            if (typeof root.showConfirmationDialog === 'function') await root.showConfirmationDialog("Photo Gallery can't revert this picture because a problem has occurred.", [{ text: 'OK', value: true }], null, { title: 'Melaton Photo Gallery', icon: 'fas fa-circle-xmark', owner: shell() });
         }
     }
 

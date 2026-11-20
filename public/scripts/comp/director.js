@@ -8489,7 +8489,7 @@ class Director {
             show_chat_image: 'Show image',
             open_in_studio: 'Open in Studio',
             open_in_lumen: 'Lumen',
-            open_in_glancewell: 'Glancewell',
+            open_in_glancewell: 'Melaton Photo Gallery',
             read_image_metadata: 'Metadata',
             count_prompt_tokens: 'Tokens',
             search_autofill: 'Tags',
