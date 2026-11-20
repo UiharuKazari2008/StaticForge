@@ -1260,7 +1260,7 @@ body.session-switch-cover #desktopPreStartupModal {
 }
 
 /* Boot message box (public/scripts/comp/bootMessageBox.js): a Windows message box for boot
-   and lock errors. Icon left, message + "DETAIL - ..." line, centred 75x23 buttons; the
+   and lock errors. Icon left, message + "DETAIL - ..." line, 75x23 buttons on the right; the
    frame is whatever theme the boot is in. Vista Basic / Aero: Vista's light face, Segoe UI 9pt
    and .btn-standard push buttons (the VPN dialogs' look, Yozora #515); Windows Classic keeps
    ButtonFace and Tahoma 8pt. */
@@ -1329,6 +1329,12 @@ body.windows-classic-theme #bootMessageBox .boot-message-box-content {
     justify-content: center;
     gap: 6px;
     margin-top: 6px;
+}
+
+/* Vista Basic / Aero: the buttons on the right, as every Vista dialog (Yukimi, Nov 20 2026, #970);
+   Windows Classic keeps the centred row of the old MessageBox */
+body:not(.windows-classic-theme) #bootMessageBox .boot-message-box-buttons {
+    justify-content: flex-end;
 }
 
 #bootMessageBox .boot-message-box-buttons button {

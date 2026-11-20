@@ -126,7 +126,36 @@
                 while (message.firstChild) wrap.appendChild(message.firstChild);
                 message.appendChild(wrap);
             }
+            snapMessageWidth(el, message && message.firstElementChild);
         }
+    }
+
+    /**
+     * A message box is as wide as its text (vista-dialogs.css), measured once per message (a new text is a
+     * new wrap). Wrapped text: Vista's box ends at the longest line, where CSS keeps the whole wrap width
+     * (up to 23 px wider on the VM's comparisons), so the text cell takes the longest line's width. Then
+     * the window is rounded up to a whole pixel (a fraction blurs the frame's right edge).
+     */
+    const snappedText = new WeakMap();
+    function snapMessageWidth(el, wrap) {
+        if (!wrap || el.classList.contains('hidden') || snappedText.get(el) === wrap) return;
+        snappedText.set(el, wrap);
+        el.style.removeProperty('--vista-message-width');
+        if (wrap.offsetHeight > 16) {
+            const box = wrap.getBoundingClientRect();
+            const scale = box.width ? wrap.offsetWidth / box.width : 1; // the opening animation's scale
+            const range = doc.createRange();
+            const walker = doc.createTreeWalker(wrap, NodeFilter.SHOW_TEXT);
+            let right = 0;
+            for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                if (!n.nodeValue.trim()) continue;
+                range.selectNodeContents(n);
+                for (const r of range.getClientRects()) if (r.width) right = Math.max(right, r.right);
+            }
+            if (right > box.left) wrap.style.width = `${Math.ceil((right - box.left) * scale)}px`;
+        }
+        const w = parseFloat(getComputedStyle(el).width);
+        if (w > 0 && w % 1) el.style.setProperty('--vista-message-width', `${Math.ceil(w)}px`);
     }
 
     function unwrapText(el) {

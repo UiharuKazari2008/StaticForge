@@ -1,7 +1,7 @@
 /**
  * Boot message box: a Windows message box for errors while the desktop boots or is locked
  * (logon-phase init failures, websocket.js _showLogonInitError). Icon on the left, the
- * message, an XP-style "DETAIL - ..." line, centred 75x23 buttons. It is a boot dialog
+ * message, an XP-style "DETAIL - ..." line, 75x23 buttons on the right (centred in Windows Classic). It is a boot dialog
  * (.on-top .boot-dialog), so it shows over the logon dialog, above the lock cover, and in
  * Windows Classic while the boot still has that theme. Yozora #421.
  *

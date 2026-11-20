@@ -5,10 +5,11 @@
    the light-client mechanism of vista-glass-controls.css), data-vista-icon for the message box
    icon, and .vista-dialog-footer on the row that holds the buttons. This sheet is the layout.
 
-   Measured on the VM (MessageBox, Aero, 96 dpi): a white content area with the 32 px icon
-   25 px from the left edge and 27 px from the top, the text 9 px to its right, 25 px under the
-   icon; a #f0f0f0 footer with the buttons right-aligned, 88x26, 8 px apart, 8 px from the right
-   edge, 12 px above and 11 px below; Segoe UI 9 pt, black. Form dialogs are Vista's property-sheet
+   Measured on the VM (MessageBox, Aero, 96 dpi; re-measured for #970): a white content area with
+   the 32 px icon 25 px from the left edge and 26 px from the top, the text 8 px to its right, 26 px
+   under the icon; a 49 px #f0f0f0 footer right under it with the buttons right-aligned, 88x26
+   (faces 86x24), 8 px apart, 8 px from the right edge, 12 px above and 11 px below; Segoe UI 9 pt,
+   black. The frame: 8 px glass at the sides and bottom, a 28 px caption, the title at 8, 9. Form dialogs are Vista's property-sheet
    kind: #f0f0f0 client, 11 px margins, 7.css controls, 75x23 buttons in a footer row.
    Message-box captions have no app icon; form / tool windows keep theirs in the glass caption.
    Desktop mode, not Classic. Linked after vista-scrollbars.css. */
@@ -200,20 +201,35 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"
     line-height: 24px;
 }
 
-/* the plain confirmation (message + buttons): the MessageBox layout, icon left of the text */
+/* the plain confirmation (message + buttons): Vista's MessageBox, measured on the VM (user32 MessageBoxW
+   with and without an icon, one to seven lines, one to three buttons; #970). Vista sizes a message box
+   to its text, so a caller's width is not used here: the text wraps at about 380 px and the client is
+   the icon column (25 + 32 + 8) + the text + 39 px. The client is white over the grey footer with no
+   gap between them; the icon at 25, 26; one line of text on the icon's centre line (its line box 8 px
+   under the icon's top), more lines from the icon's top; 26 px under the icon or the last line. */
 body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"].modal {
-    min-width: 340px;
-    max-width: min(520px, calc(100vw - 40px));
+    width: var(--vista-message-width, auto) !important;
+    min-width: 0;
+    max-width: calc(100vw - 40px);
+}
+
+/* the caption keeps room for the title and the close button only (Vista: title + 8, the button 42 px, 7 px in) */
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog] > .modal-window-title > .modal-window-title-main {
+    padding-right: 58px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content {
+    gap: 0;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message {
     display: grid;
     grid-template-columns: 32px minmax(0, 1fr);
-    column-gap: 9px;
-    align-items: start;
+    column-gap: 8px;
+    align-items: center;
     min-height: 84px;
     box-sizing: border-box;
-    padding: 27px 25px 25px;
+    padding: 26px 39px 26px 25px;
     text-align: left;
     font-size: 9pt;
     line-height: 15px;
@@ -230,13 +246,19 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dia
 body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"][data-vista-icon="warning"] > .modal-content > .confirmation-message::before { background-image: image-set(url("/static_images/vista-icons/msgbox-warning-32.png") 1x, url("/static_images/hidpi/125/vista-icons/msgbox-warning-32.png") 1.25x, url("/static_images/hidpi/150/vista-icons/msgbox-warning-32.png") 1.5x, url("/static_images/hidpi/175/vista-icons/msgbox-warning-32.png") 1.75x, url("/static_images/hidpi/200/vista-icons/msgbox-warning-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"][data-vista-icon="error"] > .modal-content > .confirmation-message::before { background-image: image-set(url("/static_images/vista-icons/msgbox-error-32.png") 1x, url("/static_images/hidpi/125/vista-icons/msgbox-error-32.png") 1.25x, url("/static_images/hidpi/150/vista-icons/msgbox-error-32.png") 1.5x, url("/static_images/hidpi/175/vista-icons/msgbox-error-32.png") 1.75x, url("/static_images/hidpi/200/vista-icons/msgbox-error-32.png") 2x); }
 
-/* the first text line sits on the icon's centre line (32 px icon, 15 px line) */
+/* the icon stays at the top; the text is centred on it: one 15 px line (+1 px, so it lands 8 px down
+   as on the VM, not 8.5) on the icon's centre line, two lines (31 px) at the icon's top, more from it */
 body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message > * {
     margin: 0;
 }
 
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message::before {
+    align-self: start;
+}
+
 body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="message"] > .modal-content > .confirmation-message > .vista-dialog-text {
-    padding-top: 8px;
+    max-width: 380px;
+    padding-bottom: 1px;
     overflow-wrap: anywhere;
 }
 
@@ -262,6 +284,27 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dia
     margin: 0;
     padding: 18px 22px;
     text-align: left;
+    /* TaskDialog's content text, as the message box's (the app's 0.9rem made "Name:" 14 px on a
+       fractional line and the window a fractional height) */
+    font-size: 9pt;
+    line-height: 15px;
+}
+
+/* a task dialog's caption shows its owner's picture (ensureModalApplicationIcon) or none, never the
+   caller's Font Awesome glyph (it pushed the title 22 px right, to a fractional x) */
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-window-title > .modal-window-title-main > i {
+    display: none;
+}
+
+/* TaskDialog's footer as on the VM (comctl32 TaskDialog, #970): 40 px, the buttons' faces 66x21 at
+   least, 8 px apart, 11 px from the right edge and 9 px under the footer's top */
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-content > .vista-dialog-footer {
+    padding: 8px 10px 9px;
+    gap: 6px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-content > .vista-dialog-footer button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn) {
+    min-width: 68px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dialog="task"] > .modal-content > .confirmation-message .form-group label {
