@@ -775,7 +775,7 @@
 }
 
 #notebookModal[data-jnl-tool="space"] .jnl-ink {
-    cursor: row-resize;
+    cursor: var(--c-row-resize, row-resize);
 }
 
 #notebookModal .jnl-clips {
@@ -847,7 +847,7 @@
     border: 1px solid transparent;
     color: #000;
     font: 12px "Segoe UI", Tahoma, sans-serif;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #notebookModal .notebook-note-item:hover {

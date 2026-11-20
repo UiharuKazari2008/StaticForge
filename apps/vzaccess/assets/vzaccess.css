@@ -13,7 +13,7 @@
     height: 503px;
     background: var(--vz-client);
     color: var(--vz-text);
-    cursor: default;
+    cursor: var(--c-default, default);
     user-select: none;
 }
 
@@ -60,7 +60,7 @@
     color: var(--vz-text);
     font: 12px "Segoe UI", SegoeUI, sans-serif;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 .vz-root .vz-tab::before, .vz-root .vz-tab::after { display: none; }
 .vz-root .vz-tab:first-child { margin-left: 0; }
@@ -215,7 +215,7 @@
 }
 .vz-root .vz-fields output.rx { background: var(--vz-field-rx); }
 .vz-root .vz-fields output.wide { text-align: left; }
-.vz-root .vz-notice { flex: none; align-self: flex-end; margin-top: 4px; color: var(--vz-link); text-decoration: underline; cursor: pointer; }
+.vz-root .vz-notice { flex: none; align-self: flex-end; margin-top: 4px; color: var(--vz-link); text-decoration: underline; cursor: var(--c-pointer, pointer); }
 .vz-root .vz-notice:focus-visible { outline: 1px dotted var(--vz-link); }
 
 /* ---- the status area: Coverage Indicator / Connection Status | device | VPN and the command button ---- */
@@ -324,7 +324,7 @@
 .vz-root .vz-mini button.vz-red:active:not(:disabled) { background: var(--vz-red-down); }
 
 /* ---- the program's dialogs drawn by the kit from its own templates (Session Log, Filter, About, Usage, Warning!) ---- */
-.vz-dlg .vz-dlg-link { color: var(--vz-link); text-decoration: underline; cursor: pointer; }
+.vz-dlg .vz-dlg-link { color: var(--vz-link); text-decoration: underline; cursor: var(--c-pointer, pointer); }
 .vz-dlg .vz-dlg-link:focus-visible { outline: 1px dotted var(--vz-link); }
 .vz-dlg .vdt-lv-row > span.vz-r, .vz-dlg .vdt-lv-col.vz-r { text-align: right; }
 .vz-dlg .vdt-lv-col:last-child { flex: 1 0 auto; }
@@ -335,7 +335,7 @@
 .vz-dlg .vz-c5 { width: 90px; }
 .vz-dlg .vdt-richedit { white-space: normal; overflow: hidden; border: 0; background: transparent; box-shadow: none; }
 .vz-dlg .vdt-richedit p { margin: 0 0 1em; }
-.vz-dlg .vz-dlg-url { color: var(--vz-url); text-decoration: underline; cursor: pointer; }
+.vz-dlg .vz-dlg-url { color: var(--vz-url); text-decoration: underline; cursor: var(--c-pointer, pointer); }
 .vz-dlg .vdt-static:has(> .vz-about-logo) { overflow: visible; }
 .vz-dlg .vz-about-logo { display: block; width: 160px; height: 60px; }
 .vz-dlg .vdt-custom .vz-usage { box-sizing: border-box; height: 100%; padding: 8px; border: 1px solid var(--vz-field-edge); background: var(--vz-box-face); overflow: auto; user-select: text; }
@@ -350,7 +350,7 @@
 /* the tree: a blue line, a 1 px gap of the dialog's face, white */
 #vzAccessPrefs .vz-tree { position: absolute; inset: 0; box-sizing: border-box; border: 1px solid var(--vz-box-edge); background: var(--vz-box-face); box-shadow: inset 0 0 0 1px var(--vz-client); outline: none; }
 #vzAccessPrefs .vz-tree-in { position: absolute; inset: 1px; overflow: hidden; }
-#vzAccessPrefs .vz-tree-row { position: absolute; left: 0; right: 0; height: 28px; cursor: default; }
+#vzAccessPrefs .vz-tree-row { position: absolute; left: 0; right: 0; height: 28px; cursor: var(--c-default, default); }
 #vzAccessPrefs .vz-tree-row > img { position: absolute; left: 20px; top: 0; }
 #vzAccessPrefs .vz-tree-row.is-child > img { left: 44px; }
 #vzAccessPrefs .vz-tree-label { position: absolute; left: 45px; top: 3px; height: 22px; padding: 0 3px; font-size: 13px; line-height: 22px; white-space: nowrap; color: var(--vz-text); }

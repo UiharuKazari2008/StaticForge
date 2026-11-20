@@ -93,7 +93,7 @@
     gap: 5px;
     padding: 2px 4px;
     border: 1px solid transparent;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .mmc-window .ens-hit > img {
@@ -143,7 +143,7 @@
 }
 
 .mmc-window .ens-body.is-busy {
-    cursor: progress;
+    cursor: var(--c-progress, progress);
 }
 
 .mmc-window .ens-body.is-busy > * {
@@ -151,7 +151,7 @@
 }
 
 .mmc-window .ens-list .mmc-col[data-act] {
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 /* Cards: tiles of the page's memories (Explorer's Tiles view in a white pane) */
@@ -169,7 +169,7 @@
     border: 1px solid #e3e6ea;
     border-radius: 3px;
     outline: none;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .mmc-window .ens-card:hover {
@@ -260,7 +260,7 @@
 }
 
 .mmc-window .ens-map-node.is-memory {
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .mmc-window .ens-map-node.is-memory:hover rect {
@@ -384,7 +384,7 @@
     padding: 1px;
     border: 1px solid #a0a0a0;
     background: #fff;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .vdt-client .ens-thumb:hover {

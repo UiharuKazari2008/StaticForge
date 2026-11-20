@@ -367,7 +367,7 @@ body.desktop-mode .modal.asw-window > .modal-window-title .modal-window-title-ma
     font-size: 12pt;
     font-weight: 400;
     line-height: 21px;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 .modal.asw-window .asw-link::before {
@@ -383,7 +383,7 @@ body.desktop-mode .modal.asw-window > .modal-window-title .modal-window-title-ma
 .modal.asw-window .asw-link:hover:not(:disabled)::before { background-position: 0 -25px; }
 .modal.asw-window .asw-link:active:not(:disabled) { background: linear-gradient(#f6f6f6, #eaeaea); border-color: #9e9e9e; color: #062073; }
 .modal.asw-window .asw-link:active:not(:disabled)::before { background-position: 0 -50px; }
-.modal.asw-window .asw-link:disabled { color: #8d8d8d; cursor: default; }
+.modal.asw-window .asw-link:disabled { color: #8d8d8d; cursor: var(--c-default, default); }
 .modal.asw-window .asw-link:disabled::before { background-position: 0 -75px; }
 .modal.asw-window .asw-link:focus-visible { outline: 1px dotted #000; outline-offset: -3px; }
 

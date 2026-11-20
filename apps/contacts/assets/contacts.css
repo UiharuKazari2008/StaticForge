@@ -7,7 +7,7 @@
     width: 128px !important;
     height: 147px !important;
     background: url('/static_images/vista-contacts/picture-button-normal.png') 0 0 no-repeat;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .vdt-client .wcon-tile:not(.is-static):hover {
@@ -50,7 +50,7 @@
 .vdt-client .wcon-format-list .vdt-lb-row {
     padding: 1px 4px;
     line-height: 16px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .vdt-client .wcon-format-list .vdt-lb-row.is-selected {

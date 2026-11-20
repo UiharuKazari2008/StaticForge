@@ -284,7 +284,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 .mp-client .mp-overlay[data-tool="select"],
 .mp-client .mp-overlay[data-tool="freeselect"],
 .mp-client .mp-overlay[data-tool="wand"] { cursor: crosshair; }
-.mp-client .mp-overlay[data-tool="move"] { cursor: move; }
+.mp-client .mp-overlay[data-tool="move"] { cursor: var(--c-move, move); }
 .mp-client .mp-overlay[data-tool="text"] { cursor: text; }
 .mp-client .mp-overlay[data-tool="magnifier"] { cursor: zoom-in; }
 
@@ -339,9 +339,9 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     box-sizing: content-box;
 }
 
-.mp-client .mp-handle.is-e { right: -5px; top: calc(50% - 2px); cursor: ew-resize; }
-.mp-client .mp-handle.is-s { bottom: -5px; left: calc(50% - 2px); cursor: ns-resize; }
-.mp-client .mp-handle.is-se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.mp-client .mp-handle.is-e { right: -5px; top: calc(50% - 2px); cursor: var(--c-ew-resize, ew-resize); }
+.mp-client .mp-handle.is-s { bottom: -5px; left: calc(50% - 2px); cursor: var(--c-ns-resize, ns-resize); }
+.mp-client .mp-handle.is-se { right: -5px; bottom: -5px; cursor: var(--c-nwse-resize, nwse-resize); }
 
 .mp-client .mp-resize-ghost {
     position: absolute;

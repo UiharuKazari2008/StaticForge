@@ -253,7 +253,7 @@
 }
 
 .snip-overlay.is-window {
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .snip-overlay-view {

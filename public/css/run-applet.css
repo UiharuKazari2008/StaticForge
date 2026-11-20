@@ -92,7 +92,7 @@
     top: 71px;
     margin: 0;
     padding: 0;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #runModal .run-applet-combo {
@@ -138,7 +138,7 @@
     width: 17px;
     height: 23px;
     background: image-set(url("/static_images/vista-controls/combo-glyph-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-normal.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-normal.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-normal.png") 2x) 3px 2px / 10px 19px no-repeat;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #runModal .run-applet-drop:hover {
@@ -223,7 +223,7 @@
     line-height: 19px;
     text-shadow: none;
     user-select: none;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #runModal .run-applet-results-shell.hidden {
@@ -335,7 +335,7 @@
     border-width: 4px 4px 4px 0;
     border-color: transparent #000 transparent transparent;
     background: none;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #runModal .run-applet-action-title {
@@ -362,7 +362,7 @@
     height: 17px;
     margin: 2px 0 0;
     background: image-set(url("/static_images/vista-controls/sizegrip.png") 1x, url("/static_images/hidpi/125/vista-controls/sizegrip.png") 1.25x, url("/static_images/hidpi/150/vista-controls/sizegrip.png") 1.5294x, url("/static_images/hidpi/175/vista-controls/sizegrip.png") 1.75x, url("/static_images/hidpi/200/vista-controls/sizegrip.png") 2x) 0 0 / 17px 17px no-repeat;
-    cursor: nwse-resize;
+    cursor: var(--c-nwse-resize, nwse-resize);
 }
 
 #runModal .run-applet-results-shell.is-above {
@@ -372,7 +372,7 @@
 #runModal .run-applet-results-shell.is-above .run-applet-grip {
     margin: 0 0 2px;
     transform: scaleY(-1);
-    cursor: nesw-resize;
+    cursor: var(--c-nesw-resize, nesw-resize);
 }
 
 #runModal .run-applet-results-shell.is-history .run-applet-grip {

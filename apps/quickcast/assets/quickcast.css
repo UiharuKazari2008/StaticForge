@@ -20,7 +20,7 @@
 }
 
 .qc-window > .modal-content.qc-client { display: flex; flex-direction: column; min-height: 0; padding: 0 !important; background: var(--qc-bg0); }
-.qc-window .qc-root { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; background: var(--qc-bg0); color: var(--qc-text); font: 11px/1.25 Tahoma, 'Microsoft Sans Serif', sans-serif; cursor: default; user-select: none; }
+.qc-window .qc-root { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; background: var(--qc-bg0); color: var(--qc-text); font: 11px/1.25 Tahoma, 'Microsoft Sans Serif', sans-serif; cursor: var(--c-default, default); user-select: none; }
 .qc-window .qc-root button { font: inherit; color: var(--qc-text); }
 .qc-fill { flex: 1; }
 .qc-head { padding: 4px 8px 3px; background: linear-gradient(#2b2e33, #212327); border-bottom: 1px solid var(--qc-line); color: var(--qc-amber); font: bold 10px Arial, Tahoma, sans-serif; letter-spacing: 1.5px; }
@@ -91,7 +91,7 @@
 /* pipeline diagnostics: OUTPUT (satellite) and INPUT (cabinet mux) rows of stage cells, then a verdict */
 .qc-diag { display: flex; flex-direction: column; flex: none; gap: 1px; margin: 6px 8px 0; border: 1px solid var(--qc-line); background: var(--qc-line); }
 .qc-drow { display: flex; min-height: 30px; background: var(--qc-bg0); }
-.qc-drow-h { display: flex; flex-direction: column; justify-content: center; flex: none; width: 74px; padding: 2px 6px; border-right: 1px solid var(--qc-line); background: rgba(255, 255, 255, 0.03); cursor: default; }
+.qc-drow-h { display: flex; flex-direction: column; justify-content: center; flex: none; width: 74px; padding: 2px 6px; border-right: 1px solid var(--qc-line); background: rgba(255, 255, 255, 0.03); cursor: var(--c-default, default); }
 .qc-drow-h em { color: var(--qc-dim); font: normal 9px Arial, sans-serif; letter-spacing: 1px; }
 .qc-drow-h b { color: #cfd6dd; font: bold 9px Arial, sans-serif; letter-spacing: 1px; }
 .qc-drow-h small { color: #9fc4ea; font: bold 9px 'Lucida Console', 'Courier New', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -109,7 +109,7 @@
 /* perf: allow a hard on / off flash (steps(1)): the lamp's glow is a box-shadow outside its box, which an overlay layer cannot switch off; only during a fault */
 @keyframes qc-dblink { 50% { background: #3a3f45; box-shadow: none; } }
 @keyframes qc-dblink-t { 50% { opacity: 0.35; } }
-.qc-dc { display: flex; flex-direction: column; justify-content: center; flex: 1; min-width: 0; padding: 2px 6px; background: var(--qc-bg0); cursor: default; }
+.qc-dc { display: flex; flex-direction: column; justify-content: center; flex: 1; min-width: 0; padding: 2px 6px; background: var(--qc-bg0); cursor: var(--c-default, default); }
 .qc-dc em { display: flex; align-items: center; gap: 4px; color: var(--qc-dim); font: normal 9px Arial, sans-serif; letter-spacing: 1px; white-space: nowrap; }
 .qc-dc em i, .qc-dverdict i { flex: none; width: 7px; height: 7px; border-radius: 1px; background: #3a3f45; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5); }
 .qc-dc b { color: #cfd6dd; font: bold 11px 'Lucida Console', 'Courier New', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -123,7 +123,7 @@
 .qc-dc.is-wait em i, .qc-dverdict.is-wait i { background: #6a7f96; }
 .qc-dc.is-off b { color: var(--qc-dim); }
 .qc-dnote { align-self: stretch; padding: 0 8px; color: var(--qc-dim); font: 11px Tahoma, Arial, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.qc-dverdict { display: flex; align-items: center; gap: 6px; height: 18px; padding: 0 8px; background: var(--qc-bg0); color: var(--qc-dim); font: bold 10px 'Lucida Console', 'Courier New', monospace; cursor: default; }
+.qc-dverdict { display: flex; align-items: center; gap: 6px; height: 18px; padding: 0 8px; background: var(--qc-bg0); color: var(--qc-dim); font: bold 10px 'Lucida Console', 'Courier New', monospace; cursor: var(--c-default, default); }
 .qc-dverdict-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qc-dverdict.is-ok { color: #9fe3b0; }
 .qc-dverdict.is-warn { color: #ffcf70; }
@@ -299,7 +299,7 @@
 .qc-xgame i { width: 0; height: 0; flex: none; margin-left: 4px; border: 4px solid transparent; border-top-color: currentColor; margin-top: 4px; }
 .qc-xs { display: inline-flex; align-items: center; gap: 5px; color: var(--qc-text); font-size: 10px; }
 .qc-xs::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--qc-xs, #888); box-shadow: 0 0 4px var(--qc-xs, transparent); }
-.qc-ctl-busy .qc-ctl-body { cursor: progress; }
+.qc-ctl-busy .qc-ctl-body { cursor: var(--c-progress, progress); }
 
 /* ---- source list toggle, mute keys ---- */
 .qc-srcs-head { display: flex; align-items: center; gap: 6px; }
@@ -552,7 +552,7 @@
 /* perf: allow alarm: a front-panel LED blinks only for a fault, a hung unit or a reconnect (quickcast.js); opacity steps */
 .qc-led.is-blink i { animation: qc-blink 0.8s steps(1, end) infinite; }
 /* recessed RESET push button (pen press on hardware) */
-.qc-window .qc-root .qc-fp-reset { width: 54px; height: 24px; border: 1px solid #000; border-radius: 12px; background: #101113; box-shadow: inset 0 2px 4px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.07); color: #c9cdd2; font: bold 8px Arial, sans-serif; letter-spacing: 1px; cursor: pointer; }
+.qc-window .qc-root .qc-fp-reset { width: 54px; height: 24px; border: 1px solid #000; border-radius: 12px; background: #101113; box-shadow: inset 0 2px 4px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.07); color: #c9cdd2; font: bold 8px Arial, sans-serif; letter-spacing: 1px; cursor: var(--c-pointer, pointer); }
 .qc-window .qc-root .qc-fp-reset:active { box-shadow: inset 0 3px 6px #000; color: #ff7a7a; }
 
 /* front panel indicator row and the satellite's power button */

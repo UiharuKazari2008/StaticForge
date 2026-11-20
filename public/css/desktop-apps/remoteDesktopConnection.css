@@ -360,7 +360,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-clie
 }
 
 .rdc-main-window.rdc-busy .rdc-client {
-    cursor: progress;
+    cursor: var(--c-progress, progress);
 }
 
 /* ---- Remote Desktop Disconnected ---- */
@@ -556,7 +556,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-clie
     background: image-set(url('/static_images/vista-mstsc/reconnect-panel.png') 1x, url('/static_images/hidpi/125/vista-mstsc/reconnect-panel.png') 1.25x, url('/static_images/hidpi/150/vista-mstsc/reconnect-panel.png') 1.5x, url('/static_images/hidpi/175/vista-mstsc/reconnect-panel.png') 1.75x, url('/static_images/hidpi/200/vista-mstsc/reconnect-panel.png') 2x) 0 0 no-repeat;
     color: #fff;
     font: 11px/13px 'Microsoft Sans Serif', Tahoma, sans-serif;
-    cursor: default;
+    cursor: var(--c-default, default);
     user-select: none;
 }
 

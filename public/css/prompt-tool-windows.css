@@ -152,7 +152,7 @@
     line-height: 25px;
     text-align: center;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #promptEmphasisTool .ptw-kind[data-kind="none"] {

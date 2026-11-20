@@ -73,7 +73,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.dpi-cust
     top: 68px;
     width: 320px;
     height: 54px;
-    cursor: ew-resize;
+    cursor: var(--c-ew-resize, ew-resize);
     outline: none;
 }
 

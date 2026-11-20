@@ -194,7 +194,7 @@
 .pfm-window .pfm-split {
     flex: none;
     width: 3px;
-    cursor: col-resize;
+    cursor: var(--c-col-resize, col-resize);
 }
 
 .pfm-window .pfm-result {
@@ -219,7 +219,7 @@
     height: 18px;
     box-sizing: border-box;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .pfm-window .pfm-twisty {
@@ -300,7 +300,7 @@
     background: linear-gradient(#fff 1px, #fbfbfb 1px, #a3a3a3);
     /* UIFILE "bar": Segoe UI Bold at the page's 10 pt */
     font: bold 13px "Segoe UI", Tahoma, sans-serif;
-    cursor: default;
+    cursor: var(--c-default, default);
     white-space: nowrap;
 }
 
@@ -551,7 +551,7 @@
     height: 28px;
     padding: 6px 15px 0 25px;
     box-sizing: border-box;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
     white-space: nowrap;
 }
 
@@ -860,7 +860,7 @@
     padding-left: 2px;
     line-height: 15px;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .pfm-rel-list > div.is-hot {
@@ -878,7 +878,7 @@
     background: #fff;
     font: 12px "Segoe UI", Tahoma, sans-serif;
     color: #000;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .pfm-rel-cal > span {
@@ -1087,7 +1087,7 @@
 
 .pfm-window .pfm-act {
     padding: 2px 6px 2px 24px;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 .pfm-window .pfm-act:hover {

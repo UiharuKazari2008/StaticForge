@@ -1083,7 +1083,7 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 
 .dm-client .dm-act:not(.is-disabled):hover {
     text-decoration: underline;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 /* Customize View: the parts a user hid */
@@ -1742,7 +1742,7 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     border: 1px solid #a5acb5;
     border-radius: 2px;
     background: linear-gradient(#f2f2f2, #ebebeb 50%, #dddddd 50%, #cfcfcf);
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-day input:checked + span {

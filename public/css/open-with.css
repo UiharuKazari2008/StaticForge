@@ -44,7 +44,7 @@
     text-align: left;
     font: inherit;
     color: inherit;
-    cursor: default;
+    cursor: var(--c-default, default);
     /* a list item, not a push button: selection moves at once (the kit's button fades its border over 1 s) */
     transition: none;
 }
@@ -83,7 +83,7 @@
     height: 21px;
     padding: 0 9px 0 10px;
     color: var(--mow-group-text);
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 #confirmationDialog .mow-tiles + .mow-group { margin-top: 3px; }
 #confirmationDialog .mow-group-name { flex: none; white-space: nowrap; }

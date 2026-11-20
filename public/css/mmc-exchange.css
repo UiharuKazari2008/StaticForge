@@ -28,7 +28,7 @@
     color: #000;
     line-height: 16px;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 @media (hover: hover) {

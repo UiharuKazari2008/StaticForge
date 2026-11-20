@@ -7,7 +7,7 @@
 .videos-window .modal-content { display: flex; flex-direction: column; min-height: 0; }
 .videos-window .modal-body { flex: 1 1 auto; min-height: 0; height: auto; }
 .videos-window .vd-root { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; background: black; color: white; }
-.videos-window .vd-root.is-busy, .videos-window .vd-root.is-busy * { cursor: progress; }
+.videos-window .vd-root.is-busy, .videos-window .vd-root.is-busy * { cursor: var(--c-progress, progress); }
 .videos-window .vd-bar {
     flex: 0 0 auto;
     display: flex;
@@ -44,8 +44,8 @@
 .videos-window .vd-host { position: relative; flex: 1 1 auto; min-height: 0; }
 .videos-window .vd-anchor { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 /* the program's unit: a third larger than a phone's point, so its rows and keys suit a mouse */
-.videos-window .wm-page.wm-youtube.is-desktop { --u: 1.3px; cursor: default; }
-.videos-window .wm-page.wm-youtube.is-desktop .yt-row, .videos-window .wm-page.wm-youtube.is-desktop .yt-tab, .videos-window .wm-page.wm-youtube.is-desktop .yt-hud-key { cursor: pointer; }
+.videos-window .wm-page.wm-youtube.is-desktop { --u: 1.3px; cursor: var(--c-default, default); }
+.videos-window .wm-page.wm-youtube.is-desktop .yt-row, .videos-window .wm-page.wm-youtube.is-desktop .yt-tab, .videos-window .wm-page.wm-youtube.is-desktop .yt-hud-key { cursor: var(--c-pointer, pointer); }
 /* full screen is the browser's on the desktop: the player fills the display */
 .videos-window .yt-player:fullscreen .yt-stage { flex: 1 1 auto; aspect-ratio: auto; height: 100%; }
 .videos-window .yt-player:fullscreen .yt-side { display: none; }

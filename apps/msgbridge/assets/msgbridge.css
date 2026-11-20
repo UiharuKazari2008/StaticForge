@@ -159,7 +159,7 @@
 .mb-window .mb-split {
     flex: none;
     width: 3px;
-    cursor: col-resize;
+    cursor: var(--c-col-resize, col-resize);
 }
 
 .mb-window .mb-result {
@@ -190,7 +190,7 @@
     height: 18px;
     box-sizing: border-box;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .mb-window .mb-twisty {
@@ -269,7 +269,7 @@
     background: #f0f0f0;
     font-weight: bold;
     line-height: 15px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .mb-window .mb-act-group {
@@ -281,7 +281,7 @@
     line-height: 25px;
     white-space: nowrap;
     text-overflow: ellipsis;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 /* the group's collapse arrow: a 7x4 black triangle, 6 px from the right */
@@ -313,7 +313,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .mb-window .mb-act .mb-act-icon {
@@ -324,7 +324,7 @@
 /* hot: the text underlined, nothing else (the VM's) */
 .mb-window .mb-act:not(.is-disabled):hover {
     text-decoration: underline;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 .mb-window .mb-act.is-disabled {
@@ -390,7 +390,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 /* the section's arrow: a 5x3 black triangle, 10 px from the right */
@@ -493,7 +493,7 @@
 
 .mb-window .mb-link {
     color: #0066cc;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 .mb-window .mb-link:hover {
@@ -610,7 +610,7 @@
 .mb-window .mb-row {
     height: 19px;
     align-items: center;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .mb-window .mb-row > span {

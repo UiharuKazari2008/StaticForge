@@ -112,7 +112,7 @@
     align-items: center;
     height: 17px;
     padding: 0 3px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .vdt-client .akm-check-row .tbp-check {

@@ -20,7 +20,7 @@
     height: 100vh;
     z-index: 2147483601;
     pointer-events: auto;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .modal.flip3d-hidden {

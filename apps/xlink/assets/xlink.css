@@ -29,7 +29,7 @@
     background: var(--xl-bg0);
     color: var(--xl-text);
     font: 11px/1.25 Tahoma, 'Microsoft Sans Serif', sans-serif;
-    cursor: default;
+    cursor: var(--c-default, default);
     user-select: none;
 }
 .xl-window .xl-root button { font: inherit; color: var(--xl-text); }
@@ -66,7 +66,7 @@
 .xl-tnode.is-sel { background: linear-gradient(#356aa6, #24507f); color: #fff; }
 .xl-tled { order: 9; width: 14px; height: 8px; flex: none; border-radius: 2px; background: var(--led, #3bd16f); box-shadow: 0 0 5px var(--led, #3bd16f), inset 0 1px 0 rgba(255, 255, 255, .5); }
 .xl-tled.is-off { background: #3a1010; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .8); }
-.xl-split { width: 5px; flex: none; cursor: col-resize; }
+.xl-split { width: 5px; flex: none; cursor: var(--c-col-resize, col-resize); }
 .xl-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--xl-line); background: var(--xl-bg1); box-shadow: inset 0 1px 0 var(--xl-hi); }
 .xl-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; background: linear-gradient(#30343a, #222529); border-bottom: 1px solid var(--xl-line); }
 .xl-head-ico img, .xl-head-ico .xl-ico { display: block; width: 20px; height: 20px; }
@@ -152,7 +152,7 @@
 .xl-st-nodes { width: 82px; }
 .xl-st-poll { width: 96px; }
 .xl-st-clock { width: 56px; text-align: center; }
-.xl-busy .xl-list, .xl-busy .xl-tree { cursor: progress; }
+.xl-busy .xl-list, .xl-busy .xl-tree { cursor: var(--c-progress, progress); }
 
 /* ---- splash ---- */
 .xl-splash { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, #1d2733 0%, #0a0c0f 70%); }

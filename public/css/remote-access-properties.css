@@ -66,7 +66,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rap-open
     padding: 0 4px 0 3px;
     border-radius: 2px;
     outline: none;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 @media (hover: hover) {
@@ -189,7 +189,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rap-open
 }
 
 .tbp-client label.tbp-static {
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 /* ---- System Message Template ---- */

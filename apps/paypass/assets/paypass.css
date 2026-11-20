@@ -16,7 +16,7 @@
 }
 
 .pp-window > .modal-content.pp-client { display: flex; flex-direction: column; min-height: 0; padding: 0 !important; background: var(--pp-face); }
-.pp-window .pp-root { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; background: var(--pp-face); color: var(--pp-text); font: 12px/1.3 Tahoma, 'Microsoft Sans Serif', sans-serif; cursor: default; }
+.pp-window .pp-root { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; background: var(--pp-face); color: var(--pp-text); font: 12px/1.3 Tahoma, 'Microsoft Sans Serif', sans-serif; cursor: var(--c-default, default); }
 .pp-window .pp-root button { font: inherit; }
 .pp-ico { flex: none; vertical-align: middle; }
 .pp-dim { color: var(--pp-dark); }
@@ -48,7 +48,7 @@
 .pp-find { align-self: center; flex: none; color: var(--pp-dark); white-space: nowrap; }
 .pp-window .pp-root .pp-find input { width: 170px; height: 22px; padding: 0 5px; border: 1px solid var(--pp-line); border-radius: 2px; background: #fff; color: var(--pp-text); font: 12px Tahoma, sans-serif; }
 .pp-view { flex: 1; min-height: 0; overflow: auto; background: var(--pp-panel); }
-.pp-busy .pp-view { cursor: progress; }
+.pp-busy .pp-view { cursor: var(--c-progress, progress); }
 
 /* ---- dashboard: machine cards ---- */
 .pp-dash-head { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 14px 0; font: bold 16px Tahoma, sans-serif; }

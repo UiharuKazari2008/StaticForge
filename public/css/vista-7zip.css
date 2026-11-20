@@ -315,7 +315,7 @@ body.desktop-mode:not(.windows-classic-theme) .win7.sz-client .sz-progress[role=
     gap: 3px;
     height: 18px;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 .sz-client .sz-bf-row.is-selected .sz-bf-name {
     background: #3399ff;

@@ -2124,7 +2124,7 @@ html[data-glass="basic"] #startMenu.start-menu {
     color: #fff;
     font-family: 'Segoe UI', 'Noto Sans', sans-serif;
     font-weight: 400;
-    cursor: default;
+    cursor: var(--c-default, default);
     user-select: none;
 }
 
@@ -2257,7 +2257,7 @@ html[data-glass="basic"] #startMenu.start-menu {
     font: 13px/28px 'Segoe UI', 'Noto Sans', sans-serif;
     text-align: center;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
     outline: none;
     isolation: isolate;
 }

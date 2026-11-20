@@ -334,7 +334,7 @@
     color: #0066cc;
     line-height: 16px;
     text-align: left;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 #dreamscapeCardSpaceModal .cs-tasks-list :is(.cs-task, .cpl-vault-actions button):hover:not(:disabled) {
@@ -344,7 +344,7 @@
 
 #dreamscapeCardSpaceModal .cs-tasks-list :is(.cs-task, .cpl-vault-actions button):disabled {
     color: #7e859c;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #dreamscapeCardSpaceModal .cs-tasks-list .cpl-vault-actions {
@@ -399,7 +399,7 @@
     background: none;
     box-shadow: none;
     text-align: left;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 #dreamscapeCardSpaceModal .cs-add-item:hover {
@@ -592,7 +592,7 @@
     background: none;
     box-shadow: none;
     color: #0066cc;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 #dreamscapeCardSpaceModal .cs-host #secAppkeysLogPage .sec-toolbar .sec-dsap-action-btn::before,
@@ -674,7 +674,7 @@
     background: none;
     box-shadow: none;
     text-align: left;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 #dreamscapeCardSpaceModal .cs-nested .cpl-vault-line::before,
@@ -734,7 +734,7 @@
     background: none;
     box-shadow: none;
     color: #0066cc;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 #dreamscapeCardSpaceModal .cs-nested .cpl-vault-actions button:hover:not(:disabled),
@@ -782,7 +782,7 @@
     background: none;
     box-shadow: none;
     color: #0066cc;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 #dreamscapeCardSpaceModal :is(.cs-add-keys, .cs-pref-links) .cs-task:hover {

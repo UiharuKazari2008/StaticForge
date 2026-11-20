@@ -212,7 +212,7 @@
     align-items: center;
     border: 1px solid transparent;
     border-radius: 2px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .wtm-window .wtm-row > span {

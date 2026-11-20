@@ -10,7 +10,7 @@
 .modal.asdc-window > .modal-content.asdc-client { padding: 0 !important; overflow: hidden; }
 .asdc-window .modal-window-title-toolbar .asdc-crumbs { display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0 8px; white-space: nowrap; }
 .asdc-window .modal-window-title-toolbar .asdc-crumbs img { width: 6px; height: 9px; }
-.asdc-window .modal-window-title-toolbar .asdc-crumb-menu { cursor: pointer; }
+.asdc-window .modal-window-title-toolbar .asdc-crumb-menu { cursor: var(--c-pointer, pointer); }
 .asdc-window .modal-window-title-toolbar .asdc-crumb-menu:hover { text-decoration: underline; }
 .asdc-window .modal-window-title-toolbar .asdc-help { margin-left: auto; }
 
@@ -28,7 +28,7 @@
 .asdc-status[data-status="notconnected"] { left: 70px; }
 .asdc-status img { width: 32px; height: 32px; flex: none; }
 /* a foldable's picture folds and unfolds on a click (#827) */
-.asdc-device.is-foldable { cursor: pointer; }
+.asdc-device.is-foldable { cursor: var(--c-pointer, pointer); }
 /* WMDC's sync status line under the device status (#827): a partnership's last sync */
 .asdc-sync { position: absolute; left: 132px; top: 478px; font-size: 12px; color: #4a4a4a; white-space: nowrap; }
 
@@ -45,18 +45,18 @@
 .asdc-tile-body { position: absolute; left: 81px; right: 9px; top: 44px; bottom: 0; border-top: 1px solid rgba(255, 255, 255, .55); opacity: 0; visibility: hidden; }
 .asdc-tile.is-open .asdc-tile-body { opacity: 1; visibility: visible; transition: opacity .4s linear .3s; }
 @media (prefers-reduced-motion: reduce) { .asdc-tile, .asdc-tile.is-open .asdc-tile-body { transition: none; } }
-.asdc-root .asdc-item { display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; margin: 10px 0 0; padding: 0; border: 0; background: none; font: 15px/1.2 'Segoe UI', sans-serif; color: #000; text-align: left; cursor: pointer; }
+.asdc-root .asdc-item { display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; margin: 10px 0 0; padding: 0; border: 0; background: none; font: 15px/1.2 'Segoe UI', sans-serif; color: #000; text-align: left; cursor: var(--c-pointer, pointer); }
 .asdc-root .asdc-item:first-child { margin-top: 11px; }
 .asdc-root .asdc-item img { width: 32px; height: 32px; flex: none; }
 .asdc-root .asdc-item:hover span, .asdc-root .asdc-item:focus-visible span { text-decoration: underline; }
-.asdc-root .asdc-item:disabled { color: #5d6d55; cursor: default; }
+.asdc-root .asdc-item:disabled { color: #5d6d55; cursor: var(--c-default, default); }
 .asdc-root .asdc-item:disabled span { text-decoration: none; }
-.asdc-root .asdc-more { position: absolute; right: 0; bottom: 8px; padding: 0; border: 0; background: none; font: 15px/1.2 'Segoe UI', sans-serif; color: #00f; cursor: pointer; }
+.asdc-root .asdc-more { position: absolute; right: 0; bottom: 8px; padding: 0; border: 0; background: none; font: 15px/1.2 'Segoe UI', sans-serif; color: #00f; cursor: var(--c-pointer, pointer); }
 .asdc-root .asdc-more:hover { text-decoration: underline; }
 
 /* ---- the choice: set up, or connect without setting up ---- */
 .asdc-choice { position: absolute; left: 0; top: 0; }
-.asdc-root .asdc-panel { position: absolute; left: 320px; width: 446px; padding: 0; border: 0; background: no-repeat; text-align: left; font: inherit; color: #333; cursor: pointer; }
+.asdc-root .asdc-panel { position: absolute; left: 320px; width: 446px; padding: 0; border: 0; background: no-repeat; text-align: left; font: inherit; color: #333; cursor: var(--c-pointer, pointer); }
 .asdc-root .asdc-panel--setup { top: 147px; height: 165px; background-image: url(panel-setup-off.png); }
 .asdc-root .asdc-panel--setup:hover, .asdc-root .asdc-panel--setup:focus-visible { background-image: url(panel-setup-on.png); }
 .asdc-root .asdc-panel--quick { top: 332px; height: 70px; background-image: url(panel-quick-off.png); }

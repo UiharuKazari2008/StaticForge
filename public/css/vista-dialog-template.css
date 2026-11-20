@@ -181,7 +181,7 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
     border-radius: 0;
     box-shadow: none;
     background: image-set(url("/static_images/vista-controls/combo-glyph-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-normal.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-normal.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-normal.png") 2x) 3px 0 / 10px 19px no-repeat;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .vdt-client .vdt-combo-edit .vdt-combo-drop:hover {
@@ -209,7 +209,7 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
     border: 1px solid #646464;
     background: #fff;
     color: #000;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .vdt-combo-pop .vdt-lb-row {
@@ -718,7 +718,7 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     color: #000;
     font: 12px "Segoe UI", Tahoma, sans-serif;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
     outline: none;
     overflow: visible;
 }
@@ -816,7 +816,7 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     appearance: none;
     background: image-set(url('/static_images/vista-controls/checkbox.png') 1x, url('/static_images/hidpi/125/vista-controls/checkbox.png') 1.25x, url('/static_images/hidpi/150/vista-controls/checkbox.png') 1.5385x, url('/static_images/hidpi/175/vista-controls/checkbox.png') 1.75x, url('/static_images/hidpi/200/vista-controls/checkbox.png') 2x) 0 -13px / 13px auto no-repeat;
     box-shadow: none;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .vdt-dtp > input.vdt-dtp-none:not(#_):active { background-position: 0 -26px; }
@@ -899,7 +899,7 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.35);
     color: #000;
     font: 12px/15px "Segoe UI", Tahoma, sans-serif;
-    cursor: default;
+    cursor: var(--c-default, default);
     user-select: none;
 }
 
@@ -1130,7 +1130,7 @@ button.vdt-colorwell:not(#_) {
     transform: none;
     transition: none;
     vertical-align: middle;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 button.vdt-colorwell:not(#_)::before,
@@ -1413,7 +1413,7 @@ button.vdt-cmdlink:not(#_):focus-visible {
     border-image-slice: 2;
     background: #f0f0f0;
     color: #6d6d6d;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .vdt-client .vdt-ipaddr input.vdt-ip-oct:not(#_) {

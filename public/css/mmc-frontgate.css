@@ -81,7 +81,7 @@
     border: 1px solid transparent;
     border-radius: 3px;
     outline: none;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .mmc-window .fg-cover:hover {

@@ -43,7 +43,7 @@
 .mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-hsplit {
     flex: none;
     height: 5px;
-    cursor: row-resize;
+    cursor: var(--c-row-resize, row-resize);
     background: #f0f0f0;
 }
 
@@ -117,7 +117,7 @@
     flex: 1;
     flex-direction: column;
     min-width: 0;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 /* the one disk: its partitions side by side, each as wide as its share of the usage (flex-grow, set per
@@ -458,7 +458,7 @@
     box-shadow: none;
     color: #0066cc;
     padding: 0;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 .mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-crumb-link::before {

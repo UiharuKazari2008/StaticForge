@@ -328,7 +328,7 @@
 
 .wcal-window .wcal-mini-grid td {
     color: #000;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .wcal-window .wcal-mini-grid td.is-other {
@@ -353,7 +353,7 @@
     gap: 0;
     height: 18px;
     padding: 0 0 0 23px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .wcal-window :is(.wcal-cal, .wcal-task) input[type=checkbox] {
@@ -629,7 +629,7 @@
     right: 0;
     bottom: 0;
     height: 5px;
-    cursor: ns-resize;
+    cursor: var(--c-ns-resize, ns-resize);
 }
 
 /* the month */
@@ -851,7 +851,7 @@
     grid-template-columns: 14px 1fr;
     align-items: center;
     padding: 3px 5px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .wcal-rem-list .wcal-rem.is-sel {
@@ -1092,7 +1092,7 @@
     background: #fff;
     color: #000;
     font: 12px "Segoe UI", Tahoma, sans-serif;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .wcal-combo-row {

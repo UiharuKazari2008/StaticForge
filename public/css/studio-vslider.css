@@ -90,7 +90,7 @@
     min-inline-size: 0;
     margin: 0;
     padding: 4px 9px 9px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #studioVSliderTool fieldset.vslider-card > legend {

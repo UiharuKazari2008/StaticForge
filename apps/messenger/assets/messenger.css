@@ -170,7 +170,7 @@
     flex: none;
     width: 4px;
     background: #f0f0f0;
-    cursor: col-resize;
+    cursor: var(--c-col-resize, col-resize);
 }
 
 #melatonMessengerModal .mm-pane-note {
@@ -191,7 +191,7 @@
     margin: 0 2px;
     border: 1px solid transparent;
     border-radius: 2px;
-    cursor: default;
+    cursor: var(--c-default, default);
     white-space: nowrap;
 }
 
@@ -270,7 +270,7 @@
     padding: 4px 6px 5px;
     border: 1px solid transparent;
     border-bottom-color: #ededed;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #melatonMessengerModal .mm-row:hover {
@@ -995,7 +995,7 @@
 /* an Android app account's conversation title (#885): a link that opens it in the app on the phone */
 #melatonMessengerModal .mm-conv-open {
     color: #0066cc;
-    cursor: pointer;
+    cursor: var(--c-pointer, pointer);
 }
 
 #melatonMessengerModal .mm-conv-open:hover,

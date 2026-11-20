@@ -151,7 +151,7 @@
 .studio-activity-tool .studio-activity-row {
     height: 19px;
     color: #000;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .studio-activity-tool .studio-activity-row > .studio-activity-cell {
@@ -195,7 +195,7 @@
 .studio-activity-tool .studio-activity-splitter {
     flex: none;
     height: 5px;
-    cursor: ns-resize;
+    cursor: var(--c-ns-resize, ns-resize);
     touch-action: none;
 }
 

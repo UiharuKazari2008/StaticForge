@@ -56,7 +56,7 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
 
 body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .cpl-crumb {
     flex: none;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .cpl-crumb:not(:hover) {
@@ -79,7 +79,7 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     border: 1px solid transparent;
     border-radius: 2px;
     box-shadow: none;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .fd-address-drop::before {
@@ -228,7 +228,7 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     color: #000;
     font-size: 9px;
     line-height: 18px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar button.fd-crumb-sep:is(:hover, .context-open) {
@@ -254,7 +254,7 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     color: #000;
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     line-height: 18px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .fd-crumb-overflow:is(:hover, .context-open) {
@@ -294,7 +294,7 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #studioSaveFolderModal .fd-suggest-row:is(:hover, .is-selected) {
@@ -324,7 +324,7 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     padding: 0;
     color: #000;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #studioSaveFolderModal .fd-name-label {
@@ -391,7 +391,7 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #studioSaveFolderModal .fd-name-drop:hover {
@@ -442,7 +442,7 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     color: #000;
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     line-height: 15px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #studioSaveFolderModal .fd-expando:hover {
@@ -622,7 +622,7 @@ body.windows-classic-theme #studioSaveFolderModal .fd-bottom {
     bottom: 0;
     z-index: 1;
     width: 15px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #studioSaveFolderModal .fd-save .fd-split::before {

@@ -10,7 +10,7 @@
 .mmc-window .cdb-hsplit {
     flex: none;
     height: 5px;
-    cursor: row-resize;
+    cursor: var(--c-row-resize, row-resize);
     border-top: 1px solid #d5dbe3;
     background: #f0f0f0;
 }

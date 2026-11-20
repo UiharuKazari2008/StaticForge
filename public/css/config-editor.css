@@ -654,7 +654,7 @@ body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .con
     color: #000;
     line-height: 13px;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 /* Chrome draws Tahoma's line 1 px lower than GDI: the statics sit 1 px above their template rect */
@@ -825,7 +825,7 @@ body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .con
     padding: 0;
     color: #000;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #configEditorValueModal .cev-radio:first-of-type {

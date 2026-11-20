@@ -8,7 +8,7 @@
 }
 
 #expanderMakeGlobalWizard .dsexp-row {
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 #expanderMakeGlobalWizard .dsexp-name {

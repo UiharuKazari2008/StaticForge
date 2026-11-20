@@ -21,7 +21,7 @@
     padding: 0;
     border: 0;
     background: transparent;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .sss-window .sss-btn.is-down {
@@ -37,7 +37,7 @@
     position: absolute;
     width: 92px;
     height: 17px;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .sss-window .sss-ontop input {

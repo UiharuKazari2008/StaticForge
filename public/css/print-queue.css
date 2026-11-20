@@ -122,7 +122,7 @@
 .print-queue-window .pq-row {
     height: 19px;
     align-items: center;
-    cursor: default;
+    cursor: var(--c-default, default);
 }
 
 .print-queue-window .pq-row > span {
