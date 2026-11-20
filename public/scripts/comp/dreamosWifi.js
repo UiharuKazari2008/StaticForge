@@ -763,31 +763,102 @@
         }).catch(() => ifaces);
     }
 
-    // a renamed connection (Vista keeps the name on the computer; here in this browser, per adapter)
+    // ---- this computer's connections on the server (#952, Yukimi Nov 20 2026): a renamed connection and the Local Area
+    // Connection numbers are kept per user in Melaton's registry (config userGlobalSettings.registry, melatonRegistry.js),
+    // under the computer (the phone's ActiveSync device id: its phone page and DeX window are one computer; a browser's
+    // Nightshade adapter address) and the adapter's stable key (alias wlan0 / rmnet0, the Café Miniport, a VPN app's
+    // tunnel, the modem's other PDNs by APN), never a kernel name that changes between connections. Every client shows
+    // the same names; the names this browser kept before are moved there once.
     const NAMES_KEY = 'dreamos.ncpa.names';
-    function customNames() {
+    const LAN_ORDER_KEY = 'dreamos.ncpa.lanorder';
+    const REG_BASE = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Network\\Connections';
+    function computerKey() {
         try {
-            const v = JSON.parse(root.localStorage.getItem(NAMES_KEY) || '{}');
-            return v && typeof v === 'object' ? v : {};
-        } catch (_) { return {}; }
+            const A = root.AndroidActiveSync;
+            const id = A && typeof A.getDeviceId === 'function' ? String(A.getDeviceId() || '').toLowerCase().replace(/[^0-9a-z-]/g, '') : '';
+            if (id) return id.slice(0, 64);
+        } catch (_) { /* below */ }
+        const d = root.melatonNetworkDialogs;
+        try { const nic = d && typeof d.nightshadeNic === 'function' ? d.nightshadeNic() : ''; if (nic) return `nic-${nic}`; } catch (_) { /* below */ }
+        return 'local';
     }
-    function storeName(iface, name) {
+    const regKey = () => `${REG_BASE}\\${computerKey()}`;
+    const reg = () => (root.melatonRegistry && typeof root.melatonRegistry.getKey === 'function' ? root.melatonRegistry : null);
+
+    /** An adapter's stable key (interfaces() row, or an adapter of this file). */
+    function stableKey(x) {
+        if (!x) return '';
+        if (x.kind === 'miniport' || x.id === 'miniport') return 'miniport';
+        const r = x.row || x;
+        if (r.alias) return String(r.alias);
+        if (r.kind === 'vpn') return `vpn:${r.vpnPackage || r.name}${r.vpnSession ? `:${r.vpnSession}` : ''}`;
+        if (r.kind === 'mobile') return `mobile:${r.apn || r.name}`;
+        if (r.kind === 'ipa') return `ipa:${r.name}`;
+        return String(x.id || r.name || '');
+    }
+
+    /** Move this browser's old names and numbers into the registry, once (old keys were the adapter ids). */
+    let migrated = false;
+    function migrateLocal() {
+        if (migrated) return;
+        const R = reg();
+        let names = null;
+        let order = null;
+        try { names = JSON.parse(root.localStorage.getItem(NAMES_KEY) || 'null'); order = JSON.parse(root.localStorage.getItem(LAN_ORDER_KEY) || 'null'); } catch (_) { names = null; order = null; }
+        if (!R || (!names && !order)) { migrated = true; return; }
+        // the old ids are the alias or the kernel name: a kernel name maps through this computer's interfaces
+        if ((names && Object.keys(names).some((k) => !/^(wlan0|rmnet0|miniport)$/.test(k))) && !ifaces) return; // wait for the list
+        migrated = true;
+        const keyOf = (id) => {
+            const row = (ifaces || []).find((x) => x && (String(x.alias || '') === id || String(x.name) === id));
+            return row ? stableKey(row) : id;
+        };
+        const cur = R.getKey(regKey()) || {};
+        const patch = {};
+        Object.entries(names || {}).forEach(([id, v]) => { const k = keyOf(id); if (v && !cur[`Name ${k}`]) patch[`Name ${k}`] = String(v).slice(0, 256); });
+        Object.entries(order || {}).forEach(([id, n]) => { const k = keyOf(id); if (Number(n) > 0 && !cur[`Order ${k}`]) patch[`Order ${k}`] = Number(n); });
+        if (Object.keys(patch).length) void R.set(regKey(), patch);
+        try { root.localStorage.removeItem(NAMES_KEY); root.localStorage.removeItem(LAN_ORDER_KEY); } catch (_) { /* private window */ }
+    }
+
+    /** stable key -> the name the user gave the connection. */
+    function customNames() {
+        migrateLocal();
+        const R = reg();
+        const out = {};
+        if (R) {
+            const vals = R.getKey(regKey()) || {};
+            Object.keys(vals).forEach((k) => { if (k.startsWith('Name ') && vals[k]) out[k.slice(5)] = String(vals[k]); });
+            return out;
+        }
+        try { const v = JSON.parse(root.localStorage.getItem(NAMES_KEY) || '{}'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; }
+    }
+    function storeName(key, name) {
+        const R = reg();
+        if (R) { void R.set(regKey(), { [`Name ${key}`]: name || null }); return; }
         const m = customNames();
-        if (name) m[iface] = name; else delete m[iface];
+        if (name) m[key] = name; else delete m[key];
         try { root.localStorage.setItem(NAMES_KEY, JSON.stringify(m)); } catch (_) { /* private window: the name lasts for the page */ }
     }
 
     // (#952) Local Area Connection numbers, kept in the order this computer first saw each adapter (Vista numbers them
-    // as they are installed): adapter id -> n
-    const LAN_ORDER_KEY = 'dreamos.ncpa.lanorder';
-    function lanNumber(id) {
+    // as they are installed): stable key -> n
+    function lanNumber(key) {
+        const R = reg();
+        if (R) {
+            const vals = R.getKey(regKey()) || {};
+            if (Number(vals[`Order ${key}`]) > 0) return Number(vals[`Order ${key}`]);
+            const n = Math.max(0, ...Object.keys(vals).filter((k) => k.startsWith('Order ')).map((k) => Number(vals[k])).filter(Number.isFinite)) + 1;
+            void R.set(regKey(), { [`Order ${key}`]: n });
+            return n;
+        }
         let m = {};
         try { m = JSON.parse(root.localStorage.getItem(LAN_ORDER_KEY) || '{}') || {}; } catch (_) { m = {}; }
-        if (!m[id]) {
-            m[id] = Math.max(0, ...Object.values(m).map(Number).filter(Number.isFinite)) + 1;
+        if (!m[key]) {
+            m[key] = Math.max(0, ...Object.values(m).map(Number).filter(Number.isFinite)) + 1;
             try { root.localStorage.setItem(LAN_ORDER_KEY, JSON.stringify(m)); } catch (_) { /* private window */ }
         }
-        return m[id];
+        return m[key];
     }
     // the app's kinds (interfaces() v2) that Network Connections shows as a Local Area Connection: the modem's interfaces
     // in LAN mode (Vista / 7 show a phone's or a card's modem so; VZAccess Manager has its carrier and signal), the IP
@@ -810,11 +881,12 @@
             // adapter exists, so it is not listed)
             return ifaces.filter((x) => x.nc && !phantom(x)).map((x) => {
                 const id = String(x.alias || x.name);
-                const a = { iface: String(x.name), id, kind: x.kind, label: labels.get(x) || x.label || '', mac: x.mac || '', enabled: x.enabled !== false, row: x, present: x.present !== false };
+                const key = stableKey(x);
+                const a = { iface: String(x.name), id, key, kind: x.kind, label: labels.get(x) || x.label || '', mac: x.mac || '', enabled: x.enabled !== false, row: x, present: x.present !== false };
                 let base;
                 if (x.kind === 'wifi') { wifis += 1; base = wifis > 1 ? `${ADAPTER} ${wifis}` : ADAPTER; } else if (x.kind === 'vpn') base = x.vpnSession || x.vpnApp || 'VPN Connection'; // the tunnel's own name in its app (WireGuard's)
-                else { const k = lanNumber(id); base = k > 1 ? `${LAN} ${k}` : LAN; }
-                return { ...a, base, conn: names[id] || base };
+                else { const k = lanNumber(key); base = k > 1 ? `${LAN} ${k}` : LAN; }
+                return { ...a, base, conn: names[key] || base };
             }).concat(miniportAdapter() ? [miniportAdapter()] : []);
         }
         if (ifaces) {
@@ -835,7 +907,7 @@
             let base = ADAPTER;
             if (a.kind === 'ethernet') { lans += 1; base = lans > 1 ? `${LAN} ${lans}` : LAN; }
             if (a.kind === 'mobile') base = MOBILE;
-            return { ...a, base, conn: names[a.id] || base };
+            return { ...a, key: a.id, base, conn: names[a.id] || base };
         }).concat(miniportAdapter() ? [miniportAdapter()] : []);
     }
 
@@ -869,7 +941,7 @@
         if (!info || !info.viaMiniport) return null;
         const names = customNames();
         const lease = nightshadeLease();
-        return { iface: 'miniport', id: 'miniport', kind: 'miniport', label: info.miniport || 'Xyridian Nightshade Virtual Ethernet Adapter', mac: lease ? lease.nic : '', enabled: true, present: true, base: info.connectionName, conn: names.miniport || info.connectionName };
+        return { iface: 'miniport', id: 'miniport', key: 'miniport', kind: 'miniport', label: info.miniport || 'Xyridian Nightshade Virtual Ethernet Adapter', mac: lease ? lease.nic : '', enabled: true, present: true, base: info.connectionName, conn: names.miniport || info.connectionName };
     }
 
     const wifiAdapter = () => adapters().find((a) => a.kind === 'wifi') || { iface: '', id: 'wlan0', kind: 'wifi', label: '', mac: '', enabled: true, base: ADAPTER, conn: ADAPTER };
@@ -2138,7 +2210,23 @@
     // and writes them; this file lists them without loading it) ------------------------------------------------------
     const VPN_KEY = 'dreamos.ncpa.vpn';
     function vpnObjects() {
-        try { const v = JSON.parse(root.localStorage.getItem(VPN_KEY) || '[]'); return Array.isArray(v) ? v.filter((o) => o && o.id && o.name) : []; } catch (_) { return []; }
+        // (#952) on the server with this computer's other connections (registry "Vpn <id>"; dreamosVpn.js writes them)
+        const R = reg();
+        const local = () => { try { const v = JSON.parse(root.localStorage.getItem(VPN_KEY) || '[]'); return Array.isArray(v) ? v.filter((o) => o && o.id && o.name) : []; } catch (_) { return []; } };
+        if (!R) return local();
+        const vals = R.getKey(regKey()) || {};
+        const rows = Object.keys(vals).filter((k) => k.startsWith('Vpn ')).map((k) => { try { return JSON.parse(vals[k]); } catch (_) { return null; } })
+            .filter((o) => o && o.id && o.name).sort((x, y) => (Number(x.created) || 0) - (Number(y.created) || 0));
+        // not moved yet (dreamosVpn.js moves them when it loads): this browser's own list meanwhile
+        return rows.concat(local().filter((o) => !rows.some((r) => r.id === o.id)));
+    }
+    /** A connection object written back (rename, delete): through the registry, as dreamosVpn.js keeps them. */
+    function vpnWrite(o, remove) {
+        const R = reg();
+        if (R) { void R.set(regKey(), { [`Vpn ${o.id}`]: remove ? null : JSON.stringify(o).slice(0, 4096) }); return; }
+        const all = vpnObjects().filter((x) => x.id !== o.id);
+        if (!remove) all.push(o);
+        try { root.localStorage.setItem(VPN_KEY, JSON.stringify(all)); } catch (_) { /* private window */ }
     }
     /** dreamosVpn.js (featureLoader 'network_vpn'): the wizard, Connect, Properties. */
     function vpnLib() {
@@ -2171,7 +2259,7 @@
             [{ text: 'Yes', value: true, className: 'btn-standard primary' }, { text: 'No', value: false, className: 'btn-standard' }], null,
             { title: 'Confirm Connection Delete', icon: 'fas fa-exclamation-triangle', sound: true }));
         if (ok !== true) return;
-        try { root.localStorage.setItem(VPN_KEY, JSON.stringify(vpnObjects().filter((o) => o.id !== r.vo.id))); } catch (_) { /* private window */ }
+        vpnWrite(r.vo, true);
         nc.sel = null;
         ncRerender();
     }
@@ -2409,10 +2497,9 @@
                 if (ncRows().some((x) => x.key !== r.key && x.conn.toLowerCase() === v.toLowerCase())) { done = true; await message(N.renameExists, N.renameTitle, 'error'); done = false; input.focus(); input.select(); return; }
                 // a VPN connection object keeps its own name (its phone book entry, #952)
                 if (r.vo) {
-                    const all = vpnObjects();
-                    const it = all.find((o) => o.id === r.vo.id);
-                    if (it) { it.name = v; try { root.localStorage.setItem(VPN_KEY, JSON.stringify(all)); } catch (_) { /* private window */ } }
-                } else storeName(r.a.id || r.a.iface, v === r.a.base ? '' : v);
+                    const it = vpnObjects().find((o) => o.id === r.vo.id);
+                    if (it) vpnWrite({ ...it, name: v });
+                } else storeName(r.a.key || stableKey(r.a), v === r.a.base ? '' : v);
             }
             done = true;
             nc.renaming = null;
@@ -2884,6 +2971,11 @@
     root.addEventListener('dreamos-vpn-changed', () => { ncRerender(); vanPaint(); }, { signal: appScopeSignal });
     root.addEventListener('nightshade:state', () => ncRerender(), { signal: appScopeSignal });
     root.addEventListener('melaton-nightshade-lease', () => ncRerender(), { signal: appScopeSignal });
+    // a connection renamed on another client of this user (the registry's push), or here: every window shows it
+    if (root.melatonRegistry && typeof root.melatonRegistry.onChange === 'function') {
+        const offReg = root.melatonRegistry.onChange((key) => { if (!key || String(key).startsWith(REG_BASE)) { ncRerender(); vanPaint(); } });
+        if (appScopeSignal) appScopeSignal.addEventListener('abort', offReg, { once: true });
+    }
     noteConnection();
 
     root.dreamosWifi = {

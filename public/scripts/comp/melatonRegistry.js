@@ -95,5 +95,32 @@
         };
     }
 
-    root.melatonRegistry = { get, getKey, subkeys, set, hydrate, onChange, _data: data };
+    /** Keys another client of the user changed (the server's registry_changed push, #952): { key: values | null }, applied
+     *  here without writing them back. */
+    function apply(changes) {
+        if (!changes || typeof changes !== 'object') return;
+        Object.entries(changes).forEach(([k, vals]) => {
+            const key = norm(k);
+            if (!key) return;
+            if (vals && typeof vals === 'object' && Object.keys(vals).length) data[key] = { ...vals };
+            else delete data[key];
+            emit(key);
+        });
+    }
+
+    // the push comes on the page's socket; wired once it exists (the shells' boot events, else the page's load)
+    const signal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // app-scope: ends with this file's segment
+    let wired = false;
+    function wire() {
+        const ws = root.wsClient;
+        if (wired || !ws || typeof ws.on !== 'function') return;
+        wired = true;
+        ws.on('registry_changed', (msg) => { const d = msg && (msg.data || msg); if (d && d.registry) apply(d.registry); }, { signal });
+    }
+    if (root.document) {
+        ['desktopBootDone', 'wmBootDone'].forEach((t) => root.document.addEventListener(t, wire, { once: true, signal }));
+        root.addEventListener('load', wire, { once: true, signal });
+    }
+
+    root.melatonRegistry = { get, getKey, subkeys, set, hydrate, apply, onChange, _data: data };
 })(typeof window !== 'undefined' ? window : globalThis);

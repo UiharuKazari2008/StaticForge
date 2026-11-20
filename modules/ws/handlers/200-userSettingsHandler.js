@@ -57,6 +57,17 @@ async function handleUpdateUserGlobalSettings(handlers, ws, message, clientInfo,
             generationQuipsSettings = { byWorkspace };
         }
 
+        // Melaton's registry follows the user to their other clients (#952: a connection renamed on the DeX shows so on
+        // the desktop at once; melatonRegistry.js applies it): the keys this write touched, as they are now (null: gone)
+        if (patch.registry && typeof patch.registry === 'object' && wsServer && typeof wsServer.broadcast === 'function') {
+            const all = (merged && merged.registry) || {};
+            const changed = {};
+            for (const k of Object.keys(patch.registry)) changed[k] = Object.prototype.hasOwnProperty.call(all, k) ? all[k] : null;
+            if (Object.keys(changed).length) {
+                wsServer.broadcast({ type: 'registry_changed', data: { registry: changed }, timestamp: new Date().toISOString() },
+                    (info) => !!(info && info.authenticated && info !== clientInfo && !info.light));
+            }
+        }
         // the tray icon order follows the user to their other desktops (#932, trayOrder.js): a desktop-only push,
         // not to the desktop that moved it
         if (patch.desktop && Array.isArray(patch.desktop.trayOrder) && wsServer && typeof wsServer.broadcast === 'function') {

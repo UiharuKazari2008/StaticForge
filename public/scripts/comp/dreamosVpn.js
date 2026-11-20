@@ -61,14 +61,53 @@
 
     // ---- the connections (this computer's phone book) ------------------------------------------------------------
 
-    function list() {
+    // (#952) the phone book is this computer's on the server: Melaton's registry (per user), under the computer (the
+    // phone's ActiveSync device id, else this browser's Nightshade adapter address), one value "Vpn <id>" per
+    // connection (JSON); this browser's own list from before moves there once
+    const REG_BASE = 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Network\\Connections';
+    function computerKey() {
         try {
-            const v = JSON.parse(root.localStorage.getItem(KEY) || '[]');
-            return Array.isArray(v) ? v.filter((o) => o && o.id && o.name) : [];
-        } catch (_) { return []; }
+            const A = root.AndroidActiveSync;
+            const id = A && typeof A.getDeviceId === 'function' ? String(A.getDeviceId() || '').toLowerCase().replace(/[^0-9a-z-]/g, '') : '';
+            if (id) return id.slice(0, 64);
+        } catch (_) { /* below */ }
+        const d = root.melatonNetworkDialogs;
+        try { const nic = d && typeof d.nightshadeNic === 'function' ? d.nightshadeNic() : ''; if (nic) return `nic-${nic}`; } catch (_) { /* below */ }
+        return 'local';
+    }
+    const regKey = () => `${REG_BASE}\\${computerKey()}`;
+    const reg = () => (root.melatonRegistry && typeof root.melatonRegistry.getKey === 'function' ? root.melatonRegistry : null);
+    function localList() {
+        try { const v = JSON.parse(root.localStorage.getItem(KEY) || '[]'); return Array.isArray(v) ? v.filter((o) => o && o.id && o.name) : []; } catch (_) { return []; }
+    }
+    function list() {
+        const R = reg();
+        if (!R) return localList();
+        const vals = R.getKey(regKey()) || {};
+        const old = localList();
+        if (old.length) {
+            // moved once: what the registry does not have yet
+            const patch = {};
+            old.forEach((o) => { if (!vals[`Vpn ${o.id}`]) patch[`Vpn ${o.id}`] = JSON.stringify(o).slice(0, 4096); });
+            if (Object.keys(patch).length) void R.set(regKey(), patch);
+            try { root.localStorage.removeItem(KEY); } catch (_) { /* private window */ }
+            Object.assign(vals, patch);
+        }
+        return Object.keys(vals).filter((k) => k.startsWith('Vpn ')).map((k) => { try { return JSON.parse(vals[k]); } catch (_) { return null; } })
+            .filter((o) => o && o.id && o.name).sort((a, b) => (Number(a.created) || 0) - (Number(b.created) || 0));
     }
     function save(rows) {
-        try { root.localStorage.setItem(KEY, JSON.stringify(rows)); } catch (_) { /* private window: this page's own */ }
+        const R = reg();
+        if (R) {
+            const vals = R.getKey(regKey()) || {};
+            const keep = new Set(rows.map((o) => `Vpn ${o.id}`));
+            const patch = {};
+            rows.forEach((o) => { patch[`Vpn ${o.id}`] = JSON.stringify(o).slice(0, 4096); });
+            Object.keys(vals).forEach((k) => { if (k.startsWith('Vpn ') && !keep.has(k)) patch[k] = null; });
+            void R.set(regKey(), patch);
+        } else {
+            try { root.localStorage.setItem(KEY, JSON.stringify(rows)); } catch (_) { /* private window: this page's own */ }
+        }
         try { root.dispatchEvent(new CustomEvent('dreamos-vpn-changed')); } catch (_) { /* old engine */ }
     }
     const get = (id) => list().find((o) => o.id === id) || null;

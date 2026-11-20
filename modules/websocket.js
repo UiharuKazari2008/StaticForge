@@ -142,6 +142,9 @@ const DESKTOP_ONLY_TYPES = new Set([
     'profile_changed',
     // the Media Player library changed (modules/mediaLibrary.js, #956): only desktop pages run Media Player
     'media_library_changed',
+    // the Melaton registry changed on another client (200-userSettingsHandler.js, #952: renamed connections, the VPN phone
+    // book): desktops apply it at once; a phone page reads the registry with its settings at its next start
+    'registry_changed',
     'generation_quips_progress', 'generation_quips_status',
     'print_queue_state',
     'replication_progress', 'replication_maintenance', 'replication_sync_status', 'replication_sync_complete', 'replication_separation_done',
