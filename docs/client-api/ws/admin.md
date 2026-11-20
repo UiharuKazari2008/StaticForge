@@ -38,6 +38,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `request_temp_access_token` | `temp_access_token_response` | critical | Handler: handleRequestTempAccessToken |
 | `revoke_application_key` | `revoke_application_key_response` | session | Handler: handleRevokeApplicationKey |
 | `set_admin_pin` | `set_admin_pin_response` | admin/destructive | Handler: handleSetAdminPin |
+| `set_skip_minimum_logon_time` | `set_skip_minimum_logon_time_response` | admin/destructive | Handler: handleSetSkipMinimumLogonTime (#910). Top-level `enabled` (boolean, else `INVALID_VALUE`); admin only. Answers `{ success, skipMinimumLogonTime }`; also in `get_pin_settings_response` and `GET /status`. |
 | `set_approved_ips` | `set_approved_ips_response` | admin/destructive | Handler: handleSetApprovedIps |
 | `set_user_pin` | `set_user_pin_response` | admin/destructive | Handler: handleSetUserPin |
 | `set_user_pin_login_enabled` | `set_user_pin_login_enabled_response` | admin/destructive | Handler: handleSetUserPinLoginEnabled |

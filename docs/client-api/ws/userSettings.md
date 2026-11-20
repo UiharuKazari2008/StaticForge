@@ -11,6 +11,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `get_user_global_settings` | `get_user_global_settings_response` | session | Handler: handleGetUserGlobalSettings. Includes `remoteAccess` (`defaultGenerationMethod` studio \| detached \| auto, `autoGenerate`, `openGeneratedImages` ledge \| lumen \| glancewell \| disabled, `minPrintsPerTurn`, `maxPrintsPerTurn`). |
 | `update_user_global_settings` | `update_user_global_settings_response` | admin/destructive | Handler: handleUpdateUserGlobalSettings. Desktop **Remote Access Settings** patches `settings.remoteAccess`. |
 | (push) | `desktop_tray_order_changed` `{ trayOrder }` | session | Sent to the user's other signed-in sockets (not the one that saved) when an `update_user_global_settings` patch carries `desktop.trayOrder` (#932, `trayOrder.js`), so the tray icon order follows them to their other desktops. |
+| (push) | `registry_changed` `{ registry }` | session | Sent to the user's other signed-in desktop sockets (not the one that saved, not light clients) when an `update_user_global_settings` patch carries `registry` (#952: renamed connections, the VPN phone book). `registry` holds only the keys that patch touched, as they are now (`null`: removed); `melatonRegistry.js` applies it. |
 
 ## Response envelope
 
