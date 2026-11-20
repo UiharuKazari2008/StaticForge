@@ -126,6 +126,75 @@
         host.set({ shown: true }).catch(() => { shownSent = false; });
     }
 
+    // ---- the device desktop: Android's pointer size (Yukimi, Nov 20 2026, #971) ----------------------------------------
+    // Samsung scales every pointer image, the page's too, by its Pointer size (system mouse_pointer_size_step: 1 = 1:1,
+    // 2 = 1.5x, 3 = 2x on the Fold; dumpsys SurfaceFlinger showed the 32 px arrow as 48 px at step 2). Vista's pointers
+    // are drawn for 1:1, the large ones on bigger art, so with any scheme the DeX window asks the app (AndroidPointer
+    // .pointerSize, through its shell: local ADB or Shizuku) for step 1, and "(None)" puts back the step the user had
+    // before Melaton changed it (kept on this device in localStorage). Read at the desktop's start, so a step changed
+    // in Android's settings meanwhile is set again; never from Melaton Mobile, the phone's window or an app build
+    // without the method. One request at a time; a set that does not read back as asked is not retried.
+    const SIZE_ONE = 1;
+    const SIZE_BEFORE = 'melaton.pointerSizeBefore';
+    const sizeBridge = () => {
+        const b = root.AndroidPointer;
+        if (!deviceDesktop || !b || typeof b.pointerSize !== 'function') return null;
+        try { if (root.AndroidContinuity && String(root.AndroidContinuity.role()) === 'phone') return null; } catch (_) { return null; }
+        return b;
+    };
+    let sizeStep;            // the step last read (undefined = not read yet, null = never set on the phone)
+    let sizeBusy = false;    // a request is out
+    let sizeAsked = null;    // the step the request set (null = read only)
+    let sizeWant = null;     // 'scheme' | 'none': what apply() last asked for
+    let sizeGaveUp = false;  // a set did not take: leave it until the page starts again
+    function remembered() {
+        try { const v = root.localStorage.getItem(SIZE_BEFORE); return v === null ? null : Number(v); } catch (_) { return null; }
+    }
+    function remember(v) {
+        try { if (v === null) root.localStorage.removeItem(SIZE_BEFORE); else root.localStorage.setItem(SIZE_BEFORE, String(v)); } catch (_) {}
+    }
+    function sizeRequest(step) {
+        const b = sizeBridge();
+        if (!b || sizeBusy) return;
+        sizeBusy = true;
+        sizeAsked = step;
+        try { b.pointerSize(step === null ? -1 : step); } catch (_) { sizeBusy = false; }
+    }
+    function syncPointerSize() {
+        if (!sizeWant || sizeBusy || sizeGaveUp || !sizeBridge()) return;
+        if (sizeStep === undefined) { sizeRequest(null); return; }
+        if (sizeWant === 'scheme') {
+            if (sizeStep === SIZE_ONE) return;
+            // the user's own step, kept once (a later drift does not replace it)
+            if (remembered() === null) remember(sizeStep === null ? SIZE_ONE : sizeStep);
+            sizeRequest(SIZE_ONE);
+        } else {
+            const before = remembered();
+            if (before === null) return;
+            if (sizeStep !== SIZE_ONE || before === SIZE_ONE) { remember(null); return; } // changed since: theirs now
+            sizeRequest(before);
+        }
+    }
+    /** the app's answer to pointerSize(): { ok, step, error } */
+    function hostSize(res) {
+        const asked = sizeAsked;
+        sizeBusy = false;
+        sizeAsked = null;
+        if (!res || !res.ok) { sizeGaveUp = true; return; }
+        const step = Number.isFinite(Number(res.step)) && res.step !== null ? Number(res.step) : null;
+        sizeStep = step;
+        if (asked !== null) {
+            if (step !== asked) { sizeGaveUp = true; return; }
+            if (sizeWant === 'none' && step === remembered()) remember(null);
+        }
+        syncPointerSize();
+    }
+    function pointerSize(scheme) {
+        if (!hydrated || !sizeBridge()) return;
+        sizeWant = scheme ? 'scheme' : 'none';
+        syncPointerSize();
+    }
+
     function apply() {
         if (!doc) return;
         let scheme = SCHEMES[current()];
@@ -142,6 +211,7 @@
             html.style.setProperty(token, `${art(`${file}${scheme.suffix}.png`)} ${hx} ${hy}, ${FALLBACK[token]}`);
         });
         html.toggleAttribute('data-pointer-scheme', !!scheme);
+        pointerSize(scheme);
     }
 
     // ---- DreamOS: Mouse / Keyboard Properties' registry values in the compositor ---------------------------------------
@@ -196,6 +266,6 @@
         if (host) host.get().then((st) => { if (st && !st.error && !input) input = st; }).catch(() => {});
     }
 
-    root.melatonPointerScheme = { SCHEMES: Object.keys(SCHEMES), DEFAULT, current, apply, shown, inputState, ART };
+    root.melatonPointerScheme = { SCHEMES: Object.keys(SCHEMES), DEFAULT, current, apply, shown, inputState, hostSize, ART };
     start();
 })(typeof window !== 'undefined' ? window : globalThis);
