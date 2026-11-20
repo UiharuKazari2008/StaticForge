@@ -5232,7 +5232,7 @@
     const LATENCY_TOAST = /^high latency/i;
     // 'Updates Complete' / 'Completed updating ...' belong to the update icon's one notification, not a
     // separate bubble (Yukimi, Nov 15: merge the completion into the existing update notification)
-    const UPDATE_TOAST = /^(checking for updates|downloading updates|download stalled|up to date|updates? applied|updates? complete|completed updating|update check failed|updates? (are )?(ready|available))/i;
+    const UPDATE_TOAST = /^(checking for updates|downloading updates|download stalled|up to date|updates? applied|updates? complete|completed updating|update check failed|updates? (are )?(ready|available)|update (waiting|failed)|retrying updates|retry failed|service worker|cache error)/i;
     const isUpdateNote = (n) => !!n && UPDATE_TOAST.test(String(n.title || ''));
     // while updates are checked for or download there is no notification and no popup: the update
     // icon animates and its own popup shows the progress; the result is the notification (Yukimi,
@@ -5350,7 +5350,8 @@
      */
     const toastSeen = new WeakSet();
     let toastDialogs = Promise.resolve();
-    const BACKGROUND_TOAST = /^(connecting|connected|connection|reconnect|offline|high latency|generation complete|you have mail|new mail|update|checking for updates|downloading updates|download stalled|up to date|main battery)/i;
+    // the update machinery's own notices (service worker, cache, retries) are never a message box either (Nov 20)
+    const BACKGROUND_TOAST = /^(connecting|connected|connection|reconnect|offline|high latency|generation complete|you have mail|new mail|update|checking for updates|downloading updates|download stalled|up to date|main battery|service worker|cache error|retrying updates|retry failed)/i;
 
     /**
      * Loading while Melaton starts (20 s after boot) or while a workspace switch runs is never a
@@ -6003,6 +6004,10 @@
         if (!noteShown && !noteTrayOpen && notesMayPop()) {
             // a class with Display message off stays in the title bar (seen, never popped)
             for (const n of notes) if (!noteDisplays(n)) n.ids.forEach((id) => noteSeen.add(seenKey(id, n)));
+            // an update notice never opens by itself (Yukimi, Nov 20: "never show a dialog like that unprompted, we have
+            // a status bar icon and notification for a reason"): it waits on the title bar's update icon and the app's
+            // notification; a tap on the icon brings it up
+            for (const n of notes) if (isUpdateNote(n)) n.ids.forEach((id) => noteSeen.add(seenKey(id, n)));
             const next = notes.find((n) => !n.ids.some((id) => noteSeen.has(seenKey(id, n))));
             if (next) noteShown = next.id;
         }
