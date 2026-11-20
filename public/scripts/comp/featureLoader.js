@@ -915,6 +915,109 @@ function catchWebLinkClick(e) {
 document.addEventListener('click', catchWebLinkClick);
 document.addEventListener('auxclick', catchWebLinkClick);
 
+// Clients with no browser tabs, the DreamOS kiosk's new-tab hand-over and the page's own full screen (#910);
+// exported: clientHasNoBrowserTabs, openUrlInNewWindow, melatonFullscreen
+(() => {
+    // A client with no browser tabs (the DreamOS kiosk, the Dreamscape app, an installed window): a page "new tab" or
+    // "new window" can only be Grimoire there (#910; Yukimi, Nov 20 2026). DreamOS: its kiosk adds " DreamOS/<version>"
+    // to the user agent (#923); the Dreamscape app has its Android bridges.
+    function clientHasNoBrowserTabs() {
+        if (/ DreamOS\//.test(navigator.userAgent || '')) return true;
+        if (window.AndroidDevice || window.AndroidCaption || window.AndroidNotification) return true;
+        try { return matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches; } catch (_) { return false; }
+    }
+
+    // Opens a page that must have a real browser (a sign-in that needs the user's own cookies, a download): a browser
+    // tab where there are tabs, Grimoire where there are none.
+    function openUrlInNewWindow(url) {
+        if (clientHasNoBrowserTabs()) return openGrimoireUrl(url).catch(() => {});
+        open(url, '_blank', 'noopener,noreferrer');
+        return Promise.resolve();
+    }
+
+    // The DreamOS kiosk keeps one tab: a tab the browser opened anyway (a target=_blank link or window.open the page left
+    // to it) is closed at once and its address handed here by the shell extension (DreamOS shell-ext background.js +
+    // relay.js, window message dreamosOpenUrl). It opens as a new Grimoire tab - never window.open again (the kiosk would
+    // hand it straight back).
+    // app-scope: allow shell: the kiosk's hand-over lives as long as the page
+    window.addEventListener('message', (e) => {
+        if (e.source !== window || !e.data || typeof e.data.dreamosOpenUrl !== 'string') return;
+        let url;
+        try { url = new URL(e.data.dreamosOpenUrl); } catch (_) { return; }
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+        openGrimoireUrl(url.href).catch(() => {});
+    });
+
+    /**
+     * Full screen for the page's own players (Media Player, Videos): melatonFullscreen.request(el) / exit() / element(),
+     * and the event melatonfullscreenchange on document.
+     *
+     * Where the page already fills the screen (the DreamOS kiosk, the Dreamscape app, an installed window, a browser in
+     * F11) it is the page's own full screen (#910; Yukimi, Nov 20 2026): the element goes into the top layer as a manual
+     * popover and covers the whole screen, taskbar and windows included - no browser full screen, so never Chromium's
+     * "Press Esc to exit full screen" notice. Esc and F11 leave it (the app's own control too). In a browser tab it is
+     * the browser's full screen (the tab's toolbars go), and the page's own when the browser refuses it.
+     */
+    const melatonFullscreen = (() => {
+        const FAKE_STYLE = {
+            position: 'fixed', inset: '0', width: '100vw', height: '100vh', 'max-width': 'none', 'max-height': 'none',
+            margin: '0', border: '0', padding: '0', overflow: 'hidden', background: '#000', 'z-index': '2147483647'
+        };
+        let fake = null; // { el, style, popover }
+        const tell = () => document.dispatchEvent(new Event('melatonfullscreenchange'));
+        const pageFillsScreen = () => clientHasNoBrowserTabs()
+            || (window.innerWidth >= screen.width && window.innerHeight >= screen.height);
+        const onKey = (e) => {
+            if (!fake || (e.key !== 'Escape' && e.key !== 'F11')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            exitFake();
+        };
+        function enterFake(el) {
+            if (fake && fake.el === el) return;
+            if (fake) exitFake(true);
+            fake = { el, style: el.getAttribute('style'), popover: el.getAttribute('popover') };
+            for (const [k, v] of Object.entries(FAKE_STYLE)) el.style.setProperty(k, v, 'important');
+            // the top layer: above every window and the taskbar, whatever transform or stacking its ancestors have
+            if (typeof el.showPopover === 'function') {
+                try { el.setAttribute('popover', 'manual'); el.showPopover(); } catch (_) { /* not in the document */ }
+            }
+            // capture: before the app's own key handlers (the window's Esc closes dialogs)
+            // app-scope: allow removed in exitFake, same file
+            window.addEventListener('keydown', onKey, true);
+            tell();
+        }
+        function exitFake(quiet) {
+            if (!fake) return;
+            const { el, style, popover } = fake;
+            fake = null;
+            window.removeEventListener('keydown', onKey, true);
+            try { if (el.matches(':popover-open')) el.hidePopover(); } catch (_) { /* gone */ }
+            if (popover === null) el.removeAttribute('popover'); else el.setAttribute('popover', popover);
+            if (style === null) el.removeAttribute('style'); else el.setAttribute('style', style);
+            if (!quiet) tell();
+        }
+        function request(el) {
+            if (!el) return Promise.resolve();
+            if (pageFillsScreen() || typeof el.requestFullscreen !== 'function') { enterFake(el); return Promise.resolve(); }
+            if (fake) exitFake(true);
+            return el.requestFullscreen().catch(() => enterFake(el));
+        }
+        function exit() {
+            if (fake) { exitFake(); return Promise.resolve(); }
+            return document.fullscreenElement ? document.exitFullscreen().catch(() => {}) : Promise.resolve();
+        }
+        const element = () => (fake && fake.el) || document.fullscreenElement || null;
+        // the browser's own full screen (a tab) reports through the same event
+        // app-scope: allow shell: page-lifetime helper
+        document.addEventListener('fullscreenchange', tell);
+        return { request, exit, element };
+    })();
+    window.clientHasNoBrowserTabs = clientHasNoBrowserTabs;
+    window.openUrlInNewWindow = openUrlInNewWindow;
+    window.melatonFullscreen = melatonFullscreen;
+})();
+
 // New standalone Alchemy window (wikiWindowManager), not the main Grimoire tab.
 // grimoireOpenStandaloneWindow: public/scripts/comp/grimoireRemoteBrowser.js
 async function openGrimoireStandaloneUrl(url, windowTitle) {

@@ -2333,9 +2333,12 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             const data = response?.data || response;
             const url = data && data.url;
             if (!data?.success || !url) throw new Error(data?.message || 'Login link did not appear');
-            window.open(url, '_blank', 'noopener,noreferrer');
+            // a browser tab, or Grimoire's Alchemy on a client with no tabs (the DreamOS kiosk, the app: openUrlInNewWindow,
+            // public/scripts/comp/featureLoader.js)
+            void openUrlInNewWindow(url);
             if (typeof showGlassToast === 'function') {
-                showGlassToast('info', 'Cursor login', 'Finish signing in in the new tab. This profile updates when Cursor accepts it.', false, 7000, '<i class="fas fa-right-to-bracket"></i>');
+                const where = clientHasNoBrowserTabs() ? 'in Alchemy' : 'in the new tab';
+                showGlassToast('info', 'Cursor login', `Finish signing in ${where}. This profile updates when Cursor accepts it.`, false, 7000, '<i class="fas fa-right-to-bracket"></i>');
             }
         } catch (err) {
             if (typeof showGlassToast === 'function') {

@@ -8310,7 +8310,8 @@ async function openPublishToExplorerDialog(image) {
                 {
                     text: 'Register',
                     onClick: () => {
-                        open(data.registerUrl || EXPLORE_PUBLISH_REGISTER_URL, '_blank', 'noopener');
+                        // openUrlInNewWindow: public/scripts/comp/featureLoader.js (Grimoire on a client with no tabs)
+                        void openUrlInNewWindow(data.registerUrl || EXPLORE_PUBLISH_REGISTER_URL);
                     }
                 }
             ]);
@@ -8340,7 +8341,7 @@ async function openPublishToExplorerDialog(image) {
                 {
                     text: 'Open',
                     onClick: () => {
-                        open(exploreUrl, '_blank', 'noopener');
+                        void openUrlInNewWindow(exploreUrl);
                     }
                 }
             ]);

@@ -956,7 +956,7 @@ class WikiDisplayBase {
             a.click();
             a.remove();
         } catch (e) {
-            window.open(url, '_blank', 'noopener,noreferrer');
+            void openUrlInNewWindow(url);
         }
     }
 

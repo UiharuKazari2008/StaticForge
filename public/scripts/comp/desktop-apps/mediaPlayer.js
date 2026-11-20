@@ -1770,15 +1770,17 @@ function mediaPlayerSetCompact(player, on) {
     mediaPlayerBar.syncCompact(player);
 }
 
+// melatonFullscreen: public/scripts/comp/featureLoader.js - the page's own full screen where the page already fills
+// the screen (the DreamOS kiosk: never the browser's, so never its "Press Esc" notice), the browser's in a tab
 function mediaPlayerFullScreen(player) {
     const stage = player.el.stage;
-    if (document.fullscreenElement === stage) {
-        document.exitFullscreen().catch(() => {});
+    if (melatonFullscreen.element() === stage) {
+        void melatonFullscreen.exit();
         return;
     }
-    if (!player.items.length || !stage.requestFullscreen) return;
+    if (!player.items.length) return;
     mediaPlayerShowView(player, 'now-playing', false);
-    stage.requestFullscreen().catch(() => {});
+    void melatonFullscreen.request(stage);
 }
 
 function mediaPlayerSetVolume(player, value) {
@@ -2189,9 +2191,9 @@ function createDesktopMediaPlayer() {
         mediaPlayerOpenFiles(player, e.dataTransfer.files);
     });
     modal.addEventListener('keydown', (e) => mediaPlayerKeydown(player, e));
-    document.addEventListener('fullscreenchange', () => {
-        el.stage.classList.toggle('is-fullscreen', document.fullscreenElement === el.stage);
-    });
+    document.addEventListener('melatonfullscreenchange', () => {
+        el.stage.classList.toggle('is-fullscreen', melatonFullscreen.element() === el.stage);
+    }, { signal: mediaPlayerLibrary.signal });
 
     mediaPlayerWireSliders(player);
     mediaPlayerAttachMenus(player);
@@ -2203,7 +2205,7 @@ function createDesktopMediaPlayer() {
     modal.addEventListener('animationend', (e) => {
         if (e.target !== modal || e.animationName !== 'modalSlideOut') return;
         mediaPlayerClear(player);
-        if (document.fullscreenElement === el.stage) document.exitFullscreen().catch(() => {});
+        if (melatonFullscreen.element() === el.stage) void melatonFullscreen.exit();
     });
 
     mediaPlayerSetListPane(player, true);

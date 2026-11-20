@@ -1446,8 +1446,11 @@
     function plFull(on, auto) {
         if (!page || !player) return;
         if (HOST.desktop) {
-            // the desktop's full screen is the browser's (the player element over the whole display)
-            try { if (on && !document.fullscreenElement) els.player.requestFullscreen().catch(() => {}); else if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (_) { /* refused */ }
+            // the player element over the whole display: the page's own full screen where the page fills the screen
+            // already (the DreamOS kiosk: never the browser's "Press Esc" notice), the browser's in a tab
+            // (melatonFullscreen: public/scripts/comp/featureLoader.js)
+            const fs = window.melatonFullscreen;
+            if (fs) { if (on && fs.element() !== els.player) void fs.request(els.player); else if (!on && fs.element()) void fs.exit(); }
             player.full = !!on;
             chatSync();
             return;
@@ -2028,7 +2031,7 @@
         const v = els.video;
         wireSeek();
         window.addEventListener('message', ytHear, { signal: appScopeSignal });
-        if (HOST.desktop) document.addEventListener('fullscreenchange', () => { if (player) { player.full = document.fullscreenElement === els.player; chatSync(); refreshKeys(); } }, { signal: appScopeSignal });
+        if (HOST.desktop) document.addEventListener('melatonfullscreenchange', () => { if (player) { player.full = !!window.melatonFullscreen && window.melatonFullscreen.element() === els.player; chatSync(); refreshKeys(); } }, { signal: appScopeSignal });
         els.chatForm.addEventListener('submit', (e) => { e.preventDefault(); chatSend(); });
         els.chatList.addEventListener('scroll', () => { const l = els.chatList; if (player) player.chatStick = l.scrollHeight - l.scrollTop - l.clientHeight < 40; }, { passive: true });
         els.player.addEventListener('click', (e) => {

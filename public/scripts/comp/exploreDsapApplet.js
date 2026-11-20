@@ -279,8 +279,9 @@ function exploreBuildLikesUrl({ page = 1, offset = null } = {}) {
 const EXPLORE_REGISTER_URL = 'https://novelai.net/explore/register';
 
 function exploreOpenExternal(url) {
-    // Browser Window.open — system tab outside Grimoire
-    open(url, '_blank', 'noopener,noreferrer');
+    // a browser tab outside Grimoire (the user's own NovelAI cookies); Grimoire where the client has no tabs (the
+    // DreamOS kiosk, the app: openUrlInNewWindow, public/scripts/comp/featureLoader.js)
+    void openUrlInNewWindow(url);
 }
 
 function exploreDetailReactIconsHtml(post, state) {

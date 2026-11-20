@@ -2687,7 +2687,8 @@ const doveWireFrameLinks = function (iframe) {
             if (url.origin === window.location.origin) return;
             if (typeof openGrimoireUrl !== 'function') return;
             ev.preventDefault();
-            openGrimoireUrl(url.href).catch(() => window.open(url.href, '_blank', 'noopener'));
+            // no browser tab where the client has none (the DreamOS kiosk would hand it back to Grimoire)
+            openGrimoireUrl(url.href).catch(() => { if (!clientHasNoBrowserTabs()) window.open(url.href, '_blank', 'noopener'); });
         };
         doc.addEventListener('click', onClick);
         doc.addEventListener('auxclick', onClick);
