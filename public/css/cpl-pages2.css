@@ -1845,3 +1845,12 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-address > :is(.cpl-crumb, .cpl-crumb-sep, .cpl-address-icon) {
     flex: none;
 }
+
+/* folded down to the last place and still too long: its name is cut with "...", as the VM's ("« Networ...") */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-address > .cpl-crumb-overflow ~ .cpl-crumb:last-of-type {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

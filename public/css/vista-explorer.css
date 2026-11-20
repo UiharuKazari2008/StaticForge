@@ -2725,7 +2725,9 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
 body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group {
     flex: 1 1 0px;
     align-self: flex-start;
-    min-width: 80px;
+    /* (#952) the VM keeps the address box at least 170 px; below that the search box gives way (450 px window:
+       address 170, search 155) */
+    min-width: 170px;
     margin: 4px 0 0 1px;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar {
@@ -2741,7 +2743,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .button-group:has(#explorerSearchBar),
 body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .button-group:has(> .cpl-search),
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-search {
-    flex: 0 0 238px;
+    flex: 0 1 238px;
     width: 238px;
     min-width: 0;
     max-width: 238px; /* explorer.css caps the group at 9rem */
