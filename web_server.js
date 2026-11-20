@@ -1578,6 +1578,8 @@ app.use(compression({
 app.use('/install/product-key', express.json({ limit: '4kb' }));
 // Melaton Videos' Kick chat (#919): the webhook's signature is over the exact bytes, so it is read raw, ahead of the JSON parser
 require('./modules/videosKickChat').mountRaw(app, express, (res) => sendNginxError(res, 404));
+// XM Radio's one-time sign-in page (#989), opened in Alchemy where 1Password is: ahead of the gate; other codes 404
+require('./modules/xmRadio').bind(globalResources).mountSignInPage(app, express);
 // Body parsing middleware with optimized limits
 app.use(express.json({limit: '100mb'}));
 
@@ -2268,6 +2270,10 @@ app.use((req, res, next) => {
     if (req.path.startsWith('/api/videos/live/') || req.path.startsWith('/api/videos/yt/')) {
         return next();
     }
+    // XM Radio's stream pieces and keys (#989): one request every few seconds while a radio plays
+    if (req.path.startsWith('/api/xmradio/')) {
+        return next();
+    }
     
     const startTime = Date.now();
     const timestamp = requestLogTime.format(startTime);
@@ -2346,6 +2352,8 @@ require('./modules/slideshowDevices').mountPreviewRoutes(app, authMiddleware, gl
 require('./modules/activeSyncTransfers').mount(app, authMiddleware, globalResources);
 // modules/videosKickRelay.js — Melaton Videos: a Kick live stream's HLS pieces for the program's player (Yozora #918)
 require('./modules/videosKickRelay').mount(app, authMiddleware);
+// modules/xmRadio.js — XM Radio: our copy of a SiriusXM channel's HLS playlist, its pieces and its key (Yozora #989)
+require('./modules/xmRadio').bind(globalResources).mount(app, authMiddleware);
 // modules/videosYoutubeRelay.js — Melaton Videos: a YouTube video's HLS pieces (yt-dlp + ffmpeg, Yozora #920)
 require('./modules/videosYoutubeRelay').mount(app, authMiddleware);
 // modules/videosKickChat.js — Melaton Videos: the Kick sign-in answer and emote pictures (Yozora #919)

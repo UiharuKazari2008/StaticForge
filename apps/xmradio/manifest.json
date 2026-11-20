@@ -1,0 +1,15 @@
+{
+    "id": "xmradio",
+    "version": "1.0.0",
+    "title": "XM Radio",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "xmradio",
+    "windowKind": "custom",
+    "icon": "assets/xmradio-48.png",
+    "client": {
+        "entry": "client/xmradio.js",
+        "styles": ["assets/xmradio.css"]
+    }
+}

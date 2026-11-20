@@ -1,0 +1,3 @@
+/* XM Radio (Yozora #989): the radio's look (three bodies, three displays) is its theme,
+   public/css/themes/vista/xmradio.css, loaded by the program (as VZAccess Manager's). */
+#xmRadioModal .xr-audio { display: none; }

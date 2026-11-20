@@ -7024,6 +7024,8 @@ function buildToolsSubmenuItems(opts) {
         { launchId: 'quickcast', icon: 'fas fa-tower-broadcast', imageIcon: 'quickcast.png', text: 'VisionCaster', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'quickcast' }) },
         // Melaton Videos on the desktop (apps/videos, Yozora #920): the phone's Videos program in a window
         { launchId: 'videos', icon: 'fas fa-tv', imageIcon: 'videos.png', text: 'Melaton Videos', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'videos' }) },
+        // XM Radio (apps/xmradio, Yozora #989): the skeuomorphic SiriusXM radio
+        { launchId: 'xmradio', icon: 'fas fa-radio', imageIcon: 'xmradio.png', text: 'XM Radio', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'xmradio' }) },
         // VZAccess Manager (Yozora #947; apps/vzaccess): Verizon's connection manager, on a desktop with a phone's modem
         { launchId: 'vzaccess', icon: 'fas fa-signal', imageIcon: 'vzaccess.png', text: 'VZAccess Manager', desktopOnly: true, appMenuLocation: 'tools', appMenu: false, startMenu: melatonVzaccessSeen(), action: () => melatonApps.launch({ packageId: 'vzaccess' }) },
         { launchId: 'xlink', icon: 'fas fa-joystick', imageIcon: 'xlink.png', text: 'XLink Operator Console', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'xlink' }) },
@@ -8356,6 +8358,7 @@ function getStartMenuPackageItems(apps = START_MENU_PACKAGE_APPS) {
 const START_MENU_SYSTEM_PLACES = {
     'mobile-device-center': { at: 'top' },         // Windows Mobile Device Center
     'videos': { at: 'top' },                       // beside Windows Media Player's place: Melaton Videos (#920)
+    xmradio: { at: 'top' },                        // XM Radio (#989): beside Melaton Videos and Media Player
     'melaton-messenger': { at: 'top' },            // Windows Live Messenger / Windows Mail sit at the top level
     calendar: { at: 'top' },                       // Windows Calendar
     weather: { at: 'top' },                        // Melaton Weather (#792): beside Calendar and Contacts

@@ -151,6 +151,29 @@ class ApiKeyManager {
                     ]
                 }
             },
+            // Yozora #989: XM Radio (modules/xmRadio.js). The key value is the SiriusXM account's password; the
+            // email or username is a plain field. The server signs in with it on its own SiriusXM device, again by
+            // itself when SiriusXM ends the session (not after a refused password until the card changes).
+            siriusxm: {
+                label: 'SiriusXM',
+                description: 'The SiriusXM account XM Radio listens with on the desktop and the phone',
+                icon: 'fas fa-radio',
+                requiresRestart: false,
+                keyLabel: 'Password',
+                fields: [
+                    { field: 'username', label: 'Email or username', placeholder: 'the one you sign in to siriusxm.com with', pattern: '^\\S{3,200}$' }
+                ],
+                fingerprint: (key) => (key.username ? String(key.username) : null),
+                howTo: {
+                    title: 'Which account this is',
+                    steps: [
+                        'Use the email or username and password you sign in to siriusxm.com and the SiriusXM app with.',
+                        'XM Radio\'s MENU > Sign In in Alchemy opens a sign-in page where 1Password can fill it; signing in there saves this card.',
+                        'The password goes only to SiriusXM. XM Radio signs in again by itself when SiriusXM ends its session.'
+                    ],
+                    links: [['SiriusXM', 'https://www.siriusxm.com/']]
+                }
+            },
             // Yozora #835: Lapis Remote (modules/lapisService.js through modules/bluelinkClient.js). The key
             // value is the BlueLink account's password; the e-mail and PIN are plain fields on the entry.
             // No status probe: a check would be a sign-in against Hyundai's limits.
