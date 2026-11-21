@@ -220,7 +220,13 @@
                 if (p.controller) { try { p.controller.close(); } catch (_) { /* cancelled */ } }
                 this.doneGet();
             } else if (m.t === 'ready') {
-                if (p.ready) p.ready();
+                if (p.ready) p.ready(m);
+            } else if (m.t === 'ack') {
+                // a put's credit: the phone wrote this much (it cannot slow a data channel otherwise)
+                p.acked = Math.max(p.acked || 0, Number(m.bytes) || 0);
+                const w = p.ackWaiters || [];
+                p.ackWaiters = [];
+                w.forEach((fn) => fn());
             }
         }
 
@@ -264,10 +270,13 @@
             const signal = opts.signal || null;
             let readyFn = null;
             const ready = new Promise((r) => { readyFn = r; });
-            const result = new Promise((resolve, reject) => this.pending.set(id, { resolve, reject, ready: readyFn }));
+            const entry = { resolve: null, reject: null, ready: readyFn, acked: 0, ackWaiters: [] };
+            const result = new Promise((resolve, reject) => { entry.resolve = resolve; entry.reject = reject; this.pending.set(id, entry); });
             result.catch(() => {});
             this.sendJson(Object.assign({ t: 'put', id, size: blob.size }, meta));
-            await Promise.race([ready, result]);
+            const go = await Promise.race([ready, result]);
+            // the phone's credit window: no more than this unacknowledged (its ready says how much; 4 MiB)
+            const windowBytes = Math.max(FRAME, Number(go && go.window) || 4 * 1024 * 1024);
             const header = new ArrayBuffer(4);
             new DataView(header).setUint32(0, id);
             let offset = 0;
@@ -275,6 +284,10 @@
             while (offset < blob.size) {
                 if (signal && signal.aborted) { try { this.sendJson({ t: 'cancel', id }); } catch (_) { /* closed */ } this.pending.delete(id); throw Object.assign(new Error('Cancelled'), { code: 'aborted' }); }
                 if (this.closed) throw Object.assign(new Error('The link closed'), { code: 'closed' });
+                while (offset - entry.acked >= windowBytes && !this.closed && this.pending.has(id)) {
+                    await new Promise((r) => entry.ackWaiters.push(r));
+                }
+                if (!this.pending.has(id)) return result;
                 const part = new Uint8Array(await blob.slice(offset, offset + step).arrayBuffer());
                 const frame = new Uint8Array(4 + part.length);
                 frame.set(new Uint8Array(header), 0);
@@ -296,6 +309,7 @@
             clearTimeout(this.timer);
             const err = Object.assign(new Error('The link closed'), { code: 'closed' });
             for (const p of this.pending.values()) {
+                if (p.ackWaiters) p.ackWaiters.splice(0).forEach((fn) => fn());
                 if (p.controller) { try { p.controller.error(err); } catch (_) { /* done */ } }
                 try { p.reject(err); } catch (_) { /* done */ }
             }

@@ -118,6 +118,10 @@ Data messages are at most 64 KiB. Both ends watch `bufferedAmount` and pause abo
 | `{t:"cancel", id}` | either side stops a get or put; partial uploads are deleted. |
 | `{t:"ping"}` / `{t:"pong"}` | only when nothing else moved for 60 s (keeps NAT-less LAN paths and the SCTP association honest). |
 
+A put is paced by credit: the phone's `ready` carries `window` (4 MiB) and it sends `{t:"ack", id, bytes}` after every
+MiB written; the computer keeps no more than `window` bytes unacknowledged (a data channel cannot slow its sender, so the
+phone's memory would fill otherwise). Data past the declared `size` is refused (`io`); a short `putEnd` fails.
+
 Stream ids: odd from the computer. At most 8 gets and 2 puts at once per link; more wait their turn.
 
 **No size caps on the LAN** (Yukimi, Nov 21 2026: "when locally connectable override the limit on files and image
