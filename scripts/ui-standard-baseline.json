@@ -1,16 +1,16 @@
 {
  "note": "Counts may only go down. See docs/design/ui-standard.md and scripts/check-ui-standard.js.",
  "totals": {
-  "colour-literal": 12785,
-  "font-literal": 606,
+  "colour-literal": 11942,
+  "font-literal": 486,
   "theme-negative": 2674,
-  "own-control": 725,
-  "inline-style": 701,
+  "own-control": 700,
+  "inline-style": 691,
   "theme-art-path": 176,
   "hand-built-window": 106,
   "toast": 1051,
-  "own-menubar": 70,
-  "colour-in-script": 1535,
+  "own-menubar": 61,
+  "colour-in-script": 1518,
   "native-scrollbar": 40,
   "theme-test-copy": 25,
   "native-dialog": 1,
@@ -77,12 +77,6 @@
    "inline-style": 3,
    "hand-built-window": 1
   },
-  "apps/paypass/assets/paypass.css": {
-   "colour-literal": 125,
-   "font-literal": 18,
-   "own-menubar": 3,
-   "own-control": 10
-  },
   "apps/paypass/client/paypass.js": {
    "hand-built-window": 2
   },
@@ -96,15 +90,7 @@
    "inline-style": 16,
    "hand-built-window": 1
   },
-  "apps/quickcast/assets/quickcast.css": {
-   "colour-literal": 480,
-   "font-literal": 77,
-   "own-menubar": 3,
-   "own-control": 8
-  },
   "apps/quickcast/client/quickcast.js": {
-   "colour-in-script": 8,
-   "inline-style": 2,
    "hand-built-window": 2
   },
   "apps/reader/client/reader.js": {
@@ -148,15 +134,7 @@
    "inline-style": 7,
    "hand-built-window": 1
   },
-  "apps/xlink/assets/xlink.css": {
-   "colour-literal": 140,
-   "font-literal": 21,
-   "own-menubar": 3,
-   "own-control": 6
-  },
   "apps/xlink/client/xlink.js": {
-   "colour-in-script": 5,
-   "inline-style": 1,
    "hand-built-window": 2
   },
   "public/css/about-melaton.css": {
@@ -941,10 +919,6 @@
    "theme-art-path": 1,
    "own-control": 3
   },
-  "public/css/wm-paypass.css": {
-   "colour-literal": 41,
-   "own-control": 1
-  },
   "public/css/wm-phasewalker.css": {
    "colour-literal": 9,
    "own-control": 1
@@ -1041,8 +1015,6 @@
    "own-control": 4
   },
   "public/css/wm-xlink.css": {
-   "colour-literal": 57,
-   "font-literal": 4,
    "theme-art-path": 1
   },
   "public/css/wm-youtube.css": {
@@ -2018,10 +1990,6 @@
    "inline-style": 4,
    "theme-art-path": 1,
    "hand-built-window": 1
-  },
-  "public/scripts/comp/wmXLink.js": {
-   "colour-in-script": 4,
-   "inline-style": 1
   },
   "public/scripts/comp/wmYouTube.js": {
    "inline-style": 1,

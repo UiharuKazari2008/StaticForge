@@ -6,9 +6,11 @@
     "format": "msaz",
     "type": "native",
     "launchId": "xlink",
+    "windowKind": "custom",
     "icon": "assets/xlink-48.png",
     "client": {
         "entry": "client/xlink.js",
         "styles": ["assets/xlink.css"]
-    }
+    },
+    "customLookFiles": ["public/scripts/comp/wmXLink.js", "public/css/wm-xlink.css"]
 }

@@ -6,9 +6,11 @@
     "format": "msaz",
     "type": "native",
     "launchId": "paypass",
+    "windowKind": "custom",
     "icon": "assets/paypass-48.png",
     "client": {
         "entry": "client/paypass.js",
         "styles": ["assets/paypass.css"]
-    }
+    },
+    "customLookFiles": ["public/scripts/comp/wmPayPass.js", "public/css/wm-paypass.css"]
 }
