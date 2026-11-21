@@ -4,7 +4,7 @@
  * never decide whether it works. Calls and listings stay on the socket (modules/activeSync.js).
  *
  * Phone -> desktop (Explorer thumbnails, opening, copying to the computer):
- *   GET  /api/activesync/file/:deviceId/:root/<path>[?thumb=N][&download=1]      administrators
+ *   GET  /api/activesync/file/:deviceId/:root/<path>[?thumb=N][&jpeg=1][&download=1]  administrators (jpeg=1: thumb 1024 here)
  *        the server asks the phone to send (stream.send { transferId, root, path, thumb, range })
  *        and holds the response open;
  *   POST /api/activesync/transfer/:id/chunk?seq=N[&end=1]                        the device
@@ -365,6 +365,9 @@ function mount(app, authMiddleware, globalResources) {
         const rootId = String(req.params.root || '');
         let filePath = `/${String(req.params[0] || '')}`;
         let thumb = Number(req.query.thumb) > 0 ? Math.max(32, Math.min(1024, Math.round(Number(req.query.thumb)))) : 0;
+        // ?jpeg=1 (a picture the browser cannot decode, full size over a direct LAN link, #1006): through the server, the
+        // phone's largest preview, so the same address still shows the picture when the link is not there
+        if (!thumb && req.query.jpeg === '1') thumb = 1024;
         let shareArgs = null;
         let fromName;
         if (rootId === 'share') {

@@ -375,7 +375,18 @@
         const path = (m[3] || '/').split('/').map((s) => { try { return decodeURIComponent(s); } catch (_) { return s; } }).join('/') || '/';
         const rootId = decodeURIComponent(m[2]);
         const thumb = Number(u.searchParams.get('thumb')) || 0;
-        return { deviceId: m[1], params: Object.assign({ root: rootId, path }, rootId === 'media' ? { media: true } : {}, thumb ? { thumb: Math.max(32, Math.min(1024, thumb)) } : {}), download: u.searchParams.get('download') === '1', name: path.split('/').pop() };
+        // on the LAN the server's caps are gone (Yukimi, Nov 21 2026): thumbnails up to the phone's limit, a full-size
+        // JPEG of a picture the browser cannot decode (?jpeg=1)
+        const link = links.get(m[1]);
+        const thumbMax = (link && link.features && Number(link.features.thumbMax)) || 2048;
+        const jpeg = u.searchParams.get('jpeg') === '1';
+        return {
+            deviceId: m[1],
+            params: Object.assign({ root: rootId, path }, rootId === 'media' ? { media: true } : {},
+                thumb ? { thumb: Math.max(32, Math.min(thumbMax, thumb)) } : {}, jpeg && !thumb ? { jpeg: true } : {}),
+            download: u.searchParams.get('download') === '1',
+            name: path.split('/').pop()
+        };
     }
 
     async function answerWorker(data, port) {
@@ -386,7 +397,7 @@
         port.postMessage({ ack: true });
         try {
             const params = Object.assign({}, want.params);
-            if (data.range && !params.thumb) params.range = data.range;
+            if (data.range && !params.thumb && !params.jpeg) params.range = data.range;
             const { head, body } = await link.get(params);
             const headers = { 'Content-Type': head.type || 'application/octet-stream', 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, no-store', 'X-ActiveSync-Link': 'direct' };
             if (head.length != null) headers['Content-Length'] = String(head.length);
@@ -410,5 +421,16 @@
         swc.addEventListener('controllerchange', tellWorker);
     }
 
-    root.activeSyncDirectLink = { live, ensure, eligible: (id) => eligible(deviceOf(id)), liveIds, _parseFileUrl: parseFileUrl };
+    /**
+     * What a live link lifts (Yukimi, Nov 21 2026: "when locally connectable override the limit on files and image sizes"):
+     * { thumbMax, jpeg } for URL builders, or null with no link (the server's caps then: 1024 px, no JPEG).
+     */
+    function limits(deviceId) {
+        const l = live(deviceId);
+        if (!l) return null;
+        const f = l.features || {};
+        return { thumbMax: Number(f.thumbMax) || 2048, jpeg: f.jpeg !== false };
+    }
+
+    root.activeSyncDirectLink = { live, ensure, limits, eligible: (id) => eligible(deviceOf(id)), liveIds, _parseFileUrl: parseFileUrl };
 })(typeof window !== 'undefined' ? window : globalThis);

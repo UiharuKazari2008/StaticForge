@@ -160,7 +160,9 @@
         if (!current) return '';
         let url = `/api/activesync/file/${current.deviceId}/${encodeURIComponent(rootId)}/${encodePath(path)}`;
         const q = [];
-        if (opts.thumb) q.push(`thumb=${Math.max(32, Math.min(1024, Math.round(opts.thumb)))}`);
+        // the server answers thumbnails up to 1024 px; a direct LAN link to the phone up to its own limit (#1006)
+        const lim = root.activeSyncDirectLink ? root.activeSyncDirectLink.limits(current.deviceId) : null;
+        if (opts.thumb) q.push(`thumb=${Math.max(32, Math.min(lim ? lim.thumbMax : 1024, Math.round(opts.thumb)))}`);
         if (opts.download) q.push('download=1');
         if (q.length) url += `?${q.join('&')}`;
         return url;

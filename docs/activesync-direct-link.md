@@ -112,13 +112,21 @@ Data messages are at most 64 KiB. Both ends watch `bufferedAmount` and pause abo
 | `{t:"hello", v:1, id, name, ops:[...], features:{...}}` | phone -> computer: the ops it serves on the link (the same `storage.*` names as ActiveSync, `features` as `storage.hello`). |
 | `{t:"call", id, op, args}` | a call, as `as_call` would carry it (`storage.list`, `storage.mediaList` ...). The phone checks the same permissions as for a server call. |
 | `{t:"result", id, result}` / `{t:"error", id, code, message}` | its answer. |
-| `{t:"get", id, root, path, range?, thumb?, jpeg?, media?}` | a file body (as `stream.send`; `media` for `root:"media"`, `jpeg` = the app's JPEG of a picture the browser cannot decode). |
+| `{t:"get", id, root, path, range?, thumb?, jpeg?, media?}` | a file body (as `stream.send`; `media` for `root:"media"`, `thumb` 32 to `thumbMax`, `jpeg` = the app's full-size JPEG of a picture the browser cannot decode, no range). |
 | `{t:"head", id, status, type, length, range?, mtime}` | then binary frames for `id`, then `{t:"end", id}`. |
 | `{t:"put", id, root, dir, name, size, conflict, mtime?, mkdirs?}` | a file to the phone (as `stream.receive`). Phone answers `{t:"ready", id}` (or an error), takes binary frames for `id`, then `{t:"putEnd", id}` -> `{t:"result", id, result: <entry>}`. |
 | `{t:"cancel", id}` | either side stops a get or put; partial uploads are deleted. |
 | `{t:"ping"}` / `{t:"pong"}` | only when nothing else moved for 60 s (keeps NAT-less LAN paths and the SCTP association honest). |
 
 Stream ids: odd from the computer. At most 8 gets and 2 puts at once per link; more wait their turn.
+
+**No size caps on the LAN** (Yukimi, Nov 21 2026: "when locally connectable override the limit on files and image
+sizes"): the server path caps thumbnails at 1024 px, shows a picture the browser cannot decode (HEIC) as a 1024 px
+preview and holds uploads to its 16 GB transfer limit. On a link: thumbnails up to the phone's `features.thumbMax`
+(2048), `jpeg` gives the full-size JPEG of such a picture, and a `put` is limited only by the phone's free space
+(`ENOSPC` before any data is taken). The phone says so in its hello: `features: { thumbMax: 2048, jpeg: true, ... }`.
+URL builders ask `activeSyncDirectLink.limits(deviceId)`; the server reads `?jpeg=1` as a 1024 px preview, so an
+address made for the link still shows the picture if the link drops.
 
 ## 6. Life of a link
 

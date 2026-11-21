@@ -343,7 +343,10 @@
             // a device's own address, so two devices' thumbnails show side by side (activeSyncRemoteStorage fileUrl)
             let url = `/api/activesync/file/${encodeURIComponent(deviceId)}/${encodeURIComponent(rootId)}/${p.encodePath(path)}`;
             const q = [];
-            if (opts && opts.thumb) q.push(`thumb=${Math.max(32, Math.min(1024, Math.round(opts.thumb)))}`);
+            // 1024 px through the server; a direct LAN link lifts it to the phone's own limit (#1006)
+            const lim = root.activeSyncDirectLink ? root.activeSyncDirectLink.limits(deviceId) : null;
+            if (opts && opts.thumb) q.push(`thumb=${Math.max(32, Math.min(lim ? lim.thumbMax : 1024, Math.round(opts.thumb)))}`);
+            if (opts && opts.jpeg) q.push('jpeg=1');
             if (q.length) url += `?${q.join('&')}`;
             return url;
         };
@@ -399,6 +402,10 @@
         function viewUrl(rootId, e) {
             if (!undecodable(e)) return urlOf(rootId, e.path, {});
             if (!deviceId && features && features.jpeg) return `${urlOf(rootId, e.path, {})}?jpeg=1`;
+            // another computer: over a direct LAN link the full-size JPEG (no size cap, #1006); through the server its
+            // largest preview (the server reads ?jpeg=1 as that too, so the address stays good if the link drops)
+            const lim = deviceId && root.activeSyncDirectLink ? root.activeSyncDirectLink.limits(deviceId) : null;
+            if (lim && lim.jpeg) return urlOf(rootId, e.path, { jpeg: true });
             return urlOf(rootId, e.path, { thumb: deviceId ? 1024 : 2048 });
         }
         function entryItem(rootId, e, folderName) {
