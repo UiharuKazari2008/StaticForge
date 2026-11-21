@@ -255,7 +255,13 @@
         const replying = reply && reply.key === n.key;
         const sub = [n.subText, n.infoText].filter(Boolean).join(' · ');
         const when = n.chronometer ? `<span class="android-notify-chrono" data-base="${esc(n.chronometer.base)}" data-down="${n.chronometer.countDown ? 1 : 0}">${esc(chronoText(n.chronometer))}</span>` : esc(whenText(n));
-        const pic = n.large ? imageTag(n.large, 'android-notify-large', 32) : appPic(n, 32);
+        // the large icon (a face, an album), with the app's own picture to fall back to when it cannot be read
+        let pic = appPic(n, 32);
+        if (n.large) {
+            const app = programPic(n.package, 32);
+            const fb = app.src ? ` data-fb-src="${esc(app.src)}" data-fb-srcset="${esc(app.srcset)}"` : (n.icon ? ` data-fb-src="${esc(n.icon)}"` : '');
+            pic = imageTag(n.large, 'android-notify-large', 32).replace('<img ', `<img${fb} `);
+        }
         return `<div class="android-notify-note vista-treelist-row${open ? ' is-open' : ''}${n.ongoing ? ' is-ongoing' : ''}" data-key="${esc(n.key)}" role="listitem" tabindex="0">
             <div class="android-notify-main" data-act="open">
                 <span class="android-notify-pic">${pic}</span>
@@ -354,7 +360,11 @@
                 }
             }
             if (url && img.getAttribute('src') !== url) img.setAttribute('src', url);
-            if (!url) img.hidden = true;
+            else if (!url && img.dataset.fbSrc) {
+                // the app could not give the picture: the program's own icon in its place
+                img.setAttribute('src', img.dataset.fbSrc);
+                if (img.dataset.fbSrcset) img.setAttribute('srcset', img.dataset.fbSrcset);
+            } else if (!url) img.hidden = true;
         });
         // pictures no notification shows any more are let go
         const live = new Set();
