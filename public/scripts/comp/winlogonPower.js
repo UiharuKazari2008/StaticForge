@@ -771,6 +771,12 @@ async function runWinlogonPower(kind, options) {
     if (!window.isDesktop) {
         if (await winlogonUpdates.installNarrow(kind, opts) === false) return false;
         await winlogonUpdates.commitShell(kind);
+        // the hook runs here too (Yukimi, Nov 21: Install "does not do anything"): a DeX window in app mode takes this
+        // path, and its Continuity answer ('done', melatonContinuity dex-shutdown) was never sent - the phone waited
+        // out its 60 s for it with its install window up
+        if (typeof opts.beforeNavigate === 'function') {
+            try { await Promise.race([Promise.resolve().then(opts.beforeNavigate), winlogonDelay(3000)]); } catch (_) { /* restart anyway */ }
+        }
         await commitWinlogonPower(kind, opts.onCommit, opts.signOut);
         return true;
     }
