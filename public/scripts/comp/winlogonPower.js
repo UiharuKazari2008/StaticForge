@@ -769,6 +769,15 @@ async function runWinlogonPower(kind, options) {
     const copy = winlogonPowerCopy(kind);
     const opts = options || {};
     if (!window.isDesktop) {
+        // the phone in the app restarting: at once, nothing awaited (serviceWorkerManager.restartPhoneNow, Yukimi Nov 21
+        // 2026: never wait on the WebView); a caller's hook still runs, bounded, before the page goes
+        const swm = window.serviceWorkerManager;
+        if (kind === 'restart' && swm && typeof swm.restartPhoneNow === 'function' && !opts.beforeInstall) {
+            if (typeof opts.beforeNavigate === 'function') {
+                try { await Promise.race([Promise.resolve().then(opts.beforeNavigate), winlogonDelay(1000)]); } catch (_) { /* restart anyway */ }
+            }
+            if (swm.restartPhoneNow()) return true;
+        }
         if (await winlogonUpdates.installNarrow(kind, opts) === false) return false;
         await winlogonUpdates.commitShell(kind);
         // the hook runs here too (Yukimi, Nov 21: Install "does not do anything"): a DeX window in app mode takes this
