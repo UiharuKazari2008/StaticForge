@@ -5770,7 +5770,61 @@ class ServiceWorkerManager {
         return Array.from(urls);
     }
 
+    /**
+     * The phone in the Dreamscape app restarts NOW (Yukimi, Nov 21 2026, #1014: "If I click restart to update and it needs
+     * the phone to restart I do not care what is happening to go home now on the phone do not wait ... do not under any
+     * circumstances at all ever wait for that web view"). Before, the phone's page planned with the DeX window, asked
+     * again, ran the DeX window's shutdown sequence (up to 60 s, on the same renderer thread), downloaded what was still
+     * owed from the server under its install window and fetched the new /app (up to 18 s) - and only then asked the app
+     * to restart, while the DeX window then cold-booted beside it (two boots on one renderer: the heat and lock-ups).
+     *
+     * Now, with nothing awaited: the worker is handed what is still owed (CACHE_STATIC_FILES) and the shell commit
+     * (SHELL_COMMIT; a start promotes a complete candidate itself, sw.js promoteBeforeStart) - both carry on in the worker
+     * after the page has gone - the DeX window is held at its BIOS until this phone is up again when the update reaches it
+     * (holdDexForRestart: never two boots at once), and the app cold-boots at once (AndroidDisplay.coldBoot via
+     * restartClientNavigate). An update whose files were not all here yet comes up as ready once they are, and that
+     * restart is as quick. False (nothing done) outside the phone's own window in the app.
+     */
+    restartPhoneNow(opts = {}) {
+        const ad = window.AndroidDisplay;
+        const mc = window.melatonContinuity;
+        try {
+            if (!ad || typeof ad.coldBoot !== 'function' || typeof window.restartClientNavigate !== 'function') return false;
+            if (!document.documentElement.classList.contains('ui-mobile')) return false;
+            if (mc && typeof mc.isDexWindow === 'function' && mc.isDexWindow()) return false;
+        } catch (_) { return false; }
+        let both = false;
+        try {
+            const urls = Array.from(this.pendingUpdateUrls || []);
+            both = opts.plan ? !!opts.plan.other
+                : !!(mc && typeof mc.updateScope === 'function' && urls.length && mc.updateScope(urls) === 'both');
+            const owed = Array.isArray(this.availableUpdates) ? this.availableUpdates.filter((f) => f && f.url && f.hash) : [];
+            const worker = navigator.serviceWorker && navigator.serviceWorker.controller;
+            if (worker) {
+                if (owed.length) worker.postMessage({ type: 'CACHE_STATIC_FILES', files: owed, silent: true, requester: this._pageTag });
+                worker.postMessage({ type: 'SHELL_COMMIT', refresh: false });
+            }
+            // the downloaded updates install with this restart; owed ones stay counted until the worker has them
+            if (this.pendingUpdateFuse && !owed.length && !this.updatesWaitingCount()) {
+                const n = this.pendingUpdateFilesTotal || urls.length;
+                this.recordUpdateHistory({ name: n ? `Melaton update (${n} ${n === 1 ? 'file' : 'files'})` : 'Melaton update', status: 'Successful', importance: 'Important' });
+            }
+            if (!owed.length) this.resetPendingUpdateFuse();
+            if (mc && typeof mc.restartScope === 'function') mc.restartScope(both ? 'both' : 'mobile');
+            // the DeX window waits at its BIOS for this phone (its restart follows ours, never beside it)
+            if (both && mc && typeof mc.holdDexForRestart === 'function') mc.holdDexForRestart(true);
+        } catch (err) { console.warn('[update] restart bookkeeping (restarting anyway)', err); }
+        console.log(`🔄 Restart for updates: the phone restarts now${both ? ', the DeX window after it' : ''}`);
+        window.bypassConfirmation = true;
+        // the app's connection (Melaton Miniport, #815) starts fresh too, as winlogonPower's restart does
+        try { if (mc && typeof mc.resetMiniport === 'function') mc.resetMiniport(); } catch (_) { /* restart anyway */ }
+        window.restartClientNavigate();
+        return true;
+    }
+
     forceRestart(opts = {}) {
+        // the phone's own window in the app: at once, nothing awaited (restartPhoneNow)
+        if (this.restartPhoneNow(opts)) return;
         const mcw = window.melatonContinuity;
         // the phone with a DeX window up plans and warns for both, over the shared socket or each its own Miniport link
         const phoneWithDex = !!(mcw && (typeof mcw.hasDexPeer === 'function' ? mcw.hasDexPeer() : mcw.keepPhoneConnected()));
