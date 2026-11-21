@@ -35,8 +35,9 @@ function makeWindow(name) {
     c.role = () => (name === 'phone' ? 'phone' : 'desktop');
     const mkEl = (tag) => {
         const el = { tagName: tag, hidden: false, title: '', className: '', children: [], listeners: {}, isConnected: true, parentNode: null, textContent: '',
-            set innerHTML(h) { el.children = []; if (/mms-transfer-text/.test(h)) el.children.push(Object.assign(mkEl('span'), { cls: 'mms-transfer-text' })); },
-            querySelector(sel) { if (sel === '.mms-transfer-text') return el.children.find((c2) => c2.cls === 'mms-transfer-text') || null; if (sel === ':scope > .mms-transfer') return el.children.find((c2) => /mms-transfer/.test(c2.className)) || null; return null; },
+            set innerHTML(h) { el.children = []; if (/mms-transfer-text/.test(h)) el.children.push(Object.assign(mkEl('span'), { cls: 'mms-transfer-text' })); if (/mms-transfer-btn/.test(h)) el.children.push(Object.assign(mkEl('button'), { cls: 'mms-transfer-btn', html: h })); },
+            setAttribute() {},
+            querySelector(sel) { if (sel === '.mms-transfer-text' || sel === '.mms-transfer-btn') return el.children.find((c2) => c2.cls === sel.slice(1)) || null; if (sel === ':scope > .mms-transfer') return el.children.find((c2) => /mms-transfer/.test(c2.className)) || null; return null; },
             insertBefore(n) { el.children.unshift(n); n.parentNode = el; return n; },
             addEventListener(t, fn) { el.listeners[t] = fn; },
             classList: { add() {} } };
@@ -119,14 +120,17 @@ function radio(w) {
     assert.ok(bar && bar.hidden === false, 'the bar shows while the other window plays it');
     assert.strictEqual(bar.querySelector('.mms-transfer-text').textContent, 'Playing on the DeX desktop: Octane - XM', 'the phone names the desktop and what plays');
     assert.strictEqual(phone.media.offerTransfer('xmradio', host), bar, 'one bar per host');
-    bar.listeners.click();
+    const btn = bar.querySelector('.mms-transfer-btn');
+    assert.ok(btn && /wm-button/.test(btn.html), "Transfer is the phone kit's push button");
+    btn.listeners.click();
     await settle(phone, desk); await settle(phone, desk);
     assert.strictEqual(phone.radio.channel, 'Octane', 'Transfer moves the session here');
     assert.strictEqual(desk.radio.channel, null, 'and it stops on the desktop');
     assert.strictEqual(bar.hidden, true, 'the bar goes once it plays here');
     const deskHost = desk.ctxMkEl('div');
     const deskBar = desk.media.offerTransfer('xmradio', deskHost);
-    assert.strictEqual(deskBar.querySelector('.mms-transfer-text').textContent, 'Octane - XM is playing on your phone. Click to transfer it to this computer.', "the desktop's Vista information bar");
+    assert.strictEqual(deskBar.querySelector('.mms-transfer-text').textContent, 'Octane - XM is playing on your phone.', "the desktop's Vista information bar");
+    assert.ok(/btn-standard/.test(deskBar.querySelector('.mms-transfer-btn').html), "the desktop's Transfer is Vista's push button");
     // the window leaves: its sessions go
     phone.emitPeer('left');
     await settle(phone, desk);

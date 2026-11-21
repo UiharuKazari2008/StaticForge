@@ -22,8 +22,8 @@
  *   offerTransfer(app, host, { canTake(session) })
  *                         the "playing on the other screen" bar at the top of `host` (Yukimi, Nov 21 2026: "add a
  *                         playing on X so that if we open it on the other display we have a Transfer"): shown while the
- *                         other window plays that program and this one does not; a click moves the session here. Vista's
- *                         information bar on the desktop, a band in the theme's highlight on the phone. It keeps itself
+ *                         other window plays that program and this one does not; its Transfer button moves the session
+ *                         here. Vista's information bar on the desktop, a band in the theme's highlight on the phone. It keeps itself
  *                         up to date and goes when its host leaves the page.
  *
  * A session is plain JSON: { app, title, subtitle, kind, source: { what the program needs to play it again },
@@ -68,8 +68,8 @@
     };
     function barText(app, s) {
         const what = [s.title, s.subtitle].filter(Boolean).join(' - ') || 'Media';
-        if (root.uiShell === 'mobile') return { text: `Playing on ${otherName()}: ${what}`, key: 'Transfer' };
-        return { text: `${what} is playing on ${otherName()}. Click to transfer it to this computer.`, key: '' };
+        if (root.uiShell === 'mobile') return { text: `Playing on ${otherName()}: ${what}` };
+        return { text: `${what} is playing on ${otherName()}.` };
     }
     function syncBar(app, b) {
         const there = api.elsewhere(app);
@@ -151,12 +151,16 @@
             if (!app || !host || !host.isConnected && !host.parentNode) return null;
             let el = host.querySelector(':scope > .mms-transfer');
             if (!el) {
-                el = document.createElement('button');
-                el.type = 'button';
-                el.className = `mms-transfer ${root.uiShell === 'mobile' ? 'mms-transfer-wm' : 'mms-transfer-vista'}`;
+                // the bar is the message; Transfer is a real push button at its right (Vista's on the desktop, the phone
+                // kit's on the phone; Yukimi, Nov 21 2026: "button")
+                const phone = root.uiShell === 'mobile';
+                el = document.createElement('div');
+                el.className = `mms-transfer ${phone ? 'mms-transfer-wm' : 'mms-transfer-vista'}`;
+                el.setAttribute('role', 'status');
                 el.hidden = true;
-                el.innerHTML = '<span class="mms-transfer-text"></span>' + (root.uiShell === 'mobile' ? '<span class="mms-transfer-key">Transfer</span>' : '');
-                el.addEventListener('click', () => {
+                el.innerHTML = `<span class="mms-transfer-text"></span><button type="button" class="mms-transfer-btn ${phone ? 'wm-button' : 'btn-standard'}">Transfer</button>`;
+                const btn = el.querySelector('.mms-transfer-btn');
+                btn.addEventListener('click', () => {
                     el.hidden = true;
                     void api.pull(app).then(() => syncBars(app));
                 });
