@@ -523,7 +523,7 @@
                 const line2 = subOf(it) || (it.kind === 'barcode' ? it.value : '');
                 // wide pictures keep their shape on Today (#903): a card is a card, a barcode as the code is (a QR square)
                 const imageAspect = it.kind === 'card' ? 1.586 : (code && image === code) ? 'auto' : undefined;
-                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, imageAspect, bare: it.kind === 'card' || (!!photo && image === photo), softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
+                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, imageAspect, imageFit: code && image === code ? 'contain' : undefined, bare: it.kind === 'card' || (!!photo && image === photo), softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
             })
         };
     }

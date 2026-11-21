@@ -7,7 +7,7 @@
  *
  *   node scripts/generate-app-icon-sets.js [xmradio|videos]
  *
- * Masters: apps/xmradio/assets/art/xmradio-{desktop,mobile}.png, apps/videos/assets/art/videos-{desktop,mobile}.png
+ * Masters: apps/xmradio/assets/art/xmradio-{desktop,mobile,panel}.png (panel: the Today panel icon's own drawing), apps/videos/assets/art/videos-{desktop,mobile}.png
  * (1024, transparent). Each is trimmed and set square with a small margin, then written:
  *   desktop  XM: apps/xmradio/assets/xmradio-16/-32/-48/-256.png, public/static_images/app_icons/xmradio.png (256)
  *            Videos: app_icons/videos.png (512), app_icons/frames/videos/{16,24,32,48}.png, apps/videos/assets/videos-48.png
@@ -28,6 +28,9 @@ const SETS = {
     xmradio: {
         desktop: path.join(ROOT, 'apps/xmradio/assets/art/xmradio-desktop.png'),
         mobile: path.join(ROOT, 'apps/xmradio/assets/art/xmradio-mobile.png'),
+        // the Today panel icon in the ROM's own panel family (Music, Album, Pictures: one glossy rounded object in one
+        // strong colour), not the Start icon's realistic radio (Yukimi, Nov 21 2026)
+        panel: path.join(ROOT, 'apps/xmradio/assets/art/xmradio-panel.png'),
         phoneId: 'xmradio',
         desktopOut: [[16, 'apps/xmradio/assets/xmradio-16.png'], [32, 'apps/xmradio/assets/xmradio-32.png'], [48, 'apps/xmradio/assets/xmradio-48.png'],
             [256, 'apps/xmradio/assets/xmradio-256.png'], [256, 'public/static_images/app_icons/xmradio.png'], [256, 'apps/xmradio/assets/xmradio-mobile-256.png', 'mobile']]
@@ -76,7 +79,8 @@ async function build(name) {
         await write(mob, s, `public/static_images/wm61/${f}`);
     }
     for (const [s, f] of [[45, `start-${id}.png`], [90, `start-${id}@2x.png`], [180, `start-${id}@4x.png`]]) await write(mob, s, `public/static_images/wm65/${f}`);
-    for (const [k, f] of [[0.5, `ti-x-app-${id}-lg.png`], [1, `ti-x-app-${id}-lg@2x.png`], [2, `ti-x-app-${id}-lg@4x.png`]]) await panel(mob, k, `public/static_images/wm65/${f}`);
+    const pan = set.panel ? await squared(set.panel) : mob;
+    for (const [k, f] of [[0.5, `ti-x-app-${id}-lg.png`], [1, `ti-x-app-${id}-lg@2x.png`], [2, `ti-x-app-${id}-lg@4x.png`]]) await panel(pan, k, `public/static_images/wm65/${f}`);
 }
 
 (async () => {
