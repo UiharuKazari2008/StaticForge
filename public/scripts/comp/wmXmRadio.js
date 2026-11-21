@@ -138,14 +138,43 @@
 
     // ---------------------------------------------------------------- the feed
 
-    /** Today's pages: the channel this phone plays, then preset bank A (each once). */
+    /** The radio is tuned to this channel and playing it (Today's first page, its superscript). */
+    const onAir = (id) => !!id && id === radio.channelId && (radio.state === 'playing' || radio.state === 'tuning');
+
+    /**
+     * Today's pages (Yukimi, Nov 21 2026): the channel playing now first, then every preset in its order (banks A, B,
+     * C); a playing channel that is also a preset moves up from its place instead of showing twice.
+     */
     function todayChannels() {
         const out = [];
         const add = (id) => { if (id && chan(id) && !out.includes(id)) out.push(id); };
-        add(curId());
-        (cache.presets.A || []).forEach(add);
+        if (onAir(radio.channelId)) add(radio.channelId);
+        ['A', 'B', 'C'].forEach((b) => (cache.presets[b] || []).forEach(add));
+        if (!out.length) add(curId());
         if (!out.length) (cache.lineup && cache.lineup.channels || []).filter((c) => c.sub !== false).slice(0, 3).forEach((c) => add(c.id));
         return out;
+    }
+
+    // Settings > Today > Items > Options... (Yukimi, Nov 21 2026): check boxes; the stored value lists the unchecked
+    const TODAY_OPTS = [['direct', 'Direct Tune without Launch'], ['recsong', 'Record button records this single Song or Show from start']];
+    function todayOpt(key) {
+        const v = ws && typeof ws.todayOption === 'function' ? ws.todayOption('xmradio', 'today') : null;
+        const unchecked = String(v == null ? TODAY_OPTS.map((o) => o[0]).join(',') : v).split(',');
+        return !unchecked.includes(key);
+    }
+
+    /** A tap on a Today page: tune it here (Direct Tune without Launch) or open the radio on it. */
+    function todayTap(id) {
+        if (!id) return;
+        if (todayOpt('direct')) { if (!onAir(id)) void tune(id); return; }
+        openChannel(id);
+    }
+
+    /** Today's Record: the song or show from its start at once (the item's option), else the question; stops a recording. */
+    function todayRecord(id) {
+        if (!id) return;
+        if (!recOf(id) && todayOpt('recsong') && isAdmin()) { void recStart(id, { song: true, fromStart: true }); return; }
+        void recordAsk(id);
     }
 
     function wantHub() {
@@ -620,7 +649,8 @@
 
     function recKey(id) {
         const rec = !!recOf(id);
-        return { label: rec ? 'REC' : 'Record', disabled: !id || !isAdmin(), action: () => { void recordAsk(id); } };
+        // "Stop" while it records (Yukimi, Nov 21 2026)
+        return { label: rec ? 'Stop' : 'Record', disabled: !id || !isAdmin(), action: () => todayRecord(id) };
     }
 
     async function setAlert(kind, from) {
@@ -1649,10 +1679,10 @@
             const a = e.target.closest('.xrm-td-arrow');
             if (a) { e.stopPropagation(); todayStep(a.dataset.dir === 'next' ? 1 : -1); return; }
             const r = e.target.closest('.xrm-td-rec');
-            if (r) { e.stopPropagation(); void recordAsk(todayPageId()); return; }
+            if (r) { e.stopPropagation(); todayRecord(todayPageId()); return; }
             const p = e.target.closest('.xrm-td-play');
             if (p) { e.stopPropagation(); todayPlay(todayPageId()); return; }
-            openChannel(todayPageId());
+            todayTap(todayPageId());
         });
     }
 
@@ -1680,7 +1710,7 @@
         const many = ids.length > 1;
         const rec = !!(id && recOf(id));
         const playBtn = c ? `<button type="button" class="xrm-td-play" aria-label="${playing ? 'Pause' : 'Play'}">${playing ? '&#x23F8;&#xFE0E;' : '&#x25B6;&#xFE0E;'}</button>` : '';
-        const recBtn = c && isAdmin() ? `<button type="button" class="xrm-td-rec${rec ? ' is-rec' : ''}" aria-label="${rec ? 'Recording: stop' : 'Record'}">${rec ? 'REC' : 'Record'}</button>` : '';
+        const recBtn = c && isAdmin() ? `<button type="button" class="xrm-td-rec${rec ? ' is-rec' : ''}" aria-label="${rec ? 'Stop recording' : 'Record'}">${rec ? 'Stop' : 'Record'}</button>` : '';
         const html = `<button type="button" class="xrm-td-arrow" data-dir="prev" aria-label="Previous channel"${many ? '' : ' disabled'}>&#x2039;</button><div class="xrm-td-slide">${inner}</div>${playBtn}${recBtn}<button type="button" class="xrm-td-arrow" data-dir="next" aria-label="Next channel"${many ? '' : ' disabled'}>&#x203A;</button>`;
         if (html !== todayHtml || !el.firstChild) {
             todayHtml = html;
@@ -1701,9 +1731,9 @@
         if (!ids.length) {
             return { label: 'xm radio', icon: 'x:app-xmradio-lg', pages: [{ title: 'XM Radio', line2: cache.lineup ? 'Tap to choose a channel' : 'Reading the channels...', line3: '' }], softKey: { label: 'Radio', action: go }, onTap: go };
         }
-        // the superscript by the panel's name (Yukimi, Nov 20 2026): "rec" while a recording runs, else the current
-        // channel's number
-        const cur = chan(curId());
+        // the superscript by the panel's name: "rec" while a recording runs, else the channel's number only while the
+        // radio is tuned to it and playing (Yukimi, Nov 21 2026)
+        const cur = onAir(radio.channelId) ? chan(radio.channelId) : null;
         return {
             label: 'xm radio',
             count: (cache.rec || []).length ? 'rec' : cur ? String(cur.number) : '',
@@ -1711,23 +1741,23 @@
             pages: ids.map((id) => {
                 const c = chan(id);
                 const now = nowOf(id);
-                const pic = now && !now.ad && now.i ? now.i : c.logo;
-                const playing = id === radio.channelId && (radio.state === 'playing' || radio.state === 'tuning');
+                const playing = onAir(id);
                 return {
-                    image: pic || undefined,
+                    // the picture at the top right is the channel's logo (Yukimi, Nov 21 2026)
+                    image: c.logo || undefined,
                     imageAspect: 1,
                     title: now ? (now.ad ? 'Commercial' : now.t || c.name) : c.name,
                     line2: now && !now.ad ? now.a || '' : '',
                     line3: `${chanLabel(c)}${playing ? ' · Playing' : ''}`,
                     softKey: recKey(id),
-                    onTap: () => openChannel(id),
+                    onTap: () => todayTap(id),
                     // tap-and-hold: the radio's own controls from Today (Yukimi, Nov 20 2026)
                     menu: () => [
                         { label: playing ? (radio.native ? 'Stop' : 'Pause') : 'Play', action: () => todayPlay(id) },
                         { label: 'Channel Up', action: () => { if (playing) step(1); else todayStep(1); } },
                         { label: 'Channel Down', action: () => { if (playing) step(-1); else todayStep(-1); } },
                         '-',
-                        { label: recOf(id) ? 'Stop Recording' : 'Record This Song...', disabled: !isAdmin(), action: () => { void recordAsk(id); } },
+                        { label: recOf(id) ? 'Stop Recording' : todayOpt('recsong') ? 'Record This Song' : 'Record This Song...', disabled: !isAdmin(), action: () => todayRecord(id) },
                         { label: 'Open XM Radio', action: () => openChannel(id) }
                     ]
                 };
@@ -1783,7 +1813,10 @@
         if (!ws) return;
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
-            ws.registerTodayItem({ id: 'xmradio', label: 'XM Radio', icon: 'app-xmradio', after: 'youtube', render: todayRender, titanium: todayTitanium });
+            ws.registerTodayItem({
+                id: 'xmradio', label: 'XM Radio', icon: 'app-xmradio', after: 'youtube', render: todayRender, titanium: todayTitanium,
+                options: [{ key: 'today', label: 'XM Radio', type: 'checks', value: TODAY_OPTS.map((o) => o[0]).join(','), choices: TODAY_OPTS }]
+            });
         }
         if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });
     }
