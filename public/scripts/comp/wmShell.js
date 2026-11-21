@@ -1310,7 +1310,15 @@
             // written only when they change (#890): the same text written again still swaps the text node
             // and restyles the bar on every refresh
             const label = key ? String(key.label == null ? '' : key.label) : '';
-            if (!(stage && stage.mask.keys) && btn.textContent !== label) btn.textContent = label;
+            // a count beside the label (key.badge: Today's "Notification", Yukimi Nov 21 2026): drawn only when label or count
+            // changed (the badge's own digit is in textContent, so the label alone cannot tell)
+            const badge = key && Number(key.badge) > 0 ? Math.floor(Number(key.badge)) : 0;
+            const sig = badge ? `${label}\u0001${badge > 9 ? '*' : badge}` : label;
+            if (!(stage && stage.mask.keys) && (btn.dataset.sk !== sig || (!badge && btn.textContent !== label))) {
+                if (badge) btn.innerHTML = `<span class="wm-softkey-text">${escapeHtml(label)}</span>${softKeyBadge(badge)}`;
+                else btn.textContent = label;
+                btn.dataset.sk = sig;
+            }
             const off = !key || !!key.disabled;
             if (btn.disabled !== off) btn.disabled = off;
             const popup = key && key.menu ? 'menu' : 'false';
@@ -1323,6 +1331,19 @@
         if (!(stage && stage.mask.keys)) shell.querySelector('.wm-sip').hidden = !(app && (typeof app.sip === 'function' ? app.sip() : app.sip));
         // the corner follows the same layer as the soft keys
         refreshTitleAction();
+    }
+
+    /**
+     * A soft key's count: a white badge with the digit cut out of it (the bar shows through), "*" over 9 (Yukimi, Nov 21
+     * 2026). Vector, so it is sharp at every scale and needs no tier art; sized from the key's own font (wm-shell.css).
+     */
+    function softKeyBadge(n) {
+        const t = n > 9 ? '*' : String(n);
+        const id = `wm-skb-${t === '*' ? 'x' : t}`;
+        const glyph = t === '*'
+            ? '<text x="10" y="20" text-anchor="middle" font-family="Tahoma, Segoe UI, sans-serif" font-weight="bold" font-size="20" fill="#000">*</text>'
+            : `<text x="10" y="14" text-anchor="middle" font-family="Tahoma, Segoe UI, sans-serif" font-weight="bold" font-size="14" fill="#000">${t}</text>`;
+        return `<svg class="wm-softkey-badge" viewBox="0 0 20 18" aria-label="${t === '*' ? 'more than 9' : t}" role="img"><defs><mask id="${id}"><rect width="20" height="18" rx="5" fill="#fff"/>${glyph}</mask></defs><rect width="20" height="18" rx="5" fill="#fff" mask="url(#${id})"/></svg>`;
     }
 
     function pressSoftKey(side, btn) {
@@ -10356,7 +10377,7 @@
                 keys.custom = todaySoftKeysChosen();
                 // a notification is waiting: the device's left soft key on Today reads "Notification"
                 // and opens it, whatever the key is set to
-                if (notes.length) keys.left = { label: 'Notification', action: () => noteIconTap() };
+                if (notes.length) keys.left = { label: 'Notification', badge: notes.length, action: () => noteIconTap() };
                 if (todayView && typeof todayView.softKeys === 'function') {
                     try { return todayView.softKeys(keys) || keys; } catch (err) { console.warn('[wmShell] today view keys', err); }
                 }
