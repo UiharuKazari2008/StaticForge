@@ -1504,16 +1504,20 @@ async function grimoireLoadAlchemyExtensions() {
     const res = await fetch('/api/grimoire-browser/extensions', { credentials: 'same-origin' }).catch(() => null);
     if (!res || !res.ok) return [];
     const data = await res.json().catch(() => ({}));
-    grimoireAlchemyExtensions = (data.extensions || []).filter((ext) => ext.popup);
+    // every extension has a toolbar button (its popup, or what its click does): the IE command bar shows them
+    grimoireAlchemyExtensions = (data.extensions || []).filter((ext) => ext && /^[a-p]{32}$/.test(ext.id || ''));
     return grimoireAlchemyExtensions;
 }
 
 async function grimoireApplyAlchemySetting(key, value) {
     const saved = await grimoireSaveAlchemySettings({ [key]: value });
+    // auto: Alchemy picks quality and frame rates from each viewer's link (server.js applyAutoQuality) unless
+    // Tools > Automatic quality is off; then the chosen ones stand
+    const settings = Object.assign({}, saved, { auto: saved.autoQuality !== false });
     grimoireRemoteShells().forEach((shell) => {
         const frame = grimoireRemoteFrame(shell);
         if (frame && frame.contentWindow && shell._grimoireRemoteSessionId) {
-            frame.contentWindow.postMessage({ type: 'grimoire-browser-settings', settings: saved }, '*');
+            frame.contentWindow.postMessage({ type: 'grimoire-browser-settings', settings }, '*');
         }
     });
 }
@@ -1561,10 +1565,8 @@ async function grimoireShowSiteMenu(ev, win) {
     const hostName = grimoireSiteLabel(raw);
     const wikiTerm = hostName ? hostName.split('.')[0] : String(raw || '').trim();
     const pageUrl = grimoireShellWebUrl(shell);
-    const markUrl = grimoireShellBookmarkUrl(shell, host);
     const [settings, extensionList] = await Promise.all([grimoireLoadAlchemySettings(), grimoireLoadAlchemyExtensions()]);
-    const bookmarks = settings.bookmarks || [];
-    const bookmarked = markUrl && bookmarks.some((row) => row.url === markUrl);
+    // Favorites and Add to Favorites are the tab row's (grimoireIeChrome.js); the menu no longer repeats them
 
     const items = [];
     if (web && web !== pageUrl) items.push({ text: 'Open in Alchemy', icon: 'fas fa-globe', action: 'browser' });
@@ -1573,35 +1575,31 @@ async function grimoireShowSiteMenu(ev, win) {
         items.push({ text: 'Search wiki', icon: 'fas fa-search', action: 'search' });
     }
     if (items.length) items.push({ separator: true });
-    items.push({
-        text: 'Bookmarks',
-        icon: 'fas fa-bookmark',
-        submenu: bookmarks.length
-            ? bookmarks.map((row) => ({ text: row.title || row.url, subtext: grimoireSiteLabel(row.url), action: 'bookmark-open', bookmarkUrl: row.url }))
-            : [{ text: 'No bookmarks', disabled: true }]
-    });
-    if (markUrl) {
-        items.push(bookmarked
-            ? { text: 'Remove bookmark', icon: 'fas fa-bookmark-slash', action: 'bookmark-remove' }
-            : { text: 'Bookmark this page', icon: 'far fa-bookmark', action: 'bookmark-add' });
-    }
     // History: every page visited, by day (grimoireCoreDomains.js en.grimoire.jp/history, #628)
     items.push({ text: 'History', icon: 'fas fa-clock-rotate-left', action: 'history' });
+    // Extensions: each one's toolbar button (its popup drops down from its command bar button, as in Chrome),
+    // and Chromium's own page to manage them
+    const extensionPage = !!(shell._grimoireRemoteSessionId && !shell._grimoireLocalAlchemy);
     items.push({
         text: 'Extensions',
         icon: 'fas fa-puzzle-piece',
-        submenu: extensionList.length
-            ? extensionList.map((ext) => ({ text: ext.name, action: 'extension', extensionPopup: ext.popup }))
-            : [{ text: 'No extensions', disabled: true }]
+        submenu: (extensionList.length
+            ? extensionList.map((ext) => ({ text: ext.name, image: ext.icon16 || '', image2x: ext.icon32 || '', action: 'extension', extensionId: ext.id, disabled: !extensionPage }))
+            : [{ text: 'No extensions', disabled: true }])
+            .concat([{ separator: true }, { text: 'Manage Extensions', action: 'extensions-manage' }])
     });
     items.push({ separator: true });
     // IE7's Tools > Internet Options: Control Panel's Internet Properties (cplDialogs2.js, cplInternetOptions.js)
     items.push({ text: 'Internet Options', icon: 'fas fa-globe', action: 'internet-options' });
     items.push({ text: 'Settings', icon: 'fas fa-gear', action: 'chrome-settings' });
-    items.push({ text: 'JPEG quality', icon: 'fas fa-image', valueDisplay: String(settings.jpegQuality), submenu: grimoireAlchemyChoiceItems('jpegQuality', settings.jpegQuality) });
-    items.push({ text: 'Min FPS', icon: 'fas fa-gauge-low', valueDisplay: String(settings.minFps), submenu: grimoireAlchemyChoiceItems('minFps', settings.minFps) });
-    items.push({ text: 'Max FPS', icon: 'fas fa-gauge-high', valueDisplay: String(settings.maxFps), submenu: grimoireAlchemyChoiceItems('maxFps', settings.maxFps) });
-    items.push({ text: 'Compression', icon: 'fas fa-file-zipper', valueDisplay: grimoireAlchemyChoiceLabel('regionQuality', settings.regionQuality), submenu: grimoireAlchemyChoiceItems('regionQuality', settings.regionQuality) });
+    // Automatic quality (on by default): Alchemy picks these from each viewer's link; the choices only count while it is off
+    const auto = settings.autoQuality !== false;
+    items.push({ text: 'Automatic quality', action: 'setting', settingKey: 'autoQuality', settingValue: !auto, showIndicator: true, indicatorMark: 'check', checked: auto });
+    items.push({ text: 'JPEG quality', icon: 'fas fa-image', valueDisplay: String(settings.jpegQuality), disabled: auto, submenu: grimoireAlchemyChoiceItems('jpegQuality', settings.jpegQuality) });
+    items.push({ text: 'Min FPS', icon: 'fas fa-gauge-low', valueDisplay: String(settings.minFps), disabled: auto, submenu: grimoireAlchemyChoiceItems('minFps', settings.minFps) });
+    items.push({ text: 'Max FPS', icon: 'fas fa-gauge-high', valueDisplay: String(settings.maxFps), disabled: auto, submenu: grimoireAlchemyChoiceItems('maxFps', settings.maxFps) });
+    items.push({ text: 'Compression', icon: 'fas fa-file-zipper', valueDisplay: grimoireAlchemyChoiceLabel('regionQuality', settings.regionQuality), disabled: auto, submenu: grimoireAlchemyChoiceItems('regionQuality', settings.regionQuality) });
+    items.push({ text: 'Alchemy Information...', action: 'alchemy-info', disabled: !extensionPage });
     items.push({ text: 'Restart browser', icon: 'fas fa-rotate-right', action: 'restart' });
 
     contextMenu.attachToElement(button, {
@@ -1609,10 +1607,6 @@ async function grimoireShowSiteMenu(ev, win) {
         onAction: (action, target, item) => {
             if (action === 'browser' && web) {
                 host.navigate(web);
-                return;
-            }
-            if (action === 'bookmark-open') {
-                host.navigate(item.bookmarkUrl);
                 return;
             }
             if (action === 'internet-options') {
@@ -1626,7 +1620,19 @@ async function grimoireShowSiteMenu(ev, win) {
                 return;
             }
             if (action === 'extension') {
-                grimoireOpenStandaloneWindow(item.extensionPopup, true);
+                const ext = extensionList.find((e) => e.id === item.extensionId);
+                // under its command bar button, or under Tools when the button is behind the » chevron
+                const chrome = host.ieChrome;
+                const anchor = (chrome && typeof chrome.extensionButton === 'function' && chrome.extensionButton(item.extensionId)) || button;
+                if (ext && window.GrimoireIeChrome) window.GrimoireIeChrome.openExtensionPopup(host, ext, anchor);
+                return;
+            }
+            if (action === 'extensions-manage') {
+                host.navigate('chrome://extensions');
+                return;
+            }
+            if (action === 'alchemy-info') {
+                if (window.GrimoireIeChrome) window.GrimoireIeChrome.showAlchemyInfo(host, shell);
                 return;
             }
             if (action === 'setting') {
@@ -1637,15 +1643,6 @@ async function grimoireShowSiteMenu(ev, win) {
             }
             if (action === 'history') {
                 host.navigate(window.GRIMOIRE_HISTORY_URL || 'dsap://history.grimoire.jp');
-                return;
-            }
-            if (action === 'bookmark-add' || action === 'bookmark-remove') {
-                const next = action === 'bookmark-add'
-                    ? [{ url: markUrl, title: grimoireShellBookmarkTitle(shell, markUrl) }].concat(bookmarks)
-                    : bookmarks.filter((row) => row.url !== markUrl);
-                grimoireSaveAlchemySettings({ bookmarks: next }).catch(() => {
-                    showGlassToast('error', null, 'Could not save bookmarks', false, 4000);
-                });
                 return;
             }
             if (action === 'restart') {

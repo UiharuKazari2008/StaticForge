@@ -6544,7 +6544,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
 
     /**
-     * Another full Grimoire window (#615): app.html's window markup as served (the window on the page has
+     * Another full Grimoire window (#615): the grimoire feature's template as served (templates/grimoire.html; the window on the page has
      * the chrome, scrollbars and resize handles the app added at run time), ids suffixed with __w<n> and
      * the old ids kept as data-grimoire-part (part(), the :is() selectors in the CSS). target is what
      * grimoireTabs.js load takes ({ url }, { address }, { tag }, {} for the home page).
@@ -7920,7 +7920,10 @@ function grimoireWindowOf(shell) {
 /** app.html's Grimoire window as served, before the app changed it at run time (parsed once). */
 function grimoireWindowMarkup() {
     if (!grimoireWindowMarkupPromise) {
-        grimoireWindowMarkupPromise = fetch('/app', { credentials: 'same-origin' })
+        // the window's markup is the grimoire feature's template since #817 (featureLoader.js); /app no longer has
+        // it, and every New Window said "Could not open a new Grimoire window" (Yukimi, Nov 21 2026: "i cant crate
+        // new windows it just gives a error")
+        grimoireWindowMarkupPromise = fetch('/templates/grimoire.html', { credentials: 'same-origin' })
             .then((res) => (res.ok ? res.text() : ''))
             .then((html) => {
                 const node = html ? new DOMParser().parseFromString(html, 'text/html').getElementById('tagWikiSearchModal') : null;

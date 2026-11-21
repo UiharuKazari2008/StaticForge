@@ -1,0 +1,75 @@
+/* Grimoire (IE7) and Alchemy's extensions, Vista theme (Yukimi, Nov 21 2026: "extentions should be shown correctly
+   like IE does possibly as icons in the tab bar ... allow them to popdown like in chrome would do").
+   grimoireIeChrome.js puts one button per extension after Tools ▾, as IE7 places add-on buttons; they take the
+   command bar's flat face, hover and press from vista-explorer.css. A plain toolbar button is 30 px with its 16 px
+   icon centred (the split buttons' main part is the same 30 px). The » lists the buttons that do not fit.
+   grimoireRemoteBrowser.js drops the extension's popup (Alchemy's own popup window, streamed) from its button. */
+
+body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands > button.grimoire-ie-ext {
+    justify-content: center;
+    width: 30px;
+    min-width: 30px;
+    padding: 0;
+}
+
+body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands > button.grimoire-ie-ext[hidden],
+body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands > button.grimoire-ie-ext-chevron[hidden] {
+    display: none;
+}
+
+/* open: the button stays down while its popup shows (the command bar's pressed face) */
+body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands > button:is(.grimoire-ie-ext, .grimoire-ie-ext-chevron).is-pressed:not(:disabled) {
+    background: linear-gradient(#e4e7ee, #d3d8e2 11px, #b9c1d4 11px, #bcc4d7);
+    border-color: #8a8f9a #7a8090 #858a97;
+    box-shadow: inset 0 1px 2px hsl(220 20% 30% / 35%);
+}
+
+/* not on a web page: IE7's grey command icon */
+body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands > button.grimoire-ie-ext:disabled {
+    opacity: 1;
+    cursor: var(--c-default);
+}
+
+body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands > button.grimoire-ie-ext:disabled img {
+    filter: grayscale(1) opacity(0.55);
+}
+
+/* IE7's chevron: » at the end of the command bar when buttons are hidden */
+body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands > button.grimoire-ie-ext-chevron {
+    justify-content: center;
+    width: 14px;
+    min-width: 14px;
+    padding: 0 0 3px;
+    font: 11px/1 var(--ie-font);
+}
+
+body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands > button.grimoire-ie-ext-chevron::before {
+    content: '\00bb';
+}
+
+/* the popup: Chrome's drop-down bubble in Vista's popup-menu frame (vista-menus.css: border and shadow) */
+body.theme-vista .grimoire-ext-popup {
+    position: fixed;
+    z-index: calc(var(--z-context-menu) - 2);
+    left: 0;
+    top: 0;
+    background: #fff;
+    border: 1px solid #979797;
+    box-shadow: 4px 4px 3px -2px hsl(0 0% 0% / 50%);
+}
+
+body.theme-vista .grimoire-ext-popup > iframe {
+    display: block;
+    border: 0;
+}
+
+/* Quick Tabs > Other Devices: an old session's close button at the end of its device row (IE7's tab close) */
+body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quick-device > .grimoire-ie-quick-device-close {
+    position: static;
+    flex: none;
+    margin: 0 4px 0 auto;
+}
+
+body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quick-device > .grimoire-ie-quick-device-close:disabled {
+    opacity: 0.5;
+}

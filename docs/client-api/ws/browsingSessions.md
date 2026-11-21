@@ -39,6 +39,7 @@ Signed-in sessions. Every reply is `{ success, ... }`; a refusal is `{ success: 
 | `browsing_session_list` | `{ sessionId, deviceId, settings, sessions, restorable }` | Other Devices: every session with tabs (administrators; others see their own device). `restorable`: this device's earlier sessions and roaming ones, not dismissed with New. Each session has `state`, `expiresAt` and `killAt` (idle: when its pages close). |
 | `browsing_session_restore` `{ ids, pick: { [sessionId]: [tabId] } \| null, size }` | `{ windows: [{ id, title, from, tabs }] }` | The ticked tabs come to this client; the rest of those sessions is discarded. A tab with a live page has `session: { sessionId, viewUrl }` (moved, no reload); others reopen from `url`. |
 | `browsing_session_discard` `{ ids, keep }` | `{ discarded }` | Discard (`keep` false): the sessions go and their pages close. New (`keep` true): they stay stored, Restore Session stops offering them. |
+| `browsing_session_close` `{ ids }` | `{ closed }` | Other Devices' close button: sessions that are not live and not this client's own go, and their pages close. Only live ones asked: `NOT_CLOSABLE`. |
 | `browsing_session_take` `{ sessionId, tabId, windowId, newTabId, size }` | `{ tab, from }` | Other Devices. An Alchemy tab moves (the old viewer gets `transferred`); a Grimoire tab is copied. |
 | `browsing_session_take_back` `{ alchemyId, windowId, newTabId, size }` | `{ tab, from }` | Take a page back by its Alchemy id ("Take it back", ActiveSync's `open.item`). |
 

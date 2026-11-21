@@ -411,6 +411,38 @@ function discard(clientInfo, body) {
 }
 
 /**
+ * Close an old session from Other Devices (Yukimi, Nov 21 2026: "a close button to close old sessions that are
+ * stored on the server"): a session that is not live (its client went away) and not this client's own is dropped,
+ * and its Alchemy pages close. A live session belongs to a client using it and is left alone (NOT_CLOSABLE).
+ */
+function close(clientInfo, body) {
+    load();
+    let count = 0;
+    let refused = 0;
+    for (const raw of Array.isArray(body.ids) ? body.ids.slice(0, 64) : []) {
+        const session = state.sessions[text(raw, 64)];
+        if (!session || !visibleTo(clientInfo, session)) continue;
+        if (session.state === 'live' || session.id === clientInfo.browsingSession) {
+            refused += 1;
+            continue;
+        }
+        closeAlchemy(alchemyIds(session));
+        delete state.sessions[session.id];
+        count += 1;
+    }
+    if (count) {
+        save();
+        announceChanged();
+    }
+    if (!count && refused) {
+        const error = new Error('That session is still in use on its device');
+        error.code = 'NOT_CLOSABLE';
+        throw error;
+    }
+    return { success: true, closed: count };
+}
+
+/**
  * Other Devices (#756): one tab of another session comes here. Alchemy moves (the other device shows
  * "This tab has been transferred to another device"); Grimoire is copied.
  */
@@ -559,6 +591,7 @@ module.exports = {
     list,
     restore,
     discard,
+    close,
     take,
     takeBack,
     onSocketClosed,

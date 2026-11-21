@@ -32,6 +32,7 @@ function registerPackets(handlersCtx) {
     reg('browsing_session_list', (clientInfo) => browsingSessions.list(clientInfo));
     reg('browsing_session_restore', (clientInfo, data) => browsingSessions.restore(clientInfo, data));
     reg('browsing_session_discard', (clientInfo, data) => browsingSessions.discard(clientInfo, data));
+    reg('browsing_session_close', (clientInfo, data) => browsingSessions.close(clientInfo, data));
     reg('browsing_session_take', (clientInfo, data) => browsingSessions.take(clientInfo, data));
     reg('browsing_session_take_back', (clientInfo, data) => browsingSessions.takeBack(clientInfo, data));
     browsingSessions.init();

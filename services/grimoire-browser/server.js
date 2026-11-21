@@ -2558,15 +2558,125 @@ function readExtensions() {
         const icons = manifest.icons || {};
         const iconSize = Object.keys(icons).sort((a, b) => Number(b) - Number(a))[0];
         const own = (file) => 'chrome-extension://' + id + '/' + String(file).replace(/^\/+/, '');
+        // the toolbar button's picture: action.default_icon, else the app icons (Chrome does the same)
+        const buttonIcons = typeof action.default_icon === 'string' ? { 16: action.default_icon }
+            : (action.default_icon && Object.keys(action.default_icon).length ? action.default_icon : icons);
         out.push({
             id,
             dir,
             name: extensionMessage(dir, manifest, manifest.short_name || manifest.name) || id,
+            title: extensionMessage(dir, manifest, action.default_title) || '',
             popup: action.default_popup ? own(action.default_popup) : '',
-            icon: iconSize ? own(icons[iconSize]) : ''
+            icon: iconSize ? own(icons[iconSize]) : '',
+            icon16: extensionIconData(dir, buttonIcons, 16),
+            icon32: extensionIconData(dir, buttonIcons, 32)
         });
     }
     return out;
+}
+
+// An extension's toolbar picture for Grimoire's command bar (its IE7 add-on buttons): a data URL, because a
+// chrome-extension:// address only loads inside Chromium. size: the smallest picture at least that big.
+function extensionIconData(dir, icons, size) {
+    const sizes = Object.keys(icons || {}).map(Number).filter((n) => n > 0).sort((a, b) => a - b);
+    const pick = sizes.find((n) => n >= size) || sizes[sizes.length - 1];
+    if (!pick) return '';
+    const file = path.join(dir, String(icons[pick]).replace(/^\/+/, ''));
+    if (!file.startsWith(dir + path.sep)) return '';
+    try {
+        const bytes = fs.readFileSync(file);
+        if (bytes.length > 65536) return '';
+        const type = /\.svg$/i.test(file) ? 'image/svg+xml' : (/\.jpe?g$/i.test(file) ? 'image/jpeg' : 'image/png');
+        return 'data:' + type + ';base64,' + bytes.toString('base64');
+    } catch (_) {
+        return '';
+    }
+}
+
+// An extension's toolbar popup is a window of its own with no browser window around it (getWindowForTarget fails):
+// it is never adopted as a tab.
+async function isExtensionPopup(target) {
+    const targetId = (target && target._targetId) || '';
+    if (!targetId || !browserClient || !/^chrome-extension:\/\//i.test(String(target.url() || ''))) return false;
+    try {
+        await browserClient.send('Browser.getWindowForTarget', { targetId });
+        return false;
+    } catch (_) {
+        return true;
+    }
+}
+
+// The tab target that holds a page (Extensions.triggerAction takes a tab, not its page).
+function tabTargetIdOf(page) {
+    const target = page && page.target ? page.target() : null;
+    const manager = browser && typeof browser._targetManager === 'function' ? browser._targetManager() : null;
+    if (!target || !manager) return '';
+    for (const t of manager.getAvailableTargets().values()) {
+        if (t.type() === 'tab' && typeof t._childTargets === 'function' && t._childTargets().has(target)) return t._targetId || '';
+    }
+    return '';
+}
+
+function waitExtensionPopup(instance, extensionId, ms) {
+    const prefix = 'chrome-extension://' + extensionId + '/';
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = (target) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            instance.off('targetcreated', check);
+            instance.off('targetchanged', check);
+            resolve(target);
+        };
+        // a popup starts as an 'other' target and becomes a page once its document commits
+        const check = (target) => {
+            if (done || target.type() !== 'page' || !String(target.url() || '').startsWith(prefix)) return;
+            isExtensionPopup(target).then((popup) => { if (popup) finish(target); }).catch(() => {});
+        };
+        const timer = setTimeout(() => finish(null), ms);
+        instance.on('targetcreated', check);
+        instance.on('targetchanged', check);
+    });
+}
+
+/**
+ * An extension's toolbar button pressed for a session's page (Grimoire's command bar), as a click on Chrome's
+ * toolbar: Extensions.triggerAction (pipe only, --enable-unsafe-extension-debugging). With a popup, Chromium opens it
+ * as its own small window sized to its content (at most 800 x 600); it takes no emulated viewport, so it is streamed
+ * at that size as a child session (closed with its page, or when Chromium closes it: a click on the page, the popup's
+ * own window.close()), and the client drops it down from the button. Without one, the extension does what its click
+ * does (a page it opens comes as a tab: adoptOrphan). Resolves { sessionId, viewerToken, width, height } or null.
+ */
+async function openExtensionAction(session, ext) {
+    const instance = browser;
+    const tabId = tabTargetIdOf(session.page);
+    if (!instance || !browserClient || !tabId) throw Object.assign(new Error('this page cannot run extensions'), { status: 409 });
+    // the popup acts on its window's active tab (1Password fills it): this page, as the viewer shows it
+    if (HEADFUL && session.group) await session.page.bringToFront().catch(() => {});
+    const waiting = waitExtensionPopup(instance, ext.id, 3000);
+    await browserClient.send('Extensions.triggerAction', { id: ext.id, targetId: tabId });
+    const target = await waiting;
+    if (!target) return null;
+    const page = (await target.page().catch(() => null)) || (await target.asPage().catch(() => null));
+    if (!page || page.isClosed()) return null;
+    // its size once it has drawn
+    let size = null;
+    for (let i = 0; i < 15; i++) {
+        const now = await page.evaluate(() => [document.readyState, innerWidth, innerHeight]).catch(() => null);
+        if (now && size && now[0] === 'complete' && now[1] === size[1] && now[2] === size[2]) break;
+        size = now;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (page.isClosed()) return null;
+    let child;
+    try {
+        child = await createSession({ popup: true, extensionPopup: true, parentId: session.id, owner: session.owner, viewKind: session.viewKind }, page);
+    } catch (err) {
+        page.close().catch(() => {});
+        throw err;
+    }
+    return { sessionId: child.id, viewerToken: child.viewerToken, width: (size && size[1]) || 0, height: (size && size[2]) || 0 };
 }
 
 // Opened before any viewer was attached (1Password's install welcome opens at launch); the next viewer gets them.
@@ -2588,6 +2698,7 @@ async function adoptOrphan(target) {
     if (String(target.url() || '').includes(ALCHEMY_QUIET_MARKER)) return;
     const owned = String(target.url() || '').includes(ALCHEMY_OWNED_MARKER);
     await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (await isExtensionPopup(target)) return;
     const page = await target.page().catch(() => null);
     if (!page || page.isClosed() || ownPages.has(page)) return;
     let announce = null;
@@ -3134,7 +3245,9 @@ async function launchBrowser() {
         '--disable-popup-blocking',
         '--disable-blink-features=AutomationControlled'
     ];
-    if (extensionDirs) args.push('--disable-extensions-except=' + extensionDirs, '--load-extension=' + extensionDirs);
+    // --enable-unsafe-extension-debugging: CDP's Extensions domain (triggerAction: Grimoire's toolbar buttons), on the
+    // pipe only; the loopback debugging port never gets it
+    if (extensionDirs) args.push('--disable-extensions-except=' + extensionDirs, '--load-extension=' + extensionDirs, '--enable-unsafe-extension-debugging');
     else args.push('--disable-extensions');
     if (!perf.sandbox) args.push('--no-sandbox', '--disable-setuid-sandbox');
     if (!perf.siteIsolation) args.push('--disable-site-isolation-trials');
@@ -3354,6 +3467,15 @@ function scaleChanged(session) {
 }
 
 async function applyViewport(session) {
+    // an extension's toolbar popup takes no viewport override: frames are its own size (at most 800 x 600, 1:1)
+    if (session.extensionPopup) {
+        session.dipWidth = 800;
+        session.dipHeight = 600;
+        session.pxPerDip = 1;
+        session.cssPerPx = 1;
+        session.bandDip = 0;
+        return;
+    }
     const zoom = session.zoom || 1;
     if (session.viewKind === 'mobile') {
         // straight to CDP: Puppeteer's setViewport reloads the page by itself when isMobile / hasTouch change,
@@ -3492,7 +3614,7 @@ async function createSession(body, adoptedPage) {
     ownPages.add(page);
     if (pageUserAgent) await page.setUserAgent(pageUserAgent, pageUserAgentMetadata);
     await page.evaluateOnNewDocument(blockPasskeys);
-    await page.setViewport({ width, height, deviceScaleFactor: 1 });
+    if (!(body && body.extensionPopup)) await page.setViewport({ width, height, deviceScaleFactor: 1 });
     const cdp = await page.createCDPSession();
     // Only one window has OS focus; each page still behaves focused (caret, :focus, focus events).
     if (HEADFUL) await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
@@ -3507,6 +3629,7 @@ async function createSession(body, adoptedPage) {
         url: adoptedPage ? normalizeWebUrl(page.url()) : (url === 'about:blank' ? '' : url),
         title: '',
         popup,
+        extensionPopup: !!(body && body.extensionPopup),
         parentId: String((body && body.parentId) || ''),
         width,
         height,
@@ -3553,6 +3676,10 @@ async function createSession(body, adoptedPage) {
         closing: false
     };
     sessions.set(id, session);
+    if (body && body.settings && body.settings.autoQuality === false) {
+        aqState(session).auto = false;
+        session.manualSettings = Object.assign({}, session.settings);
+    }
     if (session.viewKind === 'mobile') {
         // before the first page loads; the viewer's pixel ratio may come with the request (viewScale)
         session.clientScale = Math.max(0, Math.min(STILL_MAX_SCALE, Number(body && body.viewScale) || 0));
@@ -4323,7 +4450,34 @@ async function handleRequest(req, res) {
             sendJson(res, 401, { error: 'unauthorized' });
             return;
         }
-        sendJson(res, 200, { extensions: extensions.map(({ id, name, popup }) => ({ id, name, popup })) });
+        sendJson(res, 200, { extensions: extensions.map(({ id, name, title, popup, icon16, icon32 }) => ({ id, name, title, popup, icon16, icon32 })) });
+        return;
+    }
+
+    // an extension's toolbar button for this page (Grimoire's command bar): its popup as a child session, if it has one
+    const extensionAction = pathname.match(/^\/sessions\/([a-f0-9]{32})\/extension-action$/);
+    if (extensionAction && req.method === 'POST') {
+        if (!adminOk(req)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        let body = {};
+        try { body = (await readBody(req)) || {}; } catch (_) {}
+        const session = sessions.get(extensionAction[1]);
+        if (!session || session.popup || !tokenEquals(String(body.t || ''), session.viewerToken)) {
+            sendJson(res, 404, { error: 'not found' });
+            return;
+        }
+        const ext = extensions.find((e) => e.id === String(body.extensionId || ''));
+        if (!ext) {
+            sendJson(res, 404, { error: 'no such extension' });
+            return;
+        }
+        try {
+            sendJson(res, 200, { popup: await openExtensionAction(session, ext) });
+        } catch (err) {
+            sendJson(res, err.status || 502, { error: (err && err.message) || 'the extension did not open' });
+        }
         return;
     }
 

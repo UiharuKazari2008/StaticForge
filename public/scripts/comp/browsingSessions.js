@@ -249,6 +249,11 @@
         return send('browsing_session_discard', { ids, keep: !!keep });
     }
 
+    // Other Devices' close button: an old session (not live) goes from the server, its pages close
+    function close(ids) {
+        return send('browsing_session_close', { ids });
+    }
+
     function take(fromSessionId, tabId, opts) {
         const o = opts || {};
         return send('browsing_session_take', { sessionId: fromSessionId, tabId, windowId: o.windowId || '', newTabId: o.tabId || '', size: o.size || frameSize() });
@@ -338,6 +343,7 @@
         list,
         restore,
         discard,
+        close,
         take,
         takeBack,
         on,

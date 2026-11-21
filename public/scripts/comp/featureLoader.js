@@ -92,7 +92,7 @@ const FEATURE_MANIFEST = {
     },
     grimoire: {
         html: 'templates/grimoire.html',
-        styles: ['css/tag-wiki-search.css'],
+        styles: ['css/tag-wiki-search.css', 'css/themes/vista/grimoire-extensions.css'],
         scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/grimoireTabs.js', 'scripts/comp/tagWikiSearchModal.js', 'scripts/comp/grimoireHistoryDsap.js']
     },
     character_search: {

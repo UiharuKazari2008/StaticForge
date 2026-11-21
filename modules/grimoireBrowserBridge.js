@@ -121,6 +121,8 @@ function normalizeAlchemySettings(raw) {
         minFps: clampInt(src.minFps, ALCHEMY_DEFAULTS.minFps, 1, 30),
         maxFps: clampInt(src.maxFps, ALCHEMY_DEFAULTS.maxFps, 5, 60),
         regionQuality: clampInt(src.regionQuality, ALCHEMY_DEFAULTS.regionQuality, 30, 90),
+        // Tools > Automatic quality (on unless turned off): Alchemy picks the four above from each viewer's link
+        autoQuality: src.autoQuality !== false,
         audioEnabled: src.audioEnabled !== false,
         audioVolume: clampInt(src.audioVolume, 100, 0, 100),
         audioBackground: src.audioBackground === true,
@@ -464,6 +466,47 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
             res.status(upstream.ok ? 200 : upstream.status).json(upstream.ok ? { extensions: payload.extensions || [] } : { error: 'remote browser could not list extensions' });
         } catch (_) {
             res.status(502).json({ error: 'remote browser unreachable' });
+        }
+    });
+
+    // An extension's toolbar button for a page (Grimoire's command bar): its popup as a child session streamed by
+    // the same viewer (popup: null when the extension has none and acts on the click itself)
+    app.post('/api/grimoire-browser/sessions/:id/extension-action', authMiddleware, async (req, res) => {
+        const config = grimoireBrowserConfig();
+        if (!config.enabled) {
+            res.status(503).json({ error: 'remote browser is not configured' });
+            return;
+        }
+        const id = String(req.params.id || '');
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const extensionId = String(body.extensionId || '');
+        const token = String(body.t || '');
+        if (!sessionIdOk(id) || !/^[a-p]{32}$/.test(extensionId) || !token) {
+            res.status(400).json({ error: 'bad input' });
+            return;
+        }
+        try {
+            const upstream = await serviceFetch(config, '/sessions/' + id + '/extension-action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ extensionId, t: token })
+            });
+            const payload = await upstream.json().catch(() => ({}));
+            if (!upstream.ok) {
+                res.status(upstream.status).json({ error: payload.error || 'the extension did not open' });
+                return;
+            }
+            const popup = payload.popup && sessionIdOk(payload.popup.sessionId) ? payload.popup : null;
+            res.json({
+                popup: popup ? {
+                    sessionId: popup.sessionId,
+                    width: Number(popup.width) || 0,
+                    height: Number(popup.height) || 0,
+                    viewUrl: '/api/grimoire-browser/view/' + popup.sessionId + '?t=' + encodeURIComponent(popup.viewerToken)
+                } : null
+            });
+        } catch (err) {
+            res.status(502).json({ error: err.name === 'AbortError' ? 'remote browser timed out' : 'remote browser unreachable' });
         }
     });
 

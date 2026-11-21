@@ -10,8 +10,10 @@
  *                icon and title (IE's loading ring while a page loads), the new-tab stub (opens
  *                the page in a new window), and on the right the command bar: Home ▾ (the home
  *                page: Add or Change / Remove), Feeds ▾ (the feeds a web page advertises), Print ▾
- *                (Print / Print Preview), Page ▾ (New Window, Copy Address, Split View) and
- *                Tools ▾ (the site menu)
+ *                (Print / Print Preview), Page ▾ (New Window, Copy Address, Split View),
+ *                Tools ▾ (the site menu), then each Alchemy extension's button as IE7 shows add-on
+ *                buttons (its own icon; a » chevron lists those that do not fit); a button drops the
+ *                extension's popup down from it, as Chrome does (openExtensionPopup)
  *   status bar   Done / Waiting, the zone (Alchemy's web pages: Internet | Protected Mode: On; the
  *                Grimoire's own pages: Local intranet | Protected Mode: Off, as IE7 shows them),
  *                and the zoom (click: 100 / 125 / 150 %, ▾: levels)
@@ -162,6 +164,12 @@
             this.feedsDrop = this.tabRow.querySelector('#grimoireFeedsDropBtn');
             this.printBtn = this.tabRow.querySelector('#grimoirePrintBtn');
             this.printDrop = this.tabRow.querySelector('#grimoirePrintDropBtn');
+            // the extensions' buttons (loadExtensions) and IE7's » for those that do not fit
+            this.extensions = [];
+            this.extButtons = [];
+            this.extChevron = button('', 'grimoire-ie-ext-chevron', 'More Commands');
+            this.extChevron.hidden = true;
+            this.commands.appendChild(this.extChevron);
 
             this.status = document.createElement('div');
             this.status.className = 'grimoire-ie-status';
@@ -200,6 +208,7 @@
             root.removeEventListener('message', this.onFrameMessage);
             if (this.observer) this.observer.disconnect();
             if (this.bodyObserver) this.bodyObserver.disconnect();
+            if (this.fitObserver) this.fitObserver.disconnect();
             this.toggleQuickTabs(false);
         }
 
@@ -215,6 +224,9 @@
                 // Home first, then Page ▾ (the split toggle rides along hidden; Page ▾ drives it), Tools ▾
                 if (host.homeBtn) this.homeSplit.prepend(host.homeBtn);
                 [host.rightToggleBtn, site].filter(Boolean).forEach((el) => this.commands.appendChild(el));
+                // IE7: add-on buttons after Tools, the » last
+                this.extButtons.forEach((b) => this.commands.appendChild(b));
+                this.commands.appendChild(this.extChevron);
                 if (site && !site.querySelector('.grimoire-ie-cmd-label')) {
                     site.dataset.grimoireIeHtml = site.innerHTML;
                     site.innerHTML = `<img src="${ART}/tools.png" alt=""><span class="grimoire-ie-cmd-label">Tools</span><span class="grimoire-ie-cmd-drop" aria-hidden="true"></span>`;
@@ -307,6 +319,17 @@
                 this.setZoom(ZOOM_CYCLE[(at + 1) % ZOOM_CYCLE.length]);
             });
             this.loadSettings();
+            this.loadExtensions();
+            if (cm) {
+                const attachChevron = () => this.attachExtensionMenu();
+                this.extChevron.addEventListener('pointerdown', attachChevron, true);
+                this.extChevron.addEventListener('focus', attachChevron);
+            }
+            // the window's width decides how many extension buttons fit (no work while it keeps its size)
+            if (typeof ResizeObserver === 'function') {
+                this.fitObserver = new ResizeObserver(() => this.fitExtensions());
+                this.fitObserver.observe(this.tabRow);
+            }
 
             // Alchemy: a page's feeds, a page to print, and a new viewer that needs the pane's zoom
             this.onFrameMessage = (ev) => this.frameMessage(ev);
@@ -402,6 +425,84 @@
             if (action === 'page-split' && this.host.rightToggleBtn) {
                 this.host.rightToggleBtn.click();
             }
+        }
+
+        // ---- extensions (Alchemy's: 1Password, uBlock Origin Lite, ...) ----
+
+        /** One button per extension, with the picture Chrome's toolbar shows (GET /api/grimoire-browser/extensions). */
+        async loadExtensions() {
+            if (typeof root.grimoireLoadAlchemyExtensions !== 'function') return;
+            let list = [];
+            try { list = await root.grimoireLoadAlchemyExtensions(); } catch (_) { return; }
+            if (!Array.isArray(list) || !list.length || this.extButtons.length) return;
+            this.extensions = list;
+            this.extButtons = list.map((ext) => {
+                const title = ext.title || ext.name || 'Extension';
+                const b = button('', 'grimoire-ie-ext', title);
+                b.dataset.extensionId = ext.id;
+                const img = document.createElement('img');
+                img.alt = '';
+                if (ext.icon16) img.src = ext.icon16;
+                if (ext.icon16 && ext.icon32) img.srcset = `${ext.icon16} 1x, ${ext.icon32} 2x`;
+                b.appendChild(img);
+                b.addEventListener('click', () => {
+                    openExtensionPopup(this.host, ext, b);
+                });
+                this.commands.insertBefore(b, this.extChevron);
+                return b;
+            });
+            this.fitExtensions();
+            this.sync();
+        }
+
+        /** The button of an extension while it shows (Tools > Extensions drops the popup from it), else null. */
+        extensionButton(id) {
+            const b = this.extButtons.find((el) => el.dataset.extensionId === id);
+            return b && !b.hidden && b.offsetParent ? b : null;
+        }
+
+        /** IE7 keeps the tabs at least this wide; buttons that do not fit go behind the » (from the last). */
+        fitExtensions() {
+            const buttons = this.extButtons;
+            if (!buttons.length || !this.isOn()) return;
+            const tabs = this.tabRow.querySelector('.grimoire-ie-tabs');
+            if (!tabs) return;
+            const shown = buttons.filter((b) => !b.hidden).length;
+            const each = 30;
+            const chevron = 14;
+            // the tab area as it would be with every button out (each shown one, and the » while it shows, back)
+            const room = tabs.getBoundingClientRect().width + shown * each + (this.extChevron.hidden ? 0 : chevron);
+            const MIN_TABS = 180;
+            let fit = buttons.length;
+            if (room - buttons.length * each < MIN_TABS) fit = Math.max(0, Math.floor((room - MIN_TABS - chevron) / each));
+            buttons.forEach((b, i) => {
+                const hide = i >= fit;
+                if (b.hidden !== hide) b.hidden = hide;
+            });
+            const more = fit < buttons.length;
+            if (this.extChevron.hidden === more) this.extChevron.hidden = !more;
+        }
+
+        /** » : the extensions whose buttons did not fit; the popup drops from the ». */
+        attachExtensionMenu() {
+            const cm = root.contextMenu;
+            if (!cm) return;
+            const hidden = this.extensions.filter((ext, i) => this.extButtons[i] && this.extButtons[i].hidden);
+            const page = this.hasAlchemyPage();
+            cm.detachClickMenuFromElement(this.extChevron);
+            cm.attachClickMenuToElement(this.extChevron, {
+                sections: [{ type: 'list', items: hidden.map((ext) => ({ text: ext.title || ext.name, image: ext.icon16 || '', image2x: ext.icon32 || '', action: 'extension', extensionId: ext.id, disabled: !page })) }],
+                onAction: (action, target, item) => {
+                    const ext = item && this.extensions.find((e) => e.id === item.extensionId);
+                    if (ext) openExtensionPopup(this.host, ext, this.extChevron);
+                }
+            });
+        }
+
+        /** Extensions act on a web page (an Alchemy tab of this server's), as Chrome's act on a tab. */
+        hasAlchemyPage() {
+            const shell = this.shell();
+            return !!(shell && shell._grimoireRemoteSessionId && !shell._grimoireLocalAlchemy);
         }
 
         // ---- menus ----
@@ -840,11 +941,11 @@
                 this.tabEls.delete(id);
             });
             const many = list.length > 1;
-            // Quick Tabs also shows Other Devices (#756), so its button stays while another device has tabs
-            const tools = many || this.otherDeviceTabs() > 0;
-            if (this.tabTools.hidden === tools) this.tabTools.hidden = !tools;
+            // Quick Tabs shows even with one tab (Yukimi, Nov 21 2026: "always show teh tab overview button so i can
+            // access other tabs on other devices"): Other Devices (#756) is always one click away
+            if (this.tabTools.hidden) this.tabTools.hidden = false;
             // a tab opened or closed under Quick Tabs: the grid follows
-            if (this.isQuickTabsOpen() && this.quickCount !== list.length) this.toggleQuickTabs(tools);
+            if (this.isQuickTabsOpen() && this.quickCount !== list.length) this.toggleQuickTabs(true);
             this.tabRow.classList.toggle('has-many-tabs', many);
             // tabs past the strip's end: the one on show scrolls into it
             const current = this.tabStrip.querySelector('.grimoire-ie-tab.is-active');
@@ -964,7 +1065,7 @@
             if (this.onQuickKey) document.removeEventListener('keydown', this.onQuickKey, true);
             const tabs = this.host.tabs;
             const wrap = this.modal.querySelector('.tag-wiki-panels-wrap');
-            if (!open || !tabs || (tabs.count() < 2 && !this.otherDeviceTabs()) || !wrap) return;
+            if (!open || !tabs || !wrap) return;
             const view = document.createElement('div');
             view.className = 'grimoire-ie-quickview';
             const panel = document.createElement('div');
@@ -975,6 +1076,11 @@
             tabs.list().forEach((tab) => panel.appendChild(this.quickTile(tab, refWidth)));
             this.fillOtherDevices(panel);
             view.addEventListener('click', (ev) => {
+                const forget = ev.target.closest('.grimoire-ie-quick-device-close');
+                if (forget) {
+                    this.closeOtherSession(forget.dataset.otherSession, forget);
+                    return;
+                }
                 const other = ev.target.closest('.grimoire-ie-quicktile[data-other-session]');
                 if (other) {
                     this.takeOtherTab(other.dataset.otherSession, other.dataset.otherTab);
@@ -985,7 +1091,7 @@
                 if (!tab) return;
                 if (ev.target.closest('.grimoire-ie-quicktile-close')) {
                     tabs.close(tab);
-                    this.toggleQuickTabs(tabs.count() > 1 || this.otherDeviceTabs() > 0);
+                    if (this.isQuickTabsOpen()) this.toggleQuickTabs(true);
                     return;
                 }
                 this.toggleQuickTabs(false);
@@ -1100,6 +1206,14 @@
                 dev.querySelector('.grimoire-ie-quick-device-name').textContent = session.deviceId && session.deviceId === res.deviceId
                     ? 'This computer (earlier session)' : session.deviceName;
                 dev.querySelector('.grimoire-ie-quick-device-state').textContent = state;
+                // an old session (its client went away) can be closed here: its pages close and it leaves the
+                // server (Yukimi, Nov 21 2026: "Add a close button to close old sessions that are stored on the
+                // server"); a live one belongs to the device using it
+                if (session.state !== 'live') {
+                    const close = button('', 'grimoire-ie-quicktile-close grimoire-ie-quick-device-close', 'Close This Session');
+                    close.dataset.otherSession = session.id;
+                    dev.appendChild(close);
+                }
                 panel.appendChild(dev);
                 (session.windows || []).forEach((win) => (win.tabs || []).forEach((tab) => {
                     const tile = document.createElement('div');
@@ -1128,6 +1242,22 @@
             });
         }
 
+        /** Close an old session of Other Devices on the server (its tabs and pages go); the grid follows the change push. */
+        async closeOtherSession(sessionId, btn) {
+            const bs = window.browsingSessions;
+            if (!bs || typeof bs.close !== 'function' || !sessionId) return;
+            if (btn) btn.disabled = true;
+            try {
+                await bs.close([sessionId]);
+            } catch (err) {
+                if (btn) btn.disabled = false;
+                messageBox((err && err.code === 'NOT_CLOSABLE') ? 'That session is in use on its device again.' : 'The session could not be closed.');
+                return;
+            }
+            const panel = this.quickView && this.quickView.querySelector('.grimoire-ie-quickpanel');
+            if (panel) this.fillOtherDevices(panel);
+        }
+
         /** A tab from Other Devices comes to this window as a new tab (Alchemy moves, Grimoire is copied). */
         async takeOtherTab(sessionId, tabId) {
             const bs = window.browsingSessions;
@@ -1139,7 +1269,7 @@
                 res = await bs.take(sessionId, tabId, { windowId: winId });
             } catch (_) {
                 if (typeof showGlassToast === 'function') showGlassToast('error', null, 'That tab is no longer open on the other device', false, 4000);
-                this.toggleQuickTabs(tabs.count() > 1 || this.otherDeviceTabs() > 0);
+                this.toggleQuickTabs(true);
                 return;
             }
             this.toggleQuickTabs(false);
@@ -1251,10 +1381,333 @@
             this.addFavBtn.title = fav ? 'Remove from Favorites' : 'Add to Favorites';
             this.addFavBtn.classList.toggle('is-favorite', fav);
 
+            // extension buttons act on an Alchemy page (as Chrome's on a tab)
+            if (this.extButtons.length) {
+                const page = this.hasAlchemyPage();
+                this.extButtons.forEach((b) => { if (b.disabled === page) b.disabled = !page; });
+            }
+
             const history = shell.history || [];
             const travel = history.length > 1;
             if (this.recent) this.recent.classList.toggle('is-disabled', !travel);
         }
+    }
+
+    // ---- extension popups (Yukimi, Nov 21 2026: "extentions should be shown correctly like IE does possibly as icons in
+    // the tab bar ... can also allow them to popdown like in chrome would do") ----
+    // An extension's command bar button (grimoireIeChrome.js) or Tools > Extensions presses its toolbar button in Alchemy
+    // for the page on show (POST .../extension-action); its popup is Alchemy's own popup window, streamed by the viewer at
+    // its own size into a frame that drops down from the button as Chrome's does. It closes on a click outside it, Escape,
+    // the button again, or when Chromium closes it (a click on the page, the popup's own window.close()).
+    let popupOpen = null;
+
+    /** A Vista message box (confirmationDialog.js) for what went wrong. */
+    function messageBox(text) {
+        if (typeof root.showConfirmationDialog !== 'function') return;
+        Promise.resolve(root.showConfirmationDialog(esc(text), [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'Grimoire', icon: 'fas fa-atom' })).catch(() => {});
+    }
+
+    function closeExtensionPopup() {
+        const open = popupOpen;
+        if (!open) return;
+        popupOpen = null;
+        if (open.abort) open.abort.abort();
+        if (open.observers) open.observers.forEach((o) => o.disconnect());
+        if (open.button) open.button.classList.remove('is-pressed');
+        if (open.el) open.el.remove();
+        if (open.sessionId) {
+            fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(open.sessionId), { method: 'DELETE', credentials: 'same-origin', keepalive: true }).catch(() => {});
+        }
+    }
+
+    /** Under the button, its right edge on the button's (Chrome's bubble), kept on screen. */
+    function placeExtensionPopup(open) {
+        const el = open.el;
+        if (!el || !open.button) return;
+        // the button it dropped from went behind the » (the window narrowed): its own button, or Tools
+        let anchor = open.button;
+        if (!anchor.isConnected || !anchor.offsetParent) {
+            const chrome = open.host.ieChrome;
+            anchor = (chrome && chrome.extensionButton(open.extensionId))
+                || (typeof open.host.part === 'function' && open.host.part('grimoireAddressSiteBtn')) || anchor;
+        }
+        const r = anchor.getBoundingClientRect();
+        const w = el.offsetWidth;
+        const h = el.offsetHeight;
+        const left = Math.max(0, Math.min(window.innerWidth - w, Math.round(r.right - w)));
+        const below = Math.round(r.bottom + 1);
+        const top = below + h <= window.innerHeight ? below : Math.max(0, window.innerHeight - h);
+        el.style.left = left + 'px';
+        el.style.top = top + 'px';
+    }
+
+    function sizeExtensionPopup(open, width, height) {
+        const w = Math.max(25, Math.min(800, Math.round(width) || 0));
+        const h = Math.max(25, Math.min(600, Math.round(height) || 0));
+        if (open.width === w && open.height === h) return;
+        open.width = w;
+        open.height = h;
+        open.frame.style.width = w + 'px';
+        open.frame.style.height = h + 'px';
+        placeExtensionPopup(open);
+    }
+
+    /** The viewer's canvas has the popup's pixels (frames are its own size): the frame follows when Chromium resizes it. */
+    function watchExtensionPopupSize(open) {
+        let doc = null;
+        try { doc = open.frame.contentDocument; } catch (_) { return; }
+        const canvas = doc && doc.getElementById('view');
+        if (!canvas) return;
+        const fit = () => {
+            if (canvas.width > 1 && canvas.height > 1) sizeExtensionPopup(open, canvas.width, canvas.height);
+        };
+        const observer = new MutationObserver(fit);
+        observer.observe(canvas, { attributes: true, attributeFilter: ['width', 'height'] });
+        open.observers.push(observer);
+        // Escape inside the popup closes it, as Chrome's popup does
+        open.frame.contentWindow.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') closeExtensionPopup();
+        }, { capture: true, signal: open.abort.signal });
+        fit();
+    }
+
+    async function openExtensionPopup(host, ext, anchor) {
+        if (!host || !ext || !anchor) return;
+        const shell = host.activePane && host.activePane !== host ? host.activePane : host;
+        const was = popupOpen;
+        closeExtensionPopup();
+        // the button again closes its popup
+        if (was && was.extensionId === ext.id && was.host === host) return;
+        const id = shell._grimoireRemoteSessionId || '';
+        const token = new URLSearchParams(shell._grimoireRemoteViewQuery || '').get('t') || '';
+        if (!id || !token || shell._grimoireLocalAlchemy) return;
+        const open = { host, shell, extensionId: ext.id, button: anchor, observers: [], abort: new AbortController(), sessionId: '', el: null };
+        popupOpen = open;
+        anchor.classList.add('is-pressed');
+        let popup = null;
+        try {
+            const res = await fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id) + '/extension-action', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ extensionId: ext.id, t: token })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'the extension did not open');
+            popup = data.popup;
+        } catch (err) {
+            if (popupOpen === open) closeExtensionPopup();
+            messageBox(`${ext.name} could not open: ${(err && err.message) || 'Alchemy did not answer'}.`);
+            return;
+        }
+        // closed meanwhile (Escape, another button): the popup goes too
+        if (popupOpen !== open) {
+            if (popup && popup.sessionId) fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(popup.sessionId), { method: 'DELETE', credentials: 'same-origin', keepalive: true }).catch(() => {});
+            return;
+        }
+        // no popup: the extension did what its click does (a page it opens comes as a new tab)
+        if (!popup || !popup.viewUrl) {
+            closeExtensionPopup();
+            return;
+        }
+        open.sessionId = popup.sessionId;
+        const el = document.createElement('div');
+        el.className = 'grimoire-ext-popup';
+        el.setAttribute('role', 'dialog');
+        el.setAttribute('aria-label', ext.name);
+        const frame = document.createElement('iframe');
+        frame.title = ext.name;
+        frame.setAttribute('referrerpolicy', 'no-referrer');
+        frame.setAttribute('allow', 'clipboard-read; clipboard-write');
+        frame.src = popup.viewUrl;
+        el.appendChild(frame);
+        open.el = el;
+        open.frame = frame;
+        document.body.appendChild(el);
+        sizeExtensionPopup(open, popup.width || 320, popup.height || 240);
+        frame.addEventListener('load', () => {
+            watchExtensionPopupSize(open);
+            frame.focus();
+        }, { once: true });
+        const signal = open.abort.signal;
+        // a click anywhere else closes it (clicks inside the frame stay in the frame)
+        document.addEventListener('pointerdown', (ev) => {
+            if (!el.contains(ev.target) && !anchor.contains(ev.target)) closeExtensionPopup();
+        }, { capture: true, signal });
+        document.addEventListener('keydown', (ev) => {
+            if (ev.key !== 'Escape') return;
+            ev.preventDefault();
+            closeExtensionPopup();
+        }, { capture: true, signal });
+        window.addEventListener('resize', () => placeExtensionPopup(open), { signal });
+        // the window moves, minimizes or closes: the popup follows or goes
+        const watch = new MutationObserver(() => {
+            if (!host.modal || !host.modal.isConnected || host.modal.classList.contains('hidden')) closeExtensionPopup();
+            else placeExtensionPopup(open);
+        });
+        if (host.modal) watch.observe(host.modal, { attributes: true, attributeFilter: ['style', 'class'] });
+        open.observers.push(watch);
+        window.addEventListener('message', (event) => extensionPopupMessage(open, event), { signal });
+    }
+
+    /** What the popup's viewer tells its parent (the generic handler only knows tab frames). */
+    function extensionPopupMessage(open, event) {
+        const data = event.data;
+        if (!open.frame || event.source !== open.frame.contentWindow || !data || typeof data.type !== 'string') return;
+        const found = { host: open.host, shell: open.shell, frame: open.frame, tab: null };
+        if (data.type === 'grimoire-browser-closed' || data.type === 'grimoire-browser-transferred') {
+            open.sessionId = '';
+            closeExtensionPopup();
+        } else if (data.type === 'grimoire-browser-clipboard') {
+            root.grimoireCopyText(data.text || '');
+        } else if (data.type === 'grimoire-browser-paste-request') {
+            if (!navigator.clipboard || !navigator.clipboard.readText) {
+                messageBox('Paste with Ctrl+V: this connection cannot read the clipboard.');
+                return;
+            }
+            navigator.clipboard.readText().then((text) => {
+                if (open.frame && open.frame.contentWindow) open.frame.contentWindow.postMessage({ type: 'grimoire-browser-paste', text: text || '' }, '*');
+            }).catch(() => {});
+        } else if (data.type === 'grimoire-browser-select' && Array.isArray(data.options)) {
+            root.grimoireShowRemoteSelect(found, data);
+        } else if (data.type === 'grimoire-browser-dialog' && data.id && open.dialogId !== data.id) {
+            open.dialogId = data.id;
+            root.grimoireShowRemoteDialog(found, data);
+        } else if (data.type === 'grimoire-browser-popup') {
+            // a page the popup opens (1Password's "Open in a new tab") comes to its window as a tab, as from the page
+            const session = data.sessionId && data.viewerToken ? {
+                tab: !!data.tab,
+                sessionId: data.sessionId,
+                viewUrl: '/api/grimoire-browser/view/' + encodeURIComponent(data.sessionId) + '?t=' + encodeURIComponent(data.viewerToken)
+            } : null;
+            const target = { host: open.host, shell: open.host, frame: root.grimoireRemoteFrame(open.host), tab: null };
+            if ((!session || session.tab) && root.grimoireOpenTab(target, data.url, session)) return;
+            root.grimoireOpenStandaloneWindow(data.url, session);
+        }
+    }
+
+    // ---- Tools > Alchemy Information (Yukimi, Nov 21 2026: "info so we cna tell what encoder were using and what
+    // settings it has selected"): what Alchemy encodes the page on show with, as the viewer hears it from the service
+    // (grimoire-browser-encoder: on each change, and on asking with grimoire-browser-encoder?). Laid out like IE7's page
+    // Properties: the page at the top, then label and value rows in groups. ----
+    const INFO_TPL = { t: 'Alchemy Information', w: 262, h: 236, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+        [901, 'S', 7, 7, 21, 20, 0x50000003, '', 0],
+        [902, 'S', 36, 12, 219, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 33, 248, 1, 0x50000010, '', 0],
+        [-1, 'S', 7, 40, 66, 9, 0x50020080, 'Encoder:', 0],
+        [911, 'S', 76, 40, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 52, 66, 9, 0x50020080, 'Quality:', 0],
+        [912, 'S', 76, 52, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 64, 66, 9, 0x50020080, 'Frame rate:', 0],
+        [913, 'S', 76, 64, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 76, 66, 9, 0x50020080, 'Tiles:', 0],
+        [914, 'S', 76, 76, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 88, 66, 9, 0x50020080, 'Scrolling:', 0],
+        [915, 'S', 76, 88, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 100, 66, 9, 0x50020080, 'JPEG XL:', 0],
+        [916, 'S', 76, 100, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 112, 66, 9, 0x50020080, 'Frame size:', 0],
+        [917, 'S', 76, 112, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 125, 248, 1, 0x50000010, '', 0],
+        [-1, 'S', 7, 132, 66, 9, 0x50020080, 'Round trip:', 0],
+        [921, 'S', 76, 132, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 144, 66, 9, 0x50020080, 'Queue delay:', 0],
+        [922, 'S', 76, 144, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 156, 66, 9, 0x50020080, 'Throughput:', 0],
+        [923, 'S', 76, 156, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 168, 66, 9, 0x50020080, 'Decoding:', 0],
+        [924, 'S', 76, 168, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 181, 248, 1, 0x50000010, '', 0],
+        [-1, 'S', 7, 188, 66, 9, 0x50020080, 'Automatic:', 0],
+        [931, 'S', 76, 188, 179, 18, 0x50020080, '', 0],
+        [3, 'B', 151, 216, 50, 14, 0x50010000, '&Refresh', 0],
+        [1, 'B', 205, 216, 50, 14, 0x50010001, 'Close', 0]
+    ] };
+
+    function alchemyInfoRows(info, pageUrl) {
+        const i = info || {};
+        const l = i.link || {};
+        const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+        const ms = (v) => (num(v) === null ? 'Not measured yet' : `${Math.round(v)} ms`);
+        const why = String(i.why || '');
+        return {
+            902: pageUrl || 'This page',
+            911: `${i.codec || 'JPEG'} from the ${i.source || 'Chromium screencast'}`,
+            912: num(i.q) === null ? 'Unknown' : `JPEG quality ${i.q}`,
+            913: num(i.minFps) === null ? 'Unknown' : `${i.minFps} to ${i.maxFps} frames per second`,
+            914: i.tiles ? `${i.tiles}, quality ${num(i.rq) === null ? 'unknown' : i.rq}` : 'None',
+            915: i.scroll === 'packs' ? 'Scroll packs (rows moved, then what changed)' : 'Whole frames',
+            916: i.jxl ? 'On' : 'Off',
+            917: num(i.width) ? `${i.width} x ${i.height} pixels, pixel ratio ${Math.round((Number(i.ratio) || 1) * 100) / 100}` : 'Unknown',
+            921: num(l.rtt) === null ? 'Not measured yet' : `${Math.round(l.rtt)} ms (best ${ms(l.base)})`,
+            922: num(l.queueMs) === null ? 'Not measured yet' : `${Math.round(l.queueMs)} ms (${num(l.inFlightMs) === null ? 0 : Math.round(l.inFlightMs)} ms in flight)`,
+            923: num(l.kbps) === null ? 'Not measured yet' : `${(l.kbps / 1000).toFixed(1)} Mbit/s`,
+            924: num(l.decMs) === null ? 'Not measured yet' : `${l.decMs} ms a frame (this device: up to ${num(l.fpsCap) === null ? 60 : l.fpsCap} fps)`,
+            931: i.auto
+                ? `On: step ${(Number(i.level) || 0) + 1} of ${i.levels || 1} (1 is the sharpest). Last change: ${why === 'start' ? 'the page opened' : (why || 'none')}`
+                : 'Off: the quality and frame rates chosen in Tools'
+        };
+    }
+
+    let infoOpen = null;
+
+    async function showAlchemyInfo(host, shell) {
+        const frame = root.grimoireRemoteFrame(shell);
+        if (!frame || !frame.contentWindow || !shell._grimoireRemoteSessionId) return;
+        if (infoOpen) {
+            infoOpen.close();
+            infoOpen = null;
+        }
+        if (window.featureLoader) await window.featureLoader.loadFeature('browsing_sessions_ui');
+        const V = window.vistaDialogTemplate;
+        if (!V) return;
+        const abort = new AbortController();
+        let ctxRef = null;
+        let lastAsk = 0;
+        let info = null;
+        const pageUrl = root.grimoireShellWebUrl(shell);
+        const draw = () => {
+            if (!ctxRef) return;
+            const rows = alchemyInfoRows(info, pageUrl);
+            Object.keys(rows).forEach((id) => ctxRef.text(Number(id), rows[id]));
+        };
+        // at most every 2 s, and never while the page is hidden
+        const ask = () => {
+            if (document.hidden || Date.now() - lastAsk < 2000) return;
+            lastAsk = Date.now();
+            const f = root.grimoireRemoteFrame(shell);
+            if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'grimoire-browser-encoder?' }, '*');
+        };
+        const finish = () => {
+            abort.abort();
+            ctxRef = null;
+            if (infoOpen && infoOpen.abort === abort) infoOpen = null;
+        };
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            const f = root.grimoireRemoteFrame(shell);
+            if (!data || data.type !== 'grimoire-browser-encoder' || !f || event.source !== f.contentWindow) return;
+            info = data.info || null;
+            draw();
+        }, { signal: abort.signal });
+        document.addEventListener('visibilitychange', ask, { signal: abort.signal });
+        V.openDialog({
+            id: 'grimoireAlchemyInfo',
+            tpl: INFO_TPL,
+            title: INFO_TPL.t,
+            owner: host.modal || null,
+            icon: '/static_images/vista-cpl/items/internet-options-32.png',
+            overrides: { 901: { image: '/static_images/vista-cpl/items/internet-options-32.png' } },
+            init(ctx) {
+                ctxRef = ctx;
+                infoOpen = { abort, close: () => { finish(); ctx.close(); } };
+                draw();
+                ask();
+            },
+            ok() { finish(); },
+            cancel() { finish(); },
+            buttons: { 3: () => ask() }
+        });
     }
 
     // Other Devices (#756): how many tabs other clients hold, kept fresh from the registry's change pushes,
@@ -1288,6 +1741,9 @@
     }
     root.grimoireRefreshOtherDevices = refreshOthers;
 
+    // Tools > Extensions and Tools > Alchemy Information (grimoireRemoteBrowser.js grimoireShowSiteMenu)
+    GrimoireIeChrome.openExtensionPopup = openExtensionPopup;
+    GrimoireIeChrome.showAlchemyInfo = showAlchemyInfo;
     root.GrimoireIeChrome = GrimoireIeChrome;
     if (typeof module !== 'undefined' && module.exports) module.exports = GrimoireIeChrome;
 })(typeof window !== 'undefined' ? window : globalThis);
