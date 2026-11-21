@@ -88,8 +88,8 @@ body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoi
 }
 .gpc-page {
     position: relative;
-    width: var(--gpc-w, 100%);
-    height: var(--gpc-h, 0);
+    width: 100%;
+    aspect-ratio: var(--gpc-ratio, 1 / 4);
     cursor: default;
 }
 .gpc-page[hidden] { display: none; }

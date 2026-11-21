@@ -2169,22 +2169,28 @@
             ctxRef.text(901, `${pct} % of the page kept in ${p.blocks} block${p.blocks === 1 ? '' : 's'}, ${p.sharpRows ? Math.round(p.sharpRows / Math.max(1, p.rows) * 100) : 0} % sharp`);
             els.page.hidden = false;
             if (els.img.getAttribute('src') !== p.url) els.img.src = p.url;
-            els.page.style.setProperty('--gpc-w', `${p.width}px`);
-            els.page.style.setProperty('--gpc-h', `${p.height}px`);
-            els.view.style.setProperty('--gpc-top', `${p.view[1]}px`);
-            els.view.style.setProperty('--gpc-height', `${Math.max(2, p.view[3])}px`);
+            // the picture fills the box's width whatever it is (a scroll bar coming or going changes it), so the view
+            // and the sheets are placed as shares of the picture
+            const pctX = (v) => `${(v / p.width) * 100}%`;
+            const pctY = (v) => `${(v / p.height) * 100}%`;
+            els.page.style.setProperty('--gpc-ratio', `${p.width} / ${p.height}`);
+            els.view.style.setProperty('--gpc-top', pctY(p.view[1]));
+            els.view.style.setProperty('--gpc-height', pctY(Math.max(2, p.view[3])));
             els.sheets.replaceChildren(...p.sheets.map((r) => {
                 const box = document.createElement('div');
                 box.className = 'gpc-sheet';
-                box.style.setProperty('--gpc-x', `${r[0]}px`);
-                box.style.setProperty('--gpc-y', `${r[1]}px`);
-                box.style.setProperty('--gpc-sw', `${r[2]}px`);
-                box.style.setProperty('--gpc-sh', `${r[3]}px`);
+                box.style.setProperty('--gpc-x', pctX(r[0]));
+                box.style.setProperty('--gpc-y', pctY(r[1]));
+                box.style.setProperty('--gpc-sw', pctX(r[2]));
+                box.style.setProperty('--gpc-sh', pctY(r[3]));
                 return box;
             }));
-            // the view stays in sight as the page scrolls
+            // the view stays in sight as the page scrolls (its place at the size the picture is shown)
             const sc = els.scroll;
-            if (p.view[1] < sc.scrollTop || p.view[1] + p.view[3] > sc.scrollTop + sc.clientHeight) sc.scrollTop = Math.max(0, p.view[1] - (sc.clientHeight - p.view[3]) / 2);
+            const shown = els.page.clientWidth / p.width;
+            const vy = p.view[1] * shown;
+            const vh = p.view[3] * shown;
+            if (vy < sc.scrollTop || vy + vh > sc.scrollTop + sc.clientHeight) sc.scrollTop = Math.max(0, vy - (sc.clientHeight - vh) / 2);
         };
         const ask = () => {
             clearTimeout(state.timer);
@@ -2243,7 +2249,8 @@
                     const f = state.frame;
                     if (!p || !p.perCss || !f || !f.contentWindow) return;
                     const box = state.els.page.getBoundingClientRect();
-                    const y = Math.max(0, (ev.clientY - box.top) / p.perCss - (p.viewCss || 0) / 2);
+                    // the picture is shown at the box's width: back to its own pixels, then the page's
+                    const y = Math.max(0, (ev.clientY - box.top) * (p.width / box.width) / p.perCss - (p.viewCss || 0) / 2);
                     f.contentWindow.postMessage({ type: 'grimoire-browser-scroll-to', y }, '*');
                     setTimeout(ask, 300);
                 }, { signal: abort.signal });
