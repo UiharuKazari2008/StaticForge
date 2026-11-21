@@ -49,7 +49,8 @@ function beginHttp(req) {
         // Gallery/share URLs carry the instance UUID; /busy is reachable from
         // Wren's sandbox (--share-net), so keep only the route shape.
         path: url.split('/').map((seg) => (/^[0-9a-f-]{16,}$/i.test(seg) || /[0-9]{6,}/.test(seg) ? ':id' : seg))
-            .slice(0, 3).join('/').slice(0, 60),
+            // five segments (ids are already :id), so a long hold names its route, not just /api/<area>
+            .slice(0, 6).join('/').slice(0, 80),
         at: Date.now()
     });
     scheduleSnapshot();
@@ -315,7 +316,8 @@ function attachExpress(app) {
         // a Sidebar radio's stream (vistaGadgetProxy.js) runs for hours and just reconnects: not busy
         if (req.path === '/gadget-stream') return next();
         // a remote browser window's audio (grimoireBrowserBridge.js) stays open as long as the window does
-        if (/^\/api\/grimoire-browser\/sessions\/[a-f0-9]{32}\/audio$/.test(req.path)) return next();
+        // and so does its frame stream when the viewer cannot hold a WebSocket (the NDJSON /frames fallback)
+        if (/^\/api\/grimoire-browser\/sessions\/[a-f0-9]{32}\/(audio|frames)$/.test(req.path)) return next();
         // VisionCaster (#734): the units' OSD / live card event streams (avOsdHttp.js) stay open as long as
         // the units run, and the realtime preview MJPEG as long as someone watches: they just reconnect
         if (req.method === 'GET' && (/^\/av-osd\/[^/]+\/events$/.test(req.path) || /^\/quickcast\/live\/[^/]+$/.test(req.path))) return next();
