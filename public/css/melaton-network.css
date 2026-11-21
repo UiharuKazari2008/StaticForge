@@ -1070,8 +1070,17 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
     flex: 1 1 auto;
     min-height: 0;
     max-height: min(60vh, 560px);
+    overflow-x: hidden;
     overflow-y: auto;
     gap: 4px;
+}
+
+/* the links: Manage channels on the left, Clear all on the right */
+.android-notify-flyout .network-flyout-links {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
 }
 
 /* a size the user dragged (data-sized, melatonDexNotifySize): the list fills it */
@@ -1148,6 +1157,7 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
     position: relative;
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     margin: -1px 0 3px 40px;
     padding: 1px 6px 10px;
     outline: none;
@@ -1189,10 +1199,18 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
     outline: none;
 }
 
+/* the kit row is a grid whose column takes its content's width: a notification is a plain block, so long text wraps
+   inside it instead of widening the flyout (the frame and app scopes outrank the kit row's rule) */
+.android-notify-flyout .android-notify-frame .android-notify-app .android-notify-note {
+    display: block;
+    min-width: 0;
+}
+
 .android-notify-main {
     display: flex;
     align-items: flex-start;
     gap: 8px;
+    min-width: 0;
 }
 
 .android-notify-pic {
@@ -1210,6 +1228,7 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
 
 .android-notify-content {
     flex: 1 1 auto;
+    min-width: 0;
     gap: 1px;
 }
 

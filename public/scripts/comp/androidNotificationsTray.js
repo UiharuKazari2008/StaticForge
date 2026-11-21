@@ -326,9 +326,10 @@
                 <div class="network-flyout-links"><button type="button" class="network-flyout-link" data-act="access">Turn on notification access</button></div>`;
         }
         const hidden = all.length - list.length;
+        // Manage channels on the left, Clear all on the right (Yukimi, Nov 21)
         const links = `<div class="network-flyout-links">
-            ${list.some((n) => n.clearable !== false) ? '<button type="button" class="network-flyout-link" data-act="clear">Clear all</button>' : ''}
-            <button type="button" class="network-flyout-link" data-act="channels">Manage channels${hidden ? ` (${hidden} hidden)` : ''}...</button></div>`;
+            <button type="button" class="network-flyout-link" data-act="channels">Manage channels${hidden ? ` (${hidden} hidden)` : ''}...</button>
+            ${list.some((n) => n.clearable !== false) ? '<button type="button" class="network-flyout-link" data-act="clear">Clear all</button>' : ''}</div>`;
         if (!list.length) {
             return `<div class="network-flyout-body android-notify-body"><div class="network-flyout-heading">Notifications</div><span class="network-flyout-sub">No new notifications</span></div>${links}`;
         }
