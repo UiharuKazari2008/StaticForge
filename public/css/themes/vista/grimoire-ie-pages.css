@@ -469,3 +469,235 @@
     z-index: 2;
     overflow: auto;
 }
+
+/* ---- The Grimoire's home (Yukimi, Nov 21 2026): the page above, its search box, and an underlayer set into the page
+   in its bottom third - the page's edge and shadow lie over it - in Alchemy's blue liquid with rising bubbles
+   (tagWikiSearchModal.js showDreamWikiHomepage / bindGrimoireHomeUnderlayer) ---- */
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+}
+.gh-home .gh-top {
+    position: relative;
+    z-index: 1;
+    flex: 2 0 auto;
+    padding: 20px 8px 28px 20px;
+    background: inherit;
+    /* the page's lower edge: a light rim and its shadow cast down over the underlayer */
+    border-bottom: 1px solid #fff;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.28), 0 6px 14px rgba(0, 20, 60, 0.35);
+}
+.gh-home .gh-under {
+    position: relative;
+    flex: 1 0 230px;
+    min-height: 230px;
+    overflow: hidden;
+    color: #fff;
+    background: #0a3f9e url('/static_images/brand/alchemy-liquid.webp') center / cover no-repeat;
+    /* set in: darker at its top edge, under the page */
+    box-shadow: inset 0 10px 18px -6px rgba(0, 8, 30, 0.65), inset 0 -1px 0 rgba(255, 255, 255, 0.15);
+}
+.gh-home .gh-under::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0, 12, 40, 0.35), rgba(0, 12, 40, 0) 40%, rgba(0, 12, 40, 0.25));
+    pointer-events: none;
+}
+.gh-home .gh-bubbles {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.gh-home .gh-bubble {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border-radius: 50%;
+    /* a small glass bubble: a bright rim, a highlight up and to the left, clear inside */
+    background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.85) 0 12%, rgba(255, 255, 255, 0.12) 22%, rgba(160, 225, 255, 0.08) 60%, rgba(220, 245, 255, 0.55) 92%, rgba(255, 255, 255, 0) 100%);
+    box-shadow: 0 0 6px rgba(150, 220, 255, 0.35);
+    transform: translate3d(-100px, -100px, 0);
+}
+.gh-home .gh-brand {
+    position: absolute;
+    left: 22px;
+    top: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    filter: drop-shadow(0 1px 3px rgba(0, 10, 40, 0.55));
+}
+.gh-home .gh-brand-icon { width: 48px; height: 48px; }
+.gh-home .gh-brand-word { height: 36px; width: auto; }
+.gh-home .gh-tagline {
+    position: absolute;
+    right: 24px;
+    bottom: 18px;
+    font: italic 18px "Segoe UI", sans-serif;
+    letter-spacing: 0.2px;
+    text-shadow: 0 1px 3px rgba(0, 10, 40, 0.7), 0 0 12px rgba(120, 200, 255, 0.45);
+}
+/* the search boxes: Vista's edit and push button */
+.gh-home .gh-gsearch,
+.gh-home .gh-websearch-box {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.gh-home .gh-gsearch { margin: 16px 0 0; max-width: 520px; }
+.gh-home .gh-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 23px;
+    box-sizing: border-box;
+    padding: 1px 6px;
+    font: 12px "Segoe UI", sans-serif;
+    color: #000;
+    background: #fff;
+    border: 1px solid #abadb3;
+    border-top-color: #e3e9ef;
+    border-radius: 2px;
+    outline: none;
+}
+.gh-home .gh-input:hover { border-color: #5794bf #b7d5ea #c7e2f1 #c5daed; }
+.gh-home .gh-input:focus { border-color: #3d7bad #b5cfe7 #b5cfe7 #a4c9e3; }
+.gh-home .gh-go {
+    flex: 0 0 auto;
+    min-width: 75px;
+    height: 23px;
+    font: 12px "Segoe UI", sans-serif;
+    color: #000;
+    border: 1px solid #707070;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #f2f2f2 0%, #ebebeb 50%, #dddddd 51%, #cfcfcf 100%);
+    cursor: default;
+}
+.gh-home .gh-go:hover { border-color: #3c7fb1; background: linear-gradient(180deg, #eaf6fd 0%, #d9f0fc 50%, #bee6fd 51%, #a7d9f5 100%); }
+.gh-home .gh-go:active { border-color: #2c628b; background: linear-gradient(180deg, #e5f4fc 0%, #c4e5f6 50%, #98d1ef 51%, #68b3db 100%); }
+.gh-home .gh-websearch {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: min(560px, 80%);
+    transform: translate(-50%, -50%);
+}
+.gh-home .gh-websearch .gh-input {
+    height: 30px;
+    font-size: 14px;
+    border-color: rgba(255, 255, 255, 0.8);
+    box-shadow: 0 2px 10px rgba(0, 10, 40, 0.45);
+}
+.gh-home .gh-websearch .gh-go { height: 30px; box-shadow: 0 2px 10px rgba(0, 10, 40, 0.45); }
+.gh-home .gh-engines {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    margin-top: 8px;
+}
+.gh-home .gh-engine {
+    font: 12px "Segoe UI", sans-serif;
+    color: #fff;
+    padding: 2px 12px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    text-shadow: 0 1px 2px rgba(0, 10, 40, 0.7);
+    cursor: default;
+}
+.gh-home .gh-engine:hover { border-color: rgba(255, 255, 255, 0.45); background: rgba(255, 255, 255, 0.12); }
+.gh-home .gh-engine[aria-pressed="true"] { border-color: rgba(255, 255, 255, 0.75); background: rgba(255, 255, 255, 0.22); }
+
+/* the page above the underlayer as IE's quick tabs page: the Grimoire's name, its search box, a tile for each place
+   (its icon in the middle, its name under it; Vista's hot and pressed item colours), the recently visited tags under
+   them (Yukimi, Nov 21 2026) */
+.gh-home .gh-top {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.gh-home .gh-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    align-self: stretch;
+    max-width: 760px;
+    margin: 0 auto;
+    width: 100%;
+}
+.gh-home .gh-head-logo { width: 48px; height: 48px; }
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home .gh-head h1 {
+    margin: 0;
+    font: 18pt "Segoe UI", sans-serif;
+    color: #4465a2;
+}
+.gh-home .gh-head-sub { font-size: 12px; color: #7a7a7a; }
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home .gh-gsearch {
+    width: 100%;
+    max-width: 760px;
+    margin: 16px auto 18px;
+}
+.gh-home .gh-gsearch .gh-input { height: 28px; font-size: 13px; }
+.gh-home .gh-gsearch .gh-go { height: 28px; }
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home .gh-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 118px);
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0;
+}
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home .gh-tiles .dreamwiki-start-row.gh-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 118px;
+    height: 96px;
+    margin: 0;
+    padding: 8px 4px 6px;
+    box-sizing: border-box;
+    font: 12px "Segoe UI", sans-serif;
+    color: #1e395b;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid #d5dbe5;
+    border-radius: 3px;
+    box-shadow: none;
+    cursor: default;
+}
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home .gh-tiles .dreamwiki-start-row.gh-tile::before { content: none; }
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home .gh-tiles .dreamwiki-start-row.gh-tile:hover {
+    background: linear-gradient(180deg, #f2f9fd, #dff0fb);
+    border-color: #b8d6fb;
+    color: #1e395b;
+    text-decoration: none;
+}
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home .gh-tiles .dreamwiki-start-row.gh-tile:active {
+    background: linear-gradient(180deg, #e3f1fb, #cbe6f8);
+    border-color: #7da2ce;
+}
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home .gh-tiles .gh-tile .gh-tile-icon {
+    display: block;
+    width: 48px;
+    height: 48px;
+    margin: 0;
+    object-fit: contain;
+}
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home .gh-tiles .gh-tile span {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home .gh-recent {
+    width: 100%;
+    max-width: 760px;
+    margin: 20px auto 0;
+}
+.tag-wiki-display-content .dreamwiki-home.gip-home.gh-home .gh-recent h2 { margin: 0 0 6px; }
