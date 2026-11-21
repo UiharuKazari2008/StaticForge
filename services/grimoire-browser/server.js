@@ -96,7 +96,11 @@ const ALCHEMY_BIN = path.join(process.env.ALCHEMY_CHROMIUM_DIR || path.join(DATA
 const NO_SANDBOX = process.env.CHROME_NO_SANDBOX !== '0';
 // Sites such as X refuse logins from headless Chromium, so it runs windowed on a virtual display.
 const XVFB_BIN = '/usr/bin/Xvfb';
-const XAUTH_FILE = path.join(DATA_DIR, 'alchemy-xauth');
+// one cookie file per service process (Nov 21): with one shared file, another Alchemy (a test instance, a restart
+// whose old display lived on) rewrote it, and the live display re-read it on its next reset, so Chromium could not
+// start again ("Authorization required") until Alchemy itself was restarted
+const XAUTH_PREFIX = path.join(DATA_DIR, 'alchemy-xauth');
+const XAUTH_FILE = XAUTH_PREFIX + '-' + process.pid;
 const HEADFUL = process.env.ALCHEMY_HEADLESS !== '1' && fs.existsSync(XVFB_BIN);
 const GPU_NODE = '/dev/dri/renderD128';
 const PULSEAUDIO_BIN = '/usr/bin/pulseaudio';
@@ -1249,7 +1253,22 @@ function encoderInfo(session) {
         tiles: 'WebP',
         rq: s.regionQuality,
         scroll: slowLink(session) ? 'packs' : 'frames',
-        jxl: JXL_ON && session.jxl ? 1 : 0,
+        // JPEG XL: whether this viewer can show it, the server's mode, whether frames went as JXL in the last 10 s,
+        // and what a repack costs and saves here
+        jxl: session.jxlSentAt && Date.now() - session.jxlSentAt < 10000 ? 1 : 0,
+        jxlMode: JXL_MODE,
+        jxlViewer: session.jxl ? 1 : 0,
+        jxlMs: Math.round(jxlStats.ms),
+        jxlSaves: Math.round((1 - jxlStats.ratio) * 100),
+        // the page's layers the viewer keeps apart while it scrolls ahead (watchScroll)
+        layers: session.layers ? {
+            fixed: session.layers.f.filter((l) => !l[4]).length,
+            sticky: session.layers.f.filter((l) => l[4]).length,
+            backdrop: session.layers.backdrop,
+            cover: session.layers.cover,
+            sampled: session.layersVis ? session.layersVis.r.length : 0,
+            bands: session.scroll ? [session.scroll.bandTop || 0, session.scroll.bandBottom || 0] : [0, 0]
+        } : null,
         ratio: Math.round((session.pxPerDip || 1) * 100) / 100,
         width: Math.round((session.dipWidth || session.width || 0) * (session.pxPerDip || 1)),
         height: Math.round((session.dipHeight || session.height || 0) * (session.pxPerDip || 1)),
@@ -1411,9 +1430,14 @@ const PACK_RTT_MS = Number.isFinite(Number(process.env.ALCHEMY_PACK_RTT_MS)) && 
 // lossless (the same pixels), 21-42 % smaller on real pages (Wikipedia 109 -> 86 KB, YouTube 27 -> 16 KB) for 23-34 ms
 // on this host's CPU. Worth it only where bytes cost more than that, and only for a viewer that decodes image/jxl
 // (Chromium 156 and the phone's WebView 157 do). One helper process; requests answer in order.
-// Off unless ALCHEMY_JXL=1: on this host (a 4-core laptop CPU, busy) a repack took 60-100 ms under load, past the
-// pack budget, so the JPEG went anyway; on a fast host (the DL580) it is ~10 ms and pays on mobile links.
-const JXL_ON = process.env.ALCHEMY_JXL === '1';
+// Automatic (Yukimi, Nov 21: "On the fold desktop I dont see JPEG XL ... do we have to do somethiing to enable it"):
+// a whole frame is repacked for a viewer that can show JPEG XL when the bytes it saves take longer to send over
+// that viewer's link (automatic quality's measured rate) than the repack takes here (measured: 60-100 ms on this
+// busy 4-core host, ~10 ms on the DL580). ALCHEMY_JXL=1: on every slow link (RTT >= PACK_RTT_MS); 0: never.
+const JXL_MODE = process.env.ALCHEMY_JXL === '1' ? 'on' : process.env.ALCHEMY_JXL === '0' ? 'off' : 'auto';
+const JXL_ON = JXL_MODE !== 'off';
+// what a repack costs and saves, as it runs (smoothed): ms, and the JXL's size over the JPEG's
+const jxlStats = { ms: 80, ratio: 0.8, n: 0 };
 const JXL_PIPE = process.env.ALCHEMY_JXL_PIPE || path.join(DATA_DIR, 'alchemy-jxl-pipe');
 const JXL_TIMEOUT_MS = 120;
 const jxl = { proc: null, buf: Buffer.alloc(0), queue: [], broken: false };
@@ -1453,9 +1477,18 @@ function jxlStart() {
 function jxlRepack(jpeg) {
     if (!jxlAvailable()) return Promise.resolve(null);
     const proc = jxlStart();
+    const t0 = Date.now();
     return new Promise((resolve) => {
         let done = false;
-        const finish = (out) => { if (!done) { done = true; resolve(out); } };
+        const finish = (out) => {
+            if (done) return;
+            done = true;
+            const ms = Date.now() - t0;
+            jxlStats.ms = jxlStats.n ? jxlStats.ms * 0.7 + ms * 0.3 : ms;
+            if (out) jxlStats.ratio = jxlStats.n ? jxlStats.ratio * 0.7 + (out.length / jpeg.length) * 0.3 : out.length / jpeg.length;
+            jxlStats.n += 1;
+            resolve(out);
+        };
         jxl.queue.push(finish);
         setTimeout(() => finish(null), JXL_TIMEOUT_MS).unref();
         const head = Buffer.allocUnsafe(4);
@@ -1466,10 +1499,23 @@ function jxlRepack(jpeg) {
 }
 
 // a whole frame for this viewer: JPEG XL on a slow link when it can show it and it is smaller, else the JPEG as is
+// worth repacking for this session's slowest viewer: the send time it saves against what a repack costs here
+function jxlWorth(session, bytes) {
+    if (!session.jxl || !jxlAvailable()) return false;
+    if (JXL_MODE === 'on') return slowLink(session);
+    const kbps = session.aq && session.aq.link && session.aq.link.kbps;
+    if (!kbps) return false;
+    const savedMs = bytes * (1 - jxlStats.ratio) * 8 / kbps;
+    return savedMs > jxlStats.ms * 1.2;
+}
+
 async function wholeFrame(session, jpeg, header, why) {
-    if (session.jxl && slowLink(session) && jxlAvailable()) {
+    if (jxlWorth(session, jpeg.length)) {
         const out = await jxlRepack(jpeg);
-        if (out && out.length < jpeg.length) return { whole: binaryMessage(MSG_FRAME, Object.assign({}, header, { f: 'jxl' }), out), why: (why || 'size') + ', jxl ' + out.length + ' of ' + jpeg.length };
+        if (out && out.length < jpeg.length) {
+            session.jxlSentAt = Date.now();
+            return { whole: binaryMessage(MSG_FRAME, Object.assign({}, header, { f: 'jxl' }), out), why: (why || 'size') + ', jxl ' + out.length + ' of ' + jpeg.length };
+        }
     }
     return { binary: jpeg, why };
 }
@@ -2722,10 +2768,12 @@ let xvfbDisplay = '';
 // Xvfb picks a free display (-displayfd) and only accepts this cookie, so other local users cannot watch the pages.
 function startDisplay() {
     if (xvfb && xvfb.exitCode === null && xvfbDisplay) return Promise.resolve(xvfbDisplay);
+    reapOrphanDisplays();
     const cookie = crypto.randomBytes(16).toString('hex');
     fs.writeFileSync(XAUTH_FILE, '', { mode: 0o600 });
     return new Promise((resolve, reject) => {
-        const child = spawn(XVFB_BIN, ['-displayfd', '3', '-screen', '0', '1920x1440x24', '-nolisten', 'tcp', '-auth', XAUTH_FILE], { stdio: ['ignore', 'ignore', 'ignore', 'pipe'] });
+        // -noreset: the display keeps its cookie when its last client (Chromium, relaunching) goes
+        const child = spawn(XVFB_BIN, ['-displayfd', '3', '-screen', '0', '1920x1440x24', '-nolisten', 'tcp', '-noreset', '-auth', XAUTH_FILE], { stdio: ['ignore', 'ignore', 'ignore', 'pipe'] });
         let out = '';
         const fail = (err) => reject(err instanceof Error ? err : new Error('Xvfb exited'));
         child.once('error', fail);
@@ -2749,6 +2797,37 @@ function startDisplay() {
 function stopDisplay() {
     if (xvfb) xvfb.kill('SIGTERM');
     xvfb = null;
+    try { fs.unlinkSync(XAUTH_FILE); } catch (_) {}
+}
+
+// Alchemy's own displays left running by a service that died (their parent is gone: init, or the user's systemd that
+// adopts orphans), and their cookie files: each held a whole 1920 x 1440 screen (seven of them on Nov 21, the oldest
+// from Nov 7). Only Xvfb started with an Alchemy cookie file in this data dir is touched.
+function reapOrphanDisplays() {
+    let pids = [];
+    try { pids = fs.readdirSync('/proc').filter((name) => /^\d+$/.test(name)); } catch (_) { return; }
+    const live = new Set([String(process.pid)]);
+    for (const pid of pids) {
+        try {
+            if (fs.readlinkSync('/proc/' + pid + '/exe') !== XVFB_BIN) continue;
+            const args = fs.readFileSync('/proc/' + pid + '/cmdline', 'utf8').split('\0');
+            const auth = args[args.indexOf('-auth') + 1] || '';
+            if (args.indexOf('-auth') < 0 || !auth.startsWith(XAUTH_PREFIX)) continue;
+            const stat = fs.readFileSync('/proc/' + pid + '/stat', 'utf8');
+            const ppid = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1];
+            const parent = ppid === '1' ? 'init' : fs.readFileSync('/proc/' + ppid + '/comm', 'utf8').trim();
+            if (parent !== 'init' && parent !== 'systemd') { live.add(auth.slice(XAUTH_PREFIX.length + 1)); continue; }
+            process.kill(Number(pid), 'SIGTERM');
+        } catch (_) {}
+    }
+    // cookie files of services that are gone
+    try {
+        for (const name of fs.readdirSync(DATA_DIR)) {
+            if (!name.startsWith('alchemy-xauth')) continue;
+            const owner = name.slice('alchemy-xauth-'.length);
+            if (name === 'alchemy-xauth' || (!live.has(owner) && !fs.existsSync('/proc/' + owner))) fs.rmSync(path.join(DATA_DIR, name), { force: true });
+        }
+    } catch (_) {}
 }
 
 let pulse = null;
@@ -4934,6 +5013,8 @@ async function main() {
     const shutdown = async () => {
         if (shuttingDown) return;
         shuttingDown = true;
+        // viewers wait for this service to come back and open their pages again (viewer.html recoverSession)
+        for (const session of sessions.values()) broadcast(session, { type: 'restarting' });
         if (browser) {
             const t0 = Date.now();
             const kept = await Promise.race([keepSessionCookies(), new Promise((resolve) => setTimeout(() => resolve(-1), 1500).unref())]).catch(() => -1);

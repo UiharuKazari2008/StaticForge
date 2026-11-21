@@ -1124,7 +1124,9 @@
         href: msg.href || '',
         src: msg.src || '',
         alt: msg.alt || '',
-        editable: !!msg.editable
+        editable: !!msg.editable,
+        // the point, picture size, background, field state and word under the pointer (Grimoire's IE7 menu)
+        more: msg.more && typeof msg.more === 'object' ? msg.more : null
       }, '*');
     } else if (msg.type === 'restarting') {
       restarting = true;
@@ -1399,7 +1401,78 @@
     clearInterval(rttProbe);
     rttProbe = 0;
     engineStop();
-    showTabStatus('failed', lastUrl);
+    recoverSession();
+  }
+
+  // The link went (Yukimi, Nov 21: "if Alchemy restarts it shoudl auto reload the pages on the client"): this
+  // viewer's own address says what happened. 200: the session is still there (a network blip): connect again.
+  // 401 / 404: Alchemy is up and the session is gone (it restarted): the page opens again by itself, chrome://
+  // pages too. No answer, or 5xx (Dreamscape's relay with Alchemy down): Alchemy is starting; ask again, up to
+  // two minutes, then the failed tab page with its Reload.
+  var recovering = false;
+  var recoveries = [];
+  function recoverSession() {
+    if (recovering || closed) return;
+    // a session that answers but will not stream: three tries a minute, then the failed page
+    var now = Date.now();
+    recoveries = recoveries.filter(function (t) { return now - t < 60000; });
+    if (recoveries.length >= 3) {
+      restarting = false;
+      showTabStatus('failed', lastUrl);
+      return;
+    }
+    recoveries.push(now);
+    recovering = true;
+    var started = Date.now();
+    var delay = 700;
+    // told it is restarting: the old service still answers (its sessions closed) while it shuts Chromium down;
+    // 'gone' counts once it has been seen down, or after 15 s
+    var expectDown = restarting;
+    var sawDown = false;
+    showRestarting();
+    function probe() {
+      if (closed) { recovering = false; return; }
+      fetch(location.href, { cache: 'no-store', credentials: 'same-origin' }).then(function (res) {
+        var status = res.status;
+        if (res.body && res.body.cancel) res.body.cancel().catch(function () {});
+        return status;
+      }, function () { return 0; }).then(function (status) {
+        if (closed) { recovering = false; return; }
+        if (!status || status >= 500) sawDown = true;
+        if (status === 200) {
+          recovering = false;
+          restarting = false;
+          statusEl.hidden = true;
+          tabState = 'ok';
+          if (fallback) startFallback(); else connectSocket();
+          return;
+        }
+        if ((status === 401 || status === 404 || status === 410) && (!expectDown || sawDown || Date.now() - started > 15000)) {
+          recovering = false;
+          restarting = false;
+          postParent({ type: 'grimoire-browser-reopen', url: lastUrl });
+          return;
+        }
+        if (Date.now() - started > 120000) {
+          recovering = false;
+          restarting = false;
+          showTabStatus('failed', lastUrl);
+          return;
+        }
+        delay = Math.min(4000, Math.round(delay * 1.5));
+        setTimeout(probe, delay);
+      });
+    }
+    setTimeout(probe, restarting ? 1500 : 300);
+  }
+
+  function showRestarting() {
+    tabState = 'restarting';
+    document.getElementById('tabStatusTitle').textContent = 'Alchemy is starting again';
+    document.getElementById('tabStatusUrl').textContent = lastUrl;
+    document.getElementById('tabStatusDetail').textContent = 'This page opens again by itself as soon as Alchemy is back.';
+    statusEl.hidden = false;
+    postParent({ type: 'grimoire-browser-status', state: 'restarting', url: lastUrl });
   }
 
   function keyPayload(ev, kind) {
@@ -1423,7 +1496,8 @@
     var framesUrl = '/api/grimoire-browser/sessions/' + encodeURIComponent(sessionId) + '/frames?t=' + encodeURIComponent(token);
     fetch(framesUrl, { credentials: 'same-origin', headers: { 'X-No-Compression': '1' } }).then(function (res) {
       if (!res.ok || !res.body) {
-        showTabStatus('failed');
+        connected = false;
+        recoverSession();
         return;
       }
       announceReady();
@@ -2004,6 +2078,20 @@
     if (!data || typeof data !== 'object') return;
     if (data.type === 'grimoire-browser-encoder?') {
       send({ type: 'encoder?' });
+      return;
+    }
+    // Grimoire's Alchemy Information tool window asks (every 2 s at most, only while it shows): this viewer's own
+    // numbers, plus the bytes received and the decode time so far
+    if (data.type === 'grimoire-browser-stats?') {
+      var stats = window.__alchemyViewerStats();
+      stats.rx = rxTotal;
+      stats.decMs = decWin.n ? Math.round(decWin.sum / decWin.n * 10) / 10 : null;
+      postParent({ type: 'grimoire-browser-stats', stats: stats });
+      return;
+    }
+    // Grimoire's context menu: spelling, Undo / Delete / Select All, Show Picture, Inspect (server.js menuAction)
+    if (data.type === 'grimoire-browser-menu-action' && typeof data.action === 'string') {
+      send({ type: 'menu-action', action: data.action, cx: Number(data.cx), cy: Number(data.cy), word: String(data.word || ''), text: String(data.text || ''), command: String(data.command || '') });
       return;
     }
     if (data.type === 'grimoire-browser-navigate' && typeof data.url === 'string') {

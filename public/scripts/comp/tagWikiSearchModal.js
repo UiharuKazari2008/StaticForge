@@ -6006,12 +6006,37 @@ class TagWikiSearchModal extends WikiDisplayBase {
                     </div>
                 </div>`;
 
-            this.displayArea.querySelector('[data-grimoire-nav-action="retry"]')?.addEventListener('click', () => {
+            // a web page (http, https, chrome://) opens in Alchemy again directly: navigate() does not take chrome://
+            // addresses, so Try again on one did nothing (Yukimi, Nov 21: "chrome:// cant be "retry" after a restart")
+            const retryNow = () => {
                 const retryUrl = this._grimoireLastFailedNavUrl;
-                if (retryUrl && typeof this.navigate === 'function') {
+                if (!retryUrl) return;
+                // grimoireNormalizeWebUrl / grimoireOpenRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
+                const web = typeof grimoireNormalizeWebUrl === 'function' ? grimoireNormalizeWebUrl(retryUrl) : '';
+                if (web && typeof grimoireOpenRemoteBrowser === 'function') {
+                    const host = typeof grimoireHostOf === 'function' ? (grimoireHostOf(this) || this) : this;
+                    grimoireOpenRemoteBrowser(this, web, { host, skipHistory: true });
+                } else if (typeof this.navigate === 'function') {
                     this.navigate(retryUrl);
                 }
-            });
+            };
+            this.displayArea.querySelector('[data-grimoire-nav-action="retry"]')?.addEventListener('click', retryNow);
+            // Alchemy restarting (Yukimi, Nov 21: "if Alchemy restarts it shoudl auto reload the pages"): the page tries
+            // again by itself, a little later each time, for two minutes, while it is still the one shown
+            if (kind === 'browser_unavailable') {
+                const page = this.displayArea.querySelector('.grimoire-nav-error');
+                const firstAt = this._grimoireUnavailableSince && Date.now() - this._grimoireUnavailableSince < 150000 ? this._grimoireUnavailableSince : Date.now();
+                this._grimoireUnavailableSince = firstAt;
+                const waited = Date.now() - firstAt;
+                if (waited < 120000) {
+                    const wait = Math.min(10000, 2000 + Math.round(waited / 6));
+                    const note = page && page.querySelector('.grimoire-nav-error-detail');
+                    if (note) note.textContent = 'Alchemy is starting. This page opens again by itself in a moment.';
+                    setTimeout(() => {
+                        if (page && page.isConnected && !page.closest('[hidden]')) retryNow();
+                    }, wait);
+                }
+            }
             this.displayArea.querySelector('[data-grimoire-nav-action="home"]')?.addEventListener('click', () => {
                 this.goHome();
             });
