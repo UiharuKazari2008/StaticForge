@@ -1054,13 +1054,59 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
    screen. Buttons drawn as art (X, expando) drop the kit button's size, face and focus pulse. */
 
 .android-notify-flyout {
+    display: flex;
+    flex-direction: column;
     width: 360px;
 }
 
+.android-notify-frame {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
 .android-notify-body {
+    flex: 1 1 auto;
+    min-height: 0;
     max-height: min(60vh, 560px);
     overflow-y: auto;
     gap: 4px;
+}
+
+/* a size the user dragged (data-sized, melatonDexNotifySize): the list fills it */
+.android-notify-flyout[data-sized] .android-notify-body {
+    max-height: none;
+}
+
+/* the resize edges: the flyout keeps its bottom-right corner at the tray, so it grows from its top and left */
+.android-notify-size {
+    position: absolute;
+    z-index: 1;
+}
+
+.android-notify-size[data-edge="top"] {
+    top: 0;
+    left: 10px;
+    right: 0;
+    height: 5px;
+    cursor: var(--c-ns-resize);
+}
+
+.android-notify-size[data-edge="left"] {
+    top: 10px;
+    left: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: var(--c-ew-resize);
+}
+
+.android-notify-size[data-edge="corner"] {
+    top: 0;
+    left: 0;
+    width: 10px;
+    height: 10px;
+    cursor: var(--c-nwse-resize);
 }
 
 .android-notify-app {
@@ -1089,6 +1135,52 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
 
 .android-notify-count {
     margin-left: -2px;
+}
+
+.android-notify-app.is-stack > .android-notify-app-head {
+    padding-right: 44px;
+}
+
+/* a collapsed stack (Android's group): the next notifications as one-line peeks, over two edges of the cards under it
+   (drawn in the text colour, faint) */
+/* (the frame and app scopes outrank the kit row's own margin) */
+.android-notify-flyout .android-notify-frame .android-notify-app .android-notify-stack {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    margin: -1px 0 3px 40px;
+    padding: 1px 6px 10px;
+    outline: none;
+}
+
+.android-notify-peek {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.android-notify-peek b {
+    font-weight: 600;
+}
+
+.android-notify-stack-edge {
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    height: 3px;
+    border: 1px solid currentColor;
+    border-top: 0;
+    border-radius: 0 0 3px 3px;
+    opacity: 0.22;
+    pointer-events: none;
+}
+
+.android-notify-stack-edge.is-back {
+    left: 10px;
+    right: 10px;
+    bottom: 1px;
+    opacity: 0.12;
 }
 
 .android-notify-note {
@@ -1217,7 +1309,7 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
     animation: none;
 }
 
-.android-notify-flyout .android-notify-note .android-notify-expando {
+.android-notify-flyout .android-notify-frame .android-notify-expando {
     position: absolute;
     top: 22px;
     right: 1px;
@@ -1235,16 +1327,36 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
     background: no-repeat center / 19px 21px url("/static_images/vista-personalization/expando-down.png");
 }
 
-.android-notify-flyout .android-notify-note .android-notify-expando::before,
-.android-notify-flyout .android-notify-note .android-notify-expando::after {
+.android-notify-flyout .android-notify-frame .android-notify-expando::before,
+.android-notify-flyout .android-notify-frame .android-notify-expando::after {
     content: none;
 }
 
-.android-notify-flyout .android-notify-note .android-notify-expando:hover { background-image: url("/static_images/vista-personalization/expando-down-hot.png"); }
-.android-notify-flyout .android-notify-note .android-notify-expando:active { background-image: url("/static_images/vista-personalization/expando-down-pressed.png"); }
-.android-notify-flyout .android-notify-note .android-notify-expando.is-open { background-image: url("/static_images/vista-personalization/expando-up.png"); }
-.android-notify-flyout .android-notify-note .android-notify-expando.is-open:hover { background-image: url("/static_images/vista-personalization/expando-up-hot.png"); }
-.android-notify-flyout .android-notify-note .android-notify-expando.is-open:active { background-image: url("/static_images/vista-personalization/expando-up-pressed.png"); }
+.android-notify-flyout .android-notify-frame .android-notify-expando:hover { background-image: url("/static_images/vista-personalization/expando-down-hot.png"); }
+.android-notify-flyout .android-notify-frame .android-notify-expando:active { background-image: url("/static_images/vista-personalization/expando-down-pressed.png"); }
+.android-notify-flyout .android-notify-frame .android-notify-expando.is-open { background-image: url("/static_images/vista-personalization/expando-up.png"); }
+.android-notify-flyout .android-notify-frame .android-notify-expando.is-open:hover { background-image: url("/static_images/vista-personalization/expando-up-hot.png"); }
+.android-notify-flyout .android-notify-frame .android-notify-expando.is-open:active { background-image: url("/static_images/vista-personalization/expando-up-pressed.png"); }
+
+/* a stack's expando sits in its program's heading, left of the X */
+.android-notify-flyout .android-notify-frame .android-notify-app-head .android-notify-expando {
+    top: 1px;
+    right: 22px;
+}
+
+/* Manage Notification Channels (the shared Vista dialog): the kit's tree list fills its host */
+.android-notify-channels-list {
+    height: 300px;
+}
+
+.android-notify-channels-list > .vista-treelist {
+    height: 100%;
+}
+
+.android-notify-channels-status {
+    min-height: 1.4em;
+    margin: 6px 0 0;
+}
 
 .android-notify-actions,
 .android-notify-reply {
