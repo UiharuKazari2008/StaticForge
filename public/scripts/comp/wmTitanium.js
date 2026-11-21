@@ -993,10 +993,21 @@
         for (const id of [...superImages.keys()]) if (!keep.has(id)) superImages.delete(id);
     }
 
-    /** The pictures and faces, asked of the app once each (a data URL per id, kept while listed). */
+    /**
+     * The pictures and faces. A newer app serves each from its file in the app's cache folder (imageBase(), deleted when
+     * the notification goes; nothing kept in the page, StaticForge #1005); an older one answers a data URL per id (kept
+     * while listed).
+     */
+    let superImageBase = null;
     function fillNoteImages(N, el) {
+        if (superImageBase === null) { try { superImageBase = typeof N.imageBase === 'function' ? String(N.imageBase() || '') : ''; } catch (_) { superImageBase = ''; } }
         el.querySelectorAll('img[data-img]').forEach((img) => {
             const id = img.dataset.img;
+            if (superImageBase) {
+                img.addEventListener('error', () => img.remove(), { once: true });
+                img.src = superImageBase + encodeURIComponent(id);
+                return;
+            }
             let url = superImages.get(id);
             if (url == null && typeof N.image === 'function') {
                 try { url = N.image(id) || ''; } catch (_) { url = ''; }
