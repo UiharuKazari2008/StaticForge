@@ -324,6 +324,9 @@
     };
 
     function appIconSrc(name, px) {
+        // a Program Icons store picture (an Android program on the DeX desktop, #1005): its 16 px design, @2x for 32
+        const wm = /^\/static_images\/wm-android\/([a-z0-9_-]+?)(?:-lg)?\.png$/.exec(String(name || ''));
+        if (wm) return `/static_images/wm-android/${wm[1]}${px > 16 ? '@2x' : ''}.png`;
         // resolveAppIconPath: public/scripts/comp/modalUtils.js (the server's sized webp)
         return callGlobal('resolveAppIconPath', name, px) || `/static_images/app_icons/${px}/${name.replace(/\.png$/, '.webp')}`;
     }

@@ -10,8 +10,14 @@
  * last session, and the phone's own list is read once the desktop is up and idle, and again when the app
  * says programs changed ('androidapps'). Entries carry the launch id `android:<package>/<activity>`.
  *
+ * Each program looks and is named as on the phone's Start menu (Yukimi, Nov 21): its Windows Mobile icon from the Program
+ * Icons store (#773, localStorage wmAndroidIconStore, kept by Melaton Mobile in the same app; refreshed from
+ * /api/wm-program-icons/manifest once the desktop is idle), else Android's own icon; the name the user gave it
+ * (wmAndroidNames); programs cleared in Remove Programs > Android (wmAndroidHidden) are left out here too.
+ *
  * Only in the DeX window (AndroidDisplay.isDesktop() with the desktop shell and the bridge present).
- * Exports window.melatonAndroidPrograms: items(), tree(), find(launchId), isAndroidId(id), launch(id).
+ * Exports window.melatonAndroidPrograms: items(), tree(), find(launchId), isAndroidId(id), launch(id), and
+ * iconFor({ id?, package, icon? }, px) -> { src, srcset } (the taskbar and the Bell draw programs the same way).
  */
 (function () {
     'use strict';
@@ -29,8 +35,11 @@
 
     const PREFIX = 'android:';
     const LIST_KEY = 'melatonDexAndroidPrograms';
-    // the app's icon handler draws 48..1024 px: 64 covers the 32 px pinned / most-used rows at 2x
-    const ICON_PX = 64;
+    // Melaton Mobile's keys (wmAndroidApps.js): the Program Icons store, the user's names, Remove Programs' unchecked
+    const STORE_KEY = 'wmAndroidIconStore';
+    const NAMES_KEY = 'wmAndroidNames';
+    const HIDDEN_KEY = 'wmAndroidHidden';
+    const WM_SET = /^\/static_images\/wm-android\/[a-z0-9_-]+$/;
 
     let apps = keptList();
     let items = null;
@@ -56,9 +65,36 @@
             }));
     }
 
-    function iconUrl(icon) {
-        if (!icon) return '';
-        return `${icon}${icon.includes('?') ? '&' : '?'}s=${ICON_PX}`;
+    const readJson = (key, fallback) => {
+        try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v == null ? fallback : v; } catch (_) { return fallback; }
+    };
+    let store = null;
+    function storeIcons() {
+        if (!store) { const v = readJson(STORE_KEY, null); store = v && v.icons && typeof v.icons === 'object' ? v.icons : {}; }
+        return store;
+    }
+    /** The program's Windows Mobile icon set (/static_images/wm-android/<name>, no extension), as the phone picks it. */
+    function storeSet(a) {
+        const icons = storeIcons();
+        let e = (a.id && icons[a.id]) || (a.package && icons[a.package]) || null;
+        if (!e && a.package) { const k = Object.keys(icons).find((x) => icons[x] && icons[x].package === a.package); e = k ? icons[k] : null; }
+        return e && typeof e.icon === 'string' && WM_SET.test(e.icon) ? e.icon : null;
+    }
+    /**
+     * A program's picture at px CSS pixels: the store's set (the small design up to 20 px, the -lg one above, 1x / 2x / 4x),
+     * else Android's icon at the size the screen needs (the app's icon handler draws 48..1024 px).
+     */
+    function iconFor(a, px) {
+        const set = a ? storeSet(a) : null;
+        if (set) {
+            const base = `${set}${px > 20 ? '-lg' : ''}`;
+            return { src: `${base}.png`, srcset: `${base}.png 1x, ${base}@2x.png 2x, ${base}@4x.png 4x` };
+        }
+        const icon = a && a.icon ? String(a.icon) : '';
+        if (!icon) return { src: '', srcset: '' };
+        const dpr = root.devicePixelRatio || 1;
+        const s = Math.max(48, Math.min(1024, Math.ceil(px * Math.max(2, dpr))));
+        return { src: `${icon}${icon.includes('?') ? '&' : '?'}s=${s}`, srcset: '' };
     }
 
     function launch(id) {
@@ -76,12 +112,17 @@
         return ok;
     }
 
-    function descriptor(a) {
+    function descriptor(a, names) {
+        const name = (names && typeof names[a.id] === 'string' && names[a.id].trim()) || a.label;
+        const set = storeSet(a);
         return {
             launchId: PREFIX + a.id,
-            text: a.label,
-            fullName: a.label,
-            imageIcon: iconUrl(a.icon),
+            text: name,
+            fullName: name,
+            // a store set is drawn by modalUtils.js renderAppIconImg at the row's size (small / -lg, with its srcset)
+            imageIcon: set ? `${set}.png` : iconFor(a, 32).src,
+            // the Start menu's picture over the user tile
+            image: set ? `${set}-lg@4x.png` : iconFor(a, 64).src,
             icon: 'fas fa-window-maximize',
             desktopOnly: true,
             androidApp: true,
@@ -92,7 +133,9 @@
 
     function build() {
         if (items) return;
-        items = apps.map(descriptor);
+        const names = readJson(NAMES_KEY, {}) || {};
+        const hidden = new Set((readJson(HIDDEN_KEY, []) || []).map(String));
+        items = apps.filter((a) => !hidden.has(a.id)).map((a) => descriptor(a, names));
         byId = new Map(items.map((it) => [it.launchId, it]));
     }
 
@@ -161,9 +204,36 @@
         try { return typeof root.getClientDesktopState === 'function' && root.getClientDesktopState() === 'desktop'; } catch (_) { return false; }
     }
 
-    if (desktopUp()) queueRead();
-    else doc.addEventListener('desktopBootDone', queueRead, { once: true, signal: appScopeSignal });
-    root.addEventListener('androidapps', queueRead, { signal: appScopeSignal });
+    /** The store's manifest once per visit, when the desktop is idle (Melaton Mobile keeps the same copy). */
+    function loadStore() {
+        if (typeof root.fetch !== 'function') return;
+        root.fetch('/api/wm-program-icons/manifest', { credentials: 'same-origin', cache: 'no-store' })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((m) => {
+                if (!m || !m.icons || typeof m.icons !== 'object') return;
+                const next = JSON.stringify(m.icons);
+                if (next === JSON.stringify(storeIcons())) return;
+                store = m.icons;
+                try { localStorage.setItem(STORE_KEY, JSON.stringify({ version: m.version || 0, icons: m.icons })); } catch (_) { /* the phone page keeps its own */ }
+                changed();
+            })
+            .catch(() => { /* the kept copy stays */ });
+    }
 
-    root.melatonAndroidPrograms = { items: allItems, tree, find, isAndroidId, launch };
+    function onDesktop() {
+        queueRead();
+        const idle = root.requestIdleCallback || ((fn) => setTimeout(fn, 1500));
+        idle(loadStore);
+    }
+    if (desktopUp()) onDesktop();
+    else doc.addEventListener('desktopBootDone', onDesktop, { once: true, signal: appScopeSignal });
+    root.addEventListener('androidapps', queueRead, { signal: appScopeSignal });
+    // Melaton Mobile (the phone's window, same storage) changed an icon, a name or the programs shown
+    root.addEventListener('storage', (e) => {
+        if (!e || (e.key !== STORE_KEY && e.key !== NAMES_KEY && e.key !== HIDDEN_KEY)) return;
+        if (e.key === STORE_KEY) store = null;
+        changed();
+    }, { signal: appScopeSignal });
+
+    root.melatonAndroidPrograms = { items: allItems, tree, find, isAndroidId, launch, iconFor };
 })();
