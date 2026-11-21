@@ -909,6 +909,71 @@ const ART_KEY = /^(aem|live|if)\/[A-Za-z0-9_./-]{4,200}$/;
  * Our address for a SiriusXM art key at a width, in the picture's own proportions (aspect = width / height of the
  * original): the image service squashes a picture into whatever box it is asked for, it never letterboxes.
  */
+// ---- the Today panel icons made from the channels' logos (/api/xmradio/tiicon)
+const TI_VERSION = 1;
+const tiMem = new Map(); // `${key}|${scale}` -> Buffer (at most 300)
+const tiBusy = new Map();
+function tiDir() {
+    return path.join(__dirname, '..', '.cache', 'xmradio-ti');
+}
+
+async function tiIcon(key, scale, aspect = 1) {
+    const ck = `${key}|${scale}`;
+    const have = tiMem.get(ck);
+    if (have) return have;
+    if (tiBusy.has(ck)) return tiBusy.get(ck);
+    const job = (async () => {
+        const file = path.join(tiDir(), `${crypto.createHash('sha1').update(`${TI_VERSION}|${ck}`).digest('hex')}.png`);
+        let body = await fs.promises.readFile(file).catch(() => null);
+        if (!body) {
+            // the logo at its own shape (a stored aspect, 5:4 for most), so nothing is stretched
+            const r = await fetch(imageUrl(key, 480, 'png', Math.round(480 / aspect)), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+            if (!r.ok) throw new Error(`logo ${r.status}`);
+            body = await drawTiIcon(Buffer.from(await r.arrayBuffer()), scale);
+            await fs.promises.mkdir(tiDir(), { recursive: true }).catch(() => {});
+            await fs.promises.writeFile(file, body).catch(() => {});
+        }
+        tiMem.set(ck, body);
+        if (tiMem.size > 300) tiMem.delete(tiMem.keys().next().value);
+        return body;
+    })().finally(() => tiBusy.delete(ck));
+    tiBusy.set(ck, job);
+    return job;
+}
+
+/** The logo cropped, fitted bottom-aligned into the icon box (76 per 86 wide), its mirror fading below; per 1x: 43 x 57. */
+async function drawTiIcon(logo, scale) {
+    const sharp = require('sharp');
+    const k = scale / 2;
+    const W = Math.round(86 * k);
+    const H = Math.round(113 * k);
+    const A = Math.round(76 * k);
+    const R = Math.round(26 * k);
+    const trimmed = await sharp(logo).ensureAlpha().trim({ threshold: 8 }).png().toBuffer().catch(() => logo);
+    const art = await sharp(trimmed).resize(A, A, { fit: 'inside', kernel: 'lanczos3' }).png().toBuffer({ resolveWithObject: true });
+    const w = art.info.width;
+    const h = art.info.height;
+    const left = Math.round(5 * k + (A - w) / 2);
+    const top = Math.round(10 * k + (A - h));
+    const rows = Math.min(R, h);
+    const flipped = await sharp(art.data).flip().extract({ left: 0, top: 0, width: w, height: rows }).ensureAlpha().raw().toBuffer();
+    for (let y = 0; y < rows; y++) {
+        const f = 0.4 * (1 - y / rows);
+        for (let x = 0; x < w; x++) { const i = (y * w + x) * 4 + 3; flipped[i] = Math.round(flipped[i] * f); }
+    }
+    const mirror = await sharp(flipped, { raw: { width: w, height: rows, channels: 4 } }).png().toBuffer();
+    return sharp({ create: { width: W, height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+        .composite([{ input: art.data, left, top }, { input: mirror, left, top: top + h + Math.max(1, Math.round(k)) }])
+        .png({ palette: true, quality: 90, effort: 7, compressionLevel: 9 })
+        .toBuffer();
+}
+
+/** The address of a channel's Today panel icon (a 4x drawing; the panel shows it at 43 x 57). */
+function tiIconPath(key, aspect = 1) {
+    const a = Math.round(Math.max(0.2, Math.min(5, Number(aspect) || 1)) * 1000) / 1000;
+    return ART_KEY.test(String(key || '')) ? `/api/xmradio/tiicon?k=${encodeURIComponent(key)}&a=${a}&x=4&v=${TI_VERSION}` : '';
+}
+
 function artPath(key, size = 240, format = 'jpeg', aspect = 1) {
     const k = String(key || '');
     if (!ART_KEY.test(k)) return '';
@@ -936,7 +1001,7 @@ function describeTune(j) {
     const logo = pickImg(im.logo && im.logo.aspect_5x4) || pickImg(im.tile && im.tile.aspect_1x1);
     const ref = imgRef(logo, 1.25);
     if (ref && lineupCache) { lineupCache.logos = lineupCache.logos || {}; const had = artRef(lineupCache.logos[j.id], 1.25); if (had.u !== ref.u) { lineupCache.logos[j.id] = ref; saveLineup(); } }
-    return { id: j.id, type: j.type, logo: ref ? artPath(ref.u, 240, 'png', ref.a) : '', skipLimits: j.skipLimits || null };
+    return { id: j.id, type: j.type, logo: ref ? artPath(ref.u, 240, 'png', ref.a) : '', tiIcon: ref ? tiIconPath(ref.u, ref.a) : '', skipLimits: j.skipLimits || null };
 }
 
 function sweepStreams() {
@@ -1166,6 +1231,23 @@ function mount(app, authMiddleware) {
         res.set('Content-Type', hit.type);
         res.set('Cache-Control', 'private, max-age=86400');
         res.send(hit.body);
+    });
+    // a channel's logo as a Windows Mobile 6.5 Today panel icon (Yukimi, Nov 21 2026: "you need to crop them, optimise
+    // them and add their reflection like other apps have, cache them"): the logo trimmed of its empty edge, fitted to
+    // the panel icon's box and standing on its bottom, its fading mirror below (as scripts/generate-wm-xmradio-art.js
+    // draws the apps' own: 86 x 113 per 2x), a small palette PNG; made once per logo and scale, kept on disk and in
+    // memory, sent to be kept a year (the address carries the logo's key and the drawing's version)
+    app.get('/api/xmradio/tiicon', authMiddleware, admin, async (req, res) => {
+        const k = String(req.query.k || '');
+        const scale = [1, 2, 4].includes(Number(req.query.x)) ? Number(req.query.x) : 4;
+        const aspect = Math.max(0.2, Math.min(5, Number(req.query.a) || 1));
+        if (!ART_KEY.test(k)) { res.status(404).end(); return; }
+        try {
+            const body = await tiIcon(k, scale, aspect);
+            res.set('Content-Type', 'image/png');
+            res.set('Cache-Control', 'private, max-age=31536000, immutable');
+            res.send(body);
+        } catch (_) { res.status(502).end(); }
     });
     app.get('/api/xmradio/eco/:rid/:file', authMiddleware, admin, (req, res) => { void ecoFile(String(req.params.rid), String(req.params.file), res); });
     app.get('/api/xmradio/key/:sid/:keyId', authMiddleware, admin, (req, res) => { void streamKey(String(req.params.sid), String(req.params.keyId), res); });

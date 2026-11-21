@@ -163,6 +163,36 @@
         return !unchecked.includes(key);
     }
 
+    /**
+     * A channel's Today panel icon (Yukimi, Nov 21 2026: cropped, optimised, with its reflection like other apps, cached):
+     * the server's drawing of the logo (/api/xmradio/tiicon, made once, kept a year), from the logo's own address.
+     */
+    function tiIconOf(c) {
+        if (!c) return '';
+        if (c.tiIcon) return c.tiIcon;
+        if (!c.logo) return '';
+        let u = null;
+        try { u = new URL(c.logo, location.href); } catch (_) { return ''; }
+        const k = u.searchParams.get('k');
+        if (!k) return '';
+        const w = Number(u.searchParams.get('s')) || 240;
+        const h = Number(u.searchParams.get('h')) || w;
+        return `/api/xmradio/tiicon?k=${encodeURIComponent(k)}&a=${Math.round((w / h) * 1000) / 1000}&x=4&v=1`;
+    }
+    // the next and previous pages' icons, read once ahead so a page turn shows its logo at once
+    const tiWarm = new Set();
+    function warmTiIcons(ids, at) {
+        if (!ids.length) return;
+        [at, at + 1, at - 1].map((i) => ids[(i + ids.length) % ids.length]).forEach((id) => {
+            const url = tiIconOf(chan(id));
+            if (!url || tiWarm.has(url)) return;
+            tiWarm.add(url);
+            const img = new Image();
+            img.decoding = 'async';
+            img.src = url;
+        });
+    }
+
     /** A tap on a Today page: tune it here (Direct Tune without Launch) or open the radio on it. */
     function todayTap(id) {
         if (!id) return;
@@ -1731,6 +1761,7 @@
         if (!ids.length) {
             return { label: 'xm radio', icon: 'x:app-xmradio-lg', pages: [{ title: 'XM Radio', line2: cache.lineup ? 'Tap to choose a channel' : 'Reading the channels...', line3: '' }], softKey: { label: 'Radio', action: go }, onTap: go };
         }
+        warmTiIcons(ids, Math.max(0, ids.indexOf(todayPageId())));
         // the superscript by the panel's name: "rec" while a recording runs, else the channel's number only while the
         // radio is tuned to it and playing (Yukimi, Nov 21 2026)
         const cur = onAir(radio.channelId) ? chan(radio.channelId) : null;
@@ -1746,7 +1777,7 @@
                 return {
                     // the song's picture at the left; the channel's logo is the panel icon at the top right
                     // (Yukimi, Nov 21 2026), the radio's own icon only for a channel with no logo
-                    icon: c.logo || undefined,
+                    icon: tiIconOf(c) || undefined,
                     image: pic || undefined,
                     imageAspect: 1,
                     title: now ? (now.ad ? 'Commercial' : now.t || c.name) : c.name,
