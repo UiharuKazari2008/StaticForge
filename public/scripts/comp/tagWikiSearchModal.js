@@ -5315,8 +5315,17 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
         // Search input - Enter key to search (skip when address bar is in edit mode)
         if (this.searchInput) {
+            // the address box is a form (templates/grimoire.html): Go on an on-screen keyboard submits it; the
+            // browser's own submission never runs (it would load the app page again)
+            if (this.searchInput.form) {
+                this.searchInput.form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    if (this.addressBar?.classList.contains('edit-active')) this.commitAddressFromInput();
+                    else this.performSearch();
+                });
+            }
             this.searchInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+                if ((e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey && !e.ctrlKey && !e.altKey) {
                     e.preventDefault();
                     if (this.addressBar?.classList.contains('edit-active')) {
                         this.commitAddressFromInput();

@@ -79,16 +79,17 @@
                         <span class="address-path" id="grimoireAddressPath">edtx://en.grimoire.jp/index.dtxt</span>
                     </div>
                     <!-- Lower / hidden edit layer (contains the original input + refresh for compatibility) -->
-                    <div class="address-edit-layer hidden" id="grimoireAddressEdit">
+                    <!-- a form of its own: an on-screen keyboard offers Go (not Next to the window's other boxes) -->
+                    <form class="address-edit-layer hidden" id="grimoireAddressEdit" action="#" novalidate>
                         <input type="text" id="tagWikiSearchInput"
                             class="form-control colored tag-wiki-search-bar toolbar-input-segment"
                             placeholder="Search, a wiki address, or a site such as bing.com"
-                            autocapitalize="false" autocorrect="false" spellcheck="false">
+                            autocapitalize="false" autocorrect="false" spellcheck="false" enterkeyhint="go">
                         <button type="button" id="tagWikiSearchRefreshBtn" class="btn-secondary toolbar-input-segment"
                             title="Refresh">
                             <i class="fas fa-sync"></i>
                         </button>
-                    </div>
+                    </form>
                 </div>
                 <button type="button" class="btn-secondary" id="grimoireAddressSiteBtn" title="Menu">
                     <i class="fas fa-bars"></i>

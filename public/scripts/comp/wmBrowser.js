@@ -4259,11 +4259,11 @@
             <div class="wmb-bar">
                 <button type="button" class="wmb-back" aria-label="Back" hidden>${img4('ie-back2')}</button>
                 <span class="wmb-lock" aria-hidden="true"></span>
-                <div class="wmb-addr-box">
+                <form class="wmb-addr-box" action="#" novalidate>
                     <span class="wmb-addr-ink" aria-hidden="true"></span>
                     <input type="url" class="wmb-addr" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Address">
                     <button type="button" class="wmb-addr-drop" aria-label="Recent addresses" aria-haspopup="menu"></button>
-                </div>
+                </form>
                 <button type="button" class="wmb-wins" aria-label="Windows">${img4('ie-wins')}</button>
                 <button type="button" class="wmb-go" aria-label="Go"></button>
             </div>
@@ -4292,10 +4292,28 @@
         for (const k of WIN_BOXES.concat(['dsapArea', 'deskPage', 'deskDsap', 'touch'])) Object.defineProperty(els, k, { enumerable: true, get: () => (W.dom ? W.dom[k] : null) });
         wins.forEach(buildDom);
 
+        // The address is a form of its own: Android keyboards (Samsung's on the Fold and the A53) offered "Next"
+        // instead of Go, because the page's other text box (.wmb-ime) followed it, and Next sends no Enter at all
+        // (the letters come as composition, keydown "Unidentified" / 229): focus went to that box and the typed
+        // address was dropped. In its own form there is nothing to go next to, the key is Go, and Go submits.
+        els.addrBox.addEventListener('submit', (e) => { e.preventDefault(); submitAddress(); });
+        // a keyboard that still moves on (Next, Done) with a new address and no finger elsewhere: that was Go
+        let addrPointerAt = 0;
+        document.addEventListener('pointerdown', () => { addrPointerAt = performance.now(); }, { capture: true, passive: true, signal: appScopeSignal });
         els.addr.addEventListener('focus', () => { addrEditing = true; setTimeout(() => els.addr.select(), 0); });
-        els.addr.addEventListener('blur', () => { setTimeout(() => { addrEditing = false; renderAddress(); }, 150); });
+        els.addr.addEventListener('blur', (e) => {
+            const to = e.relatedTarget;
+            const typed = els.addr.value.trim();
+            if (addrEditing && typed && typed !== (entry().url || '') && performance.now() - addrPointerAt > 600
+                && to && to !== els.addr && to.matches && to.matches('input, textarea, [contenteditable="true"]')) {
+                if (typeof to.blur === 'function') to.blur();
+                submitAddress();
+                return;
+            }
+            setTimeout(() => { addrEditing = false; renderAddress(); }, 150);
+        });
         els.addr.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); submitAddress(); }
+            if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); submitAddress(); }
             if (e.key === 'Escape') { e.preventDefault(); addrEditing = false; els.addr.blur(); renderAddress(); }
         });
         // the green arrow: Go while the address is being edited, Refresh otherwise (6.5 device: it
