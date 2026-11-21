@@ -1152,6 +1152,9 @@
             const doneSoon = () => requestAnimationFrame(() => requestAnimationFrame(() => { try { if (window.AndroidBars && window.AndroidBars.tapDone) window.AndroidBars.tapDone(); } catch (_) { /* older app */ } }));
             if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); doneSoon(); return; }
             if (role === 'shown') { doneSoon(); return; }
+            // the bars' recents (the home strip or soft key bar swiped up and held, a Recent soft key) with Android's
+            // Recents gone with One UI Home: the strip of running programs, the phone's Android ones with them (#1013)
+            if (role === 'recents') { if (!openTaskSwitcher('android')) goHome(); doneSoon(); return; }
             // a link or button of a status bubble the app drew (#871): the bubble opened here and that pressed
             if (role.startsWith('bubble:')) {
                 let o = null;
@@ -2508,7 +2511,49 @@
     // the shell's own screens are not tasks). Close all asks as the device's End All Tasks does.
     // A tap switches, tap-and-hold on a program gives Task Manager's menu (Switch To, End Task).
     // It comes and goes in one paint; it is a layer (closeTopLayer, desiredDepth): back closes it.
-    const taskSwitch = { el: null, open: false, mru: [], held: false, timer: null, asking: false };
+    const taskSwitch = { el: null, open: false, mru: [], held: false, timer: null, asking: false, from: '' };
+
+    // The phone's Android programs in the strip (Yozora #1013): with One UI Home off, Android's Recents went with it and
+    // Melaton Mobile is the launcher, so the strip lists them too (DSApp AndroidTasks: the shell's task list, read only
+    // when the strip opens or the bars' recents gesture asks; 'androidtasks' brings the answer). Ids 'android-task:<id>'.
+    // A tap brings the program forward (AndroidTasks.front), End Task closes it as Recents' swipe does (remove).
+    const androidTs = { list: null, req: 0, byId: new Map() };
+    const ANDROID_TASK = 'android-task:';
+
+    function androidTasksBridge() {
+        const b = window.AndroidTasks;
+        return b && typeof b.list === 'function' ? b : null;
+    }
+
+    /** The app's kept answer (no shell call): read again each time the strip opens. */
+    function androidTasksRead() {
+        const b = androidTasksBridge();
+        if (!b) { androidTs.list = null; return; }
+        try { androidTs.list = JSON.parse(b.list()); } catch (_) { androidTs.list = null; }
+    }
+
+    function androidTasksRefresh() {
+        const b = androidTasksBridge();
+        if (b) try { b.refresh(`ts${++androidTs.req}`); } catch (_) { /* older app */ }
+    }
+
+    window.addEventListener('androidtasks', (e) => {
+        const l = e.detail && e.detail.list;
+        if (l && typeof l === 'object') androidTs.list = l;
+        if (taskSwitch.open) taskSwitcherRender();
+    }, { signal: appScopeSignal });
+
+    /** One Android task as a strip item: the name and Windows Mobile icon Programs gives it, else Android's. */
+    function androidTaskItem(t) {
+        const id = `${ANDROID_TASK}${t.taskId}`;
+        const reg = t.appId ? apps.get(`android:${t.appId}`) : null;
+        let icon = (reg && reg.icon) || (window.wmAndroidApps && window.wmAndroidApps.wmIcon ? window.wmAndroidApps.wmIcon(t.package) : null) || t.icon || 'app-android';
+        // the store's sets have a 32-unit (-lg) pair, as the shell's own art
+        if (WM_SET.test(icon) && !/-lg$/.test(icon)) icon = `${icon}-lg`;
+        const item = { id, title: (reg && (reg.startLabel || reg.title)) || t.label || t.package, icon, android: { taskId: t.taskId, package: t.package } };
+        androidTs.byId.set(id, item.android);
+        return item;
+    }
 
     function taskSwitcherNote() {
         const id = root.dataset.wmApp;
@@ -2524,10 +2569,19 @@
         try { if (window.wmTaskManager) list = window.wmTaskManager.running(); } catch (_) { list = null; }
         if (!list) list = openedApps.filter((id) => apps.has(id)).map((id) => ({ id, title: apps.get(id).startLabel || apps.get(id).title }));
         const rank = (id) => { const i = taskSwitch.mru.indexOf(id); return i < 0 ? 1e6 : i; };
-        return list.filter((t) => !SHELL_SCREENS.has(t.id))
+        const own = list.filter((t) => !SHELL_SCREENS.has(t.id))
             .map((t, i) => ({ id: t.id, title: t.title, icon: (apps.get(t.id) || {}).icon || 'app-programs', i }))
             .sort((a, b) => (rank(a.id) - rank(b.id)) || (a.i - b.i))
             .map((t) => ({ id: t.id, title: t.title, icon: t.icon }));
+        // the phone's Android programs, most recent first, with Melaton Mobile's own where its task is among them
+        // (brought up by the bars' recents gesture it is in front only for the strip: the program left comes first)
+        const and = androidTs.list;
+        if (!and || !Array.isArray(and.tasks) || !and.tasks.length) return own;
+        androidTs.byId.clear();
+        const items = and.tasks.map(androidTaskItem);
+        let at = Math.max(0, Math.min(items.length, Number(and.selfIndex) || 0));
+        if (taskSwitch.from === 'android' && at === 0) at = Math.min(1, items.length);
+        return [...items.slice(0, at), ...own, ...items.slice(at)];
     }
 
     /** The hold on Start may bring the switcher: not under the lock screen, a message box or a wait. */
@@ -2568,10 +2622,14 @@
         }
     }
 
-    function openTaskSwitcher() {
-        if (taskSwitch.open) return true;
+    function openTaskSwitcher(from = '') {
+        if (taskSwitch.open) { if (from) { taskSwitch.from = from; androidTasksRead(); taskSwitcherRender(); } return true; }
         if (!taskSwitcherCanOpen()) return false;
         closeMenus(true);
+        taskSwitch.from = from;
+        androidTasksRead();
+        // the bars' gesture asked the app for the list already; the Start hold asks here
+        if (from !== 'android') androidTasksRefresh();
         if (!taskSwitch.el) {
             const el = document.createElement('div');
             el.className = 'wm-taskstrip';
@@ -2633,6 +2691,8 @@
 
     function taskSwitcherChoose(id) {
         closeTaskSwitcher(true);
+        const at = id && androidTs.byId.get(id);
+        if (at) { androidTaskFront(at); syncHistory(); return; }
         if (id && id !== current && apps.has(id)) open(id, { fromStart: true });
         else syncHistory();
     }
@@ -2645,9 +2705,59 @@
         ]);
     }
 
+    /** An Android program brought forward; when Android will not, Windows Mobile's own words for it. */
+    function androidTaskFront(t) {
+        const b = androidTasksBridge();
+        if (!b) return;
+        const req = `tf${++androidTs.req}`;
+        const onResult = (e) => {
+            const d = e.detail || {};
+            if (d.id !== req) return;
+            window.removeEventListener('androidtasksresult', onResult);
+            if (d.result && d.result.ok) return;
+            void messageBox({ title: 'Error', icon: 'error', text: `Cannot open the program. ${(d.result && d.result.error) || ''}`.trim() });
+        };
+        window.addEventListener('androidtasksresult', onResult, { signal: appScopeSignal });
+        try { b.front(Number(t.taskId), String(t.package || ''), req); } catch (_) { window.removeEventListener('androidtasksresult', onResult); }
+    }
+
+    /** Android programs closed one after another (each is one shell call), then the list read again. */
+    function androidTasksEnd(list) {
+        const b = androidTasksBridge();
+        if (!b || !list.length) return Promise.resolve();
+        return new Promise((resolve) => {
+            let left = list.length;
+            const reqs = new Set();
+            const onResult = (e) => {
+                const d = e.detail || {};
+                if (!reqs.has(d.id)) return;
+                reqs.delete(d.id);
+                if (--left > 0) return;
+                window.removeEventListener('androidtasksresult', onResult);
+                androidTasksRefresh();
+                resolve();
+            };
+            window.addEventListener('androidtasksresult', onResult, { signal: appScopeSignal });
+            for (const t of list) {
+                const req = `te${++androidTs.req}`;
+                reqs.add(req);
+                try { b.remove(Number(t.taskId), req); } catch (_) { reqs.delete(req); left--; }
+            }
+            if (left <= 0) { window.removeEventListener('androidtasksresult', onResult); resolve(); }
+            // the strip shows them gone at once
+            if (androidTs.list && Array.isArray(androidTs.list.tasks)) {
+                const gone = new Set(list.map((t) => Number(t.taskId)));
+                androidTs.list = { ...androidTs.list, tasks: androidTs.list.tasks.filter((t) => !gone.has(Number(t.taskId))) };
+            }
+        });
+    }
+
     /** End programs Task Manager's way (its end(): a hosted program closes its windows itself). */
     async function taskSwitcherEnd(ids) {
         const tm = window.wmTaskManager;
+        const android = ids.map((id) => androidTs.byId.get(id)).filter(Boolean);
+        ids = ids.filter((id) => !androidTs.byId.has(id));
+        void androidTasksEnd(android);
         await busy(() => {
             ids.forEach((id) => {
                 try { if (tm && typeof tm.end === 'function') tm.end(id); else endApp(id); } catch (err) { console.warn('[wmShell] end task', id, err); }
