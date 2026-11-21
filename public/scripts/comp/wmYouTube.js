@@ -1169,10 +1169,10 @@
         const nv = nativePlayer();
         if (!nv) return;
         const p = player;
-        // (playing = the picture really moves: not paused, ended or held up buffering; Yukimi, Nov 21 2026: "it has to
-        // actually be playing video")
+        // (playing = started and not paused by the viewer or ended; a moment of buffering still counts - Yukimi, Nov 21
+        // 2026: "if I playing the video literally nothing should ever stop it and it should always pip")
         const v = els && els.video;
-        const moving = !!(v && !v.paused && !v.ended && v.readyState > 2 && !plStalled);
+        const moving = !!(v && !v.paused && !v.ended);
         const on = !!(p && canHand(p) && p.url && (p.handed || p.popped || p.popAsk || (shown && !p.suspended && moving)));
         const said = on ? JSON.stringify({ url: new URL(p.url, location.origin).toString(), title: p.title, subtitle: p.kind === 'ytr' ? p.channel || '' : modeLabel(p.mode), audioOnly: p.mode === 'audio', vod: p.kind === 'ytr' }) : '';
         if (said === plTold) return;
@@ -1195,8 +1195,6 @@
         if (!p || p.kind !== 'ytr' || !els || !nv || typeof nv.at !== 'function') return;
         try { nv.at(Math.round(els.video.currentTime * 1000), !els.video.paused); } catch (_) { /* an older app build */ }
     }
-    /** The page's video is held up ('waiting') until it plays again. */
-    let plStalled = false;
     /** The native player gives the stream back to the page (Videos is in front again). */
     function plTakeBack() {
         const p = player;
@@ -2147,7 +2145,6 @@
         try { if (window.screen && screen.orientation) screen.orientation.addEventListener('change', plTurned, { signal: appScopeSignal }); } catch (_) { /* no orientation API */ }
         window.addEventListener('resize', plTurned, { signal: appScopeSignal });
         v.addEventListener('playing', () => {
-            plStalled = false;
             if (player && player.state === 'live') { player.tries = 0; plStatus('', false); }
             plHud(!els.hud.hidden);
             plTell();
@@ -2156,7 +2153,7 @@
         v.addEventListener('seeked', plAt);
         v.addEventListener('timeupdate', ytrTime);
         v.addEventListener('ended', () => { const p = player; if (p && p.kind === 'ytr') { p.best = 100; stopPlayer(); } });
-        v.addEventListener('waiting', () => { plStalled = true; if (player && player.state === 'live') plStatus('Buffering...', true); plTell(); });
+        v.addEventListener('waiting', () => { if (player && player.state === 'live') plStatus('Buffering...', true); });
         v.addEventListener('error', () => { if (player && !player.hls && player.state === 'live') plLost(); });
         // news from the app's native player: it took the stream (another Android app came up), its floating
         // window was tapped (back to this program), or it stopped (closed there, the stream ended or was lost)
@@ -2181,7 +2178,13 @@
             if (player.handed || active) { plTakeBack(); plSuspend(false); }
         }, { signal: appScopeSignal });
         // the screen going off stops a picture mode's fetching; Audio First plays on
-        window.addEventListener('melatonscreen', () => { if (player && player.mode !== 'audio' && !player.handed) plSuspend(document.documentElement.dataset.screenOff !== undefined); }, { signal: appScopeSignal });
+        // (with the Dreamscape app the screen going off stops nothing: the app's player carries the sound on and the page
+        // takes it back when it is in front again)
+        window.addEventListener('melatonscreen', () => {
+            const off = document.documentElement.dataset.screenOff !== undefined;
+            if (off && nativePlayer() && player && canHand(player)) return;
+            if (player && player.mode !== 'audio' && !player.handed) plSuspend(off);
+        }, { signal: appScopeSignal });
     }
 
     const refreshKeys = () => { if (ws) { ws.refreshSoftKeys(); ws.refreshTitleAction(); } };
