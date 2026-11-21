@@ -56,7 +56,6 @@
     };
     const BELL_RING = bellArt('wincal-116-16.png');
     const BELL_SEEN = bellArt('wincal-116-seen-16.png');
-    const IMAGE_CAP = 80;
     const PEEKS = 2;           // a collapsed stack shows this many more notifications as one-line peeks
     const MIN_W = 300;
     const MIN_H = 220;
@@ -70,7 +69,6 @@
     let reply = null;           // { key, index, label, draft }
     const expanded = new Map(); // notification key -> open (the user's choice; else the newest single one is open)
     const stacks = new Map();   // package -> open (the user's choice; stacks start collapsed)
-    const images = new Map();   // image id -> data URL (AndroidPhoneNotifications.image), newest last
     let clockTimer = 0;
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -349,7 +347,8 @@
 
     /**
      * Where the app serves a picture by id (DSApp imageBase(): its file in the app's cache folder, deleted when the
-     * notification goes; Yukimi, Nov 21: never kept in memory). An older app only has image(id) (a data URL).
+     * notification goes). Pictures are never base64 strings in the page (no-base64-images rule, Yukimi Nov 21 2026): an
+     * older app without imageBase() shows the program's icon in place of a large icon, and no other picture.
      */
     let imageBaseUrl = null;
     function imageBase() {
@@ -370,33 +369,14 @@
     function afterRender() {
         const base = imageBase();
         frame.querySelectorAll('img[data-img]').forEach((img) => {
-            const id = img.dataset.img;
-            if (base) {
-                // loaded by the WebView from the app's file (no copy kept by the page)
-                const url = base + encodeURIComponent(id);
-                if (img.getAttribute('src') !== url) {
-                    img.addEventListener('error', () => pictureMissing(img), { once: true });
-                    img.setAttribute('src', url);
-                }
-                return;
+            if (!base) { pictureMissing(img); return; }
+            // loaded by the WebView from the app's file (no copy kept by the page)
+            const url = base + encodeURIComponent(img.dataset.img);
+            if (img.getAttribute('src') !== url) {
+                img.addEventListener('error', () => pictureMissing(img), { once: true });
+                img.setAttribute('src', url);
             }
-            let url = images.get(id);
-            if (url == null) {
-                url = String(call('image', id) || '');
-                if (url) {
-                    images.set(id, url);
-                    if (images.size > IMAGE_CAP) images.delete(images.keys().next().value);
-                }
-            }
-            if (url && img.getAttribute('src') !== url) img.setAttribute('src', url);
-            else if (!url) pictureMissing(img);
         });
-        // pictures no notification shows any more are let go (an older app's data URLs)
-        if (images.size) {
-            const live = new Set();
-            list.forEach((n) => { [n.large, n.picture].concat((n.messages || []).map((m) => m.avatar)).forEach((id) => { if (id) live.add(id); }); });
-            Array.from(images.keys()).forEach((id) => { if (!live.has(id)) images.delete(id); });
-        }
         frame.querySelectorAll('.android-notify-progress[aria-valuenow] > div').forEach((bar) => {
             const w = `${bar.parentElement.getAttribute('aria-valuenow')}%`;
             if (bar.style.width !== w) bar.style.width = w;

@@ -29,6 +29,9 @@ done, whatever else it achieves.
    - A file you touch leaves with fewer hits than it came with when the fix is in reach; lower the
      baseline with `--update`.
    - Briefs for subagents and workflows name these rules and the check.
+   - **No base64 images** (Yukimi, Nov 21 2026): a picture that can show again is a file with an address (server URL,
+     the app's appassets handler over its cache folder, a revoked blob URL), never a `data:` string; only tiny or
+     shown-once pictures may be inline - `no-base64-images`.
 3. **Behaviour and look:** `ui-standard`, `no-native-browser-ui`, `fix-ui-issues-you-find`, notifications
    and status indicators never silenced to save power.
 
@@ -42,6 +45,7 @@ done, whatever else it achieves.
 @.cursor/rules/phone-power-server.mdc
 @.cursor/rules/phone-power-native.mdc
 @.cursor/rules/server-push-not-polling.mdc
+@.cursor/rules/no-base64-images.mdc
 @.cursor/rules/app-scope-ownership.mdc
 @.cursor/rules/no-retype-on-move.mdc
 @.cursor/rules/no-stash-to-pretty-commit.mdc
