@@ -34,6 +34,10 @@ const args = process.argv.slice(2);
 const viewerFile = args.includes('--viewer') ? path.resolve(args[args.indexOf('--viewer') + 1]) : '';
 const keep = args.includes('--keep');
 const mobile = args.includes('--mobile');
+// --chrome <bin>: the Chromium the private Alchemy runs (an Alchemy build, #993); the viewer stays on CHROME_BIN
+const serviceChrome = args.includes('--chrome') ? path.resolve(args[args.indexOf('--chrome') + 1]) : '';
+let patched = false;
+try { patched = !!serviceChrome && JSON.parse(fs.readFileSync(path.join(path.dirname(serviceChrome), 'alchemy-patches.json'), 'utf8')).features.includes('AlchemyEmulatedScaleCompositor'); } catch (_) {}
 // --shots <dir>: the viewer's picture before, during and after the scroll, and scrolling back
 const shotsDir = args.includes('--shots') ? path.resolve(args[args.indexOf('--shots') + 1]) : '';
 async function shot(page, name) {
@@ -112,16 +116,19 @@ async function main() {
         ALCHEMY_CDP_PORT: String(cdpPort)
     });
     if (viewerFile) env.ALCHEMY_VIEWER_FILE = viewerFile;
+    if (serviceChrome) env.CHROME_BIN = serviceChrome;
+    else delete env.CHROME_BIN;
     const service = spawn(process.execPath, ['server.js'], { cwd: SERVICE_DIR, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let log = '';
     service.stdout.on('data', (d) => { log += d; });
     service.stderr.on('data', (d) => { log += d; });
     const pageServer = http.createServer((req, res) => {
         res.writeHead(200, { 'content-type': 'text/html' });
-        res.end(PAGE);
+        // ?m=1: a phone page (width=device-width), as mobile sites are
+        res.end(/[?&]m=1/.test(req.url) ? PAGE.replace('<head>', '<head><meta name="viewport" content="width=device-width, initial-scale=1">') : PAGE);
     }).listen(0, '127.0.0.1');
     await new Promise((resolve) => pageServer.once('listening', resolve));
-    const pageUrl = 'http://127.0.0.1:' + pageServer.address().port + '/';
+    const pageUrl = 'http://127.0.0.1:' + pageServer.address().port + '/' + (mobile ? '?m=1' : '');
     let viewerBrowser = null;
     let relayServer = null;
     try {
@@ -161,10 +168,26 @@ async function main() {
             await phone.evaluate(() => window.postMessage({ type: 'grimoire-browser-scale', value: 2.625 }, '*'));
             const m = await waitFor(async () => {
                 const s = await phone.evaluate(() => (window.__alchemyViewerStats ? window.__alchemyViewerStats() : null));
-                return s && s.frames > 0 && s.still ? s : null;
+                // the Alchemy build's frames already have the phone's pixels: no still comes
+                return s && s.frames > 0 && (patched ? s.frame.width > 412 : s.still) ? s : null;
             }, 20000, 'phone frame and still').catch(async (err) => { console.log(JSON.stringify(await phone.evaluate(() => window.__alchemyViewerStats()))); throw err; });
-            check('phone frames are CSS-sized, no scrolling ahead', m.frame.width === 412 && m.frame.p === 0, m.frame.width + 'x' + m.frame.height + ' p=' + m.frame.p);
-            check('phone still at device pixels', m.still.width === Math.round(412 * 2.625), JSON.stringify(m.still));
+            // a finger tap (wmBrowser.js posts grimoire-browser-touch in the viewer's CSS pixels) lands where it is shown
+            const alchemyPhone = await puppeteer.connect({ browserURL: 'http://127.0.0.1:' + cdpPort, defaultViewport: null });
+            const remotePhone = (await alchemyPhone.pages()).find((p) => p.url() === pageUrl);
+            await phone.evaluate(() => {
+                window.postMessage({ type: 'grimoire-browser-touch', kind: 'start', x: 200, y: 300, t: Date.now() }, '*');
+                setTimeout(() => window.postMessage({ type: 'grimoire-browser-touch', kind: 'end', x: 200, y: 300, t: Date.now(), tap: true }, '*'), 60);
+            });
+            await sleep(1200);
+            const taps = await remotePhone.evaluate(() => window.clicks);
+            check('a tap lands where it is shown', taps.length === 1 && Math.abs(taps[0][0] - 200) <= 2 && Math.abs(taps[0][1] - 300) <= 2, JSON.stringify(taps));
+            alchemyPhone.disconnect();
+            if (patched) {
+                check('phone frames at device pixels (Alchemy build)', Math.abs(m.frame.width - Math.round(412 * 2.625)) <= 1 && m.frame.p === 0, m.frame.width + 'x' + m.frame.height + ' p=' + m.frame.p);
+            } else {
+                check('phone frames are CSS-sized, no scrolling ahead', m.frame.width === 412 && m.frame.p === 0, m.frame.width + 'x' + m.frame.height + ' p=' + m.frame.p);
+                check('phone still at device pixels', m.still.width === Math.round(412 * 2.625), JSON.stringify(m.still));
+            }
             return;
         }
         viewerBrowser = await puppeteer.launch({

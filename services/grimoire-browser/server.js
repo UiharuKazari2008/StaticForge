@@ -164,6 +164,22 @@ function readDisplayZoom() {
 let wantedZoom = readDisplayZoom();
 let launchedZoom = 1;
 
+// #993: Alchemy's own Chromium build (services/grimoire-browser/chromium-patches) renders an emulated page at the
+// emulated scale and captures it at that size, so each tab gets its viewer's device pixels by emulation alone: no
+// default zoom, no relaunch, Grimoire's zoom and the phone exact too. The build leaves alchemy-patches.json next to
+// its binary; stock Chromium keeps the default-zoom path above.
+const EMULATED_SCALE_FEATURE = 'AlchemyEmulatedScaleCompositor';
+let emulatedScale = false;
+
+function patchedBuild(bin) {
+    try {
+        const info = JSON.parse(fs.readFileSync(path.join(path.dirname(fs.realpathSync(bin)), 'alchemy-patches.json'), 'utf8'));
+        return Array.isArray(info.features) && info.features.includes(EMULATED_SCALE_FEATURE);
+    } catch (_) {
+        return false;
+    }
+}
+
 function noteDesktopPixelRatio(dpr) {
     const zoom = Math.max(DISPLAY_ZOOM_MIN, Math.min(DISPLAY_ZOOM_MAX, Math.round((Number(dpr) || 1) * 100) / 100));
     if (Math.abs(zoom - wantedZoom) < 0.01) return;
@@ -1033,6 +1049,8 @@ function stillScale(session) {
     // only the phone asks for stills (still-scale); a zoomed desktop session keeps plain frames
     let scale = session.clientScale || 0;
     scale = Math.min(scale, STILL_MAX_SCALE, Math.sqrt(STILL_MAX_PIXELS / (cssW * cssH)));
+    // the Alchemy build's frames already have the phone's pixels (#993): a still would add nothing
+    if (emulatedScale && (session.pxPerDip || 1) >= scale - 0.05) return 0;
     return scale >= 1.1 ? scale : 0;
 }
 
@@ -1256,13 +1274,15 @@ const MSG_TILES = 3;
 
 function frameHeader(session, meta) {
     const m = meta || session.meta || {};
-    const k = session.cssPerPx ? 1 / session.cssPerPx : 0;
+    // CSS pixels per DIP (1 / default zoom) and frame pixels per DIP (the Alchemy build's emulated scale)
+    const cssPerDip = session.cssPerPx || 0;
+    const k = cssPerDip ? (session.pxPerDip || 1) / cssPerDip : 0;
     const desktop = !!k && Math.abs((Number(m.pageScaleFactor) || 1) - 1) < 0.001;
     return {
         t: Math.round((Number(m.timestamp) || Date.now() / 1000) * 1000),
         // the screencast's offsets are DIP; the page's scroll reports (and scroll-to) are CSS pixels
-        sx: Math.round((Number(m.scrollOffsetX) || 0) / (k || 1) * 100) / 100,
-        sy: Math.round((Number(m.scrollOffsetY) || 0) / (k || 1) * 100) / 100,
+        sx: Math.round((Number(m.scrollOffsetX) || 0) * (cssPerDip || 1) * 100) / 100,
+        sy: Math.round((Number(m.scrollOffsetY) || 0) * (cssPerDip || 1) * 100) / 100,
         k: desktop ? k : 0,
         p: desktop ? 1 : 0
     };
@@ -2213,7 +2233,7 @@ function ensureBrowser() {
 // relaunches when nothing is open (no session, every page blank: not Hoshino's Alchemy-owned tab), before a new tab.
 async function relaunchForZoom() {
     if (!browser || !browser.connected || sessions.size || browserLaunch) return;
-    if (Math.abs(wantedZoom - launchedZoom) < 0.01) return;
+    if (emulatedScale || Math.abs(wantedZoom - launchedZoom) < 0.01) return;
     let pages = [];
     try { pages = await browser.pages(); } catch (_) { return; }
     if (pages.some((page) => !/^(about:blank|chrome:\/\/new-?tab)/i.test(page.url() || 'about:blank'))) return;
@@ -2396,13 +2416,14 @@ function setProfilePrefs() {
         if (err.code !== 'ENOENT') return;
     }
     // Chromium keeps zoom levels as log base 1.2 of the factor (#990: the default zoom is the desktop pixel ratio)
-    const zoomLevel = Math.abs(wantedZoom - 1) < 0.001 ? 0 : Math.log(wantedZoom) / Math.log(1.2);
+    const zoom = emulatedScale ? 1 : wantedZoom;
+    const zoomLevel = Math.abs(zoom - 1) < 0.001 ? 0 : Math.log(zoom) / Math.log(1.2);
     const partition = prefs.partition && typeof prefs.partition === 'object' ? prefs.partition : {};
     const levels = partition.default_zoom_level && typeof partition.default_zoom_level === 'object' ? partition.default_zoom_level : {};
     // per-host levels would beat the default on their sites; nothing in Alchemy sets one on purpose
     const hostLevels = partition.per_host_zoom_levels && typeof partition.per_host_zoom_levels === 'object' ? partition.per_host_zoom_levels : {};
     const hostsClear = !Object.values(hostLevels).some((v) => v && typeof v === 'object' && Object.keys(v).length);
-    launchedZoom = wantedZoom;
+    launchedZoom = zoom;
     if (prefs.enable_do_not_track === true && Math.abs((Number(levels.x) || 0) - zoomLevel) < 1e-6 && hostsClear) return;
     prefs.enable_do_not_track = true;
     levels.x = zoomLevel;
@@ -2417,6 +2438,7 @@ async function launchBrowser() {
     if (!chromeBin) throw new Error('Chrome binary not found. Set CHROME_BIN.');
     fs.mkdirSync(PROFILE_DIR, { recursive: true, mode: 0o700 });
     fs.chmodSync(PROFILE_DIR, 0o700);
+    emulatedScale = patchedBuild(chromeBin);
     setProfilePrefs();
     extensions = readExtensions();
     const extensionDirs = extensions.map((ext) => ext.dir).join(',');
@@ -2438,6 +2460,9 @@ async function launchBrowser() {
     if (perf.rendererLimit) args.push('--renderer-process-limit=' + perf.rendererLimit);
     if (!perf.componentUpdate) args.push('--disable-component-update');
     if (!HEADFUL && !perf.headlessGpu) args.push('--disable-gpu');
+    // Chromium reads one --enable-features (the last): every feature goes in this list
+    const enableFeatures = [];
+    if (emulatedScale) enableFeatures.push(EMULATED_SCALE_FEATURE);
     launchedPerf = Object.assign({}, perf);
     // Loopback only: Dreamscape drives one Alchemy-owned tab here (identity-gated MCP); cookies never leave Chromium.
     if (ALCHEMY_CDP_PORT) args.push('--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + ALCHEMY_CDP_PORT);
@@ -2460,13 +2485,18 @@ async function launchBrowser() {
         // Without access to the node, SwiftShader keeps WebGL on (a missing WebGL is a bot signal).
         let gpu = false;
         try { fs.accessSync(GPU_NODE, fs.constants.R_OK | fs.constants.W_OK); gpu = true; } catch (_) {}
-        if (gpu) args.push('--use-angle=vulkan', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan', '--ignore-gpu-blocklist', '--enable-gpu-rasterization');
+        if (gpu) {
+            args.push('--use-angle=vulkan', '--ignore-gpu-blocklist', '--enable-gpu-rasterization');
+            enableFeatures.push('Vulkan', 'VulkanFromANGLE', 'DefaultANGLEVulkan');
+        }
         else args.push('--enable-unsafe-swiftshader');
         console.log('[grimoire-browser] rendering ' + (gpu ? 'on the GPU (' + GPU_NODE + ')' : 'in software (no access to ' + GPU_NODE + ')'));
         // Session windows overlap on the virtual screen; covered windows must keep painting and running timers.
         args.push('--ozone-platform=x11', '--window-size=1280,800', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling');
     }
     args.push(...fakeCaptureArgs());
+    if (enableFeatures.length) args.push('--enable-features=' + enableFeatures.join(','));
+    if (emulatedScale) console.log('[grimoire-browser] Alchemy build: tabs render at their viewers\' pixel ratio (' + EMULATED_SCALE_FEATURE + ')');
     const instance = await puppeteer.launch({
         executablePath: chromeBin,
         headless: !HEADFUL,
@@ -2549,8 +2579,8 @@ async function startScreencast(session) {
     await session.cdp.send('Page.startScreencast', {
         format: 'jpeg',
         quality: session.settings.jpegQuality,
-        maxWidth: session.dipWidth || session.width,
-        maxHeight: session.dipHeight || session.height,
+        maxWidth: Math.ceil((session.dipWidth || session.width) * (session.pxPerDip || 1)),
+        maxHeight: Math.ceil((session.dipHeight || session.height) * (session.pxPerDip || 1)),
         everyNthFrame: 1
     });
 }
@@ -2626,6 +2656,17 @@ const ZOOM_MAX = 4;
 const DIP_MAX_WIDTH = 3840;
 const DIP_MAX_HEIGHT = 2400;
 
+// On the Alchemy build a live page whose emulated scale changes keeps drawing at the old one until its surface is
+// allocated again (measured: 1.5 -> 2 left the page at 2/3 of the frame); a size change does that, so the viewport
+// goes one pixel wider for a moment first. Only when the scale really changes (a viewer's ratio, Grimoire's zoom).
+function scaleChanged(session) {
+    const scale = session.pxPerDip || 1;
+    // a new page starts at scale 1 (createSession's first viewport)
+    const before = session.appliedPxPerDip == null ? 1 : session.appliedPxPerDip;
+    session.appliedPxPerDip = scale;
+    return emulatedScale && Math.abs(before - scale) > 0.001;
+}
+
 async function applyViewport(session) {
     const zoom = session.zoom || 1;
     if (session.viewKind === 'mobile') {
@@ -2636,6 +2677,16 @@ async function applyViewport(session) {
         session.dipWidth = width;
         session.dipHeight = height;
         session.cssPerPx = 0;
+        // the Alchemy build draws the phone's page at its ratio: frames have the phone's device pixels
+        session.pxPerDip = emulatedScale ? mobileDeviceScale(session) : 1;
+        if (scaleChanged(session)) {
+            await session.cdp.send('Emulation.setDeviceMetricsOverride', {
+                width: width + 1,
+                height,
+                deviceScaleFactor: mobileDeviceScale(session),
+                mobile: true
+            }).catch(() => {});
+        }
         await session.cdp.send('Emulation.setDeviceMetricsOverride', {
             width,
             height,
@@ -2661,8 +2712,10 @@ async function applyViewport(session) {
     // #990: DIP = the page's CSS size times Chromium's default zoom (launchedZoom), so frames are that many pixels; the
     // viewer's device pixels when it reports them (pxWidth) and its pixel ratio is that zoom. The emulated scale keeps
     // devicePixelRatio = the viewer's ratio times Grimoire's zoom, so the page picks images for the real screen.
+    // On the Alchemy build (#993) the zoom is 1 and the emulated scale alone gives the frames dpr x zoom pixels per CSS
+    // pixel (pxPerDip), exact for every tab.
     const z0 = launchedZoom || 1;
-    const dpr = session.dpr || z0;
+    const dpr = session.dpr || (emulatedScale ? 1 : z0);
     const cssW = (session.pxWidth ? session.pxWidth / dpr : session.width) / zoom;
     const cssH = (session.pxHeight ? session.pxHeight / dpr : session.height) / zoom;
     const width = Math.max(80, Math.min(DIP_MAX_WIDTH, Math.round(cssW * z0)));
@@ -2670,11 +2723,14 @@ async function applyViewport(session) {
     session.dipWidth = width;
     session.dipHeight = height;
     session.cssPerPx = 1 / z0;
-    await session.page.setViewport({
-        width,
-        height,
-        deviceScaleFactor: Math.max(0.25, Math.min(8, (dpr * zoom) / z0))
-    });
+    session.pxPerDip = emulatedScale ? dpr * zoom : 1;
+    // On the session the screencast runs on (#993): each DevTools session keeps its own emulation, and the Alchemy
+    // build sizes the capture from the emulation of the session that captures (Puppeteer's setViewport is its own).
+    const deviceScaleFactor = Math.max(0.25, Math.min(8, (dpr * zoom) / z0));
+    if (scaleChanged(session)) {
+        await session.cdp.send('Emulation.setDeviceMetricsOverride', { width: width + 1, height, deviceScaleFactor, mobile: false }).catch(() => {});
+    }
+    await session.cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor, mobile: false });
 }
 
 // Feeds ▾: the RSS / Atom feeds the page advertises (<link rel="alternate">), sent when they change.
@@ -3017,6 +3073,12 @@ async function onViewerMessage(session, raw) {
     // A mobile page with no viewport meta is drawn smaller (pageScaleFactor under 1): the viewer's positions are
     // the picture's, Chromium's pointer positions are in the page's own CSS pixels (wheel distances are not).
     if (session.viewKind === 'mobile' && (msg.type === 'mouse' || msg.type === 'wheel' || msg.type === 'inspect' || msg.type === 'touch')) {
+        // DevTools scales input by the browser's default zoom (#990), which a phone page's layout ignores
+        if (launchedZoom && Math.abs(launchedZoom - 1) > 0.001) {
+            for (const key of ['x', 'y']) {
+                if (typeof msg[key] === 'number' && Number.isFinite(msg[key])) msg[key] /= launchedZoom;
+            }
+        }
         const pageScale = Number(session.meta && session.meta.pageScaleFactor) || 1;
         if (Math.abs(pageScale - 1) > 0.001) {
             for (const key of ['x', 'y']) {
@@ -3032,7 +3094,10 @@ async function onViewerMessage(session, raw) {
             if (typeof msg[key] === 'number' && Number.isFinite(msg[key])) msg[key] *= session.cssPerPx;
         }
         if (msg.type === 'wheel' && session.dipWidth && session.width) {
-            const perCss = session.dipWidth / (session.pxWidth && session.dpr ? session.pxWidth / session.dpr : session.width);
+            // (the Alchemy build lays the page out at its emulated scale, and DevTools does not scale wheel distances
+            // by it as it does positions: they go in that scale's pixels, #993)
+            const perCss = session.dipWidth / (session.pxWidth && session.dpr ? session.pxWidth / session.dpr : session.width)
+                * (emulatedScale ? session.pxPerDip || 1 : 1);
             msg.deltaX = (Number(msg.deltaX) || 0) * perCss;
             msg.deltaY = (Number(msg.deltaY) || 0) * perCss;
         }
