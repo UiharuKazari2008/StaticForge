@@ -1167,7 +1167,11 @@
         const nv = nativePlayer();
         if (!nv) return;
         const p = player;
-        const on = !!(p && !p.vod && p.state === 'live' && p.url && (p.handed || p.popped || (shown && !p.suspended && els && !els.video.paused)));
+        // (playing = the picture really moves: not paused, ended or held up buffering; Yukimi, Nov 21 2026: "it has to
+        // actually be playing video")
+        const v = els && els.video;
+        const moving = !!(v && !v.paused && !v.ended && v.readyState > 2 && !plStalled);
+        const on = !!(p && !p.vod && p.state === 'live' && p.url && (p.handed || p.popped || p.popAsk || (shown && !p.suspended && moving)));
         const said = on ? JSON.stringify({ url: new URL(p.url, location.origin).toString(), title: p.title, subtitle: modeLabel(p.mode), audioOnly: p.mode === 'audio' }) : '';
         if (said === plTold) return;
         plTold = said;
@@ -1176,6 +1180,8 @@
         } catch (_) { /* an older app build */ }
     }
     let plTold = null;
+    /** The page's video is held up ('waiting') until it plays again. */
+    let plStalled = false;
     /** The native player gives the stream back to the page (Videos is in front again). */
     function plTakeBack() {
         const p = player;
@@ -1198,10 +1204,13 @@
         const nv = nativePlayer();
         if (!p || p.vod || p.state !== 'live' || !canPop()) return;
         if (els.video.paused) { box('Start the stream first, then pop it out.', 'info'); return; }
+        // (the key itself asks: a stream held up buffering for a moment still pops out)
+        p.popAsk = true;
         plTell();
         let ok = false;
         try { ok = nv.popOut() === true; } catch (_) { ok = false; }
-        if (!ok) { box('The stream could not be popped out.', 'info'); return; }
+        p.popAsk = false;
+        if (!ok) { plTell(); box('The stream could not be popped out.', 'info'); return; }
         p.handed = true;
         p.popped = true;
         if (p.full) plFull(false);
@@ -2099,11 +2108,11 @@
         });
         try { if (window.screen && screen.orientation) screen.orientation.addEventListener('change', plTurned, { signal: appScopeSignal }); } catch (_) { /* no orientation API */ }
         window.addEventListener('resize', plTurned, { signal: appScopeSignal });
-        v.addEventListener('playing', () => { if (player && player.state === 'live') { player.tries = 0; plStatus('', false); } plHud(!els.hud.hidden); plTell(); });
+        v.addEventListener('playing', () => { plStalled = false; if (player && player.state === 'live') { player.tries = 0; plStatus('', false); } plHud(!els.hud.hidden); plTell(); });
         v.addEventListener('pause', () => { plHud(true); plTell(); });
         v.addEventListener('timeupdate', ytrTime);
         v.addEventListener('ended', () => { const p = player; if (p && p.kind === 'ytr') { p.best = 100; stopPlayer(); } });
-        v.addEventListener('waiting', () => { if (player && player.state === 'live') plStatus('Buffering...', true); });
+        v.addEventListener('waiting', () => { plStalled = true; if (player && player.state === 'live') plStatus('Buffering...', true); plTell(); });
         v.addEventListener('error', () => { if (player && !player.hls && player.state === 'live') plLost(); });
         // news from the app's native player: it took the stream (another Android app came up), its floating
         // window was tapped (back to this program), or it stopped (closed there, the stream ended or was lost)
