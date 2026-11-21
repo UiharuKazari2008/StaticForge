@@ -2183,7 +2183,10 @@ function grimoireShowRemoteTabPage(shell, state, url) {
     }
     if (frame) frame.hidden = true;
     const hung = state === 'unresponsive';
-    const unavailable = state === 'unavailable';
+    // Alchemy restarting (viewer.html showRestarting) is Alchemy not available for a moment, not the page failing:
+    // shown as "The webpage has stopped working" it stayed after the restart (Yukimi, Nov 21: "pages do not return
+    // after a restart they forever show page has stopped working"); the viewer says 'ok' once it is back
+    const unavailable = state === 'unavailable' || state === 'restarting';
     let reload = null;
     let home = null;
     // IE7's own error pages (grimoireIeChrome.js GrimoireIeChrome.errorPage, Alchemy's logo bottom right)

@@ -2391,9 +2391,16 @@ function endNavigating(session) {
     publishLocation(session);
 }
 
+// the service is shutting down (a restart): its pages close with Chromium, which is not a page failing
+let serviceStopping = false;
+
 // why: what made a page failed or not responding (the log says, so a page shown as stopped can be traced)
 function markHealth(session, state, why) {
     if (!sessions.get(session.id) || session.health === state) return;
+    // a restart closes every page: telling viewers each one failed made them reopen it at once, against the service
+    // still shutting down, and the tab stayed on "The webpage has stopped working" (Yukimi, Nov 21: "pages do not
+    // return after a restart they forever show page has stopped working"); they were told 'restarting' already
+    if (serviceStopping && state !== 'ok') return;
     if (state !== 'ok') console.warn('[grimoire-browser] page ' + state + (why ? ': ' + String(why).slice(0, 200) : ''), String(session.url || '').slice(0, 120));
     session.health = state;
     broadcast(session, { type: 'status', state, url: session.url || '' });
@@ -5797,6 +5804,7 @@ async function main() {
     const shutdown = async () => {
         if (shuttingDown) return;
         shuttingDown = true;
+        serviceStopping = true;
         // viewers wait for this service to come back and open their pages again (viewer.html recoverSession)
         for (const session of sessions.values()) broadcast(session, { type: 'restarting' });
         if (browser) {

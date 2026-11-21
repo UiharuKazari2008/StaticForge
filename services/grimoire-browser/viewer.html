@@ -375,7 +375,8 @@
         if (job.arrival > stillArrival) hideStill();
         frameReady(job.header);
         flushTiles();
-        if (tabState === 'unresponsive') showTabStatus('ok');
+        // a frame: the page is there (whatever was said of it before: not responding, failed, restarting)
+        if (tabState !== 'ok') showTabStatus('ok');
       }
       releaseImage(img);
       paintQueued();
@@ -1876,9 +1877,11 @@
   function showTabStatus(state, url) {
     if (closed) return;
     if (url) lastUrl = url;
+    // failed while the service restarts (an older service says its closing pages failed): wait for it to go down and
+    // come back (recoverSession), then reconnect or reopen; reopening at once hit the service still shutting down and
+    // the tab stayed on the failed page
     if (restarting && state === 'failed') {
-      restarting = false;
-      postParent({ type: 'grimoire-browser-reopen', url: lastUrl });
+      recoverSession();
       return;
     }
     tabState = state || 'failed';
@@ -1993,6 +1996,8 @@
           restarting = false;
           statusEl.hidden = true;
           tabState = 'ok';
+          // the window's own page over this one (the Grimoire's failed / restarting page) goes too
+          postParent({ type: 'grimoire-browser-status', state: 'ok', url: lastUrl });
           if (fallback) startFallback(); else connectSocket();
           return;
         }
