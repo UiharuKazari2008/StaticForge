@@ -1911,13 +1911,16 @@
     postParent({ type: 'grimoire-browser-reopen', url: lastUrl });
   });
   function probeRtt() {
-    if (document.hidden) return;
+    // hidden (the page, or this tab behind another in Grimoire): its timers run late, so a round trip would measure
+    // this page's throttling, not the link
+    if (document.hidden || tabHidden) return;
     var rep = { rx: rxTotal, n: frameCount - lastReportFrames, dec: decWin.n ? Math.round(decWin.sum / decWin.n * 10) / 10 : 0 };
     lastReportFrames = frameCount;
     decWin.sum = 0;
     decWin.n = 0;
     send({ type: 'ping', t: performance.now(), rep: rep });
   }
+  var tabHidden = false;
   function startRttProbe() {
     if (rttProbe) return;
     probeRtt();
@@ -2673,6 +2676,7 @@
       send({ type: 'navigate', url: data.url });
     } else if (data.type === 'grimoire-browser-visibility') {
       // the tab went behind another or came back (#756): only what shows is captured
+      tabHidden = !!data.hidden;
       send({ type: 'visibility', hidden: !!data.hidden });
     } else if (data.type === 'grimoire-browser-memory-override') {
       send({ type: 'memory-override' });

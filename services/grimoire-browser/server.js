@@ -1328,6 +1328,11 @@ function encoderInfo(session) {
 
 function noteViewerReport(session, ws, rep) {
     if (!rep || typeof rep !== 'object' || !Number.isFinite(rep.rx)) return;
+    // a tab behind another: its viewer's timers are throttled (a Grimoire tab not on show, the WebView in the
+    // background), so its pings come back late and read as a queue that is not the link's - measured on the Fold's
+    // DeX, Nov 21: hidden tabs at 1093 / 1154 ms round trips against a best of 7 ms, automatic quality at step 8 of 9
+    // (JPEG q34, 5-10 fps) for nothing. Nothing it reports moves the quality.
+    if (session.viewHidden) return;
     const aq = aqState(session);
     const now = Date.now();
     const st = ws.aqStat || (ws.aqStat = { at: now, rx: 0, rtts: [], good: 0 });
@@ -4725,6 +4730,15 @@ async function onViewerMessage(session, raw, ws) {
     // shared Chrome window comes to the front of it so it paints
     if (msg.type === 'visibility') {
         session.viewHidden = !!msg.hidden;
+        // back in front: a quality pushed down while it was behind (or before hidden tabs stopped counting) starts
+        // again from the middle step; the link's own signals take it from there
+        if (!session.viewHidden && session.aq && session.aq.auto && session.aq.level > AQ_START) {
+            session.aq.level = AQ_START;
+            session.aq.why = 'tab shown again';
+            session.aq.changedAt = Date.now();
+            applyAutoQuality(session);
+            broadcast(session, encoderInfo(session));
+        }
         if (!session.viewHidden && HEADFUL && session.group && session.page) session.page.bringToFront().catch(() => {});
         syncCapture(session);
         return;
