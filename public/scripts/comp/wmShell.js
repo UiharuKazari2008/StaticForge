@@ -6699,6 +6699,10 @@
         if (!mine.length && !statusFolded.length) {
             noteTrayOpen = false;
             renderNotes();
+            // only the message notes are waiting (mail, texts, Messenger: their own status icons) - Today's "Notification"
+            // key stands for them too, so it opens the newest of them (Yukimi, Nov 21 2026: the key showed, its tap did nothing)
+            const msgs = notes.filter((n) => !isUpdateNote(n) && messageClassOf(n));
+            if (msgs.length) { showNote(msgs[msgs.length - 1].id); return; }
             // the icon stands for notices waiting on the server (the app's status task) that this page holds none of:
             // they come up as notifications now (Nov 18: the tap opened nothing and the icon never went)
             if (taskRoles && taskRoles.notify && window.wmNotificationInbox && typeof window.wmNotificationInbox.showWaiting === 'function') {
@@ -6708,8 +6712,9 @@
                 return;
             }
             const up = shell.querySelector('.wm-status-icon[data-role="update"]');
-            // nothing at all: nothing happens (Yukimi, Nov 16: the "There are no notifications." box only annoyed)
-            if (notes.some(isUpdateNote) && up) statusBubble('update', up);
+            // nothing at all: nothing happens (Yukimi, Nov 16: the "There are no notifications." box only annoyed). An update
+            // notice: the update icon's popup, or the notice itself when the icon is not on the bar (folded away, hidden)
+            if (notes.some(isUpdateNote)) { if (up && !up.hidden) statusBubble('update', up); else showUpdateNote(); }
             return;
         }
         noteTrayOpen = !noteTrayOpen;
