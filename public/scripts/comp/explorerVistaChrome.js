@@ -384,7 +384,7 @@
             this.crumbs = crumbs;
             // the place's own icon: Computer, the drive, or a folder
             const current = this.app.currentPath;
-            this.crumbIcon = atComputer ? (deviceId ? 'portable-device-16.png' : 'computer-16.png') : (current === '/' && computer ? 'drive-system-16.png' : 'crumb-folder.png');
+            this.crumbIcon = atComputer ? (deviceId ? root.ExplorerComputerView.deviceIcon(deviceId, 16) : 'computer-16.png') : (current === '/' && computer ? 'drive-system-16.png' : 'crumb-folder.png');
             // the Contacts folder's own icon (wab32res IDI_ICON_FOLDER, explorerContacts.js)
             if (root.explorerContacts && root.explorerContacts.isPath(current)) this.crumbIcon = '../vista-contacts/folder-16.png';
             if (phone) this.crumbIcon = root.explorerPhoneDrive.crumbIcon(current);
@@ -670,6 +670,9 @@
                 removable: ['drive-removable-16.png'],
                 fixed: ['drive-fixed-16.png'],
                 device: ['portable-device-16.png', 'portable-device-32.png'],
+                // a modern phone and a Galaxy Z Fold, as Mobile Device Center draws them (ExplorerComputerView.deviceIcon)
+                'device-phone': ['portable-phone-16.png', 'portable-phone-32.png'],
+                'device-fold': ['portable-fold-16.png', 'portable-fold-32.png'],
                 network: ['drive-network-16.png'],
                 // Network (Vista's namespace node) and a computer on it (explorerNetwork.js)
                 'net-place': ['net-place-16.png', 'net-place-32.png'],
@@ -736,7 +739,7 @@
             (view.portableDevices ? view.portableDevices() : []).forEach((d) => {
                 list.push({
                     label: d.name,
-                    icon: 'device',
+                    icon: root.ExplorerComputerView.deviceIcon(d, 16).replace(/^portable-(\w+)-16\.png$/, (m, k) => (k === 'device' ? 'device' : `device-${k}`)),
                     path: root.ExplorerComputerView.devicePath(d.deviceId),
                     leaf: !d.files,
                     children: () => this.deviceStorageSpecs(d.deviceId)

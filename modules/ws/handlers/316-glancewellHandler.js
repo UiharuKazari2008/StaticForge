@@ -109,8 +109,11 @@ function registerPackets(handlersCtx) {
     // Options (General and Import)
     reg('glancewell_settings', () => ({ settings: store.settings() }));
     reg('glancewell_settings_set', async (m) => {
-        const s = store.setSettings(m.change);
-        changed({ what: 'settings' });
+        const s = store.setSettings(m.change || (m.view ? { view: m.view } : null));
+        // a view save is read at the next open, never pushed to every client
+        const keys = Object.keys(m.change || {});
+        if (keys.some((k) => k !== 'view')) changed({ what: 'settings' });
+        if (m.view && !m.change) return { ok: true };
         void fix.sweepOriginals(gr, s.originalsDays).catch(() => {});
         return { settings: s };
     });

@@ -185,6 +185,12 @@
             return DEVICE_PREFIX + encodeURIComponent(deviceId);
         }
 
+        /** A device's icon file at a size: a modern phone or a Fold as Mobile Device Center draws it (activeSyncAgent.js). */
+        static deviceIcon(dev, size = 16) {
+            const as = root.activeSync;
+            return as && typeof as.deviceIcon === 'function' ? as.deviceIcon(dev, size) : `portable-phone-${size}.png`;
+        }
+
         /** The device whose page a path is, or null (Computer itself, anything else). */
         static deviceIdOf(path) {
             const s = String(path || '');
@@ -633,7 +639,7 @@
             this._deviceSig = JSON.stringify(devices.map((d) => [d.key, d.name, d.files]));
             if (!devices.length) return '';
             const tiles = devices.map((d) => `<div class="explorer-computer-tile explorer-computer-tile-device${d.key === this.selected ? ' is-selected' : ''}" data-drive="${esc(d.key)}" role="option" aria-selected="${d.key === this.selected}" title="${esc(d.name)}">
-                        <img class="explorer-computer-tile-icon" src="${ART}/portable-device-48.png" alt="" draggable="false">
+                        <img class="explorer-computer-tile-icon" src="${ART}/${ExplorerComputerView.deviceIcon(d, 48)}" alt="" draggable="false">
                         <div class="explorer-computer-tile-text">
                             <div class="explorer-computer-tile-name">${esc(d.name)}</div>
                         </div>
@@ -772,14 +778,14 @@
                     ]);
                     return;
                 }
-                setIcon('computer:device', 'portable-device-64.png');
                 const here = this.portableDevices().find((x) => x.deviceId === this.deviceId());
+                setIcon('computer:device', ExplorerComputerView.deviceIcon(here || this.deviceId(), 64));
                 info.innerHTML = here ? this.deviceGrid(grid, here) : `<div class="explorer-details-summary">${esc(this.statusText())}</div>`;
                 return;
             }
             const device = this.portableDevice(this.selected);
             if (device) {
-                setIcon(`computer:${device.key}`, 'portable-device-64.png');
+                setIcon(`computer:${device.key}`, ExplorerComputerView.deviceIcon(device, 64));
                 info.innerHTML = this.deviceGrid(grid, device);
                 return;
             }

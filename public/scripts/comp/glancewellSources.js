@@ -107,7 +107,13 @@
             const view = scope.view || 'images';
             if (scope.workspaceId === '*') {
                 const all = [];
-                for (const id of workspaceIds()) {
+                // the desktop's workspace list can still be on its way (a gallery opened just after boot listed none)
+                let ids = workspaceIds();
+                if (!ids.length) {
+                    const r = await send('workspace_list', {}).catch(() => null);
+                    ids = ((r && r.workspaces) || []).map((w) => w && w.id).filter(Boolean);
+                }
+                for (const id of ids) {
                     if (all.length >= MAX_PRINTS) break;
                     all.push(...await this.list(Object.assign({}, scope, { workspaceId: id }), onPage));
                 }

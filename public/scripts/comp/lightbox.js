@@ -338,9 +338,18 @@ function wirePhotoSwipeShellControlsOnce() {
         closeBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            // the gallery (glancewellLibrary.js) on show: X closes Photo Gallery (it only went "back to the gallery" again,
+            // so the window never closed from the library, Nov 21 2026)
+            const lib = window.glancewellLibrary && glancewellLibrary.active() && glancewellLibrary.isOpen();
             const pswp = getActivePhotoSwipe();
-            if (pswp) {
+            if (pswp && !lib) {
                 pswp.close();
+                return;
+            }
+            if (lib) {
+                // a viewer left behind the gallery goes with the window
+                if (pswp && typeof pswp.destroy === 'function') { try { pswp.destroy(); } catch (_) { /* gone */ } }
+                closePhotoSwipeShellWindow();
                 return;
             }
             teardownPhotoSwipeDesktopShell();
@@ -408,6 +417,13 @@ function teardownPhotoSwipeDesktopShell(lastSlideData) {
         glancewellLibrary.showFromViewer(lastSlideData || null);
         return;
     }
+    closePhotoSwipeShellWindow();
+}
+
+/** Close the Photo Gallery / viewer window itself, keeping its windowed place for the next open. */
+function closePhotoSwipeShellWindow() {
+    const shell = getPhotoSwipeShell();
+    if (!shell || shell.classList.contains('hidden')) return;
     // Save windowed layout before close so the next open can restore it
     if (shell.classList.contains('windowed')) {
         shell.setAttribute('data-modal-moved', 'true');

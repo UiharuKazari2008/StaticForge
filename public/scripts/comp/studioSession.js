@@ -791,7 +791,7 @@ function studioSaveFolderOverwrite(name) {
         // Portable Devices: each phone over ActiveSync, opening to its storages
         (typeof computer.portableDevices === 'function' ? computer.portableDevices() : []).forEach((d) => {
             if (!window.ExplorerComputerView) return;
-            items.push({ id: `fd-${d.key}`, name: d.name, kind: 'folder', navPath: window.ExplorerComputerView.devicePath(d.deviceId), fdIcon: 'portable-device-16.png', fdTypeLabel: 'Portable Media Player' });
+            items.push({ id: `fd-${d.key}`, name: d.name, kind: 'folder', navPath: window.ExplorerComputerView.devicePath(d.deviceId), fdIcon: window.ExplorerComputerView.deviceIcon(d, 16), fdTypeLabel: 'Portable Media Player' });
         });
         const nets = computer && typeof computer.networkDrives === 'function' ? computer.networkDrives() : [];
         nets.forEach((d) => {
@@ -817,7 +817,7 @@ function studioSaveFolderOverwrite(name) {
         } else if (deviceId) {
             const view = studioSaveFolderComputerStub();
             crumbs.push({ label: typeof view.deviceName === 'function' ? view.deviceName(deviceId) : 'Portable Device', path });
-            icon = 'portable-device-16.png';
+            icon = window.ExplorerComputerView ? window.ExplorerComputerView.deviceIcon(deviceId, 16) : 'portable-device-16.png';
         } else if (phone) {
             // Computer ▸ <device> ▸ Internal storage ▸ DCIM (explorerPhoneDrive.js)
             window.explorerPhoneDrive.crumbs(path).forEach((c) => crumbs.push(c));

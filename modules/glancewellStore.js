@@ -327,6 +327,7 @@ const SETTING_DEFAULTS = {
     tooltips: true,
     originalsDays: 0,            // Move originals to Recycle Bin after: 0 Never, else days (1, 7, 30, 182, 365)
     updateNotes: true,           // Tell me when updates to Photo Gallery are available
+    view: null,                  // the gallery's view (glancewellLibrary.js viewPrefs), newest client's
     import: {
         folder: '',              // the VFS folder pictures are imported to ('' = Imported Pictures)
         folderName: 'dateImportedTag', // PhotoAcq 700-707
@@ -355,6 +356,11 @@ function setSettings(change) {
     if (typeof c.tooltips === 'boolean') put('tooltips', c.tooltips);
     if (typeof c.updateNotes === 'boolean') put('updateNotes', c.updateNotes);
     if (c.originalsDays != null && ORIGINAL_DAYS.has(Number(c.originalsDays))) put('originalsDays', Number(c.originalsDays));
+    // the gallery's view (zoom, sort, group, each folder's place), shared by the user's clients; kept whole, capped
+    if (c.view && typeof c.view === 'object' && !Array.isArray(c.view)) {
+        const json = JSON.stringify(c.view);
+        if (json.length <= 64 * 1024) put('view', c.view);
+    }
     if (c.import && typeof c.import === 'object') {
         const cur = settings().import;
         const i = c.import;

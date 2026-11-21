@@ -80,18 +80,40 @@
         ['favorite', 'Favorites'], ['caption', 'Caption'], ['name', 'File Name']
     ];
 
+    // Date Taken, newest first, grouped by Date Taken (Yukimi, Nov 21 2026); v2 moves older saved views onto it once
+    const PREFS_V = 2;
     const prefs = Object.assign({
-        view: 'thumbs', size: SIZE_DEFAULT, group: 'auto', groupDir: 'desc', sort: 'date', sortDir: 'asc', toc: false,
-        tooltips: true, expanded: { prints: true }, node: { root: 'prints', kind: 'all' }
+        view: 'thumbs', size: SIZE_DEFAULT, group: 'date', groupDir: 'desc', sort: 'date', sortDir: 'desc', toc: false,
+        tooltips: true, expanded: { prints: true }, node: { root: 'prints', kind: 'all' }, pos: {}, at: 0
     }, readPrefs());
+    if (!(prefs.v >= PREFS_V)) Object.assign(prefs, { v: PREFS_V, group: 'date', groupDir: 'desc', sort: 'date', sortDir: 'desc' });
+    if (!prefs.pos || typeof prefs.pos !== 'object') prefs.pos = {};
 
     function readPrefs() {
         try { return JSON.parse(root.localStorage.getItem(PREFS_KEY) || '{}') || {}; } catch (_) { return {}; }
     }
     let prefsTimer = 0;
+    let prefsPushTimer = 0;
+    /**
+     * The view (zoom, sort, group, folder, each folder's place) stays here at once and on the server a few seconds later,
+     * so it comes back on any client and after a cold boot; reopening never waits on the server (installed-boot-zero-wait).
+     */
     function savePrefs() {
+        prefs.at = Date.now();
         clearTimeout(prefsTimer);
         prefsTimer = setTimeout(() => { try { root.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (_) { /* full */ } }, 400);
+        clearTimeout(prefsPushTimer);
+        prefsPushTimer = setTimeout(() => { void send('glancewell_settings_set', { view: viewPrefs() }).catch(() => {}); }, 3000);
+    }
+    const VIEW_KEYS = ['v', 'view', 'size', 'group', 'groupDir', 'sort', 'sortDir', 'toc', 'expanded', 'node', 'pos', 'at'];
+    function viewPrefs() { const o = {}; VIEW_KEYS.forEach((k) => { if (prefs[k] !== undefined) o[k] = prefs[k]; }); return o; }
+    /** The server's view when it is newer than this client's (another client, or this one before its storage went). */
+    function adoptServerView(view) {
+        if (!view || typeof view !== 'object' || !(Number(view.at) > (prefs.at || 0))) return false;
+        VIEW_KEYS.forEach((k) => { if (k !== 'node' && view[k] !== undefined) prefs[k] = view[k]; });
+        if (!prefs.pos || typeof prefs.pos !== 'object') prefs.pos = {};
+        try { root.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (_) { /* full */ }
+        return true;
     }
 
     // ------------------------------------------------------------------ state
@@ -299,6 +321,7 @@
     }
 
     async function showNode(node, { history = true } = {}) {
+        if (S.node && S.open && nodeKey(S.node) !== nodeKey(node)) rememberPlace();
         if (history && S.node && nodeKey(S.node) !== nodeKey(node)) { S.history.push(S.node); S.future = []; }
         S.node = node;
         prefs.node = node;
@@ -312,12 +335,61 @@
         const have = S.loaded.get(key);
         S.items = have ? have.items.slice() : [];
         refresh();
+        const restore = !have || !restorePlace();
         await loadScope(node.root, scope, key);
         if (nodeKey(S.node) !== nodeKey(node)) return;
         S.items = (S.loaded.get(key) || {}).items || [];
         renderTree();
         refresh();
+        if (restore) restorePlace();
     }
+
+    // ------------------------------------------------------------------ each folder's place (Yukimi, Nov 21 2026:
+    // "remember the zoom size and position in the gallery when you reopen it"): the picture at the top of the view and
+    // how far into its row, so the place holds through a zoom change or new pictures; written only when the gallery
+    // hides, opens the viewer or leaves the folder, never while scrolling
+    const PLACES_MAX = 40;
+    function rememberPlace() {
+        // the last layout drawn: the one the place was seen in (showing the gallery again clears S.layout first)
+        const L = S.lastLayout;
+        if (!S.node || !L || !S.shown.length || !S.groups.length || S.groups[0].bodyTop == null) return;
+        const top = S.seenTop || 0;
+        let at = null;
+        for (const g of S.groups) {
+            if (g.collapsed || !g.items.length || top >= g.bottom) continue;
+            const row = Math.max(0, Math.min(g.rows - 1, Math.floor((top - g.bodyTop) / L.m.ch)));
+            at = { id: g.items[row * L.cols].id, off: Math.round(top - (g.bodyTop + row * L.m.ch)) };
+            break;
+        }
+        const key = nodeKey(S.node);
+        const prev = prefs.pos[key];
+        if (prev && at && prev.id === at.id && prev.off === at.off) return;
+        delete prefs.pos[key];
+        if (at && top > 0) prefs.pos[key] = at;
+        const keys = Object.keys(prefs.pos);
+        if (keys.length > PLACES_MAX) keys.slice(0, keys.length - PLACES_MAX).forEach((k) => delete prefs.pos[k]);
+        savePrefs();
+    }
+    /** The folder's saved place, or its top; false while its pictures are not here yet. */
+    function restorePlace() {
+        if (!S.open || !S.node) return false;
+        const sc = S.el.scroller;
+        const at = prefs.pos[nodeKey(S.node)];
+        if (!at) { sc.scrollTop = 0; S.seenTop = S.placedTop = 0; return true; }
+        const L = S.layout || computeLayout();
+        for (const g of S.groups) {
+            const k = g.items.findIndex((it) => it.id === at.id);
+            if (k < 0) continue;
+            if (g.collapsed) return true;
+            sc.scrollTop = Math.max(0, g.bodyTop + Math.floor(k / L.cols) * L.m.ch + Math.max(0, Math.min(L.m.ch - 1, at.off || 0)));
+            S.seenTop = S.placedTop = sc.scrollTop;
+            queueRender();
+            return true;
+        }
+        return false;
+    }
+    /** The phone's camera album: MediaStore's "Camera" bucket (DCIM/Camera). */
+    const isCameraAlbum = (a) => !!a && (/^camera$/i.test(a.name || '') || /(^|\/)DCIM\/Camera\/?$/i.test(a.path || a.relativePath || ''));
     const nodeKey = (n) => `${n.root}|${n.kind}|${n.value == null ? '' : n.value}`;
 
     // ------------------------------------------------------------------ DOM
@@ -505,14 +577,17 @@
         const pics = SRC().get('pictures');
         if (rootRow('pictures', 'Pictures', ICON.pictures)) {
             if (!pics.available()) add({ root: 'pictures', kind: 'none' }, 1, 'No pictures on this device', ICON.pictures, { disabled: true });
-            // Albums: every album on this phone (MediaStore's, as the phone's own gallery lists them; Yukimi Nov 21 2026)
+            // Albums: every album on this phone (MediaStore's, as the phone's own gallery lists them; Yukimi Nov 21 2026);
+            // Camera Roll above it is the Camera album (DCIM/Camera), the phone's own pictures
             const ak = 'pictures:albums';
+            if (pics.available() && !pics._albums && !pics._loading) {
+                pics._loading = true;
+                void pics.albums().then((a) => { pics._albums = a; pics._loading = false; renderTree(); }, () => { pics._albums = []; pics._loading = false; renderTree(); });
+            }
+            const cam = (pics._albums || []).find(isCameraAlbum);
+            if (cam) add({ root: 'pictures', kind: 'album', value: `${cam.root}:${cam.name}`, album: cam }, 1, 'Camera Roll', ICON.pictures);
             add({ root: 'pictures', kind: 'albums' }, 1, 'Albums', ICON.folders, { key: ak, expandable: true, expanded: exp(ak) });
             if (exp(ak)) {
-                if (!pics._albums && !pics._loading) {
-                    pics._loading = true;
-                    void pics.albums().then((a) => { pics._albums = a; pics._loading = false; renderTree(); }, () => { pics._albums = []; pics._loading = false; renderTree(); });
-                }
                 (pics._albums || []).forEach((a) => add({ root: 'pictures', kind: 'album', value: `${a.root}:${a.name}`, album: a }, 2, a.name, ICON.folderPictures));
                 if (pics._albums && !pics._albums.length) add({ root: 'pictures', kind: 'none' }, 2, 'No albums', ICON.folder, { disabled: true });
             }
@@ -584,7 +659,12 @@
             const tw = h('span', 'wpg-lib-twisty');
             if (r.expandable) tw.classList.add(r.expanded ? 'is-open' : 'is-closed');
             const ic = h('span', 'wpg-lib-node-icon');
-            if (r.node.root.startsWith('device:') && r.depth === 0) ic.classList.add('is-device');
+            if (r.node.root.startsWith('device:') && r.depth === 0) {
+                // the device as Explorer and Mobile Device Center show it: a modern phone or a Fold
+                ic.classList.add('is-device');
+                const file = root.activeSync && typeof root.activeSync.deviceIcon === 'function' ? root.activeSync.deviceIcon(r.node.root.slice(7), 16) : '';
+                if (file) ic.style.backgroundImage = `url("/static_images/vista-explorer/${file}")`;
+            }
             else ic.style.setProperty('--i', String(r.icon));
             const lb = h('span', 'wpg-lib-node-label', r.label);
             row.append(tw, ic, lb);
@@ -952,6 +1032,7 @@
             g.bottom = y;
         });
         S.layout = { m, left, cols, height: y + 8, showHeaders };
+        S.lastLayout = S.layout;
         S.el.canvas.style.height = `${S.layout.height}px`;
         S.el.toc.hidden = !prefs.toc;
         S.el.lib.classList.toggle('has-toc', !!prefs.toc);
@@ -980,6 +1061,7 @@
         if (!S.open || !S.built) return;
         const L = S.layout || computeLayout();
         const sc = S.el.scroller;
+        S.seenTop = sc.scrollTop;
         const top = sc.scrollTop - 200;
         const bottom = sc.scrollTop + sc.clientHeight + 200;
         const nodes = [];
@@ -1516,8 +1598,8 @@
             { text: 'Change Time Taken...', action: 'gwi-time' },
             { separator: true },
             { text: 'Copy', action: 'gwi-copy', disabled: !one },
-            // prints have Scrap and Delete Permanently below (Delete would be Scrap again)
-            ...(print ? [] : [{ text: 'Delete', action: 'gwi-delete' }]),
+            // prints too: the gallery's own Delete (to Scraps; a scrap goes for good), no Incinerate row (Yukimi, Nov 21 2026)
+            { text: 'Delete', action: 'gwi-delete' },
             { text: 'Rename...', action: 'gwi-rename', disabled: !(one && canRename(it)) },
             { text: 'Properties', action: 'gwi-properties', disabled: !one }
         ];
@@ -1570,9 +1652,7 @@
             { text: 'Add to Desktop', action: 'gwp-desktop', disabled: !one },
             { text: 'Publish to Explorer...', action: 'gwp-publish', disabled: !one || !f('openPublishToExplorerDialog') },
             { text: 'Save a Copy', action: 'gwp-download' },
-            { text: 'Share to Sequenzia', action: 'gwp-sequenzia', disabled: anyScrap },
-            { separator: true },
-            { text: 'Delete Permanently', action: 'gwp-incinerate' }
+            { text: 'Share to Sequenzia', action: 'gwp-sequenzia', disabled: anyScrap }
         ];
     }
 
@@ -1645,14 +1725,6 @@
                 case 'gwp-sequenzia': {
                     if (!await confirmBox(`Send ${items.length === 1 ? 'this picture' : `these ${items.length} pictures`} to Sequenzia? They move there and leave DreamScape.`, 'Share to Sequenzia')) return;
                     await c.sendToSequenziaBulk(names);
-                    after();
-                    return;
-                }
-                case 'gwp-incinerate': {
-                    // one: the Workspaces app's own Incinerate (it asks); several: one question, then its bulk delete
-                    if (items.length === 1 && g('deleteImage')) { await g('deleteImage')(rec); after(); return; }
-                    if (!await confirmBox(`Permanently delete these ${items.length} pictures? This cannot be undone.`, 'Delete Multiple Items')) return;
-                    await c.deleteImagesBulk(names);
                     after();
                     return;
                 }
@@ -1933,6 +2005,7 @@
 
     function enterViewer() {
         if (!S.built) return;
+        if (S.open) rememberPlace();
         S.open = false;
         S.el.lib.hidden = true;
         S.shell.classList.remove('wpg-mode-library');
@@ -2182,7 +2255,10 @@
     /** Import Pictures and Videos (PhotoAcq dialog 1071): the devices to import from. Resolves a device or null. */
     function chooseImportDevice() {
         const list = SRC().devices();
-        const rows = list.map((d, i) => `<div class="wpg-imp-dev${i === 0 ? ' is-selected' : ''}" data-dev="${esc(d.id)}" tabindex="0"><span class="wpg-imp-dev-icon"></span><span>${esc(d.label)}</span></div>`).join('');
+        // each device as Mobile Device Center draws it: a modern phone or a Fold (activeSyncAgent.js deviceIcon)
+        const icon = (d) => (root.activeSync && typeof root.activeSync.deviceIcon === 'function' && d.deviceId
+            ? ` style="background-image:url(&quot;/static_images/vista-explorer/${root.activeSync.deviceIcon(d.deviceId, 32)}&quot;)"` : '');
+        const rows = list.map((d, i) => `<div class="wpg-imp-dev${i === 0 ? ' is-selected' : ''}" data-dev="${esc(d.id)}" tabindex="0"><span class="wpg-imp-dev-icon"${icon(d)}></span><span>${esc(d.label)}</span></div>`).join('');
         const html = `<div class="wpg-imp"><p>If you do not see your device in the list, make sure it is connected to the computer and turned on.</p><div class="wpg-imp-list" role="listbox">${rows || '<p class="wpg-imp-none">No devices were found.</p>'}</div></div>`;
         return dialog(html, [{ text: 'Import', value: 'import' }, { text: 'Cancel', value: null }], {
             title: 'Import Pictures and Videos',
@@ -2477,8 +2553,16 @@
         if (typeof root.wireGlancewellChromeOnce === 'function') root.wireGlancewellChromeOnce();
         // the library at once; its tags, watched folders, recent imports and settings fill in as they answer (it stayed
         // blank behind one that did not answer, Nov 21 2026)
+        if (S.open) rememberPlace();
         showLibrary();
-        void Promise.all([loadTags(), loadWatched(), loadRecent(), loadSettings()].map((p) => Promise.resolve(p).catch(() => null))).then(() => { renderTree(); refresh(); });
+        void Promise.all([loadTags(), loadWatched(), loadRecent(), loadSettings()].map((p) => Promise.resolve(p).catch(() => null))).then(() => {
+            // a newer view saved by another client: its zoom, sort and places (the open folder stays this one's)
+            const adopted = adoptServerView(SETTINGS && SETTINGS.view);
+            if (adopted) { cellCache.clear(); S.layout = null; }
+            renderTree();
+            refresh();
+            if (adopted && S.seenTop === S.placedTop) restorePlace();
+        });
         await showNode(opts.node || S.node || { root: 'prints', kind: 'all' }, { history: false });
     }
 
@@ -2574,7 +2658,7 @@
     if (doc) {
         doc.addEventListener('staticforge:modal-lifecycle', (e) => {
             const d = e && e.detail;
-            if (d && d.type === 'closed' && d.id === 'photoSwipeWindow') { S.owns = false; S.open = false; hideTip(); }
+            if (d && d.type === 'closed' && d.id === 'photoSwipeWindow') { if (S.open) rememberPlace(); S.owns = false; S.open = false; hideTip(); }
         }, { signal: appScopeSignal });
     }
 
