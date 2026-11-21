@@ -49,6 +49,20 @@ function translationOnly(t) {
         && Math.abs(t[10] - 1) < 1e-6;
 }
 
+// The root scroller's layer: the widest that draws (the tallest of those as wide), whose height is the document's at the
+// scale its width gives (the tallest layer alone picked a tall inner scroller - Yozora's file tree, 218 x 3216 - and
+// every layer was measured against it). null when none fits (the page does not scroll as a whole).
+function rootLayer(layers, scroll) {
+    let widest = 0;
+    for (const l of layers) if (l.drawsContent && l.width > widest) widest = l.width;
+    let ref = null;
+    for (const l of layers) if (l.drawsContent && l.width >= widest - 2 && (!ref || l.height > ref.height)) ref = l;
+    if (!ref || !scroll || !(scroll.viewWidth > 0) || !(scroll.height > 0)) return null;
+    const unit = ref.width / scroll.viewWidth;
+    if (!(unit > 0.2 && unit < 8) || Math.abs(ref.height / unit - scroll.height) > Math.max(4, scroll.height * 0.02)) return null;
+    return { ref, unit };
+}
+
 function placeOf(l) {
     const t = l.transform;
     return { x: (Number(l.offsetX) || 0) + (t ? t[12] : 0), y: (Number(l.offsetY) || 0) + (t ? t[13] : 0) };
@@ -258,12 +272,11 @@ function createLayerSheets(session, deps) {
             if (state.sheets.size) clear();
             return;
         }
-        // the root scroller's layer: the tallest that draws; its height is the document's, in layer units
-        let ref = null;
-        for (const l of layers) if (l.drawsContent && (!ref || l.height > ref.height)) ref = l;
-        if (!ref || !(ref.height > 0)) return;
-        const unit = ref.height / scroll.height;
-        if (!(unit > 0.2 && unit < 8)) return;
+        // the root scroller's layer (rootLayer): its width gives the layer units per CSS pixel
+        const root = rootLayer(layers, scroll);
+        if (!root) return;
+        const ref = root.ref;
+        const unit = root.unit;
         const viewArea = (scroll.viewWidth || ref.width / unit) * scroll.view * unit * unit;
         const refY = placeOf(ref).y;
         // a scroll of 2 px or more tells the layers that move with it from those that stay
@@ -471,9 +484,8 @@ function createLayerSheets(session, deps) {
     // document's top), both from the same layer update, so a scroll in between does not move it
     const docTop = (l) => {
         if (!state.unit || !state.latest) return null;
-        let ref = null;
-        for (const q of state.latest) if (q.drawsContent && (!ref || q.height > ref.height)) ref = q;
-        return ref ? (placeOf(l).y - placeOf(ref).y) / state.unit : null;
+        const root = rootLayer(state.latest, session.scroll);
+        return root ? (placeOf(l).y - placeOf(root.ref).y) / state.unit : null;
     };
 
     async function snapshotOf(id) {

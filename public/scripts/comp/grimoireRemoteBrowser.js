@@ -709,6 +709,45 @@ function grimoireShellBookmarkTitle(shell, url) {
     return String(raw || url);
 }
 
+// The tab's icon: the page's own, as Chrome picks it (Yukimi, Nov 21: "i want the icon in the tab to be the sites icon
+// it would show in chrome"; server.js readPageInfo favicons, kept by the bridge in /cache/site-icons). Asked once a page
+// has loaded (its links are in by then), once per address; the web entry keeps it (grimoireIeChrome.js pageFavicon).
+const grimoireFaviconCache = new Map();
+function grimoireTabFavicon(shell, url, changed) {
+    const put = (icon) => {
+        const top = shell.history && shell.history[shell.historyIndex];
+        if (!icon || !top || top.type !== 'web' || top.url !== url || top.favicon === icon) return;
+        top.favicon = icon;
+        changed();
+    };
+    if (grimoireFaviconCache.has(url)) {
+        put(grimoireFaviconCache.get(url));
+        return;
+    }
+    grimoireFaviconCache.set(url, '');
+    if (grimoireFaviconCache.size > 300) grimoireFaviconCache.delete(grimoireFaviconCache.keys().next().value);
+    let tries = 0;
+    const ask = async () => {
+        const id = shell._grimoireRemoteSessionId;
+        // the tab's viewer address can come after its first location: asked again a little later (up to 5 times)
+        if (!id || !shell._grimoireRemoteViewQuery) {
+            if (++tries < 5) setTimeout(ask, 1500);
+            else grimoireFaviconCache.delete(url);
+            return;
+        }
+        try {
+            const res = await fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id) + '/page-icon?' + shell._grimoireRemoteViewQuery + '&kind=tab', { credentials: 'same-origin' });
+            const info = res.ok ? await res.json() : {};
+            const icon = typeof info.icon === 'string' ? info.icon : '';
+            grimoireFaviconCache.set(url, icon);
+            put(icon);
+        } catch (_) {
+            grimoireFaviconCache.delete(url);
+        }
+    };
+    setTimeout(ask, 1200);
+}
+
 async function grimoireAddRemotePageToDesktop(shell) {
     const id = shell._grimoireRemoteSessionId;
     if (!id) return;
@@ -1316,6 +1355,8 @@ function grimoireApplyRemoteLocation(found, data) {
         if (!grimoireFollowRemoteHistory(shell, data.url)) shell.addToHistory({ type: 'web', url: data.url, title: data.title || data.url });
         if (host.updateNavigationButtons) host.updateNavigationButtons();
     }
+    // the tab's icon: the page's own (grimoireTabFavicon), once it has loaded
+    if (data.url) grimoireTabFavicon(shell, data.url, () => { if (host.tabs) host.tabs.emit(); });
     // the tab strip shows the new title (grimoireTabs.js -> grimoireIeChrome.js)
     if (host.tabs) host.tabs.emit();
 }
@@ -1371,6 +1412,7 @@ function grimoireBackgroundRemoteMessage(found, data) {
                 if (!grimoireFollowRemoteHistory(shell, data.url)) grimoirePushWebEntry(shell, { type: 'web', url: data.url, title: data.title || data.url });
             }
             grimoireTitleWebEntry(shell, data);
+            if (!data.navigating && data.url) grimoireTabFavicon(shell, data.url, () => tabs.emit());
         }
         tabs.emit();
         return true;

@@ -38,7 +38,8 @@
     const NAI_FAVICON = '/static_images/novelai-favicon.png';
 
     function pageFavicon(entry) {
-        if (entry && entry.type === 'web') return `${ART}/page-ie.png`;
+        // a web page: its own icon (grimoireRemoteBrowser.js grimoireTabFavicon), IE's page until it is known
+        if (entry && entry.type === 'web') return entry.favicon || `${ART}/page-ie.png`;
         const site = entry && (entry.siteId || (entry.content && entry.content.siteId));
         const url = entry ? (entry.displayUrl || entry.url || (entry.content && entry.content.displayUrl) || '') : '';
         if (site === 'novelai' || /docs\.novelai\.jp/i.test(String(url))) return NAI_FAVICON;

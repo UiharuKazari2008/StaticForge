@@ -1190,17 +1190,35 @@ async function readPageInfo(session) {
         if (og && og.content) list.push(abs(og.content));
         icons.filter((i) => i.px < 48).forEach((i) => list.push(i.href));
         list.push(abs('/favicon.ico'));
+        // the tab's icon as Chrome picks it (Yukimi, Nov 21: "i want the icon in the tab to be the sites icon it would
+        // show in chrome"): a rel=icon link (not the touch icons), an SVG or "any" first, else the size closest to 16 px
+        // at the screen's ratio from above, else the largest; then the site's /favicon.ico
+        const want = 16 * (window.devicePixelRatio || 1);
+        let best = null;
+        let bestScore = -Infinity;
+        document.querySelectorAll('link[rel~="icon"]').forEach((link) => {
+            if (/apple-touch/i.test(link.rel)) return;
+            const href = abs(link.getAttribute('href'));
+            if (!href) return;
+            const sizes = link.getAttribute('sizes') || '';
+            const svg = /svg/i.test(link.type || '') || /\.svg(\?|#|$)/i.test(href) || /any/i.test(sizes);
+            const size = svg ? 0 : px(sizes, 16);
+            const score = svg ? 1e6 : (size >= want ? 1e5 - size : size);
+            if (score > bestScore) { best = href; bestScore = score; }
+        });
+        const favicons = [best, abs('/favicon.ico')].filter(Boolean);
         return {
             url: location.href,
             title: document.title || '',
-            icons: [...new Set(list.filter((href) => /^(https?:|data:|chrome-extension:)/i.test(href)))].slice(0, 12)
+            icons: [...new Set(list.filter((href) => /^(https?:|data:|chrome-extension:)/i.test(href)))].slice(0, 12),
+            favicons: [...new Set(favicons.filter((href) => /^(https?:|data:|chrome-extension:)/i.test(href)))]
         };
     });
     const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('page info timed out')), 6000));
     const info = await Promise.race([read, timeout]);
     // Extension pages rarely link an icon; the manifest one is what Chrome shows.
     const ext = extensions.find((e) => e.icon && info.url.startsWith('chrome-extension://' + e.id + '/'));
-    if (ext) info.icons.unshift(ext.icon);
+    if (ext) { info.icons.unshift(ext.icon); info.favicons.unshift(ext.icon); }
     return info;
 }
 

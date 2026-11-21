@@ -600,7 +600,9 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
                 return;
             }
             let icon = '';
-            for (const href of Array.isArray(info.icons) ? info.icons : []) {
+            // kind=tab: the tab's icon as Chrome picks it (server.js readPageInfo favicons); else the biggest (shortcuts)
+            const wanted = req.query.kind === 'tab' && Array.isArray(info.favicons) ? info.favicons : info.icons;
+            for (const href of Array.isArray(wanted) ? wanted : []) {
                 const fileRes = await fetch(base + '/resource' + query + '&url=' + encodeURIComponent(href)).catch(() => null);
                 if (!fileRes || !fileRes.ok) continue;
                 const type = String(fileRes.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
