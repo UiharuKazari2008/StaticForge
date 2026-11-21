@@ -16,7 +16,7 @@
  *   Logos are found by their pixels, not by resource id, because ids change between Chromium versions.
  * Re-run after every apt Chromium update. Until then the service keeps using the newer system Chromium.
  *
- * Only for stock Chromium: Alchemy's own build (services/grimoire-browser/chromium-patches, #993) is branded when it
+ * Only for stock Chromium: Alchemy's own build (the DreamScape/Alchemy-Chromium repository, #993) is branded when it
  * is compiled (brand.py) and ships its binary as alchemy, so it needs none of this. The script will not replace such
  * a build in $ALCHEMY_CHROMIUM_DIR (alchemy-patches.json there) unless run with --replace-patched-build, e.g. to fall
  * back to a newer stock Chromium for its security fixes until the patched build catches up.
