@@ -404,7 +404,9 @@
 
     function searchPictures() {
         // the Search program (programs, settings, notes, messages, pictures); Pictures' own search without it
-        if (window.wmSearch && typeof window.wmSearch.open === 'function') window.wmSearch.open();
+        // Search Phone: every Type, the field focused with the keyboard up, as the other scopes' pages open (Yukimi, Nov 21
+        // 2026: it opened without the focus). Called inside the tap: Android raises the keyboard only for a tap's focus
+        if (window.wmSearch && typeof window.wmSearch.open === 'function') window.wmSearch.open(null, 'all', { focus: true });
         else sh.open('gallery');
     }
 
