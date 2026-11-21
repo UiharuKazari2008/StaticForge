@@ -182,7 +182,8 @@
      */
     // notices only the server raises (no page app shows its own live note for them): the inbox shows them itself
     // test: the test lane's notices (modules/testDevices.js, the emulator harness) have no page producer either
-    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test']);
+    // director: the turn-finished notice (wmShell no longer posts one of its own: it was a second notification, #997)
+    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test', 'director']);
 
     let iconPrefsSent = '';
     function sendIconPrefs() {
@@ -303,6 +304,10 @@
         const d = (pk && (pk.data || pk)) || {};
         if (d.reason === 'ack' && (d.state === 'cleared' || d.state === 'acted')) { reminders.delete(d.id); close(d.id); return; }
         if (d.reason === 'new' && d.notice) {
+            // a new event under an id already used (the next turn's director:<session>:turn, the next text in a chat): the
+            // server set it back to new, so it is acked seen again and its app must be seen to show it again. Kept from the
+            // last one, the ack was skipped and the notice stayed new, to show again at the next resume or reconnect
+            if (d.notice.alert) { seenAcked.delete(d.notice.id); producerShown.delete(d.notice.id); }
             // a reminder has no page app to raise it: shown here, live (also in the background, so it
             // is up on resume; the app does not post it while this page is connected)
             if (isReminder(d.notice)) { reminders.set(d.notice.id, d.notice); showReminder(d.notice); return; }
@@ -310,7 +315,8 @@
             // not in the foreground (a background tick): leave it 'new' so it shows on resume.
             // a kind no page app raises live (the household mailbox, server notices, #908): shown here
             const kind = d.notice.data && d.notice.data.kind;
-            if (!document.hidden && SERVER_ONLY_KINDS.has(kind)) { show(d.notice); return; }
+            // a class shown without a message (Display message on screen off) is stored seen: nothing to show
+            if (!document.hidden && SERVER_ONLY_KINDS.has(kind)) { if (!d.notice.state || d.notice.state === 'new') show(d.notice); return; }
             if (!document.hidden) producerShows(d.notice);
         }
     }

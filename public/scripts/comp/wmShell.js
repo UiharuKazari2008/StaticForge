@@ -3824,8 +3824,13 @@
     let fitQueued = false;
     let fitAgain = false;
     /**
-     * Director: Turn finished (a phone sound event): running -> idle plays its sound and, with
-     * Display message on screen, posts a notification (off by default: the clapper already stops).
+     * Director: Turn finished (a phone sound event). With Display message on screen the server's inbox
+     * notice director:<session>:turn is the one notification (wmNotificationInbox shows it here with its
+     * sound, the Android app posts it when this page is not in front, a dismissal anywhere clears it
+     * everywhere). This page posted a second one of its own (named from the idle status, which has no
+     * session name: "The session: ..." beside the inbox's "<name>: ..."), and a page that was behind
+     * showed the inbox one again on resume: 2-3 notifications per turn (Yukimi, Nov 20, #997). With Display
+     * message off the server keeps the notice quiet, and only the sound plays, here.
      */
     let dirWasRunning = null;
     function directorTurnWatch(dir) {
@@ -3833,12 +3838,8 @@
         const was = dirWasRunning;
         dirWasRunning = dir ? running : was;
         if (!dir || was !== true || running) return;
-        playSystemSound('director');
         const p = eventPrefs('director');
-        if (p && p.display) {
-            const who = dir.name ? `"${dir.name}"` : 'The session';
-            notify({ title: 'Director', text: `${who}: the turn is finished.`, asNote: true, timeout: 10000 });
-        }
+        if (!p || !p.display) playSystemSound('director');
     }
 
     /** The Director icon: the clapper claps while a turn runs, closed otherwise (timers: no rAF in background tabs). */
