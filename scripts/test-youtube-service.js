@@ -335,6 +335,14 @@ T.setBrowser({ watched: async (on, id) => {
         assert.strictEqual(c.videos.length, 3);
     });
 
+    await ok('Open Videos In: app by default, here when chosen, anything else ignored', async () => {
+        assert.strictEqual((await svc.saveSettings({})).playIn, 'app');
+        assert.strictEqual((await svc.saveSettings({ playIn: 'here' })).playIn, 'here');
+        assert.strictEqual((await svc.saveSettings({ playIn: 'nowhere' })).playIn, 'here');
+        assert.strictEqual((await svc.saveSettings({ rareFirst: true })).playIn, 'here');
+        assert.strictEqual((await svc.saveSettings({ playIn: 'app' })).playIn, 'app');
+    });
+
     await ok('Leave Out Shorts off reads the plain uploads list; a missing long list falls back', async () => {
         await svc.saveSettings({ noShorts: false });
         await settle();

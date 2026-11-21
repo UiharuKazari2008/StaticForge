@@ -1192,6 +1192,8 @@
     async function openLink(href) {
         if (!href || !/^https?:/i.test(href)) return;
         engaged();
+        // a YouTube video plays in Melaton Videos when that is where videos open (its Menu > Open Videos In)
+        if (window.wmYouTube && typeof window.wmYouTube.openLink === 'function' && window.wmYouTube.openLink(href)) return;
         const L = window.AndroidLinks;
         const ie = () => {
             if (window.wmBrowser && typeof window.wmBrowser.open === 'function' && window.wmBrowser.open(href) !== false) return;

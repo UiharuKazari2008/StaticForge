@@ -820,13 +820,25 @@
 
 /* ---------------------------------------------------------------- wide screens: two columns */
 
+/* A phone held sideways is a wide screen too (824 px on a Fold cover). The list is a scroller of fixed height, so
+   its auto rows were sized by each item's minimum contribution (its min-height) and never grew to their content:
+   the first video (min-height 0) was crushed to a 1 px line and two-line titles ran out of their rows (Yukimi,
+   Nov 21 2026: "the top row item in landscape is always crushed down to a slim line"). Rows are min-content now.
+   The first video spans three rows of the left column and fills them, with its own 16:9 height (to 62 % of the
+   page) as a minimum; one that nothing follows in its part of the list (.is-solo, a lone live stream above the
+   Latest heading) takes the whole width instead of leaving the right column empty.
+   minmax(0, 1fr): a long title no longer widens its column past the screen. */
 @container yt (min-width: 560px) {
-    .wm-youtube .yt-list.is-videos { display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
+    .wm-youtube .yt-list.is-videos { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-rows: min-content; align-content: start; }
     .wm-youtube .yt-list.is-videos > .yt-sec,
     .wm-youtube .yt-list.is-videos > .yt-empty,
     .wm-youtube .yt-list.is-videos > .yt-foot { grid-column: 1 / -1; }
     .wm-youtube .yt-row.is-hero { grid-row: span 3; }
-    .wm-youtube .yt-row.is-hero .yt-th { height: 100%; max-height: none; aspect-ratio: auto; }
+    .wm-youtube .yt-row.is-hero .yt-th { height: 100%; min-height: min(calc(50cqw * 9 / 16), 62cqh); max-height: none; aspect-ratio: auto; }
+    /* the picture fills the frame without sizing it: hqdefault is 4:3 with black bands and would stretch the rows */
+    .wm-youtube .yt-row.is-hero .yt-th img { position: absolute; inset: 0; }
+    .wm-youtube .yt-row.is-hero.is-solo { grid-column: 1 / -1; grid-row: auto; }
+    .wm-youtube .yt-row.is-hero.is-solo .yt-th { height: auto; min-height: 0; max-height: min(62cqh, 36cqw); aspect-ratio: 16 / 9; }
 }
 
 /* ---------------------------------------------------------------- Today (6.1): one video, paged sideways */

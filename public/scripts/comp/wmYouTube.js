@@ -30,10 +30,12 @@
  * Subscriptions list; a started one shows how far it was played. A clock on the picture says a video
  * is in Watch Later.
  *
- * A video opens in the phone's YouTube app through the Dreamscape app's link bridge
- * (window.AndroidLinks.openNative); without the bridge the link opens the way the browser opens it.
+ * A tapped YouTube video opens where Menu > Open Videos In says (settings.playIn, Yukimi Nov 21 2026): the phone's
+ * YouTube app (default) through the Dreamscape app's link bridge (window.AndroidLinks.openNative; without the bridge
+ * the link opens the way the browser opens it), or this program's own player. Lists, Today, the 6.5 panel and
+ * YouTube links tapped in Text Messaging follow it; the hold menu offers the other way. The desktop always plays here.
  *
- * window.wmYouTube: open(tab?), state(), reload().
+ * window.wmYouTube: open(tab? | 'kick:<slug>' | 'yt:<id>' | YouTube link), openLink(href), state(), reload().
  * Art: public/static_images/wm61/app-youtube*, wm65 start-youtube and the ti-x panel
  * (scripts/generate-wm-youtube-art.js). Styles: public/css/wm-youtube.css. Phones only. The account is
  * the administrator's (dev_admin test tabs may read).
@@ -209,9 +211,44 @@
             } catch (_) { /* the app itself below */ }
             return launchApp(v.package, v.channel);
         }
-        // the desktop has no YouTube app: a video plays in the window; the phone hands it to YouTube's app (hold: Play Here)
-        if (HOST.desktop) { watchVideo(v); return true; }
+        // Menu > Open Videos In (settings.playIn): the program's own player or YouTube's app; the hold menu offers the
+        // other. The desktop has no YouTube app: a video always plays in the window there.
+        if (playHere()) { watchVideo(v); return true; }
         return openVideo(v.id);
+    }
+    /** Whether a tapped YouTube video plays in the program (Yukimi, Nov 21 2026: the choice is hers, in Videos' settings). */
+    // kept on the phone too, so a tap on Today or a link right after a start goes the chosen way before the status feed answers
+    const LS_PLAY_IN = 'wmVideosPlayIn';
+    function rememberPlayIn(v) {
+        if (v !== 'app' && v !== 'here') return;
+        try { if (localStorage.getItem(LS_PLAY_IN) !== v) localStorage.setItem(LS_PLAY_IN, v); } catch (_) { /* private mode */ }
+    }
+    function playInSetting() {
+        if (hub.settings && hub.settings.playIn) return hub.settings.playIn;
+        try { return localStorage.getItem(LS_PLAY_IN) || 'app'; } catch (_) { return 'app'; }
+    }
+    const playHere = () => HOST.desktop || playInSetting() === 'here';
+    /** A YouTube video link (watch, youtu.be, shorts, live, embed) -> its id, or ''. */
+    function videoIdOf(href) {
+        let u;
+        try { u = new URL(String(href || '')); } catch (_) { return ''; }
+        const host = u.hostname.replace(/^(www|m|music)\./, '');
+        let id = '';
+        if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];
+        else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+            id = u.pathname === '/watch' ? (u.searchParams.get('v') || '') : ((u.pathname.match(/^\/(?:shorts|live|embed)\/([\w-]+)/) || [])[1] || '');
+        }
+        return /^[\w-]{11}$/.test(id) ? id : '';
+    }
+    /**
+     * A YouTube link opened somewhere else on the phone (a link in a message): plays in Videos when that is where
+     * videos open (settings.playIn 'here'); true when it was taken. Otherwise the caller opens it its own way.
+     */
+    function openLink(href) {
+        const id = videoIdOf(href);
+        if (!id || !playHere() || !canUse()) return false;
+        watchVideo(seen.get(id) || { id });
+        return true;
     }
 
     async function copyText(text) {
@@ -259,6 +296,7 @@
         if (!items || typeof items !== 'object') return;
         const was = signedIn();
         ['account', 'favourites', 'latest', 'live', 'sources', 'settings'].forEach((k) => { if (items[k] !== undefined && items[k] !== null) hub[k] = items[k]; });
+        if (items.settings) rememberPlayIn(items.settings.playIn);
         // the server finished a look for new uploads: take the Subscriptions list it now holds (no call to
         // YouTube) while the program shows it; otherwise when it shows again (#890: the 150-row list was
         // read on every bump while only Today was on screen)
@@ -546,7 +584,7 @@
         if (!isAdmin()) { box('Only the administrator can change the settings.', 'info'); return; }
         try {
             const d = await ask('youtube_settings_save', { settings: patch });
-            if (d.settings) hub.settings = d.settings;
+            if (d.settings) { hub.settings = d.settings; rememberPlayIn(d.settings.playIn); }
             if (patch.noShorts !== undefined) { Object.assign(data.subs, { videos: null, at: 0 }); ensureTab(); }
             changed();
         } catch (e) {
@@ -601,7 +639,7 @@
         const pic = src === 'app' && !v.thumb
             ? `<span class="yt-th is-app">${I.bell}<b>${esc(v.channel || '')}</b></span>`
             : `<span class="yt-th"><img src="${esc(big || v.thumb)}" data-alt="${esc(v.thumb)}" alt="" loading="lazy" decoding="async" draggable="false">${v.later ? `<i class="yt-wl" title="In Watch Later">${I.later}</i>` : ''}${v.progress > 0 && !v.watched ? `<i class="yt-prog"><b style="width:${Math.min(100, Math.round(v.progress))}%"></b></i>` : ''}${len ? `<i class="yt-len${live ? ' is-live' : ''}">${esc(len)}</i>` : ''}</span>`;
-        return `<div class="yt-row${hero ? ' is-hero' : ''}${v.watched ? ' is-watched' : ''}" role="button" tabindex="0" data-v="${esc(v.id)}">
+        return `<div class="yt-row${hero ? ' is-hero' : ''}${hero === 'solo' ? ' is-solo' : ''}${v.watched ? ' is-watched' : ''}" role="button" tabindex="0" data-v="${esc(v.id)}">
             ${pic}
             <span class="yt-tx"><span class="yt-t">${tags}${esc(v.title)}</span>${hero ? `<span class="yt-s">${esc(sub.join(' · '))}</span>` : `<span class="yt-s">${esc(v.channel || '')}</span><span class="yt-s">${esc(second)}</span>`}</span>
         </div>`;
@@ -625,13 +663,16 @@
     };
     const emptyHtml = (head, text, extra) => `<div class="yt-empty"><b>${esc(head)}</b>${esc(text || '')}${extra || ''}</div>`;
     const errorHtml = (text, act) => emptyHtml('YouTube did not answer', text, `<br><button type="button" class="yt-btn" data-act="${act}">Try Again</button>`);
-    const videosHtml = (list) => list.map((v, i) => videoRow(v, i === 0 && !v.watched && srcOf(v) !== 'app')).join('');
+    // the first video is shown large; 'solo' when no other row follows it in its part of the list (the two-column
+    // layout then gives it the whole width: with nothing beside it, the rows it spans have no height of their own)
+    const heroOf = (v, n) => (v.watched ? false : n > 1 ? true : 'solo');
+    const videosHtml = (list) => list.map((v, i) => videoRow(v, i === 0 && srcOf(v) !== 'app' && heroOf(v, list.length))).join('');
     /** The feed: what is live now under its own heading, then the rest. */
     function feedHtml(list) {
         const live = list.filter((v) => v.live === 'live');
         if (!live.length) return videosHtml(list);
         const rest = list.filter((v) => v.live !== 'live');
-        return `<div class="yt-sec is-live">Live now (${live.length})</div>${live.map((v, i) => videoRow(v, i === 0 && !v.watched)).join('')}<div class="yt-sec">Latest</div>${rest.map((v) => videoRow(v, false)).join('')}`;
+        return `<div class="yt-sec is-live">Live now (${live.length})</div>${live.map((v, i) => videoRow(v, i === 0 && heroOf(v, live.length))).join('')}<div class="yt-sec">Latest</div>${rest.map((v) => videoRow(v, false)).join('')}`;
     }
 
     /** Channels: the Kick channels (added by name) and the apps whose notifications join the feed. */
@@ -1065,9 +1106,12 @@
             const v = seen.get(row.dataset.v);
             if (!v) return;
             const c = v.channelId ? { id: v.channelId, title: v.channel || 'Channel', thumb: (seen.get(v.channelId) || {}).thumb || '' } : null;
+            // the way a tap goes first (Menu > Open Videos In), then the other way
+            const here = { label: 'Play Here', action: () => watchVideo(v) };
+            const app = { label: HOST.desktop ? 'Open on youtube.com' : 'Play in YouTube', action: () => openVideo(v.id) };
             items = [
-                { label: 'Play Here', action: () => watchVideo(v) },
-                { label: HOST.desktop ? 'Open on youtube.com' : 'Play in YouTube', action: () => openVideo(v.id) },
+                playHere() ? here : app,
+                playHere() ? app : here,
                 { label: 'Open in Browser', action: () => openUrl(videoUrl(v.id), false) },
                 '-',
                 { label: v.watched ? 'Mark as Unwatched' : 'Mark as Watched', disabled: !isAdmin(), action: () => setWatched(v.id, !v.watched) },
@@ -1333,7 +1377,7 @@
         }
     }
 
-    let pendingWatch = null; // a stream asked for before the program's page existed (a tap on Today)
+    let pendingWatch = null; // a stream or video asked for before the program was open or its page existed (a tap on Today, a link)
     function watchLive(v) {
         if (!isAdmin()) { box('Only the administrator can watch a stream through the server.', 'info'); return; }
         const slug = String(v.id || '').replace(/^kick:/, '');
@@ -1698,10 +1742,13 @@
 
     function watchVideo(v) {
         const id = String((v && v.id) || '');
-        if (!/^[\w-]{6,20}$/.test(id) || !els) { if (id) openVideo(id); return; }
+        if (!/^[\w-]{6,20}$/.test(id)) return;
+        // on the phone from Today, a notification or a link: the program opens first and plays it once its page is there (show())
+        if (!HOST.desktop && ws && ws.currentApp && ws.currentApp() !== APP_ID) { pendingWatch = v; ws.open(APP_ID); if (pendingWatch !== v) return; pendingWatch = null; }
+        if (!els) { if (HOST.desktop) openVideo(id); else pendingWatch = v; return; }
         if (!isAdmin() || v.live === 'live' || v.live === 'upcoming') { watchEmbed(v); return; }
         if (player) stopPlayer();
-        const at = v.resume > 5 && v.progress > 0 && v.progress < 95 && !v.watched ? Math.floor(v.resume) : 0;
+        const at =v.resume > 5 && v.progress > 0 && v.progress < 95 && !v.watched ? Math.floor(v.resume) : 0;
         player = { kind: 'ytr', vod: true, item: v, vid: id, slug: '', channel: v.channel || 'YouTube', streamTitle: v.title || '', title: v.title || '', state: 'starting', mode: vodMode(), modes: [], id: '', url: '', hls: null, tries: 0, offset: at, pos: at, len: v.length || 0 };
         const p = player;
         els.player.hidden = false;
@@ -2172,6 +2219,8 @@
             { label: 'Leave Out Shorts', checked: s.noShorts !== false, disabled: !admin || !signedIn(), action: () => saveSettings({ noShorts: s.noShorts === false }) },
             { label: 'Skip Sponsors (SponsorBlock)', checked: s.skipSegments !== false, disabled: !admin || !signedIn(), action: () => saveSettings({ skipSegments: s.skipSegments === false }) },
             { label: 'Rare Uploads First on Today', checked: s.rareFirst !== false, disabled: !admin || !signedIn(), action: () => saveSettings({ rareFirst: s.rareFirst === false }) },
+            // where a tapped YouTube video plays (the phone only: the desktop has no YouTube app, its window always plays it)
+            HOST.desktop ? null : { label: 'Open Videos In', disabled: !admin, submenu: [['here', 'Melaton Videos'], ['app', 'YouTube App']].map(([k, label]) => ({ label, radio: playInSetting() === k, action: () => saveSettings({ playIn: k }) })) },
             { label: 'Videos on Today', disabled: !admin || !signedIn(), submenu: [6, 12, 20, 30].map((k) => ({ label: String(k), radio: n === k, action: () => saveSettings({ todayCount: k }) })) },
             { label: 'Favourite Channels...', disabled: !signedIn(), action: () => setTab('channels') },
             { label: 'Import from Notifications', disabled: !admin || !signedIn(), action: importBells },
@@ -2180,7 +2229,7 @@
             { label: 'Kick Channels and Apps...', disabled: !signedIn(), action: () => setTab('channels') },
             signedIn() ? { label: 'Sign Out', disabled: !admin, action: signOut } : { label: 'Sign In', disabled: !admin || !acct().configured || !!acct().signIn, action: signIn },
             { label: 'About', action: about }
-        ];
+        ].filter(Boolean);
     }
 
     // ---------------------------------------------------------------- app
@@ -2192,6 +2241,9 @@
             if (v) { watchLive(v); return; }
             to = 'subs';
         }
+        // 'yt:<video id>' or a YouTube link (a notice or another program naming a video): where videos open (settings.playIn)
+        const vid = /^yt:[\w-]{11}$/.test(String(to || '')) ? String(to).slice(3) : videoIdOf(to);
+        if (vid) { const v = seen.get(vid) || { id: vid }; if (playHere()) watchVideo(v); else openVideo(vid); return; }
         if (ws) ws.open(APP_ID);
         if (to && TABS.some((t) => t.id === to) && els) setTab(to);
     }
@@ -2218,7 +2270,7 @@
             // new uploads the server found while the program was away: taken now, quietly, as a push would
             const t = data.subs;
             if (t.feedStale && signedIn() && t.videos && !t.loading) { t.feedStale = false; loadTab('subs', false, true); }
-            if (pendingWatch) { const v = pendingWatch; pendingWatch = null; watchLive(v); }
+            if (pendingWatch) { const v = pendingWatch; pendingWatch = null; if (srcOf(v) === 'kick') watchLive(v); else watchVideo(v); }
             if (player) { syncPlayer(); plTakeBack(); plSuspend(false); plClock(true); chatSync(); }
         },
         hide() {
@@ -2388,6 +2440,8 @@
 
     window.wmYouTube = {
         open,
+        /** A YouTube link tapped in another program: true when Videos plays it (Menu > Open Videos In > Melaton Videos). */
+        openLink,
         state: () => ({ hub, tab, data, layer }),
         /** Read the open tab again (the server answers from what it holds when that is young). */
         reload: () => loadTab(tab, true)

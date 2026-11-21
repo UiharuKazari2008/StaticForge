@@ -32,7 +32,7 @@ VisionCaster holds), scope `youtube.readonly`. Tokens never go to a client.
 | `youtube_channel` | `{ id }` -> `{ channel, videos[], favourite, subscribed }` |
 | `youtube_favourite` | `{ channel: { id, title, thumb }, on }` -> `{ favourites[] }`. Admin. |
 | `youtube_favourites_order` | `{ ids[] }` -> `{ favourites[] }`. Admin. |
-| `youtube_settings_save` | `{ settings: { noShorts?, rareFirst?, todayCount? } }` -> `{ settings }`. Admin. |
+| `youtube_settings_save` | `{ settings: { noShorts?, rareFirst?, skipSegments?, playIn?, todayCount? } }` -> `{ settings }`. Admin. `playIn`: where a tapped YouTube video opens on a phone, `app` (Android's YouTube app, default) or `here` (the program's own player); the desktop always plays in its window. |
 
 A video is `{ id, title, channel, channelId, thumb, at, length, live, watched, progress, later }`. `watched` and `progress` come from the account's watch history, read in the Alchemy browser at most every 10 minutes (played 60 % or more = watched; less = `progress` percent). `members: true` marks a members-only video of a channel the account pays a membership on (the Memberships page is read in the Alchemy browser once a day; those channels' members-only lists are read with their public ones). Other fields: (`at` in ms, `length` in seconds or null,
 `live`: `''`, `live` or `upcoming`). A channel is `{ id, title, thumb }`.
@@ -139,5 +139,5 @@ favourites' video counts (1 unit per 50 channels) and reads only the channels th
 - `latest`: `{ videos[], caughtUp }`, the favourites' uploads that are not watched yet, as one list (`settings.todayCount` at most; `caughtUp` when there are uploads but all were watched). With `settings.rareFirst` (default) a video's age counts in units of its channel's usual gap between uploads, so channels that upload seldom come first; off: newest first. Each video also has `gap` (ms since that channel's upload before it, or null).
 - `live`: `{ items[] }`, the Kick channels that are live now (Today shows them first)
 - `sources`: `{ kickReady, kickError, kick: [{ slug, name, thumb, live, notify }], apps: [{ package, label }], seenApps: [{ package, label }] }` (`seenApps`: apps that posted a notification lately, offered for choosing)
-- `settings`: `{ noShorts, rareFirst, todayCount, budget }`
+- `settings`: `{ noShorts, rareFirst, skipSegments, playIn, todayCount, budget }`
 - `feed`: `{ at }`, when the subscriptions feed or the watched marks last changed (read `youtube_feed` again when it moves)

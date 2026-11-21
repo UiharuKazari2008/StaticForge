@@ -56,7 +56,7 @@ const ytRelay = require('../../videosYoutubeRelay');
 //   youtube_channel          { id }                    { channel, videos[], favourite, subscribed }
 //   youtube_favourite        { channel, on }           admins; adds or removes a Today favourite -> { favourites[] }
 //   youtube_favourites_order { ids[] }                 admins -> { favourites[] }
-//   youtube_settings_save    { settings }              admins; { noShorts, rareFirst, skipSegments, todayCount } -> { settings }
+//   youtube_settings_save    { settings }              admins; { noShorts, rareFirst, skipSegments, playIn ('app' | 'here'), todayCount } -> { settings }
 //
 // Status is pushed, never polled: statusHub feed `youtube` (status_subscribe { feed: 'youtube' } while the
 // Today item or the program is on screen) answers { account, favourites, latest, settings } once and then
