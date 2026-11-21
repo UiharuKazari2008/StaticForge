@@ -1626,7 +1626,8 @@
                         const rows = on.filter((k) => byKey.has(k)).map((k) => byKey.get(k)).concat(choices.filter((c) => !on.includes(c[0])));
                         const sel = d.optSel[o.key];
                         const at = on.indexOf(sel);
-                        return `<div class="wm-listbox wm-opt-list" data-opt="${esc(o.key)}">${rows.map(([v, l, img]) => `<div class="wm-listbox-row${v === sel ? ' is-selected' : ''}" data-key="${esc(v)}">${check(`opt-${o.key}`, '', on.includes(v), `value="${esc(v)}"`)}${img ? `<img src="${esc(img)}" alt="" draggable="false">` : ''}<span>${esc(l)}</span></div>`).join('')}</div>
+                        // a choice's fourth field: shown unchecked and greyed (Social's apps that are Messaging accounts, "(in Messaging)")
+                        return `<div class="wm-listbox wm-opt-list" data-opt="${esc(o.key)}">${rows.map(([v, l, img, off]) => `<div class="wm-listbox-row${v === sel ? ' is-selected' : ''}" data-key="${esc(v)}">${check(`opt-${o.key}`, '', !off && on.includes(v), `value="${esc(v)}"${off ? ' disabled' : ''}`)}${img ? `<img src="${esc(img)}" alt="" draggable="false">` : ''}<span>${esc(l)}</span></div>`).join('')}</div>
                             <div class="wm-buttons"><button type="button" class="wm-button" data-act="opt-up" data-opt="${esc(o.key)}"${at > 0 ? '' : ' disabled'}>Move Up</button><button type="button" class="wm-button" data-act="opt-down" data-opt="${esc(o.key)}"${at >= 0 && at < on.length - 1 ? '' : ' disabled'}>Move Down</button></div>`;
                     };
                     // a long check list is a list box that scrolls inside the page (the page itself never scrolls)
