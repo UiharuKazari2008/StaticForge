@@ -820,7 +820,6 @@
      */
     const superExpanded = new Set(); // packages opened to show every notification
     let superReply = null; // { key, index, label, draft } while a reply box is open
-    const superImages = new Map(); // image id -> data URL (AndroidPhoneNotifications.image)
     let superNoteRows = new Map(); // key -> row, as last listed
 
     function noteAction(N, kind, row) {
@@ -903,7 +902,7 @@
         const box = superEl.querySelector('.wm-ti-super-notes');
         const sub = superEl.querySelector('.wm-ti-super-sub');
         const N = window.AndroidPhoneNotifications;
-        const plain = (html) => { box.innerHTML = html; superNoteRows = new Map(); pruneNoteImages(); };
+        const plain = (html) => { box.innerHTML = html; superNoteRows = new Map(); };
         if (!N || typeof N.list !== 'function') { sub.hidden = true; plain('<div class="wm-ti-super-empty">The phone\'s notifications show here with the Dreamscape app.</div>'); return; }
         sub.hidden = false;
         let ok = false;
@@ -978,42 +977,21 @@
         }
         have.forEach((el) => el.remove());
         [...box.children].forEach((el) => { if (!el.classList.contains('wm-ti-super-grp')) el.remove(); });
-        pruneNoteImages();
     }
 
     /**
-     * The pictures of notifications no longer listed go (#890): up to 60 data URLs (big pictures,
-     * faces) stayed after they were dismissed. A listed one keeps its copy while its card is folded,
-     * so opening the card asks the app for nothing again.
-     */
-    function pruneNoteImages() {
-        if (!superImages.size) return;
-        const keep = new Set();
-        superNoteRows.forEach((n) => { if (n.large) keep.add(String(n.large)); if (n.picture) keep.add(String(n.picture)); });
-        for (const id of [...superImages.keys()]) if (!keep.has(id)) superImages.delete(id);
-    }
-
-    /**
-     * The pictures and faces. A newer app serves each from its file in the app's cache folder (imageBase(), deleted when
-     * the notification goes; nothing kept in the page, StaticForge #1005); an older one answers a data URL per id (kept
-     * while listed).
+     * The pictures and faces: each from its file in the app's cache folder (imageBase(), deleted when the notification
+     * goes; nothing kept in the page, StaticForge #1005, no-base64-images).
      */
     let superImageBase = null;
     function fillNoteImages(N, el) {
         if (superImageBase === null) { try { superImageBase = typeof N.imageBase === 'function' ? String(N.imageBase() || '') : ''; } catch (_) { superImageBase = ''; } }
         el.querySelectorAll('img[data-img]').forEach((img) => {
             const id = img.dataset.img;
-            if (superImageBase) {
-                img.addEventListener('error', () => img.remove(), { once: true });
-                img.src = superImageBase + encodeURIComponent(id);
-                return;
-            }
-            let url = superImages.get(id);
-            if (url == null && typeof N.image === 'function') {
-                try { url = N.image(id) || ''; } catch (_) { url = ''; }
-                if (url) { superImages.set(id, url); if (superImages.size > 60) superImages.delete(superImages.keys().next().value); }
-            }
-            if (url) img.src = url; else img.remove();
+            // never a base64 string (no-base64-images rule): an older app without imageBase() shows no picture
+            if (!superImageBase) { img.remove(); return; }
+            img.addEventListener('error', () => img.remove(), { once: true });
+            img.src = superImageBase + encodeURIComponent(id);
         });
     }
 
