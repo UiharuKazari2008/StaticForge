@@ -2454,12 +2454,13 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
     margin: 6px 0 8px;
 }
 
-/* the DeX screen's "Use the Samsung DeX wallpaper on this display" (#1013): ticked, the pictures and positions are greyed */
+/* the DeX screen's "Use Parent OS Wallpaper" (#1013): on the footer's left, OK / Cancel stay right; ticked, the pictures
+   and positions are greyed */
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-db-dex {
     display: flex;
     align-items: center;
     gap: 4px;
-    margin: 0 0 8px;
+    margin-right: auto;
 }
 
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-db-page.is-dex :is(.cpl-db-grid, .cpl-db-position, .cpl-db-credit) {
@@ -2659,6 +2660,7 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-db-footer {
     display: flex;
     flex: none;
+    align-items: center;
     justify-content: flex-end;
     gap: 10px;
     margin: 14px 0 0;

@@ -23,8 +23,8 @@
  * double-click) sets the workspace's wallpaper and position (setDesktopWallpaper) and goes back;
  * Cancel goes back unchanged.
  *
- * On the Samsung DeX screen (the Dreamscape app's DeX window) a check box "Use the Samsung DeX wallpaper on this display"
- * (Yozora #1013) shows Samsung DeX's own wallpaper instead, for this device only (androidDexWallpaper.js); while it is
+ * On the Samsung DeX screen (the Dreamscape app's DeX window) the footer's "Use Parent OS Wallpaper" (left of OK / Cancel,
+ * Yozora #1013) shows Samsung DeX's own wallpaper instead, for this device only (androidDexWallpaper.js); while it is
  * ticked the pictures and positions are greyed, and OK keeps the workspace's picture as it was for other displays.
  *
  * openWith(path) is "Set as desktop background" from a gallery or Explorer picture: the page opens
@@ -260,7 +260,6 @@
                 <button type="button" class="cpl-db-combo" data-cpl-db="location">${esc(label)}</button>
                 <button type="button" class="cpl-wu-button" data-cpl-db="browse">Browse...</button>
             </div>
-            ${dexWallpaper() ? `<div class="cpl-db-dex"><input type="checkbox" id="cplDbDex" data-cpl-db-dex${state.dex ? ' checked' : ''}><label for="cplDbDex">Use the Samsung DeX wallpaper on this display</label></div>` : ''}
             <div class="cpl-db-grid">${gridHtml()}</div>
             ${GALLERIES.some((g) => g.id === state.location) ? `<div class="cpl-db-credit" aria-live="polite">${creditHtml(state.selected)}</div>` : ''}
             <div class="cpl-db-position">
@@ -271,6 +270,7 @@
                 </div>
             </div>
             <div class="cpl-db-footer">
+                ${dexWallpaper() ? `<span class="cpl-db-dex"><input type="checkbox" id="cplDbDex" data-cpl-db-dex${state.dex ? ' checked' : ''}><label for="cplDbDex">Use Parent OS Wallpaper</label></span>` : ''}
                 <button type="button" class="cpl-wu-button" data-cpl-db="ok">OK</button>
                 <button type="button" class="cpl-wu-button" data-cpl-db="cancel">Cancel</button>
             </div>`;
