@@ -12374,9 +12374,11 @@
      * message boxes are cancelled, the desktop's dialogs too, an open notification goes back into its icon (still
      * waiting; the ones not popped yet stay in the icon as well), the tray and every bubble close.
      */
-    function goHome() {
+    function goHome(e) {
+        // the home swipe's mask over the screen (DSApp, #1013): Today readies under it and tells the app when to take it away
+        const masked = !!(e && e.detail && e.detail.mask);
         // the device lock screen stays over everything (unlocking lands on Today anyway)
-        try { if (window.wmLock && window.wmLock.isLocked) return; } catch (_) { /* no lock screen */ }
+        try { if (window.wmLock && window.wmLock.isLocked) { if (masked) homeMaskReady(); return; } } catch (_) { /* no lock screen */ }
         closeMenus(true);
         try { closeTaskSwitcher(true); } catch (_) { /* not open */ }
         try { closeBubble(); } catch (_) { /* none */ }
@@ -12405,8 +12407,18 @@
             page.scrollTop = 0;
             page.querySelectorAll('*').forEach((el) => { if (el.scrollLeft) el.scrollLeft = 0; });
         }
-        if (window.wmTitanium && typeof window.wmTitanium.home === 'function') window.wmTitanium.home({ animate: wasToday });
+        const T = window.wmTitanium;
+        if (masked && T && typeof T.maskedHome === 'function' && T.enabled && T.enabled()) T.maskedHome();
+        else {
+            if (masked) homeMaskReady();
+            if (T && typeof T.home === 'function') T.home({ animate: wasToday });
+        }
         document.dispatchEvent(new CustomEvent('wmTodayHome'));
+    }
+
+    /** The app's home mask may go (no Today entrance to hand it to: 6.1's Today, the lock screen). */
+    function homeMaskReady() {
+        try { if (window.AndroidBars && typeof window.AndroidBars.homeReady === 'function') window.AndroidBars.homeReady(); } catch (_) { /* older app */ }
     }
     window.addEventListener('melatonhome', goHome);
 

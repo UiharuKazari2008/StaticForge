@@ -2886,6 +2886,66 @@
         sh.refreshSoftKeys();
     }
 
+    // ---- Home by the swipe (Yozora #1013, Yukimi Nov 21): the app's home mask (Today's wallpaper) covers the screen as the
+    // swipe ends. Today readies its opening pose under it (the picture only), says so at once (AndroidBars.homeReady), the
+    // app takes the mask away and answers ('melatonmaskgone'), and the entrance plays from there - nothing of it hidden
+    // under the mask. The title bar and the soft key bar stay away until 250 ms before the entrance ends, then slide in
+    // from the top and the bottom. Neither side waits long on the other: the app drops its mask after a short cap, and
+    // the entrance starts here after MASK_CAP_MS without its answer.
+    const MASK_CAP_MS = 900;
+    const BARS_IN_MS = 250;
+    let maskedRun = null;
+
+    /** The app's mask covers the screen now (a home swipe on its way to Today). */
+    function maskUp() {
+        try { return !!(window.AndroidBars && typeof window.AndroidBars.homeMaskUp === 'function' && window.AndroidBars.homeMaskUp()); } catch (_) { return false; }
+    }
+
+    /** The title bar from the top and the soft key bar from the bottom, in over the entrance's last 250 ms. */
+    function barsIn(totalMs) {
+        const shellEl = document.getElementById('wmShell');
+        if (!shellEl) return;
+        const opts = { duration: BARS_IN_MS, delay: Math.max(0, totalMs - BARS_IN_MS), easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'backwards' };
+        const bar = shellEl.querySelector(':scope > .wm-titlebar');
+        const keys = shellEl.querySelector(':scope > .wm-softkeys');
+        try {
+            if (bar) bar.animate([{ transform: 'translateY(-100%)' }, { transform: 'none' }], opts);
+            if (keys) keys.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], opts);
+        } catch (_) { /* no Web Animations: the bars simply stay */ }
+    }
+
+    /** Today under the app's home mask (wmShell goHome with the mask, or the page shown while it is up). */
+    function maskedHome() {
+        if (maskedRun) return true;
+        if (!host || host.hidden || !panels.length || root.dataset.wmApp !== 'today') {
+            // no Today to animate: the mask may go at once
+            try { if (window.AndroidBars && window.AndroidBars.homeReady) window.AndroidBars.homeReady(); } catch (_) { /* older app */ }
+            return false;
+        }
+        if (focusWait) focusWait.cancel();
+        if (slide && slide.active) { cancelAnimationFrame(slide.raf); slide.active = false; slide.x = 0; host.classList.remove('is-sliding'); }
+        if (overlay) { try { overlay.close(true); } catch (_) { overlay = null; } }
+        if (!host.classList.contains('is-primed')) prime();
+        let started = false;
+        const start = () => {
+            if (started) return;
+            started = true;
+            maskedRun = null;
+            window.removeEventListener('melatonmaskgone', start);
+            clearTimeout(cap);
+            entrance();
+            barsIn(ENTER_MS + ENTER_ZOOM_MS);
+        };
+        maskedRun = { start };
+        window.addEventListener('melatonmaskgone', start, { signal: appScopeSignal });
+        const cap = setTimeout(start, MASK_CAP_MS);
+        // the pose drawn and on screen (two frames; none while the page is still hidden): the mask may go
+        requestAnimationFrame(() => requestAnimationFrame(() => { // perf: allow one call per home swipe: homeReady only posts to the app's main thread, nothing is answered or waited for
+            try { window.AndroidBars.homeReady(); } catch (_) { start(); }
+        }));
+        return true;
+    }
+
     /**
      * Today's entrance waits for Melaton's window to have the focus (Yukimi, Nov 18: "it should not animate until
      * the app is focused"): coming back from an Android program, the page is shown while Android's home animation and
@@ -2943,6 +3003,7 @@
         shownAt = Date.now();
         hiddenSpan = hiddenAt ? shownAt - hiddenAt : 0;
         // back from another app (not the blink of a Home press on Today)
+        if (root.dataset.wmApp === 'today' && maskUp()) { maskedHome(); return; }
         if (root.dataset.wmApp === 'today' && hiddenSpan > AWAY_MS && !stayedBehind()) {
             // a frame now, with no visible change: the app keeps its return picture up until the page draws a frame
             // (its visual-state callback), and sends the focus the entrance waits for after that - a still page
@@ -2958,7 +3019,7 @@
     new MutationObserver(() => {
         const now = root.dataset.wmApp || '';
         // (not for a Today readied for the way back: prime() closing Start under a program; it plays on the return)
-        if (now === 'today' && lastApp && lastApp !== 'today') requestAnimationFrame(() => { if (!host || !host.classList.contains('is-primed')) entrance(); });
+        if (now === 'today' && lastApp && lastApp !== 'today') requestAnimationFrame(() => { if (!maskedRun && (!host || !host.classList.contains('is-primed'))) entrance(); });
         if (now !== 'today' && host) host.classList.remove('is-exiting');
         // another program came up: the Super Bar is put away at once (Today comes back without it)
         if (now !== 'today' && superOpen) closeSuper(true);
@@ -2985,6 +3046,8 @@
 
     window.wmTitanium = {
         enabled, home, select: (i) => select(i, true),
+        // Home by the swipe, under the app's mask (#1013)
+        maskedHome: () => maskedHome(),
         // the coming-back entrance on demand (tests, #800)
         enter: () => entrance(),
         // the Android app readies the return before Melaton goes behind another program (#800)
