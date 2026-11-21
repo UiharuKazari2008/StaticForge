@@ -877,6 +877,10 @@ function broadcast(session, payload, binary) {
 }
 
 function livePageUrl(session) {
+    // the main frame's last commit (Page.frameNavigated): on Chromium's own error page (a bad certificate, no such
+    // host) it is the address that failed, where page.url() still says the page before, so the address bar can be
+    // corrected (Yukimi, Nov 21)
+    if (session.committedUrl && /^(https?:|chrome(-extension)?:)/i.test(session.committedUrl)) return session.committedUrl;
     try {
         const current = session.page.url();
         if (/^(https?:|chrome(-extension)?:)/i.test(current)) return current;
@@ -3145,6 +3149,7 @@ async function createSession(body, adoptedPage) {
     cdp.on('Page.frameNavigated', (ev) => {
         if (!sessions.get(id) || !ev || !ev.frame || ev.frame.parentId) return;
         session.mainFrameId = ev.frame.id || session.mainFrameId;
+        session.committedUrl = ev.frame.unreachableUrl || ((ev.frame.url || '') + (ev.frame.urlFragment || ''));
     });
 
     // Isolated world: a page-visible binding (page.exposeFunction) makes Cloudflare Turnstile refuse the click.
@@ -3258,6 +3263,7 @@ async function createSession(body, adoptedPage) {
     cdp.on('Page.navigatedWithinDocument', (ev) => {
         if (!sessions.get(id) || !mainFrameEvent(ev) || !ev.url) return;
         session.url = ev.url;
+        session.committedUrl = ev.url;
         endNavigating(session);
         publishFeeds(session).catch(() => {});
     });
