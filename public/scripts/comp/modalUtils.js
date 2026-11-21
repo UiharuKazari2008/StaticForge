@@ -9894,7 +9894,14 @@ function updateGalleryMaximizeButtonIcon() {
 }
 
 function setLiveWindowRepositioningEnabled(enabled) {
-    document.documentElement.classList.toggle('live-window-repositioning-enabled', enabled === true);
+    const on = enabled === true;
+    document.documentElement.classList.toggle('live-window-repositioning-enabled', on);
+    // the drag and resize code reads this (isLiveWindowRepositioningEnabled): Personalization's "Show window contents
+    // while dragging" toggled only the class before, so a drag kept the old way until the settings came back from the
+    // server (Yukimi, Nov 21 2026: "show window contents when dragging does not work"); the local copy starts the next
+    // visit the same way
+    desktopSettingsGlobalState.liveWindowRepositioning = on;
+    try { localStorage.setItem('liveWindowRepositioning', on ? 'true' : 'false'); } catch (_) { /* storage off */ }
 }
 
 function getWindowFrameElement() {
