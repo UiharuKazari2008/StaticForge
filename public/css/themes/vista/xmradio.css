@@ -381,6 +381,7 @@
 :is(#xmRadioModal, .xrm-lcd) .xr-fn .xr-key { padding: 0 4px; }
 
 /* transport glyphs: drawn, the key's own ink */
+:is(#xmRadioModal, .xrm-lcd) .xr-pw { width: 1em; height: 1em; vertical-align: -0.14em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; overflow: visible; pointer-events: none; }
 :is(#xmRadioModal, .xrm-lcd) .xr-key.xr-glyph svg { width: 18px; height: 10px; fill: currentColor; vertical-align: middle; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.45)); }
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-body="table"] .xr-key.xr-glyph svg { filter: drop-shadow(0 1px 0 rgba(255, 240, 220, 0.6)); }
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-body="car"] .xr-replay .xr-key.xr-glyph svg { width: 14px; }

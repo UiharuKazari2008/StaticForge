@@ -49,7 +49,10 @@
     const SVG = {
         back: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M8 0v10L1 5zM15 0v10L8 5z"/></svg>',
         play: '<svg viewBox="0 0 20 10" aria-hidden="true"><path d="M1 0v10l7-5zM11 0h3v10h-3zM16 0h3v10h-3z"/></svg>',
-        fwd: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 0v10l7-5zM8 0v10l7-5z"/></svg>'
+        fwd: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 0v10l7-5zM8 0v10l7-5z"/></svg>',
+        // the IEC power symbols, drawn: the phone's fonts have no U+23FB / U+23FC (a tofu box on the faceplate)
+        power: '<svg class="xr-pw" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.6 3.9a5.8 5.8 0 1 0 6.8 0M8 1.6v6"/></svg>',
+        powerToggle: '<svg class="xr-pw" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 3.8v8.4"/></svg>'
     };
     const INFO_MODES = ['song', 'channel', 'show'];
     const HLS_SRC = '/dist/hlsjs/hls.light.min.js';
@@ -189,7 +192,7 @@
             const key = (b, label, sub, cls) => `<span class="xr-kw${cls ? ` ${cls}` : ''}"><button type="button" class="xr-sk" data-b="${b}" title="${esc(label)}">${label}</button>${sub ? `<i>${esc(sub)}</i>` : ''}</span>`;
             const transport = `<button type="button" class="xr-tk xr-glyph" data-b="back" title="Back 15 seconds">${SVG.back}</button><button type="button" class="xr-tk xr-glyph" data-b="play" title="Pause / Play">${SVG.play}</button><button type="button" class="xr-tk xr-glyph" data-b="fwd" title="Forward 15 seconds">${SVG.fwd}</button>`;
             if (model === 'gloss') {
-                return `<div class="xr-g-edge"><button type="button" class="xr-ek" data-b="power" title="Power">&#x23FB;</button>${brand}<span class="xr-g-edge-fill"></span><button type="button" class="xr-ek" data-b="menu" title="Menu">menu</button><button type="button" class="xr-ek" data-b="band" title="Preset bank">fav</button></div>
+                return `<div class="xr-g-edge"><button type="button" class="xr-ek" data-b="power" title="Power">${SVG.power}</button>${brand}<span class="xr-g-edge-fill"></span><button type="button" class="xr-ek" data-b="menu" title="Menu">menu</button><button type="button" class="xr-ek" data-b="band" title="Preset bank">fav</button></div>
                     ${disp}
                     <div class="xr-g-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => this.numKey(n, 'xr-rk')).join('')}<button type="button" class="xr-rk" data-b="direct" title="Direct tune">#</button></div>
                     <div class="xr-g-knob" data-k="tune" title="Tune (turn); press to select"><span class="xr-g-ring"></span><button type="button" class="xr-g-cap" data-nav="select" aria-label="Select"></button></div>
@@ -200,7 +203,7 @@
                 // the Stratus (Yukimi's photo, Nov 20 2026): glossy black, a blue LCD, the brand above it, paired number keys
                 const sk = (attr, html, title, cls) => `<button type="button" class="xr-stk${cls ? ` ${cls}` : ''}" ${attr} title="${esc(title)}">${html}</button>`;
                 const pair = (a, b) => `<span class="xr-st-pair">${this.numKey(a, 'xr-stn')}<i class="xr-st-screw"></i>${this.numKey(b, 'xr-stn')}</span>`;
-                return `<div class="xr-st-left">${sk('data-b="power"', '&#x23FB;', 'Power', 'is-power')}${sk('data-b="menu"', '<i class="xr-st-tape"></i><span>menu</span>', 'Menu', 'is-blue')}${sk('data-b="jump"', '&#x21B7;', 'Jump to the last channel', 'is-blue')}</div>
+                return `<div class="xr-st-left">${sk('data-b="power"', SVG.power, 'Power', 'is-power')}${sk('data-b="menu"', '<i class="xr-st-tape"></i><span>menu</span>', 'Menu', 'is-blue')}${sk('data-b="jump"', '&#x21B7;', 'Jump to the last channel', 'is-blue')}</div>
                     <div class="xr-st-mid">${brand}${disp}<div class="xr-st-under">${sk('data-b="disp"', '', 'Display information', 'xr-st-square')}<span class="xr-st-rocker">${sk('data-nav="left"', '&#x25C0;', 'Back 15 seconds', 'is-blue')}${sk('data-nav="right"', '&#x25B6;', 'Forward 15 seconds', 'is-blue')}</span></div></div>
                     <div class="xr-st-right">${sk('data-nav="up"', '&#x25B2;', 'Channel up', 'is-blue')}${sk('data-b="band"', '<i class="xr-st-dog"></i>', 'Preset bank', 'is-blue')}${sk('data-nav="down"', '&#x25BC;', 'Channel down', 'is-blue')}</div>
                     <div class="xr-st-nums">${pair(1, 2)}${pair(3, 4)}${pair(5, 6)}${pair(7, 8)}${pair(9, 10)}</div>`;
@@ -209,7 +212,7 @@
                 // the Roady XT (Yukimi's photo, Nov 20 2026): silver, a dot-matrix LCD, the maker's name rewritten
                 const rk = (b, label, nav) => `<button type="button" class="xr-rdk"${nav ? ` data-nav="${nav}"` : ` data-b="${b}"`} title="${esc(label)}"><span>${label}</span><i></i></button>`;
                 const pair = (a, b) => `<span class="xr-rd-pair">${this.numKey(a, 'xr-rdn')}${this.numKey(b, 'xr-rdn')}</span>`;
-                return `<div class="xr-rd-left">${rk('power', '&#x23FC;')}${rk('menu', 'menu')}${rk('disp', 'disp')}</div>
+                return `<div class="xr-rd-left">${rk('power', SVG.powerToggle)}${rk('menu', 'menu')}${rk('disp', 'disp')}</div>
                     <div class="xr-rd-win">${disp}<div class="xr-rd-print"><b class="xr-rd-maker">XYRIDIAN</b>${brand}<b class="xr-rd-model">roady<sup>xt</sup></b></div></div>
                     <div class="xr-rd-right">${rk('', '&#x25B2;', 'up')}${rk('', 'select', 'select')}${rk('', '&#x25BC;', 'down')}</div>
                     <div class="xr-rd-row"><i class="xr-rd-led"></i>${rk('direct', 'pre/dir')}${rk('band', 'memory')}${rk('jump', 'jump')}${rk('guide', 'search')}</div>
@@ -221,8 +224,8 @@
                     ? '<div class="xr-o-pad" data-k="tune" title="Up / down: channel"><button type="button" class="xr-o-dir is-up" data-nav="up" aria-label="Up"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-right" data-nav="right" aria-label="Right"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-down" data-nav="down" aria-label="Down"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-left" data-nav="left" aria-label="Left"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-center" data-nav="select" aria-label="Select"></button></div>'
                     : '<div class="xr-o-ring" data-k="tune" title="Up / down: channel"><button type="button" class="xr-o-zone is-up" data-nav="up" aria-label="Up"></button><button type="button" class="xr-o-zone is-right" data-nav="right" aria-label="Right"></button><button type="button" class="xr-o-zone is-down" data-nav="down" aria-label="Down"></button><button type="button" class="xr-o-zone is-left" data-nav="left" aria-label="Left"></button><button type="button" class="xr-o-center" data-nav="select" aria-label="Select"><i></i></button></div>';
                 const side = ez
-                    ? key('power', '&#x23FB;', '', 'is-power') + key('menu', 'menu', '', 'is-menu') + key('band', 'band', '') + key('jump', 'jump', '')
-                    : key('power', '&#x23FB;', 'power', 'is-power') + key('menu', 'menu', 'guide', 'is-menu') + key('disp', 'info', 'disp') + key('jump', '&#x21B6;', 'jump');
+                    ? key('power', SVG.power, '', 'is-power') + key('menu', 'menu', '', 'is-menu') + key('band', 'band', '') + key('jump', 'jump', '')
+                    : key('power', SVG.power, 'power', 'is-power') + key('menu', 'menu', 'guide', 'is-menu') + key('disp', 'info', 'disp') + key('jump', '&#x21B6;', 'jump');
                 const last = ez ? '<button type="button" class="xr-bk" data-b="direct" title="Direct tune">direct</button>' : '<button type="button" class="xr-bk" data-b="band" title="Preset bank">b/#</button>';
                 return `${brand}${disp}<div class="xr-o-nav">${pad}${ez ? '' : `<div class="xr-o-transport">${transport}</div>`}</div>
                     <div class="xr-o-side">${side}</div>
@@ -237,7 +240,7 @@
                 <button type="button" class="xr-knob xr-tune" data-k="tune" title="Tune (channel up / down)" aria-label="Tune"><i class="xr-knob-cap"></i><i class="xr-knob-mark"></i></button>
                 <div class="xr-presets">${[1, 2, 3, 4, 5, 6].map((n) => this.numKey(n, 'xr-key')).join('')}</div>
                 <div class="xr-fn">
-                    <button type="button" class="xr-key xr-power" data-b="power" title="Power">&#x23FB;</button>
+                    <button type="button" class="xr-key xr-power" data-b="power" title="Power">${SVG.power}</button>
                     <button type="button" class="xr-key" data-b="band" title="Preset band">BAND</button>
                     <button type="button" class="xr-key" data-b="disp" title="Display information">DISP</button>
                     <button type="button" class="xr-key" data-b="direct" title="Direct tune">DIRECT</button>

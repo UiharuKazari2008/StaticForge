@@ -403,15 +403,25 @@
      */
     async function start(seq, { title, subtitle, live, native }) {
         dropPage();
-        dropNative();
         const nv = nativePlayer();
+        // an app that reports its player's state also switches its stream in place; an older one is stopped first and
+        // given the new stream only once the old one is gone (a start sent while its stop was on the way was dropped,
+        // and the radio fell silent while it said it played: Yukimi, Nov 21 2026)
+        const reports = nativeReports(nv);
+        if (!reports || !radio.native) {
+            const was = radio.native;
+            dropNative();
+            if (was && nv) await nativeGone(nv);
+            if (seq !== radio.seq) return;
+        }
         if (nv) {
             try {
                 nv.watching(JSON.stringify(Object.assign({ url: radio.url, title, subtitle, audioOnly: true }, native ? { radio: native } : {})));
                 radio.native = nv.handOff() === true;
             } catch (_) { radio.native = false; }
             if (radio.native) {
-                radio.state = 'playing';
+                // what the player really does: Acquiring Signal until its sound starts (an older app cannot say)
+                radio.state = reports ? (NATIVE_STATE[nv.state()] || 'tuning') : 'playing';
                 radio.startedAt = Date.now();
                 // the sleep timer moves to the player that now plays
                 if (sleep.at > Date.now()) { try { nv.sleep(Math.ceil((sleep.at - Date.now()) / 60000)); } catch (_) { /* older app */ } }
@@ -445,6 +455,31 @@
         }
         pageMediaSession();
         try { await a.play(); } catch (_) { radio.state = 'paused'; changed(); }
+    }
+
+    /** The app's player reports its state (state() and its buffering / playing / paused / retrying news). */
+    const nativeReports = (nv) => !!nv && typeof nv.state === 'function';
+    const NATIVE_STATE = { playing: 'playing', paused: 'paused', buffering: 'tuning', retrying: 'tuning' };
+
+    /** An older app: until its player has stopped (at most 3 s; its stop goes through the app's main thread). */
+    async function nativeGone(nv) {
+        for (let i = 0; i < 30; i++) {
+            let on = false;
+            try { on = nv.isActive() === true; } catch (_) { on = false; }
+            if (!on) return;
+            await new Promise((r) => setTimeout(r, 100));
+        }
+    }
+
+    /** The page missed the player's news while it was frozen (screen off, another app): read its state now. */
+    function syncNative() {
+        const nv = nativePlayer();
+        if (!radio.native || !nativeReports(nv)) return;
+        let st = 'off';
+        try { st = nv.state(); } catch (_) { st = 'off'; }
+        const next = st === 'off' ? 'off' : (NATIVE_STATE[st] || radio.state);
+        if (st === 'off') { radio.native = false; sleep.at = 0; }
+        if (next !== radio.state) { radio.state = next; changed(); }
     }
 
     function onAudio(t) {
@@ -1048,7 +1083,10 @@
     const SVG = {
         back: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M8 0v10L1 5zM15 0v10L8 5z"/></svg>',
         play: '<svg viewBox="0 0 20 10" aria-hidden="true"><path d="M1 0v10l7-5zM11 0h3v10h-3zM16 0h3v10h-3z"/></svg>',
-        fwd: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 0v10l7-5zM8 0v10l7-5z"/></svg>'
+        fwd: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 0v10l7-5zM8 0v10l7-5z"/></svg>',
+        // the IEC power symbols, drawn: the phone's fonts have no U+23FB / U+23FC (a tofu box on the faceplate)
+        power: '<svg class="xr-pw" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.6 3.9a5.8 5.8 0 1 0 6.8 0M8 1.6v6"/></svg>',
+        powerToggle: '<svg class="xr-pw" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 3.8v8.4"/></svg>'
     };
     function displayHtml() {
         return `<div class="xr-bezel"><div class="xr-display" aria-live="polite">
@@ -1069,7 +1107,7 @@
         const key = (b, label, sub, cls) => `<span class="xr-kw${cls ? ` ${cls}` : ''}"><button type="button" class="xr-sk" data-b="${b}">${label}</button>${sub ? `<i>${esc(sub)}</i>` : ''}</span>`;
         const transport = `<button type="button" class="xr-tk xr-glyph" data-b="back">${SVG.back}</button><button type="button" class="xr-tk xr-glyph" data-b="play">${SVG.play}</button><button type="button" class="xr-tk xr-glyph" data-b="fwd">${SVG.fwd}</button>`;
         if (model === 'gloss') {
-            return `<div class="xr-g-edge"><button type="button" class="xr-ek" data-b="power">&#x23FB;</button>${brand}<span class="xr-g-edge-fill"></span><button type="button" class="xr-ek" data-b="menu">menu</button><button type="button" class="xr-ek" data-b="band">fav</button></div>
+            return `<div class="xr-g-edge"><button type="button" class="xr-ek" data-b="power">${SVG.power}</button>${brand}<span class="xr-g-edge-fill"></span><button type="button" class="xr-ek" data-b="menu">menu</button><button type="button" class="xr-ek" data-b="band">fav</button></div>
                 ${disp}
                 <div class="xr-g-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => numKey(n, 'xr-rk')).join('')}<button type="button" class="xr-rk" data-b="direct">#</button></div>
                 <div class="xr-g-knob" data-k="tune"><span class="xr-g-ring"></span><button type="button" class="xr-g-cap" data-nav="select" aria-label="Select"></button></div>
@@ -1078,7 +1116,7 @@
         if (model === 'stratus') {
             const sk = (attr, html, cls) => `<button type="button" class="xr-stk${cls ? ` ${cls}` : ''}" ${attr}>${html}</button>`;
             const pair = (a, b) => `<span class="xr-st-pair">${numKey(a, 'xr-stn')}<i class="xr-st-screw"></i>${numKey(b, 'xr-stn')}</span>`;
-            return `<div class="xr-st-left">${sk('data-b="power"', '&#x23FB;', 'is-power')}${sk('data-b="menu"', '<i class="xr-st-tape"></i><span>menu</span>', 'is-blue')}${sk('data-b="jump"', '&#x21B7;', 'is-blue')}</div>
+            return `<div class="xr-st-left">${sk('data-b="power"', SVG.power, 'is-power')}${sk('data-b="menu"', '<i class="xr-st-tape"></i><span>menu</span>', 'is-blue')}${sk('data-b="jump"', '&#x21B7;', 'is-blue')}</div>
                 <div class="xr-st-mid">${brand}${disp}<div class="xr-st-under">${sk('data-b="disp"', '', 'xr-st-square')}<span class="xr-st-rocker">${sk('data-nav="left"', '&#x25C0;', 'is-blue')}${sk('data-nav="right"', '&#x25B6;', 'is-blue')}</span></div></div>
                 <div class="xr-st-right">${sk('data-nav="up"', '&#x25B2;', 'is-blue')}${sk('data-b="band"', '<i class="xr-st-dog"></i>', 'is-blue')}${sk('data-nav="down"', '&#x25BC;', 'is-blue')}</div>
                 <div class="xr-st-nums">${pair(1, 2)}${pair(3, 4)}${pair(5, 6)}${pair(7, 8)}${pair(9, 10)}</div>`;
@@ -1086,7 +1124,7 @@
         if (model === 'roady') {
             const rk = (b, label, nav) => `<button type="button" class="xr-rdk"${nav ? ` data-nav="${nav}"` : ` data-b="${b}"`}><span>${label}</span><i></i></button>`;
             const pair = (a, b) => `<span class="xr-rd-pair">${numKey(a, 'xr-rdn')}${numKey(b, 'xr-rdn')}</span>`;
-            return `<div class="xr-rd-left">${rk('power', '&#x23FC;')}${rk('menu', 'menu')}${rk('disp', 'disp')}</div>
+            return `<div class="xr-rd-left">${rk('power', SVG.powerToggle)}${rk('menu', 'menu')}${rk('disp', 'disp')}</div>
                 <div class="xr-rd-win">${disp}<div class="xr-rd-print"><b class="xr-rd-maker">XYRIDIAN</b>${brand}<b class="xr-rd-model">roady<sup>xt</sup></b></div></div>
                 <div class="xr-rd-right">${rk('', '&#x25B2;', 'up')}${rk('', 'select', 'select')}${rk('', '&#x25BC;', 'down')}</div>
                 <div class="xr-rd-row"><i class="xr-rd-led"></i>${rk('direct', 'pre/dir')}${rk('band', 'memory')}${rk('jump', 'jump')}${rk('guide', 'search')}</div>
@@ -1097,8 +1135,8 @@
             ? '<div class="xr-o-pad" data-k="tune"><button type="button" class="xr-o-dir is-up" data-nav="up" aria-label="Up"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-right" data-nav="right" aria-label="Right"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-down" data-nav="down" aria-label="Down"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-left" data-nav="left" aria-label="Left"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-center" data-nav="select" aria-label="Select"></button></div>'
             : '<div class="xr-o-ring" data-k="tune"><button type="button" class="xr-o-zone is-up" data-nav="up" aria-label="Up"></button><button type="button" class="xr-o-zone is-right" data-nav="right" aria-label="Right"></button><button type="button" class="xr-o-zone is-down" data-nav="down" aria-label="Down"></button><button type="button" class="xr-o-zone is-left" data-nav="left" aria-label="Left"></button><button type="button" class="xr-o-center" data-nav="select" aria-label="Select"><i></i></button></div>';
         const side = ez
-            ? key('power', '&#x23FB;', '', 'is-power') + key('menu', 'menu', '', 'is-menu') + key('band', 'band', '') + key('jump', 'jump', '')
-            : key('power', '&#x23FB;', 'power', 'is-power') + key('menu', 'menu', 'guide', 'is-menu') + key('disp', 'info', 'disp') + key('jump', '&#x21B6;', 'jump');
+            ? key('power', SVG.power, '', 'is-power') + key('menu', 'menu', '', 'is-menu') + key('band', 'band', '') + key('jump', 'jump', '')
+            : key('power', SVG.power, 'power', 'is-power') + key('menu', 'menu', 'guide', 'is-menu') + key('disp', 'info', 'disp') + key('jump', '&#x21B6;', 'jump');
         const last = ez ? '<button type="button" class="xr-bk" data-b="direct">direct</button>' : '<button type="button" class="xr-bk" data-b="band">b/#</button>';
         return `${brand}${disp}<div class="xr-o-nav">${pad}${ez ? '' : `<div class="xr-o-transport">${transport}</div>`}</div>
             <div class="xr-o-side">${side}</div>
@@ -1265,6 +1303,8 @@
         if (radio.mode !== 'track' && id) void wantLogos([id]);
         const scr = (o) => {
             // the receiver's screen, filled as the desktop radio's paint() fills it
+            // the receiver is off until a channel plays (its display dark, the power key unlit), as the desktop radio
+            els.rad.classList.toggle('is-on', radio.state !== 'off');
             els.rad.dataset.state = { off: 'off', tuning: 'acquiring', playing: 'playing', paused: 'paused', error: 'nosignal' }[radio.state] || 'off';
             setText(els.num, o.num || '');
             setText(els.name, o.name || '');
@@ -1813,7 +1853,7 @@
         // the server forgets a dropped socket's subscriptions and watched channels: tell it again
         c.on('connected', () => { hubOn = false; watchSaid = ''; void syncHub(); }, { signal: appScopeSignal });
         document.addEventListener('wmAppChange', () => { void syncHub(); }, { signal: appScopeSignal });
-        document.addEventListener('visibilitychange', () => { void syncHub(); if (shown) render(); }, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', () => { syncNative(); void syncHub(); if (shown) render(); }, { signal: appScopeSignal });
         window.addEventListener('melatonscreen', () => { void syncHub(); }, { signal: appScopeSignal });
         // the native player's news (DSApp): stopped from its notification, the stream ended, or a channel changed there
         window.addEventListener('dreamscape:videos', (e) => {
@@ -1831,7 +1871,9 @@
                 changed();
                 return;
             }
-            if (d.state === 'stopped' || d.state === 'ended' || d.state === 'lost') { radio.native = false; radio.state = 'off'; sleep.at = 0; changed(); }
+            if (NATIVE_STATE[d.state]) { if (radio.state !== NATIVE_STATE[d.state]) { radio.state = NATIVE_STATE[d.state]; changed(); } return; }
+            // lost: the player gave up on the stream (No Signal), not switched off
+            if (d.state === 'stopped' || d.state === 'ended' || d.state === 'lost') { radio.native = false; radio.state = d.state === 'lost' ? 'error' : 'off'; sleep.at = 0; changed(); }
         }, { signal: appScopeSignal });
         // wake to the radio (Settings > Clock & Alarms: an alarm whose sound is a channel, wmLock65.js): the page rings
         // it here while it is in front (the app plays it itself while the page sleeps)
