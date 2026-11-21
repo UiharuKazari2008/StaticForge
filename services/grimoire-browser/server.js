@@ -217,7 +217,7 @@ function takePerf(raw) {
 }
 
 function pendingRelaunch() {
-    return !!launchedPerf && PERF_RELAUNCH.some((key) => launchedPerf[key] !== perf[key]);
+    return (!!launchedPerf && PERF_RELAUNCH.some((key) => launchedPerf[key] !== perf[key])) || chromeSettings.pendingRelaunch();
 }
 
 // Runs in the 'alchemy' isolated world, top frame only: report document.title changes (Chrome does not send target title updates for every change).
@@ -3264,6 +3264,17 @@ function fakeCaptureArgs() {
 
 let browserClient = null;
 
+// Internet Options over Chromium's own settings (chromeSettings.js): preferences, content settings, Delete Browsing
+// History, add-ons, and the launch options (proxy, pop-up blocker, disk cache)
+const chromeSettings = require('./chromeSettings')({
+    dataDir: DATA_DIR,
+    getBrowserClient: () => browserClient,
+    ensureBrowser: () => ensureBrowser(),
+    readExtensions: () => readExtensions(),
+    extensionsDir: EXTENSIONS_DIR,
+    quietUrl: 'about:blank' + ALCHEMY_QUIET_MARKER
+});
+
 /**
  * Logins survive a restart (Yukimi, Nov 13 2026: "accounts not keeping their login after an Alchemy restart").
  * Chromium drops session cookies (no expiry) at every launch unless it restores the last session, and many
@@ -3317,7 +3328,9 @@ function grantCapture(url) {
     try { origin = new URL(url).origin; } catch (_) { return Promise.resolve(); }
     if (!/^https?:/.test(origin) || !browserClient || grantedCaptureOrigins.has(origin)) return Promise.resolve();
     grantedCaptureOrigins.add(origin);
-    const grants = ['camera', 'microphone'].map((name) => browserClient.send('Browser.setPermission', { permission: { name }, setting: 'granted', origin }));
+    // not where Internet Options blocked them (Security > Custom level, Restricted sites)
+    const grants = ['camera', 'microphone'].filter((name) => chromeSettings.mediaAllowed(origin, name))
+        .map((name) => browserClient.send('Browser.setPermission', { permission: { name }, setting: 'granted', origin }));
     grants.push(browserClient.send('Browser.grantPermissions', { origin, permissions: ['clipboardReadWrite', 'clipboardSanitizedWrite'] }));
     return Promise.all(grants).catch(() => grantedCaptureOrigins.delete(origin));
 }
@@ -3410,7 +3423,7 @@ async function launchBrowser() {
     fs.chmodSync(PROFILE_DIR, 0o700);
     emulatedScale = patchedBuild(chromeBin);
     setProfilePrefs();
-    extensions = readExtensions();
+    extensions = readExtensions().filter((ext) => chromeSettings.addonEnabled(ext.id));
     const extensionDirs = extensions.map((ext) => ext.dir).join(',');
     const args = [
         '--disable-dev-shm-usage',
@@ -3420,7 +3433,6 @@ async function launchBrowser() {
         '--disable-features=WebAuthentication,WebAuthnConditionalUI,DisableLoadExtensionCommandLineSwitch' + (perf.siteIsolation ? '' : ',IsolateOrigins,site-per-process'),
         '--disable-background-networking',
         '--disable-sync',
-        '--disable-popup-blocking',
         '--disable-blink-features=AutomationControlled'
     ];
     // --enable-unsafe-extension-debugging: CDP's Extensions domain (triggerAction: Grimoire's toolbar buttons), on the
@@ -3470,6 +3482,8 @@ async function launchBrowser() {
         args.push('--disable-smooth-scrolling');
     }
     args.push(...fakeCaptureArgs());
+    // --disable-popup-blocking unless Internet Options turned the Pop-up Blocker on; proxy; disk cache size
+    args.push(...chromeSettings.launchArgs());
     if (enableFeatures.length) args.push('--enable-features=' + enableFeatures.join(','));
     if (emulatedScale) console.log('[grimoire-browser] Alchemy build: tabs render at their viewers\' pixel ratio (' + EMULATED_SCALE_FEATURE + ')');
     const instance = await puppeteer.launch({
@@ -3477,7 +3491,8 @@ async function launchBrowser() {
         headless: !HEADFUL,
         pipe: true,
         userDataDir: PROFILE_DIR,
-        ignoreDefaultArgs: ['--disable-extensions'],
+        // Puppeteer's own --disable-popup-blocking too: chromeSettings.launchArgs() adds it unless the Pop-up Blocker is on
+        ignoreDefaultArgs: ['--disable-extensions', '--disable-popup-blocking'],
         // Puppeteer's own signal handlers SIGKILL Chromium and exit before the shutdown below runs: every
         // restart lost the cookies Chromium had not written yet and left the profile marked Crashed (Nov 13
         // 2026). The shutdown closes Chromium itself (browser.close: tabs closed, profile saved).
@@ -4768,7 +4783,22 @@ async function handleRequest(req, res) {
         return;
     }
 
-    // Internet Properties > Delete Browsing History (cplDialogs2.js, Yozora #632): Chromium's cookies and its cache.
+    // Internet Options over Chromium's own settings (chromeSettings.js)
+    if (pathname.startsWith('/browser/chrome-') || pathname === '/browser/addons') {
+        if (!adminOk(req)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        try {
+            if (await chromeSettings.handle(req, res, pathname, url, readBody, sendJson)) return;
+        } catch (err) {
+            sendJson(res, err.status || 500, { error: err.message || 'settings failed' });
+            return;
+        }
+    }
+
+    // Internet Properties > Delete Browsing History (cplDialogs2.js, Yozora #632): Chromium's own Clear browsing data
+    // (history, cache, cookies and site data, form data, passwords, add-on data); cookies and cache over CDP if that fails
     if (req.method === 'POST' && pathname === '/browser/clear-data') {
         if (!adminOk(req)) {
             sendJson(res, 401, { error: 'unauthorized' });
@@ -4777,7 +4807,12 @@ async function handleRequest(req, res) {
         let body = {};
         try { body = (await readBody(req)) || {}; } catch (_) {}
         try {
-            await clearBrowsingData({ cookies: body.cookies === true, cache: body.cache === true });
+            try {
+                await chromeSettings.clear(body);
+            } catch (err) {
+                console.warn('[grimoire-browser] Clear browsing data:', err.message);
+                await clearBrowsingData({ cookies: body.cookies === true, cache: body.cache === true });
+            }
             sendJson(res, 200, { ok: true });
         } catch (err) {
             sendJson(res, 500, { error: err.message || 'clear failed' });

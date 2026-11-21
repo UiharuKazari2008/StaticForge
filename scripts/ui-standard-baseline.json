@@ -1169,7 +1169,6 @@
   },
   "public/scripts/comp/cplInternetOptions.js": {
    "colour-in-script": 5,
-   "inline-style": 6,
    "toast": 1
   },
   "public/scripts/comp/cplPages2.js": {

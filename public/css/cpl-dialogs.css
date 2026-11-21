@@ -222,6 +222,14 @@
     height: 100%;
 }
 
+/* Internet Properties' list view columns (cplInternetOptions.js: Per Site Privacy Actions, Manage Add-ons) */
+.vdt-client .cpl-inet-w70 { width: 70px; }
+.vdt-client .cpl-inet-w90 { width: 90px; }
+.vdt-client .cpl-inet-w110 { width: 110px; }
+.vdt-client .cpl-inet-w170 { width: 170px; }
+.vdt-client .cpl-inet-w200 { width: 200px; }
+.vdt-client .cpl-inet-w420 { width: 420px; }
+
 /* Internet Properties > Colors (cplInternetOptions.js): each BS_OWNERDRAW swatch button is its
    label, then a push-button face holding the colour */
 .vdt-client .cpl-inet-swatch {

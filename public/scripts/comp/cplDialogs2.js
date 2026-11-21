@@ -82,7 +82,9 @@
         High: '- Blocks all cookies from websites that do not have a compact privacy policy\n- Blocks cookies that save information that can be used to contact you without your explicit consent',
         'Block All Cookies': '- Blocks all new cookies from all websites\n- Cookies already on this computer cannot be read by websites'
     };
-    // Advanced: a few of Vista's groups, Windows -> Melaton, Internet Explorer -> Grimoire
+    // Advanced: a few of Vista's groups, Windows -> Melaton, Internet Explorer -> Grimoire. "#pref" rows are Alchemy's
+    // Chromium preferences, "%type" its content settings (allow / block); smooth scrolling (Alchemy keeps it off for
+    // its frames) and page transitions (Chromium has none) are not offered
     const INET_ADVANCED = [
         { group: 'Accessibility', items: [
             ['Always expand ALT text for images', 'ExpandAlt', false], ['Move system caret with focus/selection changes', 'MoveCaret', false],
@@ -91,21 +93,53 @@
             ['Automatically check for Grimoire updates', 'CheckUpdates', true], ['Close unused folders in History and Favorites', 'CloseFolders', false],
             ['Disable script debugging (Grimoire)', 'DisableScriptDebuggerIE', true], ['Display a notification about every script error', 'ErrorDlgDisplayedOnEveryError', false],
             ['Enable automatic crash recovery', 'AutoRecover', true], ['Enable FTP folder view (outside of Grimoire)', 'FtpFolderView', true],
-            ['Enable page transitions', 'PageTransitions', true], ['Enable Suggested Sites', 'SuggestedSites', false],
+            ['Enable Suggested Sites', '#search.suggest_enabled', true],
             ['Enable visual styles on buttons and controls in webpages', 'VisualStyles', true], ['Notify when downloads complete', 'NotifyDownloadComplete', true],
             ['Reuse windows for launching shortcuts (when tabbed browsing is off)', 'ReuseWindows', true], ['Show friendly HTTP error messages', 'FriendlyErrors', true],
-            ['Underline links: Always', 'UnderlineLinks', true], ['Use inline AutoComplete', 'InlineAutoComplete', false],
-            ['Use smooth scrolling', 'SmoothScroll', true]] },
+            ['Underline links: Always', 'UnderlineLinks', true], ['Use inline AutoComplete', 'InlineAutoComplete', false]] },
         { group: 'Multimedia', items: [
             ['Enable automatic image resizing', 'ImageResizing', true], ['Play animations in webpages*', 'PlayAnimations', true],
             ['Play sounds in webpages', '@audioEnabled', true], ['Show image download placeholders', 'ShowPlaceholders', false],
-            ['Show pictures', 'ShowPictures', true]] },
+            ['Show pictures', '%images', true]] },
+        // IE7's Phishing Filter is Alchemy's Safe Browsing: off, the local list only, or checked with Google as you go
+        { group: 'Phishing Filter', radios: 'phishing', items: [
+            ['Disable Phishing Filter', 'off'], ['Turn off automatic website checking', 'standard'], ['Turn on automatic website checking', 'enhanced']] },
         { group: 'Security', items: [
             ['Allow active content to run in files on My Computer*', 'LocalActive', false], ['Check for publisher\'s certificate revocation', 'CheckRevocation', true],
             ['Do not save encrypted pages to disk', 'NoSaveEncrypted', false], ['Empty Temporary Internet Files folder when browser is closed', 'EmptyCache', false],
             ['Enable memory protection to help mitigate online attacks*', 'MemoryProtection', true], ['Enable native XMLHTTP support', 'XMLHTTP', true],
             ['Use SSL 3.0', 'SSL3', true], ['Use TLS 1.0', 'TLS10', true], ['Warn if changing between secure and not secure mode', 'WarnSecureChange', true]] }
     ];
+    // Alchemy's own Chromium options with no IE row (shown in its Alchemy group)
+    const CHROME_ADVANCED = [
+        ['Always use secure connections (HTTPS)', '#https_only_mode_enabled', false],
+        ['Check spelling as you type', '#browser.enable_spellchecking', true],
+        ['Offer to translate pages in other languages', '#translate.enabled', true],
+        ['Preload pages for faster browsing and searching', '#net.network_prediction_options', true],
+        ['Use secure DNS', '#dns_over_https.mode', true]
+    ];
+    // preferences that are not true / false: [on, off]
+    const CHROME_PREF_VALUES = { 'net.network_prediction_options': [3, 2], 'dns_over_https.mode': ['automatic', 'off'] };
+    const chromeBool = (chrome, name, d) => {
+        if (!chrome) return d;
+        if (name[0] === '%') return chrome.content ? chrome.content[name.slice(1)] !== 'block' : d;
+        const v = chrome.prefs ? chrome.prefs[name.slice(1)] : undefined;
+        const map = CHROME_PREF_VALUES[name.slice(1)];
+        if (v === undefined || v === null) return d;
+        return map ? v !== map[1] : !!v;
+    };
+    // Restore advanced settings: Chromium's own defaults for its rows
+    const CHROME_DEFAULTS = {
+        prefs: { 'search.suggest_enabled': true, 'https_only_mode_enabled': false, 'browser.enable_spellchecking': true, 'translate.enabled': true,
+            'net.network_prediction_options': 3, 'dns_over_https.mode': 'automatic', 'safebrowsing.enabled': true, 'safebrowsing.enhanced': false },
+        content: { images: 'allow' }
+    };
+    const phishingOf = (chrome) => {
+        const p = (chrome && chrome.prefs) || {};
+        if (!chrome) return 'standard';
+        if (p['safebrowsing.enabled'] === false) return 'off';
+        return p['safebrowsing.enhanced'] ? 'enhanced' : 'standard';
+    };
 
     let generalTpl = null;
     function generalWithSessions() {
@@ -122,23 +156,30 @@
     }
 
     // "@name" rows are Alchemy's own settings (userGlobalSettings.alchemy), the rest registry values
-    function inetTree(values, alchemy) {
+    function inetTree(values, alchemy, chrome) {
         let n = 0;
         const io = root.cplInternetOptions;
         const value = (name, d) => {
             if (name[0] === '@') return alchemy && alchemy[name.slice(1)] !== undefined ? !!alchemy[name.slice(1)] : d;
+            if (name[0] === '#' || name[0] === '%') return chromeBool(chrome, name, d);
             return Object.prototype.hasOwnProperty.call(values, name) ? values[name] : d;
         };
+        // Alchemy's rows only when it answered (a stopped Alchemy shows them greyed)
+        const off = (name) => ((name[0] === '#' || name[0] === '%') && !chrome ? ' disabled' : '');
         const groups = INET_ADVANCED.map((g) => [
             `<div class="tbp-tree-row is-node"><span>${esc(g.group)}</span></div>`,
             ...g.items.map(([t, name, d]) => {
                 n += 1;
-                return `<div class="tbp-tree-row is-child"><input type="checkbox" id="cpl-ia-${n}" data-ia="${name}"${value(name, d) ? ' checked' : ''}><label for="cpl-ia-${n}">${esc(t)}</label></div>`;
+                if (g.radios) return `<div class="tbp-tree-row is-child cpl-fo-radio"><input type="radio" name="cpl-ia-${g.radios}" id="cpl-ia-${n}" data-ia-phishing="${name}"${phishingOf(chrome) === name ? ' checked' : ''}${chrome ? '' : ' disabled'}><label for="cpl-ia-${n}">${esc(t)}</label></div>`;
+                return `<div class="tbp-tree-row is-child"><input type="checkbox" id="cpl-ia-${n}" data-ia="${name}"${value(name, d) ? ' checked' : ''}${off(name)}><label for="cpl-ia-${n}">${esc(t)}</label></div>`;
             })
         ].join(''));
         if (io && alchemy) {
             // Alchemy, the remote browser: its picture quality and frame rates (grimoireRemoteBrowser.js Tools ▾)
-            groups.splice(1, 0, [`<div class="tbp-tree-row is-node"><span>Alchemy</span></div>`, ...io.ALCHEMY_ADVANCED.map((row) => {
+            groups.splice(1, 0, [`<div class="tbp-tree-row is-node"><span>Alchemy</span></div>`, ...CHROME_ADVANCED.map(([t, name, d]) => {
+                n += 1;
+                return `<div class="tbp-tree-row is-child"><input type="checkbox" id="cpl-ia-${n}" data-ia="${name}"${value(name, d) ? ' checked' : ''}${off(name)}><label for="cpl-ia-${n}">${esc(t)}</label></div>`;
+            }), ...io.ALCHEMY_ADVANCED.map((row) => {
                 n += 1;
                 if (row.check) return `<div class="tbp-tree-row is-child"><input type="checkbox" id="cpl-ia-${n}" data-ia="@${row.key}"${alchemy[row.key] ? ' checked' : ''}><label for="cpl-ia-${n}">${esc(row.check)}</label></div>`;
                 return [`<div class="tbp-tree-row is-child cpl-fo-sub"><img src="/static_images/vista-icons/explorer/folder-16.png" alt="" onerror="this.remove()"><span>${esc(row.sub)}</span></div>`, ...row.choices.map(([v, label]) => {
@@ -199,9 +240,10 @@
             const home = ctx.el(1487, 'inetcpl:100');
             ctx.store.home = '';
             ctx.store.alchemy = null;
-            const fillAdv = (values, alchemy) => {
+            ctx.store.chrome = null;
+            const fillAdv = (values, alchemy, chrome) => {
                 const tree = ctx.holder(1439, 'inetcpl:600');
-                tree.innerHTML = inetTree(values, alchemy);
+                tree.innerHTML = inetTree(values, alchemy, chrome === undefined ? ctx.store.chrome : chrome);
                 // a window per Grimoire window only exists inside a window per computer (#756)
                 if (!tree._perfNeeds) {
                     tree._perfNeeds = true;
@@ -216,11 +258,14 @@
                 }
             };
             if (io) {
-                io.alchemySettings().then((s) => {
+                // Grimoire's settings, then Alchemy's Chromium (the zones, privacy, pop-up blocker and Advanced rows)
+                Promise.all([io.alchemySettings(), io.chrome.read().catch(() => null)]).then(([s, chrome]) => {
                     ctx.store.alchemy = s;
+                    ctx.store.chrome = chrome;
                     ctx.store.home = (s && s.homePage) || '';
                     if (home) home.value = ctx.store.home || 'about:Home';
                     fillAdv(R() ? R().getKey(`${KEY.inet}\\Advanced`) : {}, s);
+                    showChrome(chrome, s);
                 }).catch(() => {});
             }
             ctx.on(1486, 'click', () => {
@@ -245,19 +290,46 @@
             sub(321, 'inetcpl:4454', 'autoComplete');
             sub(771, 'inetcpl:4454', 'feeds');
             sub(4865, 'inetcpl:300', 'addons');
+            // Alchemy's Chromium behind Security, Privacy, Content and Connections
+            sub(5329, 'inetcpl:5300', 'perSitePrivacy');
+            sub(1580, 'inetcpl:200', 'lanSettings');
+            [511, 515].forEach((id) => ctx.on(id, 'click', () => { if (io) io.chrome.openInGrimoire('chrome://certificate-manager/'); }, 'inetcpl:4454'));
+            ctx.on(1019, 'click', () => {
+                const z = ZONES.find((x) => x.id === ctx.store.zone);
+                if (io && z && (z.id === 'trusted' || z.id === 'restricted')) io.open.zoneSites(ctx.modal, z.id, z.icon, (saved) => { ctx.store.chrome = saved; });
+            }, 'inetcpl:500');
+            ctx.on(1018, 'click', () => {
+                if (io && ctx.store.zone === 'internet') io.open.customLevel(ctx.modal, (saved) => { if (saved) ctx.store.chrome = saved; });
+            }, 'inetcpl:500');
+            function showChrome(chrome, alchemy) {
+                // Protected Mode is Alchemy's Chrome sandbox (a relaunch)
+                const perf = { ...((io && io.PERFORMANCE_DEFAULTS) || {}), ...((alchemy && alchemy.performance) || {}) };
+                ctx.store.sandbox = !!perf.sandbox;
+                ctx.set(1534, ctx.store.sandbox, 'inetcpl:500');
+                if (!chrome) return;
+                ctx.store.privacy = io.chrome.privacyFromChrome(chrome, ctx.store.privacy);
+                ctx.store.privacy0 = ctx.store.privacy;
+                ctx.range(5334, 0, 5, 5 - ctx.store.privacy, 'inetcpl:5300', 5);
+                showPrivacy();
+                ctx.store.popupBlocker = !!(chrome.launch && chrome.launch.popupBlocker);
+                ctx.set(5400, ctx.store.popupBlocker, 'inetcpl:5300');
+            }
             // Security: the zones list and the slider
             const lv = ctx.holder(1566, 'inetcpl:500');
             lv.classList.add('is-icons', 'cpl-zones');
             lv.querySelector('.vdt-lv-body').innerHTML = ZONES.map((z, i) => `<div class="vdt-lv-row${i === 0 ? ' is-selected' : ''}" data-zone="${z.id}"><img src="${z.icon}" alt="" onerror="this.style.visibility='hidden'"><span>${esc(z.name)}</span></div>`).join('');
             ctx.store.levels = {};
             ZONES.forEach((z) => { ctx.store.levels[z.id] = reg(KEY.inetZones, `Zone${z.id}Level`, z.level); });
+            ctx.store.internetLevel0 = ctx.store.levels.internet;
             const showZone = () => {
                 const row = lv.querySelector('.vdt-lv-row.is-selected');
                 const z = ZONES.find((x) => x.id === (row && row.dataset.zone)) || ZONES[0];
                 ctx.store.zone = z.id;
                 ctx.text(1576, z.name, 'inetcpl:500');
                 ctx.text(1516, z.text, 'inetcpl:500');
-                ctx.enable(1019, z.id !== 'internet', 'inetcpl:500');
+                // Sites: Trusted and Restricted sites are Alchemy's per-site rules; Custom level: the Internet zone's
+                ctx.enable(1019, z.id === 'trusted' || z.id === 'restricted', 'inetcpl:500');
+                ctx.enable(1018, z.id === 'internet', 'inetcpl:500');
                 const img = ctx.page('inetcpl:500').querySelector('.cpl-zone-icon');
                 if (img) img.src = z.icon;
                 const lvl = ctx.store.levels[z.id];
@@ -286,6 +358,7 @@
             showZone();
             // Privacy: the cookie slider
             ctx.store.privacy = reg(KEY.inetPrivacy, 'PrivacyLevel', 2);
+            ctx.store.privacy0 = ctx.store.privacy;
             const showPrivacy = () => {
                 const p = ctx.store.privacy;
                 ctx.text(5333, PRIVACY[p], 'inetcpl:5300');
@@ -310,7 +383,7 @@
             fillAdv(R() ? R().getKey(`${KEY.inet}\\Advanced`) : {}, ctx.store.alchemy);
             adv.addEventListener('change', () => ctx.dirty());
             // Restore advanced settings: every row to its default, Alchemy's included (it saves on Apply)
-            ctx.on(1526, 'click', () => { fillAdv({}, io ? io.ALCHEMY_DEFAULTS : null); ctx.dirty(); }, 'inetcpl:600');
+            ctx.on(1526, 'click', () => { fillAdv({}, io ? io.ALCHEMY_DEFAULTS : null, ctx.store.chrome ? CHROME_DEFAULTS : null); ctx.dirty(); }, 'inetcpl:600');
             ctx.on(6010, 'click', () => {
                 if (io) io.open.reset(ctx.modal, () => { ctx.store.alchemy = { ...io.ALCHEMY_DEFAULTS }; ctx.store.home = ''; home.value = 'about:Home'; fillAdv({}, ctx.store.alchemy); });
             }, 'inetcpl:600');
@@ -335,6 +408,9 @@
                 if (Number(was[k]) !== Number(i.value)) patch[k] = Number(i.value);
             });
             if (patch.minFps && patch.maxFps === undefined && patch.minFps > Number(was.maxFps)) patch.maxFps = patch.minFps;
+            // Security > Enable Protected Mode: Alchemy's Chrome sandbox (relaunches)
+            const sandbox = !!ctx.get(1534, 'inetcpl:500');
+            const sandboxChanged = ctx.store.sandbox !== undefined && sandbox !== ctx.store.sandbox;
             // Alchemy performance (#756)
             const wasPerf = { ...((io && io.PERFORMANCE_DEFAULTS) || {}), ...(was.performance || {}) };
             const perfPatch = {};
@@ -347,7 +423,8 @@
                 const k = i.dataset.iaPerfRadio;
                 if (Number(wasPerf[k]) !== Number(i.value)) perfPatch[k] = Number(i.value);
             });
-            const relaunch = ((io && io.PERFORMANCE_ADVANCED) || []).some((row) => row.relaunch && perfPatch[row.key] !== undefined);
+            if (sandboxChanged) { perfPatch.sandbox = sandbox; ctx.store.sandbox = sandbox; }
+            const relaunch = sandboxChanged || ((io && io.PERFORMANCE_ADVANCED) || []).some((row) => row.relaunch && perfPatch[row.key] !== undefined);
             if (Object.keys(perfPatch).length) patch.performance = perfPatch;
             if (io && Object.keys(patch).length) {
                 try {
@@ -359,6 +436,44 @@
             if (relaunch && root.browsingRestore && typeof root.browsingRestore.confirm === 'function') {
                 const now = await root.browsingRestore.confirm('Alchemy has to restart to use the new performance options. Open webpages reload. Restart Alchemy now?');
                 if (now) fetch('/api/grimoire-browser/restart', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
+            }
+            // Alchemy's Chromium: home page, the Internet zone's level, the cookie slider, the Pop-up Blocker, Advanced
+            const chrome = ctx.store.chrome;
+            if (io && chrome) {
+                const cp = { prefs: {}, content: {} };
+                if (patch.homePage !== undefined) Object.assign(cp.prefs, { homepage: url, homepage_is_newtabpage: !url });
+                if (ctx.store.levels.internet !== ctx.store.internetLevel0) {
+                    Object.assign(cp.content, io.chrome.ZONE_PRESETS[ctx.store.levels.internet] || {});
+                    ctx.store.internetLevel0 = ctx.store.levels.internet;
+                }
+                if (ctx.store.privacy !== ctx.store.privacy0) {
+                    const pc = io.chrome.privacyToChrome(ctx.store.privacy);
+                    Object.assign(cp.prefs, pc.prefs);
+                    Object.assign(cp.content, pc.content);
+                    ctx.store.privacy0 = ctx.store.privacy;
+                }
+                tree.querySelectorAll('[data-ia^="#"]:not(:disabled), [data-ia^="%"]:not(:disabled)').forEach((i) => {
+                    const name = i.dataset.ia;
+                    if (chromeBool(chrome, name, null) === i.checked) return;
+                    if (name[0] === '%') cp.content[name.slice(1)] = i.checked ? 'allow' : 'block';
+                    else {
+                        const map = CHROME_PREF_VALUES[name.slice(1)];
+                        cp.prefs[name.slice(1)] = map ? map[i.checked ? 0 : 1] : i.checked;
+                    }
+                });
+                const ph = tree.querySelector('[data-ia-phishing]:checked');
+                if (ph && ph.dataset.iaPhishing !== phishingOf(chrome)) {
+                    Object.assign(cp.prefs, { 'safebrowsing.enabled': ph.dataset.iaPhishing !== 'off', 'safebrowsing.enhanced': ph.dataset.iaPhishing === 'enhanced' });
+                }
+                const popupBlocker = !!ctx.get(5400, 'inetcpl:5300');
+                if (popupBlocker !== ctx.store.popupBlocker) { cp.launch = { popupBlocker }; ctx.store.popupBlocker = popupBlocker; }
+                if (!Object.keys(cp.prefs).length) delete cp.prefs;
+                if (!Object.keys(cp.content).length) delete cp.content;
+                if (Object.keys(cp).length) {
+                    const saved = await io.chrome.save(cp);
+                    if (saved) ctx.store.chrome = saved;
+                    if (saved && cp.launch && !relaunch) await io.chrome.offerRelaunch(saved);
+                }
             }
             const r = R();
             if (!r) return;

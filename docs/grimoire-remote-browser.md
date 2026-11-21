@@ -78,6 +78,30 @@ Alchemy runs its own Chromium build (the [DreamScape/Alchemy-Chromium](https://y
 
 Without that build (a newer system Chromium carries security fixes the patched build lacks), Alchemy can run a branded copy of the stock Chromium: `node scripts/alchemy-brand-chromium.js` (it refuses to replace a patched build unless given `--replace-patched-build`) copies `/usr/lib/chromium` to `ALCHEMY_CHROMIUM_DIR` (default `~/.local/share/dreamscape/alchemy-chromium`, binary `alchemy`), renames the product `Chromium` to `Alchemy` in `locales/*.pak` (the credits keep The Chromium Authors and the Chromium open source project), and swaps the product logos in `chrome_100_percent.pak`, `chrome_200_percent.pak`, and `resources.pak` for `alchemy.png`. Logos are found by their pixels (the largest crisp colour logo is the reference), because resource ids change between versions; `alchemy-brand.json` lists what was replaced. No compile. Re-run it after every apt Chromium update: the service picks the newest Chromium and prefers the branded copy only on a version tie, so a stale copy is skipped (with a warning in the log) instead of running an old browser.
 
+### Internet Options drives Chromium's settings
+
+Grimoire's Tools > Internet Options (Control Panel's Internet Properties, `cplDialogs2.js` / `cplInternetOptions.js`) is Alchemy's settings page (Yukimi, Nov 21 2026: "move as much as the chrome settings into the Internet Options"). `services/grimoire-browser/chromeSettings.js` opens `chrome://settings` in a background tab marked `#alchemy-quiet` and uses the page's own APIs (`chrome.settingsPrivate`, the site settings, search engine, clear browsing data and password handlers); Chromium keeps the values in its profile, so they survive restarts. What Chromium only takes at launch (proxy, Pop-up Blocker, disk cache size, add-ons left out) is kept in `alchemy-chrome-launch.json` and applies at the next start (the dialog offers the restart). Service: `GET/POST /browser/chrome-settings`, `GET/POST /browser/addons`; Dreamscape: `/api/grimoire-browser/chrome-settings`, `/api/grimoire-browser/addons`, and `POST /api/grimoire-browser/clear-data` with `{ cache, cookies, history, forms, passwords, addons }`.
+
+| Internet Options | Alchemy's Chromium |
+|---|---|
+| General: home page | `homepage` (and Grimoire's own home page) |
+| General: Delete Browsing History | Clear browsing data for all time: cache, cookies and site data, history and downloads, form data; passwords through the password manager; "Also delete files and settings stored by add-ons": hosted app data |
+| General: History Settings > Disk space | `--disk-cache-size` (launch) |
+| General: Search > Settings | Grimoire's providers, and Chromium's search engines as Web Search (the default engine; Grimoire searches with its address) |
+| General: Languages / Fonts | `intl.accept_languages` / `intl.selected_languages`; `webkit.webprefs.fonts.standard|fixed.<script>` from the fonts Alchemy has |
+| Security: zone level, Custom level | the Internet zone's content settings: JavaScript, pop-ups, mixed content, automatic downloads, camera, microphone, location, notifications, sound |
+| Security: Trusted / Restricted sites | per-site rules (`[*.]host`, `https://[*.]host` with server verification): trusted allow JavaScript, pop-ups, cookies, downloads, mixed content, sound; restricted block those and camera, microphone, location, notifications (the service's own camera / microphone grant honours them) |
+| Security: Enable Protected Mode | the Chrome sandbox (performance `sandbox`, relaunch) |
+| Privacy: slider, Advanced, Sites | cookies: Accept All / Low / Medium(+High) = third-party cookies allowed / blocked in private windows / blocked; High = cleared when Alchemy closes; Block All; per-site cookie rules |
+| Privacy: Pop-up Blocker, Settings | without `--disable-popup-blocking` (launch); allowed sites are pop-up rules |
+| Content: AutoComplete | Forms = `autofill.profile_enabled` + `autofill.credit_card_enabled`; User names and passwords = `credentials_enable_service` |
+| Content: Certificates, Publishers | `chrome://certificate-manager` in Grimoire |
+| Connections: LAN settings | proxy: automatic detection, script (PAC), server per protocol, exceptions, bypass local (launch) |
+| Programs: Manage add-ons | the extensions: enable, disable (left out at launch), delete (moved to `.removed/` in the extensions folder) |
+| Advanced | Phishing Filter = Safe Browsing (off / standard / enhanced), Enable Suggested Sites = `search.suggest_enabled`, Show pictures = images; Alchemy group: HTTPS-only, spelling, translate, preloading, secure DNS |
+
+No IE home, left out: smooth scrolling (Alchemy keeps it off for its frames), page transitions, SSL 3.0 / TLS 1.0, Content Advisor, feeds, colours and accessibility style sheets (Grimoire's own registry values), Do Not Track (always on). The `chrome://` pages that remain look like Internet Explorer 7 pages (Alchemy-Chromium `webui_ie/`).
+
 ## Service
 
 ```bash

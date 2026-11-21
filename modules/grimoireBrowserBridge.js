@@ -129,6 +129,8 @@ function normalizeAlchemySettings(raw) {
         bookmarks: normalizeAlchemyBookmarks(src.bookmarks),
         homePage: normalizeAlchemyHomePage(src.homePage),
         searchProvider: ALCHEMY_SEARCH_PROVIDERS.includes(src.searchProvider) ? src.searchProvider : 'grimoire',
+        // Web Search's address: Alchemy's default search engine (Internet Options > Search, %s is the query)
+        webSearchUrl: /^https?:\/\/[^\s"'<>]+$/.test(String(src.webSearchUrl || '')) && String(src.webSearchUrl).includes('%s') ? String(src.webSearchUrl).slice(0, 1024) : '',
         sessions: normalizeSessionSettings(src.sessions),
         performance: normalizePerformanceSettings(src.performance),
         // extension buttons taken off Grimoire's command bar (still in Tools > Extensions): Chrome extension ids
@@ -278,7 +280,7 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
         // the desktop's pixel ratio (#990): the page is laid out and drawn for it before the viewer first reports
         const ratio = Number(req.body && req.body.pixelRatio);
         const pixelRatio = !mobileView && ratio >= 0.5 && ratio <= 8 ? ratio : undefined;
-        const { bookmarks, audioEnabled, audioVolume, audioBackground, homePage, searchProvider, sessions: _sessions, performance, hiddenExtensions: _hiddenExtensions, ...settings } = config.alchemy;
+        const { bookmarks, audioEnabled, audioVolume, audioBackground, homePage, searchProvider, webSearchUrl: _webSearchUrl, sessions: _sessions, performance, hiddenExtensions: _hiddenExtensions, ...settings } = config.alchemy;
         try {
             const upstream = await serviceFetch(config, '/sessions', {
                 method: 'POST',
@@ -541,13 +543,43 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
             const upstream = await serviceFetch(config, '/browser/clear-data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cookies: body.cookies === true, cache: body.cache === true })
+                body: JSON.stringify({
+                    cookies: body.cookies === true, cache: body.cache === true, history: body.history === true,
+                    forms: body.forms === true, passwords: body.passwords === true, addons: body.addons === true
+                })
             });
             res.status(upstream.ok ? 200 : upstream.status).json(upstream.ok ? { ok: true } : { error: 'remote browser could not clear its data' });
         } catch (_) {
             res.status(502).json({ error: 'remote browser unreachable' });
         }
     });
+
+    // Internet Options over Alchemy's Chromium settings (services/grimoire-browser/chromeSettings.js): GET reads them
+    // (?fonts=1 adds the font list), POST { prefs, content, exceptions, searchEngine, launch } writes and reads back;
+    // add-ons: GET the list, POST { id, enabled } | { id, remove }
+    const settingsRelay = (method, servicePath) => async (req, res) => {
+        const config = grimoireBrowserConfig();
+        if (!config.enabled) {
+            res.status(503).json({ error: 'remote browser is not configured' });
+            return;
+        }
+        try {
+            const query = method === 'GET' && req.query && req.query.fonts === '1' ? '?fonts=1' : '';
+            const upstream = await serviceFetch(config, servicePath + query, method === 'GET' ? { method: 'GET' } : {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(req.body && typeof req.body === 'object' ? req.body : {})
+            });
+            const payload = await upstream.json().catch(() => ({}));
+            res.status(upstream.status).json(payload);
+        } catch (_) {
+            res.status(502).json({ error: 'remote browser unreachable' });
+        }
+    };
+    app.get('/api/grimoire-browser/chrome-settings', authMiddleware, settingsRelay('GET', '/browser/chrome-settings'));
+    app.post('/api/grimoire-browser/chrome-settings', authMiddleware, settingsRelay('POST', '/browser/chrome-settings'));
+    app.get('/api/grimoire-browser/addons', authMiddleware, settingsRelay('GET', '/browser/addons'));
+    app.post('/api/grimoire-browser/addons', authMiddleware, settingsRelay('POST', '/browser/addons'));
 
     // Best page icon saved under .cache/site-icons (served by /cache) so the shortcut outlives the session.
     app.get('/api/grimoire-browser/sessions/:id/page-icon', authMiddleware, async (req, res) => {

@@ -44,11 +44,13 @@
     }
 
     // Search ▾ (ids match ALCHEMY_SEARCH_PROVIDERS in modules/grimoireBrowserBridge.js)
+    let webSearchUrl = '';
     const SEARCH_PROVIDERS = [
         { id: 'grimoire', label: 'Grimoire Search', url: (q) => 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(q) },
         { id: 'danbooru', label: 'Danbooru Wiki', url: (q) => wikiUrl(q, 'danbooru') },
         { id: 'e621', label: 'e621 Wiki', url: (q) => wikiUrl(q, 'e621') },
-        { id: 'web', label: 'Web Search', url: (q) => 'https://www.google.com/search?q=' + encodeURIComponent(q) }
+        // Alchemy's default search engine (Internet Options > Search sets webSearchUrl), Google until one is chosen
+        { id: 'web', label: 'Web Search', url: (q) => (webSearchUrl || 'https://www.google.com/search?q=%s').replace('%s', encodeURIComponent(q)) }
     ];
 
     // IE7's zoom levels (the status bar's ▾); clicking the cell steps 100 -> 125 -> 150 -> 100
@@ -701,6 +703,7 @@
         applySettings(settings) {
             this.homePage = (settings && settings.homePage) || '';
             this.searchProvider = (settings && settings.searchProvider) || 'grimoire';
+            webSearchUrl = (settings && settings.webSearchUrl) || '';
             this.searchInput.placeholder = this.provider().label;
             this.searchInput.setAttribute('aria-label', this.provider().label);
             if (this.host.homeBtn) this.host.homeBtn.title = this.homePage ? `Home (${this.homeLabel(this.homePage)})` : 'Home';
