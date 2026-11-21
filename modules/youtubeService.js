@@ -73,7 +73,8 @@ const SEARCH_TTL = 10 * MIN;
 const FEED_MIN_GAP = 5 * MIN; // a Refresh inside this gap answers from what is held
 const HUB_INTERVAL = 5 * MIN;
 const DEVICE_MIN_S = Number(process.env.YOUTUBE_DEVICE_MIN_S || 5);
-const DEFAULTS = { noShorts: true, rareFirst: true, todayCount: 12, budget: 6000 };
+const DEFAULTS = { noShorts: true, rareFirst: true, todayCount: 12, budget: 6000, playIn: 'app' };
+const PLAY_IN = new Set(['app', 'here']);
 // No small cap on favourites (Yukimi, Nov 15 2026: an import of every channel with its bell on must fit).
 // A long list is cheap to watch: one unit tells whether any of 50 channels uploaded (refreshLatest).
 const MAX_FAVOURITES = 1000;
@@ -169,6 +170,9 @@ function settings() {
         rareFirst: s.rareFirst === undefined ? DEFAULTS.rareFirst : !!s.rareFirst,
         // SponsorBlock's marked parts are skipped in the program's player (on unless switched off)
         skipSegments: s.skipSegments === undefined ? true : !!s.skipSegments,
+        // where a YouTube video opens on a phone when tapped: 'app' (Android's YouTube app) or 'here' (the program's
+        // own player). Yukimi, Nov 21 2026. The desktop has no YouTube app and always plays in its window.
+        playIn: PLAY_IN.has(s.playIn) ? s.playIn : DEFAULTS.playIn,
         todayCount: Number.isFinite(n) ? Math.max(3, Math.min(30, Math.round(n))) : DEFAULTS.todayCount,
         budget: Number.isFinite(b) ? Math.max(500, Math.min(10000, Math.round(b))) : DEFAULTS.budget
     };
@@ -190,6 +194,7 @@ async function saveSettings(next) {
         noShorts: next && next.noShorts !== undefined ? !!next.noShorts : cur.noShorts,
         rareFirst: next && next.rareFirst !== undefined ? !!next.rareFirst : cur.rareFirst,
         skipSegments: next && next.skipSegments !== undefined ? !!next.skipSegments : cur.skipSegments,
+        playIn: next && PLAY_IN.has(next.playIn) ? next.playIn : cur.playIn,
         todayCount: next && next.todayCount !== undefined ? next.todayCount : cur.todayCount
     });
     saveAccount();
