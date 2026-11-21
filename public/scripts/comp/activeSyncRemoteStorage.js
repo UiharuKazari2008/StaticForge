@@ -93,11 +93,44 @@
         }
     }
 
+    // The direct LAN link (#1006, activeSyncDirectLink.js, docs/activesync-direct-link.md): loaded on first use and
+    // opened in the background; calls and uploads go over it while it is up, through the server otherwise. Watches stay
+    // on the server: the phone's change events come that way.
+    const SERVER_ONLY = new Set(['watch', 'unwatch']);
+    let linkLoading = null;
+    function directLink(deviceId) {
+        const dl = root.activeSyncDirectLink;
+        if (!dl) {
+            if (!linkLoading && root.featureLoader && typeof root.featureLoader._loadScript === 'function') {
+                linkLoading = root.featureLoader._loadScript('scripts/comp/activeSyncDirectLink.js').then(() => {
+                    if (root.activeSyncDirectLink && deviceId) void root.activeSyncDirectLink.ensure(deviceId);
+                }, () => { linkLoading = null; });
+            }
+            return null;
+        }
+        const link = dl.live(deviceId);
+        if (!link) void dl.ensure(deviceId);
+        return link;
+    }
+
+    function serverCall(deviceId, name, args) {
+        return as.call(deviceId, name, args, { timeoutMs: 60000 }).catch((e) => { throw error(e && e.code, e && e.message); });
+    }
+
     function call(op, args = {}) {
         if (!current) return Promise.reject(error('disabled', 'No device is connected'));
         if (!REMOTE_OPS.has(op)) return Promise.reject(error('unsupported', 'This is done on the device itself'));
-        return as.call(current.deviceId, `storage.${REMOTE_NAMES[op] || op}`, args, { timeoutMs: 60000 })
-            .catch((e) => { throw error(e && e.code, e && e.message); });
+        const deviceId = current.deviceId;
+        const name = `storage.${REMOTE_NAMES[op] || op}`;
+        const link = SERVER_ONLY.has(op) ? null : directLink(deviceId);
+        if (link && link.ops.has(name)) {
+            // a link that closed mid-call: the server answers instead
+            return link.call(name, args).catch((e) => {
+                if (e && e.code === 'closed') return serverCall(deviceId, name, args);
+                throw error(e && e.code, e && e.message);
+            });
+        }
+        return serverCall(deviceId, name, args);
     }
 
     function hello() {
@@ -107,6 +140,8 @@
                 if (!current || !dev || current.deviceId !== dev.deviceId) return state;
                 // file URLs are this server's, relayed from the phone
                 state = Object.assign({}, result || {}, { baseUrl: `/api/activesync/file/${dev.deviceId}` });
+                // the phone's storage is in use: its direct LAN link opens now, ready for the thumbnails (#1006)
+                directLink(dev.deviceId);
                 emit('state', state);
                 return state;
             }, (err) => {
@@ -198,6 +233,22 @@
         const total = file.size;
         const signal = opts.signal || null;
         const note = (bytes) => { if (opts.onProgress) opts.onProgress(Math.max(0, Math.min(total, Math.round(bytes))), total); };
+        // across the LAN when there is a direct link (#1006): straight to the phone, no stop at the server; a queued
+        // copy or a program to install keeps the server path (it waits there / the server asks the installer)
+        const link = !opts.queue && !opts.install ? directLink(deviceId) : null;
+        if (link) {
+            try {
+                const entry = await link.put({
+                    root: rootId, dir, name: opts.name || file.name, conflict: opts.conflict || 'fail',
+                    mtime: opts.mtime != null ? opts.mtime : (file.lastModified || undefined), mkdirs: opts.mkdirs === true ? true : undefined
+                }, file, { signal, onProgress: (b) => note(b) });
+                note(total);
+                return entry;
+            } catch (e) {
+                if (!e || e.code !== 'closed') throw error(e && e.code, e && e.message);
+                // the link went away mid-copy: the server path from the start
+            }
+        }
         const id = transferId();
         const begun = await post(`/api/activesync/upload/${deviceId}/begin`, {
             id, root: rootId, dir, name: opts.name || file.name, size: total,
