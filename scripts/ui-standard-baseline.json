@@ -1,21 +1,20 @@
 {
  "note": "Counts may only go down. See docs/design/ui-standard.md and scripts/check-ui-standard.js.",
  "totals": {
-  "colour-literal": 12735,
-  "font-literal": 597,
-  "theme-negative": 2548,
+  "colour-literal": 12588,
+  "font-literal": 593,
+  "theme-negative": 2649,
   "own-control": 714,
   "inline-style": 665,
   "theme-art-path": 169,
-  "hand-built-window": 103,
-  "toast": 1061,
+  "hand-built-window": 102,
+  "toast": 1049,
   "own-menubar": 70,
-  "colour-in-script": 1497,
-  "native-scrollbar": 39,
+  "colour-in-script": 1498,
+  "native-scrollbar": 40,
   "theme-test-copy": 19,
   "native-dialog": 1,
-  "native-range": 2,
-  "native-select": 0
+  "native-range": 2
  },
  "files": {
   "apps/activesync/assets/activesync.css": {
@@ -160,7 +159,7 @@
   "public/css/about-melaton.css": {
    "colour-literal": 21,
    "font-literal": 2,
-   "theme-negative": 1
+   "theme-negative": 2
   },
   "public/css/activesync-device-art.css": {
    "colour-literal": 54,
@@ -199,7 +198,7 @@
   },
   "public/css/character-db-applet.css": {
    "colour-literal": 29,
-   "theme-negative": 14
+   "theme-negative": 16
   },
   "public/css/character-position-tool.css": {
    "colour-literal": 3
@@ -207,7 +206,7 @@
   "public/css/chat-modal.css": {
    "colour-literal": 105,
    "font-literal": 1,
-   "theme-negative": 22
+   "theme-negative": 23
   },
   "public/css/compile-to-prompts.css": {
    "colour-literal": 28
@@ -215,7 +214,7 @@
   "public/css/compiled-prompt-lcd.css": {
    "colour-literal": 78,
    "font-literal": 4,
-   "theme-negative": 84,
+   "theme-negative": 96,
    "own-control": 12
   },
   "public/css/config-editor.css": {
@@ -225,7 +224,7 @@
    "own-control": 5
   },
   "public/css/confirmation-dialogs.css": {
-   "theme-negative": 27
+   "theme-negative": 29
   },
   "public/css/cpl-cardspace.css": {
    "colour-literal": 74,
@@ -269,10 +268,15 @@
    "font-literal": 10,
    "theme-negative": 1
   },
+  "public/css/desktop-apps/dovecote-tray.css": {
+   "colour-literal": 18,
+   "font-literal": 1,
+   "theme-negative": 1
+  },
   "public/css/desktop-apps/dovecote.css": {
-   "colour-literal": 178,
-   "font-literal": 16,
-   "theme-negative": 140,
+   "colour-literal": 160,
+   "font-literal": 15,
+   "theme-negative": 144,
    "own-menubar": 2
   },
   "public/css/desktop-apps/emotion.css": {
@@ -346,13 +350,12 @@
    "colour-literal": 1
   },
   "public/css/explorer-contacts.css": {
-   "colour-literal": 15,
-   "font-literal": 4,
+   "colour-literal": 14,
+   "font-literal": 2,
    "theme-negative": 4
   },
   "public/css/explorer-phone.css": {
-   "colour-literal": 15,
-   "font-literal": 1
+   "colour-literal": 11
   },
   "public/css/explorer.css": {
    "colour-literal": 44
@@ -360,7 +363,7 @@
   "public/css/fatal-error.css": {
    "colour-literal": 36,
    "font-literal": 5,
-   "theme-negative": 27
+   "theme-negative": 29
   },
   "public/css/flip3d.css": {
    "colour-literal": 1
@@ -388,7 +391,7 @@
   "public/css/genso-lock.css": {
    "colour-literal": 128,
    "font-literal": 1,
-   "theme-negative": 22
+   "theme-negative": 24
   },
   "public/css/genso-manager.css": {
    "colour-literal": 46,
@@ -404,13 +407,13 @@
   "public/css/image-prompt-inspector.css": {
    "colour-literal": 22,
    "font-literal": 1,
-   "theme-negative": 39,
+   "theme-negative": 42,
    "own-control": 6
   },
   "public/css/image-search.css": {
-   "colour-literal": 247,
-   "font-literal": 3,
-   "theme-negative": 39,
+   "colour-literal": 233,
+   "font-literal": 2,
+   "theme-negative": 40,
    "own-control": 6
   },
   "public/css/imageExpansion.css": {
@@ -485,7 +488,7 @@
   "public/css/manual-modal.css": {
    "colour-literal": 119,
    "font-literal": 2,
-   "theme-negative": 19,
+   "theme-negative": 31,
    "own-menubar": 4,
    "own-control": 42
   },
@@ -686,17 +689,17 @@
    "theme-negative": 1
   },
   "public/css/vista-dialogs.css": {
-   "theme-negative": 82
+   "theme-negative": 79
   },
   "public/css/vista-director.css": {
    "colour-literal": 262,
    "font-literal": 11,
-   "theme-negative": 121
+   "theme-negative": 122
   },
   "public/css/vista-explorer.css": {
    "colour-literal": 423,
    "font-literal": 6,
-   "theme-negative": 510,
+   "theme-negative": 533,
    "own-control": 1
   },
   "public/css/vista-fa-icons.css": {
@@ -705,7 +708,7 @@
   "public/css/vista-file-dialog.css": {
    "colour-literal": 29,
    "font-literal": 5,
-   "theme-negative": 12,
+   "theme-negative": 19,
    "own-control": 3
   },
   "public/css/vista-file-progress.css": {
@@ -718,12 +721,12 @@
    "colour-literal": 3
   },
   "public/css/vista-glass-controls.css": {
-   "theme-negative": 290
+   "theme-negative": 305
   },
   "public/css/vista-import-wizard.css": {
    "colour-literal": 63,
    "font-literal": 5,
-   "theme-negative": 93
+   "theme-negative": 105
   },
   "public/css/vista-menus.css": {
    "theme-negative": 63
@@ -752,12 +755,12 @@
    "own-control": 3
   },
   "public/css/vista-taskbar.css": {
-   "theme-negative": 52
+   "theme-negative": 53
   },
   "public/css/vista-visual-index.css": {
    "colour-literal": 51,
    "font-literal": 4,
-   "theme-negative": 29,
+   "theme-negative": 31,
    "own-control": 2
   },
   "public/css/vista-wer-dialog.css": {
@@ -972,7 +975,7 @@
    "own-control": 4
   },
   "public/css/wm-studio.css": {
-   "native-scrollbar": 3,
+   "native-scrollbar": 4,
    "colour-literal": 253,
    "theme-art-path": 9,
    "own-control": 31
@@ -1172,9 +1175,12 @@
    "hand-built-window": 2
   },
   "public/scripts/comp/desktop-apps/dovecote.js": {
-   "inline-style": 1,
-   "hand-built-window": 6,
+   "hand-built-window": 1,
    "toast": 1
+  },
+  "public/scripts/comp/desktop-apps/dovecoteWindow.js": {
+   "inline-style": 1,
+   "hand-built-window": 5
   },
   "public/scripts/comp/desktop-apps/emotion.js": {
    "hand-built-window": 1,
@@ -1326,6 +1332,10 @@
    "hand-built-window": 1,
    "toast": 1
   },
+  "public/scripts/comp/dreamosWifi.js": {
+   "colour-in-script": 1,
+   "inline-style": 2
+  },
   "public/scripts/comp/dropPasteFallback.js": {
    "toast": 5
   },
@@ -1378,7 +1388,6 @@
    "inline-style": 1
   },
   "public/scripts/comp/explorerPhoneDrive.js": {
-   "hand-built-window": 1,
    "toast": 1
   },
   "public/scripts/comp/fatalErrorBootstrap.js": {
@@ -1422,7 +1431,7 @@
   },
   "public/scripts/comp/grimoireRemoteBrowser.js": {
    "hand-built-window": 1,
-   "toast": 14
+   "toast": 13
   },
   "public/scripts/comp/imageExpansion.js": {
    "colour-in-script": 1,
@@ -1438,7 +1447,7 @@
    "toast": 4
   },
   "public/scripts/comp/imageSearchApp.js": {
-   "inline-style": 12,
+   "inline-style": 10,
    "hand-built-window": 2
   },
   "public/scripts/comp/imageViewer.js": {
@@ -1655,7 +1664,7 @@
    "toast": 3
   },
   "public/scripts/comp/serviceWorkerManager.js": {
-   "toast": 19
+   "toast": 14
   },
   "public/scripts/comp/sidebar-gadgets/gadgetShim.js": {
    "colour-in-script": 6
@@ -1683,7 +1692,7 @@
    "colour-in-script": 2,
    "inline-style": 1,
    "hand-built-window": 2,
-   "toast": 8
+   "toast": 2
   },
   "public/scripts/comp/studioSoftTips.js": {
    "toast": 1
