@@ -3,25 +3,97 @@
 
 .wm-xmradio { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--wm-bg, #fff); }
 
-.wm-xmradio .xrm-now {
-    flex: 0 0 auto;
-    padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(5 * var(--wm-px));
+/* the panes over the bottom tabs (Settings' tab strip) */
+.wm-xmradio .xrm-pane { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.wm-xmradio .xrm-pane[hidden] { display: none; }
+.wm-xmradio .xrm-now-pane, .wm-xmradio .xrm-rec-pane { display: block; overflow-y: auto; }
+
+/* Now Playing: the receiver's screen, large (Yukimi, Nov 20 2026: "a larger now playing interface") */
+.wm-xmradio .xrm-np {
+    padding: calc(5 * var(--wm-px)) calc(8 * var(--wm-px)) calc(8 * var(--wm-px));
     background: linear-gradient(#123a6b, #061830 70%, #020a16);
     color: #f2f6fb;
-    cursor: default;
+    text-align: center;
 }
-.wm-xmradio .xrm-top { display: flex; align-items: center; gap: calc(4 * var(--wm-px)); height: calc(18 * var(--wm-px)); }
+.wm-xmradio .xrm-np-top { display: flex; align-items: center; gap: calc(4 * var(--wm-px)); height: calc(18 * var(--wm-px)); text-align: left; }
 .wm-xmradio .xrm-logo { height: calc(16 * var(--wm-px)); max-width: calc(48 * var(--wm-px)); object-fit: contain; }
 .wm-xmradio .xrm-ch { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: calc(11 * var(--wm-px)); font-weight: bold; }
 .wm-xmradio .xrm-state { flex: 0 0 auto; font-size: calc(9 * var(--wm-px)); opacity: 0.85; }
 .wm-xmradio .xrm-state.is-rec { color: #ff6a5a; font-weight: bold; opacity: 1; }
-.wm-xmradio .xrm-body { display: flex; gap: calc(6 * var(--wm-px)); margin-top: calc(3 * var(--wm-px)); align-items: center; }
-.wm-xmradio .xrm-art { flex: 0 0 auto; width: calc(56 * var(--wm-px)); height: calc(56 * var(--wm-px)); object-fit: contain; background: rgba(0, 0, 0, 0.25); border: calc(1 * var(--wm-px)) solid rgba(255, 255, 255, 0.35); }
-.wm-xmradio .xrm-lines { flex: 1 1 auto; min-width: 0; }
-.wm-xmradio .xrm-lines > div { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.3; }
-.wm-xmradio .xrm-t1 { font-size: calc(13 * var(--wm-px)); font-weight: bold; }
-.wm-xmradio .xrm-t2 { font-size: calc(11 * var(--wm-px)); }
-.wm-xmradio .xrm-t3 { font-size: calc(9 * var(--wm-px)); opacity: 0.8; }
+.wm-xmradio .xrm-np-art {
+    position: relative;
+    width: calc(150 * var(--wm-px));
+    height: calc(150 * var(--wm-px));
+    margin: calc(6 * var(--wm-px)) auto calc(6 * var(--wm-px));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.3);
+    border: calc(1 * var(--wm-px)) solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 calc(2 * var(--wm-px)) calc(6 * var(--wm-px)) rgba(0, 0, 0, 0.5);
+}
+.wm-xmradio .xrm-art { width: 100%; height: 100%; object-fit: contain; }
+.wm-xmradio .xrm-art-n { position: absolute; font-size: calc(28 * var(--wm-px)); opacity: 0.8; }
+.wm-xmradio .xrm-np-t1, .wm-xmradio .xrm-np-t2, .wm-xmradio .xrm-np-t3 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.3; }
+.wm-xmradio .xrm-np-t1 { font-size: calc(15 * var(--wm-px)); font-weight: bold; }
+.wm-xmradio .xrm-np-t2 { font-size: calc(12 * var(--wm-px)); }
+.wm-xmradio .xrm-np-t3 { font-size: calc(9 * var(--wm-px)); opacity: 0.75; min-height: calc(12 * var(--wm-px)); }
+.wm-xmradio .xrm-np-bar { height: calc(3 * var(--wm-px)); margin: calc(6 * var(--wm-px)) 0 calc(2 * var(--wm-px)); background: rgba(255, 255, 255, 0.2); }
+.wm-xmradio .xrm-np-bar > i { display: block; height: 100%; width: 0; background: #6fb4ff; }
+.wm-xmradio .xrm-np-times { display: flex; justify-content: space-between; height: calc(11 * var(--wm-px)); font-size: calc(8 * var(--wm-px)); opacity: 0.8; }
+.wm-xmradio .xrm-np-keys { display: flex; justify-content: center; align-items: center; gap: calc(10 * var(--wm-px)); margin-top: calc(4 * var(--wm-px)); }
+.wm-xmradio .xrm-np-keys button {
+    width: calc(30 * var(--wm-px));
+    height: calc(30 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: calc(1 * var(--wm-px)) solid rgba(255, 255, 255, 0.45);
+    border-radius: 50%;
+    background: linear-gradient(rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.05));
+    color: #fff;
+    font-size: calc(12 * var(--wm-px));
+    line-height: 1;
+}
+.wm-xmradio .xrm-np-keys button.is-big { width: calc(40 * var(--wm-px)); height: calc(40 * var(--wm-px)); font-size: calc(16 * var(--wm-px)); }
+.wm-xmradio .xrm-np-keys button:active { background: var(--wm-highlight); }
+.wm-xmradio .xrm-np-keys .xrm-np-rec { color: #ff6a5a; font-size: calc(8 * var(--wm-px)); font-weight: bold; }
+.wm-xmradio .xrm-np-keys .xrm-np-rec.is-on { background: #d0220e; border-color: #ff8a7a; color: #fff; }
+.wm-xmradio .xrm-np-keys .xrm-np-rec[hidden] { display: none; }
+
+/* Up Next, Recently Played, Recording Now, tapes */
+.wm-xmradio .xrm-sec:empty { display: none; }
+.wm-xmradio .xrm-sec-h {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    height: calc(17 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-today-rule, #c0c0c0);
+    font-size: calc(11 * var(--wm-px));
+    font-weight: bold;
+}
+.wm-xmradio .xrm-sec-row, .wm-xmradio .xrm-track, .wm-xmradio .xrm-tape {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    min-height: calc(20 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid rgba(0, 0, 0, 0.08);
+    font-size: calc(10 * var(--wm-px));
+}
+.wm-xmradio .xrm-sec-row.is-now .xrm-sec-t { font-weight: bold; }
+.wm-xmradio .xrm-sec-time { flex: 0 0 auto; width: calc(46 * var(--wm-px)); font-size: calc(9 * var(--wm-px)); opacity: 0.75; }
+.wm-xmradio .xrm-sec-pic { flex: 0 0 auto; width: calc(24 * var(--wm-px)); height: calc(24 * var(--wm-px)); background: #0b1a2e; }
+.wm-xmradio .xrm-sec-pic.is-none { background: none; }
+.wm-xmradio .xrm-sec-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wm-xmradio .xrm-sec-lines { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.wm-xmradio .xrm-sec-t { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.wm-xmradio .xrm-sec-s { flex: 0 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: calc(9 * var(--wm-px)); opacity: 0.7; }
+.wm-xmradio .xrm-sec-btn { flex: 0 0 auto; margin: 0; padding: 0 calc(6 * var(--wm-px)); height: calc(16 * var(--wm-px)); border: calc(1 * var(--wm-px)) solid #000; background: var(--wm-tab-strip, #e8e8e8); color: #000; font-size: calc(9 * var(--wm-px)); }
+.wm-xmradio .xrm-track.is-sel, .wm-xmradio .xrm-tape:active, .wm-xmradio .xrm-track:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wm-xmradio .xrm-track.is-playing .xrm-sec-t { font-weight: bold; }
+.wm-xmradio .xrm-tape-ic { flex: 0 0 auto; width: calc(20 * var(--wm-px)); height: calc(13 * var(--wm-px)); border-radius: calc(2 * var(--wm-px)); background: radial-gradient(circle, #fff 0 calc(1.5 * var(--wm-px)), transparent calc(2 * var(--wm-px))) 25% 55% / calc(7 * var(--wm-px)) calc(7 * var(--wm-px)) no-repeat, radial-gradient(circle, #fff 0 calc(1.5 * var(--wm-px)), transparent calc(2 * var(--wm-px))) 75% 55% / calc(7 * var(--wm-px)) calc(7 * var(--wm-px)) no-repeat, linear-gradient(#f3efe2 0 35%, #3a3d42 35%); border: calc(1 * var(--wm-px)) solid #222; }
+.wm-xmradio .xrm-back { margin: 0; padding: 0 calc(4 * var(--wm-px)) 0 0; border: 0; background: none; color: var(--wm-highlight); font-size: calc(11 * var(--wm-px)); font-weight: bold; }
 
 .wm-xmradio .xrm-head {
     flex: 0 0 auto;

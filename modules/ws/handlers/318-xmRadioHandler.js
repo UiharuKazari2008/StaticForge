@@ -32,6 +32,15 @@ const recorder = require('../../xmRadioRecorder');
 //   xmradio_rec_start       { channelId, song?, fromStart? }  admins -> { rid, channelId, kind, mode, tape, since, until, url, cut }
 //                                                 (song: the phone's one-touch Record, the cut on air, from its start
 //                                                 when fromStart; it stops when the cut ends)
+//   xmradio_schedule        { channelId }         { now { a, t, at, dur, i } | null, played[] (newest first), shows[{ name, show, at,
+//                                                 dur, i, now? }] } (liveUpdate, the last 90 min and the next 8 h; a minute's cache)
+//   xmradio_tape_new        { workspaceId?, name }          admins -> { tape }
+//   xmradio_tape_rename     { workspaceId?, from, to }      admins -> { tape }
+//   xmradio_tape_delete     { workspaceId?, name }          admins -> { tape } (to the Recycle Bin; not while it records)
+//   xmradio_track_rename    { id, name }                    admins -> { id, name }
+//   xmradio_track_delete    { id }                          admins -> { id } (to the Recycle Bin)
+//   xmradio_track_move      { id, tape }                    admins -> { id, tape }
+//   GET /api/xmradio/track/<fileId>: a recording on a tape (audio/mp4, Range), for the phone's native player
 //   xmradio_phone_watch     { channels[] }        a phone's channels (up to 12) for the feed xmradio_phone
 //
 // Phones subscribe to statusHub feed `xmradio_phone` instead: { account { signedIn }, lineup { at }, rec[{ rid,
@@ -112,6 +121,14 @@ function registerPackets(handlersCtx) {
         if (ctx.message.requestId) reply(handlersCtx, ctx.ws, ctx.message, { channels: list });
     }, { owner: 'xmradio' });
     reg('xmradio_rec_stop', packet(true, 'The recording could not be stopped', async (m) => (await recorder.stop(String(m.rid || ''))) || { rid: m.rid, filed: 0 }));
+    reg('xmradio_schedule', packet(false, 'The programme could not be read', async (m) => xmRadio.schedule(m.channelId)));
+    const wsOf = (m) => String(m.workspaceId || recorder.deck().workspaceId);
+    reg('xmradio_tape_new', packet(true, 'The tape could not be made', async (m) => recorder.tapeNew(wsOf(m), m.name)));
+    reg('xmradio_tape_rename', packet(true, 'The tape could not be renamed', async (m) => recorder.tapeRename(wsOf(m), String(m.from || ''), m.to)));
+    reg('xmradio_tape_delete', packet(true, 'The tape could not be deleted', async (m) => recorder.tapeDelete(wsOf(m), String(m.name || ''))), { destructive: true });
+    reg('xmradio_track_rename', packet(true, 'The recording could not be renamed', async (m) => recorder.trackRename(m.id, m.name)));
+    reg('xmradio_track_delete', packet(true, 'The recording could not be deleted', async (m) => recorder.trackDelete(m.id)), { destructive: true });
+    reg('xmradio_track_move', packet(true, 'The recording could not be moved', async (m) => recorder.trackMove(m.id, m.tape)));
     reg('xmradio_timers_set', packet(true, 'The timers could not be saved', async (m) => ({ timers: recorder.setTimers(m.timers) })));
     reg('xmradio_alert_add', packet(true, 'The alert could not be set', async (m) => ({ alerts: recorder.addAlert(m) })));
     reg('xmradio_alert_remove', packet(true, 'The alert could not be removed', async (m) => ({ alerts: recorder.removeAlert(String(m.id || '')) })));

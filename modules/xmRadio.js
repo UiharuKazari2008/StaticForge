@@ -546,6 +546,69 @@ function lineupFile() { return path.join(path.dirname(accountFile()), 'xmradio-l
  * A channel's number and name: liveUpdate answers them for every channel (the guide's peek only carries songs; checked
  * Nov 20 2026). About 78 KB a channel, so the lineup is read a few at a time, once a month.
  */
+/**
+ * A channel's programme around now (the phone's Now Playing, Yukimi Nov 20 2026: "up next"): liveUpdate over the
+ * last 90 minutes and the next 8 hours. Songs are known only once they air; shows are scheduled ahead.
+ *   -> { now: { a, t, at, dur (s), i } | null, played: [{ a, t, at, dur, i }] (newest first, up to 12),
+ *        shows: [{ name, show, at, dur, i, now? }] (the one on now, then what comes up) }
+ * Kept a minute per channel.
+ */
+const scheduleCache = new Map();
+const pickImage = (images) => {
+    if (!images || typeof images !== 'object') return '';
+    for (const k of ['tile', 'cover', 'thumbnail', 'logo']) {
+        const v = images[k];
+        if (!v) continue;
+        for (const a of ['aspect_1x1', 'aspect_16x9', 'aspect_5x4']) {
+            const im = v[a] && (v[a].preferredImage || v[a].defaultImage);
+            if (im && im.url) return artPath(im.url, 300, 'jpeg', a === 'aspect_16x9' ? 16 / 9 : a === 'aspect_5x4' ? 1.25 : 1);
+        }
+    }
+    return '';
+};
+async function schedule(channelId) {
+    const id = String(channelId || '');
+    if (!/^[0-9a-f-]{20,64}$/i.test(id)) throw fail('No such channel.', 'XMRADIO_CHANNEL');
+    const hit = scheduleCache.get(id);
+    if (hit && Date.now() - hit.at < 60000) return hit.data;
+    const tok = await authToken();
+    if (!tok) throw fail('Sign in to SiriusXM to listen.', 'XMRADIO_SIGNED_OUT');
+    const now = Date.now();
+    // liveUpdate answers a page from its start (about a dozen songs) and names where the next one starts: followed
+    // until it reaches now (an hour back, at most six pages)
+    const j = { items: [], episodes: [] };
+    let from = now - 60 * 60000;
+    for (let page = 0; page < 6; page++) {
+        const r = await api('POST', '/playback/play/v1/liveUpdate', { bearer: tok, body: { channelId: id, startTimestamp: new Date(from).toISOString(), endTimestamp: new Date(now + 8 * 3600000).toISOString() } });
+        const p = r.json || {};
+        if (Array.isArray(p.items)) j.items.push(...p.items);
+        if (Array.isArray(p.episodes)) j.episodes.push(...p.episodes);
+        const next = Date.parse(p.nextLiveUpdateStartTimestamp || '');
+        if (!next || next <= from || next >= now) break;
+        from = next;
+    }
+    const seen = new Set();
+    j.items = j.items.filter((x) => { const k = `${x.timestamp}|${x.name}`; if (seen.has(k)) return false; seen.add(k); return true; });
+    const seenEp = new Set();
+    j.episodes = j.episodes.filter((x) => { const k = `${x.startTimestamp}|${x.name}`; if (seenEp.has(k)) return false; seenEp.add(k); return true; });
+    const songs = (Array.isArray(j.items) ? j.items : []).map((x) => ({
+        a: String(x.artistName || ''), t: String(x.name || ''), at: Date.parse(x.timestamp) || 0, dur: Math.round((Number(x.duration) || 0) / 1000), // liveUpdate gives milliseconds
+        ad: !!x.isInterstitial, i: pickImage(x.images) || pickImage(x.artistImages)
+    })).filter((x) => x.at && x.at <= now + 5000).sort((a, b) => b.at - a.at);
+    const shows = (Array.isArray(j.episodes) ? j.episodes : []).map((x) => ({
+        name: String(x.name || ''), show: String(x.showName || ''), at: Date.parse(x.startTimestamp) || 0, dur: Math.round((Number(x.duration) || 0) / 1000), // liveUpdate gives milliseconds
+        i: pickImage(x.images) || pickImage(x.showImages)
+    })).filter((x) => x.at).sort((a, b) => a.at - b.at)
+        .filter((x) => x.at + x.dur * 1000 > now)
+        .map((x) => (x.at <= now ? Object.assign(x, { now: true }) : x))
+        .slice(0, 8);
+    const cur = songs[0] && !songs[0].ad ? songs[0] : null;
+    const data = { now: cur, played: songs.slice(cur ? 1 : 0).filter((x) => !x.ad).slice(0, 12), shows };
+    scheduleCache.set(id, { at: Date.now(), data });
+    if (scheduleCache.size > 40) scheduleCache.delete(scheduleCache.keys().next().value);
+    return data;
+}
+
 async function channelInfo(id, tok) {
     const now = new Date().toISOString();
     const r = await api('POST', '/playback/play/v1/liveUpdate', { bearer: tok, body: { channelId: id, startTimestamp: now, endTimestamp: now } });
@@ -1005,6 +1068,15 @@ function mount(app, authMiddleware) {
     });
     app.get('/api/xmradio/eco/:rid/:file', authMiddleware, admin, (req, res) => { void ecoFile(String(req.params.rid), String(req.params.file), res); });
     app.get('/api/xmradio/key/:sid/:keyId', authMiddleware, admin, (req, res) => { void streamKey(String(req.params.sid), String(req.params.keyId), res); });
+    // a recording on a tape (the phone's Recordings: the native player plays it from here, with Range)
+    app.get('/api/xmradio/track/:fileId', authMiddleware, admin, (req, res) => {
+        require('./xmRadioRecorder').trackPath(String(req.params.fileId)).then((p) => {
+            if (!p) { res.status(404).end(); return; }
+            res.set('Cache-Control', 'private, max-age=3600');
+            res.type('audio/mp4');
+            res.sendFile(p.file, { root: p.root });
+        }, () => res.status(404).end());
+    });
     // a recording in progress (the cassette deck): its growing playlist and its segments, already decrypted
     app.get('/api/xmradio/rec/:rid/:file', authMiddleware, admin, (req, res) => {
         const rec = require('./xmRadioRecorder');
@@ -1047,6 +1119,7 @@ module.exports = {
     setPresets,
     nowPlaying: (id) => nowPlaying.get(id) || null,
     nowPlayingCuts,
+    schedule,
     channelById,
     watch,
     onLook,

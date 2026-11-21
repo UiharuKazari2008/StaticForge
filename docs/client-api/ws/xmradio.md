@@ -82,8 +82,16 @@ Auto-record:
 - One-touch Record: `xmradio_rec_start { channelId, song: true, fromStart }`. It records the cut on air into the deck's
   tape, from its first frame when `fromStart` (the stream keeps five hours), and stops when the cut ends. The phone
   always asks first.
-- Sound: the Dreamscape app's native player (`AndroidVideos`, sound only) plays `/api/xmradio/live/...` and
-  `/api/xmradio/eco/...`. A page without it plays with hls.js.
+- The phone program has three tabs: Now Playing, Channels and Recordings.
+  - Now Playing uses `xmradio_schedule { channelId }`, which returns `{ now { a, t, at, dur }, played[], shows[] }`.
+    It reads liveUpdate for the last hour (it pages about a dozen songs at a time, followed up to now) and the next
+    8 hours. Durations are in seconds. Songs are known only once they air; shows appear ahead only where SiriusXM
+    schedules them. The panel shows the song's progress, the show on now or up next, and Recently Played.
+  - Recordings lists the tapes and their recordings, plays them (`GET /api/xmradio/track/<fileId>`), and manages them
+    with `xmradio_tape_new`, `xmradio_tape_rename`, `xmradio_tape_delete`, `xmradio_track_rename`,
+    `xmradio_track_delete` and `xmradio_track_move` (see the handler's header). Deleting moves to the Recycle Bin.
+- Sound: the Dreamscape app's native player (`AndroidVideos`, sound only) plays `/api/xmradio/live/...`,
+  `/api/xmradio/eco/...` and `/api/xmradio/track/...` (a progressive .m4a). A page without it plays with hls.js.
 
 ## HTTP
 

@@ -196,6 +196,101 @@ async function tracks(workspaceId, name) {
         .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
 }
 
+/** A tape's folder id and its file, when the file lies in a tape (a folder of Recordings). */
+async function trackOf(fileId) {
+    const db = require('./vfsDatabase');
+    const f = await db.getUserFileById(String(fileId || ''));
+    if (!f || f.trashed_at || !f.folder_id) return null;
+    const tape = await db.getFolderById(f.folder_id);
+    if (!tape || tape.trashed_at || !tape.parent_id) return null;
+    const root = await db.getFolderById(tape.parent_id);
+    if (!root || String(root.name || '').toLowerCase() !== RECORDINGS.toLowerCase() || root.parent_id) return null;
+    return { file: f, tape, workspaceId: f.workspace_id };
+}
+
+/** The file on disk for /api/xmradio/track/<id> (only files that lie in a tape). */
+async function trackPath(fileId) {
+    const t = await trackOf(fileId);
+    if (!t) return null;
+    const v = await vfs();
+    const full = v.getFileBlobPath(t.file.content_hash);
+    return { root: path.dirname(full), file: path.basename(full) };
+}
+
+function broadcastFolder(workspaceId, folderId) {
+    const ws = gr.getWebSocketServer && gr.getWebSocketServer();
+    if (ws && ws.broadcast) ws.broadcast({ type: 'vfs_updated', data: { path: `/Workspaces/${workspaceId}${folderId ? `/${folderId}` : ''}` }, timestamp: new Date().toISOString() });
+}
+
+/** Managing tapes and recordings (the phone's Recordings tab). */
+async function trackRename(fileId, name) {
+    const t = await trackOf(fileId);
+    if (!t) throw new Error('That recording is not on a tape.');
+    const ext = (/\.[a-z0-9]{2,4}$/i.exec(t.file.original_name || '') || ['.m4a'])[0];
+    const base = safeName(String(name || '').replace(/\.[a-z0-9]{2,4}$/i, ''));
+    if (!base) throw new Error('Name the recording.');
+    await require('./vfsDatabase').updateUserFile(t.file.id, { original_name: `${base}${ext}` });
+    broadcastFolder(t.workspaceId, t.tape.id);
+    return { id: t.file.id, name: `${base}${ext}` };
+}
+
+async function trackDelete(fileId) {
+    const t = await trackOf(fileId);
+    if (!t) throw new Error('That recording is not on a tape.');
+    const v = await vfs();
+    await v.moveItemsToTrash([{ id: t.file.id, targetId: t.file.id, targetKind: 'user-file', kind: 'user-file', name: t.file.original_name }], `/Workspaces/${t.workspaceId}/${t.tape.id}`);
+    broadcastFolder(t.workspaceId, t.tape.id);
+    return { id: t.file.id };
+}
+
+async function trackMove(fileId, tapeName) {
+    const t = await trackOf(fileId);
+    if (!t) throw new Error('That recording is not on a tape.');
+    const name = safeName(tapeName, 80);
+    if (!name) throw new Error('Choose a tape.');
+    const dest = await tapeFolder(t.workspaceId, name, true);
+    if (dest.id === t.tape.id) return { id: t.file.id, tape: name };
+    const v = await vfs();
+    await v.moveItems([{ id: t.file.id }], `/Workspaces/${t.workspaceId}/${dest.id}`);
+    broadcastFolder(t.workspaceId, t.tape.id);
+    broadcastFolder(t.workspaceId, dest.id);
+    return { id: t.file.id, tape: name };
+}
+
+async function tapeNew(workspaceId, name) {
+    const n = safeName(name, 80);
+    if (!n) throw new Error('Name the tape.');
+    const f = await tapeFolder(workspaceId, n, true);
+    broadcastFolder(workspaceId, f.parent_id);
+    return { tape: n };
+}
+
+async function tapeRename(workspaceId, from, to) {
+    const n = safeName(to, 80);
+    if (!n) throw new Error('Name the tape.');
+    const f = await tapeFolder(workspaceId, from, false);
+    if (!f) throw new Error('There is no such tape.');
+    if (await tapeFolder(workspaceId, n, false)) throw new Error(`There is already a tape called ${n}.`);
+    const v = await vfs();
+    await v.renameFolderAtPath(f.id, n);
+    const s = load();
+    if (s.deck.workspaceId === workspaceId && s.deck.tape === from) s.deck.tape = n;
+    for (const r of recs.values()) if (r.meta.workspaceId === workspaceId && r.meta.tape === from) r.meta.tape = n;
+    broadcastFolder(workspaceId, f.parent_id);
+    changed();
+    return { tape: n };
+}
+
+async function tapeDelete(workspaceId, name) {
+    const f = await tapeFolder(workspaceId, name, false);
+    if (!f) throw new Error('There is no such tape.');
+    for (const r of recs.values()) if (r.meta.workspaceId === workspaceId && r.meta.tape === name) throw new Error('That tape is being recorded on.');
+    const v = await vfs();
+    await v.moveItemsToTrash([{ id: f.id, targetId: f.id, targetKind: 'vfs-folder', kind: 'vfs-folder', name: f.name }], `/Workspaces/${workspaceId}/${f.parent_id}`);
+    broadcastFolder(workspaceId, f.parent_id);
+    return { tape: name };
+}
+
 async function fileInto(rec, tmpPath, name) {
     const folder = await tapeFolder(rec.meta.workspaceId, rec.meta.tape, true);
     const v = await vfs();
@@ -678,6 +773,6 @@ function init(xmRadio, globalResources, { changed: cb } = {}) {
 }
 
 module.exports = {
-    init, start, stop, recordCut, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
+    init, start, stop, recordCut, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
     _test: { adtsFrames, nextStart, cutAt, norm, onLook, sliceAac, recs, load: () => load(), reset: () => { st = null; recs.clear(); ended.clear(); fired.clear(); } }
 };

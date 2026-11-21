@@ -78,7 +78,7 @@
     let lineupAsked = false;
     const logoAsked = new Set();
     // the radio: { channelId, state: 'off' | 'tuning' | 'playing' | 'paused' | 'error', native, url }
-    const radio = { channelId: '', state: 'off', native: false, url: '', hls: null, audio: null, seq: 0 };
+    const radio = { channelId: '', state: 'off', native: false, url: '', hls: null, audio: null, seq: 0, mode: 'live', track: null, startedAt: 0 };
 
     function indexLineup() { byId = new Map(((cache.lineup && cache.lineup.channels) || []).map((c) => [c.id, c])); }
     indexLineup();
@@ -148,10 +148,13 @@
         for (const [k, v] of Object.entries(items)) {
             if (k === 'account') cache.signedIn = !!(v && v.signedIn);
             else if (k === 'lineup') { if (v && v.at && (!cache.lineup || v.at > (cache.lineup.at || 0))) lineupMoved = true; }
-            else if (k === 'rec') cache.rec = Array.isArray(v) ? v : [];
+            else if (k === 'rec') { const was = (cache.rec || []).length; cache.rec = Array.isArray(v) ? v : []; if (cache.rec.length < was) tapes.stale = true; }
             else if (k.startsWith('ch:')) { if (v) cache.now[k.slice(3)] = v; else delete cache.now[k.slice(3)]; }
         }
         saveSoon();
+        // the song changed on the channel shown: its programme (recently played, the song's length) is read again
+        if (shown && tab === 'now' && radio.mode === 'live') void loadSchedule(radio.channelId || prefs.channel);
+        if (shown && tab === 'recordings' && tapes.stale) void loadTapes(false);
         if (lineupMoved || !cache.lineup || Date.now() - (cache.lineup.at || 0) > LINEUP_MS) void loadLineup(lineupMoved);
         changed();
     }
@@ -226,6 +229,8 @@
         const c = chan(id);
         if (!c) return;
         if (c.sub === false) { void box(`${chanLabel(c)} is not in your SiriusXM plan.`, 'info'); return; }
+        radio.mode = 'live';
+        radio.track = null;
         radio.channelId = id;
         prefs.channel = id;
         saveSoon();
@@ -233,6 +238,7 @@
         const seq = ++radio.seq;
         changed();
         tellWatch();
+        void loadSchedule(id);
         let r;
         try {
             r = await ask('xmradio_tune', { channelId: id, quality: prefs.quality }, 30000);
@@ -246,47 +252,69 @@
         }
         if (seq !== radio.seq) return;
         radio.url = new URL(r.url, location.origin).toString();
-        await start(seq);
+        const now = nowOf(id);
+        await start(seq, { title: chanLabel(c), subtitle: now && !now.ad ? [now.a, now.t].filter(Boolean).join(' - ') : 'SiriusXM', live: true });
     }
 
-    /** The native player when the app takes radio streams, else the page's own (hls.js). */
-    async function start(seq) {
+    /** A recording from a tape: { id, name, tape } of the list `list`, at index i. */
+    async function playTrack(list, i) {
+        const t = list[i];
+        if (!t) { stopRadio(); return; }
+        radio.mode = 'track';
+        radio.track = { list, i, id: t.id, name: t.name.replace(/\.m4a$/i, ''), tape: t.tape };
+        radio.url = new URL(`/api/xmradio/track/${encodeURIComponent(t.id)}`, location.origin).toString();
+        radio.state = 'tuning';
+        const seq = ++radio.seq;
+        tab = 'now';
+        changed();
+        await start(seq, { title: radio.track.name, subtitle: `Tape: ${t.tape}`, live: false });
+    }
+
+    /**
+     * The native player when the app takes the address (sound only: it carries on with the screen off), else the
+     * page's own: hls.js for a channel, the audio element for a recording.
+     */
+    async function start(seq, { title, subtitle, live }) {
         dropPage();
         dropNative();
-        const c = chan(radio.channelId);
-        const now = nowOf(radio.channelId);
         const nv = nativePlayer();
         if (nv) {
             try {
-                nv.watching(JSON.stringify({ url: radio.url, title: chanLabel(c), subtitle: now && !now.ad ? [now.a, now.t].filter(Boolean).join(' - ') : 'SiriusXM', audioOnly: true }));
+                nv.watching(JSON.stringify({ url: radio.url, title, subtitle, audioOnly: true }));
                 radio.native = nv.handOff() === true;
             } catch (_) { radio.native = false; }
-            if (radio.native) { radio.state = 'playing'; changed(); return; }
+            if (radio.native) { radio.state = 'playing'; radio.startedAt = Date.now(); changed(); return; }
             try { nv.watching(''); } catch (_) { /* older app */ }
         }
         if (!radio.audio) {
             radio.audio = document.createElement('audio');
             radio.audio.preload = 'none';
-            for (const t of ['playing', 'pause', 'waiting', 'error']) radio.audio.addEventListener(t, () => onAudio(t), { signal: appScopeSignal });
+            for (const t of ['playing', 'pause', 'waiting', 'error', 'ended', 'timeupdate']) radio.audio.addEventListener(t, () => onAudio(t), { signal: appScopeSignal });
         }
-        let Hls = null;
-        try { Hls = await loadHls(); } catch (_) { Hls = null; }
-        if (seq !== radio.seq) return;
         const a = radio.audio;
-        if (Hls && Hls.isSupported()) {
-            const h = new Hls({ liveSyncDurationCount: 3, maxBufferLength: 30, backBufferLength: 120, enableWorker: true });
-            radio.hls = h;
-            h.on(Hls.Events.ERROR, (ev, d) => { if (d && d.fatal && radio.hls === h) { radio.state = 'error'; changed(); } });
-            h.loadSource(radio.url);
-            h.attachMedia(a);
-        } else if (a.canPlayType('application/vnd.apple.mpegurl')) {
+        if (live) {
+            let Hls = null;
+            try { Hls = await loadHls(); } catch (_) { Hls = null; }
+            if (seq !== radio.seq) return;
+            if (Hls && Hls.isSupported()) {
+                const h = new Hls({ liveSyncDurationCount: 3, maxBufferLength: 30, backBufferLength: 120, enableWorker: true });
+                radio.hls = h;
+                h.on(Hls.Events.ERROR, (ev, d) => { if (d && d.fatal && radio.hls === h) { radio.state = 'error'; changed(); } });
+                h.loadSource(radio.url);
+                h.attachMedia(a);
+            } else if (a.canPlayType('application/vnd.apple.mpegurl')) {
+                a.src = radio.url;
+            } else { radio.state = 'error'; changed(); return; }
+        } else {
             a.src = radio.url;
-        } else { radio.state = 'error'; changed(); return; }
+        }
         try { await a.play(); } catch (_) { radio.state = 'paused'; changed(); }
     }
 
     function onAudio(t) {
         if (radio.native) return;
+        if (t === 'timeupdate') { if (tab === 'now' && shown) paintProgress(); return; }
+        if (t === 'ended' && radio.mode === 'track' && radio.track) { void playTrack(radio.track.list, radio.track.i + 1); return; }
         if (t === 'playing') radio.state = 'playing';
         else if (t === 'pause' && radio.state === 'playing') radio.state = 'paused';
         else if (t === 'waiting' && radio.state !== 'paused') radio.state = 'tuning';
@@ -295,7 +323,12 @@
     }
 
     function playPause() {
-        if (radio.state === 'off' || radio.state === 'error' || !radio.url) { const id = radio.channelId || prefs.channel || todayChannels()[0]; if (id) void tune(id); return; }
+        if (radio.state === 'off' || radio.state === 'error' || !radio.url) {
+            if (radio.mode === 'track' && radio.track) { void playTrack(radio.track.list, radio.track.i); return; }
+            const id = radio.channelId || prefs.channel || todayChannels()[0];
+            if (id) void tune(id);
+            return;
+        }
         if (radio.native) { stopRadio(); return; }
         const a = radio.audio;
         if (!a) return;
@@ -310,7 +343,14 @@
         changed();
     }
 
+    /** Channel up / down live; the next / previous recording on a tape. */
     function step(dir) {
+        if (radio.mode === 'track' && radio.track) {
+            const a = radio.audio;
+            if (dir < 0 && !radio.native && a && a.currentTime > 4) { a.currentTime = 0; return; }
+            void playTrack(radio.track.list, Math.max(0, radio.track.i + dir));
+            return;
+        }
         const list = ((cache.lineup && cache.lineup.channels) || []).filter((c) => c.sub !== false || c.id === radio.channelId);
         if (!list.length) return;
         const i = list.findIndex((c) => c.id === (radio.channelId || prefs.channel));
@@ -318,7 +358,24 @@
         void tune(list[((i < 0 ? 0 : i + dir) % n + n) % n].id);
     }
 
-    // ---------------------------------------------------------------- recording (one touch, from the start)
+    // ---------------------------------------------------------------- the programme (now, up next, recently played)
+
+    const sched = new Map(); // channelId -> { at, data, cutAt }
+    async function loadSchedule(id, force) {
+        if (!id) return;
+        const have = sched.get(id);
+        const cutAt = (nowOf(id) || {}).at || 0;
+        // asked when the channel is shown and again when its song changes (never on a timer)
+        if (have && !force && have.cutAt === cutAt && Date.now() - have.at < 120000) return;
+        try {
+            const d = await ask('xmradio_schedule', { channelId: id }, 30000);
+            sched.set(id, { at: Date.now(), data: d, cutAt });
+            if (sched.size > 12) sched.delete(sched.keys().next().value);
+            if (shown) render();
+        } catch (_) { /* the panel shows what the feed has */ }
+    }
+
+    // ---------------------------------------------------------------- recording
 
     /**
      * Record (Yukimi): the song on air on a channel, asking first whether from its start. REC (that channel records
@@ -329,25 +386,41 @@
         const c = chan(id);
         if (!c) return;
         const rec = recOf(id);
-        if (rec) {
-            const stop = await ws.messageBox({ title: TITLE, icon: 'question', text: `${chanLabel(c)} is recording${rec.kind === 'song' ? ' this song' : ''}.\n\nStop the recording? What is recorded so far is saved to the tape.`, buttons: [{ text: 'Stop', value: true }, { text: 'Keep', value: false }] });
-            if (!stop) return;
-            try { await ws.busy(ask('xmradio_rec_stop', { rid: rec.rid }, 120000), { delay: 300, timeout: 120000 }); } catch (err) { void box((err && err.message) || 'The recording could not be stopped.'); return; }
-            cache.rec = cache.rec.filter((r) => r.rid !== rec.rid);
-            changed();
-            return;
-        }
+        if (rec) { await stopRec(rec); return; }
         const now = nowOf(id);
         const what = now && !now.ad && now.t ? `"${now.t}"${now.a ? ` by ${now.a}` : ''}` : `what is on ${chanLabel(c)}`;
         // always asked (Yukimi: "it should always ask do you want to record from the start")
         const choice = await ws.messageBox({ title: TITLE, icon: 'question', text: `Record ${what} from the start?\n\nNo records from now. The song is saved to the cassette deck's tape when it ends.`, buttons: [{ text: 'Yes', value: 'start' }, { text: 'No', value: 'now' }, { text: 'Cancel', value: false }] });
         if (!choice) return;
+        await recStart(id, { song: true, fromStart: choice === 'start' });
+    }
+
+    /** Record Channel: everything on the channel until stopped (up to 8 hours), as the deck's REC. */
+    async function recordChannel(id) {
+        const c = chan(id);
+        if (!c || !isAdmin()) return;
+        if (recOf(id)) { void box(`${chanLabel(c)} is already recording.`, 'info'); return; }
+        const ok = await ws.messageBox({ title: TITLE, icon: 'question', text: `Record ${chanLabel(c)} until you stop it (up to 8 hours)?\n\nThe cassette deck's switch decides: a file per song, or one long file.`, buttons: [{ text: 'Record', value: true }, { text: 'Cancel', value: false }] });
+        if (ok) await recStart(id, {});
+    }
+
+    async function recStart(id, opts) {
         try {
-            const r = await ws.busy(ask('xmradio_rec_start', { channelId: id, song: true, fromStart: choice === 'start' }, 30000), { delay: 300, timeout: 30000 });
+            const r = await ws.busy(ask('xmradio_rec_start', Object.assign({ channelId: id }, opts), 30000), { delay: 300, timeout: 30000 });
             if (r && r.rid) cache.rec = (cache.rec || []).filter((x) => x.rid !== r.rid).concat({ rid: r.rid, channelId: id, kind: r.kind, since: r.since });
             saveSoon();
             changed();
         } catch (err) { void box((err && err.message) || 'The recording could not be started.'); }
+    }
+
+    async function stopRec(rec) {
+        const c = chan(rec.channelId);
+        const stop = await ws.messageBox({ title: TITLE, icon: 'question', text: `${chanLabel(c) || 'A channel'} is recording${rec.kind === 'song' ? ' a song' : ''}.\n\nStop the recording? What is recorded so far is saved to the tape.`, buttons: [{ text: 'Stop', value: true }, { text: 'Keep', value: false }] });
+        if (!stop) return;
+        try { await ws.busy(ask('xmradio_rec_stop', { rid: rec.rid }, 120000), { delay: 300, timeout: 120000 }); } catch (err) { void box((err && err.message) || 'The recording could not be stopped.'); return; }
+        cache.rec = cache.rec.filter((r) => r.rid !== rec.rid);
+        tapes.stale = true;
+        changed();
     }
 
     function recKey(id) {
@@ -387,49 +460,263 @@
         if (c) void tune(c.id); else void box(`There is no channel ${n}.`, 'info');
     }
 
+    // ---------------------------------------------------------------- tapes (the Recordings tab)
+
+    // { list: [names], deck: { tape, workspaceId, mode }, open: name | null, tracks: { name: [...] }, sel: id, stale }
+    const tapes = { list: null, deck: null, open: null, tracks: {}, sel: '', stale: true, loading: false };
+
+    async function loadTapes(force) {
+        if (tapes.loading || (!force && !tapes.stale && tapes.list)) return;
+        tapes.loading = true;
+        try {
+            const d = await ask('xmradio_deck_get', {}, 30000);
+            tapes.deck = d.deck || null;
+            tapes.list = (d.tapes || []).slice();
+            if (tapes.deck && tapes.deck.tape && !tapes.list.includes(tapes.deck.tape)) tapes.list.unshift(tapes.deck.tape);
+            tapes.stale = false;
+            if (tapes.open) await loadTracks(tapes.open);
+        } catch (err) { tapes.error = (err && err.message) || 'The tapes could not be read.'; }
+        tapes.loading = false;
+        if (shown) render();
+    }
+
+    async function loadTracks(name) {
+        try {
+            const d = await ask('xmradio_tape_tracks', { tape: name }, 30000);
+            tapes.tracks[name] = (d.tracks || []).map((t) => Object.assign({}, t, { tape: name }));
+        } catch (_) { tapes.tracks[name] = []; }
+        if (shown) render();
+    }
+
+    function openTape(name) {
+        tapes.open = name;
+        tapes.sel = '';
+        void loadTracks(name);
+        render();
+        if (ws) ws.refreshSoftKeys();
+    }
+
+    function closeTape() {
+        tapes.open = null;
+        tapes.sel = '';
+        render();
+        if (ws) ws.refreshSoftKeys();
+    }
+
+    async function tapeAction(kind, name) {
+        const ask1 = (title, text, value) => ws.messageBox({ title, icon: null, text, input: { value: value || '', placeholder: '' }, buttons: [{ text: 'ok', value: true }, { text: 'Cancel', value: false }] });
+        try {
+            if (kind === 'new') {
+                const n = await ask1('New Tape', 'Name the new tape:', '');
+                if (!n) return;
+                await ws.busy(ask('xmradio_tape_new', { name: n }), { delay: 300, timeout: 30000 });
+            } else if (kind === 'rename') {
+                const n = await ask1('Rename Tape', `New name for ${name}:`, name);
+                if (!n || n === name) return;
+                await ws.busy(ask('xmradio_tape_rename', { from: name, to: n }), { delay: 300, timeout: 30000 });
+                if (tapes.open === name) tapes.open = n;
+            } else if (kind === 'delete') {
+                const ok = await ws.messageBox({ title: 'Delete Tape', icon: 'warning', text: `Move the tape ${name} and every recording on it to the Recycle Bin?`, buttons: [{ text: 'Delete', value: true }, { text: 'Cancel', value: false }] });
+                if (!ok) return;
+                await ws.busy(ask('xmradio_tape_delete', { name }), { delay: 300, timeout: 30000 });
+                if (tapes.open === name) tapes.open = null;
+            } else if (kind === 'load') {
+                const d = await ask('xmradio_deck_set', { tape: name });
+                tapes.deck = (d && d.deck) || tapes.deck;
+            }
+        } catch (err) { void box((err && err.message) || 'That did not work.'); }
+        await loadTapes(true);
+        if (ws) ws.refreshSoftKeys();
+    }
+
+    async function trackAction(kind, t) {
+        if (!t) return;
+        try {
+            if (kind === 'rename') {
+                const n = await ws.messageBox({ title: 'Rename', icon: null, text: 'New name:', input: { value: t.name.replace(/\.m4a$/i, ''), placeholder: '' }, buttons: [{ text: 'ok', value: true }, { text: 'Cancel', value: false }] });
+                if (!n) return;
+                await ws.busy(ask('xmradio_track_rename', { id: t.id, name: n }), { delay: 300, timeout: 30000 });
+            } else if (kind === 'delete') {
+                const ok = await ws.messageBox({ title: 'Delete', icon: 'warning', text: `Move "${t.name.replace(/\.m4a$/i, '')}" to the Recycle Bin?`, buttons: [{ text: 'Delete', value: true }, { text: 'Cancel', value: false }] });
+                if (!ok) return;
+                await ws.busy(ask('xmradio_track_delete', { id: t.id }), { delay: 300, timeout: 30000 });
+            } else if (kind.startsWith('move:')) {
+                await ws.busy(ask('xmradio_track_move', { id: t.id, tape: kind.slice(5) }), { delay: 300, timeout: 30000 });
+                tapes.tracks[kind.slice(5)] = null;
+            }
+        } catch (err) { void box((err && err.message) || 'That did not work.'); }
+        if (tapes.open) await loadTracks(tapes.open);
+    }
+
     // ---------------------------------------------------------------- the program
 
+    let tab = 'now'; // now | channels | recordings
+    const TABS = [['now', 'Now Playing'], ['channels', 'Channels'], ['recordings', 'Recordings']];
+    const mmss = (s) => { const v = Math.max(0, Math.floor(s)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
+    const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const sizeText = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+
     function build() {
-        page.innerHTML = `<div class="xrm-now"><div class="xrm-top"><img class="xrm-logo" alt="" draggable="false" hidden><span class="xrm-ch"></span><span class="xrm-state"></span></div>
-            <div class="xrm-body"><img class="xrm-art" alt="" draggable="false" hidden><div class="xrm-lines"><div class="xrm-t1"></div><div class="xrm-t2"></div><div class="xrm-t3"></div></div></div></div>
-            <div class="xrm-head"><span class="xrm-show"></span><span class="xrm-count"></span></div>
-            <div class="xrm-list wm-pg-scroll" role="listbox"></div>`;
+        page.innerHTML = `<div class="xrm-pane xrm-now-pane wm-pg-scroll" data-pane="now">
+                <div class="xrm-np">
+                    <div class="xrm-np-top"><img class="xrm-logo" alt="" draggable="false" hidden><span class="xrm-ch"></span><span class="xrm-state"></span></div>
+                    <div class="xrm-np-art"><img class="xrm-art" alt="" draggable="false" hidden><b class="xrm-art-n"></b></div>
+                    <div class="xrm-np-t1"></div><div class="xrm-np-t2"></div><div class="xrm-np-t3"></div>
+                    <div class="xrm-np-bar"><i></i></div><div class="xrm-np-times"><span class="xrm-np-el"></span><span class="xrm-np-rem"></span></div>
+                    <div class="xrm-np-keys">
+                        <button type="button" data-k="prev" aria-label="Previous">&#x23EE;&#xFE0E;</button>
+                        <button type="button" data-k="play" aria-label="Play or pause" class="is-big"></button>
+                        <button type="button" data-k="next" aria-label="Next">&#x23ED;&#xFE0E;</button>
+                        <button type="button" data-k="rec" aria-label="Record" class="xrm-np-rec">REC</button>
+                    </div>
+                </div>
+                <div class="xrm-sec xrm-up"></div>
+                <div class="xrm-sec xrm-played"></div>
+            </div>
+            <div class="xrm-pane" data-pane="channels" hidden><div class="xrm-head"><span class="xrm-show"></span><span class="xrm-count"></span></div><div class="xrm-list wm-pg-scroll" role="listbox"></div></div>
+            <div class="xrm-pane xrm-rec-pane wm-pg-scroll" data-pane="recordings" hidden></div>
+            <div class="wm-tabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" class="wm-tab" role="tab" data-tab="${k}" aria-selected="${tab === k}">${l}</button>`).join('')}</div>`;
+        const q = (s) => page.querySelector(s);
         els = {
-            logo: page.querySelector('.xrm-logo'), ch: page.querySelector('.xrm-ch'), state: page.querySelector('.xrm-state'),
-            art: page.querySelector('.xrm-art'), t1: page.querySelector('.xrm-t1'), t2: page.querySelector('.xrm-t2'), t3: page.querySelector('.xrm-t3'),
-            show: page.querySelector('.xrm-show'), count: page.querySelector('.xrm-count'), list: page.querySelector('.xrm-list')
+            logo: q('.xrm-logo'), ch: q('.xrm-ch'), state: q('.xrm-state'), art: q('.xrm-art'), artN: q('.xrm-art-n'),
+            t1: q('.xrm-np-t1'), t2: q('.xrm-np-t2'), t3: q('.xrm-np-t3'), bar: q('.xrm-np-bar > i'), el: q('.xrm-np-el'), rem: q('.xrm-np-rem'),
+            play: q('[data-k="play"]'), rec: q('[data-k="rec"]'), up: q('.xrm-up'), played: q('.xrm-played'),
+            show: q('.xrm-show'), count: q('.xrm-count'), list: q('.xrm-list'), recPane: q('.xrm-rec-pane')
         };
-        els.list.addEventListener('click', (e) => {
+        page.addEventListener('click', (e) => {
+            const tb = e.target.closest('[data-tab]');
+            if (tb) { setTab(tb.dataset.tab); return; }
+            const k = e.target.closest('[data-k]');
+            if (k) {
+                const id = radio.channelId || prefs.channel;
+                if (k.dataset.k === 'play') playPause();
+                else if (k.dataset.k === 'prev') step(-1);
+                else if (k.dataset.k === 'next') step(1);
+                else if (k.dataset.k === 'rec') { const r = recOf(id); if (r) void stopRec(r); else void recordAsk(id); }
+                return;
+            }
             const row = e.target.closest('[data-id]');
-            if (row) void tune(row.dataset.id);
+            if (row && row.closest('.xrm-list')) { void tune(row.dataset.id); return; }
+            const rs = e.target.closest('[data-rstop]');
+            if (rs) { const r = (cache.rec || []).find((x) => x.rid === rs.dataset.rstop); if (r) void stopRec(r); return; }
+            const tp = e.target.closest('[data-tape]');
+            if (tp) { openTape(tp.dataset.tape); return; }
+            const tr = e.target.closest('[data-track]');
+            if (tr) {
+                const list = tapes.tracks[tapes.open] || [];
+                const i = list.findIndex((x) => x.id === tr.dataset.track);
+                if (tapes.sel === tr.dataset.track || i < 0) { if (i >= 0) void playTrack(list, i); return; }
+                tapes.sel = tr.dataset.track;
+                render();
+                if (ws) ws.refreshSoftKeys();
+                return;
+            }
+            const back = e.target.closest('[data-back]');
+            if (back) closeTape();
         });
-        page.querySelector('.xrm-now').addEventListener('click', () => playPause());
+    }
+
+    function setTab(k) {
+        if (!TABS.some((t) => t[0] === k)) return;
+        tab = k;
+        if (k === 'recordings') void loadTapes(false);
+        if (k === 'now') void loadSchedule(radio.channelId || prefs.channel);
+        render();
+        if (ws) ws.refreshSoftKeys();
     }
 
     const setImg = (img, src) => { if (!src) { img.hidden = true; img.removeAttribute('src'); return; } if (img.getAttribute('src') !== src) img.src = src; img.hidden = false; };
     const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
-    let listKey = '';
+    const setHtml = (el, h) => { if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; } };
 
     function listIds() {
         if (prefs.show === 'all') return ((cache.lineup && cache.lineup.channels) || []).filter((c) => c.sub !== false).map((c) => c.id);
         return (cache.presets[prefs.show] || []).filter((id) => id && chan(id));
     }
 
-    function render() {
-        if (!els) return;
+    /** Where the song is: elapsed / remaining from its start and length (the programme), or the recording's place. */
+    let progTimer = 0;
+    function paintProgress() {
+        clearTimeout(progTimer);
+        if (!els || tab !== 'now' || !shown || !screenOn()) return;
+        let el = 0;
+        let dur = 0;
+        if (radio.mode === 'track') {
+            const a = radio.audio;
+            if (a && !radio.native) { el = a.currentTime || 0; dur = Number.isFinite(a.duration) ? a.duration : 0; }
+            else if (radio.startedAt) el = (Date.now() - radio.startedAt) / 1000;
+        } else {
+            const id = radio.channelId || prefs.channel;
+            const now = nowOf(id);
+            const s = sched.get(id);
+            const cur = s && s.data && s.data.now && now && s.data.now.t === now.t ? s.data.now : null;
+            const at = (cur && cur.at) || (now && now.at) || 0;
+            dur = (cur && cur.dur) || 0;
+            if (at) el = (Date.now() - at) / 1000;
+            if (dur && el > dur) el = dur;
+        }
+        els.bar.style.width = dur ? `${Math.min(100, (el / dur) * 100).toFixed(1)}%` : '0%';
+        setText(els.el, el ? mmss(el) : '');
+        setText(els.rem, dur ? `-${mmss(dur - el)}` : '');
+        // the clock moves once a second only while this tab is on screen with a time to show
+        if (el && (radio.mode === 'track' ? radio.native : true)) progTimer = setTimeout(paintProgress, 1000 - (Date.now() % 1000) + 20);
+    }
+
+    function renderNow() {
         const id = radio.channelId || prefs.channel;
         const c = chan(id);
-        const now = nowOf(id);
         const rec = recOf(id);
-        setImg(els.logo, c && c.logo);
-        setText(els.ch, c ? chanLabel(c) : (cache.lineup ? 'Choose a channel' : 'Reading the channels...'));
-        const st = { off: 'Off', tuning: 'Tuning...', playing: radio.native ? 'Playing' : 'Playing', paused: 'Paused', error: 'No signal' }[radio.state] || '';
-        setText(els.state, rec ? `REC  ${st}` : st);
-        els.state.classList.toggle('is-rec', !!rec);
-        setImg(els.art, now && !now.ad && now.i ? now.i : (c && c.logo) || '');
-        setText(els.t1, now ? (now.ad ? 'SiriusXM' : now.t || '') : (c ? c.name : ''));
-        setText(els.t2, now ? (now.ad ? 'Commercial' : now.a || '') : '');
-        setText(els.t3, now && now.s ? now.s : '');
+        const playing = radio.state === 'playing' || radio.state === 'tuning';
+        const st = { off: 'Off', tuning: 'Tuning...', playing: 'Playing', paused: 'Paused', error: 'No signal' }[radio.state] || '';
+        if (radio.mode === 'track' && radio.track) {
+            setImg(els.logo, '');
+            setText(els.ch, `Tape: ${radio.track.tape}`);
+            setText(els.state, `${st}  ${radio.track.i + 1}/${radio.track.list.length}`);
+            els.state.classList.remove('is-rec');
+            setImg(els.art, '');
+            setText(els.artN, 'TAPE');
+            const m = /^(\d{4}-\d{2}-\d{2} \d{4}) (.*)$/.exec(radio.track.name);
+            const rest = m ? m[2] : radio.track.name;
+            const parts = rest.split(' - ');
+            setText(els.t1, parts.length > 1 ? parts.slice(1).join(' - ') : rest);
+            setText(els.t2, parts.length > 1 ? parts[0] : '');
+            setText(els.t3, m ? `Recorded ${m[1].slice(0, 10)} ${m[1].slice(11, 13)}:${m[1].slice(13)}` : '');
+            els.rec.hidden = true;
+            setHtml(els.up, '');
+            const list = radio.track.list.slice(radio.track.i + 1, radio.track.i + 6);
+            setHtml(els.played, list.length ? `<div class="xrm-sec-h">Up Next on the Tape</div>${list.map((t) => `<div class="xrm-sec-row"><span class="xrm-sec-t">${esc(t.name.replace(/\.m4a$/i, '').replace(/^\d{4}-\d{2}-\d{2} \d{4} /, ''))}</span></div>`).join('')}` : '');
+        } else {
+            const now = nowOf(id);
+            const s = sched.get(id);
+            const data = (s && s.data) || {};
+            setImg(els.logo, c && c.logo);
+            setText(els.ch, c ? chanLabel(c) : (cache.lineup ? 'Choose a channel' : 'Reading the channels...'));
+            setText(els.state, rec ? `REC  ${st}` : st);
+            els.state.classList.toggle('is-rec', !!rec);
+            const pic = now && !now.ad && now.i ? now.i : (c && c.logo) || '';
+            setImg(els.art, pic);
+            setText(els.artN, pic ? '' : (c ? String(c.number) : ''));
+            setText(els.t1, now ? (now.ad ? 'SiriusXM' : now.t || '') : (c ? c.name : ''));
+            setText(els.t2, now ? (now.ad ? 'Commercial' : now.a || '') : '');
+            setText(els.t3, now && now.s ? now.s : '');
+            els.rec.hidden = !isAdmin() || !c;
+            els.rec.classList.toggle('is-on', !!rec);
+            setText(els.rec, rec ? 'STOP' : 'REC');
+            // Up Next: the channel's shows to come (songs are known only once they air)
+            const shows = (data.shows || []).filter((x) => !x.now).slice(0, 4);
+            const onNow = (data.shows || []).find((x) => x.now);
+            // SiriusXM names shows ahead only where it schedules them; otherwise the section is the show on now
+            setHtml(els.up, (onNow || shows.length) ? `<div class="xrm-sec-h">${shows.length ? 'Up Next' : 'On Now'}</div>${onNow ? `<div class="xrm-sec-row is-now"><span class="xrm-sec-time">Now</span><span class="xrm-sec-t">${esc(onNow.show || onNow.name)}</span><span class="xrm-sec-s">until ${esc(clock(onNow.at + onNow.dur * 1000))}</span></div>` : ''}${shows.map((x) => `<div class="xrm-sec-row"><span class="xrm-sec-time">${esc(clock(x.at))}</span><span class="xrm-sec-t">${esc(x.show || x.name)}</span><span class="xrm-sec-s">${esc(x.show && x.name && x.name !== x.show ? x.name : '')}</span></div>`).join('')}` : '');
+            const played = (data.played || []).slice(0, 8);
+            setHtml(els.played, played.length ? `<div class="xrm-sec-h">Recently Played</div>${played.map((x) => `<div class="xrm-sec-row">${x.i ? `<span class="xrm-sec-pic"><img src="${esc(x.i)}" alt="" loading="lazy" draggable="false"></span>` : '<span class="xrm-sec-pic is-none"></span>'}<span class="xrm-sec-lines"><span class="xrm-sec-t">${esc(x.t)}</span><span class="xrm-sec-s">${esc(x.a)}</span></span><span class="xrm-sec-time">${esc(clock(x.at))}</span></div>`).join('')}` : '');
+        }
+        setText(els.play, playing ? (radio.native ? '⏹︎' : '⏸︎') : '▶︎');
+        paintProgress();
+    }
+
+    let listKey = '';
+    function renderChannels() {
+        const id = radio.channelId || prefs.channel;
         setText(els.show, prefs.show === 'all' ? 'All Channels' : `Presets ${prefs.show}`);
         const ids = listIds();
         setText(els.count, String(ids.length));
@@ -445,20 +732,85 @@
         if (prefs.show !== 'all') void wantLogos(ids);
     }
 
+    function renderRecordings() {
+        const recs = cache.rec || [];
+        const deckTape = tapes.deck && tapes.deck.tape;
+        let h = '';
+        if (recs.length) {
+            h += `<div class="xrm-sec-h">Recording Now</div>${recs.map((r) => { const c = chan(r.channelId); const n = nowOf(r.channelId); return `<div class="xrm-sec-row is-rec"><span class="xrm-recdot">REC</span><span class="xrm-sec-lines"><span class="xrm-sec-t">${esc(chanLabel(c) || 'A channel')}</span><span class="xrm-sec-s">${esc(r.kind === 'song' ? 'This song' : r.kind === 'manual' ? 'Until stopped' : r.kind === 'timer' ? 'Timer' : 'Alert')}${n && !n.ad && n.t ? ` · ${esc(n.t)}` : ''} · since ${esc(clock(r.since))}</span></span><button type="button" class="xrm-sec-btn" data-rstop="${esc(r.rid)}">Stop</button></div>`; }).join('')}`;
+        }
+        if (tapes.open) {
+            const list = tapes.tracks[tapes.open];
+            h += `<div class="xrm-sec-h xrm-tape-h"><button type="button" class="xrm-back" data-back="1">&#x2039; Tapes</button><span>${esc(tapes.open)}${tapes.open === deckTape ? ' (in the deck)' : ''}</span></div>`;
+            if (!list) h += '<div class="xrm-empty">Reading the tape...</div>';
+            else if (!list.length) h += '<div class="xrm-empty">This tape is blank.</div>';
+            else h += list.map((t) => {
+                const playing = radio.mode === 'track' && radio.track && radio.track.id === t.id;
+                // the file name is "<date> <time> <artist> - <title>": the song first, when it was recorded under it
+                const m = /^(\d{4}-\d{2}-\d{2}) (\d{2})(\d{2}) (.*)$/.exec(t.name.replace(/\.m4a$/i, ''));
+                const title = m ? m[4] : t.name.replace(/\.m4a$/i, '');
+                const when = m ? `${m[1]} ${m[2]}:${m[3]} · ` : '';
+                return `<div class="xrm-track${tapes.sel === t.id ? ' is-sel' : ''}${playing ? ' is-playing' : ''}" data-track="${esc(t.id)}"><span class="xrm-sec-lines"><span class="xrm-sec-t">${playing ? '&#x25B6;&#xFE0E; ' : ''}${esc(title)}</span><span class="xrm-sec-s">${esc(when + sizeText(t.size || 0))}</span></span></div>`;
+            }).join('');
+        } else {
+            h += '<div class="xrm-sec-h">Tapes</div>';
+            if (!tapes.list) h += `<div class="xrm-empty">${tapes.error ? esc(tapes.error) : 'Reading the tapes...'}</div>`;
+            else if (!tapes.list.length) h += '<div class="xrm-empty">No tapes yet. Menu > New Tape, or record something.</div>';
+            else h += tapes.list.map((n) => `<div class="xrm-tape" data-tape="${esc(n)}"><span class="xrm-tape-ic"></span><span class="xrm-sec-t">${esc(n)}</span><span class="xrm-sec-s">${n === deckTape ? 'In the deck' : ''}</span></div>`).join('');
+        }
+        setHtml(els.recPane, h);
+    }
+
+    function render() {
+        if (!els) return;
+        page.querySelectorAll('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== tab; });
+        page.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+        if (tab === 'now') renderNow();
+        else { clearTimeout(progTimer); if (tab === 'channels') renderChannels(); else renderRecordings(); }
+    }
+
+    function selTrack() { return (tapes.tracks[tapes.open] || []).find((t) => t.id === tapes.sel) || null; }
+
     function menu() {
         const playing = radio.state === 'playing' || radio.state === 'tuning';
         const id = radio.channelId || prefs.channel;
+        const admin = isAdmin();
+        if (tab === 'recordings') {
+            const t = selTrack();
+            const others = (tapes.list || []).filter((n) => n !== tapes.open);
+            if (tapes.open) {
+                return [
+                    { label: 'Play', disabled: !t, action: () => { const list = tapes.tracks[tapes.open] || []; void playTrack(list, list.indexOf(t)); } },
+                    { label: 'Play Tape', disabled: !(tapes.tracks[tapes.open] || []).length, action: () => { void playTrack(tapes.tracks[tapes.open], 0); } },
+                    '-',
+                    { label: 'Rename...', disabled: !t || !admin, action: () => { void trackAction('rename', t); } },
+                    { label: 'Move to Tape', disabled: !t || !admin || !others.length, submenu: others.map((n) => ({ label: n, action: () => { void trackAction(`move:${n}`, t); } })) },
+                    { label: 'Delete', disabled: !t || !admin, action: () => { void trackAction('delete', t); } },
+                    '-',
+                    { label: 'Load in Deck', disabled: !admin || (tapes.deck && tapes.deck.tape === tapes.open), action: () => { void tapeAction('load', tapes.open); } },
+                    { label: 'Rename Tape...', disabled: !admin, action: () => { void tapeAction('rename', tapes.open); } },
+                    { label: 'Delete Tape', disabled: !admin, action: () => { void tapeAction('delete', tapes.open); } }
+                ];
+            }
+            return [
+                { label: 'New Tape...', disabled: !admin, action: () => { void tapeAction('new'); } },
+                { label: 'Refresh', action: () => { void loadTapes(true); } }
+            ];
+        }
         const slots = (bank) => Array.from({ length: 10 }, (_, i) => { const cur = chan((cache.presets[bank] || [])[i]); return { label: `${i + 1}${cur ? `  ${cur.number} ${cur.name}` : '  (empty)'}`, action: () => { void setPreset(bank, i); } }; });
         return [
             { label: playing ? (radio.native ? 'Stop' : 'Pause') : 'Play', action: playPause },
-            { label: 'Channel Up', action: () => step(1) },
-            { label: 'Channel Down', action: () => step(-1) },
+            { label: radio.mode === 'track' ? 'Next Recording' : 'Channel Up', action: () => step(1) },
+            { label: radio.mode === 'track' ? 'Previous Recording' : 'Channel Down', action: () => step(-1) },
             '-',
-            { label: 'Show', submenu: [['A', 'Presets A'], ['B', 'Presets B'], ['C', 'Presets C'], ['all', 'All Channels']].map(([v, t]) => ({ label: t, radio: prefs.show === v, action: () => { prefs.show = v; saveSoon(); render(); } })) },
+            { label: 'Record This Song...', disabled: !id || !admin, action: () => { void recordAsk(id); } },
+            { label: 'Record Channel...', disabled: !id || !admin || !!recOf(id), action: () => { void recordChannel(id); } },
+            { label: 'Alert', disabled: !admin, submenu: [{ label: 'This Artist', action: () => { void setAlert('artist'); } }, { label: 'This Song', action: () => { void setAlert('song'); } }] },
+            '-',
+            { label: 'Show', submenu: [['A', 'Presets A'], ['B', 'Presets B'], ['C', 'Presets C'], ['all', 'All Channels']].map(([v, t]) => ({ label: t, radio: prefs.show === v, action: () => { prefs.show = v; saveSoon(); setTab('channels'); } })) },
             { label: 'Direct Tune...', action: () => { void directTune(); } },
-            { label: 'Add to Presets', disabled: !id || !isAdmin(), submenu: ['A', 'B', 'C'].map((b) => ({ label: `Bank ${b}`, submenu: slots(b) })) },
-            { label: 'Quality', submenu: QUALITIES.map(([v, t]) => ({ label: t, radio: prefs.quality === v, action: () => { prefs.quality = v; saveSoon(); if (radio.channelId && radio.state !== 'off') void tune(radio.channelId); } })) },
-            { label: 'Alert', disabled: !isAdmin(), submenu: [{ label: 'This Artist', action: () => { void setAlert('artist'); } }, { label: 'This Song', action: () => { void setAlert('song'); } }] },
+            { label: 'Add to Presets', disabled: !id || !admin, submenu: ['A', 'B', 'C'].map((b) => ({ label: `Bank ${b}`, submenu: slots(b) })) },
+            { label: 'Quality', submenu: QUALITIES.map(([v, t]) => ({ label: t, radio: prefs.quality === v, action: () => { prefs.quality = v; saveSoon(); if (radio.mode === 'live' && radio.channelId && radio.state !== 'off') void tune(radio.channelId); } })) },
             '-',
             { label: 'Refresh Lineup', action: () => { lineupAsked = false; void loadLineup(true); } },
             { label: 'Stop Radio', disabled: radio.state === 'off', action: stopRadio }
@@ -480,16 +832,27 @@
             shown = true;
             if (!wired) wire();
             if (!cache.lineup) void loadLineup(false);
+            if (tab === 'now') void loadSchedule(radio.channelId || prefs.channel);
+            if (tab === 'recordings') void loadTapes(false);
             render();
             void syncHub();
         },
         hide() {
             shown = false;
+            clearTimeout(progTimer);
             void syncHub();
         },
         softKeys() {
             const id = radio.channelId || prefs.channel;
+            if (tab === 'recordings') {
+                if (tapes.open) return { left: { label: tapes.sel ? 'Play' : 'Back', action: () => { if (tapes.sel) { const list = tapes.tracks[tapes.open] || []; const t = selTrack(); void playTrack(list, list.indexOf(t)); } else closeTape(); } }, right: { label: 'Menu', menu } };
+                return { left: { label: 'New Tape', disabled: !isAdmin(), action: () => { void tapeAction('new'); } }, right: { label: 'Menu', menu } };
+            }
             return { left: recKey(id), right: { label: 'Menu', menu } };
+        },
+        onBack() {
+            if (tab === 'recordings' && tapes.open) { closeTape(); return true; }
+            return false;
         }
     };
 
