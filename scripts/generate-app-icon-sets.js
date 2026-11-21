@@ -88,14 +88,24 @@ async function build(name) {
 const TODAY_ONLY = {
     xlink: 'app-xlink', 'data-management': 'app-data-management', accounts: 'app-accounts', studio: 'app-studio',
     director: 'app-director', wallet: 'app-wallet', 'remote-desktop': 'app-remote-desktop-mobile',
-    traffic: 'app-traffic', 'traffic-moderate': 'app-traffic', 'traffic-heavy': 'app-traffic', 'traffic-none': 'app-traffic'
+    traffic: 'app-traffic', 'traffic-moderate': 'app-traffic', 'traffic-heavy': 'app-traffic', 'traffic-none': 'app-traffic',
+    // the commute's destination at the panel's top right (the light moved into the bar, Yukimi Nov 21 2026)
+    'traffic-home': 'app-traffic', 'traffic-office': 'app-traffic'
 };
+// the traffic light itself in Traffic's panel bar (its page picture, no frame, no reflection): wm65/traffic-light-<state>.png
+const TRAFFIC_LIGHTS = { traffic: 'go', 'traffic-moderate': 'moderate', 'traffic-heavy': 'heavy', 'traffic-none': 'none' };
 async function buildToday() {
     for (const [master, id] of Object.entries(TODAY_ONLY)) {
         const state = /^traffic-(.+)$/.exec(master);
         const sfx = state ? `-${state[1]}` : '';
         const src = await squared(path.join(ROOT, 'art', 'wm65-today', `${master}.png`));
         for (const [k, f] of [[0.5, ''], [1, '@2x'], [2, '@4x']]) await panel(src, k, `public/static_images/wm65/ti-x-${id}-lg${sfx}${f}.png`);
+    }
+    for (const [master, state] of Object.entries(TRAFFIC_LIGHTS)) {
+        const t = await sharp(path.join(ROOT, 'art', 'wm65-today', `${master}.png`)).trim({ threshold: 4 }).png().toBuffer();
+        const rel = `public/static_images/wm65/traffic-light-${state}.png`;
+        await sharp(t).resize(172, 172, { fit: 'contain', background: CLEAR, kernel: 'lanczos3' }).png({ compressionLevel: 9, effort: 8 }).toFile(path.join(ROOT, rel));
+        console.log(rel, 172);
     }
 }
 
