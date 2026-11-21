@@ -607,7 +607,8 @@
     stilljpeg: ['rgba(230, 0, 230, 0.22)', 'Still (JPEG)'],
     sharp: ['rgba(200, 120, 255, 0.36)', 'Cache: still rows'],
     cache: ['rgba(120, 120, 120, 0.4)', 'Cache: frame rows'],
-    missing: ['rgba(255, 0, 0, 0.4)', 'Not seen yet']
+    missing: ['rgba(255, 0, 0, 0.4)', 'Not seen yet'],
+    layered: ['rgba(0, 150, 90, 0.2)', 'Layered (content WebP lossless over still sheets)']
   };
 
   // the checks over the picture: drawn with every composite while one is on
@@ -658,6 +659,7 @@
             y = e;
           }
         }
+        if (off && layeredRuns) for (var lr = 0; lr < layeredRuns.length; lr++) tint('layered', 0, layeredRuns[lr][0], w, layeredRuns[lr][1] - layeredRuns[lr][0]);
       }
     }
     if (debug.borders && k) {
@@ -853,10 +855,115 @@
   }
 
   // the page's layers under the content as sheets: its colour, then its fixed pictures (a backdrop), drawn into the
-  // view before the picture, which is see-through where they show
+  // view before the picture. Two ways (layerSheets.js): out of the frames (see-through frames, ALCHEMY_UNDER=
+  // seethrough), drawn under every picture; or still in them (inFrames, the usual), drawn only while the viewer moves
+  // the page itself, under the content layers from their own recordings (lcache)
   function underSheets() {
     for (var i = 0; i < sheetList.length; i++) if (sheetList[i].z === 'under') return true;
     return false;
+  }
+
+  function underOut() {
+    for (var i = 0; i < sheetList.length; i++) if (sheetList[i].z === 'under' && !sheetList[i].inFrames) return true;
+    return false;
+  }
+
+  function underIn() {
+    for (var i = 0; i < sheetList.length; i++) if (sheetList[i].z === 'under' && sheetList[i].inFrames) return true;
+    return false;
+  }
+
+  // The content layers on their own (layered scrolling, Yukimi Nov 21: "the client should be given the layer themself
+  // not rendered on the server as a single frame"): see-through blocks of STRIP_ROWS document rows from layerSheets.js
+  // (kind 6 with layer: 1, WebP lossless), drawn at rest. While the viewer moves the page, rows it has show the under
+  // sheets standing still and these over them; rows it lacks show the frames' picture (backdrop moved with it).
+  // Overwritten whenever the server draws a range again (its layers repainted there); half the cache's budget.
+  var lcache = { width: 0, k: 0, strips: new Map(), pixels: 0 };
+  // the view rows the last moved picture drew layered (the quality check tints them)
+  var layeredRuns = null;
+
+  function lcacheClear() {
+    lcache.strips.forEach(function (st) { st.canvas.width = 0; st.canvas.height = 0; });
+    lcache.strips.clear();
+    lcache.pixels = 0;
+  }
+
+  function lcacheWrite(bmp, doc) {
+    for (var row = doc; row < doc + bmp.height;) {
+      var i = Math.floor(row / STRIP_ROWS);
+      var at = row - i * STRIP_ROWS;
+      var n = Math.min(STRIP_ROWS - at, doc + bmp.height - row);
+      var st = lcache.strips.get(i);
+      if (!st) {
+        var c = document.createElement('canvas');
+        c.width = lcache.width;
+        c.height = STRIP_ROWS;
+        st = { canvas: c, ctx: c.getContext('2d'), valid: new Uint8Array(STRIP_ROWS) };
+        lcache.strips.set(i, st);
+        lcache.pixels += lcache.width * STRIP_ROWS;
+      }
+      st.ctx.clearRect(0, at, lcache.width, n);
+      st.ctx.drawImage(bmp, 0, row - doc, bmp.width, n, 0, at, bmp.width, n);
+      for (var q = at; q < at + n; q++) st.valid[q] = 1;
+      row += n;
+    }
+    if (lcache.pixels <= CACHE_BUDGET / 2) return;
+    var mid = doc + bmp.height / 2;
+    var keys = Array.from(lcache.strips.keys()).sort(function (a, b) {
+      return Math.abs(b * STRIP_ROWS - mid) - Math.abs(a * STRIP_ROWS - mid);
+    });
+    for (var j = 0; j < keys.length && lcache.pixels > CACHE_BUDGET / 2; j++) {
+      lcache.strips.get(keys[j]).canvas.width = 0;
+      lcache.strips.delete(keys[j]);
+      lcache.pixels -= lcache.width * STRIP_ROWS;
+    }
+  }
+
+  // runs of view rows [y0, y1) the layer cache holds, document row docAtTop at view row 0: [[y0, y1], ...]
+  function lcacheRuns(y0, y1, docAtTop) {
+    var runs = [];
+    if (!lcache.width || lcache.width !== base.width || Math.abs(lcache.k - baseInfo.k) > 1e-6) return runs;
+    for (var y = y0; y < y1;) {
+      var d = docAtTop + y;
+      var i = Math.floor(d / STRIP_ROWS);
+      var st = lcache.strips.get(i);
+      var end = Math.min(y1, (i + 1) * STRIP_ROWS - docAtTop);
+      if (!st) { y = end; continue; }
+      while (y < end && !st.valid[docAtTop + y - i * STRIP_ROWS]) y++;
+      var s0 = y;
+      while (y < end && st.valid[docAtTop + y - i * STRIP_ROWS]) y++;
+      if (y > s0) {
+        var last = runs[runs.length - 1];
+        if (last && last[1] === s0) last[1] = y;
+        else runs.push([s0, y]);
+      }
+    }
+    return runs;
+  }
+
+  // the layered picture over the rows the layer cache holds: the under sheets still, the content layers moved
+  function drawLayered(S, y0, y1, docAtTop) {
+    var runs = lcacheRuns(y0, y1, docAtTop);
+    var w = base.width;
+    for (var r = 0; r < runs.length; r++) {
+      var a = runs[r][0];
+      var e = runs[r][1];
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, a, w, e - a);
+      ctx.clip();
+      ctx.clearRect(0, a, w, e - a);
+      drawUnder(S, w, canvas.height);
+      ctx.restore();
+      for (var row = a; row < e;) {
+        var d = docAtTop + row;
+        var i = Math.floor(d / STRIP_ROWS);
+        var n = Math.min(e - row, (i + 1) * STRIP_ROWS - d);
+        ctx.drawImage(lcache.strips.get(i).canvas, 0, d - i * STRIP_ROWS, w, n, 0, row, w, n);
+        row += n;
+      }
+    }
+    return runs;
   }
 
   function drawUnder(S, w, h) {
@@ -921,6 +1028,7 @@
   }
 
   function cacheClear() {
+    lcacheClear();
     cache.strips.forEach(function (st) { st.canvas.width = 0; st.canvas.height = 0; });
     cache.strips.clear();
     cache.pixels = 0;
@@ -1169,6 +1277,22 @@
   // cache where it has nothing (a frame there replaces it), so a scroll finds rows above and below ready
   function drawnAhead(header, body) {
     if (!header || !cache.width || !baseInfo.k || Math.abs((Number(header.k) || 0) - baseInfo.k) > 1e-6) return;
+    if (header.layer) {
+      createImageBitmap(new Blob([body], { type: 'image/webp' })).then(function (bmp) {
+        if (bmp.width === cache.width && Math.abs(header.k - baseInfo.k) < 1e-6) {
+          if (lcache.width !== bmp.width || Math.abs(lcache.k - header.k) > 1e-6) {
+            lcacheClear();
+            lcache.width = bmp.width;
+            lcache.k = header.k;
+          }
+          lcacheWrite(bmp, Math.round(header.y * header.k));
+          noteAhead(header.y, header.y + header.h);
+          if (debug.on) requestComposite();
+        }
+        bmp.close();
+      }, function () {});
+      return;
+    }
     createImageBitmap(new Blob([body], { type: 'image/webp' })).then(function (bmp) {
       if (bmp.width === cache.width && Math.abs(header.k - cache.k) < 1e-6) {
         cacheWrite(bmp, 0, 0, bmp.width, bmp.height, Math.round(header.y * header.k), 1, false, true);
@@ -1245,7 +1369,7 @@
   function fillRows(y0, y1, b, docAtTop) {
     if (y1 <= y0) return;
     // the page's background is a sheet under the picture: rows not seen yet show it, not a checkerboard
-    if (underSheets()) return;
+    if (underOut()) return;
     var pattern = checkerPattern(b);
     var size = checker.cell * 2;
     var shift = ((docAtTop || 0) % size + size) % size;
@@ -1267,8 +1391,9 @@
       canvas.height = height;
     }
     if (sheetList.length || sheetDrawn) drawSheets(baseInfo.sy + (baseInfo.k ? off / baseInfo.k : 0));
-    if (underSheets()) drawUnder(baseInfo.sy + (baseInfo.k ? off / baseInfo.k : 0), width, height);
+    if (underOut()) drawUnder(baseInfo.sy + (baseInfo.k ? off / baseInfo.k : 0), width, height);
     if (!off) {
+      layeredRuns = null;
       ctx.drawImage(base, 0, 0, width, height, 0, 0, width, height);
       return;
     }
@@ -1279,7 +1404,9 @@
     if (y1 > y0) ctx.drawImage(base, 0, y0 + off, width, y1 - y0, 0, y0, width, y1 - y0);
     if (off > 0) fillGap(Math.max(b.m0, y1), b.m1, docAtTop, b);
     else fillGap(b.m0, Math.min(b.m1, y0), docAtTop, b);
-    if (layers.f.length || (layers.backdrop && visRects.length && !underSheets())) drawLayers(off, docAtTop, b);
+    // layered: where the layer cache has the rows, the backdrop stands still under the content instead
+    layeredRuns = underIn() ? drawLayered(baseInfo.sy + off / baseInfo.k, b.m0, b.m1, docAtTop) : null;
+    if (layers.f.length || (layers.backdrop && visRects.length && !underOut())) drawLayers(off, docAtTop, b);
     if (b.top) ctx.drawImage(base, 0, 0, width, b.top, 0, 0, width, b.top);
     if (b.bottom) ctx.drawImage(base, 0, b.m1, width, b.bottom, 0, b.m1, width, b.bottom);
   }
@@ -1303,7 +1430,22 @@
       if (src.stuck) fillFromCache(src.x, src.x + src.w, Math.max(b.m0, src.y - off), Math.min(b.m1, src.y + src.h - off), docAtTop);
     }
     // the backdrop where it shows through, still (not while it is a sheet under the picture: it is not in the frames)
-    if (layers.backdrop && backdropCanvas && visRects.length && !underSheets()) {
+    if (layers.backdrop && backdropCanvas && visRects.length && !underOut()) {
+      // not over the rows drawn layered: the under sheets are the backdrop there (these pixels, from earlier frames,
+      // hold whatever stood over it there too - a copy of the side column stood still on Yozora)
+      var clipped = false;
+      if (layeredRuns && layeredRuns.length) {
+        ctx.save();
+        ctx.beginPath();
+        var cy = b.m0;
+        for (var lr = 0; lr < layeredRuns.length; lr++) {
+          if (layeredRuns[lr][0] > cy) ctx.rect(0, cy, base.width, layeredRuns[lr][0] - cy);
+          cy = Math.max(cy, layeredRuns[lr][1]);
+        }
+        if (b.m1 > cy) ctx.rect(0, cy, base.width, b.m1 - cy);
+        ctx.clip();
+        clipped = true;
+      }
       // rows nobody sampled: its usual columns
       if (visCols.length) {
         var gaps = [[S + b.m0 / k, S + b.m1 / k]];
@@ -1338,6 +1480,7 @@
         var vx1 = Math.min(base.width, Math.round((r[0] + r[2]) * k));
         if (vx1 > vx0) ctx.drawImage(backdropCanvas, vx0, vy0, vx1 - vx0, vy1 - vy0, vx0, vy0, vx1 - vx0, vy1 - vy0);
       }
+      if (clipped) ctx.restore();
     }
     // each layer where it is at the picture's offset
     for (i = 0; i < srcs.length; i++) {
@@ -2133,6 +2276,11 @@
   var frameCount = 0;
   var stillCount = 0;
   var packetCount = 0;
+  // a block of the layer cache as a PNG data URL, for tests (scripts/test-alchemy-viewer.js): '' when it has none
+  window.__alchemyViewerLayerBlock = function (i) {
+    var st = lcache.strips.get(i);
+    return st ? st.canvas.toDataURL('image/png') : '';
+  };
   window.__alchemyViewerStats = function () {
     var ext = cacheExtent();
     return {
@@ -2143,7 +2291,7 @@
       frames: frameCount,
       frame: { width: base.width, height: base.height, sy: baseInfo.sy, k: baseInfo.k, p: baseInfo.p, vh: baseInfo.vh },
       canvas: { width: canvas.width, height: canvas.height, cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight, devicePx: devicePx, dpr: window.devicePixelRatio || 1 },
-      scroll: { height: scrollInfo.height, view: scrollInfo.view, distrust: Math.max(0, Math.round(pred.distrustUntil - performance.now())), display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, layers: layers.f.length, sticky: layers.f.filter(function (l) { return l[4]; }).length, backdrop: layers.backdrop, cover: layers.cover, sheets: sheetList.length, sheetPictures: sheetImgs.size, sheetRects: sheetList.map(function (s) { return [s.x, s.y, s.w, s.h]; }), vis: visRects.length, cacheRows: ext.rows, cache0: ext.lo, cache1: ext.hi, cachePixels: cache.pixels, cacheBudget: CACHE_BUDGET },
+      scroll: { height: scrollInfo.height, view: scrollInfo.view, distrust: Math.max(0, Math.round(pred.distrustUntil - performance.now())), display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, layers: layers.f.length, sticky: layers.f.filter(function (l) { return l[4]; }).length, backdrop: layers.backdrop, cover: layers.cover, sheets: sheetList.length, sheetPictures: sheetImgs.size, sheetRects: sheetList.map(function (s) { return [s.x, s.y, s.w, s.h]; }), vis: visRects.length, cacheRows: ext.rows, cache0: ext.lo, cache1: ext.hi, cachePixels: cache.pixels, cacheBudget: CACHE_BUDGET, layerBlocks: lcache.strips.size, layerPixels: lcache.pixels, underIn: underIn(), layeredRows: layeredRuns ? layeredRuns.reduce(function (n, r) { return n + r[1] - r[0]; }, 0) : 0 },
       audio: engine ? { path: 'worklet', state: engine.ctx.state, ready: engine.ready, packets: packetCount, targetMs: Math.round(engine.targetMs), lagMs: Math.round(engine.lagAvg || 0), jitterMs: Math.round(engine.jitter), underruns: engine.underruns, videoDelayMs: Math.round(videoDelay) }
         : { path: audio ? 'element' : 'off', wanted: audioWanted, taken: audioTaken, packets: packetCount },
       rttMs: Math.round(rttMs),

@@ -26,10 +26,13 @@ const REST_MS = 900;
 // one pass of drawing ahead (and of the content map) at most this often
 const PASS_MS = 4000;
 const MAX_CONTENT = 2000;
-// Layers under the content as sheets need see-through frames, and Chromium's WebP screencast measured 9.5 frames a
-// second against JPEG's 35.9 (1500 x 1650, a page changing every frame, Nov 21): off until the see-through frames
-// have a fast path; ALCHEMY_UNDER=1 turns them on to test
-const UNDER_ON = process.env.ALCHEMY_UNDER === '1';
+// Layers under the content (Yozora's page colour and backdrop) as sheets. See-through frames would carry the content
+// without them, but every way of encoding one measured 69-593 ms a frame against 34 ms for an opaque JPEG (1500 x 1650,
+// Nov 21), so the frames stay opaque and whole: the viewer shows them at rest, and while the page moves it draws the
+// stack itself - these sheets, still, then the content layers from their own recordings (drawn ahead here into its
+// layer cache, see-through, WebP lossless), then the sheets on top. ALCHEMY_UNDER=seethrough brings back the
+// see-through frames (layers hidden from the compositor, WebP or JPEG XL frames with alpha) to compare.
+const UNDER_SEETHROUGH = process.env.ALCHEMY_UNDER === 'seethrough';
 // ALCHEMY_AHEAD=0: no drawing ahead (to measure what it costs the page)
 const AHEAD_OFF = process.env.ALCHEMY_AHEAD === '0';
 // a layer smaller than this (layer units squared) is not worth a sheet (a caret, a 1 px line)
@@ -113,7 +116,11 @@ function createLayerSheets(session, deps) {
         const e = { id, gen: s.gen, x: s.x, y: s.y, w: s.w, h: s.h };
         if (s.st) e.st = s.st;
         // under the content (drawn before the frame); a colour instead of a picture (a page background)
-        if (s.z === 'under') e.z = 'under';
+        if (s.z === 'under') {
+            e.z = 'under';
+            // still in the frames: the viewer draws it only while it moves the page itself (layered scrolling)
+            if (!UNDER_SEETHROUGH) e.inFrames = 1;
+        }
         if (s.color) e.color = s.color;
         return e;
     }
@@ -134,7 +141,8 @@ function createLayerSheets(session, deps) {
         // the layers under the content go only all together, once each one's picture is with the viewers (else the
         // page would show its plain colour for a moment)
         const underAll = [...state.sheets.values()].filter((s) => s.z === 'under');
-        const under = state.under && underAll.length > 0 && underAll.every((s) => s.png || s.color);
+        // only with see-through frames do they leave the frames (UNDER_SEETHROUGH); else the frames keep them
+        const under = UNDER_SEETHROUGH && state.under && underAll.length > 0 && underAll.every((s) => s.png || s.color);
         const ids = [...state.sheets.entries()].filter(([, s]) => (s.png || s.color) && (s.z !== 'under' || under)).map(([id]) => id).sort();
         const key = ids.join(',') + (under ? '|under' : '');
         if (key === state.hidden) return;
@@ -351,7 +359,7 @@ function createLayerSheets(session, deps) {
         // under the content: the fixed layers drawn before the content's last scrolling layer, when everything that
         // scrolls under them is a flat colour (then the frames can be see-through: the build's content-map patch)
         let underOk = false;
-        if (deps.contentMap && UNDER_ON) {
+        if (deps.contentMap) {
             const under = [];
             let blocked = false;
             let firstUnder = -1;
@@ -527,6 +535,9 @@ function createLayerSheets(session, deps) {
                 const wanted = !t ? [[sy - view, sy], [sy + view * 1.5, sy + view * 2.5]]
                     : (t.dir > 0 ? [[sy + view * 1.5, sy + view * 1.5 + Math.min(view, reach)], [sy + view * 2.5, sy + view * 1.5 + reach], [sy - view, sy]]
                         : [[sy - Math.min(view, reach), sy], [sy - reach, sy - view], [sy + view * 1.5, sy + view * 2.5]]);
+                // layered scrolling: the view and its over-render band too (the frames carry the backdrop baked in, the
+                // layer cache must hold the content on its own wherever the viewer may move it)
+                if (state.under && !UNDER_SEETHROUGH) wanted.unshift([sy, sy + view * 1.5]);
                 const ranges = wanted
                     .map((r) => [Math.max(0, Math.round(r[0])), Math.min(docH, Math.round(r[1]))])
                     .filter((r) => r[1] - r[0] >= 8);
@@ -573,9 +584,14 @@ function createLayerSheets(session, deps) {
         // on the page's background, or see-through over the sheets under the content (its colour and backdrop)
         const bg = state.under ? { r: 0, g: 0, b: 0, alpha: 0 } : ((session.layers && session.layers.bg) || '#ffffff');
         const quality = (session.settings && session.settings.regionQuality) || 78;
-        const body = await deps.sharp({ create: { width, height, channels: state.under ? 4 : 3, background: bg } })
-            .composite(parts).webp({ quality, effort: 2 }).toBuffer();
-        deps.broadcast(session, deps.binaryMessage(MSG_PREFILL, { y: range[0], h: range[1] - range[0], w: width, k }, body), true);
+        // the content on its own (layered): WebP lossless, measured the smallest exact codec for text layers and 24-49 ms
+        // to decode on the A53 (docs "Codec measurements"); on the page's background: WebP at the tiles' quality
+        const pic = deps.sharp({ create: { width, height, channels: state.under ? 4 : 3, background: bg } }).composite(parts);
+        const body = await (state.under ? pic.webp({ lossless: true, effort: 2 }) : pic.webp({ quality, effort: 2 })).toBuffer();
+        // layer: 1 = the content layers alone, for the viewer's layer cache (layered scrolling); else the page as shown
+        const head = { y: range[0], h: range[1] - range[0], w: width, k };
+        if (state.under && !UNDER_SEETHROUGH) head.layer = 1;
+        deps.broadcast(session, deps.binaryMessage(MSG_PREFILL, head, body), true);
         for (const l of list) {
             const drawn = (state.prefilled.get(l.layerId) || []).filter((r) => r[1] <= range[0] || r[0] >= range[1]);
             drawn.push(range);
