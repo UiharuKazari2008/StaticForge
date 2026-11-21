@@ -2009,6 +2009,9 @@
         if (m.servicePack && m.servicePack.label) return { state: 'upgrade', message: m.servicePack.label };
         if (m.pendingApplyFiles && m.pendingApplyFiles.length) return { state: 'ready' };
         if (m.hasPendingUpdates && m.hasPendingUpdates()) return { state: 'restart' };
+        // counted by a check and not downloaded (#951): the page offers Install, as the notification does (Yukimi, Nov 21:
+        // the page said nothing was waiting, so only the notification could install them)
+        if (typeof m.availableUpdateCount === 'function' && m.availableUpdateCount() > 0) return { state: 'available' };
         return { state: 'idle' };
     }
 
@@ -2032,7 +2035,7 @@
             case 'preparing': return { icon: 'info', title: 'Preparing system to update...', text: 'Getting the server ready.', bar: v.progress > 0 ? v.progress : null };
             // Windows Mobile's Windows Update while it checks (the 6.1 emulator, Nov 19 2026)
             case 'checking': return { icon: 'info', title: 'Please wait...', text: 'It may take a few moments to connect and to check for updates available for your device.', bar: null };
-            case 'available': return { icon: 'warning', title: 'Updates are available', text: v.message && !/available\.?$/i.test(v.message) ? v.message : 'Updates to Melaton are available.', button: ['install', 'Install'] };
+            case 'available': return { icon: 'warning', title: 'Updates are available', text: (v.message && !/available\.?$/i.test(v.message) ? v.message : 'Updates to Melaton are available.') + (availableNeedsRestart() ? ' Melaton restarts to install them.' : ''), button: ['install', 'Install'] };
             case 'downloading': return { icon: 'info', title: 'Downloading updates...', text: `Downloading ${fileText} (${Math.round(v.progress || 0)}% complete)`, bar: v.progress || 0 };
             case 'installing': return { icon: 'info', title: 'Installing updates...', text: `Installing ${fileText}. Melaton keeps running while they install.`, bar: null };
             case 'ready': return { icon: 'warning', title: 'Install updates', text: `${cap(fileText)} downloaded. They change styles and assets only, so they install without restarting Melaton.`, button: ['apply', 'Install'] };
@@ -2042,6 +2045,15 @@
             case 'failed': return { icon: 'error', title: 'Melaton could not search for new updates', text: v.message || 'The server did not answer.', button: ['check', 'Try Again'] };
             default: return { icon: 'info', title: 'Melaton Update', text: 'Check for updates to Melaton and install them.', button: ['check', 'Check Now'] };
         }
+    }
+
+    // the counted updates need a restart to install (the notification's Install Now, wmShell updateNoteSpec)
+    function availableNeedsRestart() {
+        const m = swm();
+        try {
+            const files = m && Array.isArray(m.availableUpdates) ? m.availableUpdates : [];
+            return !!files.length && typeof m.classifyStaticCacheUpdate === 'function' && m.classifyStaticCacheUpdate(files) === 'restart';
+        } catch (_) { return false; }
     }
 
     function updateInit() {
@@ -2116,6 +2128,24 @@
     function updateAct(d, what) {
         const m = swm();
         if (!m) return;
+        // Install with updates counted: installed as the notification's Install Now installs them (Yukimi, Nov 21: "in the
+        // update settings app, it does not show the dialog for are you sure, you have to use the notification"). What
+        // needs a restart restarts through forceRestart, which asks first with a Continuity PC up and shows the install
+        // window; the rest downloads and installs live, and the page follows it
+        if (what === 'install' && typeof m.availableUpdateCount === 'function' && m.availableUpdateCount() > 0) {
+            if (availableNeedsRestart() && typeof m.forceRestart === 'function') { m.forceRestart(); return; }
+            if (typeof m.installAvailableUpdates === 'function') {
+                d.view = { state: 'downloading', message: '', progress: 0, filesTotal: (m.availableUpdates || []).length };
+                if (d.rerender) d.rerender();
+                Promise.resolve(m.installAvailableUpdates()).finally(() => {
+                    if (d.view.state !== 'downloading' && d.view.state !== 'installing') return;
+                    const now = updateInitialState();
+                    d.view = now.state === 'idle' ? { state: 'uptodate' } : now;
+                    if (d.rerender) d.rerender();
+                });
+                return;
+            }
+        }
         if (what === 'check' || what === 'install') {
             // the desktop page's own check (cplUpdate.js check() without refreshServerCacheAndCheck:
             // that one opens the desktop Control Panel on its prepare stage, which the phone has not).
@@ -2136,7 +2166,9 @@
             if (d.rerender) d.rerender();
             Promise.resolve(m.applyStaticCacheUpdate(m.pendingApplyFiles || [])).finally(() => {
                 try { localStorage.setItem('meletonUpdateInstalledAt', String(Date.now())); } catch (_) { /* private mode */ }
-                d.view = { state: 'uptodate' };
+                // installed live, with files left that need a restart: Restart Now, as the desktop's page shows it
+                const now = updateInitialState();
+                d.view = now.state === 'idle' || now.state === 'ready' ? { state: 'uptodate' } : now;
                 if (d.rerender) d.rerender();
             });
         } else if (what === 'restart' && typeof m.forceRestart === 'function') {
