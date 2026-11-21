@@ -444,7 +444,7 @@
   // frames have the last word: a page that did not scroll (it took the wheel itself) snaps back and is not guessed
   // for a while.
   var scrollInfo = { y: 0, height: 0, view: 0, x: 0, width: 0, viewWidth: 0, root: 1, bandTop: 0, bandBottom: 0 };
-  var pred = { active: false, converging: false, target: 0, display: 0, startSy: 0, sum: 0, lastInput: 0, smooth: false, distrustUntil: 0, posted: null };
+  var pred = { waitSeq: 0, ackSeq: 0, ackAt: 0, active: false, converging: false, target: 0, display: 0, startSy: 0, sum: 0, lastInput: 0, smooth: false, distrustUntil: 0, posted: null };
   var rafId = 0;
   var lastRafAt = 0;
   var bgColor = '';
@@ -596,8 +596,24 @@
     return Math.max(0, scrollInfo.height - scrollInfo.view);
   }
 
-  function settleMs() {
-    return Math.min(1500, (rttMs || 60) + 400);
+  // #990 round 2: the viewer scrolls ahead until Chromium has handled its last wheel turn or scrollbar move
+  // (wheel-done, with Alchemy's time) and the page has caught up. A busy page (Bing: 0.6 s) used to outlast a fixed
+  // wait: the picture glided back to the old offset, then jumped forward when the page moved.
+  var stepSeq = 0;
+  var ACK_SETTLE_MS = 250;
+  var GIVE_UP_MS = 3000;
+
+  function gestureDone(now) {
+    if (now - pred.lastInput > GIVE_UP_MS) return true;
+    if (pred.waitSeq > pred.ackSeq || pred.ackAt < pred.lastInput) return false;
+    // answered: done when the frames show the target, or once the frames after the answer have had time to come
+    return Math.abs(baseInfo.sy - pred.target) < 1 || now - pred.ackAt > ACK_SETTLE_MS;
+  }
+
+  function nextStep() {
+    stepSeq += 1;
+    pred.waitSeq = stepSeq;
+    return stepSeq;
   }
 
   function beginGesture() {
@@ -624,6 +640,8 @@
     pred.smooth = Math.abs(dy) >= 40;
     pred.target = Math.max(0, Math.min(maxScroll(), pred.target + amount));
     pred.lastInput = performance.now();
+    // the wheel message that carries this turn goes on the next display frame (flushWheel) with this number
+    pred.waitSeq = stepSeq + 1;
     requestComposite();
   }
 
@@ -660,7 +678,7 @@
     var now = performance.now();
     var dt = lastRafAt ? Math.min(64, now - lastRafAt) : 16;
     lastRafAt = now;
-    if (pred.active && now - pred.lastInput > settleMs()) finishGesture();
+    if (pred.active && gestureDone(now)) finishGesture();
     var k = baseInfo.k;
     var moving = false;
     if (!k || !baseInfo.p) {
@@ -728,6 +746,12 @@
       if (rtt > 0 && rtt < 10000) {
         rttMs = rttMs ? (rttMs * 0.4 + rtt * 0.6) : rtt;
         send({ type: 'rtt', ms: Math.round(rttMs) });
+      }
+    } else if (msg.type === 'wheel-done' && typeof msg.seq === 'number') {
+      if (msg.seq > pred.ackSeq) {
+        pred.ackSeq = msg.seq;
+        pred.ackAt = performance.now();
+        if (pred.active) requestComposite();
       }
     } else if (msg.type === 'audio-off') {
       // another window took the sound (it comes back with a click or a key here), or this Alchemy has none
@@ -1157,7 +1181,7 @@
       frames: frameCount,
       frame: { width: base.width, height: base.height, sy: baseInfo.sy, k: baseInfo.k, p: baseInfo.p, vh: baseInfo.vh },
       canvas: { width: canvas.width, height: canvas.height, cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight, devicePx: devicePx, dpr: window.devicePixelRatio || 1 },
-      scroll: { display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, cacheRows: cache.valid1 - cache.valid0, cache0: cache.valid0, cache1: cache.valid1 },
+      scroll: { height: scrollInfo.height, view: scrollInfo.view, distrust: Math.max(0, Math.round(pred.distrustUntil - performance.now())), display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, cacheRows: cache.valid1 - cache.valid0, cache0: cache.valid0, cache1: cache.valid1 },
       audio: engine ? { path: 'worklet', state: engine.ctx.state, ready: engine.ready, packets: packetCount, targetMs: Math.round(engine.targetMs), lagMs: Math.round(engine.lagAvg || 0), jitterMs: Math.round(engine.jitter), underruns: engine.underruns, videoDelayMs: Math.round(videoDelay) }
         : { path: audio ? 'element' : 'off', wanted: audioWanted, taken: audioTaken, packets: packetCount },
       rttMs: Math.round(rttMs),
@@ -1559,7 +1583,10 @@
     wheelRaf = 0;
     var wheel = wheelAcc;
     wheelAcc = null;
-    if (wheel && (wheel.deltaX || wheel.deltaY)) send(wheel);
+    if (wheel && (wheel.deltaX || wheel.deltaY)) {
+      wheel.seq = nextStep();
+      send(wheel);
+    }
   }
   canvas.addEventListener('wheel', function (ev) {
     ev.preventDefault();
@@ -1671,7 +1698,9 @@
       });
     } else if (data.type === 'grimoire-browser-scroll-to' && typeof data.y === 'number') {
       predictScrollTo(data.y);
-      send(typeof data.x === 'number' ? { type: 'scroll-to', y: data.y, x: data.x } : { type: 'scroll-to', y: data.y });
+      var scrollTo = { type: 'scroll-to', y: data.y, seq: nextStep() };
+      if (typeof data.x === 'number') scrollTo.x = data.x;
+      send(scrollTo);
     } else if (data.type === 'grimoire-browser-touch' && /^(start|move|end|cancel)$/.test(data.kind)
       && typeof data.x === 'number' && typeof data.y === 'number') {
       // a finger on the phone's page (Internet Explorer on the phone): x, y in this window's CSS pixels

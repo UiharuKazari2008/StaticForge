@@ -353,6 +353,17 @@ function watchScroll() {
         queue();
     }, true);
     addEventListener('resize', queue);
+    // a page that grows without a resize or a scroll (Bing's home page loads its feed later, its body keeps its box):
+    // the height is read again when the pointer moves over it (at most once a second) and when the wheel turns, so the
+    // viewer knows there is somewhere to scroll before the first turn (#990 round 2)
+    let movedAt = 0;
+    addEventListener('pointermove', () => {
+        const now = Date.now();
+        if (now - movedAt < 1000) return;
+        movedAt = now;
+        queue();
+    }, { capture: true, passive: true });
+    addEventListener('wheel', queue, { capture: true, passive: true });
     const observe = () => {
         queue();
         if (typeof ResizeObserver === 'function') {
@@ -1029,6 +1040,14 @@ async function wholeFrame(session, jpeg, header, why) {
     return { binary: jpeg, why };
 }
 
+// #990 round 2: Chromium has handled the viewer's wheel turns up to seq (its renderer acknowledged them, after the
+// page's own wheel handlers); the frames after this show where they took the page. The viewer keeps scrolling ahead
+// of the page until then (a busy page such as Bing takes 0.6 s), instead of gliding back to an old offset.
+function wheelDone(session, seq) {
+    if (!seq) return;
+    broadcast(session, { type: 'wheel-done', seq, t: Date.now() });
+}
+
 function slowLink(session) {
     return (session.rttMs || 0) >= PACK_RTT_MS;
 }
@@ -1459,6 +1478,11 @@ function pumpFrames(session) {
         settled = true;
         clearTimeout(budget);
         session.framePump = false;
+        // a newer frame went out whole while this one was packed (a fast link): this one is older, it must not follow
+        if (session.packGen !== gen || (packed && packed.stale)) {
+            schedulePump(session);
+            return;
+        }
         if (packed && packed.tiles) sendFrame(session, packed.tiles, true);
         else if (packed && packed.whole) sendFrame(session, packed.whole, true);
         else if (!(packed && packed.skip)) sendFrame(session, frame, true);
@@ -1468,7 +1492,7 @@ function pumpFrames(session) {
         settled = true;
         clearTimeout(budget);
         session.framePump = false;
-        sendFrame(session, frame, true);
+        if (session.packGen === gen) sendFrame(session, frame, true);
         schedulePump(session);
     });
 }
@@ -3507,6 +3531,7 @@ async function onViewerMessage(session, raw) {
         const args = Math.max(0, Math.round(y)) + (Number.isFinite(x) ? ',' + Math.max(0, Math.round(x)) : '');
         session.scrollBurstUntil = Date.now() + SCROLL_BURST_MS;
         await session.cdp.send('Runtime.evaluate', { expression: '__alchemyScrollTo(' + args + ')', contextId: session.scrollContextId }).catch(() => {});
+        wheelDone(session, Number(msg.seq) || 0);
         return;
     }
     // Back / Forward from the viewer (mouse side buttons, Alt+Arrow, BrowserBack) walk Chromium's own history, so
@@ -3625,12 +3650,21 @@ async function onViewerMessage(session, raw) {
                 const restY = session.wheelCarryY || 0;
                 session.wheelCarryX = 0;
                 session.wheelCarryY = 0;
-                if (!restX && !restY || !sessions.get(session.id)) return;
-                session.inputChain = session.inputChain.then(() => page.mouse.wheel({ deltaX: restX, deltaY: restY })).catch(() => {});
+                if (!sessions.get(session.id)) return;
+                const seq = session.wheelSeqWaiting;
+                session.inputChain = session.inputChain.then(async () => {
+                    if (restX || restY) await page.mouse.wheel({ deltaX: restX, deltaY: restY });
+                    wheelDone(session, seq);
+                }).catch(() => {});
             }, WHEEL_REST_MS);
+            // the rest of this turn goes with the carry: its answer comes then
+            session.wheelSeqWaiting = Math.max(Number(msg.seq) || 0, session.wheelSeqWaiting || 0);
             if (!deltaX && !deltaY) return;
         }
+        const wheelStarted = Date.now();
         await page.mouse.wheel({ deltaX, deltaY });
+        if (PACK_DEBUG) console.log('[grimoire-browser] wheel ' + deltaY + ' handled in ' + (Date.now() - wheelStarted) + ' ms');
+        if (!session.wheelCarryTimer) wheelDone(session, Number(msg.seq) || 0);
         return;
     }
     if (msg.type === 'key' && typeof msg.key === 'string' && msg.key.length <= 32) {
@@ -4179,6 +4213,9 @@ function attachViewer(ws, session) {
                 }
                 queued.x = preview.x;
                 queued.y = preview.y;
+                if (preview.type === 'scroll-to') queued.y = preview.y;
+                // the merged step answers for the newest turn in it
+                if (Number(preview.seq) > (Number(queued.seq) || 0)) queued.seq = preview.seq;
                 return;
             }
             const next = Object.assign({}, preview, { deltaX: Number(preview.deltaX) || 0, deltaY: Number(preview.deltaY) || 0 });
