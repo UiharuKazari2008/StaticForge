@@ -157,13 +157,14 @@
     color: inherit;
 }
 
-/* Alchemy's logo in the page's bottom-right corner, 48 px, 20 px in (the same place as on Alchemy's own error pages) */
+/* Alchemy's wordmark (dark grey text logo, 135 x 38 at 1x) in the page's bottom-right corner, 20 px in (the same
+   place as on Alchemy's own error pages) */
 .gip-page .gip-logo {
     position: absolute;
     right: 20px;
-    bottom: 20px;
-    width: 48px;
-    height: 48px;
+    bottom: 16px;
+    width: auto;
+    height: 24px;
     pointer-events: none;
 }
 

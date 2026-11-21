@@ -1949,9 +1949,11 @@
     // css/themes/vista/grimoire-ie-pages.css. ----
     const PAGE_ART = `${ART}/pages`;
 
+    // Alchemy's wordmark, dark grey (Yukimi, Nov 21: "a Alchemy text logo that we can use when we need a longer mono
+    // color logo, like on the error images insted of the logo"): static_images/brand/alchemy-wordmark*.png (not app_icons/: that folder is served as square app icons)
     function alchemyLogoHtml() {
-        const at = (n) => (typeof root.resolveAppIconPath === 'function' ? root.resolveAppIconPath('alchemy.png', n) : '/static_images/app_icons/alchemy.png');
-        return `<img class="gip-logo" src="${esc(at(48))}" srcset="${esc(at(48))} 1x, ${esc(at(96))} 2x" alt="Alchemy">`;
+        const at = (suffix) => `/static_images/brand/alchemy-wordmark${suffix}.png`;
+        return `<img class="gip-logo" src="${at('')}" srcset="${at('')} 1x, ${at('@2x')} 2x, ${at('@3x')} 3x" alt="Alchemy">`;
     }
 
     /**
