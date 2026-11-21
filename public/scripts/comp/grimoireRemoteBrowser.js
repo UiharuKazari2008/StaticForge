@@ -727,8 +727,227 @@ async function grimoireAddRemotePageToDesktop(shell) {
     showGlassToast('success', null, 'Page added to desktop', false, 3000, '<i class="fas fa-arrow-down-left"></i>');
 }
 
+// ---- the page's context menu, as IE7's (VM: shdoclc.dll's menus, its wording and order) with Chrome's useful extras
+// (Yukimi, Nov 21 2026: "we need to add more options to the context menu in Alchemy, things like Save image, Save
+// Image As..., Open in new tab, Open in new window, Open in Edge (Android), Spellcheck replcements, Inspect, and more
+// that we are simply forgetting to add"). What is under the pointer comes from the viewer's inspect answer
+// (services/grimoire-browser/server.js 'inspect': data.more), what acts on the page goes back as a menu-action
+// (server.js menuAction). IE7's menus have no icons. ----
+
 function grimoireRemoteMenuAction(found, action, data) {
+    // the menu's helpers live in here (one page global for the whole menu: app-scope)
+    /** Asks the page (server.js menuAction) to do something at the point the menu was opened for. */
+    function grimoireMenuPost(found, data, msg) {
+        const more = (data && data.more) || {};
+        if (found.frame && found.frame.contentWindow) {
+            found.frame.contentWindow.postMessage(Object.assign({ type: 'grimoire-browser-menu-action', cx: more.x, cy: more.y }, msg), '*');
+        }
+    }
+
+    /** A file name from an address (the last path part), or the fallback. */
+    function grimoireNameFromUrl(url, fallback) {
+        try {
+            return decodeURIComponent(new URL(url).pathname.split('/').pop()) || fallback;
+        } catch (_) {
+            return fallback;
+        }
+    }
+
+    /** A Vista message box (confirmationDialog.js) for the menu's failures. */
+    function grimoireMenuMessage(text, owner) {
+        if (typeof showConfirmationDialog !== 'function') return;
+        Promise.resolve(showConfirmationDialog(grimoireDialogHtml(text), [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'Grimoire', icon: 'fas fa-circle-exclamation', owner: owner || null })).catch(() => {});
+    }
+
+    /**
+     * Save Picture As... / Save Target As... / Save Background As...: the file comes through Alchemy (the page's own
+     * cookies), then the shared Vista Save dialog (studioSession.js) puts it where the person chooses in the VFS.
+     */
+    async function grimoireSaveAsDialog(found, url, fallbackName, title) {
+        const shell = found.shell;
+        const owner = found.host && found.host.modal;
+        if (!url || typeof studioOpenFolderDialog !== 'function' || typeof vfsClient === 'undefined') return;
+        let blob = null;
+        try {
+            const res = await fetch(grimoireRemoteFileUrl(shell, 'resource', url), { credentials: 'same-origin' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            blob = await res.blob();
+        } catch (err) {
+            grimoireMenuMessage('The file could not be read from this page.', owner);
+            return;
+        }
+        let name = grimoireNameFromUrl(url, fallbackName).replace(/[\\/:*?"<>|]+/g, '_').slice(0, 180) || fallbackName;
+        const type = (blob.type || '').split(';')[0];
+        const extOf = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/avif': 'avif', 'image/bmp': 'bmp', 'text/html': 'htm' };
+        // what came is what it is: a .png address served as WebP saves as .webp
+        let ext = extOf[type] && type.startsWith('image/') ? extOf[type] : ((name.match(/\.([a-z0-9]{2,5})$/i) || [])[1] || extOf[type] || '');
+        if (extOf[type] && type.startsWith('image/')) name = name.replace(/\.(jpe?g|png|gif|webp|avif|bmp|svg)$/i, '');
+        if (ext && !new RegExp('\\.' + ext + '$', 'i').test(name)) name += '.' + ext;
+        const label = type.startsWith('image/') ? `${ext.toUpperCase() || 'Picture'} (*.${ext || '*'})` : (ext ? `${ext.toUpperCase()} File (*.${ext})` : 'All Files (*.*)');
+        const data = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(blob);
+        });
+        studioOpenFolderDialog('save', {
+            owner,
+            host: {
+                title: title || 'Save As',
+                types: [{ label, ext: ext || undefined }],
+                suggestName: () => name,
+                onSave: async ({ path, name: chosen }) => {
+                    const finalName = ext && !/\.[a-z0-9]{2,5}$/i.test(chosen) ? `${chosen}.${ext}` : chosen;
+                    const r = await vfsClient.uploadFile(path, data, finalName, type || 'application/octet-stream');
+                    if (r && r.success === false) throw new Error(r.error || 'save failed');
+                    return true;
+                }
+            }
+        });
+    }
+
+    /** Open in Edge (Android): Microsoft Edge takes the address (DSApp AndroidLinks.openNative with its package). */
+    function grimoireOpenInEdge(url, owner) {
+        const links = window.AndroidLinks;
+        let ok = false;
+        try { ok = !!(links && links.openNative(url, 'com.microsoft.emmx')); } catch (_) { ok = false; }
+        if (!ok) grimoireMenuMessage('Microsoft Edge could not open this address. Is it installed on this phone?', owner);
+    }
+
+    /** View Source: the page's own HTML (as Alchemy fetches it) in Notepad, as IE7 opens it. */
+    async function grimoireViewSource(found) {
+        const url = grimoireShellWebUrl(found.shell) || (found.data && found.data.more && found.data.more.url) || '';
+        if (!url) return;
+        let text = '';
+        try {
+            const res = await fetch(grimoireRemoteFileUrl(found.shell, 'resource', url), { credentials: 'same-origin' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            text = await res.text();
+        } catch (_) {
+            grimoireMenuMessage('The source of this page could not be read.', found.host && found.host.modal);
+            return;
+        }
+        if (window.featureLoader) await window.featureLoader.loadFeature('notepad');
+        const np = window.notepadVista && window.notepadVista.openBlank('file');
+        if (!np) return;
+        // IE7's View Source names the cached copy: "page[1]"
+        const base = grimoireNameFromUrl(url, '').replace(/\.[a-z0-9]+$/i, '') || grimoireSiteLabel(url) || 'page';
+        np.docName = () => `${base}[1]`;
+        const box = np.textarea();
+        box.value = text;
+        box.setSelectionRange(0, 0);
+        np.hasUnsavedChanges = false;
+        np.updateTitle();
+        np.updateStatus();
+    }
+
+    /** Search Grimoire for "...": the search box's provider (grimoireIeChrome.js), in a new tab as Chrome's does. */
+    function grimoireSearchFor(found, text) {
+        const chrome = found.host && found.host.ieChrome;
+        const provider = chrome && typeof chrome.provider === 'function' ? chrome.provider() : null;
+        const q = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+        const url = provider ? provider.url(q) : 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(q);
+        if (!url) return;
+        const tabs = found.host && found.host.tabs;
+        if (tabs && tabs.available()) tabs.open(/^https?:/i.test(url) ? { url, afterActive: true } : { address: url, afterActive: true });
+        else found.host.navigate(url);
+    }
+
+    /** Add to Favorites...: the link (or the page) into Alchemy's bookmarks, the Favorites ☆ list. */
+    async function grimoireAddFavorite(found, url, title) {
+        if (!url) return;
+        try {
+            const settings = await grimoireLoadAlchemySettings();
+            const bookmarks = (settings && settings.bookmarks) || [];
+            if (!bookmarks.some((row) => row.url === url)) await grimoireSaveAlchemySettings({ bookmarks: [{ url, title: title || url }].concat(bookmarks) });
+            if (found.host.ieChrome) found.host.ieChrome.loadBookmarks();
+        } catch (_) {
+            grimoireMenuMessage('The favorite could not be saved.', found.host && found.host.modal);
+        }
+    }
+
+    // Properties (IE7's General page for a page, a link or a picture)
+    const GRIMOIRE_PROPS_TPL = { t: 'Properties', w: 227, h: 196, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+        [901, 'S', 7, 7, 21, 20, 0x50000003, '', 0],
+        [902, 'S', 36, 12, 184, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 33, 213, 1, 0x50000010, '', 0],
+        [-1, 'S', 7, 40, 62, 9, 0x50020080, 'Protocol:', 0],
+        [911, 'S', 72, 40, 148, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 52, 62, 9, 0x50020080, 'Type:', 0],
+        [912, 'S', 72, 52, 148, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 64, 62, 9, 0x50020080, 'Connection:', 0],
+        [913, 'S', 72, 64, 148, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 77, 213, 1, 0x50000010, '', 0],
+        [-1, 'S', 7, 84, 62, 9, 0x50020080, 'Address:', 0],
+        [921, 'S', 72, 84, 148, 36, 0x50020080, '', 0],
+        [-1, 'S', 7, 124, 62, 9, 0x50020080, 'Size:', 0],
+        [922, 'S', 72, 124, 148, 9, 0x5002008C, '', 0],
+        [923, 'S', 7, 136, 62, 9, 0x50020080, 'Dimensions:', 0],
+        [924, 'S', 72, 136, 148, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 148, 62, 9, 0x50020080, 'Modified:', 0],
+        [925, 'S', 72, 148, 148, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 168, 213, 1, 0x50000010, '', 0],
+        [1, 'B', 116, 176, 50, 14, 0x50010001, 'OK', 0],
+        [2, 'B', 170, 176, 50, 14, 0x50010000, 'Cancel', 0]
+    ] };
+
+    const GRIMOIRE_PICTURE_TYPES = { jpg: 'JPEG Image', jpeg: 'JPEG Image', png: 'PNG Image', gif: 'GIF Image', webp: 'WebP Image', svg: 'SVG Document', avif: 'AVIF Image', bmp: 'Bitmap Image', ico: 'Icon' };
+
+    async function grimoireShowProperties(found, data, kind) {
+        const more = data.more || {};
+        const url = kind === 'picture' ? data.src : kind === 'link' ? data.href : (more.url || grimoireShellWebUrl(found.shell));
+        if (!url) return;
+        const V = window.vistaDialogTemplate;
+        if (!V) return;
+        let protocol = 'Not Available';
+        let secure = false;
+        try {
+            const p = new URL(url).protocol;
+            secure = p === 'https:';
+            protocol = p === 'https:' ? 'HyperText Transfer Protocol with Privacy' : p === 'http:' ? 'HyperText Transfer Protocol' : p === 'data:' ? 'Data' : p.replace(/:$/, '').toUpperCase();
+        } catch (_) { /* a relative or odd address */ }
+        const ext = (grimoireNameFromUrl(url, '').match(/\.([a-z0-9]{2,5})$/i) || [])[1] || '';
+        const type = kind === 'picture' ? (GRIMOIRE_PICTURE_TYPES[ext.toLowerCase()] || 'Picture')
+            : kind === 'link' ? 'Not Available'
+                : (/html/i.test(more.type || '') ? 'HTML Document' : (more.type || 'Not Available'));
+        const name = kind === 'page' ? (more.title || grimoireSiteLabel(url)) : kind === 'link' ? (more.linkText || grimoireNameFromUrl(url, url)) : (data.alt || grimoireNameFromUrl(url, 'Picture'));
+        // Vista's file type icons (imageres): a picture, an Internet shortcut, an HTML document
+        const icon = '/static_images/vista-icons/filetypes/' + (kind === 'picture' ? 'image' : kind === 'link' ? 'url' : 'htm') + '-32.png';
+        let modified = 'Not Available';
+        if (kind === 'page' && more.modified) {
+            const d = new Date(more.modified);
+            if (!Number.isNaN(d.getTime())) modified = d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+        }
+        V.openDialog({
+            id: 'grimoirePropertiesDialog',
+            tpl: GRIMOIRE_PROPS_TPL,
+            title: 'Properties',
+            owner: (found.host && found.host.modal) || null,
+            overrides: { 901: { image: icon } },
+            init(ctx) {
+                ctx.text(902, name);
+                ctx.text(911, protocol);
+                ctx.text(912, type);
+                ctx.text(913, secure ? 'Encrypted' : 'Not Encrypted');
+                ctx.text(921, url);
+                ctx.text(922, 'Not Available');
+                ctx.text(923, kind === 'picture' ? 'Dimensions:' : '');
+                ctx.text(924, kind === 'picture' && data.more && data.more.imgWidth ? `${data.more.imgWidth} x ${data.more.imgHeight} pixels` : '');
+                ctx.text(925, modified);
+                // the picture's size in bytes, as it comes through Alchemy
+                if (kind === 'picture') {
+                    fetch(grimoireRemoteFileUrl(found.shell, 'resource', url), { credentials: 'same-origin' })
+                        .then((res) => (res.ok ? res.blob() : null))
+                        .then((blob) => { if (blob && ctx.modal.isConnected) ctx.text(922, `${blob.size.toLocaleString()} bytes`); })
+                        .catch(() => {});
+                }
+            }
+        });
+    }
+
     const shell = found.shell;
+    const more = data.more || {};
+    const owner = found.host && found.host.modal;
     if (action === 'back') {
         shell.goBack();
         return;
@@ -746,7 +965,29 @@ function grimoireRemoteMenuAction(found, action, data) {
         return;
     }
     if (action === 'copy-text') {
-        grimoireCopyText(data.text);
+        grimoireCopyText(data.selection || data.text);
+        return;
+    }
+    if (action === 'cut') {
+        // the words go to the clipboard here, then the page deletes its selection
+        grimoireCopyText(data.selection);
+        grimoireMenuPost(found, data, { action: 'edit', command: 'delete' });
+        return;
+    }
+    if (action === 'undo' || action === 'delete' || action === 'select-all') {
+        grimoireMenuPost(found, data, { action: 'edit', command: action === 'select-all' ? 'selectAll' : action });
+        return;
+    }
+    if (action === 'spell-replace') {
+        grimoireMenuPost(found, data, { action: 'replace-word', word: more.word, text: data.replacement });
+        return;
+    }
+    if (action === 'spell-add') {
+        if (typeof wsClient !== 'undefined' && wsClient.addWordToDictionary) wsClient.addWordToDictionary(more.word).catch(() => {});
+        return;
+    }
+    if (action === 'search') {
+        grimoireSearchFor(found, data.selection);
         return;
     }
     if (action === 'paste') {
@@ -756,14 +997,15 @@ function grimoireRemoteMenuAction(found, action, data) {
         return;
     }
     if (action === 'open-window') {
-        const target = data.href || grimoireShellWebUrl(shell);
+        const target = data.target || data.href || grimoireShellWebUrl(shell);
         // from a full Grimoire window with the tab strip: another full window (#615); else a standalone Alchemy window
         if (found.host.tabs && found.host.tabs.available()) TagWikiSearchModal.openNewWindow({ url: target });
         else grimoireOpenStandaloneWindow(target);
         return;
     }
     if (action === 'open-tab') {
-        if (!grimoireOpenTab(found, data.href)) grimoireOpenStandaloneWindow(data.href);
+        const target = data.target || data.href;
+        if (!grimoireOpenTab(found, target)) grimoireOpenStandaloneWindow(target);
         return;
     }
     if (action === 'add-to-desktop') {
@@ -772,17 +1014,30 @@ function grimoireRemoteMenuAction(found, action, data) {
         });
         return;
     }
+    if (action === 'add-favorite') {
+        if (data.href) grimoireAddFavorite(found, data.href, more.linkText || data.href);
+        else grimoireAddFavorite(found, grimoireShellWebUrl(shell), more.title || grimoireShellWebUrl(shell));
+        return;
+    }
     if (action === 'copy-link') {
         grimoireCopyText(data.href);
         return;
     }
-    if (action === 'open-link') {
-        const next = grimoireNormalizeWebUrl(data.href);
+    if (action === 'copy-image-url') {
+        grimoireCopyText(data.src);
+        return;
+    }
+    if (action === 'open-link' || action === 'show-image-here') {
+        const next = grimoireNormalizeWebUrl(action === 'open-link' ? data.href : data.src);
         if (next && found.frame.contentWindow) {
             // desktopSounds.play: public/scripts/comp/desktopSounds.js
             desktopSounds.play('navigate');
             found.frame.contentWindow.postMessage({ type: 'grimoire-browser-navigate', url: next }, '*');
         }
+        return;
+    }
+    if (action === 'show-picture') {
+        grimoireMenuPost(found, data, { action: 'show-picture' });
         return;
     }
     if (action === 'copy-image') {
@@ -791,59 +1046,171 @@ function grimoireRemoteMenuAction(found, action, data) {
         return;
     }
     if (action === 'save-image') {
-        let name = data.alt || 'image';
-        try { name = new URL(data.src).pathname.split('/').pop() || name; } catch (e) {}
+        const name = grimoireNameFromUrl(data.src, data.alt || 'image');
         grimoireSaveToDownloads(shell, { url: data.src }, name, null, grimoireDownloadEntry(null, { filename: name }, data.src));
         return;
     }
+    if (action === 'save-image-as') {
+        grimoireSaveAsDialog(found, data.src, data.alt || 'image', 'Save Picture');
+        return;
+    }
+    if (action === 'save-target-as') {
+        grimoireSaveAsDialog(found, data.href, 'download', 'Save As');
+        return;
+    }
+    if (action === 'save-background-as') {
+        grimoireSaveAsDialog(found, more.bg, 'background', 'Save Picture');
+        return;
+    }
     if (action === 'download-link') {
-        let name = 'download';
-        try { name = new URL(data.href).pathname.split('/').pop() || name; } catch (e) {}
+        const name = grimoireNameFromUrl(data.href, 'download');
         grimoireSaveToDownloads(shell, { url: data.href }, name, null, grimoireDownloadEntry(null, { filename: name }, data.href));
+        return;
+    }
+    if (action === 'view-source') {
+        grimoireViewSource(Object.assign({ data }, found));
+        return;
+    }
+    if (action === 'print' || action === 'print-preview') {
+        if (found.host.ieChrome) found.host.ieChrome.print();
+        return;
+    }
+    if (action === 'edge') {
+        grimoireOpenInEdge(data.target, owner);
+        return;
+    }
+    if (action === 'properties-page' || action === 'properties-link' || action === 'properties-picture') {
+        grimoireShowProperties(found, data, action.slice('properties-'.length));
+        return;
+    }
+    if (action === 'inspect') {
+        grimoireMenuPost(found, data, { action: 'inspect' });
     }
 }
 
-function grimoireShowRemoteMenu(found, data) {
+async function grimoireShowRemoteMenu(found, data) {
+    /** Dreamscape's spell engine (WS spell_check_text, modules/spellChecker.js) on one word: its suggestions, or null when it knows it. */
+    async function grimoireSpellingOf(word) {
+        if (!word || word.length < 2 || !/\p{L}/u.test(word) || typeof wsClient === 'undefined' || !wsClient.sendMessage) return null;
+        try {
+            const r = await Promise.race([
+                wsClient.sendMessage('spell_check_text', { text: word }, false),
+                new Promise((resolve) => setTimeout(() => resolve(null), 1500))
+            ]);
+            const hit = r && r.success !== false && Array.isArray(r.words) ? r.words.find((w) => w.word === word) : null;
+            return hit ? (hit.suggestions || []).map(String) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+    const GRIMOIRE_SEARCH_NAMES = { grimoire: 'Grimoire', danbooru: 'Danbooru Wiki', e621: 'e621 Wiki', web: 'the Web' };
+
     const frame = found.frame;
     const rect = frame.getBoundingClientRect();
+    const more = data.more || {};
     const selection = data.selection || '';
-    const text = selection || data.text || '';
     const href = data.href || '';
     const src = data.src || '';
     const shell = found.shell;
-    const pageUrl = grimoireShellWebUrl(shell);
-    const icons = [
-        { icon: 'fas fa-arrow-left', tooltip: 'Back', action: 'back', disabled: shell.historyIndex <= 0 },
-        { icon: 'fas fa-arrow-right', tooltip: 'Forward', action: 'forward', disabled: shell.historyIndex >= shell.history.length - 1 },
-        { icon: 'fas fa-rotate-right', tooltip: 'Reload', action: 'reload' },
-        { icon: 'fas fa-copy', tooltip: 'Copy text', action: 'copy-text', disabled: !text },
-        { icon: 'fas fa-link', tooltip: 'Copy URL', action: 'copy-url', disabled: !pageUrl },
-        { icon: 'fas fa-window-restore', tooltip: href ? 'Open link in new window' : 'Open in new window', action: 'open-window' }
-    ];
+    const pageUrl = grimoireShellWebUrl(shell) || more.url || '';
+    const tabs = !!(found.host.tabs && found.host.tabs.available());
+    // a phone (the Android app, also its DeX windows): Edge is one tap away
+    const android = !!(window.AndroidLinks && typeof window.AndroidLinks.openNative === 'function');
+    // the word under the pointer in a field, checked by Dreamscape's spell engine before the menu shows
+    const suggestions = data.editable && more.word ? await grimoireSpellingOf(more.word) : null;
     const items = [];
-    if (data.editable) items.push({ text: 'Paste', icon: 'fas fa-paste', action: 'paste' });
-    if (href) {
-        items.push({ text: 'Copy link', icon: 'fas fa-link', action: 'copy-link' });
-        items.push({ text: 'Open link', icon: 'fas fa-external-link-alt', action: 'open-link' });
-        // IE7's Open in New Tab has no icon
-        if (found.host.tabs && found.host.tabs.available()) items.push({ text: 'Open link in new tab', action: 'open-tab' });
-        if (!src) items.push({ text: 'Download', icon: 'fas fa-download', action: 'download-link' });
+    const sep = () => { if (items.length && !items[items.length - 1].separator) items.push({ separator: true }); };
+    const search = selection.replace(/\s+/g, ' ').trim();
+    const provider = found.host.ieChrome && typeof found.host.ieChrome.provider === 'function' ? found.host.ieChrome.provider() : null;
+    const searchName = GRIMOIRE_SEARCH_NAMES[(provider && provider.id) || 'grimoire'] || 'Grimoire';
+    const short = search.length > 24 ? search.slice(0, 24) + '...' : search;
+    if (data.editable) {
+        // a field: spelling first (Chrome's place for it), then IE7's edit menu
+        if (suggestions) {
+            if (suggestions.length) suggestions.forEach((word) => items.push({ text: word, action: 'spell-replace', replacement: word, className: 'context-menu-item-default' }));
+            else items.push({ text: 'No Spelling Suggestions', disabled: true });
+            items.push({ text: 'Add to Dictionary', action: 'spell-add' });
+            sep();
+        }
+        items.push({ text: 'Undo', action: 'undo' });
+        sep();
+        items.push({ text: 'Cut', action: 'cut', disabled: !more.fieldSel && !selection });
+        items.push({ text: 'Copy', action: 'copy-text', disabled: !selection });
+        items.push({ text: 'Paste', action: 'paste' });
+        items.push({ text: 'Delete', action: 'delete', disabled: !more.fieldSel && !selection });
+        sep();
+        items.push({ text: 'Select All', action: 'select-all', disabled: more.fieldText === false });
+        if (search) {
+            sep();
+            items.push({ text: `Search ${searchName} for "${short}"`, action: 'search' });
+        }
+    } else if (href || src) {
+        if (href) {
+            items.push({ text: 'Open', action: 'open-link', className: 'context-menu-item-default' });
+            items.push({ text: 'Open in New Tab', action: 'open-tab', disabled: !tabs, target: href });
+            items.push({ text: 'Open in New Window', action: 'open-window', target: href });
+            if (android) items.push({ text: 'Open in Edge', action: 'edge', target: href });
+            items.push({ text: 'Save Target As...', action: 'save-target-as' });
+            sep();
+        }
+        if (src) {
+            items.push({ text: 'Show Picture', action: 'show-picture', disabled: !more.imgBroken });
+            items.push({ text: 'Open Picture in New Tab', action: 'open-tab', disabled: !tabs, target: src });
+            items.push({ text: 'Save Picture As...', action: 'save-image-as' });
+            items.push({ text: 'Save Picture', action: 'save-image' });
+            sep();
+        }
+        if (selection) items.push({ text: 'Copy', action: 'copy-text' });
+        if (src) items.push({ text: 'Copy Picture', action: 'copy-image' });
+        if (href) items.push({ text: 'Copy Shortcut', action: 'copy-link' });
+        if (src) items.push({ text: 'Copy Picture Address', action: 'copy-image-url' });
+        if (search) items.push({ text: `Search ${searchName} for "${short}"`, action: 'search' });
+        sep();
+        items.push({ text: 'Add to Favorites...', action: 'add-favorite' });
+        sep();
+        items.push({ text: 'Properties', action: src ? 'properties-picture' : 'properties-link' });
+    } else if (selection) {
+        // selected words: IE7's Copy, Select All, Print, plus Chrome's search
+        items.push({ text: 'Copy', action: 'copy-text' });
+        items.push({ text: `Search ${searchName} for "${short}"`, action: 'search' });
+        sep();
+        items.push({ text: 'Select All', action: 'select-all' });
+        sep();
+        items.push({ text: 'Print...', action: 'print' });
+        items.push({ text: 'Print Preview...', action: 'print-preview' });
+    } else {
+        // the page: IE7's order
+        items.push({ text: 'Back', action: 'back', disabled: shell.historyIndex <= 0 });
+        items.push({ text: 'Forward', action: 'forward', disabled: shell.historyIndex >= shell.history.length - 1 });
+        sep();
+        if (more.bg) {
+            items.push({ text: 'Save Background As...', action: 'save-background-as' });
+            sep();
+        }
+        items.push({ text: 'Select All', action: 'select-all' });
+        items.push({ text: 'Paste', action: 'paste', disabled: true });
+        sep();
+        items.push({ text: 'Create Shortcut', action: 'add-to-desktop' });
+        items.push({ text: 'Add to Favorites...', action: 'add-favorite', disabled: !pageUrl });
+        items.push({ text: 'View Source', action: 'view-source', disabled: !pageUrl });
+        if (android && pageUrl) items.push({ text: 'Open in Edge', action: 'edge', target: pageUrl });
+        sep();
+        items.push({ text: 'Print...', action: 'print' });
+        items.push({ text: 'Print Preview...', action: 'print-preview' });
+        items.push({ text: 'Refresh', action: 'reload' });
+        sep();
+        items.push({ text: 'Properties', action: 'properties-page', disabled: !pageUrl });
     }
-    if (src) {
-        items.push({ text: 'Copy image', icon: 'fas fa-image', action: 'copy-image' });
-        items.push({ text: 'Save image', icon: 'fas fa-download', action: 'save-image' });
-    }
-    if (items.length) items.push({ separator: true });
-    items.push({ text: 'Add to Desktop', icon: 'fas fa-arrow-down-left', action: 'add-to-desktop' });
+    // Chrome's Inspect, last (DevTools for this page in a new tab, the element under the pointer selected)
+    sep();
+    items.push({ text: 'Inspect', action: 'inspect' });
     // contextMenu: public/scripts/comp/contextMenu.js
     contextMenu.attachToElement(frame, {
-        sections: [{ type: 'icons', position: 'outer', icons }, { type: 'list', items }],
-        onAction: (action) => grimoireRemoteMenuAction(found, action, {
-            text,
-            href,
-            src,
-            alt: data.alt || ''
-        })
+        sections: [{ type: 'list', items }],
+        onAction: (action, target, item) => grimoireRemoteMenuAction(found, action, Object.assign({}, data, {
+            target: item && item.target,
+            replacement: item && item.replacement
+        }))
     });
     contextMenu.showMenu({
         clientX: rect.left + (Number(data.clientX) || 0),
@@ -1565,7 +1932,9 @@ async function grimoireShowSiteMenu(ev, win) {
     const hostName = grimoireSiteLabel(raw);
     const wikiTerm = hostName ? hostName.split('.')[0] : String(raw || '').trim();
     const pageUrl = grimoireShellWebUrl(shell);
-    const [settings, extensionList] = await Promise.all([grimoireLoadAlchemySettings(), grimoireLoadAlchemyExtensions()]);
+    const IeChrome = window.GrimoireIeChrome;
+    const [settings, extensionList] = await Promise.all([grimoireLoadAlchemySettings(), grimoireLoadAlchemyExtensions(),
+        IeChrome && IeChrome.loadHiddenExtensions ? IeChrome.loadHiddenExtensions() : null]);
     // Favorites and Add to Favorites are the tab row's (grimoireIeChrome.js); the menu no longer repeats them
 
     const items = [];
@@ -1586,6 +1955,11 @@ async function grimoireShowSiteMenu(ev, win) {
         submenu: (extensionList.length
             ? extensionList.map((ext) => ({ text: ext.name, image: ext.icon16 || '', image2x: ext.icon32 || '', action: 'extension', extensionId: ext.id, disabled: !extensionPage }))
             : [{ text: 'No extensions', disabled: true }])
+            // which buttons the command bar shows (a button's own right-click menu takes it off; here it comes back)
+            .concat(extensionList.length && IeChrome && IeChrome.isExtensionShown ? [{ separator: true }, {
+                text: 'Show on Command Bar',
+                submenu: extensionList.map((ext) => ({ text: ext.name, action: 'extension-toggle', extensionId: ext.id, showIndicator: true, indicatorMark: 'check', checked: IeChrome.isExtensionShown(ext.id) }))
+            }] : [])
             .concat([{ separator: true }, { text: 'Manage Extensions', action: 'extensions-manage' }])
     });
     items.push({ separator: true });
@@ -1599,7 +1973,8 @@ async function grimoireShowSiteMenu(ev, win) {
     items.push({ text: 'Min FPS', icon: 'fas fa-gauge-low', valueDisplay: String(settings.minFps), disabled: auto, submenu: grimoireAlchemyChoiceItems('minFps', settings.minFps) });
     items.push({ text: 'Max FPS', icon: 'fas fa-gauge-high', valueDisplay: String(settings.maxFps), disabled: auto, submenu: grimoireAlchemyChoiceItems('maxFps', settings.maxFps) });
     items.push({ text: 'Compression', icon: 'fas fa-file-zipper', valueDisplay: grimoireAlchemyChoiceLabel('regionQuality', settings.regionQuality), disabled: auto, submenu: grimoireAlchemyChoiceItems('regionQuality', settings.regionQuality) });
-    items.push({ text: 'Alchemy Information...', action: 'alchemy-info', disabled: !extensionPage });
+    // a tool window that follows the tab on show (grimoireIeChrome.js showAlchemyInfo)
+    items.push({ text: 'Alchemy Information...', action: 'alchemy-info' });
     items.push({ text: 'Restart browser', icon: 'fas fa-rotate-right', action: 'restart' });
 
     contextMenu.attachToElement(button, {
@@ -1625,6 +2000,10 @@ async function grimoireShowSiteMenu(ev, win) {
                 const chrome = host.ieChrome;
                 const anchor = (chrome && typeof chrome.extensionButton === 'function' && chrome.extensionButton(item.extensionId)) || button;
                 if (ext && window.GrimoireIeChrome) window.GrimoireIeChrome.openExtensionPopup(host, ext, anchor);
+                return;
+            }
+            if (action === 'extension-toggle') {
+                if (IeChrome) IeChrome.setExtensionShown(item.extensionId, !IeChrome.isExtensionShown(item.extensionId));
                 return;
             }
             if (action === 'extensions-manage') {

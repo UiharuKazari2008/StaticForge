@@ -435,6 +435,7 @@
             let list = [];
             try { list = await root.grimoireLoadAlchemyExtensions(); } catch (_) { return; }
             if (!Array.isArray(list) || !list.length || this.extButtons.length) return;
+            await loadHiddenExtensions();
             this.extensions = list;
             this.extButtons = list.map((ext) => {
                 const title = ext.title || ext.name || 'Extension';
@@ -448,11 +449,40 @@
                 b.addEventListener('click', () => {
                     openExtensionPopup(this.host, ext, b);
                 });
+                this.attachExtensionButtonMenu(b, ext);
                 this.commands.insertBefore(b, this.extChevron);
                 return b;
             });
             this.fitExtensions();
             this.sync();
+        }
+
+        /**
+         * A button's right-click menu: Open, and Show on Command Bar to take it off the bar (Yukimi, Nov 21 2026:
+         * "can we add opton to hide a extention icon into the main tools menu"); a removed one stays in Tools >
+         * Extensions, where Show on Command Bar puts it back. Kept per person (userGlobalSettings.alchemy.hiddenExtensions).
+         */
+        attachExtensionButtonMenu(b, ext) {
+            const cm = root.contextMenu;
+            if (!cm) return;
+            cm.attachToElement(b, {
+                sections: [{ type: 'list', items: [
+                    { text: 'Open', action: 'ext-open', className: 'context-menu-item-default' },
+                    { separator: true },
+                    { text: 'Show on Command Bar', action: 'ext-hide', showIndicator: true, indicatorMark: 'check', checked: true },
+                    { text: 'Manage Extensions', action: 'ext-manage' }
+                ] }],
+                onAction: (action) => {
+                    if (action === 'ext-open') openExtensionPopup(this.host, ext, b);
+                    else if (action === 'ext-hide') setExtensionShown(ext.id, false);
+                    else if (action === 'ext-manage') this.host.navigate('chrome://extensions');
+                }
+            });
+        }
+
+        /** Taken off the command bar by the person (it stays in Tools > Extensions). */
+        isRemovedExtension(b) {
+            return hiddenExtensions.has(b.dataset.extensionId);
         }
 
         /** The button of an extension while it shows (Tools > Extensions drops the popup from it), else null. */
@@ -463,8 +493,16 @@
 
         /** IE7 keeps the tabs at least this wide; buttons that do not fit go behind the » (from the last). */
         fitExtensions() {
-            const buttons = this.extButtons;
-            if (!buttons.length || !this.isOn()) return;
+            // the ones taken off the bar stay hidden and take no room
+            this.extButtons.forEach((b) => {
+                if (this.isRemovedExtension(b) && !b.hidden) b.hidden = true;
+            });
+            const buttons = this.extButtons.filter((b) => !this.isRemovedExtension(b));
+            if (!buttons.length) {
+                if (!this.extChevron.hidden) this.extChevron.hidden = true;
+                return;
+            }
+            if (!this.isOn()) return;
             const tabs = this.tabRow.querySelector('.grimoire-ie-tabs');
             if (!tabs) return;
             const shown = buttons.filter((b) => !b.hidden).length;
@@ -487,7 +525,7 @@
         attachExtensionMenu() {
             const cm = root.contextMenu;
             if (!cm) return;
-            const hidden = this.extensions.filter((ext, i) => this.extButtons[i] && this.extButtons[i].hidden);
+            const hidden = this.extensions.filter((ext, i) => this.extButtons[i] && this.extButtons[i].hidden && !this.isRemovedExtension(this.extButtons[i]));
             const page = this.hasAlchemyPage();
             cm.detachClickMenuFromElement(this.extChevron);
             cm.attachClickMenuToElement(this.extChevron, {
@@ -1393,6 +1431,43 @@
         }
     }
 
+    // ---- extension buttons taken off the command bar (userGlobalSettings.alchemy.hiddenExtensions, every window) ----
+    const hiddenExtensions = new Set();
+    let hiddenExtensionsLoaded = null;
+
+    function loadHiddenExtensions() {
+        if (!hiddenExtensionsLoaded) {
+            hiddenExtensionsLoaded = (typeof root.grimoireLoadAlchemySettings === 'function' ? root.grimoireLoadAlchemySettings() : Promise.resolve(null))
+                .then((settings) => {
+                    ((settings && settings.hiddenExtensions) || []).forEach((id) => hiddenExtensions.add(String(id)));
+                })
+                .catch(() => {});
+        }
+        return hiddenExtensionsLoaded;
+    }
+
+    function isExtensionShown(id) {
+        return !hiddenExtensions.has(id);
+    }
+
+    /** Puts an extension's button on the command bar or takes it off, in every Grimoire window, and keeps the choice. */
+    function setExtensionShown(id, shown) {
+        if (!id || isExtensionShown(id) === !!shown) return;
+        if (shown) hiddenExtensions.delete(id);
+        else hiddenExtensions.add(id);
+        const wins = typeof root.grimoireAllWindows === 'function' ? root.grimoireAllWindows() : [];
+        wins.forEach((win) => {
+            const chrome = win && win.ieChrome;
+            if (!chrome) return;
+            // a button put back shows again before the fit decides whether it has room
+            if (shown) chrome.extButtons.forEach((b) => { if (b.dataset.extensionId === id) b.hidden = false; });
+            chrome.fitExtensions();
+        });
+        if (typeof root.grimoireSaveAlchemySettings === 'function') {
+            root.grimoireSaveAlchemySettings({ hiddenExtensions: Array.from(hiddenExtensions) }).catch(() => {});
+        }
+    }
+
     // ---- extension popups (Yukimi, Nov 21 2026: "extentions should be shown correctly like IE does possibly as icons in
     // the tab bar ... can also allow them to popdown like in chrome would do") ----
     // An extension's command bar button (grimoireIeChrome.js) or Tools > Extensions presses its toolbar button in Alchemy
@@ -1587,10 +1662,13 @@
     }
 
     // ---- Tools > Alchemy Information (Yukimi, Nov 21 2026: "info so we cna tell what encoder were using and what
-    // settings it has selected"): what Alchemy encodes the page on show with, as the viewer hears it from the service
-    // (grimoire-browser-encoder: on each change, and on asking with grimoire-browser-encoder?). Laid out like IE7's page
-    // Properties: the page at the top, then label and value rows in groups. ----
-    const INFO_TPL = { t: 'Alchemy Information', w: 262, h: 236, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+    // settings it has selected"; then "in info we should make that a tool window and allow it to stay open and not
+    // require it to be closed. I want to be able to look at it to see the performance and metrics"): a tool window
+    // owned by its Grimoire window (it stays on top of it, moves on its own, closes with it) that follows the tab on
+    // show. What Alchemy encodes with and the link (grimoire-browser-encoder, asked with grimoire-browser-encoder?) and
+    // the viewer's own numbers (grimoire-browser-stats?: frames, bytes, decode time, layers, scroll cache), refreshed
+    // every 2 s while it shows; nothing while it, its window or the page is hidden or minimised. ----
+    const INFO_TPL = { t: 'Alchemy Information', w: 262, h: 300, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
         [901, 'S', 7, 7, 21, 20, 0x50000003, '', 0],
         [902, 'S', 36, 12, 219, 9, 0x5002008C, '', 0],
         [-1, 'S', 7, 33, 248, 1, 0x50000010, '', 0],
@@ -1605,109 +1683,237 @@
         [-1, 'S', 7, 88, 66, 9, 0x50020080, 'Scrolling:', 0],
         [915, 'S', 76, 88, 179, 9, 0x5002008C, '', 0],
         [-1, 'S', 7, 100, 66, 9, 0x50020080, 'JPEG XL:', 0],
-        [916, 'S', 76, 100, 179, 9, 0x5002008C, '', 0],
-        [-1, 'S', 7, 112, 66, 9, 0x50020080, 'Frame size:', 0],
-        [917, 'S', 76, 112, 179, 9, 0x5002008C, '', 0],
-        [-1, 'S', 7, 125, 248, 1, 0x50000010, '', 0],
-        [-1, 'S', 7, 132, 66, 9, 0x50020080, 'Round trip:', 0],
-        [921, 'S', 76, 132, 179, 9, 0x5002008C, '', 0],
-        [-1, 'S', 7, 144, 66, 9, 0x50020080, 'Queue delay:', 0],
-        [922, 'S', 76, 144, 179, 9, 0x5002008C, '', 0],
-        [-1, 'S', 7, 156, 66, 9, 0x50020080, 'Throughput:', 0],
-        [923, 'S', 76, 156, 179, 9, 0x5002008C, '', 0],
-        [-1, 'S', 7, 168, 66, 9, 0x50020080, 'Decoding:', 0],
-        [924, 'S', 76, 168, 179, 9, 0x5002008C, '', 0],
-        [-1, 'S', 7, 181, 248, 1, 0x50000010, '', 0],
-        [-1, 'S', 7, 188, 66, 9, 0x50020080, 'Automatic:', 0],
-        [931, 'S', 76, 188, 179, 18, 0x50020080, '', 0],
-        [3, 'B', 151, 216, 50, 14, 0x50010000, '&Refresh', 0],
-        [1, 'B', 205, 216, 50, 14, 0x50010001, 'Close', 0]
+        [916, 'S', 76, 100, 179, 18, 0x50020080, '', 0],
+        [-1, 'S', 7, 120, 66, 9, 0x50020080, 'Frame size:', 0],
+        [917, 'S', 76, 120, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 133, 248, 1, 0x50000010, '', 0],
+        [-1, 'S', 7, 140, 66, 9, 0x50020080, 'Round trip:', 0],
+        [921, 'S', 76, 140, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 152, 66, 9, 0x50020080, 'Queue delay:', 0],
+        [922, 'S', 76, 152, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 164, 66, 9, 0x50020080, 'Throughput:', 0],
+        [923, 'S', 76, 164, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 176, 66, 9, 0x50020080, 'Decoding:', 0],
+        [924, 'S', 76, 176, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 189, 248, 1, 0x50000010, '', 0],
+        [-1, 'S', 7, 196, 66, 9, 0x50020080, 'Received:', 0],
+        [941, 'S', 76, 196, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 208, 66, 9, 0x50020080, 'Decode here:', 0],
+        [942, 'S', 76, 208, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 220, 66, 9, 0x50020080, 'Layers:', 0],
+        [943, 'S', 76, 220, 179, 18, 0x50020080, '', 0],
+        [-1, 'S', 7, 240, 66, 9, 0x50020080, 'Scroll cache:', 0],
+        [944, 'S', 76, 240, 179, 9, 0x5002008C, '', 0],
+        [-1, 'S', 7, 253, 248, 1, 0x50000010, '', 0],
+        [-1, 'S', 7, 260, 66, 9, 0x50020080, 'Automatic:', 0],
+        [931, 'S', 76, 260, 179, 18, 0x50020080, '', 0],
+        [1, 'B', 205, 282, 50, 14, 0x50010001, 'Close', 0]
     ] };
 
-    function alchemyInfoRows(info, pageUrl) {
+    const NOT_YET = 'Not measured yet';
+
+    function infoNum(v) {
+        return typeof v === 'number' && Number.isFinite(v) ? v : null;
+    }
+
+    function infoBytes(n) {
+        if (n >= 1048576) return `${(n / 1048576).toFixed(1)} MB`;
+        if (n >= 1024) return `${Math.round(n / 1024)} KB`;
+        return `${Math.round(n)} bytes`;
+    }
+
+    /** JPEG XL: on, off or automatic (a frame is repacked when the bytes it saves take longer to send than the repack). */
+    function jxlText(i) {
+        const device = `this device: ${i.jxlViewer ? 'supported' : 'not supported'}`;
+        const mode = i.jxlMode === 'on' ? 'On' : i.jxlMode === 'off' ? 'Off' : (i.jxlMode === 'auto' ? 'Automatic' : (i.jxl ? 'On' : 'Off'));
+        if (mode === 'Off') return `Off; ${device}`;
+        const state = i.jxl ? 'in use' : (mode === 'On' ? 'not used yet' : 'not needed on this link');
+        const detail = [infoNum(i.jxlMs) === null ? '' : `repack ${Math.round(i.jxlMs)} ms`, infoNum(i.jxlSaves) === null ? '' : `${Math.round(i.jxlSaves)} % smaller`].filter(Boolean).join(', ');
+        return `${mode}, ${state}${detail ? ` (${detail})` : ''}; ${device}`;
+    }
+
+    /** Layers: the fixed and sticky parts of the page drawn over the scrolling, and the backdrop. */
+    function layersText(l) {
+        if (!l || typeof l !== 'object') return 'None';
+        const parts = [];
+        if (l.fixed) parts.push(`${l.fixed} fixed`);
+        if (l.sticky) parts.push(`${l.sticky} sticky`);
+        if (l.backdrop) parts.push(`backdrop kept still${l.sampled ? ` (${l.sampled} areas sampled)` : ''}`);
+        if (l.cover) parts.push('cover');
+        const bands = Array.isArray(l.bands) ? l.bands : [];
+        if (bands[0]) parts.push(`header ${Math.round(bands[0])} px`);
+        if (bands[1]) parts.push(`footer ${Math.round(bands[1])} px`);
+        return parts.length ? parts.join(', ') : 'None';
+    }
+
+    function alchemyInfoRows(info, pageUrl, view) {
         const i = info || {};
         const l = i.link || {};
-        const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-        const ms = (v) => (num(v) === null ? 'Not measured yet' : `${Math.round(v)} ms`);
+        const num = infoNum;
+        const ms = (v) => (num(v) === null ? NOT_YET : `${Math.round(v)} ms`);
         const why = String(i.why || '');
+        const v = view || {};
+        const s = v.stats || {};
+        const sc = s.scroll || {};
+        // a Grimoire page (no Alchemy behind it): nothing to show but that
+        if (!pageUrl) {
+            return { 902: 'This tab has no web page', 911: '', 912: '', 913: '', 914: '', 915: '', 916: '', 917: '', 921: '', 922: '', 923: '', 924: '', 941: '', 942: '', 943: '', 944: '', 931: '' };
+        }
         return {
-            902: pageUrl || 'This page',
-            911: `${i.codec || 'JPEG'} from the ${i.source || 'Chromium screencast'}`,
+            902: pageUrl || 'This tab has no web page',
+            911: info ? `${i.codec || 'JPEG'} from the ${i.source || 'Chromium screencast'}` : NOT_YET,
             912: num(i.q) === null ? 'Unknown' : `JPEG quality ${i.q}`,
             913: num(i.minFps) === null ? 'Unknown' : `${i.minFps} to ${i.maxFps} frames per second`,
             914: i.tiles ? `${i.tiles}, quality ${num(i.rq) === null ? 'unknown' : i.rq}` : 'None',
             915: i.scroll === 'packs' ? 'Scroll packs (rows moved, then what changed)' : 'Whole frames',
-            916: i.jxl ? 'On' : 'Off',
+            916: info ? jxlText(i) : NOT_YET,
             917: num(i.width) ? `${i.width} x ${i.height} pixels, pixel ratio ${Math.round((Number(i.ratio) || 1) * 100) / 100}` : 'Unknown',
-            921: num(l.rtt) === null ? 'Not measured yet' : `${Math.round(l.rtt)} ms (best ${ms(l.base)})`,
-            922: num(l.queueMs) === null ? 'Not measured yet' : `${Math.round(l.queueMs)} ms (${num(l.inFlightMs) === null ? 0 : Math.round(l.inFlightMs)} ms in flight)`,
-            923: num(l.kbps) === null ? 'Not measured yet' : `${(l.kbps / 1000).toFixed(1)} Mbit/s`,
-            924: num(l.decMs) === null ? 'Not measured yet' : `${l.decMs} ms a frame (this device: up to ${num(l.fpsCap) === null ? 60 : l.fpsCap} fps)`,
-            931: i.auto
+            921: num(l.rtt) === null ? NOT_YET : `${Math.round(l.rtt)} ms (best ${ms(l.base)})`,
+            922: num(l.queueMs) === null ? NOT_YET : `${Math.round(l.queueMs)} ms (${num(l.inFlightMs) === null ? 0 : Math.round(l.inFlightMs)} ms in flight)`,
+            923: num(l.kbps) === null ? NOT_YET : `${(l.kbps / 1000).toFixed(1)} Mbit/s`,
+            924: num(l.decMs) === null ? NOT_YET : `${l.decMs} ms a frame (this device: up to ${num(l.fpsCap) === null ? 60 : l.fpsCap} fps)`,
+            941: num(v.fps) === null ? NOT_YET : `${v.fps.toFixed(1)} frames per second, ${infoBytes(v.bps)}/s`,
+            942: num(s.decMs) === null ? 'No large frame decoded lately' : `${s.decMs} ms a large frame`,
+            943: info && 'layers' in i ? layersText(i.layers) : (num(sc.layers) === null ? NOT_YET : layersText({ fixed: sc.layers - (sc.sticky || 0), sticky: sc.sticky, backdrop: sc.backdrop, cover: sc.cover, sampled: sc.vis })),
+            944: num(sc.cacheRows) === null ? NOT_YET : `${sc.cacheRows} rows kept (${Math.round((sc.cachePixels || 0) / 1e6 * 10) / 10} of ${Math.round((sc.cacheBudget || 0) / 1e6)} million pixels)`,
+            931: !info ? NOT_YET : i.auto
                 ? `On: step ${(Number(i.level) || 0) + 1} of ${i.levels || 1} (1 is the sharpest). Last change: ${why === 'start' ? 'the page opened' : (why || 'none')}`
                 : 'Off: the quality and frame rates chosen in Tools'
         };
     }
 
     let infoOpen = null;
+    const INFO_EVERY_MS = 2000;
 
-    async function showAlchemyInfo(host, shell) {
-        const frame = root.grimoireRemoteFrame(shell);
-        if (!frame || !frame.contentWindow || !shell._grimoireRemoteSessionId) return;
-        if (infoOpen) {
-            infoOpen.close();
-            infoOpen = null;
+    async function showAlchemyInfo(host) {
+        // one per Grimoire window: asking again brings it to the front
+        if (infoOpen && infoOpen.host === host && infoOpen.modal && infoOpen.modal.isConnected && !infoOpen.modal.classList.contains('hidden')) {
+            if (typeof root.bringModalToFront === 'function') root.bringModalToFront(infoOpen.modal);
+            return;
         }
+        if (infoOpen) infoOpen.close();
         if (window.featureLoader) await window.featureLoader.loadFeature('browsing_sessions_ui');
         const V = window.vistaDialogTemplate;
         if (!V) return;
         const abort = new AbortController();
+        const state = { host, modal: null, abort, timer: 0, info: null, stats: null, prev: null, view: null, frame: null, close: null };
+        const shellNow = () => (host.activePane && host.activePane !== host ? host.activePane : host);
+        const frameNow = () => {
+            const shell = shellNow();
+            return shell && shell._grimoireRemoteSessionId && !shell._grimoireLocalAlchemy ? root.grimoireRemoteFrame(shell) : null;
+        };
         let ctxRef = null;
-        let lastAsk = 0;
-        let info = null;
-        const pageUrl = root.grimoireShellWebUrl(shell);
         const draw = () => {
             if (!ctxRef) return;
-            const rows = alchemyInfoRows(info, pageUrl);
+            const rows = alchemyInfoRows(state.info, root.grimoireShellWebUrl(shellNow()), state.view);
             Object.keys(rows).forEach((id) => ctxRef.text(Number(id), rows[id]));
         };
-        // at most every 2 s, and never while the page is hidden
-        const ask = () => {
-            if (document.hidden || Date.now() - lastAsk < 2000) return;
-            lastAsk = Date.now();
-            const f = root.grimoireRemoteFrame(shell);
-            if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'grimoire-browser-encoder?' }, '*');
-        };
+        // shows: the page, this window and its Grimoire window are on screen
+        const showing = () => !document.hidden && state.modal && state.modal.isConnected && !state.modal.classList.contains('hidden')
+            && host.modal && !host.modal.classList.contains('hidden') && !host.modal.classList.contains('minimised') && !host.modal.classList.contains('minimising');
         const finish = () => {
             abort.abort();
+            clearTimeout(state.timer);
             ctxRef = null;
-            if (infoOpen && infoOpen.abort === abort) infoOpen = null;
+            if (infoOpen === state) infoOpen = null;
+        };
+        // the tab on show: a new tab (or none) starts its numbers over
+        const follow = () => {
+            const f = frameNow();
+            if (f === state.frame) return;
+            state.frame = f;
+            state.info = null;
+            state.prev = null;
+            state.view = null;
+            draw();
+        };
+        const ask = () => {
+            clearTimeout(state.timer);
+            state.timer = 0;
+            if (!state.modal || !state.modal.isConnected) {
+                finish();
+                return;
+            }
+            if (showing()) {
+                follow();
+                const f = state.frame;
+                // perf: allow a live metrics window Yukimi asked for, every 2 s only while it shows; the link numbers
+                // come from Alchemy (encoder?), the rest from the viewer frame on this page (no request)
+                if (f && f.contentWindow) {
+                    f.contentWindow.postMessage({ type: 'grimoire-browser-encoder?' }, '*');
+                    f.contentWindow.postMessage({ type: 'grimoire-browser-stats?' }, '*');
+                }
+                state.timer = setTimeout(ask, INFO_EVERY_MS);
+            }
+            // hidden or minimised: nothing runs until it shows again (visibilitychange / the window's class change)
         };
         window.addEventListener('message', (event) => {
             const data = event.data;
-            const f = root.grimoireRemoteFrame(shell);
-            if (!data || data.type !== 'grimoire-browser-encoder' || !f || event.source !== f.contentWindow) return;
-            info = data.info || null;
-            draw();
+            const f = state.frame;
+            if (!data || !f || event.source !== f.contentWindow) return;
+            if (data.type === 'grimoire-browser-encoder') {
+                state.info = data.info || null;
+                draw();
+            } else if (data.type === 'grimoire-browser-stats' && data.stats) {
+                const now = performance.now();
+                const s = data.stats;
+                const p = state.prev;
+                const view = { stats: s, fps: null, bps: 0 };
+                if (p && now > p.at) {
+                    const dt = (now - p.at) / 1000;
+                    view.fps = Math.max(0, ((s.frames || 0) - p.frames) / dt);
+                    view.bps = Math.max(0, ((s.rx || 0) - p.rx) / dt);
+                }
+                state.prev = { at: now, frames: s.frames || 0, rx: s.rx || 0 };
+                state.view = view;
+                draw();
+            }
         }, { signal: abort.signal });
-        document.addEventListener('visibilitychange', ask, { signal: abort.signal });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) ask(); }, { signal: abort.signal });
+        // the Grimoire window minimised or back, or this window shown again: the refresh stops or starts
+        const watch = new MutationObserver(() => { if (showing() && !state.timer) ask(); else if (!showing()) { clearTimeout(state.timer); state.timer = 0; } });
+        abort.signal.addEventListener('abort', () => watch.disconnect());
+        // tabs (grimoireTabs.js): the window follows the one on show at once
+        // (the tab module keeps its listeners: one per window, re-pointed at the window open now)
+        host._alchemyInfoFollow = () => { if (infoOpen && infoOpen.host === host && infoOpen.follow) infoOpen.follow(); };
+        if (host.tabs && typeof host.tabs.onChange === 'function' && !host._alchemyInfoHooked) {
+            host._alchemyInfoHooked = true;
+            host.tabs.onChange(() => host._alchemyInfoFollow());
+        }
+        state.follow = () => { if (ctxRef && showing()) ask(); };
         V.openDialog({
-            id: 'grimoireAlchemyInfo',
+            id: 'grimoireAlchemyInfo' + (host.idSuffix || ''),
             tpl: INFO_TPL,
             title: INFO_TPL.t,
             owner: host.modal || null,
+            modeless: true,
             icon: '/static_images/vista-cpl/items/internet-options-32.png',
             overrides: { 901: { image: '/static_images/vista-cpl/items/internet-options-32.png' } },
             init(ctx) {
                 ctxRef = ctx;
-                infoOpen = { abort, close: () => { finish(); ctx.close(); } };
+                const modal = ctx.modal;
+                state.modal = modal;
+                // a tool window of its Grimoire window (modalUtils.js): above it, not in the way, closes with it
+                modal.classList.add('tool-window');
+                // no taskbar button of its own (Vista's tool windows have none)
+                modal.dataset.windowOwned = 'true';
+                modal.dataset.windowFixedSize = 'true';
+                modal.dataset.windowNoMaximize = 'true';
+                if (host.modal && host.modal.id) modal.setAttribute('data-parent-modal-id', host.modal.id);
+                if (typeof root.linkToolWindowToParent === 'function' && host.modal) root.linkToolWindowToParent(modal, host.modal);
+                state.close = () => { finish(); ctx.close(); };
+                infoOpen = state;
+                watch.observe(modal, { attributes: true, attributeFilter: ['class'] });
+                if (host.modal) watch.observe(host.modal, { attributes: true, attributeFilter: ['class'] });
+                follow();
                 draw();
-                ask();
             },
             ok() { finish(); },
             cancel() { finish(); },
-            buttons: { 3: () => ask() }
+            close() { finish(); }
         });
+        state.timer = 0;
+        ask();
     }
 
     // Other Devices (#756): how many tabs other clients hold, kept fresh from the registry's change pushes,
@@ -1744,6 +1950,9 @@
     // Tools > Extensions and Tools > Alchemy Information (grimoireRemoteBrowser.js grimoireShowSiteMenu)
     GrimoireIeChrome.openExtensionPopup = openExtensionPopup;
     GrimoireIeChrome.showAlchemyInfo = showAlchemyInfo;
+    GrimoireIeChrome.isExtensionShown = isExtensionShown;
+    GrimoireIeChrome.setExtensionShown = setExtensionShown;
+    GrimoireIeChrome.loadHiddenExtensions = loadHiddenExtensions;
     root.GrimoireIeChrome = GrimoireIeChrome;
     if (typeof module !== 'undefined' && module.exports) module.exports = GrimoireIeChrome;
 })(typeof window !== 'undefined' ? window : globalThis);

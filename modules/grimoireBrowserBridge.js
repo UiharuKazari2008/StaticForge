@@ -130,7 +130,11 @@ function normalizeAlchemySettings(raw) {
         homePage: normalizeAlchemyHomePage(src.homePage),
         searchProvider: ALCHEMY_SEARCH_PROVIDERS.includes(src.searchProvider) ? src.searchProvider : 'grimoire',
         sessions: normalizeSessionSettings(src.sessions),
-        performance: normalizePerformanceSettings(src.performance)
+        performance: normalizePerformanceSettings(src.performance),
+        // extension buttons taken off Grimoire's command bar (still in Tools > Extensions): Chrome extension ids
+        hiddenExtensions: Array.isArray(src.hiddenExtensions)
+            ? [...new Set(src.hiddenExtensions.map(String).filter((id) => /^[a-p]{32}$/.test(id)))].slice(0, 64)
+            : []
     };
     if (out.minFps > out.maxFps) out.minFps = out.maxFps;
     return out;
@@ -274,7 +278,7 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
         // the desktop's pixel ratio (#990): the page is laid out and drawn for it before the viewer first reports
         const ratio = Number(req.body && req.body.pixelRatio);
         const pixelRatio = !mobileView && ratio >= 0.5 && ratio <= 8 ? ratio : undefined;
-        const { bookmarks, audioEnabled, audioVolume, audioBackground, homePage, searchProvider, sessions: _sessions, performance, ...settings } = config.alchemy;
+        const { bookmarks, audioEnabled, audioVolume, audioBackground, homePage, searchProvider, sessions: _sessions, performance, hiddenExtensions: _hiddenExtensions, ...settings } = config.alchemy;
         try {
             const upstream = await serviceFetch(config, '/sessions', {
                 method: 'POST',

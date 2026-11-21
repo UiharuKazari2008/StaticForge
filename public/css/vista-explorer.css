@@ -2906,7 +2906,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 }
 
 /* ---- several tabs (#451, grimoireTabs.js; VM: IE7 with 1, 2, 3, 4, 7 and 13 tabs) ----
-   One tab is 299px and has no close button. From two tabs on, Quick Tabs (24px) and Tab List ▾
+   One tab is 299px (IE7 gives it no close button; ours has one, see below). From two tabs on, Quick Tabs (24px) and Tab List ▾
    (16px) come first at x 79, the tabs share their 1px edges, each at most 180px and shrinking to
    share the strip (4 tabs: 138, 7: 79) down to about 65px, and the new-tab stub follows the last.
    The tab on show keeps the raised face above; the others are ieframe.dll bitmap 630 (the row's
@@ -3035,8 +3035,11 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     margin-left: -1px;
 }
 
-/* the close button: only on the tab on show, only with two tabs or more (ieframe.dll 634 / 635 hot /
-   636 pressed, 17x16, 3px in from the tab's right edge, 7px down) */
+/* the close button (ieframe.dll 634 / 635 hot / 636 pressed, 17x16, 3px in from the tab's right edge, 7px down).
+   IE7 draws it on the tab on show from two tabs on; here every tab has one, the only tab too (closing it closes the
+   window), and a tab under the pointer shows its own (Yukimi, Nov 21 2026: "add close on every tabs even is there
+   just one tab, the hover to show the x on the tab like real IE has"); a background tab's sits centred in its
+   lower face */
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-title {
     flex: 1 1 auto;
     min-width: 0;
@@ -3044,10 +3047,10 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-close {
     display: none;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabrow.has-many-tabs .grimoire-ie-tab.is-active {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab:is(.is-active, :hover) {
     padding-right: 3px;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabrow.has-many-tabs .grimoire-ie-tab.is-active .grimoire-ie-tab-close {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab:is(.is-active, :hover) .grimoire-ie-tab-close {
     display: block;
     flex: none;
     align-self: flex-start;
@@ -3062,11 +3065,15 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     border-radius: 0;
     box-shadow: none;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-close:hover {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab .grimoire-ie-tab-close:hover {
     background-image: image-set(url('/static_images/vista-ie/tab-close-hot.png') 1x, url('/static_images/hidpi/125/vista-ie/tab-close-hot.png') 1.25x, url('/static_images/hidpi/150/vista-ie/tab-close-hot.png') 1.5294x, url('/static_images/hidpi/175/vista-ie/tab-close-hot.png') 1.75x, url('/static_images/hidpi/200/vista-ie/tab-close-hot.png') 2x);
 }
-body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-close:active {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab .grimoire-ie-tab-close:active {
     background-image: image-set(url('/static_images/vista-ie/tab-close-pressed.png') 1x, url('/static_images/hidpi/125/vista-ie/tab-close-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-ie/tab-close-pressed.png') 1.5294x, url('/static_images/hidpi/175/vista-ie/tab-close-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-ie/tab-close-pressed.png') 2x);
+}
+body.desktop-mode.theme-vista :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab:not(.is-active):hover .grimoire-ie-tab-close {
+    align-self: center;
+    margin-top: 0;
 }
 
 /* ---- Quick Tabs (Ctrl+Q; VM with 2, 3, 5 and 9 tabs): over the page, 10px in, a rounded panel

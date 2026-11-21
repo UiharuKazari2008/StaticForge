@@ -1421,6 +1421,7 @@
         const items = [];
         if (data.href) {
             items.push({ label: 'Open', action: () => { const u = webUrl(data.href); if (u) navigate(u); } });
+            if (edgeAvailable()) items.push({ label: 'Open in Edge', action: () => openInEdge(data.href) });
             items.push({ label: 'Copy Link', action: () => copyText(data.href) });
             items.push({ label: 'Add to Favorites...', action: () => addFavorite(data.href, data.text || hostOf(data.href)) });
             items.push({ label: 'Save Target As...', action: () => saveDownload({ url: data.href }, fileName(data.href, 'download')) });
@@ -1452,8 +1453,23 @@
             items.push({ label: 'Refresh', action: refresh });
             items.push({ label: 'Add to Favorites...', action: () => addFavorite() });
             items.push({ label: 'Copy Link', action: () => copyText(entry().url) });
+            if (edgeAvailable() && entry() && /^https?:/i.test(entry().url || '')) items.push({ label: 'Open in Edge', action: () => openInEdge(entry().url) });
         }
         ws.menuAt(purpose.x, purpose.y, items);
+    }
+
+    /**
+     * Open in Edge (Yukimi, Nov 21 2026): the address goes to Microsoft Edge on the phone (DSApp AndroidLinks.openNative
+     * with Edge's package, an ACTION_VIEW intent). Only inside the Android app.
+     */
+    function edgeAvailable() {
+        return !!(window.AndroidLinks && typeof window.AndroidLinks.openNative === 'function');
+    }
+
+    function openInEdge(url) {
+        let ok = false;
+        try { ok = !!window.AndroidLinks.openNative(String(url || ''), 'com.microsoft.emmx'); } catch (_) { ok = false; }
+        if (!ok) ws.messageBox({ title: 'Internet Explorer', icon: 'warning', text: 'Microsoft Edge could not open this address. Is it installed on this phone?' });
     }
 
     function fileName(url, fallback) {

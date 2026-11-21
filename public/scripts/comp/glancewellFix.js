@@ -688,7 +688,7 @@
                 host: {
                     title: 'Save As',
                     types: [{ label: ext === 'jpg' ? 'JPEG (*.jpg)' : 'PNG (*.png)', ext }],
-                    suggestName: `${base}.${ext}`,
+                    suggestName: () => `${base}.${ext}`,
                     onSave: async ({ path, name }) => {
                         const n = /\.[a-z0-9]+$/i.test(name) ? name : `${name}.${ext}`;
                         await vfs().uploadFile(path, await b64Of(blob), n, blob.type);

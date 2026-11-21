@@ -3989,6 +3989,113 @@ function sessionPublic(session) {
     };
 }
 
+// Grimoire's context menu (grimoireRemoteBrowser.js): what it asks of the page at the point the menu was opened for.
+//   replace-word  a spelling suggestion (Dreamscape's spell engine) takes the place of the word under the point in
+//                 the field, as typing would (insertText keeps the page's undo and input events)
+//   edit          Undo / Redo / Delete / Select All in the page, as its Edit menu does
+//   show-picture  loads a picture that did not load (IE7's Show Picture)
+//   inspect       Chromium's DevTools for this page in a new Grimoire tab, the element under the point selected
+const MENU_EDIT_COMMANDS = new Set(['undo', 'redo', 'delete', 'selectAll']);
+async function menuAction(session, msg) {
+    const page = session.page;
+    const cx = Number(msg.cx);
+    const cy = Number(msg.cy);
+    const at = Number.isFinite(cx) && Number.isFinite(cy);
+    if (!page || page.isClosed()) return;
+    try {
+        if (msg.action === 'replace-word' && at && typeof msg.word === 'string' && typeof msg.text === 'string') {
+            await page.evaluate((px, py, word, text) => {
+                let active = document.activeElement;
+                while (active && active.shadowRoot && active.shadowRoot.activeElement) active = active.shadowRoot.activeElement;
+                const cp = document.caretPositionFromPoint ? document.caretPositionFromPoint(px, py) : null;
+                if (!cp || !active) return;
+                const letter = /[\p{L}\p{M}'’]/u;
+                const bounds = (value, offset) => {
+                    let s = offset;
+                    let e = offset;
+                    while (s > 0 && letter.test(value[s - 1])) s--;
+                    while (e < value.length && letter.test(value[e])) e++;
+                    while (s < e && /['’]/.test(value[s])) s++;
+                    while (e > s && /['’]/.test(value[e - 1])) e--;
+                    return value.slice(s, e) === word ? [s, e] : null;
+                };
+                if ((active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && cp.offsetNode === active) {
+                    const r = bounds(String(active.value || ''), cp.offset);
+                    if (!r) return;
+                    active.setSelectionRange(r[0], r[1]);
+                } else if (cp.offsetNode && cp.offsetNode.nodeType === 3) {
+                    const r = bounds(cp.offsetNode.data, cp.offset);
+                    if (!r) return;
+                    const range = document.createRange();
+                    range.setStart(cp.offsetNode, r[0]);
+                    range.setEnd(cp.offsetNode, r[1]);
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                } else {
+                    return;
+                }
+                document.execCommand('insertText', false, text);
+            }, cx, cy, msg.word.slice(0, 64), msg.text.slice(0, 200));
+        } else if (msg.action === 'edit' && MENU_EDIT_COMMANDS.has(msg.command)) {
+            await page.evaluate((command) => { document.execCommand(command); }, msg.command);
+        } else if (msg.action === 'show-picture' && at) {
+            await page.evaluate((px, py) => {
+                const el = document.elementFromPoint(px, py);
+                const img = el && el.closest ? el.closest('img') : null;
+                if (img && img.src) {
+                    const src = img.src;
+                    img.src = '';
+                    img.src = src;
+                }
+            }, cx, cy);
+        } else if (msg.action === 'inspect') {
+            // not awaited: the page's input queue keeps moving while DevTools loads
+            openDevTools(session, at ? cx : null, at ? cy : null).catch((err) => console.error('[grimoire-browser] devtools', err && err.message));
+        }
+    } catch (err) {
+        console.error('[grimoire-browser] menu-action', msg.action, err && err.message);
+    }
+}
+
+// Inspect: the DevTools frontend Chromium serves on the loopback debugging port, for this page's target, as a tab of
+// its own (a page streamed like any other, adopted as the 1Password "new tab" pages are). The frontend's socket comes
+// from the port's own origin, which Chromium accepts. Then the element under the point is revealed in Elements.
+async function openDevTools(session, x, y) {
+    const targetId = targetIdOf(session.page);
+    // (the loopback port turned off: nothing to show DevTools from)
+    if (!ALCHEMY_CDP_PORT || !targetId) return;
+    const host = '127.0.0.1:' + ALCHEMY_CDP_PORT;
+    const url = 'http://' + host + '/devtools/inspector.html?ws=' + host + '/devtools/page/' + encodeURIComponent(targetId);
+    const instance = await ensureBrowser();
+    const tools = await openPage(instance, session.owner);
+    // ours from the start: adoptOrphan would take it as a second tab while it loads
+    ownPages.add(tools);
+    // the page is already on show in its own tab: DevTools' screencast of it stays off (its setting, read at start)
+    await tools.evaluateOnNewDocument(() => {
+        try { localStorage.setItem('screencast-enabled', 'false'); } catch (_) { /* storage off */ }
+    }).catch(() => {});
+    await tools.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+    await adoptPopup(session, tools, '');
+    if (x === null || y === null) return;
+    // DevTools' own modules: wait for the page's target, then find the node at the point and reveal it
+    tools.evaluate(async (px, py) => {
+        const SDK = await import('./core/sdk/sdk.js');
+        const Common = await import('./core/common/common.js');
+        const tm = SDK.TargetManager.TargetManager.instance();
+        let target = null;
+        for (let i = 0; i < 100 && !target; i++) {
+            target = tm.primaryPageTarget();
+            if (!target) await new Promise((r) => setTimeout(r, 100));
+        }
+        const dom = target && target.model(SDK.DOMModel.DOMModel);
+        if (!dom) return;
+        await dom.requestDocument();
+        const node = await dom.nodeForLocation(Math.round(px), Math.round(py), true);
+        if (node) await Common.Revealer.reveal(node);
+    }, x, y).catch(() => {});
+}
+
 async function onViewerMessage(session, raw, ws) {
     let msg;
     try { msg = JSON.parse(raw); } catch (_) { return; }
@@ -4150,6 +4257,55 @@ async function onViewerMessage(session, raw, ws) {
                         out.alt = img.alt || '';
                     }
                     if (link && link.href) out.href = link.href;
+                    // what Grimoire's IE7 menu needs beyond that (grimoireRemoteBrowser.js grimoireShowRemoteMenu): the
+                    // point again (menu-action), the link's words, the picture's size and whether it loaded, the
+                    // background picture, the page's Properties, and in a field its state and the word under the pointer
+                    const more = {
+                        x: px,
+                        y: py,
+                        linkText: link ? String(link.innerText || link.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 300) : '',
+                        imgWidth: img ? img.naturalWidth || 0 : 0,
+                        imgHeight: img ? img.naturalHeight || 0 : 0,
+                        imgBroken: !!(img && img.complete && !img.naturalWidth),
+                        bg: '',
+                        title: document.title || '',
+                        url: location.href,
+                        type: document.contentType || '',
+                        modified: document.lastModified || '',
+                        frame: el.tagName === 'IFRAME' || el.tagName === 'FRAME' ? String(el.src || '') : '',
+                        word: '',
+                        fieldText: false,
+                        fieldSel: false
+                    };
+                    for (let n = el; n && n.nodeType === 1 && !more.bg; n = n.parentElement) {
+                        const m = /url\(["']?([^"')]+)["']?\)/.exec(getComputedStyle(n).backgroundImage || '');
+                        if (m) more.bg = new URL(m[1], document.baseURI).href;
+                    }
+                    if (out.editable) {
+                        const isText = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+                        more.fieldText = isText ? !!active.value : !!String((field && field.textContent) || '').trim();
+                        more.fieldSel = !!out.selection;
+                        // the word under the pointer (caretPositionFromPoint gives the text control and its offset)
+                        const cp = document.caretPositionFromPoint ? document.caretPositionFromPoint(px, py) : null;
+                        let text = '';
+                        let at = -1;
+                        if (cp && isText && cp.offsetNode === active) {
+                            text = String(active.value || '');
+                            at = cp.offset;
+                        } else if (cp && cp.offsetNode && cp.offsetNode.nodeType === 3) {
+                            text = cp.offsetNode.data;
+                            at = cp.offset;
+                        }
+                        if (at >= 0 && active && (!isText || active.type !== 'password')) {
+                            const letter = /[\p{L}\p{M}'’]/u;
+                            let s = at;
+                            let e = at;
+                            while (s > 0 && letter.test(text[s - 1])) s--;
+                            while (e < text.length && letter.test(text[e])) e++;
+                            more.word = text.slice(s, e).replace(/^['’]+|['’]+$/g, '').slice(0, 64);
+                        }
+                    }
+                    out.more = more;
                     return out;
                 }, x, y);
             } catch (_) {}
@@ -4161,8 +4317,15 @@ async function onViewerMessage(session, raw, ws) {
             href: info && info.href || '',
             src: info && info.src || '',
             alt: info && info.alt || '',
-            editable: !!(info && info.editable)
+            editable: !!(info && info.editable),
+            more: (info && info.more) || null
         });
+        return;
+    }
+    // Grimoire's context menu (grimoireRemoteBrowser.js grimoireRemoteMenuAction): spelling, edit commands, Show
+    // Picture and Inspect at the point the menu was opened for (cx, cy: the page's CSS pixels from the inspect answer)
+    if (msg.type === 'menu-action') {
+        await menuAction(session, msg);
         return;
     }
     // A real Ctrl+C / Ctrl+X in Chromium, so pages that shape their copy (and cut deleting the selection) behave as at home;
