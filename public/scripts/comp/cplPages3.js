@@ -298,9 +298,11 @@
 
     const PRINT = 'HKCU\\Software\\Xyridian\\Melaton NT\\CurrentVersion\\Windows';
     const PRINTERS = [
-        { id: 'fax', name: 'Fax', icon: '/static_images/vista-cpl/items/printers-32.png', model: 'Xyridian Shared Fax Driver' },
-        { id: 'xps', name: 'Xyridian XPS Document Writer', icon: '/static_images/vista-cpl/items/printers-32.png', model: 'Xyridian XPS Document Writer' },
-        { id: 'browser', name: 'Print with this browser', icon: '/static_images/vista-cpl/items/printers-32.png', model: 'Browser print dialog' }
+        { id: 'fax', name: 'Fax', icon: '/static_images/vista-print/fax-32.png', model: 'Xyridian Shared Fax Driver' },
+        // Grimoire's Print dialog prints web pages to PDF through Alchemy (vistaPrintDialog.js; Yukimi, Nov 21 2026)
+        { id: 'pdf', name: 'Xyridian Print to PDF', icon: '/static_images/vista-print/printer-32.png', model: 'Xyridian Print To PDF' },
+        { id: 'xps', name: 'Xyridian XPS Document Writer', icon: '/static_images/vista-print/printer-32.png', model: 'Xyridian XPS Document Writer' },
+        { id: 'browser', name: 'Print with this browser', icon: '/static_images/vista-print/printer-32.png', model: 'Browser print dialog' }
     ];
 
     pages.printers = {
@@ -313,7 +315,7 @@
             const def = reg(PRINT, 'Device', 'xps');
             // the generation backends as printers (#831; printQueue.js): double-click opens the queue
             const pq = root.printQueue;
-            const gen = pq ? pq.printers().map((p) => ({ id: `pq:${p.id}`, icon: '/static_images/vista-cpl/items/printers-32.png', cells: [p.name, String(p.jobs || 0), p.status] })) : [];
+            const gen = pq ? pq.printers().map((p) => ({ id: `pq:${p.id}`, icon: '/static_images/vista-print/printer-32.png', cells: [p.name, String(p.jobs || 0), p.status] })) : [];
             return folder([{ t: 'Add a printer', v: 'add', icon: '/static_images/vista-cpl/items/printers-16.png' }],
                 [{ t: 'Name', w: 200 }, { t: 'Documents', w: 70 }, { t: 'Status', w: 70 }, { t: 'Comments', w: 80 }, { t: 'Location', w: 80 }, { t: 'Model', w: 160 }],
                 PRINTERS.map((p) => ({ id: p.id, icon: p.icon, check: p.id === def, cells: [p.name, '0', 'Ready'] })).concat(gen),
@@ -326,6 +328,14 @@
         open(id) {
             // a generation backend: its print queue window (printQueue.js, #831)
             if (id && String(id).startsWith('pq:') && root.printQueue) { void root.printQueue.open(String(id).slice(3)); return; }
+            // Print to PDF has no queue to show: its Printing Preferences (paper, orientation)
+            if (id === 'pdf') {
+                const fl = root.featureLoader;
+                void Promise.resolve(root.vistaPrintDialog || (fl && fl.loadFeature('vista_print_dialog'))).then(() => {
+                    if (root.vistaPrintDialog) root.vistaPrintDialog.preferences('pdf', (doc && doc.querySelector('.cpl-current')) || null);
+                }).catch(() => {});
+                return;
+            }
             // print the active window's page through the browser
             root.print();
         },

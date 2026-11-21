@@ -1080,7 +1080,8 @@ function grimoireRemoteMenuAction(found, action, data) {
         return;
     }
     if (action === 'print' || action === 'print-preview') {
-        if (found.host.ieChrome) found.host.ieChrome.print();
+        // selected words: IE7's Print dialog opens on Page Range: Selection
+        if (found.host.ieChrome) found.host.ieChrome.print({ selection: !!(data && data.selection) });
         return;
     }
     if (action === 'edge') {
@@ -1446,7 +1447,7 @@ function grimoireBackgroundRemoteMessage(found, data) {
 // ---- tabs (grimoireTabs.js) ----
 
 // Ctrl+T new tab, Ctrl+W / Ctrl+F4 close it, Ctrl+Tab / Ctrl+Shift+Tab next / previous, Ctrl+Q Quick Tabs,
-// Ctrl+N a new window (IE7's keys).
+// Ctrl+N a new window, Ctrl+P the Print dialog (IE7's keys).
 function grimoireTabShortcut(ev) {
     const mod = (ev.ctrlKey || ev.metaKey) && !ev.altKey;
     if (!mod) return '';
@@ -1456,12 +1457,19 @@ function grimoireTabShortcut(ev) {
     if (ev.key === 'w' || ev.key === 'W' || ev.key === 'F4') return 'close-tab';
     if (ev.key === 'q' || ev.key === 'Q') return 'quick-tabs';
     if (ev.key === 'n' || ev.key === 'N') return 'new-window';
+    if (ev.key === 'p' || ev.key === 'P') return 'print';
     return '';
 }
 
 // win: the window the keys came from (its frame's window, or the focused one)
 function grimoireRunTabCommand(command, win) {
     const host = win || grimoireFocusWindow() || (typeof grimoireActiveWindow === 'function' ? grimoireActiveWindow() : tagWikiSearchModal);
+    if (command === 'print') {
+        // grimoireIeChrome.js print(): the Vista Print dialog (vistaPrintDialog.js)
+        if (!host || !host.ieChrome) return false;
+        host.ieChrome.print();
+        return true;
+    }
     const tabs = host && host.tabs;
     if (!tabs || !tabs.available()) return false;
     if (command === 'new-window') {

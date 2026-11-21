@@ -1,0 +1,69 @@
+/* Vista's Print dialog, Printing Preferences and IE7's Page Setup (vistaPrintDialog.js). The controls are the kit's
+   (vista-dialog-template.css); these are the dialog's own pictures and its printer list. */
+
+/* Select Printer: comdlg32's large-icon list (Add Printer, then the printers), one row that scrolls */
+#vistaPrintDialog .vpd-printers .vdt-lv-body {
+    flex-wrap: wrap;
+    align-content: flex-start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    gap: 0;
+    padding: 2px 2px 0;
+}
+
+#vistaPrintDialog .vpd-printers .vdt-lv-row {
+    width: 75px;
+    min-height: 0;
+    padding: 1px 0 2px;
+}
+
+#vistaPrintDialog .vpd-printers .vdt-lv-row > span {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    max-width: 71px;
+    padding: 0 2px;
+    line-height: 13px;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
+#vistaPrintDialog .vpd-printers .vdt-lv-row.is-selected > span {
+    -webkit-line-clamp: 5;
+}
+
+/* Collate's picture (comdlg32 icon 536 / 537), centred in its static (SS_CENTERIMAGE) */
+#vistaPrintDialog [data-vdt-id="1084"],
+#vistaPrintPreferences [data-vdt-id="1203"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#vistaPrintDialog .vpd-collate,
+#vistaPrintPreferences .vpd-orient {
+    display: block;
+    pointer-events: none;
+}
+
+/* Page Setup's preview: a page with grey text lines, landscape on its side */
+#vistaPageSetup .vpd-page-preview {
+    width: 62px;
+    height: 80px;
+    margin: 0 auto;
+    border: 1px solid #000;
+    background: #fff;
+    box-shadow: 4px 4px 0 #808080;
+}
+
+#vistaPageSetup .vpd-page-preview.is-landscape {
+    width: 80px;
+    height: 62px;
+    margin-top: 9px;
+}
+
+#vistaPageSetup .vpd-page-lines {
+    margin: 8px;
+    height: calc(100% - 16px);
+    background: repeating-linear-gradient(#bbb 0 1px, transparent 1px 4px);
+}

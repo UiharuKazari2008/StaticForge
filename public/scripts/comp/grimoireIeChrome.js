@@ -20,8 +20,10 @@
  *
  * The home page and the search provider are user settings (userGlobalSettings.alchemy.homePage /
  * searchProvider, modules/grimoireBrowserBridge.js). Zoom is per pane: CSS zoom on Grimoire pages,
- * Chrome's own zoom in Alchemy (services/grimoire-browser `zoom`). Print copies a Grimoire page into
- * #grimoireIePrintHost; a web page comes back from Alchemy as one full-page picture (`print`).
+ * Chrome's own zoom in Alchemy (services/grimoire-browser `zoom`). Print (the button, Print ▾, Ctrl+P, the page's
+ * menu) opens Vista's Print dialog (vistaPrintDialog.js); Xyridian Print to PDF has Alchemy print the web page to a PDF
+ * (`print-pdf`, Page.printToPDF) that Save Print Output As puts in the user's files; Fax and the XPS Document Writer
+ * still copy a Grimoire page into #grimoireIePrintHost, or a web page that comes back as one picture (`print`).
  *
  * Home, Split view and the site menu are the window's own buttons, moved into the command bar on
  * the Vista desktop and back to the caption toolbar elsewhere. Art from the VM
@@ -388,6 +390,10 @@
                 this.print();
                 return;
             }
+            if (action === 'page-setup') {
+                this.pageSetup();
+                return;
+            }
             if (action === 'search-provider' && item) {
                 this.saveSetting({ searchProvider: item.providerId });
                 return;
@@ -668,8 +674,9 @@
         printItems() {
             return [
                 { text: 'Print...', icon: 'fas fa-print', action: 'print' },
-                // the browser's print dialog is a preview with the page setup in it
-                { text: 'Print Preview...', action: 'print' }
+                // no Print Preview window yet: the Print dialog
+                { text: 'Print Preview...', action: 'print' },
+                { text: 'Page Setup...', action: 'page-setup' }
             ];
         }
 
@@ -772,6 +779,10 @@
                     .filter((feed) => feed && /^https?:\/\//i.test(feed.href || ''))
                     .map((feed) => ({ href: String(feed.href), title: String(feed.title || '') }));
                 this.sync();
+            } else if ((data.type === 'grimoire-browser-print-info' || data.type === 'grimoire-browser-print-pdf') && data.id && this.printWaits && this.printWaits.has(data.id)) {
+                const done = this.printWaits.get(data.id);
+                this.printWaits.delete(data.id);
+                done(data);
             } else if (data.type === 'grimoire-browser-print' && data.id && data.id === this.printId) {
                 this.printId = '';
                 this.printing = false;
@@ -790,27 +801,165 @@
 
         // ---- print ----
 
-        /** Print...: a Grimoire page is copied into the print host; a web page comes back from Alchemy as one picture. */
-        print() {
+        /** Alchemy's answer to one print message (print-info, print-pdf), or null after ms. */
+        askAlchemy(frame, kind, extra, ms) {
+            if (!this.printWaits) this.printWaits = new Map();
+            const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+            return new Promise((resolve) => {
+                const timer = setTimeout(() => { if (this.printWaits.delete(id)) resolve(null); }, ms);
+                this.printWaits.set(id, (data) => { clearTimeout(timer); resolve(data); });
+                frame.contentWindow.postMessage(Object.assign({ type: `grimoire-browser-${kind}`, id }, extra || {}), '*');
+            });
+        }
+
+        /**
+         * Print...: Vista's Print dialog (vistaPrintDialog.js) with IE7's Options page. Xyridian Print to PDF: Alchemy
+         * prints the web page (Page.printToPDF) and Save Print Output As keeps it; Fax and the XPS Document Writer print
+         * as before (printPicture). The generation printers print Studio's pictures only.
+         * opts.selection: the page's menu was opened on selected words (Page Range: Selection).
+         */
+        async print(opts = {}) {
             const shell = this.shell();
             if (!shell || !shell.displayArea || this.printing) return;
             const entry = shell.history ? shell.history[shell.historyIndex] : null;
             const frame = typeof root.grimoireRemoteFrame === 'function' ? root.grimoireRemoteFrame(shell) : null;
-            if (entry && entry.type === 'web' && frame && frame.contentWindow) {
+            const web = !!(entry && entry.type === 'web' && frame && frame.contentWindow);
+            this.printing = true;
+            this.sync();
+            let picture = false;
+            try {
+                if (!root.vistaPrintDialog && root.featureLoader) await root.featureLoader.loadFeature('vista_print_dialog');
+                const pd = root.vistaPrintDialog;
+                if (!pd) return;
+                // what the page offers: a selection, frames (server.js printInfo)
+                const info = (web && await this.askAlchemy(frame, 'print-info', null, 3000)) || {};
+                const job = await pd.open({
+                    owner: this.host.modal,
+                    selection: !!info.selection,
+                    selectionDefault: !!(opts.selection && info.selection),
+                    ieOptions: { frames: Number(info.frames) || 0 }
+                });
+                if (!job) return;
+                if (job.printer.driver === 'queue') {
+                    await pd.message(`${job.printer.name} prints Dreamscape Studio's pictures only. Choose another printer to print this page.`, this.host.modal);
+                    return;
+                }
+                if (job.printer.driver === 'pdf') {
+                    if (!web) {
+                        await pd.message('Xyridian Print to PDF prints web pages. Print this Grimoire page with another printer.', this.host.modal);
+                        return;
+                    }
+                    await this.printPdf(shell, frame, job);
+                    return;
+                }
+                picture = true;
+            } finally {
+                if (!picture) {
+                    this.printing = false;
+                    this.sync();
+                }
+            }
+            this.printPicture(shell, frame, web);
+        }
+
+        /** Xyridian Print to PDF: the page as Alchemy prints it, kept where Save Print Output As says. */
+        async printPdf(shell, frame, job) {
+            const pd = root.vistaPrintDialog;
+            const owner = this.host.modal;
+            const ps = job.pageSetup || {};
+            const s = job.settings || {};
+            const now = new Date();
+            this.statusText.textContent = 'Printing…';
+            const reply = await this.askAlchemy(frame, 'print-pdf', { options: {
+                landscape: s.orientation === 'landscape',
+                paper: s.paper,
+                marginTop: ps.marginTop, marginBottom: ps.marginBottom, marginLeft: ps.marginLeft, marginRight: ps.marginRight,
+                header: ps.header, footer: ps.footer,
+                pageRanges: job.range === 'pages' ? job.pages : '',
+                selection: job.range === 'selection',
+                tableOfLinks: !!job.tableOfLinks,
+                date: now.toLocaleDateString('en-US'),
+                longDate: now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+                time: now.toLocaleTimeString('en-US')
+            } }, 120000);
+            if (!reply || reply.error || !reply.file) {
+                const text = !reply ? 'The page did not answer. Try printing again.'
+                    : reply.code === 'range' ? 'The page range is not valid for this page. Enter pages this document has, for example 1,5-12.'
+                        : reply.code === 'selection' ? 'Nothing is selected on this page.'
+                            : `This document failed to print.\n${reply.error || ''}`;
+                await pd.message(text, owner, 'error');
+                return;
+            }
+            let data = '';
+            try {
+                const res = await fetch(root.grimoireRemoteFileUrl(shell, 'download', reply.file), { credentials: 'same-origin' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const blob = await res.blob();
+                data = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
+                    reader.onerror = () => resolve('');
+                    reader.readAsDataURL(blob);
+                });
+            } catch (_) {
+                data = '';
+            }
+            if (!data) {
+                await pd.message('This document failed to print. The printed file could not be read.', owner, 'error');
+                return;
+            }
+            // studioOpenFolderDialog (studioSession.js) and vfsClient: the Save dialog and the user's files
+            const save = typeof root.studioOpenFolderDialog === 'function' ? root.studioOpenFolderDialog : null;
+            const vfs = root.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null); // eslint-disable-line no-undef
+            if (!save || !vfs) return;
+            const base = String(reply.title || 'Page').replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim().slice(0, 150) || 'Page';
+            const ws = typeof activeWorkspace !== 'undefined' && activeWorkspace ? activeWorkspace : ''; // eslint-disable-line no-undef
+            save('save', {
+                owner,
+                startPath: ws ? `/Workspaces/${ws}` : '/',
+                host: {
+                    title: 'Save Print Output As',
+                    types: [{ label: 'PDF Document (*.pdf)', ext: 'pdf' }],
+                    rememberKey: 'print-to-pdf',
+                    // the folder's PDF files show (Save asks before replacing one)
+                    acceptItem: (item) => !!item && item.targetKind === 'user-file',
+                    suggestName: () => `${base}.pdf`,
+                    onSave: async ({ path, name }) => {
+                        const finalName = /\.pdf$/i.test(name) ? name : `${name}.pdf`;
+                        const r = await vfs.uploadFile(path, data, finalName, 'application/pdf');
+                        if (r && r.success === false) throw new Error(r.error || 'save failed');
+                        return true;
+                    }
+                }
+            });
+        }
+
+        /** IE7's Page Setup (Print ▾): header, footer, margins, paper and orientation for the next print. */
+        async pageSetup() {
+            if (!root.vistaPrintDialog && root.featureLoader) await root.featureLoader.loadFeature('vista_print_dialog');
+            if (root.vistaPrintDialog) await root.vistaPrintDialog.pageSetup(this.host.modal);
+        }
+
+        /** Fax and the XPS Document Writer: a Grimoire page is copied into the print host; a web page comes back from
+         *  Alchemy as one picture. */
+        printPicture(shell, frame, web) {
+            if (web) {
                 this.printing = true;
                 this.printId = 'p' + Date.now().toString(36);
                 this.statusText.textContent = 'Preparing to print…';
                 frame.contentWindow.postMessage({ type: 'grimoire-browser-print', id: this.printId }, '*');
-                // no answer (an old Alchemy service, a closed page): give the button back
+                // no answer (an old Alchemy service, a closed page): give the button back. A long page's picture takes
+                // Alchemy most of a minute (a 12000 px Wikipedia article: 51 s), so the wait is two minutes
                 setTimeout(() => {
                     if (this.printing && this.printId) {
                         this.printing = false;
                         this.printId = '';
                         this.sync();
                     }
-                }, 30000);
+                }, 120000);
                 return;
             }
+            this.printing = false;
             const page = document.createElement('div');
             page.className = shell.displayArea.className;
             page.innerHTML = shell.displayArea.innerHTML;

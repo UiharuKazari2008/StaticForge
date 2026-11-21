@@ -3817,8 +3817,9 @@ async function publishFeeds(session) {
     broadcast(session, { type: 'feeds', feeds });
 }
 
-// Print (Grimoire's Print ▾): headful Chromium has no Page.printToPDF, so the whole page goes out as
-// one picture (up to 12000 CSS pixels tall) that the Grimoire window lays out on paper.
+// Print to a printer that is not a file (Grimoire's Print dialog: Fax, XPS Document Writer): the whole page goes out as
+// one picture (up to 12000 CSS pixels tall) that the Grimoire window lays out on paper. Xyridian Print to PDF uses
+// Page.printToPDF (printPagePdf below), which our windowed Chromium does support.
 async function capturePrintPage(session) {
     await settleStill(session);
     const metrics = await session.cdp.send('Page.getLayoutMetrics');
@@ -3832,6 +3833,138 @@ async function capturePrintPage(session) {
         clip: { x: 0, y: 0, width, height, scale: 1 }
     });
     return { image: 'data:image/jpeg;base64,' + shot.data, width, height };
+}
+
+// ---- Xyridian Print to PDF (Yukimi, Nov 21: "can we make Print action open a Vista Print dialog with a Print to PDF
+// printer"): Grimoire's Print dialog asks what the page offers (print-info), then for the PDF (print-pdf) with the
+// dialog's choices. The file waits in the session's download folder (print/, which the download watcher does not
+// see) and is fetched once through the downloads route; Grimoire's Save As puts it in the user's files.
+const PRINT_PAPER_INCHES = {
+    letter: [8.5, 11], legal: [8.5, 14], a4: [8.27, 11.69], a5: [5.83, 8.27], a3: [11.69, 16.54],
+    b5: [7.17, 10.12], executive: [7.25, 10.5], tabloid: [11, 17]
+};
+
+async function printInfo(session) {
+    const info = await session.page.evaluate(() => {
+        const sel = window.getSelection();
+        return {
+            selection: !!(sel && sel.rangeCount && !sel.isCollapsed && String(sel).trim()),
+            frames: document.querySelectorAll('frameset > frame').length,
+            links: document.links.length
+        };
+    }).catch(() => ({ selection: false, frames: 0, links: 0 }));
+    return Object.assign({ title: session.title || '', url: session.url || '' }, info);
+}
+
+// IE's header and footer codes: &w title, &u address, &d / &D short / long date, &t / &T time, &p page, &P pages,
+// &b splits the line (one part left; two left and right; three left, centre, right), && an ampersand
+function ieHeaderTemplate(code, values, left, right) {
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const part = (text) => esc(text).replace(/&amp;([wudDtTpP])/g, (_, k) => (
+        k === 'p' ? '<span class="pageNumber"></span>' : k === 'P' ? '<span class="totalPages"></span>'
+            : esc(k === 'w' ? values.title : k === 'u' ? values.url : k === 'd' ? values.date : k === 'D' ? values.longDate : values.time)
+    )).replace(/&amp;[a-zA-Z]/g, '').replace(/\u0001/g, '&amp;');
+    const parts = String(code || '').slice(0, 300).replace(/&&/g, '\u0001').split('&b').slice(0, 3);
+    if (!parts.join('').trim()) return '<span></span>';
+    const align = parts.length === 1 ? ['left'] : parts.length === 2 ? ['left', 'right'] : ['left', 'center', 'right'];
+    return `<div style="width:100%;box-sizing:border-box;padding:0 ${right}in 0 ${left}in;display:flex;`
+        + 'font:8pt Arial,sans-serif;color:#000;">'
+        + parts.map((t, i) => `<div style="flex:1;text-align:${align[i]};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${part(t)}</div>`).join('')
+        + '</div>';
+}
+
+async function printPagePdf(session, o) {
+    await settleStill(session);
+    const inches = PRINT_PAPER_INCHES[String(o.paper || 'letter').toLowerCase()] || PRINT_PAPER_INCHES.letter;
+    const margin = (v, d) => Math.max(0, Math.min(3, Number.isFinite(Number(v)) ? Number(v) : d));
+    const values = {
+        title: session.title || session.url || '', url: session.url || '',
+        date: String(o.date || ''), longDate: String(o.longDate || ''), time: String(o.time || '')
+    };
+    const header = typeof o.header === 'string' ? o.header : '&w&bPage &p of &P';
+    const footer = typeof o.footer === 'string' ? o.footer : '&u&b&d';
+    // Selection: only what is selected prints; Print table of links: the page's links in a table after it
+    const extra = { selection: !!o.selection, links: !!o.tableOfLinks };
+    const marked = await session.page.evaluate((x) => {
+        const style = document.createElement('style');
+        style.id = '__alchemyPrintStyle';
+        let css = '@media screen { .__alchemyPrintOnly { display: none !important; } }';
+        if (x.selection) {
+            const sel = window.getSelection();
+            if (!sel || !sel.rangeCount || sel.isCollapsed) return false;
+            const box = document.createElement('div');
+            box.className = '__alchemyPrintOnly __alchemyPrintSel';
+            for (let i = 0; i < sel.rangeCount; i += 1) box.appendChild(sel.getRangeAt(i).cloneContents());
+            document.body.appendChild(box);
+            css += ' @media print { body > :not(.__alchemyPrintSel):not(.__alchemyPrintLinks) { display: none !important; } }';
+        }
+        if (x.links) {
+            const rows = [];
+            const seen = new Set();
+            for (const a of document.links) {
+                if (!/^https?:/i.test(a.href) || seen.has(a.href)) continue;
+                seen.add(a.href);
+                rows.push([String(a.textContent || '').replace(/\s+/g, ' ').trim(), a.href]);
+            }
+            const box = document.createElement('div');
+            box.className = '__alchemyPrintOnly __alchemyPrintLinks';
+            const table = document.createElement('table');
+            const head = table.insertRow();
+            ['Shortcut Text', 'Internet Address'].forEach((t) => { const th = document.createElement('th'); th.textContent = t; head.appendChild(th); });
+            rows.forEach(([text, href]) => { const tr = table.insertRow(); tr.insertCell().textContent = text; tr.insertCell().textContent = href; });
+            box.appendChild(table);
+            document.body.appendChild(box);
+            css += ' @media print { .__alchemyPrintLinks { display: block !important; break-before: page; font: 10pt "Times New Roman", serif; color: #000; background: #fff; }'
+                + ' .__alchemyPrintLinks table { border-collapse: collapse; width: 100%; } .__alchemyPrintLinks th, .__alchemyPrintLinks td { border: 1px solid #000; padding: 2px 4px; text-align: left; vertical-align: top; word-break: break-all; } }';
+        }
+        style.textContent = css;
+        document.head.appendChild(style);
+        return true;
+    }, extra).catch(() => null);
+    if (marked === false) {
+        const error = new Error('There is no selection on this page.');
+        error.code = 'selection';
+        throw error;
+    }
+    try {
+        const landscape = !!o.landscape;
+        const pdf = await session.cdp.send('Page.printToPDF', {
+            landscape,
+            printBackground: !!o.printBackground,
+            paperWidth: inches[0],
+            paperHeight: inches[1],
+            marginTop: margin(o.marginTop, 0.75),
+            marginBottom: margin(o.marginBottom, 0.75),
+            marginLeft: margin(o.marginLeft, 0.75),
+            marginRight: margin(o.marginRight, 0.75),
+            pageRanges: String(o.pageRanges || '').replace(/[^0-9,\-\s]/g, '').slice(0, 200),
+            displayHeaderFooter: !!(header || footer),
+            headerTemplate: ieHeaderTemplate(header, values, margin(o.marginLeft, 0.75), margin(o.marginRight, 0.75)),
+            footerTemplate: ieHeaderTemplate(footer, values, margin(o.marginLeft, 0.75), margin(o.marginRight, 0.75)),
+            preferCSSPageSize: false,
+            scale: 1
+        });
+        const buffer = Buffer.from(pdf.data || '', 'base64');
+        if (!buffer.length) throw new Error('The page printed nothing.');
+        const dir = path.join(session.downloadDir || path.join(os.tmpdir(), 'grimoire-browser', session.id), 'print');
+        await fs.promises.mkdir(dir, { recursive: true });
+        const guid = 'pdf-' + crypto.randomBytes(12).toString('hex');
+        const filePath = path.join(dir, guid + '.pdf');
+        await fs.promises.writeFile(filePath, buffer);
+        if (!session.downloads) session.downloads = new Map();
+        session.downloads.set(guid, { filename: safeFilename((values.title || 'page').slice(0, 120) + '.pdf'), state: 'completed', filePath, print: true });
+        // one fetch: the copy goes after 10 minutes either way
+        setTimeout(() => {
+            if (session.downloads) session.downloads.delete(guid);
+            fs.rm(filePath, { force: true }, () => {});
+        }, 10 * 60 * 1000).unref();
+        const pages = (buffer.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+        return { file: guid, bytes: buffer.length, pages, title: values.title };
+    } finally {
+        await session.page.evaluate(() => {
+            document.querySelectorAll('#__alchemyPrintStyle, .__alchemyPrintOnly').forEach((el) => el.remove());
+        }).catch(() => {});
+    }
 }
 
 // adoptedPage: a popup page that is already open (adoptPopup); popup sessions close with their page.
@@ -4805,6 +4938,21 @@ async function onViewerMessage(session, raw, ws) {
         if (Math.abs(zoom - (session.zoom || 1)) < 0.001) return;
         session.zoom = zoom;
         await changeViewport(session);
+        return;
+    }
+    if (msg.type === 'print-info') {
+        const id = String(msg.id || '').slice(0, 64);
+        broadcast(session, Object.assign({ type: 'print-info', id }, await printInfo(session)));
+        return;
+    }
+    if (msg.type === 'print-pdf') {
+        const id = String(msg.id || '').slice(0, 64);
+        try {
+            broadcast(session, Object.assign({ type: 'print-pdf', id }, await printPagePdf(session, msg.options || {})));
+        } catch (err) {
+            const text = String((err && err.message) || 'print failed');
+            broadcast(session, { type: 'print-pdf', id, error: text, code: err && err.code ? err.code : (/page range/i.test(text) ? 'range' : '') });
+        }
         return;
     }
     if (msg.type === 'print') {

@@ -567,6 +567,12 @@ const FEATURE_MANIFEST = {
         styles: ['css/print-queue.css'],
         scripts: ['scripts/comp/printQueueWindow.js']
     },
+    // Vista's Print dialog, Printing Preferences and IE7's Page Setup (vistaPrintDialog.js): Grimoire's Print opens it
+    vista_print_dialog: {
+        depends: ['vista_dialog_templates'],
+        styles: ['css/themes/vista/print-dialog.css'],
+        scripts: ['scripts/comp/vistaPrintDialog.js']
+    },
     // Director add-ons loaded on demand by director.js (setupMascot / openToolPayload); styles stay in director.css.
     director_mascot: {
         hot: true,

@@ -1112,6 +1112,10 @@
       });
     } else if (msg.type === 'feeds') {
       postParent({ type: 'grimoire-browser-feeds', feeds: Array.isArray(msg.feeds) ? msg.feeds : [] });
+    } else if (msg.type === 'print-info' || msg.type === 'print-pdf') {
+      // Grimoire's Print dialog: what the page offers, then the PDF waiting in the downloads route (server.js printPagePdf)
+      msg.type = 'grimoire-browser-' + msg.type;
+      postParent(msg);
     } else if (msg.type === 'print') {
       postParent({ type: 'grimoire-browser-print', id: msg.id || '', image: msg.image || '', width: msg.width || 0, height: msg.height || 0, title: msg.title || '', url: msg.url || '', error: msg.error || '' });
     } else if (msg.type === 'error') {
@@ -2063,6 +2067,8 @@
       else if (!ev.shiftKey && (ev.key === 'w' || ev.key === 'W' || ev.key === 'F4')) tabCommand = 'close-tab';
       else if (!ev.shiftKey && (ev.key === 'q' || ev.key === 'Q')) tabCommand = 'quick-tabs';
       else if (!ev.shiftKey && (ev.key === 'n' || ev.key === 'N')) tabCommand = 'new-window';
+      // IE7's Ctrl+P: Grimoire's Print dialog, never Chromium's own
+      else if (!ev.shiftKey && (ev.key === 'p' || ev.key === 'P')) tabCommand = 'print';
     }
     if (tabCommand) {
       ev.preventDefault();
@@ -2114,6 +2120,10 @@
       send({ type: 'still-scale', value: data.value });
     } else if (data.type === 'grimoire-browser-print') {
       send({ type: 'print', id: String(data.id || '') });
+    } else if (data.type === 'grimoire-browser-print-info') {
+      send({ type: 'print-info', id: String(data.id || '') });
+    } else if (data.type === 'grimoire-browser-print-pdf') {
+      send({ type: 'print-pdf', id: String(data.id || ''), options: data.options && typeof data.options === 'object' ? data.options : {} });
     } else if (data.type === 'grimoire-browser-dialog-reply' && data.id) {
       send({
         type: 'dialog-reply',
