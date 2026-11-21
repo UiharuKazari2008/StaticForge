@@ -1007,7 +1007,7 @@
             tabs.onChange(() => this.sync());
             this.newTab.addEventListener('click', () => {
                 this.toggleQuickTabs(false);
-                tabs.open();
+                tabs.open({ newTab: true });
             });
             this.tabStrip.addEventListener('click', (ev) => {
                 const tab = this.tabOfEvent(ev);
@@ -1029,7 +1029,7 @@
             // a double click on the row's empty space opens a tab
             this.tabRow.addEventListener('dblclick', (ev) => {
                 const t = ev.target;
-                if (t === this.tabRow || t.classList.contains('grimoire-ie-tabs') || t === this.tabStrip) tabs.open();
+                if (t === this.tabRow || t.classList.contains('grimoire-ie-tabs') || t === this.tabStrip) tabs.open({ newTab: true });
             });
             const cm = root.contextMenu;
             if (!cm) return;
@@ -1077,7 +1077,7 @@
                 },
                 onAction: (action, target, item) => {
                     if (action === 'send-device' && item && menuTab) { this.sendTabToDevice(menuTab, item.deviceId, item.deviceName); return; }
-                    if (action === 'tab-new') tabs.open();
+                    if (action === 'tab-new') tabs.open({ newTab: true });
                     else if (action === 'tab-refresh-all') this.refreshTabs(tabs.list());
                     else if (!menuTab) return;
                     else if (action === 'tab-close') tabs.close(menuTab);
@@ -1870,8 +1870,31 @@
             }
         }, { signal: abort.signal });
         document.addEventListener('visibilitychange', () => { if (!document.hidden) ask(); }, { signal: abort.signal });
+        // Vista's owned window: above its Grimoire window, and above everything only while that window is the active
+        // one (on-top); when another program's window comes forward it goes back to just above its owner
+        /* global modalStack, updateModalStackZIndexes */
+        const restack = () => {
+            const modal = state.modal;
+            if (!modal || !host.modal) return;
+            const ownerActive = host.modal.classList.contains('active-window');
+            if (modal.classList.contains('on-top') === ownerActive) return;
+            modal.classList.toggle('on-top', ownerActive);
+            if (!ownerActive && typeof modalStack !== 'undefined' && Array.isArray(modalStack)) {
+                const at = modalStack.indexOf(modal);
+                const owner = modalStack.indexOf(host.modal);
+                if (at >= 0 && owner >= 0 && at < owner) {
+                    modalStack.splice(at, 1);
+                    modalStack.splice(modalStack.indexOf(host.modal) + 1, 0, modal);
+                }
+            }
+            if (typeof updateModalStackZIndexes === 'function') updateModalStackZIndexes({ skipActiveWindow: true });
+        };
         // the Grimoire window minimised or back, or this window shown again: the refresh stops or starts
-        const watch = new MutationObserver(() => { if (showing() && !state.timer) ask(); else if (!showing()) { clearTimeout(state.timer); state.timer = 0; } });
+        const watch = new MutationObserver(() => {
+            restack();
+            if (showing() && !state.timer) ask();
+            else if (!showing()) { clearTimeout(state.timer); state.timer = 0; }
+        });
         abort.signal.addEventListener('abort', () => watch.disconnect());
         // tabs (grimoireTabs.js): the window follows the one on show at once
         // (the tab module keeps its listeners: one per window, re-pointed at the window open now)
@@ -1916,6 +1939,207 @@
         ask();
     }
 
+    // ---- Grimoire's own pages as IE7's (Yukimi, Nov 21 2026: "the default page needs to be rectified and IE-ified
+    // ... Also update the Alchemy unavalible to be like a IE severe error page with the alchemy logo in the bottom
+    // right"): ieframe.dll's res:// pages (dnserror.htm, syntax.htm, navcancl.htm, servbusy.htm, tabswelcome.htm),
+    // their table layout, wording and art (public/static_images/vista-ie/pages/), styled by
+    // css/themes/vista/grimoire-ie-pages.css. ----
+    const PAGE_ART = `${ART}/pages`;
+
+    function alchemyLogoHtml() {
+        const at = (n) => (typeof root.resolveAppIconPath === 'function' ? root.resolveAppIconPath('alchemy.png', n) : '/static_images/app_icons/alchemy.png');
+        return `<img class="gip-logo" src="${esc(at(48))}" srcset="${esc(at(48))} 1x, ${esc(at(96))} 2x" alt="Alchemy">`;
+    }
+
+    /**
+     * One IE7 page: { title, code, severe (red shield, flat page: IE's securityError), tab (about:Tabs), lists:
+     * [{ heading, items }], tasks: [{ text, action (data-grimoire-nav-action), run() }], tryHeading, more: { label,
+     * paragraphs }, note (a line under the page, class grimoire-nav-error-detail), logo (Alchemy's, bottom right),
+     * className }. Returns the element; its task links run their run().
+     */
+    function iePage(o) {
+        const page = document.createElement('div');
+        page.className = ['gip-page', o.severe ? 'is-severe' : '', o.tab ? 'is-tab' : '', o.className || ''].filter(Boolean).join(' ');
+        const icon = o.tab ? 'tab_icon.png' : (o.severe ? 'red_shield_48.png' : 'info_48.png');
+        const blank = '<td>&nbsp;</td>';
+        let rows = `<tr><td class="gip-icon" rowspan="2"><img src="${PAGE_ART}/${icon}" alt=""></td><td class="gip-title"><h1>${esc(o.title)}</h1></td></tr>`
+            + `<tr><td class="gip-code">${o.code ? esc(o.code) : '&nbsp;'}<div class="gip-divider"></div></td></tr>`;
+        (o.lists || []).forEach((l) => {
+            rows += `<tr>${blank}<td><h2>${esc(l.heading)}</h2><ul>${l.items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></td></tr>`;
+        });
+        const tasks = o.tasks || [];
+        if (tasks.length) {
+            rows += `<tr>${blank}<td><h2>${esc(o.tryHeading || 'What you can try:')}</h2></td></tr>`;
+            tasks.forEach((t, i) => {
+                const action = t.action ? ` data-grimoire-nav-action="${esc(t.action)}"` : '';
+                rows += `<tr>${blank}<td><h4><table><tr><td><img src="${PAGE_ART}/bullet.png" alt="" class="gip-action-icon"></td>`
+                    + `<td><a href="#" data-gip-task="${i}"${action}>${esc(t.text)}</a></td></tr></table></h4></td></tr>`;
+            });
+        }
+        if (o.more) {
+            const body = (o.more.paragraphs || []).map((p) => (Array.isArray(p) ? `<ul>${p.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : `<p>${esc(p)}</p>`)).join('')
+                + (o.more.html || '');
+            rows += `<tr>${blank}<td><h4><table><tr><td><a href="#" data-gip-more="1"><img src="${PAGE_ART}/down.png" alt="" class="gip-action-icon"></a></td>`
+                + `<td><a href="#" data-gip-more="1">${esc(o.more.label || 'More information')}</a></td></tr></table></h4>`
+                + `<div class="gip-info" hidden>${body}</div></td></tr>`;
+        }
+        page.innerHTML = `<table class="gip-main">${rows}</table>`
+            + (o.note != null ? `<p class="gip-note grimoire-nav-error-detail">${esc(o.note)}</p>` : '')
+            + (o.logo ? alchemyLogoHtml() : '');
+        page.addEventListener('click', (ev) => {
+            const more = ev.target.closest('[data-gip-more]');
+            if (more) {
+                ev.preventDefault();
+                const info = page.querySelector('.gip-info');
+                const arrow = page.querySelector('[data-gip-more] img');
+                if (info) info.hidden = !info.hidden;
+                if (arrow && info) arrow.src = `${PAGE_ART}/${info.hidden ? 'down' : 'up'}.png`;
+                return;
+            }
+            const link = ev.target.closest('[data-gip-task]');
+            if (!link) return;
+            ev.preventDefault();
+            const task = tasks[Number(link.dataset.gipTask)];
+            if (task && typeof task.run === 'function') task.run(ev);
+        });
+        return page;
+    }
+
+    /**
+     * Grimoire's error pages as IE7's: kind 'not_found' (dnserror.htm), 'invalid_protocol' (syntax.htm),
+     * 'browser_unavailable' / 'unavailable' (Alchemy cannot be reached: IE's severe page, red shield), 'failed'
+     * (the page's renderer went), 'unresponsive' (servbusy.htm's wording). Its links carry data-grimoire-nav-action
+     * "retry" / "home" / "back" for the caller's own handlers; the page has the Alchemy logo, bottom right, where
+     * Alchemy is behind it. The root keeps grimoire-nav-error (its callers find it by that).
+     */
+    function errorPage(kind, url, protocol) {
+        const where = url ? ` (${url})` : '';
+        const retry = { text: 'Refresh the page.', action: 'retry' };
+        const home = { text: 'Go to your home page.', action: 'home' };
+        let o;
+        if (kind === 'invalid_protocol') {
+            o = {
+                title: 'The address is not valid',
+                lists: [{ heading: 'Most likely causes:', items: ['There might be a typing error in the address.', 'If you clicked on a link, it may be out of date.', `The Grimoire does not open ${protocol ? `${protocol}://` : 'these'} addresses: use edtx://, rdf://, dsap://, http:// or https://.`] }],
+                tasks: [{ text: 'Retype the address.', action: 'retype' }, home]
+            };
+        } else if (kind === 'browser_unavailable' || kind === 'unavailable') {
+            o = {
+                severe: true,
+                logo: true,
+                title: 'Alchemy is not available',
+                code: 'Alchemy unavailable',
+                lists: [{ heading: 'Most likely causes:', items: ['Alchemy is starting again.', 'Alchemy has stopped or cannot be reached from this computer.'] }],
+                tasks: [retry, home],
+                more: { paragraphs: ['Alchemy is the browser behind the Grimoire\'s web pages. While it starts, this page tries again by itself every few seconds for two minutes.', `The page${where} opens again as soon as Alchemy answers.`] },
+                note: ''
+            };
+        } else if (kind === 'unresponsive') {
+            o = {
+                logo: true,
+                title: 'The webpage is not responding',
+                lists: [{ heading: 'Most likely causes:', items: ['The webpage is busy running a script.', 'The website is too busy to show the webpage.'] }],
+                tasks: [retry, home]
+            };
+        } else if (kind === 'failed') {
+            o = {
+                logo: true,
+                title: 'The webpage has stopped working',
+                lists: [{ heading: 'Most likely causes:', items: ['The webpage used more memory than Alchemy allows.', 'The webpage or an add-on on it closed unexpectedly.'] }],
+                tasks: [retry, home]
+            };
+        } else {
+            o = {
+                title: 'Grimoire cannot display the webpage',
+                lists: [{ heading: 'Most likely causes:', items: ['There might be a typing error in the address.', 'The page has moved or no longer exists.', 'The site is encountering problems.'] }],
+                tasks: [{ text: 'Retype the address.', action: 'retype' }, retry, home],
+                more: { paragraphs: [`The Grimoire could not find ${url || 'this address'}.`, 'Check the address for typing errors, or open the site\'s home page and look for the page from there.'] }
+            };
+        }
+        o.className = 'grimoire-nav-error';
+        // Retype the address: the window's address bar, ready for typing
+        o.tasks.forEach((t) => {
+            if (t.action === 'retype') {
+                t.run = (ev) => {
+                    const modal = ev && ev.target && ev.target.closest('.modal');
+                    const wins = typeof root.grimoireAllWindows === 'function' ? root.grimoireAllWindows() : [];
+                    const win = wins.find((w) => w && w.modal === modal);
+                    if (win && typeof win.enterAddressEdit === 'function') win.enterAddressEdit();
+                };
+            }
+        });
+        return iePage(o);
+    }
+
+    /**
+     * The New Tab page (IE7's about:Tabs, tabswelcome.htm, in Grimoire's words) at dsap://tabs.grimoire.jp: what to do
+     * next, IE7's tab tips, and its keyboard shortcuts behind "Show more tab shortcuts".
+     */
+    const NEW_TAB_URL = 'dsap://tabs.grimoire.jp';
+    const TAB_SHORTCUTS = [
+        ['Open links in a new tab', 'Middle-click'],
+        ['Open a new tab', 'CTRL+T'],
+        ['Open Quick Tabs (thumbnail view)', 'CTRL+Q'],
+        ['Switch between tabs', 'CTRL+TAB/CTRL+SHIFT+TAB'],
+        ['Close current tab (or current window if there is only one tab)', 'CTRL+W'],
+        ['Open a new window with the page on show', 'CTRL+N']
+    ];
+
+    /** The Grimoire window a DSAP page's pane belongs to (its Quick Tabs, its home). */
+    function newTabHost(dsapHost) {
+        const shell = dsapHost && dsapHost.shell;
+        const win = shell && typeof root.grimoireHostOf === 'function' ? root.grimoireHostOf(shell) : null;
+        return win || shell || null;
+    }
+
+    function registerNewTabPage() {
+        if (typeof root.registerDsap !== 'function' || registerNewTabPage.done) return;
+        registerNewTabPage.done = true;
+        root.registerDsap({
+            url: 'tabs.grimoire.jp',
+            title: 'Welcome to Tabbed Browsing',
+            type: 'core',
+            getContent() {
+                return {
+                    html: '<div class="gip-host" data-dsap="new-tab"></div>',
+                    baseBackground: '',
+                    drivers: {
+                        init(dsapHost) {
+                            const rootEl = dsapHost.getRoot();
+                            if (!rootEl) return;
+                            const win = () => newTabHost(dsapHost) || {};
+                            const shortcuts = `<table class="gip-shortcuts" width="100%"><tr><td colspan="2"><b>Keyboard shortcuts</b></td></tr>${TAB_SHORTCUTS.map(([a, b]) => `<tr><td width="55%">${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>`;
+                            rootEl.replaceChildren(iePage({
+                                tab: true,
+                                title: "You've opened a new tab",
+                                tryHeading: 'What do you want to do now?',
+                                tasks: [
+                                    { text: 'Go to your home page', run: () => { const sh = dsapHost.shell; if (sh && typeof sh.goHome === 'function') sh.goHome(); } },
+                                    { text: 'Use Quick Tabs to see your open tabs and the tabs on your other devices', run: () => { const w = win(); if (w.ieChrome) w.ieChrome.toggleQuickTabs(true); } },
+                                    { text: 'Search the Grimoire', run: () => dsapHost.navigate('edtx://en.grimoire.jp/search') },
+                                    { text: 'See the pages you visited (History)', run: () => dsapHost.navigate(root.GRIMOIRE_HISTORY_URL || 'dsap://history.grimoire.jp') },
+                                    { text: 'Perform Alchemy (open a web page)', run: () => dsapHost.navigate(typeof root.ALCHEMY_HOME_URL === 'string' ? root.ALCHEMY_HOME_URL : 'https://www.bing.com/') }
+                                ],
+                                lists: [],
+                                more: {
+                                    label: 'Show more tab shortcuts',
+                                    paragraphs: [
+                                        'With tabs you can:',
+                                        ['Use one Grimoire window to view all your pages.', 'Open links in a background tab while viewing the page you are on.', 'Move a tab to your phone or another computer (Page > Send to Device).'],
+                                        'To get started:',
+                                        ['Click any tab with the middle mouse button to close it.', 'Right-click a link and click Open in New Tab.']
+                                    ],
+                                    html: shortcuts
+                                }
+                            }));
+                        }
+                    }
+                };
+            }
+        });
+    }
+    registerNewTabPage();
+
     // Other Devices (#756): how many tabs other clients hold, kept fresh from the registry's change pushes,
     // so the tab tools (Quick Tabs) show while there is something to take
     GrimoireIeChrome.otherTabs = 0;
@@ -1953,6 +2177,10 @@
     GrimoireIeChrome.isExtensionShown = isExtensionShown;
     GrimoireIeChrome.setExtensionShown = setExtensionShown;
     GrimoireIeChrome.loadHiddenExtensions = loadHiddenExtensions;
+    // IE7's own pages (tagWikiSearchModal.js renderError, grimoireRemoteBrowser.js grimoireShowRemoteTabPage, the History)
+    GrimoireIeChrome.iePage = iePage;
+    GrimoireIeChrome.errorPage = errorPage;
+    GrimoireIeChrome.NEW_TAB_URL = NEW_TAB_URL;
     root.GrimoireIeChrome = GrimoireIeChrome;
     if (typeof module !== 'undefined' && module.exports) module.exports = GrimoireIeChrome;
 })(typeof window !== 'undefined' ? window : globalThis);

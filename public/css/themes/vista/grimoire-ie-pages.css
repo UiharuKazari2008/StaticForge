@@ -1,0 +1,470 @@
+/* Grimoire's own pages drawn as Internet Explorer 7's (Yukimi, Nov 21 2026: "update the Alchemy unavalible to be like
+ * a IE severe error page with the alchemy logo in the bottom right"): ieframe.dll's res:// pages (dnserror.htm,
+ * syntax.htm, navcancl.htm, servbusy.htm, tabswelcome.htm) and their ErrorPageTemplate.css, the same art and rules
+ * Alchemy's Chromium uses for its own error pages (DreamScape/Alchemy-Chromium alchemy_ie). Built by
+ * grimoireIeChrome.js GrimoireIeChrome.iePage. A page shows inside the Grimoire tab, so it is a web page's look,
+ * not the desktop's: its colours are IE's. */
+
+.tag-wiki-display-content .gip-page,
+.tag-wiki-display-content .grimoire-nav-error.gip-page {
+    display: block;
+    position: relative;
+    box-sizing: border-box;
+    min-height: 100%;
+    margin: 0;
+    padding: 20px 8px 88px 20px;
+    gap: 0;
+    text-align: left;
+    font-family: "Segoe UI", "verdana", "arial";
+    font-size: 16px;
+    color: #575757;
+    background: #E8EAEF url('/static_images/vista-ie/pages/background_gradient.jpg') repeat-x;
+    border: 0;
+    border-radius: 0;
+}
+
+/* body.securityError: IE's background_gradient_red.jpg is not in ieframe.dll, so IE shows the flat colour */
+.tag-wiki-display-content .gip-page.is-severe {
+    background-image: none;
+}
+
+/* body.tabInfo (about:Tabs) */
+.tag-wiki-display-content .gip-page.is-tab {
+    background: #F4F4F4;
+}
+
+.gip-page table {
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: inherit;
+    color: inherit;
+}
+
+.gip-page .gip-main {
+    width: 730px;
+    max-width: 100%;
+}
+
+.gip-page td {
+    padding: 0;
+    vertical-align: top;
+    text-align: left;
+}
+
+.gip-page td.gip-icon {
+    width: 60px;
+}
+
+.gip-page td.gip-title {
+    vertical-align: middle;
+}
+
+.gip-page a,
+.gip-page a:link,
+.gip-page a:visited {
+    color: rgb(19, 112, 171);
+    font-size: 1em;
+    font-weight: normal;
+    text-decoration: none;
+    margin-left: 0;
+    vertical-align: top;
+    cursor: pointer;
+}
+
+.gip-page a:hover {
+    color: rgb(7, 74, 229);
+    text-decoration: underline;
+}
+
+.gip-page p {
+    margin: 1em 0;
+    font-size: 0.9em;
+}
+
+/* used for Title */
+.gip-page h1 {
+    margin: 7px 0 4px;
+    color: #4465A2;
+    font-size: 1.1em;
+    font-weight: normal;
+    line-height: normal;
+    vertical-align: bottom;
+}
+
+/* used for Heading in Main Body */
+.gip-page h2 {
+    margin: 20px 0 1px;
+    font-size: 0.9em;
+    font-weight: normal;
+    line-height: normal;
+    color: inherit;
+}
+
+/* used for task links */
+.gip-page h4 {
+    margin: 12px 0 1px;
+    font-size: 0.9em;
+    font-weight: normal;
+    line-height: normal;
+    color: inherit;
+}
+
+/* used for task link icons */
+.gip-page .gip-action-icon {
+    vertical-align: middle;
+    margin: 0 6px 0 0;
+}
+
+.gip-page .gip-info {
+    display: block;
+    padding-left: 25px;
+    font-size: 0.9em;
+    color: #575757;
+}
+
+.gip-page .gip-info[hidden] {
+    display: none;
+}
+
+.gip-page td.gip-code {
+    font-size: 0.7em;
+    font-weight: normal;
+    color: #787878;
+    text-align: right;
+}
+
+.gip-page .gip-divider {
+    border-bottom: 1px solid #B6BCC6;
+}
+
+.gip-page ul,
+.gip-page ol {
+    margin: 1px 0;
+    padding: 1px 0 1px 40px;
+    font-size: 0.9em;
+    line-height: 1.3em;
+    list-style-position: outside;
+}
+
+.gip-page .gip-shortcuts td {
+    padding: 1px 0;
+}
+
+/* the line a page writes while it waits (Alchemy starting again) */
+.gip-page .gip-note {
+    margin: 12px 0 0 60px;
+    font-size: 0.9em;
+    color: inherit;
+}
+
+/* Alchemy's logo in the page's bottom-right corner, 48 px, 20 px in (the same place as on Alchemy's own error pages) */
+.gip-page .gip-logo {
+    position: absolute;
+    right: 20px;
+    bottom: 20px;
+    width: 48px;
+    height: 48px;
+    pointer-events: none;
+}
+
+/* ---- History (dsap://history.grimoire.jp, grimoireHistoryDsap.js) as IE7's Favorites Center History pane: the
+   pane's header, View By ▾, and the tree (Segoe UI 9 pt, 16 px icons, 19 px rows, 16 px a level, Vista's hot item) */
+.gfc-pane {
+    box-sizing: border-box;
+    min-height: 100%;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+    background: #fff;
+}
+
+.gfc-tree {
+    max-width: 640px;
+}
+
+.gfc-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 27px;
+    padding: 0 8px;
+    background: linear-gradient(#fdfeff, #e9f0fb 50%, #dce7f7 50%, #d5e2f5);
+    border-bottom: 1px solid #a0afc3;
+}
+
+.gfc-head-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.gfc-head-title {
+    color: #1e395b;
+}
+
+.gfc-bar {
+    padding: 4px 6px;
+    border-bottom: 1px solid #d5dfea;
+}
+
+.gfc-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0 6px;
+    font: inherit;
+    color: #1e395b;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+}
+
+.gfc-view:hover,
+.gfc-view.is-pressed {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+.gfc-view .grimoire-ie-cmd-drop {
+    width: 5px;
+    height: 3px;
+    background:
+        linear-gradient(#000, #000) 0 0 / 5px 1px no-repeat,
+        linear-gradient(#000, #000) 1px 1px / 3px 1px no-repeat,
+        linear-gradient(#000, #000) 2px 2px / 1px 1px no-repeat;
+}
+
+.gfc-search-row {
+    padding: 4px 8px;
+}
+
+.gfc-search-row[hidden] {
+    display: none;
+}
+
+.gfc-search {
+    box-sizing: border-box;
+    width: 100%;
+    height: 22px;
+    padding: 2px 4px;
+    font: inherit;
+}
+
+.gfc-tree,
+.gfc-children {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.gfc-tree {
+    padding: 4px 2px;
+}
+
+.gfc-group > .gfc-children {
+    display: none;
+    padding-left: 16px;
+}
+
+.gfc-group.is-open > .gfc-children {
+    display: block;
+}
+
+.gfc-link,
+.gfc-link:link,
+.gfc-link:visited {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 19px;
+    padding: 0 4px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: #000;
+    text-decoration: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
+}
+
+.gfc-link:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+    text-decoration: none;
+}
+
+.gfc-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.gfc-empty {
+    padding: 8px 6px;
+    color: #6d6d6d;
+}
+
+/* a DSAP page's root (the New Tab page) holds one: the page fills the tab */
+.tag-wiki-display-content > .gip-host {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
+
+.tag-wiki-display-content > .gip-host > .gip-page {
+    flex: 1 0 auto;
+}
+
+/* the Grimoire's page styles (tag-wiki-search.css) do not reach into IE's page */
+.gip-page p,
+.gip-page li,
+.gip-page td,
+.gip-page b {
+    color: inherit;
+}
+
+.gip-page .gip-shortcuts {
+    font-size: 0.9em;
+}
+
+/* ---- the Grimoire's home (tagWikiSearchModal.js showDreamWikiHomepage) as an IE7 page: its starting points, the
+   recently visited pages and Perform Alchemy! are IE's task links (bullet, link blue), not buttons or pills ---- */
+.tag-wiki-display-content .dreamwiki-home.gip-home {
+    display: block;
+    max-width: none;
+    padding: 20px 8px 20px 20px;
+    text-align: left;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home h2 {
+    display: block;
+    margin: 20px 0 1px;
+    padding: 0;
+    font-size: 0.9em;
+    font-weight: normal;
+    text-align: left;
+    color: inherit;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home .gip-home-logo {
+    width: 48px;
+    height: 48px;
+    /* the mark is white art: black on the page, as the home drew it before */
+    filter: brightness(0);
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home .gip-code {
+    font-size: 0.8em;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home .dreamwiki-starting-points {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home :is(.dreamwiki-start-row, .dreamwiki-alchemy-btn) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    margin: 12px 0 1px;
+    padding: 0;
+    font: inherit;
+    font-size: 0.9em;
+    color: rgb(19, 112, 171);
+    text-align: left;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+/* IE's task bullet in front of each starting point (the sites' own marks and the old Font Awesome ones go) */
+.tag-wiki-display-content .dreamwiki-home.gip-home .dreamwiki-start-row::before {
+    content: '';
+    flex: none;
+    width: 15px;
+    height: 15px;
+    background: url('/static_images/vista-ie/pages/bullet.png') no-repeat;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home .dreamwiki-start-row > :not(span) {
+    display: none;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home :is(.dreamwiki-start-row, .dreamwiki-alchemy-btn):hover {
+    color: rgb(7, 74, 229);
+    text-decoration: underline;
+    background: none;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home .dreamwiki-alchemy-btn img {
+    width: 24px;
+    height: 24px;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home .dreamwiki-recent-panel {
+    margin: 0;
+    padding: 0;
+    text-align: left;
+    background: none;
+    border: 0;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home .dreamwiki-recent-list {
+    display: block;
+    margin: 6px 0 0;
+    padding: 0;
+    font-size: 0.9em;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home .dreamwiki-recent-item {
+    display: inline;
+    margin: 0 14px 0 0;
+    padding: 0;
+    font: inherit;
+    color: rgb(19, 112, 171);
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home .dreamwiki-recent-item:hover {
+    color: rgb(7, 74, 229);
+    text-decoration: underline;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home .dreamwiki-recent-empty {
+    padding: 0;
+    font-size: inherit;
+    text-align: left;
+    color: inherit;
+}
+
+.tag-wiki-display-content .dreamwiki-home.gip-home .dreamwiki-alchemy-cta {
+    display: table-cell;
+    margin: 0;
+    padding: 0;
+    text-align: left;
+}
+
+/* an Alchemy tab's own error page (grimoireRemoteBrowser.js grimoireShowRemoteTabPage) covers the tab's frame */
+.tag-wiki-display-content > .gip-page.gip-over {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    overflow: auto;
+}

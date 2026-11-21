@@ -1614,53 +1614,36 @@ class WikiDisplayBase {
                   .join('')
             : `<div class="dreamwiki-recent-empty">No pages yet.</div>`;
 
+        // the Grimoire's home as one of IE7's own pages (Yukimi, Nov 21 2026: "the default page needs to be rectified
+        // and IE-ified as its still using the orignal base design"): ieframe's page layout and art
+        // (css/themes/vista/grimoire-ie-pages.css .gip-*), the starting points as IE's task links; every hook the
+        // bindings below use (data-action, data-dreamwiki-page, .dreamwiki-starting-points-inline, the recent list) stays
+        const logo64 = '/static_images/app_icons/64/dreamscape-logo.webp';
+        const logo128 = '/static_images/app_icons/128/dreamscape-logo.webp';
+        const startRow = (attr, label) => `<button type="button" class="dreamwiki-start-row" ${attr}><span>${label}</span></button>`;
         this.displayArea.innerHTML = `
-<div class="dreamwiki-home">
-    <div class="dreamwiki-home-hero form-row center-align">
-        <div class="about-logo-container">
-            <img src="/static_images/app_icons/64/dreamscape-logo.webp" srcset="/static_images/app_icons/64/dreamscape-logo.webp 1x, /static_images/app_icons/128/dreamscape-logo.webp 2x" alt="Dreamscape Logo" class="about-logo">
-            <h2 class="logo-text">Dreamscape</h2>
-        </div>
-    </div>
-    <p class="dreamwiki-home-subtitle">The central home of Knowledge, The Grimoire</p>
-    <div class="dreamwiki-home-pad dreamwiki-home-pad-sm"></div>
-    <div class="dreamwiki-home-border-dotted"></div>
-    <div class="dreamwiki-home-pad dreamwiki-home-pad-md"></div>
-    <div class="dreamwiki-home-actions-center">
-        <!-- Tag groups + search + documentation buttons flow horizontally (flex row wrap) with max-width per button.
-             No section header for tag groups per request. -->
-        <div class="dreamwiki-starting-points dreamwiki-starting-points-inline">
-            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-action="open-search-home">
-                <i class="fas fa-search"></i> Search the Grim
-            </button>
-            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-action="open-dreamscape-settings">
-                <i class="fas fa-sliders"></i> Settings
-            </button>
-            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag groups">
-                <i class="nai-sakura"></i> Danbooru Tags
-            </button>
-            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag_group:index">
-                <i class="nai-paw"></i> e621 Tags
-            </button>
-            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-action="open-fandom-wiki">
-                ${this.fandomMarkImgHtml('dreamwiki-site-btn-icon')} Fandom
-            </button>
-            <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-action="open-apocrypha">
-                <i class="fas fa-newspaper"></i> Apocrypha
-            </button>
-            <!-- Documentation site buttons (e.g. NovelAI) are appended here by loadStaticWikiHomeSites so they participate in the horizontal wrap flow -->
-        </div>
-    </div>
-    <div class="dreamwiki-recent-panel">
-        <h4 class="dreamwiki-recent-heading">Recently visited</h4>
-        <div class="dreamwiki-recent-list tag-cloud">${recentRows}</div>
-    </div>
-    <div class="dreamwiki-alchemy-cta">
-        <div class="dreamwiki-home-border-dotted"></div>
-        <button type="button" class="btn-secondary dreamwiki-alchemy-btn" data-action="perform-alchemy">
-            <img src="${resolveAppIconPath('alchemy.png', 24)}" srcset="${resolveAppIconPath('alchemy.png', 24)} 1x, ${resolveAppIconPath('alchemy.png', 48)} 2x" alt=""> Perform Alchemy!
-        </button>
-    </div>
+<div class="dreamwiki-home gip-page gip-home">
+    <table class="gip-main">
+        <tr><td class="gip-icon" rowspan="2"><img class="gip-home-logo" src="${logo64}" srcset="${logo64} 1x, ${logo128} 2x" alt="Dreamscape"></td>
+            <td class="gip-title"><h1>Dreamscape: The Grimoire</h1></td></tr>
+        <tr><td class="gip-code">The central home of Knowledge<div class="gip-divider"></div></td></tr>
+        <tr><td>&nbsp;</td><td><h2>Where do you want to go?</h2>
+            <div class="dreamwiki-starting-points dreamwiki-starting-points-inline">
+                ${startRow('data-action="open-search-home"', 'Search the Grimoire')}
+                ${startRow('data-dreamwiki-page="tag groups"', 'Danbooru Tags')}
+                ${startRow('data-dreamwiki-page="tag_group:index"', 'e621 Tags')}
+                ${startRow('data-action="open-fandom-wiki"', 'Fandom')}
+                ${startRow('data-action="open-apocrypha"', 'Apocrypha')}
+                ${startRow('data-action="open-dreamscape-settings"', 'Settings')}
+                <!-- Documentation site buttons (e.g. NovelAI) are appended here by loadStaticWikiHomeSites -->
+            </div></td></tr>
+        <tr><td>&nbsp;</td><td><div class="dreamwiki-recent-panel"><h2 class="dreamwiki-recent-heading">Recently visited</h2>
+            <div class="dreamwiki-recent-list">${recentRows}</div></div></td></tr>
+        <tr><td>&nbsp;</td><td class="dreamwiki-alchemy-cta"><h2>On the web</h2>
+            <button type="button" class="dreamwiki-alchemy-btn" data-action="perform-alchemy">
+                <img src="${resolveAppIconPath('alchemy.png', 24)}" srcset="${resolveAppIconPath('alchemy.png', 24)} 1x, ${resolveAppIconPath('alchemy.png', 48)} 2x" alt=""><span>Perform Alchemy!</span>
+            </button></td></tr>
+    </table>
 </div>`;
 
         this.bindDreamWikiHomepageEvents();
@@ -5990,21 +5973,28 @@ class TagWikiSearchModal extends WikiDisplayBase {
             }
             const errorIcon = kind === 'browser_unavailable' ? 'fas fa-atom' : 'fas fa-globe';
 
-            this.displayArea.innerHTML = `
-                <div class="grimoire-nav-error">
-                    <div class="grimoire-nav-error-icon"><i class="${errorIcon}"></i></div>
-                    <h2 class="grimoire-nav-error-title">${title}</h2>
-                    <p class="grimoire-nav-error-url">${safeUrl}</p>
-                    <p class="grimoire-nav-error-detail">${detail}</p>
-                    <div class="grimoire-nav-error-actions">
-                        <button type="button" class="btn-secondary btn-small" data-grimoire-nav-action="retry">
-                            <i class="fas fa-rotate-right"></i> Try again
-                        </button>
-                        <button type="button" class="btn-secondary btn-small" data-grimoire-nav-action="home">
-                            <i class="fas fa-home"></i> Home
-                        </button>
-                    </div>
-                </div>`;
+            // IE7's own error pages (grimoireIeChrome.js GrimoireIeChrome.errorPage; Yukimi, Nov 21 2026: "update the
+            // Alchemy unavalible to be like a IE severe error page"), with the same retry / home hooks
+            const IeChrome = typeof window !== 'undefined' ? window.GrimoireIeChrome : null;
+            if (IeChrome && typeof IeChrome.errorPage === 'function') {
+                this.displayArea.replaceChildren(IeChrome.errorPage(kind, url || displayPath, protocol));
+            } else {
+                this.displayArea.innerHTML = `
+                    <div class="grimoire-nav-error">
+                        <div class="grimoire-nav-error-icon"><i class="${errorIcon}"></i></div>
+                        <h2 class="grimoire-nav-error-title">${title}</h2>
+                        <p class="grimoire-nav-error-url">${safeUrl}</p>
+                        <p class="grimoire-nav-error-detail">${detail}</p>
+                        <div class="grimoire-nav-error-actions">
+                            <button type="button" class="btn-secondary btn-small" data-grimoire-nav-action="retry">
+                                <i class="fas fa-rotate-right"></i> Try again
+                            </button>
+                            <button type="button" class="btn-secondary btn-small" data-grimoire-nav-action="home">
+                                <i class="fas fa-home"></i> Home
+                            </button>
+                        </div>
+                    </div>`;
+            }
 
             // a web page (http, https, chrome://) opens in Alchemy again directly: navigate() does not take chrome://
             // addresses, so Try again on one did nothing (Yukimi, Nov 21: "chrome:// cant be "retry" after a restart")
@@ -6047,7 +6037,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                     url,
                     kind,
                     protocol: protocol || null,
-                    title: kind === 'invalid_protocol' ? 'Invalid address' : 'Page not found'
+                    title: kind === 'invalid_protocol' ? 'Invalid address' : (kind === 'browser_unavailable' ? 'Alchemy is not available' : 'Page not found')
                 });
             }
             this.updateNavigationButtons?.();

@@ -368,7 +368,7 @@
 
         /**
          * A new tab, shown at once (IE7's default). opts.url / opts.session: an Alchemy page (a session the
-         * service already opened streams as is); opts.address: any Grimoire address; neither: the Grimoire home.
+         * service already opened streams as is); opts.address: any Grimoire address; opts.newTab: the New Tab page; none: the Grimoire home.
          * opts.afterActive puts it next to the tab on show (pages a tab opens), otherwise at the end.
          */
         open(opts) {
@@ -402,6 +402,9 @@
                 host.getTagWikiPageDirectly(o.tag);
             } else if (o.address) {
                 host.navigate(o.address);
+            } else if (o.newTab && root.GrimoireIeChrome && root.GrimoireIeChrome.NEW_TAB_URL) {
+                // New Tab / Ctrl+T: IE7's "You've opened a new tab" page (grimoireIeChrome.js)
+                host.navigate(root.GrimoireIeChrome.NEW_TAB_URL);
             } else {
                 host.goHome();
             }

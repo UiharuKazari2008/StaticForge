@@ -50,7 +50,8 @@
     function recordable(url) {
         const u = String(url || '');
         if (!/^(https?|edtx|rdf|dsap):\/\/\S+/i.test(u)) return false;
-        if (/^dsap:\/\/history\.grimoire\.jp/i.test(u)) return false;
+        // the History page and the New Tab page are not visits
+        if (/^dsap:\/\/(history|tabs)\.grimoire\.jp/i.test(u)) return false;
         if (/^https?:\/\/(localhost|127\.)/i.test(u)) return false;
         return true;
     }
@@ -131,83 +132,140 @@
         return new Date(at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     }
 
-    function siteOf(url) {
-        const m = /^[a-z]+:\/\/([^/?#]+)/i.exec(url);
-        return m ? m[1].replace(/^www\./i, '') : '';
+    // ---- the page: IE7's History in the Favorites Center (Yukimi, Nov 21 2026: "the history page needs to be updated
+    // like a IE page"): the History header with View By Date ▾ (By Date, By Site, By Most Visited, By Order Visited
+    // Today, Search History), a tree of days (oldest first, Today last, as IE7 lists them), each day's sites, each
+    // site's pages; a right-click deletes. Styles: css/themes/vista/grimoire-ie-pages.css (.gfc-*). ----
+    const VIEW_KEY = 'grimoireHistoryView';
+    const VIEWS = [
+        { id: 'date', label: 'View By Date' },
+        { id: 'site', label: 'View By Site' },
+        { id: 'visits', label: 'View By Most Visited' },
+        { id: 'today', label: 'View By Order Visited Today' },
+        { id: 'search', label: 'Search History' }
+    ];
+    const ICON_DAY = '/static_images/vista-cmdbar/calendar.png';
+    const ICON_SITE = '/static_images/vista-cmdbar/folder.png';
+    const ICON_WEB = '/static_images/vista-ie/page-ie.png';
+    const ICON_GRIMOIRE = '/static_images/app_icons/books.webp';
+
+    function viewOf() {
+        try {
+            const v = root.localStorage.getItem(VIEW_KEY);
+            return VIEWS.some((x) => x.id === v) ? v : 'date';
+        } catch (_) {
+            return 'date';
+        }
     }
 
-    function iconFor(url) {
-        if (/^https?:/i.test(url)) return 'fas fa-globe';
-        if (/^rdf:/i.test(url)) return 'fas fa-file-alt';
-        if (/^dsap:/i.test(url)) return 'fas fa-puzzle-piece';
-        if (/search/i.test(url)) return 'fas fa-search';
-        return 'fas fa-book';
+    function pageIcon(url) {
+        return /^https?:/i.test(url) ? ICON_WEB : ICON_GRIMOIRE;
+    }
+
+    /** "bing (www.bing.com)": IE7's site folders; Grimoire's own sites by their host. */
+    function siteLabel(url) {
+        const host = (/^[a-z]+:\/\/([^/?#]+)/i.exec(url) || [])[1] || url;
+        if (!/^https?:/i.test(url)) return host;
+        const short = host.replace(/^www\./i, '').split('.')[0];
+        return short && short !== host ? `${short} (${host})` : host;
+    }
+
+    function pageRow(r, level) {
+        return `<li class="gfc-item gfc-page gfc-l${level}" data-url="${esc(r.url)}"><a class="gfc-link" href="#" data-url="${esc(r.url)}" title="${esc(r.url)}">`
+            + `<img class="gfc-icon" src="${pageIcon(r.url)}" alt="">${esc(r.title || r.url)}</a></li>`;
+    }
+
+    function groupRow(key, icon, label, inner, open) {
+        return `<li class="gfc-item gfc-group${open ? ' is-open' : ''}" data-group="${esc(key)}"><a class="gfc-link gfc-toggle" href="#">`
+            + `<img class="gfc-icon" src="${icon}" alt="">${esc(label)}</a><ul class="gfc-children">${inner}</ul></li>`;
+    }
+
+    function bySite(rows, level, keyPrefix) {
+        const sites = new Map();
+        rows.forEach((r) => {
+            const s = siteLabel(r.url);
+            if (!sites.has(s)) sites.set(s, []);
+            sites.get(s).push(r);
+        });
+        return Array.from(sites.keys()).sort((a, b) => a.localeCompare(b))
+            .map((s) => groupRow(`${keyPrefix}|${s}`, ICON_SITE, s, sites.get(s).map((r) => pageRow(r, level + 1)).join(''), false)).join('');
     }
 
     function render(rootEl, query) {
+        const view = viewOf();
         const list = load();
-        const q = String(query || '').trim().toLowerCase();
-        const rows = q ? list.filter((r) => `${r.title} ${r.url}`.toLowerCase().includes(q)) : list;
-        const body = rootEl.querySelector('.gh-list');
-        if (!rows.length) {
-            body.innerHTML = `<div class="gh-empty">${q ? 'No pages match your search.' : 'No pages have been visited yet.'}</div>`;
-            return;
-        }
+        const tree = rootEl.querySelector('.gfc-tree');
+        const viewBtn = rootEl.querySelector('.gfc-view-label');
+        const searchRow = rootEl.querySelector('.gfc-search-row');
+        if (viewBtn) viewBtn.textContent = (VIEWS.find((v) => v.id === view) || VIEWS[0]).label;
+        if (searchRow) searchRow.hidden = view !== 'search';
+        const open = rootEl._gfcOpen || (rootEl._gfcOpen = new Set(['Today']));
         let html = '';
-        let group = null;
-        for (const r of rows) {
-            const label = groupLabel(r.at);
-            if (label !== group) {
-                if (group !== null) html += '</ul>';
-                group = label;
-                html += `<h3 class="gh-day">${esc(label)}</h3><ul class="gh-rows">`;
-            }
-            const time = new Date(r.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-            html += `<li class="gh-row" data-url="${esc(r.url)}">
-                <i class="${iconFor(r.url)} gh-icon" aria-hidden="true"></i>
-                <a class="gh-title" href="#" data-url="${esc(r.url)}" title="${esc(r.url)}">${esc(r.title || r.url)}</a>
-                <span class="gh-site">${esc(siteOf(r.url))}</span>
-                <span class="gh-time">${esc(time)}</span>
-                <button type="button" class="gh-remove" data-remove="${esc(r.url)}" title="Delete from History" aria-label="Delete from History">&times;</button>
-            </li>`;
+        if (view === 'date') {
+            const days = new Map();
+            list.forEach((r) => {
+                const label = groupLabel(r.at);
+                if (!days.has(label)) days.set(label, []);
+                days.get(label).push(r);
+            });
+            // oldest first, Today last
+            html = Array.from(days.keys()).reverse()
+                .map((d) => groupRow(d, ICON_DAY, d, bySite(days.get(d), 1, d), open.has(d))).join('');
+        } else if (view === 'site') {
+            html = bySite(list, 0, 'site');
+        } else if (view === 'visits') {
+            const merged = new Map();
+            list.forEach((r) => {
+                const m = merged.get(r.url);
+                if (m) m.count += r.count || 1;
+                else merged.set(r.url, Object.assign({}, r, { count: r.count || 1 }));
+            });
+            html = Array.from(merged.values()).sort((a, b) => b.count - a.count || b.at - a.at).slice(0, 200).map((r) => pageRow(r, 0)).join('');
+        } else if (view === 'today') {
+            const today = dayStart(Date.now());
+            html = list.filter((r) => r.at >= today).map((r) => pageRow(r, 0)).join('');
+        } else {
+            const q = String(query || '').trim().toLowerCase();
+            html = q ? list.filter((r) => `${r.title} ${r.url}`.toLowerCase().includes(q)).map((r) => pageRow(r, 0)).join('') : '';
         }
-        html += '</ul>';
-        body.innerHTML = html;
+        tree.innerHTML = html || `<li class="gfc-empty">${view === 'search' ? (String(query || '').trim() ? 'No pages match your search.' : 'Type words to search for in your History.') : 'There are no pages in your History.'}</li>`;
     }
-
-    const CSS = `
-        .gh-page { font: 12px "Segoe UI", Tahoma, sans-serif; color: #1e1e1e; padding: 18px 24px 32px; max-width: 900px; }
-        .gh-page h2 { font: 18px "Segoe UI", Tahoma, sans-serif; color: #1e395b; margin: 0 0 12px; font-weight: normal; }
-        .gh-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
-        .gh-bar input { flex: 1; max-width: 320px; height: 22px; box-sizing: border-box; padding: 2px 4px; }
-        .gh-day { font: bold 12px "Segoe UI", Tahoma, sans-serif; color: #1e395b; margin: 16px 0 4px; padding-bottom: 3px; border-bottom: 1px solid #b6c5d8; }
-        .gh-rows { list-style: none; margin: 0; padding: 0; }
-        .gh-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) minmax(0, 180px) 64px 18px; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 2px; }
-        .gh-row:hover { background: #e5f3fb; }
-        .gh-icon { color: #4a6f9c; font-size: 12px; text-align: center; }
-        .gh-title { color: #0066cc; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .gh-title:hover { text-decoration: underline; }
-        .gh-site, .gh-time { color: #6d6d6d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .gh-time { text-align: right; }
-        .gh-remove { visibility: hidden; border: 0; background: none; color: #8a8a8a; font-size: 14px; line-height: 14px; padding: 0; min-width: 0; min-height: 0; cursor: var(--c-pointer, pointer); }
-        .gh-row:hover .gh-remove { visibility: visible; }
-        .gh-remove:hover { color: #c00; }
-        .gh-empty { color: #6d6d6d; padding: 24px 0; }
-    `;
 
     const driver = {
         init(host) {
             const rootEl = host.getRoot();
             if (!rootEl) return;
-            const search = rootEl.querySelector('.gh-search');
+            const search = rootEl.querySelector('.gfc-search');
+            const viewBtn = rootEl.querySelector('.gfc-view');
             render(rootEl, '');
-            search.addEventListener('input', () => render(rootEl, search.value));
+            const again = () => render(rootEl, search ? search.value : '');
+            if (search) search.addEventListener('input', again);
+            const cm = root.contextMenu;
+            if (cm && viewBtn) {
+                const attach = () => {
+                    cm.detachClickMenuFromElement(viewBtn);
+                    cm.attachClickMenuToElement(viewBtn, {
+                        sections: [{ type: 'list', items: VIEWS.slice(0, 4).map((v) => ({ text: v.label, action: v.id, showIndicator: true, indicatorStyle: 'dot', checked: viewOf() === v.id }))
+                            .concat([{ separator: true }, { text: 'Search History', action: 'search', showIndicator: true, indicatorStyle: 'dot', checked: viewOf() === 'search' }]) }],
+                        onAction: (action) => {
+                            try { root.localStorage.setItem(VIEW_KEY, action); } catch (_) { /* private mode */ }
+                            again();
+                            if (action === 'search' && search) search.focus();
+                        }
+                    });
+                };
+                viewBtn.addEventListener('pointerdown', attach, true);
+                viewBtn.addEventListener('focus', attach);
+                attach();
+            }
             rootEl.addEventListener('click', (ev) => {
-                const rm = ev.target.closest('[data-remove]');
-                if (rm) {
+                const toggle = ev.target.closest('.gfc-toggle');
+                if (toggle) {
                     ev.preventDefault();
-                    remove(rm.dataset.remove);
-                    render(rootEl, search.value);
+                    const item = toggle.closest('.gfc-group');
+                    item.classList.toggle('is-open');
+                    if (item.classList.contains('is-open')) rootEl._gfcOpen.add(item.dataset.group);
+                    else rootEl._gfcOpen.delete(item.dataset.group);
                     return;
                 }
                 const link = ev.target.closest('a[data-url]');
@@ -215,28 +273,52 @@
                     ev.preventDefault();
                     ev.stopPropagation();
                     host.navigate(link.dataset.url);
-                    return;
-                }
-                if (ev.target.closest('[data-gh-clear]')) {
-                    const ask = typeof root.showConfirmationDialog === 'function'
-                        ? root.showConfirmationDialog('Are you sure you want to delete your browsing history?', [
-                            { text: 'Yes', value: true, className: 'btn-standard primary' },
-                            { text: 'No', value: false, className: 'btn-standard' }
-                        ], ev, { title: 'Delete Browsing History', icon: 'fas fa-question-circle' })
-                        : Promise.resolve(true);
-                    ask.then((yes) => {
-                        if (!yes) return;
-                        clear();
-                        render(rootEl, search.value);
-                    });
                 }
             });
+            // IE7's History item menu: Open, Delete
+            if (cm) {
+                let menuUrl = '';
+                const menu = {
+                    sections: [{ type: 'list', items: [] }],
+                    beforeShow: (event) => {
+                        const item = event && event.target && event.target.closest ? event.target.closest('.gfc-page') : null;
+                        menuUrl = item ? item.dataset.url : '';
+                        menu.sections[0].items = [
+                            { text: 'Open', action: 'open', disabled: !menuUrl, className: 'context-menu-item-default' },
+                            { separator: true },
+                            { text: 'Delete', action: 'delete', disabled: !menuUrl },
+                            { separator: true },
+                            { text: 'Delete Browsing History...', action: 'clear' }
+                        ];
+                    },
+                    onAction: (action) => {
+                        if (action === 'open' && menuUrl) host.navigate(menuUrl);
+                        else if (action === 'delete' && menuUrl) { remove(menuUrl); again(); }
+                        else if (action === 'clear') askClear(again);
+                    }
+                };
+                cm.attachToElement(rootEl, menu);
+            }
         },
         refresh(host) {
             const rootEl = host.getRoot();
-            if (rootEl) render(rootEl, (rootEl.querySelector('.gh-search') || {}).value || '');
+            if (rootEl) render(rootEl, (rootEl.querySelector('.gfc-search') || {}).value || '');
         }
     };
+
+    function askClear(after) {
+        const ask = typeof root.showConfirmationDialog === 'function'
+            ? root.showConfirmationDialog('Are you sure you want to delete your browsing history?', [
+                { text: 'Yes', value: true, className: 'btn-standard primary' },
+                { text: 'No', value: false, className: 'btn-standard' }
+            ], null, { title: 'Delete Browsing History', icon: 'fas fa-question-circle' })
+            : Promise.resolve(true);
+        Promise.resolve(ask).then((yes) => {
+            if (!yes) return;
+            clear();
+            after();
+        });
+    }
 
     function register() {
         if (typeof root.registerDsap !== 'function' || register.done) return;
@@ -247,17 +329,14 @@
             type: 'core',
             getContent() {
                 return {
-                    html: `<div class="gh-page" data-dsap="history">
-                        <h2>History</h2>
-                        <div class="gh-bar">
-                            <input type="search" class="gh-search" placeholder="Search History" aria-label="Search History">
-                            <button type="button" class="btn-standard" data-gh-clear="1">Delete History...</button>
-                        </div>
-                        <div class="gh-list"></div>
+                    html: `<div class="gfc-pane" data-dsap="history">
+                        <div class="gfc-head"><img class="gfc-head-icon" src="/static_images/vista-cmdbar/history.png" alt=""><span class="gfc-head-title">History</span></div>
+                        <div class="gfc-bar"><button type="button" class="gfc-view"><span class="gfc-view-label">View By Date</span><span class="grimoire-ie-cmd-drop" aria-hidden="true"></span></button></div>
+                        <div class="gfc-search-row" hidden><input type="text" class="gfc-search" placeholder="Search History" aria-label="Search History" autocomplete="off" spellcheck="false"></div>
+                        <ul class="gfc-tree"></ul>
                     </div>`,
-                    css: CSS,
                     drivers: driver,
-                    baseBackground: '#ffffff'
+                    baseBackground: ''
                 };
             }
         });

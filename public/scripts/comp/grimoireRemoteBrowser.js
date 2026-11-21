@@ -1464,7 +1464,7 @@ function grimoireRunTabCommand(command, win) {
     }
     // grimoireIeChrome.js: a tab command leaves Quick Tabs
     if (host.ieChrome) host.ieChrome.toggleQuickTabs(false);
-    if (command === 'new-tab') tabs.open();
+    if (command === 'new-tab') tabs.open({ newTab: true });
     else if (command === 'close-tab') tabs.close();
     else if (command === 'next-tab') tabs.step(1);
     else if (command === 'prev-tab') tabs.step(-1);
@@ -2120,52 +2120,66 @@ function grimoireShowRemoteTabPage(shell, state, url) {
         return;
     }
     if (frame) frame.hidden = true;
-    const page = existing || document.createElement('div');
-    page.className = 'grimoire-nav-error';
-    page.replaceChildren();
-    const icon = document.createElement('div');
-    icon.className = 'grimoire-nav-error-icon';
-    const iconMark = document.createElement('i');
-    iconMark.className = 'fas fa-atom';
-    icon.appendChild(iconMark);
-    const title = document.createElement('h2');
-    title.className = 'grimoire-nav-error-title';
     const hung = state === 'unresponsive';
     const unavailable = state === 'unavailable';
-    title.textContent = hung
-        ? "This page isn't responding"
-        : (unavailable ? 'Alchemy unavailable' : 'This page has failed');
-    const urlEl = document.createElement('p');
-    urlEl.className = 'grimoire-nav-error-url';
-    urlEl.textContent = url || '';
-    const detail = document.createElement('p');
-    detail.className = 'grimoire-nav-error-detail';
-    detail.textContent = hung
-        ? 'Alchemy is waiting on this page. You can wait, or reload it.'
-        : (unavailable
-            ? 'Alchemy is not available right now. Try again in a moment.'
-            : 'Alchemy could not keep this page open. Reload to try again.');
-    const actions = document.createElement('div');
-    actions.className = 'grimoire-nav-error-actions';
-    const reload = document.createElement('button');
-    reload.type = 'button';
-    reload.className = 'btn-secondary btn-small';
-    const reloadMark = document.createElement('i');
-    reloadMark.className = 'fas fa-rotate-right';
-    reload.appendChild(reloadMark);
-    reload.appendChild(document.createTextNode(' Reload'));
-    const home = document.createElement('button');
-    home.type = 'button';
-    home.className = 'btn-secondary btn-small';
-    const homeMark = document.createElement('i');
-    homeMark.className = 'fas fa-home';
-    home.appendChild(homeMark);
-    home.appendChild(document.createTextNode(' Home'));
-    actions.appendChild(reload);
-    actions.appendChild(home);
-    page.append(icon, title, urlEl, detail, actions);
-    if (!existing) area.appendChild(page);
-    reload.addEventListener('click', () => {
+    let reload = null;
+    let home = null;
+    // IE7's own error pages (grimoireIeChrome.js GrimoireIeChrome.errorPage, Alchemy's logo bottom right)
+    const IeChrome = window.GrimoireIeChrome;
+    if (IeChrome && typeof IeChrome.errorPage === 'function') {
+        const page = IeChrome.errorPage(hung ? 'unresponsive' : (unavailable ? 'unavailable' : 'failed'), url || '');
+        // over the page's frame (which keeps its size, so the page comes back as it was)
+        page.classList.add('gip-over');
+        if (existing) existing.replaceWith(page);
+        else area.appendChild(page);
+        reload = page.querySelector('[data-grimoire-nav-action="retry"]');
+        home = page.querySelector('[data-grimoire-nav-action="home"]');
+    } else {
+        const page = existing || document.createElement('div');
+        page.className = 'grimoire-nav-error';
+        page.replaceChildren();
+        const icon = document.createElement('div');
+        icon.className = 'grimoire-nav-error-icon';
+        const iconMark = document.createElement('i');
+        iconMark.className = 'fas fa-atom';
+        icon.appendChild(iconMark);
+        const title = document.createElement('h2');
+        title.className = 'grimoire-nav-error-title';
+        title.textContent = hung
+            ? "This page isn't responding"
+            : (unavailable ? 'Alchemy unavailable' : 'This page has failed');
+        const urlEl = document.createElement('p');
+        urlEl.className = 'grimoire-nav-error-url';
+        urlEl.textContent = url || '';
+        const detail = document.createElement('p');
+        detail.className = 'grimoire-nav-error-detail';
+        detail.textContent = hung
+            ? 'Alchemy is waiting on this page. You can wait, or reload it.'
+            : (unavailable
+                ? 'Alchemy is not available right now. Try again in a moment.'
+                : 'Alchemy could not keep this page open. Reload to try again.');
+        const actions = document.createElement('div');
+        actions.className = 'grimoire-nav-error-actions';
+        reload = document.createElement('button');
+        reload.type = 'button';
+        reload.className = 'btn-secondary btn-small';
+        const reloadMark = document.createElement('i');
+        reloadMark.className = 'fas fa-rotate-right';
+        reload.appendChild(reloadMark);
+        reload.appendChild(document.createTextNode(' Reload'));
+        home = document.createElement('button');
+        home.type = 'button';
+        home.className = 'btn-secondary btn-small';
+        const homeMark = document.createElement('i');
+        homeMark.className = 'fas fa-home';
+        home.appendChild(homeMark);
+        home.appendChild(document.createTextNode(' Home'));
+        actions.appendChild(reload);
+        actions.appendChild(home);
+        page.append(icon, title, urlEl, detail, actions);
+        if (!existing) area.appendChild(page);
+    }
+    if (reload) reload.addEventListener('click', () => {
         const live = grimoireRemoteFrame(shell);
         if (hung && live && live.contentWindow && shell._grimoireRemoteSessionId) {
             grimoireShowRemoteTabPage(shell, 'ok');
@@ -2176,7 +2190,7 @@ function grimoireShowRemoteTabPage(shell, state, url) {
         const host = shell.modal && shell.modal.classList.contains('wiki-page-viewer-modal') ? shell : grimoireHostOf(shell);
         if (again) grimoireOpenRemoteBrowser(shell, again, { host: host || shell, skipHistory: true });
     });
-    home.addEventListener('click', () => {
+    if (home) home.addEventListener('click', () => {
         // goHome: public/scripts/comp/tagWikiSearchModal.js
         shell.goHome();
     });

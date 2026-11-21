@@ -10,7 +10,7 @@
   "hand-built-window": 106,
   "toast": 1051,
   "own-menubar": 70,
-  "colour-in-script": 1547,
+  "colour-in-script": 1535,
   "native-scrollbar": 40,
   "theme-test-copy": 25,
   "native-dialog": 1,
@@ -1469,9 +1469,6 @@
   },
   "public/scripts/comp/generationQuipsTray.js": {
    "toast": 20
-  },
-  "public/scripts/comp/grimoireHistoryDsap.js": {
-   "colour-in-script": 12
   },
   "public/scripts/comp/grimoireIeChrome.js": {
    "hand-built-window": 1,
