@@ -54,7 +54,16 @@
     function readJson(key, fallback) {
         try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v && typeof v === 'object' ? v : fallback; } catch (_) { return fallback; }
     }
-    const prefs = Object.assign({ channel: '', quality: 'std', show: 'A', todayAt: 0 }, readJson(LS_PREFS, {}));
+    const prefs = Object.assign({ channel: '', quality: 'std', show: 'A', todayAt: 0, body: 'gloss', era: 'xm' }, readJson(LS_PREFS, {}));
+    // Now Playing is the receiver's own screen (Yukimi, Nov 20 2026: "It should share the same LCD design"): the desktop
+    // radio's display markup and theme (public/css/themes/vista/xmradio.css, whose rules also match .xrm-lcd), one of
+    // the docked receivers' screens at its own size, scaled to the phone's width
+    const BODIES = [['gloss', 'Gloss'], ['onyxplus', 'Onyx Plus'], ['onyxez', 'Onyx EZ'], ['stratus', 'Stratus'], ['roady', 'Roady XT']];
+    const BODY_DISPLAY = { gloss: 'tft', onyxplus: 'tft', onyxez: 'lcd', stratus: 'lcd', roady: 'dotlcd' };
+    const BODY_SCREEN = { gloss: [246, 184], onyxplus: [274, 194], onyxez: [236, 180], stratus: [372, 94], roady: [340, 152] };
+    const ERAS = [['xm', 'XM'], ['sirius', 'Sirius'], ['sxm2011', 'SiriusXM (2011)'], ['sxm2023', 'SiriusXM (2023)']];
+    if (!BODY_SCREEN[prefs.body]) prefs.body = 'gloss';
+    if (!ERAS.some((e) => e[0] === prefs.era)) prefs.era = 'xm';
     // what Today and the program draw from, kept on the phone: { lineup: { at, channels }, presets, now: { id: cut }, rec: [] }
     const cache = Object.assign({ lineup: null, presets: { A: [], B: [], C: [] }, now: {}, rec: [], signedIn: false }, readJson(LS_CACHE, {}));
     let saveTimer = 0;
@@ -164,7 +173,7 @@
         lineupAsked = true;
         try {
             const d = await ask('xmradio_lineup', {}, 120000);
-            const channels = (d.channels || []).map((c) => ({ id: c.id, number: c.number, name: c.name, logo: c.logo || '', sub: c.sub === false ? false : undefined }));
+            const channels = (d.channels || []).map((c) => ({ id: c.id, number: c.number, name: c.name, logo: c.logo || '', bg: c.bg || '', sub: c.sub === false ? false : undefined }));
             if (channels.length) cache.lineup = { at: Date.now(), channels };
             if (d.presets) cache.presets = Object.assign({ A: [], B: [], C: [] }, d.presets);
             indexLineup();
@@ -175,12 +184,13 @@
     }
 
     async function wantLogos(ids) {
-        const want = [...new Set(ids.filter((id) => id && chan(id) && !chan(id).logo && !logoAsked.has(id)))].slice(0, 40);
+        const want = [...new Set(ids.filter((id) => id && chan(id) && (!chan(id).logo || !chan(id).bg) && !logoAsked.has(id)))].slice(0, 40);
         if (!want.length) return;
         want.forEach((id) => logoAsked.add(id));
         try {
             const d = await ask('xmradio_logos', { ids: want }, 60000);
             for (const [id, url] of Object.entries((d && d.logos) || {})) { const c = chan(id); if (c) c.logo = url; }
+            for (const [id, url] of Object.entries((d && d.backgrounds) || {})) { const c = chan(id); if (c) c.bg = url; }
             saveSoon();
             changed();
         } catch (_) { /* the number alone */ }
@@ -559,9 +569,15 @@
     function build() {
         page.innerHTML = `<div class="xrm-pane xrm-now-pane wm-pg-scroll" data-pane="now">
                 <div class="xrm-np">
-                    <div class="xrm-np-top"><img class="xrm-logo" alt="" draggable="false" hidden><span class="xrm-ch"></span><span class="xrm-state"></span></div>
-                    <div class="xrm-np-art"><img class="xrm-art" alt="" draggable="false" hidden><b class="xrm-art-n"></b></div>
-                    <div class="xrm-np-t1"></div><div class="xrm-np-t2"></div><div class="xrm-np-t3"></div>
+                    <div class="xrm-lcd"><div class="xr-radio is-on" data-docked="true"><div class="xr-bezel"><div class="xr-display" aria-live="polite">
+                        <img class="xr-d-bg is-empty" data-f="bg" alt="" draggable="false"><i class="xrm-shade"></i>
+                        <div class="xr-d-top"><span data-f="band"></span><span data-f="pre"></span><span class="xr-d-fill"></span><span data-f="replay"></span><span class="xr-sig" data-f="sig"><i></i><i></i><i></i></span><span data-f="clock"></span></div>
+                        <div class="xr-d-main">
+                            <img class="xr-d-art is-empty" data-f="art" alt="" draggable="false">
+                            <div class="xr-d-text"><div class="xr-d-l1"><span class="xr-d-num" data-f="num"></span><span class="xr-d-name" data-f="name"></span></div><div class="xr-d-l2"><span class="xr-run" data-f="l2"></span></div><div class="xr-d-l3"><span class="xr-run" data-f="l3"></span></div></div>
+                            <img class="xr-d-logo is-empty" data-f="logo" alt="" draggable="false">
+                        </div>
+                    </div></div></div></div>
                     <div class="xrm-np-bar"><i></i></div><div class="xrm-np-times"><span class="xrm-np-el"></span><span class="xrm-np-rem"></span></div>
                     <div class="xrm-np-keys">
                         <button type="button" data-k="prev" aria-label="Previous">&#x23EE;&#xFE0E;</button>
@@ -577,9 +593,19 @@
             <div class="xrm-pane xrm-rec-pane wm-pg-scroll" data-pane="recordings" hidden></div>
             <div class="wm-tabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" class="wm-tab" role="tab" data-tab="${k}" aria-selected="${tab === k}">${l}</button>`).join('')}</div>`;
         const q = (s) => page.querySelector(s);
+        if (!document.querySelector('link[data-xr-theme]')) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = '/css/themes/vista/xmradio.css';
+            link.dataset.xrTheme = '1';
+            document.head.appendChild(link);
+        }
+        const f = (n) => q(`.xrm-lcd [data-f="${n}"]`);
         els = {
-            logo: q('.xrm-logo'), ch: q('.xrm-ch'), state: q('.xrm-state'), art: q('.xrm-art'), artN: q('.xrm-art-n'),
-            t1: q('.xrm-np-t1'), t2: q('.xrm-np-t2'), t3: q('.xrm-np-t3'), bar: q('.xrm-np-bar > i'), el: q('.xrm-np-el'), rem: q('.xrm-np-rem'),
+            lcd: q('.xrm-lcd'), rad: q('.xrm-lcd .xr-radio'), bezel: q('.xrm-lcd .xr-bezel'),
+            bg: f('bg'), band: f('band'), pre: f('pre'), replay: f('replay'), sig: f('sig'), clock: f('clock'),
+            art: f('art'), num: f('num'), name: f('name'), l2: f('l2'), l3: f('l3'), logo: f('logo'),
+            bar: q('.xrm-np-bar > i'), el: q('.xrm-np-el'), rem: q('.xrm-np-rem'),
             play: q('[data-k="play"]'), rec: q('[data-k="rec"]'), up: q('.xrm-up'), played: q('.xrm-played'),
             show: q('.xrm-show'), count: q('.xrm-count'), list: q('.xrm-list'), recPane: q('.xrm-rec-pane')
         };
@@ -625,6 +651,39 @@
         if (ws) ws.refreshSoftKeys();
     }
 
+    const setLcdImg = (img, src) => {
+        img.classList.toggle('is-empty', !src);
+        if (!src) { img.removeAttribute('src'); return; }
+        if (img.getAttribute('src') !== src) img.src = src;
+    };
+    let lookKey = '';
+    let lcdRo = null;
+    /** The chosen receiver's screen: its display kind, the era's tint, its own size scaled to the phone's width. */
+    function lookScreen() {
+        const key = `${prefs.body}|${prefs.era}`;
+        if (key !== lookKey) {
+            lookKey = key;
+            const r = els.rad;
+            r.dataset.body = prefs.body;
+            r.dataset.display = BODY_DISPLAY[prefs.body];
+            r.dataset.era = prefs.era;
+            const [w, h] = BODY_SCREEN[prefs.body];
+            els.bezel.style.width = `${w}px`;
+            els.bezel.style.height = `${h}px`;
+            els.lcd.dataset.w = String(w);
+            fitScreen();
+        }
+        if (!lcdRo && typeof ResizeObserver === 'function') {
+            lcdRo = new ResizeObserver(() => fitScreen());
+            lcdRo.observe(els.lcd);
+        }
+    }
+    function fitScreen() {
+        const w = Number(els.lcd.dataset.w) || 246;
+        const avail = els.lcd.clientWidth;
+        if (avail) els.rad.style.zoom = String(Math.round((avail / w) * 1000) / 1000);
+    }
+
     const setImg = (img, src) => { if (!src) { img.hidden = true; img.removeAttribute('src'); return; } if (img.getAttribute('src') !== src) img.src = src; img.hidden = false; };
     const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
     const setHtml = (el, h) => { if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; } };
@@ -668,19 +727,31 @@
         const rec = recOf(id);
         const playing = radio.state === 'playing' || radio.state === 'tuning';
         const st = { off: 'Off', tuning: 'Tuning...', playing: 'Playing', paused: 'Paused', error: 'No signal' }[radio.state] || '';
+        lookScreen();
+        const scr = (o) => {
+            // the receiver's screen, filled as the desktop radio's paint() fills it
+            els.rad.dataset.state = { off: 'off', tuning: 'acquiring', playing: 'playing', paused: 'paused', error: 'nosignal' }[radio.state] || 'off';
+            setText(els.num, o.num || '');
+            setText(els.name, o.name || '');
+            setText(els.l2, o.l2 || '');
+            setText(els.l3, o.l3 || '');
+            setText(els.replay, o.replay || '');
+            setText(els.band, o.band || '');
+            setText(els.pre, '');
+            els.sig.dataset.bars = radio.state === 'playing' || radio.state === 'paused' ? '3' : radio.state === 'tuning' ? '1' : '0';
+            const d = new Date();
+            setText(els.clock, `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`);
+            setLcdImg(els.art, o.art || '');
+            setLcdImg(els.logo, o.logo || '');
+            setLcdImg(els.bg, o.bg || '');
+        };
+        if (radio.mode !== 'track') { const cid = radio.channelId || prefs.channel; if (cid) void wantLogos([cid]); }
         if (radio.mode === 'track' && radio.track) {
-            setImg(els.logo, '');
-            setText(els.ch, `Tape: ${radio.track.tape}`);
-            setText(els.state, `${st}  ${radio.track.i + 1}/${radio.track.list.length}`);
-            els.state.classList.remove('is-rec');
-            setImg(els.art, '');
-            setText(els.artN, 'TAPE');
             const m = /^(\d{4}-\d{2}-\d{2} \d{4}) (.*)$/.exec(radio.track.name);
             const rest = m ? m[2] : radio.track.name;
             const parts = rest.split(' - ');
-            setText(els.t1, parts.length > 1 ? parts.slice(1).join(' - ') : rest);
-            setText(els.t2, parts.length > 1 ? parts[0] : '');
-            setText(els.t3, m ? `Recorded ${m[1].slice(0, 10)} ${m[1].slice(11, 13)}:${m[1].slice(13)}` : '');
+            const tst = { tuning: 'LOADING', paused: 'PAUSED', error: 'CANNOT PLAY', off: 'STOPPED' }[radio.state];
+            scr({ num: String(radio.track.i + 1), name: `TAPE ${radio.track.tape}`, l2: tst || (parts.length > 1 ? parts[0] : rest), l3: tst ? '' : (parts.length > 1 ? parts.slice(1).join(' - ') : ''), replay: 'TAPE' });
             els.rec.hidden = true;
             setHtml(els.up, '');
             const list = radio.track.list.slice(radio.track.i + 1, radio.track.i + 6);
@@ -689,16 +760,21 @@
             const now = nowOf(id);
             const s = sched.get(id);
             const data = (s && s.data) || {};
-            setImg(els.logo, c && c.logo);
-            setText(els.ch, c ? chanLabel(c) : (cache.lineup ? 'Choose a channel' : 'Reading the channels...'));
-            setText(els.state, rec ? `REC  ${st}` : st);
-            els.state.classList.toggle('is-rec', !!rec);
-            const pic = now && !now.ad && now.i ? now.i : (c && c.logo) || '';
-            setImg(els.art, pic);
-            setText(els.artN, pic ? '' : (c ? String(c.number) : ''));
-            setText(els.t1, now ? (now.ad ? 'SiriusXM' : now.t || '') : (c ? c.name : ''));
-            setText(els.t2, now ? (now.ad ? 'Commercial' : now.a || '') : '');
-            setText(els.t3, now && now.s ? now.s : '');
+            let l2 = now ? (now.ad ? 'SiriusXM' : now.a || '') : '';
+            let l3 = now ? (now.ad ? 'Commercial' : now.t || '') : '';
+            if (!c) { l2 = cache.lineup ? 'Choose a channel' : 'Channels loading'; l3 = ''; }
+            else if (radio.state === 'tuning') { l2 = 'ACQUIRING SIGNAL'; l3 = ''; }
+            else if (radio.state === 'error') { l2 = 'NO SIGNAL'; l3 = 'Check connection'; }
+            const songArt = now && !now.ad && now.i ? now.i : '';
+            const tft = BODY_DISPLAY[prefs.body] === 'tft';
+            scr({
+                num: c ? String(c.number || '') : '', name: c ? c.name : 'XM RADIO', l2, l3,
+                replay: rec ? 'REC' : radio.state === 'paused' ? 'PAUSED' : '',
+                band: prefs.show === 'all' ? '' : prefs.show,
+                // the song's art (else the channel's logo) and the logo beside it; the channel's picture behind on colour
+                art: songArt || (c && c.logo) || '', logo: songArt ? (c && c.logo) || '' : '',
+                bg: tft && c && c.bg ? c.bg : ''
+            });
             els.rec.hidden = !isAdmin() || !c;
             els.rec.classList.toggle('is-on', !!rec);
             setText(els.rec, rec ? 'STOP' : 'REC');
@@ -810,6 +886,8 @@
             { label: 'Show', submenu: [['A', 'Presets A'], ['B', 'Presets B'], ['C', 'Presets C'], ['all', 'All Channels']].map(([v, t]) => ({ label: t, radio: prefs.show === v, action: () => { prefs.show = v; saveSoon(); setTab('channels'); } })) },
             { label: 'Direct Tune...', action: () => { void directTune(); } },
             { label: 'Add to Presets', disabled: !id || !admin, submenu: ['A', 'B', 'C'].map((b) => ({ label: `Bank ${b}`, submenu: slots(b) })) },
+            { label: 'Radio', submenu: BODIES.map(([v, t]) => ({ label: t, radio: prefs.body === v, action: () => { prefs.body = v; saveSoon(); render(); } })) },
+            { label: 'Brand', submenu: ERAS.map(([v, t]) => ({ label: t, radio: prefs.era === v, action: () => { prefs.era = v; saveSoon(); render(); } })) },
             { label: 'Quality', submenu: QUALITIES.map(([v, t]) => ({ label: t, radio: prefs.quality === v, action: () => { prefs.quality = v; saveSoon(); if (radio.mode === 'live' && radio.channelId && radio.state !== 'off') void tune(radio.channelId); } })) },
             '-',
             { label: 'Refresh Lineup', action: () => { lineupAsked = false; void loadLineup(true); } },
