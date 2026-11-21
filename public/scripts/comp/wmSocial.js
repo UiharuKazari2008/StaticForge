@@ -77,6 +77,9 @@
         return out;
     }
     const paging = () => (option('paging') === 'app' ? 'app' : 'date');
+    // the social apps for the rest of the shell: the clock's Super Bar leaves their notifications to Social (Nov 21 2026)
+    // app-scope: allow export on purpose (wmTitanium reads it; phone shell, loaded once from app.html)
+    window.wmSocial = { apps: () => chosen() };
 
     // ---------------------------------------------------------------- the phone's programs
 
@@ -373,9 +376,19 @@
         if (b.anims[0] && b.anims[0].finished) b.anims[0].finished.then(finish, finish); else finish();
     }
 
+    // the bar's right key is a Menu (Yukimi, Nov 21 2026): Open App (the app on screen), Clear All (its notifications here and
+    // in the shade)
+    function clearApp(pkg) {
+        const B = bridge();
+        if (B && typeof B.clear === 'function') { try { B.clear(pkg); } catch (_) { /* gone */ } }
+    }
     function barSoftKeys(keys) {
         if (!bar || bar.closing) return keys;
-        return { left: keys.left, right: appKey(bar.heads[bar.at]) };
+        const pkg = bar.heads[bar.at];
+        return { left: keys.left, right: { label: 'Menu', icon: 'menu', menu: () => [
+            { label: 'Open App', action: () => launchApp(pkg) },
+            { label: 'Clear All', action: () => clearApp(pkg) }
+        ] } };
     }
 
     function barKey(e) {
