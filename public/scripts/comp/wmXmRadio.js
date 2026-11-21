@@ -1742,9 +1742,12 @@
                 const c = chan(id);
                 const now = nowOf(id);
                 const playing = onAir(id);
+                const pic = now && !now.ad && now.i ? now.i : c.logo;
                 return {
-                    // the picture at the top right is the channel's logo (Yukimi, Nov 21 2026)
-                    image: c.logo || undefined,
+                    // the song's picture at the left; the channel's logo is the panel icon at the top right
+                    // (Yukimi, Nov 21 2026), the radio's own icon only for a channel with no logo
+                    icon: c.logo || undefined,
+                    image: pic || undefined,
                     imageAspect: 1,
                     title: now ? (now.ad ? 'Commercial' : now.t || c.name) : c.name,
                     line2: now && !now.ad ? now.a || '' : '',
