@@ -2122,7 +2122,10 @@
             if (!p || !st) return;
             if (st === 'handed') { p.handed = true; plSuspend(true); }
             else if (st === 'open') { if (ws) ws.open(APP_ID); if (shown) plPopBack(); }
-            else if (p.handed) { p.handed = false; p.popped = false; if (st === 'ended') { plStatus('The stream has ended.', false); p.state = 'ended'; plTell(); refreshKeys(); } else stopPlayer(); }
+            // (only an ending: the native player also tells its play state - buffering, playing, paused, retrying -
+            // which once read here as "stopped" and closed a handed-over stream at once, Yukimi Nov 21: "if a video's
+            // playing [it] just close[s]")
+            else if (p.handed && (st === 'stopped' || st === 'ended' || st === 'lost')) { p.handed = false; p.popped = false; if (st === 'ended') { plStatus('The stream has ended.', false); p.state = 'ended'; plTell(); refreshKeys(); } else stopPlayer(); }
         }, { signal: appScopeSignal });
         // back in the app with this program still in front (the app had handed the stream over when it was left)
         document.addEventListener('visibilitychange', () => {
