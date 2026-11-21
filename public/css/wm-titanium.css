@@ -1350,3 +1350,21 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest .wm-ti-arrow {
 html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest.arrows-idle .wm-ti-arrow {
     opacity: 0;
 }
+
+/* The home swipe's handover (#1013, wmTitanium maskedHome): the app's own mask file, full screen in the picture layer
+   and cropped the way the app draws it (centre, cover), so the frame its mask goes on is the frame Today shows; it
+   dissolves into Today's own picture as the entrance runs. Above the picture, under the band and the list. */
+html.ui-mobile[data-wm-version="6.5"] #wmShell > .wm-wall65 > .wm-ti-handoff {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell > .wm-wall65 > .wm-ti-handoff[hidden] {
+    display: none;
+}

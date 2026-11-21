@@ -2901,17 +2901,49 @@
         try { return !!(window.AndroidBars && typeof window.AndroidBars.homeMaskUp === 'function' && window.AndroidBars.homeMaskUp()); } catch (_) { return false; }
     }
 
+    /** The shell's title bar and soft key bar (6.5: see-through over the picture). */
+    function shellBars() {
+        const shellEl = document.getElementById('wmShell');
+        return shellEl ? [[shellEl.querySelector(':scope > .wm-titlebar'), '-100%'], [shellEl.querySelector(':scope > .wm-softkeys'), '100%']].filter(([el]) => el) : [];
+    }
+
+    /** The bars out of sight (off the top and the bottom) from the handover on, before Today is seen (the recording: they showed for 4 frames). */
+    function barsAway() {
+        for (const [el, off] of shellBars()) el.style.transform = `translateY(${off})`;
+    }
+
     /** The title bar from the top and the soft key bar from the bottom, in over the entrance's last 250 ms. */
     function barsIn(totalMs) {
-        const shellEl = document.getElementById('wmShell');
-        if (!shellEl) return;
-        const opts = { duration: BARS_IN_MS, delay: Math.max(0, totalMs - BARS_IN_MS), easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'backwards' };
-        const bar = shellEl.querySelector(':scope > .wm-titlebar');
-        const keys = shellEl.querySelector(':scope > .wm-softkeys');
-        try {
-            if (bar) bar.animate([{ transform: 'translateY(-100%)' }, { transform: 'none' }], opts);
-            if (keys) keys.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], opts);
-        } catch (_) { /* no Web Animations: the bars simply stay */ }
+        const opts = { duration: BARS_IN_MS, delay: Math.max(0, totalMs - BARS_IN_MS), easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'both' };
+        for (const [el, off] of shellBars()) {
+            try {
+                const a = el.animate([{ transform: `translateY(${off})` }, { transform: 'none' }], opts);
+                a.onfinish = () => { el.style.transform = ''; a.cancel(); };
+            } catch (_) { el.style.transform = ''; }
+        }
+    }
+
+    // the handover layer: the app's own mask file (AndroidBars.homeMaskUrl, the same bytes it draws), full screen in the
+    // picture layer, so the frame the app's mask goes on is the frame Today shows (the recording: Today's zoomed, parallax-
+    // placed picture and its band popped in under the mask's plain one); it dissolves as the entrance runs
+    let handoff = null;
+    function handoffLayer() {
+        let url = '';
+        try { url = window.AndroidBars && typeof window.AndroidBars.homeMaskUrl === 'function' ? String(window.AndroidBars.homeMaskUrl() || '') : ''; } catch (_) { url = ''; }
+        const wall = document.querySelector('#wmShell > .wm-wall65');
+        if (!url || !wall) return null;
+        if (!handoff || !handoff.isConnected) {
+            handoff = document.createElement('img');
+            handoff.className = 'wm-ti-handoff';
+            handoff.alt = '';
+            handoff.decoding = 'async';
+            handoff.setAttribute('aria-hidden', 'true');
+            handoff.hidden = true;
+            wall.appendChild(handoff);
+        }
+        if (handoff.getAttribute('src') !== url) handoff.src = url;
+        handoff.hidden = false;
+        return handoff;
     }
 
     /** Today under the app's home mask (wmShell goHome with the mask, or the page shown while it is up). */
@@ -2925,8 +2957,13 @@
         if (focusWait) focusWait.cancel();
         if (slide && slide.active) { cancelAnimationFrame(slide.raf); slide.active = false; slide.x = 0; host.classList.remove('is-sliding'); }
         if (overlay) { try { overlay.close(true); } catch (_) { overlay = null; } }
+        // the frame the mask goes on: the mask's own picture, no band, no bars, no list
+        barsAway();
+        if (blurClip) blurClip.style.opacity = '0';
         if (!host.classList.contains('is-primed')) prime();
+        const layer = handoffLayer();
         let started = false;
+        let cap = 0;
         const start = () => {
             if (started) return;
             started = true;
@@ -2935,14 +2972,30 @@
             clearTimeout(cap);
             entrance();
             barsIn(ENTER_MS + ENTER_ZOOM_MS);
+            // the mask's picture dissolves into Today's own as the list runs up; the band comes in with it
+            const fade = { duration: 380, easing: 'cubic-bezier(0.3, 0, 0.2, 1)' };
+            if (layer && !layer.hidden) {
+                try { const a = layer.animate([{ opacity: 1 }, { opacity: 0 }], fade); a.onfinish = () => { layer.hidden = true; }; } catch (_) { layer.hidden = true; }
+            }
+            if (blurClip) {
+                try { const b = blurClip.animate([{ opacity: 0 }, { opacity: 1 }], fade); b.onfinish = () => { blurClip.style.opacity = ''; }; } catch (_) { blurClip.style.opacity = ''; }
+            }
         };
         maskedRun = { start };
         window.addEventListener('melatonmaskgone', start, { signal: appScopeSignal });
-        const cap = setTimeout(start, MASK_CAP_MS);
-        // the pose drawn and on screen (two frames; none while the page is still hidden): the mask may go
-        requestAnimationFrame(() => requestAnimationFrame(() => { // perf: allow one call per home swipe: homeReady only posts to the app's main thread, nothing is answered or waited for
-            try { window.AndroidBars.homeReady(); } catch (_) { start(); }
-        }));
+        cap = setTimeout(start, MASK_CAP_MS);
+        // ready: the layer's picture decoded (at most 200 ms), the entrance's animations built now (under the mask, not as
+        // it starts: the recording's 34 + 100 ms stalls), then the frame drawn and on screen (two frames) - the mask may go
+        const ready = () => {
+            if (started) return;
+            prepareEntry();
+            requestAnimationFrame(() => requestAnimationFrame(() => { // perf: allow one call per home swipe: homeReady only posts to the app's main thread, nothing is answered or waited for
+                try { window.AndroidBars.homeReady(); } catch (_) { start(); }
+            }));
+        };
+        if (layer && typeof layer.decode === 'function') {
+            Promise.race([layer.decode().catch(() => {}), new Promise((r) => setTimeout(r, 200))]).then(ready);
+        } else ready();
         return true;
     }
 
