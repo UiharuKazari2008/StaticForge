@@ -833,7 +833,8 @@
                     label: 'Menu',
                     menu: () => [
                         { label: 'Phone Settings', disabled: !canOpen, action: () => openAndroidSettings('phone') },
-                        { label: 'Bluetooth Settings', disabled: !canOpen, action: () => openAndroidSettings('bluetooth') },
+                        // our own Settings > Bluetooth, not Android's (Yukimi, Nov 21 2026)
+                        { label: 'Bluetooth Settings', action: () => { const ws = root.wmSettings; if (!(ws && typeof ws.open === 'function' && ws.open('bluetooth'))) openAndroidSettings('bluetooth'); } },
                         { label: 'Wi-Fi Settings', disabled: !canOpen, action: () => openAndroidSettings('wifi') },
                         ...(r && r.present && r.present.nfc ? [{ label: 'NFC Settings', disabled: !canOpen, action: () => openAndroidSettings('nfc') }] : []),
                         { label: 'Disconnect Cellular Data', disabled: !(r && r.data && !r.airplane), action: () => setRadio('data', false) }

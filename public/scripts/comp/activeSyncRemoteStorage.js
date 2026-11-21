@@ -237,7 +237,9 @@
         const note = (bytes) => { if (opts.onProgress) opts.onProgress(Math.max(0, Math.min(total, Math.round(bytes))), total); };
         // across the LAN when there is a direct link (#1006): straight to the phone, no stop at the server; a queued
         // copy or a program to install keeps the server path (it waits there / the server asks the installer)
-        const link = !opts.queue && !opts.install ? directLink(deviceId) : null;
+        // a file sent to the phone (Send To) goes through the server, which tells the phone it was a push (its sounds)
+        const sentToPhone = opts.push === true || dir === RECEIVED_DIR;
+        const link = !opts.queue && !opts.install && !sentToPhone ? directLink(deviceId) : null;
         if (link) {
             try {
                 const entry = await link.put({
@@ -255,7 +257,10 @@
         const begun = await post(`/api/activesync/upload/${deviceId}/begin`, {
             id, root: rootId, dir, name: opts.name || file.name, size: total,
             conflict: opts.conflict || 'fail', mtime: opts.mtime != null ? opts.mtime : (file.lastModified || undefined),
-            mkdirs: opts.mkdirs === true ? true : undefined
+            mkdirs: opts.mkdirs === true ? true : undefined,
+            // sent to the phone (Send To's folder, a queued copy, a program), not a copy made in Explorer: the phone
+            // plays ActiveSync's sounds only for these (Yukimi, Nov 21 2026)
+            push: opts.push === true || dir === RECEIVED_DIR || !!opts.queue || !!opts.install ? true : undefined
         }, signal, true);
         if (begun.status !== 200) throw error(begun.data.code, begun.data.error);
         const chunkSize = begun.data.chunkSize || 4 * 1024 * 1024;

@@ -4816,6 +4816,16 @@
         const k = typeIcon(type);
         return { lte: 'LTE', 'lte-plus': 'LTE+', '5g': '5G', '5g-plus': '5G+', '5g-uw': '5G UW', 'nr-uw': 'NR UW' }[k] || DATA_NAME[type] || type;
     }
+    /**
+     * The data type as the status bar's badge shows it, in words (Yukimi, Nov 21 2026: Mobile Broadband shows only
+     * "5G" or the 3GPP type, as the user set the status bar): 5G / 5G+ / 5G UW with the 5G indicator on, else the
+     * 3GPP name (NR, NR-A, UWB, NR UW, 4G or LTE as chosen, HSPA+ ...).
+     */
+    function badgeName(type) {
+        const k = typeIcon(type);
+        return { g: 'GPRS', e: 'EDGE', '3g': '3G', h: 'HSPA', 'h-plus': 'HSPA+', '4g': '4G', '4g-plus': '4G+', lte: 'LTE', 'lte-plus': 'LTE+',
+            nr: 'NR', 'nr-a': 'NR-A', uw: 'UWB', 'nr-uw': 'NR UW', '5g': '5G', '5g-plus': '5G+', '5g-uw': '5G UW' }[k] || type;
+    }
 
     /*
      * The RIL's operator names as the phone shows them: Android reports today's short brand, the
@@ -5126,14 +5136,61 @@
      * ActiveSync transfers (#822): ActiveSync: Start as data starts moving, ActiveSync: Complete when the
      * last file is through; the icon's sync sequence and an open Connectivity bubble follow along.
      */
+    // a link or text sent to the phone from a computer (open.url / open.item / clipboard.set): ActiveSync: Complete;
+    // a computer browsing the phone's files: the Connectivity popup says Connected for a few minutes
+    const AS_PUSH_OPS = new Set(['open.url', 'open.item', 'clipboard.set']);
+    const AS_RECENT_MS = 3 * 60 * 1000;
+    let asPageActivityAt = 0;
+    function watchActiveSyncRequests() {
+        const as = window.activeSync;
+        if (!as || typeof as.on !== 'function' || as.kind !== 'device') return;
+        as.on('request', (r) => {
+            const op = r && r.op ? String(r.op) : '';
+            if (AS_PUSH_OPS.has(op)) playSystemSound('as-done');
+            else if (/^(storage|stream|media)\./.test(op)) asPageActivityAt = Date.now();
+        });
+        // the app's service: its server link, direct links (P2P) and recent use (AndroidActiveSync.peerState, #1006)
+        window.addEventListener('androidasstate', () => {
+            const b = shell && shell.querySelector('.wm-bubble');
+            if (b && !b.hidden && b.dataset.role === 'data') statusBubble('data', shell.querySelector('[data-role="data"]'), true);
+        }, { signal: appScopeSignal });
+    }
+
+    /** The service's ActiveSync facts ({ server, session, bonded, links, lastActivity, word }), or null without the app. */
+    function asPeerState() {
+        const b = window.AndroidActiveSync;
+        if (!b || typeof b.peerState !== 'function') return null;
+        try { return JSON.parse(b.peerState()); } catch (_) { return null; }
+    }
+
+    /**
+     * ActiveSync's row (Yukimi, Nov 21 2026): Connected (a computer holds a direct link, or used the phone's files in the
+     * last few minutes), Available (the link to the server is up), Unavailable (partnered, but the server link is down),
+     * Waiting for the computer (pending); nothing when no connection is set up. p2p: a direct link is live.
+     */
+    function activeSyncRow() {
+        const as = window.activeSync;
+        const st = as && typeof as.state === 'function' ? (as.state() || {}) : {};
+        const p = asPeerState();
+        if (p && (p.server || p.bonded)) return p.word ? { text: p.word, p2p: Number(p.links) > 0 } : null;
+        if (st.session === 'pending') return st.online ? { text: 'Waiting for the computer' } : null;
+        if (st.session !== 'partner' && st.session !== 'guest') return null;
+        if (!st.online) return { text: st.session === 'partner' ? 'Unavailable' : 'Not connected' };
+        return { text: Date.now() - asPageActivityAt < AS_RECENT_MS ? 'Connected' : 'Available' };
+    }
+
     function watchActiveSyncTransfers() {
         const as = window.activeSync;
         if (!as || typeof as.on !== 'function' || as.kind !== 'device') return;
         let moving = false;
+        let pushing = false;
+        // Start / Complete only for what someone sends to the phone (Send To, a program; the server marks it push), never
+        // for Explorer or Media Player moving its files around (Yukimi, Nov 21 2026)
         as.on('progress', (d) => {
             if (!d) return;
-            if (d.active && !moving) { moving = true; playSystemSound('as-start'); }
-            if (d.done && moving) { moving = false; playSystemSound('as-done'); }
+            if (d.active && !moving) moving = true;
+            if (moving && d.push && !pushing) { pushing = true; playSystemSound('as-start'); }
+            if (d.done && moving) { moving = false; if (pushing || d.push) playSystemSound('as-done'); pushing = false; }
             statusDirty();
             const b = shell && shell.querySelector('.wm-bubble');
             if (b && !b.hidden && b.dataset.role === 'data') statusBubble('data', shell.querySelector('[data-role="data"]'), true);
@@ -7110,7 +7167,7 @@
                 const lv = noService || lv5 == null ? null : Math.max(0, Math.min(5, Math.round(lv5)));
                 // the radio's own type, also while Wi-Fi carries the data (dev.type is the active link's)
                 const rt = dev.type || (typeof c.dataType === 'string' ? c.dataType : null);
-                const right = `${!noService && rt ? `<b>${pe(typeName(rt))}</b>` : ''}${signalBars(lv, 5)}`;
+                const right = `${!noService && rt ? `<b>${pe(badgeName(rt))}</b>` : ''}${signalBars(lv, 5)}`;
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: ${state}</span>${right ? `<span class="wm-bubble-right">${right}</span>` : ''}</div>` });
             }
             if (dev.link && dev.active !== 'wifi' && dev.active !== 'cellular') sections.push(`${dev.link.text}`);
@@ -7128,9 +7185,9 @@
             const syncing = !!(asx && (asx.active || (asx.done && Date.now() - asx.at < 8000)));
             // not moving data: ActiveSync's row still says whether it is there (Yukimi, Nov 14)
             if (!syncing && window.activeSync && window.activeSync.kind === 'device') {
-                const st = window.activeSync.state();
-                const txt = !st.online ? 'Not connected' : st.session === 'partner' ? 'Connected (partnership)' : st.session === 'guest' ? 'Connected (guest)' : st.session === 'pending' ? 'Waiting for the computer' : 'Available';
-                sections.push(`ActiveSync: ${txt}`);
+                // data-live: the app's popup fills the word (as-state) and drops the badge (as-p2p) from its service
+                const row = activeSyncRow();
+                if (row) sections.push({ html: `<div class="wm-bubble-pair"><span data-live="as-state">ActiveSync: ${pe(row.text)}</span>${row.p2p ? '<span class="wm-bubble-right"><span class="wm-p2p" data-live="as-p2p" aria-label="A computer is connected directly">P2P</span></span>' : ''}</div>` });
             }
             if (syncing) {
                 const size = (n) => { const v = Math.max(0, Number(n) || 0); return v < 1024 ? `${v} B` : v < 1048576 ? `${(v / 1024).toFixed(v < 10240 ? 1 : 0)} KB` : v < 1073741824 ? `${(v / 1048576).toFixed(1)} MB` : `${(v / 1073741824).toFixed(2)} GB`; };
@@ -12536,6 +12593,7 @@
         watchStatusIcons();
         watchMsgboxLayers();
         watchActiveSyncTransfers();
+        watchActiveSyncRequests();
         watchSystemSounds();
         watchRequestBusy();
         routeAlert();
