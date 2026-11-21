@@ -948,10 +948,23 @@ function readMail(owner, id, { markRead } = {}) {
         getDb().prepare('UPDATE dovecote_message SET read = 1, updated_at = ? WHERE id = ?').run(nowIso(), row.id);
         row.read = 1;
         const receiptOwner = markPairedReadReceipt(owner, row);
+        // opened = read: the phone's "New E-mail Message" for it goes too, as markMail does (#999). It stayed, and the
+        // status bar kept its envelope with no unread mail (Yukimi, Nov 20)
+        if (owner === HUMAN_OWNER) {
+            try { require('./notificationInboxSources').onDovecoteDone(row.id); } catch (_e) { /* best effort */ }
+        }
         emitMailboxChanged([owner, receiptOwner]);
     }
     audit(owner, 'read_mail', id, true, null);
     return toFull(row);
+}
+
+/** Of these message ids, the ones still unread in `owner`'s inbox (no audit: the inbox sweep of old phone notices, #999). */
+function unreadInboxIds(owner, ids) {
+    const list = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter(Boolean))].slice(0, 500);
+    if (!isValidOwner(owner) || !list.length) return new Set();
+    const rows = getDb().prepare(`SELECT id FROM dovecote_message WHERE owner = ? AND folder = 'inbox' AND read = 0 AND id IN (${list.map(() => '?').join(', ')})`).all(owner, ...list);
+    return new Set(rows.map((r) => r.id));
 }
 
 function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam, silent, changedOwners }) {
@@ -1375,6 +1388,7 @@ module.exports = {
     getMessageRow,
     listMail,
     readMail,
+    unreadInboxIds,
     markMail,
     markMailBatch,
     countMailInFolder,

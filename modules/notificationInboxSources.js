@@ -126,6 +126,24 @@ function bindDovecote() {
     if (dovecoteBound) return;
     dovecoteBound = true;
     try { require('./dovecoteMailboxEvents').subscribe(onDovecoteNewMail); } catch (e) { console.warn(`[notify-inbox] dovecote: ${e.message}`); }
+    sweepDovecote();
+}
+
+/**
+ * A notice left for mail already read or moved out of the inbox goes (once, at start): opening a message did not
+ * clear it before #999, and the status bar's envelope stood for it with no unread mail (Yukimi, Nov 20).
+ */
+function sweepDovecote() {
+    let dm = null;
+    try { dm = require('./dovecoteMail'); } catch (_e) { return 0; }
+    let rows = [];
+    try { rows = inbox.list('admin').filter((n) => n.id.startsWith('dmail:') && (n.state === 'new' || n.state === 'seen')); } catch (_e) { return 0; }
+    if (!rows.length) return 0;
+    let still = null;
+    try { still = dm.unreadInboxIds(dm.HUMAN_OWNER || 'yukimi', rows.map((n) => n.id.slice(6))); } catch (_e) { return 0; }
+    let gone = 0;
+    for (const n of rows) if (!still.has(n.id.slice(6))) { clear('admin', n.id); gone += 1; }
+    return gone;
 }
 
 // ---------------------------------------------------------------- server-only notices (#908)
@@ -543,6 +561,7 @@ module.exports = {
     onRainAlarm,
     _test: {
         saidOf,
+        sweepDovecote,
         reset: () => { dirWas = null; printsTold.clear(); queueBound = null; },
     },
 };
