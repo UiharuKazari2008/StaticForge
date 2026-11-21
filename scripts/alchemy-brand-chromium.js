@@ -15,6 +15,11 @@
  *   and the flat grey logo -> alchemy-mono.svg.
  *   Logos are found by their pixels, not by resource id, because ids change between Chromium versions.
  * Re-run after every apt Chromium update. Until then the service keeps using the newer system Chromium.
+ *
+ * Only for stock Chromium: Alchemy's own build (services/grimoire-browser/chromium-patches, #993) is branded when it
+ * is compiled (brand.py) and ships its binary as alchemy, so it needs none of this. The script will not replace such
+ * a build in $ALCHEMY_CHROMIUM_DIR (alchemy-patches.json there) unless run with --replace-patched-build, e.g. to fall
+ * back to a newer stock Chromium for its security fixes until the patched build catches up.
  */
 
 const fs = require('fs');
@@ -190,6 +195,10 @@ function rebrandStrings(file) {
 }
 
 async function main() {
+    if (fs.existsSync(path.join(OUT, 'alchemy-patches.json')) && !process.argv.includes('--replace-patched-build')) {
+        throw new Error(OUT + ' holds Alchemy\'s own Chromium build (alchemy-patches.json), which is branded already; '
+            + 'pass --replace-patched-build to replace it with a branded stock Chromium');
+    }
     const binary = path.join(SRC, 'chromium');
     const versionText = String(spawnSync(binary, ['--version'], { encoding: 'utf8', timeout: 10000 }).stdout || '');
     const version = (versionText.match(/(\d+\.\d+\.\d+\.\d+)/) || [])[1];

@@ -20,7 +20,7 @@
  *   ALCHEMY_CDP_PORT         default 9339: loopback CDP for Hoshino's Alchemy-owned Discord tab (modules/alchemyOwnedTab.js); 0 turns it off
  *   ALCHEMY_PROFILE_DIR      default ~/.local/share/dreamscape/alchemy-profile (cookies, extension logins: keep 0700)
  *   ALCHEMY_EXTENSIONS_DIR   default ~/.local/share/dreamscape/alchemy-extensions (scripts/alchemy-update-extension.js)
- *   ALCHEMY_CHROMIUM_DIR     default ~/.local/share/dreamscape/alchemy-chromium (scripts/alchemy-brand-chromium.js)
+ *   ALCHEMY_CHROMIUM_DIR     default ~/.local/share/dreamscape/alchemy-chromium (chromium-patches, or scripts/alchemy-brand-chromium.js)
  *   ALCHEMY_HEADLESS         set 1 to run headless; otherwise Chromium runs windowed on a private Xvfb display when Xvfb is installed
  *   ALCHEMY_AUDIO            set 0 to mute; otherwise audio plays into a private PulseAudio when pulseaudio and ffmpeg are installed
  *   ALCHEMY_DATA_DIR         default ~/.local/share/dreamscape (X auth, performance and display settings, fake capture files)
@@ -4261,7 +4261,7 @@ async function main() {
     }
     console.log('[grimoire-browser] chrome', chromeBin);
     if (fs.existsSync(ALCHEMY_BIN) && chromeBin !== ALCHEMY_BIN) {
-        console.warn('[grimoire-browser] the Alchemy-branded Chromium is older than the system one: run node scripts/alchemy-brand-chromium.js');
+        console.warn('[grimoire-browser] the Alchemy Chromium is older than the system one: rebuild it at the new tag (chromium-patches/build-alchemy.sh), or brand the stock one (node scripts/alchemy-brand-chromium.js)');
     }
     await ensureBrowser();
 

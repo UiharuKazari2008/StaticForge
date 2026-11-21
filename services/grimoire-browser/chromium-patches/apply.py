@@ -18,17 +18,34 @@ Everything sits behind the Blink feature AlchemyEmulatedScaleCompositor (off by 
    pixels, sharp, with devicePixelRatio 2, whatever the screen (Xvfb) is. The emulated scale is also kept on the
    page's RenderWidgetHost, so every DevTools session follows it: Input.* positions are scaled into it (Puppeteer's
    input runs on another session than Alchemy's screencast) and the capture is sized by it. Not here: wheel
-   distances (Alchemy scales those itself) and a scale change on a live page, which keeps the old scale until the
-   surface is reallocated (Alchemy nudges the size by a pixel).
+   distances (Alchemy scales those itself: it steps the wheel in 16 frame pixels, which needs the distance in frame
+   pixels before it reaches Chromium) and a scale change on a live page, which keeps the old scale until the surface
+   is reallocated (Alchemy nudges the size by a pixel; a renderer-side request for a new LocalSurfaceId was tried on
+   Nov 21 2026 and changed nothing: the browser keeps embedding by its own id).
    Verified (scripts/test-alchemy-viewer.js --chrome): frames = the viewer's device pixels at 1, 1.25, 1.5, 2 and
    the phone's 2.625, devicePixelRatio and CSS size right, clicks, taps and wheel distances exact.
 
+3. Internet Explorer 7's error pages (StaticForge, Yukimi Nov 21 2026: "replace all the chrome error pages with IE 1:1
+   recreations"): neterror.html and interstitial_large.html load files/.../alchemy_ie/alchemy_ie.css + .js, which draw
+   ieframe.dll's dnserror / http_* / syntax / invalidcert / phishsite pages (their markup, text and images) over
+   Chromium's hidden page and drive Chromium's own controllers (reload, proceed, back to safety, more information).
+
+4. Branding (brand.py): the product is Alchemy in the strings, BRANDING and every product logo, so the build needs no
+   after-the-fact .pak rewrite (scripts/alchemy-brand-chromium.js stays only for a stock-Chromium fallback).
+
 Edits are (path, anchor, replacement), or (path, ('region', start, end), old, new) to replace every `old` between two
-anchors.
+anchors. FILES (files/<path>) are copied into the checkout as they are.
 """
 
 import os
+import shutil
 import sys
+
+import brand
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+FILES = os.path.join(HERE, 'files')
+IE = '../../../components/security_interstitials/core/common/resources/alchemy_ie/alchemy_ie'
 
 FEATURE = 'kAlchemyEmulatedScaleCompositor'
 
@@ -144,6 +161,28 @@ EDITS = [
      '                features::kAlchemyEmulatedScaleCompositor)) {\n'
      '          clip_rect.size.height += LayoutUnit(8192);\n'
      '        }\n'),
+
+    # 3. IE7's error pages over Chromium's (grit inlines the css, js and images: flattenhtml)
+    ('components/neterror/resources/neterror.html',
+     '  <link rel="stylesheet" href="neterror.css">\n',
+     '  <link rel="stylesheet" href="neterror.css">\n'
+     '  <link rel="stylesheet" href="' + IE + '.css">\n'),
+    ('components/neterror/resources/neterror.html',
+     '  <script src="%ROOT_GEN_DIR%/components/neterror/resources/minified/neterror.rollup.js"></script>\n'
+     '</if>\n',
+     '  <script src="%ROOT_GEN_DIR%/components/neterror/resources/minified/neterror.rollup.js"></script>\n'
+     '</if>\n'
+     '  <script src="' + IE + '.js"></script>\n'),
+    ('components/security_interstitials/core/browser/resources/interstitial_large.html',
+     '  <link rel="stylesheet" href="interstitial_managedprofilerequired.css">\n',
+     '  <link rel="stylesheet" href="interstitial_managedprofilerequired.css">\n'
+     '  <link rel="stylesheet" href="../../common/resources/alchemy_ie/alchemy_ie.css">\n'),
+    ('components/security_interstitials/core/browser/resources/interstitial_large.html',
+     '  <script src="%ROOT_GEN_DIR%/components/security_interstitials/core/browser/resources/minified/interstitial_large/interstitial_large.rollup.js"></script>\n'
+     '</if>\n',
+     '  <script src="%ROOT_GEN_DIR%/components/security_interstitials/core/browser/resources/minified/interstitial_large/interstitial_large.rollup.js"></script>\n'
+     '</if>\n'
+     '  <script src="../../common/resources/alchemy_ie/alchemy_ie.js"></script>\n'),
 
     # -- browser: the emulated scale lives on the page's widget, for every DevTools session --
     # (Puppeteer's input and Alchemy's screencast run on different sessions, each with its own EmulationHandler)
@@ -267,6 +306,26 @@ def region_edit(src, check, rel, region, old, new):
     return 0
 
 
+def copy_files(src, check):
+    """files/<path> -> <src>/<path>, when different."""
+    for root, _dirs, names in os.walk(FILES):
+        for name in sorted(names):
+            source = os.path.join(root, name)
+            rel = os.path.relpath(source, FILES)
+            dest = os.path.join(src, rel)
+            with open(source, 'rb') as fh:
+                data = fh.read()
+            if os.path.exists(dest):
+                with open(dest, 'rb') as fh:
+                    if fh.read() == data:
+                        print('already  ' + rel)
+                        continue
+            print(('would    ' if check else 'copied   ') + rel)
+            if not check:
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                shutil.copyfile(source, dest)
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -274,6 +333,8 @@ def main():
     src = sys.argv[1]
     check = '--check' in sys.argv
     failed = 0
+    copy_files(src, check)
+    failed += brand.apply(src, check)
     for edit in EDITS:
         if len(edit) == 4:
             failed += region_edit(src, check, *edit)
