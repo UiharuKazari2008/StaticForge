@@ -725,7 +725,6 @@
   "page-global": 24
  },
  "public/scripts/comp/tabVolume.js": {
-  "owner-less-listener": 3,
   "page-global": 1
  },
  "public/scripts/comp/tagSets.js": {

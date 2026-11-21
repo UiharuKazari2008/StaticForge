@@ -394,6 +394,8 @@
         const giveUp = quickLaunchRetries >= QUICK_LAUNCH_RETRIES;
         let pending = false;
         const entries = settings.quickLaunchItems.map((id) => {
+            // a phone program's shortcut (#1005, 'android:...') belongs to the DeX desktop: other desktops leave it out
+            if (typeof id === 'string' && id.startsWith('android:') && !root.melatonAndroidPrograms) return null;
             const entry = quickLaunchEntry(id);
             if (entry) return entry;
             if (giveUp) return brokenQuickLaunchEntry(id);

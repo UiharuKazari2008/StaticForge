@@ -11,6 +11,7 @@ const TRAY_ICON_CATALOG = [
     { id: 'naxtBagTrayIcon', label: 'Atelier Bag' },
     { id: 'dovecoteTrayIcon', label: 'Mail' },
     { id: 'activeSyncTrayIcon', label: 'Melaton Mobile Device Center' },
+    { id: 'androidNotifyTrayIcon', label: 'Notifications' },
     { id: 'melatonMessengerTrayIcon', label: 'Melaton Messenger' },
     { id: 'vistaSidebarTrayIcon', label: 'Melaton Sidebar' },
     { id: 'searchIndexingIndicator', label: 'Search indexing' },
@@ -209,7 +210,8 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 // only there while updates download or wait for a restart (#945); the system icons have their own switches
 // Vista shows the presentation icon while presenting (PresentationSettings.exe, #958)
 // Safely Remove Hardware is there only while a removable disk is in, and is how it comes out (#910)
-const TRAY_DEFAULT_SHOW = new Set(['nightshadeTrayIcon', 'serviceWorkerTrayIcon', 'presentationTrayIcon', 'safelyRemoveTrayIcon']);
+// the DeX desktop's notifications Bell (#1005, Yukimi: shown by default)
+const TRAY_DEFAULT_SHOW = new Set(['nightshadeTrayIcon', 'serviceWorkerTrayIcon', 'presentationTrayIcon', 'safelyRemoveTrayIcon', 'androidNotifyTrayIcon']);
 function trayIconBehavior(id) {
     const { map, legacy } = trayBehaviorsSaved();
     const fallback = TRAY_DEFAULT_SHOW.has(id) ? 'show' : 'hide';

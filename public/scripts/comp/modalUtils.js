@@ -5113,6 +5113,8 @@ function cancelTaskbarItemRemoval(item) {
 }
 
 function taskbarItemShouldExist(item, itemsThatShouldExist) {
+    // an Android window's button on the DeX desktop (#1005): androidTaskbar.js adds and removes it
+    if (item.dataset.androidWindow) return true;
     const modalId = item.dataset.modalId;
     const groupType = item.dataset.groupType;
 
@@ -6041,6 +6043,8 @@ function isModalActive(modal) {
 /** Taskbar highlight only: parent-linked tool windows never get their own "active" taskbar button (parent shows active instead). */
 function isModalActiveForTaskbar(modal) {
     if (!modal) return false;
+    // an Android window has focus on the DeX desktop (#1005, androidTaskbar.js): no Dreamscape button is pressed
+    if (window.melatonAndroidTaskbar && window.melatonAndroidTaskbar.hasFocus()) return false;
     if (isToolWindow(modal)) {
         if (modal.getAttribute('data-parent-modal-id')) return false;
         if (modal.classList.contains('novel-editor-tool') || modal.classList.contains('novel-progress-tool')) {
@@ -7545,6 +7549,9 @@ function collectStartMenuLaunchableDescriptors() {
         getDsapMenuEntries().forEach(pushItem);
     }
 
+    // the phone's programs in the DeX window (#1005): public/scripts/comp/androidDesktopPrograms.js
+    if (window.melatonAndroidPrograms) window.melatonAndroidPrograms.items().forEach(pushItem);
+
     return out;
 }
 
@@ -8480,6 +8487,8 @@ function getStartMenuProgramsTree() {
     // (AmusementVISION 2024), Games, Melaton SideShow (the VM's Windows SideShow > Device Simulator 3.0)
     entries.push({ folder: true, folderId: 'accessories', text: 'Accessories', children: getStartMenuAccessoriesItems() });
     entries.push({ folder: true, folderId: 'administrative-tools', text: 'Administrative Tools', children: getStartMenuPlacedItems('administrative-tools') });
+    // the phone's installed programs in the DeX window (#1005; androidDesktopPrograms.js), a Work folder inside
+    if (window.melatonAndroidPrograms) entries.push({ folder: true, folderId: 'android-programs', text: 'Android Programs', children: window.melatonAndroidPrograms.tree() });
     entries.push({ folder: true, folderId: 'dreamscape-r7', text: START_MENU_PACKAGE_FOLDER, children: getStartMenuPackageItems() });
     START_MENU_VENDOR_FOLDERS.forEach((f) => entries.push({ folder: true, folderId: f.folderId, text: f.text, children: getStartMenuPackageItems(f.apps) }));
     entries.push({ folder: true, folderId: 'games', text: 'Games', children: startMenuGameLaunchables.filter(isStartMenuItemLaunchable).sort(byStartMenuLabel) });

@@ -113,7 +113,7 @@ Actions (each returns a Promise; `{ error }` when refused):
   On DreamOS the page keeps at most two of its reads (`networks()`, `scan()`) on the way to the host at once, and a
   read already on its way is shared: the shell bridge's synchronous reads must always find a free connection to the host.
 - `scan()` starts a scan. The list arrives through `onScan(fn)`, which returns an unsubscribe function.
-- `connect(ssid, passphrase?, { hidden }?)`, `disconnect()`, `forget(ssid)`, `autoConnect(ssid, on)`, `radio(on)`. `hidden`: Manually connect's "Connect even if the network is not broadcasting" (DreamOS: iwd ConnectHiddenNetwork).
+- `connect(ssid, passphrase?, { hidden }?)`, `disconnect()`, `forget(ssid)`, `autoConnect(ssid, on)`, `radio(on)`. `hidden`: Manually connect's "Connect even if the network is not broadcasting" (DreamOS: iwd ConnectHiddenNetwork; Android: DSApp `AndroidWifi.connectHidden(ssid, pass, id)`, #1005, which an older app answers with `{ error }`).
 - Instant Hotspot (DreamOS, optional): `hotspot()`, `onHotspot(fn)`, `hotspotConnect()`, `hotspotDisconnect()`. See [instant-hotspot.md](instant-hotspot.md).
 - Planned for mobile: `mobileData(on)`. The UI hides the switch when the provider lacks it.
 - `can()` (optional) returns `{ connect, disconnect, forget, radio, scan }`. A `false` disables that action in the Wi-Fi
@@ -150,6 +150,19 @@ While a volume provider is in use, `tabVolume.js` works as follows:
 - The tray slider and the speaker button act on the device.
 - The tab's own gain stays at 1, so audio is not turned down twice.
 - Changes made elsewhere, such as the volume keys, come back through `subscribe`.
+
+The flyout (every desktop; #1005):
+
+- The mouse wheel over the flyout or the tray icon steps the volume by 2 per notch (a touchpad's small deltas add up to a
+  notch). Over the icon it also shows the flyout, which then closes on its own.
+- The output's picture (Vista's sndvol device art by kind) sits over the slider; a click lists the outputs media can play
+  on ("Play sound on", the current one marked) and moves the sound there (`melatonAudioDevices.setDefault`). The flyout
+  listens to `melatonAudioDevices.onChange` only while it is open (that is what asks the platform to push).
+- Letting go of the slider after a click or a drag plays the Default Beep (Windows Ding) at the new level, as Vista's
+  SndVolSSO does. In the Android app it plays natively on the media output (`AndroidVolume.play`), at Melaton Sounds' level.
+- In the Android app's desktop shell the page takes the volume keys (`AndroidVolume.takeKeys(true)`; the app hands them over
+  only while that window has focus). Each `androidvolumekey` shows the flyout, which closes ~3 s after the last change; the
+  pointer resting on it holds it, and a click inside makes it stay until a click elsewhere.
 
 ## audio devices (Control Panel > Sound, #963)
 

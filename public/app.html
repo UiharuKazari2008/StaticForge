@@ -7386,6 +7386,9 @@ Examples:
     <!-- the Android app's desktop shell (DeX / Continuity PC, #910 #798): the phone's battery, Wi-Fi, mobile data, volume
          and Bluetooth as tray providers, and the DPI Scaling dialog's display (DSApp bridges; inert elsewhere) -->
     <script src="scripts/comp/androidTrayProviders.js"></script>
+    <!-- the DeX desktop (#1005): the phone's programs in All Programs > Android Programs, Start Search and Quick Launch;
+         the tray's Bell with the phone's notifications; the Android windows' taskbar buttons -->
+    <template data-shell="desktop"><script src="scripts/comp/androidDesktopPrograms.js"></script><script src="scripts/comp/androidNotificationsTray.js"></script><script src="scripts/comp/androidTaskbar.js"></script></template><script>writeShellTags()</script>
     <script src="scripts/comp/tabVolume.js"></script>
     <!-- the computer's own sound devices (#963): Sound, the tray volume menu's outputs, the Volume Mixer; nothing runs until asked -->
     <script src="scripts/comp/audioDevices.js"></script>

@@ -279,6 +279,115 @@
         notifyChange();
     }
 
+    // ---- #1005: the wheel, the output button, the Windows Ding, the popup for the volume keys ----
+
+    /** The mouse wheel over the icon or the flyout: 2 per notch, as Windows steps it; a touchpad's small deltas add up. */
+    const WHEEL_STEP = 2;
+    let wheelAcc = 0;
+    function onWheel(e) {
+        const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
+        if (!dy) return;
+        e.preventDefault();
+        let notches = 0;
+        if (Math.abs(dy) >= 50) notches = dy < 0 ? 1 : -1;
+        else {
+            wheelAcc += dy;
+            if (Math.abs(wheelAcc) < 100) return;
+            notches = wheelAcc < 0 ? 1 : -1;
+            wheelAcc = 0;
+        }
+        const from = muted ? 0 : level;
+        const next = Math.max(0, Math.min(100, from + notches * WHEEL_STEP));
+        if (next === from && !(muted && notches > 0)) return;
+        setLevel(next);
+    }
+
+    /**
+     * Vista's SndVolSSO plays the Default Beep (Windows Ding) when the slider is let go after a click or a drag,
+     * at the new level, so the user hears it. In the Android app the sound plays natively on the media output
+     * (AndroidVolume.play; no Web Audio there, phone-power-client rule 8); elsewhere through desktopSounds.
+     */
+    function ding() {
+        const S = window.desktopSounds;
+        if (!S || (typeof S.isEnabled === 'function' && !S.isEnabled())) return;
+        const AV = window.AndroidVolume;
+        if (hwAudio && AV && typeof AV.play === 'function' && typeof S.resolveFile === 'function') {
+            const file = S.resolveFile('dialog');
+            const gain = typeof S.mixerMuted === 'function' && S.mixerMuted() ? 0 : (typeof S.mixerLevel === 'function' ? S.mixerLevel() : 100) / 100;
+            if (!file || gain <= 0) return;
+            try { AV.play(location.origin + '/sounds/vista/' + encodeURIComponent(file), 'media', gain); } catch (_err) { /* older app: no sound */ }
+            return;
+        }
+        if (typeof S.play === 'function') S.play('dialog');
+    }
+
+    // the device art Vista's Mixer uses (volumeMixer.js), by the output's kind
+    const DEVICE_ART = '/static_images/vista-sndvol';
+    const DEVICE_KINDS = ['speakers', 'headphones', 'headset', 'handset', 'line', 'digital', 'hdmi'];
+
+    /** The outputs media can play on (audioDevices.js), the one it plays on first. */
+    function outputs() {
+        const A = window.melatonAudioDevices;
+        if (!A || typeof A.list !== 'function') return [];
+        let list = [];
+        try { list = A.list('playback').filter((d) => d.state === 'working' && (d.isDefault || d.canSetDefault)); } catch (_err) { list = []; }
+        return list;
+    }
+
+    function outputLabel(d) {
+        return d.description && d.description !== d.name ? `${d.name} (${d.description})` : d.name;
+    }
+
+    /** The button over the slider: the output's picture; a click lists the outputs to move the sound to. */
+    function paintOutput() {
+        if (!flyout) return;
+        const btn = flyout.querySelector('.volume-flyout-output');
+        if (!btn) return;
+        const list = outputs();
+        const current = list.find((d) => d.isDefault) || list[0] || null;
+        const show = !!current;
+        if (btn.hidden === show) btn.hidden = !show;
+        if (!current) return;
+        const kind = DEVICE_KINDS.indexOf(current.kind) >= 0 ? current.kind : 'speakers';
+        const src = `${DEVICE_ART}/${kind}-32.png`;
+        const img = btn.querySelector('img');
+        if (img && img.getAttribute('src') !== src) img.setAttribute('src', src);
+        const tip = list.length > 1 ? `${outputLabel(current)}: click to choose where sound plays` : outputLabel(current);
+        if (btn.title !== tip) btn.title = tip;
+        btn.setAttribute('aria-label', tip);
+    }
+
+    function wireOutputButton(btn) {
+        const cm = window.contextMenu;
+        if (!cm || typeof cm.attachPickerMenu !== 'function') return;
+        cm.attachPickerMenu(btn, {
+            items: () => {
+                const A = window.melatonAudioDevices;
+                try { if (A && typeof A.refresh === 'function') A.refresh(); } catch (_err) { /* the platform answers later */ }
+                const list = outputs();
+                return [{ separator: true, text: 'Play sound on' }].concat(list.map((d) => ({ value: d.id, text: outputLabel(d) })));
+            },
+            value: () => { const d = outputs().find((o) => o.isDefault); return d ? d.id : null; },
+            onSelect: (id) => switchOutput(id)
+        });
+    }
+
+    // the flyout shown for the volume keys or the wheel over the icon closes on its own, ~3 s after the last change
+    // (the pointer resting on it keeps it, as a balloon held by hover); one opened by a click stays until a click elsewhere
+    const TRANSIENT_MS = 3000;
+    let transientTimer = 0;
+    function clearTransient() {
+        if (transientTimer) { clearTimeout(transientTimer); transientTimer = 0; }
+    }
+    function showTransient() {
+        const wasOpen = flyout && !flyout.classList.contains('hidden');
+        if (wasOpen && !flyout.dataset.transient) return; // the user opened it: leave it open
+        if (!wasOpen) showFlyout();
+        flyout.dataset.transient = '1';
+        clearTransient();
+        if (!flyout.matches(':hover')) transientTimer = setTimeout(() => { transientTimer = 0; hideFlyout(); }, TRANSIENT_MS);
+    }
+
     function ensureFlyout() {
         if (flyout) return flyout;
         flyout = document.createElement('div');
@@ -287,6 +396,7 @@
         flyout.innerHTML = ''
             + '<div class="volume-flyout-columns">'
             + '<div class="volume-flyout-column is-device">'
+            + '<button type="button" class="volume-flyout-output" hidden><img alt="" width="32" height="32" draggable="false"></button>'
             + '<div class="volume-flyout-slider win7">'
             + '<div class="is-vertical">'
             + '<input type="range" class="volume-flyout-range" min="0" max="100" step="1" aria-label="Volume">'
@@ -305,6 +415,15 @@
         range.addEventListener('input', () => {
             setLevel(Number(range.value));
         });
+        // let go after a click or a drag: the Windows Ding at the new level (Vista's SndVolSSO)
+        range.addEventListener('change', ding);
+        flyout.addEventListener('wheel', onWheel, { passive: false });
+        // the pointer on a self-closing flyout holds it; leaving starts the wait again
+        flyout.addEventListener('pointerenter', clearTransient);
+        flyout.addEventListener('pointerleave', () => { if (flyout.dataset.transient && !flyout.classList.contains('hidden')) showTransient(); });
+        // using it makes it the user's: it stays until a click elsewhere
+        flyout.addEventListener('pointerdown', () => { clearTransient(); delete flyout.dataset.transient; });
+        wireOutputButton(flyout.querySelector('.volume-flyout-output'));
         range.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
                 e.preventDefault();
@@ -326,10 +445,10 @@
             const icon = document.getElementById('volumeTrayIcon');
             if (icon && icon.contains(e.target)) return;
             hideFlyout();
-        }, true);
+        }, { capture: true, signal: appScopeSignal });
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') hideFlyout();
-        });
+        }, { signal: appScopeSignal });
         return flyout;
     }
 
@@ -348,13 +467,34 @@
 
     function showFlyout() {
         ensureFlyout();
+        clearTransient();
+        delete flyout.dataset.transient;
         flyout.classList.remove('hidden');
         paintFlyout();
+        // the outputs read when the flyout opens; a plug-in while it shows comes through onChange, which asks the
+        // platform to push only while someone listens, so the flyout listens only while it is open
+        const A = window.melatonAudioDevices;
+        try { if (A && typeof A.refresh === 'function') A.refresh(); } catch (_err) { /* the platform answers later */ }
+        if (A && typeof A.onChange === 'function' && !outputsOff) outputsOff = A.onChange(paintOutput) || null;
+        paintOutput();
         positionFlyout();
     }
+    let outputsOff = null;
+    function stopOutputs() {
+        if (!outputsOff) return;
+        const off = outputsOff;
+        outputsOff = null;
+        try { off(); } catch (_err) { /* already gone */ }
+    }
+    if (appScopeSignal) appScopeSignal.addEventListener('abort', stopOutputs, { once: true });
 
     function hideFlyout() {
-        if (flyout) flyout.classList.add('hidden');
+        clearTransient();
+        stopOutputs();
+        if (flyout) {
+            flyout.classList.add('hidden');
+            delete flyout.dataset.transient;
+        }
     }
 
     function toggleFlyout() {
@@ -475,7 +615,28 @@
             hideFlyout();
             showMenu(e);
         });
+        // the wheel over the icon turns the volume and shows the flyout while it does (#1005)
+        icon.addEventListener('wheel', (e) => { onWheel(e); if (e.defaultPrevented) showTransient(); }, { passive: false });
         paintIcon();
+    }
+
+    /**
+     * The volume keys while this desktop is the focused display (#1005; the Android app's desktop shell, DeX): the app
+     * hands them to the page (AndroidVolume.takeKeys: only while this window has focus), steps the media volume and
+     * pushes 'androidvolumekey'; the Vista flyout shows for them and closes on its own.
+     */
+    function wireVolumeKeys() {
+        const AV = window.AndroidVolume;
+        let androidDesktop = false;
+        try { androidDesktop = !!(window.AndroidDisplay && typeof window.AndroidDisplay.isDesktop === 'function' && window.AndroidDisplay.isDesktop()); } catch (_err) { androidDesktop = false; }
+        if (!androidDesktop || window.uiShell === 'mobile' || !AV || typeof AV.takeKeys !== 'function') return;
+        try { AV.takeKeys(true); } catch (_err) { return; }
+        window.addEventListener('androidvolumekey', (e) => {
+            const d = (e && e.detail) || {};
+            if (d.kind && d.kind !== 'media') return;
+            if (Number.isFinite(Number(d.mediaPct))) hwApply({ volume: Number(d.mediaPct), muted: !!d.mediaMuted });
+            showTransient();
+        }, { signal: appScopeSignal });
     }
 
     window.tabVolume = {
@@ -537,8 +698,9 @@
         if (appScopeSignal) appScopeSignal.addEventListener('abort', off, { once: true });
     }
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', wireIcon);
+        document.addEventListener('DOMContentLoaded', wireIcon, { signal: appScopeSignal });
     } else {
         wireIcon();
     }
+    wireVolumeKeys();
 })();

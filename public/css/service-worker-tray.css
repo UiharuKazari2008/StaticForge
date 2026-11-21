@@ -180,7 +180,7 @@ body.desktop-mode:not(.windows-classic-theme) .popover.arrow-bottom-right:not(.d
     padding-right: 18px;
 }
 
-.popover.tray-balloon .tray-balloon-close {
+:is(.popover.tray-balloon, .android-notify-flyout) .tray-balloon-close {
     position: absolute;
     top: 5px;
     right: 5px;
@@ -195,16 +195,16 @@ body.desktop-mode:not(.windows-classic-theme) .popover.arrow-bottom-right:not(.d
     cursor: var(--c-default);
 }
 
-.popover.tray-balloon .tray-balloon-close::before,
-.popover.tray-balloon .tray-balloon-close::after {
+:is(.popover.tray-balloon, .android-notify-flyout) .tray-balloon-close::before,
+:is(.popover.tray-balloon, .android-notify-flyout) .tray-balloon-close::after {
     content: none;
 }
 
-.popover.tray-balloon .tray-balloon-close:hover {
+:is(.popover.tray-balloon, .android-notify-flyout) .tray-balloon-close:hover {
     background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2717%27 height=%2716%27 shape-rendering=%27crispEdges%27%3E%3Cdefs%3E%3ClinearGradient id=%27f%27 x1=%270%27 y1=%270%27 x2=%270%27 y2=%271%27%3E%3Cstop offset=%270%27 stop-color=%27%23f8f8f8%27/%3E%3Cstop offset=%271%27 stop-color=%27%23e0e0e3%27/%3E%3C/linearGradient%3E%3ClinearGradient id=%27r%27 x1=%270%27 y1=%270%27 x2=%270%27 y2=%271%27%3E%3Cstop offset=%270%27 stop-color=%27%23fbfbfb%27/%3E%3Cstop offset=%271%27 stop-color=%27%23ececee%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d=%27M2 0h13v1H2zM2 15h13v1H2zM0 2h1v12H0zM16 2h1v12h-1z%27 fill=%27%23969696%27/%3E%3Cpath d=%27M1 0h1v1H1zM15 0h1v1h-1zM0 1h1v1H0zM16 1h1v1h-1zM0 14h1v1H0zM16 14h1v1h-1zM1 15h1v1H1zM15 15h1v1h-1z%27 fill=%27%23b1b1b1%27/%3E%3Cpath d=%27M2 2h13v12H2z%27 fill=%27url%28%23f%29%27/%3E%3Cpath d=%27M15 2h1v12h-1z%27 fill=%27url%28%23r%29%27/%3E%3Cpath d=%27M2 1h13v1H2zM1 2h1v12H1z%27 fill=%27%23fff%27/%3E%3Cpath d=%27M1 1h1v1H1zM15 1h1v1h-1z%27 fill=%27%23eaeaea%27/%3E%3Cpath d=%27M2 14h13v1H2z%27 fill=%27%23ebeced%27/%3E%3Cpath d=%27M1 14h1v1H1z%27 fill=%27%23e5e5e5%27/%3E%3Cpath transform=%27translate%284 4%29%27 d=%27M0 0h3v1H0zM6 0h3v1H6zM1 1h3v1H1zM5 1h3v1H5zM2 2h5v1H2zM3 3h3v2H3zM2 5h5v1H2zM1 6h3v1H1zM5 6h3v1H5zM0 7h3v1H0zM6 7h3v1H6z%27 fill=%27%23b83c3c%27/%3E%3C/svg%3E");
 }
 
-.popover.tray-balloon .tray-balloon-close:hover:active {
+:is(.popover.tray-balloon, .android-notify-flyout) .tray-balloon-close:hover:active {
     background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2717%27 height=%2716%27 shape-rendering=%27crispEdges%27%3E%3Cdefs%3E%3ClinearGradient id=%27f%27 x1=%270%27 y1=%270%27 x2=%270%27 y2=%271%27%3E%3Cstop offset=%270%27 stop-color=%27%23cecfd4%27/%3E%3Cstop offset=%271%27 stop-color=%27%23e5e6e8%27/%3E%3C/linearGradient%3E%3ClinearGradient id=%27r%27 x1=%270%27 y1=%270%27 x2=%270%27 y2=%271%27%3E%3Cstop offset=%270%27 stop-color=%27%23d9dadd%27/%3E%3Cstop offset=%271%27 stop-color=%27%23e6e6e8%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d=%27M2 0h13v1H2zM2 15h13v1H2zM0 2h1v12H0zM16 2h1v12h-1z%27 fill=%27%238b8c8e%27/%3E%3Cpath d=%27M1 0h1v1H1zM15 0h1v1h-1zM0 1h1v1H0zM16 1h1v1h-1zM0 14h1v1H0zM16 14h1v1h-1zM1 15h1v1H1zM15 15h1v1h-1z%27 fill=%27%23a4a5a7%27/%3E%3Cpath d=%27M2 2h13v12H2z%27 fill=%27url%28%23f%29%27/%3E%3Cpath d=%27M15 2h1v12h-1z%27 fill=%27url%28%23r%29%27/%3E%3Cpath d=%27M2 1h13v1H2zM1 2h1v12H1z%27 fill=%27%23cbccce%27/%3E%3Cpath d=%27M1 1h1v1H1zM15 1h1v1h-1z%27 fill=%27%23bec1c3%27/%3E%3Cpath d=%27M2 14h13v1H2z%27 fill=%27%23e7e8ea%27/%3E%3Cpath d=%27M1 14h1v1H1z%27 fill=%27%23bdbec0%27/%3E%3Cpath transform=%27translate%284 4%29%27 d=%27M0 0h3v1H0zM6 0h3v1H6zM1 1h3v1H1zM5 1h3v1H5zM2 2h5v1H2zM3 3h3v2H3zM2 5h5v1H2zM1 6h3v1H1zM5 6h3v1H5zM0 7h3v1H0zM6 7h3v1H6z%27 fill=%27%23923739%27/%3E%3C/svg%3E");
 }
 
