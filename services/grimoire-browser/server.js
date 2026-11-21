@@ -1186,6 +1186,7 @@ function broadcast(session, payload, binary) {
     for (const ws of session.sockets) {
         if (ws.readyState !== 1) continue;
         ws.send(data);
+        ws.sentAt = Date.now();
         // what each viewer was sent (binary: frames, tiles, audio), against what it says it got (automatic quality)
         if (binary) ws.txBytes = (ws.txBytes || 0) + data.length;
     }
@@ -4806,6 +4807,15 @@ function attachViewer(ws, session) {
     // automatic quality starts at its middle step (a new link has said nothing yet); a later viewer joins at the current one
     applyAutoQuality(session);
     session.sockets.add(ws);
+    // the front proxy (nginx, 737.jp.net) closes a socket after 60 s with nothing sent to the client: a viewer whose page
+    // sends nothing (a tab behind another, capture paused) gets a ping after 25-40 s of silence, so it stays open; a page
+    // that streams sends no extra bytes
+    ws.sentAt = Date.now();
+    ws.keepAlive = setInterval(() => {
+        if (ws.readyState !== 1 || Date.now() - ws.sentAt < 25000) return;
+        try { ws.ping(); } catch (_) {}
+        ws.sentAt = Date.now();
+    }, 15000);
     ws.send(JSON.stringify(encoderInfo(session)));
     touch(session);
     session.viewHidden = false;
@@ -4939,6 +4949,7 @@ function attachViewer(ws, session) {
         });
     });
     ws.on('close', () => {
+        clearInterval(ws.keepAlive);
         session.sockets.delete(ws);
         setAudioListener(ws, false);
         // a moment's grace: a viewer reconnecting (a reload, a transfer) finds the capture still on
