@@ -1193,6 +1193,33 @@
         if (!p || p.kind !== 'ytr' || !els || !nv || typeof nv.at !== 'function') return;
         try { nv.at(Math.round(els.video.currentTime * 1000), !els.video.paused); } catch (_) { /* an older app build */ }
     }
+    /**
+     * The live stream the app's native player carries, for every page of the app (Yukimi, Nov 21 2026: opening Videos
+     * on the DeX desktop "does not transfer the video, it will play 2"). The phone page and the DeX desktop are two pages
+     * of one WebView with one localStorage: the page that hands a stream over notes its channel, and Videos opened on the
+     * other page takes that stream back instead of leaving it playing in picture-in-picture.
+     */
+    const HANDED_KEY = 'wmVideosHanded';
+    function noteHanded(p) {
+        if (!p || p.vod || !p.slug) return;
+        const v = { id: `kick:${p.slug}`, channel: p.channel, title: p.streamTitle, at: p.startedAt, url: p.kickUrl };
+        try { localStorage.setItem(HANDED_KEY, JSON.stringify({ v, savedAt: Date.now() })); } catch (_) { /* storage full or off */ }
+    }
+    function dropHanded() {
+        try { localStorage.removeItem(HANDED_KEY); } catch (_) { /* storage off */ }
+    }
+    /** The stream another page handed to the native player that still plays it, or null. */
+    function handedElsewhere() {
+        const nv = nativePlayer();
+        let active = false;
+        try { active = !!nv && nv.isActive() === true; } catch (_) { active = false; }
+        if (!active) return null;
+        try {
+            const rec = JSON.parse(localStorage.getItem(HANDED_KEY) || 'null');
+            return rec && rec.v && rec.v.id && Date.now() - (rec.savedAt || 0) < 24 * 3600e3 ? rec.v : null;
+        } catch (_) { return null; }
+    }
+
     /** The page's video is held up ('waiting') until it plays again. */
     let plStalled = false;
     /** The native player gives the stream back to the page (Videos is in front again). */
@@ -1209,6 +1236,7 @@
         p.handed = false;
         p.popped = false;
         try { nv.stop(); } catch (_) { /* gone */ }
+        dropHanded();
         if (p.kind === 'ytr' && els) {
             const v = els.video;
             if (ms >= 0) { try { v.currentTime = ms / 1000; } catch (_) { /* not ready */ } }
@@ -1237,6 +1265,7 @@
         if (!ok) { plTell(); box('The stream could not be popped out.', 'info'); return; }
         p.handed = true;
         p.popped = true;
+        noteHanded(p);
         if (p.full) plFull(false);
         plSuspend(true);
         plStatus('Playing in its own window. Tap here to bring it back.', false);
@@ -2142,7 +2171,20 @@
         });
         try { if (window.screen && screen.orientation) screen.orientation.addEventListener('change', plTurned, { signal: appScopeSignal }); } catch (_) { /* no orientation API */ }
         window.addEventListener('resize', plTurned, { signal: appScopeSignal });
-        v.addEventListener('playing', () => { plStalled = false; if (player && player.state === 'live') { player.tries = 0; plStatus('', false); } plHud(!els.hud.hidden); plTell(); });
+        v.addEventListener('playing', () => {
+            plStalled = false;
+            if (player && player.state === 'live') { player.tries = 0; plStatus('', false); }
+            // this page's own picture moves: the native player (picture-in-picture or sound, handed over by this page or
+            // another one) stops, so there is only ever one (Yukimi, Nov 21 2026: "it will play 2 and i have to go and close it")
+            if (player && !player.handed && !player.popped) {
+                const nv = nativePlayer();
+                let active = false;
+                try { active = !!nv && nv.isActive() === true; } catch (_) { active = false; }
+                if (active) { try { nv.stop(); } catch (_) { /* gone */ } dropHanded(); }
+            }
+            plHud(!els.hud.hidden);
+            plTell();
+        });
         v.addEventListener('pause', () => { plHud(true); plTell(); plAt(); });
         v.addEventListener('seeked', plAt);
         v.addEventListener('timeupdate', ytrTime);
@@ -2319,6 +2361,8 @@
             const t = data.subs;
             if (t.feedStale && signedIn() && t.videos && !t.loading) { t.feedStale = false; loadTab('subs', false, true); }
             if (pendingWatch) { const v = pendingWatch; pendingWatch = null; if (srcOf(v) === 'kick') watchLive(v); else watchVideo(v); }
+            // another page of the app handed its stream to the native player: it comes here (plTakeBack stops that one)
+            if (!player) { const v = handedElsewhere(); if (v) watchLive(v); }
             if (player) { syncPlayer(); plTakeBack(); plSuspend(false); plClock(true); chatSync(); }
         },
         hide() {
@@ -2326,7 +2370,7 @@
             if (els) els.q.blur();
             // the program is left with a stream playing: the app's native player carries it on (a floating window, or sound)
             const nv = nativePlayer();
-            if (player && canHand(player) && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } }
+            if (player && canHand(player) && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } if (player.handed) noteHanded(player); }
             if (!(player && player.popped)) plSuspend(true);
             chatSync();
             plTell();
