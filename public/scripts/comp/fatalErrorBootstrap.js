@@ -1301,6 +1301,13 @@
                 ev.preventDefault();
                 return;
             }
+            // a request the link took down with it (websocket.js CONNECTION_LOST: the socket or the Continuity
+            // carrier closed while it was pending) is the connection's state, which the shell already shows and
+            // the reconnect recovers; not a program that stopped working (#987)
+            if (r && typeof r === 'object' && r.code === 'CONNECTION_LOST') {
+                ev.preventDefault();
+                return;
+            }
             var errorUrl = parseScriptUrlFromStack(stack);
             presentFatal(normalizeDetail(message, reason, '', '', '', stack, errorUrl), { error: r, kind: 'rejection' });
         } catch (e) { /* ignore */ }

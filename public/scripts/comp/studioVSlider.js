@@ -1194,19 +1194,25 @@ function studioVSliderMaybeRestoreFromStudio(content, options) {
 function studioVSliderWireHooks() {
     if (studioVSliderHooksWired) return;
     studioVSliderHooksWired = true;
-    const prevShared = addSharedFieldsToRequestBody;
-    addSharedFieldsToRequestBody = function (requestBody, values) {
-        prevShared(requestBody, values);
-        studioVSliderWriteRequestBody(requestBody);
-    };
-    const prevOpen = openManualModalWithContent;
-    openManualModalWithContent = async function (content, event) {
-        const result = await prevOpen(content, event);
-        // After fetch: currentEditMetadata / preview hold full forge_data (incl. vSlider).
-        // Gallery content.image is often a stub without forge_data.vSlider.
-        studioVSliderMaybeRestoreFromStudio(content, { open: true });
-        return result;
-    };
+    // addSharedFieldsToRequestBody, openManualModalWithContent: manualModalManager.js. A boot where
+    // that script failed to load (Android emulator, Nov 20) has neither; wire only what exists.
+    if (typeof addSharedFieldsToRequestBody === 'function') {
+        const prevShared = addSharedFieldsToRequestBody;
+        addSharedFieldsToRequestBody = function (requestBody, values) {
+            prevShared(requestBody, values);
+            studioVSliderWriteRequestBody(requestBody);
+        };
+    }
+    if (typeof openManualModalWithContent === 'function') {
+        const prevOpen = openManualModalWithContent;
+        openManualModalWithContent = async function (content, event) {
+            const result = await prevOpen(content, event);
+            // After fetch: currentEditMetadata / preview hold full forge_data (incl. vSlider).
+            // Gallery content.image is often a stub without forge_data.vSlider.
+            studioVSliderMaybeRestoreFromStudio(content, { open: true });
+            return result;
+        };
+    }
 }
 
 function studioVSliderNewId(prefix) {

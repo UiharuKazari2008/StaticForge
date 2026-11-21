@@ -481,8 +481,13 @@ var assetPreload = (function () {
     function setLogonPrepareLine(on) {
         if (typeof wsClient === 'undefined' || !wsClient) return;
         // the logon's own line from the logon until the shell starts: Vista's "Welcome", classic "Loading your personal
-        // settings..." (desktopBoot.js welcomeText; it goes on to "Preparing your desktop..." / "Applying ...")
-        wsClient._desktopAssetPreloadMessage = on ? (window.desktopBoot ? desktopBoot.welcomeText(false) : 'Welcome') : '';
+        // settings..." (desktopBoot.js welcomeText; it goes on to "Preparing your desktop..." / "Applying ...").
+        // This file loads on demand by its bare path, so it can be newer than the shell's desktopBoot.js (installed
+        // at the last restart, before welcomeText existed): with that copy the line is "Welcome" instead of a throw (#985)
+        var boot = window.desktopBoot;
+        wsClient._desktopAssetPreloadMessage = on
+            ? (boot && typeof boot.welcomeText === 'function' ? boot.welcomeText(false) : 'Welcome')
+            : '';
         var fill = document.getElementById('desktopPreStartupProgressFill');
         if (fill) fill.style.width = '';
         if (wsClient._shouldUsePreStartupDialog && wsClient._shouldUsePreStartupDialog()) {

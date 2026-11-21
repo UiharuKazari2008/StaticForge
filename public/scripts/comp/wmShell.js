@@ -3441,6 +3441,8 @@
         const updDl = updateProgressToast();
         if (updDl && updDl.pct >= 100) void healFinishedUpdateNotice().then((changed) => { if (changed) statusDirty(); });
         const updEl = shell.querySelector('[data-role="update"]');
+        // the update notification goes once nothing waits (installed, or the restart took them)
+        if (!updateReady && updateNote) dropUpdateNote();
         hide(updEl, !(updateReady || updDl || notes.some(isUpdateNote)));
         paintUpdateIcon(updEl, !!updDl);
         const openBub = shell.querySelector('.wm-bubble');
@@ -3448,8 +3450,6 @@
         hide(shell.querySelector('[data-role="prints"]'), !printsInProgress());
         const mailEl = shell.querySelector('[data-role="mail"]');
         // any unread mail, if the user asked for that (Messaging > Tools > Options); else only mail
-        // the update notification goes once nothing waits (installed, or the restart took them)
-        if (!updateReady && updateNote) dropUpdateNote();
         // that came in since this client started and is still unread (mailNewCheck)
         // IMAP accounts (#789) count the same way; while their New E-mail notification waits it stands for them
         const noteWaits = (ev) => notes.some((n) => { const o = appNotes.get(n.id); return !!(o && o.event === ev); });
@@ -6354,6 +6354,7 @@
             // are the notification's soft keys (the standard, noteActions), never buttons in the body
             const copy = content.cloneNode(true);
             copy.querySelectorAll('.toast-title').forEach((x) => x.remove());
+            copy.querySelectorAll('.toast-buttons').forEach((x) => x.remove());
             copy.querySelectorAll('[id]').forEach((x) => x.removeAttribute('id'));
             const own = [...content.querySelectorAll('button')].filter((b) => !b.closest('.toast-buttons'));
             copy.querySelectorAll('button').forEach((b, i) => {
@@ -6361,7 +6362,6 @@
                 b.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const src = own[i];
-            copy.querySelectorAll('.toast-buttons').forEach((x) => x.remove());
                     const dupes = n.ids.filter((id) => id !== n.id);
                     if (src && src.isConnected) src.click();
                     // the same notice twice: one answer settles every copy
@@ -6434,20 +6434,6 @@
         refreshNotes();
     }
 
-    function noteSoftKeys() {
-        const n = noteShownNote();
-        if (!n) return { left: null, right: null };
-        const closable = !!n.toast.querySelector('.toast-close');
-        // an update notice that can be acted on: the update's own actions (Install Now / Restart Now | Later)
-        if (isUpdateNote(n) && !updateFailure(n)) {
-            const spec = updateNoteSpec();
-            if (spec) return { left: { label: spec.action.text, action: () => { hideNote(); spec.action.run(); } }, right: { label: 'Later', action: hideNote } };
-        }
-        // an app's own notification (appNote) may bring its own soft keys or actions
-        const own = appNotes.get(n.id);
-        if (own && own.softKeys) {
-            const keys = typeof own.softKeys === 'function' ? own.softKeys() : own.softKeys;
-            if (keys) return { left: menuOrHide(keys.left || null), right: menuOrHide(keys.right || null) };
     /*
      * THE NOTIFICATION STANDARD (Yukimi, Nov 20 2026: "they must follow a standard, no deviation at all"). Every
      * notification on the phone is Windows Mobile's SHNotificationAdd notification, as the 6.1 and 6.5 emulators draw
@@ -6512,6 +6498,20 @@
         }));
     }
 
+    function noteSoftKeys() {
+        const n = noteShownNote();
+        if (!n) return { left: null, right: null };
+        const closable = !!n.toast.querySelector('.toast-close');
+        // an update notice that can be acted on: the update's own actions (Install Now / Restart Now | Later)
+        if (isUpdateNote(n) && !updateFailure(n)) {
+            const spec = updateNoteSpec();
+            if (spec) return { left: { label: spec.action.text, action: () => { hideNote(); spec.action.run(); } }, right: { label: 'Later', action: hideNote } };
+        }
+        // an app's own notification (appNote) may bring its own soft keys or actions
+        const own = appNotes.get(n.id);
+        if (own && own.softKeys) {
+            const keys = typeof own.softKeys === 'function' ? own.softKeys() : own.softKeys;
+            if (keys) return { left: menuOrHide(keys.left || null), right: menuOrHide(keys.right || null) };
         }
         if (own && own.actions) return standardKeys(typeof own.actions === 'function' ? own.actions() : own.actions, n, closable);
         return standardKeys(toastActions(n), n, closable);
@@ -6624,6 +6624,7 @@
         // asked for as a notification: never sorted into the wait cursor or a message box
         toastSeen.add(el);
         appNotes.set(id, st);
+        if (opts.update) updateNoteIds.add(id);
         const detail = document.createElement('div');
         detail.className = 'toast-detail';
         if (opts.detail) detail.innerHTML = opts.detail;
@@ -6631,7 +6632,6 @@
         const live = () => el.isConnected && !el.classList.contains('removing');
         const mine = () => { const n = noteOf(id); return !!n && noteShownNote() === n; };
         const setBar = (v) => { if (bar && typeof window.updateGlassToastProgress === 'function') window.updateGlassToastProgress(id, Math.max(0, Math.min(100, Number(v) || 0))); };
-        if (opts.update) updateNoteIds.add(id);
         setBar(opts.progress);
         queueNotes();
         return {
@@ -6644,6 +6644,7 @@
                 if (o.progress != null) setBar(o.progress);
                 if (o.icon !== undefined) st.icon = o.icon || null;
                 if (o.softKeys !== undefined) { st.softKeys = o.softKeys || null; if (mine()) renderSoftKeys(); }
+                if (o.actions !== undefined) { st.actions = o.actions || null; if (mine()) renderSoftKeys(); }
                 queueNotes();
             },
             show() { if (live()) showNote(id); },
@@ -6651,8 +6652,8 @@
             shown: () => live() && mine(),
             close() {
                 const up = mine();
-                if (o.actions !== undefined) { st.actions = o.actions || null; if (mine()) renderSoftKeys(); }
                 appNotes.delete(id);
+                updateNoteIds.delete(id);
                 if (typeof window.removeGlassToast === 'function') window.removeGlassToast(id);
                 if (up) noteShown = null;
                 refreshNotes();
@@ -6660,7 +6661,6 @@
         };
     }
 
-                updateNoteIds.delete(id);
     /** The title bar icon: hides an open bubble; one notification comes back, several open the tray. */
     /** The mail / text / Messenger icon with notifications of its class waiting: the newest one opens (a second tap closes it). */
     function messageIconTap(role) {
@@ -12842,6 +12842,10 @@
         notify: (opts) => notify(opts || {}),
         /** An app's own notification with a live progress bar, soft keys and title bar glyph (appNote above). */
         appNote: (opts) => appNote(opts || {}),
+        /** THE notification API (the standard above noteSoftKeys): { title, html, icon, event, silent, actions, softKeys, progress, detail }. */
+        notification: (opts) => appNote(opts || {}),
+        /** The update icon's notification (Install Now / Restart Now | Later); null when no update waits. */
+        showUpdateNote: () => showUpdateNote(),
         /** A notice was dismissed or acted on: the server's "waiting" from the status task no longer counts until its next word. */
         noticeGone: () => { notifyQuietUntilTask = true; try { paintNotifyIcon(); } catch (_) { /* before the shell */ } statusDirty(); },
         // for apps in their own files (wmFileExplorer.js ...)
@@ -12849,10 +12853,6 @@
         dropdown: (anchor, items, align, onClose) => showDropdown(anchor, items, align, onClose),
         /** Settings > Today > Wallpaper > Use (#799): 'workspace' | 'selected' | 'android', and whether Android's can be used here. */
         todayWallSource: () => todayWallSource(),
-        /** THE notification API (the standard above noteSoftKeys): { title, html, icon, event, silent, actions, softKeys, progress, detail }. */
-        notification: (opts) => appNote(opts || {}),
-        /** The update icon's notification (Install Now / Restart Now | Later); null when no update waits. */
-        showUpdateNote: () => showUpdateNote(),
         androidWallAvailable: () => androidWallAvailable(),
         androidWallUrl: () => androidWallUrl(),
         closeMenus: () => closeMenus(),

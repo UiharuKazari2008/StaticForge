@@ -106,6 +106,9 @@
             const k = (f.received && f.received.unseen) || 0;
             return pop('received', 'ActiveSync', [text(k ? `${plural(k, 'item', 'items')} received.` : 'Nothing new received.'), links(['Open'])]);
         },
+        // the notification standard (wmShell noteSoftKeys, Yukimi Nov 20 2026): what can be done is Install Now | Later,
+        // never a link; Install Now is done in Melaton (its updater: Restart Now when the restart installs them), Later
+        // closes the popup like Hide and the updates keep waiting on the icon
         update() {
             return { title: 'Updates', role: 'update', sec: [text('Updates are waiting to install.')], foot: [], buttons: [{ text: 'Install Now' }, { text: 'Later' }] };
         },
@@ -126,9 +129,6 @@
             if (c) sec.push({ t: 'pair', l: `Mobile Broadband: ${c.state || 'Available'}`, lb: false, r: c.type ? [{ s: c.type, b: true }] : [], bars: Number.isFinite(c.level) ? Math.max(0, Math.min(5, c.level)) : null, first: true });
             if (n.link === false) sec.push(text(`Nightshade: ${nsOnline(n) === false ? 'No Internet access' : nsOnline(n) ? 'Cannot connect to the server' : 'Not connected'}`));
             return pop('data', 'Connectivity', sec, ['Settings']);
-        // the notification standard (wmShell noteSoftKeys, Yukimi Nov 20 2026): what can be done is Install Now | Later,
-        // never a link; Install Now is done in Melaton (its updater: Restart Now when the restart installs them), Later
-        // closes the popup like Hide and the updates keep waiting on the icon
         },
         signal(f, n) {
             const s = n.sys || {};

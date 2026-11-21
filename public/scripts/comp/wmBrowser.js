@@ -4588,6 +4588,9 @@
                 ws.notify({ title: 'Internet Explorer', icon: 'info', asNote: true, text: `${who} sent a page: ${a.title || a.url}`, buttons: [{ text: 'Open', onClick: () => { go(); } }, { text: 'Dismiss' }] });
                 return { shown: true };
             });
+        }
+        // a page of ours taken by another device (#756); browsingSessions.js may be missing (a script that failed to load, #972)
+        if (window.browsingSessions) {
             window.browsingSessions.on('tabTaken', (msg) => {
                 const w = wins.find((x) => x.session && x.session.id === (msg && msg.alchemyId));
                 if (w) inWin(w, () => showTransferred({ to: msg.to || '' }));

@@ -6145,6 +6145,7 @@ class WebSocketClient {
         if (!this.pendingRequests) return;
 
         const connectionError = new Error('Connection lost - request cancelled');
+        connectionError.code = 'CONNECTION_LOST';
 
         // Collect all pending requests first to avoid mutation during iteration
         const pendingRequestsSnapshot = Array.from(this.pendingRequests.entries());

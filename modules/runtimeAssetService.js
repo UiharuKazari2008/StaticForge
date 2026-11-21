@@ -612,14 +612,30 @@ async function readDebugAsset(targetRoot, webPath) {
     }
 }
 
+// the compiled icon file's mtime when its bytes were remembered (#951): an icon compiled outside this process (a
+// script, another agent) changed the file and the install list, but this copy kept serving the old bytes under the new
+// hash - clients downloaded it, never matched, and stayed on "downloading updates"
+const iconRememberedMtime = new Map();
+
 async function ensureIconAsset(targetRoot, webPath) {
+    const compiled = path.join(runtimeAssetCompiler.getOutputRoot(targetRoot), webPath.replace(/^\//, ''));
     const cached = runtimeAssetMemory.lookup(webPath);
     if (cached) {
-        return cached;
+        let mtime = 0;
+        try { mtime = (await fs.promises.stat(compiled)).mtimeMs; } catch (_) { return cached; }
+        if (iconRememberedMtime.get(webPath) === mtime) return cached;
+        try {
+            const fresh = await runtimeAssetMemory.rememberAbs(compiled, webPath);
+            iconRememberedMtime.set(webPath, mtime);
+            return fresh;
+        } catch (_) {
+            return cached;
+        }
     }
-    const compiled = path.join(runtimeAssetCompiler.getOutputRoot(targetRoot), webPath.replace(/^\//, ''));
     try {
-        return await runtimeAssetMemory.rememberAbs(compiled, webPath);
+        const got = await runtimeAssetMemory.rememberAbs(compiled, webPath);
+        try { iconRememberedMtime.set(webPath, (await fs.promises.stat(compiled)).mtimeMs); } catch (_) { /* gone again */ }
+        return got;
     } catch (err) {
         if (err.code !== 'ENOENT') {
             throw err;
@@ -650,6 +666,10 @@ async function resolveRuntimeAsset(root, webPath, options = {}) {
     if (options.debug === true) {
         return readDebugAsset(targetRoot, normalized);
     }
+    // app icons check their compiled file before a memory hit is trusted (ensureIconAsset, #951)
+    if (runtimeAssetCompiler.isAppIconWebPath(normalized)) {
+        return runtimeAssetMemory.singleFlight(normalized, () => ensureIconAsset(targetRoot, normalized));
+    }
     const hit = runtimeAssetMemory.lookup(normalized);
     if (hit) {
         scheduleAutoRecompile(targetRoot, normalized);
@@ -663,9 +683,6 @@ async function resolveRuntimeAsset(root, webPath, options = {}) {
             }
             return rebuildHtmlFileAsync(targetRoot, normalized);
         });
-    }
-    if (runtimeAssetCompiler.isAppIconWebPath(normalized)) {
-        return runtimeAssetMemory.singleFlight(normalized, () => ensureIconAsset(targetRoot, normalized));
     }
     if (!runtimeAssetCompiler.isManagedWebPath(normalized)) {
         return null;
