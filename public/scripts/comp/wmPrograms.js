@@ -1110,6 +1110,8 @@
                 room: c0.room !== false,
                 hideLandCover: !!c0.hideLandCover,
                 keyguardClear: !!c0.keyguardClear,
+                // the title bar solid black over every program, never see-through (#1013)
+                barBlack: !!c0.barBlack,
                 cutAnimations: !!c0.cutAnimations,
                 lockScreen: !!c0.lockScreen,
                 lockPhoneWall: !!c0.lockPhoneWall,
@@ -1139,6 +1141,7 @@
             ${check('wmBarsRoom', 'Make room for the soft key bar (gesture navigation: swipe up on the bar for Home, in from a side for Back)', cfg.room)}
             ${check('wmBarsLandCover', 'Hide Softkey bar in landscape (Cover Screen only), swipe up to show', cfg.hideLandCover)}
             ${check('wmBarsKeyguardClear', 'Transparent Statusbar at keyguard', cfg.keyguardClear)}
+            ${check('wmBarsBlack', 'Black Statusbar (always black behind the icons, never see-through)', cfg.barBlack)}
             ${check('wmBarsCutAnim', 'Cut window animations everywhere (programs open, close and switch without zooming)', cfg.cutAnimations)}
             <div class="wm-form-gap"></div>
             ${check('wmBarsLock', 'Use the Windows Mobile lock screen (the phone\'s PIN is typed on its keypad)', cfg.lockScreen)}
@@ -1154,6 +1157,7 @@
             q('input[name="wmBarsRoom"]').disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsLandCover"]').disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsKeyguardClear"]').disabled = !cfg.enabled;
+            q('input[name="wmBarsBlack"]').disabled = !cfg.enabled;
             q('input[name="wmBarsPullShade"]').disabled = !cfg.enabled;
             q('input[name="wmBarsCutAnim"]').disabled = st.elevated === false;
             q('input[name="wmBarsLock"]').disabled = !cfg.enabled;
@@ -1166,6 +1170,7 @@
         bind('wmBarsRoom', (v) => { cfg.room = v; });
         bind('wmBarsLandCover', (v) => { cfg.hideLandCover = v; });
         bind('wmBarsKeyguardClear', (v) => { cfg.keyguardClear = v; });
+        bind('wmBarsBlack', (v) => { cfg.barBlack = v; });
         bind('wmBarsPullShade', (v) => { cfg.pullShade = v; });
         bind('wmBarsCutAnim', (v) => { cfg.cutAnimations = v; });
         bind('wmBarsLock', (v) => { cfg.lockScreen = v; });
