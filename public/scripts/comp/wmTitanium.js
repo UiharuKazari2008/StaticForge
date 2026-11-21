@@ -916,7 +916,9 @@
         if (cfg.phone === false) { sub.hidden = true; plain(''); return; }
         // an app that is a Messaging account (Discord, #885): its notifications are conversations there
         const managed = messagingPackages();
-        list = list.filter((n) => n && n.key && !managed.has(n.package) && cfg.apps[n.package] !== false && !(n.channel && cfg.channels[`${n.package}|${n.channel}`] === false));
+        // a social app (Today's Social item, wmSocial.js): its notifications are Social's, not the Super Bar's (Yukimi, Nov 21 2026)
+        const social = new Set(window.wmSocial && typeof window.wmSocial.apps === 'function' ? window.wmSocial.apps() : []);
+        list = list.filter((n) => n && n.key && !managed.has(n.package) && !social.has(n.package) && cfg.apps[n.package] !== false && !(n.channel && cfg.channels[`${n.package}|${n.channel}`] === false));
         superNoteRows = new Map(list.map((n) => [n.key, n]));
         // a reply box whose notification went: gone with it; one being typed in keeps its words
         const ta = box.querySelector('.wm-ti-super-reply textarea');

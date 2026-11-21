@@ -120,7 +120,7 @@ function note(id, pkg, app, title, text, ago, extra) {
 function page(opts) {
     const { El, doc, click } = makeDom();
     const winListeners = {};
-    const calls = { setApps: [], open: [], dismiss: [], action: [], launch: [], refresh: [], softKeys: 0 };
+    const calls = { setApps: [], open: [], dismiss: [], action: [], launch: [], refresh: [], clear: [], softKeys: 0 };
     let store = (opts.notes || []).slice();
     let appsInApp = opts.appsInApp || [];
     const B = {
@@ -131,7 +131,7 @@ function page(opts) {
         open: (id) => { calls.open.push(id); return true; },
         action: (id, i, reply) => { calls.action.push([id, i, reply]); return true; },
         dismiss: (id) => { calls.dismiss.push(id); return true; },
-        clear: () => true
+        clear: (pkg) => { calls.clear.push(pkg); return true; }
     };
     const options = { social: Object.assign({}, opts.options || {}) };
     let item = null;
@@ -287,7 +287,12 @@ const tick = () => new Promise((r) => setImmediate(r));
     ok(rise[0].transform === `translateY(${p.BAND_TOP * U}px)` && rise[1].transform === `translateY(${-9 * U}px)`, 'it rises from the band to the top');
     // its app, its notifications, the one tapped
     const sk = p.overlay().softKeys({ left: 'L' });
-    ok(sk.left === 'L' && sk.right.label === 'Discord', "the soft key is the bar's app");
+    // the right key is a Menu: Open App, Clear All (Yukimi, Nov 21 2026)
+    ok(sk.left === 'L' && sk.right.label === 'Menu' && typeof sk.right.menu === 'function', "the bar's right key is Menu");
+    const items = sk.right.menu();
+    ok(items.map((x) => x.label).join() === 'Open App,Clear All', 'with Open App and Clear All');
+    items[1].action();
+    ok(p.calls.clear.join() === 'com.discord', "Clear All clears the bar's app");
     const rows = rowsOf(bar);
     ok(rows.map((r) => r.dataset.id).join() === 'd2,d1', "the list is the app's notifications, newest first");
     const sel = rows.filter((r) => r.classList.contains('is-sel'));
@@ -301,16 +306,16 @@ const tick = () => new Promise((r) => setImmediate(r));
 
     // left / right: the other social app
     ok(p.overlay().key({ key: 'ArrowRight', target: null }) === true, 'right pages');
-    ok(p.overlay().softKeys({ left: 'L' }).right.label === 'Instagram', 'to the next app, its soft key');
+    ok(/Instagram\|/.test(head.innerHTML), 'to the next app');
     ok(rowsOf(bar).map((r) => r.dataset.id).join() === 'i1', "its notifications");
     ok(/Instagram\|1 notification\|/.test(head.innerHTML), 'its name on the glass');
     p.overlay().key({ key: 'ArrowRight', target: null });
-    ok(p.overlay().softKeys({ left: 'L' }).right.label === 'Discord', 'the pages go round');
+    ok(/Discord\|/.test(head.innerHTML), 'the pages go round');
     // a swipe on the glass
     const fire = (el, t, e) => (el.listeners[t] || []).forEach((fn) => fn(Object.assign({ stopPropagation() {}, preventDefault() {} }, e)));
     fire(card, 'pointerdown', { clientX: 300, clientY: 50 });
     fire(card, 'pointermove', { clientX: 300 - 23 * U, clientY: 52 });
-    ok(p.overlay().softKeys({ left: 'L' }).right.label === 'Instagram', 'a swipe on the glass pages');
+    ok(/Instagram\|/.test(head.innerHTML), 'a swipe on the glass pages');
     p.click(card);
     ok(p.bar(), 'the click after a swipe does not put it away');
     p.overlay().key({ key: 'ArrowLeft', target: null });
@@ -354,18 +359,15 @@ const tick = () => new Promise((r) => setImmediate(r));
     if (!fs.existsSync(kt)) console.log(`(skipped the app's half: no ${kt})`);
     else {
         const src = fs.readFileSync(kt, 'utf8');
-        const m = src.match(/fun removable\(hasContent: Boolean, actionIntents: Int, clearable: Boolean\): Boolean = ([^\n]+)/);
-        ok(m, 'SocialNotifications.removable is there');
-        // the Kotlin expression is valid JS as written
-        const removable = new Function('hasContent', 'actionIntents', 'clearable', `return ${m[1]};`);
-        ok(removable(true, 0, true) === true, 'a content intent kept: it leaves the shade');
-        ok(removable(false, 1, true) === true, "a button's intent kept: it leaves the shade");
-        ok(removable(false, 0, true) === false, 'no PendingIntent at all: it stays in the shade');
-        ok(removable(true, 2, false) === false, 'not clearable (ongoing / no-clear): it stays in the shade');
+        // mirrored only (Yukimi, Nov 21 2026: "then leave them in the notification shade")
+        ok(/val leaves = false/.test(src), 'take() never takes one out of the shade');
+        ok(!/cancel\(sbn\.key\)/.test(src), 'nothing posted is cleared from the shade');
         const posted = src.slice(src.indexOf('fun posted('), src.indexOf('fun removed('));
         ok(/isMessagingApp/.test(posted) && /isMessagingApp/.test(src.slice(src.indexOf('fun setApps('), src.indexOf('fun connected('))), 'a Messaging account is neither taken in nor kept as a social app');
-        ok(/val leaves = removable\(n\.contentIntent != null, acts\.count \{ it\.actionIntent != null \}, sbn\.isClearable\)/.test(src), 'take() asks removable with the notification\'s own intents');
-        ok(/if \(leaves\) \{\s*cancel\(sbn\.key\)/.test(src), 'and clears it from the shade only then, after it was stored');
+        const setApps = src.slice(src.indexOf('fun setApps('), src.indexOf('fun connected('));
+        ok(/val dropped = before - set/.test(setApps) && /entries\.remove/.test(setApps), 'an app taken out of Social drops what it stored');
+        const removed = src.slice(src.indexOf('fun removed('), src.indexOf('fun list('));
+        ok(/it\.inShade/.test(removed) && /entries\.remove\(key\)/.test(removed), 'it leaves Social when it leaves the shade (the app cleared it)');
     }
 }
 
@@ -374,6 +376,8 @@ const tick = () => new Promise((r) => setImmediate(r));
     const ti = fs.readFileSync(path.join(ROOT, 'public/scripts/comp/wmTitanium.js'), 'utf8');
     ok(/bandBar: \(\) => bandBar\(\), setOverlay: \(o\) => setOverlay\(o\)/.test(ti), 'wmTitanium lends the band (bandBar / setOverlay)');
     ok(/if \(overlay\) \{ try \{ return overlay\.softKeys\(keys\)/.test(ti), "the bar's soft keys replace the panel's while it is up");
+    // the clock's Super Bar leaves the social apps' notifications to Social (Yukimi, Nov 21 2026)
+    ok(/!social\.has\(n\.package\)/.test(ti) && /window\.wmSocial\.apps\(\)/.test(ti), "the Super Bar leaves social apps out");
     ok(/if \(overlay\) \{ let done = false; try \{ done = !!overlay\.key\(e\)/.test(ti), 'it takes the keys');
     ok(/now !== 'today' && overlay\) \{ try \{ overlay\.close\(true\)/.test(ti), 'another program puts it away');
     ok(/function home\(opts\) \{\s*\/\/[^\n]*\n\s*if \(overlay\) \{ try \{ overlay\.close\(true\)/.test(ti), 'Home puts it away');
