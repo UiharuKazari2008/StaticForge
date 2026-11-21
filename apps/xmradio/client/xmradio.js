@@ -157,7 +157,61 @@
             call('openModal', m);
             m.classList.remove('hidden');
             this.place();
-            void this.load();
+            this.loaded = this.load();
+            // the desktop's half of XM Radio's session across the app's windows (the phone's wmXmRadio.js registers the
+            // same id): what plays here, taking the phone's channel, stopping when it moves (melatonMediaSessions.js)
+            const media = root.melatonMedia;
+            if (media) media.register('xmradio', { label: NAME, describe: () => this.mediaSession(), take: (s) => this.mediaTake(s), release: () => this.mediaRelease() }, { signal: this.app.signal });
+            void this.loaded.then(() => this.mediaPullHere());
+        }
+
+        /** The channel playing here, as the phone's XM Radio can tune it too (null: off, no signal, a recording). */
+        mediaSession() {
+            const ch = this.channel;
+            if (!this.on || !ch || this.recording || !(this.state === 'playing' || this.state === 'acquiring' || this.state === 'paused')) return null;
+            const now = this.now.get(ch.id);
+            return { title: `${ch.number} ${ch.name}`, subtitle: now && !now.ad ? [now.a, now.t].filter(Boolean).join(' - ') : 'SiriusXM', kind: 'radio', source: { channelId: ch.id, number: ch.number, name: ch.name }, playing: this.state !== 'paused' };
+        }
+
+        /** The other window hears of a play / stop / channel / song change (only when one happened). */
+        mediaChanged() {
+            const media = root.melatonMedia;
+            if (!media) return;
+            const key = JSON.stringify(this.mediaSession());
+            if (key === this.mediaKey) return;
+            this.mediaKey = key;
+            media.changed('xmradio');
+        }
+
+        mediaChannel(src) {
+            if (!src) return null;
+            return this.byId.get(src.channelId) || (src.number != null ? this.lineup.find((c) => String(c.number) === String(src.number)) : null) || null;
+        }
+
+        /** Play the phone's channel here (the radio switched on as its power key does). */
+        async mediaTake(s) {
+            await this.loaded;
+            if (!this.signedIn()) return false;
+            const ch = this.mediaChannel(s && s.source);
+            if (!ch || ch.sub === false) return false;
+            if (!(this.on && this.channel === ch && (this.state === 'playing' || this.state === 'acquiring'))) await this.tune(ch);
+            return this.on && this.channel === ch && (this.state === 'playing' || this.state === 'acquiring' || this.state === 'paused');
+        }
+
+        /** Stop here (the session moved, or XM Radio started on the phone): the radio is switched off; what it was. */
+        mediaRelease() {
+            const s = this.mediaSession();
+            if (!s) return null;
+            if (this.on) this.power();
+            return s;
+        }
+
+        /** The radio opened with nothing playing here while the phone plays it: the session comes to the desktop. */
+        mediaPullHere() {
+            const media = root.melatonMedia;
+            if (!media || this.app.signal.aborted || !this.signedIn() || (this.on && (this.state === 'playing' || this.state === 'acquiring'))) return;
+            const e = media.elsewhere('xmradio');
+            if (e && e.playing && this.mediaChannel(e.source)) void media.pull('xmradio');
         }
 
         /** The display: the same on every radio (the menu is drawn on it). */
@@ -1214,6 +1268,7 @@
             this.paintReplay();
             this.paintClock();
             this.mediaMeta(ch, now);
+            this.mediaChanged();
             const led = r.querySelector('.xr-dock-led');
             if (led) led.classList.toggle('is-on', this.on);
         }
@@ -1939,7 +1994,7 @@
     let running = null;
     function start(app) {
         themeStyles();
-        if (running) { call('bringModalToFront', running.modal); app.exit(); return; }
+        if (running) { call('bringModalToFront', running.modal); app.exit(); running.mediaPullHere(); return; }
         if (typeof root.desktopAppCreateWindow !== 'function') { app.exit(); return; }
         const r = new Radio(app);
         running = r;

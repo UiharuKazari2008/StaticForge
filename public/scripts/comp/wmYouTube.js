@@ -1164,6 +1164,8 @@
      * already carries (handed over, or popped out) stays told.
      */
     function plTell() {
+        // the app's other window hears what plays here (melatonMediaSessions.js: coalesced, only on a change)
+        if (window.melatonMedia) window.melatonMedia.changed('videos');
         const nv = nativePlayer();
         if (!nv) return;
         const p = player;
@@ -1193,33 +1195,6 @@
         if (!p || p.kind !== 'ytr' || !els || !nv || typeof nv.at !== 'function') return;
         try { nv.at(Math.round(els.video.currentTime * 1000), !els.video.paused); } catch (_) { /* an older app build */ }
     }
-    /**
-     * The live stream the app's native player carries, for every page of the app (Yukimi, Nov 21 2026: opening Videos
-     * on the DeX desktop "does not transfer the video, it will play 2"). The phone page and the DeX desktop are two pages
-     * of one WebView with one localStorage: the page that hands a stream over notes its channel, and Videos opened on the
-     * other page takes that stream back instead of leaving it playing in picture-in-picture.
-     */
-    const HANDED_KEY = 'wmVideosHanded';
-    function noteHanded(p) {
-        if (!p || p.vod || !p.slug) return;
-        const v = { id: `kick:${p.slug}`, channel: p.channel, title: p.streamTitle, at: p.startedAt, url: p.kickUrl };
-        try { localStorage.setItem(HANDED_KEY, JSON.stringify({ v, savedAt: Date.now() })); } catch (_) { /* storage full or off */ }
-    }
-    function dropHanded() {
-        try { localStorage.removeItem(HANDED_KEY); } catch (_) { /* storage off */ }
-    }
-    /** The stream another page handed to the native player that still plays it, or null. */
-    function handedElsewhere() {
-        const nv = nativePlayer();
-        let active = false;
-        try { active = !!nv && nv.isActive() === true; } catch (_) { active = false; }
-        if (!active) return null;
-        try {
-            const rec = JSON.parse(localStorage.getItem(HANDED_KEY) || 'null');
-            return rec && rec.v && rec.v.id && Date.now() - (rec.savedAt || 0) < 24 * 3600e3 ? rec.v : null;
-        } catch (_) { return null; }
-    }
-
     /** The page's video is held up ('waiting') until it plays again. */
     let plStalled = false;
     /** The native player gives the stream back to the page (Videos is in front again). */
@@ -1236,7 +1211,6 @@
         p.handed = false;
         p.popped = false;
         try { nv.stop(); } catch (_) { /* gone */ }
-        dropHanded();
         if (p.kind === 'ytr' && els) {
             const v = els.video;
             if (ms >= 0) { try { v.currentTime = ms / 1000; } catch (_) { /* not ready */ } }
@@ -1265,7 +1239,6 @@
         if (!ok) { plTell(); box('The stream could not be popped out.', 'info'); return; }
         p.handed = true;
         p.popped = true;
-        noteHanded(p);
         if (p.full) plFull(false);
         plSuspend(true);
         plStatus('Playing in its own window. Tap here to bring it back.', false);
@@ -1473,8 +1446,10 @@
         if (p.id) ask(p.kind === 'ytr' ? 'youtube_video_stop' : 'youtube_live_stop', { id: p.id }, 8000).catch(() => {});
         player = null;
         plTell();
+        // only a stream this page handed to the native player: the native player is shared with XM Radio, whose radio
+        // this stopped whenever a video was closed on either screen
         const nv = nativePlayer();
-        if (nv) { try { nv.stop(); } catch (_) { /* gone */ } }
+        if (nv && (p.handed || p.popped)) { try { nv.stop(); } catch (_) { /* gone */ } }
         if (els) { els.player.hidden = true; els.hud.hidden = true; els.plKey.hidden = true; plChrome(); plStatus('', false); }
         syncPlayer();
         return true;
@@ -2174,14 +2149,6 @@
         v.addEventListener('playing', () => {
             plStalled = false;
             if (player && player.state === 'live') { player.tries = 0; plStatus('', false); }
-            // this page's own picture moves: the native player (picture-in-picture or sound, handed over by this page or
-            // another one) stops, so there is only ever one (Yukimi, Nov 21 2026: "it will play 2 and i have to go and close it")
-            if (player && !player.handed && !player.popped) {
-                const nv = nativePlayer();
-                let active = false;
-                try { active = !!nv && nv.isActive() === true; } catch (_) { active = false; }
-                if (active) { try { nv.stop(); } catch (_) { /* gone */ } dropHanded(); }
-            }
             plHud(!els.hud.hidden);
             plTell();
         });
@@ -2361,8 +2328,9 @@
             const t = data.subs;
             if (t.feedStale && signedIn() && t.videos && !t.loading) { t.feedStale = false; loadTab('subs', false, true); }
             if (pendingWatch) { const v = pendingWatch; pendingWatch = null; if (srcOf(v) === 'kick') watchLive(v); else watchVideo(v); }
-            // another page of the app handed its stream to the native player: it comes here (plTakeBack stops that one)
-            if (!player) { const v = handedElsewhere(); if (v) watchLive(v); }
+            // the app's other window plays Videos (in its page or handed to the native player): the session comes here
+            // (melatonMediaSessions.js; Yukimi, Nov 21 2026: "it does not transfer the video it will play 2")
+            if (!player && window.melatonMedia && window.melatonMedia.elsewhere('videos')) void window.melatonMedia.pull('videos');
             if (player) { syncPlayer(); plTakeBack(); plSuspend(false); plClock(true); chatSync(); }
         },
         hide() {
@@ -2370,7 +2338,7 @@
             if (els) els.q.blur();
             // the program is left with a stream playing: the app's native player carries it on (a floating window, or sound)
             const nv = nativePlayer();
-            if (player && canHand(player) && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } if (player.handed) noteHanded(player); }
+            if (player && canHand(player) && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } }
             if (!(player && player.popped)) plSuspend(true);
             chatSync();
             plTell();
@@ -2519,9 +2487,51 @@
 
     // ---------------------------------------------------------------- register
 
+    /**
+     * Videos' media session for the app's other window (melatonMediaSessions.js): a Kick live stream or a YouTube video
+     * played through the server, where it was. Opening Videos on the other screen takes it there (show()), and a stream
+     * started on one screen stops Videos on the other (one sound).
+     */
+    function mediaDescribe() {
+        const p = player;
+        if (!p || p.state === 'ended' || p.state === 'error') return null;
+        const v = els && els.video;
+        const playing = !!(p.handed || p.popped || (v && !v.paused && !v.ended));
+        if (p.kind === 'ytr' && p.item) {
+            let ms = v ? Math.round(v.currentTime * 1000) : 0;
+            const nv = nativePlayer();
+            if (p.handed && nv && typeof nv.position === 'function') { try { ms = Number(nv.position()) || ms; } catch (_) { /* gone */ } }
+            return { title: p.title, subtitle: p.channel, kind: 'video', source: { item: p.item }, position: ms, playing, native: !!p.handed };
+        }
+        if (!p.slug) return null; // YouTube's own embed: not carried
+        return { title: p.channel, subtitle: p.streamTitle, kind: 'live', source: { v: { id: `kick:${p.slug}`, channel: p.channel, title: p.streamTitle, at: p.startedAt, url: p.kickUrl } }, playing, native: !!p.handed };
+    }
+    const mediaSpec = {
+        label: 'Videos',
+        describe: mediaDescribe,
+        take(s) {
+            const src = (s && s.source) || {};
+            if (s.kind === 'live' && src.v) { watchLive(src.v); return true; }
+            if (s.kind === 'video' && src.item) {
+                const sec = Math.floor((Number(s.position) || 0) / 1000);
+                // watchVideo resumes from `resume` (seconds) like a video picked from the history
+                watchVideo(Object.assign({}, src.item, { resume: sec, progress: sec > 5 ? 50 : 0, watched: false }));
+                return true;
+            }
+            return false;
+        },
+        release() {
+            const s = mediaDescribe();
+            if (!s) return null;
+            stopPlayer();
+            return s;
+        }
+    };
+
     function register() {
         ws = HOST.desktop ? window.videosDesktopShell : window.wmShell;
         if (!ws) return;
+        if (window.melatonMedia) window.melatonMedia.register('videos', mediaSpec, { signal: appScopeSignal });
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
             ws.registerTodayItem({ id: 'youtube', label: 'Videos', icon: 'app-youtube', after: 'lapis', render: todayRender, titanium: todayTitanium });

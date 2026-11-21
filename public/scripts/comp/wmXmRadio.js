@@ -294,6 +294,54 @@
             if (typeof ws.refreshTodayItem === 'function') ws.refreshTodayItem('xmradio');
             else if (typeof ws.refreshToday === 'function') ws.refreshToday();
         }
+        mediaChanged();
+    }
+
+    // ---------------------------------------------------------------- the session across the app's windows (melatonMediaSessions.js)
+
+    const MEDIA = () => window.melatonMedia || null;
+    /** The channel playing here, as the desktop's XM Radio can tune it too (null: off, an error, a recording). */
+    function mediaSession() {
+        const c = radio.mode === 'live' && (radio.state === 'playing' || radio.state === 'tuning' || radio.state === 'paused') ? chan(radio.channelId) : null;
+        if (!c) return null;
+        const now = nowOf(c.id);
+        return { title: chanLabel(c), subtitle: now && !now.ad ? [now.a, now.t].filter(Boolean).join(' - ') : 'SiriusXM', kind: 'radio', source: { channelId: c.id, number: c.number, name: c.name }, playing: radio.state !== 'paused' };
+    }
+    let mediaKey = '';
+    /** The other window hears of a play / stop / channel / song change (only when one happened). */
+    function mediaChanged() {
+        const m = MEDIA();
+        if (!m) return;
+        const key = JSON.stringify(mediaSession());
+        if (key === mediaKey) return;
+        mediaKey = key;
+        m.changed('xmradio');
+    }
+    const chanOfSource = (src) => (src && (chan(src.channelId) || (src.number != null && ((cache.lineup && cache.lineup.channels) || []).find((c) => String(c.number) === String(src.number))))) || null;
+    async function mediaTake(s) {
+        if (!canUse()) return false;
+        if (!byId.size) await loadLineup(true);
+        const c = chanOfSource(s && s.source);
+        if (!c || c.sub === false) return false;
+        if (!onAir(c.id)) await tune(c.id);
+        return onAir(c.id);
+    }
+    /** Stop here (the session moved, or the same program started in the other window): what it was. */
+    function mediaRelease() {
+        const s = mediaSession();
+        if (!s) return null;
+        radio.alarm = false;
+        // the app's native player is shared with Melaton Videos: only a stream XM handed it is stopped
+        if (radio.native) stopRadio();
+        else { radio.seq++; dropPage(); radio.state = 'off'; setSleep(0, true); changed(); }
+        return s;
+    }
+    /** The program opened with nothing playing here while the desktop plays it: the session comes to the phone. */
+    function mediaPullHere() {
+        const m = MEDIA();
+        if (!m || !canUse() || radio.state === 'playing' || radio.state === 'tuning') return;
+        const e = m.elsewhere('xmradio');
+        if (e && e.playing && chanOfSource(e.source)) void m.pull('xmradio');
     }
 
     // ---------------------------------------------------------------- sound
@@ -1655,6 +1703,7 @@
             if (tab === 'channels' && prefs.show === 'guide') void loadGuide();
             render();
             void syncHub();
+            mediaPullHere();
         },
         hide() {
             shown = false;
@@ -1899,6 +1948,9 @@
         }
         if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });
     }
+
+    // the phone's half of XM Radio's session (the desktop's apps/xmradio registers the same id): once per page
+    if (MEDIA()) MEDIA().register('xmradio', { label: TITLE, describe: mediaSession, take: mediaTake, release: mediaRelease }, { signal: appScopeSignal });
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

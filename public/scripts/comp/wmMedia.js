@@ -63,6 +63,7 @@
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
     const APP_ID = 'windows-media';
+    const MEDIA_APP = 'mediaplayer'; // melatonMediaSessions.js: the same program as the desktop's Media Player
     const TITLE = 'Melaton Media';
     const SKIN = '/static_images/wm61/wmp/';
     const AUDIO = /\.(mp3|ogg|oga|wav|aac|m4a|flac|opus|weba|wma)$/i;
@@ -175,7 +176,7 @@
 
     // ---------------------------------------------------------------- playback
 
-    const media = { el: null, queue: [], index: -1, shuffle: false, repeat: false, volume: 70, muted: false, status: 'Ready', error: '', counted: -1 };
+    const media = { el: null, queue: [], index: -1, shuffle: false, repeat: false, volume: 70, muted: false, status: 'Ready', error: '', counted: -1, resume: null };
     let focusPaused = ''; // paused because another program took the audio: 'transient' (a call) | 'loss'
 
     function player() {
@@ -225,19 +226,28 @@
         return Promise.resolve('');
     }
 
-    async function playIndex(i) {
+    /** Play the queue's item i; from: { at (s), paused } carries on a session (the app's other window, a release here). */
+    async function playIndex(i, from) {
         const it = media.queue[i];
         if (!it) return;
         media.index = i;
         media.error = '';
+        media.resume = null;
         setStatus('Opening...');
         const v = player();
         try {
             if (it.url && /^http:/i.test(it.url) && !opts.http && !it.local) throw Object.assign(new Error('http'), { name: 'ProtocolOff' });
             const url = it.url || await ws.busy(vfsUrl(it), { timeout: 15000 });
             if (!url) throw new Error('no url');
+            if (media.index !== i) return;
             v.poster = it.poster || '';
             v.src = url;
+            if (from && from.at > 0) {
+                const at = from.at;
+                v.addEventListener('loadedmetadata', () => { if (v.getAttribute('src') === url) { try { v.currentTime = at; } catch (_) { /* not seekable */ } } }, { once: true });
+            }
+            tellAndroid();
+            if (from && from.paused) { setStatus('Paused'); return; }
             await v.play();
         } catch (err) {
             if (err && err.name === 'AbortError') return;
@@ -252,7 +262,12 @@
     function playPause() {
         if (!media.queue.length) return;
         const v = player();
-        if (media.index < 0 || !v.getAttribute('src')) { playIndex(Math.max(0, media.index)); return; }
+        if (media.index < 0 || !v.getAttribute('src')) {
+            const i = Math.max(0, media.index);
+            const r = media.resume;
+            playIndex(i, r && r.index === i ? { at: r.at } : null);
+            return;
+        }
         if (v.paused) v.play().catch(() => {}); else v.pause();
     }
 
@@ -282,6 +297,8 @@
     /** What Melaton Media plays, as Android's media session (lock screen, shade, headset buttons). */
     let tellTimer = 0;
     function tellAndroid() {
+        // and the app's other window (the DeX desktop's Media Player): play, pause, stop, a new item (coalesced there)
+        if (window.melatonMedia) window.melatonMedia.changed(MEDIA_APP);
         const L = library();
         if (!L || typeof L.setNowPlaying !== 'function') return;
         clearTimeout(tellTimer);
@@ -1862,6 +1879,7 @@
 
     function register() {
         ws = window.wmShell;
+        if (window.melatonMedia) window.melatonMedia.register(MEDIA_APP, { label: TITLE, describe: mediaDescribe, take: mediaTake, release: mediaRelease }, { signal: appScopeSignal });
         ws.registerApp({
             id: APP_ID,
             title: TITLE,
@@ -1872,6 +1890,8 @@
             sip: () => !full && layer !== 'skin' && layer !== 'props' && layer !== 'about' && layer !== 'update',
             mount,
             show() {
+                // the app's other window (the DeX desktop) plays the Media Player and nothing plays here: it moves here
+                if (pullElsewhere()) { render(); return; }
                 // Options > Library > Start Player on Library screen (on by default): a start with nothing playing opens the Library
                 if (opts.startLibrary && !media.queue.length && layer === 'skin' && !libs.has(currentSource().id) && !androidMode()) { openLibrary(); return; }
                 render();
@@ -1947,6 +1967,150 @@
                 };
             }
         });
+    }
+
+    // ---------------------------------------------------------------- the session across the app's windows
+
+    /* What Melaton Media plays, for the app's other window (melatonMediaSessions.js, window.melatonMedia; Yukimi,
+       Nov 21 2026: "all media can transfer its session and know what each are doing"): the DeX desktop's Media
+       Player (desktop-apps/mediaPlayer.js mediaPlayerSession) registers 'mediaplayer' with the same source shape,
+       { item, queue, index }, each entry { type: 'server' (id, hash) | 'phone' (volume, id: MediaStore through
+       AndroidMediaLibrary) | 'vfs' (path, fileId) | 'url' (url), kind, name, title, artist, album, mime }. Only
+       Melaton Media's own playback is told, never what other Android programs play. No timers: tellAndroid() says
+       changed() on play, pause, stop and a new item. */
+
+    /** A queue item as the session's entry, or null when it cannot play in another window. */
+    function sessionEntry(it, here) {
+        if (!it) return null;
+        let e = null;
+        if (it.src === 'android' && it.id != null && it.volume) e = { type: 'phone', volume: String(it.volume), id: it.id };
+        else if (it.serverId != null) e = { type: 'server', id: it.serverId, hash: it.hash || '' };
+        else if (it.src === 'vfs' && it.path) e = { type: 'vfs', path: it.path, fileId: it.fileId || null };
+        else if (it.url && !/^(blob|data):/i.test(it.url)) {
+            let url = it.url;
+            try { url = new URL(it.url, here).href; } catch (_) { /* kept as it is */ }
+            e = { type: 'url', url };
+        }
+        if (!e) return null;
+        return Object.assign(e, { kind: it.kind === 'video' ? 'video' : 'audio', name: it.file || it.name || '', title: it.title || '', artist: it.artist || '', album: it.album || '', mime: it.mime || '' });
+    }
+
+    /** An entry as a queue item here; ctx: { phoneBase: AndroidMediaLibrary.baseUrl(), vfsBase }. null: cannot play here. */
+    function sessionItem(e, ctx) {
+        if (!e || typeof e !== 'object') return null;
+        const kind = e.kind === 'video' ? 'video' : 'audio';
+        const name = e.title || String(e.name || '').replace(/\.[^.]+$/, '') || (kind === 'video' ? 'Video' : 'Unknown');
+        const out = { kind, name, title: e.title || '', file: e.name || '', artist: e.artist || '', album: e.album || '', mime: e.mime || '' };
+        if (e.type === 'server') {
+            if (e.id == null) return null;
+            return Object.assign(out, { src: 'vfs', serverId: e.id, fileId: e.id, hash: e.hash || '' });
+        }
+        if (e.type === 'phone') {
+            const base = ctx && ctx.phoneBase;
+            if (!base || e.id == null || !e.volume) return null;
+            const vol = encodeURIComponent(e.volume);
+            return Object.assign(out, {
+                src: 'android', id: e.id, volume: String(e.volume), url: `${base}/${kind}/${vol}/${e.id}`,
+                art: kind === 'audio' ? `${base}/cover/${vol}/${e.id}?px=512` : '', poster: kind === 'video' ? `${base}/video/${vol}/${e.id}?thumb=480` : ''
+            });
+        }
+        if (e.type === 'vfs') {
+            if (!e.path) return null;
+            const file = String(e.path).split('/').pop() || e.name || '';
+            return Object.assign(out, { src: 'vfs', path: e.path, fileId: e.fileId || null, file, name: e.title || file.replace(/\.[^.]+$/, '') || name });
+        }
+        if (e.type === 'url') return /^https?:/i.test(String(e.url || '')) ? Object.assign(out, { url: e.url }) : null;
+        return null;
+    }
+
+    /** The library's own item for an entry, when that library is read already (its art, tags and play counts). */
+    function sessionKnown(e) {
+        const lib = e.type === 'server' ? libs.get('vfs') : e.type === 'phone' ? libs.get(`android:${e.volume}`) : null;
+        if (!lib) return null;
+        const list = (e.kind === 'video' ? lib.video : lib.audio) || [];
+        return e.type === 'server' ? list.find((x) => x.serverId === e.id) || null : list.find((x) => x.src === 'android' && String(x.id) === String(e.id)) || null;
+    }
+
+    function mediaDescribe() {
+        const it = current();
+        const v = media.el;
+        if (!it || !v || !v.getAttribute('src')) return null;
+        let queue = [];
+        let index = -1;
+        media.queue.forEach((x, i) => {
+            const e = sessionEntry(x, location.href);
+            if (!e) return;
+            if (i === media.index) index = queue.length;
+            queue.push(e);
+        });
+        if (queue.length > 500) {
+            const from = Math.max(0, Math.min(index - 100, queue.length - 500));
+            queue = queue.slice(from, from + 500);
+            if (index >= 0) index -= from;
+        }
+        return {
+            title: it.title || it.name || '',
+            subtitle: it.artist || it.album || '',
+            kind: it.kind === 'video' ? 'video' : 'audio',
+            source: index >= 0 ? { item: queue[index], queue, index } : null,
+            position: Math.round((v.currentTime || 0) * 1000),
+            playing: !v.paused && !v.ended
+        };
+    }
+
+    /** Play the other window's session here: its list, from its item and position (paused when it was). */
+    function mediaTake(s) {
+        const src = s && s.source;
+        if (!src || !Array.isArray(src.queue) || !src.queue.length) return false;
+        const L = library();
+        const V = (typeof vfsClient !== 'undefined' ? vfsClient : window.vfsClient) || null; // eslint-disable-line no-undef
+        const ctx = { phoneBase: L && typeof L.baseUrl === 'function' ? L.baseUrl() : '', vfsBase: V && V.getBasePath ? V.getBasePath() : '' };
+        const items = [];
+        let at = -1;
+        src.queue.forEach((e, i) => {
+            const x = (e && sessionKnown(e)) || sessionItem(e, ctx);
+            if (!x) return;
+            if (i === src.index) at = items.length;
+            items.push({ ...x });
+        });
+        if (at < 0) return false;
+        if (full) setFull(false);
+        media.queue = items;
+        media.index = -1;
+        playIndex(at, { at: Math.max(0, Number(s.position) || 0) / 1000, paused: s.playing === false });
+        toSkin();
+        // a video is seen: the program opens (as its launch does); a song plays on in the background, as Play All does
+        if (ws.current !== APP_ID && items[at].kind === 'video') ws.open(APP_ID);
+        else if (ws.current === APP_ID) render();
+        return true;
+    }
+
+    /** Stop here for the other window: the session as it was. The source is let go, so Android's media session
+        (lock screen, shade, headset) ends with it; Play here carries on from the same place (media.resume). */
+    function mediaRelease() {
+        const s = mediaDescribe();
+        if (!s) return null;
+        const v = media.el;
+        media.resume = { index: media.index, at: v.currentTime || 0 };
+        focusPaused = '';
+        if (full) setFull(false);
+        v.pause();
+        v.removeAttribute('src');
+        v.load();
+        setStatus('Stopped');
+        tellAndroid();
+        return s;
+    }
+
+    /** Melaton Media opened with nothing playing while the app's other window plays it: the session comes here. */
+    function pullElsewhere() {
+        const M = window.melatonMedia;
+        const there = M && typeof M.elsewhere === 'function' ? M.elsewhere(MEDIA_APP) : null;
+        if (!there || !there.playing) return false;
+        const v = media.el;
+        if (v && v.getAttribute('src') && !v.paused && !v.ended) return false;
+        void M.pull(MEDIA_APP);
+        return true;
     }
 
     /** Play All Songs (the 6.5 Music panel): every song of the library from the first, in the background. */
