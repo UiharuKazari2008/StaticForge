@@ -371,6 +371,26 @@ const tick = () => new Promise((r) => setImmediate(r));
     }
 }
 
+// ---------------------------------------------------------------- 6b. the shell's option reader (wmShell.todayOption)
+// The page's fake shell above hands the stored option back as is; the real one matched it against single choices and gave
+// Social's apps back as none (Yukimi, Nov 21 2026: "when i added apps the item did not update"). The real function, run here.
+{
+    const shellSrc = fs.readFileSync(path.join(ROOT, 'public/scripts/comp/wmShell.js'), 'utf8');
+    const at = shellSrc.indexOf('    function todayOption(id, key) {');
+    ok(at > 0, 'wmShell.todayOption is there');
+    const body = shellSrc.slice(at, shellSrc.indexOf('\n    }\n', at) + 7);
+    const stored = { social: { apps: 'com.twitter.android,org.floens.chan', paging: 'app' } };
+    const defs = { social: [
+        { key: 'apps', type: 'orderedChecks', value: '', choices: [['com.twitter.android', 'X'], ['org.floens.chan', 'Clover']] },
+        { key: 'paging', type: 'combo', value: 'date', choices: [['date', 'By date'], ['app', 'Page per App']] }
+    ] };
+    const todayOption = new Function('lsJsonCached', 'TODAY_OPTIONS_KEY', 'todayOptionDefs', `${body}; return todayOption;`)(() => stored, 'wmTodayOptions', (id) => defs[id] || []);
+    ok(todayOption('social', 'apps') === 'com.twitter.android,org.floens.chan', 'the apps picked come back as their comma list');
+    ok(todayOption('social', 'paging') === 'app', 'a combo still reads its one choice');
+    stored.social = {};
+    ok(todayOption('social', 'apps') === '', 'none picked: none');
+}
+
 // ---------------------------------------------------------------- 7. the home screen's half (wmTitanium.js)
 {
     const ti = fs.readFileSync(path.join(ROOT, 'public/scripts/comp/wmTitanium.js'), 'utf8');

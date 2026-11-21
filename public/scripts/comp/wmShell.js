@@ -9843,8 +9843,10 @@
         const v = all && all[id] && all[id][key];
         const def = todayOptionDefs(id).find((o) => o.key === key);
         // type 'checks': a check box per choice, stored as the comma list of the unchecked values
-        // (a string: the workspace field keeps no arrays), so new choices start checked
-        if (def && def.type === 'checks') return typeof v === 'string' ? v : (def.value || '');
+        // (a string: the workspace field keeps no arrays), so new choices start checked. 'orderedChecks' (wmPrograms: the
+        // checked keys in order) is a comma list too: read as stored, never matched against one choice (Social's apps read
+        // as none, so the item never took the apps picked, Yukimi Nov 21 2026)
+        if (def && (def.type === 'checks' || def.type === 'orderedChecks')) return typeof v === 'string' ? v : (def.value || '');
         if (def && def.choices.some(([c]) => c === v)) return v;
         return def ? def.value : (v == null ? null : v);
     }
