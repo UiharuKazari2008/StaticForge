@@ -55,6 +55,49 @@
         })
         : null;
 
+    // ---- holding without keeping alive --------------------------------------------------------------
+
+    /**
+     * A set that does not keep its members alive. A segment remembers what it made so an unload can undo it
+     * (observers, the windows it appended); held strongly, every observer and window an app ever made stayed in
+     * memory with its closures and DOM until the app itself unloaded - on the Fold the Security Center's old
+     * keychain rows and closed Grimoire tool windows (heap snapshot, Nov 21 2026). Collected members drop out;
+     * an unload still reaches every live one. Without WeakRef it is an ordinary Set.
+     */
+    class WeakBag {
+        constructor() { this.refs = new Set(); this.adds = 0; }
+        add(value) {
+            if (typeof WeakRef !== 'function') { this.refs.add({ deref: () => value }); return this; }
+            for (const r of this.refs) if (r.deref() === value) return this;
+            this.refs.add(new WeakRef(value));
+            if (++this.adds % 64 === 0) this.prune();
+            return this;
+        }
+        delete(value) { for (const r of this.refs) if (r.deref() === value) { this.refs.delete(r); return true; } return false; }
+        prune() { for (const r of this.refs) if (r.deref() === undefined) this.refs.delete(r); }
+        clear() { this.refs.clear(); }
+        get size() { this.prune(); return this.refs.size; }
+        forEach(fn) { for (const v of this) fn(v); }
+        * [Symbol.iterator]() { for (const r of Array.from(this.refs)) { const v = r.deref(); if (v !== undefined) yield v; } }
+    }
+
+    /**
+     * An undo for something attached to an element, holding the element weakly (it may be gone long before the
+     * unload). The weak closure is made in its own function: a closure over `el` anywhere in the same function
+     * would put `el` in the shared context and keep it alive through the weak one too.
+     */
+    function elementUndo(el, run) {
+        return el && typeof WeakRef === 'function' ? weakElementUndo(new WeakRef(el), run) : strongElementUndo(el, run);
+    }
+    function weakElementUndo(ref, run) {
+        const undo = () => { const e = ref.deref(); if (e) run(e); };
+        undo.elementRef = ref;
+        return undo;
+    }
+    function strongElementUndo(el, run) {
+        return () => run(el);
+    }
+
     // ---- caller attribution ------------------------------------------------------------------
 
     function stackLines(limit) {
@@ -184,7 +227,12 @@
             const seg = segments.size ? ownerOfCaller(1) : null;
             if (seg) {
                 const undo = undoOf.call(this, arguments, result);
-                if (typeof undo === 'function') seg.undo.push(undo);
+                if (typeof undo === 'function') {
+                    seg.undo.push(undo);
+                    // undos whose element is gone have nothing left to undo: dropped, so the list does not grow
+                    // with every re-render of a menu button
+                    if (seg.undo.length % 128 === 0) seg.undo = seg.undo.filter((u) => !u.elementRef || u.elementRef.deref() !== undefined);
+                }
             }
             return result;
         };
@@ -217,12 +265,10 @@
         const cm = root.contextMenu;
         if (cm) {
             adoptCalls(cm, 'attachToElement', function (args) {
-                const el = args[0];
-                return () => { if (typeof cm.detachFromElement === 'function') cm.detachFromElement(el); };
+                return elementUndo(args[0], (el) => { if (typeof cm.detachFromElement === 'function') cm.detachFromElement(el); });
             });
             adoptCalls(cm, 'attachClickMenuToElement', function (args) {
-                const el = args[0];
-                return () => { if (typeof cm.detachClickMenuFromElement === 'function') cm.detachClickMenuFromElement(el); };
+                return elementUndo(args[0], (el) => { if (typeof cm.detachClickMenuFromElement === 'function') cm.detachClickMenuFromElement(el); });
             });
         }
         const body = root.document && root.document.body;
@@ -436,7 +482,7 @@
             globals: new Set(),
             replaced: new Map(), // existing global -> { was, now } (restored on unload)
             styles: new Set(),
-            nodes: new Set(),
+            nodes: new WeakBag(),
             owns: Array.isArray(s.owns) ? s.owns.slice() : [],
             // keys of the segments this one is built on (featureLoader depends), for window ownership
             dependsOn: new Set(Array.isArray(s.dependsOn) ? s.dependsOn : []),
@@ -446,7 +492,7 @@
                 .map((u) => u.split('?')[0]),
             res: {
                 timeouts: new Set(), intervals: new Set(), frames: new Set(), idles: new Set(),
-                observers: new Set(), closers: new Set(), workers: new Set(), urls: new Set()
+                observers: new WeakBag(), closers: new Set(), workers: new Set(), urls: new Set()
             },
             data: s.data || null
         };

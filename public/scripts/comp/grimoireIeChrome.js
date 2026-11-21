@@ -210,6 +210,7 @@
 
         /** A later window closing (tagWikiSearchModal.js destroyWindow): its listeners go with it. */
         destroy() {
+            if (this._syncTimer) { clearTimeout(this._syncTimer); this._syncTimer = 0; }
             root.removeEventListener('message', this.onFrameMessage);
             if (this.observer) this.observer.disconnect();
             if (this.bodyObserver) this.bodyObserver.disconnect();
@@ -1116,10 +1117,10 @@
                 const iconEl = el.querySelector('.grimoire-ie-tab-icon');
                 if (titleEl.textContent !== info.title) titleEl.textContent = info.title;
                 if (iconEl.getAttribute('src') !== info.icon) iconEl.setAttribute('src', info.icon);
-                el.title = info.title;
+                setIf(el, 'title', info.title);
                 el.classList.toggle('is-active', active);
                 el.classList.toggle('is-loading', info.loading);
-                el.setAttribute('aria-selected', active ? 'true' : 'false');
+                if (el.getAttribute('aria-selected') !== (active ? 'true' : 'false')) el.setAttribute('aria-selected', active ? 'true' : 'false');
                 if (active) {
                     this.tabTitle = titleEl;
                     this.tabIcon = iconEl;
@@ -1536,7 +1537,28 @@
 
         // ---- state ----
 
+        /**
+         * The chrome follows the page at most once a second (Yukimi, Nov 21 2026: "limit to 1ps"): a change after a
+         * quiet second shows at once, a burst (body class flips while a window moves, Alchemy's loading flag, the
+         * address bar) folds into one update at the end of that second. Every write below compares first.
+         */
         sync() {
+            const now = performance.now();
+            const wait = (this._syncAt || 0) + 1000 - now;
+            if (wait <= 0 && !this._syncTimer) {
+                this._syncAt = now;
+                this.syncNow();
+                return;
+            }
+            if (this._syncTimer) return;
+            this._syncTimer = setTimeout(() => {
+                this._syncTimer = 0;
+                this._syncAt = performance.now();
+                this.syncNow();
+            }, Math.max(0, wait));
+        }
+
+        syncNow() {
             const shell = this.shell();
             if (!shell || !this.tabStrip) return;
             const entry = shell.history ? shell.history[shell.historyIndex] : null;
@@ -1550,15 +1572,15 @@
             }
 
             const loading = this.isLoading();
-            this.stop.disabled = !loading;
-            if (!this.printing) this.statusText.textContent = loading ? 'Waiting for page…' : 'Done';
+            setIf(this.stop, 'disabled', !loading);
+            if (!this.printing) setIf(this.statusText, 'textContent', loading ? 'Waiting for page…' : 'Done');
 
             const feeds = web ? this.feedsOf(shell) : [];
-            this.feedsBtn.disabled = !feeds.length;
-            this.feedsDrop.disabled = !feeds.length;
-            this.feedsBtn.title = feeds.length ? `View Feeds on this Page (${feeds.length})` : 'No Feeds Detected on this page';
-            this.printBtn.disabled = !!this.printing;
-            this.zoomText.textContent = `${this.zoomOf(shell)}%`;
+            setIf(this.feedsBtn, 'disabled', !feeds.length);
+            setIf(this.feedsDrop, 'disabled', !feeds.length);
+            setIf(this.feedsBtn, 'title', feeds.length ? `View Feeds on this Page (${feeds.length})` : 'No Feeds Detected on this page');
+            setIf(this.printBtn, 'disabled', !!this.printing);
+            setIf(this.zoomText, 'textContent', `${this.zoomOf(shell)}%`);
             // IE7's zones (the VM registry's Internet Settings Zones 1 and 3): Grimoire's own pages are the local intranet;
             // an Alchemy page by the address it came from (Yukimi, Nov 21: "use "Intranet" when the sites IP resolves to
             // a private ip range"; server.js zoneOfUrl), the Internet until Alchemy has said
@@ -1570,9 +1592,9 @@
 
             // wiki pages are favorites too (#628)
             const url = this.currentBookmarkUrl();
-            this.addFavBtn.disabled = !url;
+            setIf(this.addFavBtn, 'disabled', !url);
             const fav = !!url && this.bookmarks.some((row) => row.url === url);
-            this.addFavBtn.title = fav ? 'Remove from Favorites' : 'Add to Favorites';
+            setIf(this.addFavBtn, 'title', fav ? 'Remove from Favorites' : 'Add to Favorites');
             this.addFavBtn.classList.toggle('is-favorite', fav);
 
             // extension buttons act on an Alchemy page (as Chrome's on a tab)
@@ -1585,6 +1607,11 @@
             const travel = history.length > 1;
             if (this.recent) this.recent.classList.toggle('is-disabled', !travel);
         }
+    }
+
+    /** A property written only when it differs: the same value again still restyles (a title, disabled) or replaces a text node. */
+    function setIf(el, prop, value) {
+        if (el && el[prop] !== value) el[prop] = value;
     }
 
     // ---- extension buttons taken off the command bar (userGlobalSettings.alchemy.hiddenExtensions, every window) ----
@@ -1948,7 +1975,8 @@
     }
 
     let infoOpen = null;
-    const INFO_EVERY_MS = 2000;
+    // once a second while it shows (Yukimi, Nov 21 2026: "only update 1ps"); both answers land in one redraw (draw)
+    const INFO_EVERY_MS = 1000;
 
     async function showAlchemyInfo(host) {
         // one per Grimoire window: asking again brings it to the front
@@ -1973,10 +2001,27 @@
             return shell && shell._grimoireRemoteSessionId && !shell._grimoireLocalAlchemy ? root.grimoireRemoteFrame(shell) : null;
         };
         let ctxRef = null;
-        const draw = () => {
+        // at most one redraw a second (Yukimi, Nov 21 2026: "only update 1ps"), and only the rows whose text changed:
+        // each viewer answer redrew all 17 rows (a new text node per row) on the Fold's DeX desktop
+        const shown = new Map();
+        let drawAt = 0;
+        let drawTimer = 0;
+        const drawNow = () => {
+            drawTimer = 0;
+            drawAt = performance.now();
             if (!ctxRef) return;
             const rows = alchemyInfoRows(state.info, root.grimoireShellWebUrl(shellNow()), state.view);
-            Object.keys(rows).forEach((id) => ctxRef.text(Number(id), rows[id]));
+            Object.keys(rows).forEach((id) => {
+                if (shown.get(id) === rows[id]) return;
+                shown.set(id, rows[id]);
+                ctxRef.text(Number(id), rows[id]);
+            });
+        };
+        const draw = () => {
+            if (drawTimer) return;
+            const wait = drawAt + 1000 - performance.now();
+            if (wait <= 0) drawNow();
+            else drawTimer = setTimeout(drawNow, wait);
         };
         // shows: the page, this window and its Grimoire window are on screen
         const showing = () => !document.hidden && state.modal && state.modal.isConnected && !state.modal.classList.contains('hidden')
@@ -1985,6 +2030,8 @@
             if (state.debug.borders || state.debug.quality || state.debug.content) sendDebug(state.frame, false);
             abort.abort();
             clearTimeout(state.timer);
+            clearTimeout(drawTimer);
+            drawTimer = 0;
             ctxRef = null;
             if (infoOpen === state) infoOpen = null;
         };
@@ -2012,7 +2059,7 @@
             if (showing()) {
                 follow();
                 const f = state.frame;
-                // perf: allow a live metrics window Yukimi asked for, every 2 s only while it shows; the link numbers
+                // perf: allow a live metrics window Yukimi asked for, once a second only while it shows; the link numbers
                 // come from Alchemy (encoder?), the rest from the viewer frame on this page (no request)
                 if (f && f.contentWindow) {
                     f.contentWindow.postMessage({ type: 'grimoire-browser-encoder?' }, '*');
