@@ -180,6 +180,19 @@ let launchedZoom = 1;
 // its binary; stock Chromium keeps the default-zoom path above.
 const EMULATED_SCALE_FEATURE = 'AlchemyEmulatedScaleCompositor';
 let emulatedScale = false;
+// the build's layer-sheets patch (LayerTree.alchemySetHiddenLayers): fixed layers over the page go to the viewer as
+// sheets of their own (layerSheets.js); ALCHEMY_SHEETS=0 keeps them in the frames
+let layerSheetsBuild = false;
+const SHEETS_OFF = process.env.ALCHEMY_SHEETS === '0';
+
+function buildPatches(bin) {
+    try {
+        const info = JSON.parse(fs.readFileSync(path.join(path.dirname(fs.realpathSync(bin)), 'alchemy-patches.json'), 'utf8'));
+        return Array.isArray(info.patches) ? info.patches : [];
+    } catch (_) {
+        return [];
+    }
+}
 
 function patchedBuild(bin) {
     try {
@@ -312,6 +325,19 @@ function watchScroll() {
     let visDone = [];
     let visLayout = 0;
     let lastSize = '';
+    // the elements Alchemy sends as sheets of their own (layerSheets.js): not in the frames, so not bars or layers here
+    const sheetEls = new WeakSet();
+    globalThis.__alchemySheet = (el, on) => {
+        let pin = el;
+        for (let node = el; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+            const pos = getComputedStyle(node).position;
+            if (pos === 'fixed' || pos === 'sticky') { pin = node; break; }
+        }
+        if (on) sheetEls.add(pin);
+        else sheetEls.delete(pin);
+        layerSent = '';
+        queue();
+    };
     const alphaOf = (color) => {
         if (!color || color === 'transparent') return 0;
         const m = /rgba?\(([^)]*)\)/.exec(color);
@@ -356,7 +382,7 @@ function watchScroll() {
         const keep = [];
         for (const item of list) {
             const el = item.el;
-            if (!el.isConnected) continue;
+            if (!el.isConnected || sheetEls.has(el)) continue;
             const r = el.getBoundingClientRect();
             const x0 = Math.max(0, r.left);
             const x1 = Math.min(w, r.right);
@@ -462,7 +488,7 @@ function watchScroll() {
                         if (backdropEl ? (el === backdropEl || backdropEl.contains(el)) : (el === document.body || el === document.documentElement)) { vis[i] = 1; break; }
                         if (el === document.body || el === document.documentElement) break;
                         const pin = pinned(el);
-                        if (pin && fixedEls.has(pin)) continue;
+                        if (pin && (fixedEls.has(pin) || sheetEls.has(pin))) continue;
                         if (covers(el)) {
                             const r = el.getBoundingClientRect();
                             boxes[i] = [r.left, r.top, r.right, r.bottom];
@@ -2612,6 +2638,7 @@ async function closeSession(id) {
         if (child.parentId === id) closeSession(child.id);
     }
     if (session.popup) broadcast(session, { type: 'closed' });
+    if (session.sheets) session.sheets.stop();
     clearTimeout(session.navSettle);
     session.navSettle = null;
     clearTimeout(session.frameTimer);
@@ -3351,6 +3378,7 @@ let browserClient = null;
 
 // Internet Options over Chromium's own settings (chromeSettings.js): preferences, content settings, Delete Browsing
 // History, add-ons, and the launch options (proxy, pop-up blocker, disk cache)
+const { createLayerSheets } = require('./layerSheets');
 const chromeSettings = require('./chromeSettings')({
     dataDir: DATA_DIR,
     getBrowserClient: () => browserClient,
@@ -3507,6 +3535,7 @@ async function launchBrowser() {
     fs.mkdirSync(PROFILE_DIR, { recursive: true, mode: 0o700 });
     fs.chmodSync(PROFILE_DIR, 0o700);
     emulatedScale = patchedBuild(chromeBin);
+    layerSheetsBuild = !SHEETS_OFF && buildPatches(chromeBin).includes('layer-sheets');
     setProfilePrefs();
     extensions = readExtensions().filter((ext) => chromeSettings.addonEnabled(ext.id));
     const extensionDirs = extensions.map((ext) => ext.dir).join(',');
@@ -4123,6 +4152,8 @@ async function createSession(body, adoptedPage) {
         if (!sessions.get(id) || !ev || !ev.frame || ev.frame.parentId) return;
         session.mainFrameId = ev.frame.id || session.mainFrameId;
         session.committedUrl = ev.frame.unreachableUrl || ((ev.frame.url || '') + (ev.frame.urlFragment || ''));
+        // a new document: new layers, and none of the old sheets
+        if (session.sheets) session.sheets.reset();
     });
 
     // Isolated world: a page-visible binding (page.exposeFunction) makes Cloudflare Turnstile refuse the click.
@@ -4188,6 +4219,15 @@ async function createSession(body, adoptedPage) {
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: '(' + watchScroll + ')()', worldName: 'alchemy' });
     // The viewer draws the scrollbar (customScrollbar look); Chromium's own would sit inside the picture.
     await cdp.send('Emulation.setScrollbarsHidden', { hidden: true }).catch(() => {});
+    if (layerSheetsBuild) {
+        session.sheets = createLayerSheets(session, {
+            broadcast,
+            binaryMessage,
+            frameScale: (s) => frameHeader(s).k,
+            log: (...args) => console.warn('[grimoire-browser] sheets:', ...args)
+        });
+        // on while a viewer watches (attachViewer): LayerTree reports the page's layers at every update
+    }
 
     cdp.on('Page.screencastFrame', (event) => {
         const current = sessions.get(id);
@@ -5394,6 +5434,10 @@ function attachViewer(ws, session) {
     if (session.dialog) ws.send(JSON.stringify(session.dialog.ask));
     if (session.scroll) ws.send(JSON.stringify(session.scroll));
     if (session.layers) ws.send(JSON.stringify(Object.assign({}, session.layers, { reset: 1, v: session.layersVis || undefined })));
+    if (session.sheets) {
+        if (session.sheets.active) session.sheets.attach(ws);
+        else session.sheets.start().catch((err) => console.warn('[grimoire-browser] sheets off:', err.message));
+    }
     if (!session.popup) flushOrphans(session);
     if (session.painted) {
         try { ws.send(session.painted); } catch (_) {}
@@ -5510,7 +5554,11 @@ function attachViewer(ws, session) {
         session.sockets.delete(ws);
         setAudioListener(ws, false);
         // a moment's grace: a viewer reconnecting (a reload, a transfer) finds the capture still on
-        setTimeout(() => syncCapture(session), 2000);
+        setTimeout(() => {
+            syncCapture(session);
+            // nobody watching: no layer reports, and every layer back in the frames
+            if (!session.sockets.size && session.sheets) session.sheets.stop();
+        }, 2000);
     });
 }
 

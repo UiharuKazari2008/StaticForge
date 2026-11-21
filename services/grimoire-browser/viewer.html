@@ -26,6 +26,14 @@
     pointer-events: none;
   }
   #still[hidden] { display: none; }
+  /* the page's fixed layers as sheets of their own (server.js layerSheets.js): over the frame and the still, still
+     while the page scrolls under them; redrawn only when a sheet changes */
+  #sheets {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  #sheets[hidden] { display: none; }
   #tabStatus {
     position: absolute;
     inset: 0;
@@ -57,6 +65,7 @@
 <body>
 <canvas id="view" tabindex="0"></canvas>
 <canvas id="still" hidden></canvas>
+<canvas id="sheets" hidden></canvas>
 <div id="tabStatus" hidden>
   <p id="tabStatusTitle"></p>
   <p id="tabStatusUrl"></p>
@@ -207,6 +216,14 @@
   // The newest frame is kept on an offscreen canvas (base) at its own scroll offset; what shows (canvas) is drawn
   // from it, moved by the scrolling the viewer is doing ahead of the page (prediction below).
   var stillCanvas = document.getElementById('still');
+  // sheets (kind 5 pictures, 'sheets' lists): id -> { gen, bmp }; sheetList in Chromium's drawing order, each placed
+  // in the view in CSS pixels
+  var sheetCanvas = document.getElementById('sheets');
+  var sheetCtx = sheetCanvas.getContext('2d');
+  var sheetImgs = new Map();
+  var sheetList = [];
+  var sheetDrawn = '';
+  var sheetGen = 0;
   var stillCtx = stillCanvas.getContext('2d', { alpha: false });
   var base = document.createElement('canvas');
   var baseCtx = base.getContext('2d', { alpha: false });
@@ -435,6 +452,13 @@
       if (bytes.length > 9) audioPacket(new DataView(bytes.buffer, bytes.byteOffset, 9).getFloat64(1, true), bytes.subarray(9));
       return;
     }
+    if (kind === 5) {
+      var sheetHeaderLength = bytes[1] | (bytes[2] << 8);
+      var sheetHeader = null;
+      try { sheetHeader = JSON.parse(textDecoder.decode(bytes.subarray(3, 3 + sheetHeaderLength))); } catch (e) { return; }
+      sheetPicture(sheetHeader, bytes.subarray(3 + sheetHeaderLength));
+      return;
+    }
     if (kind !== 1 && kind !== 3 && kind !== 4) {
       // an Alchemy from before #990: a bare JPEG
       drawBytes(bytes, null, bytes.length);
@@ -491,6 +515,75 @@
 
   function requestComposite() {
     if (!rafId) rafId = requestAnimationFrame(composite);
+  }
+
+  // a sheet's picture (PNG with transparency, at the frame's pixel ratio); an older one that arrives late is dropped
+  function sheetPicture(header, body) {
+    if (!header || typeof header.id !== 'string') return;
+    var gen = Number(header.gen) || 0;
+    createImageBitmap(new Blob([body], { type: 'image/png' })).then(function (bmp) {
+      var prev = sheetImgs.get(header.id);
+      if (prev && prev.gen >= gen) { bmp.close(); return; }
+      if (prev) prev.bmp.close();
+      sheetImgs.set(header.id, { gen: gen, bmp: bmp });
+      sheetGen += 1;
+      drawSheets();
+    }, function () {});
+  }
+
+  function setSheets(list) {
+    sheetList = Array.isArray(list) ? list.filter(function (s) { return s && typeof s.id === 'string'; }) : [];
+    var keep = new Set(sheetList.map(function (s) { return s.id; }));
+    sheetImgs.forEach(function (img, id) {
+      if (keep.has(id)) return;
+      img.bmp.close();
+      sheetImgs.delete(id);
+    });
+    sheetGen += 1;
+    drawSheets();
+  }
+
+  // a sheet's top in the view (CSS pixels) with the document scrolled to S: fixed where it is; sticky (st: where it
+  // sticks, its top in the flow, its container's bottom, its height) in the flow until it reaches where it sticks,
+  // then there, until its container's bottom pushes it up (as layerTop)
+  function sheetTop(s, S) {
+    if (!s.st) return s.y;
+    var st = s.st;
+    var top = st[1] - S;
+    if (top < st[0]) top = st[0];
+    var limit = st[2] - S - st[3];
+    if (top > limit) top = Math.max(st[1] - S, limit);
+    return top;
+  }
+
+  // the sheets over the view, each where it is at the picture's scroll S (CSS pixels at the frame's pixel ratio); only
+  // when something changed (a sticky sheet that moves is a change)
+  function drawSheets(S) {
+    var k = baseInfo.k;
+    var w = canvas.width;
+    var h = canvas.height;
+    var at = S == null ? baseInfo.sy : S;
+    var tops = '';
+    for (var j = 0; j < sheetList.length; j++) if (sheetList[j].st) tops += ',' + Math.round(sheetTop(sheetList[j], at) * k);
+    var key = sheetList.length && k && w && h ? w + 'x' + h + '@' + k + '#' + sheetGen + tops : '';
+    if (key === sheetDrawn) return;
+    sheetDrawn = key;
+    if (!key) {
+      sheetCanvas.hidden = true;
+      return;
+    }
+    if (sheetCanvas.width !== w || sheetCanvas.height !== h) {
+      sheetCanvas.width = w;
+      sheetCanvas.height = h;
+    } else {
+      sheetCtx.clearRect(0, 0, w, h);
+    }
+    for (var i = 0; i < sheetList.length; i++) {
+      var s = sheetList[i];
+      var img = sheetImgs.get(s.id);
+      if (img) sheetCtx.drawImage(img.bmp, Math.round(s.x * k), Math.round(sheetTop(s, at) * k));
+    }
+    sheetCanvas.hidden = false;
   }
 
   function cacheClear() {
@@ -780,6 +873,7 @@
       canvas.width = width;
       canvas.height = height;
     }
+    if (sheetList.length || sheetDrawn) drawSheets(baseInfo.sy + (baseInfo.k ? off / baseInfo.k : 0));
     if (!off) {
       ctx.drawImage(base, 0, 0, width, height, 0, 0, width, height);
       return;
@@ -1185,6 +1279,8 @@
         backdropStore();
       }
       if (pred.active || pred.converging) requestComposite();
+    } else if (msg.type === 'sheets') {
+      setSheets(msg.list);
     } else if (msg.type === 'encoder') {
       // what Alchemy encodes this tab with now, and why (Grimoire's Alchemy information)
       encoder = msg;
@@ -1594,7 +1690,7 @@
       frames: frameCount,
       frame: { width: base.width, height: base.height, sy: baseInfo.sy, k: baseInfo.k, p: baseInfo.p, vh: baseInfo.vh },
       canvas: { width: canvas.width, height: canvas.height, cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight, devicePx: devicePx, dpr: window.devicePixelRatio || 1 },
-      scroll: { height: scrollInfo.height, view: scrollInfo.view, distrust: Math.max(0, Math.round(pred.distrustUntil - performance.now())), display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, layers: layers.f.length, sticky: layers.f.filter(function (l) { return l[4]; }).length, backdrop: layers.backdrop, cover: layers.cover, vis: visRects.length, cacheRows: ext.rows, cache0: ext.lo, cache1: ext.hi, cachePixels: cache.pixels, cacheBudget: CACHE_BUDGET },
+      scroll: { height: scrollInfo.height, view: scrollInfo.view, distrust: Math.max(0, Math.round(pred.distrustUntil - performance.now())), display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, layers: layers.f.length, sticky: layers.f.filter(function (l) { return l[4]; }).length, backdrop: layers.backdrop, cover: layers.cover, sheets: sheetList.length, sheetPictures: sheetImgs.size, sheetRects: sheetList.map(function (s) { return [s.x, s.y, s.w, s.h]; }), vis: visRects.length, cacheRows: ext.rows, cache0: ext.lo, cache1: ext.hi, cachePixels: cache.pixels, cacheBudget: CACHE_BUDGET },
       audio: engine ? { path: 'worklet', state: engine.ctx.state, ready: engine.ready, packets: packetCount, targetMs: Math.round(engine.targetMs), lagMs: Math.round(engine.lagAvg || 0), jitterMs: Math.round(engine.jitter), underruns: engine.underruns, videoDelayMs: Math.round(videoDelay) }
         : { path: audio ? 'element' : 'off', wanted: audioWanted, taken: audioTaken, packets: packetCount },
       rttMs: Math.round(rttMs),
