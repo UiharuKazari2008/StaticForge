@@ -28,7 +28,7 @@
     const BACKOFF_MS = [2000, 10000, 60000];
     const MAX_GETS = 8;
     const LAN_TYPES = new Set(['wifi', 'ethernet', 'usb']);
-    const MIN_LINK_V = 3;
+    const MIN_LINK_V = 2;
 
     const links = new Map();    // deviceId -> Link (open or opening)
     const failures = new Map(); // deviceId -> { step, until, netKey }
@@ -75,7 +75,7 @@
         if (!dev || !dev.online || !(dev.permissions || []).includes('files')) return false;
         const net = dev.status && dev.status.net;
         // the first phone build crashed loading WebRTC on an offer (R8 renamed org.jni_zero, Nov 21 2026); the fixed one
-        // says link.v 2. MIN_LINK_V stays above it until one controlled link to a phone has worked, then comes down to 2
+        // says link.v 2 (proven on the Fold Nov 21 2026: listing, thumbnails, HEIC as JPEG, 91 MB at 118 Mbit/s)
         if (!net || !net.link || !net.link.ready || !(Number(net.link.v) >= MIN_LINK_V)) return false;
         return (net.interfaces || []).some((i) => i.up && LAN_TYPES.has(i.type)
             && ((i.v4 || []).some((a) => isPrivate4(a.addr)) || (i.v6 || []).length > 0));
