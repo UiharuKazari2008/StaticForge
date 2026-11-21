@@ -914,7 +914,7 @@ const ART_KEY = /^(aem|live|if)\/[A-Za-z0-9_./-]{4,200}$/;
  * original): the image service squashes a picture into whatever box it is asked for, it never letterboxes.
  */
 // ---- the Today panel icons made from the channels' logos (/api/xmradio/tiicon)
-const TI_VERSION = 2; // 2: the ROM's floor and a mirror of the art's bottom (Nov 21 2026)
+const TI_VERSION = 3; // 3: cropped to its visible pixels, sized and centred as the Music icon (Nov 21 2026)
 const tiMem = new Map(); // `${key}|${scale}` -> Buffer (at most 300)
 const tiBusy = new Map();
 function tiDir() {
@@ -945,9 +945,9 @@ async function tiIcon(key, scale, aspect = 1) {
     return job;
 }
 
-/** The logo as a Today panel icon, on the ROM's floor with a mirror of its bottom (modules/wm65PanelIcon.js); 43 x 57 per 1x. */
+/** The logo as a Today panel icon, sized and centred as the ROM's Music icon (modules/wm65PanelIcon.js); 43 x 57 per 1x. */
 async function drawTiIcon(logo, scale) {
-    return require('./wm65PanelIcon').panelIcon(logo, scale / 2);
+    return require('./wm65PanelIcon').logoPanelIcon(logo, scale / 2);
 }
 
 /** The address of a channel's Today panel icon (a 4x drawing; the panel shows it at 43 x 57). */

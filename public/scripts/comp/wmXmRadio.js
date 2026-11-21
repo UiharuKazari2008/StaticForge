@@ -177,7 +177,7 @@
         if (!k) return '';
         const w = Number(u.searchParams.get('s')) || 240;
         const h = Number(u.searchParams.get('h')) || w;
-        return `/api/xmradio/tiicon?k=${encodeURIComponent(k)}&a=${Math.round((w / h) * 1000) / 1000}&x=4&v=2`;
+        return `/api/xmradio/tiicon?k=${encodeURIComponent(k)}&a=${Math.round((w / h) * 1000) / 1000}&x=4&v=3`;
     }
     // the next and previous pages' icons, read once ahead so a page turn shows its logo at once
     const tiWarm = new Set();

@@ -31,7 +31,10 @@ async function panelIcon(artPng, k) {
 
 /** The art + its mirror on a clear W x H canvas, the art's bottom on the floor row. */
 async function compose(artData, w, h, left, top, W, H, floor) {
-    const rows = Math.max(1, Math.min(h, H - floor));
+    // the ROM's fade is 28 rows per 2x below the art, whatever the art's height (a short logo is not mirrored whole)
+    const fade = Math.round((28 * W) / GEOM.W);
+    // and about a third of the art at most, as Music's (28 of its 75 rows): a short logo shows its bottom edge, not all of it
+    const rows = Math.max(1, Math.min(H - floor, fade, Math.round(h * 0.4)));
     // flip first, then take the top rows of the flipped art (= the art's bottom, mirrored); two steps on purpose:
     // in one sharp pipeline the extract runs before the flip and mirrors the art's top instead
     const flippedAll = await sharp(artData).flip().png().toBuffer();
@@ -80,4 +83,41 @@ async function reflectExisting(panelPng, k) {
     return compose(a, ai.width, ai.height, left, floor - ai.height, W, H, floor);
 }
 
-module.exports = { panelIcon, reflectExisting, GEOM };
+/**
+ * A logo (a channel's, a service's: wide and flat, often padded) as a panel icon, placed as the ROM's Music icon is
+ * (ti-2401: its art spans x 7 ... 77, y 10 ... 85 per 2x, centred at 42, 47.5). Yukimi, Nov 21 2026: "compare them to
+ * the size of the music icon and where it's positioned and make sure you know the center of the logo so it's correctly
+ * positioned and all the unused area is cropped". The logo is cut to its visible pixels (alpha over 40, so a faint glow
+ * or shadow at its edge counts as padding), fitted into the Music icon's box (up to the panel's 76 wide), its centre on
+ * the box's centre, its own bottom mirrored right under it.
+ */
+const MUSIC = { cx: 42.5, cy: 47.5, maxW: 76, maxH: 75 };
+async function logoPanelIcon(logoPng, k) {
+    const W = Math.round(GEOM.W * k);
+    const H = Math.round(GEOM.H * k);
+    const { data, info } = await sharp(logoPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    let x0 = info.width;
+    let y0 = info.height;
+    let x1 = -1;
+    let y1 = -1;
+    for (let y = 0; y < info.height; y++) {
+        for (let x = 0; x < info.width; x++) {
+            if (data[(y * info.width + x) * 4 + 3] > 40) {
+                if (x < x0) x0 = x;
+                if (x > x1) x1 = x;
+                if (y < y0) y0 = y;
+                if (y > y1) y1 = y;
+            }
+        }
+    }
+    if (x1 < 0) return panelIcon(logoPng, k);
+    const cut = await sharp(logoPng).extract({ left: x0, top: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 }).png().toBuffer();
+    const art = await sharp(cut).resize(Math.round(MUSIC.maxW * k), Math.round(MUSIC.maxH * k), { fit: 'inside', kernel: 'lanczos3' })
+        .png().toBuffer({ resolveWithObject: true });
+    const { width: w, height: h } = art.info;
+    const left = Math.round(MUSIC.cx * k - w / 2);
+    const top = Math.round(MUSIC.cy * k - h / 2);
+    return compose(art.data, w, h, left, top, W, H, top + h);
+}
+
+module.exports = { panelIcon, logoPanelIcon, reflectExisting, GEOM, MUSIC };
