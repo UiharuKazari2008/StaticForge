@@ -103,7 +103,20 @@
         refreshTodayItem() {},
         syncHistory() {},
         currentApp: () => (win ? APP_ID : ''),
-        open(id) { if (id === APP_ID && win) call('bringModalToFront', win.modal); },
+        open(id) {
+            if (id !== APP_ID || !win) return;
+            // (the picture-in-picture window's expand: a minimised window comes back first)
+            if (win.modal.classList.contains('minimised')) call('restoreMinimizedModal', win.modal, call('getOrCreateTaskbarItem', win.modal) || null);
+            call('bringModalToFront', win.modal);
+        },
+        /** The player is open / its keys are showing: the bar lies over the picture and comes and goes with the keys. */
+        playerChrome(open, keys) {
+            if (!els) return;
+            const r = els.root;
+            if (r.classList.contains('is-player') !== open) r.classList.toggle('is-player', open);
+            const off = open && !keys;
+            if (r.classList.contains('is-keys-off') !== off) r.classList.toggle('is-keys-off', off);
+        },
         setTitle(t) { shownTitle = !t || t === 'Videos' ? '' : t; if (win) win.setTitle(shownTitle ? `${shownTitle} - ${NAME}` : NAME); renderBar(); },
         refreshSoftKeys: renderBar,
         refreshTitleAction: renderBar,
@@ -169,7 +182,21 @@
         els.right.addEventListener('click', () => pressKey(els.right), sig);
         // what the program draws changes its keys (a tab, a channel, a video): the bar follows a click anywhere in it
         els.host.addEventListener('click', () => { setTimeout(renderBar, 0); }, sig);
+        // Minimised with a stream playing: the Dreamscape app's native player takes it into picture-in-picture on this
+        // screen, and restoring the window brings it back here (Yukimi, Nov 21 2026: "if you minimise the melaton videos
+        // window it will popout the player on that display and when you reopen it it will bring the video back into
+        // the window"). Without the app (a browser) a minimised window just goes on playing.
+        let minHidden = false;
+        const minWatch = new MutationObserver(() => {
+            if (!APP || !page || !root.AndroidVideos || typeof root.AndroidVideos.popOut !== 'function') return;
+            const min = m.classList.contains('minimised');
+            if (min === minHidden) return;
+            minHidden = min;
+            try { if (min) APP.hide(); else { APP.show(); renderBar(); } } catch (e) { console.warn('[videos] minimise', e); }
+        });
+        minWatch.observe(m, { attributes: true, attributeFilter: ['class'] });
         app.onExit(() => {
+            minWatch.disconnect();
             if (APP) { try { APP.onTitleClose(); APP.hide(); } catch (e) { console.warn('[videos] close', e); } }
             if (page) page.remove();
             win = null;
