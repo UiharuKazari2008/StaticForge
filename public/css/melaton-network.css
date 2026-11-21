@@ -1046,16 +1046,19 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
 }
 
 /* ---- Notifications tray flyout (the DeX desktop's Bell, androidNotificationsTray.js, #1005) ------------------------
-   The network flyout's frame and text; the phone's notifications by app (the app's 16 px icon and name), each the kit's
-   hot-tracked row (.vista-treelist-row) with the balloon's X, its action buttons and a reply box; the list scrolls past
-   60 % of the screen. */
+   The network flyout's frame and text. The phone's notifications by app (the app's 16 px icon as the phone's Start menu
+   draws it, its name, how many, an X that clears them); each notification the kit's hot-tracked row (.vista-treelist-row):
+   a 32 px picture (its large icon, else the app's), the title and its time / running clock, the sub text, the body (text,
+   inbox lines or chat messages with 16 px faces), the kit progress bar, the big picture and summary when expanded,
+   Vista's expando and the balloon's X on the right, the kit buttons and a reply box. The list scrolls past 60 % of the
+   screen. Buttons drawn as art (X, expando) drop the kit button's size, face and focus pulse. */
 
 .android-notify-flyout {
-    width: 340px;
+    width: 360px;
 }
 
 .android-notify-body {
-    max-height: min(60vh, 520px);
+    max-height: min(60vh, 560px);
     overflow-y: auto;
     gap: 4px;
 }
@@ -1067,10 +1070,11 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
 }
 
 .android-notify-app-head {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 0 2px;
+    padding: 4px 22px 2px 0;
 }
 
 .android-notify-app + .android-notify-app .android-notify-app-head {
@@ -1083,9 +1087,13 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
     flex: 0 0 16px;
 }
 
+.android-notify-count {
+    margin-left: -2px;
+}
+
 .android-notify-note {
     position: relative;
-    padding: 3px 22px 4px 22px;
+    padding: 4px 42px 5px 4px;
     outline: none;
 }
 
@@ -1095,11 +1103,86 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
     gap: 8px;
 }
 
-.android-notify-main .network-flyout-text {
+.android-notify-pic {
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+}
+
+.android-notify-pic img {
+    display: block;
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+}
+
+.android-notify-content {
     flex: 1 1 auto;
+    gap: 1px;
+}
+
+.android-notify-top {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+}
+
+.android-notify-top .network-flyout-name {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.android-notify-time {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.android-notify-subtext,
+.android-notify-lines > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .android-notify-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
+.android-notify-text.is-open {
+    -webkit-line-clamp: 12;
+    white-space: pre-line;
+}
+
+.android-notify-lines,
+.android-notify-msgs {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.android-notify-msg {
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    min-width: 0;
+}
+
+.android-notify-avatar {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    object-fit: cover;
+}
+
+.android-notify-msg-text {
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
@@ -1107,27 +1190,68 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
     overflow-wrap: anywhere;
 }
 
-.android-notify-time {
-    flex: 0 0 auto;
-    font-size: 11px;
-    line-height: 17px;
+.android-notify-progress {
+    margin: 4px 0 2px;
 }
 
-.android-notify-flyout .android-notify-note .tray-balloon-close {
+.android-notify-picture img {
+    display: block;
+    max-width: 100%;
+    max-height: 200px;
+    margin-top: 4px;
+    object-fit: contain;
+}
+
+.android-notify-summary {
+    margin-top: 2px;
+}
+
+.android-notify-flyout .android-notify-note .tray-balloon-close,
+.android-notify-flyout .android-notify-app-head .tray-balloon-close {
     top: 3px;
     right: 2px;
-    /* the kit's button size and layer (.win7 button) do not apply to the balloon's X */
+    /* the kit's button size, layer and focus pulse (.win7 button) do not apply to the balloon's X */
     min-width: 0;
     min-height: 0;
     z-index: auto;
+    animation: none;
 }
+
+.android-notify-flyout .android-notify-note .android-notify-expando {
+    position: absolute;
+    top: 22px;
+    right: 1px;
+    width: 19px;
+    height: 21px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    z-index: auto;
+    animation: none;
+    background: no-repeat center / 19px 21px url("/static_images/vista-personalization/expando-down.png");
+}
+
+.android-notify-flyout .android-notify-note .android-notify-expando::before,
+.android-notify-flyout .android-notify-note .android-notify-expando::after {
+    content: none;
+}
+
+.android-notify-flyout .android-notify-note .android-notify-expando:hover { background-image: url("/static_images/vista-personalization/expando-down-hot.png"); }
+.android-notify-flyout .android-notify-note .android-notify-expando:active { background-image: url("/static_images/vista-personalization/expando-down-pressed.png"); }
+.android-notify-flyout .android-notify-note .android-notify-expando.is-open { background-image: url("/static_images/vista-personalization/expando-up.png"); }
+.android-notify-flyout .android-notify-note .android-notify-expando.is-open:hover { background-image: url("/static_images/vista-personalization/expando-up-hot.png"); }
+.android-notify-flyout .android-notify-note .android-notify-expando.is-open:active { background-image: url("/static_images/vista-personalization/expando-up-pressed.png"); }
 
 .android-notify-actions,
 .android-notify-reply {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 4px;
+    margin: 5px 0 0 40px;
 }
 
 .android-notify-reply {

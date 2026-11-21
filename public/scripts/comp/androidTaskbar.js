@@ -31,7 +31,6 @@
     const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined;
 
     const ASKED_KEY = 'melatonDexWindowsAccessAsked';
-    const ICON_PX = 48; // the app's icon handler's smallest size; drawn at the taskbar's 17 px
     const MENU_ID = 'android-taskbar-window';
 
     let state = { windows: [], focusedId: null, can: {}, access: {} };
@@ -42,7 +41,14 @@
     const band = () => doc.getElementById('taskbarWindows');
     const byId = (id) => state.windows.find((w) => w.id === id) || null;
     const titleOf = (w) => String(w.title || w.label || w.package || 'Program');
-    const iconOf = (w) => (w.icon ? `${w.icon}${String(w.icon).includes('?') ? '&' : '?'}s=${ICON_PX}` : '');
+    // the program's picture as the phone's Start menu draws it (the Program Icons store, else Android's icon):
+    // androidDesktopPrograms.js iconFor; the taskbar draws 16 px pictures
+    const iconOf = (w) => {
+        const P = root.melatonAndroidPrograms;
+        if (P && typeof P.iconFor === 'function') return P.iconFor({ id: w.appId, package: w.package, icon: w.icon }, 16);
+        return { src: w.icon ? String(w.icon) : '', srcset: '' };
+    };
+    const iconKey = (w) => { const i = iconOf(w); return `${i.src}|${i.srcset}`; };
 
     function send(op, id) {
         if (typeof W[op] !== 'function') return false;
@@ -57,8 +63,8 @@
     // ---- buttons ----
 
     function contentHtml(w) {
-        const url = iconOf(w);
-        const img = url ? `<img src="${esc(url)}" alt="" class="icon-image" draggable="false" />` : '<i class="fas fa-window-maximize"></i>';
+        const pic = iconOf(w);
+        const img = pic.src ? `<img src="${esc(pic.src)}"${pic.srcset ? ` srcset="${esc(pic.srcset)}"` : ''} alt="" class="icon-image" draggable="false" />` : '<i class="fas fa-window-maximize"></i>';
         return `<div class="taskbar-window-item-content">${img}<span>${esc(titleOf(w))}</span></div>`;
     }
 
@@ -66,7 +72,7 @@
         const item = doc.createElement('div');
         item.className = 'taskbar-window-item taskbar-android-item entering';
         item.dataset.androidWindow = w.id;
-        item.dataset.contentKey = `${titleOf(w)}|${iconOf(w)}`;
+        item.dataset.contentKey = `${titleOf(w)}|${iconKey(w)}`;
         item.innerHTML = contentHtml(w);
         item.title = titleOf(w);
         item.addEventListener('click', (e) => {
@@ -86,7 +92,7 @@
     }
 
     function updateButton(item, w) {
-        const key = `${titleOf(w)}|${iconOf(w)}`;
+        const key = `${titleOf(w)}|${iconKey(w)}`;
         if (item.dataset.contentKey !== key) {
             item.dataset.contentKey = key;
             item.innerHTML = contentHtml(w);
@@ -183,6 +189,8 @@
     // ---- start ----
 
     root.addEventListener('androidwindows', (e) => apply(e && e.detail), { signal: appScopeSignal });
+    // the Program Icons store changed (androidDesktopPrograms.js): the buttons take the new pictures
+    doc.addEventListener('melaton:android-programs', () => { buttons.forEach((item, id) => { const w = byId(id); if (w) updateButton(item, w); }); }, { signal: appScopeSignal });
 
     function desktopUp() {
         try { return typeof root.getClientDesktopState === 'function' && root.getClientDesktopState() === 'desktop'; } catch (_) { return false; }

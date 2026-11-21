@@ -18,7 +18,16 @@ carries its owner's signal (`app-scope-ownership`).
 
 ## Android Programs
 
-`window.melatonAndroidPrograms`: `items()`, `tree()`, `find(launchId)`, `isAndroidId(id)`, `launch(id)`.
+`window.melatonAndroidPrograms`: `items()`, `tree()`, `find(launchId)`, `isAndroidId(id)`, `launch(id)`,
+`iconFor({ id?, package, icon? }, px)` -> `{ src, srcset }`.
+
+- **Icons and names as on the phone's Start menu** (Yukimi, Nov 21): a program with a Windows Mobile icon in the Program
+  Icons store (#773; Melaton Mobile's localStorage `wmAndroidIconStore`, the same storage in the app; refreshed from
+  `GET /api/wm-program-icons/manifest` once the desktop is idle) is drawn with it: the small set (16 / 32 / 64 px files)
+  up to 20 CSS px, the `-lg` set (32 / 64 / 128) above (`modalUtils.js renderAppIconImg`, Quick Launch's `appIconSrc`).
+  Others use Android's icon at the size the screen needs. The name the user gave a program (`wmAndroidNames`) is its name
+  here; programs cleared in Remove Programs > Android (`wmAndroidHidden`) are left out. The taskbar and the Bell draw
+  programs through `iconFor`.
 
 - Launch ids are `android:<package>/<activity>` (a work profile's program keeps the app's `@u<serial>` suffix).
 - The list kept from the last session (localStorage `melatonDexAndroidPrograms`) draws the menu at boot; the phone's own
@@ -63,12 +72,23 @@ AndroidWindows.requestAccess()   // turns the accessibility service on (through 
 
 ## The Bell
 
-`#androidNotifyTrayIcon`, Windows Calendar's reminder bell (WinCal.exe icon 116, `static_images/vista-dlg/wincal-116-16.png`).
+`#androidNotifyTrayIcon`, Windows Calendar's reminder bell (WinCal.exe icon 116, `static_images/vista-dlg/wincal-116-16.png`)
+while a notification has come that the flyout has not shown yet (`data-state="new"`), and the same bell without its six
+lines (`wincal-116-seen-16.png`, every DPI tier beside the original's) once every one has been seen (`data-state="seen"`).
+Seen = shown in the flyout: localStorage `melatonDexNotifySeen` `{ key: post time }` (a notification posted again with
+new content is new again). The list is read once the desktop is up and idle and on each `androidnotifications`.
 It is in `TRAY_DEFAULT_SHOW` (`trayRegistry.js`): shown unless Customize Notification Icons hides it. Only the DeX window
 creates it, so other desktops do not list it.
 
 The flyout (`#androidNotifyFlyout`, the network flyout's frame): the phone's notifications by app, the app with the newest
-first. A row opens its notification (`open(key)`, falling back to `AndroidApps.launch(package)`); the X dismisses it; its
+first, each app with its icon (as above), name, count (Android's `number`) and an X that clears its notifications. A row
+draws every part the bridge gives: the large icon (else the app's) at 32 px, the conversation name or title, its time
+(`when`, hidden when `showWhen` is false) or a running clock (`chronometer {base, countDown}`, ticking once a second only
+while the flyout shows it), sub / info text, the body (`shortText` collapsed and `text` expanded, inbox `lines`, chat
+`messages` with each sender's `avatar` and picture messages), the kit progress bar (Vista's marquee when indeterminate),
+the big `picture` and `summaryText` when expanded, Vista's expando when there is more to show (the newest notification
+opens expanded), its buttons and the reply box. Pictures come from `image(id)`, kept by id (at most 80, dropped when no
+notification shows them). A row opens its notification (`open(key)`, falling back to `AndroidApps.launch(package)`); the X dismisses it; its
 buttons run `action(key, index, null)`; a Reply action opens a box whose Send (or Enter) runs `action(key, index, text)`.
 **Clear all** dismisses every clearable one. With notification access off the flyout offers `requestAccess()`.
 

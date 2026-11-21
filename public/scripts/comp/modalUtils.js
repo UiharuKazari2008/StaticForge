@@ -5679,6 +5679,13 @@ function buildAppIconSrcset(imageIcon) {
 function renderAppIconImg(imageIcon, className = '', displayPx) {
     const imagePath = resolveAppIconPath(imageIcon);
     const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
+    // a Program Icons store picture (#773; the phone Start menu's icon of an Android program on the DeX desktop, #1005):
+    // its small design up to 20 px, its large (-lg) one above, each at 1x / 2x / 4x
+    const wmSet = /^\/static_images\/wm-android\/([a-z0-9_-]+?)(?:-lg)?\.png$/.exec(imagePath || '');
+    if (wmSet) {
+        const base = `/static_images/wm-android/${wmSet[1]}${Number(displayPx) > 20 ? '-lg' : ''}`;
+        return `<img src="${base}.png" srcset="${base}.png 1x, ${base}@2x.png 2x, ${base}@4x.png 4x" alt=""${classAttr} />`;
+    }
     // Art outside app_icons (a Vista dialog's own caption icon, e.g. vista-file-progress/progress-16.png)
     // has no compiled sizes: the app_icons srcset named files that do not exist and the taskbar
     // button drew nothing. Its own file, and its -32 twin for 2x when it is a -16 icon.
