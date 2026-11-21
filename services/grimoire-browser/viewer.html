@@ -466,8 +466,13 @@
   var rafId = 0;
   var lastRafAt = 0;
   var bgColor = '';
-  var CACHE_MAX_PIXELS = 12e6;
-  var cache = { canvas: null, ctx: null, doc0: 0, valid0: 0, valid1: 0 };
+  // What was seen of the page, by document row (Yukimi, Nov 21: "cache the previous scrolled areas so that when we
+  // scroll back and we dont have new frames we can at least show the previous frame"): strips of STRIP_ROWS frame
+  // rows, each knowing which of its rows it has. Up to CACHE_BUDGET pixels (from the device's memory); past it the
+  // strips furthest from the view go first. Reset on a new page, a new width or pixel ratio.
+  var STRIP_ROWS = 256;
+  var CACHE_BUDGET = Math.max(12e6, Math.min(40e6, (Number(navigator.deviceMemory) || 4) * 5e6));
+  var cache = { width: 0, k: 0, strips: new Map(), pixels: 0 };
   // The page's layers (server.js watchScroll, Yukimi Nov 21: separate the fixed background and the fixed layers on top
   // so nothing jumps): f = fixed and sticky elements drawn where they stay or stick, never moved with the page; vis =
   // where a fixed backdrop shows through (document CSS pixels), kept still from backdropCanvas (its pixels as last
@@ -486,9 +491,102 @@
     if (!rafId) rafId = requestAnimationFrame(composite);
   }
 
+  function cacheClear() {
+    cache.strips.forEach(function (st) { st.canvas.width = 0; st.canvas.height = 0; });
+    cache.strips.clear();
+    cache.pixels = 0;
+  }
+
+  function cacheStrip(i, create) {
+    var st = cache.strips.get(i);
+    if (st || !create) return st || null;
+    var c = document.createElement('canvas');
+    c.width = cache.width;
+    c.height = STRIP_ROWS;
+    st = { canvas: c, ctx: c.getContext('2d', { alpha: false }), valid: new Uint8Array(STRIP_ROWS), n: 0 };
+    cache.strips.set(i, st);
+    cache.pixels += cache.width * STRIP_ROWS;
+    return st;
+  }
+
+  // src's rect (sx, sy, w, h) into the cache at document row doc (frame pixels)
+  function cacheWrite(src, sx, sy, w, h, doc) {
+    for (var row = doc; row < doc + h;) {
+      var i = Math.floor(row / STRIP_ROWS);
+      var at = row - i * STRIP_ROWS;
+      var n = Math.min(STRIP_ROWS - at, doc + h - row);
+      var st = cacheStrip(i, true);
+      st.ctx.drawImage(src, sx, sy + (row - doc), w, n, sx, at, w, n);
+      for (var r = at; r < at + n; r++) if (!st.valid[r]) { st.valid[r] = 1; st.n += 1; }
+      row += n;
+    }
+  }
+
+  // the cache's rows [d0, d1) x [x0, x1) onto ctx2 with document row d at y = d - docAtTop; returns the rows it does
+  // not have, as [d0, d1) runs
+  function cacheDraw(ctx2, x0, x1, d0, d1, docAtTop, destX) {
+    var missing = [];
+    var dx = destX == null ? x0 : destX;
+    for (var row = d0; row < d1;) {
+      var i = Math.floor(row / STRIP_ROWS);
+      var at = row - i * STRIP_ROWS;
+      var n = Math.min(STRIP_ROWS - at, d1 - row);
+      var st = cacheStrip(i, false);
+      if (!st) { missing.push([row, row + n]); row += n; continue; }
+      for (var r = at; r < at + n;) {
+        var e = r;
+        var have = st.valid[r];
+        while (e < at + n && st.valid[e] === have) e++;
+        var docRow = i * STRIP_ROWS + r;
+        if (have) { if (x1 > x0) ctx2.drawImage(st.canvas, x0, r, x1 - x0, e - r, dx, docRow - docAtTop, x1 - x0, e - r); }
+        else missing.push([docRow, docRow + (e - r)]);
+        r = e;
+      }
+      row += n;
+    }
+    return missing;
+  }
+
+  function cacheHas(d0, d1) {
+    for (var row = d0; row < d1; row++) {
+      var st = cacheStrip(Math.floor(row / STRIP_ROWS), false);
+      if (!st || !st.valid[row - Math.floor(row / STRIP_ROWS) * STRIP_ROWS]) return false;
+    }
+    return true;
+  }
+
+  // over budget: the strips furthest from the view (document row at) go
+  function cacheTrim(at) {
+    if (cache.pixels <= CACHE_BUDGET) return;
+    var keys = Array.from(cache.strips.keys()).sort(function (a, b) {
+      return Math.abs(b * STRIP_ROWS - at) - Math.abs(a * STRIP_ROWS - at);
+    });
+    for (var i = 0; i < keys.length && cache.pixels > CACHE_BUDGET; i++) {
+      var st = cache.strips.get(keys[i]);
+      st.canvas.width = 0;
+      cache.strips.delete(keys[i]);
+      cache.pixels -= cache.width * STRIP_ROWS;
+    }
+  }
+
+  // the cache's extent (stats): rows held, first and last row
+  function cacheExtent() {
+    var rows = 0;
+    var lo = Infinity;
+    var hi = 0;
+    cache.strips.forEach(function (st, i) {
+      if (!st.n) return;
+      rows += st.n;
+      for (var r = 0; r < STRIP_ROWS; r++) if (st.valid[r]) { lo = Math.min(lo, i * STRIP_ROWS + r); break; }
+      for (var q = STRIP_ROWS - 1; q >= 0; q--) if (st.valid[q]) { hi = Math.max(hi, i * STRIP_ROWS + q + 1); break; }
+    });
+    return { rows: rows, lo: lo === Infinity ? 0 : lo, hi: hi };
+  }
+
   function resetCache() {
-    cache.valid0 = cache.valid1 = 0;
+    cacheClear();
     bgColor = '';
+    checker = null;
     // the layers stay: each new document's first scan sends them with reset (they can arrive before its location)
   }
 
@@ -559,69 +657,40 @@
   function cacheStore() {
     if (!baseInfo.p || !baseInfo.k || !scrollInfo.root) return;
     var width = base.width;
-    var height = base.height;
-    var rows = Math.min(height * 3, Math.floor(CACHE_MAX_PIXELS / Math.max(1, width)));
-    if (rows < height * 1.5) return;
-    if (!cache.canvas || cache.canvas.width !== width || cache.canvas.height !== rows) {
-      cache.canvas = cache.canvas || document.createElement('canvas');
-      cache.canvas.width = width;
-      cache.canvas.height = rows;
-      cache.ctx = cache.canvas.getContext('2d', { alpha: false });
-      cache.valid0 = cache.valid1 = 0;
+    if (cache.width !== width || Math.abs(cache.k - baseInfo.k) > 1e-6) {
+      cacheClear();
+      cache.width = width;
+      cache.k = baseInfo.k;
     }
     var b = bands();
     if (b.m1 - b.m0 <= 0) return;
     var docTop = Math.round(baseInfo.sy * baseInfo.k);
     var vh = viewRows();
-    // what scrolls in the viewport, and the over-render band below it (the fixed bottom bar between them hides
-    // its rows: they keep what an earlier frame showed, or the page's background)
+    var height = base.height;
+    // what scrolls in the viewport, and the over-render band below it (the fixed bottom bar between them hides its
+    // rows: they stay as an earlier frame showed them, or unknown)
     var segs = [[b.m0, b.m1]];
     if (vh < height) segs.push([vh, height]);
-    var d0 = docTop + b.m0;
-    var d1 = docTop + segs[segs.length - 1][1];
-    if (d0 < cache.doc0 || d1 > cache.doc0 + rows) {
-      // the cache window follows the page: centred on this band, keeping what still fits
-      var doc0 = Math.max(0, Math.round((d0 + d1 - rows) / 2));
-      var shift = doc0 - cache.doc0;
-      if (cache.valid1 > cache.valid0 && Math.abs(shift) < rows) {
-        cache.ctx.drawImage(cache.canvas, 0, -shift);
-        cache.valid0 = Math.max(cache.valid0, doc0);
-        cache.valid1 = Math.min(cache.valid1, doc0 + rows);
-      } else {
-        cache.valid0 = cache.valid1 = 0;
-      }
-      cache.doc0 = doc0;
-    }
-    if (segs.length > 1) {
-      var h0 = docTop + b.m1;
-      var h1 = docTop + vh;
-      if (h1 > h0 && (h0 < cache.valid0 || h1 > cache.valid1)) {
-        cache.ctx.fillStyle = pageBackground(b);
-        cache.ctx.fillRect(0, h0 - cache.doc0, width, h1 - h0);
-      }
-    }
     // the fixed and stuck layers are not the page at those rows: where the cache already had what lies under them,
     // it keeps that (scrolling then shows no copy of a fixed layer)
     var kept = [];
-    if (layers.f.length && cache.valid1 > cache.valid0) {
+    if (layers.f.length) {
       for (var li = 0; li < layers.f.length; li++) {
         var src = layerSource(layers.f[li], baseInfo.k, vh);
-        if (!src || !src.stuck) continue;
-        var dy0 = docTop + src.y;
-        if (dy0 < cache.valid0 || dy0 + src.h > cache.valid1) continue;
-        if (!keepCanvas) keepCanvas = document.createElement('canvas');
-        kept.push({ src: src, doc: dy0 });
+        if (!src || !src.stuck || !cacheHas(docTop + src.y, docTop + src.y + src.h)) continue;
+        kept.push({ src: src, doc: docTop + src.y });
       }
       if (kept.length) {
         var kw = 0;
         var kh = 0;
         for (var km = 0; km < kept.length; km++) { kw = Math.max(kw, kept[km].src.w); kh += kept[km].src.h; }
+        if (!keepCanvas) keepCanvas = document.createElement('canvas');
         if (keepCanvas.width < kw || keepCanvas.height < kh) { keepCanvas.width = Math.max(kw, keepCanvas.width); keepCanvas.height = Math.max(kh, keepCanvas.height); }
         var kctx = keepCanvas.getContext('2d');
         var ky = 0;
         for (var ks = 0; ks < kept.length; ks++) {
           var ksrc = kept[ks].src;
-          kctx.drawImage(cache.canvas, ksrc.x, kept[ks].doc - cache.doc0, ksrc.w, ksrc.h, 0, ky, ksrc.w, ksrc.h);
+          cacheDraw(kctx, ksrc.x, ksrc.x + ksrc.w, kept[ks].doc, kept[ks].doc + ksrc.h, kept[ks].doc - ky, 0);
           kept[ks].ky = ky;
           ky += ksrc.h;
         }
@@ -629,19 +698,22 @@
     }
     for (var g = 0; g < segs.length; g++) {
       var rowsIn = segs[g][1] - segs[g][0];
-      if (rowsIn > 0) cache.ctx.drawImage(base, 0, segs[g][0], width, rowsIn, 0, docTop + segs[g][0] - cache.doc0, width, rowsIn);
+      if (rowsIn > 0) cacheWrite(base, 0, segs[g][0], width, rowsIn, docTop + segs[g][0]);
     }
     for (var kr = 0; kr < kept.length; kr++) {
       var rs = kept[kr].src;
-      cache.ctx.drawImage(keepCanvas, 0, kept[kr].ky, rs.w, rs.h, rs.x, kept[kr].doc - cache.doc0, rs.w, rs.h);
+      // keepCanvas column 0 holds the layer's x0: written back at its x
+      var row = kept[kr].doc;
+      for (var y = 0; y < rs.h;) {
+        var i = Math.floor((row + y) / STRIP_ROWS);
+        var at = row + y - i * STRIP_ROWS;
+        var n = Math.min(STRIP_ROWS - at, rs.h - y);
+        var st = cacheStrip(i, true);
+        st.ctx.drawImage(keepCanvas, 0, kept[kr].ky + y, rs.w, n, rs.x, at, rs.w, n);
+        y += n;
+      }
     }
-    if (cache.valid1 <= cache.valid0 || d1 < cache.valid0 || d0 > cache.valid1) {
-      cache.valid0 = d0;
-      cache.valid1 = d1;
-    } else {
-      cache.valid0 = Math.min(cache.valid0, d0);
-      cache.valid1 = Math.max(cache.valid1, d1);
-    }
+    cacheTrim(docTop);
   }
 
   function pageBackground(b) {
@@ -655,26 +727,47 @@
     return bgColor;
   }
 
-  // rows [g0, g1) of the scrolling band that the frame does not cover, at document row doc0 + g0
+  // rows [g0, g1) of the scrolling band that the frame does not cover: what the cache has of them, the rest
+  // checkerboarded
   function fillGap(g0, g1, docAtTop, b) {
     if (g1 <= g0) return;
-    var width = base.width;
-    if (cache.canvas && cache.valid1 > cache.valid0) {
-      var d0 = Math.max(docAtTop + g0, cache.valid0);
-      var d1 = Math.min(docAtTop + g1, cache.valid1);
-      if (d1 > d0) {
-        ctx.drawImage(cache.canvas, 0, d0 - cache.doc0, width, d1 - d0, 0, d0 - docAtTop, width, d1 - d0);
-        if (d0 - docAtTop > g0) fillRows(g0, d0 - docAtTop, b);
-        if (d1 - docAtTop < g1) fillRows(d1 - docAtTop, g1, b);
-        return;
-      }
-    }
-    fillRows(g0, g1, b);
+    var missing = cacheDraw(ctx, 0, base.width, docAtTop + g0, docAtTop + g1, docAtTop);
+    for (var i = 0; i < missing.length; i++) fillRows(missing[i][0] - docAtTop, missing[i][1] - docAtTop, b, docAtTop);
   }
 
-  function fillRows(y0, y1, b) {
+  // Rows nothing has shown yet (Yukimi, Nov 21: "we dont want to show white so the client could add generated
+  // checkerboards to content we dont have frames for"): a checkerboard in two shades of the page's own background,
+  // fixed to the document so it scrolls with the page
+  var checker = null;
+  function checkerPattern(b) {
+    var k = baseInfo.k || 1;
+    var cell = Math.max(8, Math.round(12 * k));
+    // the page's own background as it reports it (a frame's pixel can be a backdrop's), else a frame's
+    var color = layers.bg || pageBackground(b);
+    if (checker && checker.cell === cell && checker.color === color) return checker.pattern;
+    var m = /rgba?\((\d+),(\d+),(\d+)/.exec(color.replace(/\s/g, ''));
+    var rgb = m ? [+m[1], +m[2], +m[3]] : [255, 255, 255];
+    var light = rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114 > 128;
+    var other = rgb.map(function (v) { return Math.max(0, Math.min(255, Math.round(light ? v * 0.93 : v + (255 - v) * 0.08))); });
+    var tile = document.createElement('canvas');
+    tile.width = tile.height = cell * 2;
+    var tctx = tile.getContext('2d', { alpha: false });
+    tctx.fillStyle = 'rgb(' + rgb.join(',') + ')';
+    tctx.fillRect(0, 0, cell * 2, cell * 2);
+    tctx.fillStyle = 'rgb(' + other.join(',') + ')';
+    tctx.fillRect(0, 0, cell, cell);
+    tctx.fillRect(cell, cell, cell, cell);
+    checker = { cell: cell, color: color, pattern: ctx.createPattern(tile, 'repeat') };
+    return checker.pattern;
+  }
+
+  function fillRows(y0, y1, b, docAtTop) {
     if (y1 <= y0) return;
-    ctx.fillStyle = pageBackground(b);
+    var pattern = checkerPattern(b);
+    var size = checker.cell * 2;
+    var shift = ((docAtTop || 0) % size + size) % size;
+    if (pattern.setTransform && typeof DOMMatrix === 'function') pattern.setTransform(new DOMMatrix([1, 0, 0, 1, 0, -shift]));
+    ctx.fillStyle = pattern;
     ctx.fillRect(0, y0, base.width, y1 - y0);
   }
 
@@ -703,10 +796,7 @@
 
   // rows [y0, y1) x [x0, x1) of the moved picture from the cache (what lies under a layer), where it has them
   function fillFromCache(x0, x1, y0, y1, docAtTop) {
-    if (!cache.canvas || cache.valid1 <= cache.valid0) return;
-    var d0 = Math.max(docAtTop + y0, cache.valid0);
-    var d1 = Math.min(docAtTop + y1, cache.valid1);
-    if (d1 > d0 && x1 > x0) ctx.drawImage(cache.canvas, x0, d0 - cache.doc0, x1 - x0, d1 - d0, x0, d0 - docAtTop, x1 - x0, d1 - d0);
+    if (y1 > y0 && x1 > x0) cacheDraw(ctx, x0, x1, docAtTop + y0, docAtTop + y1, docAtTop);
   }
 
   function drawLayers(off, docAtTop, b) {
@@ -1071,7 +1161,7 @@
         visCols = [];
         if (backdropCtx) backdropCtx.clearRect(0, 0, backdropCanvas.width, backdropCanvas.height);
       }
-      layers = { f: Array.isArray(msg.f) ? msg.f : [], cover: msg.cover ? 1 : 0, backdrop: msg.backdrop ? 1 : 0 };
+      layers = { f: Array.isArray(msg.f) ? msg.f : [], cover: msg.cover ? 1 : 0, backdrop: msg.backdrop ? 1 : 0, bg: typeof msg.bg === 'string' ? msg.bg : '' };
       if (!layers.backdrop) {
         visRects = [];
         visRanges = [];
@@ -1413,6 +1503,7 @@
   var stillCount = 0;
   var packetCount = 0;
   window.__alchemyViewerStats = function () {
+    var ext = cacheExtent();
     return {
       encoder: encoder,
       transport: fallback ? 'ndjson' : (socket && socket.readyState === 1 ? 'websocket' : 'none'),
@@ -1421,7 +1512,7 @@
       frames: frameCount,
       frame: { width: base.width, height: base.height, sy: baseInfo.sy, k: baseInfo.k, p: baseInfo.p, vh: baseInfo.vh },
       canvas: { width: canvas.width, height: canvas.height, cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight, devicePx: devicePx, dpr: window.devicePixelRatio || 1 },
-      scroll: { height: scrollInfo.height, view: scrollInfo.view, distrust: Math.max(0, Math.round(pred.distrustUntil - performance.now())), display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, layers: layers.f.length, sticky: layers.f.filter(function (l) { return l[4]; }).length, backdrop: layers.backdrop, cover: layers.cover, vis: visRects.length, cacheRows: cache.valid1 - cache.valid0, cache0: cache.valid0, cache1: cache.valid1 },
+      scroll: { height: scrollInfo.height, view: scrollInfo.view, distrust: Math.max(0, Math.round(pred.distrustUntil - performance.now())), display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, layers: layers.f.length, sticky: layers.f.filter(function (l) { return l[4]; }).length, backdrop: layers.backdrop, cover: layers.cover, vis: visRects.length, cacheRows: ext.rows, cache0: ext.lo, cache1: ext.hi, cachePixels: cache.pixels, cacheBudget: CACHE_BUDGET },
       audio: engine ? { path: 'worklet', state: engine.ctx.state, ready: engine.ready, packets: packetCount, targetMs: Math.round(engine.targetMs), lagMs: Math.round(engine.lagAvg || 0), jitterMs: Math.round(engine.jitter), underruns: engine.underruns, videoDelayMs: Math.round(videoDelay) }
         : { path: audio ? 'element' : 'off', wanted: audioWanted, taken: audioTaken, packets: packetCount },
       rttMs: Math.round(rttMs),

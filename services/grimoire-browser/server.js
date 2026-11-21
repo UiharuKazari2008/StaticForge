@@ -388,8 +388,17 @@ function watchScroll() {
         }
         return { bands: [Math.ceil(top), Math.ceil(bottom)], f, cover, backdrop, keep };
     };
+    // the page's own background (the viewer's checkerboard for rows it has no frame of): html's, else body's, else white
+    const pageBg = () => {
+        for (const el of [document.documentElement, document.body]) {
+            if (!el) continue;
+            const color = getComputedStyle(el).backgroundColor;
+            if (alphaOf(color) > 0.5) return color;
+        }
+        return 'rgb(255, 255, 255)';
+    };
     const sendLayers = (c, extra) => {
-        const msg = { sy: Math.round(scrollY), w: innerWidth, h: innerHeight, f: c.f, cover: c.cover, backdrop: backdropEl || backdropHost ? 1 : 0 };
+        const msg = { sy: Math.round(scrollY), w: innerWidth, h: innerHeight, f: c.f, cover: c.cover, backdrop: backdropEl || backdropHost ? 1 : 0, bg: pageBg() };
         if (extra) Object.assign(msg, extra);
         const text = JSON.stringify(msg);
         const key = text.replace(/"sy":-?\d+,/, '');
@@ -458,37 +467,43 @@ function watchScroll() {
             }
             if (row < rows) { visTimer = requestIdleCallback(step, { timeout: 400 }); return; }
             if (Math.abs(scrollY - sy) > 0.5 || innerWidth !== w || innerHeight !== h) return;
+            // each visible cell's own box: its edges snap to the boxes beside it (left, right, above, below), so a
+            // margin beside a card is not cut where the card is
+            const cell = (i, j) => {
+                let x0 = i * g;
+                let x1 = Math.min(w, (i + 1) * g);
+                let y0 = j * g;
+                let y1 = Math.min(h, (j + 1) * g);
+                const left = i > 0 && !vis[j * colCount + i - 1] ? boxes[j * colCount + i - 1] : null;
+                if (left && left[2] > x0 - g && left[2] < x0 + g) x0 = Math.max(0, left[2]);
+                const right = i + 1 < colCount && !vis[j * colCount + i + 1] ? boxes[j * colCount + i + 1] : null;
+                if (right && right[0] > x1 - g && right[0] < x1 + g) x1 = Math.min(w, right[0]);
+                const above = j > 0 && !vis[(j - 1) * colCount + i] ? boxes[(j - 1) * colCount + i] : null;
+                if (above && above[3] > y0 - g && above[3] < y0 + g) y0 = Math.max(0, above[3]);
+                const below = j + 1 < rows && !vis[(j + 1) * colCount + i] ? boxes[(j + 1) * colCount + i] : null;
+                if (below && below[1] > y1 - g && below[1] < y1 + g) y1 = Math.min(h, below[1]);
+                return [Math.round(x0), Math.round(y0), Math.round(x1), Math.round(y1)];
+            };
             const rects = [];
             const open = [];
             for (let j = 0; j < rows; j++) {
+                // cells side by side with the same top and bottom make one run
                 const runs = [];
                 for (let i = 0; i < colCount; i++) {
                     if (!vis[j * colCount + i]) continue;
-                    let e = i;
-                    while (e + 1 < colCount && vis[j * colCount + e + 1]) e++;
-                    let x0 = i * g;
-                    let x1 = Math.min(w, (e + 1) * g);
-                    const left = i > 0 ? boxes[j * colCount + i - 1] : null;
-                    if (left && left[2] > x0 - g && left[2] < x0 + g) x0 = Math.max(0, left[2]);
-                    const right = e + 1 < colCount ? boxes[j * colCount + e + 1] : null;
-                    if (right && right[0] > x1 - g && right[0] < x1 + g) x1 = Math.min(w, right[0]);
-                    let y0 = j * g;
-                    let y1 = Math.min(h, (j + 1) * g);
-                    for (let c = i; c <= e; c++) {
-                        const above = j > 0 ? boxes[(j - 1) * colCount + c] : null;
-                        if (above && above[3] > y0 - g && above[3] < y0 + g) y0 = Math.max(y0, above[3]);
-                        const below = j + 1 < rows ? boxes[(j + 1) * colCount + c] : null;
-                        if (below && below[1] > y1 - g && below[1] < y1 + g) y1 = Math.min(y1, below[1]);
-                    }
-                    if (x1 - x0 >= 1 && y1 - y0 >= 1) runs.push([Math.round(x0), Math.round(y0), Math.round(x1), Math.round(y1)]);
-                    i = e;
+                    const c = cell(i, j);
+                    if (c[2] - c[0] < 1 || c[3] - c[1] < 1) continue;
+                    const last = runs[runs.length - 1];
+                    if (last && last[2] >= c[0] - 1 && last[1] === c[1] && last[3] === c[3] && last.end === i - 1) { last[2] = c[2]; last.end = i; continue; }
+                    c.end = i;
+                    runs.push(c);
                 }
                 for (const run of runs) {
-                    const up = open.find((o) => o[0] === run[0] && o[2] === run[2] && Math.abs(o[3] - run[1]) <= g / 2);
-                    if (up) up[3] = run[3];
-                    else { const rect = run.slice(); rects.push(rect); open.push(rect); }
+                    const up = open.find((o) => o[0] === run[0] && o[2] === run[2] && Math.abs(o[3] - run[1]) <= 1);
+                    if (up) { up[3] = run[3]; up.row = j; }
+                    else { const rect = [run[0], run[1], run[2], run[3]]; rect.row = j; rects.push(rect); open.push(rect); }
                 }
-                for (let k = open.length - 1; k >= 0; k--) if (open[k][3] < (j + 1) * g - g / 2 && !runs.some((r) => r[0] === open[k][0] && r[2] === open[k][2])) open.splice(k, 1);
+                for (let k = open.length - 1; k >= 0; k--) if (open[k].row !== j) open.splice(k, 1);
             }
             const r = rects.length > 160 ? [] : rects.map((q) => [q[0], q[1] + Math.round(sy), q[2] - q[0], q[3] - q[1]]);
             // columns where it shows on (nearly) every row (a page's margins): the viewer keeps it still there on rows
@@ -659,7 +674,8 @@ function parseLayers(payload) {
         h: Number(m.h) || 0,
         f: (Array.isArray(m.f) ? m.f : []).filter((l) => nums(l, 5)).slice(0, 16).map((l) => l.slice(0, 11)),
         cover: m.cover ? 1 : 0,
-        backdrop: m.backdrop ? 1 : 0
+        backdrop: m.backdrop ? 1 : 0,
+        bg: typeof m.bg === 'string' && /^rgba?\([\d.,\s/%]+\)$/.test(m.bg) ? m.bg : ''
     };
     if (m.reset) out.reset = 1;
     if (m.v && Number.isFinite(m.v.d0) && Number.isFinite(m.v.d1) && Array.isArray(m.v.r)) {
