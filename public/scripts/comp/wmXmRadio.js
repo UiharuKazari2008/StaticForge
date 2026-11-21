@@ -3,7 +3,8 @@
  *
  * Yukimi, Nov 20 2026: "With today item and for titanium the item will show what's on air as LR pages and soft-key to
  * one touch record this where it records from the start. Really it should always ask do you want to record from the
- * start." The soft key reads Record on a channel, and REC while that channel is being recorded.
+ * start." The soft key reads Record on a channel, and REC while that channel is being recorded; the 6.5 panel's
+ * superscript by its name is the current channel's number, or "rec" while a recording runs.
  *
  *   Today (6.1 block, 6.5 panel)  a page per channel: the one the phone plays, then preset bank A; left / right
  *                     (swipe, arrows) turn pages. Each page is what is on air now: the song's art (or the channel's
@@ -607,10 +608,12 @@
         if (!ids.length) {
             return { label: 'xm radio', icon: 'x:app-xmradio-lg', pages: [{ title: 'XM Radio', line2: cache.lineup ? 'Tap to choose a channel' : 'Reading the channels...', line3: '' }], softKey: { label: 'Radio', action: go }, onTap: go };
         }
-        const recCount = (cache.rec || []).length;
+        // the superscript by the panel's name (Yukimi, Nov 20 2026): "rec" while a recording runs, else the current
+        // channel's number
+        const cur = chan(radio.channelId || prefs.channel);
         return {
             label: 'xm radio',
-            count: recCount ? 'REC' : '',
+            count: (cache.rec || []).length ? 'rec' : cur ? String(cur.number) : '',
             icon: 'x:app-xmradio-lg',
             pages: ids.map((id) => {
                 const c = chan(id);
