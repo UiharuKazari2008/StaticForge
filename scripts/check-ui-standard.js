@@ -152,6 +152,34 @@ const RULES = [
 ];
 const RULE_IDS = RULES.map((r) => r.id);
 
+// Section 6, custom apps: a package that declares "windowKind": "custom" in its manifest is drawn as a third-party
+// program (VZAccess Manager, XM Radio, Adobe Reader...), with that program's own colours, fonts, buttons, menu bar and
+// drawn parts. Those are its design, not drift from the theme, so the look rules below skip its files: everything
+// under apps/<id>/ and the repo paths its manifest lists in "customLookFiles" (its phone version, say). What it takes
+// from the shell is still checked: the frame (hand-built-window), balloons / notifications (toast), scroll bars,
+// theme scoping, art paths and no native browser UI (Yukimi, Nov 21 2026).
+const CUSTOM_LOOK_RULES = new Set(['colour-literal', 'colour-in-script', 'font-literal', 'own-control', 'own-menubar', 'inline-style']);
+function customLookApps() {
+    const out = [];
+    let dirs = [];
+    try { dirs = fs.readdirSync(path.join(root, 'apps'), { withFileTypes: true }).filter((d) => d.isDirectory()); } catch (e) { return out; }
+    dirs.forEach((d) => {
+        let m;
+        try { m = JSON.parse(fs.readFileSync(path.join(root, 'apps', d.name, 'manifest.json'), 'utf8')); } catch (e) { return; }
+        if (!m || m.windowKind !== 'custom') return;
+        const files = Array.isArray(m.customLookFiles) ? m.customLookFiles.filter((f) => typeof f === 'string') : [];
+        out.push({ id: d.name, title: m.title || d.name, prefix: `apps/${d.name}/`, files: new Set(files) });
+    });
+    return out;
+}
+const CUSTOM_LOOK = customLookApps();
+const isCustomLook = (f) => CUSTOM_LOOK.some((a) => f.startsWith(a.prefix) || a.files.has(f));
+RULES.forEach((rule) => {
+    if (!CUSTOM_LOOK_RULES.has(rule.id)) return;
+    const on = rule.on;
+    rule.on = (f) => on(f) && !isCustomLook(f);
+});
+
 function walk(dir, out) {
     let list;
     try { list = fs.readdirSync(path.join(root, dir), { withFileTypes: true }); } catch (e) { return out; }

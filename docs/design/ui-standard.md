@@ -195,6 +195,17 @@ surfaces): it uses the base builder and adds its own drawn elements.
   rules use those tokens. The block is the only place its literals live.
 - It declares itself `custom` (window kind) so the choice is visible, not accidental.
 
+### Third-party programs (the check)
+
+An app that reproduces another company's program (VZAccess Manager, XM Radio, Adobe Reader) is drawn with that
+program's colours, fonts, buttons and menu bar on purpose. It declares `"windowKind": "custom"` in its
+`apps/<id>/manifest.json`, and lists any of its files outside `apps/<id>/` (a phone version, say) in
+`"customLookFiles"`. `scripts/check-ui-standard.js` then skips the look rules for those files: `colour-literal`,
+`colour-in-script`, `font-literal`, `own-control`, `own-menubar` and `inline-style` (Yukimi, Nov 21 2026).
+Everything the app takes from the shell is still checked there: `hand-built-window`, `toast`, `native-*`,
+`theme-negative`, `theme-test-copy` and `theme-art-path`. Melaton's own programs (publisher Xyridian) are not
+third-party programs and follow the full standard.
+
 ## 7. No native browser UI
 
 Nothing the browser draws on its own may reach the screen. Full rule: `no-native-browser-ui.mdc`.

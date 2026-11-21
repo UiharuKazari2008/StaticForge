@@ -11,5 +11,6 @@
     "client": {
         "entry": "client/xmradio.js",
         "styles": ["assets/xmradio.css"]
-    }
+    },
+    "customLookFiles": ["public/scripts/comp/wmXmRadio.js", "public/css/wm-xmradio.css"]
 }

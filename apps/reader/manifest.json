@@ -6,6 +6,7 @@
     "format": "msaz",
     "type": "native",
     "launchId": "adobe-reader",
+    "windowKind": "custom",
     "icon": "assets/icon-48.png",
     "client": {
         "entry": "client/reader.js",
