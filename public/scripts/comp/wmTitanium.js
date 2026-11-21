@@ -1741,6 +1741,26 @@
         if (keys.includes('wmSuperBarNotes') && superOpen) refreshNotes();
     });
 
+    // Rows move every frame of a scroll: write only what changed (classList.remove of a class a row does not have,
+    // the same data-far or transform again, each still rewrote the attribute: ~6,800 writes in 4 s of scrolling on
+    // the Fold, Nov 21 2026)
+    function dropClass(el, cls) {
+        if (el.classList.contains(cls)) el.classList.remove(cls);
+    }
+    function moveRow(el, y) {
+        const t = `translate3d(0, calc(${y} * var(--wm-px)), 0)`;
+        if (el._wmTiT !== t) {
+            el._wmTiT = t;
+            el.style.transform = t;
+        }
+    }
+    let shownTop = null;
+    function setTop(top) {
+        if (shownTop === top && host.style.getPropertyValue('--wm-ti-top') === String(top)) return;
+        shownTop = top;
+        host.style.setProperty('--wm-ti-top', String(top));
+    }
+
     /** Place every row for the list position `pos` (rows) around the band. */
     function place() {
         dropEntryAnims();
@@ -1748,21 +1768,23 @@
         const top = focusTop();
         const e = (pos - sel) * ROW;
         const rest = !dragging && !settle;
-        host.style.setProperty('--wm-ti-top', String(top));
+        setTop(top);
         host.classList.toggle('is-rest', rest);
         panels.forEach((p, i) => {
             const el = rowEl.get(p.id);
             if (!el) return;
-            el.classList.remove('is-under', 'is-arriving');
+            dropClass(el, 'is-under');
+            dropClass(el, 'is-arriving');
             if (el.style.opacity) el.style.opacity = '';
             let y;
             if (i < sel) y = top - ROW * (sel - i) - e;
             else if (i > sel) y = top + BAND + ROW * (i - sel - 1) - e;
             else y = top + (BAND - ROW) / 2;
-            el.style.transform = `translate3d(0, calc(${y} * var(--wm-px)), 0)`;
+            moveRow(el, y);
             el.classList.toggle('is-sel', i === sel);
             const d = Math.abs(i - sel);
-            el.dataset.far = rest ? String(Math.min(d, 3)) : '0';
+            const far = rest ? String(Math.min(d, 3)) : '0';
+            if (el.dataset.far !== far) el.dataset.far = far;
         });
     }
 
@@ -2352,8 +2374,8 @@
         const top = focusTop();
         const ys = tweenYs(top, p);
         parallax(tw.n ? tw.a + (tw.b - tw.a) * p : tw.a + tw.e0 * (1 - p) / ROW);
-        host.style.setProperty('--wm-ti-top', String(top));
-        host.classList.remove('is-rest');
+        setTop(top);
+        dropClass(host, 'is-rest');
         // the entrance (#800) fades every row in to the dimness it keeps at rest (its distance from the
         // band), not to full, so nothing drops darker once the list has settled (Yukimi, Nov 15)
         const entering = host.classList.contains('is-entering');
@@ -2362,11 +2384,11 @@
             const el = rowEl.get(pn.id);
             if (!el) return;
             const y = ys[i];
-            el.style.transform = `translate3d(0, calc(${y} * var(--wm-px)), 0)`;
+            moveRow(el, y);
             const under = y + ROW / 2 > top && y + ROW / 2 < top + BAND;
             if (under) underNow = i;
             el.classList.toggle('is-under', under);
-            el.classList.remove('is-sel');
+            dropClass(el, 'is-sel');
             const far = entering ? String(Math.min(Math.abs(i - tw.b), 3)) : '0';
             if (el.dataset.far !== far) el.dataset.far = far;
             const o = i === tw.b && fade < 1 ? String(Math.round(fade * (under ? 55 : 100)) / 100) : '';
