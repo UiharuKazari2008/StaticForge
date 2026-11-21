@@ -272,7 +272,8 @@
     var bin = atob(msg.data);
     var bytes = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    decodeImage(bytes).then(function (img) {
+    // the view at rest as JPEG XL from a lossless capture (server.js jxlRefine), else a JPEG still
+    decodeImage(bytes, msg.f === 'jxl' ? 'image/jxl' : 'image/jpeg').then(function (img) {
       // a newer frame or still came first, or the still is not of the page's current CSS size
       // (frames can be smaller than that: the phone's Desktop view gets 780 px frames of 1024)
       if (arrival !== stillArrival || frameArrival > arrival
@@ -406,8 +407,9 @@
           baseCtx.drawImage(imgs[i], rect.x, rect.y, rect.w, rect.h);
           // a small change patches the still (soft until the next one) instead of dropping it
           if (!stillCanvas.hidden && job.arrival > stillArrival) {
+            // the still covers the view's rows (a frame also has the over-render band below them)
             var sx = stillCanvas.width / base.width;
-            var sy = stillCanvas.height / base.height;
+            var sy = stillCanvas.height / viewRows();
             stillCtx.drawImage(imgs[i], rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy);
           }
         }

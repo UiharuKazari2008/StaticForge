@@ -11,6 +11,7 @@ trap 'rm -rf "$WORK"' EXIT
 LIB="$(ls /lib/x86_64-linux-gnu/libjxl.so.0.* 2>/dev/null | head -1)"
 [ -n "$LIB" ] || { echo "libjxl is not installed (apt install libjxl0.11)"; exit 1; }
 ( cd "$WORK" && apt-get download libjxl-dev >/dev/null && dpkg-deb -x libjxl-dev_*.deb dev )
-gcc -O2 -Wall "$HERE/jxl-pipe.c" -I "$WORK/dev/usr/include" "$LIB" -o "$OUT.tmp"
+THREADS="$(ls /lib/x86_64-linux-gnu/libjxl_threads.so.0.* 2>/dev/null | head -1)"
+gcc -O2 -Wall "$HERE/jxl-pipe.c" -I "$WORK/dev/usr/include" "$LIB" "$THREADS" -o "$OUT.tmp"
 mv "$OUT.tmp" "$OUT"
 echo "built $OUT against $LIB"

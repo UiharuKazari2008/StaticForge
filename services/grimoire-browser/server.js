@@ -1260,6 +1260,8 @@ function encoderInfo(session) {
         jxlMode: JXL_MODE,
         jxlViewer: session.jxl ? 1 : 0,
         jxlMs: Math.round(jxlStats.ms),
+        // the view at rest sent again as JPEG XL from a lossless capture, at this distance (0: not for this viewer)
+        refine: jxlRefine(session) ? REFINE_DISTANCE[aq.level] || 1 : 0,
         jxlSaves: Math.round((1 - jxlStats.ratio) * 100),
         // the page's layers the viewer keeps apart while it scrolls ahead (watchScroll)
         layers: session.layers ? {
@@ -1449,7 +1451,8 @@ function jxlAvailable() {
 
 function jxlStart() {
     if (jxl.proc) return jxl.proc;
-    const proc = spawn(JXL_PIPE, ['3'], { stdio: ['pipe', 'pipe', 'ignore'] });
+    // effort 3, half the cores (libjxl's thread pool; the pipe built before Nov 21 takes no second argument)
+    const proc = spawn(JXL_PIPE, ['3', String(Math.max(1, Math.floor(os.cpus().length / 2)))], { stdio: ['pipe', 'pipe', 'ignore'] });
     jxl.proc = proc;
     jxl.buf = Buffer.alloc(0);
     proc.stdout.on('data', (chunk) => {
@@ -1472,6 +1475,30 @@ function jxlStart() {
     proc.once('error', () => { jxl.broken = true; gone(); });
     proc.stdin.on('error', () => {});
     return proc;
+}
+
+// JPEG XL from 8-bit RGB / RGBA pixels (a lossless capture; RGBA keeps transparency), at a Butteraugli distance
+// (1.0: visually lossless; 0 with lossless). The view at rest goes this way (Yukimi, Nov 21: "I want JPEG XL by
+// default as layers can use transparentcy and would be always better quality"): on this host ~70 ms for 1200 x 900
+// with the pipe's threads, about the bytes of a quality-70 JPEG at distance 1.
+function jxlEncodePixels(pixels, width, height, channels, distance, lossless) {
+    if (!jxlAvailable()) return Promise.resolve(null);
+    const proc = jxlStart();
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = (out) => { if (!done) { done = true; resolve(out); } };
+        jxl.queue.push(finish);
+        setTimeout(() => finish(null), 2000).unref();
+        const head = Buffer.alloc(16);
+        head.writeUInt32LE(((12 + pixels.length) | 0x80000000) >>> 0, 0);
+        head.writeUInt32LE(width, 4);
+        head.writeUInt32LE(height, 8);
+        head[12] = channels;
+        head[13] = lossless ? 1 : 0;
+        head.writeUInt16LE(Math.round(Math.max(0.1, Math.min(25, distance || 1)) * 100), 14);
+        proc.stdin.write(head);
+        proc.stdin.write(pixels);
+    });
 }
 
 // the JXL of a JPEG, or null (no helper, a failure, too slow: the JPEG goes instead)
@@ -1754,6 +1781,30 @@ const STILL_ACK_WAIT_MS = 10000;
 // A link this slow (the viewer's measured round trip, relay queue included) waits for a still.
 const STILL_MAX_RTT_MS = 1000;
 
+// a screencast frame's pixel size from its JPEG header (base64; only the first few KB are read)
+function jpegDims(b64) {
+    let buf;
+    try { buf = Buffer.from(String(b64 || '').slice(0, 8192), 'base64'); } catch (_) { return null; }
+    let i = 2;
+    while (i + 9 < buf.length) {
+        if (buf[i] !== 0xff) { i++; continue; }
+        const marker = buf[i + 1];
+        const len = buf.readUInt16BE(i + 2);
+        if (marker >= 0xc0 && marker <= 0xc2) return [buf.readUInt16BE(i + 7), buf.readUInt16BE(i + 5)];
+        i += 2 + len;
+    }
+    return null;
+}
+
+// the view at rest as JPEG XL for this session's viewers: they all can show it, and JPEG XL is not turned off
+function jxlRefine(session) {
+    return !!(session.jxl && JXL_MODE !== 'off' && jxlAvailable());
+}
+
+// JPEG XL distance of the refined view by automatic quality's step: near lossless on a good link, coarser when it
+// is struggling (still far better than the step's JPEG)
+const REFINE_DISTANCE = [0.5, 0.6, 0.8, 1.0, 1.2, 1.5, 1.9, 2.4, 3.0];
+
 function stillScale(session) {
     const meta = session.meta || {};
     const cssW = Number(meta.deviceWidth) || 0;
@@ -1762,9 +1813,10 @@ function stillScale(session) {
     // only the phone asks for stills (still-scale); a zoomed desktop session keeps plain frames
     let scale = session.clientScale || 0;
     scale = Math.min(scale, STILL_MAX_SCALE, Math.sqrt(STILL_MAX_PIXELS / (cssW * cssH)));
-    // the Alchemy build's frames already have the phone's pixels (#993): a still would add nothing
-    if (emulatedScale && (session.pxPerDip || 1) >= scale - 0.05) return 0;
-    return scale >= 1.1 ? scale : 0;
+    // the Alchemy build's frames already have the phone's pixels (#993): a still at a higher scale adds nothing,
+    // but a viewer that shows JPEG XL gets the view at rest again as JPEG XL from a lossless capture (refine)
+    if (emulatedScale && (session.pxPerDip || 1) >= scale - 0.05) return jxlRefine(session) ? 1 : 0;
+    return scale >= 1.1 ? scale : (jxlRefine(session) ? 1 : 0);
 }
 
 // Every frame or tile pack that reaches the viewers makes the last still stale and restarts the wait.
@@ -1837,21 +1889,25 @@ async function captureStill(session) {
     if (!scale || !session.sockets.size) return;
     // still moving: frames in flight, a scroll or a page load
     if (session.viewportBusy || session.framePump || session.latestFrame || session.pendingScroll || scrollBurst(session) || session.navigating) {
+        if (PACK_DEBUG) console.log('[grimoire-browser] still waits:', JSON.stringify({ viewport: !!session.viewportBusy, pump: !!session.framePump, latest: !!session.latestFrame, scroll: !!session.pendingScroll, burst: scrollBurst(session), nav: !!session.navigating }));
         armStill(session);
         return;
     }
     if (session.stillSentGen === session.stillGen) return;
     if (socketsCongested(session) || (session.rttMs || 0) > STILL_MAX_RTT_MS
         || (session.stillUnacked && Date.now() - session.stillUnacked < STILL_ACK_WAIT_MS)) {
+        if (PACK_DEBUG) console.log('[grimoire-browser] still held: congested', socketsCongested(session), 'rtt', session.rttMs, 'unacked', session.stillUnacked ? Date.now() - session.stillUnacked : 0);
         armStill(session, STILL_MIN_GAP_MS);
         return;
     }
+    if (PACK_DEBUG) console.log('[grimoire-browser] still capture at scale', scale, jxlRefine(session) ? '(JPEG XL refine)' : '');
     const gen = session.stillGen;
     const meta = session.meta;
     const baseBytes = session.stillBaseBytes || 0;
     session.stillBusy = true;
     let shot;
     let view;
+    let refine = false;
     try {
         const metrics = await session.cdp.send('Page.getLayoutMetrics');
         view = metrics && metrics.cssVisualViewport;
@@ -1862,7 +1918,26 @@ async function captureStill(session) {
         // the capture emulates the scaled device for a moment; the screencast sends a frame of
         // that size, which the frame handler drops (and only that size)
         session.stillSide = { w: Math.round(meta.deviceWidth * scale), h: Math.round(meta.deviceHeight * scale) };
-        shot = await session.cdp.send('Page.captureScreenshot', {
+        refine = jxlRefine(session) && scale === 1;
+        // the refine (scale 1): the surface as it is, no clip, so Chromium emulates nothing for the capture and sends no
+        // frame of its own for it (a clipped capture did, which made every refine stale before it was sent); PNG,
+        // re-encoded as JPEG XL here, cropped to the view (the over-render band is not part of it)
+        if (refine) {
+            // the capture resets the view's visible size (the over-render band goes) and Chromium sends frames of its
+            // own for it: they are not the page changing, so they are dropped (refineEchoUntil), and the band is put
+            // back at once
+            session.refineEchoUntil = Date.now() + 1500;
+            try {
+                // on a DevTools session of its own: a capture on the screencast's session reset that session's device
+                // emulation (the page was laid out again at the window's width)
+                if (!session.captureCdp) session.captureCdp = await session.page.createCDPSession();
+                shot = await session.captureCdp.send('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false });
+            } finally {
+                if (session.bandDip) await session.cdp.send('Emulation.setVisibleSize', { width: session.dipWidth, height: session.dipHeight + session.bandDip }).catch(() => {});
+                session.refineEchoUntil = Date.now() + 250;
+            }
+        }
+        else shot = await session.cdp.send('Page.captureScreenshot', {
             format: 'jpeg',
             quality: session.settings.jpegQuality,
             captureBeyondViewport: false,
@@ -1875,7 +1950,29 @@ async function captureStill(session) {
         session.stillBusy = false;
         session.stillQuietUntil = Date.now() + 250;
     }
+    if (PACK_DEBUG) console.log('[grimoire-browser] still captured', shot && shot.data ? shot.data.length : 0, 'B64; frames since', (session.stillGen || 0) - gen, 'meta', session.meta === meta ? 'same' : JSON.stringify(meta) + ' -> ' + JSON.stringify(session.meta));
     if (!shot || !shot.data || !sessions.get(session.id) || session.stillGen !== gen || session.meta !== meta) return;
+    let data = shot.data;
+    let format = 'jpeg';
+    if (refine) {
+        let out = null;
+        try {
+            const png = sharp(Buffer.from(shot.data, 'base64'));
+            const info = await png.metadata();
+            // the view's own rows: the frame's width, its height without the band
+            const viewH = Math.min(info.height, Math.round(meta.deviceHeight * (session.pxPerDip || 1) * (meta.pageScaleFactor || 1)));
+            if (PACK_DEBUG) console.log('[grimoire-browser] refine capture', info.width + 'x' + info.height, 'view rows', viewH, 'frame', session.pixelWidth + 'x' + session.pixelHeight);
+            const decoded = await png.extract({ left: 0, top: 0, width: info.width, height: Math.max(1, viewH) }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+            const level = session.aq ? session.aq.level : AQ_START;
+            out = await jxlEncodePixels(decoded.data, decoded.info.width, decoded.info.height, 3, REFINE_DISTANCE[level] || 1);
+        } catch (err) { out = null; if (PACK_DEBUG) console.log('[grimoire-browser] refine failed', err && err.message); }
+        if (PACK_DEBUG) console.log('[grimoire-browser] refine jxl', out ? out.length : 0, 'B; frames since', (session.stillGen || 0) - gen);
+        // a frame came while it encoded: this view is old
+        if (!out || !sessions.get(session.id) || session.stillGen !== gen || session.meta !== meta) return;
+        data = out.toString('base64');
+        format = 'jxl';
+        session.jxlSentAt = Date.now();
+    }
     session.stillSentGen = gen;
     session.stillAt = Date.now();
     session.stillUnacked = Date.now();
@@ -1888,7 +1985,8 @@ async function captureStill(session) {
         cssH: meta.deviceHeight,
         scale,
         baseBytes,
-        data: shot.data
+        f: format,
+        data
     };
     session.still = still;
     broadcast(session, still);
@@ -3868,6 +3966,16 @@ async function createSession(body, adoptedPage) {
             metadata.offsetTop,
             metadata.pageScaleFactor
         ].join(':');
+        // a refine capture's own frames (captureStill): the same picture again, or one without the over-render band
+        // (another size). A frame that differs otherwise is the page changing and goes on.
+        if (Date.now() < (current.refineEchoUntil || 0)) {
+            const dims = jpegDims(event.data);
+            const last = current.lastFrameDims;
+            if (event.data === current.lastFrameB64 || (dims && last && (dims[0] !== last[0] || dims[1] !== last[1]))) {
+                current.cdp.send('Page.screencastFrameAck', { sessionId: event.sessionId }).catch(() => {});
+                return;
+            }
+        }
         // Page.captureScreenshot with a clip scale briefly emulates the bigger device: the screencast
         // sends a frame of that size. It is not the page; drop it (a real change is never that size).
         const side = current.stillSide;
@@ -3881,6 +3989,8 @@ async function createSession(body, adoptedPage) {
             current.meta = metadata;
             broadcast(current, { type: 'meta', metadata });
         }
+        current.lastFrameB64 = event.data;
+        current.lastFrameDims = jpegDims(event.data);
         noteScreencastFrame(current, event);
         touch(current);
     });
