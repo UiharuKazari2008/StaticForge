@@ -138,7 +138,8 @@ function grimoireSyncAlchemyIdentity(modal, web, title) {
 }
 
 function grimoireNormalizeWebUrl(url) {
-    const raw = String(url || '').trim();
+    // alch:// is chrome:// (dsapRegistry.js grimoireAlchToChrome)
+    const raw = grimoireAlchToChrome(String(url || '').trim());
     if (!/^[a-z][a-z0-9+.-]*:/i.test(raw)) return '';
     try {
         const parsed = new URL(raw);
@@ -2169,7 +2170,7 @@ function grimoireShowRemoteTabPage(shell, state, url) {
             : (unavailable ? 'Alchemy unavailable' : 'This page has failed');
         const urlEl = document.createElement('p');
         urlEl.className = 'grimoire-nav-error-url';
-        urlEl.textContent = url || '';
+        urlEl.textContent = grimoireDisplayUrl(url || '');
         const detail = document.createElement('p');
         detail.className = 'grimoire-nav-error-detail';
         detail.textContent = hung
@@ -2279,7 +2280,7 @@ function grimoireShowTransferredPage(shell, info, hostArg) {
         + ' since ' + when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '.';
     const addr = document.createElement('p');
     addr.className = 'grimoire-transferred-url';
-    addr.textContent = url;
+    addr.textContent = grimoireDisplayUrl(url);
     const hr = document.createElement('hr');
     const list = document.createElement('ul');
     list.className = 'grimoire-transferred-actions';

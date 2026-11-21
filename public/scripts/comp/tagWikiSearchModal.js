@@ -5888,7 +5888,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
         // For Layer 1 (visible display span): show only the path part (no protocol scheme),
         // since we have a mode icon that indicates the protocol/type.
-        const displayPath = isWeb ? fullUrl : fullUrl.replace(/^(edtx|rdf|dsap):\/\//i, '');
+        // Alchemy's own pages read alch:// (dsapRegistry.js grimoireDisplayUrl); the address underneath stays chrome://
+        const displayPath = isWeb ? grimoireDisplayUrl(fullUrl) : fullUrl.replace(/^(edtx|rdf|dsap):\/\//i, '');
 
         this.currentAddress = { fullUrl, displayPath, mode };
         this._currentAddress = { displayUrl: displayPath, fullUrl, mode };
@@ -5983,7 +5984,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         // without the input stealing focus (and triggering keyboard on touch, etc.).
         // User can click the input if they want to edit the address.
         const current = (this.currentAddress && this.currentAddress.fullUrl) || this.addressPath?.textContent || '';
-        this.searchInput.value = current || 'edtx://en.grimoire.jp/index.dtxt';
+        this.searchInput.value = grimoireDisplayUrl(current) || 'edtx://en.grimoire.jp/index.dtxt';
         // On the Vista desktop the box is IE7's: a click puts the caret in and selects the whole
         // address (the VM, 2026-10-13). Touch / mobile keep the no-focus behaviour above.
         if (document.body.classList.contains('desktop-mode') && window.uiTheme.is('vista')
@@ -6013,7 +6014,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
         // Parse what the user typed and navigate or search.
         this.exitAddressEdit(); // close editor first
 
-        const val = (this.searchInput && this.searchInput.value || '').trim();
+        // alch:// typed (or chrome://) opens Alchemy's own page (dsapRegistry.js grimoireAlchToChrome)
+        const val = grimoireAlchToChrome((this.searchInput && this.searchInput.value || '').trim());
         if (!val) {
             // empty → go home
             this.setAddress({ displayUrl: 'edtx://en.grimoire.jp/index.dtxt', mode: 'edtx' });
@@ -6209,7 +6211,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
      * See: public/scripts/comp/dsapRegistry.js and grimoireCoreDomains.js
      */
     navigate(pseudoUrl = '') {
-        const url = String(pseudoUrl || '').trim();
+        const url = grimoireAlchToChrome(String(pseudoUrl || '').trim());
         if (!url) return;
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
         desktopSounds.play('navigate');

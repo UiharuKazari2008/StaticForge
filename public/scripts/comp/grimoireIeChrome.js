@@ -1410,7 +1410,7 @@
                     tile.className = 'grimoire-ie-quicktile grimoire-ie-quick-other';
                     tile.dataset.otherSession = session.id;
                     tile.dataset.otherTab = tab.id;
-                    tile.title = (tab.kind === 'alchemy' ? 'Move this page here: ' : 'Open a copy here: ') + (tab.title || tab.url);
+                    tile.title = (tab.kind === 'alchemy' ? 'Move this page here: ' : 'Open a copy here: ') + (tab.title || grimoireDisplayUrl(tab.url));
                     const title = document.createElement('span');
                     title.className = 'grimoire-ie-quicktile-title';
                     title.textContent = (tab.title && tab.title !== tab.url ? tab.title : '')
@@ -1421,7 +1421,7 @@
                     fav.alt = '';
                     fav.src = tab.kind === 'alchemy' ? `${ART}/page-ie.png` : BOOKS_ICON;
                     const url = document.createElement('span');
-                    url.textContent = tab.url || '';
+                    url.textContent = grimoireDisplayUrl(tab.url || '');
                     const note = document.createElement('span');
                     note.className = 'grimoire-ie-quick-other-note';
                     note.textContent = tab.kind === 'alchemy' ? (tab.alchemyId ? 'Still open there; moves here as it is' : 'Opens again from its address') : 'A copy opens here; the page stays there';
@@ -1923,7 +1923,7 @@
             return { 902: 'This tab has no web page', 911: '', 912: '', 913: '', 914: '', 915: '', 916: '', 917: '', 921: '', 922: '', 923: '', 924: '', 941: '', 942: '', 943: '', 944: '', 931: '' };
         }
         return {
-            902: pageUrl || 'This tab has no web page',
+            902: grimoireDisplayUrl(pageUrl) || 'This tab has no web page',
             911: info ? `${i.codec || 'JPEG'} from the ${i.source || 'Chromium screencast'}` : NOT_YET,
             912: num(i.q) === null ? 'Unknown' : `JPEG quality ${i.q}`,
             913: num(i.minFps) === null ? 'Unknown' : `${i.minFps} to ${i.maxFps} frames per second`,

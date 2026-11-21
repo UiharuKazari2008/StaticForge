@@ -201,6 +201,19 @@ function grimoireGetUnsupportedProtocol(url) {
     return proto;
 }
 
+// alch:// (Yukimi, Nov 21 2026: "shoudl we replace chrome:\\ with alch:\\ with a auto handeler to correct al chrome:\\
+// uris to alch:\\" / "yes"): Alchemy's own pages read alch:// wherever the Grimoire shows an address (the address
+// bar, History, Favorites, tabs, Restore Session); Chromium keeps chrome:// underneath (its pages, links, extensions
+// and security checks depend on it), so what is typed or opened as alch:// goes to chrome://, and a chrome:// address
+// shows as alch:// once it is open. chrome-extension:// stays as it is.
+function grimoireAlchToChrome(url) {
+    return String(url == null ? '' : url).replace(/^(\s*)alch:\/\//i, '$1chrome://');
+}
+
+function grimoireDisplayUrl(url) {
+    return String(url == null ? '' : url).replace(/^chrome:\/\//i, 'alch://');
+}
+
 function isGrimoirePseudoBrowserAddress(url) {
     const val = String(url || '').trim();
     if (!val) return false;
