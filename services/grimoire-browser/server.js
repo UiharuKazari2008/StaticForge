@@ -3488,7 +3488,11 @@ async function launchBrowser() {
         '--no-first-run',
         '--no-default-browser-check',
         // site isolation off (#756): pages of several sites share renderers, so fewer processes each with the extensions' scripts
-        '--disable-features=WebAuthentication,WebAuthnConditionalUI,DisableLoadExtensionCommandLineSwitch' + (perf.siteIsolation ? '' : ',IsolateOrigins,site-per-process'),
+        // and what Alchemy never uses (Yukimi, Nov 21 2026: "remove pages and items that are of no use to us"): model
+        // downloads and hints for Chrome's AI and page predictions, casting, Gemini, Lens, history embeddings
+        '--disable-features=WebAuthentication,WebAuthnConditionalUI,DisableLoadExtensionCommandLineSwitch'
+            + ',OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,MediaRouter,Glic,LensOverlay,HistoryEmbeddings'
+            + (perf.siteIsolation ? '' : ',IsolateOrigins,site-per-process'),
         '--disable-background-networking',
         '--disable-sync',
         '--disable-blink-features=AutomationControlled'
