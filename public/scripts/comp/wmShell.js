@@ -7311,8 +7311,11 @@
             if (res || batHtml) sections.push({ rule: true }, { html: `<div class="wm-cty-row"><span>${escapeHtml(res)}</span>${batHtml}</div>` });
             // the desktop's power (#945): its own shutdown sequence runs on the connected display ("Shutting down..."
             // here meanwhile); Shut Down closes the desktop, Restart starts it again. This phone stays on.
-            const live = !!(mc && typeof mc.dexPower === 'function' && typeof mc.peers === 'function' && mc.peers().includes('desktop'));
-            const power = live ? [{ text: 'Shut Down', action: () => { void mc.dexPower('shutdown'); } }, { text: 'Restart', action: () => { void mc.dexPower('restart'); } }] : [];
+            // its display disconnected (the window still running): Shut Down closes it at once; a restart would have nowhere
+            // to show, so it is not offered (Yukimi, Nov 20 2026, #1003: the popup had no Shut Down then)
+            const live = !!(mc && typeof mc.dexPower === 'function' && pc && (pc.displayGone || (typeof mc.peers === 'function' && mc.peers().includes('desktop'))));
+            const shutDown = { text: 'Shut Down', action: () => { void mc.dexPower('shutdown'); } };
+            const power = !live ? [] : pc.displayGone ? [shutDown] : [shutDown, { text: 'Restart', action: () => { void mc.dexPower('restart'); } }];
             bubble({ title: 'Continuity PC', role, anchor, sections, buttons: [...power, { text: 'Hide' }] });
         } else if (role === 'lapis') {
             // Lapis Remote (#835): the time left as a countdown and a bar, what the start set, fuel and the lock

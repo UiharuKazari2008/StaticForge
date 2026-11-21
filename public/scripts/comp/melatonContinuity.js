@@ -31,6 +31,9 @@
     const listeners = new Map();
     const handoffs = new Map();
     const bridge = () => root.AndroidContinuity || null;
+    // the phone closed its DeX window whose display was gone (dex-close): an app that cannot close such a window (older
+    // builds) keeps it registered with its page unloaded, so it no longer counts as the Continuity PC here
+    let deskClosed = false;
 
     // ---- lag journal (#798): a phone window froze ~3 s as its DeX window came up. Kept on both windows
     // for the Continuity case only: long tasks (name "self" = this page's own work, else another page
@@ -89,7 +92,11 @@
             try { roleCache = bridge() ? String(bridge().role()) : null; } catch (_) { roleCache = null; }
             return roleCache;
         },
-        peers() { try { return bridge() ? JSON.parse(bridge().peers()) : []; } catch (_) { return []; } },
+        peers() {
+            let list = [];
+            try { list = bridge() ? JSON.parse(bridge().peers()) : []; } catch (_) { list = []; }
+            return deskClosed && Array.isArray(list) ? list.filter((r) => r !== 'desktop') : list;
+        },
         hybrid() {
             try {
                 const H = root.AndroidHome;
@@ -517,6 +524,9 @@
         const self = localNeed(list) === 'restart';
         const peer = isDw() ? 'phone' : 'desktop';
         if (!api.peers().includes(peer)) return { self, other: null };
+        // the phone, its DeX window running with no display: not asked (out of sight it answers late or not at all);
+        // it is part of this restart, closed rather than restarted (forceRestart's beforeInstall, closeDex)
+        if (!isDw() && api.dexDisplayGone()) return { self, other: true };
         const said = await api.ask('update-needs?', { urls: list.slice(0, 4000) }, 2500);
         if (said === 'restart' || said === 'live') return { self, other: said === 'restart' };
         // no answer (an older page): the file rule
@@ -584,7 +594,14 @@
             reason: 'Programs that are open on your Pocket PC will close. Save your work there before you continue.',
             devices: [pocket('Installs the updates and restarts.'), desktop('Stays on and reconnects when your Pocket PC is ready.')]
         });
-        const fromPhone = () => ask({
+        // its display disconnected: the desktop shuts down (its window closes) and does not start again with the phone
+        const deskGone = api.dexDisplayGone();
+        const fromPhone = () => ask(deskGone ? {
+            phoneText: 'Restart to finish installing updates? Your Continuity PC will shut down.',
+            instruction: 'These updates also shut down your Continuity-enabled PC',
+            reason: SAVE,
+            devices: [pocket('Installs the updates first, then restarts.'), desktop('Its display is disconnected: shuts down now. Open Melaton on a display to start it again.')]
+        } : {
             phoneText: 'Restart to finish installing updates? Your Continuity PC will restart too.',
             instruction: 'These updates also restart your Continuity-enabled PC',
             reason: SAVE,
@@ -739,6 +756,23 @@
         if (!B || typeof B.closeWindow !== 'function') return false;
         try { B.closeWindow(); return true; } catch (_) { return false; }
     };
+    /**
+     * The phone closes this window whose display is gone (Yukimi, Nov 20 2026, #1003): at once, with no shutdown sequence and
+     * no restart. There is no screen to show "Shutting down..." on, and out of sight its fades and holds ran at the
+     * browser's throttled pace while sharing the phone window's one JavaScript thread (the phone locked up when Install
+     * was tapped with the desktop left running unplugged). The app closes the window; an app that keeps it (builds that
+     * refuse a window whose display went) gets this page unloaded, so the desktop stops and frees its memory. It starts
+     * again when Melaton is opened on a display.
+     */
+    api.on('dex-close', () => {
+        if (!isDw()) return;
+        dexClosing = true;
+        ownRestart = true;
+        try { if (typeof root.suppressWebSocketReconnectForReload === 'function') root.suppressWebSocketReconnectForReload(); } catch (_) { /* closing anyway */ }
+        root.bypassConfirmation = true;
+        api.hostShutdown();
+        setTimeout(() => { try { root.location.replace('about:blank'); } catch (_) { /* gone with the window */ } }, 1500);
+    });
 
     // ---- the phone: "Shutting down..." while its Continuity desktop shuts down (#945) ----------------------------
     let shutBox = null;
@@ -790,8 +824,14 @@
         restartingForUpdates = !!on;
         announceReady(true);
     };
-    /** The phone's Continuity bubble: shut down or restart the Continuity desktop alone. */
-    api.dexPower = (kind) => api.dexShutdownFirst(kind === 'shutdown' ? 'shutdown' : 'restart', { alone: true });
+    /**
+     * The phone's Continuity bubble: shut down or restart the Continuity desktop alone. With its display gone, Shut Down
+     * closes the window at once (closeDex): it has no screen for its sequence, and a restart would have nowhere to show.
+     */
+    api.dexPower = (kind) => {
+        if (api.dexDisplayGone()) return Promise.resolve(kind === 'shutdown' && api.closeDex() ? 'done' : null);
+        return api.dexShutdownFirst(kind === 'shutdown' ? 'shutdown' : 'restart', { alone: true });
+    };
     api.dexClosing = () => dexClosing;
     api.on('phone-restarting', (m) => {
         phoneReadyNow = false;
@@ -1418,6 +1458,7 @@
     }, 0);
     api.on('peer', (m) => {
         if (!isPhone() || m.role !== 'desktop') return;
+        if (m.state === 'joined') deskClosed = false;
         if (m.state === 'joined') { Object.assign(dex, { present: true, state: 'booting', displayGone: false }); api.post({ type: 'dex-state?' }); }
         else Object.assign(dex, { present: false, state: null, displayGone: false });
         statusChanged();
@@ -1448,6 +1489,20 @@
             out.dockBattery = { level: Number(row.battery_percent), charging: String(row.charge_state || '') === 'charging' };
         }
         return out;
+    };
+    /** The phone: its DeX window is still running with its display disconnected. */
+    api.dexDisplayGone = () => isPhone() && dex.present && dex.displayGone;
+    /**
+     * The phone: close that DeX window now (dex-close), without its shutdown sequence and without starting it again - the
+     * Continuity PC popup's Shut Down, and a restart for updates (Yukimi, Nov 20 2026). True once it was told.
+     */
+    api.closeDex = () => {
+        if (!isPhone()) return false;
+        if (!api.post({ type: 'dex-close' })) return false;
+        deskClosed = true;
+        Object.assign(dex, { present: false, state: null, displayGone: false });
+        statusChanged();
+        return true;
     };
     /** The DeX window of a hybrid phone leaves updates to the phone (serviceWorkerManager.js). */
     api.isDexWindow = () => isDw();

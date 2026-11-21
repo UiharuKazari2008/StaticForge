@@ -5814,7 +5814,12 @@ class ServiceWorkerManager {
         const phoneBoth = !this._isContinuityDexWindow() && (plan ? plan.other
             : !!(mcw && typeof mcw.updateScope === 'function' && restartUrls.length && mcw.updateScope(restartUrls) === 'both'));
         let beforeInstall = null;
-        if (phoneBoth && !opts.dexDone && mcw && typeof mcw.dexShutdownFirst === 'function' && typeof mcw.peers === 'function' && mcw.peers().includes('desktop')) {
+        // its display disconnected (Yukimi, Nov 20 2026, #1003): the DeX window is closed, not asked to run its shutdown sequence
+        // (out of sight it crawled through it on the phone's own JavaScript thread, up to the 60 s wait) and not held at
+        // its BIOS for the phone; it starts again when Melaton is opened on a display
+        if (phoneBoth && !opts.dexDone && mcw && typeof mcw.dexDisplayGone === 'function' && mcw.dexDisplayGone() && typeof mcw.closeDex === 'function') {
+            beforeInstall = async () => { mcw.closeDex(); return true; };
+        } else if (phoneBoth && !opts.dexDone && mcw && typeof mcw.dexShutdownFirst === 'function' && typeof mcw.peers === 'function' && mcw.peers().includes('desktop')) {
             beforeInstall = async () => {
                 if (typeof mcw.holdDexForRestart === 'function') mcw.holdDexForRestart(true);
                 let ans = null;
