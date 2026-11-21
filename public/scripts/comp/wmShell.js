@@ -1152,6 +1152,9 @@
             const doneSoon = () => requestAnimationFrame(() => requestAnimationFrame(() => { try { if (window.AndroidBars && window.AndroidBars.tapDone) window.AndroidBars.tapDone(); } catch (_) { /* older app */ } }));
             if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); doneSoon(); return; }
             if (role === 'shown') { doneSoon(); return; }
+            // the bars' recents (the home strip or soft key bar swiped up and held, a Recent soft key) with Android's
+            // Recents gone with One UI Home: the strip of running programs, the phone's Android ones with them (#1013)
+            if (role === 'recents') { if (!openTaskSwitcher('android')) goHome(); doneSoon(); return; }
             // a link or button of a status bubble the app drew (#871): the bubble opened here and that pressed
             if (role.startsWith('bubble:')) {
                 let o = null;
@@ -2508,7 +2511,49 @@
     // the shell's own screens are not tasks). Close all asks as the device's End All Tasks does.
     // A tap switches, tap-and-hold on a program gives Task Manager's menu (Switch To, End Task).
     // It comes and goes in one paint; it is a layer (closeTopLayer, desiredDepth): back closes it.
-    const taskSwitch = { el: null, open: false, mru: [], held: false, timer: null, asking: false };
+    const taskSwitch = { el: null, open: false, mru: [], held: false, timer: null, asking: false, from: '' };
+
+    // The phone's Android programs in the strip (Yozora #1013): with One UI Home off, Android's Recents went with it and
+    // Melaton Mobile is the launcher, so the strip lists them too (DSApp AndroidTasks: the shell's task list, read only
+    // when the strip opens or the bars' recents gesture asks; 'androidtasks' brings the answer). Ids 'android-task:<id>'.
+    // A tap brings the program forward (AndroidTasks.front), End Task closes it as Recents' swipe does (remove).
+    const androidTs = { list: null, req: 0, byId: new Map() };
+    const ANDROID_TASK = 'android-task:';
+
+    function androidTasksBridge() {
+        const b = window.AndroidTasks;
+        return b && typeof b.list === 'function' ? b : null;
+    }
+
+    /** The app's kept answer (no shell call): read again each time the strip opens. */
+    function androidTasksRead() {
+        const b = androidTasksBridge();
+        if (!b) { androidTs.list = null; return; }
+        try { androidTs.list = JSON.parse(b.list()); } catch (_) { androidTs.list = null; }
+    }
+
+    function androidTasksRefresh() {
+        const b = androidTasksBridge();
+        if (b) try { b.refresh(`ts${++androidTs.req}`); } catch (_) { /* older app */ }
+    }
+
+    window.addEventListener('androidtasks', (e) => {
+        const l = e.detail && e.detail.list;
+        if (l && typeof l === 'object') androidTs.list = l;
+        if (taskSwitch.open) taskSwitcherRender();
+    }, { signal: appScopeSignal });
+
+    /** One Android task as a strip item: the name and Windows Mobile icon Programs gives it, else Android's. */
+    function androidTaskItem(t) {
+        const id = `${ANDROID_TASK}${t.taskId}`;
+        const reg = t.appId ? apps.get(`android:${t.appId}`) : null;
+        let icon = (reg && reg.icon) || (window.wmAndroidApps && window.wmAndroidApps.wmIcon ? window.wmAndroidApps.wmIcon(t.package) : null) || t.icon || 'app-android';
+        // the store's sets have a 32-unit (-lg) pair, as the shell's own art
+        if (WM_SET.test(icon) && !/-lg$/.test(icon)) icon = `${icon}-lg`;
+        const item = { id, title: (reg && (reg.startLabel || reg.title)) || t.label || t.package, icon, android: { taskId: t.taskId, package: t.package } };
+        androidTs.byId.set(id, item.android);
+        return item;
+    }
 
     function taskSwitcherNote() {
         const id = root.dataset.wmApp;
@@ -2524,10 +2569,19 @@
         try { if (window.wmTaskManager) list = window.wmTaskManager.running(); } catch (_) { list = null; }
         if (!list) list = openedApps.filter((id) => apps.has(id)).map((id) => ({ id, title: apps.get(id).startLabel || apps.get(id).title }));
         const rank = (id) => { const i = taskSwitch.mru.indexOf(id); return i < 0 ? 1e6 : i; };
-        return list.filter((t) => !SHELL_SCREENS.has(t.id))
+        const own = list.filter((t) => !SHELL_SCREENS.has(t.id))
             .map((t, i) => ({ id: t.id, title: t.title, icon: (apps.get(t.id) || {}).icon || 'app-programs', i }))
             .sort((a, b) => (rank(a.id) - rank(b.id)) || (a.i - b.i))
             .map((t) => ({ id: t.id, title: t.title, icon: t.icon }));
+        // the phone's Android programs, most recent first, with Melaton Mobile's own where its task is among them
+        // (brought up by the bars' recents gesture it is in front only for the strip: the program left comes first)
+        const and = androidTs.list;
+        if (!and || !Array.isArray(and.tasks) || !and.tasks.length) return own;
+        androidTs.byId.clear();
+        const items = and.tasks.map(androidTaskItem);
+        let at = Math.max(0, Math.min(items.length, Number(and.selfIndex) || 0));
+        if (taskSwitch.from === 'android' && at === 0) at = Math.min(1, items.length);
+        return [...items.slice(0, at), ...own, ...items.slice(at)];
     }
 
     /** The hold on Start may bring the switcher: not under the lock screen, a message box or a wait. */
@@ -2568,10 +2622,14 @@
         }
     }
 
-    function openTaskSwitcher() {
-        if (taskSwitch.open) return true;
+    function openTaskSwitcher(from = '') {
+        if (taskSwitch.open) { if (from) { taskSwitch.from = from; androidTasksRead(); taskSwitcherRender(); } return true; }
         if (!taskSwitcherCanOpen()) return false;
         closeMenus(true);
+        taskSwitch.from = from;
+        androidTasksRead();
+        // the bars' gesture asked the app for the list already; the Start hold asks here
+        if (from !== 'android') androidTasksRefresh();
         if (!taskSwitch.el) {
             const el = document.createElement('div');
             el.className = 'wm-taskstrip';
@@ -2633,6 +2691,8 @@
 
     function taskSwitcherChoose(id) {
         closeTaskSwitcher(true);
+        const at = id && androidTs.byId.get(id);
+        if (at) { androidTaskFront(at); syncHistory(); return; }
         if (id && id !== current && apps.has(id)) open(id, { fromStart: true });
         else syncHistory();
     }
@@ -2645,9 +2705,59 @@
         ]);
     }
 
+    /** An Android program brought forward; when Android will not, Windows Mobile's own words for it. */
+    function androidTaskFront(t) {
+        const b = androidTasksBridge();
+        if (!b) return;
+        const req = `tf${++androidTs.req}`;
+        const onResult = (e) => {
+            const d = e.detail || {};
+            if (d.id !== req) return;
+            window.removeEventListener('androidtasksresult', onResult);
+            if (d.result && d.result.ok) return;
+            void messageBox({ title: 'Error', icon: 'error', text: `Cannot open the program. ${(d.result && d.result.error) || ''}`.trim() });
+        };
+        window.addEventListener('androidtasksresult', onResult, { signal: appScopeSignal });
+        try { b.front(Number(t.taskId), String(t.package || ''), req); } catch (_) { window.removeEventListener('androidtasksresult', onResult); }
+    }
+
+    /** Android programs closed one after another (each is one shell call), then the list read again. */
+    function androidTasksEnd(list) {
+        const b = androidTasksBridge();
+        if (!b || !list.length) return Promise.resolve();
+        return new Promise((resolve) => {
+            let left = list.length;
+            const reqs = new Set();
+            const onResult = (e) => {
+                const d = e.detail || {};
+                if (!reqs.has(d.id)) return;
+                reqs.delete(d.id);
+                if (--left > 0) return;
+                window.removeEventListener('androidtasksresult', onResult);
+                androidTasksRefresh();
+                resolve();
+            };
+            window.addEventListener('androidtasksresult', onResult, { signal: appScopeSignal });
+            for (const t of list) {
+                const req = `te${++androidTs.req}`;
+                reqs.add(req);
+                try { b.remove(Number(t.taskId), req); } catch (_) { reqs.delete(req); left--; }
+            }
+            if (left <= 0) { window.removeEventListener('androidtasksresult', onResult); resolve(); }
+            // the strip shows them gone at once
+            if (androidTs.list && Array.isArray(androidTs.list.tasks)) {
+                const gone = new Set(list.map((t) => Number(t.taskId)));
+                androidTs.list = { ...androidTs.list, tasks: androidTs.list.tasks.filter((t) => !gone.has(Number(t.taskId))) };
+            }
+        });
+    }
+
     /** End programs Task Manager's way (its end(): a hosted program closes its windows itself). */
     async function taskSwitcherEnd(ids) {
         const tm = window.wmTaskManager;
+        const android = ids.map((id) => androidTs.byId.get(id)).filter(Boolean);
+        ids = ids.filter((id) => !androidTs.byId.has(id));
+        void androidTasksEnd(android);
         await busy(() => {
             ids.forEach((id) => {
                 try { if (tm && typeof tm.end === 'function') tm.end(id); else endApp(id); } catch (err) { console.warn('[wmShell] end task', id, err); }
@@ -4837,6 +4947,16 @@
         const k = typeIcon(type);
         return { lte: 'LTE', 'lte-plus': 'LTE+', '5g': '5G', '5g-plus': '5G+', '5g-uw': '5G UW', 'nr-uw': 'NR UW' }[k] || DATA_NAME[type] || type;
     }
+    /**
+     * The data type as the status bar's badge shows it, in words (Yukimi, Nov 21 2026: Mobile Broadband shows only
+     * "5G" or the 3GPP type, as the user set the status bar): 5G / 5G+ / 5G UW with the 5G indicator on, else the
+     * 3GPP name (NR, NR-A, UWB, NR UW, 4G or LTE as chosen, HSPA+ ...).
+     */
+    function badgeName(type) {
+        const k = typeIcon(type);
+        return { g: 'GPRS', e: 'EDGE', '3g': '3G', h: 'HSPA', 'h-plus': 'HSPA+', '4g': '4G', '4g-plus': '4G+', lte: 'LTE', 'lte-plus': 'LTE+',
+            nr: 'NR', 'nr-a': 'NR-A', uw: 'UWB', 'nr-uw': 'NR UW', '5g': '5G', '5g-plus': '5G+', '5g-uw': '5G UW' }[k] || type;
+    }
 
     /*
      * The RIL's operator names as the phone shows them: Android reports today's short brand, the
@@ -5147,14 +5267,61 @@
      * ActiveSync transfers (#822): ActiveSync: Start as data starts moving, ActiveSync: Complete when the
      * last file is through; the icon's sync sequence and an open Connectivity bubble follow along.
      */
+    // a link or text sent to the phone from a computer (open.url / open.item / clipboard.set): ActiveSync: Complete;
+    // a computer browsing the phone's files: the Connectivity popup says Connected for a few minutes
+    const AS_PUSH_OPS = new Set(['open.url', 'open.item', 'clipboard.set']);
+    const AS_RECENT_MS = 3 * 60 * 1000;
+    let asPageActivityAt = 0;
+    function watchActiveSyncRequests() {
+        const as = window.activeSync;
+        if (!as || typeof as.on !== 'function' || as.kind !== 'device') return;
+        as.on('request', (r) => {
+            const op = r && r.op ? String(r.op) : '';
+            if (AS_PUSH_OPS.has(op)) playSystemSound('as-done');
+            else if (/^(storage|stream|media)\./.test(op)) asPageActivityAt = Date.now();
+        });
+        // the app's service: its server link, direct links (P2P) and recent use (AndroidActiveSync.peerState, #1006)
+        window.addEventListener('androidasstate', () => {
+            const b = shell && shell.querySelector('.wm-bubble');
+            if (b && !b.hidden && b.dataset.role === 'data') statusBubble('data', shell.querySelector('[data-role="data"]'), true);
+        }, { signal: appScopeSignal });
+    }
+
+    /** The service's ActiveSync facts ({ server, session, bonded, links, lastActivity, word }), or null without the app. */
+    function asPeerState() {
+        const b = window.AndroidActiveSync;
+        if (!b || typeof b.peerState !== 'function') return null;
+        try { return JSON.parse(b.peerState()); } catch (_) { return null; }
+    }
+
+    /**
+     * ActiveSync's row (Yukimi, Nov 21 2026): Connected (a computer holds a direct link, or used the phone's files in the
+     * last few minutes), Available (the link to the server is up), Unavailable (partnered, but the server link is down),
+     * Waiting for the computer (pending); nothing when no connection is set up. p2p: a direct link is live.
+     */
+    function activeSyncRow() {
+        const as = window.activeSync;
+        const st = as && typeof as.state === 'function' ? (as.state() || {}) : {};
+        const p = asPeerState();
+        if (p && (p.server || p.bonded)) return p.word ? { text: p.word, p2p: Number(p.links) > 0 } : null;
+        if (st.session === 'pending') return st.online ? { text: 'Waiting for the computer' } : null;
+        if (st.session !== 'partner' && st.session !== 'guest') return null;
+        if (!st.online) return { text: st.session === 'partner' ? 'Unavailable' : 'Not connected' };
+        return { text: Date.now() - asPageActivityAt < AS_RECENT_MS ? 'Connected' : 'Available' };
+    }
+
     function watchActiveSyncTransfers() {
         const as = window.activeSync;
         if (!as || typeof as.on !== 'function' || as.kind !== 'device') return;
         let moving = false;
+        let pushing = false;
+        // Start / Complete only for what someone sends to the phone (Send To, a program; the server marks it push), never
+        // for Explorer or Media Player moving its files around (Yukimi, Nov 21 2026)
         as.on('progress', (d) => {
             if (!d) return;
-            if (d.active && !moving) { moving = true; playSystemSound('as-start'); }
-            if (d.done && moving) { moving = false; playSystemSound('as-done'); }
+            if (d.active && !moving) moving = true;
+            if (moving && d.push && !pushing) { pushing = true; playSystemSound('as-start'); }
+            if (d.done && moving) { moving = false; if (pushing || d.push) playSystemSound('as-done'); pushing = false; }
             statusDirty();
             const b = shell && shell.querySelector('.wm-bubble');
             if (b && !b.hidden && b.dataset.role === 'data') statusBubble('data', shell.querySelector('[data-role="data"]'), true);
@@ -7136,7 +7303,7 @@
                 const lv = noService || lv5 == null ? null : Math.max(0, Math.min(5, Math.round(lv5)));
                 // the radio's own type, also while Wi-Fi carries the data (dev.type is the active link's)
                 const rt = dev.type || (typeof c.dataType === 'string' ? c.dataType : null);
-                const right = `${!noService && rt ? `<b>${pe(typeName(rt))}</b>` : ''}${signalBars(lv, 5)}`;
+                const right = `${!noService && rt ? `<b>${pe(badgeName(rt))}</b>` : ''}${signalBars(lv, 5)}`;
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: ${state}</span>${right ? `<span class="wm-bubble-right">${right}</span>` : ''}</div>` });
             }
             if (dev.link && dev.active !== 'wifi' && dev.active !== 'cellular') sections.push(`${dev.link.text}`);
@@ -7154,9 +7321,9 @@
             const syncing = !!(asx && (asx.active || (asx.done && Date.now() - asx.at < 8000)));
             // not moving data: ActiveSync's row still says whether it is there (Yukimi, Nov 14)
             if (!syncing && window.activeSync && window.activeSync.kind === 'device') {
-                const st = window.activeSync.state();
-                const txt = !st.online ? 'Not connected' : st.session === 'partner' ? 'Connected (partnership)' : st.session === 'guest' ? 'Connected (guest)' : st.session === 'pending' ? 'Waiting for the computer' : 'Available';
-                sections.push(`ActiveSync: ${txt}`);
+                // data-live: the app's popup fills the word (as-state) and drops the badge (as-p2p) from its service
+                const row = activeSyncRow();
+                if (row) sections.push({ html: `<div class="wm-bubble-pair"><span data-live="as-state">ActiveSync: ${pe(row.text)}</span>${row.p2p ? '<span class="wm-bubble-right"><span class="wm-p2p" data-live="as-p2p" aria-label="A computer is connected directly">P2P</span></span>' : ''}</div>` });
             }
             if (syncing) {
                 const size = (n) => { const v = Math.max(0, Number(n) || 0); return v < 1024 ? `${v} B` : v < 1048576 ? `${(v / 1024).toFixed(v < 10240 ? 1 : 0)} KB` : v < 1073741824 ? `${(v / 1048576).toFixed(1)} MB` : `${(v / 1073741824).toFixed(2)} GB`; };
@@ -12562,6 +12729,7 @@
         watchStatusIcons();
         watchMsgboxLayers();
         watchActiveSyncTransfers();
+        watchActiveSyncRequests();
         watchSystemSounds();
         watchRequestBusy();
         routeAlert();
