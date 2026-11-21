@@ -309,6 +309,8 @@ function clearDesktopWallpaperInline() {
 function syncDesktopWallpaperInline(workspaceId) {
     // presenting with a background of its own (Presentation Settings, #958): melatonPresentation.js paints it
     if (window.melatonPresentation && window.melatonPresentation.paintWallpaper()) return;
+    // the DeX screen showing Samsung DeX's own wallpaper (this device's choice, androidDexWallpaper.js, #1013)
+    if (window.melatonDexWallpaper && window.melatonDexWallpaper.paint()) return;
     const workspace = workspaces && workspaces[workspaceId];
     if (!workspace || !workspace.wallpaper) {
         clearDesktopWallpaperInline();
@@ -497,6 +499,8 @@ function applyEarlyWorkspaceThemeInline(settings) {
     if (window.isDesktop) {
         if (window.melatonPresentation && window.melatonPresentation.paintWallpaper()) {
             // presenting: the presentation's background stays (melatonPresentation.js, #958)
+        } else if (window.melatonDexWallpaper && window.melatonDexWallpaper.paint()) {
+            // the DeX screen showing Samsung DeX's wallpaper (androidDexWallpaper.js, #1013)
         } else if (settings.wallpaper) {
             applyDesktopWallpaperInline(settings.wallpaper, settings.wallpaperPosition);
         } else {

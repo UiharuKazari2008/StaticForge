@@ -23,6 +23,10 @@
  * double-click) sets the workspace's wallpaper and position (setDesktopWallpaper) and goes back;
  * Cancel goes back unchanged.
  *
+ * On the Samsung DeX screen (the Dreamscape app's DeX window) a check box "Use the Samsung DeX wallpaper on this display"
+ * (Yozora #1013) shows Samsung DeX's own wallpaper instead, for this device only (androidDexWallpaper.js); while it is
+ * ticked the pictures and positions are greyed, and OK keeps the workspace's picture as it was for other displays.
+ *
  * openWith(path) is "Set as desktop background" from a gallery or Explorer picture: the page opens
  * with that picture selected under Selected Picture (modalUtils.js openDesktopSettingsModal).
  */
@@ -88,8 +92,15 @@
         uploads: [],
         pending: null,  // { path, url }: a picture handed in by openWith
         current: null,  // { path, url }: the workspace's wallpaper when the page opened
-        pos: { h: 'center', v: 'center', ch: 50, cv: 50 }
+        pos: { h: 'center', v: 'center', ch: 50, cv: 50 },
+        dex: false      // "Use the Samsung DeX wallpaper on this display" ticked (this device's choice)
     };
+
+    /** The DeX window's wallpaper choice (androidDexWallpaper.js), or null on any other display. */
+    function dexWallpaper() {
+        const d = root.melatonDexWallpaper;
+        return d && typeof d.available === 'function' && d.available() ? d : null;
+    }
 
     function esc(text) {
         return String(text == null ? '' : text)
@@ -249,6 +260,7 @@
                 <button type="button" class="cpl-db-combo" data-cpl-db="location">${esc(label)}</button>
                 <button type="button" class="cpl-wu-button" data-cpl-db="browse">Browse...</button>
             </div>
+            ${dexWallpaper() ? `<div class="cpl-db-dex"><input type="checkbox" id="cplDbDex" data-cpl-db-dex${state.dex ? ' checked' : ''}><label for="cplDbDex">Use the Samsung DeX wallpaper on this display</label></div>` : ''}
             <div class="cpl-db-grid">${gridHtml()}</div>
             ${GALLERIES.some((g) => g.id === state.location) ? `<div class="cpl-db-credit" aria-live="polite">${creditHtml(state.selected)}</div>` : ''}
             <div class="cpl-db-position">
@@ -294,6 +306,7 @@
         const host = main.querySelector('.cpl-db-page');
         if (!host) return;
         host.innerHTML = html();
+        host.classList.toggle('is-dex', !!(state.dex && dexWallpaper()));
         // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
         // Wire before the click. Attaching inside the click misses the mousedown that opens the menu.
         const cm = root.contextMenu;
@@ -391,6 +404,18 @@
     }
 
     async function apply() {
+        // the DeX screen's own choice: this device only; the workspace's picture stays as it is for other displays
+        const dex = dexWallpaper();
+        if (dex) {
+            const was = dex.enabled();
+            if (state.dex) {
+                state.pending = null;
+                if (!was) dex.setEnabled(true);
+                back();
+                return;
+            }
+            if (was) dex.setEnabled(false);
+        }
         const url = state.selected || null;
         /* global setDesktopWallpaper */
         const position = positionValue();
@@ -450,6 +475,7 @@
         const ws = workspaceRecord();
         state.current = ws && ws.wallpaper ? { path: ws.wallpaper, url: currentUrl() } : null;
         state.pos = readPosition();
+        state.dex = !!(dexWallpaper() && dexWallpaper().enabled());
         state.selected = state.pending ? state.pending.url : currentUrl();
         state.location = locationFor(state.pending ? null : state.selected);
         if (state.pending) state.location = 'windows';
@@ -462,6 +488,13 @@
             modal.addEventListener('click', (ev) => {
                 const b = ev.target.closest('[data-cpl-db]');
                 if (b && modal.contains(b) && main) act(b.dataset.cplDb, b, ev);
+            });
+            modal.addEventListener('change', (ev) => {
+                const box = ev.target.closest('[data-cpl-db-dex]');
+                if (!box || !main) return;
+                state.dex = box.checked;
+                const host = main.querySelector('.cpl-db-page');
+                if (host) host.classList.toggle('is-dex', state.dex);
             });
             modal.addEventListener('dblclick', (ev) => {
                 const pic = ev.target.closest('.cpl-db-pic');

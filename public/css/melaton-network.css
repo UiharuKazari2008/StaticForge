@@ -2454,6 +2454,19 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
     margin: 6px 0 8px;
 }
 
+/* the DeX screen's "Use the Samsung DeX wallpaper on this display" (#1013): ticked, the pictures and positions are greyed */
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-dex {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 0 8px;
+}
+
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-page.is-dex :is(.cpl-db-grid, .cpl-db-position, .cpl-db-credit) {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
 /* a drop-down list: the face and glyph are the shared Vista combo box (vista-glass-controls.css) */
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-db-combo {
     position: relative;

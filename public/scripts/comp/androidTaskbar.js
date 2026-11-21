@@ -199,5 +199,53 @@
     if (desktopUp()) read();
     else doc.addEventListener('desktopBootDone', read, { once: true, signal: appScopeSignal });
 
-    root.melatonAndroidTaskbar = { hasFocus, windows: () => state.windows.slice(), activate: (id) => send('activate', id) };
+    // ---- Show desktop, Minimize all, Alt+F4 with Android windows (#1013) ----
+
+    /** The Android windows shown now are minimised (Show desktop, Win+M); their ids, for bringing them back. */
+    function minimizeShown() {
+        const shown = state.windows.filter((w) => !w.minimized);
+        // the one with the focus last, so it is in front again when they come back
+        shown.sort((a, b) => (a.id === state.focusedId) - (b.id === state.focusedId));
+        shown.forEach((w) => send('minimize', w.id));
+        return shown.map((w) => w.id);
+    }
+
+    /** Brought back in the order given (the last ends in front); windows closed meanwhile are skipped. */
+    function restore(ids) {
+        (ids || []).filter((id) => byId(id)).forEach((id) => send('activate', id));
+    }
+
+    /** Alt+F4 while an Android window has the focus: that window closes. */
+    function closeFocused() {
+        return hasFocus() ? send('close', state.focusedId) : false;
+    }
+
+    // ---- the DeX screen's shortcut keys (#1013) ----
+    // With One UI Home off nothing of Samsung's answers the Windows key and its shortcuts any more. The app hands this
+    // screen's shortcut keys over whichever window has the focus (DSApp MelatonBars dexKey: the Windows key and anything
+    // pressed with it, Alt+Tab and the Alt let go after it, Alt+F4, Ctrl+Esc, Ctrl+Shift+Esc): they are replayed here as
+    // the page's own key events, so the desktop's handlers answer them as on any desktop (desktopHotkeys.js,
+    // keyboardShortcuts.js).
+    root.addEventListener('androidhotkey', (e) => {
+        const k = e.detail;
+        if (!k || (k.type !== 'keydown' && k.type !== 'keyup')) return;
+        const target = doc.activeElement && doc.activeElement !== doc.body ? doc.activeElement : doc.body;
+        try {
+            target.dispatchEvent(new KeyboardEvent(k.type, {
+                key: String(k.key || 'Unidentified'), code: String(k.code || ''), repeat: !!k.repeat,
+                metaKey: !!k.metaKey, altKey: !!k.altKey, ctrlKey: !!k.ctrlKey, shiftKey: !!k.shiftKey,
+                bubbles: true, cancelable: true, composed: true
+            }));
+        } catch (err) { console.warn('[androidTaskbar] hotkey', err); }
+    }, { signal: appScopeSignal });
+
+    root.melatonAndroidTaskbar = {
+        hasFocus,
+        windows: () => state.windows.slice(),
+        activate: (id) => send('activate', id),
+        shownCount: () => state.windows.filter((w) => !w.minimized).length,
+        minimizeShown,
+        restore,
+        closeFocused
+    };
 })();
