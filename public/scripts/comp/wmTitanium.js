@@ -80,12 +80,13 @@
     // has no panel art for); or a path
     const artUrl = (name, scale) => {
         const n = String(name || '');
-        if (n.startsWith('/')) return n;
+        // a picture's own address (a path, an Android app's icon as a data URL, a blob, the web): as it is
+        if (n.startsWith('/') || /^(data:|blob:|https?:)/.test(n)) return n;
         const file = n.startsWith('x:') ? `ti-x-${n.slice(2)}` : n.startsWith('s:') ? `ti-s-${n.slice(2)}` : n.startsWith('p:') ? `ti-p-${n.slice(2)}` : n.startsWith('w:') ? `ti-w-${n.slice(2)}` : n;
         return `${ART}${file}${scale > 1 ? `@${scale}x` : ''}.png`;
     };
     // 1x = the ROM art halved, 2x = the ROM art, 4x = it upscaled (GPU) for dense phone screens
-    const artSet = (name) => (String(name || '').startsWith('/') ? `${name} 1x` : `${artUrl(name)} 1x, ${artUrl(name, 2)} 2x, ${artUrl(name, 4)} 4x`);
+    const artSet = (name) => (/^(\/|data:|blob:|https?:)/.test(String(name || '')) ? `${name} 1x` : `${artUrl(name)} 1x, ${artUrl(name, 2)} 2x, ${artUrl(name, 4)} 4x`);
     const artImageSet = (name) => `image-set(url("${artUrl(name)}") 1x, url("${artUrl(name, 2)}") 2x, url("${artUrl(name, 4)}") 4x)`;
 
     let sh = null;
@@ -126,14 +127,15 @@
             // the rows already drawn with it take its shape now
             document.querySelectorAll('.wm-ti-pic[data-auto-src]').forEach((el) => {
                 if (el.dataset.autoSrc !== url || !el.parentElement) return;
-                el.parentElement.setAttribute('style', picWideStyle(ar));
+                el.parentElement.setAttribute('style', picWideStyle(ar, el.parentElement.dataset.fit === 'contain'));
             });
         };
         im.src = url;
         return null;
     }
-    function picWideStyle(ar) {
-        const w = Math.round(43 * Math.min(2.5, Math.max(1, ar)) * 10) / 10;
+    // contain (a barcode): up to 3.4 wide, so a long Code 128 (Sheetz) stays whole and readable (Yukimi, Nov 21 2026)
+    function picWideStyle(ar, contain) {
+        const w = Math.round(43 * Math.min(contain ? 3.4 : 2.5, Math.max(1, ar)) * 10) / 10;
         return `--ti-pic-w:calc(${w} * var(--u));--ti-line-left:calc(${Math.round((w + 16) * 10) / 10} * var(--u))`;
     }
 
@@ -991,10 +993,21 @@
         for (const id of [...superImages.keys()]) if (!keep.has(id)) superImages.delete(id);
     }
 
-    /** The pictures and faces, asked of the app once each (a data URL per id, kept while listed). */
+    /**
+     * The pictures and faces. A newer app serves each from its file in the app's cache folder (imageBase(), deleted when
+     * the notification goes; nothing kept in the page, StaticForge #1005); an older one answers a data URL per id (kept
+     * while listed).
+     */
+    let superImageBase = null;
     function fillNoteImages(N, el) {
+        if (superImageBase === null) { try { superImageBase = typeof N.imageBase === 'function' ? String(N.imageBase() || '') : ''; } catch (_) { superImageBase = ''; } }
         el.querySelectorAll('img[data-img]').forEach((img) => {
             const id = img.dataset.img;
+            if (superImageBase) {
+                img.addEventListener('error', () => img.remove(), { once: true });
+                img.src = superImageBase + encodeURIComponent(id);
+                return;
+            }
             let url = superImages.get(id);
             if (url == null && typeof N.image === 'function') {
                 try { url = N.image(id) || ''; } catch (_) { url = ''; }
@@ -1716,7 +1729,12 @@
         }
         // the clock with the weather: the condition icon in the clock icon's place (the Super Bar keeps
         // its live clock under it, faded in as the bar opens)
-        const iconHtml = p.clock && pg.wx ? wxImg(pg.wx.iconUrl, pg.wx.iconUrl2x, 'wm-ti-icon wm-ti-wxicon') + (opts.live ? liveClockHtml() : '')
+        // the condition as a real panel icon (ti-wx-<key>: the ROM's size and floor, its reflection; Yukimi, Nov 21 2026:
+        // they had none and looked small), else the plain condition art
+        const wxKey = p.clock && pg.wx ? (/\/wx-([a-z-]+)(?:@\dx)?\.png$/.exec(String(pg.wx.iconUrl || '')) || [])[1] : null;
+        const iconHtml = p.clock && pg.wx ? (wxKey
+            ? `<img class="wm-ti-icon wm-ti-wxicon" src="${esc(artUrl(`ti-wx-${wxKey}`))}" srcset="${esc(artSet(`ti-wx-${wxKey}`))}" alt="" draggable="false">`
+            : wxImg(pg.wx.iconUrl, pg.wx.iconUrl2x, 'wm-ti-icon wm-ti-wxicon wm-ti-wxart')) + (opts.live ? liveClockHtml() : '')
             : icon === 'ti-2051' && pg.time && opts.live ? liveClockHtml()
                 : icon ? `<img class="wm-ti-icon" src="${esc(artUrl(icon))}" srcset="${esc(artSet(icon))}" alt="" draggable="false">` : '';
         if (p.clock) {
@@ -1729,11 +1747,13 @@
         // a wide picture keeps its shape (Yukimi, Nov 17, #903: a video's thumbnail, a barcode): pg.imageAspect
         // (width / height, or 'auto' = the picture's own once it loaded) widens the box, the lines follow it
         const ar = pg.image ? picAspect(pg.image, pg.imageAspect) : null;
-        const wide = ar ? picWideStyle(ar) : '';
+        const contain = pg.imageFit === 'contain';
+        const wide = ar ? picWideStyle(ar, contain) : '';
         const pic = pg.image ? `<span class="wm-ti-pic"${pg.imageAspect === 'auto' ? ` data-auto-src="${esc(pg.image)}"` : ''} style="background-image:url('${esc(pg.image)}')"></span>` : '';
         const small = !pg.image && pg.smallIcon ? `<img class="wm-ti-small" src="${esc(artUrl(pg.smallIcon))}" srcset="${esc(artSet(pg.smallIcon))}" alt="" draggable="false">` : '';
         // pg.bare: a picture without the white frame (the Music panel's album art and Play All Songs tile)
-        return `${iconHtml}<div class="wm-ti-text" data-lines="${lines}"${pg.image ? ` data-pic="${pg.bare ? 'bare' : '1'}"` : ''}${small ? ' data-small="1"' : ''}${wide ? ` style="${wide}"` : ''}>${pic}${small}
+        // pg.imageFit 'contain': the whole picture, never cut (a barcode's bars and quiet zone must all be there to scan)
+        return `${iconHtml}<div class="wm-ti-text" data-lines="${lines}"${pg.image ? ` data-pic="${pg.bare ? 'bare' : '1'}"` : ''}${contain ? ' data-fit="contain"' : ''}${small ? ' data-small="1"' : ''}${wide ? ` style="${wide}"` : ''}>${pic}${small}
             ${lineHtml('is-1', pg.title)}${lineHtml('is-2', pg.line2)}${lineHtml('is-3', pg.line3)}</div>`;
     }
 
@@ -1837,7 +1857,7 @@
         const n = p.pages.length;
         const at = pageIndex(p);
         const pg = p.pages[at];
-        const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.bare, pg.smallIcon, pg.icon, pg.wx, pg.cells]);
+        const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.bare, pg.imageFit, pg.smallIcon, pg.icon, pg.wx, pg.cells]);
         host.querySelectorAll('.wm-ti-arrow').forEach((a) => { a.hidden = n < 2; });
         if (n > 1 && key !== expKey) arrowsAwake();
         if (slide.active || key === expKey) return; // a page on its way keeps what it shows

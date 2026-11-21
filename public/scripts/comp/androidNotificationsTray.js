@@ -347,10 +347,39 @@
         </div>${links}`;
     }
 
-    /** After a draw: the pictures from the app (cached by id), the progress bars' fill, the running clocks. */
+    /**
+     * Where the app serves a picture by id (DSApp imageBase(): its file in the app's cache folder, deleted when the
+     * notification goes; Yukimi, Nov 21: never kept in memory). An older app only has image(id) (a data URL).
+     */
+    let imageBaseUrl = null;
+    function imageBase() {
+        if (imageBaseUrl === null) imageBaseUrl = typeof N.imageBase === 'function' ? String(call('imageBase') || '') : '';
+        return imageBaseUrl;
+    }
+
+    /** The program's icon in place of a picture the app cannot give (a large icon), else nothing. */
+    function pictureMissing(img) {
+        if (img.dataset.fbSrc) {
+            img.setAttribute('src', img.dataset.fbSrc);
+            if (img.dataset.fbSrcset) img.setAttribute('srcset', img.dataset.fbSrcset);
+            delete img.dataset.fbSrc;
+        } else img.hidden = true;
+    }
+
+    /** After a draw: the pictures from the app, the progress bars' fill, the running clocks. */
     function afterRender() {
+        const base = imageBase();
         frame.querySelectorAll('img[data-img]').forEach((img) => {
             const id = img.dataset.img;
+            if (base) {
+                // loaded by the WebView from the app's file (no copy kept by the page)
+                const url = base + encodeURIComponent(id);
+                if (img.getAttribute('src') !== url) {
+                    img.addEventListener('error', () => pictureMissing(img), { once: true });
+                    img.setAttribute('src', url);
+                }
+                return;
+            }
             let url = images.get(id);
             if (url == null) {
                 url = String(call('image', id) || '');
@@ -360,16 +389,14 @@
                 }
             }
             if (url && img.getAttribute('src') !== url) img.setAttribute('src', url);
-            else if (!url && img.dataset.fbSrc) {
-                // the app could not give the picture: the program's own icon in its place
-                img.setAttribute('src', img.dataset.fbSrc);
-                if (img.dataset.fbSrcset) img.setAttribute('srcset', img.dataset.fbSrcset);
-            } else if (!url) img.hidden = true;
+            else if (!url) pictureMissing(img);
         });
-        // pictures no notification shows any more are let go
-        const live = new Set();
-        list.forEach((n) => { [n.large, n.picture].concat((n.messages || []).map((m) => m.avatar)).forEach((id) => { if (id) live.add(id); }); });
-        Array.from(images.keys()).forEach((id) => { if (!live.has(id)) images.delete(id); });
+        // pictures no notification shows any more are let go (an older app's data URLs)
+        if (images.size) {
+            const live = new Set();
+            list.forEach((n) => { [n.large, n.picture].concat((n.messages || []).map((m) => m.avatar)).forEach((id) => { if (id) live.add(id); }); });
+            Array.from(images.keys()).forEach((id) => { if (!live.has(id)) images.delete(id); });
+        }
         frame.querySelectorAll('.android-notify-progress[aria-valuenow] > div').forEach((bar) => {
             const w = `${bar.parentElement.getAttribute('aria-valuenow')}%`;
             if (bar.style.width !== w) bar.style.width = w;
