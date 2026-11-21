@@ -59,28 +59,11 @@ async function write(src, size, rel) {
     console.log(rel, size);
 }
 
-/** The Today panel icon: the art standing on the floor of its 76-unit box, its mirror fading below (86 x 113 per 2x). */
+/** The Today panel icon as the ROM draws its own (modules/wm65PanelIcon.js: the art on the floor, its bottom mirrored). */
 async function panel(src, k, rel) {
-    const W = Math.round(86 * k);
-    const H = Math.round(113 * k);
-    const A = Math.round(76 * k);
-    const R = Math.round(26 * k);
-    const trimmed = await sharp(src).trim({ threshold: 4 }).png().toBuffer();
-    const art = await sharp(trimmed).resize(A, A, { fit: 'inside', kernel: 'lanczos3' }).png().toBuffer({ resolveWithObject: true });
-    const { width: w, height: h } = art.info;
-    const left = Math.round(5 * k + (A - w) / 2);
-    const top = Math.round(10 * k + (A - h));
-    const rows = Math.min(R, h);
-    const flipped = await sharp(art.data).flip().extract({ left: 0, top: 0, width: w, height: rows }).ensureAlpha().raw().toBuffer();
-    for (let y = 0; y < rows; y++) {
-        const f = 0.4 * (1 - y / rows);
-        for (let x = 0; x < w; x++) { const i = (y * w + x) * 4 + 3; flipped[i] = Math.round(flipped[i] * f); }
-    }
-    const mirror = await sharp(flipped, { raw: { width: w, height: rows, channels: 4 } }).png().toBuffer();
-    await sharp({ create: { width: W, height: H, channels: 4, background: CLEAR } })
-        .composite([{ input: art.data, left, top }, { input: mirror, left, top: top + h + Math.max(1, Math.round(k)) }])
-        .png({ compressionLevel: 9, effort: 8 }).toFile(path.join(ROOT, rel));
-    console.log(rel, W, H);
+    const fs = require('fs');
+    fs.writeFileSync(path.join(ROOT, rel), await require('../modules/wm65PanelIcon').panelIcon(src, k));
+    console.log(rel, Math.round(86 * k), Math.round(113 * k));
 }
 
 async function build(name) {

@@ -914,7 +914,7 @@ const ART_KEY = /^(aem|live|if)\/[A-Za-z0-9_./-]{4,200}$/;
  * original): the image service squashes a picture into whatever box it is asked for, it never letterboxes.
  */
 // ---- the Today panel icons made from the channels' logos (/api/xmradio/tiicon)
-const TI_VERSION = 1;
+const TI_VERSION = 2; // 2: the ROM's floor and a mirror of the art's bottom (Nov 21 2026)
 const tiMem = new Map(); // `${key}|${scale}` -> Buffer (at most 300)
 const tiBusy = new Map();
 function tiDir() {
@@ -945,37 +945,55 @@ async function tiIcon(key, scale, aspect = 1) {
     return job;
 }
 
-/** The logo cropped, fitted bottom-aligned into the icon box (76 per 86 wide), its mirror fading below; per 1x: 43 x 57. */
+/** The logo as a Today panel icon, on the ROM's floor with a mirror of its bottom (modules/wm65PanelIcon.js); 43 x 57 per 1x. */
 async function drawTiIcon(logo, scale) {
-    const sharp = require('sharp');
-    const k = scale / 2;
-    const W = Math.round(86 * k);
-    const H = Math.round(113 * k);
-    const A = Math.round(76 * k);
-    const R = Math.round(26 * k);
-    const trimmed = await sharp(logo).ensureAlpha().trim({ threshold: 8 }).png().toBuffer().catch(() => logo);
-    const art = await sharp(trimmed).resize(A, A, { fit: 'inside', kernel: 'lanczos3' }).png().toBuffer({ resolveWithObject: true });
-    const w = art.info.width;
-    const h = art.info.height;
-    const left = Math.round(5 * k + (A - w) / 2);
-    const top = Math.round(10 * k + (A - h));
-    const rows = Math.min(R, h);
-    const flipped = await sharp(art.data).flip().extract({ left: 0, top: 0, width: w, height: rows }).ensureAlpha().raw().toBuffer();
-    for (let y = 0; y < rows; y++) {
-        const f = 0.4 * (1 - y / rows);
-        for (let x = 0; x < w; x++) { const i = (y * w + x) * 4 + 3; flipped[i] = Math.round(flipped[i] * f); }
-    }
-    const mirror = await sharp(flipped, { raw: { width: w, height: rows, channels: 4 } }).png().toBuffer();
-    return sharp({ create: { width: W, height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-        .composite([{ input: art.data, left, top }, { input: mirror, left, top: top + h + Math.max(1, Math.round(k)) }])
-        .png({ palette: true, quality: 90, effort: 7, compressionLevel: 9 })
-        .toBuffer();
+    return require('./wm65PanelIcon').panelIcon(logo, scale / 2);
 }
 
 /** The address of a channel's Today panel icon (a 4x drawing; the panel shows it at 43 x 57). */
 function tiIconPath(key, aspect = 1) {
     const a = Math.round(Math.max(0.2, Math.min(5, Number(aspect) || 1)) * 1000) / 1000;
     return ART_KEY.test(String(key || '')) ? `/api/xmradio/tiicon?k=${encodeURIComponent(key)}&a=${a}&x=4&v=${TI_VERSION}` : '';
+}
+
+// ---- the channels' art as the radio shows it (/api/xmradio/art): made once from the image service's picture and kept
+// processed, never the original (Yukimi, Nov 21 2026: "make sure that in the xm radio cache you are not storing the
+// original and have them precropped for everyone and already optimised, same for album art"): logos (PNG) trimmed of
+// their empty edge and saved as a small palette PNG, pictures (JPEG) re-encoded as compact progressive JPEG at the size
+// asked for; on disk for every client and restart, in memory for the hot ones.
+const ART_VERSION = 1;
+const artBusy = new Map();
+function artDir() {
+    return path.join(__dirname, '..', '.cache', 'xmradio-art');
+}
+
+async function processedArt(key, size, height, fmt) {
+    const ck = `${ART_VERSION}|${key}|${size}|${height}|${fmt}`;
+    if (artBusy.has(ck)) return artBusy.get(ck);
+    const job = (async () => {
+        const file = path.join(artDir(), `${crypto.createHash('sha1').update(ck).digest('hex')}.${fmt === 'png' ? 'png' : 'jpg'}`);
+        const type = fmt === 'png' ? 'image/png' : 'image/jpeg';
+        const kept = await fs.promises.readFile(file).catch(() => null);
+        if (kept) return { type, body: kept };
+        const r = await fetch(imageUrl(key, size, fmt, height), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+        if (!r.ok) throw Object.assign(new Error(`art ${r.status}`), { notFound: r.status === 404 });
+        const src = Buffer.from(await r.arrayBuffer());
+        const sharp = require('sharp');
+        let body;
+        if (fmt === 'png') {
+            const trimmed = await sharp(src).ensureAlpha().trim({ threshold: 8 }).png().toBuffer().catch(() => src);
+            body = await sharp(trimmed).png({ palette: true, quality: 90, effort: 7, compressionLevel: 9 }).toBuffer();
+        } else {
+            body = await sharp(src).jpeg({ quality: 80, mozjpeg: true, progressive: true }).toBuffer();
+        }
+        // never larger than what the service sent
+        if (body.length > src.length) body = fmt === 'png' ? body : src;
+        await fs.promises.mkdir(artDir(), { recursive: true }).catch(() => {});
+        await fs.promises.writeFile(file, body).catch(() => {});
+        return { type, body };
+    })().finally(() => artBusy.delete(ck));
+    artBusy.set(ck, job);
+    return job;
 }
 
 function artPath(key, size = 240, format = 'jpeg', aspect = 1) {
@@ -1224,16 +1242,14 @@ function mount(app, authMiddleware) {
         const ck = `${k}|${size}|${height}|${fmt}`;
         let hit = artCache.get(ck);
         if (!hit) {
-            try {
-                const r = await fetch(imageUrl(k, size, fmt, height), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
-                if (!r.ok) { res.status(404).end(); return; }
-                hit = { type: r.headers.get('content-type') || 'image/jpeg', body: Buffer.from(await r.arrayBuffer()) };
-            } catch (_) { res.status(502).end(); return; }
+            try { hit = await processedArt(k, size, height, fmt); } catch (err) { res.status(err && err.notFound ? 404 : 502).end(); return; }
+            if (!hit) { res.status(404).end(); return; }
             artCache.set(ck, hit);
             if (artCache.size > 400) artCache.delete(artCache.keys().next().value);
         }
         res.set('Content-Type', hit.type);
-        res.set('Cache-Control', 'private, max-age=86400');
+        // the same picture for everyone and for good (the address names the picture and its size)
+        res.set('Cache-Control', 'private, max-age=2592000');
         res.send(hit.body);
     });
     // a channel's logo as a Windows Mobile 6.5 Today panel icon (Yukimi, Nov 21 2026: "you need to crop them, optimise
