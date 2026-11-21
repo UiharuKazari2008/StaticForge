@@ -2514,14 +2514,15 @@
     const taskSwitch = { el: null, open: false, mru: [], held: false, timer: null, asking: false, from: '' };
 
     // The phone's Android programs in the strip (Yozora #1013): with One UI Home off, Android's Recents went with it and
-    // Melaton Mobile is the launcher, so the strip lists them too (DSApp AndroidTasks: the shell's task list, read only
+    // Melaton Mobile is the launcher, so the strip lists them too (DSApp AndroidRecentTasks: the shell's task list, read only
     // when the strip opens or the bars' recents gesture asks; 'androidtasks' brings the answer). Ids 'android-task:<id>'.
-    // A tap brings the program forward (AndroidTasks.front), End Task closes it as Recents' swipe does (remove).
+    // A tap brings the program forward (AndroidRecentTasks.front), End Task closes it as Recents' swipe does (remove).
     const androidTs = { list: null, req: 0, byId: new Map() };
     const ANDROID_TASK = 'android-task:';
 
     function androidTasksBridge() {
-        const b = window.AndroidTasks;
+        // AndroidRecentTasks (window.AndroidTasks is CaféReady's background tasks, a different bridge)
+        const b = window.AndroidRecentTasks;
         return b && typeof b.list === 'function' ? b : null;
     }
 
@@ -7508,7 +7509,11 @@
             // to show, so it is not offered (Yukimi, Nov 20 2026, #1003: the popup had no Shut Down then)
             const live = !!(mc && typeof mc.dexPower === 'function' && pc && (pc.displayGone || (typeof mc.peers === 'function' && mc.peers().includes('desktop'))));
             const shutDown = { text: 'Shut Down', action: () => { void mc.dexPower('shutdown'); } };
-            const power = !live ? [] : pc.displayGone ? [shutDown] : [shutDown, { text: 'Restart', action: () => { void mc.dexPower('restart'); } }];
+            // shut down on its display (the external screen's home stays, black, #1013): Start boots it again
+            const off = !!(mc && typeof mc.dexOff === 'function' && mc.dexOff());
+            if (off) sections[0] = 'Shut down. The display stays connected.';
+            const power = off ? [{ text: 'Start', action: () => { mc.startDex(); } }]
+                : !live ? [] : pc.displayGone ? [shutDown] : [shutDown, { text: 'Restart', action: () => { void mc.dexPower('restart'); } }];
             bubble({ title: 'Continuity PC', role, anchor, sections, buttons: [...power, { text: 'Hide' }] });
         } else if (role === 'lapis') {
             // Lapis Remote (#835): the time left as a countdown and a bar, what the start set, fuel and the lock
@@ -9635,11 +9640,17 @@
      * The background for a picture with an effect: { image, size, position, repeat } from the
      * placement's css; src: the picture to draw (Blur passes its blurred copy).
      */
+    /** Lighten / Darken's wash over the picture (a CSS colour), or '' for the other effects. */
+    function effectTint(fx) {
+        if (fx.effect !== 'lighten' && fx.effect !== 'darken') return '';
+        const a = (fx.level / 100).toFixed(3);
+        return fx.effect === 'lighten' ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
+    }
+
     function effectBackground(src, css, fx) {
         const q = `url("${src.replace(/["\\\n]/g, encodeURIComponent)}")`;
         if (fx.effect === 'lighten' || fx.effect === 'darken') {
-            const a = (fx.level / 100).toFixed(3);
-            const tint = fx.effect === 'lighten' ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
+            const tint = effectTint(fx);
             return { image: `linear-gradient(${tint}, ${tint}), ${q}`, size: `100% 100%, ${css.size}`, position: `0 0, ${css.position}`, repeat: `no-repeat, ${css.repeat}` };
         }
         return { image: q, size: css.size, position: css.position, repeat: css.repeat };
@@ -9756,6 +9767,8 @@
             today.page.style.backgroundColor = u ? '#000' : '';
             // Android's wallpaper shows through (wm-android-wall in wm-shell.css): text keeps its picture shadow
             today.page.classList.toggle('has-picture', !!u);
+            // the home swipe's mask follows Today's background (#1013)
+            queueHomeMask(u, drawn, fx);
             const wall = WM65 && shell.querySelector('.wm-wall65');
             if (wall) {
                 Object.assign(wall.style, { backgroundImage: bg.image, backgroundSize: bg.size, backgroundPosition: bg.position, backgroundRepeat: bg.repeat });
@@ -9793,6 +9806,70 @@
             probe.src = url;
         }
     }
+    // ---- the home swipe's mask (Yozora #1013) ----
+    // The app pulls Today's background up under the finger of a home swipe and over the screen while Home cuts in (DSApp
+    // HomeMask, Yukimi Nov 21). Each time Today's background changes it is drawn here once, at half the screen's size, with
+    // its effect, and handed over (AndroidBars.homeMask: JPEG bytes as base64 - transport into the app's cache file, never a
+    // picture this page shows); an unchanged one (AndroidBars.homeMaskKey) is not drawn again. Drawn when the page is idle.
+    let homeMaskTimer = 0;
+    function queueHomeMask(url, drawn, fx) {
+        const B = window.AndroidBars;
+        if (!B || typeof B.homeMask !== 'function') return;
+        clearTimeout(homeMaskTimer);
+        homeMaskTimer = setTimeout(() => {
+            const idle = window.requestIdleCallback || ((f) => setTimeout(f, 0));
+            idle(() => { makeHomeMask(B, url, drawn, fx).catch((err) => console.warn('[wmShell] home mask', err)); }, { timeout: 5000 });
+        }, 1500);
+    }
+
+    function loadMaskPicture(src) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            try { if (new URL(src, location.href).origin !== location.origin) img.crossOrigin = 'anonymous'; } catch (_) { /* relative */ }
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = src;
+        });
+    }
+
+    async function makeHomeMask(B, url, drawn, fx) {
+        const today = apps.get('today');
+        if (!today || !today.page) return;
+        const dpr = window.devicePixelRatio || 1;
+        const w = Math.max(1, Math.round((window.innerWidth * dpr) / 2));
+        const h = Math.max(1, Math.round((window.innerHeight * dpr) / 2));
+        const cs = getComputedStyle(today.page);
+        const colour = cs.backgroundColor || '';
+        const key = `${todayBgKey}|${w}x${h}|${colour}`;
+        try { if (typeof B.homeMaskKey === 'function' && B.homeMaskKey() === key) return; } catch (_) { /* older app */ }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        if (colour) { ctx.fillStyle = colour; ctx.fillRect(0, 0, w, h); }
+        if (url) {
+            const img = await loadMaskPicture(drawn || url);
+            if (!img || !img.naturalWidth) return;
+            const iw = img.naturalWidth;
+            const ih = img.naturalHeight;
+            const size = String(today.page.style.backgroundSize || 'cover');
+            // Stretch fills the screen, Fit shows all of it, the others as Fill (cover) - the mask is seen for a moment
+            const sc = /contain/.test(size) ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih);
+            if (/^100% 100%$/.test(size)) ctx.drawImage(img, 0, 0, w, h);
+            else ctx.drawImage(img, (w - iw * sc) / 2, (h - ih * sc) / 2, iw * sc, ih * sc);
+            const tint = effectTint(fx || {});
+            if (tint) { ctx.fillStyle = tint; ctx.fillRect(0, 0, w, h); }
+        }
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+        if (!blob) return;
+        // transport only (no-base64-images): the bytes go to the app's file; this page never shows them
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        B.homeMask(btoa(bin), key);
+    }
+
     // the connection is back (a server restart, the network): a picture that could not load is tried again
     function retryTodayBackground() { if (todayBgRetry) { todayBgRetry = false; applyTodayBackground(true); } }
     (function hookTodayRetry(tries) {

@@ -729,6 +729,11 @@ function commitWinlogonPower(kind, onCommit, signOut) {
     suppressWebSocketReconnectForReload();
     const after = () => {
         if (kind === 'shutdown') {
+            // the DeX desktop as the external screen's home (#1013): its off state (a home cannot close)
+            try {
+                const ad = window.AndroidDisplay;
+                if (ad && typeof ad.desktopOff === 'function' && ad.desktopOff()) return;
+            } catch (_) { /* close below */ }
             window.close();
             return;
         }

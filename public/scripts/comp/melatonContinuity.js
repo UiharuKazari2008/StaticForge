@@ -771,7 +771,12 @@
         try { if (typeof root.suppressWebSocketReconnectForReload === 'function') root.suppressWebSocketReconnectForReload(); } catch (_) { /* closing anyway */ }
         root.bypassConfirmation = true;
         api.hostShutdown();
-        setTimeout(() => { try { root.location.replace('about:blank'); } catch (_) { /* gone with the window */ } }, 1500);
+        setTimeout(() => {
+            // the DeX desktop as the external screen's home (#1013): its off state, which a click, a key or Start on the
+            // phone's Continuity icon starts again; an older app: the blank page
+            try { const ad = root.AndroidDisplay; if (ad && typeof ad.desktopOff === 'function' && ad.desktopOff()) return; } catch (_) { /* blank below */ }
+            try { root.location.replace('about:blank'); } catch (_) { /* gone with the window */ }
+        }, 1500);
     });
 
     // ---- the phone: "Shutting down..." while its Continuity desktop shuts down (#945) ----------------------------
@@ -1503,6 +1508,16 @@
         Object.assign(dex, { present: false, state: null, displayGone: false });
         statusChanged();
         return true;
+    };
+    /** The phone: the DeX desktop is in its off state (shut down as the external screen's home, #1013). */
+    api.dexOff = () => {
+        const ad = root.AndroidDisplay;
+        try { return !!(isPhone() && ad && typeof ad.dexDesktopOff === 'function' && ad.dexDesktopOff()); } catch (_) { return false; }
+    };
+    /** The phone: start the DeX desktop again from its off state (true: it is starting). */
+    api.startDex = () => {
+        const ad = root.AndroidDisplay;
+        try { return !!(isPhone() && ad && typeof ad.startDexDesktop === 'function' && ad.startDexDesktop()); } catch (_) { return false; }
     };
     /** The DeX window of a hybrid phone leaves updates to the phone (serviceWorkerManager.js). */
     api.isDexWindow = () => isDw();
