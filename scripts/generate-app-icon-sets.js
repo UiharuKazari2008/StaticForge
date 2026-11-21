@@ -83,7 +83,24 @@ async function build(name) {
     for (const [k, f] of [[0.5, `ti-x-app-${id}-lg.png`], [1, `ti-x-app-${id}-lg@2x.png`], [2, `ti-x-app-${id}-lg@4x.png`]]) await panel(pan, k, `public/static_images/wm65/${f}`);
 }
 
+// Today panel icons only (Yukimi, Nov 21 2026: "start with today icons for now"): art/wm65-today/<master>.png (GPT Image,
+// the ROM's panel family: head-on, satin, ROM panel icons as the references) -> wm65/ti-x-<file>-lg{,@2x,@4x}.png
+const TODAY_ONLY = {
+    xlink: 'app-xlink', 'data-management': 'app-data-management', accounts: 'app-accounts', studio: 'app-studio',
+    director: 'app-director', wallet: 'app-wallet', 'remote-desktop': 'app-remote-desktop-mobile',
+    traffic: 'app-traffic', 'traffic-moderate': 'app-traffic', 'traffic-heavy': 'app-traffic', 'traffic-none': 'app-traffic'
+};
+async function buildToday() {
+    for (const [master, id] of Object.entries(TODAY_ONLY)) {
+        const state = /^traffic-(.+)$/.exec(master);
+        const sfx = state ? `-${state[1]}` : '';
+        const src = await squared(path.join(ROOT, 'art', 'wm65-today', `${master}.png`));
+        for (const [k, f] of [[0.5, ''], [1, '@2x'], [2, '@4x']]) await panel(src, k, `public/static_images/wm65/ti-x-${id}-lg${sfx}${f}.png`);
+    }
+}
+
 (async () => {
     const only = process.argv[2];
     for (const name of Object.keys(SETS)) if (!only || only === name) await build(name);
+    if (!only || only === 'today') await buildToday();
 })().catch((err) => { console.error(err); process.exit(1); });

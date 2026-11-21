@@ -80,12 +80,13 @@
     // has no panel art for); or a path
     const artUrl = (name, scale) => {
         const n = String(name || '');
-        if (n.startsWith('/')) return n;
+        // a picture's own address (a path, an Android app's icon as a data URL, a blob, the web): as it is
+        if (n.startsWith('/') || /^(data:|blob:|https?:)/.test(n)) return n;
         const file = n.startsWith('x:') ? `ti-x-${n.slice(2)}` : n.startsWith('s:') ? `ti-s-${n.slice(2)}` : n.startsWith('p:') ? `ti-p-${n.slice(2)}` : n.startsWith('w:') ? `ti-w-${n.slice(2)}` : n;
         return `${ART}${file}${scale > 1 ? `@${scale}x` : ''}.png`;
     };
     // 1x = the ROM art halved, 2x = the ROM art, 4x = it upscaled (GPU) for dense phone screens
-    const artSet = (name) => (String(name || '').startsWith('/') ? `${name} 1x` : `${artUrl(name)} 1x, ${artUrl(name, 2)} 2x, ${artUrl(name, 4)} 4x`);
+    const artSet = (name) => (/^(\/|data:|blob:|https?:)/.test(String(name || '')) ? `${name} 1x` : `${artUrl(name)} 1x, ${artUrl(name, 2)} 2x, ${artUrl(name, 4)} 4x`);
     const artImageSet = (name) => `image-set(url("${artUrl(name)}") 1x, url("${artUrl(name, 2)}") 2x, url("${artUrl(name, 4)}") 4x)`;
 
     let sh = null;

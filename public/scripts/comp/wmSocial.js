@@ -217,14 +217,28 @@
         if (n.text) return String(n.text).replace(/\s+/g, ' ').trim();
         return Array.isArray(n.lines) && n.lines.length ? String(n.lines[0]) : '';
     }
+    /**
+     * An app's icon as a picture address for the Titanium panel: the WM icon's own file (its art key resolved by the
+     * shell), else the Android icon's data URL. Bare keys went to the panel as Titanium art names and showed as a
+     * broken picture (Yukimi, Nov 21 2026).
+     */
+    function panelIconOf(pkg) {
+        const v = iconOf(pkg);
+        if (!v || /^(\/|data:|blob:|https?:)/.test(v)) return v || '';
+        const ws = window.wmShell;
+        try { return ws && ws.art && typeof ws.art.url === 'function' ? ws.art.url(v) : ''; } catch (_) { return ''; }
+    }
+
     function notePage(n, count) {
         const a = appInfo(n.package);
         return {
             title: n.conversation || n.title || a.label,
             line2: lastLine(n),
             line3: [a.label, count > 1 ? `${count} new` : '', when(n.time)].filter(Boolean).join(', '),
-            icon: iconOf(n.package) || undefined,
+            icon: panelIconOf(n.package) || undefined,
             image: n.large || n.picture || undefined,
+            // a person's photo or the app's own picture, without the photo frame (Yukimi, Nov 21 2026)
+            bare: !!(n.large || n.picture),
             inPlace: true, // its bar opens over Today: the list does not drop away first
             softKey: appKey(n.package),
             onTap: () => openBar(n.package, n.id),
@@ -251,7 +265,7 @@
             pages = apps.map((pkg) => {
                 const mine = list.filter((n) => n.package === pkg);
                 if (mine.length) return notePage(mine[0], mine.length);
-                return { title: appInfo(pkg).label, line2: 'No new notifications', icon: iconOf(pkg) || undefined, inPlace: true, softKey: appKey(pkg), onTap: () => openBar(pkg, null), pkg };
+                return { title: appInfo(pkg).label, line2: 'No new notifications', icon: panelIconOf(pkg) || undefined, inPlace: true, softKey: appKey(pkg), onTap: () => openBar(pkg, null), pkg };
             });
         } else {
             pages = list.slice(0, MAX_PAGES).map((n) => notePage(n, 0));
