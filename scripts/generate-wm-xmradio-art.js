@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Art for Melaton Mobile's XM Radio (wmXmRadio.js, Yozora #989): the desktop program's own icon
- * (apps/xmradio/assets/xmradio-256.png), at Windows Mobile's sizes.
+ * Art for Melaton Mobile's XM Radio (wmXmRadio.js, Yozora #989): the phone's own icon (apps/xmradio/assets/
+ * xmradio-mobile-256.png, drawn apart from the desktop's since Nov 21 2026: generate-xmradio-icons.js), at Windows
+ * Mobile's sizes.
  *
  *   node scripts/generate-wm-xmradio-art.js
  *
@@ -14,7 +15,7 @@
 const path = require('path');
 const sharp = require('sharp');
 
-const SRC = path.resolve(__dirname, '..', 'apps', 'xmradio', 'assets', 'xmradio-256.png');
+const SRC = path.resolve(__dirname, '..', 'apps', 'xmradio', 'assets', 'xmradio-mobile-256.png');
 const OUT = path.resolve(__dirname, '..', 'public', 'static_images', 'wm61');
 const OUT65 = path.resolve(__dirname, '..', 'public', 'static_images', 'wm65');
 const CLEAR = { r: 0, g: 0, b: 0, alpha: 0 };
