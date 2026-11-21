@@ -171,7 +171,6 @@
         const rev = (state.settings && state.settings.picture && state.settings.picture.rev) || '';
         if (rev !== picture.rev) loadPicture(rev);
         changed();
-        catchUpAlerts();
         if (runNote && !runInfo()) { try { runNote.close(); } catch (_) { /* gone */ } runNote = null; }
     }
 
@@ -195,15 +194,12 @@
         } catch (_) { /* the built-in picture stays */ }
     }
 
-    // health alerts this phone has already shown, as key:stamp (a missed one shows when the phone connects)
+    // the alerts notifications this phone has already shown, as key:stamp. A missed one comes back through the notification
+    // inbox (lapis:health:alerts, combined, switched items and the quiet after a drive applied on the server); this page no
+    // longer raises one note per alert from the state it loads (Yukimi, Nov 21 2026, #1008: multiple issues were multiple notifications)
     const LS_SEEN = 'wmLapisAlertsSeen';
     function seenAlerts() { try { const a = JSON.parse(localStorage.getItem(LS_SEEN) || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; } }
     function markSeen(id) { try { const a = seenAlerts().filter((x) => x !== id); a.push(id); localStorage.setItem(LS_SEEN, JSON.stringify(a.slice(-30))); } catch (_) { /* private mode */ } }
-    function catchUpAlerts() {
-        if (!state || !Array.isArray(state.alerts) || !canUse()) return;
-        const seen = seenAlerts();
-        state.alerts.forEach((a) => { if (!seen.includes(`${a.key}:${a.stamp}`)) onNotice({ data: { kind: 'health', title: a.title, text: a.text, actions: ['view'], key: a.key, stamp: a.stamp } }); });
-    }
 
     const carSrc = (small) => picture.url || (small ? CAR_ART_SM : CAR_ART);
 
@@ -1140,13 +1136,19 @@
             reservePct: s.reservePct == null ? 15 : s.reservePct,
             tankGal: String(s.tankGal || ''),
             mpg: String(s.mpg || ''),
-            notify: Object.assign({ unlocked: true, lowFuel: true, refuel: true, service: true, health: true }, s.notify || {}),
+            notify: Object.assign({ unlocked: true, lowFuel: true, refuel: true, service: true, health: true, battery12: true, tire: true, brake: true, washer: true, key: true }, s.notify || {}),
             tireLowPsi: s.tireLowPsi || 26,
             batteryLowPct: s.batteryLowPct || 0,
             climate: Object.assign({ comfort: 74, coldAt: 33, hotAt: 95, seatHeatBelow: 56, seatCoolAbove: 76, defrostBelow: 41, wheel: true, seats: true }, s.climate || {})
         };
+        // each health alert has its own box now (Nov 21 2026); the first version's one "Vehicle health" switch turned off
+        // reads as all five off, and the form saves them by item with the master on
+        if (form.notify.health === false) HEALTH_ITEMS.forEach(([k]) => { form.notify[k] = false; });
+        form.notify.health = true;
         return form;
     }
+    // the health alerts that can be switched off by themselves (lapisService NOTIFY_KEYS)
+    const HEALTH_ITEMS = [['battery12', 'The 12 V battery is low'], ['tire', 'A tire is low'], ['brake', 'Brake fluid is low'], ['washer', 'Washer fluid is low'], ['key', 'The smart key battery is low']];
 
     const MINUTES = [[5, '5 minutes'], [10, '10 minutes'], [15, '15 minutes'], [20, '20 minutes'], [30, '30 minutes']];
     const RUNS = [[3, '3 minutes'], [5, '5 minutes'], [8, '8 minutes'], [10, '10 minutes']];
@@ -1226,10 +1228,10 @@
             ${ui.check('lpsNRe', 'It is the day to refuel', f.notify.refuel, 'data-n="refuel"')}
             ${ui.row('Reserve:', ui.comboHtml('reservePct', label(RESERVES, f.reservePct)), { wide: true })}
             ${ui.check('lpsNSv', 'Maintenance is coming up or due', f.notify.service, 'data-n="service"')}
-            ${ui.check('lpsNHe', 'Vehicle health: 12 V battery, tires, fluids, key battery', f.notify.health, 'data-n="health"')}
+            ${HEALTH_ITEMS.map(([k, label]) => ui.check(`lpsNH-${k}`, label, f.notify[k] !== false, `data-n="${k}"`)).join('')}
             ${ui.row('12 V under:', ui.comboHtml('batteryLowPct', label(BATTS, f.batteryLowPct)), { wide: true })}
             ${ui.row('A tire under:', ui.comboHtml('tireLowPsi', label(PSIS, f.tireLowPsi)), { wide: true })}
-            ${ui.note('Health alerts come the moment the car reports the problem, and again if it gets worse. A tire also counts as low when the car\'s own lamp is on or it is 4 psi under the other three.')}
+            ${ui.note('Alerts that come up together are one notification. They wait while the car is running and for 30 minutes after it was driven; the car left unlocked is said on its own time. An alert is said again if it gets worse. A tire also counts as low when the car\'s own lamp is on or it is 4 psi under the other three.')}
             ${ui.gap()}
             ${ui.sub('Fuel')}
             ${ui.row('Tank:', ui.edit('lpsTank', f.tankGal, 'placeholder="gallons" data-k="tankGal" maxlength="5" inputmode="decimal"'), { for: 'lpsTank' })}
@@ -1404,7 +1406,8 @@
         if (ws && typeof ws.appNote === 'function') {
             note = ws.appNote({
                 title: n.title,
-                html: esc(n.text || ''),
+                // several alerts in one notification: a line each (lapisService alertsNotice)
+                html: esc(n.text || '').replace(/\n/g, '<br>'),
                 icon: 'status-car-alert',
                 // left unlocked and an issue found sound in classes of their own (#848)
                 event: n.kind === 'unlocked' ? 'lapis-unlocked' : n.kind === 'health' ? 'lapis-issue' : 'notification',

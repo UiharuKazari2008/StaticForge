@@ -64,7 +64,8 @@ const DEFAULTS = {
     mpg: 47, // rated combined; replaced by the measured figure once the record has enough driving
     runMinutes: 10,
     autoClimate: true,
-    notify: { unlocked: true, lowFuel: true, refuel: true, service: true, health: true },
+    // health: the vehicle-health alerts as a whole (the first version's one switch); each also has its own (Nov 21 2026)
+    notify: { unlocked: true, lowFuel: true, refuel: true, service: true, health: true, battery12: true, tire: true, brake: true, washer: true, key: true },
     tireLowPsi: 26, // a tire under this is low even before the car's own lamp; also one 4 psi under the other three
     batteryLowPct: 0, // 0: the level the car itself warns at (50 % when it does not say)
     errandMiles: 4,
@@ -206,6 +207,11 @@ function validZone(z) {
     }
 }
 
+// every notification that can be switched off by itself (Settings > Notifications): the five health alerts each have their own
+// (Yukimi, Nov 21 2026: "if i dont want notification about a tire i know is low i wont"); 'health' turns them all off
+const NOTIFY_KEYS = ['unlocked', 'lowFuel', 'refuel', 'service', 'health', 'battery12', 'tire', 'brake', 'washer', 'key'];
+const healthItemOn = (s, key) => s.notify.health !== false && s.notify[key] !== false;
+
 /** The saved settings with defaults and the Traffic fallbacks filled in. */
 function getSettings() {
     const c = config('lapis', {}) || {};
@@ -238,7 +244,7 @@ function getSettings() {
         errandMiles: num(c.errandMiles, 0, 200, DEFAULTS.errandMiles),
         offDayMiles: num(c.offDayMiles, 0, 500, DEFAULTS.offDayMiles),
         radiusKm: num(c.radiusKm, 0.05, 5, DEFAULTS.radiusKm),
-        notify: { unlocked: notify.unlocked !== false, lowFuel: notify.lowFuel !== false, refuel: notify.refuel !== false, service: notify.service !== false, health: notify.health !== false },
+        notify: Object.fromEntries(NOTIFY_KEYS.map((k) => [k, notify[k] !== false])),
         tireLowPsi: int(c.tireLowPsi, 15, 45, DEFAULTS.tireLowPsi),
         batteryLowPct: int(c.batteryLowPct, 0, 90, DEFAULTS.batteryLowPct),
         maintenance: cleanMaintenance(c.maintenance),
@@ -295,7 +301,7 @@ async function saveSettings(next = {}) {
     if ('radiusKm' in next) out.radiusKm = num(next.radiusKm, 0.05, 5, DEFAULTS.radiusKm);
     if (next.notify && typeof next.notify === 'object') {
         out.notify = Object.assign({}, out.notify || {});
-        ['unlocked', 'lowFuel', 'refuel', 'service', 'health'].forEach((k) => {
+        NOTIFY_KEYS.forEach((k) => {
             if (k in next.notify) out.notify[k] = next.notify[k] !== false;
         });
     }
@@ -590,6 +596,10 @@ function afterRead(before, status, reason) {
     // parked since: the report that first showed the engine off (or a moved odometer)
     if (!parked) live.parkedSince = 0;
     else if (!live.parkedSince || (before && before.engine) || (before && Number.isFinite(before.odometer) && status.odometer !== before.odometer)) live.parkedSince = status.at || now;
+    // last seen running (the engine on, or driven between two reads): alertsQuiet's "was just running". Not parkedSince, which
+    // after a server restart is only the newest report's time for a car that has stood for hours
+    if (status.engine === true) live.ranAt = now;
+    else if (before && Number.isFinite(before.odometer) && Number.isFinite(status.odometer) && status.odometer !== before.odometer) live.ranAt = Number(status.at) || now;
 
     // fill-up
     if (before && Number.isFinite(before.fuel) && Number.isFinite(status.fuel) && status.fuel - before.fuel >= usage.FILLUP_RISE_PCT) {
@@ -616,15 +626,57 @@ function afterRead(before, status, reason) {
         if (status.locked) live.flags.unlockedFor = 0;
     }
 
-    // low fuel: once per tank
+    // the alerts this read raises, said together in one notification (alertsNotice)
+    const fresh = [];
+    // low fuel: once per tank; while the car runs or was just parked it waits (alertsQuiet)
     const low = status.fuelLow === true || (Number.isFinite(status.fuel) && status.fuel <= s.lowFuelPct);
     if (low && !live.flags.lowFuel) {
-        live.flags.lowFuel = true;
-        if (s.notify.lowFuel) notice('low-fuel', 'Fuel is low', `${carName()} has ${fmtPct(status.fuel)} of a tank${Number.isFinite(status.range) ? `, about ${Math.round(status.range)} miles` : ''}.`, ['view']);
+        if (!(s.notify.lowFuel && alertsQuiet(status))) {
+            live.flags.lowFuel = true;
+            if (s.notify.lowFuel) fresh.push(fuelAlert(status));
+        }
     } else if (!low && Number.isFinite(status.fuel) && status.fuel > s.lowFuelPct + 5) live.flags.lowFuel = false;
 
-    healthNotices(s);
+    healthNotices(s, fresh);
+    alertsNotice(fresh, s, status);
     checkRun(status);
+}
+
+/*
+ * Alerts are quiet while the car runs and until it has been parked JUST_PARKED_MS (Yukimi, Nov 21 2026: "it shoudl not notify
+ * me abut alrts when the car is running or was just running and is now not (unless its the lock car notification)", #1008). A drive's
+ * end is when readings move (tires cool, the 12 V settles) and she is at the car. An alert that still holds once the car has
+ * been parked that long is said then; the left-unlocked reminder is not an alert and keeps its own timing.
+ */
+const JUST_PARKED_MS = 30 * MIN;
+function alertsQuiet(status = live.status) {
+    if (!status) return false;
+    if (status.engine === true) return true;
+    return !!live.ranAt && nowFn() - live.ranAt < JUST_PARKED_MS;
+}
+
+function fuelAlert(status) {
+    const range = Number.isFinite(status.range) ? `, about ${Math.round(status.range)} miles` : '';
+    return { key: 'fuel', stamp: 'low', title: 'Fuel is low', text: `${carName()} has ${fmtPct(status.fuel)} of a tank${range}.`, short: `Fuel ${fmtPct(status.fuel)}${range}` };
+}
+
+/**
+ * One notification for the alerts a read raised (Yukimi, Nov 21 2026: several issues at once were several notifications). It
+ * names every alert that holds and is switched on, the new ones first, one short line each (the car's name and where it is
+ * parked once, not in every line; the advice stays in Lapis). One alert keeps its own title and words. Its inbox id is
+ * stable (lapis:health:alerts): a later one replaces it on the phones instead of piling up.
+ */
+function alertsNotice(fresh, s, status = live.status) {
+    if (!fresh.length) return null;
+    const have = new Set(fresh.map((a) => a.key));
+    const still = healthAlerts(s).filter((a) => !have.has(a.key) && healthItemOn(s, a.key) && live.flags.health[a.key]);
+    if (!have.has('fuel') && live.flags.lowFuel && s.notify.lowFuel && status && (status.fuelLow === true || (Number.isFinite(status.fuel) && status.fuel <= s.lowFuelPct))) still.push(fuelAlert(status));
+    const all = fresh.concat(still);
+    const stamp = all.map((a) => `${a.key}=${a.stamp}`).join(',');
+    if (all.length === 1) return notice('health', all[0].title, all[0].text, ['view'], { key: 'alerts', stamp });
+    const where = status && status.engine === false ? placeName(live.location, s) : '';
+    const lines = [...new Set(all.map((a) => a.short || a.title))];
+    return notice('health', `${carName()} needs attention`, `${where ? `Parked at ${where}.\n` : ''}${lines.join('\n')}`, ['view'], { key: 'alerts', stamp, count: all.length });
 }
 
 // ------------------------------------------------------------------------------------------ vehicle health
@@ -678,6 +730,7 @@ function healthAlerts(s) {
             // said again for every further 10 points it falls
             stamp: `b${Math.floor(status.battery12 / 10)}`,
             title: '12 V battery is low',
+            short: `12 V battery ${Math.round(status.battery12)}%`,
             text: `${carName()}'s 12 V battery is at ${Math.round(status.battery12)}%${parked} (warning level ${warnAt}%).${fell} Something may be drawing power: check for an inverter, a charger or a light left on.`,
         });
     }
@@ -691,26 +744,32 @@ function healthAlerts(s) {
             // said again when another tire joins or the lowest loses 3 more psi
             stamp: `t${tires.join('')}:${lowest === 99 ? 'x' : Math.floor(lowest / 3)}`,
             title: tires.length > 1 ? 'Tire pressures are low' : 'Tire pressure is low',
+            short: list.length ? `${tires.length > 1 ? 'Tires' : 'Tire'} low: ${list.join(', ')}` : 'Tire pressure warning on',
             text: list.length ? `${carName()}${parked}: ${list.join(', ')}. Inflate ${tires.length > 1 ? 'them' : 'it'}, and check for a puncture if it keeps falling.` : `${carName()}'s tire pressure warning is on${parked}.`,
         });
     }
-    if (status.brakeFluidLow === true) out.push({ key: 'brake', stamp: 'on', title: 'Brake fluid is low', text: `${carName()} reports low brake fluid. Have it checked before driving far.` });
-    if (status.washerLow === true) out.push({ key: 'washer', stamp: 'on', title: 'Washer fluid is low', text: `${carName()} reports low washer fluid.` });
-    if (status.keyBatteryLow === true) out.push({ key: 'key', stamp: 'on', title: 'Smart key battery is low', text: `${carName()} reports a weak smart key battery. Replace the key's coin cell.` });
+    if (status.brakeFluidLow === true) out.push({ key: 'brake', stamp: 'on', short: 'Brake fluid low', title: 'Brake fluid is low', text: `${carName()} reports low brake fluid. Have it checked before driving far.` });
+    if (status.washerLow === true) out.push({ key: 'washer', stamp: 'on', short: 'Washer fluid low', title: 'Washer fluid is low', text: `${carName()} reports low washer fluid.` });
+    if (status.keyBatteryLow === true) out.push({ key: 'key', stamp: 'on', short: 'Smart key battery low', title: 'Smart key battery is low', text: `${carName()} reports a weak smart key battery. Replace the key's coin cell.` });
     return out;
 }
 
-function healthNotices(s) {
+/** The health alerts that are new or worse since they were last said, into `fresh` (said together by alertsNotice). */
+function healthNotices(s, fresh) {
     const alerts = healthAlerts(s);
     const active = new Set(alerts.map((a) => a.key));
     Object.keys(live.flags.health).forEach((k) => {
         if (!active.has(k)) delete live.flags.health[k];
     });
+    const quiet = alertsQuiet();
     alerts.forEach((a) => {
         const seen = live.flags.health[a.key];
         if (seen && seen.stamp === a.stamp) return;
+        const on = healthItemOn(s, a.key);
+        // the car running or just parked: not noted yet, so it is said once the car has been parked a while if it still holds
+        if (on && quiet) return;
         live.flags.health[a.key] = { stamp: a.stamp, since: (seen && seen.since) || nowFn(), at: nowFn() };
-        if (s.notify.health) notice('health', a.title, a.text, ['view'], { key: a.key, stamp: a.stamp });
+        if (on && Array.isArray(fresh)) fresh.push(a);
     });
 }
 
@@ -810,7 +869,9 @@ function dailyNotices() {
     // refuel: said when it is useful. The evening before a "before work" stop, then that morning
     // ahead of the leave time; for "after work", ahead of leaving work; on a day off, in the morning.
     const stop = u.refuel && !u.refuel.beyond ? u.refuel.stop : null;
-    if (s.notify.refuel && stop) {
+    // the car running or just parked: the reminders wait (alertsQuiet); their windows last, so they come on a later tick
+    const quiet = alertsQuiet();
+    if (s.notify.refuel && stop && !quiet) {
         const mins = localMinutes(s);
         const hhmm = (v, def) => { const m = /^(\d\d):(\d\d)$/.exec(v || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : def; };
         const fuel = `${carName()} has ${fmtPct(live.status.fuel)}${Number.isFinite(live.status.range) ? ` (${Math.round(live.status.range)} miles)` : ''}.`;
@@ -827,14 +888,17 @@ function dailyNotices() {
             say(`${u.today}:eve`, 'Get gas tomorrow morning', `${fuel} Tomorrow's drive to work would take it under the ${s.reservePct}% reserve: fill up tonight or before work.`);
         }
     }
-    if (s.notify.service) {
+    if (s.notify.service && !quiet) {
+        // every item that became due or close today in one notification (Nov 21 2026: one per item piled up)
+        const say = [];
         maintenanceState(s).forEach((m) => {
             const stamp = m.due ? 'due' : m.soon ? 'soon' : '';
             if (!stamp || live.flags.service[m.id] === stamp) return;
             live.flags.service[m.id] = stamp;
             const left = m.milesLeft !== null ? (m.milesLeft <= 0 ? `${Math.abs(m.milesLeft).toLocaleString('en-US')} miles over` : `in ${m.milesLeft.toLocaleString('en-US')} miles`) : m.daysLeft <= 0 ? 'now' : `in ${m.daysLeft} days`;
-            notice('service', m.due ? 'Maintenance is due' : 'Maintenance is coming up', `${m.label}: ${left}.`, ['view']);
+            say.push({ due: !!m.due, line: `${m.label}: ${left}` });
         });
+        if (say.length) notice('service', say.some((x) => x.due) ? 'Maintenance is due' : 'Maintenance is coming up', say.length === 1 ? `${say[0].line}.` : say.map((x) => x.line).join('\n'), ['view'], { key: 'maintenance' });
     }
 }
 
@@ -1009,7 +1073,8 @@ function getState() {
         usage: u,
         maintenance: status ? maintenanceState(s) : [],
         // what is wrong right now (a phone that missed the notice shows these when it connects)
-        alerts: s.notify.health ? healthAlerts(s).map((a) => ({ ...a, since: (live.flags.health[a.key] && live.flags.health[a.key].since) || null })) : [],
+        // what is wrong with the car shows in Lapis whatever is switched off for notifications (Nov 21 2026: per item)
+        alerts: healthAlerts(s).map((a) => ({ ...a, since: (live.flags.health[a.key] && live.flags.health[a.key].since) || null })),
         command: publicCommand(live.command),
         error: live.lastError,
         nextReadAt: sched.nextPollAt || null,
