@@ -73,3 +73,48 @@ body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoi
 body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quick-device > .grimoire-ie-quick-device-close:disabled {
     opacity: 0.5;
 }
+
+/* Alchemy Information > Page Cache (grimoireIeChrome.js showPageCache): the page as the viewer's cache holds it, in a
+   list box's sunken white frame; the view as a red box, the sheets dashed; positions come from the viewer (custom
+   properties, preview pixels) */
+.gpc-scroll {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid #828790;
+    background: #fff;
+}
+.gpc-page {
+    position: relative;
+    width: var(--gpc-w, 100%);
+    height: var(--gpc-h, 0);
+    cursor: default;
+}
+.gpc-page[hidden] { display: none; }
+.gpc-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+.gpc-view {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: var(--gpc-top, 0);
+    height: var(--gpc-height, 0);
+    box-sizing: border-box;
+    border: 2px solid #e00000;
+    pointer-events: none;
+}
+.gpc-sheet {
+    position: absolute;
+    left: var(--gpc-x, 0);
+    top: var(--gpc-y, 0);
+    width: var(--gpc-sw, 0);
+    height: var(--gpc-sh, 0);
+    box-sizing: border-box;
+    border: 1px dashed #d000c0;
+    pointer-events: none;
+}

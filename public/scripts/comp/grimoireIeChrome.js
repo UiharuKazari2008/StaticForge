@@ -1823,7 +1823,11 @@
     // show. What Alchemy encodes with and the link (grimoire-browser-encoder, asked with grimoire-browser-encoder?) and
     // the viewer's own numbers (grimoire-browser-stats?: frames, bytes, decode time, layers, scroll cache), refreshed
     // every 2 s while it shows; nothing while it, its window or the page is hidden or minimised. ----
-    const INFO_TPL = { t: 'Alchemy Information', w: 262, h: 300, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+    // Yukimi (Nov 21): "a toggle in alchemy info to show borders of layer boundy and toggle for colorise segment quality
+    // type, and a button to open a tool window that shows the full page cache with a preview of the elements and a box
+    // to indicare the view port": the two checks go to the tab's viewer (grimoire-browser-debug), Page Cache opens
+    // showPageCache
+    const INFO_TPL = { t: 'Alchemy Information', w: 262, h: 324, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
         [901, 'S', 7, 7, 21, 20, 0x50000003, '', 0],
         [902, 'S', 36, 12, 219, 9, 0x5002008C, '', 0],
         [-1, 'S', 7, 33, 248, 1, 0x50000010, '', 0],
@@ -1862,7 +1866,11 @@
         [-1, 'S', 7, 253, 248, 1, 0x50000010, '', 0],
         [-1, 'S', 7, 260, 66, 9, 0x50020080, 'Automatic:', 0],
         [931, 'S', 76, 260, 179, 18, 0x50020080, '', 0],
-        [1, 'B', 205, 282, 50, 14, 0x50010001, 'Close', 0]
+        [-1, 'S', 7, 281, 248, 1, 0x50000010, '', 0],
+        [951, 'B', 7, 287, 118, 10, 0x50010003, 'Show layer &borders', 0],
+        [952, 'B', 128, 287, 127, 10, 0x50010003, 'C&olour by source', 0],
+        [953, 'B', 7, 303, 64, 14, 0x50010000, '&Page Cache...', 0],
+        [1, 'B', 205, 303, 50, 14, 0x50010001, 'Close', 0]
     ] };
 
     const NOT_YET = 'Not measured yet';
@@ -1951,7 +1959,12 @@
         const V = window.vistaDialogTemplate;
         if (!V) return;
         const abort = new AbortController();
-        const state = { host, modal: null, abort, timer: 0, info: null, stats: null, prev: null, view: null, frame: null, close: null };
+        const state = { host, modal: null, abort, timer: 0, info: null, stats: null, prev: null, view: null, frame: null, close: null, debug: { borders: false, quality: false } };
+        // the checks to the viewer on show (and off again on the one it leaves, or when this window closes)
+        const sendDebug = (f, on) => {
+            if (!f || !f.contentWindow) return;
+            f.contentWindow.postMessage({ type: 'grimoire-browser-debug', borders: on && state.debug.borders, quality: on && state.debug.quality }, '*');
+        };
         const shellNow = () => (host.activePane && host.activePane !== host ? host.activePane : host);
         const frameNow = () => {
             const shell = shellNow();
@@ -1967,6 +1980,7 @@
         const showing = () => !document.hidden && state.modal && state.modal.isConnected && !state.modal.classList.contains('hidden')
             && host.modal && !host.modal.classList.contains('hidden') && !host.modal.classList.contains('minimised') && !host.modal.classList.contains('minimising');
         const finish = () => {
+            if (state.debug.borders || state.debug.quality) sendDebug(state.frame, false);
             abort.abort();
             clearTimeout(state.timer);
             ctxRef = null;
@@ -1976,6 +1990,10 @@
         const follow = () => {
             const f = frameNow();
             if (f === state.frame) return;
+            if (state.debug.borders || state.debug.quality) {
+                sendDebug(state.frame, false);
+                sendDebug(f, true);
+            }
             state.frame = f;
             state.info = null;
             state.prev = null;
@@ -2085,6 +2103,14 @@
                 if (host.modal) watch.observe(host.modal, { attributes: true, attributeFilter: ['class'] });
                 follow();
                 draw();
+                const toggle = () => {
+                    state.debug.borders = !!ctx.get(951);
+                    state.debug.quality = !!ctx.get(952);
+                    sendDebug(state.frame, true);
+                };
+                ctx.on(951, 'change', toggle);
+                ctx.on(952, 'change', toggle);
+                ctx.on(953, 'click', () => { showPageCache(host).catch(() => {}); });
             },
             ok() { finish(); },
             cancel() { finish(); },
@@ -2092,6 +2118,146 @@
         });
         state.timer = 0;
         ask();
+    }
+
+    // ---- Tools > Alchemy Information > Page Cache: the whole page as this device's viewer holds it (its cache of what
+    // was seen, the rows not seen yet hatched, the sheets where they are), a box for the view; a click scrolls the page
+    // there. A tool window of its Grimoire window like Alchemy Information; it asks the viewer for a new picture every
+    // 1.5 s only while it shows (grimoire-browser-cache?). Styles: css/themes/vista/grimoire-extensions.css (.gpc-*). ----
+    const PCACHE_TPL = { t: 'Page Cache', w: 150, h: 300, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+        [901, 'S', 7, 7, 136, 18, 0x50020080, '', 0],
+        [902, 'S', 7, 28, 136, 248, 0x50000000, '', 0],
+        [1, 'B', 93, 281, 50, 14, 0x50010001, 'Close', 0]
+    ] };
+    const PCACHE_EVERY_MS = 1500;
+    let pcacheOpen = null;
+
+    async function showPageCache(host) {
+        if (pcacheOpen && pcacheOpen.host === host && pcacheOpen.modal && pcacheOpen.modal.isConnected && !pcacheOpen.modal.classList.contains('hidden')) {
+            if (typeof root.bringModalToFront === 'function') root.bringModalToFront(pcacheOpen.modal);
+            return;
+        }
+        if (pcacheOpen) pcacheOpen.close();
+        if (window.featureLoader) await window.featureLoader.loadFeature('browsing_sessions_ui');
+        const V = window.vistaDialogTemplate;
+        if (!V) return;
+        const abort = new AbortController();
+        const state = { host, modal: null, timer: 0, frame: null, close: null, preview: null, els: null };
+        const frameNow = () => {
+            const shell = host.activePane && host.activePane !== host ? host.activePane : host;
+            return shell && shell._grimoireRemoteSessionId && !shell._grimoireLocalAlchemy ? root.grimoireRemoteFrame(shell) : null;
+        };
+        const showing = () => !document.hidden && state.modal && state.modal.isConnected && !state.modal.classList.contains('hidden')
+            && host.modal && !host.modal.classList.contains('hidden') && !host.modal.classList.contains('minimised');
+        let ctxRef = null;
+        const finish = () => {
+            abort.abort();
+            clearTimeout(state.timer);
+            ctxRef = null;
+            if (pcacheOpen === state) pcacheOpen = null;
+        };
+        const draw = () => {
+            const p = state.preview;
+            const els = state.els;
+            if (!ctxRef || !els) return;
+            if (!p) {
+                ctxRef.text(901, state.frame ? 'Nothing cached yet' : 'This tab has no web page');
+                els.page.hidden = true;
+                return;
+            }
+            const pct = p.docRows ? Math.round(p.rows / p.docRows * 100) : 0;
+            ctxRef.text(901, `${pct} % of the page kept in ${p.blocks} block${p.blocks === 1 ? '' : 's'}, ${p.sharpRows ? Math.round(p.sharpRows / Math.max(1, p.rows) * 100) : 0} % sharp`);
+            els.page.hidden = false;
+            if (els.img.getAttribute('src') !== p.url) els.img.src = p.url;
+            els.page.style.setProperty('--gpc-w', `${p.width}px`);
+            els.page.style.setProperty('--gpc-h', `${p.height}px`);
+            els.view.style.setProperty('--gpc-top', `${p.view[1]}px`);
+            els.view.style.setProperty('--gpc-height', `${Math.max(2, p.view[3])}px`);
+            els.sheets.replaceChildren(...p.sheets.map((r) => {
+                const box = document.createElement('div');
+                box.className = 'gpc-sheet';
+                box.style.setProperty('--gpc-x', `${r[0]}px`);
+                box.style.setProperty('--gpc-y', `${r[1]}px`);
+                box.style.setProperty('--gpc-sw', `${r[2]}px`);
+                box.style.setProperty('--gpc-sh', `${r[3]}px`);
+                return box;
+            }));
+            // the view stays in sight as the page scrolls
+            const sc = els.scroll;
+            if (p.view[1] < sc.scrollTop || p.view[1] + p.view[3] > sc.scrollTop + sc.clientHeight) sc.scrollTop = Math.max(0, p.view[1] - (sc.clientHeight - p.view[3]) / 2);
+        };
+        const ask = () => {
+            clearTimeout(state.timer);
+            state.timer = 0;
+            if (!state.modal || !state.modal.isConnected) { finish(); return; }
+            if (!showing()) return;
+            const f = frameNow();
+            if (f !== state.frame) { state.frame = f; state.preview = null; draw(); }
+            if (f && f.contentWindow && state.els) f.contentWindow.postMessage({ type: 'grimoire-browser-cache?', width: state.els.scroll.clientWidth - 2 }, '*');
+            state.timer = setTimeout(ask, PCACHE_EVERY_MS);
+        };
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            if (!data || data.type !== 'grimoire-browser-cache' || !state.frame || event.source !== state.frame.contentWindow) return;
+            state.preview = data.preview || null;
+            draw();
+        }, { signal: abort.signal });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) ask(); }, { signal: abort.signal });
+        const watch = new MutationObserver(() => { if (showing() && !state.timer) ask(); else if (!showing()) { clearTimeout(state.timer); state.timer = 0; } });
+        abort.signal.addEventListener('abort', () => watch.disconnect());
+        V.openDialog({
+            id: 'grimoirePageCache' + (host.idSuffix || ''),
+            tpl: PCACHE_TPL,
+            title: PCACHE_TPL.t,
+            owner: host.modal || null,
+            modeless: true,
+            icon: '/static_images/vista-cpl/items/internet-options-32.png',
+            init(ctx) {
+                ctxRef = ctx;
+                const modal = ctx.modal;
+                state.modal = modal;
+                modal.classList.add('tool-window');
+                modal.dataset.windowOwned = 'true';
+                modal.dataset.windowFixedSize = 'true';
+                modal.dataset.windowNoMaximize = 'true';
+                if (host.modal && host.modal.id) modal.setAttribute('data-parent-modal-id', host.modal.id);
+                if (typeof root.linkToolWindowToParent === 'function' && host.modal) root.linkToolWindowToParent(modal, host.modal);
+                // beside Alchemy Information (its right, else its left), not over its numbers
+                requestAnimationFrame(() => {
+                    const info = infoOpen && infoOpen.host === host ? infoOpen.modal : null;
+                    /* global setModalPositionFromViewportRect */
+                    if (!info || !info.isConnected || typeof setModalPositionFromViewportRect !== 'function') return;
+                    const ir = info.getBoundingClientRect();
+                    const mr = modal.getBoundingClientRect();
+                    let left = ir.right + 6;
+                    if (left + mr.width > window.innerWidth) left = Math.max(0, ir.left - mr.width - 6);
+                    setModalPositionFromViewportRect(modal, { left, top: ir.top, width: mr.width, height: mr.height });
+                });
+                ctx.html(902, '<div class="gpc-scroll"><div class="gpc-page" hidden><img class="gpc-img" alt=""><div class="gpc-sheets"></div><div class="gpc-view"></div></div></div>');
+                const holder = ctx.holder(902);
+                const scroll = holder.querySelector('.gpc-scroll');
+                state.els = { scroll, page: holder.querySelector('.gpc-page'), img: holder.querySelector('.gpc-img'), view: holder.querySelector('.gpc-view'), sheets: holder.querySelector('.gpc-sheets') };
+                // a click on the page: the page scrolls there (the view's middle at the click)
+                state.els.page.addEventListener('click', (ev) => {
+                    const p = state.preview;
+                    const f = state.frame;
+                    if (!p || !p.perCss || !f || !f.contentWindow) return;
+                    const box = state.els.page.getBoundingClientRect();
+                    const y = Math.max(0, (ev.clientY - box.top) / p.perCss - (p.viewCss || 0) / 2);
+                    f.contentWindow.postMessage({ type: 'grimoire-browser-scroll-to', y }, '*');
+                    setTimeout(ask, 300);
+                }, { signal: abort.signal });
+                state.close = () => { finish(); ctx.close(); };
+                pcacheOpen = state;
+                watch.observe(modal, { attributes: true, attributeFilter: ['class'] });
+                if (host.modal) watch.observe(host.modal, { attributes: true, attributeFilter: ['class'] });
+                draw();
+                ask();
+            },
+            ok() { finish(); },
+            cancel() { finish(); },
+            close() { finish(); }
+        });
     }
 
     // ---- Grimoire's own pages as IE7's (Yukimi, Nov 21 2026: "the default page needs to be rectified and IE-ified

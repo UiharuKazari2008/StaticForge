@@ -2272,8 +2272,10 @@ function endNavigating(session) {
     publishLocation(session);
 }
 
-function markHealth(session, state) {
+// why: what made a page failed or not responding (the log says, so a page shown as stopped can be traced)
+function markHealth(session, state, why) {
     if (!sessions.get(session.id) || session.health === state) return;
+    if (state !== 'ok') console.warn('[grimoire-browser] page ' + state + (why ? ': ' + String(why).slice(0, 200) : ''), String(session.url || '').slice(0, 120));
     session.health = state;
     broadcast(session, { type: 'status', state, url: session.url || '' });
 }
@@ -2305,10 +2307,10 @@ async function probeHealth(session) {
     } catch (err) {
         const message = (err && err.message) || '';
         if (/crash|detached|closed|Target closed|Session closed/i.test(message)) {
-            markHealth(session, 'failed');
+            markHealth(session, 'failed', 'probe: ' + message);
         } else {
             session.healthMisses = (session.healthMisses || 0) + 1;
-            if (session.healthMisses >= 2) markHealth(session, 'unresponsive');
+            if (session.healthMisses >= 2) markHealth(session, 'unresponsive', 'probe: ' + message);
         }
     }
     if (sessions.get(session.id)) armHealth(session);
@@ -4330,11 +4332,11 @@ async function createSession(body, adoptedPage) {
             session.dialog = null;
         }
     });
-    page.on('error', () => markHealth(session, 'failed'));
+    page.on('error', (err) => markHealth(session, 'failed', 'page error: ' + ((err && err.message) || err)));
     page.on('close', () => {
         if (session.closing) return;
         if (session.popup) closeSession(id);
-        else markHealth(session, 'failed');
+        else markHealth(session, 'failed', 'page closed');
     });
 
     page.on('framenavigated', (frame) => {
