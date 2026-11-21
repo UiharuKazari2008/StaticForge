@@ -236,11 +236,17 @@
   // coloured by where each part came from (baseSrc: what painted each part of base, newest last)
   var debugCanvas = document.getElementById('debug');
   var debugCtx = debugCanvas.getContext('2d');
-  var debug = { on: false, borders: false, quality: false };
+  var debug = { on: false, borders: false, quality: false, content: false };
+  // where the page draws text, images and flat fills (document CSS pixels; server.js layerSheets.js 'content')
+  var contentMap = null;
   var baseSrc = [];
-  var stillCtx = stillCanvas.getContext('2d', { alpha: false });
+  var stillKey = '';
+  // the frame, the still, the cache and the scratch keep a frame's transparency (see-through frames while the page's
+  // layers under the content are sheets: Yozora's backdrop, Yukimi Nov 21); every write clears its area first, so a
+  // transparent pixel replaces what was there instead of blending over it
+  var stillCtx = stillCanvas.getContext('2d');
   var base = document.createElement('canvas');
-  var baseCtx = base.getContext('2d', { alpha: false });
+  var baseCtx = base.getContext('2d');
   // vh: frame rows of the page's viewport; rows below it are the over-render band (Alchemy build, #993)
   var baseInfo = { sy: 0, sx: 0, k: 0, p: 0, t: 0, vh: 0 };
   // Arrival order of frames and stills: a frame hides the still only if it came after it.
@@ -286,6 +292,11 @@
     });
   }
 
+  // a frame's or still's format from its header (f): JPEG XL, WebP (see-through), else JPEG
+  function frameType(f) {
+    return f === 'jxl' ? 'image/jxl' : (f === 'webp' ? 'image/webp' : 'image/jpeg');
+  }
+
   function releaseImage(img) {
     if (img && typeof img.close === 'function') img.close();
   }
@@ -304,7 +315,7 @@
     var bytes = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     // the view at rest as JPEG XL from a lossless capture (server.js jxlRefine), else a JPEG still
-    decodeImage(bytes, msg.f === 'jxl' ? 'image/jxl' : 'image/jpeg').then(function (img) {
+    decodeImage(bytes, frameType(msg.f)).then(function (img) {
       // a newer frame or still came first, or the still is not of the page's current CSS size
       // (frames can be smaller than that: the phone's Desktop view gets 780 px frames of 1024)
       if (arrival !== stillArrival || frameArrival > arrival
@@ -316,7 +327,9 @@
         stillCanvas.width = img.width;
         stillCanvas.height = img.height;
       }
+      stillCtx.clearRect(0, 0, stillCanvas.width, stillCanvas.height);
       stillCtx.drawImage(img, 0, 0);
+      stillKey = sourceKey(msg.f === 'jxl' ? 'stilljxl' : (msg.f === 'webp' ? 'stillwebp' : 'stilljpeg'), msg.q, msg.d);
       releaseImage(img);
       stillCanvas.hidden = false;
       cacheStill();
@@ -348,7 +361,7 @@
     queuedJob = null;
     tileQueue = job.tiles;
     var gen = ++paintGen;
-    decodeImage(job.bytes, job.header && job.header.f === 'jxl' ? 'image/jxl' : 'image/jpeg').then(function (img) {
+    decodeImage(job.bytes, frameType(job.header && job.header.f)).then(function (img) {
       drawing = false;
       if (gen === paintGen) {
         if (base.width !== img.width || base.height !== img.height) {
@@ -356,8 +369,9 @@
           base.height = img.height;
           resetCache();
         }
+        baseCtx.clearRect(0, 0, base.width, base.height);
         baseCtx.drawImage(img, 0, 0);
-        noteSource(null, job.header && job.header.f === 'jxl' ? 'jxl' : 'jpeg');
+        noteSource(null, job.header && job.header.f === 'jxl' ? 'jxl' : (job.header && job.header.f === 'webp' ? 'wframe' : 'jpeg'), job.header && job.header.q);
         if (job.arrival > stillArrival) hideStill();
         frameReady(job.header);
         flushTiles();
@@ -403,10 +417,12 @@
       scratch.width = base.width;
       scratch.height = base.height;
     }
-    var sctx = scratch.getContext('2d', { alpha: false });
+    var sctx = scratch.getContext('2d');
+    sctx.clearRect(0, 0, scratch.width, scratch.height);
     sctx.drawImage(base, 0, 0);
     for (var i = 0; i < ops.length; i++) {
       var op = ops[i];
+      baseCtx.clearRect(0, op[0], base.width, op[2]);
       baseCtx.drawImage(scratch, 0, op[1], base.width, op[2], 0, op[0], base.width, op[2]);
     }
   }
@@ -438,13 +454,15 @@
         for (var i = 0; i < imgs.length; i++) {
           if (!imgs[i]) continue;
           var rect = rects[i];
+          baseCtx.clearRect(rect.x, rect.y, rect.w, rect.h);
           baseCtx.drawImage(imgs[i], rect.x, rect.y, rect.w, rect.h);
-          noteSource([rect.x, rect.y, rect.w, rect.h], h.f === 'webp' ? 'webp' : 'tile');
+          noteSource([rect.x, rect.y, rect.w, rect.h], h.f === 'webp' ? 'webp' : 'tile', h.q);
           // a small change patches the still (soft until the next one) instead of dropping it
           if (!stillCanvas.hidden && job.arrival > stillArrival) {
             // the still covers the view's rows (a frame also has the over-render band below them)
             var sx = stillCanvas.width / base.width;
             var sy = stillCanvas.height / viewRows();
+            stillCtx.clearRect(rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy);
             stillCtx.drawImage(imgs[i], rect.x * sx, rect.y * sy, rect.w * sx, rect.h * sy);
           }
         }
@@ -468,6 +486,13 @@
     t.bytes += bytes.length;
     if (kind === 2) {
       if (bytes.length > 9) audioPacket(new DataView(bytes.buffer, bytes.byteOffset, 9).getFloat64(1, true), bytes.subarray(9));
+      return;
+    }
+    if (kind === 6) {
+      var aheadHeaderLength = bytes[1] | (bytes[2] << 8);
+      var aheadHeader = null;
+      try { aheadHeader = JSON.parse(textDecoder.decode(bytes.subarray(3, 3 + aheadHeaderLength))); } catch (e) { return; }
+      drawnAhead(aheadHeader, bytes.subarray(3 + aheadHeaderLength));
       return;
     }
     if (kind === 5) {
@@ -542,20 +567,42 @@
     if (!rafId) rafId = requestAnimationFrame(composite);
   }
 
-  // what painted a part of base (frame pixels); null: the whole frame
-  function noteSource(rect, type) {
-    if (!rect) { baseSrc = [[0, 0, base.width, base.height, type]]; return; }
-    baseSrc.push([rect[0], rect[1], rect[2], rect[3], type]);
+  // what painted a part of base (frame pixels; null: the whole frame): its codec and the quality it was encoded at
+  function noteSource(rect, type, q, d) {
+    var key = sourceKey(type, q, d);
+    if (!rect) { baseSrc = [[0, 0, base.width, base.height, key]]; return; }
+    baseSrc.push([rect[0], rect[1], rect[2], rect[3], key]);
     if (baseSrc.length > 400) baseSrc.splice(1, baseSrc.length - 300);
   }
+
+  // a source as codec|class|quality: high, medium or low (JPEG / WebP quality, JPEG XL distance), or lossless
+  function sourceKey(type, q, d) {
+    var cls = '';
+    var label = '';
+    if (typeof d === 'number' && d >= 0) {
+      cls = d === 0 ? 'lossless' : (d <= 0.8 ? 'high' : (d <= 1.5 ? 'medium' : 'low'));
+      label = d === 0 ? 'lossless' : 'distance ' + d;
+    } else if (typeof q === 'number') {
+      cls = q >= 85 ? 'high' : (q >= 72 ? 'medium' : 'low');
+      label = 'q' + q;
+    }
+    return type + '|' + cls + '|' + label;
+  }
+
+  // a class's strength: the lower the quality, the stronger the tint
+  var CLASS_ALPHA = { lossless: 0.1, high: 0.18, medium: 0.32, low: 0.48, '': 0.28 };
 
   var DEBUG_TINT = {
     jpeg: ['rgba(60, 120, 255, 0.28)', 'Frame (JPEG)'],
     jxl: ['rgba(150, 60, 255, 0.28)', 'Frame (JPEG XL)'],
+    wframe: ['rgba(40, 170, 255, 0.28)', 'Frame (WebP, see-through)'],
     tile: ['rgba(0, 190, 190, 0.32)', 'Tile (JPEG)'],
     webp: ['rgba(0, 200, 70, 0.32)', 'Tile (WebP)'],
     moved: ['rgba(255, 200, 0, 0.32)', 'Rows moved'],
     still: ['rgba(230, 0, 230, 0.22)', 'Still at rest (sharp)'],
+    stilljxl: ['rgba(230, 0, 230, 0.22)', 'Still (JPEG XL)'],
+    stillwebp: ['rgba(230, 0, 230, 0.22)', 'Still (WebP)'],
+    stilljpeg: ['rgba(230, 0, 230, 0.22)', 'Still (JPEG)'],
     sharp: ['rgba(200, 120, 255, 0.36)', 'Cache: still rows'],
     cache: ['rgba(120, 120, 120, 0.4)', 'Cache: frame rows'],
     missing: ['rgba(255, 0, 0, 0.4)', 'Not seen yet']
@@ -575,15 +622,18 @@
     var k = baseInfo.k;
     var b = bands();
     var used = {};
-    var tint = function (type, x, y, rw, rh) {
+    var tint = function (key, x, y, rw, rh) {
       if (rw <= 0 || rh <= 0) return;
-      used[type] = 1;
-      debugCtx.fillStyle = DEBUG_TINT[type][0];
+      var parts = String(key).split('|');
+      var base0 = DEBUG_TINT[parts[0]];
+      if (!base0) return;
+      used[key] = 1;
+      debugCtx.fillStyle = parts.length > 1 ? base0[0].replace(/[\d.]+\)$/, CLASS_ALPHA[parts[1]] + ')') : base0[0];
       debugCtx.fillRect(x, y, rw, rh);
     };
     if (debug.quality) {
       if (!stillCanvas.hidden && !off) {
-        tint('still', 0, 0, w, h);
+        tint(stillKey || 'still', 0, 0, w, h);
       } else {
         // base's parts, moved with the picture (the bars stay)
         for (var i = 0; i < baseSrc.length; i++) {
@@ -642,22 +692,50 @@
         debugCtx.strokeRect(Math.round(sh.x * k) + 1, Math.round(sheetTop(sh, S) * k) + 1, Math.round(sh.w * k) - 2, Math.round(sh.h * k) - 2);
       }
     }
+    // the content types (Chromium's own drawing commands): text runs, images, flat fills
+    if (debug.content && contentMap && k) {
+      var CS = baseInfo.sy + off / k;
+      var boxes = function (list, per, style, key) {
+        if (!list.length) return;
+        used[key] = 1;
+        debugCtx.strokeStyle = style;
+        for (var bi = 0; bi + per <= list.length; bi += per) {
+          var by0 = (list[bi + 1] - CS) * k;
+          var bh = list[bi + 3] * k;
+          if (by0 > h || by0 + bh < 0) continue;
+          debugCtx.strokeRect(Math.round(list[bi] * k) + 0.5, Math.round(by0) + 0.5, Math.max(1, Math.round(list[bi + 2] * k) - 1), Math.max(1, Math.round(bh) - 1));
+        }
+      };
+      debugCtx.lineWidth = 1;
+      boxes(contentMap.fills, 5, 'rgba(110, 110, 110, 0.7)', '_fill');
+      boxes(contentMap.images, 6, 'rgba(255, 120, 0, 0.95)', '_image');
+      boxes(contentMap.text, 4, 'rgba(0, 90, 255, 0.85)', '_text');
+    }
     // the key: what each colour is (only those on show)
     var keys = Object.keys(used);
     if (debug.borders) keys = keys.concat(['_sheet', '_layer', '_bar', '_block']);
     if (!keys.length) return;
-    var BORDER_KEY = { _sheet: ['rgba(255, 0, 200, 1)', 'Sheet'], _layer: ['rgba(255, 140, 0, 1)', 'Fixed / sticky layer'], _bar: ['rgba(0, 200, 230, 1)', 'Fixed bar'], _block: ['rgba(80, 80, 80, 1)', 'Cache block edge'] };
+    var BORDER_KEY = { _sheet: ['rgba(255, 0, 200, 1)', 'Sheet'], _layer: ['rgba(255, 140, 0, 1)', 'Fixed / sticky layer'], _bar: ['rgba(0, 200, 230, 1)', 'Fixed bar'], _block: ['rgba(80, 80, 80, 1)', 'Cache block edge'], _text: ['rgba(0, 90, 255, 1)', 'Text'], _image: ['rgba(255, 120, 0, 1)', 'Image'], _fill: ['rgba(110, 110, 110, 1)', 'Flat fill'] };
     var fs = Math.round(11 * (window.devicePixelRatio || 1));
     debugCtx.font = fs + 'px sans-serif';
     var lh = Math.round(fs * 1.4);
     var bw = 0;
-    for (var ki = 0; ki < keys.length; ki++) bw = Math.max(bw, debugCtx.measureText((DEBUG_TINT[keys[ki]] || BORDER_KEY[keys[ki]])[1]).width);
+    // a key's colour and words: codec, then its class and quality when it has one
+    var keyEntry = function (key) {
+      if (BORDER_KEY[key]) return BORDER_KEY[key];
+      var parts = String(key).split('|');
+      var t = DEBUG_TINT[parts[0]];
+      var colour = parts.length > 1 ? t[0].replace(/[\d.]+\)$/, CLASS_ALPHA[parts[1]] + ')') : t[0];
+      var words = t[1] + (parts[1] ? ' \u00b7 ' + parts[1] + (parts[2] ? ' (' + parts[2] + ')' : '') : '');
+      return [colour, words];
+    };
+    for (var ki = 0; ki < keys.length; ki++) bw = Math.max(bw, debugCtx.measureText(keyEntry(keys[ki])[1]).width);
     var bx = 8;
     var by = h - 8 - lh * keys.length - 8;
     debugCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
     debugCtx.fillRect(bx, by, bw + lh + 20, lh * keys.length + 8);
     for (var kj = 0; kj < keys.length; kj++) {
-      var entry = DEBUG_TINT[keys[kj]] || BORDER_KEY[keys[kj]];
+      var entry = keyEntry(keys[kj]);
       debugCtx.fillStyle = entry[0].replace(/[\d.]+\)$/, '0.9)');
       debugCtx.fillRect(bx + 6, by + 6 + kj * lh, lh - 6, lh - 6);
       debugCtx.fillStyle = '#000';
@@ -770,6 +848,30 @@
     drawSheets();
   }
 
+  // the page's layers under the content as sheets: its colour, then its fixed pictures (a backdrop), drawn into the
+  // view before the picture, which is see-through where they show
+  function underSheets() {
+    for (var i = 0; i < sheetList.length; i++) if (sheetList[i].z === 'under') return true;
+    return false;
+  }
+
+  function drawUnder(S, w, h) {
+    var k = baseInfo.k;
+    if (!k) return;
+    for (var i = 0; i < sheetList.length; i++) {
+      var s = sheetList[i];
+      if (s.z !== 'under' || !s.color) continue;
+      ctx.fillStyle = s.color;
+      ctx.fillRect(0, 0, w, h);
+    }
+    for (var j = 0; j < sheetList.length; j++) {
+      var u = sheetList[j];
+      if (u.z !== 'under' || u.color) continue;
+      var img = sheetImgs.get(u.id);
+      if (img) ctx.drawImage(img.bmp, Math.round(u.x * k), Math.round(sheetTop(u, S) * k));
+    }
+  }
+
   // a sheet's top in the view (CSS pixels) with the document scrolled to S: fixed where it is; sticky (st: where it
   // sticks, its top in the flow, its container's bottom, its height) in the flow until it reaches where it sticks,
   // then there, until its container's bottom pushes it up (as layerTop)
@@ -807,6 +909,7 @@
     }
     for (var i = 0; i < sheetList.length; i++) {
       var s = sheetList[i];
+      if (s.z === 'under') continue;
       var img = sheetImgs.get(s.id);
       if (img) sheetCtx.drawImage(img.bmp, Math.round(s.x * k), Math.round(sheetTop(s, at) * k));
     }
@@ -825,7 +928,7 @@
     var c = document.createElement('canvas');
     c.width = cache.width;
     c.height = STRIP_ROWS;
-    st = { canvas: c, ctx: c.getContext('2d', { alpha: false }), valid: new Uint8Array(STRIP_ROWS), n: 0 };
+    st = { canvas: c, ctx: c.getContext('2d'), valid: new Uint8Array(STRIP_ROWS), n: 0 };
     cache.strips.set(i, st);
     cache.pixels += cache.width * STRIP_ROWS;
     return st;
@@ -833,7 +936,7 @@
 
   // src's rect (sx, sy, w, h) into the cache at document row doc (frame pixels); level: 1 a frame, SHARP the still;
   // keepSharp: a frame's rows go only where the cache has no still rows
-  function cacheWrite(src, sx, sy, w, h, doc, level, keepSharp) {
+  function cacheWrite(src, sx, sy, w, h, doc, level, keepSharp, onlyEmpty) {
     var lv = level || 1;
     for (var row = doc; row < doc + h;) {
       var i = Math.floor(row / STRIP_ROWS);
@@ -842,9 +945,12 @@
       var st = cacheStrip(i, true);
       for (var r = at; r < at + n;) {
         var e = r;
-        var skip = keepSharp && st.valid[r] === SHARP;
-        while (e < at + n && (keepSharp && st.valid[e] === SHARP) === skip) e++;
+        // keepSharp: not over still rows; onlyEmpty: only rows the cache has nothing for (drawn ahead)
+        var held = function (q) { return (keepSharp && st.valid[q] === SHARP) || (onlyEmpty && st.valid[q] > 0); };
+        var skip = held(r);
+        while (e < at + n && held(e) === skip) e++;
         if (!skip) {
+          st.ctx.clearRect(sx, r, w, e - r);
           st.ctx.drawImage(src, sx, sy + (i * STRIP_ROWS + r - doc), w, e - r, sx, r, w, e - r);
           for (var q = r; q < e; q++) { if (!st.valid[q]) st.n += 1; st.valid[q] = lv; }
         }
@@ -887,12 +993,15 @@
     return true;
   }
 
-  // over budget: the strips furthest from the view (document row at) go
+  // over budget: the blocks furthest from the view (document row at) go, those behind the way it scrolls first (they
+  // count twice as far)
   function cacheTrim(at) {
     if (cache.pixels <= CACHE_BUDGET) return;
-    var keys = Array.from(cache.strips.keys()).sort(function (a, b) {
-      return Math.abs(b * STRIP_ROWS - at) - Math.abs(a * STRIP_ROWS - at);
-    });
+    var away = function (i) {
+      var d = i * STRIP_ROWS + STRIP_ROWS / 2 - at;
+      return Math.abs(d) * (travel.dir && d * travel.dir < 0 ? 2 : 1);
+    };
+    var keys = Array.from(cache.strips.keys()).sort(function (a, b) { return away(b) - away(a); });
     for (var i = 0; i < keys.length && cache.pixels > CACHE_BUDGET; i++) {
       var st = cache.strips.get(keys[i]);
       st.canvas.width = 0;
@@ -1044,11 +1153,33 @@
         var at = row + y - i * STRIP_ROWS;
         var n = Math.min(STRIP_ROWS - at, rs.h - y);
         var st = cacheStrip(i, true);
+        st.ctx.clearRect(rs.x, at, rs.w, n);
         st.ctx.drawImage(keepCanvas, 0, kept[kr].ky + y, rs.w, n, rs.x, at, rs.w, n);
         y += n;
       }
     }
     cacheTrim(docTop);
+  }
+
+  // the page beyond the view, drawn at rest from its layers' recordings (server.js layerSheets.js, kind 6): into the
+  // cache where it has nothing (a frame there replaces it), so a scroll finds rows above and below ready
+  function drawnAhead(header, body) {
+    if (!header || !cache.width || !baseInfo.k || Math.abs((Number(header.k) || 0) - baseInfo.k) > 1e-6) return;
+    createImageBitmap(new Blob([body], { type: 'image/webp' })).then(function (bmp) {
+      if (bmp.width === cache.width && Math.abs(header.k - cache.k) < 1e-6) {
+        cacheWrite(bmp, 0, 0, bmp.width, bmp.height, Math.round(header.y * header.k), 1, false, true);
+        noteAhead(header.y, header.y + header.h);
+        if (debug.on) requestComposite();
+      }
+      bmp.close();
+    }, function () {});
+  }
+
+  // the document ranges drawn ahead (CSS), for the content-type check's key
+  var aheadRanges = [];
+  function noteAhead(y0, y1) {
+    aheadRanges.push([y0, y1]);
+    if (aheadRanges.length > 32) aheadRanges.shift();
   }
 
   // the still (the view at rest, sharp) into the cache at the newest frame's offset (a still older than a frame is
@@ -1109,6 +1240,8 @@
 
   function fillRows(y0, y1, b, docAtTop) {
     if (y1 <= y0) return;
+    // the page's background is a sheet under the picture: rows not seen yet show it, not a checkerboard
+    if (underSheets()) return;
     var pattern = checkerPattern(b);
     var size = checker.cell * 2;
     var shift = ((docAtTop || 0) % size + size) % size;
@@ -1130,6 +1263,7 @@
       canvas.height = height;
     }
     if (sheetList.length || sheetDrawn) drawSheets(baseInfo.sy + (baseInfo.k ? off / baseInfo.k : 0));
+    if (underSheets()) drawUnder(baseInfo.sy + (baseInfo.k ? off / baseInfo.k : 0), width, height);
     if (!off) {
       ctx.drawImage(base, 0, 0, width, height, 0, 0, width, height);
       return;
@@ -1303,6 +1437,31 @@
     requestComposite();
   }
 
+  // Which way the picture is going and how fast (CSS px/s, smoothed), and how far it will still go (what is planned:
+  // a wheel burst's or a flick's target, else the speed for 0.6 s). Alchemy draws ahead that way (layerSheets.js
+  // 'ahead'); the cache lets go of what lies behind first (cacheTrim).
+  var travel = { dir: 0, v: 0, lastY: null, lastT: 0, sentAt: 0, sentKey: '' };
+  function noteTravel(now) {
+    var y = pred.display;
+    if (travel.lastY === null || !travel.lastT) { travel.lastY = y; travel.lastT = now; return; }
+    var dt = now - travel.lastT;
+    if (dt <= 0) return;
+    var v = (y - travel.lastY) / dt * 1000;
+    travel.v = travel.v * 0.6 + v * 0.4;
+    travel.lastY = y;
+    travel.lastT = now;
+    if (Math.abs(travel.v) > 40) travel.dir = travel.v > 0 ? 1 : -1;
+    var moving = pred.active || Math.abs(travel.v) > 40;
+    if (!moving || !travel.dir || now - travel.sentAt < 250) return;
+    var planned = pred.active ? (pred.target - pred.display) * travel.dir : 0;
+    var reach = Math.round(Math.max(0, planned, Math.abs(travel.v) * 0.6));
+    var key = travel.dir + ':' + Math.round(reach / 100);
+    if (key === travel.sentKey && now - travel.sentAt < 1000) return;
+    travel.sentAt = now;
+    travel.sentKey = key;
+    send({ type: 'ahead', dir: travel.dir, v: Math.round(travel.v), reach: reach, y: Math.round(y) });
+  }
+
   function finishGesture() {
     pred.active = false;
     // the picture glides to where the page really is (it lags behind its own smooth scroll, or did not move)
@@ -1343,6 +1502,7 @@
       }
     }
     var off = k && baseInfo.p ? Math.round((pred.display - baseInfo.sy) * k) : 0;
+    noteTravel(now);
     drawComposite(off);
     if (pred.active) postScroll(pred.display);
     if (moving || pred.active) requestComposite();
@@ -1535,6 +1695,9 @@
         backdropStore();
       }
       if (pred.active || pred.converging) requestComposite();
+    } else if (msg.type === 'content') {
+      contentMap = { text: msg.text || [], images: msg.images || [], fills: msg.fills || [] };
+      if (debug.content) requestComposite();
     } else if (msg.type === 'sheets') {
       setSheets(msg.list);
     } else if (msg.type === 'encoder') {
@@ -2445,9 +2608,16 @@
     // Grimoire's Alchemy Information tool window asks (every 2 s at most, only while it shows): this viewer's own
     // numbers, plus the bytes received and the decode time so far
     if (data.type === 'grimoire-browser-debug') {
+      var wasContent = debug.content;
       debug.borders = !!data.borders;
       debug.quality = !!data.quality;
-      debug.on = debug.borders || debug.quality;
+      debug.content = !!data.content;
+      debug.on = debug.borders || debug.quality || debug.content;
+      // the content map comes from Alchemy only while it is shown
+      if (debug.content !== wasContent) {
+        send({ type: 'want-content', on: debug.content });
+        if (!debug.content) contentMap = null;
+      }
       if (!debug.on) debugCanvas.hidden = true;
       requestComposite();
       return;

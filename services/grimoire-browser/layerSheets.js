@@ -19,6 +19,13 @@
 // repaint), rotated or scaled ones, and full-screen ones.
 
 const MSG_SHEET = 5;
+// 6: the page beyond the view drawn at rest (header: y, h in CSS pixels of the document; body: WebP)
+const MSG_PREFILL = 6;
+// at rest: no layer update for this long
+const REST_MS = 900;
+// one pass of drawing ahead (and of the content map) at most this often
+const PASS_MS = 4000;
+const MAX_CONTENT = 2000;
 // a layer smaller than this (layer units squared) is not worth a sheet (a caret, a 1 px line)
 const MIN_AREA = 64;
 // over this share of the view a fixed layer is a cover (a dialog): it stays in the frames
@@ -59,7 +66,20 @@ function createLayerSheets(session, deps) {
         unit: 0,
         k: 0,
         gen: 0,
-        listSent: ''
+        listSent: '',
+        // drawing ahead (the build's content-map patch): document ranges (CSS) drawn since their layers last
+        // repainted there, per content layer id; and whether a viewer shows the content map
+        restTimer: null,
+        passAt: 0,
+        passing: false,
+        prefilled: new Map(),
+        contentWanted: false,
+        contentSent: '',
+        // layers under the content (Yukimi, Nov 21: "if i scroll this page the background is not fixed in a layer it
+        // will shift and jump the client should be given the layer themself"): solid = a scroll layer's one colour
+        // (its content map: one flat fill, no text, no images), or 'no'; under = they are sheets now (see-through frames)
+        solid: new Map(),
+        under: false
     };
 
     const cdp = () => session.cdp;
@@ -72,13 +92,16 @@ function createLayerSheets(session, deps) {
     function entryOf(id, s) {
         const e = { id, gen: s.gen, x: s.x, y: s.y, w: s.w, h: s.h };
         if (s.st) e.st = s.st;
+        // under the content (drawn before the frame); a colour instead of a picture (a page background)
+        if (s.z === 'under') e.z = 'under';
+        if (s.color) e.color = s.color;
         return e;
     }
 
     function sendList() {
         const list = [];
         for (const [id, s] of state.sheets) {
-            if (!s.png) continue;
+            if (!s.png && !s.color) continue;
             list.push(entryOf(id, s));
         }
         const text = JSON.stringify(list);
@@ -88,13 +111,21 @@ function createLayerSheets(session, deps) {
     }
 
     async function setHidden() {
-        const ids = [...state.sheets.entries()].filter(([, s]) => s.png).map(([id]) => id).sort();
-        const key = ids.join(',');
+        // the layers under the content go only all together, once each one's picture is with the viewers (else the
+        // page would show its plain colour for a moment)
+        const underAll = [...state.sheets.values()].filter((s) => s.z === 'under');
+        const under = state.under && underAll.length > 0 && underAll.every((s) => s.png || s.color);
+        const ids = [...state.sheets.entries()].filter(([, s]) => (s.png || s.color) && (s.z !== 'under' || under)).map(([id]) => id).sort();
+        const key = ids.join(',') + (under ? '|under' : '');
         if (key === state.hidden) return;
         // nothing was hidden yet (a new document before its first sheet): nothing to show again
         if (!key && !state.hidden) return;
         state.hidden = key;
-        await cdp().send('LayerTree.alchemySetHiddenLayers', { layerIds: ids }).catch((err) => deps.log('hide failed:', err.message));
+        const params = { layerIds: ids };
+        // the frame without a background of its own while the layers under the content are sheets
+        if (deps.contentMap) params.transparentBackground = under;
+        await cdp().send('LayerTree.alchemySetHiddenLayers', params).catch((err) => deps.log('hide failed:', err.message));
+        if (deps.setAlphaFrames) deps.setAlphaFrames(session, under);
     }
 
     // the page's own scan (watchScroll) leaves a sheet's element out of its bars and layers
@@ -149,6 +180,34 @@ function createLayerSheets(session, deps) {
         clearTimeout(s.timer);
         state.sheets.delete(id);
         markNode(s.node, false);
+    }
+
+    // a scroll layer that is one flat colour (a page background): its content map has one fill over (nearly) all of
+    // it and no text or images; the answer stays until the layer repaints
+    function askSolid(l) {
+        state.solid.set(l.layerId, null);
+        (async () => {
+            const { snapshotId } = await cdp().send('LayerTree.makeSnapshot', { layerId: l.layerId });
+            try {
+                const map = await cdp().send('LayerTree.alchemyContentMap', { snapshotId });
+                const fills = map.fills || [];
+                let color = null;
+                if (!(map.text || []).length && !(map.images || []).length && fills.length >= 5) {
+                    const first = fills[4];
+                    const same = fills.every((v, i) => i % 5 !== 4 || v === first);
+                    if (same && fills[2] * fills[3] >= l.width * l.height * 0.95) color = first;
+                }
+                state.solid.set(l.layerId, color == null ? 'no' : color >>> 0);
+            } finally {
+                cdp().send('LayerTree.releaseSnapshot', { snapshotId }).catch(() => {});
+            }
+            schedule();
+        })().catch(() => state.solid.set(l.layerId, 'no'));
+    }
+
+    function cssColor(argb) {
+        const a = (argb >>> 24) & 255;
+        return 'rgba(' + ((argb >>> 16) & 255) + ', ' + ((argb >>> 8) & 255) + ', ' + (argb & 255) + ', ' + Math.round(a / 255 * 1000) / 1000 + ')';
     }
 
     function askReasons(id) {
@@ -246,6 +305,47 @@ function createLayerSheets(session, deps) {
                 node: l.backendNodeId || 0
             });
         }
+        // under the content: the fixed layers drawn before the content's last scrolling layer, when everything that
+        // scrolls under them is a flat colour (then the frames can be see-through: the build's content-map patch)
+        let underOk = false;
+        if (deps.contentMap) {
+            const under = [];
+            let blocked = false;
+            let firstUnder = -1;
+            layers.forEach((l, i) => {
+                const rec = state.layers.get(l.layerId);
+                if (blocked || !rec || !l.drawsContent || rec.kind !== 'fixed' || l.stickyPositionConstraint || i >= lastScroll) return;
+                if (!translationOnly(l.transform) || l.width * l.height < MIN_AREA) return;
+                if (!state.reasons.has(l.layerId)) { askReasons(l.layerId); blocked = true; return; }
+                const reasons = state.reasons.get(l.layerId);
+                if (reasons == null) { blocked = true; return; }
+                if (NOT_SHEET.test(reasons)) return;
+                if (firstUnder < 0) firstUnder = i;
+                under.push(l);
+            });
+            if (!blocked && under.length) {
+                // the scrolling layers before the first of them: each one colour
+                const below = layers.filter((l, i) => i < firstUnder && l.drawsContent && (state.layers.get(l.layerId) || {}).kind === 'scroll');
+                // and no big scrolling layer between them and the content's own (it would end up under them)
+                const lastUnder = ix.get(under[under.length - 1].layerId);
+                const between = layers.some((l, i) => i > firstUnder && i < lastUnder && l.drawsContent && (state.layers.get(l.layerId) || {}).kind === 'scroll' && l.width * l.height > viewArea * LATER_SCROLL_SHARE);
+                let solidOk = !between;
+                for (const l of below) {
+                    if (!state.solid.has(l.layerId)) { askSolid(l); solidOk = false; continue; }
+                    const c = state.solid.get(l.layerId);
+                    if (c == null || c === 'no') solidOk = false;
+                }
+                if (solidOk) {
+                    underOk = true;
+                    for (const l of below) want.set(l.layerId, { x: 0, y: 0, w: 0, h: 0, st: null, node: 0, z: 'under', color: cssColor(state.solid.get(l.layerId)) });
+                    for (const l of under) {
+                        const p = placeOf(l);
+                        want.set(l.layerId, { x: Math.round(p.x / unit * 100) / 100, y: Math.round(p.y / unit * 100) / 100, w: Math.round(l.width / unit * 100) / 100, h: Math.round(l.height / unit * 100) / 100, st: null, node: l.backendNodeId || 0, z: 'under' });
+                    }
+                }
+            }
+        }
+        state.under = underOk;
         const rescale = Math.abs(k - state.k) > 1e-3 || Math.abs(unit - state.unit) > 1e-3;
         state.k = k;
         state.unit = unit;
@@ -254,12 +354,14 @@ function createLayerSheets(session, deps) {
             const s = state.sheets.get(id);
             if (!s) {
                 state.sheets.set(id, Object.assign({ gen: 0, png: null, scale: k / unit, busy: false, again: false, timer: null }, w));
+                // a colour needs no picture; a fixed layer's element leaves the page's own scan (an over or under sheet)
+                if (w.color) { state.sheets.get(id).gen = ++state.gen; continue; }
                 markNode(w.node, true);
                 snapshot(id);
                 continue;
             }
-            Object.assign(s, { x: w.x, y: w.y, w: w.w, h: w.h, st: w.st });
-            if (rescale) { s.scale = k / unit; snapshot(id); }
+            Object.assign(s, { x: w.x, y: w.y, w: w.w, h: w.h, st: w.st, z: w.z, color: w.color });
+            if (rescale && !w.color) { s.scale = k / unit; snapshot(id); }
         }
         sendList();
         setHidden().catch(() => {});
@@ -274,9 +376,25 @@ function createLayerSheets(session, deps) {
         if (!state.on || !ev || !Array.isArray(ev.layers)) return;
         state.latest = ev.layers;
         schedule();
+        armRest();
     }
 
     function onPainted(ev) {
+        // a content layer repainted: what was drawn ahead of it there is stale
+        const drawn = ev && state.prefilled.get(ev.layerId);
+        if (drawn && ev.clip && state.unit) {
+            const l = (state.latest || []).find((q) => q.layerId === ev.layerId);
+            const top = l ? docTop(l) : null;
+            if (top != null) {
+                const y0 = top + ev.clip.y / state.unit;
+                const y1 = y0 + ev.clip.height / state.unit;
+                state.prefilled.set(ev.layerId, drawn.filter((r) => r[1] <= y0 || r[0] >= y1));
+            }
+        }
+        if (ev && state.solid.has(ev.layerId) && state.solid.get(ev.layerId) !== null) {
+            state.solid.delete(ev.layerId);
+            schedule();
+        }
         const s = ev && state.sheets.get(ev.layerId);
         if (!s || !s.png) return;
         clearTimeout(s.timer);
@@ -290,8 +408,211 @@ function createLayerSheets(session, deps) {
         setHidden().catch(() => {});
     }
 
+    function armRest() {
+        if (!deps.contentMap) return;
+        clearTimeout(state.restTimer);
+        state.restTimer = setTimeout(atRest, REST_MS);
+    }
+
+    // the layers that scroll with the page (in drawing order), and whether a fixed one lies under them (a backdrop:
+    // then the content alone is not what shows)
+    function contentLayers() {
+        const layers = state.latest || [];
+        const scroll = session.scroll;
+        if (!scroll || !state.unit) return null;
+        const viewArea = (scroll.viewWidth || 1) * scroll.view * state.unit * state.unit;
+        const list = [];
+        let under = false;
+        let sawFixed = false;
+        for (const l of layers) {
+            const rec = state.layers.get(l.layerId);
+            if (!rec || !l.drawsContent || !translationOnly(l.transform)) continue;
+            if (rec.kind === 'fixed' && !l.stickyPositionConstraint && !state.sheets.has(l.layerId) && l.width * l.height > viewArea * 0.3) sawFixed = true;
+            if (rec.kind !== 'scroll' || l.stickyPositionConstraint || state.sheets.has(l.layerId)) continue;
+            if (sawFixed) under = true;
+            list.push(l);
+        }
+        return { list, under };
+    }
+
+    // the scroll offset now (CSS), from the page's own report
+    const scrollY = () => (session.scroll && session.scroll.y) || 0;
+    // a scrolling layer's top in the document (CSS): its place against the root scroller's layer (which starts at the
+    // document's top), both from the same layer update, so a scroll in between does not move it
+    const docTop = (l) => {
+        if (!state.unit || !state.latest) return null;
+        let ref = null;
+        for (const q of state.latest) if (q.drawsContent && (!ref || q.height > ref.height)) ref = q;
+        return ref ? (placeOf(l).y - placeOf(ref).y) / state.unit : null;
+    };
+
+    async function snapshotOf(id) {
+        const r = await cdp().send('LayerTree.makeSnapshot', { layerId: id });
+        return r.snapshotId;
+    }
+
+    // at rest: the page a screen above the view and a screen below the over-render band, drawn from the content
+    // layers' own recordings (LayerTree replay with a clip) onto the page's background; the viewer keeps it where its
+    // cache has nothing (the next frames there replace it). Not with a backdrop under the content, nor on pages that
+    // do not scroll. And the content map, while a viewer shows it.
+    async function atRest() {
+        state.restTimer = null;
+        const k = deps.frameScale(session);
+        const scroll = session.scroll;
+        if (!state.on || state.passing || !k || !scroll || !scroll.root || !session.sockets.size) return;
+        const now = Date.now();
+        if (now - state.passAt < PASS_MS) { state.restTimer = setTimeout(atRest, PASS_MS - (now - state.passAt)); return; }
+        const content = contentLayers();
+        if (!content || !content.list.length) return;
+        state.passing = true;
+        state.passAt = now;
+        const unit = state.unit;
+        const sy = scrollY();
+        const view = scroll.view;
+        const docH = scroll.height;
+        const snaps = new Map();
+        const snap = async (l) => {
+            if (!snaps.has(l.layerId)) snaps.set(l.layerId, await snapshotOf(l.layerId).catch(() => null));
+            return snaps.get(l.layerId);
+        };
+        try {
+            // a backdrop under the content: only once it is a sheet (see-through), else the content alone is wrong there
+            if (content.list.length && (!content.under || state.under) && deps.sharp && scroll.height > scroll.view + 8) {
+                const ranges = [[sy - view, sy], [sy + view * 1.5, sy + view * 2.5]]
+                    .map((r) => [Math.max(0, Math.round(r[0])), Math.min(docH, Math.round(r[1]))])
+                    .filter((r) => r[1] - r[0] >= 8);
+                for (const range of ranges) await prefill(range, content.list, snap, k, unit, sy);
+            }
+            if (state.contentWanted) await sendContent(content.list, snap, unit, sy, view);
+        } catch (err) {
+            if (DEBUG) deps.log('rest pass:', err.message);
+        } finally {
+            for (const id of snaps.values()) if (id) cdp().send('LayerTree.releaseSnapshot', { snapshotId: id }).catch(() => {});
+            state.passing = false;
+        }
+    }
+
+    async function prefill(range, list, snap, k, unit, sy) {
+        // only what was not drawn ahead since its layers last repainted there
+        const fresh = list.some((l) => !(state.prefilled.get(l.layerId) || []).some((r) => r[0] <= range[0] && r[1] >= range[1]));
+        if (!fresh) return;
+        const width = Math.round((session.scroll.viewWidth || 0) * k);
+        const height = Math.round((range[1] - range[0]) * k);
+        if (width < 8 || height < 8 || width * height > 8e6) return;
+        const parts = [];
+        for (const l of list) {
+            const p = placeOf(l);
+            const top = docTop(l);
+            if (top == null) continue;
+            const y0 = Math.max(range[0], top);
+            const y1 = Math.min(range[1], top + l.height / unit);
+            if (y1 - y0 < 1) continue;
+            const id = await snap(l);
+            if (!id) continue;
+            const shot = await cdp().send('LayerTree.replaySnapshot', {
+                snapshotId: id,
+                scale: k / unit,
+                clip: { x: 0, y: (y0 - top) * unit, width: l.width, height: (y1 - y0) * unit }
+            }).catch(() => null);
+            if (!shot || !shot.dataURL) continue;
+            parts.push({ input: Buffer.from(String(shot.dataURL).replace(/^data:image\/png;base64,/, ''), 'base64'), left: Math.max(0, Math.round(p.x / unit * k)), top: Math.round((y0 - range[0]) * k) });
+        }
+        if (!parts.length) return;
+        // on the page's background, or see-through over the sheets under the content (its colour and backdrop)
+        const bg = state.under ? { r: 0, g: 0, b: 0, alpha: 0 } : ((session.layers && session.layers.bg) || '#ffffff');
+        const quality = (session.settings && session.settings.regionQuality) || 78;
+        const body = await deps.sharp({ create: { width, height, channels: state.under ? 4 : 3, background: bg } })
+            .composite(parts).webp({ quality, effort: 2 }).toBuffer();
+        deps.broadcast(session, deps.binaryMessage(MSG_PREFILL, { y: range[0], h: range[1] - range[0], w: width, k }, body), true);
+        for (const l of list) {
+            const drawn = (state.prefilled.get(l.layerId) || []).filter((r) => r[1] <= range[0] || r[0] >= range[1]);
+            drawn.push(range);
+            state.prefilled.set(l.layerId, drawn.slice(-16));
+        }
+        if (DEBUG) deps.log('drew ahead', range.join('-'), parts.length + ' layers', body.length + ' B');
+    }
+
+    // where the page draws text, images and flat fills around the view (document CSS pixels), for the viewer's
+    // content-type check (Alchemy Information)
+    async function sendContent(list, snap, unit, sy, view) {
+        const out = { type: 'content', text: [], images: [], fills: [] };
+        const y0 = Math.max(0, sy - view);
+        const y1 = sy + view * 2;
+        for (const l of list) {
+            const p = placeOf(l);
+            const top = docTop(l);
+            if (top == null) continue;
+            const c0 = Math.max(y0, top);
+            const c1 = Math.min(y1, top + l.height / unit);
+            if (c1 - c0 < 1) continue;
+            const id = await snap(l);
+            if (!id) continue;
+            const map = await cdp().send('LayerTree.alchemyContentMap', { snapshotId: id, clip: { x: 0, y: (c0 - top) * unit, width: l.width, height: (c1 - c0) * unit } }).catch(() => null);
+            if (!map) continue;
+            const add = (from, per, into) => {
+                for (let i = 0; i + per <= from.length && into.length < MAX_CONTENT * per; i += per) {
+                    into.push(Math.round(from[i] / unit + p.x / unit), Math.round(from[i + 1] / unit + top), Math.round(from[i + 2] / unit), Math.round(from[i + 3] / unit));
+                    for (let j = 4; j < per; j++) into.push(from[i + j]);
+                }
+            };
+            add(map.text || [], 4, out.text);
+            add(map.images || [], 6, out.images);
+            add(map.fills || [], 5, out.fills);
+        }
+        const key = JSON.stringify(out);
+        if (key === state.contentSent) return;
+        state.contentSent = key;
+        send(out);
+    }
+
+    // The viewer scrolls (dir, speed, how far it will still go, CSS): what lies ahead that way, past the view and its
+    // over-render band, up to two screens (the layers' recordings reach about that far), a screen at a time; one pass
+    // at a time, at most every 300 ms
+    async function ahead(msg) {
+        const k = deps.frameScale(session);
+        const scroll = session.scroll;
+        const dir = msg && (msg.dir === 1 || msg.dir === -1) ? msg.dir : 0;
+        if (!deps.contentMap || !state.on || state.passing || !dir || !k || !scroll || !scroll.root || !session.sockets.size) return;
+        const now = Date.now();
+        if (now - (state.aheadAt || 0) < 300) return;
+        const content = contentLayers();
+        if (!content || !content.list.length || (content.under && !state.under) || !deps.sharp) return;
+        state.aheadAt = now;
+        state.passing = true;
+        const view = scroll.view;
+        const sy = Number.isFinite(msg.y) ? msg.y : scrollY();
+        const reach = Math.max(view, Math.min(view * 2, Number(msg.reach) || 0));
+        const from = dir > 0 ? sy + view * 1.5 : sy - reach;
+        const to = dir > 0 ? sy + view * 1.5 + reach : sy;
+        const ranges = [];
+        for (let y = dir > 0 ? from : to; dir > 0 ? y < to : y > from; y += dir * view) {
+            const r = dir > 0 ? [y, Math.min(to, y + view)] : [Math.max(from, y - view), y];
+            ranges.push([Math.max(0, Math.round(r[0])), Math.min(scroll.height, Math.round(r[1]))]);
+        }
+        const snaps = new Map();
+        const snap = async (l) => {
+            if (!snaps.has(l.layerId)) snaps.set(l.layerId, await snapshotOf(l.layerId).catch(() => null));
+            return snaps.get(l.layerId);
+        };
+        try {
+            for (const range of ranges) if (range[1] - range[0] >= 8) await prefill(range, content.list, snap, k, state.unit, scrollY());
+        } catch (err) {
+            if (DEBUG) deps.log('ahead:', err.message);
+        } finally {
+            for (const id of snaps.values()) if (id) cdp().send('LayerTree.releaseSnapshot', { snapshotId: id }).catch(() => {});
+            state.passing = false;
+        }
+    }
+
     return {
         get active() { return state.on; },
+        ahead(msg) { ahead(msg).catch(() => {}); },
+        // a viewer shows the content map (Alchemy Information) or stopped
+        wantContent(on) {
+            state.contentWanted = !!on;
+            state.contentSent = '';
+            if (on) { state.passAt = 0; armRest(); }
+        },
         async start() {
             if (state.on) return;
             state.on = true;
@@ -306,6 +627,10 @@ function createLayerSheets(session, deps) {
             state.reasons.clear();
             state.refY = null;
             state.latest = null;
+            state.prefilled.clear();
+            state.contentSent = '';
+            state.solid.clear();
+            state.under = false;
             if (state.sheets.size || state.listSent !== '[]') clear();
             // a new document can be a new renderer, whose agents start off: LayerTree (and DOM, for the nodes) again
             if (state.on) {
@@ -318,7 +643,7 @@ function createLayerSheets(session, deps) {
             for (const [id, s] of state.sheets) {
                 if (s.png) ws.send(deps.binaryMessage(MSG_SHEET, { id, gen: s.gen }, s.png));
             }
-            const list = [...state.sheets.entries()].filter(([, s]) => s.png).map(([id, s]) => entryOf(id, s));
+            const list = [...state.sheets.entries()].filter(([, s]) => s.png || s.color).map(([id, s]) => entryOf(id, s));
             ws.send(JSON.stringify({ type: 'sheets', list }));
         },
         // LayerTree.disable also shows every hidden layer again (the patch)
@@ -327,6 +652,9 @@ function createLayerSheets(session, deps) {
             state.on = false;
             clearTimeout(state.timer);
             state.timer = null;
+            clearTimeout(state.restTimer);
+            state.restTimer = null;
+            state.prefilled.clear();
             for (const s of state.sheets.values()) clearTimeout(s.timer);
             state.sheets.clear();
             state.layers.clear();
@@ -335,6 +663,9 @@ function createLayerSheets(session, deps) {
             state.latest = null;
             state.hidden = '';
             state.listSent = '';
+            state.solid.clear();
+            state.under = false;
+            if (deps.setAlphaFrames) deps.setAlphaFrames(session, false);
             const c = cdp();
             if (c) {
                 c.off('LayerTree.layerTreeDidChange', onTree);
@@ -345,4 +676,4 @@ function createLayerSheets(session, deps) {
     };
 }
 
-module.exports = { createLayerSheets, MSG_SHEET };
+module.exports = { createLayerSheets, MSG_SHEET, MSG_PREFILL };

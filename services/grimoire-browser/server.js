@@ -183,6 +183,7 @@ let emulatedScale = false;
 // the build's layer-sheets patch (LayerTree.alchemySetHiddenLayers): fixed layers over the page go to the viewer as
 // sheets of their own (layerSheets.js); ALCHEMY_SHEETS=0 keeps them in the frames
 let layerSheetsBuild = false;
+let layerContentBuild = false;
 const SHEETS_OFF = process.env.ALCHEMY_SHEETS === '0';
 
 function buildPatches(bin) {
@@ -1613,7 +1614,8 @@ function jxlRepack(jpeg) {
 // a whole frame for this viewer: JPEG XL on a slow link when it can show it and it is smaller, else the JPEG as is
 // worth repacking for this session's slowest viewer: the send time it saves against what a repack costs here
 function jxlWorth(session, bytes) {
-    if (!session.jxl || !jxlAvailable()) return false;
+    // a WebP frame (see-through) has no JPEG to repack
+    if (!session.jxl || !jxlAvailable() || session.alphaFrames) return false;
     if (JXL_MODE === 'on') return slowLink(session);
     const kbps = session.aq && session.aq.link && session.aq.link.kbps;
     if (!kbps) return false;
@@ -1840,7 +1842,7 @@ async function packFrame(session, jpeg, gen, header) {
     }
     if (stale()) return { stale: true };
     // tiles (or the move and its tiles) patch the frame before them; the header is this frame's (scroll offset, time)
-    const extra = { width, height, f: 'webp', rects: regions };
+    const extra = { width, height, f: 'webp', q: session.settings.regionQuality, rects: regions };
     if (dy) {
         extra.dy = dy;
         extra.ops = ops.map((op) => [op.dst, op.src, op.rows]);
@@ -1865,10 +1867,21 @@ const STILL_ACK_WAIT_MS = 10000;
 // A link this slow (the viewer's measured round trip, relay queue included) waits for a still.
 const STILL_MAX_RTT_MS = 1000;
 
-// a screencast frame's pixel size from its JPEG header (base64; only the first few KB are read)
+// a screencast frame's pixel size from its JPEG or WebP header (base64; only the first few KB are read)
 function jpegDims(b64) {
     let buf;
     try { buf = Buffer.from(String(b64 || '').slice(0, 8192), 'base64'); } catch (_) { return null; }
+    // WebP (see-through frames, layer sheets under the content): RIFF....WEBP then VP8X / VP8L / VP8
+    if (buf.length >= 30 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
+        const chunk = buf.toString('ascii', 12, 16);
+        if (chunk === 'VP8X') return [1 + buf.readUIntLE(24, 3), 1 + buf.readUIntLE(27, 3)];
+        if (chunk === 'VP8L') {
+            const bits = buf.readUInt32LE(21);
+            return [1 + (bits & 0x3fff), 1 + ((bits >> 14) & 0x3fff)];
+        }
+        if (chunk === 'VP8 ') return [buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff];
+        return null;
+    }
     let i = 2;
     while (i + 9 < buf.length) {
         if (buf[i] !== 0xff) { i++; continue; }
@@ -2022,7 +2035,7 @@ async function captureStill(session) {
             }
         }
         else shot = await session.cdp.send('Page.captureScreenshot', {
-            format: 'jpeg',
+            format: session.alphaFrames ? 'webp' : 'jpeg',
             quality: session.settings.jpegQuality,
             captureBeyondViewport: false,
             // the clip scale multiplies the device scale: a mobile page already has the viewer's (mobileDeviceScale)
@@ -2037,7 +2050,9 @@ async function captureStill(session) {
     if (PACK_DEBUG) console.log('[grimoire-browser] still captured', shot && shot.data ? shot.data.length : 0, 'B64; frames since', (session.stillGen || 0) - gen, 'meta', session.meta === meta ? 'same' : JSON.stringify(meta) + ' -> ' + JSON.stringify(session.meta));
     if (!shot || !shot.data || !sessions.get(session.id) || session.stillGen !== gen || session.meta !== meta) return;
     let data = shot.data;
-    let format = 'jpeg';
+    let format = session.alphaFrames && !refine ? 'webp' : 'jpeg';
+    // JPEG XL's distance (the refine), else the quality (Alchemy Information's colour by source)
+    let stillDistance = 0;
     if (refine) {
         let out = null;
         try {
@@ -2046,9 +2061,12 @@ async function captureStill(session) {
             // the view's own rows: the frame's width, its height without the band
             const viewH = Math.min(info.height, Math.round(meta.deviceHeight * (session.pxPerDip || 1) * (meta.pageScaleFactor || 1)));
             if (PACK_DEBUG) console.log('[grimoire-browser] refine capture', info.width + 'x' + info.height, 'view rows', viewH, 'frame', session.pixelWidth + 'x' + session.pixelHeight);
-            const decoded = await png.extract({ left: 0, top: 0, width: info.width, height: Math.max(1, viewH) }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+            // see-through frames keep their alpha in the still too (the layers under the content show through)
+            const cut = png.extract({ left: 0, top: 0, width: info.width, height: Math.max(1, viewH) });
+            const decoded = await (session.alphaFrames ? cut.ensureAlpha() : cut.removeAlpha()).raw().toBuffer({ resolveWithObject: true });
             const level = session.aq ? session.aq.level : AQ_START;
-            out = await jxlEncodePixels(decoded.data, decoded.info.width, decoded.info.height, 3, REFINE_DISTANCE[level] || 1);
+            stillDistance = REFINE_DISTANCE[level] || 1;
+            out = await jxlEncodePixels(decoded.data, decoded.info.width, decoded.info.height, session.alphaFrames ? 4 : 3, stillDistance);
         } catch (err) { out = null; if (PACK_DEBUG) console.log('[grimoire-browser] refine failed', err && err.message); }
         if (PACK_DEBUG) console.log('[grimoire-browser] refine jxl', out ? out.length : 0, 'B; frames since', (session.stillGen || 0) - gen);
         // a frame came while it encoded: this view is old
@@ -2070,6 +2088,8 @@ async function captureStill(session) {
         scale,
         baseBytes,
         f: format,
+        q: format === 'jxl' ? undefined : session.settings.jpegQuality,
+        d: format === 'jxl' ? stillDistance : undefined,
         data
     };
     session.still = still;
@@ -2193,6 +2213,10 @@ function frameHeader(session, meta) {
         sy: Math.round((Number(m.scrollOffsetY) || 0) * (cssPerDip || 1) * 100) / 100,
         k: desktop ? k : 0,
         p: desktop ? 1 : 0,
+        // see-through frames (WebP with alpha) while the page's layers under the content are sheets (layerSheets.js)
+        f: session.alphaFrames ? 'webp' : undefined,
+        // the quality it was encoded at (Alchemy Information's colour by source names it)
+        q: session.settings ? session.settings.jpegQuality : undefined,
         // frame rows of the page's viewport; any rows below are the over-render band
         vh: session.bandDip ? Math.round((session.dipHeight || 0) * (session.pxPerDip || 1)) : 0
     };
@@ -3538,6 +3562,8 @@ async function launchBrowser() {
     fs.chmodSync(PROFILE_DIR, 0o700);
     emulatedScale = patchedBuild(chromeBin);
     layerSheetsBuild = !SHEETS_OFF && buildPatches(chromeBin).includes('layer-sheets');
+    // the content map, replay with a clip and a see-through background (layer sheets under the content)
+    layerContentBuild = layerSheetsBuild && buildPatches(chromeBin).includes('layer-content');
     setProfilePrefs();
     extensions = readExtensions().filter((ext) => chromeSettings.addonEnabled(ext.id));
     const extensionDirs = extensions.map((ext) => ext.dir).join(',');
@@ -3688,7 +3714,8 @@ async function startScreencast(session) {
     session.casting = true;
     // the frame is the viewport's DIP size (desktop: device pixels, see applyViewport); never scaled down
     await session.cdp.send('Page.startScreencast', {
-        format: 'jpeg',
+        // WebP keeps the frame's transparency where the layers under the content (sheets) show through
+        format: session.alphaFrames ? 'webp' : 'jpeg',
         quality: session.settings.jpegQuality,
         maxWidth: Math.ceil((session.dipWidth || session.width) * (session.pxPerDip || 1)),
         maxHeight: Math.ceil(((session.dipHeight || session.height) + (session.bandDip || 0)) * (session.pxPerDip || 1)),
@@ -4226,6 +4253,17 @@ async function createSession(body, adoptedPage) {
             broadcast,
             binaryMessage,
             frameScale: (s) => frameHeader(s).k,
+            sharp,
+            // the build's content-map patch (LayerTree.alchemyContentMap, replay with a clip): drawing ahead at rest
+            contentMap: layerContentBuild,
+            // see-through frames on (the layers under the content are sheets) or off: the screencast starts again in
+            // the other format and the next frame is whole
+            setAlphaFrames: (s, on) => {
+                if (!!s.alphaFrames === !!on) return;
+                s.alphaFrames = !!on;
+                s.pixels = null;
+                restartScreencast(s).catch(() => {});
+            },
             log: (...args) => console.warn('[grimoire-browser] sheets:', ...args)
         });
         // on while a viewer watches (attachViewer): LayerTree reports the page's layers at every update
@@ -4574,6 +4612,16 @@ async function onViewerMessage(session, raw, ws) {
     if (msg.type === 'memory-override') {
         session.memOverride = true;
         await thawSession(session);
+        return;
+    }
+    // Alchemy Information's content-type check: the viewer wants the content map (layerSheets.js)
+    // the viewer scrolls: Alchemy draws ahead the way it goes (layerSheets.js)
+    if (msg.type === 'ahead') {
+        if (session.sheets) session.sheets.ahead(msg);
+        return;
+    }
+    if (msg.type === 'want-content') {
+        if (session.sheets) session.sheets.wantContent(!!msg.on);
         return;
     }
     if (msg.type === 'rtt') {

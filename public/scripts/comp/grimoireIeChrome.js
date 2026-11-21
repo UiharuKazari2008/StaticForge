@@ -1867,8 +1867,9 @@
         [-1, 'S', 7, 260, 66, 9, 0x50020080, 'Automatic:', 0],
         [931, 'S', 76, 260, 179, 18, 0x50020080, '', 0],
         [-1, 'S', 7, 281, 248, 1, 0x50000010, '', 0],
-        [951, 'B', 7, 287, 118, 10, 0x50010003, 'Show layer &borders', 0],
-        [952, 'B', 128, 287, 127, 10, 0x50010003, 'C&olour by source', 0],
+        [951, 'B', 7, 287, 74, 10, 0x50010003, 'Layer &borders', 0],
+        [952, 'B', 84, 287, 86, 10, 0x50010003, 'Colour by &source', 0],
+        [954, 'B', 173, 287, 82, 10, 0x50010003, 'Content &types', 0],
         [953, 'B', 7, 303, 64, 14, 0x50010000, '&Page Cache...', 0],
         [1, 'B', 205, 303, 50, 14, 0x50010001, 'Close', 0]
     ] };
@@ -1959,11 +1960,11 @@
         const V = window.vistaDialogTemplate;
         if (!V) return;
         const abort = new AbortController();
-        const state = { host, modal: null, abort, timer: 0, info: null, stats: null, prev: null, view: null, frame: null, close: null, debug: { borders: false, quality: false } };
+        const state = { host, modal: null, abort, timer: 0, info: null, stats: null, prev: null, view: null, frame: null, close: null, debug: { borders: false, quality: false, content: false } };
         // the checks to the viewer on show (and off again on the one it leaves, or when this window closes)
         const sendDebug = (f, on) => {
             if (!f || !f.contentWindow) return;
-            f.contentWindow.postMessage({ type: 'grimoire-browser-debug', borders: on && state.debug.borders, quality: on && state.debug.quality }, '*');
+            f.contentWindow.postMessage({ type: 'grimoire-browser-debug', borders: on && state.debug.borders, quality: on && state.debug.quality, content: on && state.debug.content }, '*');
         };
         const shellNow = () => (host.activePane && host.activePane !== host ? host.activePane : host);
         const frameNow = () => {
@@ -1980,7 +1981,7 @@
         const showing = () => !document.hidden && state.modal && state.modal.isConnected && !state.modal.classList.contains('hidden')
             && host.modal && !host.modal.classList.contains('hidden') && !host.modal.classList.contains('minimised') && !host.modal.classList.contains('minimising');
         const finish = () => {
-            if (state.debug.borders || state.debug.quality) sendDebug(state.frame, false);
+            if (state.debug.borders || state.debug.quality || state.debug.content) sendDebug(state.frame, false);
             abort.abort();
             clearTimeout(state.timer);
             ctxRef = null;
@@ -1990,7 +1991,7 @@
         const follow = () => {
             const f = frameNow();
             if (f === state.frame) return;
-            if (state.debug.borders || state.debug.quality) {
+            if (state.debug.borders || state.debug.quality || state.debug.content) {
                 sendDebug(state.frame, false);
                 sendDebug(f, true);
             }
@@ -2106,10 +2107,12 @@
                 const toggle = () => {
                     state.debug.borders = !!ctx.get(951);
                     state.debug.quality = !!ctx.get(952);
+                    state.debug.content = !!ctx.get(954);
                     sendDebug(state.frame, true);
                 };
                 ctx.on(951, 'change', toggle);
                 ctx.on(952, 'change', toggle);
+                ctx.on(954, 'change', toggle);
                 ctx.on(953, 'click', () => { showPageCache(host).catch(() => {}); });
             },
             ok() { finish(); },
