@@ -1332,6 +1332,13 @@ function noteViewerReport(session, ws, rep) {
     // the device's ceiling: a frame every decode time plus a margin
     aq.fpsCap = dec > 4 ? Math.max(5, Math.min(60, Math.floor(1000 / (dec * 1.25)))) : 60;
     aq.link = { rtt: Math.round(rtt), base: Math.round(base), queueMs: Math.round(queue), kbps: Math.round(st.good * 8 / 1000), inFlightMs: Math.round(flightMs), decMs: Math.round(dec * 10) / 10, fpsCap: aq.fpsCap, frames: Number(rep.n) || 0 };
+    // see-through JPEG XL frames this device decodes slower than 30 a second: WebP for the moving frames of this tab
+    // (Chromium 156 decodes a 1500 x 1050 JPEG XL in ~70-95 ms on this host, WebP in ~18 ms); stills stay JPEG XL
+    if (session.alphaCodecNow === 'jxl' && (Number(rep.n) || 0) >= 3 && dec > ALPHA_JXL_DECODE_MS && !session.alphaJxlSlow) {
+        session.alphaJxlSlow = true;
+        session.pixels = null;
+        restartScreencast(session).catch(() => {});
+    }
     if (!aq.auto) return;
     const before = aq.level;
     const congested = queue > Math.max(60, base * 0.5) || (inFlight > 65536 && flightMs > 400);
@@ -1528,36 +1535,40 @@ const JXL_ON = JXL_MODE !== 'off';
 const jxlStats = { ms: 80, ratio: 0.8, n: 0 };
 const JXL_PIPE = process.env.ALCHEMY_JXL_PIPE || path.join(DATA_DIR, 'alchemy-jxl-pipe');
 const JXL_TIMEOUT_MS = 120;
-const jxl = { proc: null, buf: Buffer.alloc(0), queue: [], broken: false };
+const jxl = { proc: null, buf: Buffer.alloc(0), queue: [], broken: false, effort: 3 };
+// effort 7 for pictures encoded once and kept (layer sheets): measured Nov 21 against effort 3, 1500 x 1050, d1:
+// Wikipedia 153 KB 45.1 dB vs 255 KB 40.6 dB, a photo 66 KB 47.9 dB vs 72 KB 43.6 dB; ~0.6-1.9 s to encode
+const jxlStill = { proc: null, buf: Buffer.alloc(0), queue: [], broken: false, effort: 7 };
 
 function jxlAvailable() {
     return JXL_ON && !jxl.broken && fs.existsSync(JXL_PIPE);
 }
 
-function jxlStart() {
-    if (jxl.proc) return jxl.proc;
-    // effort 3, half the cores (libjxl's thread pool; the pipe built before Nov 21 takes no second argument)
-    const proc = spawn(JXL_PIPE, ['3', String(Math.max(1, Math.floor(os.cpus().length / 2)))], { stdio: ['pipe', 'pipe', 'ignore'] });
-    jxl.proc = proc;
-    jxl.buf = Buffer.alloc(0);
+function jxlStart(pipe) {
+    const state = pipe || jxl;
+    if (state.proc) return state.proc;
+    // its effort, half the cores (libjxl's thread pool; the pipe built before Nov 21 takes no second argument)
+    const proc = spawn(JXL_PIPE, [String(state.effort || 3), String(Math.max(1, Math.floor(os.cpus().length / 2)))], { stdio: ['pipe', 'pipe', 'ignore'] });
+    state.proc = proc;
+    state.buf = Buffer.alloc(0);
     proc.stdout.on('data', (chunk) => {
-        jxl.buf = jxl.buf.length ? Buffer.concat([jxl.buf, chunk]) : chunk;
-        while (jxl.buf.length >= 4) {
-            const n = jxl.buf.readUInt32LE(0);
-            if (jxl.buf.length < 4 + n) break;
-            const out = n ? Buffer.from(jxl.buf.subarray(4, 4 + n)) : null;
-            jxl.buf = jxl.buf.subarray(4 + n);
-            const waiter = jxl.queue.shift();
+        state.buf = state.buf.length ? Buffer.concat([state.buf, chunk]) : chunk;
+        while (state.buf.length >= 4) {
+            const n = state.buf.readUInt32LE(0);
+            if (state.buf.length < 4 + n) break;
+            const out = n ? Buffer.from(state.buf.subarray(4, 4 + n)) : null;
+            state.buf = state.buf.subarray(4 + n);
+            const waiter = state.queue.shift();
             if (waiter) waiter(out);
         }
     });
     const gone = () => {
-        if (jxl.proc !== proc) return;
-        jxl.proc = null;
-        for (const waiter of jxl.queue.splice(0)) waiter(null);
+        if (state.proc !== proc) return;
+        state.proc = null;
+        for (const waiter of state.queue.splice(0)) waiter(null);
     };
     proc.once('exit', gone);
-    proc.once('error', () => { jxl.broken = true; gone(); });
+    proc.once('error', () => { state.broken = true; gone(); });
     proc.stdin.on('error', () => {});
     return proc;
 }
@@ -1566,14 +1577,16 @@ function jxlStart() {
 // (1.0: visually lossless; 0 with lossless). The view at rest goes this way (Yukimi, Nov 21: "I want JPEG XL by
 // default as layers can use transparentcy and would be always better quality"): on this host ~70 ms for 1200 x 900
 // with the pipe's threads, about the bytes of a quality-70 JPEG at distance 1.
-function jxlEncodePixels(pixels, width, height, channels, distance, lossless) {
-    if (!jxlAvailable()) return Promise.resolve(null);
-    const proc = jxlStart();
+function jxlEncodePixels(pixels, width, height, channels, distance, lossless, pipe) {
+    if (!jxlAvailable() || (pipe && pipe.broken)) return Promise.resolve(null);
+    const state = pipe || jxl;
+    const proc = jxlStart(state);
     return new Promise((resolve) => {
         let done = false;
         const finish = (out) => { if (!done) { done = true; resolve(out); } };
-        jxl.queue.push(finish);
-        setTimeout(() => finish(null), 2000).unref();
+        state.queue.push(finish);
+        // effort 7 takes up to ~2 s for a large picture
+        setTimeout(() => finish(null), state.effort > 3 ? 6000 : 2000).unref();
         const head = Buffer.alloc(16);
         head.writeUInt32LE(((12 + pixels.length) | 0x80000000) >>> 0, 0);
         head.writeUInt32LE(width, 4);
@@ -1764,8 +1777,10 @@ async function packFrame(session, jpeg, gen, header) {
     const stale = () => gen != null && session.packGen !== gen;
     const t0 = PACK_DEBUG ? process.hrtime.bigint() : 0n;
     let decoded;
+    // a JPEG XL frame made here keeps its pixels (no decoder for it on this host)
+    const kept = session.latestRaw && session.latestRaw.frame === jpeg ? session.latestRaw : null;
     try {
-        decoded = await sharp(jpeg).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        decoded = kept ? { data: kept.data, info: kept.info } : await sharp(jpeg).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     } catch (_) {
         return { binary: jpeg };
     }
@@ -1830,10 +1845,15 @@ async function packFrame(session, jpeg, gen, header) {
     const regions = [];
     const bodies = [];
     let total = 0;
+    // the tiles of a see-through JPEG XL frame are JPEG XL too (their transparency kept)
+    const jxlTiles = session.alphaCodecNow === 'jxl';
     for (const rect of rects) {
-        const encoded = await sharp(cropRGBA(next, width, rect), {
-            raw: { width: rect.w, height: rect.h, channels: 4 }
-        }).webp({ quality: session.settings.regionQuality, effort: 2 }).toBuffer();
+        const encoded = jxlTiles
+            ? await jxlEncodePixels(cropRGBA(next, width, rect), rect.w, rect.h, 4, frameDistance(session))
+            : await sharp(cropRGBA(next, width, rect), {
+                raw: { width: rect.w, height: rect.h, channels: 4 }
+            }).webp({ quality: session.settings.regionQuality, effort: 2 }).toBuffer();
+        if (!encoded) return wholeFrame(session, jpeg, header, 'tile encode');
         if (stale()) return { stale: true };
         total += encoded.length;
         if (total > jpeg.length * 0.7) return wholeFrame(session, jpeg, header, 'bytes ' + total + ' of ' + jpeg.length);
@@ -1842,7 +1862,9 @@ async function packFrame(session, jpeg, gen, header) {
     }
     if (stale()) return { stale: true };
     // tiles (or the move and its tiles) patch the frame before them; the header is this frame's (scroll offset, time)
-    const extra = { width, height, f: 'webp', q: session.settings.regionQuality, rects: regions };
+    const extra = jxlTiles
+        ? { width, height, f: 'jxl', d: frameDistance(session), rects: regions }
+        : { width, height, f: 'webp', q: session.settings.regionQuality, rects: regions };
     if (dy) {
         extra.dy = dy;
         extra.ops = ops.map((op) => [op.dst, op.src, op.rows]);
@@ -1871,6 +1893,8 @@ const STILL_MAX_RTT_MS = 1000;
 function jpegDims(b64) {
     let buf;
     try { buf = Buffer.from(String(b64 || '').slice(0, 8192), 'base64'); } catch (_) { return null; }
+    // PNG (see-through frames for JPEG XL): the IHDR chunk's width and height
+    if (buf.length >= 24 && buf[0] === 0x89 && buf.toString('ascii', 1, 4) === 'PNG') return [buf.readUInt32BE(16), buf.readUInt32BE(20)];
     // WebP (see-through frames, layer sheets under the content): RIFF....WEBP then VP8X / VP8L / VP8
     if (buf.length >= 30 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
         const chunk = buf.toString('ascii', 12, 16);
@@ -1901,6 +1925,54 @@ function jxlRefine(session) {
 // JPEG XL distance of the refined view by automatic quality's step: near lossless on a good link, coarser when it
 // is struggling (still far better than the step's JPEG)
 const REFINE_DISTANCE = [0.5, 0.6, 0.8, 1.0, 1.2, 1.5, 1.9, 2.4, 3.0];
+
+// See-through frames (the page's layers under the content are sheets): WebP from Chromium. JPEG XL was measured for
+// them (Yukimi, Nov 21: "why did you not consider JPEG XL for transparent/lucent layers?" / "rely on hard esablished
+// facts form testing"), 1500 x 1050 pictures of four real pages: the A53's Chrome 157 decodes JPEG XL in 95-152 ms,
+// WebP in 24-49 ms, JPEG in 26-28 ms (Alchemy's Chromium on this host: 45-111 / 14-43 / 13-37 ms), so moving JPEG XL
+// frames would hold a phone near 7-10 a second; at the service's effort 3 JPEG XL was not smaller than WebP either
+// (Wikipedia d1.5 203 KB 37.8 dB against WebP q85 173 KB 38.3 dB). ALCHEMY_ALPHA_FRAMES=jxl brings them back (PNG
+// from Chromium, encoded here at a distance by automatic quality's step, its tiles too) to compare.
+const ALPHA_FRAMES_JXL = process.env.ALCHEMY_ALPHA_FRAMES === 'jxl';
+const FRAME_DISTANCE = [1.0, 1.2, 1.5, 1.8, 2.2, 2.6, 3.0, 3.5, 4.0];
+
+const ALPHA_JXL_DECODE_MS = 34;
+
+function alphaCodec(session) {
+    if (!session.alphaFrames) return null;
+    return ALPHA_FRAMES_JXL && jxlRefine(session) && !session.alphaJxlSlow ? 'jxl' : 'webp';
+}
+
+function frameDistance(session) {
+    return FRAME_DISTANCE[session.aq ? session.aq.level : AQ_START] || 2;
+}
+
+// a PNG frame (see-through, JPEG XL viewers) as JPEG XL: its pixels decoded once, kept for packFrame's comparison;
+// one at a time, the newest waiting (Chromium sends the next only after the ack, which pumpFrames sends)
+async function transcodeAlphaFrame(session, event) {
+    if (session.transcoding) { session.transcodeNext = event; return; }
+    session.transcoding = true;
+    try {
+        for (let ev = event; ev; ev = session.transcodeNext, session.transcodeNext = null) {
+            let out = null;
+            let raw = null;
+            try {
+                raw = await sharp(Buffer.from(ev.data, 'base64')).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+                out = await jxlEncodePixels(raw.data, raw.info.width, raw.info.height, 4, frameDistance(session));
+            } catch (_) { out = null; }
+            if (!sessions.get(session.id)) return;
+            session.pendingAck = ev.sessionId;
+            if (out) {
+                session.latestFrame = out;
+                session.latestMeta = ev.metadata || null;
+                session.latestRaw = { frame: out, data: raw.data, info: raw.info };
+            }
+            pumpFrames(session);
+        }
+    } finally {
+        session.transcoding = false;
+    }
+}
 
 function stillScale(session) {
     const meta = session.meta || {};
@@ -2181,6 +2253,10 @@ function pumpFrames(session) {
 }
 
 function noteScreencastFrame(session, event) {
+    if (session.alphaCodecNow === 'jxl' && event.data && sharp) {
+        transcodeAlphaFrame(session, event).catch(() => {});
+        return;
+    }
     session.pendingAck = event.sessionId;
     if (event.data) {
         session.latestFrame = Buffer.from(event.data, 'base64');
@@ -2213,10 +2289,11 @@ function frameHeader(session, meta) {
         sy: Math.round((Number(m.scrollOffsetY) || 0) * (cssPerDip || 1) * 100) / 100,
         k: desktop ? k : 0,
         p: desktop ? 1 : 0,
-        // see-through frames (WebP with alpha) while the page's layers under the content are sheets (layerSheets.js)
-        f: session.alphaFrames ? 'webp' : undefined,
-        // the quality it was encoded at (Alchemy Information's colour by source names it)
-        q: session.settings ? session.settings.jpegQuality : undefined,
+        // see-through frames (JPEG XL or WebP with alpha) while the page's layers under the content are sheets
+        f: session.alphaCodecNow || undefined,
+        // the quality it was encoded at (Alchemy Information's colour by source names it): JPEG XL's distance
+        q: session.alphaCodecNow === 'jxl' || !session.settings ? undefined : session.settings.jpegQuality,
+        d: session.alphaCodecNow === 'jxl' ? frameDistance(session) : undefined,
         // frame rows of the page's viewport; any rows below are the over-render band
         vh: session.bandDip ? Math.round((session.dipHeight || 0) * (session.pxPerDip || 1)) : 0
     };
@@ -3713,9 +3790,11 @@ async function launchBrowser() {
 async function startScreencast(session) {
     session.casting = true;
     // the frame is the viewport's DIP size (desktop: device pixels, see applyViewport); never scaled down
+    // see-through: PNG for this host's JPEG XL, else Chromium's WebP; a JPEG otherwise
+    session.alphaCodecNow = alphaCodec(session);
+    session.latestRaw = null;
     await session.cdp.send('Page.startScreencast', {
-        // WebP keeps the frame's transparency where the layers under the content (sheets) show through
-        format: session.alphaFrames ? 'webp' : 'jpeg',
+        format: session.alphaCodecNow === 'jxl' ? 'png' : (session.alphaCodecNow === 'webp' ? 'webp' : 'jpeg'),
         quality: session.settings.jpegQuality,
         maxWidth: Math.ceil((session.dipWidth || session.width) * (session.pxPerDip || 1)),
         maxHeight: Math.ceil(((session.dipHeight || session.height) + (session.bandDip || 0)) * (session.pxPerDip || 1)),
@@ -4254,12 +4333,28 @@ async function createSession(body, adoptedPage) {
             binaryMessage,
             frameScale: (s) => frameHeader(s).k,
             sharp,
+            // a stationary layer's picture (a sheet): mostly images -> JPEG XL effort 7 at distance 1 (or WebP q90 for a
+            // viewer without it), else WebP lossless; from the measurements of Nov 21 (docs/grimoire-remote-browser.md
+            // "Codec measurements"): text and flat layers were smallest and exact as WebP lossless (Yozora's layer
+            // 51 KB, 24 ms to decode on the A53), pictures with images smallest and sharpest as JPEG XL effort 7
+            encodeSheet: async (s, png, imagey) => {
+                const raw = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+                const { width, height } = raw.info;
+                if (imagey && jxlRefine(s)) {
+                    const out = await jxlEncodePixels(raw.data, width, height, 4, 1, false, jxlStill);
+                    if (out) return { bytes: out, f: 'jxl', d: 1 };
+                }
+                const pic = sharp(raw.data, { raw: { width, height, channels: 4 } });
+                if (imagey) return { bytes: await pic.webp({ quality: 90, effort: 2 }).toBuffer(), f: 'webp', q: 90 };
+                return { bytes: await pic.webp({ lossless: true, effort: 2 }).toBuffer(), f: 'webp', d: 0 };
+            },
             // the build's content-map patch (LayerTree.alchemyContentMap, replay with a clip): drawing ahead at rest
             contentMap: layerContentBuild,
             // see-through frames on (the layers under the content are sheets) or off: the screencast starts again in
             // the other format and the next frame is whole
             setAlphaFrames: (s, on) => {
                 if (!!s.alphaFrames === !!on) return;
+                if (process.env.ALCHEMY_DEBUG_SHEETS === '1') console.warn('[grimoire-browser] sheets: see-through frames', on ? 'on' : 'off');
                 s.alphaFrames = !!on;
                 s.pixels = null;
                 restartScreencast(s).catch(() => {});
@@ -5507,6 +5602,11 @@ function attachViewer(ws, session) {
         // what the viewer can show (#990 round 2): image/jxl
         if (preview && preview.type === 'caps') {
             session.jxl = preview.jxl === true;
+            // see-through frames follow what the viewers can show (JPEG XL or WebP)
+            if (session.alphaFrames && alphaCodec(session) !== session.alphaCodecNow) {
+                session.pixels = null;
+                restartScreencast(session).catch(() => {});
+            }
             return;
         }
         // the window in front wants this host's audio on its socket (#990)

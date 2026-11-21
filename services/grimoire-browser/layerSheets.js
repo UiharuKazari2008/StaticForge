@@ -26,6 +26,12 @@ const REST_MS = 900;
 // one pass of drawing ahead (and of the content map) at most this often
 const PASS_MS = 4000;
 const MAX_CONTENT = 2000;
+// Layers under the content as sheets need see-through frames, and Chromium's WebP screencast measured 9.5 frames a
+// second against JPEG's 35.9 (1500 x 1650, a page changing every frame, Nov 21): off until the see-through frames
+// have a fast path; ALCHEMY_UNDER=1 turns them on to test
+const UNDER_ON = process.env.ALCHEMY_UNDER === '1';
+// ALCHEMY_AHEAD=0: no drawing ahead (to measure what it costs the page)
+const AHEAD_OFF = process.env.ALCHEMY_AHEAD === '0';
 // a layer smaller than this (layer units squared) is not worth a sheet (a caret, a 1 px line)
 const MIN_AREA = 64;
 // over this share of the view a fixed layer is a cover (a dialog): it stays in the frames
@@ -159,9 +165,33 @@ function createLayerSheets(session, deps) {
             }
             if (!state.sheets.has(id) || !shot || !shot.dataURL) return;
             const png = Buffer.from(String(shot.dataURL).replace(/^data:image\/png;base64,/, ''), 'base64');
+            // encoded for keeping (it does not move): how much of it is images decides how (deps.encodeSheet)
+            let pic = { bytes: png, f: 'png' };
+            if (deps.encodeSheet) {
+                let imagey = false;
+                if (deps.contentMap) {
+                    const again = await cdp().send('LayerTree.makeSnapshot', { layerId: id }).catch(() => null);
+                    if (again) {
+                        const map = await cdp().send('LayerTree.alchemyContentMap', { snapshotId: again.snapshotId }).catch(() => null);
+                        cdp().send('LayerTree.releaseSnapshot', { snapshotId: again.snapshotId }).catch(() => {});
+                        let area = 0;
+                        const im = (map && map.images) || [];
+                        for (let i = 0; i + 6 <= im.length; i += 6) area += im[i + 2] * im[i + 3];
+                        const l = (state.latest || []).find((q) => q.layerId === id);
+                        imagey = !!l && area > l.width * l.height * 0.3;
+                    }
+                }
+                const enc = await deps.encodeSheet(session, png, imagey).catch(() => null);
+                if (enc && enc.bytes && enc.bytes.length) pic = enc;
+            }
+            if (!state.sheets.has(id)) return;
+            if (DEBUG) deps.log('sheet', id, pic.f + (pic.d === 0 ? ' lossless' : pic.q ? ' q' + pic.q : pic.d ? ' d' + pic.d : ''), Math.round(pic.bytes.length / 1024) + ' KB (png ' + Math.round(png.length / 1024) + ' KB)');
             s.gen = ++state.gen;
-            s.png = png;
-            deps.broadcast(session, deps.binaryMessage(MSG_SHEET, { id, gen: s.gen }, png), true);
+            s.png = pic.bytes;
+            s.f = pic.f;
+            s.q = pic.q;
+            s.d = pic.d;
+            deps.broadcast(session, deps.binaryMessage(MSG_SHEET, { id, gen: s.gen, f: s.f, q: s.q, d: s.d }, s.png), true);
             sendList();
             await setHidden();
         } catch (err) {
@@ -308,7 +338,7 @@ function createLayerSheets(session, deps) {
         // under the content: the fixed layers drawn before the content's last scrolling layer, when everything that
         // scrolls under them is a flat colour (then the frames can be see-through: the build's content-map patch)
         let underOk = false;
-        if (deps.contentMap) {
+        if (deps.contentMap && UNDER_ON) {
             const under = [];
             let blocked = false;
             let firstUnder = -1;
@@ -477,8 +507,15 @@ function createLayerSheets(session, deps) {
         };
         try {
             // a backdrop under the content: only once it is a sheet (see-through), else the content alone is wrong there
-            if (content.list.length && (!content.under || state.under) && deps.sharp && scroll.height > scroll.view + 8) {
-                const ranges = [[sy - view, sy], [sy + view * 1.5, sy + view * 2.5]]
+            if (!AHEAD_OFF && content.list.length && (!content.under || state.under) && deps.sharp && scroll.height > scroll.view + 8) {
+                // the way the viewer last went (within 10 s), as far as it was going (one to two screens); else a screen
+                // each side
+                const t = state.travel && Date.now() - state.travel.at < 10000 ? state.travel : null;
+                const reach = t ? Math.max(view, Math.min(view * 2, t.reach)) : view;
+                const wanted = !t ? [[sy - view, sy], [sy + view * 1.5, sy + view * 2.5]]
+                    : (t.dir > 0 ? [[sy + view * 1.5, sy + view * 1.5 + Math.min(view, reach)], [sy + view * 2.5, sy + view * 1.5 + reach], [sy - view, sy]]
+                        : [[sy - Math.min(view, reach), sy], [sy - reach, sy - view], [sy + view * 1.5, sy + view * 2.5]]);
+                const ranges = wanted
                     .map((r) => [Math.max(0, Math.round(r[0])), Math.min(docH, Math.round(r[1]))])
                     .filter((r) => r[1] - r[0] >= 8);
                 for (const range of ranges) await prefill(range, content.list, snap, k, unit, sy);
@@ -492,7 +529,10 @@ function createLayerSheets(session, deps) {
         }
     }
 
-    async function prefill(range, list, snap, k, unit, sy) {
+    async function prefill(rangeIn, list, snap, k, unit, sy) {
+        // on a 64 px grid (CSS), so the same rows asked again a few pixels apart are seen as drawn already
+        const range = [Math.floor(rangeIn[0] / 64) * 64, Math.min((session.scroll && session.scroll.height) || rangeIn[1], Math.ceil(rangeIn[1] / 64) * 64)];
+        if (range[1] - range[0] < 8) return;
         // only what was not drawn ahead since its layers last repainted there
         const fresh = list.some((l) => !(state.prefilled.get(l.layerId) || []).some((r) => r[0] <= range[0] && r[1] >= range[1]));
         if (!fresh) return;
@@ -568,45 +608,20 @@ function createLayerSheets(session, deps) {
     // The viewer scrolls (dir, speed, how far it will still go, CSS): what lies ahead that way, past the view and its
     // over-render band, up to two screens (the layers' recordings reach about that far), a screen at a time; one pass
     // at a time, at most every 300 ms
-    async function ahead(msg) {
-        const k = deps.frameScale(session);
-        const scroll = session.scroll;
+    // While the page scrolls, the replays would hold its main thread just when its scroll needs it (first new frame
+    // 234-371 ms with them, 220-259 ms without, Yozora, Nov 21): the viewer's way and reach are kept, and the drawing
+    // ahead waits for the page to settle (atRest), that way first. LayerTree replay off the main thread is next.
+    function ahead(msg) {
         const dir = msg && (msg.dir === 1 || msg.dir === -1) ? msg.dir : 0;
-        if (!deps.contentMap || !state.on || state.passing || !dir || !k || !scroll || !scroll.root || !session.sockets.size) return;
-        const now = Date.now();
-        if (now - (state.aheadAt || 0) < 300) return;
-        const content = contentLayers();
-        if (!content || !content.list.length || (content.under && !state.under) || !deps.sharp) return;
-        state.aheadAt = now;
-        state.passing = true;
-        const view = scroll.view;
-        const sy = Number.isFinite(msg.y) ? msg.y : scrollY();
-        const reach = Math.max(view, Math.min(view * 2, Number(msg.reach) || 0));
-        const from = dir > 0 ? sy + view * 1.5 : sy - reach;
-        const to = dir > 0 ? sy + view * 1.5 + reach : sy;
-        const ranges = [];
-        for (let y = dir > 0 ? from : to; dir > 0 ? y < to : y > from; y += dir * view) {
-            const r = dir > 0 ? [y, Math.min(to, y + view)] : [Math.max(from, y - view), y];
-            ranges.push([Math.max(0, Math.round(r[0])), Math.min(scroll.height, Math.round(r[1]))]);
-        }
-        const snaps = new Map();
-        const snap = async (l) => {
-            if (!snaps.has(l.layerId)) snaps.set(l.layerId, await snapshotOf(l.layerId).catch(() => null));
-            return snaps.get(l.layerId);
-        };
-        try {
-            for (const range of ranges) if (range[1] - range[0] >= 8) await prefill(range, content.list, snap, k, state.unit, scrollY());
-        } catch (err) {
-            if (DEBUG) deps.log('ahead:', err.message);
-        } finally {
-            for (const id of snaps.values()) if (id) cdp().send('LayerTree.releaseSnapshot', { snapshotId: id }).catch(() => {});
-            state.passing = false;
-        }
+        if (!dir) return;
+        state.travel = { dir, reach: Number(msg.reach) || 0, at: Date.now() };
+        state.passAt = 0;
+        armRest();
     }
 
     return {
         get active() { return state.on; },
-        ahead(msg) { ahead(msg).catch(() => {}); },
+        ahead(msg) { ahead(msg); },
         // a viewer shows the content map (Alchemy Information) or stopped
         wantContent(on) {
             state.contentWanted = !!on;
@@ -641,7 +656,7 @@ function createLayerSheets(session, deps) {
         // a viewer that joins gets every sheet and the list
         attach(ws) {
             for (const [id, s] of state.sheets) {
-                if (s.png) ws.send(deps.binaryMessage(MSG_SHEET, { id, gen: s.gen }, s.png));
+                if (s.png) ws.send(deps.binaryMessage(MSG_SHEET, { id, gen: s.gen, f: s.f, q: s.q, d: s.d }, s.png));
             }
             const list = [...state.sheets.entries()].filter(([, s]) => s.png || s.color).map(([id, s]) => entryOf(id, s));
             ws.send(JSON.stringify({ type: 'sheets', list }));

@@ -371,7 +371,7 @@
         }
         baseCtx.clearRect(0, 0, base.width, base.height);
         baseCtx.drawImage(img, 0, 0);
-        noteSource(null, job.header && job.header.f === 'jxl' ? 'jxl' : (job.header && job.header.f === 'webp' ? 'wframe' : 'jpeg'), job.header && job.header.q);
+        noteSource(null, job.header && job.header.f === 'jxl' ? 'jxl' : (job.header && job.header.f === 'webp' ? 'wframe' : 'jpeg'), job.header && job.header.q, job.header && job.header.d);
         if (job.arrival > stillArrival) hideStill();
         frameReady(job.header);
         flushTiles();
@@ -435,7 +435,7 @@
     var gen = paintGen;
     var pos = 0;
     var decodes = [];
-    var type = h.f === 'webp' ? 'image/webp' : 'image/jpeg';
+    var type = frameType(h.f);
     for (var r = 0; r < rects.length; r++) {
       decodes.push(decodeImage(job.body.subarray(pos, pos + rects[r].n), type).catch(function () { return null; }));
       pos += rects[r].n;
@@ -456,7 +456,7 @@
           var rect = rects[i];
           baseCtx.clearRect(rect.x, rect.y, rect.w, rect.h);
           baseCtx.drawImage(imgs[i], rect.x, rect.y, rect.w, rect.h);
-          noteSource([rect.x, rect.y, rect.w, rect.h], h.f === 'webp' ? 'webp' : 'tile', h.q);
+          noteSource([rect.x, rect.y, rect.w, rect.h], h.f === 'webp' ? 'webp' : (h.f === 'jxl' ? 'jxltile' : 'tile'), h.q, h.d);
           // a small change patches the still (soft until the next one) instead of dropping it
           if (!stillCanvas.hidden && job.arrival > stillArrival) {
             // the still covers the view's rows (a frame also has the over-render band below them)
@@ -598,6 +598,7 @@
     wframe: ['rgba(40, 170, 255, 0.28)', 'Frame (WebP, see-through)'],
     tile: ['rgba(0, 190, 190, 0.32)', 'Tile (JPEG)'],
     webp: ['rgba(0, 200, 70, 0.32)', 'Tile (WebP)'],
+    jxltile: ['rgba(120, 0, 200, 0.32)', 'Tile (JPEG XL)'],
     moved: ['rgba(255, 200, 0, 0.32)', 'Rows moved'],
     still: ['rgba(230, 0, 230, 0.22)', 'Still at rest (sharp)'],
     stilljxl: ['rgba(230, 0, 230, 0.22)', 'Still (JPEG XL)'],
@@ -826,7 +827,9 @@
   function sheetPicture(header, body) {
     if (!header || typeof header.id !== 'string') return;
     var gen = Number(header.gen) || 0;
-    createImageBitmap(new Blob([body], { type: 'image/png' })).then(function (bmp) {
+    // JPEG XL or WebP (lossless for text and flat layers), PNG from an older Alchemy
+    var type = header.f === 'jxl' ? 'image/jxl' : (header.f === 'webp' ? 'image/webp' : 'image/png');
+    createImageBitmap(new Blob([body], { type: type })).then(function (bmp) {
       var prev = sheetImgs.get(header.id);
       if (prev && prev.gen >= gen) { bmp.close(); return; }
       if (prev) prev.bmp.close();
@@ -1275,7 +1278,7 @@
     if (y1 > y0) ctx.drawImage(base, 0, y0 + off, width, y1 - y0, 0, y0, width, y1 - y0);
     if (off > 0) fillGap(Math.max(b.m0, y1), b.m1, docAtTop, b);
     else fillGap(b.m0, Math.min(b.m1, y0), docAtTop, b);
-    if (layers.f.length || (layers.backdrop && visRects.length)) drawLayers(off, docAtTop, b);
+    if (layers.f.length || (layers.backdrop && visRects.length && !underSheets())) drawLayers(off, docAtTop, b);
     if (b.top) ctx.drawImage(base, 0, 0, width, b.top, 0, 0, width, b.top);
     if (b.bottom) ctx.drawImage(base, 0, b.m1, width, b.bottom, 0, b.m1, width, b.bottom);
   }
@@ -1298,8 +1301,8 @@
       // the copy the move made of it (its pixels in base, moved with the page): what lies under it instead
       if (src.stuck) fillFromCache(src.x, src.x + src.w, Math.max(b.m0, src.y - off), Math.min(b.m1, src.y + src.h - off), docAtTop);
     }
-    // the backdrop where it shows through, still
-    if (layers.backdrop && backdropCanvas && visRects.length) {
+    // the backdrop where it shows through, still (not while it is a sheet under the picture: it is not in the frames)
+    if (layers.backdrop && backdropCanvas && visRects.length && !underSheets()) {
       // rows nobody sampled: its usual columns
       if (visCols.length) {
         var gaps = [[S + b.m0 / k, S + b.m1 / k]];
@@ -1350,6 +1353,29 @@
       if (boxEnd > from && s.h > 0) ctx.drawImage(base, s.x, s.y + s.h - 1, s.w, 1, s.x, from, s.w, boxEnd - from);
     }
   }
+
+  // each layer on its own, as it is on screen now (tests: a fixed layer must not change while the page scrolls, and the
+  // frame must hold none of it): the frame (base at the picture's offset, see-through), the under sheets, the sheets
+  // over the picture; data URLs
+  window.__alchemyViewerLayers = function () {
+    var k = baseInfo.k;
+    var w = canvas.width;
+    var h = canvas.height;
+    var S = pred.display;
+    var off = k ? Math.round((S - baseInfo.sy) * k) : 0;
+    var frame = document.createElement('canvas');
+    frame.width = w;
+    frame.height = h;
+    frame.getContext('2d').drawImage(base, 0, off, w, h, 0, 0, w, h);
+    var under = document.createElement('canvas');
+    under.width = w;
+    under.height = h;
+    var uctx = under.getContext('2d');
+    var saved = ctx;
+    ctx = uctx;
+    try { if (underSheets()) drawUnder(S, w, h); } finally { ctx = saved; }
+    return { display: S, frameSy: baseInfo.sy, frame: frame.toDataURL('image/png'), under: under.toDataURL('image/png'), over: sheetCanvas.hidden ? '' : sheetCanvas.toDataURL('image/png'), screen: canvas.toDataURL('image/png') };
+  };
 
   // the picture the viewer would draw ahead at document offset y, from what it has now (a data URL); plain: without
   // the layers. scripts/test-alchemy-viewer.js compares it with the page once it is there.
