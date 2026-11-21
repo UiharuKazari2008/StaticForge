@@ -317,6 +317,10 @@
 
     let showDesktopWindows = null;
 
+    // the Android windows Show desktop minimised (their ids), brought back with the rest
+
+    let showDesktopAndroid = null;
+
     // the two shell shortcuts Vista puts in Quick Launch; anything else is a Start menu launchId
     const QUICK_LAUNCH_SHELL = {
         'show-desktop': { title: 'Show desktop', icon: `${ART}/show-desktop-16.png`, icon2x: `${ART}/show-desktop-32.png`, run: () => toggleShowDesktop() },
@@ -638,12 +642,18 @@
     /** Vista's Show desktop: minimise every window; a second click brings the same windows back. */
     function toggleShowDesktop() {
         const visible = openWindows().filter((m) => !m.classList.contains('minimised'));
-        if (visible.length) {
+        // the DeX desktop's Android windows go and come back with them (androidTaskbar.js, #1013)
+        const android = root.melatonAndroidTaskbar;
+        const androidShown = android && typeof android.shownCount === 'function' ? android.shownCount() : 0;
+        if (visible.length || androidShown) {
             showDesktopWindows = visible;
+            showDesktopAndroid = androidShown ? android.minimizeShown() : null;
             // minimizeModalProgrammatically: public/scripts/comp/modalUtils.js
             visible.forEach((m) => callGlobal('minimizeModalProgrammatically', m));
             return;
         }
+        if (android && showDesktopAndroid) android.restore(showDesktopAndroid);
+        showDesktopAndroid = null;
         const back = (showDesktopWindows || []).filter((m) => m.isConnected && m.classList.contains('minimised'));
         showDesktopWindows = null;
         back.forEach((m) => {

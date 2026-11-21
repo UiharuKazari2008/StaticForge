@@ -42,8 +42,9 @@
 
     // the Windows key's press: Start opens on release unless it was used for a combo
     const win = { down: false, used: false };
-    // Win+M's windows, for Win+Shift+M
+    // Win+M's windows, for Win+Shift+M (and the DeX desktop's Android windows it minimised, #1013)
     let minimizedAll = null;
+    let minimizedAndroid = null;
 
     function callGlobal(name, ...args) {
         const fn = root[name];
@@ -92,6 +93,8 @@
 
     function minimizeAll() {
         const visible = openWindows().filter((m) => !m.classList.contains('minimised'));
+        const android = root.melatonAndroidTaskbar;
+        if (android && typeof android.shownCount === 'function' && android.shownCount()) minimizedAndroid = android.minimizeShown();
         if (!visible.length) return;
         minimizedAll = visible;
         // minimizeModalProgrammatically: public/scripts/comp/modalUtils.js
@@ -99,6 +102,9 @@
     }
 
     function undoMinimizeAll() {
+        const android = root.melatonAndroidTaskbar;
+        if (android && minimizedAndroid) android.restore(minimizedAndroid);
+        minimizedAndroid = null;
         const back = (minimizedAll || []).filter((m) => m.isConnected && m.classList.contains('minimised'));
         minimizedAll = null;
         back.forEach((m) => {
@@ -147,6 +153,9 @@
 
     /** Alt+F4: the window in front closes the way its own Close button does (Alt+Q's pick). */
     function closeFrontWindow() {
+        // the DeX desktop: an Android window with the focus closes (androidTaskbar.js, #1013)
+        const android = root.melatonAndroidTaskbar;
+        if (android && typeof android.closeFocused === 'function' && android.hasFocus()) return android.closeFocused();
         // canCloseWindowWithAltQ / resolveWindowToCloseWithAltQ: public/scripts/comp/modalUtils.js
         if (!callGlobal('canCloseWindowWithAltQ')) return false;
         const modal = callGlobal('resolveWindowToCloseWithAltQ');
