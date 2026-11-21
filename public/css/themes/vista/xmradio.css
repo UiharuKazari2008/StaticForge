@@ -1090,3 +1090,11 @@
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] :is(.xr-d-l1, .xr-d-l2) { font-size: 36px; line-height: 56px; height: 56px; transform: scaleY(1.45); transform-origin: 50% 55%; letter-spacing: 0.02em; }
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] .xr-d-main { margin-top: 0; }
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] .xr-d-top [data-f="sig"] { order: -1; margin-right: auto; }
+
+/* the Roady's window keeps its width, whatever the station's name (Yukimi, Nov 21 2026: a long name made the radio
+   grow too wide, on the desktop and the phone): the middle column may not outgrow its share, the lines clip */
+:is(#xmRadioModal, .xrm-lcd) .xr-radio[data-body="roady"] .xr-shell { grid-template-columns: 62px minmax(0, 1fr) 62px; }
+:is(#xmRadioModal, .xrm-lcd) .xr-rd-win, :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] :is(.xr-bezel, .xr-display, .xr-d-main, .xr-d-text) { min-width: 0; overflow: hidden; }
+:is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] :is(.xr-d-l1, .xr-d-l2) { min-width: 0; overflow: hidden; white-space: nowrap; }
+:is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] .xr-d-name { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+:is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] .xr-d-num { flex: 0 0 auto; padding-left: 0.4em; }

@@ -331,7 +331,7 @@
         radio.url = new URL(`/api/xmradio/track/${encodeURIComponent(t.id)}`, location.origin).toString();
         radio.state = 'tuning';
         const seq = ++radio.seq;
-        tab = 'now';
+        // the tab it was played from stays (Yukimi, Nov 21 2026: the deck's transport jumped to Now Playing)
         changed();
         await start(seq, { title: radio.track.name, subtitle: `Tape: ${t.tape}`, live: false });
     }
@@ -877,7 +877,7 @@
             <div class="xrm-pane" data-pane="channels" hidden><div class="xrm-head"><span class="xrm-show"></span><span class="xrm-count"></span></div><div class="xrm-list wm-pg-scroll" role="listbox"></div></div>
             <div class="xrm-pane xrm-rec-pane wm-pg-scroll" data-pane="recordings" hidden></div>
             <div class="xrm-pane xrm-deck-pane wm-pg-scroll" data-pane="deck" hidden><div class="xrm-deckwrap"></div><div class="xrm-auto"></div></div>
-            <div class="wm-tabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" class="wm-tab" role="tab" data-tab="${k}" aria-selected="${tab === k}">${l}</button>`).join('')}</div>`;
+            <div class="xrm-tabs" role="tablist">${TABS.map(([k, l]) => `<button type="button" class="xrm-tabk" role="tab" data-tab="${k}" aria-selected="${tab === k}"><i></i>${l}</button>`).join('')}</div>`;
         const q = (s) => page.querySelector(s);
         if (!document.querySelector('link[data-xr-theme]')) {
             const link = document.createElement('link');
@@ -950,7 +950,7 @@
         // the phone turned sideways: the whole receiver, as the faceplate view
         if (window.matchMedia) {
             const mq = window.matchMedia('(orientation: landscape)');
-            const flip = () => { mountScreen(); render(); };
+            const flip = () => { screenKey = ''; if (landscape()) tab = 'now'; mountScreen(); render(); if (ws) ws.refreshSoftKeys(); };
             try { mq.addEventListener('change', flip, { signal: appScopeSignal }); } catch (_) { /* older engine */ }
         }
         if (navigator.connection && typeof navigator.connection.addEventListener === 'function') {
@@ -1061,6 +1061,7 @@
         const f = (n) => r.querySelector(`[data-f="${n}"]`);
         Object.assign(els, { rad: r, bg: f('bg'), band: f('band'), pre: f('pre'), replay: f('replay'), sig: f('sig'), clock: f('clock'), art: f('art'), num: f('num'), name: f('name'), l2: f('l2'), l3: f('l3'), logo: f('logo') });
         page.querySelector('.xrm-np').classList.toggle('is-face', face);
+        page.classList.toggle('is-land', landscape());
         fitScreen();
         paintPresetKeys();
         if (!lcdRo && typeof ResizeObserver === 'function') {
@@ -1068,12 +1069,27 @@
             lcdRo.observe(els.lcd);
         }
     }
+    /**
+     * The receiver's size: the width it has; turned sideways (Yukimi, Nov 21 2026: "rotating does not just show the
+     * radio and size it correctly") the radio alone, as large as both the width and the height allow.
+     */
     function fitScreen() {
         if (!els || !els.rad) return;
         const w = Number(els.lcd.dataset.w) || 246;
         const avail = els.lcd.clientWidth;
-        if (avail) els.rad.style.zoom = String(Math.round((avail / w) * 1000) / 1000);
+        if (!avail) return;
+        let z = avail / w;
+        // the receiver keeps its own width (scaled as a whole: it stretched sideways when the height decided)
+        if (els.rad.style.width !== `${w}px`) els.rad.style.width = `${w}px`;
+        if (landscape() && page && page.clientHeight) {
+            els.rad.style.zoom = '1';
+            const natural = els.rad.offsetHeight || 1;
+            z = Math.min(z, (page.clientHeight - 8) / natural);
+        }
+        const zs = String(Math.round(z * 1000) / 1000);
+        if (els.rad.style.zoom !== zs) els.rad.style.zoom = zs;
     }
+    const landscape = () => !!(window.matchMedia && window.matchMedia('(orientation: landscape)').matches);
     function paintPresetKeys() {
         if (!els || !els.rad) return;
         const bank = prefs.show === 'B' || prefs.show === 'C' ? prefs.show : 'A';
@@ -1246,6 +1262,8 @@
         }
         setText(els.play, playing ? (radio.native ? '⏹︎' : '⏸︎') : '▶︎');
         els.keys.hidden = faceView();
+        // (mounted while its pane was hidden it had no width to scale to: checked on each draw)
+        fitScreen();
         mediaMeta();
         paintProgress();
     }
@@ -1298,7 +1316,7 @@
         if (tapes.open) {
             const list = tapes.tracks[tapes.open];
             const total = (list || []).reduce((t, x) => t + (x.dur || 0), 0);
-            h += `<div class="xrm-sec-h xrm-tape-h"><button type="button" class="xrm-back" data-back="1">&#x2039; Tapes</button><span>${esc(tapes.open)}${tapes.open === deckTape ? ' (in the deck)' : ''}</span><span class="xrm-sec-note">${list && list.length ? `${list.length} · ${esc(mmss(total))}` : ''}</span></div>`;
+            h += `<div class="xrm-sec-h xrm-tape-h"><button type="button" class="xrm-back" data-back="1">&#x2039; Tapes</button><span class="xrm-sec-note">${tapes.open === deckTape ? 'In the deck' : ''}</span></div><div class="xrm-jcard"><div class="xrm-jc-head"><span class="xrm-jc-side">A</span><span class="xrm-jc-name">${esc(tapes.open)}</span><span class="xrm-jc-total">${list && list.length ? `${list.length} songs · ${esc(mmss(total))}` : ''}</span></div>`;
             if (!list) h += '<div class="xrm-empty">Reading the tape...</div>';
             else if (!list.length) h += '<div class="xrm-empty">This tape is blank.</div>';
             else h += list.map((t) => {
@@ -1307,13 +1325,13 @@
                 const m = /^(\d{4}-\d{2}-\d{2}) (\d{2})(\d{2}) (.*)$/.exec(t.name.replace(/\.m4a$/i, ''));
                 const title = m ? m[4] : t.name.replace(/\.m4a$/i, '');
                 const when = m ? `${m[1]} ${m[2]}:${m[3]} · ` : '';
-                return `<div class="xrm-track${tapes.sel === t.id ? ' is-sel' : ''}${playing ? ' is-playing' : ''}" data-track="${esc(t.id)}"><span class="xrm-sec-lines"><span class="xrm-sec-t">${playing ? '&#x25B6;&#xFE0E; ' : ''}${esc(title)}</span><span class="xrm-sec-s">${esc(when + sizeText(t.size || 0))}${prefs.saved[t.id] ? ' · on the phone' : ''}</span></span><span class="xrm-sec-time">${t.dur ? esc(mmss(t.dur)) : ''}</span></div>`;
-            }).join('');
+                return `<div class="xrm-track${tapes.sel === t.id ? ' is-sel' : ''}${playing ? ' is-playing' : ''}" data-track="${esc(t.id)}"><span class="xrm-jc-n">${list.indexOf(t) + 1}.</span><span class="xrm-sec-lines"><span class="xrm-sec-t">${playing ? '&#x25B6;&#xFE0E; ' : ''}${esc(title)}</span><span class="xrm-sec-s">${esc(when + sizeText(t.size || 0))}${prefs.saved[t.id] ? ' · on the phone' : ''}</span></span><span class="xrm-sec-time">${t.dur ? esc(mmss(t.dur)) : ''}</span></div>`;
+            }).join('') + '</div>';
         } else {
             h += '<div class="xrm-sec-h">Tapes</div>';
             if (!tapes.list) h += `<div class="xrm-empty">${tapes.error ? esc(tapes.error) : 'Reading the tapes...'}</div>`;
             else if (!tapes.list.length) h += '<div class="xrm-empty">No tapes yet. Menu > New Tape, or record something.</div>';
-            else h += tapes.list.map((n) => { const inf = tapes.info[n]; return `<div class="xrm-tape" data-tape="${esc(n)}"><span class="xrm-tape-ic"></span><span class="xrm-sec-lines"><span class="xrm-sec-t">${esc(n)}</span><span class="xrm-sec-s">${n === deckTape ? 'In the deck · ' : ''}${inf ? `${inf.n} recording${inf.n === 1 ? '' : 's'}` : ''}</span></span><span class="xrm-sec-time">${inf && inf.dur ? esc(mmss(inf.dur)) : ''}</span></div>`; }).join('');
+            else h += `<div class="xrm-shelf">${tapes.list.map((n, k) => { const inf = tapes.info[n]; return `<div class="xrm-tape${n === deckTape ? ' is-in' : ''}" data-tape="${esc(n)}" data-hue="${k % 5}"><span class="xrm-sp-brand">XYRIDIAN<b>C-90</b></span><span class="xrm-sp-label"><span class="xrm-sp-name">${esc(n)}</span><span class="xrm-sp-meta">${inf ? `${inf.n} song${inf.n === 1 ? '' : 's'}${inf.dur ? ` · ${esc(mmss(inf.dur))}` : ''}` : ''}</span></span>${n === deckTape ? '<span class="xrm-sp-in">IN DECK</span>' : ''}</div>`; }).join('')}</div>`;
         }
         setHtml(els.recPane, h);
     }
@@ -1350,7 +1368,11 @@
     }
     function fitDeck() {
         const d = els.deck.firstElementChild;
-        if (d && els.deck.clientWidth) d.style.zoom = String(Math.round((els.deck.clientWidth / 540) * 1000) / 1000);
+        if (!d || !els.deck.clientWidth) return;
+        // the wrapper's own padding is not the deck's to fill (it ran off the right edge, Yukimi Nov 21 2026)
+        const cs = getComputedStyle(els.deck);
+        const inner = els.deck.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+        d.style.zoom = String(Math.floor((inner / 540) * 1000) / 1000);
     }
     const manualRec = () => (cache.rec || []).find((r) => r.kind === 'manual') || null;
     let deckTimer = 0;
