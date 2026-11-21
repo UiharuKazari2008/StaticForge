@@ -96,4 +96,22 @@ The list is read when the flyout opens and on `androidnotifications` while it sh
 typed waits until the box loses focus); with the flyout shut a change only marks it stale, and the tooltip's count is
 read when the pointer reaches the icon. Delivering notifications stays the app's native work (`cafeready-background`).
 
-`window.melatonAndroidNotifications`: `open()`, `close()`.
+**Groups and stacks** (Yukimi, Nov 21): one group per app, the group with the newest notification first and each group
+newest first. A group of several is stacked as Android stacks it and starts collapsed every time the flyout opens: its
+newest notification, then up to two one-line peeks over the stack's two edges and "+N more"; a click on the stack, its
+heading or the heading's expando opens it.
+
+**Right-click** a notification or a group: Open (default), Dismiss / Clear These Notifications, **Hide This Notification
+Group** (the app), Hide "<channel>" Notifications, Manage Channels.... The Bell's own menu: Open, Manage Channels...,
+Clear All. The flyout's links: Clear all, Manage channels (with how many are hidden).
+
+**Manage Notification Channels** (the shared Vista dialog, `showConfirmationDialog` + the kit tree list): every program
+with notification channels on the phone (`requestChannelNames()` / `channelNames()`, asked once per visit when the
+flyout first opens) and every program and channel seen here, each with a **Show in the Bell** check box; OK keeps the
+choice. localStorage `melatonDexNotifyFilter` `{ apps: { pkg: false }, channels: { 'pkg|channel': false }, known: { pkg:
+{ app, channels: [id] } } }`. A hidden notification is not listed and does not ring the bell; it stays on the phone.
+
+**Size**: the flyout grows from its top and left edges and top-left corner (its bottom-right stays at the tray), between
+300 x 220 px and the screen; the size is kept in localStorage `melatonDexNotifySize` `{ w, h }`.
+
+`window.melatonAndroidNotifications`: `open()`, `close()`, `manageChannels()`.
