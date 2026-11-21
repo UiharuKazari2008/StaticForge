@@ -57,14 +57,17 @@
     const GROUP_GAP = 12;
     const TOP_PAD = 4;
     const LEFT_PAD = 12;
-    const TOC_W = 142;
+    const TOC_W = 168; // the Visual Index's column (View > Table of Contents)
     const TOOLTIP_DELAY = 700;
 
     // the tree strip (BITMAP 205 / 1814): index -> icon
     const ICON = {
         all: 0, tags: 1, folders: 2, date: 3, recent: 4, ratings: 5, pictures: 6, videos: 7, newTag: 8, untagged: 9,
         tag: 10, folder: 11, folderPictures: 12, folderVideos: 13, folderUser: 14, disc: 16, computer: 17, year: 18,
-        month: 19, day: 20, star: 21, starOff: 22
+        month: 19, day: 20, star: 21, starOff: 22,
+        // DreamScape's root (Yukimi, Nov 21 2026: "select an icon that fits it better"): the strip's Pictures icon with a
+        // gold sparkle, in the strip's last slot (lib-tree-16 / -20.png)
+        dream: 23
     };
 
     const GROUPS = [
@@ -252,7 +255,7 @@
     function scopeKeyOf(node) {
         if (node.root === 'prints') {
             const view = node.kind === 'favorites' ? 'pinned' : node.kind === 'scraps' ? 'scraps' : 'images';
-            const wsId = node.kind === 'workspace' ? node.value : SRC().get('prints').activeWorkspaceId();
+            const wsId = node.kind === 'workspace' ? node.value : node.kind === 'workspaces' ? '*' : SRC().get('prints').activeWorkspaceId();
             return { key: `prints:${view}:${wsId}`, scope: { view, workspaceId: wsId } };
         }
         if (node.root === 'folders' && node.kind === 'folder') return { key: `folders:${node.value}`, scope: { folders: [{ path: node.value, name: node.label }] } };
@@ -502,25 +505,37 @@
         const pics = SRC().get('pictures');
         if (rootRow('pictures', 'Pictures', ICON.pictures)) {
             if (!pics.available()) add({ root: 'pictures', kind: 'none' }, 1, 'No pictures on this device', ICON.pictures, { disabled: true });
+            // Albums: every album on this phone (MediaStore's, as the phone's own gallery lists them; Yukimi Nov 21 2026)
+            const ak = 'pictures:albums';
+            add({ root: 'pictures', kind: 'albums' }, 1, 'Albums', ICON.folders, { key: ak, expandable: true, expanded: exp(ak) });
+            if (exp(ak)) {
+                if (!pics._albums && !pics._loading) {
+                    pics._loading = true;
+                    void pics.albums().then((a) => { pics._albums = a; pics._loading = false; renderTree(); }, () => { pics._albums = []; pics._loading = false; renderTree(); });
+                }
+                (pics._albums || []).forEach((a) => add({ root: 'pictures', kind: 'album', value: `${a.root}:${a.name}`, album: a }, 2, a.name, ICON.folderPictures));
+                if (pics._albums && !pics._albums.length) add({ root: 'pictures', kind: 'none' }, 2, 'No albums', ICON.folder, { disabled: true });
+            }
             add({ root: 'pictures', kind: 'favorites' }, 1, 'Favorites', ICON.star);
             tagRows('pictures', 1);
             dateRows('pictures', 1);
         }
-        // DreamScape Prints
-        if (rootRow('prints', 'DreamScape Prints', ICON.all)) {
+        // DreamScape (was "DreamScape Prints", Yukimi Nov 21 2026): its prints, References (was a root of its own) above
+        // Workspaces, and Workspaces itself shows every workspace's prints, each marked with its workspace's colour
+        if (rootRow('prints', 'DreamScape', ICON.dream)) {
             add({ root: 'prints', kind: 'favorites' }, 1, 'Favorites', ICON.star);
             add({ root: 'prints', kind: 'scraps' }, 1, 'Scraps', ICON.starOff);
             tagRows('prints', 1);
             dateRows('prints', 1);
+            add({ root: 'refs', kind: 'all' }, 1, 'References', ICON.folderPictures, { key: 'refs', expandable: true, expanded: exp('refs') });
+            if (exp('refs')) {
+                SRC().get('refs').types.forEach((t) => add({ root: 'refs', kind: 'reftype', value: t.id }, 2, t.name, ICON.pictures));
+                tagRows('refs', 2);
+                dateRows('refs', 2);
+            }
             const wk = 'prints:workspaces';
             add({ root: 'prints', kind: 'workspaces' }, 1, 'Workspaces', ICON.folders, { key: wk, expandable: true, expanded: exp(wk) });
             if (exp(wk)) SRC().get('prints').workspaces().forEach((w) => add({ root: 'prints', kind: 'workspace', value: w.id }, 2, w.name, ICON.folderPictures));
-        }
-        // DreamScape References
-        if (rootRow('refs', 'DreamScape References', ICON.folderPictures)) {
-            SRC().get('refs').types.forEach((t) => add({ root: 'refs', kind: 'reftype', value: t.id }, 1, t.name, ICON.pictures));
-            tagRows('refs', 1);
-            dateRows('refs', 1);
         }
         // Folders: the watched VFS folders, and the last import (Recently Imported)
         if (rootRow('folders', 'Folders', ICON.folders)) {
@@ -596,7 +611,7 @@
         if (e.target.closest('.wpg-lib-twisty')) { toggleTree(r); return; }
         if (r.action === 'newtag') { void createTagInline(r.node.root); return; }
         if (r.action === 'addfolder') { addFolderToGallery(); return; }
-        if (['tags', 'dates', 'workspaces'].includes(r.node.kind)) { toggleTree(r); return; }
+        if (['tags', 'dates', 'albums'].includes(r.node.kind)) { toggleTree(r); return; }
         void showNode(r.node.kind === 'folder' ? Object.assign({}, r.node) : r.node);
     }
     function onTreeDblClick(e) {
@@ -1001,7 +1016,9 @@
 
     const cellCache = new Map(); // id|view|size -> element (reused while it stays in view)
     function cellFor(it, x, y, m) {
-        const k = `${it.id}|${prefs.view}|${m.box}|${it.rev || 0}`;
+        // the workspace's glass square in the corner, where prints of every workspace show together (Workspaces)
+        const badge = it.source === 'prints' && S.node && S.node.root === 'prints' && S.node.kind === 'workspaces' ? (it.workspaceId || '') : '';
+        const k = `${it.id}|${prefs.view}|${m.box}|${it.rev || 0}|${badge}`;
         let cell = cellCache.get(k);
         if (!cell) {
             cell = h('div', 'wpg-lib-cell');
@@ -1018,8 +1035,16 @@
             // no address (a video nothing has a frame of): the empty frame, not a request for the page itself
             const src = thumbOf(it, m.box * (root.devicePixelRatio || 1));
             if (src) img.src = src; else cell.classList.add('is-broken');
-            fr.appendChild(img);
             if (it.video) fr.classList.add('is-video');
+            if (badge) {
+                // on the picture's own corner: the square rides in a box that hugs the picture
+                const pic = h('span', 'wpg-lib-pic');
+                const b = h('span', 'wpg-lib-ws');
+                b.style.setProperty('--ws', workspaceColor(badge));
+                b.title = SRC().get('prints').workspaces().find((w) => w.id === badge)?.name || badge;
+                pic.append(img, b);
+                fr.appendChild(pic);
+            } else fr.appendChild(img);
             cell.appendChild(fr);
             if (prefs.view !== 'thumbs') cell.appendChild(h('div', 'wpg-lib-text'));
             if (cellCache.size > 1500) cellCache.clear();
@@ -1043,26 +1068,91 @@
         return cell;
     }
 
-    /** Table of Contents: the groups down the left, the band over the ones in view. */
+    /** A workspace's own colour (its settings), else one of a few distinct hues by its id. */
+    function workspaceColor(id) {
+        /* global workspaces */
+        const w = typeof workspaces !== 'undefined' && workspaces ? workspaces[id] : null;
+        if (w && w.color) return w.color;
+        let hsh = 0;
+        for (const ch of String(id)) hsh = (hsh * 31 + ch.charCodeAt(0)) >>> 0;
+        return `hsl(${hsh % 360}, 70%, 50%)`;
+    }
+
+    /**
+     * Table of Contents, as the Workspaces app's Visual Index (Yukimi, Nov 21 2026: "we use that for Visual Index"): a
+     * column of cards down the left, one per group of the view (the gallery's own groups; with one group, the runs of
+     * pictures taken close together), each its first picture, its name and its count. The card over what is in view
+     * is lit and kept in sight; a click goes there. The cards are built when the groups change; scrolling only moves
+     * the light.
+     */
+    const TOC_GAP_MS = 2 * 3600 * 1000;
+    function tocEntries() {
+        if (S.groups.length > 1) return S.groups.map((g) => ({ key: `g:${g.key}`, label: g.label || 'Untitled', items: g.items, group: g }));
+        // one group: the pictures in the order shown, cut where two hours pass between them (or every 300)
+        const list = S.shown;
+        const out = [];
+        let cur = null;
+        list.forEach((it, i) => {
+            const t = takenOf(it) || 0;
+            if (!cur || cur.items.length >= 300 || (t && cur.last && Math.abs(cur.last - t) > TOC_GAP_MS)) { cur = { key: `s:${i}`, items: [], first: t, last: t }; out.push(cur); }
+            cur.items.push(it);
+            if (t) cur.last = t;
+        });
+        out.forEach((e) => { e.label = e.first ? dateText(e.first) : 'Pictures'; });
+        return out;
+    }
     function drawToc() {
         const L = S.layout;
         const sc = S.el.scroller;
-        const total = Math.max(1, L.height);
-        const avail = Math.max(60, sc.clientHeight - 24);
+        const toc = S.el.toc;
+        const key = `${S.groups.map((g) => `${g.key}:${g.items.length}`).join('|')}|${S.shown.length}`;
+        if (S.tocKey !== key) {
+            S.tocKey = key;
+            S.toc = tocEntries();
+            toc.innerHTML = S.toc.map((e, i) => {
+                const first = e.items[0];
+                const src = first ? thumbOf(first, 96 * (root.devicePixelRatio || 1)) : '';
+                return `<button type="button" class="wpg-lib-toc-card" data-toc="${i}"><span class="wpg-lib-toc-pic">${src ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" draggable="false">` : ''}</span><span class="wpg-lib-toc-lines"><span class="wpg-lib-toc-label">${esc(e.label)}</span><span class="wpg-lib-toc-count">${esc(countText(e.items.length))}</span></span></button>`;
+            }).join('');
+        }
         const top = sc.scrollTop;
-        const parts = S.groups.map((g) => {
-            const visible = g.bottom > top && g.top < top + sc.clientHeight;
-            const ticks = Math.min(12, Math.max(1, Math.round(g.items.length / Math.max(1, S.shown.length) * 30)));
-            return `<button type="button" class="wpg-lib-toc-row${visible ? ' is-visible' : ''}" data-group="${esc(g.key)}"><span class="wpg-lib-toc-label">${esc(g.label)}</span><span class="wpg-lib-toc-ticks" style="--n:${ticks}"></span></button>`;
-        }).join('');
-        S.el.toc.style.cssText = `top:${top}px;height:${Math.min(avail, total)}px`;
-        S.el.toc.innerHTML = `<div class="wpg-lib-toc-up"></div>${parts}`;
+        toc.style.cssText = `top:${top}px;height:${Math.max(60, sc.clientHeight)}px`;
+        // the card for what is in view: the first group (or run) whose pictures reach past the top of the view
+        let at = 0;
+        (S.toc || []).forEach((e, i) => {
+            const g = e.group;
+            const y = g ? g.top : posOf(e.items[0]);
+            if (y != null && y <= top + 4) at = i;
+        });
+        if (S.tocAt !== at || !toc.querySelector('.is-visible')) {
+            S.tocAt = at;
+            const was = toc.querySelector('.wpg-lib-toc-card.is-visible');
+            if (was) was.classList.remove('is-visible');
+            const card = toc.querySelector(`[data-toc="${at}"]`);
+            if (card) {
+                card.classList.add('is-visible');
+                if (card.offsetTop < toc.scrollTop || card.offsetTop + card.offsetHeight > toc.scrollTop + toc.clientHeight) toc.scrollTop = card.offsetTop - Math.round(toc.clientHeight / 3);
+            }
+        }
+        void L;
+    }
+    /** Where a picture's row starts in the view (px), or null. */
+    function posOf(it) {
+        const L = S.layout;
+        if (!it || !L) return null;
+        for (const g of S.groups) {
+            const k = g.items.indexOf(it);
+            if (k >= 0) return g.bodyTop + Math.floor(k / L.cols) * L.m.ch;
+        }
+        return null;
     }
     function onTocClick(e) {
-        const row = e.target.closest('.wpg-lib-toc-row');
-        if (!row) return;
-        const g = S.groups.find((x) => x.key === row.dataset.group);
-        if (g) S.el.scroller.scrollTop = g.top;
+        const card = e.target.closest('.wpg-lib-toc-card');
+        if (!card) return;
+        const entry = (S.toc || [])[Number(card.dataset.toc)];
+        if (!entry) return;
+        const y = entry.group ? entry.group.top : posOf(entry.items[0]);
+        if (y != null) S.el.scroller.scrollTop = Math.max(0, y - (entry.group ? 0 : HEADER_H));
     }
 
     function renderStatus() {
@@ -1164,14 +1254,15 @@
         }
     }
 
-    function scrollIntoView(id) {
-        const L = S.layout || computeLayout();
+    function scrollIntoView(id, centre) {
+        let L = S.layout || computeLayout();
         for (const g of S.groups) {
             const k = g.items.findIndex((it) => it.id === id);
             if (k < 0) continue;
-            if (g.collapsed) { S.collapsed.delete(g.key); S.layout = null; computeLayout(); }
+            if (g.collapsed) { S.collapsed.delete(g.key); S.layout = null; L = computeLayout(); }
             const y = g.bodyTop + Math.floor(k / L.cols) * L.m.ch;
             const sc = S.el.scroller;
+            if (centre) { sc.scrollTop = Math.max(0, y - Math.round((sc.clientHeight - L.m.ch) / 2)); queueRender(); return; }
             if (y < sc.scrollTop) sc.scrollTop = y - HEADER_H;
             else if (y + L.m.ch > sc.scrollTop + sc.clientHeight) sc.scrollTop = y + L.m.ch - sc.clientHeight + 6;
             queueRender();
@@ -1391,7 +1482,7 @@
             savePrefs();
             cellCache.clear();
             refresh();
-        } else if (action === 'gwl-toc') { prefs.toc = !prefs.toc; savePrefs(); S.layout = null; queueRender(); }
+        } else if (action === 'gwl-toc') { prefs.toc = !prefs.toc; S.tocKey = ''; savePrefs(); S.layout = null; queueRender(); }
         else if (action === 'gwl-refresh') {
             const { key } = scopeKeyOf(S.node);
             if (S.loaded.has(key)) S.loaded.get(key).stale = true;
@@ -1425,30 +1516,158 @@
             { text: 'Change Time Taken...', action: 'gwi-time' },
             { separator: true },
             { text: 'Copy', action: 'gwi-copy', disabled: !one },
-            { text: 'Delete', action: 'gwi-delete' },
+            // prints have Scrap and Delete Permanently below (Delete would be Scrap again)
+            ...(print ? [] : [{ text: 'Delete', action: 'gwi-delete' }]),
             { text: 'Rename...', action: 'gwi-rename', disabled: !(one && canRename(it)) },
             { text: 'Properties', action: 'gwi-properties', disabled: !one }
         ];
-        // Dreamscape's own actions on a print (Yukimi, Nov 20 2026: the rest go to the right-click menu)
-        if (print && one) {
-            list.push({ separator: true },
-                { text: it.pinned ? 'Remove from Favorites' : 'Add to Favorites', action: 'gwi-pin' },
-                { text: 'Add to Desktop', action: 'gw-desktop' },
-                { text: 'New Reference', action: 'gw-reference' },
-                { text: 'Open in DreamStudio', action: 'gw-studio' },
-                { text: 'Edit in Paint', action: 'gw-paint' },
-                { text: 'Open in Lumen', action: 'gw-lumen' },
-                { text: 'Create Persona', action: 'gw-persona' });
+        // Every management action of the Workspaces app on prints (Yukimi, Nov 21 2026: "all options should be there so
+        // you don't have to use the Workspaces app"): one print or many, in any workspace
+        if (print && items.every((x) => x.source === 'prints')) {
+            list.push({ separator: true }, ...printMenuItems(items, it));
         } else if (!print && it && it.source !== 'refs' && one) {
             list.push({ separator: true }, { text: isFavorite(it) ? 'Remove from Favorites' : 'Add to Favorites', action: 'gwi-fav' });
         }
         return [{ type: 'list', items: list }];
     }
 
+    // ------------------------------------------------------------------ prints: the Workspaces app's actions
+
+    /** The print rows: Favorites, Move To, Scrap / Unscrap (and To), the editors, print tools, sharing, Delete. */
+    function printMenuItems(items, it) {
+        const one = items.length === 1;
+        const scraps = items.every((x) => x.scrap);
+        const anyScrap = items.some((x) => x.scrap);
+        const pinnedAll = items.every((x) => x.pinned);
+        const meta = (it && it.raw && it.raw.metadata) || {};
+        const wsRows = (prefix) => SRC().get('prints').workspaces().map((w) => ({ text: w.name, action: `${prefix}:${w.id}`, disabled: items.every((x) => x.workspaceId === w.id && prefix === 'gwp-move') }));
+        const f = (name) => typeof root[name] === 'function';
+        return [
+            { text: 'Open in Window', action: 'gwp-window', disabled: !one || !f('openGalleryImageInViewer') },
+            { text: pinnedAll ? 'Remove from Favorites' : 'Add to Favorites', action: 'gwp-pin', disabled: anyScrap },
+            { separator: true },
+            { text: 'Move To', submenu: wsRows('gwp-move'), disabled: anyScrap },
+            scraps ? { text: 'Unscrap', action: 'gwp-unscrap' } : { text: 'Scrap', action: 'gwp-scrap', disabled: anyScrap },
+            scraps ? { text: 'Unscrap To', submenu: wsRows('gwp-unscrapto') } : { text: 'Scrap To', submenu: wsRows('gwp-scrapto'), disabled: anyScrap },
+            { separator: true },
+            { text: 'Edit in DreamStudio', action: 'gwp-studio', disabled: !one },
+            { text: 'Edit in Paint', action: 'gwp-paint', disabled: !one },
+            { text: 'Use as Comparison Source', action: 'gwp-compare', disabled: !one || !f('setCompareSourceFromGalleryImage') },
+            { text: 'Print', submenu: [
+                { text: 'Recast Spell', action: 'gwp-reroll', disabled: !one },
+                { text: 'Enhance...', action: 'gwp-enhance', disabled: !one },
+                { text: 'Upscale', action: 'gwp-upscale', disabled: !one || !!(meta.upscaled || (it && it.raw && it.raw.upscaled)) },
+                { text: 'Expand Canvas...', action: 'gwp-expand', disabled: !one },
+                { text: 'Create Animation', action: 'gwp-animate', disabled: !one }
+            ] },
+            { separator: true },
+            { text: 'Create Chat', action: 'gwp-chat', disabled: !one },
+            { text: 'Copy Lookback', action: 'gwp-lookback', disabled: !one || !f('copyLookbackImage') },
+            { text: 'Ask Wren', action: 'gwp-wren', disabled: !one || !f('askWrenAboutImage') },
+            { separator: true },
+            { text: 'New Reference', action: 'gwp-reference', disabled: !one },
+            { text: 'Create Vibe Encoding', action: 'gwp-vibe', disabled: !one || !f('createVibeEncodingFromImage') },
+            { text: 'Add to Desktop', action: 'gwp-desktop', disabled: !one },
+            { text: 'Publish to Explorer...', action: 'gwp-publish', disabled: !one || !f('openPublishToExplorerDialog') },
+            { text: 'Save a Copy', action: 'gwp-download' },
+            { text: 'Share to Sequenzia', action: 'gwp-sequenzia', disabled: anyScrap },
+            { separator: true },
+            { text: 'Delete Permanently', action: 'gwp-incinerate' }
+        ];
+    }
+
+    /** The print's own record (the gallery's, else built from what the library has) for the Workspaces app's calls. */
+    async function runPrintAction(action, items, it, event) {
+        const g = (name) => (typeof root[name] === 'function' ? root[name] : null);
+        const rec = it ? printRecord(it) : null;
+        const names = items.map((x) => x.key);
+        const c = root.wsClient;
+        const bySource = new Map();
+        items.forEach((x) => { const w = x.workspaceId || 'default'; if (!bySource.has(w)) bySource.set(w, []); bySource.get(w).push(x.key); });
+        const after = () => { S.loaded.forEach((e, k) => { if (/^prints:/.test(k)) e.stale = true; }); void showNode(S.node, { history: false }); };
+        const [verb, arg] = action.split(':');
+        try {
+            switch (verb) {
+                case 'gwp-window': if (g('openGalleryImageInViewer')) g('openGalleryImageInViewer')(rec); return;
+                case 'gwp-pin': {
+                    const want = !items.every((x) => x.pinned);
+                    for (const x of items) if (!!x.pinned !== want && g('togglePinImage')) { await g('togglePinImage')(printRecord(x), null); x.pinned = want; }
+                    refresh();
+                    return;
+                }
+                case 'gwp-move':
+                    for (const [src, list] of bySource) if (src !== arg) await c.moveFilesToWorkspace(list, arg, src, 'files');
+                    after();
+                    return;
+                case 'gwp-scrap':
+                    for (const x of items) if (g('moveToScraps')) await g('moveToScraps')(printRecord(x));
+                    after();
+                    return;
+                case 'gwp-scrapto':
+                    await c.addScrapBulk(arg, names);
+                    after();
+                    return;
+                case 'gwp-unscrap':
+                    for (const [src, list] of bySource) await c.removeScrapBulk(src, list);
+                    after();
+                    return;
+                case 'gwp-unscrapto':
+                    for (const [src, list] of bySource) {
+                        await c.removeScrapBulk(src, list);
+                        if (src !== arg) await c.moveFilesToWorkspace(list, arg, src, 'files');
+                    }
+                    after();
+                    return;
+                case 'gwp-studio':
+                    if (g('openManualModalWithContent')) g('openManualModalWithContent')({ type: 'image', image: rec, metadata: rec.metadata || null }, event);
+                    return;
+                case 'gwp-paint': if (g('editGalleryImageInPaint')) await g('editGalleryImageInPaint')(rec); return;
+                case 'gwp-compare': g('setCompareSourceFromGalleryImage')(rec); return;
+                case 'gwp-reroll': if (g('rerollImage')) g('rerollImage')(rec, event); return;
+                case 'gwp-enhance': if (g('openEnhanceFromImage')) g('openEnhanceFromImage')(rec); return;
+                case 'gwp-upscale': if (g('upscaleImage')) g('upscaleImage')(rec, event); return;
+                case 'gwp-expand': if (g('expandCanvasFromGallery')) g('expandCanvasFromGallery')(rec); return;
+                case 'gwp-animate': if (g('animateImage')) g('animateImage')(rec, event); return;
+                case 'gwp-chat':
+                    if (root.featureLoader) await root.featureLoader.loadFeature('chat');
+                    if (root.chatSystem) root.chatSystem.openChatModal(it.key, rec.characterName || null);
+                    return;
+                case 'gwp-lookback': g('copyLookbackImage')(it.key); return;
+                case 'gwp-wren': g('askWrenAboutImage')(it.key); return;
+                case 'gwp-reference': if (g('createReferenceFromImage')) g('createReferenceFromImage')(rec); return;
+                case 'gwp-vibe': g('createVibeEncodingFromImage')(rec); return;
+                case 'gwp-desktop': if (g('createDesktopShortcutFromImage')) await g('createDesktopShortcutFromImage')(rec); return;
+                case 'gwp-publish': g('openPublishToExplorerDialog')(rec); return;
+                case 'gwp-download':
+                    if (g('galleryDownloadImages')) await g('galleryDownloadImages')(items.map(printRecord), { name: 'DreamScape', path: '/Workspaces' });
+                    else if (g('downloadImage')) items.forEach((x) => g('downloadImage')(printRecord(x)));
+                    return;
+                case 'gwp-sequenzia': {
+                    if (!await confirmBox(`Send ${items.length === 1 ? 'this picture' : `these ${items.length} pictures`} to Sequenzia? They move there and leave DreamScape.`, 'Share to Sequenzia')) return;
+                    await c.sendToSequenziaBulk(names);
+                    after();
+                    return;
+                }
+                case 'gwp-incinerate': {
+                    // one: the Workspaces app's own Incinerate (it asks); several: one question, then its bulk delete
+                    if (items.length === 1 && g('deleteImage')) { await g('deleteImage')(rec); after(); return; }
+                    if (!await confirmBox(`Permanently delete these ${items.length} pictures? This cannot be undone.`, 'Delete Multiple Items')) return;
+                    await c.deleteImagesBulk(names);
+                    after();
+                    return;
+                }
+                default: return;
+            }
+        } catch (err) {
+            await message((err && err.message) || 'That did not work.', 'error');
+        }
+    }
+
     async function onItemMenu(action, target, item, event) {
         const items = selectedItems();
         const it = S.focus ? itemsById.get(S.focus) : items[0];
         if (!it) return;
+        if (/^gwp-/.test(action)) { await runPrintAction(action, items, it, event); return; }
         switch (action) {
             case 'gwi-preview': openViewer(it.id); break;
             case 'gwi-tags': openAddTags(items); break;
@@ -2256,8 +2475,10 @@
             if (typeof root.ensureModalEdgesWithinWorkArea === 'function') root.ensureModalEdgesWithinWorkArea(shell);
         } else if (typeof root.bringModalToFront === 'function') root.bringModalToFront(shell);
         if (typeof root.wireGlancewellChromeOnce === 'function') root.wireGlancewellChromeOnce();
-        await Promise.all([loadTags(), loadWatched(), loadRecent(), loadSettings()]);
+        // the library at once; its tags, watched folders, recent imports and settings fill in as they answer (it stayed
+        // blank behind one that did not answer, Nov 21 2026)
         showLibrary();
+        void Promise.all([loadTags(), loadWatched(), loadRecent(), loadSettings()].map((p) => Promise.resolve(p).catch(() => null))).then(() => { renderTree(); refresh(); });
         await showNode(opts.node || S.node || { root: 'prints', kind: 'all' }, { history: false });
     }
 
@@ -2265,11 +2486,12 @@
     function showFromViewer(slideData) {
         const id = slideData && slideData.gwItem;
         showLibrary();
-        if (id && itemsById.has(id)) {
-            select(id);
-            scrollIntoView(id);
-        }
         S.el.scroller.focus({ preventScroll: true });
+        if (!id || !itemsById.has(id)) return;
+        select(id);
+        // after the gallery has laid itself out again (it was hidden behind the viewer): that picture, centred
+        // (Yukimi, Nov 21 2026: back to the gallery should land on the item)
+        requestAnimationFrame(() => requestAnimationFrame(() => { S.layout = null; scrollIntoView(id, true); }));
     }
 
     /** A video told its length (glancewellVideo.js): Info and the Details view show it from now on. */

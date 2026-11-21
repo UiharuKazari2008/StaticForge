@@ -23,7 +23,10 @@
     // loaded once: with Explorer, or earlier by ActiveSync (activeSyncAgent.js) so a computer can
     // browse this phone while Explorer was never opened here. On the desktop ActiveSync's remote
     // storage (activeSyncRemoteStorage.js) already stands in for the bridge.
-    if (root.phoneStorage) {
+    // In the app's DeX window the desktop's remote storage holds root.phoneStorage; this phone's own storage is still
+    // here, as root.phoneStorageLocal (Melaton Photo Gallery's Pictures shows this phone's albums with it, #446)
+    const remoteTaken = !!root.phoneStorage;
+    if (remoteTaken && (!root.AndroidPhoneStorage || root.phoneStorageLocal)) {
         if (typeof module !== 'undefined' && module.exports) module.exports = root.phoneStorage;
         return;
     }
@@ -304,6 +307,7 @@
         write,
         binaryChunk
     };
-    root.phoneStorage = api;
+    if (!remoteTaken) root.phoneStorage = api;
+    if (bridge) root.phoneStorageLocal = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

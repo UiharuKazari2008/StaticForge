@@ -3,8 +3,9 @@
  * the navigation tree is one source (Yukimi, Nov 20 2026: four separate roots, plus a root per ActiveSync device):
  *
  *   pictures   Pictures: this device's own picture library (the Android app's MediaStore in DeX; the phone's cards)
- *   prints     DreamScape Prints: the gallery's prints (request_gallery, newest first, paged)
- *   refs       DreamScape References: base images, character references and vibes (get_references)
+ *   prints     DreamScape: the gallery's prints (request_gallery, newest first, paged); workspaceId '*' lists every
+ *              workspace's (the tree's Workspaces node, Yukimi Nov 21 2026)
+ *   refs       References (inside DreamScape): base images, character references and vibes (get_references)
  *   folders    Folders: the VFS folders added with Add Folder to Gallery (glancewell_watched), prints left out
  *   device:<id> a phone connected through ActiveSync (activeSyncRemoteStorage.js), its folders walked with list
  *
@@ -100,10 +101,18 @@
 
     const prints = {
         id: 'prints',
-        label: 'DreamScape Prints',
-        /** scope: { view: images | pinned | scraps, workspaceId } ; onPage(items) as each block lands */
+        label: 'DreamScape',
+        /** scope: { view: images | pinned | scraps, workspaceId ('*': every workspace) } ; onPage(items) as each block lands */
         async list(scope = {}, onPage) {
             const view = scope.view || 'images';
+            if (scope.workspaceId === '*') {
+                const all = [];
+                for (const id of workspaceIds()) {
+                    if (all.length >= MAX_PRINTS) break;
+                    all.push(...await this.list(Object.assign({}, scope, { workspaceId: id }), onPage));
+                }
+                return all;
+            }
             const workspaceId = scope.workspaceId || activeWorkspaceId();
             const out = [];
             for (let offset = 0; offset < MAX_PRINTS; offset += PAGE) {
@@ -163,7 +172,7 @@
 
     const refs = {
         id: 'refs',
-        label: 'DreamScape References',
+        label: 'References',
         types: REF_TYPES,
         async list() {
             // get_references: modules/referencesWebSocketHandlers.js (every workspace, newest first)
@@ -460,15 +469,27 @@
         return hostAdapter;
     }
 
-    // Pictures: this device's own library (the Android app's bridge on a phone or DeX; DreamOS's own drives)
-    const localPs = () => (root.phoneStorage && !root.phoneStorage.remote ? root.phoneStorage : hostPs());
+    // Pictures: this device's own library (the Android app's bridge on a phone or DeX; DreamOS's own drives). In DeX the
+    // desktop's remote storage holds root.phoneStorage, so the phone's own bridge is phoneStorageLocal (Yukimi, Nov 21
+    // 2026: on the Fold the phone's gallery was missing from Pictures and the Fold showed as a device at the bottom)
+    if (root.AndroidPhoneStorage && !root.phoneStorageLocal && root.document) {
+        const s = root.document.createElement('script');
+        s.src = '/scripts/comp/phoneStorageBridge.js';
+        root.document.head.appendChild(s);
+    }
+    const localPs = () => root.phoneStorageLocal || (root.phoneStorage && !root.phoneStorage.remote ? root.phoneStorage : hostPs());
+    /** This phone's own ActiveSync id (in its DeX window), so it is not listed again as a device. */
+    const ownDeviceId = () => {
+        try { const a = root.AndroidActiveSync; return a && typeof a.getDeviceId === 'function' ? String(a.getDeviceId() || '').toLowerCase() : ''; } catch (_) { return ''; }
+    };
     const pictures = phoneSource({ id: 'pictures', label: 'Pictures', ps: localPs });
 
     const deviceSources = new Map();
     function devices() {
         const p = root.phoneStorage;
         if (!p || !p.remote || typeof p.devices !== 'function') return [];
-        return p.devices().map((d) => {
+        const own = ownDeviceId();
+        return p.devices().filter((d) => !own || String(d.deviceId).toLowerCase() !== own).map((d) => {
             const sid = `device:${d.deviceId}`;
             if (!deviceSources.has(sid)) deviceSources.set(sid, phoneSource({ id: sid, label: d.name, ps: () => root.phoneStorage, deviceId: d.deviceId }));
             const s = deviceSources.get(sid);
