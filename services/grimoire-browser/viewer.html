@@ -2061,7 +2061,9 @@
         jpegQuality: data.settings.jpegQuality,
         minFps: data.settings.minFps,
         maxFps: data.settings.maxFps,
-        regionQuality: data.settings.regionQuality
+        regionQuality: data.settings.regionQuality,
+        // Grimoire's Automatic quality (server.js: automatic unless false)
+        auto: typeof data.settings.auto === 'boolean' ? data.settings.auto : undefined
       });
     } else if (data.type === 'grimoire-browser-paste' && typeof data.text === 'string' && data.text) {
       send({ type: 'paste', text: data.text });
