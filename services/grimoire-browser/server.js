@@ -282,43 +282,307 @@ function watchScroll() {
     let queued = false;
     const big = (el) => el.clientHeight >= innerHeight * 0.5 && el.clientWidth >= innerWidth * 0.5;
     const scroller = () => (target && target.isConnected ? target : (document.scrollingElement || document.documentElement));
-    // #990: the viewer moves the picture itself while the document scrolls, all but what stays put: the fixed (or
-    // stuck sticky) bars along the top and bottom edges. Measured when scrolling stops, from the elements at a few
-    // points along each edge, never per frame.
+    // #990: the viewer moves the picture itself while the document scrolls, all but what stays put. The layers
+    // (Yukimi, Nov 21: "fixed background layer detect and seperation ... seperate top level fixed layers so that we
+    // dont have that jumping around ... in a optimised way track and pridict layer adjustments or reflows"):
+    //   bands     fixed (or stuck sticky) bars along the top and bottom edges: the rows the scroll packs leave alone
+    //   f         other fixed and sticky elements (side bars, floating buttons, a sticky file tree): the viewer draws
+    //             each where it stays (fixed) or where it will stick (sticky: its top value, where it sits in the
+    //             flow, the bottom of its container), never moved with the page
+    //   backdrop  a fixed picture behind the page (a fixed html/body background or pseudo-element, a full-screen
+    //             fixed element under the content): v lists, in document coordinates, where it shows through (no
+    //             content box over it), sampled in idle time; there the viewer keeps the backdrop still
+    //   cover     a full-screen fixed layer on top (a dialog): nothing to scroll ahead
+    // A full scan (points across the view) runs when scrolling stops or the view resizes. While the page scrolls only
+    // the elements already found are read again (their boxes; a header that hides or shrinks is sent at once).
     let bands = [0, 0];
     let bandsTimer = 0;
-    const pinned = (el) => {
-        for (let node = el; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
-            const pos = getComputedStyle(node).position;
-            if (pos === 'fixed' || pos === 'sticky') return node;
-        }
-        return null;
+    let known = [];
+    let layerSent = '';
+    let backdropEl = null;
+    let backdropHost = null;
+    let visGen = 0;
+    let visTimer = 0;
+    let visDone = [];
+    let visLayout = 0;
+    let lastSize = '';
+    const alphaOf = (color) => {
+        if (!color || color === 'transparent') return 0;
+        const m = /rgba?\(([^)]*)\)/.exec(color);
+        if (!m) return 1;
+        const parts = m[1].split(/[\s,/]+/).filter(Boolean);
+        return parts.length > 3 ? parseFloat(parts[3]) : 1;
     };
-    const measureBands = () => {
-        bandsTimer = 0;
-        const w = innerWidth;
-        const h = innerHeight;
+    const scanPinned = () => {
+        const cache = new Map();
+        return (el) => {
+            const chain = [];
+            let hit = null;
+            for (let node = el; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+                if (cache.has(node)) { hit = cache.get(node); break; }
+                chain.push(node);
+                const pos = getComputedStyle(node).position;
+                if (pos === 'fixed' || pos === 'sticky') { hit = node; break; }
+            }
+            for (const node of chain) cache.set(node, hit);
+            return hit;
+        };
+    };
+    const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+    // a sticky element's top in the flow (document coordinates) while it is stuck: below the sibling before it, or
+    // at the top of its container
+    const flowTop = (el, cs, sy) => {
+        let prev = el.previousElementSibling;
+        while (prev && /^(absolute|fixed)$/.test(getComputedStyle(prev).position)) prev = prev.previousElementSibling;
+        if (prev) return prev.getBoundingClientRect().bottom + sy + num(cs.marginTop);
+        const parent = el.parentElement;
+        if (!parent) return null;
+        return parent.getBoundingClientRect().top + sy + num(getComputedStyle(parent).paddingTop) + num(cs.marginTop);
+    };
+    // what the found elements are now: bands, layers, the backdrop, a cover
+    const classify = (list, w, h) => {
+        const sy = scrollY;
         let top = 0;
         let bottom = 0;
-        const seen = new Set();
-        for (const fx of [0.05, 0.3, 0.5, 0.7, 0.95]) {
-            for (const fy of [0.002, 0.03, 0.08, 0.15, 0.998, 0.97, 0.92]) {
-                const el = document.elementFromPoint(w * fx, h * fy);
-                const bar = el && pinned(el);
-                if (!bar || seen.has(bar)) continue;
-                seen.add(bar);
-                const r = bar.getBoundingClientRect();
-                // a bar across most of the width, against one edge, not a whole-screen overlay
-                if (r.width < w * 0.5 || r.height > h * 0.4) continue;
+        let cover = 0;
+        let backdrop = null;
+        const f = [];
+        const keep = [];
+        for (const item of list) {
+            const el = item.el;
+            if (!el.isConnected) continue;
+            const r = el.getBoundingClientRect();
+            const x0 = Math.max(0, r.left);
+            const x1 = Math.min(w, r.right);
+            const y0 = Math.max(0, r.top);
+            const y1 = Math.min(h, r.bottom);
+            if (x1 - x0 < 2 || y1 - y0 < 2) continue;
+            const cs = getComputedStyle(el);
+            if (cs.visibility === 'hidden' || num(cs.opacity) < 0.02) continue;
+            const sticky = cs.position === 'sticky';
+            keep.push(item);
+            // a bar across most of the width against one edge (stuck, when sticky)
+            if (r.width >= w * 0.5 && r.height <= h * 0.4 && (r.top <= 1 || r.bottom >= h - 1)) {
                 if (r.top <= 1 && r.bottom > top) top = r.bottom;
                 if (r.bottom >= h - 1 && h - r.top > bottom) bottom = h - r.top;
+                continue;
+            }
+            if (!sticky && (x1 - x0) * (y1 - y0) >= w * h * 0.6) {
+                if (item.onTop) cover = 1;
+                else if (!backdrop) backdrop = el;
+                continue;
+            }
+            if (f.length >= 16) continue;
+            const box = [x0, y0, x1 - x0, y1 - y0].map(Math.round);
+            if (!sticky) { f.push(box.concat(0)); continue; }
+            const t = cs.top === 'auto' ? null : num(cs.top);
+            const parent = el.parentElement;
+            const cBottom = parent ? parent.getBoundingClientRect().bottom + sy - num(getComputedStyle(parent).paddingBottom) - num(cs.marginBottom) : null;
+            if (t == null || cBottom == null) { f.push(box.concat(0)); continue; }
+            const moving = r.top > t + 0.5;
+            const flow = moving ? r.top + sy : flowTop(el, cs, sy);
+            if (flow == null) { f.push(box.concat(0)); continue; }
+            // [x, y, w, h, 1, stick top, top in the flow, container bottom, full height]; y is the clipped top,
+            // dy how far its box starts above it (rows the frame does not have)
+            f.push(box.concat(1, Math.round(t), Math.round(flow), Math.round(cBottom), Math.round(r.height), Math.round(y0 - r.top)));
+        }
+        return { bands: [Math.ceil(top), Math.ceil(bottom)], f, cover, backdrop, keep };
+    };
+    const sendLayers = (c, extra) => {
+        const msg = { sy: Math.round(scrollY), w: innerWidth, h: innerHeight, f: c.f, cover: c.cover, backdrop: backdropEl || backdropHost ? 1 : 0 };
+        if (extra) Object.assign(msg, extra);
+        const text = JSON.stringify(msg);
+        const key = text.replace(/"sy":-?\d+,/, '');
+        if (!extra && key === layerSent) return;
+        layerSent = key;
+        try { globalThis.__alchemyLayers(text); } catch (_) {}
+    };
+    const applyBands = (c) => {
+        if (c.bands[0] === bands[0] && c.bands[1] === bands[1]) return;
+        bands = c.bands;
+        last = '';
+    };
+    // between full scans (each scroll report): the found elements only
+    const trackLayers = () => {
+        if (!known.length || (target && target.isConnected)) return;
+        const c = classify(known, innerWidth, innerHeight);
+        applyBands(c);
+        sendLayers(c);
+    };
+    // where the backdrop shows through, in document coordinates: a grid of points, each walked down the stack until
+    // the backdrop (shows) or a box that hides it (a background, a picture, text). Edges snap to the boxes found.
+    const sampleBackdrop = (fixedEls) => {
+        const gen = ++visGen;
+        const w = innerWidth;
+        const h = innerHeight;
+        const sy = scrollY;
+        const g = Math.max(24, Math.min(48, Math.round(Math.sqrt(w * h / 600))));
+        const colCount = Math.ceil(w / g);
+        const rows = Math.ceil(h / g);
+        const vis = new Uint8Array(colCount * rows);
+        const boxes = new Array(colCount * rows);
+        const coverCache = new Map();
+        const pinned = scanPinned();
+        const REPLACED = /^(IMG|VIDEO|CANVAS|SVG|IFRAME|EMBED|OBJECT|INPUT|TEXTAREA|SELECT|BUTTON|PICTURE)$/;
+        const covers = (el) => {
+            let v = coverCache.get(el);
+            if (v !== undefined) return v;
+            const cs = getComputedStyle(el);
+            v = alphaOf(cs.backgroundColor) > 0.05 || cs.backgroundImage !== 'none' || REPLACED.test(el.tagName.toUpperCase());
+            if (!v) for (const n of el.childNodes) { if (n.nodeType === 3 && /\S/.test(n.data)) { v = true; break; } }
+            coverCache.set(el, v);
+            return v;
+        };
+        let row = 0;
+        const step = (deadline) => {
+            visTimer = 0;
+            if (gen !== visGen) return;
+            const until = performance.now() + Math.max(3, Math.min(8, deadline && deadline.timeRemaining ? deadline.timeRemaining() : 6));
+            for (; row < rows && performance.now() < until; row++) {
+                const y = Math.min(h - 1, row * g + g / 2);
+                for (let col = 0; col < colCount; col++) {
+                    const x = Math.min(w - 1, col * g + g / 2);
+                    const i = row * colCount + col;
+                    for (const el of document.elementsFromPoint(x, y)) {
+                        if (backdropEl ? (el === backdropEl || backdropEl.contains(el)) : (el === document.body || el === document.documentElement)) { vis[i] = 1; break; }
+                        if (el === document.body || el === document.documentElement) break;
+                        const pin = pinned(el);
+                        if (pin && fixedEls.has(pin)) continue;
+                        if (covers(el)) {
+                            const r = el.getBoundingClientRect();
+                            boxes[i] = [r.left, r.top, r.right, r.bottom];
+                            break;
+                        }
+                    }
+                }
+            }
+            if (row < rows) { visTimer = requestIdleCallback(step, { timeout: 400 }); return; }
+            if (Math.abs(scrollY - sy) > 0.5 || innerWidth !== w || innerHeight !== h) return;
+            const rects = [];
+            const open = [];
+            for (let j = 0; j < rows; j++) {
+                const runs = [];
+                for (let i = 0; i < colCount; i++) {
+                    if (!vis[j * colCount + i]) continue;
+                    let e = i;
+                    while (e + 1 < colCount && vis[j * colCount + e + 1]) e++;
+                    let x0 = i * g;
+                    let x1 = Math.min(w, (e + 1) * g);
+                    const left = i > 0 ? boxes[j * colCount + i - 1] : null;
+                    if (left && left[2] > x0 - g && left[2] < x0 + g) x0 = Math.max(0, left[2]);
+                    const right = e + 1 < colCount ? boxes[j * colCount + e + 1] : null;
+                    if (right && right[0] > x1 - g && right[0] < x1 + g) x1 = Math.min(w, right[0]);
+                    let y0 = j * g;
+                    let y1 = Math.min(h, (j + 1) * g);
+                    for (let c = i; c <= e; c++) {
+                        const above = j > 0 ? boxes[(j - 1) * colCount + c] : null;
+                        if (above && above[3] > y0 - g && above[3] < y0 + g) y0 = Math.max(y0, above[3]);
+                        const below = j + 1 < rows ? boxes[(j + 1) * colCount + c] : null;
+                        if (below && below[1] > y1 - g && below[1] < y1 + g) y1 = Math.min(y1, below[1]);
+                    }
+                    if (x1 - x0 >= 1 && y1 - y0 >= 1) runs.push([Math.round(x0), Math.round(y0), Math.round(x1), Math.round(y1)]);
+                    i = e;
+                }
+                for (const run of runs) {
+                    const up = open.find((o) => o[0] === run[0] && o[2] === run[2] && Math.abs(o[3] - run[1]) <= g / 2);
+                    if (up) up[3] = run[3];
+                    else { const rect = run.slice(); rects.push(rect); open.push(rect); }
+                }
+                for (let k = open.length - 1; k >= 0; k--) if (open[k][3] < (j + 1) * g - g / 2 && !runs.some((r) => r[0] === open[k][0] && r[2] === open[k][2])) open.splice(k, 1);
+            }
+            const r = rects.length > 160 ? [] : rects.map((q) => [q[0], q[1] + Math.round(sy), q[2] - q[0], q[3] - q[1]]);
+            // columns where it shows on (nearly) every row (a page's margins): the viewer keeps it still there on rows
+            // not sampled yet (the over-render band, rows a fast scroll brings in)
+            const cols = [];
+            for (let i = 0; i < colCount; i++) {
+                let n = 0;
+                for (let j = 0; j < rows; j++) n += vis[j * colCount + i];
+                if (n < rows * 0.9) continue;
+                let x0 = i * g;
+                let x1 = Math.min(w, (i + 1) * g);
+                const last = cols[cols.length - 1];
+                if (last && last[1] === x0) { last[1] = x1; continue; }
+                cols.push([x0, x1]);
+            }
+            // their edges snap to the boxes beside them (the first row that has one)
+            for (const c of cols) {
+                const li = Math.round(c[0] / g) - 1;
+                const ri = Math.round(c[1] / g);
+                for (let j = 0; j < rows; j++) {
+                    const left = li >= 0 ? boxes[j * colCount + li] : null;
+                    if (left && left[2] > c[0] - g && left[2] < c[0] + g) { c[0] = Math.max(0, Math.round(left[2])); break; }
+                }
+                for (let j = 0; j < rows; j++) {
+                    const right = ri < colCount ? boxes[j * colCount + ri] : null;
+                    if (right && right[0] > c[1] - g && right[0] < c[1] + g) { c[1] = Math.min(w, Math.round(right[0])); break; }
+                }
+            }
+            visDone.push([sy, sy + h]);
+            if (visDone.length > 24) visDone.shift();
+            sendLayers(classify(known, w, h), { v: { d0: Math.round(sy), d1: Math.round(sy + h), r, cols } });
+        };
+        visTimer = requestIdleCallback(step, { timeout: 400 });
+    };
+    const scanLayers = () => {
+        bandsTimer = 0;
+        if (target && target.isConnected) return;
+        const w = innerWidth;
+        const h = innerHeight;
+        if (!w || !h) return;
+        const size = w + 'x' + h;
+        const resized = size !== lastSize;
+        lastSize = size;
+        const pinned = scanPinned();
+        const found = new Map();
+        const xs = [0.02, 0.05, 0.18, 0.3, 0.42, 0.5, 0.58, 0.7, 0.82, 0.95, 0.98];
+        const ys = [0.002, 0.03, 0.08, 0.15, 0.3, 0.45, 0.6, 0.75, 0.92, 0.97, 0.998];
+        for (const fx of xs) {
+            for (const fy of ys) {
+                const stack = document.elementsFromPoint(w * fx, h * fy);
+                const seen = new Set();
+                for (const el of stack) {
+                    const pin = pinned(el);
+                    if (!pin || seen.has(pin)) continue;
+                    seen.add(pin);
+                    let rec = found.get(pin);
+                    if (!rec) { rec = { el: pin, hits: 0, top: 0 }; found.set(pin, rec); }
+                    rec.hits += 1;
+                    if (stack[0] && pin.contains(stack[0])) rec.top += 1;
+                }
             }
         }
-        const next = [Math.ceil(top), Math.ceil(bottom)];
-        if (next[0] === bands[0] && next[1] === bands[1]) return;
-        bands = next;
-        last = '';
-        queue();
+        const list = Array.from(found.values()).map((rec) => ({ el: rec.el, onTop: rec.top * 2 > rec.hits }));
+        const c = classify(list, w, h);
+        known = c.keep;
+        backdropEl = c.backdrop;
+        backdropHost = null;
+        if (!backdropEl) {
+            for (const host of [document.documentElement, document.body]) {
+                if (!host || backdropHost) continue;
+                const hs = getComputedStyle(host);
+                if (/fixed/.test(hs.backgroundAttachment) && hs.backgroundImage !== 'none') backdropHost = host;
+                for (const ps of ['::before', '::after']) {
+                    const p = getComputedStyle(host, ps);
+                    if (p.content !== 'none' && p.position === 'fixed' && (p.backgroundImage !== 'none' || alphaOf(p.backgroundColor) > 0.05)) backdropHost = host;
+                }
+            }
+        }
+        applyBands(c);
+        if (backdropEl || backdropHost) {
+            sendLayers(c, resized ? { reset: 1 } : null);
+            // rows already sampled at this layout (same view size and document height) are not sampled again
+            const docH = document.documentElement.scrollHeight;
+            if (resized || docH !== visLayout) { visDone = []; visLayout = docH; }
+            const sy = scrollY;
+            if (!visDone.some((d) => sy >= d[0] - 1 && sy + h <= d[1] + 1)) {
+                const fixedEls = new Set(known.map((item) => item.el).filter((el) => el !== backdropEl));
+                if (visTimer) cancelIdleCallback(visTimer);
+                sampleBackdrop(fixedEls);
+            }
+        } else {
+            sendLayers(c, resized ? { reset: 1 } : null);
+        }
+        queue(true);
     };
     const report = () => {
         queued = false;
@@ -330,13 +594,18 @@ function watchScroll() {
         last = next;
         try { globalThis.__alchemyScroll(next); } catch (_) {}
     };
-    const queue = () => {
-        if (queued) return;
-        queued = true;
-        requestAnimationFrame(report);
-        setTimeout(() => { if (queued) report(); }, 100);
+    // noScan: a report only (the scan itself asks for one)
+    const queue = (noScan) => {
+        if (!queued) {
+            queued = true;
+            requestAnimationFrame(() => { trackLayers(); report(); });
+            setTimeout(() => { if (queued) { trackLayers(); report(); } }, 100);
+        }
+        if (noScan === true) return;
+        // a scroll moves the backdrop's sampled rows: the sampling waits for the next stop
+        visGen += 1;
         if (bandsTimer) clearTimeout(bandsTimer);
-        bandsTimer = setTimeout(measureBands, 180);
+        bandsTimer = setTimeout(scanLayers, 180);
     };
     globalThis.__alchemyScrollTo = (y, x) => {
         const el = scroller();
@@ -361,7 +630,7 @@ function watchScroll() {
         const now = Date.now();
         if (now - movedAt < 1000) return;
         movedAt = now;
-        queue();
+        queue(true);
     }, { capture: true, passive: true });
     addEventListener('wheel', queue, { capture: true, passive: true });
     const observe = () => {
@@ -375,6 +644,29 @@ function watchScroll() {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observe, { once: true });
     else observe();
     addEventListener('load', queue);
+}
+
+// The page's layers (watchScroll, #990): checked and bounded before they reach the viewers.
+function parseLayers(payload) {
+    let m = null;
+    try { m = JSON.parse(String(payload || '')); } catch (_) { return null; }
+    if (!m || typeof m !== 'object') return null;
+    const nums = (a, n) => Array.isArray(a) && a.length >= n && a.slice(0, n).every((v) => v === null || Number.isFinite(v));
+    const out = {
+        type: 'layers',
+        sy: Number(m.sy) || 0,
+        w: Number(m.w) || 0,
+        h: Number(m.h) || 0,
+        f: (Array.isArray(m.f) ? m.f : []).filter((l) => nums(l, 5)).slice(0, 16).map((l) => l.slice(0, 11)),
+        cover: m.cover ? 1 : 0,
+        backdrop: m.backdrop ? 1 : 0
+    };
+    if (m.reset) out.reset = 1;
+    if (m.v && Number.isFinite(m.v.d0) && Number.isFinite(m.v.d1) && Array.isArray(m.v.r)) {
+        out.v = { d0: m.v.d0, d1: m.v.d1, r: m.v.r.filter((q) => nums(q, 4)).slice(0, 160).map((q) => q.slice(0, 4)) };
+        out.v.cols = (Array.isArray(m.v.cols) ? m.v.cols : []).filter((c) => nums(c, 2)).slice(0, 16).map((c) => c.slice(0, 2));
+    }
+    return out;
 }
 
 function sessionSettings(input, base) {
@@ -3170,6 +3462,23 @@ async function createSession(body, adoptedPage) {
             if (!session.copying) syncRemoteClipboard(session, false).catch(() => {});
             return;
         }
+        if (ev && ev.name === '__alchemyLayers' && sessions.get(id)) {
+            const layers = parseLayers(ev.payload);
+            if (!layers) return;
+            if (PACK_DEBUG) console.log('[grimoire-browser] layers sy', layers.sy, 'f', layers.f.length, 'backdrop', layers.backdrop, 'cover', layers.cover, layers.v ? 'v ' + layers.v.r.length + ' rects, ' + layers.v.cols.length + ' cols, rows ' + layers.v.d0 + '-' + layers.v.d1 : '', String(ev.payload).length + ' B');
+            // the backdrop's sampled rows stay with the session (a viewer that joins later gets them too)
+            if (layers.reset) session.layersVis = null;
+            if (layers.v) {
+                const prev = session.layersVis && !layers.reset ? session.layersVis.r : [];
+                const keep = prev.filter((q) => q[1] + q[3] <= layers.v.d0 || q[1] >= layers.v.d1);
+                const ranges = (session.layersVis && !layers.reset ? session.layersVis.ranges : []).concat([[layers.v.d0, layers.v.d1]]).slice(-24);
+                session.layersVis = { d0: layers.v.d0, d1: layers.v.d1, r: keep.concat(layers.v.r).slice(-600), cols: layers.v.cols, ranges };
+            }
+            if (!layers.backdrop) session.layersVis = null;
+            session.layers = layers;
+            broadcast(session, layers);
+            return;
+        }
         if (ev && ev.name === '__alchemyScroll' && sessions.get(id)) {
             const [y, height, view, x = 0, width = 0, viewWidth = 0, root = 1, bandTop = 0, bandBottom = 0] = String(ev.payload || '').split(':').map(Number);
             if (![y, height, view, x, width, viewWidth, root, bandTop, bandBottom].every(Number.isFinite)) return;
@@ -3194,6 +3503,7 @@ async function createSession(body, adoptedPage) {
     await cdp.send('Runtime.addBinding', { name: '__alchemyClipboard', executionContextName: 'alchemy' });
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: '(' + watchClipboard + ')()', worldName: 'alchemy' });
     await cdp.send('Runtime.addBinding', { name: '__alchemyScroll', executionContextName: 'alchemy' });
+    await cdp.send('Runtime.addBinding', { name: '__alchemyLayers', executionContextName: 'alchemy' });
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: '(' + watchScroll + ')()', worldName: 'alchemy' });
     // The viewer draws the scrollbar (customScrollbar look); Chromium's own would sit inside the picture.
     await cdp.send('Emulation.setScrollbarsHidden', { hidden: true }).catch(() => {});
@@ -4130,6 +4440,7 @@ function attachViewer(ws, session) {
     if (session.feeds && session.feeds.length) ws.send(JSON.stringify({ type: 'feeds', feeds: session.feeds }));
     if (session.dialog) ws.send(JSON.stringify(session.dialog.ask));
     if (session.scroll) ws.send(JSON.stringify(session.scroll));
+    if (session.layers) ws.send(JSON.stringify(Object.assign({}, session.layers, { reset: 1, v: session.layersVis || undefined })));
     if (!session.popup) flushOrphans(session);
     if (session.painted) {
         try { ws.send(session.painted); } catch (_) {}

@@ -450,6 +450,19 @@
   var bgColor = '';
   var CACHE_MAX_PIXELS = 12e6;
   var cache = { canvas: null, ctx: null, doc0: 0, valid0: 0, valid1: 0 };
+  // The page's layers (server.js watchScroll, Yukimi Nov 21: separate the fixed background and the fixed layers on top
+  // so nothing jumps): f = fixed and sticky elements drawn where they stay or stick, never moved with the page; vis =
+  // where a fixed backdrop shows through (document CSS pixels), kept still from backdropCanvas (its pixels as last
+  // seen at each place on the screen); cover = a full-screen layer on top (a dialog): no scrolling ahead.
+  var layers = { f: [], cover: 0, backdrop: 0 };
+  var visRects = [];
+  // the document rows sampled for visRects; on other rows the backdrop is kept still in visCols (CSS x ranges where it
+  // showed on nearly every sampled row: the page's margins)
+  var visRanges = [];
+  var visCols = [];
+  var backdropCanvas = null;
+  var backdropCtx = null;
+  var keepCanvas = null;
 
   function requestComposite() {
     if (!rafId) rafId = requestAnimationFrame(composite);
@@ -458,6 +471,57 @@
   function resetCache() {
     cache.valid0 = cache.valid1 = 0;
     bgColor = '';
+    // the layers stay: each new document's first scan sends them with reset (they can arrive before its location)
+  }
+
+  // a layer's top (viewport CSS pixels, its whole box) with the document scrolled to S: fixed where it is; sticky in
+  // the flow until it reaches its top value, then there, until its container's bottom pushes it up
+  function layerTop(l, S) {
+    if (!l[4]) return l[1];
+    var top = l[6] - S;
+    if (top < l[5]) top = l[5];
+    var limit = l[7] - S - l[8];
+    if (top > limit) top = Math.max(l[6] - S, limit);
+    return top;
+  }
+
+  // the layer's rows in base (frame pixels): where its box is at the base frame's scroll offset, clipped to the view
+  function layerSource(l, k, vh) {
+    var top = layerTop(l, baseInfo.sy);
+    var full = l[4] ? l[8] : l[3];
+    // a sticky element still in the flow goes on into the over-render band below the view (frame rows past vh)
+    var flowing = l[4] && Math.abs(top - (l[6] - baseInfo.sy)) <= 0.5;
+    var y0 = Math.max(0, Math.round(top * k));
+    var y1 = Math.min(flowing ? base.height : vh, Math.round((top + full) * k));
+    var x0 = Math.max(0, Math.round(l[0] * k));
+    var x1 = Math.min(base.width, Math.round((l[0] + l[2]) * k));
+    if (y1 - y0 < 1 || x1 - x0 < 1) return null;
+    // stuck (or fixed): it is not where the page's flow would put it
+    var stuck = !l[4] || Math.abs(top - (l[6] - baseInfo.sy)) > 0.5;
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, top: top, stuck: stuck, full: Math.round(full * k) };
+  }
+
+  // the backdrop as it shows at each place on the screen, from the newest frame where it shows through
+  function backdropStore() {
+    if (!layers.backdrop || !visRects.length || !baseInfo.p || !baseInfo.k || !base.width) return;
+    var k = baseInfo.k;
+    var vh = viewRows();
+    if (!backdropCanvas || backdropCanvas.width !== base.width || backdropCanvas.height !== vh) {
+      backdropCanvas = backdropCanvas || document.createElement('canvas');
+      backdropCanvas.width = base.width;
+      backdropCanvas.height = vh;
+      backdropCtx = backdropCanvas.getContext('2d');
+    }
+    var b = bands();
+    for (var i = 0; i < visRects.length; i++) {
+      var r = visRects[i];
+      var y0 = Math.max(b.m0, Math.round((r[1] - baseInfo.sy) * k));
+      var y1 = Math.min(b.m1, Math.round((r[1] + r[3] - baseInfo.sy) * k));
+      if (y1 <= y0) continue;
+      var x0 = Math.max(0, Math.round(r[0] * k));
+      var x1 = Math.min(base.width, Math.round((r[0] + r[2]) * k));
+      if (x1 > x0) backdropCtx.drawImage(base, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
+    }
   }
 
   // the frame rows that show: the viewport (a frame with an over-render band is taller)
@@ -518,9 +582,40 @@
         cache.ctx.fillRect(0, h0 - cache.doc0, width, h1 - h0);
       }
     }
+    // the fixed and stuck layers are not the page at those rows: where the cache already had what lies under them,
+    // it keeps that (scrolling then shows no copy of a fixed layer)
+    var kept = [];
+    if (layers.f.length && cache.valid1 > cache.valid0) {
+      for (var li = 0; li < layers.f.length; li++) {
+        var src = layerSource(layers.f[li], baseInfo.k, vh);
+        if (!src || !src.stuck) continue;
+        var dy0 = docTop + src.y;
+        if (dy0 < cache.valid0 || dy0 + src.h > cache.valid1) continue;
+        if (!keepCanvas) keepCanvas = document.createElement('canvas');
+        kept.push({ src: src, doc: dy0 });
+      }
+      if (kept.length) {
+        var kw = 0;
+        var kh = 0;
+        for (var km = 0; km < kept.length; km++) { kw = Math.max(kw, kept[km].src.w); kh += kept[km].src.h; }
+        if (keepCanvas.width < kw || keepCanvas.height < kh) { keepCanvas.width = Math.max(kw, keepCanvas.width); keepCanvas.height = Math.max(kh, keepCanvas.height); }
+        var kctx = keepCanvas.getContext('2d');
+        var ky = 0;
+        for (var ks = 0; ks < kept.length; ks++) {
+          var ksrc = kept[ks].src;
+          kctx.drawImage(cache.canvas, ksrc.x, kept[ks].doc - cache.doc0, ksrc.w, ksrc.h, 0, ky, ksrc.w, ksrc.h);
+          kept[ks].ky = ky;
+          ky += ksrc.h;
+        }
+      }
+    }
     for (var g = 0; g < segs.length; g++) {
       var rowsIn = segs[g][1] - segs[g][0];
       if (rowsIn > 0) cache.ctx.drawImage(base, 0, segs[g][0], width, rowsIn, 0, docTop + segs[g][0] - cache.doc0, width, rowsIn);
+    }
+    for (var kr = 0; kr < kept.length; kr++) {
+      var rs = kept[kr].src;
+      cache.ctx.drawImage(keepCanvas, 0, kept[kr].ky, rs.w, rs.h, rs.x, kept[kr].doc - cache.doc0, rs.w, rs.h);
     }
     if (cache.valid1 <= cache.valid0 || d1 < cache.valid0 || d0 > cache.valid1) {
       cache.valid0 = d0;
@@ -583,12 +678,105 @@
     if (y1 > y0) ctx.drawImage(base, 0, y0 + off, width, y1 - y0, 0, y0, width, y1 - y0);
     if (off > 0) fillGap(Math.max(b.m0, y1), b.m1, docAtTop, b);
     else fillGap(b.m0, Math.min(b.m1, y0), docAtTop, b);
+    if (layers.f.length || (layers.backdrop && visRects.length)) drawLayers(off, docAtTop, b);
     if (b.top) ctx.drawImage(base, 0, 0, width, b.top, 0, 0, width, b.top);
     if (b.bottom) ctx.drawImage(base, 0, b.m1, width, b.bottom, 0, b.m1, width, b.bottom);
   }
 
+  // rows [y0, y1) x [x0, x1) of the moved picture from the cache (what lies under a layer), where it has them
+  function fillFromCache(x0, x1, y0, y1, docAtTop) {
+    if (!cache.canvas || cache.valid1 <= cache.valid0) return;
+    var d0 = Math.max(docAtTop + y0, cache.valid0);
+    var d1 = Math.min(docAtTop + y1, cache.valid1);
+    if (d1 > d0 && x1 > x0) ctx.drawImage(cache.canvas, x0, d0 - cache.doc0, x1 - x0, d1 - d0, x0, d0 - docAtTop, x1 - x0, d1 - d0);
+  }
+
+  function drawLayers(off, docAtTop, b) {
+    var k = baseInfo.k;
+    var vh = viewRows();
+    var S = baseInfo.sy + off / k;
+    var srcs = [];
+    var i;
+    for (i = 0; i < layers.f.length; i++) {
+      var src = layerSource(layers.f[i], k, vh);
+      if (!src) continue;
+      srcs.push([layers.f[i], src]);
+      // the copy the move made of it (its pixels in base, moved with the page): what lies under it instead
+      if (src.stuck) fillFromCache(src.x, src.x + src.w, Math.max(b.m0, src.y - off), Math.min(b.m1, src.y + src.h - off), docAtTop);
+    }
+    // the backdrop where it shows through, still
+    if (layers.backdrop && backdropCanvas && visRects.length) {
+      // rows nobody sampled: its usual columns
+      if (visCols.length) {
+        var gaps = [[S + b.m0 / k, S + b.m1 / k]];
+        for (var ri = 0; ri < visRanges.length; ri++) {
+          var cut = [];
+          for (var gi = 0; gi < gaps.length; gi++) {
+            var ga = gaps[gi];
+            var rg = visRanges[ri];
+            if (rg[1] <= ga[0] || rg[0] >= ga[1]) { cut.push(ga); continue; }
+            if (rg[0] > ga[0]) cut.push([ga[0], rg[0]]);
+            if (rg[1] < ga[1]) cut.push([rg[1], ga[1]]);
+          }
+          gaps = cut;
+        }
+        for (var gj = 0; gj < gaps.length; gj++) {
+          var gy0 = Math.max(b.m0, Math.round((gaps[gj][0] - S) * k));
+          var gy1 = Math.min(b.m1, Math.round((gaps[gj][1] - S) * k));
+          if (gy1 <= gy0) continue;
+          for (var ci = 0; ci < visCols.length; ci++) {
+            var cx0 = Math.max(0, Math.round(visCols[ci][0] * k));
+            var cx1 = Math.min(base.width, Math.round(visCols[ci][1] * k));
+            if (cx1 > cx0) ctx.drawImage(backdropCanvas, cx0, gy0, cx1 - cx0, gy1 - gy0, cx0, gy0, cx1 - cx0, gy1 - gy0);
+          }
+        }
+      }
+      for (i = 0; i < visRects.length; i++) {
+        var r = visRects[i];
+        var vy0 = Math.max(b.m0, Math.round((r[1] - S) * k));
+        var vy1 = Math.min(b.m1, Math.round((r[1] + r[3] - S) * k));
+        if (vy1 <= vy0) continue;
+        var vx0 = Math.max(0, Math.round(r[0] * k));
+        var vx1 = Math.min(base.width, Math.round((r[0] + r[2]) * k));
+        if (vx1 > vx0) ctx.drawImage(backdropCanvas, vx0, vy0, vx1 - vx0, vy1 - vy0, vx0, vy0, vx1 - vx0, vy1 - vy0);
+      }
+    }
+    // each layer where it is at the picture's offset
+    for (i = 0; i < srcs.length; i++) {
+      var l = srcs[i][0];
+      var s = srcs[i][1];
+      var dy = Math.round((layerTop(l, S) - s.top) * k);
+      var to0 = Math.max(b.m0, s.y + dy);
+      var to1 = Math.min(b.m1, s.y + s.h + dy);
+      if (to1 > to0) ctx.drawImage(base, s.x, to0 - dy, s.w, to1 - to0, s.x, to0, s.w, to1 - to0);
+      // the rest of its box, which no frame has yet: its last row drawn down (its background) rather than the page
+      // under it, which would be the moved copy of its own top
+      var boxEnd = Math.min(b.m1, Math.round(layerTop(l, S) * k) + s.full);
+      var from = Math.max(b.m0, s.y + s.h + dy);
+      if (boxEnd > from && s.h > 0) ctx.drawImage(base, s.x, s.y + s.h - 1, s.w, 1, s.x, from, s.w, boxEnd - from);
+    }
+  }
+
+  // the picture the viewer would draw ahead at document offset y, from what it has now (a data URL); plain: without
+  // the layers. scripts/test-alchemy-viewer.js compares it with the page once it is there.
+  window.__alchemyViewerProbe = function (y, plain) {
+    if (!baseInfo.k || !base.width) return '';
+    var savedLayers = layers;
+    var savedVis = visRects;
+    if (plain) {
+      layers = { f: [], cover: 0, backdrop: 0 };
+      visRects = [];
+    }
+    drawComposite(Math.round((y - baseInfo.sy) * baseInfo.k));
+    var url = canvas.toDataURL('image/png');
+    layers = savedLayers;
+    visRects = savedVis;
+    drawComposite(Math.round((pred.display - baseInfo.sy) * baseInfo.k));
+    return url;
+  };
+
   function canPredict() {
-    return !!(baseInfo.p && baseInfo.k > 0 && base.width && scrollInfo.root && scrollInfo.height > scrollInfo.view + 1
+    return !!(baseInfo.p && baseInfo.k > 0 && base.width && scrollInfo.root && !layers.cover && scrollInfo.height > scrollInfo.view + 1
       && performance.now() >= pred.distrustUntil);
   }
 
@@ -718,6 +906,7 @@
     }
     bgColor = '';
     cacheStore();
+    backdropStore();
     // no scrolling of its own going on (the page moved itself, or a long way): the picture is the frame, at once
     if (!pred.active && (!pred.converging || Math.abs(pred.display - baseInfo.sy) * (baseInfo.k || 1) > base.height)) {
       pred.display = baseInfo.sy;
@@ -856,6 +1045,27 @@
       if (wasRoot && !scrollInfo.root) resetCache();
       // while the viewer scrolls ahead, the scrollbar follows the picture, not the page catching up
       if (!pred.active) postScroll(scrollInfo.y);
+    } else if (msg.type === 'layers') {
+      if (msg.reset) {
+        visRects = [];
+        visRanges = [];
+        visCols = [];
+        if (backdropCtx) backdropCtx.clearRect(0, 0, backdropCanvas.width, backdropCanvas.height);
+      }
+      layers = { f: Array.isArray(msg.f) ? msg.f : [], cover: msg.cover ? 1 : 0, backdrop: msg.backdrop ? 1 : 0 };
+      if (!layers.backdrop) {
+        visRects = [];
+        visRanges = [];
+        visCols = [];
+      } else if (msg.v && Array.isArray(msg.v.r)) {
+        var d0 = msg.v.d0;
+        var d1 = msg.v.d1;
+        visRects = visRects.filter(function (q) { return q[1] + q[3] <= d0 || q[1] >= d1; }).concat(msg.v.r).slice(-600);
+        visRanges = visRanges.concat(Array.isArray(msg.v.ranges) ? msg.v.ranges : [[d0, d1]]).slice(-24);
+        visCols = Array.isArray(msg.v.cols) ? msg.v.cols : [];
+        backdropStore();
+      }
+      if (pred.active || pred.converging) requestComposite();
     } else if (msg.type === 'history-end') {
       postParent({ type: 'grimoire-browser-history-end', dir: msg.dir === 1 ? 1 : -1 });
     } else if (msg.type === 'download-progress') {
@@ -1181,7 +1391,7 @@
       frames: frameCount,
       frame: { width: base.width, height: base.height, sy: baseInfo.sy, k: baseInfo.k, p: baseInfo.p, vh: baseInfo.vh },
       canvas: { width: canvas.width, height: canvas.height, cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight, devicePx: devicePx, dpr: window.devicePixelRatio || 1 },
-      scroll: { height: scrollInfo.height, view: scrollInfo.view, distrust: Math.max(0, Math.round(pred.distrustUntil - performance.now())), display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, cacheRows: cache.valid1 - cache.valid0, cache0: cache.valid0, cache1: cache.valid1 },
+      scroll: { height: scrollInfo.height, view: scrollInfo.view, distrust: Math.max(0, Math.round(pred.distrustUntil - performance.now())), display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, layers: layers.f.length, sticky: layers.f.filter(function (l) { return l[4]; }).length, backdrop: layers.backdrop, cover: layers.cover, vis: visRects.length, cacheRows: cache.valid1 - cache.valid0, cache0: cache.valid0, cache1: cache.valid1 },
       audio: engine ? { path: 'worklet', state: engine.ctx.state, ready: engine.ready, packets: packetCount, targetMs: Math.round(engine.targetMs), lagMs: Math.round(engine.lagAvg || 0), jitterMs: Math.round(engine.jitter), underruns: engine.underruns, videoDelayMs: Math.round(videoDelay) }
         : { path: audio ? 'element' : 'off', wanted: audioWanted, taken: audioTaken, packets: packetCount },
       rttMs: Math.round(rttMs),
