@@ -134,6 +134,82 @@
         return null;
     }
     // contain (a barcode): up to 3.4 wide, so a long Code 128 (Sheetz) stays whole and readable (Yukimi, Nov 21 2026)
+    /*
+     * A plain picture as a panel icon (pg.iconRaw: an Android app's icon, a Program Icons set's): every panel icon
+     * stands on the ROM's floor with its own bottom mirrored below (Yukimi, Nov 21 2026: "it also violates the rule of
+     * it needing a reflection like everything else"). Drawn once per picture in a canvas at 4x, the same geometry as
+     * modules/wm65PanelIcon.js (86 x 113 per 2x: floor at 85, box 76 x 77 from x 5, the mirror from the floor row at 78 %
+     * for about a third of the art), kept as a blob URL; the plain picture shows until it is ready, then it is swapped.
+     */
+    const tiDrawn = new Map(); // picture url -> blob url | null (drawing) | '' (could not)
+    function tiIconFor(url) {
+        if (tiDrawn.has(url)) return tiDrawn.get(url) || null;
+        tiDrawn.set(url, null);
+        const im = new Image();
+        im.decoding = 'async';
+        im.onload = () => {
+            try {
+                const k = 2;
+                const W = 86 * k;
+                const H = 113 * k;
+                const floor = 85 * k;
+                const src = document.createElement('canvas');
+                src.width = im.naturalWidth;
+                src.height = im.naturalHeight;
+                const sx = src.getContext('2d', { willReadFrequently: true });
+                sx.drawImage(im, 0, 0);
+                const px = sx.getImageData(0, 0, src.width, src.height).data;
+                let x0 = src.width; let y0 = src.height; let x1 = -1; let y1 = -1;
+                for (let y = 0; y < src.height; y++) {
+                    for (let x = 0; x < src.width; x++) {
+                        if (px[(y * src.width + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+                    }
+                }
+                if (x1 < 0) { tiDrawn.set(url, ''); return; }
+                const cw = x1 - x0 + 1;
+                const ch = y1 - y0 + 1;
+                const f = Math.min((76 * k) / cw, (77 * k) / ch);
+                const w = Math.max(1, Math.round(cw * f));
+                const h = Math.max(1, Math.round(ch * f));
+                const left = Math.round(5 * k + (76 * k - w) / 2);
+                const top = floor - h;
+                const out = document.createElement('canvas');
+                out.width = W;
+                out.height = H;
+                const o = out.getContext('2d');
+                o.imageSmoothingQuality = 'high';
+                o.drawImage(src, x0, y0, cw, ch, left, top, w, h);
+                const rows = Math.max(1, Math.min(H - floor, 28 * k, Math.round(h * 0.4)));
+                const m = document.createElement('canvas');
+                m.width = w;
+                m.height = rows;
+                const mx = m.getContext('2d');
+                mx.translate(0, h);
+                mx.scale(1, -1);
+                mx.drawImage(src, x0, y0, cw, ch, 0, 0, w, h);
+                mx.setTransform(1, 0, 0, 1, 0, 0);
+                mx.globalCompositeOperation = 'destination-in';
+                const g = mx.createLinearGradient(0, 0, 0, rows);
+                g.addColorStop(0, 'rgba(0,0,0,0.78)');
+                g.addColorStop(1, 'rgba(0,0,0,0)');
+                mx.fillStyle = g;
+                mx.fillRect(0, 0, w, rows);
+                o.drawImage(m, left, floor);
+                out.toBlob((b) => {
+                    if (!b) { tiDrawn.set(url, ''); return; }
+                    const done = URL.createObjectURL(b);
+                    tiDrawn.set(url, done);
+                    document.querySelectorAll('img.wm-ti-icon[data-ti-src]').forEach((el) => {
+                        if (el.dataset.tiSrc === url) { el.removeAttribute('srcset'); el.src = done; }
+                    });
+                }, 'image/png');
+            } catch (_) { tiDrawn.set(url, ''); }
+        };
+        im.onerror = () => tiDrawn.set(url, '');
+        im.src = url;
+        return null;
+    }
+
     function picWideStyle(ar, contain) {
         const w = Math.round(43 * Math.min(contain ? 3.4 : 2.5, Math.max(1, ar)) * 10) / 10;
         return `--ti-pic-w:calc(${w} * var(--u));--ti-line-left:calc(${Math.round((w + 16) * 10) / 10} * var(--u))`;
@@ -1665,6 +1741,26 @@
         if (keys.includes('wmSuperBarNotes') && superOpen) refreshNotes();
     });
 
+    // Rows move every frame of a scroll: write only what changed (classList.remove of a class a row does not have,
+    // the same data-far or transform again, each still rewrote the attribute: ~6,800 writes in 4 s of scrolling on
+    // the Fold, Nov 21 2026)
+    function dropClass(el, cls) {
+        if (el.classList.contains(cls)) el.classList.remove(cls);
+    }
+    function moveRow(el, y) {
+        const t = `translate3d(0, calc(${y} * var(--wm-px)), 0)`;
+        if (el._wmTiT !== t) {
+            el._wmTiT = t;
+            el.style.transform = t;
+        }
+    }
+    let shownTop = null;
+    function setTop(top) {
+        if (shownTop === top && host.style.getPropertyValue('--wm-ti-top') === String(top)) return;
+        shownTop = top;
+        host.style.setProperty('--wm-ti-top', String(top));
+    }
+
     /** Place every row for the list position `pos` (rows) around the band. */
     function place() {
         dropEntryAnims();
@@ -1672,21 +1768,23 @@
         const top = focusTop();
         const e = (pos - sel) * ROW;
         const rest = !dragging && !settle;
-        host.style.setProperty('--wm-ti-top', String(top));
+        setTop(top);
         host.classList.toggle('is-rest', rest);
         panels.forEach((p, i) => {
             const el = rowEl.get(p.id);
             if (!el) return;
-            el.classList.remove('is-under', 'is-arriving');
+            dropClass(el, 'is-under');
+            dropClass(el, 'is-arriving');
             if (el.style.opacity) el.style.opacity = '';
             let y;
             if (i < sel) y = top - ROW * (sel - i) - e;
             else if (i > sel) y = top + BAND + ROW * (i - sel - 1) - e;
             else y = top + (BAND - ROW) / 2;
-            el.style.transform = `translate3d(0, calc(${y} * var(--wm-px)), 0)`;
+            moveRow(el, y);
             el.classList.toggle('is-sel', i === sel);
             const d = Math.abs(i - sel);
-            el.dataset.far = rest ? String(Math.min(d, 3)) : '0';
+            const far = rest ? String(Math.min(d, 3)) : '0';
+            if (el.dataset.far !== far) el.dataset.far = far;
         });
     }
 
@@ -1714,6 +1812,12 @@
             ? `<img class="wm-ti-icon wm-ti-wxicon" src="${esc(artUrl(`ti-wx-${wxKey}`))}" srcset="${esc(artSet(`ti-wx-${wxKey}`))}" alt="" draggable="false">`
             : wxImg(pg.wx.iconUrl, pg.wx.iconUrl2x, 'wm-ti-icon wm-ti-wxicon wm-ti-wxart')) + (opts.live ? liveClockHtml() : '')
             : icon === 'ti-2051' && pg.time && opts.live ? liveClockHtml()
+                : icon && pg.iconRaw ? (() => {
+                    // a plain picture: its drawn panel icon (reflection and all) once ready, the picture until then
+                    const raw = artUrl(icon);
+                    const drawn = tiIconFor(raw);
+                    return `<img class="wm-ti-icon" data-ti-src="${esc(raw)}" src="${esc(drawn || raw)}" alt="" draggable="false">`;
+                })()
                 : icon ? `<img class="wm-ti-icon" src="${esc(artUrl(icon))}" srcset="${esc(artSet(icon))}" alt="" draggable="false">` : '';
         if (p.clock) {
             // the weather's line above the date, after an invisible copy of AM / PM (12-hour clocks)
@@ -1835,7 +1939,7 @@
         const n = p.pages.length;
         const at = pageIndex(p);
         const pg = p.pages[at];
-        const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.bare, pg.imageFit, pg.smallIcon, pg.icon, pg.wx, pg.cells]);
+        const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.bare, pg.imageFit, pg.smallIcon, pg.icon, pg.iconRaw, pg.wx, pg.cells]);
         host.querySelectorAll('.wm-ti-arrow').forEach((a) => { a.hidden = n < 2; });
         if (n > 1 && key !== expKey) arrowsAwake();
         if (slide.active || key === expKey) return; // a page on its way keeps what it shows
@@ -2270,8 +2374,8 @@
         const top = focusTop();
         const ys = tweenYs(top, p);
         parallax(tw.n ? tw.a + (tw.b - tw.a) * p : tw.a + tw.e0 * (1 - p) / ROW);
-        host.style.setProperty('--wm-ti-top', String(top));
-        host.classList.remove('is-rest');
+        setTop(top);
+        dropClass(host, 'is-rest');
         // the entrance (#800) fades every row in to the dimness it keeps at rest (its distance from the
         // band), not to full, so nothing drops darker once the list has settled (Yukimi, Nov 15)
         const entering = host.classList.contains('is-entering');
@@ -2280,11 +2384,11 @@
             const el = rowEl.get(pn.id);
             if (!el) return;
             const y = ys[i];
-            el.style.transform = `translate3d(0, calc(${y} * var(--wm-px)), 0)`;
+            moveRow(el, y);
             const under = y + ROW / 2 > top && y + ROW / 2 < top + BAND;
             if (under) underNow = i;
             el.classList.toggle('is-under', under);
-            el.classList.remove('is-sel');
+            dropClass(el, 'is-sel');
             const far = entering ? String(Math.min(Math.abs(i - tw.b), 3)) : '0';
             if (el.dataset.far !== far) el.dataset.far = far;
             const o = i === tw.b && fade < 1 ? String(Math.round(fade * (under ? 55 : 100)) / 100) : '';
@@ -2782,6 +2886,66 @@
         sh.refreshSoftKeys();
     }
 
+    // ---- Home by the swipe (Yozora #1013, Yukimi Nov 21): the app's home mask (Today's wallpaper) covers the screen as the
+    // swipe ends. Today readies its opening pose under it (the picture only), says so at once (AndroidBars.homeReady), the
+    // app takes the mask away and answers ('melatonmaskgone'), and the entrance plays from there - nothing of it hidden
+    // under the mask. The title bar and the soft key bar stay away until 250 ms before the entrance ends, then slide in
+    // from the top and the bottom. Neither side waits long on the other: the app drops its mask after a short cap, and
+    // the entrance starts here after MASK_CAP_MS without its answer.
+    const MASK_CAP_MS = 900;
+    const BARS_IN_MS = 250;
+    let maskedRun = null;
+
+    /** The app's mask covers the screen now (a home swipe on its way to Today). */
+    function maskUp() {
+        try { return !!(window.AndroidBars && typeof window.AndroidBars.homeMaskUp === 'function' && window.AndroidBars.homeMaskUp()); } catch (_) { return false; }
+    }
+
+    /** The title bar from the top and the soft key bar from the bottom, in over the entrance's last 250 ms. */
+    function barsIn(totalMs) {
+        const shellEl = document.getElementById('wmShell');
+        if (!shellEl) return;
+        const opts = { duration: BARS_IN_MS, delay: Math.max(0, totalMs - BARS_IN_MS), easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'backwards' };
+        const bar = shellEl.querySelector(':scope > .wm-titlebar');
+        const keys = shellEl.querySelector(':scope > .wm-softkeys');
+        try {
+            if (bar) bar.animate([{ transform: 'translateY(-100%)' }, { transform: 'none' }], opts);
+            if (keys) keys.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], opts);
+        } catch (_) { /* no Web Animations: the bars simply stay */ }
+    }
+
+    /** Today under the app's home mask (wmShell goHome with the mask, or the page shown while it is up). */
+    function maskedHome() {
+        if (maskedRun) return true;
+        if (!host || host.hidden || !panels.length || root.dataset.wmApp !== 'today') {
+            // no Today to animate: the mask may go at once
+            try { if (window.AndroidBars && window.AndroidBars.homeReady) window.AndroidBars.homeReady(); } catch (_) { /* older app */ }
+            return false;
+        }
+        if (focusWait) focusWait.cancel();
+        if (slide && slide.active) { cancelAnimationFrame(slide.raf); slide.active = false; slide.x = 0; host.classList.remove('is-sliding'); }
+        if (overlay) { try { overlay.close(true); } catch (_) { overlay = null; } }
+        if (!host.classList.contains('is-primed')) prime();
+        let started = false;
+        const start = () => {
+            if (started) return;
+            started = true;
+            maskedRun = null;
+            window.removeEventListener('melatonmaskgone', start);
+            clearTimeout(cap);
+            entrance();
+            barsIn(ENTER_MS + ENTER_ZOOM_MS);
+        };
+        maskedRun = { start };
+        window.addEventListener('melatonmaskgone', start, { signal: appScopeSignal });
+        const cap = setTimeout(start, MASK_CAP_MS);
+        // the pose drawn and on screen (two frames; none while the page is still hidden): the mask may go
+        requestAnimationFrame(() => requestAnimationFrame(() => { // perf: allow one call per home swipe: homeReady only posts to the app's main thread, nothing is answered or waited for
+            try { window.AndroidBars.homeReady(); } catch (_) { start(); }
+        }));
+        return true;
+    }
+
     /**
      * Today's entrance waits for Melaton's window to have the focus (Yukimi, Nov 18: "it should not animate until
      * the app is focused"): coming back from an Android program, the page is shown while Android's home animation and
@@ -2839,6 +3003,7 @@
         shownAt = Date.now();
         hiddenSpan = hiddenAt ? shownAt - hiddenAt : 0;
         // back from another app (not the blink of a Home press on Today)
+        if (root.dataset.wmApp === 'today' && maskUp()) { maskedHome(); return; }
         if (root.dataset.wmApp === 'today' && hiddenSpan > AWAY_MS && !stayedBehind()) {
             // a frame now, with no visible change: the app keeps its return picture up until the page draws a frame
             // (its visual-state callback), and sends the focus the entrance waits for after that - a still page
@@ -2854,7 +3019,7 @@
     new MutationObserver(() => {
         const now = root.dataset.wmApp || '';
         // (not for a Today readied for the way back: prime() closing Start under a program; it plays on the return)
-        if (now === 'today' && lastApp && lastApp !== 'today') requestAnimationFrame(() => { if (!host || !host.classList.contains('is-primed')) entrance(); });
+        if (now === 'today' && lastApp && lastApp !== 'today') requestAnimationFrame(() => { if (!maskedRun && (!host || !host.classList.contains('is-primed'))) entrance(); });
         if (now !== 'today' && host) host.classList.remove('is-exiting');
         // another program came up: the Super Bar is put away at once (Today comes back without it)
         if (now !== 'today' && superOpen) closeSuper(true);
@@ -2881,6 +3046,8 @@
 
     window.wmTitanium = {
         enabled, home, select: (i) => select(i, true),
+        // Home by the swipe, under the app's mask (#1013)
+        maskedHome: () => maskedHome(),
         // the coming-back entrance on demand (tests, #800)
         enter: () => entrance(),
         // the Android app readies the return before Melaton goes behind another program (#800)
