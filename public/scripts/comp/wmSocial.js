@@ -239,6 +239,8 @@
             line2: lastLine(n),
             line3: [a.label, count > 1 ? `${count} new` : '', when(n.time)].filter(Boolean).join(', '),
             icon: panelIconOf(n.package) || undefined,
+            // the app's own icon: the panel draws it as a panel icon with its reflection (wmTitanium tiIconFor)
+            iconRaw: true,
             image: n.large || n.picture || undefined,
             // a person's photo or the app's own picture, without the photo frame (Yukimi, Nov 21 2026)
             bare: !!(n.large || n.picture),
@@ -268,7 +270,7 @@
             pages = apps.map((pkg) => {
                 const mine = list.filter((n) => n.package === pkg);
                 if (mine.length) return notePage(mine[0], mine.length);
-                return { title: appInfo(pkg).label, line2: 'No new notifications', icon: panelIconOf(pkg) || undefined, inPlace: true, softKey: appKey(pkg), onTap: () => openBar(pkg, null), pkg };
+                return { title: appInfo(pkg).label, line2: 'No new notifications', icon: panelIconOf(pkg) || undefined, iconRaw: true, inPlace: true, softKey: appKey(pkg), onTap: () => openBar(pkg, null), pkg };
             });
         } else {
             pages = list.slice(0, MAX_PAGES).map((n) => notePage(n, 0));

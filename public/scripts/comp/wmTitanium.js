@@ -134,6 +134,82 @@
         return null;
     }
     // contain (a barcode): up to 3.4 wide, so a long Code 128 (Sheetz) stays whole and readable (Yukimi, Nov 21 2026)
+    /*
+     * A plain picture as a panel icon (pg.iconRaw: an Android app's icon, a Program Icons set's): every panel icon
+     * stands on the ROM's floor with its own bottom mirrored below (Yukimi, Nov 21 2026: "it also violates the rule of
+     * it needing a reflection like everything else"). Drawn once per picture in a canvas at 4x, the same geometry as
+     * modules/wm65PanelIcon.js (86 x 113 per 2x: floor at 85, box 76 x 77 from x 5, the mirror from the floor row at 78 %
+     * for about a third of the art), kept as a blob URL; the plain picture shows until it is ready, then it is swapped.
+     */
+    const tiDrawn = new Map(); // picture url -> blob url | null (drawing) | '' (could not)
+    function tiIconFor(url) {
+        if (tiDrawn.has(url)) return tiDrawn.get(url) || null;
+        tiDrawn.set(url, null);
+        const im = new Image();
+        im.decoding = 'async';
+        im.onload = () => {
+            try {
+                const k = 2;
+                const W = 86 * k;
+                const H = 113 * k;
+                const floor = 85 * k;
+                const src = document.createElement('canvas');
+                src.width = im.naturalWidth;
+                src.height = im.naturalHeight;
+                const sx = src.getContext('2d', { willReadFrequently: true });
+                sx.drawImage(im, 0, 0);
+                const px = sx.getImageData(0, 0, src.width, src.height).data;
+                let x0 = src.width; let y0 = src.height; let x1 = -1; let y1 = -1;
+                for (let y = 0; y < src.height; y++) {
+                    for (let x = 0; x < src.width; x++) {
+                        if (px[(y * src.width + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+                    }
+                }
+                if (x1 < 0) { tiDrawn.set(url, ''); return; }
+                const cw = x1 - x0 + 1;
+                const ch = y1 - y0 + 1;
+                const f = Math.min((76 * k) / cw, (77 * k) / ch);
+                const w = Math.max(1, Math.round(cw * f));
+                const h = Math.max(1, Math.round(ch * f));
+                const left = Math.round(5 * k + (76 * k - w) / 2);
+                const top = floor - h;
+                const out = document.createElement('canvas');
+                out.width = W;
+                out.height = H;
+                const o = out.getContext('2d');
+                o.imageSmoothingQuality = 'high';
+                o.drawImage(src, x0, y0, cw, ch, left, top, w, h);
+                const rows = Math.max(1, Math.min(H - floor, 28 * k, Math.round(h * 0.4)));
+                const m = document.createElement('canvas');
+                m.width = w;
+                m.height = rows;
+                const mx = m.getContext('2d');
+                mx.translate(0, h);
+                mx.scale(1, -1);
+                mx.drawImage(src, x0, y0, cw, ch, 0, 0, w, h);
+                mx.setTransform(1, 0, 0, 1, 0, 0);
+                mx.globalCompositeOperation = 'destination-in';
+                const g = mx.createLinearGradient(0, 0, 0, rows);
+                g.addColorStop(0, 'rgba(0,0,0,0.78)');
+                g.addColorStop(1, 'rgba(0,0,0,0)');
+                mx.fillStyle = g;
+                mx.fillRect(0, 0, w, rows);
+                o.drawImage(m, left, floor);
+                out.toBlob((b) => {
+                    if (!b) { tiDrawn.set(url, ''); return; }
+                    const done = URL.createObjectURL(b);
+                    tiDrawn.set(url, done);
+                    document.querySelectorAll('img.wm-ti-icon[data-ti-src]').forEach((el) => {
+                        if (el.dataset.tiSrc === url) { el.removeAttribute('srcset'); el.src = done; }
+                    });
+                }, 'image/png');
+            } catch (_) { tiDrawn.set(url, ''); }
+        };
+        im.onerror = () => tiDrawn.set(url, '');
+        im.src = url;
+        return null;
+    }
+
     function picWideStyle(ar, contain) {
         const w = Math.round(43 * Math.min(contain ? 3.4 : 2.5, Math.max(1, ar)) * 10) / 10;
         return `--ti-pic-w:calc(${w} * var(--u));--ti-line-left:calc(${Math.round((w + 16) * 10) / 10} * var(--u))`;
@@ -1714,6 +1790,12 @@
             ? `<img class="wm-ti-icon wm-ti-wxicon" src="${esc(artUrl(`ti-wx-${wxKey}`))}" srcset="${esc(artSet(`ti-wx-${wxKey}`))}" alt="" draggable="false">`
             : wxImg(pg.wx.iconUrl, pg.wx.iconUrl2x, 'wm-ti-icon wm-ti-wxicon wm-ti-wxart')) + (opts.live ? liveClockHtml() : '')
             : icon === 'ti-2051' && pg.time && opts.live ? liveClockHtml()
+                : icon && pg.iconRaw ? (() => {
+                    // a plain picture: its drawn panel icon (reflection and all) once ready, the picture until then
+                    const raw = artUrl(icon);
+                    const drawn = tiIconFor(raw);
+                    return `<img class="wm-ti-icon" data-ti-src="${esc(raw)}" src="${esc(drawn || raw)}" alt="" draggable="false">`;
+                })()
                 : icon ? `<img class="wm-ti-icon" src="${esc(artUrl(icon))}" srcset="${esc(artSet(icon))}" alt="" draggable="false">` : '';
         if (p.clock) {
             // the weather's line above the date, after an invisible copy of AM / PM (12-hour clocks)
@@ -1835,7 +1917,7 @@
         const n = p.pages.length;
         const at = pageIndex(p);
         const pg = p.pages[at];
-        const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.bare, pg.imageFit, pg.smallIcon, pg.icon, pg.wx, pg.cells]);
+        const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.bare, pg.imageFit, pg.smallIcon, pg.icon, pg.iconRaw, pg.wx, pg.cells]);
         host.querySelectorAll('.wm-ti-arrow').forEach((a) => { a.hidden = n < 2; });
         if (n > 1 && key !== expKey) arrowsAwake();
         if (slide.active || key === expKey) return; // a page on its way keeps what it shows
