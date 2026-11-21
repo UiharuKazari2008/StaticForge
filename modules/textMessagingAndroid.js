@@ -419,6 +419,10 @@ class AndroidAppProvider {
         this.device = '';
         this.deviceName = '';
         this.store = null;
+        // the account's switches (#885, Nov 21 2026: communityUnread, communityNotify); a save restarts the provider
+        this.settings = Object.assign({}, account.settings || {});
+        // notifications this provider dismissed itself (communityNotify off): their removal is not a read
+        this.selfDismissed = new Set();
     }
 
     /** The app's name: the account's own, else what the phone said (it can arrive later, #892), else the package. */
@@ -625,6 +629,17 @@ class AndroidAppProvider {
             this.emit('message', { chatGuid: guid, message: this.normalizeMessage(m), chat });
         }
         if (prev && (prev.key !== chat.key || JSON.stringify(prev.actions) !== JSON.stringify(chat.actions))) this.emit('chat', { chatGuid: guid });
+        // Communities notifications off (Yukimi, Nov 21 2026: "an option on discord in accounts ... to not show notifications for
+        // communities"): the server channel's message is kept here, and the app's own notification for it goes from the phone
+        if (!old && this.settings.communityNotify === false && chat.key && chat.device && communityOf(this.pkg, chat)) this.dismissOwn(chat);
+    }
+
+    /** Take the app's notification for this conversation off the phone without counting it as read (removed() skips it). */
+    dismissOwn(chat) {
+        const key = chat.key;
+        this.selfDismissed.add(key);
+        if (this.selfDismissed.size > 200) this.selfDismissed.delete(this.selfDismissed.values().next().value);
+        activeSync().serverCall(resources(), null, chat.device, 'notify.dismiss', { key }, { timeoutMs: CALL_MS }).catch((error) => { this.selfDismissed.delete(key); this.log(`notify.dismiss: ${error.message}`); });
     }
 
     localMatch(chatGuid, r) {
@@ -641,6 +656,8 @@ class AndroidAppProvider {
             c.key = '';
             c.reply = null;
             c.actions = [];
+            // taken off the phone by this provider (Communities notifications off): the conversation stays unread
+            if (this.selfDismissed.delete(key)) { this.putChat(c); this.emit('chat', { chatGuid: c.guid }); continue; }
             const wasUnread = this.isUnread(c);
             if (wasUnread) c.readAt = Math.max(c.lastDate || 0, Date.now());
             this.putChat(c);

@@ -1349,7 +1349,9 @@
                 // an Android app account (#885): its alert switch (off: the app's own notification is on the phone), the
                 // signed-in user's name (tells two accounts apart, Nov 18), the notification channels it takes and Remove
                 if (!d.tmOpts) {
-                    d.tmOpts = { notify: !!(a.settings && a.settings.notify === true), username: a.ownUsername || '', channels: (a.channels || []).slice() };
+                    d.tmOpts = { notify: !!(a.settings && a.settings.notify === true), username: a.ownUsername || '', channels: (a.channels || []).slice(),
+                        // an app with Communities (Discord's servers, #978; Nov 21 2026): whether they count as unread and notify
+                        communityUnread: !(a.settings && a.settings.communityUnread === false), communityNotify: !(a.settings && a.settings.communityNotify === false) };
                     d.tmOptsInitial = JSON.stringify(d.tmOpts);
                 }
                 const label = a.label || a.name;
@@ -1363,6 +1365,9 @@
                     ${ui.text(`${label}${a.identity ? ` (${a.identity})` : ''}`)}
                     ${ui.row('User name:', ui.edit(uid, d.tmOpts.username, `maxlength="80" spellcheck="false" placeholder="${ui.esc(a.defaultUsername || 'None')}" aria-label="User name"`), { for: uid })}
                     ${ui.check('tmo-notify', 'Show a Messaging notification for new messages', d.tmOpts.notify)}
+                    ${a.communitiesLabel ? `${ui.check('tmo-comm-unread', `Count unread messages in ${a.communitiesLabel}`, d.tmOpts.communityUnread)}
+                    ${ui.check('tmo-comm-notify', `Show notifications for ${a.communitiesLabel}`, d.tmOpts.communityNotify)}
+                    ${ui.note(`Off: ${a.communitiesLabel} messages stay in their folders, the ${label} notification for them is taken off the phone, and Messaging does not show one.`)}` : ''}
                     ${choices.length ? `${ui.text('Notification channels:')}
                     ${choices.map((c) => { const t = takenBy(c.id); return ui.check(`tmo-ch-${c.id}`, t ? `${c.name} (${t.label || t.name})` : c.name, d.tmOpts.channels.includes(c.id), `data-ch="${ui.esc(c.id)}"${t ? ' disabled' : ''}`); }).join('')}
                     ${ui.note(d.tmOpts.channels.length ? 'Only these channels show in this account.' : `None selected: every channel${others.length ? ' no other account takes' : ''} shows in this account.`)}` : ''}
@@ -1370,6 +1375,10 @@
                     ${ui.buttons([['tm-split', 'New Account for Other Channels', !d.tmOpts.channels.length], ['tm-remove', 'Remove Account']])}`;
                 bindAccountName(el, d);
                 el.querySelector('input[name="tmo-notify"]').addEventListener('change', (e) => { d.tmOpts.notify = e.target.checked; });
+                const cu = el.querySelector('input[name="tmo-comm-unread"]');
+                if (cu) cu.addEventListener('change', (e) => { d.tmOpts.communityUnread = e.target.checked; });
+                const cn = el.querySelector('input[name="tmo-comm-notify"]');
+                if (cn) cn.addEventListener('change', (e) => { d.tmOpts.communityNotify = e.target.checked; });
                 el.querySelector(`#${uid}`).addEventListener('input', (e) => { d.tmOpts.username = e.target.value; });
                 el.querySelectorAll('input[data-ch]').forEach((box) => box.addEventListener('change', () => {
                     const id = box.getAttribute('data-ch');
@@ -1384,7 +1393,7 @@
                     const rest = (a.channelChoices || []).filter((c) => c.seen && !d.tmOpts.channels.includes(c.id) && !takenBy(c.id)).map((c) => c.id);
                     try {
                         if (!rest.length) throw new Error(`${label} has not posted on any other channel yet.`);
-                        await t.saveAccount({ id: a.id, kind: a.kind, package: a.package, label: a.label, username: d.tmOpts.username, enabled: a.enabled !== false, settings: { notify: d.tmOpts.notify }, channels: d.tmOpts.channels });
+                        await t.saveAccount({ id: a.id, kind: a.kind, package: a.package, label: a.label, username: d.tmOpts.username, enabled: a.enabled !== false, settings: { notify: d.tmOpts.notify, communityUnread: d.tmOpts.communityUnread, communityNotify: d.tmOpts.communityNotify }, channels: d.tmOpts.channels });
                         await t.saveAccount({ kind: 'android', package: a.package, label: `${label} (2)`, channels: rest });
                         d.tmOptsInitial = JSON.stringify(d.tmOpts);
                         if (typeof t.preload === 'function') void t.preload();
@@ -1604,7 +1613,7 @@
                 const t = window.textMessaging;
                 try {
                     // an Android app account (#885): its user name and channels beside the switch
-                    const extra = a && a.kind === 'android' ? { username: String(d.tmOpts.username || '').trim(), channels: d.tmOpts.channels || [], settings: { notify: !!d.tmOpts.notify } } : {};
+                    const extra = a && a.kind === 'android' ? { username: String(d.tmOpts.username || '').trim(), channels: d.tmOpts.channels || [], settings: { notify: !!d.tmOpts.notify, communityUnread: d.tmOpts.communityUnread !== false, communityNotify: d.tmOpts.communityNotify !== false } } : {};
                     if (a && t) await t.saveAccount(Object.assign({ id: a.id, kind: a.kind, url: a.url, package: a.package, label: a.label, enabled: a.enabled !== false, settings: d.tmOpts }, extra));
                     d.tmOptsInitial = JSON.stringify(d.tmOpts);
                     if (t && typeof t.preload === 'function') void t.preload();

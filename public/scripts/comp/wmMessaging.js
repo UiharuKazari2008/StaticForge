@@ -1763,7 +1763,9 @@
                 try { u = t && typeof t.unread === 'function' ? (t.unread().byAccount || {})[a.key.slice(3)] : null; } catch (_) { u = null; }
                 const ta = tmAccts.find((x) => `tm:${x.id}` === a.key);
                 const commUnread = (ta && Number(ta.communityUnread)) || 0;
-                children = tf.map((f) => ({ key: `${a.key}/${f.id}`, label: f.label, icon: f.icon, count: u ? (f.id === 'inbox' ? Math.max(0, (u.unread || 0) - commUnread) : f.id === 'unknown' ? u.unknownUnread || 0 : 0) : 0 }));
+                // the account's unread holds Communities' only while they are counted (Settings: Count unread for Communities)
+                const commInTotal = ta && ta.communityCounted === false ? 0 : commUnread;
+                children = tf.map((f) => ({ key: `${a.key}/${f.id}`, label: f.label, icon: f.icon, count: u ? (f.id === 'inbox' ? Math.max(0, (u.unread || 0) - commInTotal) : f.id === 'unknown' ? u.unknownUnread || 0 : 0) : 0 }));
                 // an app's servers (#978, Discord): Communities, a folder per server, a folder per channel under it
                 if (ta && ta.communitiesLabel && Array.isArray(ta.communities) && ta.communities.length) {
                     children.push({

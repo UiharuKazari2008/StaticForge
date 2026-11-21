@@ -1875,6 +1875,21 @@
         tmTimer = setTimeout(tmRefresh, ms == null ? 400 : ms);
     }
 
+    /**
+     * An account's line for Today: its newest unread conversation that counts (not Unknown Senders; Communities only while they
+     * are counted), unread: true; else its newest conversation, unread: false. A page with news shows only an unread line
+     * (Yukimi, Nov 21 2026: Today showed Detroit's message, read long ago, beside Discord's 2 unread in a server channel).
+     */
+    function tmNewest(a, chats) {
+        const commCounted = !(a && a.settings && a.settings.communityUnread === false);
+        const counts = (c) => (c.community ? commCounted : c.known !== false);
+        const line = (c, unread) => ({ from: tmFrom(c, c.last), text: tmText(c.last), at: Number(c.last.date) || 0, unread });
+        const u = chats.filter((c) => c.unread && !c.last.fromMe && counts(c)).sort((x, y) => (Number(y.last.date) || 0) - (Number(x.last.date) || 0))[0];
+        if (u) return line(u, true);
+        const c = chats.filter((x) => !x.community && x.known !== false)[0] || chats[0];
+        return c ? line(c, false) : null;
+    }
+
     /** The accounts, their unread counts and each one's newest line (Today's pages). */
     /** The logon step's snapshot (textMessaging.snapshot()): Today and the status bar right away. */
     function tmSeed(tm) {
@@ -1884,8 +1899,7 @@
         for (const a of tmState.accounts) {
             tmState.unread[a.id] = Number(a.unread) || 0;
             const chats = ((snap.inbox && snap.inbox[a.id]) || []).filter((c) => c && c.last);
-            const c = chats.find((x) => x.unread && !x.last.fromMe) || chats[0];
-            if (c) tmState.last[a.id] = { from: tmFrom(c, c.last), text: tmText(c.last), at: Number(c.last.date) || 0 };
+            tmState.last[a.id] = tmNewest(a, chats);
         }
         tmTodayChanged();
         if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
@@ -1903,10 +1917,10 @@
             for (const a of tmState.accounts) tmState.unread[a.id] = Number(a.unread) || 0;
             await Promise.all(tmState.accounts.map(async (a) => {
                 try {
-                    const r = await tm.chats(a.id, { folder: 'inbox', limit: 10 });
+                    // every folder (an app's Communities too, #978): the newest unread conversation can be in any of them
+                    const r = await tm.chats(a.id, { folder: 'all', limit: 25 });
                     const chats = ((r && r.chats) || []).filter((c) => c && c.last);
-                    const c = chats.find((x) => x.unread && !x.last.fromMe) || chats[0];
-                    tmState.last[a.id] = c ? { from: tmFrom(c, c.last), text: tmText(c.last), at: Number(c.last.date) || 0 } : null;
+                    tmState.last[a.id] = tmNewest(a, chats);
                 } catch (_) { /* keeps the line it had */ }
             }));
         } catch (_) { /* not connected yet: the next event tries again */ }
@@ -2186,7 +2200,8 @@
                     // Yukimi (Nov 13): "Apple iMessage - <Apple ID>" / "Text Messages - <number>"
                     const kindName = a.kind === 'bluebubbles' ? 'Apple iMessage' : app ? (a.name || 'Android app') : 'Text Messages';
                     if (!u) return { title: 'No Unread Messages', line2: a.identity && !app ? `${kindName} - ${a.identity}` : kindName, onTap: open };
-                    return last
+                    // only an unread line stands for the news (a read one beside "2 new" read as new, Nov 21)
+                    return last && last.unread
                         ? { title: last.from, line2: last.text, line3: [sub, count].filter(Boolean).join(', '), onTap: open }
                         : { title: `${u} New ${u === 1 ? 'Message' : 'Messages'}`, line2: sub, line3: app ? '' : a.name || '', onTap: open };
                 });

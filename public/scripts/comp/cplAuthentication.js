@@ -1040,6 +1040,10 @@
         const enabled = customCheck('Use this account', row.enabled !== false);
         // off by default: the app's own notification is on the phone already
         const notify = customCheck('Show a Messaging notification for new messages', !!(row.settings && row.settings.notify === true));
+        // an app with Communities (Discord's servers, #978; Nov 21 2026): whether they count as unread and notify
+        const comm = row.communitiesLabel || '';
+        const commUnread = comm ? customCheck(`Count unread messages in ${comm}`, !(row.settings && row.settings.communityUnread === false)) : null;
+        const commNotify = comm ? customCheck(`Show notifications for ${comm}`, !(row.settings && row.settings.communityNotify === false)) : null;
         details.append(
             customField('Service', tmText(`${row.name || row.package} notifications on the phone`)),
             customField('Android app', tmText(row.package || '')),
@@ -1047,10 +1051,13 @@
             customField('Status', tmText(status.text, row.status === 'error' ? 'cpl-tm-error' : '')),
             customField('Enabled', enabled.wrap),
             customField('Notifications', notify.wrap),
+            ...(comm ? [customField(comm, commUnread.wrap), customField('', commNotify.wrap), tmText(`Off: ${comm} messages stay in their folders, the app's notification for them is taken off the phone, and Messaging does not show one.`, 'cpl-tm-hint')] : []),
             tmText('Notifications reach the server while ActiveSync on the phone sends notifications to the computer. A reply works while the phone still shows the notification and the app offers a reply on it.', 'cpl-tm-hint')
         );
         actions.append(tmButton('Save', async () => {
-            await tmApi().saveAccount({ id: row.id, kind: 'android', package: row.package, label: row.label, enabled: enabled.input.checked, settings: { notify: notify.input.checked } });
+            const settings = { notify: notify.input.checked };
+            if (comm) { settings.communityUnread = commUnread.input.checked; settings.communityNotify = commNotify.input.checked; }
+            await tmApi().saveAccount({ id: row.id, kind: 'android', package: row.package, label: row.label, enabled: enabled.input.checked, settings });
             await loadTextMessaging(true);
         }));
     }

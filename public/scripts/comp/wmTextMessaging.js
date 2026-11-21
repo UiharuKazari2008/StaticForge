@@ -1357,16 +1357,18 @@
     /** Delete a conversation (the device asks first; it goes on the Mac / phone too). */
     async function deleteChat(c) {
         const t = tm();
-        if (!c || !t || typeof t.deleteChat !== 'function') return;
+        if (!c || !t || typeof t.deleteChat !== 'function') return false;
         const ok = await sh.messageBox({ title: (acct() && acct().name) || TITLE, icon: 'question', text: 'Delete this conversation?', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }] });
-        if (ok !== true) return;
+        if (ok !== true) return false;
         try {
             await t.deleteChat(accountId, c.guid);
             chats = chats.filter((x) => x.guid !== c.guid);
             if (selectedGuid === c.guid) selectedGuid = chats[0] ? chats[0].guid : null;
             renderList();
+            return true;
         } catch (err) {
             await sh.messageBox({ title: (acct() && acct().name) || TITLE, icon: 'error', text: `The conversation could not be deleted. ${(err && err.message) || ''}` });
+            return false;
         }
     }
 
@@ -1489,6 +1491,10 @@
         if (replyTo) items.push({ label: 'Cancel Reply', action: () => { replyTo = null; renderReply(); sh.refreshSoftKeys(); } });
         if (pendingFiles.length) items.push({ label: 'Remove Attachments', action: () => { pendingFiles = []; renderPending(); sh.refreshSoftKeys(); } });
         items.push('-');
+        // from inside the conversation too (Yukimi, Nov 21 2026: a monitored app's conversation, Discord's, had no way to go
+        // from there); a new notification of the app brings it back
+        const open = conv && conv.chat;
+        if (feat('deleteChat') && open) items.push({ label: 'Delete Conversation', action: async () => { if (await deleteChat(open)) { popLayer(); sh.syncHistory(); } } });
         items.push({ label: 'Close', action: () => { popLayer(); sh.syncHistory(); } });
         return items;
     }

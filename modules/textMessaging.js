@@ -514,7 +514,8 @@ async function onProviderEvent(accountId, event, payload) {
             const acctNotify = acctRow && acctRow.kind === 'android'
                 ? !!(acctRow.settings && acctRow.settings.notify === true)
                 : !(acctRow && acctRow.settings && acctRow.settings.notify === false);
-            out.notify = event === 'message' && m && !m.fromMe && !m.groupEvent && acctNotify && (known || readConfig().notifyUnknown);
+            const commQuiet = !!(community && acctRow && acctRow.settings && acctRow.settings.communityNotify === false);
+            out.notify = event === 'message' && m && !m.fromMe && !m.groupEvent && acctNotify && !commQuiet && (known || readConfig().notifyUnknown);
         } else if (event === 'reaction' || event === 'read') {
             summaries.delete(accountId);
             if (event === 'read' && payload.read !== false) markChatRead(accountId, payload.chatGuid);
@@ -558,13 +559,15 @@ function accountOut(a) {
             // the app's server conversations as a folder (#978): its name and the servers with their channels and counts
             communitiesLabel: androidApps.communitiesLabel(a.package), communities: s && s.value.communities ? s.value.communities : [],
             communityUnread: s && s.value.communityUnread != null ? s.value.communityUnread : null,
+            // whether that is in `unread` (Settings: Count unread for Communities)
+            communityCounted: s ? s.value.communityCounted !== false : true,
             channels: androidApps.cleanChannels(a.channels), channelChoices: androidApps.channelsOf(a.package),
             icon: androidApps.hasAppIcon(a.package) ? `/api/textmessaging/${encodeURIComponent(a.id)}/avatar/app` : '',
             enabled: a.enabled !== false, hasPassword: true,
             status: p ? p.status : (a.enabled === false ? 'disabled' : 'error'), error: p ? p.error : '',
             identity: p ? p.identity() : '', features: p ? p.features() : {},
             unread: s ? s.value.unread : null, unknownUnread: s ? s.value.unknownUnread : null,
-            settings: Object.assign({ notify: false }, a.settings || {}), sync: syncInfo(a.id, p), server: null
+            settings: Object.assign({ notify: false, communityUnread: true, communityNotify: true }, a.settings || {}), sync: syncInfo(a.id, p), server: null
         };
     }
     // BlueBubbles accounts read as Apple iMessage (Yukimi, Nov 13); RCS keeps Text Messaging
@@ -686,6 +689,8 @@ function saveAndroidAccount(body, cfg, id0) {
     const label = String(androidApps.realLabel(body.label, pkg) || androidApps.realLabel(prev.label, pkg) || androidApps.appLabel(pkg) || pkg).trim().slice(0, 80);
     const settings = Object.assign({}, prev.settings || {});
     if (body.settings && typeof body.settings.notify === 'boolean') settings.notify = body.settings.notify;
+    // an app with Communities (#978, Discord; Nov 21 2026): count their unread, and show their notifications (both on unless off)
+    for (const k of ['communityUnread', 'communityNotify']) if (body.settings && typeof body.settings[k] === 'boolean') settings[k] = body.settings[k];
     // the name the user gave the signed-in account ('' = the app's own, from its notifications)
     const username = typeof body.username === 'string' ? body.username.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 80) : String(prev.username || '');
     const row = { id, kind: 'android', url: '', package: pkg, label, enabled: body.enabled !== false, settings, channels };
@@ -757,8 +762,11 @@ async function listChats(accountId, { folder = 'all', limit = 50, offset = 0 } =
         // unread messages (as e-mail counts them), not conversations
         const sum = (list) => list.reduce((n, c) => n + (c.unread ? Math.max(1, Number(c.unreadCount) || 1) : 0), 0);
         const comm = chats.filter((c) => c.community);
-        // unread counts the account's every folder (the Inbox and Communities, #978); unknownUnread, Unknown Senders
-        const value = { unread: sum(chats.filter((c) => c.known || c.community)), unknownUnread: sum(chats.filter((c) => !c.known && !c.community)) };
+        // unread counts the account's every folder (the Inbox and Communities, #978); unknownUnread, Unknown Senders. An app account
+        // set not to count its Communities (Nov 21 2026: Discord's servers) leaves them out; their folders keep their own counts
+        const row = readConfig().accounts.find((x) => x.id === accountId);
+        const commCounted = !(row && row.settings && row.settings.communityUnread === false);
+        const value = { unread: sum(chats.filter((c) => (c.known && !c.community) || (c.community && commCounted))), unknownUnread: sum(chats.filter((c) => !c.known && !c.community)), communityCounted: commCounted };
         if (p.kind === 'android' && androidApps.communitiesLabel(p.pkg)) {
             value.communityUnread = sum(comm);
             value.communities = communityFolders(comm, sum);
