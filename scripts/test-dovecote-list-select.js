@@ -8,7 +8,8 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
-const dovecoteJs = fs.readFileSync(path.join(root, 'public/scripts/comp/desktop-apps/dovecote.js'), 'utf8');
+// the boot's part and the windows (dovecoteWindow.js, featureLoader 'dovecote', #1001)
+const dovecoteJs = ['dovecote.js', 'dovecoteWindow.js'].map((f) => fs.readFileSync(path.join(root, 'public/scripts/comp/desktop-apps', f), 'utf8')).join('\n');
 const handlerJs = fs.readFileSync(path.join(root, 'modules/ws/handlers/250-dovecoteHandler.js'), 'utf8');
 const facadeJs = fs.readFileSync(path.join(root, 'modules/mcpAgentFacade.js'), 'utf8');
 const mailJs = fs.readFileSync(path.join(root, 'modules/dovecoteMail.js'), 'utf8');

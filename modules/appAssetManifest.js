@@ -40,7 +40,8 @@ const LAUNCH_GROUPS = {
     explorer: { features: ['explorer'], windows: ['explorerModal'] },
     'remote-desktop': { apps: ['guacRemote', 'guacFrameMirror'], windows: ['desktopGuac*'] },
     'remote-desktop-connection': { apps: ['remoteDesktopConnection'], windows: ['remoteDesktopConnection*'] },
-    dovecote: { apps: ['dovecote'], windows: ['desktopDovecote*', 'dovecote*'] },
+    // the windows are featureLoader 'dovecote' (dovecoteWindow.js + dovecote.css, #1001); app:dovecote the tray's part
+    dovecote: { features: ['dovecote'], apps: ['dovecote'], windows: ['desktopDovecote*', 'dovecote*'] },
     'planet-switcher': { features: ['planet_switcher'], windows: ['planetSwitcher*'] },
     run: { features: ['run'], windows: ['runModal'] }
 };

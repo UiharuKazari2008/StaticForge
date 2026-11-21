@@ -133,6 +133,7 @@
     "test:dovecote-mailroom-audit": "node scripts/test-dovecote-mailroom-audit.js",
     "test:dovecote-windows": "node scripts/test-dovecote-windows.js",
     "test:dovecote-reader-window": "node scripts/test-dovecote-reader-window.js",
+    "test:boot-lazy-windows": "node scripts/test-boot-lazy-windows.js",
     "test:dovecote-multi": "node scripts/test-dovecote-multi.js",
     "test:dovecote-mailbox-webhook": "node scripts/test-dovecote-mailbox-webhook.js",
     "test:dovecote-batch": "node scripts/test-dovecote-batch.js",

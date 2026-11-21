@@ -800,6 +800,7 @@ body.desktop-mode.use-app-image-icons .modal-window-title-main:has(.icon-image) 
     }
 }
 
+/* perf: allow a taskbar button grows into its slot and its neighbours slide with it, as Vista's do (a transform would overlap them); runs only on open/close */
 @keyframes taskbar-item-grow {
     from {
         min-width: 0;
@@ -816,6 +817,7 @@ body.desktop-mode.use-app-image-icons .modal-window-title-main:has(.icon-image) 
     }
 }
 
+/* perf: allow the closing button gives its slot back to its neighbours (see taskbar-item-grow) */
 @keyframes taskbar-item-shrink {
     from {
         min-width: var(--taskbar-button-width, 180px);
@@ -1727,7 +1729,8 @@ html[data-glass="basic"] #startMenu.start-menu {
 /* Customize Start Menu (taskbarSettings.js): the Start menu icon size takes the pinned and most
    used rows to small (Vista's "Use large icons" off: 16 px icons, one line; x 1.25 here) or medium
    (24 px x 1.25); the All Programs size does the same for the program list */
-#startMenu[data-start-size="small"] :is(.start-menu-row-pinned, .start-menu-row-frequent) {
+#startMenu[data-start-size="small"] .start-menu-row-pinned,
+#startMenu[data-start-size="small"] .start-menu-row-frequent {
     height: 24px;
 }
 
@@ -1744,7 +1747,8 @@ html[data-glass="basic"] #startMenu.start-menu {
     display: none;
 }
 
-#startMenu[data-start-size="medium"] :is(.start-menu-row-pinned, .start-menu-row-frequent) {
+#startMenu[data-start-size="medium"] .start-menu-row-pinned,
+#startMenu[data-start-size="medium"] .start-menu-row-frequent {
     height: 38px;
 }
 

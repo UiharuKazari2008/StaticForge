@@ -348,7 +348,8 @@ body:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="lig
     border-radius: 0;
 }
 
-body:not(.windows-classic-theme) :is(.image-prompt-inspector, .image-prompt-inspector-json)[data-window-client="light"] :is(.image-prompt-inspector-scroll-shell, .image-prompt-inspector-json-scroll-shell) {
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, .image-prompt-inspector-json)[data-window-client="light"] .image-prompt-inspector-scroll-shell,
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, .image-prompt-inspector-json)[data-window-client="light"] .image-prompt-inspector-json-scroll-shell {
     background: #fff;
 }
 
@@ -452,7 +453,9 @@ body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-windo
     display: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined :is(.badge-icon-location, .badge-icon-type, .badge-icon-status) {
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-location,
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-type,
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector[data-window-client="light"] .text-replacement-badge-combined .badge-icon-status {
     color: #000 !important;
 }
 

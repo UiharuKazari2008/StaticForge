@@ -13,7 +13,8 @@ const vm = require('vm');
 
 const root = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
-const dovecoteJs = read('public/scripts/comp/desktop-apps/dovecote.js');
+// the boot's part first (its Mail Options block is sliced below), then the windows (dovecoteWindow.js, #1001)
+const dovecoteJs = read('public/scripts/comp/desktop-apps/dovecote.js') + '\n' + read('public/scripts/comp/desktop-apps/dovecoteWindow.js');
 const cplMailJs = read('public/scripts/comp/cplMail.js');
 const mailOptionsJs = read('public/scripts/comp/mailOptions.js');
 const featureLoaderJs = read('public/scripts/comp/featureLoader.js');

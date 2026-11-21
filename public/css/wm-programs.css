@@ -1886,7 +1886,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
 
 .wm-lcd { position: relative; }
 
-:is(.wm-seg, .wm-lcd)[data-ghost]::before {
+.wm-seg[data-ghost]::before,
+.wm-lcd[data-ghost]::before {
     content: attr(data-ghost);
     position: absolute;
     inset: 0;

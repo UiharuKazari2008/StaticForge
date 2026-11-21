@@ -234,7 +234,8 @@ body.melaton-games > .modal.modal > .modal-window-controls .minimize-btn {
     background-image: image-set(url('/static_images/window-controls/basic/min.png') 1x, url('/static_images/hidpi/125/window-controls/basic/min.png') 1.25x, url('/static_images/hidpi/150/window-controls/basic/min.png') 1.5x, url('/static_images/hidpi/175/window-controls/basic/min.png') 1.75x, url('/static_images/hidpi/200/window-controls/basic/min.png') 2x);
 }
 
-body.melaton-games > .modal.modal > .modal-window-controls :is(.maximize-btn, .modal-work-area-maximize) {
+body.melaton-games > .modal.modal > .modal-window-controls .maximize-btn,
+body.melaton-games > .modal.modal > .modal-window-controls .modal-work-area-maximize {
     background-image: image-set(url('/static_images/window-controls/basic/max.png') 1x, url('/static_images/hidpi/125/window-controls/basic/max.png') 1.25x, url('/static_images/hidpi/150/window-controls/basic/max.png') 1.5x, url('/static_images/hidpi/175/window-controls/basic/max.png') 1.75x, url('/static_images/hidpi/200/window-controls/basic/max.png') 2x);
 }
 

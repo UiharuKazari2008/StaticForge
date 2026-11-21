@@ -66,7 +66,8 @@
 }
 
 /* the toolbar band: 23 px buttons (16 px art 3 px in), hot face as MMC's, separators as MMC's */
-#bracketGenerationModal :is(.phasewalker-toolbar, .bracket-gen-step-tools) {
+#bracketGenerationModal .phasewalker-toolbar,
+#bracketGenerationModal .bracket-gen-step-tools {
     display: flex;
     align-items: center;
 }
@@ -314,7 +315,8 @@
 /* the prompt box: the Studio's light Vista prompt box (vista-glass-controls.css #445): a white,
    lightly tinted box whose emphasis overlay paints beneath the transparent textarea; the focused
    toolbar strip stays the Studio's black glass */
-#bracketGenerationModal :is(.prompt-textarea-container, .character-prompt-textarea-container) {
+#bracketGenerationModal .prompt-textarea-container,
+#bracketGenerationModal .character-prompt-textarea-container {
     --prompt-surface: light;
     --text-primary: #141414;
     --text-color: #141414;
@@ -328,11 +330,13 @@
     caret-color: #141414;
 }
 
-#bracketGenerationModal :is(.prompt-textarea-container, .character-prompt-textarea-container):hover {
+#bracketGenerationModal .prompt-textarea-container:hover,
+#bracketGenerationModal .character-prompt-textarea-container:hover {
     border-color: #5794bf #b7d5ea #c7e2f1 #c5daed;
 }
 
-#bracketGenerationModal :is(.prompt-textarea-container, .character-prompt-textarea-container).textarea-focused {
+#bracketGenerationModal .prompt-textarea-container.textarea-focused,
+#bracketGenerationModal .character-prompt-textarea-container.textarea-focused {
     border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
 }
 

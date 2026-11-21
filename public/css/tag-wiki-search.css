@@ -2141,12 +2141,18 @@
 }
 
 /* The pill is the box. Desktop text fields would paint their own bevel inside it. */
-:is(#tagWikiSearchModal, .grimoire-window) :is(.google-large-input, .search-page-input),
-:is(#tagWikiSearchModal, .grimoire-window) :is(.google-large-input, .search-page-input):hover,
-:is(#tagWikiSearchModal, .grimoire-window) :is(.google-large-input, .search-page-input):focus,
-.wiki-page-viewer-modal :is(.google-large-input, .search-page-input),
-.wiki-page-viewer-modal :is(.google-large-input, .search-page-input):hover,
-.wiki-page-viewer-modal :is(.google-large-input, .search-page-input):focus {
+:is(#tagWikiSearchModal, .grimoire-window) .google-large-input,
+:is(#tagWikiSearchModal, .grimoire-window) .search-page-input,
+:is(#tagWikiSearchModal, .grimoire-window) .google-large-input:hover,
+:is(#tagWikiSearchModal, .grimoire-window) .search-page-input:hover,
+:is(#tagWikiSearchModal, .grimoire-window) .google-large-input:focus,
+:is(#tagWikiSearchModal, .grimoire-window) .search-page-input:focus,
+.wiki-page-viewer-modal .google-large-input,
+.wiki-page-viewer-modal .search-page-input,
+.wiki-page-viewer-modal .google-large-input:hover,
+.wiki-page-viewer-modal .search-page-input:hover,
+.wiki-page-viewer-modal .google-large-input:focus,
+.wiki-page-viewer-modal .search-page-input:focus {
     background: transparent;
     border: 0;
     border-radius: 0;

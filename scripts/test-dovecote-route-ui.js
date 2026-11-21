@@ -8,7 +8,8 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const dovecoteJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/desktop-apps/dovecote.js'), 'utf8');
+// the boot's part and the windows (dovecoteWindow.js, featureLoader 'dovecote', #1001)
+const dovecoteJs = ['dovecote.js', 'dovecoteWindow.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/desktop-apps', f), 'utf8')).join('\n');
 const dovecoteCss = fs.readFileSync(path.join(__dirname, '..', 'public/css/desktop-apps/dovecote.css'), 'utf8');
 const mcpFacade = fs.readFileSync(path.join(__dirname, '..', 'modules/mcpAgentFacade.js'), 'utf8');
 

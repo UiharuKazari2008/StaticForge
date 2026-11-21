@@ -318,7 +318,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
     transform: scaleY(-1);
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) .wc-group.is-collapsed :is(.wc-items, .wc-showall) {
+:is(#melatonControlPanelModal, .cpl-instance) .wc-group.is-collapsed .wc-items,
+:is(#melatonControlPanelModal, .cpl-instance) .wc-group.is-collapsed .wc-showall {
     display: none;
 }
 

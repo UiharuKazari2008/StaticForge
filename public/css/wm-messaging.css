@@ -841,7 +841,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-bar .msg-folder {
 }
 
 /* the bar's text sits 1 px higher here than in File Explorer's bar */
-html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-bar :is(.msg-folder, .msg-sort) {
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-bar .msg-folder,
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-bar .msg-sort {
     padding-bottom: calc(3 * var(--wm-px)) !important;
 }
 

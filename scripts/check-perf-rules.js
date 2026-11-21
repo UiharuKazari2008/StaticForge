@@ -246,7 +246,9 @@ function scanCss(src, add) {
         let depth = 1; let i = kfRe.lastIndex;
         while (i < noComments.length && depth > 0) { if (noComments[i] === '{') depth++; else if (noComments[i] === '}') depth--; i++; }
         const block = noComments.slice(kfRe.lastIndex, i);
-        if (/(^|[\s;{])(box-shadow|filter|backdrop-filter|width|height|top|left|right|bottom|margin[\w-]*|padding[\w-]*|background-position|background-size|border-width|font-size|letter-spacing)\s*:/.test(block)) push('paint-keyframes', m.index);
+        // min-/max- sizes, per-side border widths, background-position-x/-y, clip-path, inset and stroke-dashoffset
+        // too: none of them is a compositor property (#1001: taskbar-item-grow's min/max-width went unflagged)
+        if (/(^|[\s;{])(box-shadow|filter|backdrop-filter|(?:min-|max-)?(?:width|height)|top|left|right|bottom|inset(?:-[\w-]+)?|margin[\w-]*|padding[\w-]*|background-position(?:-[xy])?|background-size|border(?:-(?:top|right|bottom|left|block|inline)(?:-(?:start|end))?)?-width|clip-path|stroke-dashoffset|font-size|letter-spacing)\s*:/.test(block)) push('paint-keyframes', m.index);
         kfRe.lastIndex = i;
     }
 }

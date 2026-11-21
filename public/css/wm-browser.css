@@ -780,7 +780,8 @@
     padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(10 * var(--wm-px));
 }
 
-.wm-browser .wmb-core :is(.tag-wiki-body-content, .tag-wiki-page-content) {
+.wm-browser .wmb-core .tag-wiki-body-content,
+.wm-browser .wmb-core .tag-wiki-page-content {
     color: #000;
     font: var(--wm-fs) / 1.3 var(--wm-font);
 }
@@ -877,7 +878,8 @@
 }
 
 /* the toolbar's buttons as WM push buttons; the view shown is the pressed one */
-.wm-browser .wmb-core .fandom-wiki-index-toolbar :is(.btn-primary, .btn-secondary) {
+.wm-browser .wmb-core .fandom-wiki-index-toolbar .btn-primary,
+.wm-browser .wmb-core .fandom-wiki-index-toolbar .btn-secondary {
     display: inline-flex;
     align-items: center;
     gap: calc(3 * var(--wm-px));
@@ -896,7 +898,8 @@
 }
 
 .wm-browser .wmb-core .fandom-wiki-index-toolbar .btn-primary,
-.wm-browser .wmb-core .fandom-wiki-index-toolbar :is(.btn-primary, .btn-secondary):active {
+.wm-browser .wmb-core .fandom-wiki-index-toolbar .btn-primary:active,
+.wm-browser .wmb-core .fandom-wiki-index-toolbar .btn-secondary:active {
     background: #d6dfe7;
     box-shadow: inset calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #848284;
 }
@@ -930,7 +933,9 @@
     padding: calc(6 * var(--wm-px));
 }
 
-.wm-browser .wmb-core .apocrypha-interior :is(.billboard, .content, .split) {
+.wm-browser .wmb-core .apocrypha-interior .billboard,
+.wm-browser .wmb-core .apocrypha-interior .content,
+.wm-browser .wmb-core .apocrypha-interior .split {
     grid-template-columns: minmax(0, 1fr);
 }
 
@@ -1465,7 +1470,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-addr-box {
 /* page content is not system text: the pages keep the 12 units they were laid out in when the
  * shell's 6.5 size became 10.5 (the device's own start page draws "Search..." at 26 px of the VGA
  * screen, 98 px wide: larger still) */
-html.ui-mobile[data-wm-version="6.5"] .wm-browser :is(.wmb-home, .wmb-gpage, .wmb-core) {
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-home,
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-gpage,
+html.ui-mobile[data-wm-version="6.5"] .wm-browser .wmb-core {
     --wm-fs: calc(12 * var(--wm-px));
 }
 

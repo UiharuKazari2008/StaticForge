@@ -206,7 +206,8 @@ body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jum
    its size under it in Explorer's grey secondary text (#6d6d6d, as Tiles view shows a second line),
    in place of the dark badge over the picture ---- */
 
-body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool :is(.gallery-jump-index-card-meta, .gallery-jump-index-card-count) {
+body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-card-meta,
+body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-card-count {
     position: static;
     display: block;
     max-width: none;
@@ -249,7 +250,8 @@ body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jum
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 45%);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool :is(.gallery-jump-index-summary, .gallery-jump-index-detail) {
+body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-summary,
+body.desktop-mode:not(.windows-classic-theme) #galleryJumpIndexTool .gallery-jump-index-detail {
     flex: none;
     padding: 0;
     color: #000;

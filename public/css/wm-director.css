@@ -191,7 +191,8 @@
     padding: 8px 14px;
 }
 
-.wm-director .dm-vn-layer[data-side] :is(.dm-bubble, .dm-tool-pops) {
+.wm-director .dm-vn-layer[data-side] .dm-bubble,
+.wm-director .dm-vn-layer[data-side] .dm-tool-pops {
     left: auto;
     right: 6%;
 }
@@ -780,7 +781,8 @@ html.ui-mobile .wm-director #directorSessionChat #directorComposer .btn-group-co
     overflow: visible;
 }
 
-.wm-director .wmd-page-inspector #directorToolInspector :is(.dti-mono, .dti-raw) {
+.wm-director .wmd-page-inspector #directorToolInspector .dti-mono,
+.wm-director .wmd-page-inspector #directorToolInspector .dti-raw {
     font: calc(11 * var(--wm-px)) / 1.3 'Courier New', monospace;
 }
 
@@ -1200,7 +1202,8 @@ html.ui-mobile #confirmationDialog .wmd-dlg-pop .wm-popup-item:active:not(:disab
     }
 
     /* both lines named: an absolutely placed grid item's auto line is the container's edge */
-    .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-view > :is(.director-mascot-stage, .dm-vn-layer) {
+    .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-view > .director-mascot-stage,
+    .wm-director:not(.wmd-solo) #directorSessionChat.director-mascot-view > .dm-vn-layer {
         grid-column: 1 / 2;
         grid-row: 1 / -1;
     }
@@ -2076,11 +2079,13 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip 
     color: var(--mk-shu);
 }
 
-#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages :is(.director-report-tally, .director-report-status) {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-report-tally,
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-report-status {
     color: var(--mk-ink2);
 }
 
-#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages :is(.director-report-request, .director-report-items) {
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-report-request,
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .director-chat-messages .director-report-items {
     background: none;
 }
 
@@ -2576,7 +2581,8 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip 
     color: #ffb0a6;
 }
 
-.wm-director :is(.wmd-files, .wmd-ch-files) .wmd-file:is(:active, .is-on) :is(.wmd-add, .wmd-del) {
+.wm-director :is(.wmd-files, .wmd-ch-files) .wmd-file:is(:active, .is-on) .wmd-add,
+.wm-director :is(.wmd-files, .wmd-ch-files) .wmd-file:is(:active, .is-on) .wmd-del {
     color: #fff;
 }
 
@@ -2770,7 +2776,8 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip 
     box-shadow: inset 0 0 0 1.5px var(--sh-fire);
 }
 
-#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages :is(.director-thinking-line, .director-tool-detail) {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-thinking-line,
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-tool-detail {
     color: var(--sh-dim);
 }
 
@@ -3198,7 +3205,8 @@ html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessio
 
 /* the report card's heading and foot sit on the lacquer (the box) or on the paper (the log), not on
    the Vista details pane's cream bands */
-html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat :is(.director-report-head, .director-report-foot) {
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-head,
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat .director-report-foot {
     background: none;
 }
 
@@ -3341,13 +3349,19 @@ html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessio
 
 /* Yozora's log: every kind of text in a reply, a thought or a tool row is light on her night face
    (headings, tables, quotes and expanded thoughts kept the page's dark ink) */
-#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message :is(.director-message-content, .director-thinking-full, .director-thinking-line, .director-tool-detail, .director-user-message-input),
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message .director-message-content,
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message .director-thinking-full,
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message .director-thinking-line,
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message .director-tool-detail,
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message .director-user-message-input,
 #directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message-content :is(p, li, span, strong, em, b, i, h1, h2, h3, h4, h5, h6, td, th, blockquote, dt, dd, div):not(.director-inline-diff):not(.director-inline-diff *) {
     color: var(--sh-text);
     opacity: 1;
 }
 
-#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message :is(.director-thinking-full, .director-thinking-line, .director-tool-detail) {
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message .director-thinking-full,
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message .director-thinking-line,
+#directorContainer[data-persona="xi"] #directorSessionChat .director-chat-messages .director-message .director-tool-detail {
     color: var(--sh-dim);
 }
 
@@ -3362,7 +3376,8 @@ html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessio
 
 /* a print still on its way: the wait cursor turns over the empty frame (its strip, as the shell's
  * busy cursor: wm-shell.css .wm-strip); 6.5 shows its own ring of dots */
-.wm-director :is(.wmd-print, .wmd-thumb).is-pending {
+.wm-director .wmd-print.is-pending,
+.wm-director .wmd-thumb.is-pending {
     --wmd-wait: calc(24 * var(--wm-px));
     --strip: image-set(url('/static_images/wm61/wait-strip.png') 1x, url('/static_images/wm61/wait-strip@2x.png') 2x, url('/static_images/wm61/wait-strip@4x.png') 4x);
     --n: 16;
@@ -3372,11 +3387,13 @@ html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessio
 }
 .wm-director .wmd-thumb.is-pending { --wmd-wait: 22px; }
 .wm-director:not(.wmd-solo) .wmd-gallery .wmd-thumb.is-pending { --wmd-wait: calc(24 * var(--wm-px)); }
-html.ui-mobile[data-wm-version="6.5"] .wm-director :is(.wmd-print, .wmd-thumb).is-pending {
+html.ui-mobile[data-wm-version="6.5"] .wm-director .wmd-print.is-pending,
+html.ui-mobile[data-wm-version="6.5"] .wm-director .wmd-thumb.is-pending {
     --strip: image-set(url('/static_images/wm65/wait-strip.png') 1x, url('/static_images/wm65/wait-strip@2x.png') 2x, url('/static_images/wm65/wait-strip@4x.png') 4x);
     --ms: 90;
 }
-.wm-director :is(.wmd-print, .wmd-thumb).is-pending::after {
+.wm-director .wmd-print.is-pending::after,
+.wm-director .wmd-thumb.is-pending::after {
     content: '';
     position: absolute;
     left: 50%;

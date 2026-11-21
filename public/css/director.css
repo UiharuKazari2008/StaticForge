@@ -3705,7 +3705,13 @@ html.disable-blur .director-attach-chip {
         drop-shadow(0 0 5px rgba(0, 0, 0, 0.4));
 }
 
-.modal #directorWindowToolbar.window-inactive #directorCommonHeader :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger) {
+.modal #directorWindowToolbar.window-inactive #directorCommonHeader .btn-primary:not(.btn-primary):not(.btn-danger),
+.modal #directorWindowToolbar.window-inactive #directorCommonHeader .btn-secondary:not(.btn-primary):not(.btn-danger),
+.modal #directorWindowToolbar.window-inactive #directorCommonHeader .btn-danger:not(.btn-primary):not(.btn-danger),
+.modal #directorWindowToolbar.window-inactive #directorCommonHeader .btn-standard:not(.btn-primary):not(.btn-danger),
+.modal #directorWindowToolbar.window-inactive #directorCommonHeader .btn-small:not(.btn-primary):not(.btn-danger),
+.modal #directorWindowToolbar.window-inactive #directorCommonHeader .btn-toggle:not(.btn-primary):not(.btn-danger),
+.modal #directorWindowToolbar.window-inactive #directorCommonHeader .btn-warning:not(.btn-primary):not(.btn-danger) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     box-shadow: inset var(--glass-shadow-2);
@@ -3900,7 +3906,10 @@ html.disable-blur .director-attach-chip {
     will-change: transform;
 }
 
-.director-mascot-stage :is(.dm-face, .dm-blink, .dm-mouth, .dm-body-prev) {
+.director-mascot-stage .dm-face,
+.director-mascot-stage .dm-blink,
+.director-mascot-stage .dm-mouth,
+.director-mascot-stage .dm-body-prev {
     /* perf: allow the parts that flip often (the mouth every 120 ms while she talks, blinks, expressions, the body crossfade) are opacity flips on the GPU (#735) */
     will-change: opacity;
 }
@@ -4563,8 +4572,10 @@ body #directorSessionChat.director-mascot-on.director-mascot-view.dm-log-hidden:
     min-width: 280px;
 }
 
-.dm-vn-layer[data-side="left"] :is(.dm-bubble, .dm-tool-pops) { left: 33%; }
-.dm-vn-layer[data-side="right"] :is(.dm-bubble, .dm-tool-pops) { right: 33%; }
+.dm-vn-layer[data-side="left"] .dm-bubble,
+.dm-vn-layer[data-side="left"] .dm-tool-pops { left: 33%; }
+.dm-vn-layer[data-side="right"] .dm-bubble,
+.dm-vn-layer[data-side="right"] .dm-tool-pops { right: 33%; }
 
 .dm-vn-layer .dm-bubble {
     top: 6%;

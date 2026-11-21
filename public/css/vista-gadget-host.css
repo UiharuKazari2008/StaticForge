@@ -65,6 +65,7 @@
     animation: vgh-wait 1s steps(18) infinite;
 }
 
+/* perf: allow the gadget placeholder ring (see the animation above) */
 @keyframes vgh-wait {
     to {
         background-position-y: -360px;

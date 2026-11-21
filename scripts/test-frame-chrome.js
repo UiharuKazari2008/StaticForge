@@ -87,7 +87,8 @@ assert.ok(!/filter:\s*drop-shadow/.test(shared.replace(/\/\*[\s\S]*?\*\//g, ''))
         'radial-gradient(circle at bottom, #2aceda, transparent 65%)', 'radial-gradient(circle at 50% 170%, #f4e676 10% 20%, #0000 60%)', '--window-caption-edge: 14px;', '--window-caption-edge: 13px;',
         ':hover:not(:disabled)::before', ':active:not(:disabled)::before']
         .forEach((anchor) => assert.ok(shared.includes(anchor), `shared chrome has: ${anchor}`));
-    assert.ok(read('public/scripts/comp/aeroGlass.js').includes('function syncModal(modal) {\n        if (!modal) return false;'),
+    // no mode check at its top (only the phone shell and a missing window bail out; an optional known origin, #998)
+    assert.ok(/function syncModal\(modal(?:, knownOrigin)?\) \{\n\s*if \(!modal(?: \|\| phoneUi\(\))?\) return false;/.test(read('public/scripts/comp/aeroGlass.js')),
         'window origin is tracked in every mode (the streaks read it)');
 }
 

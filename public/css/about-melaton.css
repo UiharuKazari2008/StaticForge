@@ -33,7 +33,8 @@
 }
 
 /* Vista's About Windows has no caption icon (the taskbar still takes it from the title) */
-body.desktop-mode:not(.windows-classic-theme) #aboutMelatoninModal .modal-window-title-main > :is(.icon-fa, .icon-image) {
+body.desktop-mode:not(.windows-classic-theme) #aboutMelatoninModal .modal-window-title-main > .icon-fa,
+body.desktop-mode:not(.windows-classic-theme) #aboutMelatoninModal .modal-window-title-main > .icon-image {
     display: none;
 }
 
@@ -226,7 +227,8 @@ body.desktop-mode:not(.windows-classic-theme) #aboutMelatoninModal .modal-window
 
 /* Vista's ShellAbout (openAboutMelatoninModal({ program })): "About Notepad" on the VM has no caption
    icon and shows the program's 32-px icon left of the version text */
-#aboutMelatoninModal.is-shell-about > .modal-window-title > .modal-window-title-main > :is(.icon-image, .icon-fa) {
+#aboutMelatoninModal.is-shell-about > .modal-window-title > .modal-window-title-main > .icon-image,
+#aboutMelatoninModal.is-shell-about > .modal-window-title > .modal-window-title-main > .icon-fa {
     display: none;
 }
 

@@ -23,7 +23,8 @@
     background: #f0f0f0;
 }
 
-#configEditorModal :is(.config-editor-tree-panel, .config-editor-values-panel) {
+#configEditorModal .config-editor-tree-panel,
+#configEditorModal .config-editor-values-panel {
     position: relative;
     box-sizing: border-box;
     min-height: 0;
@@ -63,13 +64,15 @@
 
 /* regedit's panes scroll natively in both directions: vista-scrollbars.css paints the bars
    (the overlay customScrollbar is vertical only and its re-init moved the panes, dropping focus) */
-#configEditorModal :is(.config-editor-tree-scroll-shell, .config-editor-values-scroll-shell) {
+#configEditorModal .config-editor-tree-scroll-shell,
+#configEditorModal .config-editor-values-scroll-shell {
     flex: 1;
     min-height: 0;
     overflow: auto;
 }
 
-#configEditorModal :is(.config-editor-tree-scrollable, .config-editor-values-scrollable) {
+#configEditorModal .config-editor-tree-scrollable,
+#configEditorModal .config-editor-values-scrollable {
     height: 100%;
     overflow: auto;
     padding: 0;
@@ -127,7 +130,8 @@
     content: none;
 }
 
-#configEditorModal :is(.config-editor-tree-expand, .config-editor-tree-spacer) {
+#configEditorModal .config-editor-tree-expand,
+#configEditorModal .config-editor-tree-spacer {
     position: relative;
     z-index: 1;
     flex: none;
@@ -379,7 +383,9 @@
     white-space: pre;
 }
 
-.rg-hex :is(.rg-hex-a, .rg-hex-b, .rg-hex-c) {
+.rg-hex .rg-hex-a,
+.rg-hex .rg-hex-b,
+.rg-hex .rg-hex-c {
     position: absolute;
     top: 0;
     width: 8px;

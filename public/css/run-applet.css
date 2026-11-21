@@ -295,8 +295,10 @@
     color: #fff;
 }
 
-#runModal .run-applet-item.keyboard-selected :is(.run-applet-meta, .run-applet-label),
-#runModal .run-applet-results-shell.mouse-nav .run-applet-item:hover:not(.is-disabled) :is(.run-applet-meta, .run-applet-label) {
+#runModal .run-applet-item.keyboard-selected .run-applet-meta,
+#runModal .run-applet-item.keyboard-selected .run-applet-label,
+#runModal .run-applet-results-shell.mouse-nav .run-applet-item:hover:not(.is-disabled) .run-applet-meta,
+#runModal .run-applet-results-shell.mouse-nav .run-applet-item:hover:not(.is-disabled) .run-applet-label {
     color: #fff;
 }
 

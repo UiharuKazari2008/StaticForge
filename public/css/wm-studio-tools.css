@@ -147,7 +147,11 @@
 }
 
 /* ---- the footers: their buttons are the soft keys and Menu (wmStudio.js toolKeys) ---- */
-:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.modal-footer, .modal-footer-colored, .character-position-footer, .modal-actions, .dialog-buttons) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .modal-footer,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .modal-footer-colored,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .character-position-footer,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .modal-actions,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .dialog-buttons {
     display: none !important;
 }
 
@@ -212,7 +216,10 @@
 }
 
 /* window chrome buttons that live inside the content (the desktop's own minimise / close) */
-:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.close-btn, .minimize-btn, .modal-work-area-maximize, .resize-handle) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .close-btn,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .minimize-btn,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .modal-work-area-maximize,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .resize-handle {
     display: none !important;
 }
 
@@ -350,7 +357,9 @@
 }
 
 /* the desktop's switch toggles (a track and a knob drawn on a checkbox's label) */
-:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.toggle-switch, .switch) :is(.slider, .toggle-slider, .switch-slider) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.toggle-switch, .switch) .slider,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.toggle-switch, .switch) .toggle-slider,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.toggle-switch, .switch) .switch-slider {
     display: none !important;
 }
 
@@ -435,7 +444,9 @@
     display: none !important;
 }
 
-:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.scrollable-content, .form-section-scroll, .has-custom-scrollbar) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .scrollable-content,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .form-section-scroll,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .has-custom-scrollbar {
     scrollbar-width: auto !important;
     overscroll-behavior: contain;
 }
@@ -541,7 +552,9 @@
 }
 
 /* the desktop's badges, smaller: 10 px in a 1 px frame, their hues kept */
-:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool :is(.badge, .match-type-badge, .tag-category-badge) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool .badge,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool .match-type-badge,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > #characterAutofillTool .tag-category-badge {
     display: inline-block !important;
     margin: 0 calc(2 * var(--wm-px)) !important;
     padding: 0 calc(2 * var(--wm-px)) !important;
@@ -621,7 +634,8 @@
 }
 
 /* badge lists (Properties' forge data) wrap inside the page */
-:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.badge-list, .meta-value) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .badge-list,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .meta-value {
     display: flex !important;
     flex-wrap: wrap !important;
     gap: calc(3 * var(--wm-px)) !important;
@@ -662,7 +676,8 @@
     border-bottom: calc(1 * var(--wm-px)) solid #c0c0c0 !important;
 }
 
-:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal :is(.slider-ticks-container, .slider-container) {
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .slider-ticks-container,
+:is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal .slider-container {
     background: none !important;
     border: 0 !important;
 }
@@ -698,7 +713,8 @@
     padding: calc(6 * var(--wm-px)) !important;
 }
 
-.wm-studio .wms-tool-host > .prompt-tool-window :is(.ptw-buttons, .ptw-tools) {
+.wm-studio .wms-tool-host > .prompt-tool-window .ptw-buttons,
+.wm-studio .wms-tool-host > .prompt-tool-window .ptw-tools {
     display: none !important;
 }
 
@@ -735,7 +751,8 @@
 }
 
 /* Emphasis: "Emphasis" and "Weight" rows, label at the left as WM forms do */
-.wm-studio .wms-tool-host > #promptEmphasisTool .ptw-strip > :is(.ptw-kind, .ptw-value-row) {
+.wm-studio .wms-tool-host > #promptEmphasisTool .ptw-strip > .ptw-kind,
+.wm-studio .wms-tool-host > #promptEmphasisTool .ptw-strip > .ptw-value-row {
     display: grid !important;
     grid-template-columns: calc(70 * var(--wm-px)) 1fr;
     align-items: center;

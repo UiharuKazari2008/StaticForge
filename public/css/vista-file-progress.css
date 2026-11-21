@@ -78,7 +78,8 @@ body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-
     transition: height 300ms ease-in-out;
 }
 
-body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] :is(.file-progress-summary, .file-progress-details) {
+body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-summary,
+body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-details {
     position: absolute;
     top: 10px;
     left: 22px;
@@ -87,13 +88,15 @@ body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] :is(.file-progr
     opacity: 0;
 }
 
-body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] :is(.file-progress-summary, .file-progress-details).file-progress-shown {
+body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-summary.file-progress-shown,
+body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-details.file-progress-shown {
     visibility: visible;
     opacity: 1;
     transition: opacity 350ms ease-in-out;
 }
 
-body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] :is(.file-progress-summary, .file-progress-details).file-progress-fading {
+body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-summary.file-progress-fading,
+body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-details.file-progress-fading {
     visibility: visible;
     opacity: 0;
     transition: opacity 300ms ease-in-out;
@@ -107,7 +110,8 @@ body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-
 }
 
 /* a line of locations: each path shrinks on its own, the names stay whole */
-body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] :is(.file-progress-locations, .file-progress-value) {
+body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-locations,
+body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-value {
     display: flex;
     white-space: pre;
 }
@@ -144,7 +148,8 @@ body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-
     column-gap: 0;
 }
 
-body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] :is(.file-progress-label, .file-progress-value) {
+body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-label,
+body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-value {
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;

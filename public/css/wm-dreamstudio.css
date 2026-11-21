@@ -71,7 +71,9 @@
 .wds-body > .wds-ed-head { order: -1; }
 .wds-body > .wds-ac,
 .wds-body > .wds-toolbar { order: 10; }
-.wm-dreamstudio:not([data-view="editor"]) .wds-body > :is(.wds-ed-head, .wds-ac, .wds-toolbar) { display: none; }
+.wm-dreamstudio:not([data-view="editor"]) .wds-body > .wds-ed-head,
+.wm-dreamstudio:not([data-view="editor"]) .wds-body > .wds-ac,
+.wm-dreamstudio:not([data-view="editor"]) .wds-body > .wds-toolbar { display: none; }
 
 /* a box of the home page being edited: only it is left of the page, and it fills it (the same
  * element that was touched, so it keeps its focus and the keyboard) */

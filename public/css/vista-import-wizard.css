@@ -20,7 +20,9 @@
 
 /* the wizard-only markup (page 1, the page instructions, the command link notes) exists for the
    Vista desktop; everywhere else the existing two-panel layout shows and these stay hidden */
-#unifiedUploadModal :is(.vista-wizard-page, .vista-wizard-instruction, .vista-command-link-note) {
+#unifiedUploadModal .vista-wizard-page,
+#unifiedUploadModal .vista-wizard-instruction,
+#unifiedUploadModal .vista-command-link-note {
     display: none;
 }
 
@@ -47,7 +49,8 @@ body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-conte
 }
 
 /* the two panels give way: their children lay out on the client itself */
-body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-content > :is(.gallery-move-left-panel, .gallery-move-right-panel) {
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-content > .gallery-move-left-panel,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal > .modal-content > .gallery-move-right-panel {
     display: contents;
 }
 
@@ -155,7 +158,8 @@ body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUpload
 
 /* ---- command links: pages 1 and 2 ---- */
 
-body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn) {
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-command-link,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-option-btn {
     display: grid;
     grid-template-columns: 25px minmax(0, 1fr);
     gap: 0 3px;
@@ -185,7 +189,8 @@ body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-com
 
 /* the green arrow: aero.msstyles' command link glyph, 25 px frames (normal, hot, pressed, disabled, default)
    stacked 25 px apart, centred on the main text line */
-body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn)::before {
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-command-link::before,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-option-btn::before {
     content: "";
     grid-row: 1 / span 2;
     width: 25px;
@@ -194,7 +199,8 @@ body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-com
     background: url("data:image/png;base64,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") no-repeat 0 0;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn)::after {
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-command-link::after,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-option-btn::after {
     content: none;
 }
 
@@ -220,30 +226,35 @@ body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-command
 }
 
 @media (hover: hover) {
-    body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn):hover:not(:disabled) {
+    body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-command-link:hover:not(:disabled),
+    body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-option-btn:hover:not(:disabled) {
         background: linear-gradient(#fff, #f6f6f6);
         border-color: #c6c6c6;
         box-shadow: none;
         color: #074ae5;
     }
 
-    body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn):hover:not(:disabled)::before {
+    body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-command-link:hover:not(:disabled)::before,
+    body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-option-btn:hover:not(:disabled)::before {
         background-position: 0 -25px;
     }
 }
 
-body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn):active:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-command-link:active:not(:disabled),
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-option-btn:active:not(:disabled) {
     background: linear-gradient(#f6f6f6, #eaeaea);
     border-color: #9e9e9e;
     box-shadow: none;
     color: #062073;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn):active:not(:disabled)::before {
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-command-link:active:not(:disabled)::before,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-option-btn:active:not(:disabled)::before {
     background-position: 0 -50px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal :is(.vista-command-link, .upload-option-btn):focus-visible {
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .vista-command-link:focus-visible,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .upload-option-btn:focus-visible {
     box-shadow: none;
     outline: 1px dotted #000;
     outline-offset: -3px;
@@ -488,7 +499,8 @@ body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal #unifiedUpload
 }
 
 /* the options: labels left of their 7.css controls, 7 px gaps, black text */
-body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content :is(.form-group, .form-row) {
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content .form-group,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content .form-row {
     gap: 7px;
     transition: none;
 }
@@ -520,7 +532,9 @@ body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-
     line-height: 15px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content :is(.form-text, .text-warning, .url-display) {
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content .form-text,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content .text-warning,
+body.desktop-mode:not(.windows-classic-theme) #unifiedUploadModal .gallery-move-content .url-display {
     color: #000;
     font-size: 9pt;
     line-height: 15px;

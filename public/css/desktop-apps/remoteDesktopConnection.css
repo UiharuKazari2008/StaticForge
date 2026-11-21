@@ -226,6 +226,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     animation: rdc-banner-marquee 2531.25ms steps(81, end) infinite;
 }
 
+/* perf: allow the banner scrolls only while connecting (see the animation above) */
 @keyframes rdc-banner-marquee {
     to { background-position-x: 405px; }
 }

@@ -160,7 +160,8 @@
     color: #6d6d6d;
 }
 
-.mmc-window .mmc-row.is-selected .afr-bd :is(.autofill-dsap-test-bd-info, .autofill-dsap-test-bd-empty) {
+.mmc-window .mmc-row.is-selected .afr-bd .autofill-dsap-test-bd-info,
+.mmc-window .mmc-row.is-selected .afr-bd .autofill-dsap-test-bd-empty {
     color: inherit;
 }
 

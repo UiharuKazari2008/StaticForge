@@ -11,7 +11,8 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const dovecoteJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/desktop-apps/dovecote.js'), 'utf8');
+// the boot's part and the windows (dovecoteWindow.js, featureLoader 'dovecote', #1001)
+const dovecoteJs = ['dovecote.js', 'dovecoteWindow.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/desktop-apps', f), 'utf8')).join('\n');
 const appHtml = fs.readFileSync(path.join(__dirname, '..', 'public/app.html'), 'utf8');
 const modalUtilsJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/modalUtils.js'), 'utf8');
 const systemTrayJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/systemTrayManager.js'), 'utf8');

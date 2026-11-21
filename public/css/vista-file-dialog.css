@@ -18,7 +18,8 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal.modal.toolb
     visibility: visible;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-main > :is(.icon-image, .icon-fa) {
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-main > .icon-image,
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-main > .icon-fa {
     visibility: visible;
 }
 
@@ -262,7 +263,9 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     border-color: #8fcdf2;
 }
 
-#studioSaveFolderModal .modal-window-title-toolbar :is(.fd-crumb-sep, .cpl-crumb, .fd-address-drop)[hidden] {
+#studioSaveFolderModal .modal-window-title-toolbar .fd-crumb-sep[hidden],
+#studioSaveFolderModal .modal-window-title-toolbar .cpl-crumb[hidden],
+#studioSaveFolderModal .modal-window-title-toolbar .fd-address-drop[hidden] {
     display: none;
 }
 
@@ -495,7 +498,8 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
 /* ---- the compact form (Browse Folders): the travel band, the name and type, the buttons ---- */
 
 /* (Explorer's shared pane rules would show the panes again) */
-#studioSaveFolderModal.fd-collapsed :is(.fd-commandbar, .fd-main) {
+#studioSaveFolderModal.fd-collapsed .fd-commandbar,
+#studioSaveFolderModal.fd-collapsed .fd-main {
     display: none !important;
 }
 
@@ -516,7 +520,8 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     top: 34px;
 }
 
-#studioSaveFolderModal.fd-collapsed :is(.fd-expando, .fd-button) {
+#studioSaveFolderModal.fd-collapsed .fd-expando,
+#studioSaveFolderModal.fd-collapsed .fd-button {
     top: 71px;
 }
 
@@ -543,7 +548,8 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     height: 68px;
 }
 
-#studioSaveFolderModal[data-file-dialog-mode="open"] :is(.fd-expando, .fd-type-label) {
+#studioSaveFolderModal[data-file-dialog-mode="open"] .fd-expando,
+#studioSaveFolderModal[data-file-dialog-mode="open"] .fd-type-label {
     display: none;
 }
 
@@ -582,7 +588,10 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     height: 68px;
 }
 
-#studioSaveFolderModal[data-file-dialog-mode="folder"] :is(.fd-expando, .fd-type-label, .fd-type, .fd-name-drop) {
+#studioSaveFolderModal[data-file-dialog-mode="folder"] .fd-expando,
+#studioSaveFolderModal[data-file-dialog-mode="folder"] .fd-type-label,
+#studioSaveFolderModal[data-file-dialog-mode="folder"] .fd-type,
+#studioSaveFolderModal[data-file-dialog-mode="folder"] .fd-name-drop {
     display: none;
 }
 

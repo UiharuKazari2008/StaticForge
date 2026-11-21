@@ -326,6 +326,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     animation: mp-ants 0.6s linear infinite;
 }
 
+/* perf: allow the selection marquee (see the animation above) */
 @keyframes mp-ants {
     to { stroke-dashoffset: -8; }
 }
@@ -1212,7 +1213,8 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     outline-offset: -8px;
 }
 
-.mp-client .mp-layer-row.is-active :is(.mp-layer-thumb, .mp-layer-mask).is-target {
+.mp-client .mp-layer-row.is-active .mp-layer-thumb.is-target,
+.mp-client .mp-layer-row.is-active .mp-layer-mask.is-target {
     outline: 2px solid #000;
     outline-offset: 0;
 }

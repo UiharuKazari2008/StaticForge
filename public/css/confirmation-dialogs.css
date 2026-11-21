@@ -604,7 +604,8 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-
     gap: 8px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-dialog-modal[data-vista-dialog] :is(.studio-change-lead, .studio-change-hint) {
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-dialog-modal[data-vista-dialog] .studio-change-lead,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-dialog-modal[data-vista-dialog] .studio-change-hint {
     text-align: left;
 }
 
@@ -626,7 +627,8 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-
     border: 1px solid #828790;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-dialog-modal[data-vista-dialog] .studio-change-scroll-shell :is(.scrollable-content, .studio-change-scrollable) {
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-dialog-modal[data-vista-dialog] .studio-change-scroll-shell .scrollable-content,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-dialog-modal[data-vista-dialog] .studio-change-scroll-shell .studio-change-scrollable {
     padding: 2px 0 4px;
 }
 

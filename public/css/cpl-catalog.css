@@ -100,7 +100,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
     flex: 0 0 16px;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-cat-title, .cpl-task-item-title) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-cat-title,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-task-item-title {
     display: block;
     margin: 0;
     padding: 0;
@@ -117,12 +118,15 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
     cursor: var(--c-pointer);
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-cat-title, .cpl-task-item-title)::before,
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-cat-title, .cpl-task-item-title)::after {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-cat-title::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-task-item-title::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-cat-title::after,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-task-item-title::after {
     content: none;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-cat-title, .cpl-task-item-title):hover {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-cat-title:hover,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-task-item-title:hover {
     color: var(--cpl-title);
     text-decoration: underline;
 }

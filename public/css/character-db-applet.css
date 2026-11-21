@@ -269,7 +269,8 @@ body:not(.windows-classic-theme) #characterDbModal[data-window-client="light"] .
     font-style: italic;
 }
 
-body:not(.windows-classic-theme) #characterDbModal[data-window-client="light"] :is(.character-db-layout, .character-db-search-hits) {
+body:not(.windows-classic-theme) #characterDbModal[data-window-client="light"] .character-db-layout,
+body:not(.windows-classic-theme) #characterDbModal[data-window-client="light"] .character-db-search-hits {
     background: #fff;
     border-color: #828790;
     border-radius: 0;
@@ -291,7 +292,8 @@ body:not(.windows-classic-theme) #characterDbModal[data-window-client="light"] .
     border-bottom-color: #d5d5d5;
 }
 
-body:not(.windows-classic-theme) #characterDbModal[data-window-client="light"] :is(.character-db-row, .character-db-search-hit) {
+body:not(.windows-classic-theme) #characterDbModal[data-window-client="light"] .character-db-row,
+body:not(.windows-classic-theme) #characterDbModal[data-window-client="light"] .character-db-search-hit {
     color: #000;
     border: 1px solid transparent;
     border-radius: 3px;

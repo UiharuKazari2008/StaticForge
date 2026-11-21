@@ -210,10 +210,15 @@ function wireFocusOverlayListeners() {
     // UI SCROLL MANAGEMENT SYSTEM - Title bar visibility and star field generation
     window.addEventListener('scroll', handleScroll, { passive: true });
 
-    // UI SCROLL MANAGEMENT SYSTEM - Initialize title bar state
-    const initialScrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    updateTitleBarVisibility(initialScrollTop);
-    lastScrollTop = initialScrollTop;
+    // UI SCROLL MANAGEMENT SYSTEM - Initialize title bar state. Read after the next frame has painted, not here:
+    // this runs in the boot's busy task, after its writes, and the read made the browser lay the page out for it
+    // (58 ms of forced layout in a desktop boot, #1001). A scroll before then is handled by handleScroll.
+    requestAnimationFrame(() => setTimeout(() => {
+        if (isScrolling) return;
+        const initialScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        updateTitleBarVisibility(initialScrollTop);
+        lastScrollTop = initialScrollTop;
+    }, 0));
 
     // FOCUS OVERLAY SYSTEM - Prevent accidental interactions when window loses focus
     if (focusOverlay) {

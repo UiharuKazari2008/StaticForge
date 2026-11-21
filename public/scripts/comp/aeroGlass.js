@@ -96,6 +96,8 @@
         imageWidth: 0,
         imageHeight: 0,
         position: { x: 0.5, y: 0.5 },
+        publishedVw: 0,             // the --aero-vw / --aero-vh last written on <html>
+        publishedVh: 0,
         buildToken: 0,
         inflight: null,             // { url, promise } so a refresh joins a running build
         failedUrl: null,
@@ -832,8 +834,13 @@
         if (!root || !win) return;
         const vw = win.innerWidth;
         const vh = win.innerHeight;
-        root.style.setProperty('--aero-vw', `${vw}px`);
-        root.style.setProperty('--aero-vh', `${vh}px`);
+        // inherited from <html>: written only when the viewport changed (each build and resize publishes)
+        if (state.publishedVw !== vw || state.publishedVh !== vh) {
+            state.publishedVw = vw;
+            state.publishedVh = vh;
+            root.style.setProperty('--aero-vw', `${vw}px`);
+            root.style.setProperty('--aero-vh', `${vh}px`);
+        }
         const geo = computeCoverGeometry(state.imageWidth, state.imageHeight, vw, vh, state.position);
         if (!geo) {
             flushCopyVars();
@@ -927,7 +934,11 @@
             setCopyVar('--aero-wallpaper', `url("${nextUrl}")`);
             setCopyVar('--aero-wallpaper-light', `url("${nextLightUrl}")`);
             publishCoverVars();
-            syncAllModals();
+            // the windows' origins and surfaces do not move with the wallpaper (syncModal keeps them at every
+            // placement); reading every window's box here, right after the writes above, forced a layout in the
+            // middle of the boot (#1001: 80-240 ms per copy). What does follow the new copy: the surfaces' contrast
+            // (it samples the copy) and, in live, the windows' lists (scheduleBackdrops below)
+            scheduleContrast();
             revokeLater(previous);
             revokeLater(previousLight);
             if (mode === 'live') {
@@ -1261,6 +1272,22 @@
         const el = doc.getElementById('desktopIcons');
         if (!el || typeof wc.snapshot !== 'function') return;
         const info = state.icons || (state.icons = { at: 0, dirty: true, url: null });
+        // not drawn (the logon, the staged boot before its icons stage: desktop-boot.css): a copy now is blank, and a
+        // blank one was kept through the boot (#1001: 0 opaque pixels at desktopBootDone, so the glass showed no
+        // icons until a later change). Asked again once the boot is done, or after layerRefreshMs.
+        if (typeof el.checkVisibility === 'function' && !el.checkVisibility({ visibilityProperty: true, opacityProperty: true })) {
+            info.at = performance.now();
+            if (!info.bootRetry && typeof doc.addEventListener === 'function') {
+                info.bootRetry = true;
+                doc.addEventListener('desktopBootDone', () => {
+                    info.bootRetry = false;
+                    if (state.icons !== info || info.url) return;
+                    info.at = 0;
+                    scheduleBackdrops();
+                }, { once: true, signal: appScopeSignal });
+            }
+            return;
+        }
         // watched only until the first change after a copy (that marks it dirty); this copy watches again,
         // so icon churn between copies (hover, selection, drags) costs no observer callbacks
         if (typeof MutationObserver === 'function') {

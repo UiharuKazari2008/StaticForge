@@ -1293,7 +1293,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-slider.is-disabled .wm-slider-thumb::b
 
 /* month calendar, time control, colour choice (wm-programs.css): 6.1's in 6.5's text colour; the
  * month's name is drawn in the tint on the selection colour (emulator, Calendar > New Appointment) */
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-cal, .wm-timefield) {
+html.ui-mobile[data-wm-version="6.5"] .wm-cal,
+html.ui-mobile[data-wm-version="6.5"] .wm-timefield {
     color: var(--wm65-text);
 }
 
@@ -1493,7 +1494,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-boot-wait {
  * the wide drop arrows. */
 html.ui-mobile[data-wm-version="6.5"] .wm-pv { background: #fff; }
 html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar { height: calc(23 * var(--wm-px)); }
-html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar :is(.wm-pv-folder, .wm-pv-sort) { gap: calc(0.5 * var(--wm-px)); padding: 0 calc(4 * var(--wm-px)) calc(1 * var(--wm-px)) calc(3 * var(--wm-px)) !important; color: var(--wm65-text) !important; }
+html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar .wm-pv-folder,
+html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar .wm-pv-sort { gap: calc(0.5 * var(--wm-px)); padding: 0 calc(4 * var(--wm-px)) calc(1 * var(--wm-px)) calc(3 * var(--wm-px)) !important; color: var(--wm65-text) !important; }
 html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar .wm-pv-sort { padding-right: calc(3.5 * var(--wm-px)) !important; }
 html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar .wm-pv-arrow { flex: 0 0 auto; width: calc(9.5 * var(--wm-px)); height: calc(5 * var(--wm-px)); margin: calc(6 * var(--wm-px)) 0 0 calc(5 * var(--wm-px)); border: 0; background: #000; clip-path: polygon(0 0, 100% 0, 50% 100%); }
 html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar .wm-pv-sort .wm-pv-arrow { margin-left: calc(4.5 * var(--wm-px)); }
@@ -2516,7 +2518,8 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-btn-row.is-selected .wmsp-btn
 
 /* the play and stop keys of Sounds & Notifications stay flat on the device (owner-drawn: the 6.5
  * face in a black frame), 129 x 70 px each, 8 px apart (here as wide as their column lets two be, 129 px at most) */
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-form :is(.wmsp-play, .wmsp-stop) {
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-play,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-stop {
     flex: 1 1 0;
     width: auto;
     max-width: calc(64.5 * var(--wm-px));
@@ -2526,7 +2529,8 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-form :is(.wmsp-play, .wmsp-stop) {
     background: var(--wm65-face) !important;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-form :is(.wmsp-play, .wmsp-stop):active:not(:disabled) {
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-play:active:not(:disabled),
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-stop:active:not(:disabled) {
     border-image: none !important;
     background: var(--wm-highlight) !important;
 }
@@ -2708,7 +2712,8 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-cur {
 }
 
 /* Studio: its empty-view lines hang 20 units from the top of the page, where the band now is */
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-studio:has(> .wms-tabs.wm-pivot-on) > :is(.wms-noprint, .wms-norefs) {
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-studio:has(> .wms-tabs.wm-pivot-on) > .wms-noprint,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-studio:has(> .wms-tabs.wm-pivot-on) > .wms-norefs {
     margin-top: calc(32 * var(--wm-px));
 }
 

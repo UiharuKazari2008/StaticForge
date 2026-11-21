@@ -540,8 +540,8 @@
     <link rel="stylesheet" href="/css/fonts.css">
     <link rel="stylesheet" href="/dist/fontawesome/css/all.subset.css">
     <link rel="stylesheet" href="/css/app.css">
-    <!-- Melaton Mobile only (#817), but for wm-director.css (the Director's VN kits, desktop too, #750) and
-         wm-weather.css (the desktop Melaton Weather window) -->
+    <!-- Melaton Mobile only (#817), but for wm-director.css (the Director's VN kits, desktop too, #750);
+         wm-weather.css below is the desktop's on demand (#1001) -->
     <template data-shell="mobile">
     <link rel="stylesheet" href="/css/wm-shell.css">
     <link rel="stylesheet" href="/css/wm-file-explorer.css">
@@ -600,7 +600,10 @@
     <link rel="stylesheet" href="/css/wm-titanium.css">
     <link rel="stylesheet" href="/css/wm-stage.css">
     </template><script>writeShellTags()</script>
-    <link rel="stylesheet" href="/css/wm-weather.css">
+    <!-- Weather (#1001): the phone's from the boot; the desktop's Melaton Weather window brings it (featureLoader
+         'melaton_weather') to this place in the cascade -->
+    <template data-shell="mobile"><link rel="stylesheet" href="/css/wm-weather.css"></template><script>writeShellTags()</script>
+    <template data-shell="desktop"><meta name="melaton-feature-css" content="/css/wm-weather.css"></template><script>writeShellTags()</script>
     <template data-shell="mobile"><link rel="stylesheet" href="/css/wm-traffic.css"></template><script>writeShellTags()</script>
     <template data-shell="mobile"><link rel="stylesheet" href="/css/wm-claude-accounts.css"></template><script>writeShellTags()</script>
     <template data-shell="mobile"><link rel="stylesheet" href="/css/wm-lapis.css"></template><script>writeShellTags()</script>
@@ -726,7 +729,9 @@
     <link rel="stylesheet" href="/dist/mdi/materialdesignicons.subset.css">
     <link rel="stylesheet" href="/dist/remixicon/remixicon.subset.css">
     <template data-shell="desktop"><link rel="stylesheet" href="/css/desktop-apps/desktopAppWindows.css"></template><script>writeShellTags()</script>
-    <template data-shell="desktop"><link rel="stylesheet" href="/css/desktop-apps/dovecote.css"></template><script>writeShellTags()</script>
+    <!-- Dovecote (#1001): the tray, its flyout and New Mail box from the boot; the windows' dovecote.css comes with
+         them (featureLoader 'dovecote') and goes in at the placeholder, its old place in the cascade -->
+    <template data-shell="desktop"><meta name="melaton-feature-css" content="/css/desktop-apps/dovecote.css"><link rel="stylesheet" href="/css/desktop-apps/dovecote-tray.css"></template><script>writeShellTags()</script>
     <!-- Terminal: global .hidden — must stay last in the stylesheet stack -->
     <!-- desktop only: the phone never draws it (Nov 18 phone memory pass) -->
     <template data-shell="desktop"><link rel="stylesheet" href="/css/desktop-cursors.css"></template><script>writeShellTags()</script>
@@ -7553,8 +7558,9 @@ Examples:
     <script src="scripts/comp/activeSyncTray.js"></script>
     <!-- DreamOS (#910): a captive portal's sign-in - the network icon's balloon, Grimoire on the local Alchemy -->
     <script src="scripts/comp/dreamosPortal.js"></script>
-    <!-- DreamOS (#910): the Wi-Fi windows - Connect to a network, Manage Wireless Networks, Wireless Network Connection Status -->
-    <script src="scripts/comp/dreamosWifi.js"></script>
+    <!-- DreamOS (#910): the Wi-Fi windows - Connect to a network, Manage Wireless Networks, Wireless Network Connection Status.
+         They load on the first open (featureLoader 'dreamos_wifi', dreamosWifi.js, #1001); this answers for them until then -->
+    <script src="scripts/comp/dreamosWifiBoot.js"></script>
     <!-- The tray's system icons (#932): the battery meter, the network icon on DreamOS, the icon order and dragging -->
     <script src="scripts/comp/trayPower.js"></script>
     <script src="scripts/comp/trayBluetooth.js"></script>
@@ -7604,7 +7610,7 @@ Examples:
     <script src="scripts/appInitSteps.js"></script>
     <script src="scripts/comp/telemetryClient.js"></script>
     <script src="scripts/app.js"></script>
-    <!-- Melaton Mobile only (#817): every wm*.js returns at once unless uiShell is mobile; wmWeather.js below also runs the desktop Melaton Weather window (Start menu, Sidebar, Continuity, weather alerts) -->
+    <!-- Melaton Mobile only (#817): every wm*.js returns at once unless uiShell is mobile; wmWeather.js below also runs the desktop Melaton Weather window (Start menu, Sidebar, Continuity, weather alerts), loaded there on the first open (#1001) -->
     <template data-shell="mobile">
     <script src="scripts/tasks/status-order.js"></script>
     <script src="scripts/tasks/status-fit.js"></script>
@@ -7646,7 +7652,11 @@ Examples:
     </template><script>writeShellTags()</script>
     <!-- the one location service (#907): positions, Home / Work, the lookup dialog; before every program that needs a place -->
     <script src="scripts/comp/wmLocation.js"></script>
-    <script src="scripts/comp/wmWeather.js"></script>
+    <!-- Weather (#1001): Melaton Mobile's from the boot (Today, the 6.5 home screen, the status bar); the desktop's
+         Melaton Weather window loads it on the first open (featureLoader 'melaton_weather'; melatonWeatherOpener.js
+         answers for window.wmWeather until then) -->
+    <template data-shell="mobile"><script src="scripts/comp/wmWeather.js"></script></template><script>writeShellTags()</script>
+    <template data-shell="desktop"><script src="scripts/comp/melatonWeatherOpener.js"></script></template><script>writeShellTags()</script>
     <!-- CaféReady tasks (#908): the runtime and the drive-alerts task, the same files the Android app runs; wmTraffic uses their pure parts -->
     <template data-shell="mobile"><script src="scripts/tasks/runtime.js"></script><script src="scripts/tasks/drive-alerts.js"></script><script src="scripts/comp/wmTraffic.js"></script></template><script>writeShellTags()</script>
     <template data-shell="mobile"><script src="scripts/comp/wmLapis.js"></script></template><script>writeShellTags()</script>

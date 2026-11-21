@@ -554,12 +554,16 @@
     padding: 0 8px;
 }
 
-#notebookModal :is(.jnl-btn, .jnl-drop, .jnl-tbtn):not(:disabled):hover {
+#notebookModal .jnl-btn:not(:disabled):hover,
+#notebookModal .jnl-drop:not(:disabled):hover,
+#notebookModal .jnl-tbtn:not(:disabled):hover {
     border-color: #a8b8d0;
     background-color: rgba(255, 255, 255, 0.55);
 }
 
-#notebookModal :is(.jnl-btn, .jnl-drop, .jnl-tbtn):not(:disabled):active,
+#notebookModal .jnl-btn:not(:disabled):active,
+#notebookModal .jnl-drop:not(:disabled):active,
+#notebookModal .jnl-tbtn:not(:disabled):active,
 #notebookModal .jnl-btn.is-checked {
     border-color: #6f7c8e #c8d0dc #c8d0dc #6f7c8e;
     background-color: rgba(214, 222, 238, 0.85);
@@ -717,7 +721,8 @@
     font: max(11px, calc(26px * var(--jnl-s))) "Segoe UI", Tahoma, sans-serif;
 }
 
-#notebookModal :is(.jnl-title-label, .jnl-title-date) {
+#notebookModal .jnl-title-label,
+#notebookModal .jnl-title-date {
     position: absolute;
     bottom: calc(3px * var(--jnl-s));
     color: #999;
@@ -823,7 +828,8 @@
     display: flex;
 }
 
-#notebookModal.jnl-recent :is(.jnl-view, .jnl-pagebar) {
+#notebookModal.jnl-recent .jnl-view,
+#notebookModal.jnl-recent .jnl-pagebar {
     visibility: hidden;
 }
 

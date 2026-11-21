@@ -9,7 +9,9 @@
 
    The first part is layout for every theme; the Vista skin below it is scoped to the light
    client (data-window-client="light", vista-glass-controls.css) outside the classic theme.
-   Link in public/app.html next to the other desktop-apps stylesheets. */
+   featureLoader feature 'dovecote' with desktop-apps/dovecoteWindow.js (#1001): it goes in at app.html's
+   placeholder next to the other desktop-apps stylesheets when a window first opens. The tray icon, its Inbox flyout
+   and the New Mail box are in dovecote-tray.css (from the boot). */
 
 /* ======================= layout (every theme) ======================= */
 
@@ -840,7 +842,8 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 :is(.dovecote-folder-btn[data-dove-folder="spam"] > i, .dovecote-tree-icon[data-dove-tree-icon="spam"], .dove-move-icon[data-dove-tree-icon="spam"]) { --dove-folder-icon: 13; }
 :is(.dovecote-folder-btn[data-dove-folder="drafts"] > i, .dovecote-tree-icon[data-dove-tree-icon="drafts"], .dove-move-icon[data-dove-tree-icon="drafts"]) { --dove-folder-icon: 11; }
 :is(.dovecote-folder-btn[data-dove-folder="folder"] > i, .dovecote-tree-icon[data-dove-tree-icon="folder"], .dove-move-icon[data-dove-tree-icon="folder"]) { --dove-folder-icon: 6; }
-:is(.dovecote-tree-icon, .dove-move-icon)[data-dove-tree-icon="account"] { --dove-folder-icon: 19; }
+.dovecote-tree-icon[data-dove-tree-icon="account"],
+.dove-move-icon[data-dove-tree-icon="account"] { --dove-folder-icon: 19; }
 .dovecote-tree-icon[data-dove-tree-icon="local"] { --dove-folder-icon: 20; }
 .dovecote-tree-icon[data-dove-tree-icon="communities"] { --dove-folder-icon: 16; }
 .dovecote-tree-icon[data-dove-tree-icon="mailbox"] { --dove-folder-icon: 21; }
@@ -921,7 +924,8 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 
 /* ---- the information bar (admin view; blocked pictures): Vista's yellow bar ---- */
 
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client :is(.dovecote-admin-banner, .dovecote-images-bar) {
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-admin-banner,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-images-bar {
     min-height: 22px;
     margin: 0;
     padding: 2px 6px;
@@ -1057,12 +1061,16 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     box-sizing: border-box;
 }
 
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > :is(.dovecote-col-from, .dovecote-col-subject, .dovecote-col-createdAt) {
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > .dovecote-col-from,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > .dovecote-col-subject,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > .dovecote-col-createdAt {
     display: block;
     line-height: 17px;
 }
 
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > :is(.dovecote-col-unread, .dovecote-col-attachment, .dovecote-col-route) {
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > .dovecote-col-unread,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > .dovecote-col-attachment,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > .dovecote-col-route {
     justify-content: center;
     padding: 0;
 }
@@ -1522,229 +1530,6 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     padding: 0 3px;
 }
 
-/* ======================= taskbar tray icon =======================
-   #dovecoteTrayIcon (public/app.html): the .taskbar-tray-icon pattern of directorTrayIcon /
-   naxtBagTrayIcon (systemTrayManager.js) plus an unread-count badge. */
-
-.dovecote-tray-icon {
-    position: relative;
-}
-
-.dovecote-tray-glyph {
-    width: 16px;
-    height: 16px;
-    /* 16 / 32 px compiles (modules/appIconRuntimeAssets.js), not the 384 px default */
-    background: url('/static_images/app_icons/32/vista-mail.webp') center / contain no-repeat;
-    background-image: image-set(url('/static_images/app_icons/16/vista-mail.webp') 1x, url('/static_images/app_icons/32/vista-mail.webp') 2x);
-}
-
-.dovecote-tray-icon.has-unread .dovecote-tray-glyph {
-    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -144px 0 / 960px 16px;
-}
-
-.dovecote-tray-badge {
-    position: absolute;
-    top: 1px;
-    right: 1px;
-    min-width: 14px;
-    padding: 0 3px;
-    border-radius: var(--border-radius-xl);
-    background: var(--primary-glass-color);
-    color: var(--text-accent-tinted);
-    font-size: 0.65em;
-    font-weight: 700;
-    line-height: 1.4;
-    text-align: center;
-}
-
-/* Tray click: Vista flyout, same shell as the network and volume popouts. */
-.dove-inbox-flyout {
-    position: fixed;
-    z-index: var(--z-taskbar-popover, 2710);
-    width: 300px;
-    box-sizing: border-box;
-    background: #fff;
-    color: #000;
-    border: 1px solid rgba(0, 0, 0, 0.55);
-    border-radius: 4px;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
-    font-family: "Segoe UI", Tahoma, "Noto Sans", sans-serif;
-    font-size: 12px;
-    line-height: 1.4;
-    overflow: hidden;
-    user-select: none;
-}
-
-.dove-inbox-flyout.hidden {
-    display: none;
-}
-
-.dove-inbox-flyout-body {
-    padding: 10px 12px 6px;
-}
-
-.dove-inbox-flyout-heading {
-    margin-bottom: 6px;
-    color: #333;
-}
-
-.dove-inbox-flyout-list {
-    max-height: 240px;
-    overflow: auto;
-}
-
-.dove-inbox-flyout-empty {
-    margin: 0;
-    padding: 8px 0;
-    color: #555;
-}
-
-.dove-inbox-flyout-row {
-    display: grid;
-    grid-template-columns: 16px 16px minmax(0, 1fr);
-    column-gap: 6px;
-    align-items: center;
-    width: 100%;
-    min-height: 32px;
-    margin: 0;
-    padding: 3px 2px;
-    border: 0;
-    border-radius: 2px;
-    background: transparent;
-    color: #000;
-    font: inherit;
-    text-align: left;
-    cursor: var(--c-pointer);
-}
-
-.dove-inbox-flyout-row:hover {
-    background: linear-gradient(#fafbfd, #ebf3fd);
-}
-
-.dove-inbox-flyout-row.unread .dove-inbox-flyout-subject {
-    font-weight: 700;
-}
-
-.dove-inbox-flyout-mark,
-.dove-inbox-flyout-clip {
-    grid-row: span 2;
-    width: 16px;
-    height: 16px;
-    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -160px 0 / 960px 16px;
-}
-
-.dove-inbox-flyout-row.unread .dove-inbox-flyout-mark {
-    background-position: -144px 0;
-}
-
-.dove-inbox-flyout-clip {
-    background: none;
-}
-
-.dove-inbox-flyout-row.has-attachment .dove-inbox-flyout-clip {
-    background: image-set(url('/static_images/vista-mail/list-16.png') 1x, url('/static_images/hidpi/125/vista-mail/list-16.png') 1.25x, url('/static_images/hidpi/150/vista-mail/list-16.png') 1.5x, url('/static_images/hidpi/175/vista-mail/list-16.png') 1.75x, url('/static_images/hidpi/200/vista-mail/list-16.png') 2x) no-repeat -128px 0 / 960px 16px;
-}
-
-.dove-inbox-flyout-subject,
-.dove-inbox-flyout-from {
-    grid-column: 3;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.dove-inbox-flyout-from {
-    color: #555;
-    font-size: 11px;
-}
-
-.dove-inbox-flyout-links {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 7px 12px 9px;
-    background: linear-gradient(180deg, #f3f7fc, #e4ecf6);
-    border-top: 1px solid #d5dfe5;
-}
-
-.dove-inbox-flyout-link {
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: #0066cc;
-    font: inherit;
-    text-align: left;
-    cursor: var(--c-pointer);
-}
-
-.dove-inbox-flyout-link:hover {
-    color: #3399ff;
-    text-decoration: underline;
-}
-
-/* New mail tool window. Vista message box measurements (vista-dialogs.css, from the VM):
-   32px icon, 9px beside it, white client, grey footer with Read and Close. Placed above
-   the taskbar by melatonNetworkDialogs.placeDesktopWindow. */
-#dovecoteNewMailModal {
-    width: 460px;
-}
-
-#dovecoteNewMailModal > .modal-content {
-    /* the grey bar is full-bleed, same as .cpl-db-footer; spacing stays inside it */
-    padding: 0;
-}
-
-#dovecoteNewMailModal .dovecote-new-mail {
-    display: grid;
-    grid-template-columns: 32px minmax(0, 1fr);
-    column-gap: 9px;
-    align-items: start;
-}
-
-#dovecoteNewMailModal .dovecote-new-mail-icon {
-    width: 32px;
-    height: 32px;
-    object-fit: contain;
-}
-
-#dovecoteNewMailModal .dovecote-new-mail-text {
-    min-width: 0;
-}
-
-#dovecoteNewMailModal .dovecote-new-mail-text p {
-    margin: 0 0 2px;
-    text-align: left;
-    color: inherit;
-    overflow-wrap: anywhere;
-}
-
-#dovecoteNewMailModal .dovecote-new-mail-preview {
-    display: -webkit-box;
-    margin-top: 6px;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
-}
-
-#dovecoteNewMailModal .dovecote-new-mail-actions {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 8px;
-    margin: 0;
-    padding: 12px 8px 11px 11px;
-    background: #f0f0f0;
-}
-
-body.windows-classic-theme #dovecoteNewMailModal .dovecote-new-mail {
-    padding: 14px 16px 12px;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #dovecoteNewMailModal .dovecote-new-mail-preview {
-    color: #6d6d6d;
-}
-
 /* ---- Edit > Move to Folder... (an e-mail account, doveImapMoveDialog): Windows Mail's Move
    dialog, the account's folder tree in a white sunken box inside the confirmation dialog ---- */
 
@@ -1824,13 +1609,4 @@ body.windows-classic-theme .dove-move-row.is-selected .dove-move-label {
 .dovecote-compose-window .dovecote-compose-from {
     flex: 1 1 auto;
     min-width: 0;
-}
-
-/* the tray Inbox flyout: an e-mail account's message names its account after the sender */
-.dove-inbox-flyout-account::before {
-    content: ' - ';
-}
-
-.dove-inbox-flyout-account {
-    color: #6d6d6d;
 }

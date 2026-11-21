@@ -202,7 +202,9 @@
     overscroll-behavior: contain;
 }
 
-.wm-studio[data-tab="prompt"] #manualModal :is(.manual-modal-split, .manual-modal-form-section, .model-control) {
+.wm-studio[data-tab="prompt"] #manualModal .manual-modal-split,
+.wm-studio[data-tab="prompt"] #manualModal .manual-modal-form-section,
+.wm-studio[data-tab="prompt"] #manualModal .model-control {
     position: relative !important;
     inset: auto !important;
 }
@@ -424,7 +426,11 @@
 }
 
 /* the frame before the form shows (wmStudio.js show): bars, tabs and the wait cursor only */
-.wm-studio.wms-prepaint > :is(.wms-host, .wms-tool, .wms-noprint, .wms-norefs, .wms-wait) {
+.wm-studio.wms-prepaint > .wms-host,
+.wm-studio.wms-prepaint > .wms-tool,
+.wm-studio.wms-prepaint > .wms-noprint,
+.wm-studio.wms-prepaint > .wms-norefs,
+.wm-studio.wms-prepaint > .wms-wait {
     display: none !important;
 }
 
@@ -1112,7 +1118,8 @@
     transform: none !important;
 }
 
-.wm-studio #manualModal .manual-preview-controls :is(.manual-preview-controls-left, .manual-preview-controls-right),
+.wm-studio #manualModal .manual-preview-controls .manual-preview-controls-left,
+.wm-studio #manualModal .manual-preview-controls .manual-preview-controls-right,
 .wm-studio #manualModal .manual-preview-controls-top-left {
     display: none !important;
 }
@@ -1219,19 +1226,28 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac > .character-autocomp
     box-shadow: none !important;
 }
 
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item :is(.character-name, .character-info-row) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .character-name,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .character-info-row {
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
     text-shadow: none !important;
 }
 
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item :is(.character-copyright, .placeholder-desc, .placeholder-desc-text, .tag-wiki-preview-text, .tag-meta-icons) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .character-copyright,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .placeholder-desc,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .placeholder-desc-text,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .tag-wiki-preview-text,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .tag-meta-icons {
     color: #404040 !important;
     -webkit-text-fill-color: #404040 !important;
     text-shadow: none !important;
 }
 
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item :is(.match-type-badge, .tag-category-badge, .badge, .count-dot, .tag-meta-icon) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .match-type-badge,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .tag-category-badge,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .badge,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .count-dot,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .tag-meta-icon {
     filter: brightness(0.55) saturate(1.6);
     border-radius: 0 !important;
     text-shadow: none !important;
@@ -1362,7 +1378,10 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.character-autoco
     text-shadow: none !important;
 }
 
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.selected, .active, .keyboard-selected, .is-selected) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .selected,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .active,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .keyboard-selected,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .is-selected {
     background: var(--wm-highlight) !important;
     color: var(--wm-highlight-text, #fff) !important;
 }
@@ -1486,7 +1505,8 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     box-shadow: none !important;
 }
 
-.wm-studio #manualModal .prompt-status-icons :is(.token-progress-inner, .token-progress-inner-ne) {
+.wm-studio #manualModal .prompt-status-icons .token-progress-inner,
+.wm-studio #manualModal .prompt-status-icons .token-progress-inner-ne {
     display: none !important;
 }
 
@@ -1552,11 +1572,14 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
  * sizes it to the textarea (--wms-ta-top / --wms-ta-h) and scrolls it with it.
  * --prompt-surface: light picks the highlight palette made for white boxes.
  * ====================================================================== */
-.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) {
+.wm-studio #manualModal .prompt-textarea-container,
+.wm-studio #manualModal .character-prompt-textarea-container {
     --prompt-surface: light;
 }
 
-.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container, .prompt-textarea-emphasis-wrap) {
+.wm-studio #manualModal .prompt-textarea-container,
+.wm-studio #manualModal .character-prompt-textarea-container,
+.wm-studio #manualModal .prompt-textarea-emphasis-wrap {
     position: relative !important;
 }
 
@@ -1574,7 +1597,8 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     line-break: anywhere !important;
 }
 
-.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container, .prompt-textarea-emphasis-wrap) > :is(.emphasis-highlight-overlay, .search-highlight-overlay) {
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container, .prompt-textarea-emphasis-wrap) > .emphasis-highlight-overlay,
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container, .prompt-textarea-emphasis-wrap) > .search-highlight-overlay {
     position: absolute !important;
     top: var(--wms-ta-top, 0) !important;
     left: 0 !important;
@@ -1694,8 +1718,12 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     display: none !important;
 }
 
-.wm-studio #manualModal .prompt-textarea-toolbar :is(.toolbar-left, .token-info-container, .token-info-top).wms-x,
-.wm-studio #manualModal .prompt-textarea-toolbar.prompt-textarea-toolbar :is(.toolbar-left, .token-info-container, .token-info-top) {
+.wm-studio #manualModal .prompt-textarea-toolbar .toolbar-left.wms-x,
+.wm-studio #manualModal .prompt-textarea-toolbar .token-info-container.wms-x,
+.wm-studio #manualModal .prompt-textarea-toolbar .token-info-top.wms-x,
+.wm-studio #manualModal .prompt-textarea-toolbar.prompt-textarea-toolbar .toolbar-left,
+.wm-studio #manualModal .prompt-textarea-toolbar.prompt-textarea-toolbar .token-info-container,
+.wm-studio #manualModal .prompt-textarea-toolbar.prompt-textarea-toolbar .token-info-top {
     display: block !important;
     width: 100% !important;
     min-width: 0 !important;
@@ -1730,7 +1758,9 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     color: #000 !important;
 }
 
-.wm-studio #manualModal .prompt-textarea-toolbar :is(.token-count, .text-search-label, .text-search-match-count) {
+.wm-studio #manualModal .prompt-textarea-toolbar .token-count,
+.wm-studio #manualModal .prompt-textarea-toolbar .text-search-label,
+.wm-studio #manualModal .prompt-textarea-toolbar .text-search-match-count {
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
     font: var(--wm-fs) var(--wm-font) !important;
@@ -1751,7 +1781,8 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     background: var(--wm-highlight) !important;
 }
 
-.wm-studio #manualModal .prompt-textarea-toolbar .token-info-container :is(.token-progress-inner, .token-progress-inner-ne) {
+.wm-studio #manualModal .prompt-textarea-toolbar .token-info-container .token-progress-inner,
+.wm-studio #manualModal .prompt-textarea-toolbar .token-info-container .token-progress-inner-ne {
     display: none !important;
 }
 
@@ -1774,7 +1805,8 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     display: none !important;
 }
 
-.wm-studio #manualModal .character-prompt-item :is(.character-name-input, .character-name-input-placeholder) {
+.wm-studio #manualModal .character-prompt-item .character-name-input,
+.wm-studio #manualModal .character-prompt-item .character-name-input-placeholder {
     color: #000 !important;
     -webkit-text-fill-color: #000 !important;
     text-shadow: none !important;
@@ -1964,7 +1996,8 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
 }
 
 /* Prints: the stepper takes the cell (the desktop's fixed 40 px field goes) */
-.wm-studio #manualModal .model-control .control-row-last :is(.gen-controls, .controls-flex-right) {
+.wm-studio #manualModal .model-control .control-row-last .gen-controls,
+.wm-studio #manualModal .model-control .control-row-last .controls-flex-right {
     flex: 1 1 auto;
     min-width: 0;
 }
@@ -2169,7 +2202,8 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     max-height: none !important;
 }
 
-.wm-studio #manualModal .prompt-textarea-toolbar :is(.toolbar-left, .toolbar-right) {
+.wm-studio #manualModal .prompt-textarea-toolbar .toolbar-left,
+.wm-studio #manualModal .prompt-textarea-toolbar .toolbar-right {
     flex-wrap: wrap !important;
     min-width: 0 !important;
     max-width: 100% !important;
@@ -2187,7 +2221,9 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
 }
 
 /* every button group in the strip wraps too (the regular buttons sat in a no-wrap row) */
-.wm-studio #manualModal .prompt-textarea-toolbar :is(.toolbar-regular-buttons, .toolbar-buttons, .toolbar-actions) {
+.wm-studio #manualModal .prompt-textarea-toolbar .toolbar-regular-buttons,
+.wm-studio #manualModal .prompt-textarea-toolbar .toolbar-buttons,
+.wm-studio #manualModal .prompt-textarea-toolbar .toolbar-actions {
     display: flex !important;
     flex-wrap: wrap !important;
     flex: 0 1 auto !important;
@@ -2344,7 +2380,8 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     gap: calc(4 * var(--wm-px)) !important;
 }
 
-.wm-studio[data-tab="images"] #manualModal .stage-type-label :is(.character-name-input-placeholder, .stage-hex-id) {
+.wm-studio[data-tab="images"] #manualModal .stage-type-label .character-name-input-placeholder,
+.wm-studio[data-tab="images"] #manualModal .stage-type-label .stage-hex-id {
     font-weight: bold !important;
 }
 
@@ -2369,7 +2406,9 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     padding: 0 !important;
 }
 
-.wm-studio[data-tab="images"] #manualModal .stage-body :is(.form-row, .group-controls-container, .stage-controls-section) {
+.wm-studio[data-tab="images"] #manualModal .stage-body .form-row,
+.wm-studio[data-tab="images"] #manualModal .stage-body .group-controls-container,
+.wm-studio[data-tab="images"] #manualModal .stage-body .stage-controls-section {
     display: flex !important;
     flex-wrap: wrap !important;
     align-items: flex-start !important;
@@ -2416,7 +2455,8 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     width: calc(110 * var(--wm-px)) !important;
 }
 
-.wm-studio[data-tab="images"] #manualModal .stage-body :is(.custom-dropdown, .resolution-group) {
+.wm-studio[data-tab="images"] #manualModal .stage-body .custom-dropdown,
+.wm-studio[data-tab="images"] #manualModal .stage-body .resolution-group {
     width: calc(100 * var(--wm-px)) !important;
 }
 
@@ -2995,7 +3035,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-studio .wms-wait {
 .wm-studio > .wms-edbar-bottom { order: 2; }
 .wm-studio.wms-editing > .wms-host { order: 1; }
 
-.wm-studio.wms-editing > :is(.wms-tabs, .wms-noprint, .wms-norefs) {
+.wm-studio.wms-editing > .wms-tabs,
+.wm-studio.wms-editing > .wms-noprint,
+.wm-studio.wms-editing > .wms-norefs {
     display: none !important;
 }
 
@@ -3045,14 +3087,16 @@ html.ui-mobile[data-wm-version="6.5"] .wm-studio .wms-wait {
     line-height: 1.45 !important;
 }
 
-.wm-studio.wms-editing #manualModal .wms-edit-target :is(.emphasis-highlight-overlay, .search-highlight-overlay) {
+.wm-studio.wms-editing #manualModal .wms-edit-target .emphasis-highlight-overlay,
+.wm-studio.wms-editing #manualModal .wms-edit-target .search-highlight-overlay {
     padding: calc(5 * var(--wm-px)) calc(6 * var(--wm-px)) !important;
     font-size: calc(12 * var(--wm-px)) !important;
     line-height: 1.45 !important;
 }
 
 /* the editor keeps the field's token bar and count under the text, inset as the text is */
-.wm-studio.wms-editing #manualModal .wms-edit-target > :is(.prompt-status-icons, .prompt-textarea-toolbar) {
+.wm-studio.wms-editing #manualModal .wms-edit-target > .prompt-status-icons,
+.wm-studio.wms-editing #manualModal .wms-edit-target > .prompt-textarea-toolbar {
     flex: 0 0 auto !important;
     padding-left: calc(6 * var(--wm-px)) !important;
     padding-right: calc(6 * var(--wm-px)) !important;
@@ -3198,7 +3242,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomple
     box-sizing: border-box !important;
 }
 
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item.character-autocomplete-item :is(.selected, .keyboard-selected) ,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item.character-autocomplete-item .selected,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item.character-autocomplete-item .keyboard-selected,
 html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item.character-autocomplete-item:is(.selected, .keyboard-selected, :active) {
     background: var(--wm-highlight) !important;
 }
@@ -3254,7 +3299,10 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomple
 }
 
 /* second lines (an expander's contents, a character's details): one grey line */
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item :is(.placeholder-desc, .placeholder-desc-text, .character-detail-line, .expander-preview) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .placeholder-desc,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .placeholder-desc-text,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .character-detail-line,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .expander-preview {
     display: block !important;
     overflow: hidden !important;
     white-space: nowrap !important;
@@ -3268,7 +3316,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomple
 }
 
 /* Spell Check / Thesaurus: a grey heading, then one line of suggestions that scrolls sideways */
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-section, .word-lookup-section) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .spell-check-section,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-section {
     flex: 0 0 auto !important;
     margin: 0 !important;
     padding: calc(3 * var(--wm-px)) calc(6 * var(--wm-px)) calc(4 * var(--wm-px)) !important;
@@ -3277,7 +3326,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-sect
     background: #fff !important;
 }
 
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-header, .word-lookup-header) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .spell-check-header,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-header {
     display: flex !important;
     align-items: baseline !important;
     gap: calc(6 * var(--wm-px)) !important;
@@ -3292,7 +3342,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-head
     display: none !important;
 }
 
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-row-compact, .word-lookup-row-compact) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .spell-check-row-compact,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-row-compact {
     display: flex !important;
     align-items: center !important;
     gap: calc(4 * var(--wm-px)) !important;
@@ -3304,11 +3355,13 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-row-
     overscroll-behavior: contain !important;
 }
 
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-row-compact, .word-lookup-row-compact)::-webkit-scrollbar {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .spell-check-row-compact::-webkit-scrollbar,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-row-compact::-webkit-scrollbar {
     display: none !important;
 }
 
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-term-inline, .word-lookup-term-inline) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .spell-check-term-inline,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inline {
     flex: 0 0 auto !important;
     font: var(--wm-fs) var(--wm-font) !important;
     font-style: normal !important;
@@ -3339,7 +3392,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .suggestion-btn {
     white-space: nowrap !important;
 }
 
-html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-row-expanded, .word-lookup-row-expanded) {
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .spell-check-row-expanded,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-row-expanded {
     display: none !important;
 }
 
@@ -3361,7 +3415,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
  * a disabled glyph is CE's grey with a white emboss. (Yukimi, Nov 14 #825: dividers, frames, state,
  * fixed size and padding, not spread apart.)
  * ====================================================================== */
-.wm-studio > :is(.wms-ptools, .wms-edbar) {
+.wm-studio > .wms-ptools,
+.wm-studio > .wms-edbar {
     display: none;
     flex: 0 0 auto;
     align-items: flex-start;
@@ -3392,7 +3447,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
     height: calc(25 * var(--wm-px));
 }
 
-.wm-studio :is(.wms-pt-btn, .wms-ed-btn).wms-ed-btn,
+.wm-studio .wms-pt-btn.wms-ed-btn,
+.wm-studio .wms-ed-btn.wms-ed-btn,
 .wm-studio .wms-pt-btn {
     display: inline-flex;
     align-items: center;
@@ -3418,8 +3474,10 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
 }
 
 .wm-studio .wms-pt-btn[aria-expanded="true"],
-.wm-studio :is(.wms-pt-btn, .wms-ed-btn)[aria-pressed="true"],
-.wm-studio :is(.wms-pt-btn, .wms-ed-btn):active:not(:disabled) {
+.wm-studio .wms-pt-btn[aria-pressed="true"],
+.wm-studio .wms-ed-btn[aria-pressed="true"],
+.wm-studio .wms-pt-btn:active:not(:disabled),
+.wm-studio .wms-ed-btn:active:not(:disabled) {
     border-color: #000;
     background: #fff;
 }

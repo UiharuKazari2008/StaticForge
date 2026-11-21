@@ -920,7 +920,9 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     color: var(--wmp-link);
 }
 
-#desktopMediaPlayer .wmp-row :is(.wmp-col-type, .wmp-col-length, .wmp-col-date) {
+#desktopMediaPlayer .wmp-row .wmp-col-type,
+#desktopMediaPlayer .wmp-row .wmp-col-length,
+#desktopMediaPlayer .wmp-row .wmp-col-date {
     color: #4c607a;
 }
 
@@ -1004,14 +1006,17 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 }
 
 /* --wmp-seek-x: the tip's left edge, 7px in at the start, 17px short of the groove's inner end at the end */
-#desktopMediaPlayer .wmp-seek :is(.wmp-seek-fill, .wmp-seek-tip, .wmp-seek-thumb) {
+#desktopMediaPlayer .wmp-seek .wmp-seek-fill,
+#desktopMediaPlayer .wmp-seek .wmp-seek-tip,
+#desktopMediaPlayer .wmp-seek .wmp-seek-thumb {
     --wmp-seek-x: calc(7px + (100% + 18px - 31px) * var(--wmp-seek-frac, 0));
     position: absolute;
     display: none;
     height: 9px;
 }
 
-#desktopMediaPlayer .wmp-seek.is-ready :is(.wmp-seek-fill, .wmp-seek-tip) {
+#desktopMediaPlayer .wmp-seek.is-ready .wmp-seek-fill,
+#desktopMediaPlayer .wmp-seek.is-ready .wmp-seek-tip {
     display: block;
 }
 
@@ -1142,7 +1147,8 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 
 /* the pill's and the group's empty glass is not theirs: a click on the seek bar above them seeks (the pill's
    picture starts at the bar's top row) */
-#desktopMediaPlayer :is(.wmp-pill, .wmp-group) {
+#desktopMediaPlayer .wmp-pill,
+#desktopMediaPlayer .wmp-group {
     pointer-events: none;
 }
 
@@ -1173,7 +1179,8 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     top: 13px;
 }
 
-#desktopMediaPlayer .wmp-group :is(.wmp-prev, .wmp-next) {
+#desktopMediaPlayer .wmp-group .wmp-prev,
+#desktopMediaPlayer .wmp-group .wmp-next {
     top: 13px;
     width: 53px;
     height: 25px;
@@ -1374,7 +1381,8 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 #desktopMediaPlayer .wmp-transport .wmp-time.wmp-time:focus-visible::before { inset: -10px -10px auto -10px; height: 35px; }
 
 /* previous / next: the glyph and face on ::after (the focus rectangle on ::before, over them) */
-#desktopMediaPlayer .wmp-group :is(.wmp-prev, .wmp-next)::after {
+#desktopMediaPlayer .wmp-group .wmp-prev::after,
+#desktopMediaPlayer .wmp-group .wmp-next::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -1572,7 +1580,8 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 }
 
 #desktopMediaPlayer .wmp-song > .wmp-c-track { padding-left: 5px; }
-#desktopMediaPlayer .wmp-song > :is(.wmp-c-artist, .wmp-c-composer) { color: var(--wmp-sub-text); }
+#desktopMediaPlayer .wmp-song > .wmp-c-artist,
+#desktopMediaPlayer .wmp-song > .wmp-c-composer { color: var(--wmp-sub-text); }
 
 /* tiles (Album, Video) and stacks (Artist, Genre, Year, Rating) */
 /* Album tiles on the VM: 96px art on a 143 x 143 pitch, the first art 21px in and 3px under the column
@@ -1603,7 +1612,8 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     width: 100%;
 }
 
-#desktopMediaPlayer .wmp-tile :is(.wmp-tile-name, .wmp-tile-sub) {
+#desktopMediaPlayer .wmp-tile .wmp-tile-name,
+#desktopMediaPlayer .wmp-tile .wmp-tile-sub {
     display: block;
     max-width: 100%;
     height: 16px;
@@ -1637,7 +1647,8 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
     padding-top: 15px;
 }
 
-#desktopMediaPlayer .wmp-tile.is-stack :is(.wmp-tile-name, .wmp-tile-sub) { height: 15px; line-height: 15px; }
+#desktopMediaPlayer .wmp-tile.is-stack .wmp-tile-name,
+#desktopMediaPlayer .wmp-tile.is-stack .wmp-tile-sub { height: 15px; line-height: 15px; }
 
 /* Rating on the VM: a 30px star over the name, 76px apart, the name 7px under the star (wmp-ref/wmp-rating.png) */
 #desktopMediaPlayer .wmp-row.wmp-tile.is-rating {

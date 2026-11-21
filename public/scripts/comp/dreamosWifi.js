@@ -35,6 +35,10 @@
  *                          openConnections(), openSetup(), setRadio(on),
  *                          radioOff(), available(), signalLevel(percent) }
  *
+ * Loaded on demand (#1001): featureLoader feature 'dreamos_wifi', on the first open or with Control Panel (which
+ * depends on it). Until then dreamosWifiBoot.js answers for window.dreamosWifi and keeps the page's view of the
+ * connection, which this file takes over (boot below).
+ *
  * Nothing polls: the host pushes 'dreamosnet' (state) and 'dreamosnetscan' (a scan's list); opening Connect to a
  * network and its Refresh button ask for a scan. The status sheet's Duration counts on a local clock while it
  * shows. Without a network tray provider (a browser, the phone) there is no wireless adapter: Connect to a network
@@ -205,9 +209,12 @@
         return w.present && w.state === 'connected' && w.network && w.network.name ? w.network : null;
     }
 
-    let scanned = []; // the host's last list (strongest first)
-    let connectedSince = 0; // when this page saw the connection come up (Duration)
-    let connectedName = '';
+    // what the boot's stand-in (dreamosWifiBoot.js, #1001) saw before these windows loaded: the last scan, the
+    // connection and when it came up; it stops following the provider below (retire), this file follows it instead
+    const boot = root.dreamosWifi && root.dreamosWifi._boot ? root.dreamosWifi._boot : null;
+    let scanned = boot ? boot.scanned() : []; // the host's last list (strongest first)
+    let connectedSince = boot ? boot.connectedSince() : 0; // when this page saw the connection come up (Duration)
+    let connectedName = boot ? boot.connectedName() : '';
 
     function noteConnection() {
         const n = current();
@@ -2998,6 +3005,8 @@
     }
 
     // ---- the host's pushes ------------------------------------------------------------------------------------------
+
+    if (boot) boot.retire();
 
     function onNet() {
         noteConnection();

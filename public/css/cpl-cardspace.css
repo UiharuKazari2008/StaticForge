@@ -431,7 +431,8 @@
     line-height: 16px;
 }
 
-#dreamscapeCardSpaceModal .cs-add-item:hover :is(.cs-add-title, .cs-add-text) {
+#dreamscapeCardSpaceModal .cs-add-item:hover .cs-add-title,
+#dreamscapeCardSpaceModal .cs-add-item:hover .cs-add-text {
     color: #0033cc;
 }
 

@@ -474,13 +474,16 @@
 
 /* which layers each sky turns on */
 .wm-weather .wxw-scene:not([data-phase="night"]):is([data-scene="clear"], [data-scene="fair"], [data-scene="partly"]) .wxw-sun { display: block; }
-.wm-weather .wxw-scene[data-phase="night"]:is([data-scene="clear"], [data-scene="fair"], [data-scene="partly"]) :is(.wxw-moon, .wxw-stars) { display: block; }
+.wm-weather .wxw-scene[data-phase="night"]:is([data-scene="clear"], [data-scene="fair"], [data-scene="partly"]) .wxw-moon,
+.wm-weather .wxw-scene[data-phase="night"]:is([data-scene="clear"], [data-scene="fair"], [data-scene="partly"]) .wxw-stars { display: block; }
 .wm-weather .wxw-scene[data-phase="night"]:is([data-scene="cloudy"], [data-scene="fog"]) .wxw-stars { display: block; opacity: 0.35; }
 .wm-weather .wxw-scene:is([data-scene="fair"], [data-scene="partly"], [data-scene="cloudy"], [data-scene="fog"], [data-scene="drizzle"], [data-scene="sleet"], [data-scene="snow"]) .wxw-clouds-light { display: block; }
 .wm-weather .wxw-scene[data-scene="fair"] .wxw-clouds-light .c2 { display: block; }
-.wm-weather .wxw-scene[data-scene="partly"] .wxw-clouds-light :is(.c1, .c2) { display: block; }
+.wm-weather .wxw-scene[data-scene="partly"] .wxw-clouds-light .c1,
+.wm-weather .wxw-scene[data-scene="partly"] .wxw-clouds-light .c2 { display: block; }
 .wm-weather .wxw-scene:is([data-scene="cloudy"], [data-scene="drizzle"], [data-scene="sleet"], [data-scene="snow"]) .wxw-clouds-light .wxw-cloud { display: block; }
-.wm-weather .wxw-scene[data-scene="fog"] .wxw-clouds-light :is(.c1, .c3) { display: block; }
+.wm-weather .wxw-scene[data-scene="fog"] .wxw-clouds-light .c1,
+.wm-weather .wxw-scene[data-scene="fog"] .wxw-clouds-light .c3 { display: block; }
 .wm-weather .wxw-scene[data-scene="cloudy"] .wxw-clouds-light .c5 { top: 40%; left: 44%; width: 60%; }
 .wm-weather .wxw-scene:is([data-scene="drizzle"], [data-scene="sleet"], [data-scene="snow"]) .wxw-clouds-light { filter: brightness(0.86); }
 .wm-weather .wxw-scene[data-phase="night"]:is([data-scene="drizzle"], [data-scene="sleet"], [data-scene="snow"]) .wxw-clouds-light { filter: brightness(0.4); }
@@ -606,8 +609,12 @@
 .wm-weather .wxw-hilo span { opacity: 0.75; font-weight: 400; }
 
 /* a place switch slides the readings in from its side */
-.wm-weather .wxw-root.slide-l :is(.wxw-hero, .wxw-gauges, .wxw-right) { animation: wxw-in-l 0.32s ease-out; }
-.wm-weather .wxw-root.slide-r :is(.wxw-hero, .wxw-gauges, .wxw-right) { animation: wxw-in-r 0.32s ease-out; }
+.wm-weather .wxw-root.slide-l .wxw-hero,
+.wm-weather .wxw-root.slide-l .wxw-gauges,
+.wm-weather .wxw-root.slide-l .wxw-right { animation: wxw-in-l 0.32s ease-out; }
+.wm-weather .wxw-root.slide-r .wxw-hero,
+.wm-weather .wxw-root.slide-r .wxw-gauges,
+.wm-weather .wxw-root.slide-r .wxw-right { animation: wxw-in-r 0.32s ease-out; }
 
 @keyframes wxw-in-l { from { transform: translateX(18%); opacity: 0; } }
 @keyframes wxw-in-r { from { transform: translateX(-18%); opacity: 0; } }

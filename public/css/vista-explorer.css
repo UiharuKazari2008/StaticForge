@@ -6,8 +6,22 @@
    mode; elsewhere Cartograph keeps its compact icon toolbar. */
 
 /* off the desktop: the old icon toolbar, no panes */
-body:not(.desktop-mode) #explorerModal :is(.explorer-command-set, .explorer-help-btn, .explorer-nav-pane, .explorer-breadcrumb, .explorer-details-icon, .explorer-details-info, .explorer-recent-pages-btn, .explorer-address-drop-btn),
-body.windows-classic-theme #explorerModal :is(.explorer-command-set, .explorer-help-btn, .explorer-nav-pane, .explorer-breadcrumb, .explorer-details-icon, .explorer-details-info, .explorer-recent-pages-btn, .explorer-address-drop-btn) {
+body:not(.desktop-mode) #explorerModal .explorer-command-set,
+body:not(.desktop-mode) #explorerModal .explorer-help-btn,
+body:not(.desktop-mode) #explorerModal .explorer-nav-pane,
+body:not(.desktop-mode) #explorerModal .explorer-breadcrumb,
+body:not(.desktop-mode) #explorerModal .explorer-details-icon,
+body:not(.desktop-mode) #explorerModal .explorer-details-info,
+body:not(.desktop-mode) #explorerModal .explorer-recent-pages-btn,
+body:not(.desktop-mode) #explorerModal .explorer-address-drop-btn,
+body.windows-classic-theme #explorerModal .explorer-command-set,
+body.windows-classic-theme #explorerModal .explorer-help-btn,
+body.windows-classic-theme #explorerModal .explorer-nav-pane,
+body.windows-classic-theme #explorerModal .explorer-breadcrumb,
+body.windows-classic-theme #explorerModal .explorer-details-icon,
+body.windows-classic-theme #explorerModal .explorer-details-info,
+body.windows-classic-theme #explorerModal .explorer-recent-pages-btn,
+body.windows-classic-theme #explorerModal .explorer-address-drop-btn {
     display: none !important;
 }
 
@@ -943,7 +957,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     border-image-source: image-set(url("/static_images/vista-controls/header-item-sorted-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/header-item-sorted-pressed.png") 1.3333x, url("/static_images/hidpi/150/vista-controls/header-item-sorted-pressed.png") 1.5x, url("/static_images/hidpi/175/vista-controls/header-item-sorted-pressed.png") 1.8333x, url("/static_images/hidpi/200/vista-controls/header-item-sorted-pressed.png") 2x);
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header :is(.explorer-details-sort-icon, .explorer-details-col-icon) {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-icon,
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-col-icon {
     display: none;
 }
 
@@ -973,12 +988,16 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     color: #000;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) :is(.explorer-item-label, .explorer-item-list-label, .explorer-item-name) {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-label,
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-list-label,
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-name {
     color: #000;
     font: 12px var(--ex-font);
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) :is(.explorer-item-date, .explorer-item-type, .explorer-item-size) {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-date,
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-type,
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-size {
     color: #000;
     font: 12px var(--ex-font);
 }
@@ -999,7 +1018,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     padding: 0 6px 0 2px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-details-row :is(.explorer-item-date, .explorer-item-type) {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-details-row .explorer-item-date,
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-details-row .explorer-item-type {
     padding: 0 6px;
 }
 
@@ -1075,7 +1095,9 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-i
     min-width: 0;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal :is(.explorer-details-name, .explorer-details-type, .explorer-details-summary) {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-name,
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-type,
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-summary {
     overflow: hidden;
     color: #000;
     text-overflow: ellipsis;
@@ -1277,7 +1299,9 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-s
    Panel pane: #416fa5 to #69b570 top to bottom, white text, the swoosh lifted from the VM into
    vista-cpl/task-pane-swoosh.png as white and black alpha), See also at its foot. */
 
-body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-main > :is(.icon-fa, .icon-image, .cpl-window-title) {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-main > .icon-fa,
+body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-main > .icon-image,
+body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-main > .cpl-window-title {
     visibility: hidden;
 }
 
@@ -1298,7 +1322,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal,
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar :is(.cpl-back, .cpl-forward) {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .cpl-back,
+body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .cpl-forward {
     width: 29px;
     min-width: 29px;
     height: 27px;
@@ -1322,12 +1347,14 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal,
     display: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar :is(.cpl-back, .cpl-forward):hover:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .cpl-back:hover:not(:disabled),
+body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .cpl-forward:hover:not(:disabled) {
     background-position: 0 -27px;
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar :is(.cpl-back, .cpl-forward):active:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .cpl-back:active:not(:disabled),
+body.desktop-mode:not(.windows-classic-theme) :is(:is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .cpl-forward:active:not(:disabled) {
     background-position: 0 -54px;
 }
 
@@ -1482,8 +1509,16 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
    (ieframe.dll and the VM). The pages keep their own look, as in a browser. The Alchemy load fill
    (grimoireRemoteBrowser.js grimoireShowLoadProgress) runs pale blue in the address box. */
 
-body:not(.desktop-mode) :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-recent-pages-btn, .grimoire-ie-seg, .grimoire-ie-search, .grimoire-ie-tabrow, .grimoire-ie-status),
-body.windows-classic-theme :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-recent-pages-btn, .grimoire-ie-seg, .grimoire-ie-search, .grimoire-ie-tabrow, .grimoire-ie-status) {
+body:not(.desktop-mode) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-recent-pages-btn,
+body:not(.desktop-mode) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-seg,
+body:not(.desktop-mode) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-search,
+body:not(.desktop-mode) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabrow,
+body:not(.desktop-mode) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status,
+body.windows-classic-theme :is(#tagWikiSearchModal, .grimoire-window) .grimoire-recent-pages-btn,
+body.windows-classic-theme :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-seg,
+body.windows-classic-theme :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-search,
+body.windows-classic-theme :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabrow,
+body.windows-classic-theme :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status {
     display: none !important;
 }
 
@@ -1643,7 +1678,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     background: image-set(url('/static_images/vista-ie/drop.png') 1x, url('/static_images/hidpi/125/vista-ie/drop.png') 1.25x, url('/static_images/hidpi/150/vista-ie/drop.png') 1.5x, url('/static_images/hidpi/175/vista-ie/drop.png') 1.75x, url('/static_images/hidpi/200/vista-ie/drop.png') 2x) no-repeat center;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(.grimoire-ie-refresh, .grimoire-ie-stop)::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-refresh::before,
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-stop::before {
     content: '';
     position: absolute;
     inset: 0 0 0 1px;
@@ -2147,7 +2183,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     overflow: hidden;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-ie-status-cell, .grimoire-ie-status-zone) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status-cell,
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status-zone {
     border-left: 1px solid #c9c4c4;
     box-shadow: inset 1px 0 0 #fff;
 }
@@ -2748,7 +2785,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, :is(#melatonCo
     overflow: visible;
 }
 /* the orbs' band at the toolbar's left, Recent Pages ▾ over the gutter's last 4px, the box after it */
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, :is(#melatonControlPanelModal, .cpl-instance), :is(#tagWikiSearchModal, .grimoire-window), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar :is(.naxt-nav-group, .grimoire-travel) {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, :is(#melatonControlPanelModal, .cpl-instance), :is(#tagWikiSearchModal, .grimoire-window), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .naxt-nav-group,
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, :is(#melatonControlPanelModal, .cpl-instance), :is(#tagWikiSearchModal, .grimoire-window), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .grimoire-travel {
     margin: 0;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, :is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal) .modal-window-title-toolbar .explorer-recent-pages-btn {
@@ -3289,7 +3327,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     align-self: center;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-tile :is(.explorer-item-label, .explorer-item-tile-sub) {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-tile .explorer-item-label,
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-tile .explorer-item-tile-sub {
     display: block;
     overflow: hidden;
     max-width: none;

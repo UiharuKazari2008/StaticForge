@@ -34,7 +34,8 @@ body.theme-vista #photoSwipeWindow .wpg-theme-3d {
     background: #000;
 }
 
-body.theme-vista #photoSwipeWindow :is(.wpg-theme-bg, .wpg-theme-slot) {
+body.theme-vista #photoSwipeWindow .wpg-theme-bg,
+body.theme-vista #photoSwipeWindow .wpg-theme-slot {
     position: absolute;
     left: 0;
     top: 0;
@@ -110,7 +111,8 @@ body.theme-vista #photoSwipeWindow .wpg-theme-bar button {
     font: inherit;
 }
 
-body.theme-vista #photoSwipeWindow .wpg-theme-bar :is(.wpg-theme-themes, .wpg-theme-exit) {
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-themes,
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-exit {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -138,7 +140,8 @@ body.theme-vista #photoSwipeWindow .wpg-theme-sep {
     background: url("/static_images/vista-photo-gallery/show-sep.png") 0 0 / 3px 21px no-repeat;
 }
 
-body.theme-vista #photoSwipeWindow .wpg-theme-bar :is(.wpg-theme-prev, .wpg-theme-next) {
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-prev,
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-next {
     width: 52px;
     height: 25px;
     background: var(--show-art) -52px 0 / 208px 25px no-repeat;
@@ -146,8 +149,10 @@ body.theme-vista #photoSwipeWindow .wpg-theme-bar :is(.wpg-theme-prev, .wpg-them
 
 body.theme-vista #photoSwipeWindow .wpg-theme-prev { --show-art: url("/static_images/vista-photo-gallery/show-prev.png"); }
 body.theme-vista #photoSwipeWindow .wpg-theme-next { --show-art: url("/static_images/vista-photo-gallery/show-next.png"); }
-body.theme-vista #photoSwipeWindow .wpg-theme-bar :is(.wpg-theme-prev, .wpg-theme-next):hover { background-position-x: -104px; }
-body.theme-vista #photoSwipeWindow .wpg-theme-bar :is(.wpg-theme-prev, .wpg-theme-next):active { background-position-x: -156px; }
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-prev:hover,
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-next:hover { background-position-x: -104px; }
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-prev:active,
+body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-next:active { background-position-x: -156px; }
 
 body.theme-vista #photoSwipeWindow .wpg-theme-bar .wpg-theme-play {
     width: 44px;

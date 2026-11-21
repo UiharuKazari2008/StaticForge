@@ -330,7 +330,8 @@ body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-win
     overflow-wrap: anywhere;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-window[data-vista-dialog="message"] :is(.dreamscape-connectivity-headline, .dreamscape-connectivity-summary) {
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-window[data-vista-dialog="message"] .dreamscape-connectivity-headline,
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-window[data-vista-dialog="message"] .dreamscape-connectivity-summary {
     margin: 0 0 15px;
     color: #000;
     font: inherit;
@@ -432,7 +433,8 @@ body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamsca
     color: #000;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal :is(.dreamscape-app-error-card-meta, .dreamscape-app-error-card-time) {
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-card-meta,
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-card-time {
     margin-top: 0;
     font-size: inherit;
     font-family: inherit;

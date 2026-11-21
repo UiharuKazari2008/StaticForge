@@ -11316,6 +11316,7 @@ class WebSocketClient {
     // passes it forced. The arrows' list is at most that long behind what is on screen.
     _scheduleWsFlashVisibilityRefresh() {
         if (this._wsFlashVisibilityRefreshRaf || this._wsFlashVisibilityRefreshTimer) return;
+        if (this._holdWsFlashRefreshForBoot()) return;
         const run = () => {
             this._wsFlashVisibilityRefreshTimer = null;
             this._wsFlashVisibilityRefreshRaf = requestAnimationFrame(() => {
@@ -11328,6 +11329,32 @@ class WebSocketClient {
         const since = performance.now() - (this._wsFlashVisibilityRefreshedAt || 0);
         if (since >= WS_FLASH_REFRESH_MIN_MS) run();
         else this._wsFlashVisibilityRefreshTimer = setTimeout(run, WS_FLASH_REFRESH_MIN_MS - since);
+    }
+
+    /**
+     * The desktop's boot (#1001): the logon and the staged boot change <body>'s and the windows' classes in almost
+     * every step while no arrow is drawn (the taskbar and its globe are not up yet), and each of those refreshes
+     * (one per 250 ms) asked checkVisibility, which finishes the boot's pending style work (~120-200 ms of a desktop
+     * boot). Until the taskbar shows, the refreshes wait and one runs as it shows (desktopBoot.whenTaskbarVisible),
+     * so the globe's data-net and the arrows are right from its first frame. Not on the phone, outside the desktop,
+     * after the boot (a lock or a session switch keeps today's refreshes), nor with a connection dialog up (its
+     * arrows show over the logon screen).
+     */
+    _holdWsFlashRefreshForBoot() {
+        if (window.uiShell === 'mobile' || !window.isDesktop) return false;
+        const boot = window.desktopBoot;
+        if (!boot || typeof boot.isTaskbarVisible !== 'function' || typeof boot.whenTaskbarVisible !== 'function') return false;
+        // getClientDesktopState: public/scripts/comp/agentClientBridge.js (logon, booting, locked, desktop, ready)
+        const state = typeof window.getClientDesktopState === 'function' ? window.getClientDesktopState() : 'desktop';
+        if (state !== 'logon' && state !== 'booting') return false;
+        if (boot.isTaskbarVisible()) return false;
+        const shown = (id) => {
+            const el = document.getElementById(id);
+            return !!el && !el.classList.contains('hidden') && !el.classList.contains('hidden-alt');
+        };
+        if (shown('connectionDialModal') || shown('melatonConnectionStatusModal')) return false;
+        boot.whenTaskbarVisible('wsFlashTargets', () => this._scheduleWsFlashVisibilityRefresh());
+        return true;
     }
 
     _startWsFlashVisibilityWatcher() {

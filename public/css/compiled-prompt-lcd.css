@@ -388,7 +388,9 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
     transition: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card :is(.weather-feels-like, .weather-condition-details, .weather-quick-indicator-label) {
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card .weather-feels-like,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card .weather-condition-details,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card .weather-quick-indicator-label {
     color: #e4f1fb;
     opacity: 1;
 }
@@ -428,7 +430,8 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
     color: #1e3287;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-expiration-banner.valid :is(.expiration-status, .expiration-time) {
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-expiration-banner.valid .expiration-status,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-expiration-banner.valid .expiration-time {
     color: #000;
     opacity: 1;
 }
@@ -440,7 +443,8 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
     color: #000;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-expiration-banner.expired :is(.expiration-status, .expiration-time) {
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-expiration-banner.expired .expiration-status,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-expiration-banner.expired .expiration-time {
     color: #000;
     opacity: 1;
 }
@@ -584,7 +588,9 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-p
 }
 
 /* cache-browser.css paints the readings white for its glass cards */
-body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-prop :is(.weather-detail-value, .weather-hour-temp, .weather-hour-precip) {
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-prop .weather-detail-value,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-prop .weather-hour-temp,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .crossover-prop .weather-hour-precip {
     margin: 0;
     padding: 0;
     color: inherit;
@@ -625,7 +631,10 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
     opacity: 1;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card :is(.period-date, .period-location, .period-title-indicator-label, .detail-label) {
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-date,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-location,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-title-indicator-label,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .detail-label {
     color: #e4f1fb;
     font-size: 9pt;
     opacity: 1;
@@ -638,7 +647,8 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
     color: #fff;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card :is(.detail-value, .period-title-indicator-value) {
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .detail-value,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-title-indicator-value {
     color: #fff;
     font-size: 9pt;
 }
@@ -665,7 +675,8 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
     content: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-title-progress-bar :is(.period-progress-marker, .period-progress-fill) {
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-title-progress-bar .period-progress-marker,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-info-card .period-title-progress-bar .period-progress-fill {
     background: #fff;
     border-radius: 0;
     box-shadow: none;
@@ -681,7 +692,8 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-ale
     color: #000;
 }
 
-body:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-alert-card :is(.weather-alert-title, .weather-alert-message) {
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-alert-card .weather-alert-title,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-alert-card .weather-alert-message {
     color: #000;
     font-size: 9pt;
 }

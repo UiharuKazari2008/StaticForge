@@ -1134,7 +1134,11 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
     color: #c00000;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host :is(.sec-dsap-loading, .sec-dsap-empty, .sec-dsap-setting-hint, .sec-pins-note, .sec-dsap-settings-intro) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-dsap-loading,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-dsap-empty,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-dsap-setting-hint,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-pins-note,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-dsap-settings-intro {
     color: #5b5b5b;
 }
 
@@ -1186,7 +1190,10 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
 }
 
 /* buttons: 7.css */
-:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host :is(.sec-dsap-action-btn, .sec-scope-chip, .sec-applog-tab, .dsap-smf-btn) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-dsap-action-btn,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-scope-chip,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-applog-tab,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .dsap-smf-btn {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -1203,12 +1210,18 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
     cursor: var(--c-default);
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host :is(.sec-dsap-action-btn, .sec-scope-chip, .sec-applog-tab, .dsap-smf-btn):hover:not(:disabled) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-dsap-action-btn:hover:not(:disabled),
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-scope-chip:hover:not(:disabled),
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-applog-tab:hover:not(:disabled),
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .dsap-smf-btn:hover:not(:disabled) {
     background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
     border-color: #3c7fb1;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host :is(.sec-dsap-action-btn, .sec-scope-chip, .sec-applog-tab, .dsap-smf-btn):active:not(:disabled),
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-dsap-action-btn:active:not(:disabled),
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-scope-chip:active:not(:disabled),
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-applog-tab:active:not(:disabled),
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .dsap-smf-btn:active:not(:disabled),
 :is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host :is(.sec-scope-chip.selected, .sec-applog-tab.active) {
     background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
     border-color: #6d91ab;
@@ -1227,7 +1240,8 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
     color: #838383;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host :is(.sec-btn-small, .dsap-smf-btn-small) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-btn-small,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .dsap-smf-btn-small {
     min-height: 21px;
     padding: 0 6px;
 }
@@ -1336,7 +1350,8 @@ body.windows-classic-theme :is(#melatonControlPanelModal, .cpl-instance) .cpl-ta
     align-items: center;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host :is(.sec-token-row, .sec-color-row) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-token-row,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-auth-host .sec-color-row {
     display: flex;
     align-items: flex-start;
     gap: 6px;

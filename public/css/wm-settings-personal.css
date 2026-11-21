@@ -174,7 +174,8 @@ html.ui-mobile .wm-form .wmsp-btn-list {
     overflow-y: auto;
 }
 
-html.ui-mobile .wm-form :is(.wmsp-btn-head, .wmsp-btn-row) {
+html.ui-mobile .wm-form .wmsp-btn-head,
+html.ui-mobile .wm-form .wmsp-btn-row {
     display: grid;
     grid-template-columns: calc(92 * var(--wm-px)) minmax(0, 1fr);
     align-items: center;

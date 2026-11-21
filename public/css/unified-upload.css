@@ -361,6 +361,7 @@
     animation: slideUp 0.3s ease;
 }
 
+/* perf: allow the panel opens in place, pushing the content below it; only while it opens */
 @keyframes slideDown {
     from {
         opacity: 0;
@@ -375,6 +376,7 @@
     }
 }
 
+/* perf: allow the panel closes in place (see slideDown) */
 @keyframes slideUp {
     from {
         opacity: 1;

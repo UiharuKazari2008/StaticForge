@@ -98,7 +98,8 @@ html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
 }
 
 /* ---- rows: the label, then its field (WM's stacked form) ---- */
-.wm-op :is(.form-group, .form-row) {
+.wm-op .form-group,
+.wm-op .form-row {
     display: block !important;
     width: auto !important;
     margin: 0 0 calc(6 * var(--wm-px)) !important;
@@ -422,7 +423,8 @@ html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
     background: none !important;
 }
 
-.wm-op #imageExpansionDialog .modal-footer > :is(.controls-flex-left, .controls-flex-right) {
+.wm-op #imageExpansionDialog .modal-footer > .controls-flex-left,
+.wm-op #imageExpansionDialog .modal-footer > .controls-flex-right {
     display: flex !important;
     flex-direction: column;
     align-items: flex-start;
@@ -474,7 +476,8 @@ html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
 }
 
 /* no spinner of its own: the shell's wait cursor runs while it loads (wmDialogs.js wrapExpansion) */
-.wm-op #imageExpansionDialog .gallery-move-right-panel-cover :is(.cover-spinner, .cover-text) {
+.wm-op #imageExpansionDialog .gallery-move-right-panel-cover .cover-spinner,
+.wm-op #imageExpansionDialog .gallery-move-right-panel-cover .cover-text {
     display: none !important;
 }
 

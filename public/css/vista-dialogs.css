@@ -428,7 +428,8 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-di
     transition: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] #studioSaveNameSuggestions .preset-autocomplete-item :is(.preset-name, .preset-details) {
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] #studioSaveNameSuggestions .preset-autocomplete-item .preset-name,
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] #studioSaveNameSuggestions .preset-autocomplete-item .preset-details {
     color: inherit;
     font-size: inherit;
     font-weight: 400;

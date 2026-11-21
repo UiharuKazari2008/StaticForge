@@ -640,6 +640,8 @@ class CustomScrollbar {
                 thumbTop = Math.max(-maxThumbPosition, Math.min(0, -1 * (scrollRatio * maxThumbPosition)));
                 if (data._thumbTop !== thumbTop) {
                     data._thumbTop = thumbTop;
+                    // a reversed bar is placed from the bottom and never slid (no transform: nothing to transition)
+                    thumb.style.transform = '';
                     thumb.style.bottom = `${thumbTop}px`;
                     thumb.style.top = 'auto';
                 }
@@ -647,8 +649,11 @@ class CustomScrollbar {
                 thumbTop = Math.max(0, Math.min(maxThumbPosition, scrollRatio * maxThumbPosition));
                 if (data._thumbTop !== thumbTop) {
                     data._thumbTop = thumbTop;
-                    thumb.style.top = `${thumbTop}px`;
-                    thumb.style.bottom = 'auto';
+                    // the slide is a transform (custom-scrollbar.css): the compositor runs it, where a top
+                    // transition laid the page out on the main thread every frame of every scroll (#1001)
+                    thumb.style.top = '';
+                    thumb.style.bottom = '';
+                    thumb.style.transform = `translateY(${Math.round(thumbTop)}px)`;
                 }
             }
 

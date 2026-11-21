@@ -171,6 +171,7 @@ body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-auth-erro
     font-size: 11px;
 }
 
+/* perf: allow Vista's marquee bar, shown only during the boot */
 @keyframes desktop-prestartup-marquee {
     from {
         background-position-x: 100%;
@@ -282,7 +283,12 @@ body.vista-logon #desktopPreStartupModal.auth-busy #desktopPreStartupAuth {
 }
 
 /* The Classic boxes give way: every control below sits on the screen itself */
-body.vista-logon #desktopPreStartupModal :is(.desktop-prestartup-content, .desktop-prestartup-main, .desktop-prestartup-info, .desktop-prestartup-auth, .desktop-prestartup-auth-row, .desktop-prestartup-auth-actions) {
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-content,
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-main,
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-info,
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-auth,
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-auth-row,
+body.vista-logon #desktopPreStartupModal .desktop-prestartup-auth-actions {
     display: contents;
 }
 
@@ -317,6 +323,7 @@ body.vista-logon #desktopPreStartupStatus::before {
     animation: vista-logon-wait 1s steps(18) infinite;
 }
 
+/* perf: allow the Welcome screen wait ring (see the animation above) */
 @keyframes vista-logon-wait {
     to {
         background-position-y: -360px;
@@ -369,15 +376,14 @@ body.vista-logon.winlogon-power #desktopPreStartupStatus[data-lines="2"] {
     transform: translateY(calc(-50% + 2px));
 }
 
-body.winlogon-power #desktopPreStartupModal :is(.desktop-prestartup-auth-row, .desktop-prestartup-auth-actions),
-body.vista-logon.winlogon-power #desktopPreStartupModal :is(
-    .desktop-prestartup-vista-tile,
-    .desktop-prestartup-auth-row,
-    .desktop-prestartup-auth-actions,
-    .desktop-prestartup-vista-options,
-    .desktop-prestartup-progress,
-    .desktop-prestartup-hero
-) {
+body.winlogon-power #desktopPreStartupModal .desktop-prestartup-auth-row,
+body.winlogon-power #desktopPreStartupModal .desktop-prestartup-auth-actions,
+body.vista-logon.winlogon-power #desktopPreStartupModal .desktop-prestartup-vista-tile,
+body.vista-logon.winlogon-power #desktopPreStartupModal .desktop-prestartup-auth-row,
+body.vista-logon.winlogon-power #desktopPreStartupModal .desktop-prestartup-auth-actions,
+body.vista-logon.winlogon-power #desktopPreStartupModal .desktop-prestartup-vista-options,
+body.vista-logon.winlogon-power #desktopPreStartupModal .desktop-prestartup-progress,
+body.vista-logon.winlogon-power #desktopPreStartupModal .desktop-prestartup-hero {
     display: none !important;
 }
 
@@ -764,7 +770,8 @@ body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupUs
     top: calc(50% + 39px);
 }
 
-body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupModal :is(.desktop-prestartup-vista-shutdown, .desktop-prestartup-vista-shutdown-menu) {
+body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupModal .desktop-prestartup-vista-shutdown,
+body.vista-logon.workstation-locked:not(.session-suspended) #desktopPreStartupModal .desktop-prestartup-vista-shutdown-menu {
     display: none;
 }
 

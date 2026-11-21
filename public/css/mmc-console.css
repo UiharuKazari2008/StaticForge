@@ -535,7 +535,9 @@
     min-width: max-content;
 }
 
-.mmc-window .mmc-list.is-fit :is(.mmc-lhead, .mmc-row, .mmc-lbody) {
+.mmc-window .mmc-list.is-fit .mmc-lhead,
+.mmc-window .mmc-list.is-fit .mmc-row,
+.mmc-window .mmc-list.is-fit .mmc-lbody {
     min-width: 0;
 }
 

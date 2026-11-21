@@ -892,7 +892,8 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
 
 /* ---- a video in the viewer (glancewellVideo.js; PhotoViewer.dll on the VM with Bear.wmv) ---- */
 /* Play / Pause and Stop take the zoom and Actual Size places: 25 px strips, 38 and 76 px into the pill */
-#photoSwipeWindow.wpg-is-video .wpg-pill :is(.wpg-zoom, .wpg-fit) { display: none; }
+#photoSwipeWindow.wpg-is-video .wpg-pill .wpg-zoom,
+#photoSwipeWindow.wpg-is-video .wpg-pill .wpg-fit { display: none; }
 #photoSwipeWindow .wpg-pill .wpg-ctl[hidden] { display: none; }
 .wpg-viewer .wpg-vplay { --wpg-art: url("/static_images/vista-photo-gallery/video-play.png"); --wpg-w: 25px; left: 38px; width: 25px; }
 .wpg-viewer .wpg-vplay.is-pause { --wpg-art: url("/static_images/vista-photo-gallery/video-pause.png"); }

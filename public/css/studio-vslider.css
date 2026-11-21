@@ -283,7 +283,8 @@
     white-space: nowrap;
 }
 
-#studioVSliderTool :is(.vslider-stage, .vslider-star-stage) {
+#studioVSliderTool .vslider-stage,
+#studioVSliderTool .vslider-star-stage {
     position: relative;
     box-sizing: border-box;
     border: 1px solid;

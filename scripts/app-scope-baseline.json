@@ -221,7 +221,7 @@
  "public/scripts/comp/desktop-apps/dovecote.js": {
   "owner-less-listener": 2,
   "owner-less-ws": 1,
-  "page-global": 285
+  "page-global": 114
  },
  "public/scripts/comp/desktop-apps/emotion.js": {
   "page-global": 45

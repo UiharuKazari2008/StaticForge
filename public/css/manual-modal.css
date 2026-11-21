@@ -92,12 +92,16 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed.active-windo
    background-image over background-color (vista-glass-controls.css), so only the colour changes:
    each state's own tint composited onto an opaque base. Hover-show fields (the custom app's own
    controls) and the preview pane's contents are left alone. ---- */
-body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content :is(.btn-secondary, .btn-warning, .toolbar-btn):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *) {
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .btn-secondary:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *),
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .btn-warning:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *),
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .toolbar-btn:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *) {
     background-color: color-mix(in srgb, #fff 16%, var(--studio-control-base));
 }
 
 @media (hover: hover) {
-    body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content :is(.btn-secondary, .btn-warning, .toolbar-btn):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):hover:not(:disabled) {
+    body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .btn-secondary:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):hover:not(:disabled),
+    body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .btn-warning:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):hover:not(:disabled),
+    body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .toolbar-btn:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):hover:not(:disabled) {
         background-color: color-mix(in srgb, #fff 26%, var(--studio-control-base));
     }
 }
@@ -115,14 +119,21 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content
 }
 
 /* inactive: still solid, just quieter */
-body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content :is(.btn-secondary, .btn-primary, .btn-danger, .btn-warning, .toolbar-btn, .toggle-btn):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):disabled {
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .btn-secondary:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):disabled,
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .btn-primary:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):disabled,
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .btn-danger:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):disabled,
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .btn-warning:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):disabled,
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .toolbar-btn:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):disabled,
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .toggle-btn:not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(#manualPreviewContainer *):disabled {
     background-color: color-mix(in srgb, #fff 6%, var(--studio-control-base));
     opacity: 1;
     color: hsl(0 0% 100% / 42%);
 }
 
 /* the status wells keep their state tint, on an opaque well */
-body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content :is(.inset-badge, .gallery-toggle-group, .mode-slider-container):not(#manualPreviewContainer *) {
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .inset-badge:not(#manualPreviewContainer *),
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .gallery-toggle-group:not(#manualPreviewContainer *),
+body.desktop-mode:not(.windows-classic-theme) #manualModal .manual-modal-content .mode-slider-container:not(#manualPreviewContainer *) {
     background-color: color-mix(in srgb, var(--primary-color, #77dfd8) 10%, var(--studio-well-base));
 }
 

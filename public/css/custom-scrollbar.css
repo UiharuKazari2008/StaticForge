@@ -27,7 +27,8 @@
     background: var(--glass-layer-5);
     border-top-left-radius: var(--border-radius-lg);
     border-bottom-left-radius: var(--border-radius-lg);
-    transition: top 0.35s ease-out, background 0.2s ease;
+    /* the position is a translateY (customScrollbar.js), slid on the compositor (#1001; it was a top transition) */
+    transition: transform 0.35s ease-out, background 0.2s ease;
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {

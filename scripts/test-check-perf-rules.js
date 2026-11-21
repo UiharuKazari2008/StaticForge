@@ -19,7 +19,7 @@ put('public/scripts/comp/a.js', [
     '    requestAnimationFrame(loop);',
     '})();'
 ].join('\n'));
-put('public/css/a.css', '.a { animation: spin 1s linear infinite; will-change: transform; }\n/* perf: allow */ .b { animation: x 1s infinite; }\n\n@keyframes glow { to { box-shadow: 0 0 9px red; } }\n@keyframes ok { to { transform: scale(2); opacity: 0; } }\n');
+put('public/css/a.css', '.a { animation: spin 1s linear infinite; will-change: transform; }\n/* perf: allow */ .b { animation: x 1s infinite; }\n\n@keyframes glow { to { box-shadow: 0 0 9px red; } }\n@keyframes ok { to { transform: scale(2); opacity: 0; } }\n@keyframes grow { to { min-width: 9px; border-left-width: 1px; } }\n@keyframes slide { to { background-position-x: 9px; } }\n@keyframes wipe { to { clip-path: inset(0); } }\n');
 put('public/scripts/comp/anim.js', [
     "el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 500, iterations: Infinity });",
     "el.style.animation = `turn ${n}s linear infinite`;",
@@ -44,7 +44,8 @@ const count = (f) => scanFile(f).reduce((m, h) => { m[h.rule] = (m[h.rule] || 0)
 const a = count('public/scripts/comp/a.js');
 assert.deepStrictEqual(a, { 'ungated-timer': 1, 'polling-timer': 1, 'bridge-in-loop': 3, 'timer-html-rebuild': 1 }, JSON.stringify(a));
 const css = count('public/css/a.css');
-assert.deepStrictEqual(css, { 'infinite-animation': 1, 'will-change': 1, 'paint-keyframes': 1 }, JSON.stringify(css));
+// min-/max- sizes, border side widths, background-position-x, clip-path count too (#1001)
+assert.deepStrictEqual(css, { 'infinite-animation': 1, 'will-change': 1, 'paint-keyframes': 4 }, JSON.stringify(css));
 // endless animations made in script (#930): iterations: Infinity, style.animation, CSS text in a string
 const anim = count('public/scripts/comp/anim.js');
 assert.deepStrictEqual(anim, { 'infinite-animation': 3 }, JSON.stringify(anim));

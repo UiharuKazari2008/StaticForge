@@ -159,6 +159,8 @@
         remote_desktop: 'remote-desktop',
         remote_desktop_connection: 'remote-desktop-connection',
         emotion: 'emotion',
+        dovecote: 'dovecote',
+        melaton_weather: 'weather',
         control_panel: 'control-panel',
         // the retired DSAP pages' libraries (#831), shared by the consoles / programs that load them
         data_mgmt_lib: 'lib',

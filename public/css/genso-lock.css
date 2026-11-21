@@ -1174,7 +1174,9 @@ body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLo
     border-color: #e5c4c4;
 }
 
-body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] :is(.text-replacement-full-value, .text-replacement-original, .text-replacement-selected) {
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-full-value,
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-original,
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-selected {
     padding: 3px 5px;
     color: #000;
     background: #fff;

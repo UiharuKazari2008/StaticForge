@@ -1058,7 +1058,8 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
 .vsb-wx-today { top: 58px; left: 124px; display: flex; justify-content: flex-end; width: 116px; font-size: 12px; }
 .vsb-wx-today > span:not(:nth-child(2)) { width: 40px; text-align: right; }
 .vsb-wx-today > span:nth-child(2) { padding: 0 2px; }
-.vsb-wx[data-sky="GRAY"] :is(.vsb-wx-condition, .vsb-wx-today) { color: #5b6062; }
+.vsb-wx[data-sky="GRAY"] .vsb-wx-condition,
+.vsb-wx[data-sky="GRAY"] .vsb-wx-today { color: #5b6062; }
 
 /* #Forecasts: per day a 28 px temperature column and a 47 px picture column under the day
    name, vertical dividers between days, then the horizontal divider and the attribution */
@@ -1117,9 +1118,13 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
 .vsb-wx-lo,
 .vsb-wx-attribution { color: #99cbff; }
 .vsb-wx-hi { color: #eee; }
-.vsb-wx[data-sky="GRAY"] :is(.vsb-wx-day-name, .vsb-wx-lo, .vsb-wx-attribution) { color: #b5babe; }
+.vsb-wx[data-sky="GRAY"] .vsb-wx-day-name,
+.vsb-wx[data-sky="GRAY"] .vsb-wx-lo,
+.vsb-wx[data-sky="GRAY"] .vsb-wx-attribution { color: #b5babe; }
 .vsb-wx[data-sky="GRAY"] .vsb-wx-hi { color: #fbfbfb; }
-.vsb-wx[data-sky="BLACK"] :is(.vsb-wx-day-name, .vsb-wx-lo, .vsb-wx-attribution) { color: #a6a6a6; }
+.vsb-wx[data-sky="BLACK"] .vsb-wx-day-name,
+.vsb-wx[data-sky="BLACK"] .vsb-wx-lo,
+.vsb-wx[data-sky="BLACK"] .vsb-wx-attribution { color: #a6a6a6; }
 .vsb-wx[data-sky="BLACK"] .vsb-wx-hi { color: #fff; }
 
 .vsb-wx-message {
@@ -1224,7 +1229,8 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
     width: 123px;
 }
 
-.vsb-gadget[data-docked="0"] :is(.vsb-mail-list, .vsb-mail-message) {
+.vsb-gadget[data-docked="0"] .vsb-mail-list,
+.vsb-gadget[data-docked="0"] .vsb-mail-message {
     left: 16px;
     width: 264px;
 }

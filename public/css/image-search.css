@@ -34,7 +34,10 @@
     display: none;
 }
 
-#imageSearchModal :is(.isx-crumb, .isx-crumb-arrow, .isx-address-drop, .isx-search-clear) {
+#imageSearchModal .isx-crumb,
+#imageSearchModal .isx-crumb-arrow,
+#imageSearchModal .isx-address-drop,
+#imageSearchModal .isx-search-clear {
     position: relative;
     flex: none;
     min-width: 0;
@@ -50,11 +53,13 @@
     font: inherit;
 }
 
-#imageSearchModal :is(.isx-crumb-arrow, .isx-address-drop) {
+#imageSearchModal .isx-crumb-arrow,
+#imageSearchModal .isx-address-drop {
     width: 15px;
 }
 
-#imageSearchModal :is(.isx-crumb-arrow, .isx-address-drop)::before {
+#imageSearchModal .isx-crumb-arrow::before,
+#imageSearchModal .isx-address-drop::before {
     content: '';
     position: absolute;
     left: 5px;
@@ -175,7 +180,8 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-ti
     white-space: nowrap;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-title-toolbar .cpl-address-group.isx-address-group :is(.isx-crumb, .isx-crumb-arrow) {
+body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-title-toolbar .cpl-address-group.isx-address-group .isx-crumb,
+body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-title-toolbar .cpl-address-group.isx-address-group .isx-crumb-arrow {
     position: relative;
     flex: none;
     height: 20px;
@@ -443,7 +449,8 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
 /* ---- Show only and Search for: the band under the address (VM: a #545a60 top edge, 23 px of
    #fbfcfe..#ecf5fd at the left fading to #c9d9e2 at the right) ---- */
 
-#imageSearchModal :is(.isx-band, .isx-terms) {
+#imageSearchModal .isx-band,
+#imageSearchModal .isx-terms {
     display: flex;
     flex: none;
     align-items: center;
@@ -676,7 +683,8 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     box-sizing: border-box;
 }
 
-#imageSearchModal :is(.isx-date-relative, .isx-date-exact)[hidden] {
+#imageSearchModal .isx-date-relative[hidden],
+#imageSearchModal .isx-date-exact[hidden] {
     display: none;
 }
 
@@ -786,7 +794,8 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
         linear-gradient(to right, #045082, #116584, #1d7986);
 }
 
-#imageSearchModal :is(.isx-cmd, .isx-help) {
+#imageSearchModal .isx-cmd,
+#imageSearchModal .isx-help {
     all: unset;
     position: relative;
     display: inline-flex;
@@ -837,7 +846,8 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     border-image-source: image-set(url('/static_images/vista-explorer/cmdbar-open.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-open.png') 1.2222x, url('/static_images/hidpi/150/vista-explorer/cmdbar-open.png') 1.5556x, url('/static_images/hidpi/175/vista-explorer/cmdbar-open.png') 1.7778x, url('/static_images/hidpi/200/vista-explorer/cmdbar-open.png') 2x);
 }
 
-#imageSearchModal :is(.isx-cmd, .isx-help):active:not(:disabled),
+#imageSearchModal .isx-cmd:active:not(:disabled),
+#imageSearchModal .isx-help:active:not(:disabled),
 #imageSearchModal .isx-cmd.is-on:not(:disabled) {
     padding: 1px 5px 1px 7px;
     border-image: image-set(url('/static_images/vista-explorer/cmdbar-pressed.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/cmdbar-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-pressed.png') 2x) 0 4 fill / 0 4px;
@@ -901,7 +911,9 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     color: #6d6d6d;
 }
 
-#imageSearchModal :is(.isx-favorite-links, .isx-tree, .isx-tree-children) {
+#imageSearchModal .isx-favorite-links,
+#imageSearchModal .isx-tree,
+#imageSearchModal .isx-tree-children {
     margin: 0;
     padding: 0;
     list-style: none;
@@ -1478,7 +1490,11 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.modal.toolbar-vi
     flex: 1 1 auto;
 }
 
-#imageSearchModal.is-landing :is(.isx-commandbar, .isx-nav, .isx-columns, .isx-results, .isx-details) {
+#imageSearchModal.is-landing .isx-commandbar,
+#imageSearchModal.is-landing .isx-nav,
+#imageSearchModal.is-landing .isx-columns,
+#imageSearchModal.is-landing .isx-results,
+#imageSearchModal.is-landing .isx-details {
     display: none;
 }
 

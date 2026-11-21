@@ -802,7 +802,8 @@ body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"]
 }
 
 /* Messenger's display picture: a white frame, not a ring */
-body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] :is(.chat-session-avatar, .chat-message-avatar) {
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-session-avatar,
+body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"] .chat-message-avatar {
     padding: 1px;
     background: #fff;
     border: 1px solid #9fb4cc;

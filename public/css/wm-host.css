@@ -77,7 +77,13 @@
 }
 
 /* the footer buttons are the soft keys and Menu */
-.wm-host .wmh-host > .modal :is(.modal-footer, .modal-footer-colored, .modal-actions, .dialog-buttons, .dialog-footer, .vista-dialog-buttons, .wizard-buttons) {
+.wm-host .wmh-host > .modal .modal-footer,
+.wm-host .wmh-host > .modal .modal-footer-colored,
+.wm-host .wmh-host > .modal .modal-actions,
+.wm-host .wmh-host > .modal .dialog-buttons,
+.wm-host .wmh-host > .modal .dialog-footer,
+.wm-host .wmh-host > .modal .vista-dialog-buttons,
+.wm-host .wmh-host > .modal .wizard-buttons {
     display: none !important;
 }
 
@@ -345,7 +351,12 @@ html.ui-mobile[data-wm-viewer] .wm-host .wmh-host > .modal {
     padding: calc(5 * var(--wm-px)) !important;
 }
 
-.wm-host .wmh-host > .modal :is(.tbp-pane, .tbp-page, .tbp-group, .tbp-group-label, .tbp-ctl, .tbp-tabs) {
+.wm-host .wmh-host > .modal .tbp-pane,
+.wm-host .wmh-host > .modal .tbp-page,
+.wm-host .wmh-host > .modal .tbp-group,
+.wm-host .wmh-host > .modal .tbp-group-label,
+.wm-host .wmh-host > .modal .tbp-ctl,
+.wm-host .wmh-host > .modal .tbp-tabs {
     position: relative !important;
     left: auto !important;
     top: auto !important;
@@ -353,7 +364,12 @@ html.ui-mobile[data-wm-viewer] .wm-host .wmh-host > .modal {
     bottom: auto !important;
 }
 
-.wm-host .wmh-host > .modal :is(.tbp-pane, .tbp-page, .tbp-static, .tbp-check, .tbp-group, .tbp-tabs) {
+.wm-host .wmh-host > .modal .tbp-pane,
+.wm-host .wmh-host > .modal .tbp-page,
+.wm-host .wmh-host > .modal .tbp-static,
+.wm-host .wmh-host > .modal .tbp-check,
+.wm-host .wmh-host > .modal .tbp-group,
+.wm-host .wmh-host > .modal .tbp-tabs {
     width: auto !important;
     height: auto !important;
     min-height: 0 !important;
@@ -412,7 +428,8 @@ html.ui-mobile[data-wm-viewer] .wm-host .wmh-host > .modal {
 }
 
 /* Remote Desktop Connection: the banner is the WM title's job */
-.wm-host .wmh-host > #remoteDesktopConnectionModal :is(.rdc-banner, .rdc-banner-line) {
+.wm-host .wmh-host > #remoteDesktopConnectionModal .rdc-banner,
+.wm-host .wmh-host > #remoteDesktopConnectionModal .rdc-banner-line {
     display: none !important;
 }
 

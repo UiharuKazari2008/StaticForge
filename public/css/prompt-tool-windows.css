@@ -27,7 +27,9 @@
     white-space: nowrap;
 }
 
-.ptw-client :is(.ptw-find-row, .ptw-group-row, .ptw-value-row) {
+.ptw-client .ptw-find-row,
+.ptw-client .ptw-group-row,
+.ptw-client .ptw-value-row {
     grid-column: 1;
     display: flex;
     align-items: center;
@@ -115,7 +117,9 @@
     line-height: 15px;
 }
 
-.modal.prompt-tool-window.ptw-disabled .ptw-client :is(.ptw-label, .ptw-group-text, .ptw-count) {
+.modal.prompt-tool-window.ptw-disabled .ptw-client .ptw-label,
+.modal.prompt-tool-window.ptw-disabled .ptw-client .ptw-group-text,
+.modal.prompt-tool-window.ptw-disabled .ptw-client .ptw-count {
     color: #6d6d6d;
 }
 

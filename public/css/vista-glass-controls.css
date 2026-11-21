@@ -290,7 +290,9 @@ body:not(.windows-classic-theme) #manualModal :is(.toolbar-btn, .toggle-btn):is(
 }
 
 /* presses and latches show depth with shadows only, so buttons never move (Yukimi) */
-body:not(.windows-classic-theme) :is(.round-button, .toolbar-btn, .toggle-btn) {
+body:not(.windows-classic-theme) .round-button,
+body:not(.windows-classic-theme) .toolbar-btn,
+body:not(.windows-classic-theme) .toggle-btn {
     transition-property: background-color, border-color, box-shadow, opacity, color, transform;
 }
 
@@ -753,7 +755,8 @@ body:not(.windows-classic-theme) :is(.inset-badge, .inset-badge.price-display) {
 }
 
 /* Count badges: a small glossy Vista pill over their own colour */
-body:not(.windows-classic-theme) :is(.badge, .taskbar-group-count) {
+body:not(.windows-classic-theme) .badge,
+body:not(.windows-classic-theme) .taskbar-group-count {
     background-image: linear-gradient(hsl(0 0% 100% / 42%), hsl(0 0% 100% / 12%) 50%, transparent 51%, hsl(0 0% 100% / 8%));
     border: 1px solid hsl(0 0% 0% / 45%);
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 28%), 0 1px 2px hsl(0 0% 0% / 40%);
@@ -762,7 +765,8 @@ body:not(.windows-classic-theme) :is(.badge, .taskbar-group-count) {
 /* Prompt boxes: a glass edge painted around the container only. The textarea, its padding,
    borders and font are untouched, so the auto-height calculator (static pixel values) and
    the emphasis overlay keep their numbers. Focused: Vista's blue glow on the same ring. */
-body:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container)::after {
+body:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) .prompt-textarea-container::after,
+body:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) .character-prompt-textarea-container::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -773,7 +777,8 @@ body:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .tex
     transition: box-shadow 0.15s linear;
 }
 
-body:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container).textarea-focused::after {
+body:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) .prompt-textarea-container.textarea-focused::after,
+body:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) .character-prompt-textarea-container.textarea-focused::after {
     /* the glow marks the text area, not the toolbar strip under it (Yukimi) */
     bottom: var(--prompt-toolbar-height, 43px);
     border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
@@ -1008,7 +1013,8 @@ body:not(.windows-classic-theme) #characterAutocompleteOverlay .enhancer-group-n
     font-weight: 700;
 }
 
-body:not(.windows-classic-theme) #characterAutocompleteOverlay :is(.enhancer-group-count, .enhancer-group-hint) {
+body:not(.windows-classic-theme) #characterAutocompleteOverlay .enhancer-group-count,
+body:not(.windows-classic-theme) #characterAutocompleteOverlay .enhancer-group-hint {
     display: inline;
     padding: 0;
     background: none;
@@ -1064,7 +1070,8 @@ body:not(.windows-classic-theme) #characterAutocompleteOverlay .no-enhancers {
    light-surface variant (grey rings, capped fills, tinted syntax chips). Colours only: fonts,
    padding and line-height stay identical, so the overlays keep lining up with the text.
    The focused toolbar strip at the bottom stays dark glass with its own light text. */
-body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container) {
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) .prompt-textarea-container,
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .image-prompt-inspector, .text-replacement-manager-content, .modal[data-vista-dialog]) .character-prompt-textarea-container {
     --prompt-surface: light;
     --text-primary: #141414;
     --text-color: #141414;
@@ -1076,7 +1083,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .image-prompt-in
     caret-color: #141414;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) :is(.prompt-textarea-container, .character-prompt-textarea-container).textarea-focused {
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) .prompt-textarea-container.textarea-focused,
+body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-content, .modal[data-vista-dialog]) .character-prompt-textarea-container.textarea-focused {
     background: #fff;
     box-shadow: inset 0 1px 3px hsl(0 0% 0% / 18%);
 }
@@ -1247,7 +1255,8 @@ body:not(.windows-classic-theme) #manualModal .inset-badge.price-display.free .p
 
 /* free: the Anlas icon, the divider and the dot between the balances at the figures' strength too (the
    free class dimmed the whole well to 31 %, so they read as disabled next to the figures) */
-body:not(.windows-classic-theme) #manualModal .inset-badge.price-display.free :is(.nai-anla, .manual-balance-dot) {
+body:not(.windows-classic-theme) #manualModal .inset-badge.price-display.free .nai-anla,
+body:not(.windows-classic-theme) #manualModal .inset-badge.price-display.free .manual-balance-dot {
     color: rgb(152 255 138 / 92%);
 }
 
@@ -1514,7 +1523,8 @@ body.desktop-mode:not(.windows-classic-theme) select[multiple]:not(.hover-show):
    are the same combo box: the face as a border image, the glyph on ::after. Not: the custom apps'
    hover-show pickers (not in Vista dialogs) and their indicator lamps (credit-cost Scale / Speed draw on ::after), the
    Visual Index pickers on its dark command bar. */
-body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *) {
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .custom-dropdown-btn:not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *),
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .cpl-db-combo:not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *) {
     --vista-combo-face: image-set(url("/static_images/vista-controls/combo-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/combo-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/combo-normal.png") 2x);
     position: relative;
     z-index: 0;
@@ -1542,7 +1552,8 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *)::after {
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .custom-dropdown-btn:not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *)::after,
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .cpl-db-combo:not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *)::after {
     content: '';
     position: absolute;
     top: 0;
@@ -1574,11 +1585,13 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
     background: none;
     box-shadow: none;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):disabled {
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .custom-dropdown-btn:not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):disabled,
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .cpl-db-combo:not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):disabled {
     --vista-combo-face: image-set(url("/static_images/vista-controls/combo-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-disabled.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-disabled.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-disabled.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-disabled.png") 2x);
     color: #6d6d6d;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):disabled::after {
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .custom-dropdown-btn:not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):disabled::after,
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) .cpl-db-combo:not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):disabled::after {
     background-image: image-set(url("/static_images/vista-controls/combo-glyph-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-disabled.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-disabled.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-disabled.png") 2x);
 }
 

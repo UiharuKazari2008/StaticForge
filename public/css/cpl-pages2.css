@@ -120,7 +120,9 @@
         linear-gradient(to right, #045082, #116584, #1d7986);
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-cmd,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-help {
     display: inline-flex;
     align-items: center;
     height: 24px;
@@ -137,16 +139,24 @@
     white-space: nowrap;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help)::before,
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help)::after {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-cmd::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-help::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-cmd::after,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn::after,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-help::after {
     content: none;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help):hover {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-cmd:hover,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn:hover,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-help:hover {
     border-image: image-set(url('/static_images/vista-explorer/cmdbar-hot.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-hot.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-hot.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/cmdbar-hot.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-hot.png') 2x) 0 4 fill / 0 4px;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help):active {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-cmd:active,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn:active,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-help:active {
     padding: 1px 5px 1px 7px;
     border-image: image-set(url('/static_images/vista-explorer/cmdbar-pressed.png') 1x, url('/static_images/hidpi/125/vista-explorer/cmdbar-pressed.png') 1.25x, url('/static_images/hidpi/150/vista-explorer/cmdbar-pressed.png') 1.5x, url('/static_images/hidpi/175/vista-explorer/cmdbar-pressed.png') 1.75x, url('/static_images/hidpi/200/vista-explorer/cmdbar-pressed.png') 2x) 0 4 fill / 0 4px;
 }
@@ -170,16 +180,20 @@
 
 /* (#952) a command never shrinks: each is its icon and whole label; what does not fit goes under the » box
    (melatonControlPanel fitBar), 23 px wide on the VM with its two white chevrons centred */
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-fbar, .cpl-pf-bar) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-bar {
     min-width: 0;
     overflow: hidden;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-cmd,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-help {
     flex: none;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn)[hidden] {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-cmd[hidden],
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn[hidden] {
     display: none;
 }
 
@@ -635,12 +649,14 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
     vertical-align: -4px;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-frow, .cpl-ficon):hover {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-frow:hover,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ficon:hover {
     background: linear-gradient(#fafbfd, #ebf3fd);
     border-color: #b8d6fb;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-frow, .cpl-ficon).is-selected {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-frow.is-selected,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ficon.is-selected {
     background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
     border-color: #99defd;
 }
@@ -1842,7 +1858,9 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cp
 }
 
 /* a crumb or a ▸ never shrinks: the trail folds instead */
-:is(#melatonControlPanelModal, .cpl-instance) .cpl-address > :is(.cpl-crumb, .cpl-crumb-sep, .cpl-address-icon) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-address > .cpl-crumb,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-address > .cpl-crumb-sep,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-address > .cpl-address-icon {
     flex: none;
 }
 

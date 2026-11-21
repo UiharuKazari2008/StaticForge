@@ -333,6 +333,22 @@ const FEATURE_MANIFEST = {
         styles: ['css/taskbar-properties.css', 'css/desktop-icon-dialogs.css'],
         scripts: ['scripts/comp/desktopIconDialogs.js']
     },
+    // Dovecote's windows (#1001): the main window, the reader and New Message windows, attachments
+    // (dovecoteWindow.js). desktop-apps/dovecote.js keeps the tray, its badge and flyout, the balloons and the
+    // mailbox pushes at boot, and its openers (doveUi) load this
+    dovecote: {
+        stylesFirst: true,
+        styles: ['css/desktop-apps/dovecote.css'],
+        scripts: ['scripts/comp/desktop-apps/dovecoteWindow.js']
+    },
+    // Melaton Weather's desktop window (#1001): the phone's Weather (wmWeather.js) in a Vista window. Melaton Mobile
+    // runs it from the boot (Today, the 6.5 home screen, the status bar); the desktop loads it on the first open
+    // (melatonWeatherOpener.js stands in for window.wmWeather until then)
+    melaton_weather: {
+        stylesFirst: true,
+        styles: ['css/wm-weather.css'],
+        scripts: ['scripts/comp/wmWeather.js']
+    },
     // Dovecote Express's Tools > Options (and Control Panel's Mail item): drawn with Taskbar
     // Properties' Vista controls (tbp-*); desktop-apps/dovecote.js openDovecoteMailOptions
     mail_options: {
@@ -382,6 +398,12 @@ const FEATURE_MANIFEST = {
         depends: ['vista_dialog_templates'],
         scripts: ['scripts/comp/vistaFileSharing.js']
     },
+    // DreamOS's wireless and network windows (#910, #932; dreamosWifi.js): Connect to a network, Manage Wireless
+    // Networks, the status sheets, Network Connections, Set up a connection or network. Loaded on the first open
+    // (dreamosWifiBoot.js answers for window.dreamosWifi until then, #1001) and with Control Panel
+    dreamos_wifi: {
+        scripts: ['scripts/comp/dreamosWifi.js']
+    },
     // Vista's VPN connections (#952): Connect to a workplace, Connect <name>, its Properties (dreamosVpn.js, from dreamosWifi.js)
     network_vpn: {
         depends: ['vista_dialog_templates'],
@@ -421,7 +443,8 @@ const FEATURE_MANIFEST = {
     },
     control_panel: {
         hot: true,
-        depends: ['vista_dialog_templates', 'dreamos_firmware'],
+        // dreamos_wifi (#1001): the network pages and the tray's network flyout read window.dreamosWifi as they draw
+        depends: ['vista_dialog_templates', 'dreamos_firmware', 'dreamos_wifi'],
         // Remote Access Properties draws with Taskbar Properties' Vista controls (tbp-*)
         styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
             'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css',
@@ -572,6 +595,8 @@ const FEATURE_MANIFEST = {
 class FeatureLoader {
     // the longest a program waits for its files' version names before it loads the kept copy by path (_versionedAssetUrl)
     static HASH_WAIT_MS = 1500;
+    // the longest a stylesFirst feature waits for its stylesheets (stylesLoaded)
+    static STYLE_WAIT_MS = 3000;
     // programs whose "cannot open" box is on screen (tellCannotOpen)
     static cannotOpenShown = new Set();
 
@@ -758,11 +783,14 @@ class FeatureLoader {
 
             console.log(`📦 Loading feature "${name}"...`);
 
-            // 1. Inject Stylesheets
+            // 1. Inject Stylesheets. stylesFirst: a program that was on the page from the boot until it moved here
+            // (#1001) draws its window only once its styles are in, as it did then (no unstyled first frame)
             if (Array.isArray(feature.styles)) {
+                const links = [];
                 for (const style of feature.styles) {
-                    await this._injectStylesheet(style);
+                    links.push(await this._injectStylesheet(style));
                 }
+                if (feature.stylesFirst) await FeatureLoader.stylesLoaded(links);
             }
 
             // 2. Inject HTML Template Markup
@@ -864,16 +892,40 @@ class FeatureLoader {
         return buildShaBustUrl(pathOnly, hash);
     }
 
+    /**
+     * The link of a stylesheet, or null when the page had it already. A stylesheet that left app.html for a feature
+     * (#1001) keeps its place in the cascade: app.html has <meta name="melaton-feature-css" content="/css/...">
+     * where its link was, and the link goes right after it (the sheets after it, the HiDPI bg.css among them, still
+     * come later and win their ties as before). Others go at the end of <head>.
+     */
     async _injectStylesheet(href) {
         const url = await this._versionedAssetUrl(href);
         const pathOnly = url.split('?')[0];
         const have = [...document.querySelectorAll('link[rel="stylesheet"][href]')].filter((l) => new URL(l.href, location.href).pathname === pathOnly);
-        if (have.length) { this._refreshLinks(have, url); return; }
+        if (have.length) { this._refreshLinks(have, url); return null; }
 
         const el = document.createElement('link');
         el.rel = 'stylesheet';
         el.href = url;
-        document.head.appendChild(el);
+        const place = [...document.querySelectorAll('meta[name="melaton-feature-css"]')].find((m) => m.getAttribute('content') === pathOnly);
+        if (place) place.after(el);
+        else document.head.appendChild(el);
+        return el;
+    }
+
+    /**
+     * New stylesheet links have loaded (or failed). Answered from the service worker's copy at once; a sheet the cache
+     * does not have yet waits for the network, at most STYLE_WAIT_MS: the window then opens as it would have.
+     */
+    static stylesLoaded(links) {
+        const wait = (link) => new Promise((resolve) => {
+            if (!link || link.sheet) { resolve(); return; }
+            const timer = setTimeout(resolve, FeatureLoader.STYLE_WAIT_MS);
+            const done = () => { clearTimeout(timer); resolve(); };
+            link.addEventListener('load', done, { once: true });
+            link.addEventListener('error', done, { once: true });
+        });
+        return Promise.all((links || []).map(wait));
     }
 
     /**

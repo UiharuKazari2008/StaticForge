@@ -306,7 +306,8 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     background: #fff;
 }
 
-.wpg-viewer :is(.wpg-info-name, .wpg-info-line) {
+.wpg-viewer .wpg-info-name,
+.wpg-viewer .wpg-info-line {
     color: #1e5fbf;
     line-height: 22px;
     text-align: center;
@@ -465,11 +466,16 @@ body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed #photoSwipeMount .ps
     --pswp-placeholder-bg: #eef3fa;
 }
 
-body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed #photoSwipeMount .pswp :is(.pswp__top-bar, .pswp__button--arrow, .pswp__counter, .pswp__custom-bottom-bar) {
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed #photoSwipeMount .pswp .pswp__top-bar,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed #photoSwipeMount .pswp .pswp__button--arrow,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed #photoSwipeMount .pswp .pswp__counter,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed #photoSwipeMount .pswp .pswp__custom-bottom-bar {
     display: none !important;
 }
 
-body.desktop-mode #photoSwipeWindow.wpg-glancewell:not(.windowed) :is(.wpg-toolbar, .wpg-controls, .wpg-info) {
+body.desktop-mode #photoSwipeWindow.wpg-glancewell:not(.windowed) .wpg-toolbar,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell:not(.windowed) .wpg-controls,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell:not(.windowed) .wpg-info {
     display: none !important;
 }
 
@@ -527,11 +533,17 @@ body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMoun
     --pswp-placeholder-bg: #000;
 }
 
-body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp :is(.pswp__top-bar, .pswp__button--arrow, .pswp__counter, .pswp__custom-bottom-bar, .pswp__shell-restore-strip) {
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp .pswp__top-bar,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp .pswp__button--arrow,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp .pswp__counter,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp .pswp__custom-bottom-bar,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp .pswp__shell-restore-strip {
     display: none !important;
 }
 
-body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp :is(.pswp__img, .pswp__zoom-wrap, .pswp__item) {
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp .pswp__img,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp .pswp__zoom-wrap,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp .pswp__item {
     cursor: var(--c-default, default) !important;
 }
 

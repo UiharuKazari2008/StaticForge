@@ -460,7 +460,9 @@ body.desktop-mode :is(#dreamosWifiConnectModal, #dreamosWifiAdd, #dreamosVpnWiza
     height: 16px;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.dwf-nc-view-icons-md, .dwf-nc-view-icons-lg, .dwf-nc-view-icons-xl) {
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-view-icons-md,
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-view-icons-lg,
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-view-icons-xl {
     display: flex;
     flex-wrap: wrap;
     gap: 2px;
@@ -492,12 +494,16 @@ body.desktop-mode :is(#dreamosWifiConnectModal, #dreamosWifiAdd, #dreamosVpnWiza
 :is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon-icons-xl .dwf-nc-pic { width: 256px; height: 256px; }
 :is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon-icons-xl .dwf-nc-pic img { width: 256px; height: 256px; }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.dwf-nc-drow, .dwf-nc-small, .dwf-nc-icon):hover {
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-drow:hover,
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-small:hover,
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon:hover {
     background: linear-gradient(#fafbfd, #ebf3fd);
     border-color: #b8d6fb;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) :is(.dwf-nc-drow, .dwf-nc-small, .dwf-nc-icon).is-selected {
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-drow.is-selected,
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-small.is-selected,
+:is(#melatonControlPanelModal, .cpl-instance) .dwf-nc-icon.is-selected {
     background: linear-gradient(#dcebfc, #c1dbfc);
     border-color: #7da2ce;
 }

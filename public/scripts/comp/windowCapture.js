@@ -127,6 +127,10 @@
     }
 
     let ruleIndex = null;
+    // each style sheet's part of the index, kept while the sheet, its rule count and the viewport stay (#1001): the
+    // boot adds sheets between the first copies, and every new sheet made the whole ~30k-rule index again (5 times
+    // in a desktop boot, 0.2-0.4 s each); now only the new or changed sheets are read, the index comes out the same
+    let sheetParts = new WeakMap();
 
     /** A rule's url()s made absolute: they are relative to their style sheet, not the page. */
     function absolutize(text, base) {
@@ -146,16 +150,13 @@
         return `${sheets.length}:${n}:${root.innerWidth}x${root.innerHeight}`;
     }
 
-    function buildRuleIndex() {
+    /** One sheet's rules for the index: entries, their [key, entry] pairs (indices local to the sheet), faces, extras. */
+    function indexSheet(sheetRules) {
         const entries = [];
-        const byKey = new Map();
+        const keys = [];
         const faces = [];
         const extra = [];
-        const add = (key, idx) => {
-            let list = byKey.get(key);
-            if (!list) byKey.set(key, (list = []));
-            if (list[list.length - 1] !== idx) list.push(idx);
-        };
+        const add = (key, idx) => { keys.push(key, idx); };
         const walk = (list, wrap) => {
             for (let i = 0; i < list.length; i++) {
                 const r = list[i];
@@ -186,11 +187,40 @@
                 }
             }
         };
+        walk(sheetRules, (t) => t);
+        return { entries, keys, faces, extra };
+    }
+
+    /** The page's rules by id / class / tag, in cascade order (document order of the sheets). */
+    function buildRuleIndex() {
+        const entries = [];
+        const byKey = new Map();
+        const faces = [];
+        const extra = [];
+        const vp = `${root.innerWidth}x${root.innerHeight}`; // @media rules were read for this viewport
         const sheets = doc.styleSheets;
         for (let i = 0; i < sheets.length; i++) {
-            let rules;
-            try { rules = sheets[i].cssRules; } catch (_) { continue; }
-            walk(rules, (t) => t);
+            const sheet = sheets[i];
+            let sheetRules;
+            try { sheetRules = sheet.cssRules; } catch (_) { continue; }
+            let part = sheetParts.get(sheet);
+            if (!part || part.len !== sheetRules.length || part.vp !== vp) {
+                part = indexSheet(sheetRules);
+                part.len = sheetRules.length;
+                part.vp = vp;
+                sheetParts.set(sheet, part);
+            }
+            const offset = entries.length;
+            for (let j = 0; j < part.entries.length; j++) entries.push(part.entries[j]);
+            const keys = part.keys;
+            for (let j = 0; j < keys.length; j += 2) {
+                const idx = offset + keys[j + 1];
+                let list = byKey.get(keys[j]);
+                if (!list) byKey.set(keys[j], (list = []));
+                if (list[list.length - 1] !== idx) list.push(idx);
+            }
+            for (let j = 0; j < part.faces.length; j++) faces.push(part.faces[j]);
+            for (let j = 0; j < part.extra.length; j++) extra.push(part.extra[j]);
         }
         return { sig: sheetSignature(), entries, byKey, faces, extra };
     }
@@ -907,6 +937,7 @@
         pictures.forEach((e) => { if (e.busy) busy = true; });
         if (busy || exact) { noteUse(); return; }
         ruleIndex = null;
+        sheetParts = new WeakMap();
         dataUrls.clear();
         dataUrlChars = 0;
     }

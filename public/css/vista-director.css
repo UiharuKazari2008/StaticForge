@@ -613,7 +613,8 @@ body:not(.windows-classic-theme) #directorWindow .director-window-chat {
     background: #f0f0f0;
 }
 
-body:not(.windows-classic-theme) #directorWindow :is(.director-session-images-pane, .director-browser-pane) {
+body:not(.windows-classic-theme) #directorWindow .director-session-images-pane,
+body:not(.windows-classic-theme) #directorWindow .director-browser-pane {
     background: #fff;
     border-left: 1px solid #a0a0a0;
 }

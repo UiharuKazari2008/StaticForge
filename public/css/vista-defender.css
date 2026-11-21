@@ -302,7 +302,10 @@
 
 #defenderModal .defender-sec .sec-dsap-status-error { background: #fdecea; }
 
-#defenderModal .defender-sec :is(.sec-dsap-loading, .sec-dsap-empty, .sec-dsap-setting-hint, .sec-dsap-settings-intro) {
+#defenderModal .defender-sec .sec-dsap-loading,
+#defenderModal .defender-sec .sec-dsap-empty,
+#defenderModal .defender-sec .sec-dsap-setting-hint,
+#defenderModal .defender-sec .sec-dsap-settings-intro {
     color: #5b5b5b;
 }
 
@@ -342,7 +345,9 @@
     width: 240px;
 }
 
-#defenderModal .defender-sec :is(.sec-dsap-action-btn, .dsap-smf-btn, .sec-telemetry-event-btn) {
+#defenderModal .defender-sec .sec-dsap-action-btn,
+#defenderModal .defender-sec .dsap-smf-btn,
+#defenderModal .defender-sec .sec-telemetry-event-btn {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -357,7 +362,9 @@
     text-shadow: none;
 }
 
-#defenderModal .defender-sec :is(.sec-dsap-action-btn, .dsap-smf-btn, .sec-telemetry-event-btn):hover:not(:disabled) {
+#defenderModal .defender-sec .sec-dsap-action-btn:hover:not(:disabled),
+#defenderModal .defender-sec .dsap-smf-btn:hover:not(:disabled),
+#defenderModal .defender-sec .sec-telemetry-event-btn:hover:not(:disabled) {
     background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
     border-color: #3c7fb1;
 }

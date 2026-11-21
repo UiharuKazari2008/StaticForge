@@ -90,7 +90,8 @@ body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-icon {
     box-shadow: none;
 }
 
-body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-icon :is(.icon-image, .desktop-shortcut-wiki-site-icon) {
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-icon .icon-image,
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-icon .desktop-shortcut-wiki-site-icon {
     width: var(--di-size);
     height: var(--di-size);
 }

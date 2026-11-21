@@ -6922,7 +6922,7 @@ const startMenuLaunchables = [
     { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'remote_desktop.png', text: 'Remote Desktop Manager', appMenu: true, action: async () => { await featureLoader.loadFeature('remote_desktop'); /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
     // Remote Desktop Connection (mstsc.exe, whose icon this is): quick connections through Guacamole
     { launchId: 'remote-desktop-connection', icon: 'fas fa-desktop', imageIcon: 'vista-remote-desktop.png', text: 'Remote Desktop Connection', appMenu: true, action: async () => { await featureLoader.loadFeature('remote_desktop_connection'); /* public/scripts/comp/desktop-apps/remoteDesktopConnection.js */ remoteDesktopConnection.open(); } },
-    { launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'vista-mail.png', text: 'Dovecote', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
+    { launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'vista-mail.png', text: 'Dovecote', appMenu: true, action: () => /* public/scripts/comp/desktop-apps/dovecote.js: loads its windows first (#1001) */ openDesktopDovecote() },
     // Teleport (Yukimi, 2026-10-12): the planet switcher. All Programs, the places column under
     // Workspaces, and the power menu where Vista has Switch User; the start menu lists no planets.
     // Run: `planets`, `teleport`.
@@ -7077,7 +7077,7 @@ function buildToolsSubmenuItems(opts) {
         // Melaton Contacts (Yozora #632; apps/contacts, a system package)
         { launchId: 'contacts', icon: 'fas fa-address-book', imageIcon: 'vista-contacts.png', text: 'Melaton Contacts', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'contacts' }) },
         // Melaton Weather (Yozora #792): the phone's Weather in a desktop window (wmWeather.js openDesktop)
-        { launchId: 'weather', icon: 'fas fa-cloud-sun', imageIcon: 'melaton-weather.png', text: 'Melaton Weather', appMenuLocation: 'tools', desktopOnly: true, action: () => { if (window.wmWeather && typeof window.wmWeather.openDesktop === 'function') window.wmWeather.openDesktop(); } },
+        { launchId: 'weather', icon: 'fas fa-cloud-sun', imageIcon: 'melaton-weather.png', text: 'Melaton Weather', appMenuLocation: 'tools', desktopOnly: true, action: () => (window.wmWeather && typeof window.wmWeather.openDesktop === 'function' ? window.wmWeather.openDesktop() : undefined) },
         // Melaton Photo Gallery (Windows Photo Gallery, Yozora #446): the gallery in the Melaton Photo Gallery window (glancewellLibrary.js)
         { launchId: 'glancewell', icon: 'fas fa-images', imageIcon: 'vista-photo-gallery.png', text: 'Melaton Photo Gallery', appMenuLocation: 'tools', desktopOnly: true, action: async () => { await featureLoader.loadFeature('glancewell_library'); window.glancewellLibrary.open(); } },
         // Melaton Calendar (Yozora #632; apps/calendar, a system package)

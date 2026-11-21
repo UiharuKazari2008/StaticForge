@@ -11,7 +11,10 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
+// dovecote.js runs at boot (tray, pushes, shared state); dovecoteWindow.js (featureLoader 'dovecote', #1001) is the
+// windows, loaded on first use: run in that order, as the page does
 const src = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/desktop-apps/dovecote.js'), 'utf8');
+const windowSrc = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/desktop-apps/dovecoteWindow.js'), 'utf8');
 
 class FakeClassList {
     constructor(el) { this.el = el; }
@@ -122,7 +125,12 @@ const context = vm.createContext(new Proxy(sandbox, {
     get: (t, k) => (k in t ? t[k] : (typeof k === 'string' ? noop : undefined))
 }));
 
-const { doveOpenReaderWindow, doveReaderWindows, ensureDesktopDovecoteModal, doveDisplayAddress, doveBareAddress, doveFormatAddressList } = vm.runInContext(src + '\n;({ doveOpenReaderWindow, doveReaderWindows, ensureDesktopDovecoteModal, doveDisplayAddress, doveBareAddress, doveFormatAddressList });', context, { filename: 'dovecote.js' });
+vm.runInContext(src, context, { filename: 'dovecote.js' });
+// the boot runs none of the windows' code
+assert.strictEqual(vm.runInContext('doveUi', context), null, 'dovecote.js leaves the windows to dovecoteWindow.js');
+vm.runInContext(windowSrc, context, { filename: 'dovecoteWindow.js' });
+const { doveOpenReaderWindow, doveDisplayAddress } = vm.runInContext('({ doveOpenReaderWindow, doveDisplayAddress })', context);
+const { doveReaderWindows, ensureDesktopDovecoteModal, doveBareAddress, doveFormatAddressList } = vm.runInContext('doveUi._test', context);
 
 async function openReaderFromSidebarWithoutMainWindow() {
     // The Mail gadget calls doveOpenReaderWindow before Dovecote itself has been opened,

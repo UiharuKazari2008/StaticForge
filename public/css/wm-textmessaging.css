@@ -347,7 +347,8 @@
     font-weight: 700;
 }
 
-.wm-tm .wtm-linkcard :is(.tm-card-desc, .tm-card-site) {
+.wm-tm .wtm-linkcard .tm-card-desc,
+.wm-tm .wtm-linkcard .tm-card-site {
     display: block;
     color: #555;
 }

@@ -169,7 +169,13 @@ body:not(.windows-classic-theme) #directorWindow {
     box-shadow: 0 1px 0 hsl(0 0% 100% / 14%) inset;
 }
 
-.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment) {
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-secondary:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-standard:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-small:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-toggle:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-warning:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     color: var(--text-secondary);
@@ -540,7 +546,13 @@ body:not(.windows-classic-theme) #directorWindow {
     border-right-color: transparent;
 }
 
-.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning) {
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown .btn-primary,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown .btn-secondary,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown .btn-danger,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown .btn-standard,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown .btn-small,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown .btn-toggle,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .custom-dropdown .btn-warning {
     background: transparent;
     color: var(--text-secondary);
     box-shadow: none;
@@ -671,9 +683,27 @@ body:not(.windows-classic-theme) #directorWindow {
     color: var(--text-primary);
 }
 
-.modal .modal-window-title-toolbar.window-inactive > :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.btn-toggle),
-.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
-.modal .modal-window-title-toolbar.window-inactive .custom-dropdown :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning) {
+.modal .modal-window-title-toolbar.window-inactive > .btn-primary:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal .modal-window-title-toolbar.window-inactive > .btn-secondary:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal .modal-window-title-toolbar.window-inactive > .btn-danger:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal .modal-window-title-toolbar.window-inactive > .btn-standard:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal .modal-window-title-toolbar.window-inactive > .btn-small:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal .modal-window-title-toolbar.window-inactive > .btn-toggle:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal .modal-window-title-toolbar.window-inactive > .btn-warning:not(.btn-primary):not(.btn-danger):not(.btn-toggle),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-secondary:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-standard:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-small:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-toggle:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-warning:not(.btn-primary):not(.btn-danger):not(.btn-toggle):not(.toolbar-input-segment),
+.modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-primary,
+.modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-secondary,
+.modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-danger,
+.modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-standard,
+.modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-small,
+.modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-toggle,
+.modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-warning {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);
     color: var(--text-secondary);
@@ -713,7 +743,13 @@ body:not(.windows-classic-theme) #directorWindow {
 
 .modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .form-control,
 .modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) > input:not([type="hidden"]),
-.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning) {
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .btn-primary,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .btn-secondary,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .btn-danger,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .btn-standard,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .btn-small,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .btn-toggle,
+.modal .modal-window-title-toolbar.window-inactive .button-group:has(.form-control, input:not([type="hidden"])) .btn-warning {
     background: transparent;
     color: var(--text-secondary);
     box-shadow: none;
@@ -787,9 +823,27 @@ body:not(.windows-classic-theme) #directorWindow {
         box-shadow: inset var(--glass-shadow-3), inset 0 0 14px var(--glass-inset-bg-4);
     }
 
-    .modal .modal-window-title-toolbar.window-inactive > :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
-    .modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
-    .modal .modal-window-title-toolbar.window-inactive .custom-dropdown :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):hover:not(:disabled) {
+    .modal .modal-window-title-toolbar.window-inactive > .btn-primary:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .btn-secondary:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .btn-danger:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .btn-standard:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .btn-small:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .btn-toggle:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .btn-warning:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-primary:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-secondary:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-danger:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-standard:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-small:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-toggle:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive > .button-group:not(:has(.form-control, input:not([type="hidden"]))) .btn-warning:hover:not(:disabled):not(.btn-primary):not(.btn-danger):not(.btn-toggle[data-state="on"]):not(.btn-toggle[data-state="open"]),
+    .modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-primary:hover:not(:disabled),
+    .modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-secondary:hover:not(:disabled),
+    .modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-danger:hover:not(:disabled),
+    .modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-standard:hover:not(:disabled),
+    .modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-small:hover:not(:disabled),
+    .modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-toggle:hover:not(:disabled),
+    .modal .modal-window-title-toolbar.window-inactive .custom-dropdown .btn-warning:hover:not(:disabled) {
         background: var(--glass-layer-dark-3);
         border-color: var(--glass-border-3);
         box-shadow: inset var(--glass-shadow-2), inset 0 0 12px var(--glass-inset-bg-3);
@@ -1161,11 +1215,23 @@ body:not(.windows-classic-theme) #directorWindow {
 }
 
 .modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) > .toolbar-input-segment,
-.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) > :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning).toolbar-input-segment {
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) > .btn-primary.toolbar-input-segment,
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) > .btn-secondary.toolbar-input-segment,
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) > .btn-danger.toolbar-input-segment,
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) > .btn-standard.toolbar-input-segment,
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) > .btn-small.toolbar-input-segment,
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) > .btn-toggle.toolbar-input-segment,
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .button-group:has(> .toolbar-input-segment) > .btn-warning.toolbar-input-segment {
     color: var(--text-secondary);
 }
 
-.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > :is(.btn-primary, .btn-secondary, .btn-danger, .btn-standard, .btn-small, .btn-toggle, .btn-warning):not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment),
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .btn-primary:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment),
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .btn-secondary:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment),
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .btn-danger:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment),
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .btn-standard:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment),
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .btn-small:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment),
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .btn-toggle:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment),
+.modal.toolbar-visible .modal-window-title-toolbar.window-inactive > .btn-warning:not(.btn-primary):not(.btn-danger):not(.toolbar-input-segment),
 .modal.toolbar-visible .modal-window-title-toolbar.window-inactive > input.form-control.toolbar-input-segment:not([type="hidden"]) {
     background: var(--glass-layer-dark-2);
     border-color: var(--glass-border-2);

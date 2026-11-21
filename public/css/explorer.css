@@ -836,7 +836,8 @@
     top: 0;
 }
 
-#explorerModal :is(.explorer-computer-tile-name, .explorer-computer-tile-free) {
+#explorerModal .explorer-computer-tile-name,
+#explorerModal .explorer-computer-tile-free {
     overflow: hidden;
     line-height: 16px;
     text-overflow: ellipsis;

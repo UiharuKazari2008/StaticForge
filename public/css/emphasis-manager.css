@@ -893,7 +893,8 @@
    textarea's text shows through instead of a second coloured copy painted over it). The ring is
    an inset shadow. Scoped to the overlays: .search-highlight elsewhere (cache browser, toasts,
    gallery toolbar) keeps its own rules. Light prompt boxes: vista-glass-controls.css. */
-.search-highlight-overlay :is(.search-highlight, .search-highlight-selected),
+.search-highlight-overlay .search-highlight,
+.search-highlight-overlay .search-highlight-selected,
 .emphasis-highlight-overlay .emphasis-selection-highlight {
     margin: 0;
     padding: 0;
