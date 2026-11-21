@@ -353,7 +353,16 @@
     const alarmSounds = () => {
         const s = sh();
         const files = s && s.sounds ? s.sounds.files().filter((f) => /\.mp3$/i.test(f.file) && !/^online\./i.test(f.file)) : [];
-        return [['', 'No Sound']].concat(files.map((f) => [f.file, f.file.replace(/\.mp3$/i, '')]).sort((x, y) => x[1].localeCompare(y[1], 'en', { sensitivity: 'base' })));
+        // wake to the radio (#989): XM Radio's presets (and the channel it played last), from what the phone keeps
+        const radio = [];
+        try {
+            const c = JSON.parse(localStorage.getItem('wmXmRadioCache') || 'null') || {};
+            const p = JSON.parse(localStorage.getItem('wmXmRadio') || 'null') || {};
+            const by = new Map(((c.lineup && c.lineup.channels) || []).map((x) => [x.id, x]));
+            const ids = [p.channel].concat((c.presets && c.presets.A) || [], (c.presets && c.presets.B) || [], (c.presets && c.presets.C) || []).filter((id, i, all) => id && by.has(id) && all.indexOf(id) === i);
+            ids.forEach((id) => { const x = by.get(id); radio.push([`xmradio:${id}`, `XM Radio: ${x.number} ${x.name}`]); });
+        } catch (_) { /* no radio kept on this phone */ }
+        return [['', 'No Sound']].concat(radio, files.map((f) => [f.file, f.file.replace(/\.mp3$/i, '')]).sort((x, y) => x[1].localeCompare(y[1], 'en', { sensitivity: 'base' })));
     };
 
     wmSettings.extendPage('clock', {
@@ -393,8 +402,9 @@
                 ui.bindCombo(el.querySelector('[data-act="sound"]'), sounds, a.sound, (v) => { a.sound = v; });
                 ui.bindCombo(el.querySelector('[data-act="mode"]'), modes, a.mode, (v) => { a.mode = v; });
                 const s = sh();
-                el.querySelector('[data-act="play"]').addEventListener('click', () => { if (s && s.sounds && a.sound) s.sounds.preview(a.sound); });
-                el.querySelector('[data-act="stop"]').addEventListener('click', () => { if (s && s.sounds) s.sounds.stop(); });
+                // a radio channel previews by playing it in XM Radio (and Stop stops it there)
+                el.querySelector('[data-act="play"]').addEventListener('click', () => { if (/^xmradio:/.test(a.sound || '')) document.dispatchEvent(new CustomEvent('xmradio:alarm', { detail: { on: true, channelId: a.sound.slice(8) } })); else if (s && s.sounds && a.sound) s.sounds.preview(a.sound); });
+                el.querySelector('[data-act="stop"]').addEventListener('click', () => { document.dispatchEvent(new CustomEvent('xmradio:alarm', { detail: { on: false } })); if (s && s.sounds) s.sounds.stop(); });
                 return;
             }
             el.innerHTML = `<div class="wm-alarm651-list">${d.list.map((a, i) => `<div class="wm-alarm651-row">

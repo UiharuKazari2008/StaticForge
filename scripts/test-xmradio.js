@@ -36,6 +36,15 @@ assert.strictEqual(t.findStreamUrl({ images: { u: 'https://imgsrv-sxm-prod-devic
 assert.strictEqual(t.findStreamUrl({ a: 1 }), null);
 
 assert.strictEqual(t.maskHandle('yukimi@example.com'), 'y•••••@example.com');
+
+// the Channel Guide's genres by a channel's own words (its page has none)
+assert.strictEqual(t.classify('80s on 8', 'Pop hits from the MTV era'), 'Pop');
+assert.strictEqual(t.classify('ESPN Radio', 'Sports talk around the clock'), 'Sports');
+assert.strictEqual(t.classify('Octane', 'Hard rock, new and loud'), 'Rock');
+assert.strictEqual(t.classify('BPM', 'Dance hits and remixes'), 'Dance/Electronic');
+assert.strictEqual(t.classify('The Highway', 'New country hits'), 'Country');
+assert.strictEqual(t.classify('CNN', 'News as it happens'), 'News');
+assert.strictEqual(t.classify('Zzz', ''), 'Other');
 assert.strictEqual(t.maskHandle('ab'), 'ab');
 assert.ok(t.jwtExp('x.' + Buffer.from(JSON.stringify({ exp: 100 })).toString('base64url') + '.y') === 100000);
 

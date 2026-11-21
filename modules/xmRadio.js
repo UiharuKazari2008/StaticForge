@@ -423,7 +423,7 @@ async function readLookAround() {
         const showAt = (t) => { const sh = shows.find((x) => Date.parse(x.validFrom) <= t); return sh ? String(sh.name || '') : ''; };
         const list = cuts.slice(0, 8).reverse().map((x) => ({ at: Date.parse(x.validFrom), a: String(x.artistName || ''), t: String(x.name || ''), ad: !!x.isAd, s: showAt(Date.parse(x.validFrom)), ik: (x.image && x.image.url) || '' }));
         if (list.length) channelCuts.set(id, list);
-        nowPlaying.set(id, { a: cut ? String(cut.artistName || '') : '', t: cut ? String(cut.name || '') : '', ad: !!(cut && cut.isAd), s: show ? String(show.name || '') : '', i: art ? artPath(art, 300) : '', at: cut ? Date.parse(cut.validFrom) : now, cuts: list });
+        nowPlaying.set(id, { a: cut ? String(cut.artistName || '') : '', t: cut ? String(cut.name || '') : '', ad: !!(cut && cut.isAd), s: show ? String(show.name || '') : '', i: art ? artPath(art, 300) : '', ik: art, at: cut ? Date.parse(cut.validFrom) : now, cuts: list });
     }
     if (j.delta) lookDelta = j.delta;
     lookAt = now;
@@ -520,7 +520,7 @@ function definePhoneFeed(statusHub) {
         sample: async () => {
             await readLookAround();
             const a = account();
-            const items = { account: { signedIn: !!(a && a.signedIn) }, lineup: lineupCache && lineupCache.at ? { at: lineupCache.at } : null };
+            const items = { account: { signedIn: !!(a && a.signedIn) }, lineup: lineupCache && lineupCache.at ? { at: lineupCache.at } : null, guide: { n: Object.keys((lineupCache && lineupCache.genres) || {}).length } };
             // the deck as a phone shows it: what records now (no timers, alerts or terms lists)
             try { const d = require('./xmRadioRecorder').deck(); items.rec = d.recordings.map((r) => ({ rid: r.rid, channelId: r.channelId, kind: r.kind, since: r.since })); } catch (_) { items.rec = []; }
             for (const id of phoneChannels()) {
@@ -609,6 +609,96 @@ async function schedule(channelId) {
     return data;
 }
 
+/**
+ * What is on now that matches the words (the phone's Search, Yukimi Nov 20 2026): artist, song, show or channel name,
+ * every word found, on the channels in the plan. -> { results: [{ channelId, a, t, s }] } (up to 40)
+ */
+async function search(q) {
+    const words = String(q || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').split(/\s+/).filter(Boolean).slice(0, 8);
+    if (!words.length) return { results: [] };
+    await readLookAround();
+    const out = [];
+    for (const c of (lineupCache && lineupCache.channels) || []) {
+        const no = new Set(lineupCache.notInPlan || []);
+        if (no.has(c.id)) continue;
+        const v = nowPlaying.get(c.id) || {};
+        const hay = `${v.a || ''} ${v.t || ''} ${v.s || ''} ${c.name} ${c.number}`.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+        if (words.every((w) => hay.includes(w))) out.push({ channelId: c.id, a: v.ad ? '' : v.a || '', t: v.ad ? '' : v.t || '', s: v.s || '' });
+        if (out.length >= 40) break;
+    }
+    return { results: out };
+}
+
+/**
+ * The Channel Guide (the phone's, by genre): each channel's genre, read from its SiriusXM channel page once with its
+ * logo and kept with the lineup. The pages still missing are read in the background (four at a time); the phones'
+ * feed item `guide` says how many have one, so the Guide reads again as they come in.
+ *   -> { genres: { channelId: 'Pop' }, missing: n }
+ */
+let guideFilling = null;
+async function guide() {
+    if (!lineupCache) await lineup().catch(() => null);
+    const g = (lineupCache && lineupCache.genres) || {};
+    const ids = ((lineupCache && lineupCache.channels) || []).map((c) => c.id);
+    const missing = ids.filter((id) => !g[id]);
+    if (missing.length && !guideFilling) {
+        guideFilling = (async () => {
+            for (let i = 0; i < missing.length; i += 20) {
+                try { await logos(missing.slice(i, i + 20)); } catch (_) { break; }
+                if (phoneHub && typeof phoneHub.poke === 'function') phoneHub.poke();
+            }
+        })().finally(() => { guideFilling = null; });
+    }
+    return { genres: g, missing: missing.length };
+}
+
+/**
+ * A channel's genre, for the phone's Channel Guide. SiriusXM's channel pages carry none (genre and stationCategory are
+ * null there); its web player's channel list does (decorations.genre), but only its first page of 30 could be read
+ * (the next pages' query is not known), so those are used where they exist and every other channel is placed by the
+ * words of its own name and description ("Pop hits from the MTV era" -> Pop).
+ */
+const GENRE_WORDS = [
+    ['Sports', /\b(sports?|nfl|nba|mlb|nhl|nascar|pga|golf|espn|fantasy|play-by-play|college|soccer|football|baseball|hockey|racing|fight)\b/],
+    ['News', /\b(news|cnn|fox news|msnbc|cnbc|bloomberg|bbc|politic|p\.o\.t\.u\.s|weather|traffic|c-span|npr)\b/],
+    ['Comedy', /\b(comedy|laugh|funny|comedians?|stand-?up|jeff & larry)\b/],
+    ['Kids', /\b(kids?|children|family|disney|totally|radio disney)\b/],
+    ['Religion', /\b(christian|gospel|catholic|worship|praise|faith|church|god)\b/],
+    ['Latin', /\b(latin[oa]?|latinx|espa[nñ]ol|reggaet[oó]n|salsa|tropical|mexican|regional mexican|caliente|bachata)\b/],
+    ['Hip-Hop/R&B', /\b(hip-?hop|rap|r&b|soul|urban|slow jamz?|funk|motown)\b/],
+    ['Dance/Electronic', /\b(dance|edm|electronic|house|techno|trance|club|chill|bpm|diplo|dj)\b/],
+    ['Country', /\b(country|bluegrass|americana|outlaw|nashville|honky)\b/],
+    ['Jazz/Standards', /\b(jazz|standards|swing|big band|sinatra|blues|crooners?)\b/],
+    ['Classical', /\b(classical|symphon|opera|orchestra|chamber|baroque|pops)\b/],
+    ['Rock', /\b(rock|metal|punk|alternative|alt|indie|grunge|classic vinyl|deep tracks|lithium|ozzy|hair nation|liquid metal|octane|grateful dead|pearl jam|springsteen|beatles|stones|petty|u2|bon jovi)\b/],
+    ['Pop', /\b(pop|hits|top 40|80s|90s|70s|60s|50s|40s|00s|decade|love|soft|adult|today|now|mtv|throwback|taylor|swift)\b/],
+    ['Talk', /\b(talk|stern|howard|podcast|radio andy|show|conversation|stories|book|health|money|business|entertainment|life)\b/]
+];
+function classify(name, description) {
+    const t = `${name || ''} ${description || ''}`.toLowerCase();
+    for (const [g, re] of GENRE_WORDS) if (re.test(t)) return g;
+    return 'Other';
+}
+let officialGenres = null; // channelId -> SiriusXM's own genre (the web player's channel list, its first page)
+async function readOfficialGenres(tok) {
+    if (officialGenres) return officialGenres;
+    officialGenres = {};
+    try {
+        const eh = (auth && auth.entitlementHash) || '';
+        const r = await api('GET', '/browse/v1/pages/curated-grouping/403ab6a5-d3c9-4c2a-a722-a94a6a5fd056', { bearer: tok, query: { entitlementHash: eh } });
+        for (const c of (r.json && r.json.page && r.json.page.containers) || []) {
+            for (const st of c.sets || []) {
+                for (const it of st.items || []) {
+                    const id = it && it.entity && it.entity.id;
+                    const g = it && it.decorations && it.decorations.genre;
+                    if (id && typeof g === 'string' && g) officialGenres[id] = g;
+                }
+            }
+        }
+    } catch (_) { /* placed by their words */ }
+    return officialGenres;
+}
+
 async function channelInfo(id, tok) {
     const now = new Date().toISOString();
     const r = await api('POST', '/playback/play/v1/liveUpdate', { bearer: tok, body: { channelId: id, startTimestamp: now, endTimestamp: now } });
@@ -678,7 +768,8 @@ async function logos(ids) {
     lineupCache.logos = lineupCache.logos || {};
     lineupCache.backgrounds = lineupCache.backgrounds || {};
     // a channel read before backgrounds were kept is read again once for its background
-    const missing = want.filter((id) => !(id in lineupCache.logos) || !(id in lineupCache.backgrounds));
+    // (and once for its genre: the phone's Channel Guide)
+    const missing = want.filter((id) => !(id in lineupCache.logos) || !(id in lineupCache.backgrounds) || !(lineupCache.genres || {})[id]);
     if (missing.length) {
         const tok = await authToken();
         if (tok) {
@@ -699,6 +790,12 @@ async function logos(ids) {
                         const bg = pickI(bgObj.aspect_4x3) || pickI(bgObj.aspect_16x9) || pickI(bgObj.aspect_15x7) || pickI(Object.values(bgObj)[0]);
                         lineupCache.backgrounds = lineupCache.backgrounds || {};
                         lineupCache.backgrounds[id] = imgRef(bg, 4 / 3) || '';
+                        // the channel's genre, for the phone's Guide: SiriusXM's own where its list gives one, else by its words
+                        lineupCache.genres = lineupCache.genres || {};
+                        const ent = (r.json && r.json.page && r.json.page.entity) || {};
+                        const tx = ent.texts || {};
+                        const official = (await readOfficialGenres(tok))[id];
+                        lineupCache.genres[id] = official || classify(tx.title && (tx.title.default || tx.title.medium), tx.description && (tx.description.long || tx.description.default));
                         found++;
                     } catch (_) { /* asked again next time */ }
                 }
@@ -772,6 +869,9 @@ async function tuneUpstream(channelId) {
 async function tune(channelId, opts = {}) {
     const id = String(channelId || '');
     const quality = QUALITIES.includes(opts.quality) ? opts.quality : 'hi';
+    // replay (the phone's Recently Played, its scrub bar): start this many seconds behind live, within the stream's
+    // five hours (#EXT-X-START in our copy of the media playlists; hls.js and the app's ExoPlayer both honour it)
+    const back = Math.max(0, Math.min(5 * 3600 - 120, Math.round(Number(opts.back) || 0)));
     const { json, url } = await tuneUpstream(id);
     if (quality === 'eco24' || quality === 'eco16') {
         const relay = await startEco(id, quality === 'eco16' ? 16 : 24);
@@ -782,9 +882,9 @@ async function tune(channelId, opts = {}) {
     // lines (about 1,850 a variant: five hours of replay) pass through unchanged
     const up = new URL(url);
     const base = new URL('./', up).href;
-    streams.set(sid, { sid, channelId: id, url, base, quality, used: Date.now() });
+    streams.set(sid, { sid, channelId: id, url, base, quality, back, used: Date.now() });
     sweepStreams();
-    return { sid, url: `/api/xmradio/live/${sid}/m/${up.href.slice(base.length)}`, quality, channel: describeTune(json) };
+    return { sid, url: `/api/xmradio/live/${sid}/m/${up.href.slice(base.length)}`, quality, back, channel: describeTune(json) };
 }
 
 /** The first HLS address anywhere in the tune reply (its exact place is still being learned). */
@@ -908,6 +1008,7 @@ async function mirrorFile(sid, rest, query, res) {
     if (/mpegurl/i.test(type) || /\.m3u8$/i.test(url.pathname) || url.href === s.url) {
         let text = await up.text();
         if (url.href === s.url && s.quality && s.quality !== 'auto') text = onlyVariant(text, s.quality);
+        if (s.back && /#EXTINF/.test(text) && !/#EXT-X-START/.test(text)) text = text.replace(/^#EXTM3U[^\n]*\n/, (m) => `${m}#EXT-X-START:TIME-OFFSET=-${s.back},PRECISE=YES\n`);
         res.set('Content-Type', 'application/vnd.apple.mpegurl');
         res.set('Cache-Control', 'no-store');
         res.send(rewritePlaylist(sid, s.base, text));
@@ -1068,6 +1169,30 @@ function mount(app, authMiddleware) {
     });
     app.get('/api/xmradio/eco/:rid/:file', authMiddleware, admin, (req, res) => { void ecoFile(String(req.params.rid), String(req.params.file), res); });
     app.get('/api/xmradio/key/:sid/:keyId', authMiddleware, admin, (req, res) => { void streamKey(String(req.params.sid), String(req.params.keyId), res); });
+    // a channel at an address of its own (the app's native player: next / previous channel and the alarm's radio
+    // with the page asleep): tunes now and sends the player to our copy of the stream (?q quality, ?back seconds)
+    app.get('/api/xmradio/channel/:id.m3u8', authMiddleware, admin, async (req, res) => {
+        try {
+            const t = await tune(String(req.params.id), { quality: String(req.query.q || 'std'), back: Number(req.query.back) || 0 });
+            res.set('Cache-Control', 'no-store');
+            res.redirect(302, t.url);
+        } catch (err) { res.status(err && err.code === 'XMRADIO_SIGNED_OUT' ? 401 : err && err.code === 'XMRADIO_NOT_SUBSCRIBED' ? 403 : 502).json({ error: (err && err.message) || 'not tuned' }); }
+    });
+    // what is on a channel for the app's media notification: the song, its start and length (the player asks again
+    // when the song is due to end, never on a timer), its cover at the image service's own public address
+    app.get('/api/xmradio/now/:id', authMiddleware, admin, async (req, res) => {
+        const id = String(req.params.id);
+        try {
+            await readLookAround();
+            const v = nowPlaying.get(id);
+            let dur = 0;
+            try { const sc = await schedule(id); if (sc.now && v && sc.now.t === v.t) dur = sc.now.dur; } catch (_) { /* no length */ }
+            const c = channelById(id);
+            const art = v && !v.ad && v.ik ? imageUrl(v.ik, 300) : '';
+            res.set('Cache-Control', 'no-store');
+            res.json({ channel: c ? `${c.number} ${c.name}` : '', a: v ? v.a : '', t: v ? v.t : '', s: v ? v.s : '', ad: !!(v && v.ad), at: v ? v.at : 0, dur, art });
+        } catch (_) { res.status(502).end(); }
+    });
     // a recording on a tape (the phone's Recordings: the native player plays it from here, with Range)
     app.get('/api/xmradio/track/:fileId', authMiddleware, admin, (req, res) => {
         require('./xmRadioRecorder').trackPath(String(req.params.fileId)).then((p) => {
@@ -1120,6 +1245,8 @@ module.exports = {
     nowPlaying: (id) => nowPlaying.get(id) || null,
     nowPlayingCuts,
     schedule,
+    search,
+    guide,
     channelById,
     watch,
     onLook,
@@ -1128,5 +1255,5 @@ module.exports = {
     setPhoneWatch,
     accountFilePath: () => accountFile(),
     imageUrlFor: (key, size) => imageUrl(key, size, 'jpeg', size),
-    _test: { rewritePlaylist, findStreamUrl, jwtExp, maskHandle, upstream, streams, imageUrl, artPath, onlyVariant, state: () => load() }
+    _test: { classify, rewritePlaylist, findStreamUrl, jwtExp, maskHandle, upstream, streams, imageUrl, artPath, onlyVariant, state: () => load() }
 };

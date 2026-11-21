@@ -755,7 +755,8 @@
     function alarmHandOver(s, now) {
         const app = alarmApp();
         if (!app) return;
-        const url = (f) => (f ? `${location.origin}/sounds/wm61/${encodeURIComponent(f)}` : '');
+        // a channel of XM Radio (wake to the radio, #989): the app plays it itself (DeviceNotices), at its own address
+        const url = (f) => (!f ? '' : /^xmradio:/.test(f) ? `${location.origin}/api/xmradio/channel/${encodeURIComponent(f.slice(8))}.m3u8?q=std` : `${location.origin}/sounds/wm61/${encodeURIComponent(f)}`);
         const list = [];
         s.list.forEach((a, i) => {
             if (!a.on) return;
@@ -780,8 +781,9 @@
             if (!a || !Number.isFinite(h.due)) return;
             a.last = Math.max(a.last || 0, h.due);
             s.snoozed = s.snoozed.filter((z) => !(z.i === h.i && z.due === h.due));
-            const file = String(h.sound || '').split('/').pop();
-            if (Number.isFinite(h.snoozeAt)) s.snoozed.push({ i: h.i, at: h.snoozeAt, due: h.due, text: h.text, sound: file ? decodeURIComponent(file) : a.sound, mode: h.mode || a.mode });
+            const radioSound = /\/api\/xmradio\/channel\/([^/.?]+)\.m3u8/.exec(String(h.sound || ''));
+            const file = radioSound ? `xmradio:${decodeURIComponent(radioSound[1])}` : String(h.sound || '').split('/').pop();
+            if (Number.isFinite(h.snoozeAt)) s.snoozed.push({ i: h.i, at: h.snoozeAt, due: h.due, text: h.text, sound: file ? (radioSound ? file : decodeURIComponent(file)) : a.sound, mode: h.mode || a.mode });
             // already ringing here too (the page woke while it rang): put away as answered
             const r = ringing.find((x) => x.i === h.i && x.due === h.due);
             if (r) { ringing.splice(ringing.indexOf(r), 1); if (r.note) { try { r.note.close(); } catch (_) { /* gone */ } r.note = null; } if (!ringing.length) alarmSoundStop(); }
@@ -794,6 +796,7 @@
         ringSound = null;
         if (!me) return;
         clearTimeout(me.timer);
+        if (me.radio) document.dispatchEvent(new CustomEvent('xmradio:alarm', { detail: { on: false } }));
         try { if (me.src) { me.src.onended = null; me.src.stop(); } } catch (_) { /* ended */ }
     }
 
@@ -804,6 +807,13 @@
         const me = { src: null, timer: 0, until: Date.now() + ALARM_RING_MS };
         ringSound = me;
         const audible = r.mode !== 'vibrate' && !!r.sound;
+        // wake to the radio (#989): the XM Radio program plays the channel (wmXmRadio.js) until the alarm is answered
+        if (audible && /^xmradio:/.test(String(r.sound))) {
+            me.radio = true;
+            document.dispatchEvent(new CustomEvent('xmradio:alarm', { detail: { on: true, channelId: String(r.sound).slice(8) } }));
+            if (r.mode === 'vibrate' || r.mode === 'repeat-vibrate') { try { sh.vibrate('reminder'); } catch (_) { /* no motor */ } }
+            return;
+        }
         const buzz = r.mode === 'vibrate' || r.mode === 'repeat-vibrate';
         const repeat = r.mode !== 'once';
         const turn = async () => {

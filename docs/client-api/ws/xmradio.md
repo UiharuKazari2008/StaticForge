@@ -90,6 +90,21 @@ Auto-record:
   - Recordings lists the tapes and their recordings, plays them (`GET /api/xmradio/track/<fileId>`), and manages them
     with `xmradio_tape_new`, `xmradio_tape_rename`, `xmradio_tape_delete`, `xmradio_track_rename`,
     `xmradio_track_delete` and `xmradio_track_move` (see the handler's header). Deleting moves to the Recycle Bin.
+- Round 3 adds the following.
+  - Replay: `xmradio_tune { back }` starts that many seconds behind live (#EXT-X-START in our copy of the media
+    playlists). Recently Played jumps to a song's start; a last-hour bar seeks; LIVE returns.
+  - `xmradio_search { q }` searches what is on now.
+  - `xmradio_guide` gives each channel's genre. It is SiriusXM's own where its web player's channel list gives one
+    (only that list's first page could be read); otherwise it is placed by the channel's name and description. Pages not
+    yet read are filled in the background.
+  - `xmradio_deck_get { info: true }` adds each tape's count and length; tape tracks carry `dur`.
+  - The app's own player:
+    - `GET /api/xmradio/channel/<id>.m3u8?q&back` tunes and redirects, so next / previous work with the page asleep;
+    - `GET /api/xmradio/now/<id>` gives the song for its notification, read again when the song is due to end;
+    - `AndroidVideos.sleep(min)` is the sleep timer;
+    - `AndroidVideos.saveRecording(url, name, tape)` saves a recording to Music/XM Radio/<tape>.
+  - Wake to the radio: an alarm whose sound is `xmradio:<channelId>` (Settings > Clock & Alarms). The app plays
+    `/api/xmradio/channel/<id>.m3u8` in its player; a page in front sends `xmradio:alarm`.
 - Sound: the Dreamscape app's native player (`AndroidVideos`, sound only) plays `/api/xmradio/live/...`,
   `/api/xmradio/eco/...` and `/api/xmradio/track/...` (a progressive .m4a). A page without it plays with hls.js.
 

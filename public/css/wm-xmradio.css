@@ -170,3 +170,57 @@
 }
 .xrm-today .xrm-td-rec:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
 .xrm-today .xrm-td-rec.is-rec { border-color: #d0220e; background: #d0220e; color: #fff; font-weight: bold; }
+
+/* ---------------------------------------------------------------- round 3 (Yukimi, Nov 20 2026: "add them all") */
+/* the song's progress line carries REPLAY -m:ss in its middle */
+.wm-xmradio .xrm-np-times { gap: calc(4 * var(--wm-px)); }
+.wm-xmradio .xrm-np-mid { flex: 1 1 auto; text-align: center; color: #ffcf6a; font-weight: bold; }
+/* the last hour of the stream: where replay is (a tap plays from that point) */
+.wm-xmradio .xrm-np-buf {
+    position: relative;
+    height: calc(12 * var(--wm-px));
+    margin: calc(3 * var(--wm-px)) 0 0;
+    border-radius: calc(2 * var(--wm-px));
+    background: rgba(255, 255, 255, 0.08);
+    font-size: calc(7 * var(--wm-px));
+    line-height: calc(12 * var(--wm-px));
+    color: rgba(255, 255, 255, 0.55);
+    overflow: hidden;
+    cursor: default;
+}
+.wm-xmradio .xrm-np-buf[hidden] { display: none; }
+.wm-xmradio .xrm-np-buf > b { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(111, 180, 255, 0.25); }
+.wm-xmradio .xrm-np-buf > i { position: absolute; top: 0; bottom: 0; width: calc(2 * var(--wm-px)); margin-left: calc(-1 * var(--wm-px)); background: #6fb4ff; }
+.wm-xmradio .xrm-np-buf > span { position: absolute; top: 0; }
+.wm-xmradio .xrm-np-buf > span:first-of-type { left: calc(3 * var(--wm-px)); }
+.wm-xmradio .xrm-np-buf > span:last-of-type { right: calc(3 * var(--wm-px)); }
+.wm-xmradio .xrm-np-keys .xrm-np-live { font-size: calc(8 * var(--wm-px)); font-weight: bold; color: #6fb4ff; }
+.wm-xmradio .xrm-np-keys .xrm-np-live[hidden], .wm-xmradio .xrm-np-keys[hidden] { display: none; }
+/* the faceplate view: the whole receiver, its keys the controls */
+.wm-xmradio .xrm-np.is-face { padding: calc(4 * var(--wm-px)); }
+.wm-xmradio .xrm-lcd.is-face .xr-radio { padding: 0; }
+.wm-xmradio .xrm-lcd .xr-shell { margin: 0 auto; }
+/* rows that do something when tapped */
+.wm-xmradio .xrm-sec-row.is-tap:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wm-xmradio .xrm-sec-row.is-now { font-weight: bold; }
+.wm-xmradio .xrm-sec-note { margin-left: auto; font-weight: normal; font-size: calc(8 * var(--wm-px)); opacity: 0.7; }
+.wm-xmradio .xrm-sec-h .xrm-sec-btn { margin-left: auto; }
+.wm-xmradio .xrm-genre { position: sticky; top: 0; z-index: 1; background: var(--wm-bg, #fff); }
+/* the deck pane: the desktop deck scaled to the width, Timer Recording under it */
+.wm-xmradio .xrm-deck-pane { background: var(--wm-bg, #fff); }
+.wm-xmradio .xrm-deckwrap { padding: calc(4 * var(--wm-px)); background: #0b0c0e; }
+.wm-xmradio .xrm-deckwrap .xr-deck { margin: 0; }
+/* Today (6.1): play / pause beside Record */
+.xrm-today .xrm-td-play {
+    flex: 0 0 auto;
+    width: calc(20 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: calc(1 * var(--wm-px)) solid currentColor;
+    border-radius: calc(2 * var(--wm-px));
+    background: none;
+    color: inherit;
+    font-size: calc(9 * var(--wm-px));
+}
+.xrm-today .xrm-td-play:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }

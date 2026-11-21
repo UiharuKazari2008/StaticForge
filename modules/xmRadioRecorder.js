@@ -185,15 +185,45 @@ async function tapes(workspaceId) {
     return list.filter((f) => !f.trashed_at).map((f) => f.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
-/** A tape's recordings in order: [{ id, name, size, at }]. */
+/** Each tape's count and total length: { name: { n, dur } } (the phone's Recordings). */
+async function tapesInfo(workspaceId) {
+    const out = {};
+    for (const name of await tapes(workspaceId)) {
+        const list = await tracks(workspaceId, name);
+        out[name] = { n: list.length, dur: list.reduce((t, x) => t + (x.dur || 0), 0) };
+    }
+    return out;
+}
+
+/** A recording's length in seconds (ffprobe once per file content, kept in this process). */
+const durations = new Map();
+function durationOf(hash) {
+    if (durations.has(hash)) return durations.get(hash);
+    const p = new Promise((resolve) => {
+        let file;
+        try { file = gr.getVfsManager().getFileBlobPath(hash); } catch (_) { resolve(0); return; }
+        const pr = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { stdio: ['ignore', 'pipe', 'ignore'] });
+        let out = '';
+        pr.stdout.on('data', (d) => { out += d; });
+        pr.on('error', () => resolve(0));
+        pr.on('exit', () => resolve(Math.round(Number(out.trim()) || 0)));
+    });
+    durations.set(hash, p);
+    if (durations.size > 4000) durations.delete(durations.keys().next().value);
+    return p;
+}
+
+/** A tape's recordings in order: [{ id, name, size, at, dur (s) }]. */
 async function tracks(workspaceId, name) {
     const f = await tapeFolder(workspaceId, name, false);
     if (!f) return [];
     const db = require('./vfsDatabase');
     const files = await db.getUserFilesByLocation('workspace', workspaceId, f.id);
-    return (files || []).filter((x) => !x.trashed_at && /\.(m4a|aac|mp3)$/i.test(x.original_name || ''))
-        .map((x) => ({ id: x.id, name: x.original_name, size: x.size, at: x.created_at }))
-        .sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
+    const list = (files || []).filter((x) => !x.trashed_at && /\.(m4a|aac|mp3)$/i.test(x.original_name || ''))
+        .sort((a, b) => String(a.original_name).localeCompare(String(b.original_name), undefined, { numeric: true }));
+    const out = [];
+    for (const x of list) out.push({ id: x.id, name: x.original_name, size: x.size, at: x.created_at, dur: await durationOf(x.content_hash) });
+    return out;
 }
 
 /** A tape's folder id and its file, when the file lies in a tape (a folder of Recordings). */
@@ -773,6 +803,6 @@ function init(xmRadio, globalResources, { changed: cb } = {}) {
 }
 
 module.exports = {
-    init, start, stop, recordCut, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
+    init, start, stop, recordCut, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
     _test: { adtsFrames, nextStart, cutAt, norm, onLook, sliceAac, recs, load: () => load(), reset: () => { st = null; recs.clear(); ended.clear(); fired.clear(); } }
 };

@@ -26,12 +26,19 @@ const recorder = require('../../xmRadioRecorder');
 //
 // The cassette deck (modules/xmRadioRecorder.js): recordings made on the server into the workspace's Recordings folder,
 // a folder per tape.
-//   xmradio_deck_get        { workspaceId? }      { deck: { tape, workspaceId, mode, recordings[], timers[], alerts[], terms[] }, tapes[] }
+//   xmradio_deck_get        { workspaceId?, info? } { deck: { tape, workspaceId, mode, recordings[], timers[], alerts[], terms[] }, tapes[],
+//                                                 tapeInfo? { name: { n, dur (s) } } (info: each tape's count and length) }
 //   xmradio_deck_set        { tape?, workspaceId?, mode? (song | long) }  admins -> { deck } (a new tape name makes the tape)
 //   xmradio_tape_tracks     { workspaceId, tape } { tracks[{ id, name, size, at }] } (played through vfs_download_file)
 //   xmradio_rec_start       { channelId, song?, fromStart? }  admins -> { rid, channelId, kind, mode, tape, since, until, url, cut }
 //                                                 (song: the phone's one-touch Record, the cut on air, from its start
 //                                                 when fromStart; it stops when the cut ends)
+//   xmradio_tune's back:    seconds behind live to start at (replay; the stream keeps five hours)
+//   xmradio_search          { q }                 { results[{ channelId, a, t, s }] }: what is on now, every word matched
+//   xmradio_guide           {}                    { genres { channelId: genre }, missing } (missing ones are read in the
+//                                                 background; the phone feed's `guide.n` moves as they come in)
+//   GET /api/xmradio/channel/<id>.m3u8?q&back   tunes and redirects to the stream (the app's player on its own)
+//   GET /api/xmradio/now/<id>                    { channel, a, t, s, ad, at, dur, art } for the app's media notification
 //   xmradio_schedule        { channelId }         { now { a, t, at, dur, i } | null, played[] (newest first), shows[{ name, show, at,
 //                                                 dur, i, now? }] } (liveUpdate, the last 90 min and the next 8 h; a minute's cache)
 //   xmradio_tape_new        { workspaceId?, name }          admins -> { tape }
@@ -101,12 +108,15 @@ function registerPackets(handlersCtx) {
     reg('xmradio_signin_browser', packet(true, 'The browser sign-in could not be started', async () => xmRadio.signInPageStart()));
     reg('xmradio_signin_browser_cancel', packet(true, 'The browser sign-in could not be stopped', async () => ({ account: xmRadio.signInPageCancel() })));
     reg('xmradio_signout', packet(true, 'The sign-out failed', async () => ({ account: xmRadio.signOut() })), { destructive: true });
-    reg('xmradio_tune', packet(false, 'The channel could not be tuned', async (m) => xmRadio.tune(m.channelId, { quality: m.quality })));
+    reg('xmradio_tune', packet(false, 'The channel could not be tuned', async (m) => xmRadio.tune(m.channelId, { quality: m.quality, back: m.back })));
+    reg('xmradio_search', packet(false, 'The search did not work', async (m) => xmRadio.search(m.q)));
+    reg('xmradio_guide', packet(false, 'The guide could not be read', async () => xmRadio.guide()));
     reg('xmradio_lineup', packet(false, 'The channels could not be read', async (m) => ({ channels: await xmRadio.lineup({ fresh: !!m.fresh }), presets: xmRadio.presets() })));
     reg('xmradio_logos', packet(false, 'The channel logos could not be read', async (m) => xmRadio.logos(Array.isArray(m.ids) ? m.ids : [])));
     reg('xmradio_deck_get', packet(false, 'The cassette deck could not be read', async (m) => {
         const deck = recorder.deck();
-        return { deck, tapes: await recorder.tapes(String(m.workspaceId || deck.workspaceId)) };
+        const ws = String(m.workspaceId || deck.workspaceId);
+        return { deck, tapes: await recorder.tapes(ws), tapeInfo: m.info ? await recorder.tapesInfo(ws) : undefined };
     }));
     reg('xmradio_deck_set', packet(true, 'The cassette deck could not be set', async (m) => ({ deck: recorder.setDeck(m) })));
     reg('xmradio_tape_tracks', packet(false, 'The tape could not be read', async (m) => ({ tracks: await recorder.tracks(String(m.workspaceId || recorder.deck().workspaceId), String(m.tape || recorder.deck().tape)) })));
