@@ -43,6 +43,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
+const dns = require('dns');
+const net = require('net');
 const path = require('path');
 const { URL } = require('url');
 
@@ -1340,6 +1342,60 @@ function livePageUrl(session) {
     return '';
 }
 
+// ---- the page's security zone (Yukimi, Nov 21: "use "Intranet" when the sites IP resolves to a private ip range"):
+// IE's rules for the Local intranet zone: a site whose address is private (RFC 1918, carrier-grade NAT 100.64/10,
+// loopback, link-local, IPv6 unique-local and link-local), localhost, or a single-label host name. The address is the
+// one the main document came from (Network.responseReceived), else the host's DNS answer (cached 5 min).
+const ZONE_CACHE = new Map();
+const ZONE_TTL_MS = 5 * 60 * 1000;
+
+function ipIsPrivate(ip) {
+    const a = String(ip || '').replace(/^\[|\]$/g, '').toLowerCase();
+    const v4 = a.replace(/^::ffff:/, '');
+    const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(v4);
+    if (m) {
+        const [o1, o2] = [Number(m[1]), Number(m[2])];
+        return o1 === 10 || o1 === 127 || (o1 === 172 && o2 >= 16 && o2 <= 31) || (o1 === 192 && o2 === 168)
+            || (o1 === 169 && o2 === 254) || (o1 === 100 && o2 >= 64 && o2 <= 127);
+    }
+    return a === '::1' || /^f[cd][0-9a-f]{2}:/.test(a) || /^fe[89ab][0-9a-f]:/.test(a);
+}
+
+async function zoneOfUrl(url) {
+    let parsed;
+    try { parsed = new URL(url); } catch (_) { return 'internet'; }
+    // Alchemy's own pages (chrome://, an extension's): this computer
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'intranet';
+    const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (net.isIP(host)) return ipIsPrivate(host) ? 'intranet' : 'internet';
+    if (host === 'localhost' || host.endsWith('.localhost') || !host.includes('.')) return 'intranet';
+    const cached = ZONE_CACHE.get(host);
+    if (cached && Date.now() - cached.at < ZONE_TTL_MS) return cached.zone;
+    let zone = 'internet';
+    try {
+        const addrs = await dns.promises.lookup(host, { all: true });
+        if (addrs.length && addrs.every((a) => ipIsPrivate(a.address))) zone = 'intranet';
+    } catch (_) {}
+    ZONE_CACHE.set(host, { zone, at: Date.now() });
+    if (ZONE_CACHE.size > 500) ZONE_CACHE.delete(ZONE_CACHE.keys().next().value);
+    return zone;
+}
+
+// the zone for the address shown: known at once when cached, else looked up and the location sent again
+function noteZone(session, url) {
+    if (!url) return;
+    if (session.zoneUrl === url) return;
+    session.zoneUrl = url;
+    zoneOfUrl(url).then((zone) => {
+        if (session.zoneUrl !== url || !sessions.get(session.id)) return;
+        // the document's own address said otherwise (a proxy, a split DNS): that stands
+        if (session.zoneFromIp && session.zoneFromIp.url === url) zone = session.zoneFromIp.zone;
+        if (zone === session.zone) return;
+        session.zone = zone;
+        publishLocation(session);
+    }).catch(() => {});
+}
+
 function publishLocation(session) {
     const live = livePageUrl(session);
     // While Page.navigate is still outstanding, page.url() is often still the previous page.
@@ -1353,11 +1409,13 @@ function publishLocation(session) {
         }
     }
     const url = (session.navigating && session.navTarget) || session.url || live || '';
+    if (!session.navigating) noteZone(session, url);
     broadcast(session, {
         type: session.navigating ? 'navigating' : 'location',
         url,
         title: session.title || '',
-        navigating: !!session.navigating
+        navigating: !!session.navigating,
+        zone: session.zoneUrl === url ? session.zone || '' : ''
     });
 }
 
@@ -4031,6 +4089,16 @@ async function createSession(body, adoptedPage) {
     });
 
     cdp.on('Network.dataReceived', (ev) => noteLoadBytes(session, Number(ev.encodedDataLength) || Number(ev.dataLength) || 0));
+    // the main document's own address: its zone, exactly (no DNS guess)
+    cdp.on('Network.responseReceived', (ev) => {
+        if (!sessions.get(id) || !ev || ev.type !== 'Document' || !mainFrameEvent(ev) || !ev.response || !ev.response.remoteIPAddress) return;
+        const zone = ipIsPrivate(ev.response.remoteIPAddress) ? 'intranet' : 'internet';
+        session.zoneFromIp = { url: ev.response.url, zone };
+        if (session.zoneUrl === ev.response.url && session.zone !== zone) {
+            session.zone = zone;
+            publishLocation(session);
+        }
+    });
 
     cdp.on('Page.frameStoppedLoading', async (ev) => {
         if (!sessions.get(id) || !mainFrameEvent(ev)) return;
@@ -5135,7 +5203,8 @@ function attachViewer(ws, session) {
             type: session.navigating ? 'navigating' : 'location',
             url: (session.navigating && session.navTarget) || session.url || '',
             title: session.title || '',
-            navigating: !!session.navigating
+            navigating: !!session.navigating,
+            zone: session.zone || ''
         }));
     }
     if (session.health && session.health !== 'ok') {

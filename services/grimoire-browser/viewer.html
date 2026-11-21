@@ -1106,7 +1106,9 @@
         type: msg.navigating ? 'grimoire-browser-navigating' : 'grimoire-browser-location',
         url: msg.url || '',
         title: msg.title || '',
-        navigating: !!msg.navigating
+        navigating: !!msg.navigating,
+        // the page's security zone, by the address it came from (server.js zoneOfUrl): 'intranet' | 'internet'
+        zone: msg.zone || ''
       });
     } else if (msg.type === 'feeds') {
       postParent({ type: 'grimoire-browser-feeds', feeds: Array.isArray(msg.feeds) ? msg.feeds : [] });

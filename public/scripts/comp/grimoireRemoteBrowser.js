@@ -1286,6 +1286,8 @@ function grimoireApplyRemoteLocation(found, data) {
     shell._grimoireRemoteTitle = data.title || '';
     // the page a download comes from (its dialog's "from")
     if (data.url) shell._grimoireRemoteUrl = data.url;
+    // the page's zone by the address it came from (Alchemy: private address = Local intranet; the status bar)
+    if (data.url) shell._alchemyZone = data.zone || '';
     // Recent Items (public/scripts/comp/recentItems.js): the page this browser session is on now (one entry per session)
     if (!data.navigating && data.url && window.recentItems) window.recentItems.notePage(shell, { type: 'web', url: data.url, title: data.title });
     grimoireTitleWebEntry(shell, data);
@@ -1347,6 +1349,7 @@ function grimoireBackgroundRemoteMessage(found, data) {
         }
         if (type !== 'grimoire-browser-navigation-failed') {
             shell._grimoireRemoteTitle = data.title || '';
+            if (data.url) shell._alchemyZone = data.zone || '';
             if (!data.navigating && data.url && window.recentItems) window.recentItems.notePage(shell, { type: 'web', url: data.url, title: data.title });
             if (data.url) {
                 const mode = grimoireWebMode(data.url);

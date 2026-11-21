@@ -1409,10 +1409,13 @@
             this.feedsBtn.title = feeds.length ? `View Feeds on this Page (${feeds.length})` : 'No Feeds Detected on this page';
             this.printBtn.disabled = !!this.printing;
             this.zoomText.textContent = `${this.zoomOf(shell)}%`;
-            // IE7's zones (the VM registry's Internet Settings Zones 1 and 3): the Grimoire is the local intranet, Alchemy the Internet
-            const zone = web ? 'Internet | Protected Mode: On' : 'Local intranet | Protected Mode: Off';
+            // IE7's zones (the VM registry's Internet Settings Zones 1 and 3): Grimoire's own pages are the local intranet;
+            // an Alchemy page by the address it came from (Yukimi, Nov 21: "use "Intranet" when the sites IP resolves to
+            // a private ip range"; server.js zoneOfUrl), the Internet until Alchemy has said
+            const internet = web && shell._alchemyZone !== 'intranet';
+            const zone = internet ? 'Internet | Protected Mode: On' : 'Local intranet | Protected Mode: Off';
             if (this.zoneText.textContent !== zone) this.zoneText.textContent = zone;
-            const zoneArt = `${ART}/${web ? 'zone-internet' : 'zone-intranet'}.png`;
+            const zoneArt = `${ART}/${internet ? 'zone-internet' : 'zone-intranet'}.png`;
             if (this.zoneIcon && this.zoneIcon.getAttribute('src') !== zoneArt) this.zoneIcon.setAttribute('src', zoneArt);
 
             // wiki pages are favorites too (#628)
