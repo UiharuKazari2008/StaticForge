@@ -224,6 +224,9 @@
      */
     function panelIconOf(pkg) {
         const v = iconOf(pkg);
+        // a Program Icons set (/static_images/wm-android/<name>, no extension: <name>.png, -lg.png ... @4x): its large
+        // icon at 4x for the panel's slot; the bare set path is no picture and showed nothing
+        if (v && /^\/static_images\/wm-android\/[a-z0-9_-]+$/.test(v)) return `${v.replace(/-lg$/, '')}-lg@4x.png`;
         if (!v || /^(\/|data:|blob:|https?:)/.test(v)) return v || '';
         const ws = window.wmShell;
         try { return ws && ws.art && typeof ws.art.url === 'function' ? ws.art.url(v) : ''; } catch (_) { return ''; }
