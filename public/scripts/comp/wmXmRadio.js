@@ -247,6 +247,8 @@
             else if (k === 'guide') { if (v && v.n !== guideN) { guideN = v.n; if (shown && tab === 'channels' && prefs.show === 'guide') void loadGuide(); } }
             else if (k === 'rec') { const was = (cache.rec || []).length; cache.rec = Array.isArray(v) ? v : []; if (cache.rec.length < was) tapes.stale = true; }
             else if (k.startsWith('ch:')) { if (v) cache.now[k.slice(3)] = v; else delete cache.now[k.slice(3)]; }
+            // the banks as the server keeps them (stored on any client): Today's pages follow at once
+            else if (k === 'presets') { if (v && typeof v === 'object') { cache.presets = Object.assign({ A: [], B: [], C: [] }, v); tellWatch(); } }
         }
         saveSoon();
         // the song changed on the channel shown: its programme (recently played, the song's length) is read again

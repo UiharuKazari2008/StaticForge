@@ -521,6 +521,10 @@ function definePhoneFeed(statusHub) {
             await readLookAround();
             const a = account();
             const items = { account: { signedIn: !!(a && a.signedIn) }, lineup: lineupCache && lineupCache.at ? { at: lineupCache.at } : null, guide: { n: Object.keys((lineupCache && lineupCache.genres) || {}).length } };
+            // the preset banks themselves (at most 30 ids; only a change is pushed): a phone kept the ones it read with
+            // the lineup, once a month, so presets stored elsewhere never reached its Today (Yukimi, Nov 21 2026)
+            const pr = presets();
+            items.presets = { A: (pr.A || []).slice(0, 10), B: (pr.B || []).slice(0, 10), C: (pr.C || []).slice(0, 10) };
             // the deck as a phone shows it: what records now (no timers, alerts or terms lists)
             try { const d = require('./xmRadioRecorder').deck(); items.rec = d.recordings.map((r) => ({ rid: r.rid, channelId: r.channelId, kind: r.kind, since: r.since })); } catch (_) { items.rec = []; }
             for (const id of phoneChannels()) {
