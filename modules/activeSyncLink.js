@@ -164,7 +164,10 @@ function sanitizeNet(raw) {
     const routes = (Array.isArray(raw.routes) ? raw.routes : []).slice(0, 32)
         .filter((r) => r && typeof r.dst === 'string')
         .map((r) => ({ dst: str(r.dst, 64), ...(r.gw ? { gw: str(r.gw, 45) } : {}), ...(r.dev ? { dev: str(r.dev, 32) } : {}) }));
-    const link = raw.link && typeof raw.link === 'object' ? { ready: raw.link.ready === true, max: Math.max(0, Math.min(16, Number(raw.link.max) || 0)) } : { ready: false, max: 0 };
+    // v: the phone build's link version (computers offer links only from a version that works)
+    const link = raw.link && typeof raw.link === 'object'
+        ? { ready: raw.link.ready === true, max: Math.max(0, Math.min(16, Number(raw.link.max) || 0)), v: Math.max(0, Math.min(1000, Number(raw.link.v) || 0)) }
+        : { ready: false, max: 0, v: 0 };
     return { at: Number(raw.at) > 0 ? Number(raw.at) : Date.now(), interfaces, routes, link };
 }
 
