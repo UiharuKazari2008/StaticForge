@@ -514,7 +514,7 @@
      * by the weather row; below it the phone's notifications, on a darkening that fades in (no blur).
      */
     function openSuper() {
-        if (!host || host.hidden || superOpen || superBusy || slide.active || dragging) return;
+        if (!host || host.hidden || superOpen || superBusy || overlay || slide.active || dragging) return;
         const clock = panels.find((x) => x.clock);
         if (!clock) return;
         if (!superEl) buildSuper();
@@ -706,11 +706,45 @@
         // the frost: the band's blurred copy, placed on the picture as the band's is (the card's own
         // translate is undone on it while it moves, so it stays lined up with the picture)
         const frost = superEl.querySelector('.wm-ti-super-frost');
-        if (fx.blur && blurInner && blurInner.style.backgroundImage && blurClip && !blurClip.hidden && wallEl) {
-            const wr = wallEl.getBoundingClientRect();
-            const hr = host.getBoundingClientRect();
-            Object.assign(frost.style, { display: '', backgroundImage: blurInner.style.backgroundImage, backgroundSize: blurInner.style.backgroundSize, backgroundPosition: blurInner.style.backgroundPosition, left: `${wr.left - hr.left}px`, top: `${wr.top - hr.top - 9 * unit()}px`, width: `${wr.width}px`, height: `${wr.height}px` });
-        } else frost.style.display = 'none';
+        const fs = frostStyle();
+        if (fs) Object.assign(frost.style, fs); else frost.style.display = 'none';
+    }
+
+    /** The band's frost as a card's copy of it (the Super Bar's, an item's bar), placed on the picture as the band's is; null without frost. */
+    function frostStyle() {
+        if (!(fx.blur && blurInner && blurInner.style.backgroundImage && blurClip && !blurClip.hidden && wallEl)) return null;
+        const wr = wallEl.getBoundingClientRect();
+        const hr = host.getBoundingClientRect();
+        return { display: '', backgroundImage: blurInner.style.backgroundImage, backgroundSize: blurInner.style.backgroundSize, backgroundPosition: blurInner.style.backgroundPosition, left: `${wr.left - hr.left}px`, top: `${wr.top - hr.top - 9 * unit()}px`, width: `${wr.width}px`, height: `${wr.height}px` };
+    }
+
+    /*
+     * An item's own bar over the home screen (Social: a tap on its panel, Yukimi Nov 21 2026). The item draws it
+     * (wmSocial.js); the home screen lends it the band's place, art and frost (bandBar) and hands it the soft keys,
+     * the keys and the put-away when another program comes up while it is set (setOverlay). One at a time, never
+     * with the Super Bar.
+     */
+    let overlay = null; // { softKeys(keys), key(e) -> true when handled, close(now) }
+    function bandBar() {
+        if (!host || host.hidden || !page || !page.classList.contains('is-titanium')) return null;
+        const u = unit();
+        return {
+            host,
+            list: host.querySelector('.wm-ti-list'),
+            unit: u,
+            bandTop: focusTop() * u,
+            art: artImageSet('ti-3000'),
+            arrows: { prev: artImageSet('ti-3600'), next: artImageSet('ti-3601') },
+            frost: frostStyle(),
+            frostTransform: frostTransform(),
+            pageHtml: (panel, pg) => pageHtml(panel, pg),
+            busy: () => !!(overlay || superOpen || superBusy || slide.active || dragging || settle || entryLocked())
+        };
+    }
+    function setOverlay(o) {
+        overlay = o || null;
+        if (overlay) enterLockUntil = performance.now() + SUPER_MS + 40;
+        if (sh) sh.refreshSoftKeys();
     }
 
     /**
@@ -2552,6 +2586,8 @@
     function onKey(e) {
         if (!host || sh.current !== 'today' || !page.classList.contains('is-titanium')) return;
         if (superOpen) { if (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'BrowserBack') { closeSuper(); e.preventDefault(); } return; }
+        // an item's bar (Social) takes the keys while it is up
+        if (overlay) { let done = false; try { done = !!overlay.key(e); } catch (_) { done = false; } if (done) e.preventDefault(); return; }
         const t = e.target;
         if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) return;
         if (document.querySelector('#wmShell > .wm-popup:not([hidden]), #wmShell .wm-msgbox-layer:not([hidden])')) return;
@@ -2637,6 +2673,7 @@
         softKeys(keys) {
             if (!host || host.hidden) return keys;
             if (superOpen) return { left: keys.left, right: { label: 'Close', action: () => closeSuper() } };
+            if (overlay) { try { return overlay.softKeys(keys) || keys; } catch (_) { return keys; } }
             // the key of the panel that has arrived: it stays while the list moves and changes after
             // the next panel has grown in
             const p = panels[skSel] || panels[sel];
@@ -2661,6 +2698,8 @@
      * on its first page, as the device's home screen comes back.
      */
     function home(opts) {
+        // an item's bar (Social) goes with Home, as the device's home screen comes back
+        if (overlay) { try { overlay.close(true); } catch (_) { overlay = null; } }
         const keptPage = expKey;
         pageAt.clear();
         expKey = '';
@@ -2819,6 +2858,7 @@
         if (now !== 'today' && host) host.classList.remove('is-exiting');
         // another program came up: the Super Bar is put away at once (Today comes back without it)
         if (now !== 'today' && superOpen) closeSuper(true);
+        if (now !== 'today' && overlay) { try { overlay.close(true); } catch (_) { overlay = null; } }
         lastApp = now;
         syncTilt();
         if (now === 'today' && host) requestAnimationFrame(() => { syncBlur(); blurPlace(); });
@@ -2848,6 +2888,8 @@
         // the work a wake brings, run once the return's entrance is over (at once when none is coming)
         afterEntrance: (fn) => afterEntrance(fn),
         panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,
+        // an item's own bar over the home screen (wmSocial.js): the band's place, art and frost, and the keys while it is up
+        bandBar: () => bandBar(), setOverlay: (o) => setOverlay(o),
         // where the list is (tests): the move under way { a, b, n, p } or null, and the dragged position in rows
         motion: () => ({ sel, pos, dragging, move: tw ? { a: tw.a, b: tw.b, n: tw.n, asked: tw.nv, p: tw.p } : null })
     };
