@@ -24,6 +24,10 @@
  *   ALCHEMY_HEADLESS         set 1 to run headless; otherwise Chromium runs windowed on a private Xvfb display when Xvfb is installed
  *   ALCHEMY_AUDIO            set 0 to mute; otherwise audio plays into a private PulseAudio when pulseaudio and ffmpeg are installed
  *   ALCHEMY_DATA_DIR         default ~/.local/share/dreamscape (X auth, performance and display settings, fake capture files)
+ *   ALCHEMY_PACK_RTT_MS      default 30: a viewer this far away (round trip) gets scrolled frames as scroll packs; 0 = always
+ *   ALCHEMY_JXL              set 1 to send whole frames as lossless JPEG XL to slow-link viewers that show it (jxl/)
+ *   ALCHEMY_JXL_PIPE         default $ALCHEMY_DATA_DIR/alchemy-jxl-pipe (jxl/build-jxl-pipe.sh)
+ *   ALCHEMY_DEBUG_PACK       set 1 to log how every frame was packed and how long it took
  */
 
 let sharp = null;
@@ -937,37 +941,173 @@ function releaseFramePace(session) {
     pumpFrames(session);
 }
 
-const REGION_TILE = 128;
+// ---- what goes on the wire for a frame (#990 round 2) ----
+// A frame that changed little goes as tiles (WebP: 25-45 % smaller than JPEG for page content, and a 64 px tile fits
+// one packet of a 1428-byte mobile MTU). A scrolled frame goes as a scroll pack: "move these rows by dy" plus the
+// tiles that differ after the move (the revealed strip, anything that changed). That only works if the moved rows
+// encode the same: JPEG's 16 x 16 colour blocks re-encode identically only when content moves by a multiple of 16
+// pixels (measured: 32 px -> nothing but the revealed strip differs; 37 or 40 px -> 75-95 % of tiles differ), so
+// wheel steps are sent in multiples of 16 frame pixels and Chromium's own smooth scrolling is off (the viewer
+// animates). The fixed bars (bandTop / bandBottom from the page) do not move with the rows; they are compared in
+// place like any other area, so a header that did not change costs nothing.
+const REGION_TILE = 32;
+const SCROLL_ALIGN = 16;
+// a frame that takes longer than this to pack goes whole (scroll packs save far more bytes than they cost in time)
+const PACK_BUDGET_MS = 90;
+const PACK_DEBUG = process.env.ALCHEMY_DEBUG_PACK === '1';
+// A scrolled frame is packed (decoded, compared, re-encoded: 20-60 ms on this host's CPU) only for a viewer whose
+// link is slow enough that the bytes cost more than that: a whole 150 KB frame is ~120 ms on 10 Mbit/s mobile data.
+// On a fast link (LAN) it goes whole at once, as Chromium encoded it. ALCHEMY_PACK_RTT_MS=0: always pack.
+const PACK_RTT_MS = Number.isFinite(Number(process.env.ALCHEMY_PACK_RTT_MS)) && process.env.ALCHEMY_PACK_RTT_MS !== ''
+    ? Number(process.env.ALCHEMY_PACK_RTT_MS) : 30;
 
-function rectChanged(prev, next, stride, rect) {
-    const rowBytes = rect.w * 4;
-    for (let row = 0; row < rect.h; row++) {
-        const start = ((rect.y + row) * stride + rect.x) * 4;
-        for (let i = 0; i < rowBytes; i++) {
-            if (prev[start + i] !== next[start + i]) return true;
+// ---- JPEG XL for whole frames on slow links (#990 round 2) ----
+// jxl-pipe (jxl/jxl-pipe.c, built by jxl/build-jxl-pipe.sh) repacks Chromium's JPEG into JPEG XL without decoding it:
+// lossless (the same pixels), 21-42 % smaller on real pages (Wikipedia 109 -> 86 KB, YouTube 27 -> 16 KB) for 23-34 ms
+// on this host's CPU. Worth it only where bytes cost more than that, and only for a viewer that decodes image/jxl
+// (Chromium 156 and the phone's WebView 157 do). One helper process; requests answer in order.
+// Off unless ALCHEMY_JXL=1: on this host (a 4-core laptop CPU, busy) a repack took 60-100 ms under load, past the
+// pack budget, so the JPEG went anyway; on a fast host (the DL580) it is ~10 ms and pays on mobile links.
+const JXL_ON = process.env.ALCHEMY_JXL === '1';
+const JXL_PIPE = process.env.ALCHEMY_JXL_PIPE || path.join(DATA_DIR, 'alchemy-jxl-pipe');
+const JXL_TIMEOUT_MS = 120;
+const jxl = { proc: null, buf: Buffer.alloc(0), queue: [], broken: false };
+
+function jxlAvailable() {
+    return JXL_ON && !jxl.broken && fs.existsSync(JXL_PIPE);
+}
+
+function jxlStart() {
+    if (jxl.proc) return jxl.proc;
+    const proc = spawn(JXL_PIPE, ['3'], { stdio: ['pipe', 'pipe', 'ignore'] });
+    jxl.proc = proc;
+    jxl.buf = Buffer.alloc(0);
+    proc.stdout.on('data', (chunk) => {
+        jxl.buf = jxl.buf.length ? Buffer.concat([jxl.buf, chunk]) : chunk;
+        while (jxl.buf.length >= 4) {
+            const n = jxl.buf.readUInt32LE(0);
+            if (jxl.buf.length < 4 + n) break;
+            const out = n ? Buffer.from(jxl.buf.subarray(4, 4 + n)) : null;
+            jxl.buf = jxl.buf.subarray(4 + n);
+            const waiter = jxl.queue.shift();
+            if (waiter) waiter(out);
         }
+    });
+    const gone = () => {
+        if (jxl.proc !== proc) return;
+        jxl.proc = null;
+        for (const waiter of jxl.queue.splice(0)) waiter(null);
+    };
+    proc.once('exit', gone);
+    proc.once('error', () => { jxl.broken = true; gone(); });
+    proc.stdin.on('error', () => {});
+    return proc;
+}
+
+// the JXL of a JPEG, or null (no helper, a failure, too slow: the JPEG goes instead)
+function jxlRepack(jpeg) {
+    if (!jxlAvailable()) return Promise.resolve(null);
+    const proc = jxlStart();
+    return new Promise((resolve) => {
+        let done = false;
+        const finish = (out) => { if (!done) { done = true; resolve(out); } };
+        jxl.queue.push(finish);
+        setTimeout(() => finish(null), JXL_TIMEOUT_MS).unref();
+        const head = Buffer.allocUnsafe(4);
+        head.writeUInt32LE(jpeg.length, 0);
+        proc.stdin.write(head);
+        proc.stdin.write(jpeg);
+    });
+}
+
+// a whole frame for this viewer: JPEG XL on a slow link when it can show it and it is smaller, else the JPEG as is
+async function wholeFrame(session, jpeg, header, why) {
+    if (session.jxl && slowLink(session) && jxlAvailable()) {
+        const out = await jxlRepack(jpeg);
+        if (out && out.length < jpeg.length) return { whole: binaryMessage(MSG_FRAME, Object.assign({}, header, { f: 'jxl' }), out), why: (why || 'size') + ', jxl ' + out.length + ' of ' + jpeg.length };
+    }
+    return { binary: jpeg, why };
+}
+
+function slowLink(session) {
+    return (session.rttMs || 0) >= PACK_RTT_MS;
+}
+
+// the page's root scroll moved since the frame before (CSS pixels); no decode needed to know
+function scrolledSince(session, header) {
+    const prev = session.pixelsHeader;
+    return !!(header && prev && header.p && prev.p && Math.abs((header.sy || 0) - (prev.sy || 0)) * (header.k || 1) >= 0.5);
+}
+// the wheel's left-over distance (under a step) goes this long after the last turn
+const WHEEL_REST_MS = 160;
+// tiles that differ by at most this per channel are the same picture (two JPEG decoders round differently)
+const PIXEL_TOLERANCE = 2;
+
+function rowsEqual(prev, next, prevStart, nextStart, bytes) {
+    if (prev.compare(next, nextStart, nextStart + bytes, prevStart, prevStart + bytes) === 0) return true;
+    for (let i = 0; i < bytes; i++) {
+        const d = prev[prevStart + i] - next[nextStart + i];
+        if (d > PIXEL_TOLERANCE || d < -PIXEL_TOLERANCE) return false;
+    }
+    return true;
+}
+
+// src[y]: the previous frame's row that new row y should equal (-1: none, the row is new)
+function tileChanged(prev, next, stride, x, y, w, h, src) {
+    const bytes = w * 4;
+    for (let row = y; row < y + h; row++) {
+        const from = src[row];
+        if (from < 0) return true;
+        if (!rowsEqual(prev, next, (from * stride + x) * 4, (row * stride + x) * 4, bytes)) return true;
     }
     return false;
 }
 
-function dirtyRects(prev, next, width, height) {
+// Changed tiles as rectangles: runs along each tile row, merged downwards when the run below has the same span.
+// Whole rows are compared first (one native compare a row); only a band with a differing row is split into tiles.
+function dirtyRects(prev, next, width, height, src) {
     const rects = [];
+    let open = [];
+    const rowBytes = width * 4;
     for (let y = 0; y < height; y += REGION_TILE) {
         const th = Math.min(REGION_TILE, height - y);
-        let runX = -1;
-        let runW = 0;
-        for (let x = 0; x < width; x += REGION_TILE) {
-            const tw = Math.min(REGION_TILE, width - x);
-            if (rectChanged(prev, next, width, { x, y, w: tw, h: th })) {
-                if (runX < 0) runX = x;
-                runW = x + tw - runX;
-            } else if (runX >= 0) {
-                rects.push({ x: runX, y, w: runW, h: th });
-                runX = -1;
-                runW = 0;
+        let bandSame = true;
+        for (let row = y; row < y + th; row++) {
+            const from = src[row];
+            if (from < 0 || prev.compare(next, row * rowBytes, (row + 1) * rowBytes, from * rowBytes, (from + 1) * rowBytes) !== 0) {
+                bandSame = false;
+                break;
             }
         }
-        if (runX >= 0) rects.push({ x: runX, y, w: runW, h: th });
+        if (bandSame) {
+            open = [];
+            continue;
+        }
+        const runs = [];
+        let runX = -1;
+        for (let x = 0; x < width; x += REGION_TILE) {
+            const tw = Math.min(REGION_TILE, width - x);
+            if (tileChanged(prev, next, width, x, y, tw, th, src)) {
+                if (runX < 0) runX = x;
+            } else if (runX >= 0) {
+                runs.push({ x: runX, w: x - runX });
+                runX = -1;
+            }
+        }
+        if (runX >= 0) runs.push({ x: runX, w: width - runX });
+        const still = [];
+        for (const run of runs) {
+            const above = open.find((r) => r.x === run.x && r.w === run.w && r.y + r.h === y);
+            if (above) {
+                above.h += th;
+                still.push(above);
+            } else {
+                const rect = { x: run.x, y, w: run.w, h: th };
+                rects.push(rect);
+                still.push(rect);
+            }
+        }
+        open = still;
     }
     return rects;
 }
@@ -982,9 +1122,34 @@ function cropRGBA(src, stride, rect) {
     return out;
 }
 
+// Rows of a desktop frame that scroll with the page: the viewport between its fixed bars, and the over-render
+// band below the viewport (frame pixels).
+function scrollSegments(session, header, height) {
+    const k = header.k || 1;
+    const scroll = session.scroll || {};
+    const vh = header.vh > 0 && header.vh < height ? header.vh : height;
+    const top = Math.max(0, Math.min(vh, Math.round((scroll.bandTop || 0) * k)));
+    const bottom = Math.max(0, Math.min(vh - top, Math.round((scroll.bandBottom || 0) * k)));
+    const segs = [[top, vh - bottom]];
+    if (vh < height) segs.push([vh, height]);
+    return segs.filter((seg) => seg[1] > seg[0]);
+}
+
 async function packFrame(session, jpeg, gen, header) {
     if (!sharp) return { binary: jpeg };
+    // a scroll on a fast link, or one off the JPEG block grid (a page's own scroll, a scrollbar drag): whole, with
+    // no decode (and the next frame is compared to nothing)
+    if (scrolledSince(session, header)) {
+        const moved = (header.sy - session.pixelsHeader.sy) * (header.k || 1);
+        const offGrid = Math.abs(moved - Math.round(moved / SCROLL_ALIGN) * SCROLL_ALIGN) > 0.3;
+        if (!slowLink(session) || offGrid) {
+            session.pixels = null;
+            session.pixelsHeader = header;
+            return wholeFrame(session, jpeg, header, offGrid ? 'unaligned ' + moved.toFixed(1) : 'fast link scroll');
+        }
+    }
     const stale = () => gen != null && session.packGen !== gen;
+    const t0 = PACK_DEBUG ? process.hrtime.bigint() : 0n;
     let decoded;
     try {
         decoded = await sharp(jpeg).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -996,32 +1161,80 @@ async function packFrame(session, jpeg, gen, header) {
     const height = decoded.info.height;
     const next = decoded.data;
     const prev = session.pixels;
+    const prevHeader = session.pixelsHeader;
     const sameSize = prev && session.pixelWidth === width && session.pixelHeight === height && prev.length === next.length;
     session.pixels = next;
+    session.pixelsHeader = header;
     session.pixelWidth = width;
     session.pixelHeight = height;
-    if (!sameSize) return { binary: jpeg };
-    const rects = dirtyRects(prev, next, width, height);
-    if (!rects.length) return { skip: true };
+    if (!sameSize) return wholeFrame(session, jpeg, header, 'first');
+    // how far the rows moved since the last frame (frame pixels; a page scroll, not one of the viewer's own guesses)
+    let dy = 0;
+    let segs = null;
+    if (header && prevHeader && header.p && prevHeader.p && header.k && Math.abs(header.k - prevHeader.k) < 1e-6
+        && (session.scroll || {}).root !== 0) {
+        const moved = (header.sy - prevHeader.sy) * header.k;
+        if (Math.abs(moved) >= 0.5) {
+            // not on the JPEG block grid (a page's own scroll, a scrollbar drag): a whole frame is smaller than tiles
+            if (Math.abs(moved - Math.round(moved / SCROLL_ALIGN) * SCROLL_ALIGN) > 0.3) return wholeFrame(session, jpeg, header, 'unaligned ' + moved.toFixed(1));
+            dy = Math.round(moved);
+            segs = scrollSegments(session, header, height);
+        }
+    }
+    const src = new Int32Array(height);
+    for (let y = 0; y < height; y++) src[y] = y;
+    const ops = [];
+    if (dy) {
+        // rows in a scrolling segment come from dy further on in the previous frame, if that row scrolled too
+        const inSeg = (y) => segs.some((seg) => y >= seg[0] && y < seg[1]);
+        let run = null;
+        for (let y = 0; y < height; y++) {
+            if (!inSeg(y)) {
+                run = null;
+                continue;
+            }
+            const from = y + dy;
+            if (from >= 0 && from < height && inSeg(from)) {
+                src[y] = from;
+                if (run && run.dst + run.rows === y && run.src + run.rows === from) run.rows += 1;
+                else ops.push(run = { dst: y, src: from, rows: 1 });
+            } else {
+                src[y] = -1;
+                run = null;
+            }
+        }
+    }
+    const t1 = PACK_DEBUG ? process.hrtime.bigint() : 0n;
+    const rects = dirtyRects(prev, next, width, height, src);
+    if (PACK_DEBUG) session.packTimes = 'decode ' + (Number(t1 - t0) / 1e6).toFixed(1) + ' diff ' + (Number(process.hrtime.bigint() - t1) / 1e6).toFixed(1);
+    if (!rects.length && !dy) return { skip: true };
     let area = 0;
     for (const rect of rects) area += rect.w * rect.h;
-    if (area > width * height * 0.4 || rects.length > 18) return { binary: jpeg };
+    if (area > width * height * (dy ? 0.7 : 0.4) || rects.length > (dy ? 48 : 24)) return wholeFrame(session, jpeg, header, 'area ' + Math.round(area / (width * height) * 100) + '% in ' + rects.length);
+    // what shows first: rects in the viewport before the over-render band, top to bottom
+    const vh = header && header.vh > 0 ? header.vh : height;
+    rects.sort((a, b) => ((a.y >= vh) - (b.y >= vh)) || (a.y - b.y) || (a.x - b.x));
     const regions = [];
     const bodies = [];
     let total = 0;
     for (const rect of rects) {
         const encoded = await sharp(cropRGBA(next, width, rect), {
             raw: { width: rect.w, height: rect.h, channels: 4 }
-        }).jpeg({ quality: session.settings.regionQuality }).toBuffer();
+        }).webp({ quality: session.settings.regionQuality, effort: 2 }).toBuffer();
         if (stale()) return { stale: true };
         total += encoded.length;
-        if (total > jpeg.length * 0.7) return { binary: jpeg };
+        if (total > jpeg.length * 0.7) return wholeFrame(session, jpeg, header, 'bytes ' + total + ' of ' + jpeg.length);
         regions.push({ x: rect.x, y: rect.y, w: rect.w, h: rect.h, n: encoded.length });
         bodies.push(encoded);
     }
     if (stale()) return { stale: true };
-    // tiles patch the frame before them; the header is this frame's (its scroll offset and time)
-    return { tiles: binaryMessage(MSG_TILES, Object.assign({}, header, { width, height, rects: regions }), Buffer.concat(bodies)) };
+    // tiles (or the move and its tiles) patch the frame before them; the header is this frame's (scroll offset, time)
+    const extra = { width, height, f: 'webp', rects: regions };
+    if (dy) {
+        extra.dy = dy;
+        extra.ops = ops.map((op) => [op.dst, op.src, op.rows]);
+    }
+    return { tiles: binaryMessage(dy ? MSG_SCROLL : MSG_TILES, Object.assign({}, header, extra), Buffer.concat(bodies)) };
 }
 
 // Full-resolution still (Yozora #709). Chromium's screencast sends frames at the CSS viewport size
@@ -1197,6 +1410,10 @@ function pumpFrames(session) {
         armFrameTimer(session);
         return;
     }
+    // A frame is being packed. On a slow link the newest waits for it (Chromium sends the next only once this one is
+    // acked), so every frame is packed against the one before it - sending it whole broke the chain on every
+    // scroll; on a fast link it goes whole now (lowest latency) and the next is compared to nothing.
+    if (session.framePump && slowLink(session)) return;
     if (!session.paceNow && session.sockets.size && socketsCongested(session)) {
         session.latestFrame = null;
     }
@@ -1214,14 +1431,14 @@ function pumpFrames(session) {
         return;
     }
     session.painted = frame;
-    // A scrolled frame differs everywhere; diffing it only delays it.
-    if (session.framePump || scrollBurst(session)) {
+    if (session.framePump) {
         sendFrame(session, frame, true);
         session.packGen = (session.packGen || 0) + 1;
         session.pixels = null;
         schedulePump(session);
         return;
     }
+    const packStarted = PACK_DEBUG ? process.hrtime.bigint() : 0n;
     const gen = (session.packGen = (session.packGen || 0) + 1);
     session.framePump = true;
     let settled = false;
@@ -1235,13 +1452,15 @@ function pumpFrames(session) {
         }
         sendFrame(session, frame, true);
         schedulePump(session);
-    }, 40);
+    }, PACK_BUDGET_MS);
     packFrame(session, jpeg, gen, header).then((packed) => {
+        if (PACK_DEBUG) console.log('[grimoire-browser] pack ' + (settled ? 'late ' : '') + (packed && packed.tiles ? (packed.tiles[0] === MSG_SCROLL ? 'scroll' : 'tiles') + ' ' + packed.tiles.length : packed && packed.skip ? 'skip' : 'whole ' + (packed && packed.whole ? packed.whole.length : frame.length) + ' (' + ((packed && packed.why) || 'size') + ')') + ' in ' + (Number(process.hrtime.bigint() - packStarted) / 1e6).toFixed(1) + ' ms (' + (session.packTimes || '') + ')');
         if (settled || !sessions.get(session.id)) return;
         settled = true;
         clearTimeout(budget);
         session.framePump = false;
         if (packed && packed.tiles) sendFrame(session, packed.tiles, true);
+        else if (packed && packed.whole) sendFrame(session, packed.whole, true);
         else if (!(packed && packed.skip)) sendFrame(session, frame, true);
         schedulePump(session);
     }).catch(() => {
@@ -1271,6 +1490,8 @@ function noteScreencastFrame(session, event) {
 const MSG_FRAME = 1;
 const MSG_AUDIO = 2;
 const MSG_TILES = 3;
+// 4: a scroll pack - rows moved (ops [dst, src, rows]) then tiles, both on the frame before it (#990 round 2)
+const MSG_SCROLL = 4;
 
 function frameHeader(session, meta) {
     const m = meta || session.meta || {};
@@ -2495,6 +2716,9 @@ async function launchBrowser() {
         console.log('[grimoire-browser] rendering ' + (gpu ? 'on the GPU (' + GPU_NODE + ')' : 'in software (no access to ' + GPU_NODE + ')'));
         // Session windows overlap on the virtual screen; covered windows must keep painting and running timers.
         args.push('--ozone-platform=x11', '--window-size=1280,800', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling');
+        // the viewer animates a wheel turn itself; Chromium's own animation would put rows off the JPEG block grid
+        // and turn every scrolled frame into a whole one (#990 round 2)
+        args.push('--disable-smooth-scrolling');
     }
     args.push(...fakeCaptureArgs());
     if (enableFeatures.length) args.push('--enable-features=' + enableFeatures.join(','));
@@ -3382,10 +3606,31 @@ async function onViewerMessage(session, raw) {
             session.wheelAt = { x, y };
             await page.mouse.move(x, y);
         }
-        await page.mouse.wheel({
-            deltaX: Number(msg.deltaX) || 0,
-            deltaY: Number(msg.deltaY) || 0
-        });
+        let deltaX = Number(msg.deltaX) || 0;
+        let deltaY = Number(msg.deltaY) || 0;
+        // a desktop page scrolls in steps of 16 frame pixels so its frames go as scroll packs (#990 round 2); what
+        // is left over goes once the wheel stops, so the page ends where it was turned to. A wheel distance here is
+        // a frame-pixel distance (stock: DIP = frame pixels; the Alchemy build: its emulated pixels = frame pixels).
+        if (session.viewKind !== 'mobile' && session.cssPerPx && !msg.ctrl) {
+            const carryX = (session.wheelCarryX || 0) + deltaX;
+            const carryY = (session.wheelCarryY || 0) + deltaY;
+            deltaX = Math.trunc(carryX / SCROLL_ALIGN) * SCROLL_ALIGN;
+            deltaY = Math.trunc(carryY / SCROLL_ALIGN) * SCROLL_ALIGN;
+            session.wheelCarryX = carryX - deltaX;
+            session.wheelCarryY = carryY - deltaY;
+            if (session.wheelCarryTimer) clearTimeout(session.wheelCarryTimer);
+            session.wheelCarryTimer = setTimeout(() => {
+                session.wheelCarryTimer = null;
+                const restX = session.wheelCarryX || 0;
+                const restY = session.wheelCarryY || 0;
+                session.wheelCarryX = 0;
+                session.wheelCarryY = 0;
+                if (!restX && !restY || !sessions.get(session.id)) return;
+                session.inputChain = session.inputChain.then(() => page.mouse.wheel({ deltaX: restX, deltaY: restY })).catch(() => {});
+            }, WHEEL_REST_MS);
+            if (!deltaX && !deltaY) return;
+        }
+        await page.mouse.wheel({ deltaX, deltaY });
         return;
     }
     if (msg.type === 'key' && typeof msg.key === 'string' && msg.key.length <= 32) {
@@ -3861,6 +4106,11 @@ function attachViewer(ws, session) {
         const raw = data.toString();
         let preview = null;
         try { preview = JSON.parse(raw); } catch (_) {}
+        // what the viewer can show (#990 round 2): image/jxl
+        if (preview && preview.type === 'caps') {
+            session.jxl = preview.jxl === true;
+            return;
+        }
         // the window in front wants this host's audio on its socket (#990)
         if (preview && preview.type === 'audio') {
             setAudioListener(ws, preview.on === true);

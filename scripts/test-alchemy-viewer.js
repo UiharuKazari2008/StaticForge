@@ -57,7 +57,9 @@ body{margin:0;font:14px sans-serif}
 .row{height:200px;border-bottom:1px solid #000}
 </style></head><body><div id="bar">header</div>
 <script>
-for (let i = 0; i < 40; i++) { const d = document.createElement('div'); d.className = 'row'; d.textContent = 'row ' + i; d.style.background = 'hsl(' + (i * 47 % 360) + ',60%,85%)'; document.body.appendChild(d); }
+// rows of text like a real page (a flat colour per row would make whole frames unrealistically small)
+const LOREM = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. ';
+for (let i = 0; i < 40; i++) { const d = document.createElement('div'); d.className = 'row'; d.textContent = 'row ' + i + ' ' + LOREM.repeat(2 + (i % 3)); d.style.background = 'hsl(' + (i * 47 % 360) + ',60%,85%)'; document.body.appendChild(d); }
 window.clicks = [];
 addEventListener('click', (e) => {
   clicks.push([e.clientX, e.clientY]);
@@ -248,6 +250,41 @@ async function main() {
         const pageY = await remote.evaluate(() => scrollY);
         await shot(viewer, '3-settled');
         check('a wheel scrolls the page as far as the picture moved', Math.abs(pageY - wanted) < 1, 'scrollY ' + pageY + ' for ' + wanted + ', frame sy ' + settled.frame.sy);
+
+        // what a run of wheel notches costs on the wire (frames, tiles, scroll packs), for comparing builds
+        const before = JSON.stringify((await stats()).traffic || {});
+        for (let i = 0; i < 6; i++) { await viewer.mouse.wheel({ deltaY: 120 }); await sleep(90); }
+        await sleep(1500);
+        const after = (await stats()).traffic || {};
+        const was = JSON.parse(before);
+        const spent = {};
+        for (const kind of Object.keys(after)) {
+            if (kind === '2') continue;
+            const a = after[kind];
+            const b = was[kind] || { n: 0, bytes: 0 };
+            if (a.n - b.n) spent[{ 1: 'frames', 3: 'tiles', 4: 'scroll' }[kind] || kind] = (a.n - b.n) + ' msgs ' + Math.round((a.bytes - b.bytes) / 1024) + ' KB';
+        }
+        check('scroll traffic (6 notches)', true, JSON.stringify(spent));
+        // what the viewer shows after packed scrolling = the page itself (a misplaced move shows as a large difference)
+        {
+            const sharp = require(path.join(SERVICE_DIR, 'node_modules', 'sharp'));
+            const shown = await viewer.evaluate(() => document.getElementById('view').toDataURL('image/png'));
+            const a = await sharp(Buffer.from(shown.split(',')[1], 'base64')).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+            const cdpRemote = await remote.createCDPSession();
+            const shot = await cdpRemote.send('Page.captureScreenshot', { format: 'png' });
+            await cdpRemote.detach();
+            // the Alchemy build's view is taller than the page's viewport (the over-render band): its top rows are the viewport
+            const shotPng = Buffer.from(shot.data, 'base64');
+            const sm = await sharp(shotPng).metadata();
+            const rows = Math.min(sm.height, Math.round(sm.width * a.info.height / a.info.width));
+            const b = await sharp(shotPng).extract({ left: 0, top: 0, width: sm.width, height: rows }).resize(a.info.width, a.info.height, { fit: 'fill' }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+            let sum = 0;
+            for (let i = 0; i < a.data.length; i++) sum += Math.abs(a.data[i] - b.data[i]);
+            const mean = sum / a.data.length;
+            check('picture after packed scrolling matches the page', mean < 6, 'mean difference ' + mean.toFixed(2) + ' per channel (' + a.info.width + 'x' + a.info.height + ')');
+        }
+        await viewer.mouse.wheel({ deltaY: -720 });
+        await sleep(1500);
 
         // scrolling back up into rows already seen: drawn from the cache, not filled
         await viewer.mouse.wheel({ deltaY: -200 });

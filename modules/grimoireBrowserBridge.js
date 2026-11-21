@@ -368,8 +368,8 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
             'X-Accel-Buffering': 'no'
         });
         // The fallback when the viewer cannot hold a WebSocket (attachGrimoireBrowserUpgrade): binary messages ride as
-        // base64 lines (#990: the first byte is the kind; 1 = a whole frame, of which only the newest waits; audio and
-        // tile packs are kept in order).
+        // base64 lines (#990: the first byte is the kind; 1 = a whole frame, of which only the newest waits; audio,
+        // tile packs and scroll packs are kept in order).
         const flush = () => {
             if (closed || drainWait || res.writableEnded) return;
             while (pendingControl.length) {
@@ -405,8 +405,8 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
                 const line = (buf) => JSON.stringify({ type: 'bin', data: buf.toString('base64') }) + '\n';
                 if (bytes[0] === 1) {
                     pendingFrame = bytes;
-                } else if (bytes[0] === 3) {
-                    // tiles patch the frame before them: that frame goes first
+                } else if (bytes[0] === 3 || bytes[0] === 4) {
+                    // tiles and scroll packs (4) patch the frame before them: that frame goes first
                     if (pendingFrame) pendingControl.push(line(pendingFrame));
                     pendingFrame = null;
                     pendingControl.push(line(bytes));

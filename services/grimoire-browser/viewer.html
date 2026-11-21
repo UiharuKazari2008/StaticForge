@@ -226,8 +226,8 @@
   var tileChain = Promise.resolve();
   var textDecoder = new TextDecoder();
 
-  function decodeImage(bytes) {
-    var blob = new Blob([bytes], { type: 'image/jpeg' });
+  function decodeImage(bytes, type) {
+    var blob = new Blob([bytes], { type: type || 'image/jpeg' });
     if (typeof createImageBitmap === 'function') return createImageBitmap(blob);
     return new Promise(function (resolve, reject) {
       var img = new Image();
@@ -298,7 +298,7 @@
     queuedJob = null;
     tileQueue = job.tiles;
     var gen = ++paintGen;
-    decodeImage(job.bytes).then(function (img) {
+    decodeImage(job.bytes, job.header && job.header.f === 'jxl' ? 'image/jxl' : 'image/jpeg').then(function (img) {
       drawing = false;
       if (gen === paintGen) {
         if (base.width !== img.width || base.height !== img.height) {
@@ -342,15 +342,35 @@
     paintTiles(job);
   }
 
+  // rows moved by a scroll pack: copied through a scratch canvas (one, reused) so overlapping moves read the
+  // frame as it was
+  var scratch = null;
+  function moveRows(ops) {
+    if (!ops || !ops.length || !base.width) return;
+    if (!scratch) scratch = document.createElement('canvas');
+    if (scratch.width !== base.width || scratch.height !== base.height) {
+      scratch.width = base.width;
+      scratch.height = base.height;
+    }
+    var sctx = scratch.getContext('2d', { alpha: false });
+    sctx.drawImage(base, 0, 0);
+    for (var i = 0; i < ops.length; i++) {
+      var op = ops[i];
+      baseCtx.drawImage(scratch, 0, op[1], base.width, op[2], 0, op[0], base.width, op[2]);
+    }
+  }
+
   function paintTiles(job) {
     var h = job.header;
     var rects = h.rects || [];
-    if (!rects.length) return;
+    var ops = h.ops || null;
+    if (!rects.length && !(ops && ops.length)) return;
     var gen = paintGen;
     var pos = 0;
     var decodes = [];
+    var type = h.f === 'webp' ? 'image/webp' : 'image/jpeg';
     for (var r = 0; r < rects.length; r++) {
-      decodes.push(decodeImage(job.body.subarray(pos, pos + rects[r].n)).catch(function () { return null; }));
+      decodes.push(decodeImage(job.body.subarray(pos, pos + rects[r].n), type).catch(function () { return null; }));
       pos += rects[r].n;
     }
     tileChain = tileChain.then(function () {
@@ -361,6 +381,8 @@
           base.width = h.width;
           base.height = h.height;
         }
+        // a scroll pack moves the rows first; its tiles are what changed after the move
+        moveRows(ops);
         for (var i = 0; i < imgs.length; i++) {
           if (!imgs[i]) continue;
           var rect = rects[i];
@@ -380,15 +402,20 @@
   }
 
   // Binary messages (server.js binaryMessage): [kind][u16 header length][JSON header][body]; audio is [2][f64 ms][Opus].
+  // bytes and messages per kind (stats): 1 frames, 2 audio, 3 tiles, 4 scroll packs
+  var traffic = {};
   function handleBinary(data) {
     var bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
     if (!bytes.length) return;
     var kind = bytes[0];
+    var t = traffic[kind] || (traffic[kind] = { n: 0, bytes: 0 });
+    t.n += 1;
+    t.bytes += bytes.length;
     if (kind === 2) {
       if (bytes.length > 9) audioPacket(new DataView(bytes.buffer, bytes.byteOffset, 9).getFloat64(1, true), bytes.subarray(9));
       return;
     }
-    if (kind !== 1 && kind !== 3) {
+    if (kind !== 1 && kind !== 3 && kind !== 4) {
       // an Alchemy from before #990: a bare JPEG
       drawBytes(bytes, null, bytes.length);
       return;
@@ -992,8 +1019,17 @@
     rttProbe = setInterval(probeRtt, 2000);
   }
 
+  // what this viewer can show: Alchemy repacks whole frames as JPEG XL for it on a slow link (#990 round 2)
+  function sendCaps() {
+    if (typeof ImageDecoder !== 'function' || typeof ImageDecoder.isTypeSupported !== 'function') return;
+    ImageDecoder.isTypeSupported('image/jxl').then(function (jxl) {
+      if (jxl) send({ type: 'caps', jxl: true });
+    }, function () {});
+  }
+
   function announceReady() {
     connected = true;
+    sendCaps();
     canvas.focus();
     startRttProbe();
     sendViewport.sent = false;
@@ -1124,7 +1160,8 @@
       scroll: { display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, cacheRows: cache.valid1 - cache.valid0, cache0: cache.valid0, cache1: cache.valid1 },
       audio: engine ? { path: 'worklet', state: engine.ctx.state, ready: engine.ready, packets: packetCount, targetMs: Math.round(engine.targetMs), lagMs: Math.round(engine.lagAvg || 0), jitterMs: Math.round(engine.jitter), underruns: engine.underruns, videoDelayMs: Math.round(videoDelay) }
         : { path: audio ? 'element' : 'off', wanted: audioWanted, taken: audioTaken, packets: packetCount },
-      rttMs: Math.round(rttMs)
+      rttMs: Math.round(rttMs),
+      traffic: traffic
     };
   };
 
