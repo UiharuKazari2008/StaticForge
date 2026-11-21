@@ -588,6 +588,11 @@ async function ensureCompiledForRequest(projectRoot, webPath) {
             return { changed: false, error: err.message, rel: webPath };
         }
     }
+    // only scripts and styles are compiled (as the boot's walk does): a README or a JSON file under scripts/ was sent
+    // through the minifier on request and logged an error at every start ("Private field must be used ...")
+    if (!/\.(js|css)$/i.test(String(webPath).split('?')[0])) {
+        return { changed: false };
+    }
     const abs = webPathToSourcePath(projectRoot, webPath);
     if (!fs.existsSync(abs)) {
         return { changed: false };
