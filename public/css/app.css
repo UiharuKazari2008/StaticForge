@@ -3539,80 +3539,99 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
     display: none;
 }
 
+/* The sizing zones lie on the window's frame as Vista's do (Yukimi, Nov 21 2026: the zones reached too far into some
+   windows and made them hard to use): 8 px straddling each edge (4 outside, 4 on the frame), never into the contents.
+   A corner is an L of the same thickness, 20 px along each edge (clip-path keeps the rest of its box out of reach). */
 .modal .resize-handle.nw {
-    top: -2px;
-    left: -2px;
+    top: -4px;
+    left: -4px;
     width: 20px;
     height: 20px;
+    clip-path: polygon(0 0, 100% 0, 100% 8px, 8px 8px, 8px 100%, 0 100%);
     cursor: var(--c-nw-resize);
 }
 
 .modal .resize-handle.ne {
-    top: -2px;
-    right: -2px;
+    top: -4px;
+    right: -4px;
     width: 20px;
     height: 20px;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, calc(100% - 8px) 100%, calc(100% - 8px) 8px, 0 8px);
     cursor: var(--c-ne-resize);
 }
 
 .modal .resize-handle.sw {
-    bottom: -2px;
-    left: -2px;
+    bottom: -4px;
+    left: -4px;
     width: 20px;
     height: 20px;
+    clip-path: polygon(0 0, 8px 0, 8px calc(100% - 8px), 100% calc(100% - 8px), 100% 100%, 0 100%);
     cursor: var(--c-sw-resize);
 }
 
 .modal .resize-handle.se {
-    bottom: -2px;
-    right: -2px;
+    bottom: -4px;
+    right: -4px;
     width: 20px;
     height: 20px;
+    clip-path: polygon(calc(100% - 8px) 0, 100% 0, 100% 100%, 0 100%, 0 calc(100% - 8px), calc(100% - 8px) calc(100% - 8px));
     cursor: var(--c-se-resize);
 }
 
 .modal .resize-handle.n {
     top: -4px;
-    left: 20px;
-    right: 20px;
-    height: 4px;
+    left: 16px;
+    right: 16px;
+    height: 8px;
     cursor: var(--c-n-resize);
 }
 
 .modal .resize-handle.s {
-    bottom: -2px;
-    left: 20px;
-    right: 20px;
+    bottom: -4px;
+    left: 16px;
+    right: 16px;
     height: 8px;
     cursor: var(--c-s-resize);
 }
 
 .modal .resize-handle.w {
-    top: 20px;
-    bottom: 20px;
-    left: -2px;
+    top: 16px;
+    bottom: 16px;
+    left: -4px;
     width: 8px;
     cursor: var(--c-w-resize);
 }
 
 .modal .resize-handle.e {
-    top: 20px;
-    bottom: 20px;
-    right: -2px;
+    top: 16px;
+    bottom: 16px;
+    right: -4px;
     width: 8px;
     cursor: var(--c-e-resize);
 }
 
+/* Show window contents while dragging off: Windows' drag rectangle (Yukimi, Nov 21 2026: "the same design as windows") -
+   a 4 px ring drawn with the 50% halftone brush XOR'd onto the screen (user32's DrawDragRect: PATINVERT with the gray
+   pattern brush), so every other pixel under it is inverted. The ring is a 1 px checkerboard of white blended by
+   difference (white inverts, the gaps leave the screen as it is); square, no shadow, nothing inside it. */
 .modal-drag-resize-frame {
     position: fixed;
     z-index: 4500;
     pointer-events: none;
-    border: 4px solid rgba(170, 210, 255, 0.9);
-    background: rgba(120, 170, 240, 0.12);
-    border-radius: 12px;
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 14px 28px rgba(0, 0, 0, 0.34);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
+    box-sizing: border-box;
+    padding: 4px;
+    background: repeating-conic-gradient(#fff 0 25%, transparent 0 50%) 0 0 / 2px 2px;
+    mix-blend-mode: difference;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+
+/* the halftone is one device pixel per cell, as Windows draws it, on a denser screen too */
+@media (min-resolution: 1.75dppx) {
+    .modal-drag-resize-frame {
+        background-size: 1px 1px;
+    }
 }
 
 .modal-drag-resize-frame:not(.hidden) {
