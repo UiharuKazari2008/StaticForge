@@ -1450,8 +1450,21 @@
         //   through accessors that announce after a change;
         // - Melaton Mobile's Studio opening or closing (wmDirectorPhoneState reads #manualModal's
         //   class) and its Director options (wmDirector.js fires wmDirectorPrefsChange).
-        // One check a minute stays as the net under all of it.
+        // One check a minute stays as the net only where one of those could not be set up (#998: it woke every
+        // desktop once a minute for nothing): a field that would not take an accessor (a sealed object), a phone
+        // without #manualModal to observe, a page whose wsClient never came.
         const announceSoon = () => queueMicrotask(() => announceDesktopState(false));
+        let netTimer = null;
+        const ensureNet = () => {
+            if (netTimer) return;
+            // a page out of sight or with its screen off skips the net (#890; a hidden desktop tab too): what
+            // it reads changes only with the events above, and the first minute back looks again
+            netTimer = setInterval(() => {
+                if (document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined) return;
+                watchConnectionFields();
+                announceDesktopState(false);
+            }, 60000);
+        };
         const watchField = (obj, key) => {
             let value = obj[key];
             try {
@@ -1461,7 +1474,7 @@
                     get: () => value,
                     set: (next) => { const changed = next !== value; value = next; if (changed) announceSoon(); }
                 });
-            } catch (_) { /* a sealed object: the minute check covers it */ }
+            } catch (_) { ensureNet(); /* a sealed object: the minute check covers it */ }
         };
         let fieldsWatched = false;
         const watchConnectionFields = () => {
@@ -1475,24 +1488,22 @@
             const watchStudio = () => {
                 const studio = document.getElementById('manualModal');
                 if (studio) new MutationObserver(announceSoon).observe(studio, { attributes: true, attributeFilter: ['class'] });
+                else ensureNet();
             };
             if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchStudio, { once: true });
             else watchStudio();
         }
-        // a page out of sight or with its screen off skips the net (#890; a hidden desktop tab too): what
-        // it reads changes only with the events above, and the first minute back looks again
-        setInterval(() => {
-            if (document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined) return;
-            watchConnectionFields();
-            announceDesktopState(false);
-        }, 60000);
         if (!hookConnected()) {
             // websocket.js loads before this file in app.html; a page that brings wsClient later hooks
             // at its load events (no poll, #890)
             let hooked = false;
             const late = () => { if (!hooked && hookConnected()) { hooked = true; watchConnectionFields(); } };
             window.addEventListener('DOMContentLoaded', late, { once: true, signal: appScopeSignal });
-            window.addEventListener('load', late, { once: true, signal: appScopeSignal });
+            window.addEventListener('load', () => {
+                late();
+                // still none by load: the minute net watches for it
+                if (!fieldsWatched) ensureNet();
+            }, { once: true, signal: appScopeSignal });
         }
     }
 

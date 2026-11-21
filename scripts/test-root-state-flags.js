@@ -80,7 +80,8 @@ function cssFiles(dir) {
 const sheets = cssFiles(path.join(root, 'public/css'))
     .map((file) => [file, fs.readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')]);
 for (const [, css] of sheets) {
-    for (const m of css.matchAll(/\b(?:html|body)((?:\.[\w-]+)+)/g)) {
+    // not "-body" / ".body" inside a class name (.lps-layer-body.wm-form made wm-form a root class)
+    for (const m of css.matchAll(/(?<![\w.-])(?:html|body)((?:\.[\w-]+)+)/g)) {
         m[1].split('.').filter(Boolean).forEach((c) => rootClasses.add(c));
     }
 }
@@ -237,7 +238,9 @@ function el(className, parent = null) {
         matches: (sel) => sel.split(',').some((part) => /^\.[\w-]+$/.test(part.trim()) && set.has(part.trim().slice(1))),
         // relevance checks use plain class lists; count only the flag queries
         querySelector: (sel) => { if (!/^\.[\w-]+(, \.[\w-]+)*$/.test(sel)) queries++; return node.inside.has(sel) ? {} : null; },
-        querySelectorAll: (sel) => registry.filter((n) => n !== node && n.matches(sel) && isInside(n, node))
+        querySelectorAll: (sel) => registry.filter((n) => n !== node && n.matches(sel) && isInside(n, node)),
+        getElementsByClassName: (c) => registry.filter((n) => n !== node && n.classList.contains(c) && isInside(n, node)),
+        closest: (sel) => { for (let p = node; p; p = p.parentElement) if (p.matches(sel)) return p; return null; }
     };
     registry.push(node);
     return node;
@@ -279,6 +282,7 @@ const doc = {
         return registry.find((n) => n.matches(sel)) || null;
     },
     querySelectorAll: (sel) => registry.filter((n) => n.matches(sel)),
+    getElementsByClassName: (c) => registry.filter((n) => n.classList.contains(c)),
     getElementById: (id) => (id === 'modemTrayIconGlyph' ? globeGlyph : null),
     addEventListener: () => {}
 };
@@ -323,17 +327,25 @@ observerCallback([
 assert.strictEqual(queries, before, 'irrelevant mutations skip the re-check');
 
 matches.add(ORB);
-observerCallback([{ type: 'childList', target: taskbarEl, addedNodes: [el('taskbar-start-button orb', taskbarEl)], removedNodes: [] }]);
+const orbButton = el('taskbar-start-button orb', taskbarEl);
+observerCallback([{ type: 'childList', target: taskbarEl, addedNodes: [orbButton], removedNodes: [] }]);
 assert.ok(bodyEl.classList.contains('taskbar-orb'), 'Orb start button sets body.taskbar-orb');
 matches.clear();
 observerCallback(attr(bodyEl, 'desktop-mode'));
-assert.ok(!bodyEl.classList.contains('taskbar-orb'), 'body class change re-checks every flag');
+assert.ok(bodyEl.classList.contains('taskbar-orb'), 'a body class change re-checks only the flags that read body (#817)');
+observerCallback([{ type: 'childList', target: taskbarEl, addedNodes: [], removedNodes: [orbButton] }]);
+assert.ok(!bodyEl.classList.contains('taskbar-orb'), 'removing the Orb button clears it');
 matches.add('body.desktop-mode');
 observerCallback(attr(bodyEl, ''));
 assert.ok(htmlEl.classList.contains('has-desktop-mode'), 'html.has-desktop-mode follows body.desktop-mode');
 matches.delete('body.desktop-mode');
-observerCallback(attr(bodyEl, 'desktop-mode'));
+observerCallback(attr(bodyEl, clearCls(bodyEl, 'desktop-mode')));
 assert.ok(!htmlEl.classList.contains('has-desktop-mode'), 'and clears when desktop mode ends');
+bodyEl.classList.toggle('desktop-mode', true);
+// a class change on a window that none of the page flags name runs none of their document queries (#998)
+const qBefore = queries;
+observerCallback(attr(modalEl, setCls(modalEl, 'modal-pixel-settled')));
+assert.strictEqual(queries, qBefore, 'an unrelated class on a window re-runs no page-flag query');
 
 // gallery: a context menu open on an item flags its gallery and wrapper (both ancestors)
 const CTX = '.gallery-item.context-open';
@@ -345,18 +357,22 @@ galleryEl.inside.clear(); wrapperEl.inside.clear();
 observerCallback(attr(itemEl, clearCls(itemEl, 'context-open')));
 assert.ok(!galleryEl.classList.contains('has-context-open-item'), 'closing the menu clears it');
 
-// taskbar globe: traffic arrows are set from websocket.js; ping wait stays observed
+// taskbar globe: traffic arrows and limited are set from websocket.js, nothing observed
 win.setDesktopTaskbarNetFlags({ send: true, recv: false });
 assert.strictEqual(globeGlyph.getAttribute('data-net'), 'send', 'setDesktopTaskbarNetFlags lights sending on the glyph');
 assert.ok(!taskbarEl.classList.contains('net-send') && !taskbarEl.classList.contains('net-recv'), 'traffic never touches .desktop-taskbar');
 win.setDesktopTaskbarNetFlags({ send: true, recv: true });
 assert.strictEqual(globeGlyph.getAttribute('data-net'), 'recv', 'both ways shows receiving');
+// a slow server is the Nightshade Network's, not the globe's (#895): the ping dot no longer sets
+// .net-limited (it did, and websocket.js cleared it again at every traffic blink, #998)
 const LIMITED = '#taskbarWsStatus:is(.ping-response-wait, .ping-warning)';
 taskbarEl.inside.add(LIMITED);
 observerCallback(attr(wsStatus, setCls(wsStatus, 'ping-response-wait')));
-assert.ok(taskbarEl.classList.contains('net-limited'), 'ping wait sets .net-limited');
+assert.ok(!taskbarEl.classList.contains('net-limited'), 'ping wait leaves .net-limited alone');
 taskbarEl.inside.clear();
 observerCallback(attr(wsStatus, clearCls(wsStatus, 'ping-response-wait')));
+win.setDesktopTaskbarNetFlags({ limited: true });
+assert.ok(taskbarEl.classList.contains('net-limited'), 'the flag API still sets it');
 win.setDesktopTaskbarNetFlags({ send: false, recv: false, limited: false });
 assert.ok(globeGlyph.getAttribute('data-net') === null && !taskbarEl.classList.contains('net-limited'), 'flags clear when the arrows rest');
 
@@ -396,7 +412,14 @@ assert.ok(htmlEl.classList.contains('has-maximized-window'), 'syncRootStateFlags
 const modalUtils = read('public/scripts/comp/modalUtils.js');
 assert.ok(/classList\.add\('modal-maximized'\);\s*window\.syncRootStateFlags\?\.\(\);/.test(modalUtils), 'maximize syncs the flags in the same task');
 assert.ok(/classList\.remove\('modal-maximized'\);\s*window\.syncRootStateFlags\?\.\(\);/.test(modalUtils), 'restore syncs the flags in the same task');
-assert.ok(/function openModal\(modal\) \{\s*if \(!modal\) return;\s*\/\/[^\n]*\n\s*window\.syncRootStateFlags\?\.\(modal\);/.test(modalUtils), 'openModal syncs the window flags before measuring');
+{
+    // after the already-open return (an open window's flags are kept by the observer, #998), before any measuring
+    const body = modalUtils.slice(modalUtils.indexOf('function openModal(modal) {'));
+    const sync = body.indexOf('window.syncRootStateFlags?.(modal);');
+    const early = body.indexOf('if (isAlreadyOpen) {');
+    const firstMeasure = body.search(/getBoundingClientRect\(|offsetWidth|offsetHeight|getComputedStyle\(/);
+    assert.ok(sync > early && early > 0 && sync < firstMeasure, 'openModal syncs the window flags after the already-open return and before measuring');
+}
 
 // CSS reads the window / Studio flags
 const toolbarCss = read('public/css/modal-window-title-toolbar.css').replace(/\/\*[\s\S]*?\*\//g, '');

@@ -2619,7 +2619,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#ta
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), :is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl, #melatonMobileDeviceCenterModal) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger) i {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), :is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl, #melatonMobileDeviceCenterModal) .modal-window-title-toolbar :is(.btn-secondary, .btn-danger, .btn-standard, .btn-primary, .btn-small, .btn-toggle, .btn-warning, .btn-group-compact):not(.btn-primary, .btn-danger) i {
     font-size: 14px;
     line-height: 1;
     color: inherit;
@@ -2627,7 +2627,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#ta
     opacity: 1;
 }
 /* a drop-down's chevron: Vista's ▾ */
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), :is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl, #melatonMobileDeviceCenterModal) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger) i:is(.fa-chevron-down, .fa-caret-down, .naxt-dataset-chevron) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), :is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl, #melatonMobileDeviceCenterModal) .modal-window-title-toolbar :is(.btn-secondary, .btn-danger, .btn-standard, .btn-primary, .btn-small, .btn-toggle, .btn-warning, .btn-group-compact):not(.btn-primary, .btn-danger) i:is(.fa-chevron-down, .fa-caret-down, .naxt-dataset-chevron) {
     width: 7px;
     height: 4px;
     font-size: 0;
@@ -2635,7 +2635,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#ta
     background: #000;
     clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), :is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl, #melatonMobileDeviceCenterModal) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger) i:is(.fa-chevron-down, .fa-caret-down, .naxt-dataset-chevron)::before {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), :is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl, #melatonMobileDeviceCenterModal) .modal-window-title-toolbar :is(.btn-secondary, .btn-danger, .btn-standard, .btn-primary, .btn-small, .btn-toggle, .btn-warning, .btn-group-compact):not(.btn-primary, .btn-danger) i:is(.fa-chevron-down, .fa-caret-down, .naxt-dataset-chevron)::before {
     content: none;
 }
 body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), :is(#melatonControlPanelModal, .cpl-instance), #vistaGamesExplorerModal, #studioSaveFolderModal, #imageSearchModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl, #melatonMobileDeviceCenterModal) .modal-window-title-toolbar .button-group:not(:has(.form-control, input:not([type="hidden"]))) {

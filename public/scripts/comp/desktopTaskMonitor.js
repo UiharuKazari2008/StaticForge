@@ -56,7 +56,9 @@
 
     const state = {
         bound: false,
-        raf: 0,
+        // a sync is queued (a microtask: the flags are set before the next paint, and a burst of request starts and
+        // finishes in one task is one sync; a frame callback per request was a frame each, #998)
+        queued: false,
         lastWindows: Object.create(null),
         lastProgress: false,
         snapshot: { windows: {}, background: {}, reasons: [] }
@@ -172,9 +174,11 @@
         if (!doc || !id) return;
         const el = doc.getElementById(id);
         if (!el) return;
+        // only on a change (#998): each write dirties the window's taskbar preview (windowCapture) and wakes its
+        // observers, and a sync runs per request start and finish
         if (busy) {
-            el.setAttribute('aria-busy', 'true');
-            el.setAttribute('data-task-busy', '1');
+            if (el.getAttribute('aria-busy') !== 'true') el.setAttribute('aria-busy', 'true');
+            if (el.getAttribute('data-task-busy') !== '1') el.setAttribute('data-task-busy', '1');
         } else if (el.getAttribute('data-task-busy') === '1') {
             el.removeAttribute('aria-busy');
             el.removeAttribute('data-task-busy');
@@ -207,9 +211,10 @@
             state.snapshot = collect();
             return state.snapshot;
         }
-        if (state.raf) return state.snapshot;
-        state.raf = win.requestAnimationFrame(() => {
-            state.raf = 0;
+        if (state.queued) return state.snapshot;
+        state.queued = true;
+        queueMicrotask(() => {
+            state.queued = false;
             syncNow();
         });
         return state.snapshot;

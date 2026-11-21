@@ -104,11 +104,13 @@
         const lit = primary ? primary.online : online.length > 0;
         const src = `${ART}/${lit ? 'activesync-16.png' : 'activesync-idle-16.png'}`;
         if (img && img.getAttribute('src') !== src) img.src = src;
-        el.title = known.length ? `Melaton Mobile Device Center\n${known.map(line).join('\n')}` : 'Melaton Mobile Device Center';
+        // written only when it changes: each write is a mutation the notification area counts as activity (#998)
+        const title = known.length ? `Melaton Mobile Device Center\n${known.map(line).join('\n')}` : 'Melaton Mobile Device Center';
+        if (el.title !== title) el.title = title;
         if (known.length && el.classList.contains('hidden')) {
             // revealTrayIconElement: public/scripts/comp/trayIndicators.js
             if (typeof root.revealTrayIconElement === 'function') root.revealTrayIconElement(el); else el.classList.remove('hidden');
-        } else if (!known.length) {
+        } else if (!known.length && !el.classList.contains('hidden')) {
             el.classList.add('hidden');
         }
     }

@@ -8,7 +8,8 @@ class CustomScrollbar {
     constructor() {
         this.scrollbars = new Map();
         this.maxScrollCache = new WeakMap(); // Cache max scroll values to avoid recalculating
-        this._updateRafIds = new WeakMap();
+        this._framePending = new Set();
+        this._frameRafId = 0;
         this._layoutBatchDepth = 0;
         this._layoutBatchPending = new Set();
         this._layoutSettling = false;
@@ -96,10 +97,8 @@ class CustomScrollbar {
 
         const pending = Array.from(this._layoutBatchPending);
         this._layoutBatchPending.clear();
-        pending.forEach((element) => {
-            this._cancelScheduledUpdate(element);
-            this._updateScrollbarNow(element);
-        });
+        pending.forEach((element) => this._cancelScheduledUpdate(element));
+        this._updateScrollbarsNow(pending);
         this._scheduleLayoutSettleFlush();
     }
 
@@ -116,10 +115,8 @@ class CustomScrollbar {
                 const latePending = Array.from(this._layoutBatchPending);
                 this._layoutBatchPending.clear();
                 this._layoutSettling = false;
-                latePending.forEach((element) => {
-                    this._cancelScheduledUpdate(element);
-                    this._updateScrollbarNow(element);
-                });
+                latePending.forEach((element) => this._cancelScheduledUpdate(element));
+                this._updateScrollbarsNow(latePending);
             });
         });
     }
@@ -130,20 +127,44 @@ class CustomScrollbar {
             this._layoutBatchPending.add(element);
             return;
         }
-        if (this._updateRafIds.has(element)) return;
-        const rafId = requestAnimationFrame(() => {
-            this._updateRafIds.delete(element);
-            this._updateScrollbarNow(element);
+        // one frame for every scroller due: all measured, then all written (one rAF each read and wrote in
+        // turn, a forced layout per scroller; 324 ms of a desktop boot, #998)
+        this._framePending.add(element);
+        if (this._frameRafId) return;
+        this._frameRafId = requestAnimationFrame(() => {
+            this._frameRafId = 0;
+            const due = Array.from(this._framePending);
+            this._framePending.clear();
+            this._updateScrollbarsNow(due);
         });
-        this._updateRafIds.set(element, rafId);
     }
 
     _cancelScheduledUpdate(element) {
-        const rafId = this._updateRafIds.get(element);
-        if (rafId) {
-            cancelAnimationFrame(rafId);
-            this._updateRafIds.delete(element);
-        }
+        if (!this._framePending.delete(element) || this._framePending.size || !this._frameRafId) return;
+        cancelAnimationFrame(this._frameRafId);
+        this._frameRafId = 0;
+    }
+
+    /** Layout reads of a scroller, kept apart from the writes so a batch reads everything first. */
+    _measureScrollbar(element) {
+        const data = this.scrollbars.get(element);
+        if (!data) return null;
+        const content = data.scrollableContent;
+        const scrollHeight = content.scrollHeight;
+        const clientHeight = content.clientHeight;
+        const needsScrollbar = scrollHeight > clientHeight;
+        return {
+            scrollHeight,
+            clientHeight,
+            scrollTop: content.scrollTop,
+            maxScrollDistance: needsScrollbar ? this.getMaxScrollDistance(content) : 0,
+            trackHeight: needsScrollbar ? (data._trackHeight || data.scrollbar.offsetHeight) : 0
+        };
+    }
+
+    _updateScrollbarsNow(elements) {
+        const measured = elements.map((element) => this._measureScrollbar(element));
+        elements.forEach((element, i) => { if (measured[i]) this._updateScrollbarNow(element, measured[i]); });
     }
 
     init() {
@@ -568,15 +589,13 @@ class CustomScrollbar {
         this._scheduleUpdateScrollbar(element);
     }
 
-    _updateScrollbarNow(element) {
+    _updateScrollbarNow(element, measured) {
         const data = this.scrollbars.get(element);
         if (!data) return;
 
-        const { scrollableContent, scrollbar, thumb } = data;
-
-        const scrollHeight = scrollableContent.scrollHeight;
-        const clientHeight = scrollableContent.clientHeight;
-        const scrollTop = scrollableContent.scrollTop;
+        const { scrollbar, thumb } = data;
+        const m = measured || this._measureScrollbar(element);
+        const { scrollHeight, clientHeight, scrollTop } = m;
 
         // Check if scrollbar is needed
         const needsScrollbar = scrollHeight > clientHeight;
@@ -585,7 +604,7 @@ class CustomScrollbar {
 
         // Update scroll state classes (deferred during layout settling to preserve CSS transitions)
         if (needsScrollbar) {
-            const maxScrollDistance = this.getMaxScrollDistance(scrollableContent);
+            const maxScrollDistance = m.maxScrollDistance;
 
             if (!skipScrollStateClasses) {
                 if (!scrollState.needsScrollbar) {
@@ -605,7 +624,7 @@ class CustomScrollbar {
 
             // Calculate thumb position for static height
             const thumbHeight = 80; // Height of the scrollbar thumb in pixels
-            const scrollbarTrackHeight = data._trackHeight || scrollbar.offsetHeight;
+            const scrollbarTrackHeight = m.trackHeight;
             data._trackHeight = scrollbarTrackHeight;
             const maxThumbPosition = scrollbarTrackHeight - thumbHeight;
 

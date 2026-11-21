@@ -4067,29 +4067,29 @@ html.disable-blur .manual-loading-overlay {
 
 /* Manual Modal Split Layout for Wide Viewports */
 /* @media (max-width: 1499px) {
-    .form-section.model-control .control-holder:has(#manualImg2ImgGroup.hidden) .form-row.control-row-last {
+    .form-section.model-control .control-holder:has(> #manualImg2ImgGroup.hidden) .form-row.control-row-last {
         order: 100;
         width: 100%;
     }
-    .form-section.model-control .control-holder:has(#manualImg2ImgGroup.hidden) .form-row.control-row-last label {
+    .form-section.model-control .control-holder:has(> #manualImg2ImgGroup.hidden) .form-row.control-row-last label {
         display: none;
     }
-    .form-section.model-control .control-holder:has(#manualImg2ImgGroup.hidden) .form-row.control-row-last .form-row {
+    .form-section.model-control .control-holder:has(> #manualImg2ImgGroup.hidden) .form-row.control-row-last .form-row {
         flex: 1 0 auto;
     }
 } */
 /* Manual Modal Split Layout for Wide Viewports */
 @container manual-modal (max-width: 1650px) {
-    .form-section.model-control .control-holder:has(#manualImg2ImgGroup:not(.hidden)) .form-row.control-row-last {
+    .form-section.model-control .control-holder:has(> #manualImg2ImgGroup:not(.hidden)) .form-row.control-row-last {
         order: 100;
         width: 100%;
     }
 
-    .form-section.model-control .control-holder:has(#manualImg2ImgGroup:not(.hidden)) .form-row.control-row-last label {
+    .form-section.model-control .control-holder:has(> #manualImg2ImgGroup:not(.hidden)) .form-row.control-row-last label {
         display: none;
     }
 
-    .form-section.model-control .control-holder:has(#manualImg2ImgGroup:not(.hidden)) .form-row.control-row-last .form-row {
+    .form-section.model-control .control-holder:has(> #manualImg2ImgGroup:not(.hidden)) .form-row.control-row-last .form-row {
         flex: 1 0 auto;
     }
 }

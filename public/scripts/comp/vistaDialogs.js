@@ -100,7 +100,7 @@
     function markParts(el) {
         const content = clientOf(el);
         if (!content) return;
-        content.classList.add('win7');
+        if (!content.classList.contains('win7')) content.classList.add('win7');
         // the button row: the last element (at any depth) that is a known actions row, or whose
         // element children are all buttons; never one that holds a field
         const isRow = (el) => {
@@ -117,7 +117,7 @@
         // the outermost row: a .btn-group inside .modal-actions is part of the actions row
         while (footer && footer.parentElement && footer.parentElement !== content && isRow(footer.parentElement)) footer = footer.parentElement;
         for (const el of content.querySelectorAll('.vista-dialog-footer')) if (el !== footer) el.classList.remove('vista-dialog-footer');
-        if (footer) footer.classList.add('vista-dialog-footer');
+        if (footer && !footer.classList.contains('vista-dialog-footer')) footer.classList.add('vista-dialog-footer');
         if (el.id === 'confirmationDialog' && el.dataset.vistaDialog === 'message') {
             const message = content.querySelector('#confirmationMessage');
             if (message && !(message.children.length === 1 && message.firstElementChild.classList.contains('vista-dialog-text'))) {
@@ -166,10 +166,17 @@
         message.removeChild(wrap);
     }
 
+    /** Kind and icon, written only when they change (a same-value write still fires observers). */
+    function setKind(el) {
+        const kind = kindOf(el);
+        if (el.dataset.vistaDialog !== kind) el.dataset.vistaDialog = kind;
+        const icon = iconFor(el);
+        if (el.dataset.vistaIcon !== icon) el.dataset.vistaIcon = icon;
+    }
+
     function tag(el) {
         ensureCaption(el);
-        el.dataset.vistaDialog = kindOf(el);
-        el.dataset.vistaIcon = iconFor(el);
+        setKind(el);
         if (!el.dataset.windowClient) { el.dataset.windowClient = 'light'; el.dataset.vistaDialogLight = '1'; }
         // ensureModalApplicationIcon: public/scripts/comp/modalUtils.js
         if (typeof ensureModalApplicationIcon === 'function') ensureModalApplicationIcon(el);
@@ -177,7 +184,7 @@
         if (!tagged.has(el)) {
             tagged.add(el);
             // re-read when it opens (hidden comes off) and when its variant class changes
-            const mo = new MutationObserver(() => { if (isVista() && !el.classList.contains('hidden')) { el.dataset.vistaDialog = kindOf(el); el.dataset.vistaIcon = iconFor(el); markParts(el); } });
+            const mo = new MutationObserver(() => { if (isVista() && !el.classList.contains('hidden')) { setKind(el); markParts(el); } });
             mo.observe(el, { attributes: true, attributeFilter: ['class'] });
             openObservers.set(el, mo);
         }
@@ -200,9 +207,12 @@
         unwrapText(el);
     }
 
+    let lastVista = null; // isVista() at the last apply: a body class flip that leaves it re-reads nothing
+
     function apply() {
         if (!doc) return;
         const vista = isVista();
+        lastVista = vista;
         for (const id of ALL_IDS) {
             const el = doc.getElementById(id);
             if (!el) continue;
@@ -246,14 +256,26 @@
         };
     }
 
+    /** An appended element is (or holds) one of the run-time dialogs: id lookups, no subtree walk. */
+    function holdsDialog(n) {
+        if (ALL_IDS.includes(n.id)) return true;
+        if (!n.firstElementChild) return false;
+        for (const id of ALL_IDS) {
+            const el = doc.getElementById(id);
+            if (el && el !== n && n.contains(el)) return true;
+        }
+        return false;
+    }
+
     function init() {
         if (!doc || bodyObserver) return;
         apply();
         bodyObserver = new MutationObserver((records) => {
             let hit = false;
             for (const r of records) {
-                if (r.type === 'attributes') { hit = true; break; }
-                for (const n of r.addedNodes) if (n.nodeType === 1 && (ALL_IDS.includes(n.id) || n.querySelector)) { hit = true; break; }
+                // a body class flip matters only when it moves the desktop in or out of Vista mode
+                if (r.type === 'attributes') { if (isVista() !== lastVista) { hit = true; break; } continue; }
+                for (const n of r.addedNodes) if (n.nodeType === 1 && holdsDialog(n)) { hit = true; break; }
                 if (hit) break;
             }
             if (hit) apply();

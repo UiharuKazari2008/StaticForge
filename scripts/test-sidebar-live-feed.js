@@ -10,12 +10,13 @@ const assert = require('assert');
 const path = require('path');
 
 const calls = { host: 0, system: 0, fx: [], quotes: [], feed: [], weather: [] };
+let hostLoad = { cpu: 12, ram: 34 };
 function stub(rel, exportsObj) {
     const file = require.resolve(path.join(__dirname, '..', 'modules', rel));
     require.cache[file] = { id: file, filename: file, loaded: true, exports: exportsObj };
 }
 stub('sidebarGadgets', {
-    getHostLoad: () => { calls.host += 1; return { cpu: 12, ram: 34 }; },
+    getHostLoad: () => { calls.host += 1; return { ...hostLoad }; },
     getFxRate: async (from, to) => { calls.fx.push(`${from}:${to}`); return { available: true, from, to, rate: 1.5 }; },
     getQuotes: async (symbols) => { calls.quotes.push(symbols.join(',')); return { quotes: symbols.map((symbol) => ({ symbol, available: true, price: 1 })) }; },
     getFeed: async (url) => { calls.feed.push(url); throw new Error('feed down'); },
@@ -55,9 +56,40 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.ok(b.sent[1].data.quotes['AAPL,MSFT'].quotes.length === 2);
 
     await tick();
-    assert.strictEqual(a.sent[2].data.fx, undefined, 'fx not resent before its refresh period');
+    assert.strictEqual(a.sent.length, 2, 'unchanged host and no slow topic due: nothing sent (#998)');
     assert.deepStrictEqual(calls.fx, ['EUR:USD'], 'no refetch inside the period');
     assert.strictEqual(calls.system, 3, 'system sampled once per tick for all subscribers');
+
+    // host goes out only when a whole percent moved, with the raw figures (#998)
+    hostLoad = { cpu: 12.4, ram: 33.6 };
+    await tick();
+    assert.strictEqual(a.sent.length, 2, 'same rounded host: not sent');
+    hostLoad = { cpu: 12.6, ram: 33.6 };
+    await tick();
+    assert.strictEqual(a.sent.length, 3, 'cpu rounded moved: sent');
+    assert.deepStrictEqual(a.sent[2].data.host, { cpu: 12.6, ram: 33.6 }, 'raw values sent');
+    assert.strictEqual(a.sent[2].data.fx, undefined, 'fx not resent before its refresh period');
+    hostLoad = { cpu: 12.9, ram: 35.2 };
+    await tick();
+    assert.strictEqual(a.sent.length, 4, 'ram rounded moved: sent');
+    await tick();
+    assert.strictEqual(a.sent.length, 4, 'then quiet again');
+    // a backed-up socket that skipped the change still gets it on the next tick
+    hostLoad = { cpu: 40, ram: 35.2 };
+    a.bufferedAmount = 10 * 1024 * 1024;
+    await tick();
+    a.bufferedAmount = 0;
+    assert.strictEqual(a.sent.length, 4, 'backed-up socket skipped');
+    await tick();
+    assert.strictEqual(a.sent.length, 5, 'skipped host change sent on the next tick');
+    assert.strictEqual(a.sent[4].data.host.cpu, 40);
+    // a resubscribe (tab shown again, reconnect) gets host on the next tick even unchanged
+    feed.subscribe(null, a, '10.0.0.1', { host: true, fx: [{ from: 'EUR', to: 'USD' }], feeds: ['https://example.com/rss'] });
+    stopTimer();
+    await tick();
+    assert.strictEqual(a.sent.length, 6, 'resubscribe resends host');
+    assert.strictEqual(a.sent[5].data.host.cpu, 40);
+    hostLoad = { cpu: 12, ram: 34 };
 
     // settings change keeps the pair it still has, fetches only the new one
     feed.subscribe(null, a, '10.0.0.1', { host: true, fx: [{ from: 'EUR', to: 'USD' }, { from: 'GBP', to: 'JPY' }] });

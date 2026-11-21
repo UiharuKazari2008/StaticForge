@@ -512,7 +512,7 @@ body #directorSessionList #directorPersonaGroup .gallery-toggle-btn:not(.active)
     /* Allow flex shrinking */
 }
 
-.director-sessions-list:not(:has(.scrollable-content)),
+.director-sessions-list:not(:has(> .scrollable-content)),
 .director-sessions-list .scrollable-content {
     display: flex;
     flex-direction: column;
@@ -694,7 +694,7 @@ body #directorSessionList #directorPersonaGroup .gallery-toggle-btn:not(.active)
     min-height: 0;
 }
 
-.director-chat-messages-container:not(:has(.scrollable-content)) {
+.director-chat-messages-container:not(:has(> .scrollable-content)) {
     padding: 16px;
     flex-direction: column;
 }
@@ -758,7 +758,7 @@ body #directorSessionList #directorPersonaGroup .gallery-toggle-btn:not(.active)
 }
 
 @media (min-width: 1101px) {
-    #manualModal:not(.windowed) .form-section.form-section-scroll > .scrollable-content:has(#directorCommonHeader:not(.hidden)) {
+    #manualModal:not(.windowed) .form-section.form-section-scroll > .scrollable-content:has(> #directorCommonHeader:not(.hidden)) {
         padding-top: calc(var(--spacing-lg) + var(--titlebar-area-height, 0px));
     }
 

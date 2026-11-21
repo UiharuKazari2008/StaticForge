@@ -797,6 +797,8 @@ class FeatureLoader {
             this.loadedFeatures.add(name);
             this.loadingPromises.delete(name);
             console.log(`✅ Feature "${name}" successfully loaded.`);
+            // for code that waits on a feature's classes without loading it (browsingRestore.js): an event, not a poll (#998)
+            try { document.dispatchEvent(new CustomEvent('melaton:feature-loaded', { detail: { feature: name } })); } catch (_) { /* no listeners */ }
             return true;
         }
     }

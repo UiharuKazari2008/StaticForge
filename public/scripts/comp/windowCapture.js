@@ -843,6 +843,10 @@
         }
     }
 
+    // attributes on the window element that change no pixel of it: stacking (modalUtils.js) and the
+    // task monitor's busy flags (desktopTaskMonitor.js; no sheet selects [aria-busy] / [data-task-busy])
+    const UNPAINTED_ATTRS = new Set(['data-modal-z-index', 'data-modal-stack-position', 'aria-busy', 'data-task-busy']);
+
     function watch(win, entry) {
         if (entry.unwatch) entry.unwatch();
         const outside = (c) => c && c !== 'flip3d-hidden';
@@ -856,10 +860,12 @@
             if (entry.unwatch === stop) entry.unwatch = null;
         };
         const mark = (records) => {
-            // the window's own style (moves, z-order) and Flip 3D's hiding class do not change
-            // the picture; a new size is caught by fresh()
+            // the window's own style (moves, z-order), its stacking attributes, the task monitor's busy
+            // flags (no sheet draws from them) and Flip 3D's hiding class do not change the picture; a new
+            // size is caught by fresh()
             if (Array.isArray(records) && records.every((r) => r.target === win && r.type === 'attributes' &&
-                (r.attributeName === 'style' || (r.attributeName === 'class' && classes((r.oldValue || '').split(/\s+/)) === classes(Array.from(win.classList)))))) return;
+                (r.attributeName === 'style' || UNPAINTED_ATTRS.has(r.attributeName) ||
+                    (r.attributeName === 'class' && classes((r.oldValue || '').split(/\s+/)) === classes(Array.from(win.classList)))))) return;
             entry.dirty = true;
             stop();
         };

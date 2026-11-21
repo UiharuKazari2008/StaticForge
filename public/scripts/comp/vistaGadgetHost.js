@@ -247,7 +247,9 @@ const vghSystem = function (ctx) {
     // Dreamscape's own: a workspace picture for gadgets that show one (catalog "picture": Polaroid)
     Object.defineProperty(gadget, 'picture', { get: () => (ctx.picture && ctx.picture.url) || '' });
     Object.defineProperty(gadget, 'pictureCaption', { get: () => (ctx.picture && ctx.picture.caption) || '' });
-    Object.defineProperty(gadget, 'visible', { get: () => !inst.destroyed && vsbIsShown(inst) });
+    // on screen and looked at (vistaSidebar.js vsb.seen: not a hidden or unfocused page, no screen saver, the
+    // screen on), as Vista says false for a gadget nobody can see; window.vistaGadgetHost.visibility tells it (#998)
+    Object.defineProperty(gadget, 'visible', { get: () => !inst.destroyed && (typeof vsb.seen === 'function' ? vsb.seen(inst) : vsbIsShown(inst)) });
     Object.defineProperty(gadget, 'document', { get: () => (ctx.frame && ctx.frame.contentDocument) || null });
     Object.defineProperty(gadget.Sidebar, 'dockSide', { get: () => (vsb.state && vsb.state.side === 'left' ? 'Left' : 'Right') });
     let background = '';
@@ -913,6 +915,9 @@ const vghOnLoad = function (ctx) {
     vghFit(ctx);
     // pages that size themselves in a timer after load
     [100, 400, 1200].forEach((ms) => ctx.timers.push(setTimeout(() => vghFit(ctx), ms)));
+    // a page loaded where nobody sees it (a hidden tab, another Sidebar page) stops its timers at once
+    ctx.visible = undefined;
+    window.vistaGadgetHost.visibility(ctx.inst);
 };
 
 // ---------------------------------------------------------------- flyout
@@ -1293,6 +1298,21 @@ const vghError = function (win, message, file, line) {
     }
 };
 
-window.vistaGadgetHost = { netlib: vghNetLib, newPicture: vghNewPicture, files: vghFileStore, wmi: vghWmi, install: vghInstall, attach: vghAttach, mount: vghMount, apply: vghApply, destroy: vghDestroy, form: vghForm, error: vghError, notice: vghNotice };
+window.vistaGadgetHost = { netlib: vghNetLib, newPicture: vghNewPicture, files: vghFileStore, wmi: vghWmi, install: vghInstall, attach: vghAttach, mount: vghMount, apply: vghApply, destroy: vghDestroy, form: vghForm, error: vghError, notice: vghNotice,
+    /**
+     * Tell the gadget when System.Gadget.visible flipped (its System.Gadget.visibilityChanged): from
+     * vistaSidebar.js vsbClockSyncAll and once its page has loaded. Eleven imported clocks stop their timers
+     * there and start them again when it is true (#998).
+     */
+    visibility(inst) {
+        const ctx = vghCtx(inst);
+        if (!ctx || !ctx.system || !ctx.frame) return;
+        const visible = ctx.system.Gadget.visible;
+        // a gadget starts as Vista starts it: visible
+        const was = ctx.visible !== false;
+        ctx.visible = visible;
+        if (was === visible) return;
+        vghCall(ctx.system.Gadget.visibilityChanged, ctx.frame.contentWindow);
+    } };
 // gadgetShim.js reaches the host as parent.vsbGadgetHost
 window.vsbGadgetHost = window.vistaGadgetHost;

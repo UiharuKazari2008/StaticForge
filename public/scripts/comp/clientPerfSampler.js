@@ -60,6 +60,44 @@ const clientPerfState = {
     autofillServiceCount: 0,
     autofillResultCount: 0,
     lastAutofillRebuildMs: 0,
+    // The frame window (#998): its rAFs force a main-thread frame each, ~60 on a page that would draw none, so it
+    // runs only when the minute had something to draw: input, a CSS animation or transition starting, or an
+    // animation running now. A quiet minute's sample says sampledFrames 0 (FPS and p95 null, '—' in Security
+    // Center's event list). One-shot listeners: the first event of a minute takes them off until the next sample.
+    activity: {
+        EVENTS: ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'animationstart', 'transitionstart'],
+        // (listening from the start; the start-up window always runs)
+        seen: false,
+        armed: false,
+        note: () => {
+            const a = clientPerfState.activity;
+            a.seen = true;
+            a.disarm();
+        },
+        arm() {
+            if (this.armed) return;
+            this.armed = true;
+            this.EVENTS.forEach((type) => document.addEventListener(type, this.note, { capture: true, passive: true }));
+        },
+        disarm() {
+            if (!this.armed) return;
+            this.armed = false;
+            this.EVENTS.forEach((type) => document.removeEventListener(type, this.note, { capture: true }));
+        },
+        /** Whether there was something to draw since the last call; listens again for the next. */
+        take() {
+            let seen = this.seen;
+            if (!seen && typeof document.getAnimations === 'function') {
+                try { seen = document.getAnimations().some((anim) => anim.playState === 'running'); } catch (_) { seen = true; }
+            }
+            this.seen = false;
+            this.arm();
+            return seen;
+        }
+    },
+    // the DOM counts' collections, kept: a live collection answers its length without a walk while the DOM is
+    // unchanged (a querySelectorAll matched every element again each minute)
+    domLists: null,
     // Melaton Mobile (#890): a sample a minute went out at once, each its own radio wake-up (1,440 a
     // day per phone, screen off too). A phone builds one a minute only while it is on screen and sends
     // them together: at most every 15 minutes, when the socket has just sent something else (the radio
@@ -139,13 +177,24 @@ function getClientPerfNamedMeasureSnapshot() {
 }
 
 function getClientPerfDomSnapshot() {
+    const lists = clientPerfState.domLists || (clientPerfState.domLists = {
+        all: document.getElementsByTagName('*'),
+        modals: document.getElementsByClassName('modal'),
+        dropdowns: document.getElementsByClassName('custom-dropdown-menu'),
+        galleryItems: document.getElementsByClassName('gallery-item'),
+        galleryPlaceholders: document.getElementsByClassName('gallery-placeholder')
+    });
+    let openModals = 0;
+    for (const el of lists.modals) if (!el.classList.contains('hidden') && !el.classList.contains('hidden-alt')) openModals++;
+    let openDropdowns = 0;
+    for (const el of lists.dropdowns) if (!el.classList.contains('hidden')) openDropdowns++;
     return {
-        nodeCount: document.getElementsByTagName('*').length,
-        openModals: document.querySelectorAll('.modal:not(.hidden):not(.hidden-alt)').length,
-        openDropdowns: document.querySelectorAll('.custom-dropdown-menu:not(.hidden)').length,
+        nodeCount: lists.all.length,
+        openModals,
+        openDropdowns,
         activeToasts: activeToasts.size,
-        galleryItems: document.querySelectorAll('.gallery-item').length,
-        galleryPlaceholders: document.querySelectorAll('.gallery-placeholder').length
+        galleryItems: lists.galleryItems.length,
+        galleryPlaceholders: lists.galleryPlaceholders.length
     };
 }
 
@@ -254,8 +303,9 @@ async function flushClientPerfSample(reason = 'interval') {
     });
     queueClientPerfSample(sample);
     resetClientPerfWindowCounters();
-    const phone = clientPerfState.phone;
-    if (!phone.is() || phone.sendDue(reason)) await sendQueuedClientPerfSamples();
+    // the desktop batches too (#998): the server only stores the samples (190-adminHandler.js handleReportClientPerf,
+    // telemetry events), nothing reads them by the minute
+    if (clientPerfState.phone.sendDue(reason)) await sendQueuedClientPerfSamples();
     return sample;
 }
 
@@ -392,11 +442,18 @@ function startClientPerfSampler() {
     clientPerfState.connectedHandler = () => sendQueuedClientPerfSamples();
     wsClient.on('connected', clientPerfState.connectedHandler);
 
+    clientPerfState.activity.seen = false;
+    clientPerfState.activity.arm();
     startClientPerfFrameWindow();
     clientPerfState.intervalId = setInterval(() => {
         // nothing is measured or sent while the page is out of sight or a phone's screen is off (going
         // out of sight sent that minute already); a hidden desktop tab too (#890: it measured no frames)
         if (document.visibilityState === 'hidden' || document.documentElement.dataset.screenOff !== undefined) return;
+        // a quiet minute (no input, nothing animating) has no frames to time: sampled at once, without the window
+        if (!clientPerfState.activity.take()) {
+            flushClientPerfSample('interval');
+            return;
+        }
         startClientPerfFrameWindow();
         clientPerfState.intervalFlushTimer = setTimeout(() => {
             clientPerfState.intervalFlushTimer = null;
@@ -414,6 +471,8 @@ function stopClientPerfSampler() {
         clearInterval(clientPerfState.intervalId);
         clientPerfState.intervalId = null;
     }
+    clientPerfState.activity.disarm();
+    clientPerfState.domLists = null;
     if (clientPerfState.frameWindowTimer) {
         clearTimeout(clientPerfState.frameWindowTimer);
         clientPerfState.frameWindowTimer = null;

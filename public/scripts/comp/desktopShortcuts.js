@@ -712,7 +712,7 @@ class DesktopShortcutsManager {
     }
 
     /** Auto Arrange: Vista's insertion mark at the top of the cell the drop will take. */
-    updateInsertMark(clientX, clientY) {
+    updateInsertMark(clientX, clientY, knownRect) {
         const V = window.desktopIconView;
         const m = this._iconMetrics;
         const view = this._iconView;
@@ -720,13 +720,17 @@ class DesktopShortcutsManager {
             this.removeInsertMark();
             return;
         }
-        const rect = this.freeformContainer.getBoundingClientRect();
+        const rect = knownRect || this.freeformContainer.getBoundingClientRect();
         const ins = V.insertionAt(m, clientX - rect.left, clientY - rect.top, this._iconOrder.length);
         if (!this._insertMark) {
             this._insertMark = document.createElement('div');
             this._insertMark.className = 'desktop-insert-mark';
         }
         if (!this._insertMark.isConnected) this.freeformContainer.appendChild(this._insertMark);
+        // written only when the cell changes (a same-value style write still restyles)
+        const at = `${ins.x},${ins.y},${ins.width}`;
+        if (this._insertMarkAt === at) return;
+        this._insertMarkAt = at;
         this._insertMark.style.left = `${ins.x}px`;
         this._insertMark.style.top = `${ins.y}px`;
         this._insertMark.style.width = `${ins.width}px`;
@@ -1599,13 +1603,15 @@ class DesktopShortcutsManager {
 
         const deltaX = primaryX - this.primaryDragStart.x;
         const deltaY = primaryY - this.primaryDragStart.y;
-        const containerRect = this.freeformContainer.getBoundingClientRect();
+        // read once per drag (cacheDragGeometry): no forced layout between one icon's write and the next one's read
+        const containerRect = this._dragContainerRect || this.freeformContainer.getBoundingClientRect();
+        const sizes = this.dragGroup.map((item) => item.size || item.element.getBoundingClientRect());
 
-        this.dragGroup.forEach((item) => {
+        this.dragGroup.forEach((item, i) => {
             const node = item.ghost || item.element;
             let newX = item.startX + deltaX;
             let newY = item.startY + deltaY;
-            const elementRect = item.element.getBoundingClientRect();
+            const elementRect = sizes[i];
             newX = Math.max(0, Math.min(newX, containerRect.width - elementRect.width));
             newY = Math.max(0, Math.min(newY, containerRect.height - elementRect.height));
             node.style.left = `${newX}px`;
@@ -3363,6 +3369,9 @@ class DesktopShortcutsManager {
             lastDropZoneState: null
         };
 
+        this.cancelDragFrame();
+        this._dragPointer = null;
+
         // Add event listeners for drag (check threshold on first move)
         if (this._dragDocumentController) {
             this._dragDocumentController.abort();
@@ -3414,6 +3423,7 @@ class DesktopShortcutsManager {
                 // Show drop zones
                 this.showDropZones();
             }
+            this.cacheDragGeometry();
         }
         
         // Only update position if we're in drag mode
@@ -3421,14 +3431,64 @@ class DesktopShortcutsManager {
         
         event.preventDefault();
 
-        const containerRect = this.freeformContainer.getBoundingClientRect();
+        // the latest pointer goes on screen once per frame (positions, insert mark, one hit-test): a move
+        // never reads layout right after the previous one wrote it
+        this._dragPointer = { x: clientX, y: clientY };
+        if (!this._dragFrame) {
+            this._dragFrame = requestAnimationFrame(() => {
+                this._dragFrame = 0;
+                this.applyDragFrame();
+            });
+        }
+    }
+
+    cancelDragFrame() {
+        if (!this._dragFrame) return;
+        cancelAnimationFrame(this._dragFrame);
+        this._dragFrame = 0;
+    }
+
+    /** Drag geometry, read once when the drag starts: the container's box and each dragged icon's size. */
+    cacheDragGeometry() {
+        this._dragContainerRect = this.freeformContainer.getBoundingClientRect();
+        // Vista's icons stay where they are and never scale while a copy is dragged; the older view scales
+        // the dragged icon with a transition, so its sizes are read at the start of each frame instead
+        this._dragSizesFixed = this.isVistaIconView();
+        this.readDragSizes();
+        // the first frame clears a stale drop-target highlight on every icon, later frames touch only the
+        // previous and the new target
+        this._folderDropEls = null;
+        this._folderDropId = null;
+    }
+
+    readDragSizes() {
+        const size = (el) => {
+            const r = el.getBoundingClientRect();
+            return { width: r.width, height: r.height };
+        };
+        this._dragPrimarySize = size(this.draggedShortcut.element);
+        (this.dragGroup || []).forEach((item) => {
+            item.size = item.element === this.draggedShortcut.element ? this._dragPrimarySize : size(item.element);
+        });
+    }
+
+    /** One drag frame at the latest pointer (handleDragMove schedules it; handleDragEnd flushes it). */
+    applyDragFrame() {
+        if (!this.draggedShortcut || !this.isDragging || !this._dragPointer) return;
+        const { x: clientX, y: clientY } = this._dragPointer;
+        const vista = this.isVistaIconView();
+        if (!this._dragSizesFixed) this.readDragSizes();
+        // the grid's box for the older view's drop zone, read before this frame writes
+        const gridRect = !vista && this.dropZoneOverlay && this.gridContainer ? this.gridContainer.getBoundingClientRect() : null;
+
+        const containerRect = this._dragContainerRect;
         
         // Calculate new position relative to freeform container
         let newX = clientX - containerRect.left - this.dragOffset.x;
         let newY = clientY - containerRect.top - this.dragOffset.y;
 
         // Constrain primary position to container bounds
-        const elementRect = this.draggedShortcut.element.getBoundingClientRect();
+        const elementRect = this._dragPrimarySize;
         newX = Math.max(0, Math.min(newX, containerRect.width - elementRect.width));
         newY = Math.max(0, Math.min(newY, containerRect.height - elementRect.height));
 
@@ -3442,23 +3502,22 @@ class DesktopShortcutsManager {
         // Check if hovering over manual modal for reference shortcuts
         this.checkManualModalDrop(clientX, clientY);
 
-        if (this.isVistaIconView()) {
+        if (vista) {
             // Auto Arrange: where the icons will be inserted
-            this.updateInsertMark(clientX, clientY);
+            this.updateInsertMark(clientX, clientY, containerRect);
         } else {
             // Highlight drop placeholder if hovering over grid
-            this.highlightDropZone(newX, newY, containerRect);
+            this.highlightDropZone(newX, newY, containerRect, gridRect);
         }
 
-        // Folder drop target highlight + hold-to-folder gesture
-        const folderTarget = this.getFolderShortcutUnderPoint(clientX, clientY);
-        this.getAllShortcutElements().forEach((el) => {
-            el.classList.toggle('folder-drop-target', folderTarget && el.dataset.shortcutId === folderTarget.id);
-        });
+        // Folder drop target highlight + hold-to-folder gesture: one hit-test serves both
+        const underPoint = this.getShortcutUnderPoint(clientX, clientY);
+        const folderTarget = underPoint && underPoint.type === 'folder' ? underPoint : null;
+        this.markFolderDropTarget(folderTarget);
 
         // Vista's icon view has no hold-to-folder: pointing at an icon is how a reorder is aimed
         // (Create folder from selection stays in the icons' menu)
-        const hoverTarget = this.isVistaIconView() ? null : this.getShortcutUnderPoint(clientX, clientY);
+        const hoverTarget = vista ? null : underPoint;
         if (folderTarget && folderTarget.id !== this.draggedShortcut.shortcut.id) {
             this.clearFolderHoldTimer();
         } else if (hoverTarget && hoverTarget.id !== this.draggedShortcut.shortcut.id && hoverTarget.type !== 'folder') {
@@ -3483,6 +3542,20 @@ class DesktopShortcutsManager {
         } else if (!folderTarget) {
             this.clearFolderHoldTimer();
         }
+    }
+
+    /** .folder-drop-target on the icon(s) of the folder under the pointer: only the previous and the new target change. */
+    markFolderDropTarget(folderTarget) {
+        const id = folderTarget ? folderTarget.id : null;
+        const prev = this._folderDropEls;
+        if (prev && id === this._folderDropId && prev.every((el) => el.isConnected)) return;
+        const all = id || !prev ? this.getAllShortcutElements() : null;
+        const next = id ? all.filter((el) => el.dataset.shortcutId === id) : [];
+        if (prev) prev.forEach((el) => { if (!next.includes(el)) el.classList.remove('folder-drop-target'); });
+        else all.forEach((el) => { if (!next.includes(el) && el.classList.contains('folder-drop-target')) el.classList.remove('folder-drop-target'); });
+        next.forEach((el) => { if (!el.classList.contains('folder-drop-target')) el.classList.add('folder-drop-target'); });
+        this._folderDropEls = next;
+        this._folderDropId = id;
     }
     
     // Check if dragging over manual modal
@@ -3515,11 +3588,11 @@ class DesktopShortcutsManager {
     }
     
     // Highlight drop placeholder if hovering over grid area
-    highlightDropZone(x, y, freeformContainerRect) {
+    highlightDropZone(x, y, freeformContainerRect, knownGridRect) {
         if (!this.dropZoneOverlay || !this.draggedShortcut) return;
         
         // Check if icon intersects with grid area
-        const gridRect = this.gridContainer ? this.gridContainer.getBoundingClientRect() : null;
+        const gridRect = knownGridRect || (this.gridContainer ? this.gridContainer.getBoundingClientRect() : null);
         
         if (gridRect) {
             // Convert icon position (relative to freeform) to absolute screen coordinates
@@ -3556,6 +3629,13 @@ class DesktopShortcutsManager {
     // Handle drag end
     async handleDragEnd(event) {
         if (!this.draggedShortcut) return;
+
+        // the last move's frame goes on first: the drop reads the positions it writes
+        if (this._dragFrame) {
+            this.cancelDragFrame();
+            this.applyDragFrame();
+        }
+        this._dragPointer = null;
 
         if (this._dragDocumentController) {
             this._dragDocumentController.abort();

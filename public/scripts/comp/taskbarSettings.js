@@ -917,24 +917,51 @@
         windowCapture().then((wc) => { if (wc) wc.capture(modal); });
     }
 
-    /** The window's picture fitted to the preview box (a canvas at the screen's density). */
-    function thumbStill(wc, pic) {
-        const src = wc.composite(pic);
-        const rimPx = wc.RIM;
+    /** The preview's size for a picture: CSS pixels fitted to the box, the backing store at the screen's density. */
+    function thumbSize(pic) {
         const scale = Math.min(THUMB_BOX.w / pic.w, THUMB_BOX.h / pic.h);
         const w = Math.max(1, Math.round(pic.w * scale));
         const h = Math.max(1, Math.round(pic.h * scale));
         const dpr = Math.min(2, root.devicePixelRatio || 1);
-        const c = doc.createElement('canvas');
-        c.className = 'taskbar-thumb-still';
-        c.width = Math.round(w * dpr);
-        c.height = Math.round(h * dpr);
-        c.style.width = `${w}px`;
-        c.style.height = `${h}px`;
+        return { w, h, cw: Math.round(w * dpr), ch: Math.round(h * dpr) };
+    }
+
+    function drawThumb(c, wc, pic) {
+        const src = wc.composite(pic);
+        const rimPx = wc.RIM;
         const g = c.getContext('2d');
         g.imageSmoothingQuality = 'high';
         g.drawImage(src, rimPx, rimPx, src.width - 2 * rimPx, src.height - 2 * rimPx, 0, 0, c.width, c.height);
+    }
+
+    /** The window's picture fitted to the preview box (a canvas at the screen's density). */
+    function thumbStill(wc, pic) {
+        const size = thumbSize(pic);
+        const c = doc.createElement('canvas');
+        c.className = 'taskbar-thumb-still';
+        c.width = size.cw;
+        c.height = size.ch;
+        c.style.width = `${size.w}px`;
+        c.style.height = `${size.h}px`;
+        drawThumb(c, wc, pic);
         return c;
+    }
+
+    /** A new picture while the preview shows (a live window every THUMB_LIVE_MS): drawn into the canvas
+     *  already there when its size matches - no new canvas, no new body, no re-placing (a forced layout);
+     *  otherwise a new canvas goes in and the preview is placed again. */
+    function setThumbPicture(item, wc, pic) {
+        const body = thumb && thumb.querySelector('.taskbar-thumb-body');
+        const c = body && body.childElementCount === 1 && !body.classList.contains('is-icon') ? body.firstElementChild : null;
+        const size = thumbSize(pic);
+        if (c && c.tagName === 'CANVAS' && c.classList.contains('taskbar-thumb-still')
+            && c.width === size.cw && c.height === size.ch
+            && c.style.width === `${size.w}px` && c.style.height === `${size.h}px`) {
+            c.getContext('2d').clearRect(0, 0, c.width, c.height);
+            drawThumb(c, wc, pic);
+            return;
+        }
+        setThumbBody(item, thumbStill(wc, pic));
     }
 
     /** Vista's preview of a window with no picture yet: its icon. */
@@ -976,8 +1003,8 @@
                 thumbCopiedFor = modal;
                 thumbCopiedAt = performance.now();
                 if (thumbFor !== item) return;
-                if (pic) setThumbBody(item, thumbStill(wc, pic));
-            } else if (pic.overlays.length) setThumbBody(item, thumbStill(wc, pic));
+                if (pic) setThumbPicture(item, wc, pic);
+            } else if (pic.overlays.length) setThumbPicture(item, wc, pic);
             const live = pic && pic.overlays.length;
             thumbLiveTimer = setTimeout(() => {
                 thumbLiveTimer = 0;

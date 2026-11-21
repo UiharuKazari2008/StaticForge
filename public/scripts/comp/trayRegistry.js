@@ -56,8 +56,6 @@ const TRAY_POPUP_HIDE_KEY = 'desktop-tray-hidden-popups';
 const TRAY_ICON_OVERFLOW_KEY = 'desktop-tray-overflow-icons';
 const TRAY_POPUP_MIN_DEFAULT_MS = 8000;
 
-let traySyncing = false;
-
 function trayReadSet(key) {
     try {
         const raw = localStorage.getItem(key);
@@ -128,14 +126,40 @@ const TRAY_BEHAVIORS = ['inactive', 'hide', 'show'];
  * e.g. VZAccess Manager, #947) under their own ids and names.
  */
 function trayCatalogRows() {
-    const apps = typeof document === 'undefined' ? [] : Array.from(document.querySelectorAll('.taskbar-tray-icons > .melaton-app-tray-icon[id]'))
+    const apps = trayLive.appIconList()
         .map((el) => ({ id: el.id, label: String(el.title || el.dataset.melatonApp || el.id).split('\n')[0] }));
     return TRAY_ICON_CATALOG.concat(apps.filter((a) => !TRAY_ICON_CATALOG.some((row) => row.id === a.id)));
 }
 
-const trayActivity = new Map();
-let trayCollapseTimer = 0;
-let trayInactiveTimer = 0;
+// The notification area's state, one page global for all of it.
+const trayLive = {
+    // icon id -> when it last changed or was clicked (Hide when inactive)
+    activity: new Map(),
+    // the saved behaviours, read once and kept until a save here or in another tab (a sync asks for every icon's,
+    // many times a minute; trayBehaviorsSaved)
+    behaviorSource: null,
+    syncing: false,
+    collapseTimer: 0,
+    inactiveTimer: 0,
+    // The live area (the taskbar's, the first in <body>: Taskbar Properties draws id'd copies in its own
+    // .taskbar-tray-icons preview) and its program icons, kept until the area's children change (trayWatchIcons'
+    // root observer clears them): a sync asks on every tray change, no document-wide query each time (#998).
+    rootEl: null,
+    appIcons: null,
+    appIconsWatched: false,
+    root() {
+        if (typeof document === 'undefined') return null;
+        if (!this.rootEl || !this.rootEl.isConnected) this.rootEl = document.querySelector('.taskbar-tray-icons');
+        return this.rootEl;
+    },
+    appIconList() {
+        if (this.appIconsWatched && this.appIcons) return this.appIcons;
+        const root = this.root();
+        const list = root ? Array.from(root.children).filter((el) => el.id && el.classList.contains('melaton-app-tray-icon')) : [];
+        if (this.appIconsWatched) this.appIcons = list;
+        return list;
+    }
+};
 
 function trayReadBehaviors() {
     try {
@@ -146,10 +170,6 @@ function trayReadBehaviors() {
         return null;
     }
 }
-
-// the saved behaviours, read once and kept until a save here or in another tab (a sync asks
-// for every icon's, many times a minute)
-let trayBehaviorSource = null;
 
 // Yukimi (#945): icons that are not always shown are hidden by default. A save from before (version 1) stored the
 // old default, Hide when inactive, for every icon it listed: those entries go once, so the new default applies; the
@@ -167,20 +187,20 @@ function trayMigrateBehaviors(map) {
 }
 
 function trayBehaviorsSaved() {
-    if (!trayBehaviorSource) {
+    if (!trayLive.behaviorSource) {
         let legacy = null;
         const map = trayMigrateBehaviors(trayReadBehaviors());
         if (!map) {
             try { legacy = localStorage.getItem(TRAY_ICON_OVERFLOW_KEY) !== null ? trayReadSet(TRAY_ICON_OVERFLOW_KEY) : null; } catch (_) { /* private mode */ }
         }
-        trayBehaviorSource = { map, legacy };
+        trayLive.behaviorSource = { map, legacy };
     }
-    return trayBehaviorSource;
+    return trayLive.behaviorSource;
 }
 
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('storage', (ev) => {
-        if (!ev || ev.key === null || ev.key === TRAY_ICON_BEHAVIOR_KEY || ev.key === TRAY_ICON_OVERFLOW_KEY) trayBehaviorSource = null;
+        if (!ev || ev.key === null || ev.key === TRAY_ICON_BEHAVIOR_KEY || ev.key === TRAY_ICON_OVERFLOW_KEY) trayLive.behaviorSource = null;
     });
 }
 
@@ -209,7 +229,7 @@ function traySetIconBehaviors(behaviors) {
     try {
         localStorage.setItem(TRAY_ICON_BEHAVIOR_KEY, JSON.stringify(out));
     } catch (_) { /* private mode */ }
-    trayBehaviorSource = { map: out, legacy: null };
+    trayLive.behaviorSource = { map: out, legacy: null };
     traySyncOverflow();
 }
 
@@ -250,7 +270,7 @@ function trayNotePopup(id, label) {
 /** An icon changed or was clicked: it counts as active again (Hide when inactive). */
 function trayNoteActivity(id) {
     if (!id) return;
-    trayActivity.set(id, Date.now());
+    trayLive.activity.set(id, Date.now());
 }
 
 function trayHideInactiveEnabled() {
@@ -268,7 +288,7 @@ function trayIconTucked(id, el, now, hideInactive = trayHideInactiveEnabled()) {
     const behavior = trayIconBehavior(id);
     if (behavior === 'show') return false;
     if (behavior === 'hide') return true;
-    const seen = trayActivity.get(id);
+    const seen = trayLive.activity.get(id);
     return !seen || now - seen >= TRAY_INACTIVE_MS;
 }
 
@@ -304,15 +324,15 @@ function trayExpanded() {
 }
 
 function trayCancelCollapse() {
-    if (trayCollapseTimer) clearTimeout(trayCollapseTimer);
-    trayCollapseTimer = 0;
+    if (trayLive.collapseTimer) clearTimeout(trayLive.collapseTimer);
+    trayLive.collapseTimer = 0;
 }
 
 function trayScheduleCollapse() {
     trayCancelCollapse();
     if (!trayExpanded()) return;
-    trayCollapseTimer = setTimeout(() => {
-        trayCollapseTimer = 0;
+    trayLive.collapseTimer = setTimeout(() => {
+        trayLive.collapseTimer = 0;
         trayCloseOverflow();
     }, TRAY_COLLAPSE_MS);
 }
@@ -346,8 +366,8 @@ function trayToggleOverflow() {
 }
 
 function traySyncOverflow() {
-    if (traySyncing) return;
-    traySyncing = true;
+    if (trayLive.syncing) return;
+    trayLive.syncing = true;
     const now = Date.now();
     const hideInactive = trayHideInactiveEnabled();
     let any = false;
@@ -365,13 +385,13 @@ function traySyncOverflow() {
     trayClassToggle(btn, 'hidden', !any);
     if (!any) trayCloseOverflow();
     // an icon that is active now goes inactive later: look again then
-    if (waiting && !trayInactiveTimer) {
-        trayInactiveTimer = setTimeout(() => {
-            trayInactiveTimer = 0;
+    if (waiting && !trayLive.inactiveTimer) {
+        trayLive.inactiveTimer = setTimeout(() => {
+            trayLive.inactiveTimer = 0;
             traySyncOverflow();
         }, 30000);
     }
-    traySyncing = false;
+    trayLive.syncing = false;
 }
 
 /** Activity = a change to the icon's own classes (shown, state) or its tooltip text. */
@@ -392,19 +412,53 @@ function trayWatchIcons() {
     // every icon starts active: Vista shows a new icon before it can go inactive
     ids.forEach((id) => trayNoteActivity(id));
     // Only catalogued icons can tuck away: the WebSocket arrows (a flash per message) and the system
-    // icons change here all the time and never move the overflow (idle perf pass 2026-11-04)
+    // icons change here all the time and never move the overflow (idle perf pass 2026-11-04). So only those
+    // icons are observed (each with its own subtree), not the whole area: the arrows never wake this (#998).
     const obs = new MutationObserver((mutations) => {
         let relevant = false;
         mutations.forEach((m) => {
             const icon = m.target.closest && m.target.closest('.taskbar-tray-icon');
-            // (a program's own tray icon counts too: it comes and goes after this list was read, #947)
-            if (!icon || !(ids.has(icon.id) || (icon.id && icon.classList.contains('melaton-app-tray-icon'))) || TRAY_SYSTEM_ICON_IDS.includes(icon.id)) return;
+            if (!icon || !icon.isConnected || !trayIconWatchable(icon)) return;
             relevant = true;
             if (icon !== m.target || trayMutationIsActivity(m)) trayNoteActivity(icon.id);
         });
         if (relevant) traySyncOverflow();
     });
-    obs.observe(root, { subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['class', 'title'] });
+    const watched = new WeakSet();
+    // (a program's own tray icon counts too: it comes and goes after this list was read, #947)
+    function trayIconWatchable(el) {
+        return !!(el && el.id && el.classList && el.classList.contains('taskbar-tray-icon')
+            && (ids.has(el.id) || el.classList.contains('melaton-app-tray-icon')) && !TRAY_SYSTEM_ICON_IDS.includes(el.id));
+    }
+    function watchIcon(el) {
+        if (watched.has(el) || !trayIconWatchable(el)) return false;
+        watched.add(el);
+        obs.observe(el, { subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['class', 'title'] });
+        return true;
+    }
+    Array.from(root.children).forEach(watchIcon);
+    // icons added later (Melaton Messenger's, a program's tray()): watched from their arrival, active as they come;
+    // a move (trayOrder.js) removes and adds the same icon, which is neither
+    trayLive.appIconsWatched = true;
+    new MutationObserver((mutations) => {
+        trayLive.appIcons = null;
+        let changed = false;
+        mutations.forEach((m) => {
+            m.addedNodes.forEach((el) => {
+                if (el.nodeType === 1 && watchIcon(el)) {
+                    trayNoteActivity(el.id);
+                    changed = true;
+                }
+            });
+            m.removedNodes.forEach((el) => {
+                if (el.nodeType === 1 && !el.isConnected && watched.has(el)) {
+                    watched.delete(el);
+                    changed = true;
+                }
+            });
+        });
+        if (changed) traySyncOverflow();
+    }).observe(root, { childList: true });
     root.addEventListener('pointerdown', (ev) => {
         const icon = ev.target.closest('.taskbar-tray-icon');
         if (icon && ids.has(icon.id)) trayNoteActivity(icon.id);

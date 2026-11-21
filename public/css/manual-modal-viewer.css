@@ -566,13 +566,13 @@ body:not(.desktop-mode) #manualModal #unmaximizeManualBtn,
 }
 
 @container manual-modal (min-width: 1101px) {
-    .control-holder:has(#manualImg2ImgGroup.hidden) .gen-controls {
+    .control-holder:has(> #manualImg2ImgGroup.hidden) .gen-controls {
         justify-content: space-between;
         padding-left: var(--spacing-md);
         border-left: 1px solid var(--glass-border-4);
     }
 
-    .control-holder:has(#manualImg2ImgGroup.hidden) div#manualPendingRequestsSpinner {
+    .control-holder:has(> #manualImg2ImgGroup.hidden) div#manualPendingRequestsSpinner {
         position: absolute;
         top: -2.35rem;
         right: 0;
@@ -581,44 +581,44 @@ body:not(.desktop-mode) #manualModal #unmaximizeManualBtn,
         line-height: 0.9;
     }
 
-    .control-holder:has(#manualImg2ImgGroup.hidden) div#manualPendingRequestsSpinner.expanded {
+    .control-holder:has(> #manualImg2ImgGroup.hidden) div#manualPendingRequestsSpinner.expanded {
         margin: 0 0 0 var(--spacing-xs);
     }
 
-    .control-holder:has(#manualImg2ImgGroup.hidden) #manualGenerateBtn {
+    .control-holder:has(> #manualImg2ImgGroup.hidden) #manualGenerateBtn {
         padding: 0.25em 0.55em;
         min-width: 54px;
     }
 
-    .control-holder:has(#manualImg2ImgGroup.hidden) #manualGenerateBtn span {
+    .control-holder:has(> #manualImg2ImgGroup.hidden) #manualGenerateBtn span {
         display: none;
     }
 }
 
 @container manual-modal (min-width: 1651px) {
-    .control-holder:has(#manualImg2ImgGroup:not(.hidden)) .gen-controls {
+    .control-holder:has(> #manualImg2ImgGroup:not(.hidden)) .gen-controls {
         justify-content: space-between;
         padding-left: var(--spacing-md);
         border-left: 1px solid var(--glass-border-4);
     }
 
-    .control-holder:has(#manualImg2ImgGroup:not(.hidden)) div#manualPendingRequestsSpinner {
+    .control-holder:has(> #manualImg2ImgGroup:not(.hidden)) div#manualPendingRequestsSpinner {
         position: absolute;
         top: -26px;
         right: 0;
         z-index: 3;
     }
 
-    .control-holder:has(#manualImg2ImgGroup:not(.hidden)) div#manualPendingRequestsSpinner.expanded {
+    .control-holder:has(> #manualImg2ImgGroup:not(.hidden)) div#manualPendingRequestsSpinner.expanded {
         margin: 0 0 0 var(--spacing-xs);
     }
 
-    .control-holder:has(#manualImg2ImgGroup:not(.hidden)) #manualGenerateBtn {
+    .control-holder:has(> #manualImg2ImgGroup:not(.hidden)) #manualGenerateBtn {
         padding: 0.25em 0.55em;
         min-width: 54px;
     }
 
-    .control-holder:has(#manualImg2ImgGroup:not(.hidden)) #manualGenerateBtn span {
+    .control-holder:has(> #manualImg2ImgGroup:not(.hidden)) #manualGenerateBtn span {
         display: none;
     }
 }

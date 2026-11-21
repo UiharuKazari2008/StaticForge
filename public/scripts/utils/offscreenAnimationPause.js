@@ -113,6 +113,9 @@
         if (SKIP_ANIMATION[event.animationName]) return;
         const el = event.target;
         if (!el || el.nodeType !== 1) return;
+        // an end or cancel matters only to an element watched here (unwatchIfDone); one that starts a new loop
+        // fires animationstart for it (#998: every one-shot's end queued an idle pass with a getAnimations())
+        if (event.type !== 'animationstart' && !watched.has(el)) return;
         toCheck.add(el);
         if (!checkQueued) { checkQueued = true; whenIdle(runChecks); }
     }

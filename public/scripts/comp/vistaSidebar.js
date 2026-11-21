@@ -169,19 +169,43 @@ const vsbLoadImage = function (url) {
  * A hidden tab subscribes nothing. An unfocused window (another app in DeX, idle perf pass
  * 2026-11-04) drops the per-tick topics (host, system), so the dials and hosted gadgets stop
  * repainting until the window is back; weather, quotes, currency and feeds still arrive.
+ * `host` comes only when a whole percent moved (#998), so a quiet feed proves nothing: the tab subscribes
+ * again on the socket's `connected` event (a reconnect or a server restart), never on a watch timer.
  */
-const VSB_LIVE_WATCH_MS = 5000;
-
 const vsbLive = {
     users: new Map(),
     last: new Map(),
     sentKey: null,
     socket: null,
-    lastPushAt: 0,
     lastJson: new Map(),
+    delivered: new Map(), // owner -> the part object it got last (a user shown again catches up on the latest)
     syncTimer: null,
-    watchTimer: null,
-    bound: false
+    bound: false,
+    /** Hand a user its part. `system` carries `at` and so differs on every push: no JSON compare for it (#998). */
+    deliver(owner, key, onData, part) {
+        vsbLive.delivered.set(owner, part);
+        if (key !== 'system') {
+            // an unchanged figure repaints nothing
+            let json = null;
+            try { json = JSON.stringify(part); } catch (_) { json = null; }
+            if (json !== null && vsbLive.lastJson.get(owner) === json) return;
+            vsbLive.lastJson.set(owner, json);
+        }
+        try { onData(part); } catch (err) { console.warn('Sidebar live update failed:', err); }
+    },
+    active(isActive) {
+        if (!isActive) return true;
+        try { return !!isActive(); } catch (_) { return false; }
+    },
+    /** Users shown again get the latest part the tab holds, once (identity: nothing to do when they have it). */
+    catchUp() {
+        vsbLive.users.forEach(({ key, onData, isActive }, owner) => {
+            if (!vsbLive.last.has(key)) return;
+            const part = vsbLive.last.get(key);
+            if (vsbLive.delivered.get(owner) === part || !vsbLive.active(isActive)) return;
+            vsbLive.deliver(owner, key, onData, part);
+        });
+    }
 };
 
 const vsbLiveQuotesKey = (symbols) => (symbols || []).join(',');
@@ -251,14 +275,11 @@ const vsbLivePaused = function () {
 
 const vsbLiveSend = function (force) {
     vsbLive.syncTimer = null;
-    // the 5 s watch runs only while a gadget reads the feed and the page is seen (#890): it is looked at
-    // here, on every use, release and visibility change
     const unseen = document.hidden || vsbLiveCovered();
-    const watch = vsbLive.users.size > 0 && !unseen;
     // the device's own figures (CPU Meter, hosted gadgets on a device client) follow the same visibility
     if (window.melatonDevicePerf) window.melatonDevicePerf.wake();
-    if (watch && !vsbLive.watchTimer) vsbLive.watchTimer = setInterval(vsbLiveWatch, VSB_LIVE_WATCH_MS);
-    else if (!watch && vsbLive.watchTimer) { clearInterval(vsbLive.watchTimer); vsbLive.watchTimer = null; }
+    // a gadget shown again (another page, the Sidebar opened) starts from the latest figures the tab has
+    if (!unseen) vsbLive.catchUp();
     if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
     let topics = unseen ? { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
     if (!unseen && vsbLiveUnfocused()) topics = { ...topics, host: false, system: [] };
@@ -266,7 +287,6 @@ const vsbLiveSend = function (force) {
     if (!force && key === vsbLive.sentKey && vsbLive.socket === wsClient.ws) return;
     vsbLive.sentKey = key;
     vsbLive.socket = wsClient.ws;
-    vsbLive.lastPushAt = Date.now();
     // sidebar_live_subscribe: modules/ws/handlers/290-sidebarHandler.js
     wsClient.sendMessage('sidebar_live_subscribe', { topics }, false).catch(() => {
         vsbLive.sentKey = null;
@@ -284,48 +304,28 @@ const vsbLiveSync = function (force) {
 const vsbLiveOnPush = function (msg) {
     const data = msg && (msg.data || msg);
     if (!data) return;
-    vsbLive.lastPushAt = Date.now();
     vsbLive.users.forEach(({ key, onData, isActive }, owner) => {
-        if (isActive) {
-            try { if (!isActive()) return; } catch (_) { return; }
-        }
         const part = vsbLivePart(data, key);
         if (part === undefined) return;
+        // kept even for a user off screen: host is not pushed again until it moves (#998)
         vsbLive.last.set(key, part);
-        // an unchanged figure repaints nothing
-        let json = null;
-        try { json = JSON.stringify(part); } catch (_) { json = null; }
-        if (json !== null && vsbLive.lastJson.get(owner) === json) return;
-        vsbLive.lastJson.set(owner, json);
-        try { onData(part); } catch (err) { console.warn('Sidebar live update failed:', err); }
+        if (!vsbLive.active(isActive)) return;
+        vsbLive.deliver(owner, key, onData, part);
     });
-};
-
-/** A reconnect (new socket) or a server restart (no pushes) loses the subscription: send it again. */
-const vsbLiveWatch = function () {
-    if (!vsbLive.users.size || document.hidden) return;
-    if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
-    const quiet = Date.now() - vsbLive.lastPushAt > VSB_LIVE_WATCH_MS;
-    // unfocused, the per-tick topics are off on purpose: quiet proves nothing then
-    if (vsbLive.socket !== wsClient.ws || (quiet && !vsbLiveUnfocused() && vsbLiveTopicsTick())) vsbLiveSync(true);
-};
-
-/** Only host/system arrive every tick (2 s), so only they prove a dead feed by being quiet. */
-const vsbLiveTopicsTick = function () {
-    const t = vsbLiveTopics();
-    return t.host || t.system.length > 0;
 };
 
 const vsbLiveBind = function () {
     if (vsbLive.bound) return;
     vsbLive.bound = true;
+    const signal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
     // wsClient.on: public/scripts/websocket.js
     wsClient.on('sidebar_live', vsbLiveOnPush);
+    // a reconnect (new socket) or a server restart loses the subscription: send it again (no watch timer, #998)
+    wsClient.on('connected', () => { if (vsbLive.users.size) vsbLiveSync(true); }, { signal });
     document.addEventListener('visibilitychange', () => vsbLiveSync(true));
     // blur also fires when focus moves into a gadget iframe; vsbLivePaused reads hasFocus once it settles
     window.addEventListener('blur', () => setTimeout(() => vsbLiveSync(false), 0));
     window.addEventListener('focus', () => vsbLiveSync(false));
-    // the watch's interval starts with the first send (vsbLiveSend), once a gadget uses the feed
 };
 
 const vsbLiveUse = function (owner, spec, onData, isActive = null) {
@@ -333,20 +333,22 @@ const vsbLiveUse = function (owner, spec, onData, isActive = null) {
     const key = vsbLiveSpecKey(spec || {});
     vsbLive.users.set(owner, { spec: spec || {}, key, onData, isActive });
     vsbLive.lastJson.delete(owner);
-    vsbLiveSync(false);
-    // the server sends a slow topic once per refresh period per tab: a second gadget on the same
-    // key starts from the value the first one already got
+    vsbLive.delivered.delete(owner);
+    // the server sends a slow topic once per refresh period per tab (host only when it moves): a second
+    // gadget on the same key starts from the value the first one already got, shown or not
     if (vsbLive.last.has(key)) {
         const cached = vsbLive.last.get(key);
         setTimeout(() => {
             const user = vsbLive.users.get(owner);
-            if (user && user.onData === onData) onData(cached);
+            if (user && user.onData === onData && vsbLive.delivered.get(owner) !== cached) vsbLive.deliver(owner, key, onData, cached);
         }, 0);
     }
+    vsbLiveSync(false);
     return () => {
         if (vsbLive.users.get(owner) && vsbLive.users.get(owner).onData === onData) {
             vsbLive.users.delete(owner);
             vsbLive.lastJson.delete(owner);
+            vsbLive.delivered.delete(owner);
             vsbLiveSync(false);
         }
     };
@@ -422,6 +424,10 @@ const vsbHostedDef = (entry) => ({
     },
     apply: (inst) => vsbHostCall('apply', inst),
     destroy: (inst) => vsbHostCall('destroy', inst),
+    // System.Gadget.visibilityChanged (vistaGadgetHost.js vghVisibilitySync); nothing to tell before the host loaded
+    seen: (inst) => {
+        if (inst.vgh && window.vistaGadgetHost && typeof vistaGadgetHost.visibility === 'function') vistaGadgetHost.visibility(inst);
+    },
     form: entry.settings ? vsbHostedForm : null,
     menu: entry.picture ? [{ text: 'New Picture', action: 'vsb-hosted-picture' }] : undefined
 });
@@ -546,16 +552,21 @@ const vsbClockTick = function (inst) {
     clearTimeout(inst.timer);
     inst.timer = null;
     if (inst.destroyed || !inst.parts) return;
-    const shown = !vsbLivePaused() && vsbIsShown(inst) && document.documentElement.dataset.screenOff === undefined;
-    if (!shown) return; // drawn again in full by vsbClockSyncAll when it shows (nothing redraws unseen)
+    if (!vsb.seen(inst)) return; // drawn again in full by vsbClockSyncAll when it shows (nothing redraws unseen)
     const set = inst.g.settings;
     const { h, m, s } = vsbZoneTime(set.timeZone);
     const p = inst.parts;
+    // the string written last is kept on the hand: style.transform reads back in the browser's own
+    // shortest form ("rotate(12.5deg)"), so comparing with it never matched and every hand was written each tick
     const turn = (hand, deg) => {
         const t = `rotate(${deg.toFixed(2)}deg)`;
-        if (hand.style.transform !== t) hand.style.transform = t;
+        if (hand.vsbTurn !== t) {
+            hand.vsbTurn = t;
+            hand.style.transform = t;
+        }
     };
-    turn(p.h, ((h % 12) * 3600 + m * 60 + s) / 120);
+    // the hour hand in tenths of a degree: one write about every 12 s, at most 0.05 deg off (#998)
+    turn(p.h, Math.round(((h % 12) * 3600 + m * 60 + s) / 12) / 10);
     turn(p.m, (m * 60 + s) / 10);
     if (set.seconds) turn(p.s, s * 6);
     const title = `${set.name ? set.name + ' - ' : ''}${vsbPad2(h % 12 || 12)}:${vsbPad2(m)} ${h < 12 ? 'AM' : 'PM'}`;
@@ -565,11 +576,16 @@ const vsbClockTick = function (inst) {
     inst.timer = setTimeout(() => vsbClockTick(inst), wait + 15);
 };
 
-/** Every clock: after a visibility / focus change, the Sidebar opening or closing, a page flip. */
+/**
+ * Every gadget that draws on its own (a def's `seen` hook: clocks, Timer, Slide Show, Calendar, hosted
+ * gadgets): after a visibility / focus change, a screen saver or the screen, the Sidebar opening or
+ * closing, a page flip. Each hook is cheap when nothing changed (this also runs on pane resizes).
+ */
 const vsbClockSyncAll = function () {
     if (!vsb.instances) return;
     vsb.instances.forEach((inst) => {
-        if (inst.g && (inst.g.type === 'clock' || inst.g.type === 'hero') && inst.parts && inst.parts.s) vsbClockTick(inst);
+        if (inst.destroyed || !inst.def || typeof inst.def.seen !== 'function') return;
+        try { inst.def.seen(inst); } catch (err) { console.warn('[sidebar] gadget sync failed:', err); }
     });
 };
 
@@ -659,18 +675,24 @@ const vsbCalendarMount = function (inst) {
     vsbCalendarApply(inst);
 };
 
-const vsbCalendarApply = function (inst) {
-    vsbCalendarRender(inst);
+/**
+ * apply(inst) draws the calendar; apply(inst, true) (the midnight timeout, vsbClockSyncAll) turns the page
+ * when a new day began (today's page follows it), off screen it waits for the next sync (inst.today stays).
+ * One timeout to just after the next local midnight (it was a 60 s check, forever, #998); the syncs on every
+ * visibility / focus change and page flip cover sleep and clock or zone changes.
+ */
+const vsbCalendarApply = function (inst, newDay) {
+    if (inst.destroyed || !inst.parts) return;
+    const now = new Date();
+    if (newDay !== true) {
+        vsbCalendarRender(inst);
+    } else if (!vsbSameDay(now, inst.today || now) && !document.hidden && vsbIsShown(inst)) {
+        if (vsbSameDay(inst.shown, inst.today)) inst.shown = now;
+        vsbCalendarRender(inst);
+    }
     clearTimeout(inst.timer);
-    const tick = () => {
-        const now = new Date();
-        if (!vsbSameDay(now, inst.today || now)) {
-            if (vsbSameDay(inst.shown, inst.today)) inst.shown = now;
-            vsbCalendarRender(inst);
-        }
-        inst.timer = setTimeout(tick, 60000);
-    };
-    inst.timer = setTimeout(tick, 60000);
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    inst.timer = setTimeout(() => vsbCalendarApply(inst, true), Math.max(1000, midnight.getTime() - now.getTime() + 500));
 };
 
 const vsbCalendarDayHtml = function (d, isToday) {
@@ -740,6 +762,9 @@ const vsbCpuMount = function (inst) {
         ramText: vsbEl('div', 'vsb-cpu-text vsb-cpu-text-ram', cpu)
     };
     inst.metrics = { cpu: 0, ram: 0 };
+    // the tooltip is written when the pointer comes onto the meter and while it stays (#998), not on every figure
+    cpu.addEventListener('pointerenter', () => { inst.cpuHover = true; vsbCpuPaint(inst); });
+    cpu.addEventListener('pointerleave', () => { inst.cpuHover = false; });
     vsbCpuApply(inst);
     // a device client: the device's own load every 2 s while the gadget shows (#946), never the server's
     if (window.AndroidHardware && window.featureLoader) {
@@ -790,17 +815,26 @@ const vsbSetText = function (el, text) {
 const vsbCpuPaint = function (inst) {
     const p = inst.parts;
     const { cpu, ram } = inst.metrics;
-    // whole percents: a dial that would move less than a tick mark keeps its style untouched
-    const painted = `${Math.round(cpu)}:${Math.round(ram)}:${p.cpuDial.src}`;
-    if (inst.painted === painted) return;
-    inst.painted = painted;
-    p.cpuDial.style.transform = `rotate(${cpu * 2.5 - 125}deg)`;
-    p.ramDial.style.transform = `rotate(${ram * 2.5 - 125}deg)`;
-    vsbSetText(p.cpuText, vsbPad2(Math.round(cpu)) + '%');
-    vsbSetText(p.ramText, vsbPad2(Math.round(ram)) + '%');
-    p.cpuText.classList.toggle('is-full', Math.round(cpu) >= 100);
-    p.ramText.classList.toggle('is-full', Math.round(ram) >= 100);
-    p.cpu.title = `CPU usage: ${Math.round(cpu)}%\nMemory usage: ${Math.round(ram)}%`;
+    // whole percents: a dial that would move less than a tick mark keeps its style untouched. Each dial and
+    // its figure are written only when its own whole percent (or the dial's art) changed (#998), with the
+    // raw value as before
+    const dial = (which, el, text, value) => {
+        const pct = Math.round(value);
+        const key = `${pct}:${el.src}`;
+        if (inst[which] === key) return;
+        inst[which] = key;
+        el.style.transform = `rotate(${value * 2.5 - 125}deg)`;
+        vsbSetText(text, vsbPad2(pct) + '%');
+        const full = pct >= 100;
+        if (text.classList.contains('is-full') !== full) text.classList.toggle('is-full', full);
+    };
+    dial('paintedCpu', p.cpuDial, p.cpuText, cpu);
+    dial('paintedRam', p.ramDial, p.ramText, ram);
+    // the tooltip only while the pointer is on the meter (the same text when it shows)
+    if (inst.cpuHover) {
+        const title = `CPU usage: ${Math.round(cpu)}%\nMemory usage: ${Math.round(ram)}%`;
+        if (p.cpu.title !== title) p.cpu.title = title;
+    }
 };
 
 // ---------------------------------------------------------------- notes
@@ -1381,9 +1415,14 @@ const vsbSetFrameSearch = function (gadgetId, search) {
 
 const vsbSlideSchedule = function (inst) {
     clearTimeout(inst.timer);
+    inst.timer = null;
+    inst.slideDue = false;
     if (inst.paused || inst.destroyed) return;
     inst.timer = setTimeout(() => {
-        if (vsbLivePaused() || !vsbIsShown(inst)) vsbSlideSchedule(inst);
+        inst.timer = null;
+        // unseen: no re-arming every interval (that was a visibility poll, #998); the slide show's seen hook
+        // starts the interval again once the frame is seen
+        if (!vsb.seen(inst)) inst.slideDue = true;
         else vsbSlideStep(inst, 1);
     }, inst.g.settings.seconds * 1000);
 };
@@ -1760,33 +1799,42 @@ const vsbMailDate = function (iso) {
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
+/**
+ * The list's empty / error line and the rows (Mail and Sidebar Outlook), each written only on change: the
+ * rows' markup written last is kept on the list (#998: every mailbox push rebuilt them).
+ */
+const vsbMailBody = function (inst, rowsHtml) {
+    const p = inst.parts;
+    const html = rowsHtml === null ? '' : rowsHtml;
+    if (p.list.vsbHtml !== html) {
+        p.list.vsbHtml = html;
+        p.list.innerHTML = html;
+    }
+    if (rowsHtml === null) vsbSetText(p.message, inst.error ? 'Dovecote is not available' : (inst.g.settings.unreadOnly ? 'No unread messages' : 'No messages'));
+    if (p.message.classList.contains('hidden') !== (rowsHtml !== null)) p.message.classList.toggle('hidden', rowsHtml !== null);
+    if (p.up.disabled !== (inst.offset === 0)) p.up.disabled = inst.offset === 0;
+};
+
 const vsbMailPaint = function (inst) {
     const p = inst.parts;
     const size = vsbMailPageSize(inst);
-    p.box.style.setProperty('--vsb-mail-n', String(size));
+    if (p.box.style.getPropertyValue('--vsb-mail-n') !== String(size)) p.box.style.setProperty('--vsb-mail-n', String(size));
     const total = inst.mail.length;
     inst.offset = Math.max(0, Math.min(inst.offset, Math.max(0, total - 1) - (Math.max(0, total - 1) % size)));
-    p.unread.textContent = inst.unread ? `${inst.unread} unread` : '';
-    if (inst.error || !total) {
-        p.list.innerHTML = '';
-        p.message.textContent = inst.error ? 'Dovecote is not available' : (inst.g.settings.unreadOnly ? 'No unread messages' : 'No messages');
-        p.message.classList.remove('hidden');
-    } else {
-        p.message.classList.add('hidden');
-        p.list.innerHTML = inst.mail.slice(inst.offset, inst.offset + size).map((m) => {
-            const unread = m.read ? '' : ' is-unread';
-            const attached = m.attachments && m.attachments.length ? ' has-attachment' : '';
-            return `
+    vsbSetText(p.unread, inst.unread ? `${inst.unread} unread` : '');
+    vsbMailBody(inst, inst.error || !total ? null : inst.mail.slice(inst.offset, inst.offset + size).map((m) => {
+        const unread = m.read ? '' : ' is-unread';
+        const attached = m.attachments && m.attachments.length ? ' has-attachment' : '';
+        return `
             <button type="button" class="vsb-mail-item${unread}${attached}" data-mail-id="${escapeHtmlAttribute(String(m.id))}" title="${escapeHtmlAttribute(m.subject || '(no subject)')}">
                 <span class="vsb-mail-subject">${escapeHtml(m.subject || '(no subject)')}</span>
                 <span class="vsb-mail-meta"><span class="vsb-mail-from">${escapeHtml(vsbMailSender(m.from))}</span><span class="vsb-mail-date">${escapeHtml(vsbMailDate(m.createdAt))}</span></span>
             </button>`;
-        }).join('');
-    }
-    p.pos.textContent = total ? `${inst.offset + 1}-${Math.min(total, inst.offset + size)}/${total}` : '0';
-    p.pos.title = total ? `${inst.offset + 1}-${Math.min(total, inst.offset + size)} of ${total}` : '';
-    p.up.disabled = inst.offset === 0;
-    p.down.disabled = inst.offset + size >= total;
+    }).join(''));
+    vsbSetText(p.pos, total ? `${inst.offset + 1}-${Math.min(total, inst.offset + size)}/${total}` : '0');
+    const posTitle = total ? `${inst.offset + 1}-${Math.min(total, inst.offset + size)} of ${total}` : '';
+    if (p.pos.title !== posTitle) p.pos.title = posTitle;
+    if (p.down.disabled !== (inst.offset + size >= total)) p.down.disabled = inst.offset + size >= total;
     inst.painted = true;
 };
 
@@ -1795,6 +1843,8 @@ const vsbMailApplyPush = function (inst, data) {
     if (!data || !Array.isArray(data.mailboxes)) return false;
     // DESKTOP_DOVECOTE_HUMAN_OWNER: public/scripts/comp/desktop-apps/dovecote.js
     const owner = DESKTOP_DOVECOTE_HUMAN_OWNER;
+    // another mailbox changed (an agent's): this inbox and its count are as they were, nothing to paint or ask (#998)
+    if (Array.isArray(data.owners) && !data.owners.includes(owner)) return true;
     const mine = data.mailboxes.find((box) => box.owner === owner);
     const unreadOnly = inst.g.settings.unreadOnly === true;
     const rows = unreadOnly ? (data.unreadInbox && data.unreadInbox[owner]) : (data.inbox && data.inbox[owner]);
@@ -2261,10 +2311,15 @@ const vsbTimerStop = (inst) => {
     Object.values(inst.sounds).forEach((audio) => audio.pause());
 };
 
-const vsbTimerPlace = (ring, value) => {
-    ring.querySelectorAll('.vsb-timer-num').forEach((n) => {
+/** A ring's twelve numbers, placed only when its value or radius changed (the last pair is kept on the ring). */
+const vsbTimerPlace = (ring, value, radius) => {
+    const key = `${value}|${radius}`;
+    if (ring.vsbPlaced === key) return;
+    ring.vsbPlaced = key;
+    if (!ring.vsbNums) ring.vsbNums = Array.from(ring.querySelectorAll('.vsb-timer-num'));
+    ring.vsbNums.forEach((n) => {
+        if (n.dataset.radius !== radius) n.dataset.radius = radius;
         const base = Number(n.dataset.deg);
-        const radius = n.dataset.radius;
         const angle = base - value * 6;
         n.style.transform = `rotate(${angle}deg) translateY(-${radius}) rotate(${-angle}deg)`;
     });
@@ -2272,37 +2327,60 @@ const vsbTimerPlace = (ring, value) => {
 
 const vsbTimerPaint = function (inst) {
     const s = inst.g.settings;
+    const p = inst.parts;
     const running = s.endAt > Date.now();
     const left = running ? Math.max(0, (s.endAt - Date.now()) / 1000) : (s.mins * 60 + s.secs);
-    const mins = Math.min(60, left / 60);
+    // the minutes ring by whole seconds: a tenth of a degree a second (it moved 0.01 deg per 100 ms tick, #998)
+    const mins = Math.min(60, Math.round(left) / 60);
     const secs = left % 60;
     const radius = inst.g.docked ? ['22px', '34px'] : ['32px', '48px'];
-    inst.parts.secs.querySelectorAll('.vsb-timer-num').forEach((n) => { n.dataset.radius = radius[0]; });
-    inst.parts.mins.querySelectorAll('.vsb-timer-num').forEach((n) => { n.dataset.radius = radius[1]; });
-    vsbTimerPlace(inst.parts.secs, secs);
-    vsbTimerPlace(inst.parts.mins, mins);
+    vsbTimerPlace(p.secs, secs, radius[0]);
+    vsbTimerPlace(p.mins, mins, radius[1]);
     const show = `${vsbPad2(Math.floor(left / 60))}:${vsbPad2(Math.floor(left % 60))}`;
-    inst.parts.readout.textContent = show;
-    inst.parts.root.title = show;
-    inst.parts.root.classList.toggle('is-ringing', !!s.ringing && !running);
+    vsbSetText(p.readout, show);
+    if (p.root.title !== show) p.root.title = show;
+    const ringing = !!s.ringing && !running;
+    if (p.root.classList.contains('is-ringing') !== ringing) p.root.classList.toggle('is-ringing', ringing);
 };
 
-const vsbTimerArm = function (inst) {
+/**
+ * Seen: a tick every 100 ms turns the rings. Unseen (#998): one wake for the next five-second tick sound or
+ * the end, so the sounds and the alarm keep their time; its def's seen hook draws it in full when it shows.
+ */
+const vsbTimerArm = function (inst, seen = vsb.seen(inst)) {
     clearTimeout(inst.timer);
+    inst.timer = null;
+    inst.timerFast = false;
     if (inst.destroyed || inst.g.settings.ringing) return;
-    if (!(inst.g.settings.endAt > Date.now())) return;
-    inst.timer = setTimeout(() => vsbTimerTick(inst), 100);
+    const endAt = inst.g.settings.endAt;
+    if (!(endAt > Date.now())) return;
+    let wait = 100;
+    if (seen) {
+        inst.timerFast = true;
+    } else {
+        const left = (endAt - Date.now()) / 1000;
+        const sec = Math.ceil(left);
+        // as the first 100 ms tick would: the second it starts in rings nothing
+        if (inst.lastSec == null) inst.lastSec = sec;
+        // the next value of ceil(left) that rings the tick (a multiple of five), else the end
+        const next = sec - (sec % 5 || 5);
+        wait = Math.max(20, Math.ceil((next >= 5 ? left - next : left) * 1000) + 15);
+    }
+    inst.timer = setTimeout(() => vsbTimerTick(inst), wait);
 };
 
 const vsbTimerTick = function (inst) {
+    inst.timer = null;
+    if (inst.destroyed) return;
     const s = inst.g.settings;
+    const seen = vsb.seen(inst);
     const left = (s.endAt - Date.now()) / 1000;
     if (!(left > 0)) {
         s.endAt = 0;
         s.mins = 0;
         s.secs = 0;
         s.ringing = true;
-        vsbTimerPaint(inst);
+        if (seen) vsbTimerPaint(inst);
         vsbTimerSound(inst, 'done');
         vsbQueueSave();
         return;
@@ -2312,9 +2390,10 @@ const vsbTimerTick = function (inst) {
     inst.lastSec = sec;
     s.mins = Math.floor(left / 60);
     s.secs = Math.floor(left % 60);
-    vsbTimerPaint(inst);
-    vsbTimerArm(inst);
+    if (seen) vsbTimerPaint(inst);
+    vsbTimerArm(inst, seen);
 };
+
 
 const vsbTimerWind = function (inst, band, event) {
     if (event.button !== 0) return;
@@ -2480,22 +2559,14 @@ const vsbOutlookPaint = function (inst) {
     const size = vsbOutlookPage(inst);
     const total = inst.mail.length;
     inst.offset = Math.max(0, Math.min(inst.offset, Math.max(0, total - size)));
-    p.unread.textContent = inst.unread ? String(inst.unread) : '';
-    if (inst.error || !total) {
-        p.list.innerHTML = '';
-        p.message.textContent = inst.error ? 'Dovecote is not available' : (inst.g.settings.unreadOnly ? 'No unread messages' : 'No messages');
-        p.message.classList.remove('hidden');
-    } else {
-        p.message.classList.add('hidden');
-        p.list.innerHTML = inst.mail.slice(inst.offset, inst.offset + size).map((m) => `
+    vsbSetText(p.unread, inst.unread ? String(inst.unread) : '');
+    vsbMailBody(inst, inst.error || !total ? null : inst.mail.slice(inst.offset, inst.offset + size).map((m) => `
             <button type="button" class="vsb-out-item${m.read ? '' : ' is-unread'}" data-mail-id="${escapeHtmlAttribute(String(m.id))}">
                 <span class="vsb-out-from">${escapeHtml(vsbMailSender(m.from))}</span>
                 <span class="vsb-out-date">${escapeHtml(vsbMailDate(m.createdAt))}</span>
                 <span class="vsb-out-subject">${escapeHtml(m.subject || '(no subject)')}</span>
-            </button>`).join('');
-    }
-    p.up.disabled = inst.offset === 0;
-    p.down.disabled = inst.offset + size >= total;
+            </button>`).join(''));
+    if (p.down.disabled !== (inst.offset + size >= total)) p.down.disabled = inst.offset + size >= total;
     inst.painted = true;
 };
 
@@ -2969,10 +3040,15 @@ const vsbPeopleOptions = {
 
 // ---------------------------------------------------------------- gadget hooks
 
-Object.assign(VSB_GADGETS.calendar, { mount: vsbCalendarMount, apply: vsbCalendarApply });
+Object.assign(VSB_GADGETS.calendar, { mount: vsbCalendarMount, apply: (inst) => vsbCalendarApply(inst), seen: (inst) => vsbCalendarApply(inst, true) });
 Object.assign(VSB_GADGETS.calculator, { mount: vsbCalcMount, apply: vsbCalcPaint, form: vsbCalcOptions });
 Object.assign(VSB_GADGETS.clipboard, { mount: vsbClipMount, apply: vsbClipApply });
-Object.assign(VSB_GADGETS.clock, { mount: vsbClockMount, apply: vsbClockApply, form: vsbClockOptions });
+Object.assign(VSB_GADGETS.clock, {
+    mount: vsbClockMount,
+    apply: vsbClockApply,
+    form: vsbClockOptions,
+    seen: (inst) => { if (inst.parts && inst.parts.s) vsbClockTick(inst); }
+});
 Object.assign(VSB_GADGETS.contacts, { mount: vsbPeopleMount, apply: vsbPeoplePaint, form: vsbPeopleOptions });
 Object.assign(VSB_GADGETS.cpu, { mount: vsbCpuMount, apply: vsbCpuApply });
 Object.assign(VSB_GADGETS.currency, { mount: vsbFxMount, apply: vsbFxPaint, menu: [{ text: 'Refresh', action: 'vsb-refresh' }] });
@@ -2983,7 +3059,7 @@ Object.assign(VSB_GADGETS.feed, {
     form: vsbFeedOptions,
     menu: [{ text: 'Refresh', action: 'vsb-refresh' }]
 });
-Object.assign(VSB_GADGETS.hero, { mount: vsbClockMount, apply: vsbClockApply, form: vsbClockOptions });
+Object.assign(VSB_GADGETS.hero, { mount: vsbClockMount, apply: vsbClockApply, form: vsbClockOptions, seen: VSB_GADGETS.clock.seen });
 Object.assign(VSB_GADGETS.mail, {
     mount: vsbMailMount,
     apply: (inst) => vsbMailRefresh(inst),
@@ -3007,11 +3083,22 @@ Object.assign(VSB_GADGETS.stocks, {
 Object.assign(VSB_GADGETS.slideshow, {
     mount: vsbSlideMount,
     apply: vsbSlideApply,
+    // a frame whose picture came due while unseen waits one full interval from being seen
+    seen: (inst) => { if (inst.slideDue && !inst.paused && vsb.seen(inst)) vsbSlideSchedule(inst); },
     form: vsbSlideOptions,
     menu: vsbSlideMenu
 });
 Object.assign(VSB_GADGETS.weather, { mount: vsbWeatherMount, apply: vsbWeatherApply, form: vsbWeatherOptions });
-Object.assign(VSB_GADGETS.timer, { mount: vsbTimerMount, apply: vsbTimerApply });
+Object.assign(VSB_GADGETS.timer, {
+    mount: vsbTimerMount,
+    apply: vsbTimerApply,
+    // drawn in full when seen, and back to the 100 ms tick if it was waiting unseen
+    seen: (inst) => {
+        if (!inst.parts || !vsb.seen(inst)) return;
+        vsbTimerPaint(inst);
+        if (!inst.timerFast) vsbTimerArm(inst, true);
+    }
+});
 
 // ---------------------------------------------------------------- Mobile Device / Mobile Notifications (Yozora #827)
 // An ActiveSync phone on the Sidebar (desktop tabs: window.activeSync, kind computer). Mobile Device
@@ -3227,6 +3314,15 @@ Object.assign(VSB_GADGETS.mobilenotify, { mount: vsbMnotMount, apply: vsbMnotPai
 
 const vsbIsShown = function (inst) {
     return !!(vsb.state && vsb.state.enabled && !inst.el.classList.contains('hidden') && !(inst.g.docked && vsb.state.closed));
+};
+
+/**
+ * Shown and looked at: the gadget is on screen, the page is seen and focused, no screen saver covers the
+ * desktop and the screen is on (the DeX window). Gadgets that draw on their own (clocks, Timer, Slide Show,
+ * hosted gadgets' System.Gadget.visible) draw only then; vsbClockSyncAll draws them in full when it turns true.
+ */
+vsb.seen = function (inst) {
+    return !vsbLivePaused() && vsbIsShown(inst) && document.documentElement.dataset.screenOff === undefined;
 };
 
 const vsbCreateInstance = function (g) {

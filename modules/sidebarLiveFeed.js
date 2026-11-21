@@ -12,6 +12,11 @@
  * Only what the tab asked for is sent: `system` is a list of parts (cpu, memory, uptime, disks,
  * network, processes) and the packet's `system` carries just those fields plus `at`.
  *
+ * `host` (the CPU Meter's two dials) is sent only when its whole percents moved since the last one this
+ * subscription got (#998: an idle host sent the same figures every 2 s); the raw values still go out. A
+ * (re)subscribe sends it again on the next tick, so a tab that shows the meter again starts from fresh
+ * figures. The client resubscribes on the socket's `connected` event, not on a quiet feed.
+ *
  * Packet: { type: 'sidebar_live', data: { at, host?, system?, weather?, fx?: { 'EUR:USD': rate },
  *           quotes?: { 'AAPL,MSFT': { quotes } }, feeds?: { <url>: feed } } }
  */
@@ -171,7 +176,11 @@ async function tick() {
             if (!host) {
                 try { host = sidebarGadgets.getHostLoad(); } catch (_err) { host = null; }
             }
-            if (host) payload.host = host;
+            const hostKey = host ? `${Math.round(Number(host.cpu) || 0)}:${Math.round(Number(host.ram) || 0)}` : null;
+            if (host && hostKey !== sub.hostKey) {
+                payload.host = host;
+                sub.pendingHostKey = hostKey;
+            }
         }
         if (sub.topics.system.length && system) {
             const picked = { at: system.at };
@@ -187,11 +196,13 @@ async function tick() {
             }
         }
         if (!Object.keys(payload).length) continue;
-        // a backed-up socket skips this tick; the next one carries fresh figures anyway
+        // a backed-up socket skips this tick; the next one carries fresh figures anyway (host included:
+        // its key is kept only once a packet carrying it went out)
         if (typeof ws.bufferedAmount === 'number' && ws.bufferedAmount > MAX_BUFFERED_BYTES) continue;
         payload.at = now;
         try {
             ws.send(JSON.stringify({ type: 'sidebar_live', data: payload, timestamp: new Date(now).toISOString() }));
+            if (payload.host) sub.hostKey = sub.pendingHostKey;
         } catch (_err) {
             subscriptions.delete(ws);
         }
@@ -233,6 +244,8 @@ function subscribe(globalResources, ws, clientIP, rawTopics) {
     const sub = prev || { ws, sentAt: new Map(), ready: new Map(), inflight: new Set() };
     sub.clientIP = clientIP || null;
     sub.topics = topics;
+    // the next tick sends host figures even when they have not moved (the tab may show a meter again)
+    sub.hostKey = null;
     const keep = new Set(slowKeys(topics));
     for (const key of [...sub.sentAt.keys()]) if (!keep.has(key)) sub.sentAt.delete(key);
     for (const key of [...sub.ready.keys()]) if (!keep.has(key)) sub.ready.delete(key);

@@ -51,8 +51,7 @@
  "public/scripts/comp/agentClientBridge.js": {
   "owner-less-listener": 2,
   "owner-less-ws": 2,
-  "lost-interval": 1,
-  "page-global": 9
+  "page-global": 6
  },
  "public/scripts/comp/agentClientUpdateDialog.js": {
   "page-global": 2
@@ -106,9 +105,6 @@
  "public/scripts/comp/bracketGenerationApplet.js": {
   "owner-less-listener": 1,
   "page-global": 55
- },
- "public/scripts/comp/browsingSessions.js": {
-  "lost-interval": 1
  },
  "public/scripts/comp/bulkOperationsManager.js": {
   "page-global": 21
@@ -225,7 +221,7 @@
  "public/scripts/comp/desktop-apps/dovecote.js": {
   "owner-less-listener": 2,
   "owner-less-ws": 1,
-  "page-global": 286
+  "page-global": 285
  },
  "public/scripts/comp/desktop-apps/emotion.js": {
   "page-global": 45
@@ -656,8 +652,7 @@
   "page-global": 15
  },
  "public/scripts/comp/rootStateFlags.js": {
-  "owner-less-listener": 2,
-  "page-global": 2
+  "owner-less-listener": 2
  },
  "public/scripts/comp/runApplet.js": {
   "owner-less-listener": 1,
@@ -770,7 +765,7 @@
  },
  "public/scripts/comp/trayIndicators.js": {
   "owner-less-listener": 1,
-  "page-global": 26
+  "page-global": 25
  },
  "public/scripts/comp/trayRegistry.js": {
   "owner-less-listener": 2,
@@ -825,7 +820,7 @@
  "public/scripts/comp/vistaSidebar.js": {
   "owner-less-listener": 15,
   "owner-less-ws": 3,
-  "page-global": 251
+  "page-global": 249
  },
  "public/scripts/comp/walletTray.js": {
   "owner-less-listener": 2
@@ -838,7 +833,7 @@
  },
  "public/scripts/comp/windowControlsOverlay.js": {
   "owner-less-listener": 7,
-  "page-global": 8
+  "page-global": 4
  },
  "public/scripts/comp/windowGeometry.js": {
   "page-global": 1

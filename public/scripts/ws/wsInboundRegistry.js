@@ -2,17 +2,34 @@
 // Loaded before public/scripts/websocket.js.
 // Phases (wired in websocket.js handleMessage): pre → only (skip built-in) → triggerEvent/switch → post.
 
-const WS_INBOUND_DEV_FLAG = 'staticforge_dev_mode';
+// The dev-mode flag (localStorage staticforge_dev_mode), read once and again when it changes: another tab's write
+// (the storage event below) or this tab's toggle (serverManagement.toggleRuntimeDevMode calls
+// isWsInboundDevLogEnabled(true)). Every message with no handler read localStorage here.
+const wsInboundDevLogFlag = { key: 'staticforge_dev_mode', on: null };
 
 const wsInboundHandlers = [];
 const wsInboundHandlersById = new Map();
+// 'phase|type' -> the handlers for it (aliases included), highest priority first and in registration order among
+// equals (as the filter + sort per message did). Replaced, never changed in place, so a handler that registers or
+// unregisters during a dispatch does not change the list being walked.
+const wsInboundHandlersByKey = new Map();
 
-function isWsInboundDevLogEnabled() {
-    try {
-        return localStorage.getItem(WS_INBOUND_DEV_FLAG) === 'true';
-    } catch (_e) {
-        return false;
+function isWsInboundDevLogEnabled(refresh) {
+    if (refresh || wsInboundDevLogFlag.on === null) {
+        try {
+            wsInboundDevLogFlag.on = localStorage.getItem(wsInboundDevLogFlag.key) === 'true';
+        } catch (_e) {
+            wsInboundDevLogFlag.on = false;
+        }
     }
+    return wsInboundDevLogFlag.on;
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    // app-scope: allow page-lifetime shell registry (loaded once by app.html before websocket.js, never unloaded)
+    window.addEventListener('storage', (e) => {
+        if (e.key === null || e.key === wsInboundDevLogFlag.key) isWsInboundDevLogEnabled(true);
+    });
 }
 
 function wsInboundDevLog(message, detail) {
@@ -29,15 +46,6 @@ function normalizePhase(phase) {
     if (p === 'pre' || p === 'post' || p === 'only') return p;
     console.warn('[wsInboundRegistry] invalid phase, defaulting to post:', phase);
     return 'post';
-}
-
-function handlerMatchesType(entry, messageType) {
-    if (entry.type === messageType) return true;
-    if (!entry.alias) return false;
-    if (Array.isArray(entry.alias)) {
-        return entry.alias.includes(messageType);
-    }
-    return entry.alias === messageType;
 }
 
 /**
@@ -84,6 +92,17 @@ function registerWsInboundHandler(options) {
 
     wsInboundHandlers.push(entry);
     wsInboundHandlersById.set(id, entry);
+    // the 'phase|type' keys this entry answers: its type and its aliases, each once
+    const types = new Set([entry.type]);
+    if (Array.isArray(entry.alias)) entry.alias.forEach((a) => types.add(a));
+    else if (entry.alias) types.add(entry.alias);
+    const keys = Array.from(types, (t) => `${phase}|${t}`);
+    for (const key of keys) {
+        const list = (wsInboundHandlersByKey.get(key) || []).concat(entry);
+        // stable: equal priorities stay in registration order
+        list.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+        wsInboundHandlersByKey.set(key, list);
+    }
 
     wsInboundDevLog('registered', { id, type: entry.type, phase: entry.phase, priority: entry.priority });
 
@@ -95,6 +114,13 @@ function registerWsInboundHandler(options) {
         if (wsInboundHandlersById.get(id) === entry) {
             wsInboundHandlersById.delete(id);
         }
+        for (const key of keys) {
+            const list = wsInboundHandlersByKey.get(key);
+            if (!list || !list.includes(entry)) continue;
+            const rest = list.filter((e) => e !== entry);
+            if (rest.length) wsInboundHandlersByKey.set(key, rest);
+            else wsInboundHandlersByKey.delete(key);
+        }
         wsInboundDevLog('unregistered', { id });
     };
 }
@@ -104,14 +130,13 @@ function dispatchWsInbound(message, wsClient, phase) {
 
     const dispatchPhase = normalizePhase(phase);
     const messageType = message.type;
-    const matching = wsInboundHandlers.filter((entry) => entry.phase === dispatchPhase && handlerMatchesType(entry, messageType));
+    // kept sorted by registerWsInboundHandler (it filtered ~73 handlers and sorted per phase per message)
+    const matching = wsInboundHandlersByKey.get(`${dispatchPhase}|${messageType}`);
 
-    if (matching.length === 0) {
+    if (!matching) {
         wsInboundDevLog('no handlers', { type: messageType, phase: dispatchPhase });
         return false;
     }
-
-    matching.sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
     for (const entry of matching) {
         try {

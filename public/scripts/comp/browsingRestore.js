@@ -408,12 +408,14 @@
 
     /** The first Grimoire window of this load asks, when startup did not (showAtStartup off). */
     function hookGrimoireOpen() {
-        let tries = 0;
+        // Grimoire's class arrives with its feature: wait for featureLoader's event (it was a 1 s poll for
+        // up to 20 minutes, the busiest timer on an idle desktop, #998)
+        const onFeature = () => { if (hook()) document.removeEventListener('melaton:feature-loaded', onFeature); };
         const hook = () => {
             // eslint-disable-next-line no-undef
             const Cls = typeof TagWikiSearchModal !== 'undefined' ? TagWikiSearchModal : null;
-            if (!Cls) { if (tries++ < 1200) setTimeout(hook, 1000); return; }
-            if (Cls.prototype._browsingRestoreHooked) return;
+            if (!Cls) return false;
+            if (Cls.prototype._browsingRestoreHooked) return true;
             const open = Cls.prototype.open;
             Cls.prototype._browsingRestoreHooked = true;
             Cls.prototype.open = function (...args) {
@@ -424,8 +426,9 @@
                 }
                 return out;
             };
+            return true;
         };
-        hook();
+        if (!hook()) document.addEventListener('melaton:feature-loaded', onFeature);
     }
 
     function onReady(info) {

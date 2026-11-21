@@ -781,7 +781,7 @@ body:not(.windows-classic-theme) :is(#manualModal, .text-replacement-manager-con
 }
 
 /* with Dynamic Generation on, the box has no bottom edge: the strip below carries it */
-body:not(.windows-classic-theme) #manualModal .prompt-tabs:has(#dynamicGenerationGroup:not(.hidden)) .prompt-textarea-container:not(.textarea-focused)::after {
+body:not(.windows-classic-theme) #manualModal .prompt-tabs:has(> #dynamicGenerationGroup:not(.hidden)) .prompt-textarea-container:not(.textarea-focused)::after {
     clip-path: inset(-4px -4px 0 -4px);
     border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
 }
@@ -1130,7 +1130,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#manualModal, .text-replacemen
 }
 
 /* with Dynamic Generation on, the strip below carries the bottom edge */
-body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-tabs:has(#dynamicGenerationGroup:not(.hidden)) .prompt-textarea-container .prompt-textarea-toolbar {
+body.desktop-mode:not(.windows-classic-theme) #manualModal .prompt-tabs:has(> #dynamicGenerationGroup:not(.hidden)) .prompt-textarea-container .prompt-textarea-toolbar {
     margin-bottom: 0;
     border-bottom: 0;
     border-radius: 0;

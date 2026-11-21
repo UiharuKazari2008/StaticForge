@@ -1801,7 +1801,8 @@ function updateDesktopPointerGesture(e) {
     if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts?.isDragging) {
         desktopPointerGesture.contentDrag = true;
     }
-    if (document.querySelector('.explorer-item-drag-active')) {
+    // once set it stays set; a live class list, not a whole-document query per mousemove (#998)
+    if (!desktopPointerGesture.contentDrag && document.getElementsByClassName('explorer-item-drag-active').length) {
         desktopPointerGesture.contentDrag = true;
     }
 }
@@ -2704,7 +2705,9 @@ function setActiveWindow(modalId) {
         if (modalDialogs.isPalette(modal)) {
             // Tool windows don't remove active class from main window
             // Just add active class to this tool window
-            modal.classList.add('active-window');
+            // classList.add of a class it already has still rewrites the class attribute: every class observer
+            // (rootStateFlags, aeroGlass, windowCapture, the traffic arrows) ran again on each click in the active window (#998)
+            if (!modal.classList.contains('active-window')) modal.classList.add('active-window');
             currentActiveWindowId = modal.id;
             // Don't update mainActiveWindowId - preserve the main window's active state
         } else {
@@ -2726,15 +2729,13 @@ function setActiveWindow(modalId) {
                 }
             });
 
-            // Set new active window
-            modal.classList.add('active-window');
+            // Set new active window (only if it is not already: see the palette branch above)
+            if (!modal.classList.contains('active-window')) modal.classList.add('active-window');
             currentActiveWindowId = modal.id;
             mainActiveWindowId = modal.id; // Update main active window
 
             // Linked tool windows (e.g. Jump Index) share focus with the parent so overlays stay pass-through and both stay scrollable.
-            linkedToolWindows.forEach((tw) => {
-                tw.classList.add('active-window');
-            });
+            linkedToolWindows.forEach((tw) => { if (!tw.classList.contains('active-window')) tw.classList.add('active-window'); });
 
             // Update usage stack for main windows
             updateWindowUsageStack(modal);
@@ -2946,9 +2947,9 @@ function handleModalDragStart(e) {
     // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
 
-    // Keep attributes for non-hot-path readers (backdrop, layout refresh, virtual keyboard)
-    modal.setAttribute('data-dragging', 'true');
-    setWindowInteractionPaintLock(true);
+    // data-dragging and the paint lock wait for the pointer to move (handleModalDrag): a press on a
+    // caption is mostly a click to focus, and both restyle the page (body.is-window-dragging reaches every
+    // desktop icon and window interior; ~100 ms of style per focus click, #998)
     modal.setAttribute('data-drag-start-x', clientX);
     modal.setAttribute('data-drag-start-y', clientY);
 
@@ -2994,6 +2995,7 @@ function handleModalDragStart(e) {
         previewOffsetY: modalStartOffsetY,
         moved: modal.hasAttribute('data-modal-moved'),
         pendingMaximizeRestore,
+        locked: false,
         rafId: 0,
         pendingVisual: null
     };
@@ -3080,11 +3082,23 @@ function handleModalDrag(e, draggedModal) {
 
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const pointerMoved = clientX !== session.startX || clientY !== session.startY;
 
     if (session.pendingMaximizeRestore) {
         if (Math.hypot(clientX - session.startX, clientY - session.startY) < MAXIMIZED_DRAG_RESTORE_THRESHOLD_PX) {
             return;
         }
+    } else if (!session.locked && !pointerMoved) {
+        return;
+    }
+    if (!session.locked) {
+        // Keep attributes for non-hot-path readers (backdrop, layout refresh, virtual keyboard) and hide the
+        // other windows' interiors: from the first move of a caption drag, not the press (#998)
+        session.locked = true;
+        draggedModal.setAttribute('data-dragging', 'true');
+        setWindowInteractionPaintLock(true);
+    }
+    if (session.pendingMaximizeRestore) {
         restoreMaximizedModalUnderPointer(session, clientX, clientY);
     }
 
@@ -3175,12 +3189,20 @@ function handleModalDragEnd(e, draggedModal) {
         titleBar.classList.remove('dragging');
     }
 
-    // Press and release on a maximized caption without moving: nothing to commit
-    if (session && session.pendingMaximizeRestore) {
+    // Press and release on a caption without moving (a maximized one included): nothing moved, nothing
+    // to commit, and the drag lock was never taken (#998)
+    if (session && (session.pendingMaximizeRestore || !session.locked)) {
         activeModalInteraction = null;
+        if (session.livePreview) {
+            hideWindowFrame();
+            draggedModal.removeAttribute('data-preview-offset-x');
+            draggedModal.removeAttribute('data-preview-offset-y');
+        }
         clearModalDragTransform(draggedModal);
-        draggedModal.removeAttribute('data-dragging');
-        setWindowInteractionPaintLock(false);
+        if (session.locked) {
+            draggedModal.removeAttribute('data-dragging');
+            setWindowInteractionPaintLock(false);
+        }
         draggedModal.removeAttribute('data-drag-start-x');
         draggedModal.removeAttribute('data-drag-start-y');
         draggedModal.removeAttribute('data-modal-start-offset-x');
@@ -3553,8 +3575,6 @@ function handleModalResizeEnd(e, resizedModal) {
 
 function openModal(modal) {
     if (!modal) return;
-    // State-flag classes (e.g. .window-has-caption = the Vista frame inset) before anything measures it
-    window.syncRootStateFlags?.(modal);
     ensureModalApplicationIcon(modal);
     // Start decoding this window's art if no launcher warmed it yet (assetPreload.js, Yozora #518)
     if (modal.id && window.assetPreload && assetPreload.warmWindow) assetPreload.warmWindow(modal.id);
@@ -3583,6 +3603,10 @@ function openModal(modal) {
         }
         return;
     }
+
+    // State-flag classes (e.g. .window-has-caption = the Vista frame inset) before anything measures it.
+    // Not for a window already open: its flags are kept by the observer, and this re-ran every page flag (#998)
+    window.syncRootStateFlags?.(modal);
 
     // Check if modal is soft-opened (has hidden-alt class)
     // If so, remove hidden-alt and proceed with normal opening animation
@@ -4052,11 +4076,13 @@ function bumpModalZIndexToFront(modal) {
         return;
     }
 
-    const zIndex = maxZ + MODAL_Z_INCREMENT;
-    modal.setAttribute('data-modal-z-index', String(zIndex));
-    modal.setAttribute('data-modal-stack-position', String(modalStack.length));
-    modal.style.zIndex = zIndex;
-    if (modalDialogs.keepsActiveOnTop(modal)) {
+    const zIndex = String(maxZ + MODAL_Z_INCREMENT);
+    const position = String(modalStack.length);
+    // written only when it moved (see updateModalStackZIndexes)
+    if (modal.getAttribute('data-modal-z-index') !== zIndex) modal.setAttribute('data-modal-z-index', zIndex);
+    if (modal.getAttribute('data-modal-stack-position') !== position) modal.setAttribute('data-modal-stack-position', position);
+    if (modal.style.zIndex !== zIndex) modal.style.zIndex = zIndex;
+    if (modalDialogs.keepsActiveOnTop(modal) && !modal.classList.contains('active-window')) {
         modal.classList.add('active-window');
     }
 }
@@ -4099,9 +4125,11 @@ function bringModalToFront(modal) {
 
     const modalIndex = modalStack.indexOf(modal);
     // Already top of stack — only refresh active/taskbar state
+    // setActiveWindow ends with updateTaskbarActiveStates for a window (#998: it ran twice per click)
+    const refreshesTaskbar = !!(modal.classList && modal.classList.contains('modal'));
     if (modalIndex !== -1 && modalIndex === modalStack.length - 1) {
         setActiveWindow(modal);
-        updateTaskbarActiveStates();
+        if (!refreshesTaskbar) updateTaskbarActiveStates();
         return;
     }
 
@@ -4114,10 +4142,20 @@ function bringModalToFront(modal) {
     setActiveWindow(modal);
 
     // Update taskbar active states only (lightweight, no DOM recreation)
-    updateTaskbarActiveStates();
+    if (!refreshesTaskbar) updateTaskbarActiveStates();
 }
 
 function updateModalStackZIndexes(options) {
+    // A window's stacking place: written only when it moved. The same value set again still queues a mutation
+    // record, and windowCapture marks every window whose attributes changed dirty, so each open or close made
+    // the next taskbar hover or Flip 3D copy every window again (#998).
+    function setModalStackPlace(modal, zIndex, position) {
+        const z = String(zIndex);
+        const pos = String(position);
+        if (modal.getAttribute('data-modal-z-index') !== z) modal.setAttribute('data-modal-z-index', z);
+        if (modal.getAttribute('data-modal-stack-position') !== pos) modal.setAttribute('data-modal-stack-position', pos);
+        if (modal.style.zIndex !== z) modal.style.zIndex = z;
+    }
     pruneDetachedModals();
     const opts = options || {};
     // Separate modals into regular and on-top groups
@@ -4134,19 +4172,13 @@ function updateModalStackZIndexes(options) {
 
     // Assign z-indexes to regular modals first (bottom to top)
     regularModals.forEach((modal, index) => {
-        const zIndex = MODAL_Z_BASE + (index * MODAL_Z_INCREMENT);
-        modal.setAttribute('data-modal-z-index', zIndex);
-        modal.setAttribute('data-modal-stack-position', index + 1);
-        modal.style.zIndex = zIndex;
+        setModalStackPlace(modal, MODAL_Z_BASE + (index * MODAL_Z_INCREMENT), index + 1);
     });
 
     // Assign z-indexes to on-top modals
     // Most recent modals (at end of array) get higher z-indexes
     onTopModals.forEach((modal, index) => {
-        const zIndex = MODAL_Z_ON_TOP_BASE + (index * MODAL_Z_INCREMENT);
-        modal.setAttribute('data-modal-z-index', zIndex);
-        modal.setAttribute('data-modal-stack-position', regularModals.length + index + 1);
-        modal.style.zIndex = zIndex;
+        setModalStackPlace(modal, MODAL_Z_ON_TOP_BASE + (index * MODAL_Z_INCREMENT), regularModals.length + index + 1);
     });
 
     // On-top palettes stay active (doesn't affect taskbar)
@@ -5320,8 +5352,9 @@ function updateTaskbarWindows() {
             }
 
             if (groupItem) {
-                // Update existing group item - FORCE update everything
-                groupItem.dataset.groupedModals = JSON.stringify(modalIds);
+                // Update existing group item: only what changed (the same value again still makes a mutation record, #998)
+                const groupedJson = JSON.stringify(modalIds);
+                if (groupItem.dataset.groupedModals !== groupedJson) groupItem.dataset.groupedModals = groupedJson;
 
                 // Toggle state in place — preserve entering/leaving animation classes
                 syncTaskbarItemStateClasses(groupItem, hasActive && !allMinimised, allMinimised);
@@ -5337,7 +5370,7 @@ function updateTaskbarWindows() {
                         content.appendChild(countBadge);
                     }
                 }
-                if (countBadge) {
+                if (countBadge && countBadge.textContent !== String(modals.length)) {
                     countBadge.textContent = modals.length;
                 }
             } else {
@@ -5850,8 +5883,8 @@ function ensureModalApplicationIcon(modal) {
     const current = main.querySelector(':scope > img[data-inherited-icon]');
     if (modal.dataset.vistaDialog === 'message' || modal.dataset.captionIcon === 'none') {
         if (current) current.remove();
-        if (imageIcon) modal.dataset.taskbarIcon = imageIcon;
-        else delete modal.dataset.taskbarIcon;
+        // the same value again still makes a mutation record (vistaDialogs.js calls this on every re-tag, #998)
+        if (imageIcon) { if (modal.dataset.taskbarIcon !== imageIcon) modal.dataset.taskbarIcon = imageIcon; } else delete modal.dataset.taskbarIcon;
         return;
     }
     delete modal.dataset.taskbarIcon;
@@ -9878,7 +9911,7 @@ function showWindowFrameForModal(modal) {
 
 function hideWindowFrame() {
     const frame = cachedWindowFrameEl || document.getElementById('modalDragResizeFrame');
-    if (frame) {
+    if (frame && !frame.classList.contains('hidden')) {
         frame.classList.add('hidden');
     }
 }

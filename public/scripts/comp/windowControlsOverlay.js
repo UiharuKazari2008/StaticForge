@@ -409,6 +409,15 @@ const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
             const target = mutation.target;
+            // A style write on <html> can only move these values through its own declarations of them.
+            // Compare those first: getComputedStyle(<html>) after a style write restyles the whole page,
+            // and the desktop writes other variables on <html> many times a boot (226 ms of it, #998).
+            const inline = target.style;
+            const inlineKey = inline.getPropertyValue('--titlebar-area-x') + '|' + inline.getPropertyValue('--titlebar-area-height')
+                + '|' + inline.getPropertyValue('--caption-bar-height') + '|' + inline.getPropertyValue('--caption-bar-left')
+                + '|' + inline.getPropertyValue('--caption-bar-right');
+            if (target._lastInlineTitlebarKey === inlineKey) return;
+            target._lastInlineTitlebarKey = inlineKey;
             const style = getComputedStyle(target);
             const currentX = style.getPropertyValue('--titlebar-area-x');
             const currentHeight = style.getPropertyValue('--titlebar-area-height');

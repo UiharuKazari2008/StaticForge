@@ -79,9 +79,7 @@ class BannerManager {
         // Melaton Mobile has no ticker (the WM shell shows its own status): no class and text writes
         // into hidden elements, no hide timers (#849)
         if (window.uiShell === 'mobile') return;
-        const tickers = document.querySelectorAll('.websocket-ticker');
-        const tickerIcons = document.querySelectorAll('.websocket-ticker-icon');
-        const tickerTexts = document.querySelectorAll('.websocket-ticker-text');
+        const { tickers, icons: tickerIcons, texts: tickerTexts } = this.tickerElements();
 
         if (tickers.length === 0 || tickerIcons.length === 0 || tickerTexts.length === 0) {
             console.warn('WebSocket ticker elements not found');
@@ -93,16 +91,7 @@ class BannerManager {
             clearTimeout(this.tickerHideTimeout);
         }
 
-        // Update all ticker elements
-        tickers.forEach(ticker => {
-            ticker.className = `websocket-ticker expanded ${status}`;
-        });
-        tickerIcons.forEach(icon => {
-            icon.className = `fas websocket-ticker-icon ${iconClass}`;
-        });
-        tickerTexts.forEach(text => {
-            text.textContent = message;
-        });
+        this._writeTicker(tickers, tickerIcons, tickerTexts, status, message, iconClass);
 
         // Auto-hide if requested
         if (autoHide) {
@@ -117,29 +106,49 @@ class BannerManager {
     }
 
     updateWebSocketTicker(status, message, iconClass = 'fas fa-info-circle') {
-        const tickers = document.querySelectorAll('.websocket-ticker');
-        const tickerIcons = document.querySelectorAll('.websocket-ticker-icon');
-        const tickerTexts = document.querySelectorAll('.websocket-ticker-text');
+        const { tickers, icons: tickerIcons, texts: tickerTexts } = this.tickerElements();
 
         if (tickers.length === 0 || tickerIcons.length === 0 || tickerTexts.length === 0) {
             return;
         }
 
-        // Update all ticker elements
-        tickers.forEach(ticker => {
-            ticker.className = `websocket-ticker expanded ${status}`;
-        });
-        tickerIcons.forEach(icon => {
-            icon.className = `fas websocket-ticker-icon ${iconClass}`;
-        });
-        tickerTexts.forEach(text => {
-            text.textContent = message;
-        });
+        this._writeTicker(tickers, tickerIcons, tickerTexts, status, message, iconClass);
+    }
+
+    /**
+     * The ticker, icon and text elements (all part of app.html): one lookup, repeated only while a list is empty or
+     * its first element has gone (as WebSocketClient._tickerBadges). Every request start, cycle step and pong used to
+     * run three document-wide querySelectorAll calls here.
+     */
+    tickerElements() {
+        const c = this._tickerEls;
+        if (c && c.tickers.length && c.icons.length && c.texts.length
+            && c.tickers[0].isConnected && c.icons[0].isConnected && c.texts[0].isConnected) return c;
+        this._tickerEls = {
+            tickers: Array.from(document.querySelectorAll('.websocket-ticker')),
+            icons: Array.from(document.querySelectorAll('.websocket-ticker-icon')),
+            texts: Array.from(document.querySelectorAll('.websocket-ticker-text'))
+        };
+        return this._tickerEls;
+    }
+
+    /** Expanded ticker with this status, icon and text; an identical write is skipped (it still costs a style pass). */
+    _writeTicker(tickers, tickerIcons, tickerTexts, status, message, iconClass) {
+        const tickerClass = `websocket-ticker expanded ${status}`;
+        const iconClassName = `fas websocket-ticker-icon ${iconClass}`;
+        const text = String(message == null ? '' : message);
+        for (const ticker of tickers) if (ticker.className !== tickerClass) ticker.className = tickerClass;
+        for (const icon of tickerIcons) if (icon.className !== iconClassName) icon.className = iconClassName;
+        for (const el of tickerTexts) {
+            // setTextIfChanged: public/scripts/utils/domWrite.js (a lone Text node is edited in place)
+            if (typeof setTextIfChanged === 'function') setTextIfChanged(el, text);
+            else if (el.textContent !== text) el.textContent = text;
+        }
     }
 
     hideWebSocketTicker() {
         if (window.uiShell === 'mobile') return;
-        const tickers = document.querySelectorAll('.websocket-ticker');
+        const tickers = this.tickerElements().tickers;
 
         if (tickers.length === 0) {
             return;
@@ -151,694 +160,696 @@ class BannerManager {
             this.tickerHideTimeout = null;
         }
 
-        // Hide all ticker elements
+        // Hide all ticker elements (a collapsed one is left alone: no mutation record)
         tickers.forEach(ticker => {
-            ticker.classList.remove('expanded');
+            if (ticker.classList.contains('expanded')) ticker.classList.remove('expanded');
         });
     }
 
+    // One frozen table for the whole page (formatRequestType used to build this 578-entry object on every call:
+    // every ticker update and pending-request label)
+    static REQUEST_TYPE_NAMES = Object.freeze({
+        // Core image operations
+        'generate_image': 'Generate Image',
+        'upscale_image': 'Upscale Image',
+        'local_upscale_status': 'Ruiko Upscaler',
+        'animate_image': 'Animate Image',
+        'local_animate_status': 'Ruiko Animate',
+        'remote_workers_status': 'Remote Workers',
+        'reroll_image': 'Recast Spell',
+        'expand_image': 'Expand Canvas',
+        'preview_expand_image_prompt': 'Preview Expand Prompt',
+        'reroll_expanded_image': 'Recast Spell',
+
+        // Preset operations
+        'search_presets': 'Find Presets',
+        'load_preset': 'Load Preset',
+        'save_preset': 'Save Preset',
+        'delete_preset': 'Delete Preset',
+        'get_presets': 'Get Presets',
+        'update_preset': 'Update Preset',
+        'generate_preset': 'Generate Preset',
+        'regenerate_preset_uuid': 'Regenerate Preset',
+
+        // Dataset and tag operations
+        'search_dataset_tags': 'Find Dataset Tags',
+        'get_dataset_tags_for_path': 'Get Dataset Tags',
+        'search_tags': 'Find Tags',
+        'search_tag_wiki': 'Search Grimoire',
+        'get_tag_wiki_page': 'Get Grimoire Page',
+        'refresh_tag_wiki_page': 'Update Grimoire',
+        'get_wiki_home': 'Get Wiki Home',
+        'get_static_wiki_site_index': 'Get Static Wiki Index',
+        'get_static_wiki_page': 'Get Static Wiki Page',
+        'get_nax_galleries': 'Get Datasets (NAX)',
+        'get_nax_tags': 'Get Tags (NAX)',
+        'get_nax_marked_tags': 'Get Marked Tags (NAX)',
+        'get_nax_expander_presets': 'Get Expander Presets (NAX)',
+        'set_nax_favorite': 'Set Favorite (NAX)',
+        'set_nax_try': 'Set Try (NAX)',
+        'set_nax_hidden': 'Hide Tag (NAX)',
+        'get_user_global_settings': 'Get User Settings',
+        'update_user_global_settings': 'Save User Settings',
+        'get_nax_vibes_gallery': 'Browse Vibes',
+        'clear_nax_vibes_gallery_cache': 'Refresh Browse Vibes Cache',
+        'get_novelai_explore_gallery': 'Agora Gallery',
+        'get_studio_explore_feed': 'Studio Explorer',
+        'clear_novelai_explore_gallery_cache': 'Refresh Agora Cache',
+        'ensure_novelai_explore_image': 'Agora Image Cache',
+        'generate_nax_custom_tag': 'Create Custom Tag (NAX)',
+        'delete_nax_custom_tag': 'Delete Custom Tag (NAX)',
+        'fetch_autofill_wiki_previews': 'Fetch Wiki',
+        'resolve_grimoire_url': 'Fetch GrURL',
+        'search_files': 'Find Images',
+        'omegasearch_query': 'Omegasearch Query',
+        'search_characters': 'Find Characters',
+        'lookup_city': 'Lookup Location',
+        'search_index_prepare_cache': 'Prepare Search Cache',
+        'search_index_clear_cache': 'Clear Search Cache',
+        'search_index_toggle_pause': 'Set Indexing State',
+        'search_index_trigger': 'Request Indexing',
+        'search_index_rebuild_all': 'Rebuild Search Indexes',
+        'get_prompt_index_status': 'Prompt FTS Status',
+        'prompt_index_start': 'Start Prompt FTS',
+        'prompt_index_pause': 'Pause Prompt FTS',
+        'prompt_index_resume': 'Resume Prompt FTS',
+        'prompt_index_cancel': 'Cancel Prompt FTS',
+        'prompt_index_reconcile': 'Reconcile Prompt FTS',
+
+        // Workspace operations
+        'workspace_list': 'Get Workspaces',
+        'workspace_get': 'Get Workspace',
+        'desktop_get_settings': 'Get Desktop Settings',
+        'workspace_create': 'Create Workspace',
+        'workspace_rename': 'Rename Workspace',
+        'workspace_delete': 'Delete Workspace',
+        'workspace_activate': 'Activate Workspace',
+        'workspace_dump': 'Dump Workspace',
+        'workspace_get_files': 'Get Workspace Files',
+        'workspace_preview_samples': 'Get Workspace Previews',
+        'workspace_move_files': 'Move Files',
+        'workspace_get_scraps': 'Get Scraps',
+        'workspace_get_pinned': 'Get Pinned',
+        'workspace_add_scrap': 'Add Scrap',
+        'workspace_remove_scrap': 'Remove Scrap',
+        'workspace_add_pinned': 'Add Pinned',
+        'workspace_remove_pinned': 'Remove Pinned',
+        'workspace_bulk_pinned': 'Bulk Pin',
+        'workspace_bulk_remove_pinned': 'Bulk Remove Pinned',
+        'workspace_get_groups': 'Get Groups',
+        'workspace_create_group': 'Create Group',
+        'workspace_get_group': 'Get Group',
+        'workspace_rename_group': 'Rename Group',
+        'workspace_add_images_to_group': 'Add to Group',
+        'workspace_remove_images_from_group': 'Remove from Group',
+        'workspace_delete_group': 'Delete Group',
+        'workspace_get_image_groups': 'Get Image Groups',
+        'workspace_update_color': 'Update Color',
+        'workspace_update_background_color': 'Update Background',
+        'workspace_update_background_image': 'Update Background Image',
+        'workspace_update_background_opacity': 'Update Background Opacity',
+        'gallery_position_hint': 'Gallery Position Hint',
+        'workspace_update_settings': 'Upload Settings',
+        'workspace_update_window_positions': 'Upload Settings',
+        'workspace_update_primary_font': 'Update Font',
+        'workspace_update_textarea_font': 'Update Text Font',
+        'workspace_reorder': 'Reorder Workspaces',
+        'workspace_bulk_add_scrap': 'Bulk Add Scraps',
+        'workspace_bulk_add_pinned': 'Bulk Add Pinned',
+
+        // Desktop shortcuts
+        'desktop_get_shortcuts': 'Get Desktop Shortcuts',
+        'desktop_add_shortcut': 'Add Desktop Shortcut',
+        'desktop_update_shortcut': 'Update Desktop Shortcut',
+        'desktop_remove_shortcut': 'Remove Desktop Shortcut',
+        'desktop_update_positions': 'Update Desktop Positions',
+        'desktop_create_empty_folder': 'Create Desktop Folder',
+        'desktop_update_shortcut_folders': 'Move to Folder',
+        'desktop_create_folder_from_selection': 'Create Folder',
+
+        // VFS operations
+        'vfs_list_directory': 'List Directory',
+        'vfs_get_path_stats': 'Path Stats',
+        'vfs_resolve_path': 'Resolve Path',
+        'vfs_create_folder': 'Create Folder',
+        'vfs_create_shortcut': 'Create Shortcut',
+        'vfs_rename_folder': 'Rename Folder',
+        'vfs_rename_file': 'Rename File',
+        'vfs_rename_entry': 'Rename File',
+        'vfs_rename_shortcut_entry': 'Rename File',
+        'vfs_update_shortcut_entry': 'Save File',
+        'vfs_delete_folder': 'Delete Folder',
+        'vfs_move_items': 'Move Items',
+        'vfs_copy_items': 'Copy Items',
+        'vfs_delete_entry': 'Delete Entry',
+        'vfs_upload_file': 'Upload File',
+        'vfs_replace_file': 'Replace File',
+        'vfs_download_file': 'Download File',
+        'vfs_download_system_file': 'Download System File',
+        'vfs_delete_file': 'Delete File',
+        'vfs_convert_reference_to_file': 'Convert Reference',
+        'vfs_convert_file_to_reference': 'Convert to Reference',
+
+        'get_text_replacement_options': 'Resolve Placeholder',
+        'scan_text_replacements': 'Scan Expanders',
+        'resolve_dynamic_context': 'Resolve Context',
+        'resolve_text_replacements': 'Resolve Expanders',
+        'compile_dynamic_generation': 'Compile to Prompts',
+        'apply_tendai_preview': 'Apply Tendai',
+
+        // Bulk operations
+        'delete_images_bulk': 'Delete Images',
+        'delete_unupscaled_original': 'Delete Original',
+        'send_to_sequenzia_bulk': 'Send to Sequenzia',
+        'update_image_preset_bulk': 'Update Image Presets',
+
+        // Reference operations
+        'get_references': 'Get References',
+        'get_references_by_ids': 'Get References',
+        'get_workspace_references': 'Get Workspace References',
+        'delete_reference': 'Delete Reference',
+        'upload_reference': 'Upload Reference',
+        'upload_wallpaper': 'Upload Wallpaper',
+        'replace_reference': 'Replace Reference',
+        'update_reference_metadata': 'Update Reference',
+        'upload_workspace_image': 'Upload Image',
+        'download_url_file': 'Download File',
+        'fetch_url_info': 'Fetch URL Info',
+        'move_references': 'Move References',
+
+        // Vibe operations
+        'get_vibe_image': 'Get Vibe Image',
+        'delete_vibe_image': 'Delete Vibe Image',
+        'delete_vibe_encodings': 'Delete Encodings',
+        'bulk_delete_vibe_images': 'Bulk Delete Vibe Images',
+        'move_vibe_image': 'Move Vibe Image',
+        'bulk_move_vibe_images': 'Bulk Move Vibe Images',
+        'encode_vibe': 'Encode Vibe',
+        'import_vibe_bundle': 'Import Vibe Bundle',
+        'import_vibe_from_url': 'Import Vibe from URL',
+        'check_vibe_encoding': 'Check Vibe Encoding',
+
+        // Cache and system operations
+        'get_cache_manifest': 'Get Cache Manifest',
+        'refresh_server_cache': 'Refresh Cache',
+        'recompile_runtime_assets': 'Compile Application',
+        'set_runtime_assets_auto_recompile': 'Set Auto-Recompile',
+        'rebuild_metadata_cache': 'Rebuild Metadata Cache',
+        'agent_priority_client': 'Register Development Client',
+        'clear_search_cache': 'Clear Search Cache',
+        'broadcast_resource_update': 'Update Resources',
+        'ping': 'Ping Server',
+
+        // App and settings operations
+        'get_app_options': 'Get Settings',
+        'retry_account_data': 'Refresh Account Data',
+        'get_generation_quips': 'Load Generation Quips',
+        'get_generation_quips_status': 'Quips Status',
+        'get_generation_quips_wiki': 'Quips Phrase Book',
+        'generation_quips_run': 'Scan Generation Quips',
+        'generation_quips_clear': 'Clear Workspace Quips',
+        'get_rate_limiting_stats': 'Get Rate Stats',
+        'get_session_rate_limiting_stats': 'Get Session Stats',
+        'cancel_pending_requests': 'Cancel Requests',
+        'cancel_session_pending_requests': 'Cancel Session Requests',
+        'get_system_info': 'Get System Info',
+
+        // Favorites operations
+        'favorites_add': 'Add Favorite',
+        'favorites_remove': 'Remove Favorite',
+        'favorites_get': 'Get Favorites',
+
+        // Genso operations
+        'get_text_replacements': 'Get Genso Expanders',
+        'save_text_replacements': 'Save Genso Expanders',
+        'delete_text_replacement': 'Delete Genso Expander',
+        'create_text_replacement': 'Create Genso Expander',
+
+        // Knowledge memory operations
+        'list_knowledge_memories': 'Get Memories',
+        'get_knowledge_memory': 'Get Memory',
+        'update_knowledge_memory': 'Update Memory',
+        'delete_knowledge_memory': 'Delete Memory',
+        'delete_knowledge_memories_bulk': 'Delete Memories',
+        'count_knowledge_memories_by_filter': 'Count Memories',
+        'delete_knowledge_memories_by_filter': 'Delete Memories',
+
+        // Preset group operations
+        'save_preset_group': 'Save Preset',
+        'delete_preset_group': 'Delete Preset',
+        'get_preset_groups': 'Get Presets',
+
+        // Config editor operations
+        'config_editor_list': 'List Config Keys',
+        'config_editor_get_node': 'Get Config Node',
+        'config_editor_reveal_secret': 'Reveal Secret Value',
+        'config_editor_search': 'Search Config',
+        'config_editor_save': 'Save Config',
+        'config_editor_checkpoints_list': 'List Checkpoints',
+        'config_editor_checkpoints_get': 'Get Checkpoint',
+        'config_editor_checkpoints_create': 'Create Checkpoint',
+        'config_editor_checkpoints_restore': 'Restore Checkpoint',
+        'config_editor_checkpoints_delete': 'Delete Checkpoint',
+
+        // Novel operations
+        'novel_list': 'List Novels',
+        'novel_get': 'Get Novel',
+        'novel_update': 'Update Novel',
+        'novel_generate': 'Generate Novel',
+        'novel_undo': 'Undo Novel Edit',
+        'novel_resolve_image': 'Resolve Novel Image',
+
+        // Notes operations
+        'notes_create': 'Save Notebook Page',
+        'notes_get': 'Load Notebook Page',
+        'notes_get_by_workspace': 'Get Notebook',
+        'notes_get_all': 'Get Notebook Pages',
+        'notes_get_all_metadata': 'Get Notes Info',
+        'notes_update': 'Save Notebook Page',
+        'notes_delete': 'Delete Notebook Page',
+        'notes_save_content': 'Save Notebook Page',
+
+        // Gallery operations
+        'request_gallery': 'Get Gallery',
+        'request_gallery_paginated': 'Get Gallery',
+        'request_image_metadata': 'Get Image Metadata',
+        'stage_chain_files': 'Stage Results',
+        'request_url_upload_metadata': 'Get Upload Metadata',
+        'request_image_by_index': 'Get Image',
+        'find_image_index': 'Find Image',
+
+        // Persona operations
+        'get_persona_settings': 'Get Persona Settings',
+        'save_persona_settings': 'Save Persona Settings',
+        'get_chat_engine_settings': 'Get Chat Engine',
+        'save_chat_engine_settings': 'Save Chat Engine',
+
+        // Chat operations
+        'create_chat_session': 'Create Chat Session',
+        'get_chat_sessions': 'Get Chat Sessions',
+        'get_chat_session': 'Get Chat Session',
+        'delete_chat_session': 'Delete Chat Session',
+        'restart_chat_session': 'Restart Chat Session',
+        'send_chat_message': 'Send Chat Message',
+        'update_chat_context': 'Update Chat Context',
+        'get_chat_messages': 'Get Chat Messages',
+        'delete_chat_message': 'Delete Chat Message',
+
+        // SI operations
+        'cancel_generation': 'Cancel Generation',
+        'dynamic_generation_progress': 'Enshutsuka Progress',
+        'dynamic_generation_progress_update': 'Enshutsuka Progress Update',
+        'dynamic_generation_completed': 'Enshutsuka Completed',
+        'dynamic_generation_failed': 'Enshutsuka Failed',
+
+
+
+        // Director operations
+        'director_get_sessions': 'Get Director Sessions',
+        'director_open_workspace': 'Open Director Workspace',
+        'director_get_cursor_usage': 'Get Cursor Usage',
+        'director_create_session': 'Create Director Session',
+        'director_get_session': 'Get Director Session',
+        'director_delete_session': 'Delete Director Session',
+        'director_send_message': 'Send Director Message',
+        'director_get_messages': 'Get Director Messages',
+        'director_rollback_message': 'Rollback Message',
+        'director_recycle_session': 'Recycle Director Session',
+        'director_nuke_session': 'Nuke Director Session',
+        'director_save_feedback': 'Save Feedback',
+        'director_load_rules': 'Load Rules',
+        'director_save_rules': 'Save Rules',
+        'director_load_feedback': 'Load Feedback',
+        'director_delete_feedback': 'Delete Feedback',
+
+        // Security operations
+        'get_blocked_ips': 'Get Blocked IPs',
+        'get_telemetry': 'Get Telemetry',
+        'unblock_ip': 'Unblock IP',
+        'export_ip_to_gateway': 'Export IP',
+        'get_ip_blocking_reasons': 'Get Block Reasons',
+        'get_known_bad_paths': 'Get Bad Paths',
+        'delete_known_bad_path': 'Delete Bad Path',
+        'clear_known_bad_paths': 'Clear Bad Paths',
+        'get_pin_settings': 'Get PIN Settings',
+        'get_approved_ips': 'Get Approved IPs',
+        'set_approved_ips': 'Set Approved IPs',
+        'set_admin_pin': 'Set Admin PIN',
+        'set_user_pin': 'Set User PIN',
+        'set_user_pin_login_enabled': 'Toggle User PIN',
+        'set_use_vista_logon': 'Toggle Vista Logon',
+        'list_application_keys': 'List App Keys',
+        'list_application_request_log': 'App Request Log',
+        'create_application_key': 'Create App Key',
+        'update_application_key': 'Edit App Key',
+        'revoke_application_key': 'Revoke App Key',
+        'approve_application_auth_request': 'Approve App Auth',
+        'get_api_key_services': 'Get Keychain',
+        'update_api_key_selections': 'Update Keychain',
+        'add_api_key': 'Add to Keychain',
+        'update_api_key': 'Update Keychain',
+        'delete_api_key': 'Delete from Keychain',
+
+        // Utility operations
+        'spellcheck_add_word': 'Add Word',
+
+        // Account pictures and wallpaper history
+        'get_account_pictures': 'Get Account Pictures',
+        'set_account_picture': 'Set Account Picture',
+        'wallpaper_history_list': 'Wallpaper History',
+        'wallpaper_history_delete': 'Delete Wallpaper',
+
+        // Start menu
+        'start_menu_get_layout': 'Get Start Menu',
+        'start_menu_save_layout': 'Save Start Menu',
+        'start_menu_reset_layout': 'Reset Start Menu',
+
+        // Mail
+        'dovecote_list_mailboxes': 'List Mailboxes',
+        'dovecote_list_mail': 'List Mail',
+        'dovecote_get_mail': 'Read Mail',
+        'dovecote_render_body': 'Render Mail',
+        'dovecote_get_attachment': 'Get Attachment',
+        'dovecote_mark_mail': 'Mark Mail',
+        'dovecote_send_mail': 'Send Mail',
+        'dovecote_forward_mail': 'Forward Mail',
+        'dovecote_set_image_pref': 'Mail Image Preference',
+        'dovecote_mailbox_updated': 'Mailbox Updated',
+
+        // Windows Sidebar
+        'sidebar_get': 'Load Sidebar',
+        'sidebar_save': 'Save Sidebar',
+        'sidebar_random_image': 'Sidebar Picture',
+        'sidebar_weather': 'Sidebar Weather',
+        'sidebar_host_metrics': 'Sidebar CPU Meter',
+        'sidebar_live_subscribe': 'Sidebar Live Feed',
+
+        // Weather service (#780)
+        'weather_forecast': 'Weather Forecast',
+        'weather_geocode': 'Find a Place',
+        'weather_radar': 'Weather Radar',
+        'weather_alert': 'Weather Alert',
+        'weather_alerts_active': 'Weather Alerts',
+
+        // Traffic (#795)
+        'traffic_get': 'Traffic',
+        'traffic_check': 'Check Traffic',
+        'traffic_advise': 'Leave Advisor',
+        'traffic_settings_save': 'Save Traffic Settings',
+
+        // Lapis Remote (#835)
+        'lapis_get': 'Lapis Remote',
+        'lapis_refresh': 'Read the Car',
+        'lapis_command': 'Car Command',
+        'lapis_history': 'Driving Record',
+        'lapis_vehicles': 'Vehicles',
+        'lapis_settings_save': 'Save Lapis Settings',
+        'lapis_service_done': 'Maintenance Done',
+        'lapis_picture_get': 'Car Picture',
+        'lapis_picture_save': 'Save Car Picture',
+
+        // Notification inbox (#845)
+        'inbox_list': 'Notifications',
+        'inbox_ack': 'Notification',
+
+        // Melaton Videos, first Melaton Mobile YouTube (#839, #861)
+        'youtube_get': 'Videos',
+        'youtube_signin': 'YouTube Sign-in',
+        'youtube_signin_cancel': 'Cancel YouTube Sign-in',
+        'youtube_signout': 'YouTube Sign-out',
+        'youtube_subscriptions': 'YouTube Channels',
+        'youtube_feed': 'YouTube Subscriptions',
+        'youtube_watch_later': 'Watch Later',
+        'youtube_import_bell': 'Import Favourite Channels',
+        'youtube_mark': 'Mark Video',
+        'youtube_live_modes': 'Stream Qualities',
+        'youtube_live_start': 'Start Stream',
+        'youtube_live_state': 'Stream State',
+        'youtube_live_stop': 'Stop Stream',
+        'youtube_kick_add': 'Add Kick Channel',
+        'youtube_kick_remove': 'Remove Kick Channel',
+        'youtube_kick_notify': 'Go-live Notification',
+        'youtube_apps_save': 'Apps in the Feed',
+        'youtube_notice_remove': 'Remove Feed Item',
+        'youtube_later': 'Watch Later',
+        'youtube_search': 'YouTube Search',
+        'youtube_channel': 'YouTube Channel',
+        'youtube_favourite': 'Favourite Channel',
+        'youtube_favourites_order': 'Favourite Channels',
+        'youtube_settings_save': 'Save YouTube Settings',
+
+        // Cursor accounts
+        'get_cursor_accounts': 'Get Cursor Accounts',
+        'switch_cursor_account': 'Switch Cursor Account',
+        'save_cursor_account': 'Save Cursor Account',
+        'login_cursor_account': 'Login Cursor Account',
+        'capture_cursor_account': 'Capture Cursor Account',
+        'logout_cursor_account': 'Logout Cursor Account',
+        'logout_cursor_account_profile': 'Logout Cursor Profile',
+        'delete_cursor_account': 'Delete Cursor Account',
+        'set_cursor_account_api_key': 'Set Cursor API Key',
+        'get_claude_accounts': 'Get Claude Accounts',
+        'switch_claude_account': 'Switch Claude Account',
+        'link_claude_account_login': 'Link Claude Login',
+        'unlink_claude_account_login': 'Unlink Claude Login',
+        'claude_remote_control': 'Claude Remote Control',
+
+        // Characters, memories, autofill
+        'get_character_db': 'Get Characters',
+        'character_db_upsert': 'Save Character',
+        'character_db_delete': 'Delete Character',
+        'character_db_rename_copyright': 'Rename Copyright',
+        'character_db_delete_copyright': 'Delete Copyright',
+        'character_db_import': 'Import Characters',
+        'get_memory_mind_map': 'Memory Mind Map',
+        'get_memory_revision_images': 'Memory Revision Images',
+        'list_memory_image_links': 'List Memory Links',
+        'link_memory_image': 'Link Memory Image',
+        'unlink_memory_image': 'Unlink Memory Image',
+        'search_knowledge_memories_fast': 'Search Memories',
+        'get_autofill_ranking': 'Get Autofill Ranking',
+        'test_autofill_ranking': 'Test Autofill Ranking',
+        'update_autofill_ranking': 'Update Autofill Ranking',
+
+        // Wiki imports and Agora
+        'get_apocrypha_zine': 'Get Apocrypha',
+        'get_fandom_wiki_index': 'Get Wiki Index',
+        'get_fandom_wiki_manager': 'Get Wiki Manager',
+        'import_fandom_wiki_page': 'Import Wiki Page',
+        'import_static_wiki': 'Import Static Wiki',
+        'update_wiki_import': 'Update Wiki Import',
+        'delete_fandom_wiki_import': 'Delete Wiki Import',
+        'get_novelai_explore_user': 'Get Agora User',
+        'get_novelai_explore_post': 'Get Agora Post',
+        'set_novelai_explore_post_like': 'Like Agora Post',
+        'downvote_novelai_explore_post': 'Downvote Agora Post',
+        'block_novelai_explore_creator': 'Block Agora Creator',
+        'list_novelai_explore_blocked_creators': 'List Blocked Creators',
+        'check_novelai_explore_upload': 'Check Agora Upload',
+        'upload_novelai_explore_image': 'Upload to Agora',
+
+        // Generation, gallery, similar images
+        'enhance_image': 'Enhance Image',
+        'max_enhance_image': 'Max Enhance',
+        'emotion_current_job': 'Emotion Job',
+        'set_gallery_show_shared': 'Show Shared Gallery',
+        'get_similar_image_groups': 'Get Similar Images',
+        'scrap_similar_images': 'Scrap Similar Images',
+
+        // Trash and system files
+        'vfs_read_system_file': 'Read System File',
+        'vfs_folder_has_user_files': 'Folder Has Files',
+        'vfs_move_to_trash': 'Move to Trash',
+        'vfs_restore_from_trash': 'Restore from Trash',
+        'vfs_empty_trash': 'Empty Trash',
+        'vfs_permanently_delete': 'Delete Permanently',
+        'workspace_bulk_remove_scrap': 'Bulk Remove Scraps',
+
+        // Director extras
+        'director_get_models': 'Get Director Models',
+        'director_fork_session': 'Fork Director Session',
+        'director_move_session': 'Move Director Session',
+        'director_abort': 'Abort Director',
+        'director_rentan_agent_get': 'Get Rentan Agent',
+        'director_rentan_agent_set_default': 'Set Default Rentan Agent',
+        'director_tool_diff': 'Director Tool Diff',
+        'director_tool_payload': 'Director Tool Payload',
+        'director_workspace_switch_result': 'Director Workspace Switch',
+        'director_streaming_ack': 'Director Stream Ack',
+        'director_stream_watch': 'Director Stream Watch',
+        'director_computer_status': 'Director Computer Status',
+        'director_computer_size': 'Director Computer Size',
+        'director_cleanup': 'Clean Director',
+        'director_reinstall': 'Reinstall Director',
+        'director_prompt_guide_diff': 'Prompt Guide Diff',
+        'director_prompt_guide_extract': 'Extract Prompt Guide',
+        'director_prompt_guide_commit': 'Commit Prompt Guide',
+        'director_prompt_guide_push': 'Push Prompt Guide',
+        'director_repair_session': 'Auto-Repair Session',
+        'director_learned_list': 'List Learned Rules',
+        'director_learned_decide': 'Decide Learned Proposal',
+        'director_learned_rule_edit': 'Edit Learned Rule',
+        'director_learned_rule_remove': 'Remove Learned Rule',
+        'director_settings_get': 'Read Director Settings',
+        'director_settings_set': 'Save Director Settings',
+        'ledge_checks': 'Ledge Checks',
+        'request_form_submit': 'Submit Request Form',
+        'request_form_open': 'Open Request Forms',
+
+        // Packages, workers, wallet, Menma
+        'package_list': 'List Packages',
+        'package_install': 'Install Package',
+        'package_uninstall': 'Uninstall Package',
+        'package_set_enabled': 'Set Package Enabled',
+        'runpod_pods_status': 'Runpod Status',
+        'runpod_pod_start': 'Start Runpod',
+        'runpod_pod_stop': 'Stop Runpod',
+        'wallet_status': 'Wallet Status',
+        'get_menma_state': 'Get Menma State',
+        'report_client_perf': 'Report Performance',
+        'unlock_api_service': 'Unlock Keychain',
+
+        // Application keys
+        'authenticate_application': 'Authenticate Application',
+        'refresh_application_key': 'Refresh App Key',
+        'request_temp_access_token': 'Request Temp Token',
+        'request_application_authorization': 'Request App Authorization',
+        'check_application_authorization': 'Check App Authorization',
+        'claim_application_authorization': 'Claim App Authorization',
+        'get_application_auth_scopes': 'Get App Scopes',
+        'list_application_auth_requests': 'List App Auth Requests',
+        'deny_application_auth_request': 'Deny App Auth',
+
+        // Agent session
+        'session_share_start': 'Start Session Share',
+        'agent_session_result': 'Agent Session Result',
+        'agent_session_unbind': 'Unbind Agent Session',
+
+        // Infrastructure probes
+        'pong': 'Pong',
+        'server_status': 'Server Status',
+        'check_updates': 'Check Updates',
+        'version_check': 'Version Check',
+
+        // XLink Operator Console / PayPass Operator (AmusementVISION)
+        'xlink_devices': 'XLink Devices',
+        'xlink_device': 'XLink Status',
+        'xlink_action': 'XLink Control',
+        'xlink_save': 'Save XLink Menu',
+        'paypass_overview': 'PayPass Overview',
+        'paypass_customer': 'PayPass Customer',
+        'paypass_action': 'PayPass Action',
+        'paypass_wait': 'PayPass Card Wait',
+
+        // QuickCast (AmusementVISION, #734)
+        'quickcast_info': 'QuickCast Setup',
+        'quickcast_status': 'QuickCast Status',
+        'quickcast_preview': 'QuickCast Preview',
+        'quickcast_prepare': 'Cue Cabinet',
+        'quickcast_golive': 'Go Live',
+        'quickcast_stop': 'Stop Stream',
+        'quickcast_launch': 'Start Satellite Engine',
+        'quickcast_obs_off': 'Shut Down Satellite Engine',
+        'quickcast_setkey': 'Save Stream Key',
+        'quickcast_encoder': 'Read Encoder',
+        'quickcast_setencoder': 'Save Encoder',
+        'quickcast_mute': 'Mute Source',
+        'quickcast_cabinet': 'Cabinet Status',
+        'quickcast_cabinet_action': 'Cabinet Control',
+        'quickcast_osd_key': 'Remote Key',
+        'quickcast_xlink_menu': 'Cabinet XLink Menu',
+        'quickcast_xlink_do': 'Cabinet XLink Control',
+        'quickcast_osd_view': 'Remote Display',
+        'quickcast_live_ticket': 'Realtime Preview',
+        'quickcast_yt_account': 'YouTube Account',
+        'quickcast_yt_credentials': 'YouTube Credentials',
+        'quickcast_yt_signin': 'YouTube Sign-in',
+        'quickcast_yt_signin_state': 'YouTube Sign-in Check',
+        'quickcast_yt_signout': 'YouTube Sign-out',
+        'quickcast_yt_profile': 'YouTube Channel',
+        'quickcast_yt_select': 'Switch Channel',
+        'quickcast_yt_settings': 'Broadcast Settings',
+        'quickcast_chat': 'Live Chat',
+        'quickcast_chat_send': 'Send Chat Message',
+
+        // Replication (client to server)
+        'replication_status': 'Replication Status',
+        'replication_sync_begin': 'Begin Replication Sync',
+        'replication_sync_status': 'Replication Sync Status',
+        'replication_sync_apply': 'Apply Replication Sync',
+        'replication_separation_prepare': 'Prepare Separation',
+        'replication_separation_status': 'Separation Status',
+        'replication_separation_bootstrap_preview': 'Preview Separation',
+        'replication_separation_bootstrap_apply': 'Apply Separation',
+        'replication_delegate': 'Replication Delegate',
+        'replication_delegation_status': 'Delegation Status',
+        'authenticate_replication': 'Authenticate Replication',
+        'replication_request_remote_gallery': 'Remote Gallery',
+
+        // Server push (server to client)
+        'account_data_health_updated': 'Account Data Health',
+        'account_pictures_changed': 'Account Pictures Changed',
+        'desktop_tray_order_changed': 'Tray Order Changed',
+        'chat_message_response': 'Chat Message',
+        'chat_streaming_start': 'Chat Stream Start',
+        'chat_streaming_update': 'Chat Stream',
+        'chat_streaming_complete': 'Chat Stream Complete',
+        'error': 'Error',
+        'gallery_hint': 'Gallery Hint',
+        'gallery_scroll_state': 'Gallery Scroll',
+        'gallery_updated': 'Gallery Updated',
+        'generation_quips_progress': 'Quips Progress',
+        'generation_quips_status': 'Quips Status',
+        'generation_quips_updated': 'Quips Updated',
+        'image_generation_progress': 'Generating Image',
+        'image_generation_response': 'Generate Image',
+        'image_generation_error': 'Generation Failed',
+        'image_upscaling_response': 'Upscale Image',
+        'image_upscaling_error': 'Upscale Failed',
+        'image_expansion_response': 'Expand Canvas',
+        'image_expansion_error': 'Expand Failed',
+        'image_expansion_reroll_response': 'Recast Expand',
+        'image_expansion_reroll_error': 'Recast Expand Failed',
+        'note_created': 'Notebook Page Created',
+        'note_updated': 'Notebook Updated',
+        'note_content_updated': 'Notebook Updated',
+        'note_deleted': 'Notebook Page Deleted',
+        'novel_progress': 'Novel Progress',
+        'novel_updated': 'Novel Updated',
+        'novel_generate_complete': 'Novel Generated',
+        'preset_updated': 'Preset Updated',
+        'preset_group_updated': 'Preset Updated',
+        'queue_update': 'Queue Update',
+        'receipt_notification': 'Receipt',
+        'replication_maintenance': 'Replication Maintenance',
+        'replication_progress': 'Replication Progress',
+        'request_gallery_response': 'Get Gallery',
+        'request_keep_alive': 'Keep Alive',
+        'runpod_pods_status_update': 'Runpod Status',
+        'runtime_compile_progress': 'Compiling',
+        'runtime_compile_complete': 'Compile Finished',
+        'runtime_compile_error': 'Compile Failed',
+        'runtime_compile_logs': 'Compile Logs',
+        'search_indexing_status': 'Search Indexing',
+        'search_results_update': 'Search Results',
+        'search_results_complete': 'Search Complete',
+        'search_status_update': 'Search Status',
+        'service_worker_cache_update': 'Cache Update',
+        'vfs_updated': 'Files Updated',
+        'workspace_activated': 'Workspace Activated',
+        'workspace_updated': 'Workspace Updated',
+        'sidebar_updated': 'Sidebar Updated',
+        'workspace_deleted': 'Workspace Deleted',
+        'workspace_restored': 'Workspace Restored',
+        'workspace_data': 'Workspace Data',
+        'workspace_css_updated': 'Workspace Style',
+        'workspace_desktop_persisted': 'Desktop Saved',
+        'workspace_image_added': 'Image Added'
+    });
+
     // Format request type for user-friendly display
     formatRequestType(requestType) {
-        const typeMap = {
-            // Core image operations
-            'generate_image': 'Generate Image',
-            'upscale_image': 'Upscale Image',
-            'local_upscale_status': 'Ruiko Upscaler',
-            'animate_image': 'Animate Image',
-            'local_animate_status': 'Ruiko Animate',
-            'remote_workers_status': 'Remote Workers',
-            'reroll_image': 'Recast Spell',
-            'expand_image': 'Expand Canvas',
-            'preview_expand_image_prompt': 'Preview Expand Prompt',
-            'reroll_expanded_image': 'Recast Spell',
-
-            // Preset operations
-            'search_presets': 'Find Presets',
-            'load_preset': 'Load Preset',
-            'save_preset': 'Save Preset',
-            'delete_preset': 'Delete Preset',
-            'get_presets': 'Get Presets',
-            'update_preset': 'Update Preset',
-            'generate_preset': 'Generate Preset',
-            'regenerate_preset_uuid': 'Regenerate Preset',
-
-            // Dataset and tag operations
-            'search_dataset_tags': 'Find Dataset Tags',
-            'get_dataset_tags_for_path': 'Get Dataset Tags',
-            'search_tags': 'Find Tags',
-            'search_tag_wiki': 'Search Grimoire',
-            'get_tag_wiki_page': 'Get Grimoire Page',
-            'refresh_tag_wiki_page': 'Update Grimoire',
-            'get_wiki_home': 'Get Wiki Home',
-            'get_static_wiki_site_index': 'Get Static Wiki Index',
-            'get_static_wiki_page': 'Get Static Wiki Page',
-            'get_nax_galleries': 'Get Datasets (NAX)',
-            'get_nax_tags': 'Get Tags (NAX)',
-            'get_nax_marked_tags': 'Get Marked Tags (NAX)',
-            'get_nax_expander_presets': 'Get Expander Presets (NAX)',
-            'set_nax_favorite': 'Set Favorite (NAX)',
-            'set_nax_try': 'Set Try (NAX)',
-            'set_nax_hidden': 'Hide Tag (NAX)',
-            'get_user_global_settings': 'Get User Settings',
-            'update_user_global_settings': 'Save User Settings',
-            'get_nax_vibes_gallery': 'Browse Vibes',
-            'clear_nax_vibes_gallery_cache': 'Refresh Browse Vibes Cache',
-            'get_novelai_explore_gallery': 'Agora Gallery',
-            'get_studio_explore_feed': 'Studio Explorer',
-            'clear_novelai_explore_gallery_cache': 'Refresh Agora Cache',
-            'ensure_novelai_explore_image': 'Agora Image Cache',
-            'generate_nax_custom_tag': 'Create Custom Tag (NAX)',
-            'delete_nax_custom_tag': 'Delete Custom Tag (NAX)',
-            'fetch_autofill_wiki_previews': 'Fetch Wiki',
-            'resolve_grimoire_url': 'Fetch GrURL',
-            'search_files': 'Find Images',
-            'omegasearch_query': 'Omegasearch Query',
-            'search_characters': 'Find Characters',
-            'lookup_city': 'Lookup Location',
-            'search_index_prepare_cache': 'Prepare Search Cache',
-            'search_index_clear_cache': 'Clear Search Cache',
-            'search_index_toggle_pause': 'Set Indexing State',
-            'search_index_trigger': 'Request Indexing',
-            'search_index_rebuild_all': 'Rebuild Search Indexes',
-            'get_prompt_index_status': 'Prompt FTS Status',
-            'prompt_index_start': 'Start Prompt FTS',
-            'prompt_index_pause': 'Pause Prompt FTS',
-            'prompt_index_resume': 'Resume Prompt FTS',
-            'prompt_index_cancel': 'Cancel Prompt FTS',
-            'prompt_index_reconcile': 'Reconcile Prompt FTS',
-
-            // Workspace operations
-            'workspace_list': 'Get Workspaces',
-            'workspace_get': 'Get Workspace',
-            'desktop_get_settings': 'Get Desktop Settings',
-            'workspace_create': 'Create Workspace',
-            'workspace_rename': 'Rename Workspace',
-            'workspace_delete': 'Delete Workspace',
-            'workspace_activate': 'Activate Workspace',
-            'workspace_dump': 'Dump Workspace',
-            'workspace_get_files': 'Get Workspace Files',
-            'workspace_preview_samples': 'Get Workspace Previews',
-            'workspace_move_files': 'Move Files',
-            'workspace_get_scraps': 'Get Scraps',
-            'workspace_get_pinned': 'Get Pinned',
-            'workspace_add_scrap': 'Add Scrap',
-            'workspace_remove_scrap': 'Remove Scrap',
-            'workspace_add_pinned': 'Add Pinned',
-            'workspace_remove_pinned': 'Remove Pinned',
-            'workspace_bulk_pinned': 'Bulk Pin',
-            'workspace_bulk_remove_pinned': 'Bulk Remove Pinned',
-            'workspace_get_groups': 'Get Groups',
-            'workspace_create_group': 'Create Group',
-            'workspace_get_group': 'Get Group',
-            'workspace_rename_group': 'Rename Group',
-            'workspace_add_images_to_group': 'Add to Group',
-            'workspace_remove_images_from_group': 'Remove from Group',
-            'workspace_delete_group': 'Delete Group',
-            'workspace_get_image_groups': 'Get Image Groups',
-            'workspace_update_color': 'Update Color',
-            'workspace_update_background_color': 'Update Background',
-            'workspace_update_background_image': 'Update Background Image',
-            'workspace_update_background_opacity': 'Update Background Opacity',
-            'gallery_position_hint': 'Gallery Position Hint',
-            'workspace_update_settings': 'Upload Settings',
-            'workspace_update_window_positions': 'Upload Settings',
-            'workspace_update_primary_font': 'Update Font',
-            'workspace_update_textarea_font': 'Update Text Font',
-            'workspace_reorder': 'Reorder Workspaces',
-            'workspace_bulk_add_scrap': 'Bulk Add Scraps',
-            'workspace_bulk_add_pinned': 'Bulk Add Pinned',
-
-            // Desktop shortcuts
-            'desktop_get_shortcuts': 'Get Desktop Shortcuts',
-            'desktop_add_shortcut': 'Add Desktop Shortcut',
-            'desktop_update_shortcut': 'Update Desktop Shortcut',
-            'desktop_remove_shortcut': 'Remove Desktop Shortcut',
-            'desktop_update_positions': 'Update Desktop Positions',
-            'desktop_create_empty_folder': 'Create Desktop Folder',
-            'desktop_update_shortcut_folders': 'Move to Folder',
-            'desktop_create_folder_from_selection': 'Create Folder',
-
-            // VFS operations
-            'vfs_list_directory': 'List Directory',
-            'vfs_get_path_stats': 'Path Stats',
-            'vfs_resolve_path': 'Resolve Path',
-            'vfs_create_folder': 'Create Folder',
-            'vfs_create_shortcut': 'Create Shortcut',
-            'vfs_rename_folder': 'Rename Folder',
-            'vfs_rename_file': 'Rename File',
-            'vfs_rename_entry': 'Rename File',
-            'vfs_rename_shortcut_entry': 'Rename File',
-            'vfs_update_shortcut_entry': 'Save File',
-            'vfs_delete_folder': 'Delete Folder',
-            'vfs_move_items': 'Move Items',
-            'vfs_copy_items': 'Copy Items',
-            'vfs_delete_entry': 'Delete Entry',
-            'vfs_upload_file': 'Upload File',
-            'vfs_replace_file': 'Replace File',
-            'vfs_download_file': 'Download File',
-            'vfs_download_system_file': 'Download System File',
-            'vfs_delete_file': 'Delete File',
-            'vfs_convert_reference_to_file': 'Convert Reference',
-            'vfs_convert_file_to_reference': 'Convert to Reference',
-
-            'get_text_replacement_options': 'Resolve Placeholder',
-            'scan_text_replacements': 'Scan Expanders',
-            'resolve_dynamic_context': 'Resolve Context',
-            'resolve_text_replacements': 'Resolve Expanders',
-            'compile_dynamic_generation': 'Compile to Prompts',
-            'apply_tendai_preview': 'Apply Tendai',
-
-            // Bulk operations
-            'delete_images_bulk': 'Delete Images',
-            'delete_unupscaled_original': 'Delete Original',
-            'send_to_sequenzia_bulk': 'Send to Sequenzia',
-            'update_image_preset_bulk': 'Update Image Presets',
-
-            // Reference operations
-            'get_references': 'Get References',
-            'get_references_by_ids': 'Get References',
-            'get_workspace_references': 'Get Workspace References',
-            'delete_reference': 'Delete Reference',
-            'upload_reference': 'Upload Reference',
-            'upload_wallpaper': 'Upload Wallpaper',
-            'replace_reference': 'Replace Reference',
-            'update_reference_metadata': 'Update Reference',
-            'upload_workspace_image': 'Upload Image',
-            'download_url_file': 'Download File',
-            'fetch_url_info': 'Fetch URL Info',
-            'move_references': 'Move References',
-
-            // Vibe operations
-            'get_vibe_image': 'Get Vibe Image',
-            'delete_vibe_image': 'Delete Vibe Image',
-            'delete_vibe_encodings': 'Delete Encodings',
-            'bulk_delete_vibe_images': 'Bulk Delete Vibe Images',
-            'move_vibe_image': 'Move Vibe Image',
-            'bulk_move_vibe_images': 'Bulk Move Vibe Images',
-            'encode_vibe': 'Encode Vibe',
-            'import_vibe_bundle': 'Import Vibe Bundle',
-            'import_vibe_from_url': 'Import Vibe from URL',
-            'check_vibe_encoding': 'Check Vibe Encoding',
-
-            // Cache and system operations
-            'get_cache_manifest': 'Get Cache Manifest',
-            'refresh_server_cache': 'Refresh Cache',
-            'recompile_runtime_assets': 'Compile Application',
-            'set_runtime_assets_auto_recompile': 'Set Auto-Recompile',
-            'rebuild_metadata_cache': 'Rebuild Metadata Cache',
-            'agent_priority_client': 'Register Development Client',
-            'clear_search_cache': 'Clear Search Cache',
-            'broadcast_resource_update': 'Update Resources',
-            'ping': 'Ping Server',
-
-            // App and settings operations
-            'get_app_options': 'Get Settings',
-            'retry_account_data': 'Refresh Account Data',
-            'get_generation_quips': 'Load Generation Quips',
-            'get_generation_quips_status': 'Quips Status',
-            'get_generation_quips_wiki': 'Quips Phrase Book',
-            'generation_quips_run': 'Scan Generation Quips',
-            'generation_quips_clear': 'Clear Workspace Quips',
-            'get_rate_limiting_stats': 'Get Rate Stats',
-            'get_session_rate_limiting_stats': 'Get Session Stats',
-            'cancel_pending_requests': 'Cancel Requests',
-            'cancel_session_pending_requests': 'Cancel Session Requests',
-            'get_system_info': 'Get System Info',
-
-            // Favorites operations
-            'favorites_add': 'Add Favorite',
-            'favorites_remove': 'Remove Favorite',
-            'favorites_get': 'Get Favorites',
-
-            // Genso operations
-            'get_text_replacements': 'Get Genso Expanders',
-            'save_text_replacements': 'Save Genso Expanders',
-            'delete_text_replacement': 'Delete Genso Expander',
-            'create_text_replacement': 'Create Genso Expander',
-
-            // Knowledge memory operations
-            'list_knowledge_memories': 'Get Memories',
-            'get_knowledge_memory': 'Get Memory',
-            'update_knowledge_memory': 'Update Memory',
-            'delete_knowledge_memory': 'Delete Memory',
-            'delete_knowledge_memories_bulk': 'Delete Memories',
-            'count_knowledge_memories_by_filter': 'Count Memories',
-            'delete_knowledge_memories_by_filter': 'Delete Memories',
-
-            // Preset group operations
-            'save_preset_group': 'Save Preset',
-            'delete_preset_group': 'Delete Preset',
-            'get_preset_groups': 'Get Presets',
-
-            // Config editor operations
-            'config_editor_list': 'List Config Keys',
-            'config_editor_get_node': 'Get Config Node',
-            'config_editor_reveal_secret': 'Reveal Secret Value',
-            'config_editor_search': 'Search Config',
-            'config_editor_save': 'Save Config',
-            'config_editor_checkpoints_list': 'List Checkpoints',
-            'config_editor_checkpoints_get': 'Get Checkpoint',
-            'config_editor_checkpoints_create': 'Create Checkpoint',
-            'config_editor_checkpoints_restore': 'Restore Checkpoint',
-            'config_editor_checkpoints_delete': 'Delete Checkpoint',
-
-            // Novel operations
-            'novel_list': 'List Novels',
-            'novel_get': 'Get Novel',
-            'novel_update': 'Update Novel',
-            'novel_generate': 'Generate Novel',
-            'novel_undo': 'Undo Novel Edit',
-            'novel_resolve_image': 'Resolve Novel Image',
-
-            // Notes operations
-            'notes_create': 'Save Notebook Page',
-            'notes_get': 'Load Notebook Page',
-            'notes_get_by_workspace': 'Get Notebook',
-            'notes_get_all': 'Get Notebook Pages',
-            'notes_get_all_metadata': 'Get Notes Info',
-            'notes_update': 'Save Notebook Page',
-            'notes_delete': 'Delete Notebook Page',
-            'notes_save_content': 'Save Notebook Page',
-
-            // Gallery operations
-            'request_gallery': 'Get Gallery',
-            'request_gallery_paginated': 'Get Gallery',
-            'request_image_metadata': 'Get Image Metadata',
-            'stage_chain_files': 'Stage Results',
-            'request_url_upload_metadata': 'Get Upload Metadata',
-            'request_image_by_index': 'Get Image',
-            'find_image_index': 'Find Image',
-
-            // Persona operations
-            'get_persona_settings': 'Get Persona Settings',
-            'save_persona_settings': 'Save Persona Settings',
-            'get_chat_engine_settings': 'Get Chat Engine',
-            'save_chat_engine_settings': 'Save Chat Engine',
-
-            // Chat operations
-            'create_chat_session': 'Create Chat Session',
-            'get_chat_sessions': 'Get Chat Sessions',
-            'get_chat_session': 'Get Chat Session',
-            'delete_chat_session': 'Delete Chat Session',
-            'restart_chat_session': 'Restart Chat Session',
-            'send_chat_message': 'Send Chat Message',
-            'update_chat_context': 'Update Chat Context',
-            'get_chat_messages': 'Get Chat Messages',
-            'delete_chat_message': 'Delete Chat Message',
-
-            // SI operations
-            'cancel_generation': 'Cancel Generation',
-            'dynamic_generation_progress': 'Enshutsuka Progress',
-            'dynamic_generation_progress_update': 'Enshutsuka Progress Update',
-            'dynamic_generation_completed': 'Enshutsuka Completed',
-            'dynamic_generation_failed': 'Enshutsuka Failed',
-
-
-
-            // Director operations
-            'director_get_sessions': 'Get Director Sessions',
-            'director_open_workspace': 'Open Director Workspace',
-            'director_get_cursor_usage': 'Get Cursor Usage',
-            'director_create_session': 'Create Director Session',
-            'director_get_session': 'Get Director Session',
-            'director_delete_session': 'Delete Director Session',
-            'director_send_message': 'Send Director Message',
-            'director_get_messages': 'Get Director Messages',
-            'director_rollback_message': 'Rollback Message',
-            'director_recycle_session': 'Recycle Director Session',
-            'director_nuke_session': 'Nuke Director Session',
-            'director_save_feedback': 'Save Feedback',
-            'director_load_rules': 'Load Rules',
-            'director_save_rules': 'Save Rules',
-            'director_load_feedback': 'Load Feedback',
-            'director_delete_feedback': 'Delete Feedback',
-
-            // Security operations
-            'get_blocked_ips': 'Get Blocked IPs',
-            'get_telemetry': 'Get Telemetry',
-            'unblock_ip': 'Unblock IP',
-            'export_ip_to_gateway': 'Export IP',
-            'get_ip_blocking_reasons': 'Get Block Reasons',
-            'get_known_bad_paths': 'Get Bad Paths',
-            'delete_known_bad_path': 'Delete Bad Path',
-            'clear_known_bad_paths': 'Clear Bad Paths',
-            'get_pin_settings': 'Get PIN Settings',
-            'get_approved_ips': 'Get Approved IPs',
-            'set_approved_ips': 'Set Approved IPs',
-            'set_admin_pin': 'Set Admin PIN',
-            'set_user_pin': 'Set User PIN',
-            'set_user_pin_login_enabled': 'Toggle User PIN',
-            'set_use_vista_logon': 'Toggle Vista Logon',
-            'list_application_keys': 'List App Keys',
-            'list_application_request_log': 'App Request Log',
-            'create_application_key': 'Create App Key',
-            'update_application_key': 'Edit App Key',
-            'revoke_application_key': 'Revoke App Key',
-            'approve_application_auth_request': 'Approve App Auth',
-            'get_api_key_services': 'Get Keychain',
-            'update_api_key_selections': 'Update Keychain',
-            'add_api_key': 'Add to Keychain',
-            'update_api_key': 'Update Keychain',
-            'delete_api_key': 'Delete from Keychain',
-
-            // Utility operations
-            'spellcheck_add_word': 'Add Word',
-
-            // Account pictures and wallpaper history
-            'get_account_pictures': 'Get Account Pictures',
-            'set_account_picture': 'Set Account Picture',
-            'wallpaper_history_list': 'Wallpaper History',
-            'wallpaper_history_delete': 'Delete Wallpaper',
-
-            // Start menu
-            'start_menu_get_layout': 'Get Start Menu',
-            'start_menu_save_layout': 'Save Start Menu',
-            'start_menu_reset_layout': 'Reset Start Menu',
-
-            // Mail
-            'dovecote_list_mailboxes': 'List Mailboxes',
-            'dovecote_list_mail': 'List Mail',
-            'dovecote_get_mail': 'Read Mail',
-            'dovecote_render_body': 'Render Mail',
-            'dovecote_get_attachment': 'Get Attachment',
-            'dovecote_mark_mail': 'Mark Mail',
-            'dovecote_send_mail': 'Send Mail',
-            'dovecote_forward_mail': 'Forward Mail',
-            'dovecote_set_image_pref': 'Mail Image Preference',
-            'dovecote_mailbox_updated': 'Mailbox Updated',
-
-            // Windows Sidebar
-            'sidebar_get': 'Load Sidebar',
-            'sidebar_save': 'Save Sidebar',
-            'sidebar_random_image': 'Sidebar Picture',
-            'sidebar_weather': 'Sidebar Weather',
-            'sidebar_host_metrics': 'Sidebar CPU Meter',
-            'sidebar_live_subscribe': 'Sidebar Live Feed',
-
-            // Weather service (#780)
-            'weather_forecast': 'Weather Forecast',
-            'weather_geocode': 'Find a Place',
-            'weather_radar': 'Weather Radar',
-            'weather_alert': 'Weather Alert',
-            'weather_alerts_active': 'Weather Alerts',
-
-            // Traffic (#795)
-            'traffic_get': 'Traffic',
-            'traffic_check': 'Check Traffic',
-            'traffic_advise': 'Leave Advisor',
-            'traffic_settings_save': 'Save Traffic Settings',
-
-            // Lapis Remote (#835)
-            'lapis_get': 'Lapis Remote',
-            'lapis_refresh': 'Read the Car',
-            'lapis_command': 'Car Command',
-            'lapis_history': 'Driving Record',
-            'lapis_vehicles': 'Vehicles',
-            'lapis_settings_save': 'Save Lapis Settings',
-            'lapis_service_done': 'Maintenance Done',
-            'lapis_picture_get': 'Car Picture',
-            'lapis_picture_save': 'Save Car Picture',
-
-            // Notification inbox (#845)
-            'inbox_list': 'Notifications',
-            'inbox_ack': 'Notification',
-
-            // Melaton Videos, first Melaton Mobile YouTube (#839, #861)
-            'youtube_get': 'Videos',
-            'youtube_signin': 'YouTube Sign-in',
-            'youtube_signin_cancel': 'Cancel YouTube Sign-in',
-            'youtube_signout': 'YouTube Sign-out',
-            'youtube_subscriptions': 'YouTube Channels',
-            'youtube_feed': 'YouTube Subscriptions',
-            'youtube_watch_later': 'Watch Later',
-            'youtube_import_bell': 'Import Favourite Channels',
-            'youtube_mark': 'Mark Video',
-            'youtube_live_modes': 'Stream Qualities',
-            'youtube_live_start': 'Start Stream',
-            'youtube_live_state': 'Stream State',
-            'youtube_live_stop': 'Stop Stream',
-            'youtube_kick_add': 'Add Kick Channel',
-            'youtube_kick_remove': 'Remove Kick Channel',
-            'youtube_kick_notify': 'Go-live Notification',
-            'youtube_apps_save': 'Apps in the Feed',
-            'youtube_notice_remove': 'Remove Feed Item',
-            'youtube_later': 'Watch Later',
-            'youtube_search': 'YouTube Search',
-            'youtube_channel': 'YouTube Channel',
-            'youtube_favourite': 'Favourite Channel',
-            'youtube_favourites_order': 'Favourite Channels',
-            'youtube_settings_save': 'Save YouTube Settings',
-
-            // Cursor accounts
-            'get_cursor_accounts': 'Get Cursor Accounts',
-            'switch_cursor_account': 'Switch Cursor Account',
-            'save_cursor_account': 'Save Cursor Account',
-            'login_cursor_account': 'Login Cursor Account',
-            'capture_cursor_account': 'Capture Cursor Account',
-            'logout_cursor_account': 'Logout Cursor Account',
-            'logout_cursor_account_profile': 'Logout Cursor Profile',
-            'delete_cursor_account': 'Delete Cursor Account',
-            'set_cursor_account_api_key': 'Set Cursor API Key',
-            'get_claude_accounts': 'Get Claude Accounts',
-            'switch_claude_account': 'Switch Claude Account',
-            'link_claude_account_login': 'Link Claude Login',
-            'unlink_claude_account_login': 'Unlink Claude Login',
-            'claude_remote_control': 'Claude Remote Control',
-
-            // Characters, memories, autofill
-            'get_character_db': 'Get Characters',
-            'character_db_upsert': 'Save Character',
-            'character_db_delete': 'Delete Character',
-            'character_db_rename_copyright': 'Rename Copyright',
-            'character_db_delete_copyright': 'Delete Copyright',
-            'character_db_import': 'Import Characters',
-            'get_memory_mind_map': 'Memory Mind Map',
-            'get_memory_revision_images': 'Memory Revision Images',
-            'list_memory_image_links': 'List Memory Links',
-            'link_memory_image': 'Link Memory Image',
-            'unlink_memory_image': 'Unlink Memory Image',
-            'search_knowledge_memories_fast': 'Search Memories',
-            'get_autofill_ranking': 'Get Autofill Ranking',
-            'test_autofill_ranking': 'Test Autofill Ranking',
-            'update_autofill_ranking': 'Update Autofill Ranking',
-
-            // Wiki imports and Agora
-            'get_apocrypha_zine': 'Get Apocrypha',
-            'get_fandom_wiki_index': 'Get Wiki Index',
-            'get_fandom_wiki_manager': 'Get Wiki Manager',
-            'import_fandom_wiki_page': 'Import Wiki Page',
-            'import_static_wiki': 'Import Static Wiki',
-            'update_wiki_import': 'Update Wiki Import',
-            'delete_fandom_wiki_import': 'Delete Wiki Import',
-            'get_novelai_explore_user': 'Get Agora User',
-            'get_novelai_explore_post': 'Get Agora Post',
-            'set_novelai_explore_post_like': 'Like Agora Post',
-            'downvote_novelai_explore_post': 'Downvote Agora Post',
-            'block_novelai_explore_creator': 'Block Agora Creator',
-            'list_novelai_explore_blocked_creators': 'List Blocked Creators',
-            'check_novelai_explore_upload': 'Check Agora Upload',
-            'upload_novelai_explore_image': 'Upload to Agora',
-
-            // Generation, gallery, similar images
-            'enhance_image': 'Enhance Image',
-            'max_enhance_image': 'Max Enhance',
-            'emotion_current_job': 'Emotion Job',
-            'set_gallery_show_shared': 'Show Shared Gallery',
-            'get_similar_image_groups': 'Get Similar Images',
-            'scrap_similar_images': 'Scrap Similar Images',
-
-            // Trash and system files
-            'vfs_read_system_file': 'Read System File',
-            'vfs_folder_has_user_files': 'Folder Has Files',
-            'vfs_move_to_trash': 'Move to Trash',
-            'vfs_restore_from_trash': 'Restore from Trash',
-            'vfs_empty_trash': 'Empty Trash',
-            'vfs_permanently_delete': 'Delete Permanently',
-            'workspace_bulk_remove_scrap': 'Bulk Remove Scraps',
-
-            // Director extras
-            'director_get_models': 'Get Director Models',
-            'director_fork_session': 'Fork Director Session',
-            'director_move_session': 'Move Director Session',
-            'director_abort': 'Abort Director',
-            'director_rentan_agent_get': 'Get Rentan Agent',
-            'director_rentan_agent_set_default': 'Set Default Rentan Agent',
-            'director_tool_diff': 'Director Tool Diff',
-            'director_tool_payload': 'Director Tool Payload',
-            'director_workspace_switch_result': 'Director Workspace Switch',
-            'director_streaming_ack': 'Director Stream Ack',
-            'director_stream_watch': 'Director Stream Watch',
-            'director_computer_status': 'Director Computer Status',
-            'director_computer_size': 'Director Computer Size',
-            'director_cleanup': 'Clean Director',
-            'director_reinstall': 'Reinstall Director',
-            'director_prompt_guide_diff': 'Prompt Guide Diff',
-            'director_prompt_guide_extract': 'Extract Prompt Guide',
-            'director_prompt_guide_commit': 'Commit Prompt Guide',
-            'director_prompt_guide_push': 'Push Prompt Guide',
-            'director_repair_session': 'Auto-Repair Session',
-            'director_learned_list': 'List Learned Rules',
-            'director_learned_decide': 'Decide Learned Proposal',
-            'director_learned_rule_edit': 'Edit Learned Rule',
-            'director_learned_rule_remove': 'Remove Learned Rule',
-            'director_settings_get': 'Read Director Settings',
-            'director_settings_set': 'Save Director Settings',
-            'ledge_checks': 'Ledge Checks',
-            'request_form_submit': 'Submit Request Form',
-            'request_form_open': 'Open Request Forms',
-
-            // Packages, workers, wallet, Menma
-            'package_list': 'List Packages',
-            'package_install': 'Install Package',
-            'package_uninstall': 'Uninstall Package',
-            'package_set_enabled': 'Set Package Enabled',
-            'runpod_pods_status': 'Runpod Status',
-            'runpod_pod_start': 'Start Runpod',
-            'runpod_pod_stop': 'Stop Runpod',
-            'wallet_status': 'Wallet Status',
-            'get_menma_state': 'Get Menma State',
-            'report_client_perf': 'Report Performance',
-            'unlock_api_service': 'Unlock Keychain',
-
-            // Application keys
-            'authenticate_application': 'Authenticate Application',
-            'refresh_application_key': 'Refresh App Key',
-            'request_temp_access_token': 'Request Temp Token',
-            'request_application_authorization': 'Request App Authorization',
-            'check_application_authorization': 'Check App Authorization',
-            'claim_application_authorization': 'Claim App Authorization',
-            'get_application_auth_scopes': 'Get App Scopes',
-            'list_application_auth_requests': 'List App Auth Requests',
-            'deny_application_auth_request': 'Deny App Auth',
-
-            // Agent session
-            'session_share_start': 'Start Session Share',
-            'agent_session_result': 'Agent Session Result',
-            'agent_session_unbind': 'Unbind Agent Session',
-
-            // Infrastructure probes
-            'pong': 'Pong',
-            'server_status': 'Server Status',
-            'check_updates': 'Check Updates',
-            'version_check': 'Version Check',
-
-            // XLink Operator Console / PayPass Operator (AmusementVISION)
-            'xlink_devices': 'XLink Devices',
-            'xlink_device': 'XLink Status',
-            'xlink_action': 'XLink Control',
-            'xlink_save': 'Save XLink Menu',
-            'paypass_overview': 'PayPass Overview',
-            'paypass_customer': 'PayPass Customer',
-            'paypass_action': 'PayPass Action',
-            'paypass_wait': 'PayPass Card Wait',
-
-            // QuickCast (AmusementVISION, #734)
-            'quickcast_info': 'QuickCast Setup',
-            'quickcast_status': 'QuickCast Status',
-            'quickcast_preview': 'QuickCast Preview',
-            'quickcast_prepare': 'Cue Cabinet',
-            'quickcast_golive': 'Go Live',
-            'quickcast_stop': 'Stop Stream',
-            'quickcast_launch': 'Start Satellite Engine',
-            'quickcast_obs_off': 'Shut Down Satellite Engine',
-            'quickcast_setkey': 'Save Stream Key',
-            'quickcast_encoder': 'Read Encoder',
-            'quickcast_setencoder': 'Save Encoder',
-            'quickcast_mute': 'Mute Source',
-            'quickcast_cabinet': 'Cabinet Status',
-            'quickcast_cabinet_action': 'Cabinet Control',
-            'quickcast_osd_key': 'Remote Key',
-            'quickcast_xlink_menu': 'Cabinet XLink Menu',
-            'quickcast_xlink_do': 'Cabinet XLink Control',
-            'quickcast_osd_view': 'Remote Display',
-            'quickcast_live_ticket': 'Realtime Preview',
-            'quickcast_yt_account': 'YouTube Account',
-            'quickcast_yt_credentials': 'YouTube Credentials',
-            'quickcast_yt_signin': 'YouTube Sign-in',
-            'quickcast_yt_signin_state': 'YouTube Sign-in Check',
-            'quickcast_yt_signout': 'YouTube Sign-out',
-            'quickcast_yt_profile': 'YouTube Channel',
-            'quickcast_yt_select': 'Switch Channel',
-            'quickcast_yt_settings': 'Broadcast Settings',
-            'quickcast_chat': 'Live Chat',
-            'quickcast_chat_send': 'Send Chat Message',
-
-            // Replication (client to server)
-            'replication_status': 'Replication Status',
-            'replication_sync_begin': 'Begin Replication Sync',
-            'replication_sync_status': 'Replication Sync Status',
-            'replication_sync_apply': 'Apply Replication Sync',
-            'replication_separation_prepare': 'Prepare Separation',
-            'replication_separation_status': 'Separation Status',
-            'replication_separation_bootstrap_preview': 'Preview Separation',
-            'replication_separation_bootstrap_apply': 'Apply Separation',
-            'replication_delegate': 'Replication Delegate',
-            'replication_delegation_status': 'Delegation Status',
-            'authenticate_replication': 'Authenticate Replication',
-            'replication_request_remote_gallery': 'Remote Gallery',
-
-            // Server push (server to client)
-            'account_data_health_updated': 'Account Data Health',
-            'account_pictures_changed': 'Account Pictures Changed',
-            'desktop_tray_order_changed': 'Tray Order Changed',
-            'chat_message_response': 'Chat Message',
-            'chat_streaming_start': 'Chat Stream Start',
-            'chat_streaming_update': 'Chat Stream',
-            'chat_streaming_complete': 'Chat Stream Complete',
-            'error': 'Error',
-            'gallery_hint': 'Gallery Hint',
-            'gallery_scroll_state': 'Gallery Scroll',
-            'gallery_updated': 'Gallery Updated',
-            'generation_quips_progress': 'Quips Progress',
-            'generation_quips_status': 'Quips Status',
-            'generation_quips_updated': 'Quips Updated',
-            'image_generation_progress': 'Generating Image',
-            'image_generation_response': 'Generate Image',
-            'image_generation_error': 'Generation Failed',
-            'image_upscaling_response': 'Upscale Image',
-            'image_upscaling_error': 'Upscale Failed',
-            'image_expansion_response': 'Expand Canvas',
-            'image_expansion_error': 'Expand Failed',
-            'image_expansion_reroll_response': 'Recast Expand',
-            'image_expansion_reroll_error': 'Recast Expand Failed',
-            'note_created': 'Notebook Page Created',
-            'note_updated': 'Notebook Updated',
-            'note_content_updated': 'Notebook Updated',
-            'note_deleted': 'Notebook Page Deleted',
-            'novel_progress': 'Novel Progress',
-            'novel_updated': 'Novel Updated',
-            'novel_generate_complete': 'Novel Generated',
-            'preset_updated': 'Preset Updated',
-            'preset_group_updated': 'Preset Updated',
-            'queue_update': 'Queue Update',
-            'receipt_notification': 'Receipt',
-            'replication_maintenance': 'Replication Maintenance',
-            'replication_progress': 'Replication Progress',
-            'request_gallery_response': 'Get Gallery',
-            'request_keep_alive': 'Keep Alive',
-            'runpod_pods_status_update': 'Runpod Status',
-            'runtime_compile_progress': 'Compiling',
-            'runtime_compile_complete': 'Compile Finished',
-            'runtime_compile_error': 'Compile Failed',
-            'runtime_compile_logs': 'Compile Logs',
-            'search_indexing_status': 'Search Indexing',
-            'search_results_update': 'Search Results',
-            'search_results_complete': 'Search Complete',
-            'search_status_update': 'Search Status',
-            'service_worker_cache_update': 'Cache Update',
-            'vfs_updated': 'Files Updated',
-            'workspace_activated': 'Workspace Activated',
-            'workspace_updated': 'Workspace Updated',
-            'sidebar_updated': 'Sidebar Updated',
-            'workspace_deleted': 'Workspace Deleted',
-            'workspace_restored': 'Workspace Restored',
-            'workspace_data': 'Workspace Data',
-            'workspace_css_updated': 'Workspace Style',
-            'workspace_desktop_persisted': 'Desktop Saved',
-            'workspace_image_added': 'Image Added'
-        };
-
-        return typeMap[requestType] || requestType;
+        return BannerManager.REQUEST_TYPE_NAMES[requestType] || requestType;
     }
 
     updateWebSocketBanner(status, message, icon) {
@@ -1103,6 +1114,9 @@ class WebSocketClient {
         'youtube_get',
     ]);
 
+    // the generation request types, one Set each for the page (the resolve, error and cancel paths built one per call)
+    static GENERATION_TYPES = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+    static GENERATION_TYPES_WITH_REROLL = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image', 'reroll_image']);
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
         'get_generation_quips',
         'get_generation_quips_status',
@@ -2234,6 +2248,8 @@ class WebSocketClient {
         return '—';
     }
 
+    static SW_TRAY_STATE_CLASSES = Object.freeze(['sw-unavailable', 'sw-heartbeat-missed', 'sw-update-downloading', 'sw-update-complete', 'sw-update-available']);
+
     _updateServiceWorkerTrayIcon() {
         // Melaton Mobile has no desktop tray: its title bar shows the update state itself (#849)
         if (window.uiShell === 'mobile') return;
@@ -2266,38 +2282,38 @@ class WebSocketClient {
 
         let iconClass = 'fas fa-hard-drive';
         let title = 'Service Worker: Active';
-        trayIcon.classList.remove(
-            'sw-unavailable',
-            'sw-heartbeat-missed',
-            'sw-update-downloading',
-            'sw-update-complete',
-            'sw-update-available'
-        );
+        // the one sw-* state class this icon wants (none while active); applied below, each class touched only where
+        // it differs (removing five and adding one on every pong queued a mutation record each time)
+        let stateClass = null;
 
         if (!swStatus.available) {
             iconClass = 'fas fa-times-circle';
             title = 'Service Worker: Unavailable';
-            trayIcon.classList.add('sw-unavailable');
+            stateClass = 'sw-unavailable';
         } else if (!swStatus.isResponding || swStatus.heartbeatMissed) {
             iconClass = 'fas fa-exclamation-triangle';
             title = 'Service Worker: Not Responding';
-            trayIcon.classList.add('sw-heartbeat-missed');
+            stateClass = 'sw-heartbeat-missed';
         } else if (swStatus.isUpdating) {
             iconClass = 'fa-regular fa-laptop-arrow-down';
-            trayIcon.classList.add('sw-update-downloading');
+            stateClass = 'sw-update-downloading';
             const pct = Math.round(Math.max(0, Math.min(100, swStatus.updateProgress || 0)));
             // Vista's Windows Update tooltip wording
             title = `Downloading updates (${pct}%)`;
         } else if (swStatus.updateAvailable) {
             // Updates are downloaded and pending restart.
             iconClass = 'fa-regular fa-laptop-arrow-down';
-            trayIcon.classList.add('sw-update-complete');
+            stateClass = 'sw-update-complete';
             title = 'Restart Melaton to finish installing updates';
         } else if (swStatus.availableCount > 0) {
             // wucltux: Windows Update's icon while updates wait to be downloaded and installed
             iconClass = 'fa-regular fa-laptop-arrow-down';
-            trayIcon.classList.add('sw-update-available');
+            stateClass = 'sw-update-available';
             title = swStatus.availableCount === 1 ? '1 update is available' : `${swStatus.availableCount} updates are available`;
+        }
+        for (const cls of WebSocketClient.SW_TRAY_STATE_CLASSES) {
+            const on = cls === stateClass;
+            if (trayIcon.classList.contains(cls) !== on) trayIcon.classList.toggle(cls, on);
         }
 
         if (typeof setClassNameIfChanged === 'function') {
@@ -2519,7 +2535,9 @@ class WebSocketClient {
         const s = this.nightshadeState();
         const label = WebSocketClient.NIGHTSHADE_STATUS_TEXT[s.service] || 'Unavailable';
         let title = `Nightshade Network: ${s.service === 'connected' && s.cafeReady ? 'Connected (with CaféReady)' : label}`;
-        if (s.service === 'connected') {
+        // the live lines (duration, ping, latency) only while the pointer is on the icon (the pointerenter below
+        // refreshes it, so the hover text is the same): every pong rewrote the title, a mutation record each time
+        if (s.service === 'connected' && this._nsTrayHovered) {
             const up = s.connectedAt ? Date.now() - s.connectedAt : 0;
             if (up > 0) title += `\nDuration: ${this.formatConnectionUptime(up)}`;
             if (s.rtt != null) title += `\nPing: ${s.rtt} ms`;
@@ -2673,7 +2691,12 @@ class WebSocketClient {
             });
         }
         // the tooltips carry live numbers (the session's duration, ping): fresh on each hover, not on a
-        // timer (they kept the duration of the last connection change)
+        // timer (they kept the duration of the last connection change). The Nightshade icon's live lines
+        // are written only while the pointer is on it (_updateNightshadeTrayIcon); set before the refresh below
+        if (nsTray) {
+            nsTray.addEventListener('pointerenter', () => { this._nsTrayHovered = true; }, { passive: true });
+            nsTray.addEventListener('pointerleave', () => { this._nsTrayHovered = false; }, { passive: true });
+        }
         for (const el of [modemTray, nsTray]) {
             if (el) el.addEventListener('pointerenter', () => this._updateModemTrayIcon(), { passive: true });
         }
@@ -4087,21 +4110,36 @@ class WebSocketClient {
         // Update tooltips on websocket indicators
         const pingText = this.getPingDisplayText();
 
-        // Update all websocket status tooltips
+        // Update all websocket status tooltips: kept in memory, written when the pointer comes onto the dot (the
+        // ping changes on every pong; the title write was a mutation record each time)
         this.websocketIndicators.forEach(indicator => {
-            if (indicator.status) {
-                if (typeof setAttrIfChanged === 'function') {
-                    setAttrIfChanged(indicator.status, 'title', pingText);
-                } else {
-                    indicator.status.setAttribute('title', pingText);
-                }
-            }
+            if (indicator.status) this._setIndicatorStatusTitle(indicator.status, pingText, false);
         });
 
         // Update ping warning tray icon
         this.updatePingWarningIcon();
         this._updateMelatonLinkIndicators();
         this._updateModemTrayIcon();
+    }
+
+    /**
+     * A connection status dot's tooltip. The text is kept per element and written on pointerenter (and at once while
+     * the pointer is on it, or with now: a status change); the dot's listeners are its own, attached once.
+     */
+    _setIndicatorStatusTitle(el, text, now) {
+        if (!this._statusTitles) this._statusTitles = new WeakMap();
+        let rec = this._statusTitles.get(el);
+        if (!rec) {
+            rec = { text: null, hovered: false };
+            this._statusTitles.set(el, rec);
+            el.addEventListener('pointerenter', () => {
+                rec.hovered = true;
+                if (rec.text != null && el.getAttribute('title') !== rec.text) el.setAttribute('title', rec.text);
+            }, { passive: true });
+            el.addEventListener('pointerleave', () => { rec.hovered = false; }, { passive: true });
+        }
+        rec.text = text;
+        if ((now || rec.hovered) && el.getAttribute('title') !== text) el.setAttribute('title', text);
     }
 
     /**
@@ -6066,7 +6104,7 @@ class WebSocketClient {
             const group = this.paginationGroups.get(request.paginationGroupId);
             group.completedRequests = (group.completedRequests || 0) + 1;
         }
-        const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image', 'reroll_image']);
+        const generationTypes = WebSocketClient.GENERATION_TYPES_WITH_REROLL;
         if (generationTypes.has(request.type)) {
             this.clearStreamingStepQueues(null, true);
             this.cleanupGenerationProgressState(requestId);
@@ -6779,7 +6817,7 @@ class WebSocketClient {
                 message.requestType = pending.type;
                 // a caller that reports the failure itself (handlesErrors): no "Unhandled exception" window as well
                 if (pending.callerHandlesErrors) message.callerHandles = true;
-                const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+                const generationTypes = WebSocketClient.GENERATION_TYPES;
                 if (generationTypes.has(pending.type)) {
                     this.clearStreamingStepQueues(null, true);
                 }
@@ -6856,7 +6894,7 @@ class WebSocketClient {
             if (message.requestId) {
                 if (this.pendingRequests && this.pendingRequests.has(message.requestId)) {
                     const pending = this.pendingRequests.get(message.requestId);
-                    const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image', 'reroll_image']);
+                    const generationTypes = WebSocketClient.GENERATION_TYPES_WITH_REROLL;
                     if (generationTypes.has(pending.type)) {
                         this.clearStreamingStepQueues(null, true);
                         this.releaseGenerationCloseGuard(message.requestId);
@@ -7305,7 +7343,7 @@ class WebSocketClient {
     }
 
     _acquireGenerationCloseGuardForRequest(type, requestId) {
-        const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+        const generationTypes = WebSocketClient.GENERATION_TYPES;
         if (generationTypes.has(type) && requestId) {
             this.acquireGenerationCloseGuard(requestId);
             const modalType = type === 'generate_preset' ? 'spellbook' : 'manual';
@@ -9871,7 +9909,7 @@ class WebSocketClient {
         if (!this.pendingRequests || this.pendingRequests.size === 0) {
             return [];
         }
-        const types = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+        const types = WebSocketClient.GENERATION_TYPES;
         const cancelledIds = [];
         for (const [requestId, req] of [...this.pendingRequests.entries()]) {
             if (!types.has(req.type)) continue;
@@ -9914,7 +9952,7 @@ class WebSocketClient {
             return false;
         }
         const request = this.pendingRequests.get(requestId);
-        const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+        const generationTypes = WebSocketClient.GENERATION_TYPES;
         const err = new Error(reason);
         err.code = generationTypes.has(request.type) ? 'CLIENT_CANCELLED' : 'REQUEST_ABORTED';
         err.requestId = requestId;
@@ -10369,7 +10407,7 @@ class WebSocketClient {
                     timeoutError.requestType = message.type;
                     timeoutError.requestAge = requestAge;
 
-                    const generationTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image', 'reroll_image']);
+                    const generationTypes = WebSocketClient.GENERATION_TYPES_WITH_REROLL;
                     if (generationTypes.has(request.type)) {
                         this.clearStreamingStepQueues(null, true);
                         this.cleanupGenerationProgressState(requestId);
@@ -10826,8 +10864,8 @@ class WebSocketClient {
                 this.tickerCycleIndex = 0;
             }
 
-            const tickers = document.querySelectorAll('.websocket-ticker');
-            const tickerIcons = document.querySelectorAll('.websocket-ticker-icon');
+            // BannerManager.tickerElements: cached lists (this ran three lookups on every request end and pong)
+            const { tickers, icons: tickerIcons } = this.bannerManager.tickerElements();
 
             if (tickers.length > 0 && tickerIcons.length > 0 && tickers[0].classList.contains('expanded')) {
                 // Clear any existing completion timer
@@ -10835,14 +10873,14 @@ class WebSocketClient {
                     clearTimeout(this.completionTimer);
                 }
 
-                // Just update the icon to check mark (keep existing text)
-                tickerIcons.forEach(icon => {
-                    icon.className = 'fas websocket-ticker-icon fa-check';
-                });
+                // Just update the icon to check mark (keep existing text); unchanged ones are not rewritten
+                for (const icon of tickerIcons) {
+                    if (icon.className !== 'fas websocket-ticker-icon fa-check') icon.className = 'fas websocket-ticker-icon fa-check';
+                }
                 // Update status class for green color
-                tickers.forEach(ticker => {
-                    ticker.className = 'websocket-ticker expanded success';
-                });
+                for (const ticker of tickers) {
+                    if (ticker.className !== 'websocket-ticker expanded success') ticker.className = 'websocket-ticker expanded success';
+                }
 
                 // Set timer to hide after 2 seconds
                 this.completionTimer = setTimeout(() => {
@@ -11089,11 +11127,7 @@ class WebSocketClient {
             this.websocketIndicators.forEach(indicator => {
                 if (indicator.status) {
                     const statusText = status === 'connecting' ? 'Connecting...' : 'Disconnected';
-                    if (typeof setAttrIfChanged === 'function') {
-                        setAttrIfChanged(indicator.status, 'title', `WebSocket Status\n${statusText}`);
-                    } else {
-                        indicator.status.setAttribute('title', `WebSocket Status\n${statusText}`);
-                    }
+                    this._setIndicatorStatusTitle(indicator.status, `WebSocket Status\n${statusText}`, true);
                 }
             });
             // Hide ping warning when not connected
@@ -11113,7 +11147,15 @@ class WebSocketClient {
     // Rendered on screen (display, content-visibility, visibility). The desktop taskbar's arrows are
     // display: none but drive the tray globe (_syncTaskbarNetFlags), so they count while the globe shows.
     _isWsFlashElementVisible(el) {
-        if (!el || document.hidden) return false;
+        return this._wsFlashElementLook(el) > 0;
+    }
+
+    /**
+     * 0: not a flash target; 1: a target that is not drawn (the taskbar's arrows while the tray globe shows: the
+     * globe reads them, _syncTaskbarNetFlags); 2: drawn on screen.
+     */
+    _wsFlashElementLook(el) {
+        if (!el || document.hidden) return 0;
         const shown = (node) => {
             if (typeof node.checkVisibility === 'function') {
                 return node.checkVisibility({ visibilityProperty: true });
@@ -11125,12 +11167,57 @@ class WebSocketClient {
             }
             return true;
         };
+        if (shown(el)) return 2;
         if (el.closest?.('#taskbarWebsocketIndicator')) {
             const globe = document.getElementById('modemTrayIcon');
-            if (globe && shown(globe)) return true;
+            if (globe && shown(globe)) return 1;
         }
-        return shown(el);
+        return 0;
     }
+
+    /**
+     * An arrow that is a flash target but not drawn (the Vista desktop's taskbar arrows are display: none and count
+     * while the tray globe shows, which reads them for its data-net) keeps its flash and stream classes in a Set here
+     * instead of its classList: no class mutation per flash on an element nobody sees (each one woke every class
+     * observer on the page). _refreshWsFlashTargets copies the state onto the element once it is drawn (the Classic
+     * theme), and back into a Set when it stops being drawn.
+     */
+    _arrowHasState(arrow, cls) {
+        const held = this._undrawnArrowState ? this._undrawnArrowState.get(arrow) : null;
+        return held ? held.has(cls) : arrow.classList.contains(cls);
+    }
+
+    _setArrowState(arrow, cls, on) {
+        const held = this._undrawnArrowState ? this._undrawnArrowState.get(arrow) : null;
+        if (held) {
+            if (on) held.add(cls);
+            else held.delete(cls);
+        } else if (arrow.classList.contains(cls) !== !!on) {
+            arrow.classList.toggle(cls, !!on);
+        }
+    }
+
+    _setArrowDrawn(arrow, drawn) {
+        if (!this._undrawnArrowState) this._undrawnArrowState = new WeakMap();
+        const held = this._undrawnArrowState.get(arrow);
+        if (drawn) {
+            if (!held) return;
+            this._undrawnArrowState.delete(arrow);
+            for (const cls of WebSocketClient.ARROW_STATE_CLASSES) {
+                if (arrow.classList.contains(cls) !== held.has(cls)) arrow.classList.toggle(cls, held.has(cls));
+            }
+        } else if (!held) {
+            const state = new Set();
+            for (const cls of WebSocketClient.ARROW_STATE_CLASSES) {
+                if (arrow.classList.contains(cls)) { state.add(cls); arrow.classList.remove(cls); }
+            }
+            this._undrawnArrowState.set(arrow, state);
+        }
+    }
+
+    static ARROW_STATE_CLASSES = Object.freeze(['active', 'active-http', 'streaming-up', 'streaming-stalled-up', 'streaming-down', 'streaming-stalled-down']);
+    static ARROW_UP_CLASSES = Object.freeze(['active', 'active-http', 'streaming-up', 'streaming-stalled-up']);
+    static ARROW_DOWN_CLASSES = Object.freeze(['active', 'active-http', 'streaming-down', 'streaming-stalled-down']);
 
     _isWsFlashVisibilityMutationTarget(node) {
         if (!node || node.nodeType !== 1) return false;
@@ -11140,7 +11227,11 @@ class WebSocketClient {
         // the arrows' own flash classes never change which arrows are shown
         if (node.matches?.('.websocket-arrow-up, .websocket-arrow-down, #connectionTrafficUp, #connectionTrafficDown')) return false;
         if (node === document.body) return true;
-        if (node.classList?.contains('modal')) return true;
+        // a window's class changes on every focus click: only a window that holds arrows changes which are shown
+        if (node.classList?.contains('modal')) {
+            if (node.id === 'connectionDialModal' || node.id === 'melatonConnectionStatusModal') return true;
+            return !!node.querySelector?.('.websocket-indicator, #connectionTrafficUp, #connectionTrafficDown');
+        }
         if (node.classList?.contains('websocket-indicator')) return true;
         if (node.id === 'connectionDialModal' || node.id === 'melatonConnectionStatusModal') return true;
         return !!node.closest?.('.websocket-indicator, #connectionDialModal, #melatonConnectionStatusModal');
@@ -11150,12 +11241,19 @@ class WebSocketClient {
     _refreshWsFlashTargets() {
         const targets = [];
 
+        // a target that is not drawn keeps its classes in a Set (_setArrowDrawn); drawn again, they go back on it
+        const look = (arrow) => {
+            const v = arrow ? this._wsFlashElementLook(arrow) : 0;
+            if (v) this._setArrowDrawn(arrow, v === 2);
+            return v > 0;
+        };
+
         this.websocketIndicators.forEach(indicator => {
-            if (indicator.upArrow && this._isWsFlashElementVisible(indicator.upArrow)) {
+            if (indicator.upArrow && look(indicator.upArrow)) {
                 targets.push({ arrow: indicator.upArrow, timeoutKey: 'upTimeout', timeoutStore: indicator });
                 targets.push({ arrow: indicator.upArrow, timeoutKey: 'upHttpTimeout', timeoutStore: indicator });
             }
-            if (indicator.downArrow && this._isWsFlashElementVisible(indicator.downArrow)) {
+            if (indicator.downArrow && look(indicator.downArrow)) {
                 targets.push({ arrow: indicator.downArrow, timeoutKey: 'downTimeout', timeoutStore: indicator });
                 targets.push({ arrow: indicator.downArrow, timeoutKey: 'downHttpTimeout', timeoutStore: indicator });
             }
@@ -11175,11 +11273,11 @@ class WebSocketClient {
                 downHttpTimeout: null
             };
         }
-        if (this._melatonTrafficUp && this._isWsFlashElementVisible(this._melatonTrafficUp)) {
+        if (this._melatonTrafficUp && look(this._melatonTrafficUp)) {
             targets.push({ arrow: this._melatonTrafficUp, timeoutKey: 'upTimeout', timeoutStore: this._melatonTrafficTimeouts });
             targets.push({ arrow: this._melatonTrafficUp, timeoutKey: 'upHttpTimeout', timeoutStore: this._melatonTrafficTimeouts });
         }
-        if (this._melatonTrafficDown && this._isWsFlashElementVisible(this._melatonTrafficDown)) {
+        if (this._melatonTrafficDown && look(this._melatonTrafficDown)) {
             targets.push({ arrow: this._melatonTrafficDown, timeoutKey: 'downTimeout', timeoutStore: this._melatonTrafficTimeouts });
             targets.push({ arrow: this._melatonTrafficDown, timeoutKey: 'downHttpTimeout', timeoutStore: this._melatonTrafficTimeouts });
         }
@@ -11257,10 +11355,27 @@ class WebSocketClient {
             // the net under the class observer above: every 30 s (was every 5, #849); not while the page
             // is hidden (each look asks checkVisibility, which runs the page's pending style work, #890):
             // the page shown again looks at once (the visibilitychange listener in init)
+            // ... nor under a phone's screen off or an opaque screen saver (nothing drawn there either, as
+            // flashWebSocketArrow): a look skipped there is made once they clear (the html observer below)
+            const root = document.documentElement;
             this._wsFlashVisibilityInterval = setInterval(() => {
                 if (document.hidden) return;
+                if (root.dataset.screenOff !== undefined || root.dataset.saverCover !== undefined) {
+                    this._wsFlashRefreshSkipped = true;
+                    return;
+                }
                 this._refreshWsFlashTargets();
             }, 30000);
+        }
+        if (!this._wsFlashCoverObserver && typeof MutationObserver === 'function') {
+            const root = document.documentElement;
+            this._wsFlashCoverObserver = new MutationObserver(() => {
+                if (!this._wsFlashRefreshSkipped) return;
+                if (root.dataset.screenOff !== undefined || root.dataset.saverCover !== undefined) return;
+                this._wsFlashRefreshSkipped = false;
+                this._scheduleWsFlashVisibilityRefresh();
+            });
+            this._wsFlashCoverObserver.observe(root, { attributes: true, attributeFilter: ['data-screen-off', 'data-saver-cover'] });
         }
     }
 
@@ -11301,6 +11416,11 @@ class WebSocketClient {
             clearInterval(this._wsFlashVisibilityInterval);
             this._wsFlashVisibilityInterval = null;
         }
+        if (this._wsFlashCoverObserver) {
+            this._wsFlashCoverObserver.disconnect();
+            this._wsFlashCoverObserver = null;
+        }
+        this._wsFlashRefreshSkipped = false;
         if (this._wsFlashVisibilityRefreshRaf) {
             cancelAnimationFrame(this._wsFlashVisibilityRefreshRaf);
             this._wsFlashVisibilityRefreshRaf = null;
@@ -11341,48 +11461,50 @@ class WebSocketClient {
         this._syncHttpStreamClasses();
     }
 
+    /**
+     * The stream's stall and idle edges come stallMs / idleMs after its last touch. Each timer is armed once and, when
+     * it fires after later touches, armed again for the time left from the last one (same edges): a touch per HTTP
+     * message cleared and set both timers every time.
+     */
     _scheduleHttpStreamTimers(direction) {
         const isUp = direction === 'up';
         const dirKey = isUp ? 'Up' : 'Down';
         const stallTimerKey = `_httpStream${dirKey}StallTimer`;
         const idleTimerKey = `_httpStream${dirKey}IdleTimer`;
         const lastAtKey = `_httpStreamLast${dirKey}At`;
-        const touchAt = this[lastAtKey];
 
-        if (this[stallTimerKey]) {
-            clearTimeout(this[stallTimerKey]);
+        const arm = (timerKey, ms, fire) => {
+            const armedFor = this[lastAtKey];
+            this[timerKey] = setTimeout(() => {
+                this[timerKey] = null;
+                const lastAt = this[lastAtKey];
+                if (lastAt !== armedFor) {
+                    // touched since: wait for the time left from the last touch
+                    if (lastAt) arm(timerKey, ms, fire);
+                    return;
+                }
+                fire();
+            }, Math.max(0, armedFor + ms - performance.now()));
+        };
+
+        if (!this[stallTimerKey]) {
+            arm(stallTimerKey, this._httpStreamStallMs, () => {
+                const stalledKey = `_httpStream${dirKey}Stalled`;
+                if (this[stalledKey]) return;
+                this[stalledKey] = true;
+                this._syncHttpStreamClasses();
+            });
         }
-        if (this[idleTimerKey]) {
-            clearTimeout(this[idleTimerKey]);
+        if (!this[idleTimerKey]) {
+            arm(idleTimerKey, this._httpStreamIdleMs, () => {
+                const activeKey = `_httpStream${dirKey}Active`;
+                const stalledKey = `_httpStream${dirKey}Stalled`;
+                if (!this[activeKey] && !this[stalledKey]) return;
+                this[activeKey] = false;
+                this[stalledKey] = false;
+                this._syncHttpStreamClasses();
+            });
         }
-
-        this[stallTimerKey] = setTimeout(() => {
-            this[stallTimerKey] = null;
-            if (this[lastAtKey] !== touchAt) {
-                return;
-            }
-            if (isUp) {
-                this._httpStreamUpStalled = true;
-            } else {
-                this._httpStreamDownStalled = true;
-            }
-            this._syncHttpStreamClasses();
-        }, this._httpStreamStallMs);
-
-        this[idleTimerKey] = setTimeout(() => {
-            this[idleTimerKey] = null;
-            if (this[lastAtKey] !== touchAt) {
-                return;
-            }
-            if (isUp) {
-                this._httpStreamUpActive = false;
-                this._httpStreamUpStalled = false;
-            } else {
-                this._httpStreamDownActive = false;
-                this._httpStreamDownStalled = false;
-            }
-            this._syncHttpStreamClasses();
-        }, this._httpStreamIdleMs);
     }
 
     _metaKeyForTimeout(timeoutKey) {
@@ -11400,7 +11522,7 @@ class WebSocketClient {
 
     _endArrowFlash(arrow, timeoutStore, timeoutKey, activeClass) {
         if (arrow) {
-            arrow.classList.remove(activeClass);
+            this._setArrowState(arrow, activeClass, false);
         }
         timeoutStore[timeoutKey] = null;
         this._clearArrowFlashMeta(timeoutStore, timeoutKey);
@@ -11457,28 +11579,42 @@ class WebSocketClient {
                 }
                 return;
             }
-            this._endArrowFlash(arrow, timeoutStore, timeoutKey, activeClass);
+            // already lit and past its minimum play: only its timer starts again. Ending it and lighting it
+            // again in the same task took its class and the globe's data-net off and put them back (four
+            // mutation records, nothing drawn in between)
+            clearTimeout(timeoutStore[timeoutKey]);
+            this._clearArrowFlashMeta(timeoutStore, timeoutKey);
+            this._startArrowFlashTimer(arrow, timeoutStore, timeoutKey, activeClass, duration);
+            if (!this._arrowHasState(arrow, activeClass)) {
+                this._setArrowState(arrow, activeClass, true);
+                this._syncTaskbarNetFlags();
+            }
+            return;
         }
 
-        arrow.classList.add(activeClass);
+        this._setArrowState(arrow, activeClass, true);
         this._startArrowFlashTimer(arrow, timeoutStore, timeoutKey, activeClass, duration);
         this._syncTaskbarNetFlags();
     }
 
     _touchHttpStream(direction) {
         const now = performance.now();
+        let changed;
         if (direction === 'up') {
+            changed = !this._httpStreamUpActive || this._httpStreamUpStalled;
             this._httpStreamLastUpAt = now;
             this._httpStreamUpActive = true;
             this._httpStreamUpStalled = false;
             this._scheduleHttpStreamTimers('up');
         } else {
+            changed = !this._httpStreamDownActive || this._httpStreamDownStalled;
             this._httpStreamLastDownAt = now;
             this._httpStreamDownActive = true;
             this._httpStreamDownStalled = false;
             this._scheduleHttpStreamTimers('down');
         }
-        this._syncHttpStreamClasses();
+        // a touch on a stream already running changes no class (each one walked every arrow and the globe)
+        if (changed) this._syncHttpStreamClasses();
     }
 
     _syncHttpStreamClasses() {
@@ -11491,7 +11627,8 @@ class WebSocketClient {
         // only has a stale stream class taken off; it gets the current one when it shows
         // (_refreshWsFlashTargets calls this again).
         const shown = new Set((this._wsFlashTargets || []).map((t) => t.arrow));
-        const setClass = (arrow, name, on) => { if (arrow.classList.contains(name) !== on) arrow.classList.toggle(name, on); };
+        // _setArrowState: an undrawn target's classes live in a Set (no class writes on the hidden taskbar arrows)
+        const setClass = (arrow, name, on) => this._setArrowState(arrow, name, on);
         const applyStream = (arrow, streamClass, stalledClass, active, stalled) => {
             if (!arrow) return;
             const on = active && shown.has(arrow);
@@ -11551,10 +11688,12 @@ class WebSocketClient {
         const up = net.up;
         const down = net.down;
         // net.status: the ping dot (no longer the globe's limited state, #895)
-        const upOn = !!(up && (up.classList.contains('active') || up.classList.contains('active-http')
-            || (up.classList.contains('streaming-up') && !up.classList.contains('streaming-stalled-up'))));
-        const downOn = !!(down && (down.classList.contains('active') || down.classList.contains('active-http')
-            || (down.classList.contains('streaming-down') && !down.classList.contains('streaming-stalled-down'))));
+        // _arrowHasState: the classes, or the Set an undrawn arrow keeps them in (the Vista desktop's taskbar arrows)
+        const has = (arrow, cls) => this._arrowHasState(arrow, cls);
+        const upOn = !!(up && (has(up, 'active') || has(up, 'active-http')
+            || (has(up, 'streaming-up') && !has(up, 'streaming-stalled-up'))));
+        const downOn = !!(down && (has(down, 'active') || has(down, 'active-http')
+            || (has(down, 'streaming-down') && !has(down, 'streaming-stalled-down'))));
         // setDesktopTaskbarNetFlags: public/scripts/comp/rootStateFlags.js
         window.setDesktopTaskbarNetFlags({
             send: upOn,
@@ -11577,6 +11716,19 @@ class WebSocketClient {
     // Queue DOM flash work off the WebSocket message path (rAF runs after current task).
     _queueWsFlashApply() {
         if (this._wsFlashRafId) return;
+        // throttled: wait out the gap with one timer and ask for the frame only when it is due (an empty frame
+        // first, then the timer, then the frame cost a rAF per flash); the flash lands on the first frame after
+        // the gap as before. -1 marks the wait (_stopWsFlashVisibilityWatcher)
+        const due = this._wsFlashMinInterval - (performance.now() - this._wsFlashLastApply);
+        if (due > 0) {
+            this._wsFlashRafId = -1;
+            this._wsFlashWaitId = setTimeout(() => {
+                this._wsFlashWaitId = null;
+                this._wsFlashRafId = null;
+                this._queueWsFlashApply();
+            }, due);
+            return;
+        }
         this._wsFlashRafId = requestAnimationFrame(() => {
             this._wsFlashRafId = null;
             if (document.hidden) {
@@ -11688,6 +11840,10 @@ class WebSocketClient {
     // Clear all WebSocket indicator timeouts (for cleanup)
     clearWebSocketIndicatorTimeouts() {
         this._clearHttpStreamState();
+        // only classes that are on (or in an undrawn arrow's Set, _setArrowState) are taken off
+        const clearArrow = (arrow, classes) => {
+            if (arrow) for (const cls of classes) this._setArrowState(arrow, cls, false);
+        };
 
         // Clear all indicator timeouts and active classes
         this.websocketIndicators.forEach(indicator => {
@@ -11699,12 +11855,8 @@ class WebSocketClient {
                 this._clearArrowFlashMeta(indicator, timeoutType);
             });
 
-            if (indicator.upArrow) {
-                indicator.upArrow.classList.remove('active', 'active-http', 'streaming-up', 'streaming-stalled-up');
-            }
-            if (indicator.downArrow) {
-                indicator.downArrow.classList.remove('active', 'active-http', 'streaming-down', 'streaming-stalled-down');
-            }
+            clearArrow(indicator.upArrow, WebSocketClient.ARROW_UP_CLASSES);
+            clearArrow(indicator.downArrow, WebSocketClient.ARROW_DOWN_CLASSES);
         });
 
         if (this._melatonTrafficTimeouts) {
@@ -11716,12 +11868,8 @@ class WebSocketClient {
                 this._clearArrowFlashMeta(this._melatonTrafficTimeouts, timeoutType);
             });
         }
-        if (this._melatonTrafficUp) {
-            this._melatonTrafficUp.classList.remove('active', 'active-http', 'streaming-up', 'streaming-stalled-up');
-        }
-        if (this._melatonTrafficDown) {
-            this._melatonTrafficDown.classList.remove('active', 'active-http', 'streaming-down', 'streaming-stalled-down');
-        }
+        clearArrow(this._melatonTrafficUp, WebSocketClient.ARROW_UP_CLASSES);
+        clearArrow(this._melatonTrafficDown, WebSocketClient.ARROW_DOWN_CLASSES);
         this._wsBurstUntilUp = 0;
         this._wsBurstUntilDown = 0;
         this._syncTaskbarNetFlags();
@@ -11897,7 +12045,7 @@ class WebSocketClient {
 
             this.pendingRequests.delete(requestId);
 
-            const generationRequestTypes = new Set(['generate_image', 'generate_preset', 'expand_image', 'reroll_expanded_image']);
+            const generationRequestTypes = WebSocketClient.GENERATION_TYPES;
             if (generationRequestTypes.has(request.type)) {
                 this.cleanupGenerationProgressState(requestId);
             }

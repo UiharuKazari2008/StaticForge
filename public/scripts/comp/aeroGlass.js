@@ -102,6 +102,7 @@
         resizeTimer: null,
         refreshTimer: null,
         contrastTimer: null,
+        contrastDue: 0,
         colorCtx: null,
         wallpaperSample: null,      // { width, height, data } of the blurred frame copy
         builtKey: null,             // mode | url | blur of the published copy
@@ -302,20 +303,28 @@
         return !!(root && root.classList && root.classList.contains('ui-mobile'));
     }
 
-    function syncModal(modal) {
+    /**
+     * knownOrigin {x, y} (optional): the window's viewport origin when the caller already has it (it just
+     * placed the window), so no rect is read here. Leave it out unless it equals computeModalOrigin(modal).
+     */
+    function syncModal(modal, knownOrigin) {
         if (!modal || phoneUi()) return false;
         if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) return false;
-        const origin = computeModalOrigin(modal);
+        const origin = knownOrigin && Number.isFinite(knownOrigin.x) && Number.isFinite(knownOrigin.y)
+            ? knownOrigin
+            : computeModalOrigin(modal);
         if (!origin) return false;
         const x = roundToDevicePixel(origin.x);
         const y = roundToDevicePixel(origin.y);
+        // every read before the first write: the surfaces' boxes do not depend on --aero-x / --aero-y
+        const surfaces = measureSurfaces(modal);
         if (modal._aeroX !== x || modal._aeroY !== y) {
             modal._aeroX = x;
             modal._aeroY = y;
             modal.style.setProperty('--aero-x', `${x}px`);
             modal.style.setProperty('--aero-y', `${y}px`);
         }
-        syncSurfaces(modal);
+        applySurfaces(modal, surfaces);
         if (state.mode === 'live') {
             observeBackdropModal(modal);
             scheduleBackdrops();
@@ -329,13 +338,25 @@
      * viewport origin goes to --aero-sx / --aero-sy; drag offsets inherit from the window.
      */
     function syncSurfaces(modal) {
-        if (!modal || typeof modal.querySelectorAll !== 'function' || phoneUi()) return 0;
-        let count = 0;
+        return applySurfaces(modal, measureSurfaces(modal));
+    }
+
+    /** The surfaces' boxes, all read before any is written (a write between reads forces a style pass per surface). */
+    function measureSurfaces(modal) {
+        if (!modal || typeof modal.querySelectorAll !== 'function' || phoneUi()) return null;
+        const list = [];
         modal.querySelectorAll('[data-aero-surface]').forEach((el) => {
             const rect = el.getBoundingClientRect();
             if (!rect.width && !rect.height) return;
-            const x = roundToDevicePixel(rect.left);
-            const y = roundToDevicePixel(rect.top);
+            list.push({ el, x: roundToDevicePixel(rect.left), y: roundToDevicePixel(rect.top) });
+        });
+        return list;
+    }
+
+    function applySurfaces(modal, list) {
+        if (!list) return 0;
+        let count = 0;
+        list.forEach(({ el, x, y }) => {
             if (el._aeroSx !== x || el._aeroSy !== y) {
                 el._aeroSx = x;
                 el._aeroSy = y;
@@ -559,13 +580,26 @@
         return count;
     }
 
+    /** Trailing debounce: contrastDebounceMs after the last call. A call while the timer runs only moves the
+     *  deadline (window drags and resizes call this every frame; no clearTimeout + setTimeout per frame). */
     function scheduleContrast() {
-        clearTimeout(state.contrastTimer);
-        if (phoneUi()) return;
-        state.contrastTimer = setTimeout(() => {
+        if (phoneUi()) {
+            clearTimeout(state.contrastTimer);
+            state.contrastTimer = null;
+            return;
+        }
+        state.contrastDue = performance.now() + config.contrastDebounceMs;
+        if (state.contrastTimer) return;
+        const fire = () => {
+            const left = state.contrastDue - performance.now();
+            if (left > 1) {
+                state.contrastTimer = setTimeout(fire, left);
+                return;
+            }
             state.contrastTimer = null;
             syncContrast();
-        }, config.contrastDebounceMs);
+        };
+        state.contrastTimer = setTimeout(fire, config.contrastDebounceMs);
     }
 
     /** Focus moves the frame between the active and inactive tint: watch the window's class. */
@@ -1227,9 +1261,21 @@
         const el = doc.getElementById('desktopIcons');
         if (!el || typeof wc.snapshot !== 'function') return;
         const info = state.icons || (state.icons = { at: 0, dirty: true, url: null });
-        if (!info.observer && typeof MutationObserver === 'function') {
-            info.observer = new MutationObserver(() => { info.dirty = true; });
-            info.observer.observe(el, { subtree: true, childList: true, attributes: true, characterData: true });
+        // watched only until the first change after a copy (that marks it dirty); this copy watches again,
+        // so icon churn between copies (hover, selection, drags) costs no observer callbacks
+        if (typeof MutationObserver === 'function') {
+            if (!info.observer) {
+                info.observer = new MutationObserver(() => {
+                    info.dirty = true;
+                    info.observer.disconnect();
+                    info.watching = null;
+                });
+            }
+            if (info.watching !== el) {
+                info.observer.disconnect();
+                info.observer.observe(el, { subtree: true, childList: true, attributes: true, characterData: true });
+                info.watching = el;
+            }
         }
         info.dirty = false;
         info.at = performance.now();

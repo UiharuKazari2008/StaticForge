@@ -4632,7 +4632,7 @@ button::-moz-focus-inner {
     height: calc(calc(var(--textarea-height, auto) + var(--extra-height, 0px)) + 26px);
 }
 
-.prompt-tabs:has(#dynamicGenerationGroup:not(.hidden)) .prompt-textarea-container {
+.prompt-tabs:has(> #dynamicGenerationGroup:not(.hidden)) .prompt-textarea-container {
     margin-bottom: -1px;
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
@@ -4640,11 +4640,11 @@ button::-moz-focus-inner {
     transition: var(--transition-prompt-tab-layout);
 }
 
-.prompt-tabs:has(#dynamicGenerationGroup:not(.hidden)) .prompt-textarea-container:not(.textarea-focused) {
+.prompt-tabs:has(> #dynamicGenerationGroup:not(.hidden)) .prompt-textarea-container:not(.textarea-focused) {
     box-shadow: inset 0 -2px 6px rgba(0, 0, 0, 0.3);
 }
 
-.prompt-tabs:has(#dynamicGenerationGroup:not(.hidden)) .prompt-textarea-container .prompt-textarea-toolbar {
+.prompt-tabs:has(> #dynamicGenerationGroup:not(.hidden)) .prompt-textarea-container .prompt-textarea-toolbar {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
     border-bottom-width: 0px;

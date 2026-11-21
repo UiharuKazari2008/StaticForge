@@ -126,6 +126,8 @@
 
     function register(fn) {
         if (typeof fn === 'function' && providers.indexOf(fn) < 0) providers.push(fn);
+        // the net starts with the first program that has browser windows (#998)
+        syncPoll();
         changed();
     }
 
@@ -197,26 +199,30 @@
         c.on('browsing_sessions_changed', () => fire('changed'));
         c.on('browsing_session_tab_taken', (msg) => fire('tabTaken', (msg && (msg.data || msg)) || {}));
         scheduleHello(700);
-        // the net looks only while the page is in sight (a phone's screen off counts as out of sight,
-        // html[data-screen-off]); nothing on a page out of sight changes its browser windows (#890)
-        const asleep = () => root.document.visibilityState !== 'visible' || root.document.documentElement.dataset.screenOff !== undefined;
-        // its interval stops while out of sight too (no wake a minute for nothing, #890), and starts again
-        // with the page back
-        const syncPoll = () => {
-            if (!asleep()) {
-                if (!pollTimer) {
-                    pollTimer = setInterval(() => {
-                        // asleep(), spelt out
-                        if (root.document.visibilityState !== 'visible' || root.document.documentElement.dataset.screenOff !== undefined) syncPoll();
-                        else report(false);
-                    }, POLL_MS);
-                }
-            }
-            else if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-        };
+        bound = true;
         syncPoll();
         root.document.addEventListener('visibilitychange', syncPoll, { signal: appScopeSignal });
         root.addEventListener('melatonscreen', () => setTimeout(syncPoll, 0), { signal: appScopeSignal });
+    }
+
+    // the net looks only while the page is in sight (a phone's screen off counts as out of sight,
+    // html[data-screen-off]); nothing on a page out of sight changes its browser windows (#890)
+    const asleep = () => root.document.visibilityState !== 'visible' || root.document.documentElement.dataset.screenOff !== undefined;
+    // its interval stops while out of sight too (no wake a minute for nothing, #890), and starts again
+    // with the page back; and it runs only once a program has registered browser windows (register): with none
+    // there is nothing for it to look at (report returns at once, #998). Programs never unregister.
+    let bound = false;
+    function syncPoll() {
+        if (bound && providers.length && !asleep()) {
+            if (!pollTimer) {
+                pollTimer = setInterval(() => {
+                    // asleep(), spelt out
+                    if (root.document.visibilityState !== 'visible' || root.document.documentElement.dataset.screenOff !== undefined) syncPoll();
+                    else report(false);
+                }, POLL_MS);
+            }
+        }
+        else if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
 
     // ---- requests ----

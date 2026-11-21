@@ -21,7 +21,9 @@
  * .gallery.has-context-open-item,
  * .gallery-container-wrapper.has-context-open-item | :has(.gallery-item.context-open)
  * #modemTrayIconGlyph[data-net=send|recv] | set from websocket.js _syncTaskbarNetFlags (not observed)
- * .desktop-taskbar.net-limited           | .desktop-taskbar:has(#taskbarWsStatus:is(.ping-response-wait, .ping-warning))
+ * .desktop-taskbar.net-limited           | set from websocket.js _syncTaskbarNetFlags (not observed). It followed the
+ *                                          ping dot until #998; since #895 the globe is the computer's own link, and the
+ *                                          two writers flipped the taskbar's class at every traffic blink
  * .modal.window-has-caption              | .modal:has(> .modal-window-title)   (CSS uses it inside :where(), same specificity)
  * .manual-preview-container.has-workspace-overlay | :has(.manual-preview-workspace-overlay:not(.hidden))
  * .manual-preview-content.has-quickstart-placeholder | :has(#manualPreviewPlaceholder.has-quickstart:not(.hidden))
@@ -47,7 +49,6 @@
         { host: 'body', className: 'taskbar-orb', selector: '#desktopTaskbar .taskbar-start-button.orb', watch: ['taskbar-start-button'] },
         { host: 'body', className: 'taskbar-luna', selector: '#desktopTaskbar .taskbar-start-button.luna', watch: ['taskbar-start-button'] },
         { host: '.gallery, .gallery-container-wrapper', className: 'has-context-open-item', selector: '.gallery-item.context-open', watch: ['context-open', 'gallery', 'gallery-container-wrapper'] },
-        { host: '.desktop-taskbar', className: 'net-limited', selector: '#taskbarWsStatus:is(.ping-response-wait, .ping-warning)', watch: ['ping-response-wait', 'ping-warning', 'desktop-taskbar'] },
         { host: '.modal', className: 'window-has-caption', selector: ':scope > .modal-window-title', watch: ['modal-window-title', 'modal'] },
         { host: '.manual-preview-container', className: 'has-workspace-overlay', selector: '.manual-preview-workspace-overlay:not(.hidden)', watch: ['manual-preview-workspace-overlay', 'manual-preview-container'] },
         { host: '.manual-preview-content', className: 'has-quickstart-placeholder', selector: '#manualPreviewPlaceholder.has-quickstart:not(.hidden)', watch: ['has-quickstart', 'manual-preview-content'] },
@@ -55,13 +56,22 @@
     ];
 
     FLAGS.forEach((flag) => {
-        flag.watchClass = flag.watch.length
-            ? new RegExp('(^|\\s)(' + flag.watch.join('|') + ')(\\s|$)')
-            : null;
         flag.watchSelector = flag.watch.map((name) => '.' + name).join(', ');
-        // only these read <body>'s own classes: a body class change cannot move any other flag
-        flag.bodyDependent = /(^|[\s,>+~(])body\b/.test(flag.selector);
+        // every class its host or selector names: a class change can move the flag only through one of these
+        flag.tokens = new Set(((flag.host + ' ' + flag.selector).match(/\.[\w-]+/g) || []).map((t) => t.slice(1)));
     });
+
+    // The class tokens a class mutation changed (old value against the current one). With several records
+    // for one element in a batch, the first record's set holds the net change, so nothing is missed (#998).
+    function changedClassTokens(mutation) {
+        const split = (v) => new Set(String(v || '').split(/\s+/).filter(Boolean));
+        const before = split(mutation.oldValue);
+        const after = split(mutation.target.getAttribute('class'));
+        const out = [];
+        for (const t of before) if (!after.has(t)) out.push(t);
+        for (const t of after) if (!before.has(t)) out.push(t);
+        return out;
+    }
 
     // Union of every flag's watch list: most mutations (text, unrelated classes) stop at this check
     const ALL_WATCH = [...new Set(FLAGS.flatMap((flag) => flag.watch))];
@@ -195,15 +205,13 @@
         return node.matches(flag.watchSelector) || node.querySelector(flag.watchSelector) !== null;
     }
 
-    function mutationTouchesFlag(mutation, flag) {
+    function mutationTouchesFlag(mutation, flag, changed) {
         if (mutation.type === 'attributes') {
-            // <body>'s class changes many times during a boot. Every flag used to be checked again
-            // on each one, the per-window flags over all ~90 windows (137 ms of a phone boot in
-            // selector queries, #817); only a flag whose selector names body can change with it.
-            if (mutation.target === document.body && flag.bodyDependent) return true;
-            if (!flag.watchClass) return false;
-            return flag.watchClass.test(mutation.target.getAttribute('class') || '')
-                || flag.watchClass.test(mutation.oldValue || '');
+            // Only a class the flag names can move it. Any class change on a window used to re-run the
+            // three document-wide maximized-window queries (each focus click, #998); a <body> class
+            // change used to re-check every flag (137 ms of a phone boot, #817).
+            for (let i = 0; i < changed.length; i++) if (flag.tokens.has(changed[i])) return true;
+            return false;
         }
         const added = mutation.addedNodes;
         for (let i = 0; i < added.length; i++) {
@@ -220,12 +228,13 @@
         for (let i = 0; i < allMutations.length; i++) windowChromeMutation(allMutations[i]);
         const mutations = allMutations.filter(mutationMayMatter);
         if (!mutations.length) return;
+        const changed = mutations.map((m) => (m.type === 'attributes' ? changedClassTokens(m) : null));
         for (let f = 0; f < FLAGS.length; f++) {
             const flag = FLAGS[f];
             const scoped = flag.host !== 'html' && flag.host !== 'body';
             for (let i = 0; i < mutations.length; i++) {
                 const mutation = mutations[i];
-                if (!mutationTouchesFlag(mutation, flag)) continue;
+                if (!mutationTouchesFlag(mutation, flag, changed[i])) continue;
                 if (!scoped) {
                     syncFlag(flag);
                     break;

@@ -34,12 +34,16 @@ function deferAccountTrayNotifications() {
 
 function revealTrayIconElement(el, animate = true) {
     if (!el) return;
-    el.classList.remove('hidden');
+    if (el.classList.contains('hidden')) el.classList.remove('hidden');
     // traySyncOverflow: public/scripts/comp/trayRegistry.js
     traySyncOverflow();
     if (animate) {
-        el.classList.remove('tray-boot-in');
-        void el.offsetWidth;
+        // only a replay needs the forced reflow that restarts the animation; a first reveal just adds the
+        // class (the boot revealed each icon with a page-wide reflow, #998)
+        if (el.classList.contains('tray-boot-in')) {
+            el.classList.remove('tray-boot-in');
+            void el.offsetWidth;
+        }
         el.classList.add('tray-boot-in');
     }
 }

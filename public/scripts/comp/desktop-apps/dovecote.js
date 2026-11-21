@@ -4597,7 +4597,7 @@ const doveImapAnnounce = function (list) {
     // the phone shell's Messaging raises its own notification and sound for the same mail
     if (window.uiShell === 'mobile') return;
     // isDesktopTrayBootPending: public/scripts/comp/trayIndicators.js
-    if (!doveTrayRegistered || (typeof isDesktopTrayBootPending === 'function' && isDesktopTrayBootPending())) return;
+    if (!doveTray.registered || (typeof isDesktopTrayBootPending === 'function' && isDesktopTrayBootPending())) return;
     // desktopSounds.play: public/scripts/comp/desktopSounds.js
     if (doveMailOptions.soundOn() && typeof desktopSounds !== 'undefined') desktopSounds.play('notify');
     if (!doveMailOptions.notifyOn()) return;
@@ -4881,10 +4881,9 @@ const doveShowNewMail = async function (count) {
 // live from here afterward. The glyph is the mail program icon, and a closed
 // envelope once the Inbox has unread mail. The icon stays in the tray at zero.
 
-let doveTrayInitialized = false;
-let doveLastUnread = null;
-let doveHasAnnouncedMail = false;
-let doveTrayRegistered = false;
+// initialized: wired once; registered: the login delay is over and the icon may show; announced: the unread
+// balloon has shown this session
+const doveTray = { initialized: false, registered: false, announced: false };
 // Inbox ids already seen this session. A delete/mark/move/refresh/page must not
 // re-play the new-mail sound just because the unread count moved.
 const doveNotifiedMailIds = new Set();
@@ -4926,7 +4925,7 @@ const doveNoteMailIds = function (mail, options) {
 };
 
 const dovePlayNewMailAlert = function (count) {
-    if (!doveTrayRegistered || (typeof isDesktopTrayBootPending === 'function' && isDesktopTrayBootPending())) {
+    if (!doveTray.registered || (typeof isDesktopTrayBootPending === 'function' && isDesktopTrayBootPending())) {
         return;
     }
     // Mail Options' "Play sound when new messages arrive" / "Show a notification ..." (doveMailOptions)
@@ -4951,21 +4950,19 @@ const doveApplyTrayBadge = function (dreamUnread, options) {
     const unread = doveDreamUnread + doveImapUnreadTotal();
     const opts = options || {};
     // isDesktopTrayBootPending: public/scripts/comp/trayIndicators.js
-    const reveal = opts.reveal !== false && !isDesktopTrayBootPending() && doveTrayRegistered;
-    doveLastUnread = unread;
+    const reveal = opts.reveal !== false && !isDesktopTrayBootPending() && doveTray.registered;
+    // every mailbox push lands here: write only what changed (a same-value title or class write is still a mutation,
+    // and the notification area counts it as the icon's activity, #998). toggle(force) writes only on a change.
     icon.classList.toggle('hidden', !reveal);
     icon.classList.toggle('has-unread', unread > 0);
-    if (unread > 0) {
-        badge.textContent = unread > 99 ? '99+' : String(unread);
-        badge.classList.remove('hidden');
-        icon.title = 'Dovecote — ' + unread + ' unread';
-        if (reveal && !doveHasAnnouncedMail) {
-            if (doveMailOptions.notifyOn()) doveShowUnreadBalloon(unread);
-            doveHasAnnouncedMail = true;
-        }
-    } else {
-        badge.classList.add('hidden');
-        icon.title = 'Dovecote';
+    const text = unread > 99 ? '99+' : String(unread);
+    const title = unread > 0 ? 'Dovecote — ' + unread + ' unread' : 'Dovecote';
+    if (unread > 0 && badge.textContent !== text) badge.textContent = text;
+    badge.classList.toggle('hidden', !(unread > 0));
+    if (icon.title !== title) icon.title = title;
+    if (unread > 0 && reveal && !doveTray.announced) {
+        if (doveMailOptions.notifyOn()) doveShowUnreadBalloon(unread);
+        doveTray.announced = true;
     }
 };
 
@@ -5007,8 +5004,8 @@ const doveRenderInboxBadgeFromState = function () {
 // Called from startBackgroundTrayServices (systemTrayManager.js)
 function initializeDovecoteTray() {
     const icon = document.getElementById('dovecoteTrayIcon');
-    if (!icon || doveTrayInitialized) return;
-    doveTrayInitialized = true;
+    if (!icon || doveTray.initialized) return;
+    doveTray.initialized = true;
     // e-mail accounts' new mail and Inbox unread reach the tray too (doveImapOnEvent)
     doveImapBind();
     icon.addEventListener('click', (e) => {
@@ -5019,8 +5016,11 @@ function initializeDovecoteTray() {
     });
     doveRefreshTrayUnread({ reveal: false });
     setTimeout(() => {
-        doveTrayRegistered = true;
-        doveRefreshTrayUnread({ reveal: true });
+        doveTray.registered = true;
+        // the dovecote_mailbox_updated push has kept the count current since the boot read: show it, no second read
+        // (#998); read only if the boot read never answered (or never primed the new-mail ids)
+        if (window.uiShell !== 'mobile' && doveDreamUnread !== null && doveNotifyPrimed) doveApplyTrayBadge(doveDreamUnread, { reveal: true });
+        else doveRefreshTrayUnread({ reveal: true });
     }, DOVE_TRAY_REGISTER_DELAY_MS);
 }
 

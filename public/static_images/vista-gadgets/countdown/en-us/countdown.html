@@ -174,6 +174,7 @@
 		document.getElementById('strapText').innerHTML = strapText;
 		}
 		//document.getElementById('strapText').innerHTML = scrollTxt;
+		applyTextStyle();
 		setTimeout("showCounter('"+ myStrapState +"')",1000)
 		
 		
@@ -211,21 +212,32 @@ setTimeout('document.getElementById(\'strapText\').innerHTML = strapText;',1000)
 setTimeout('loadSettings()',1000);
 }
 
-function tick(){
+// Dreamscape (#998): the text style is written when the settings change (loadSettings), not every second,
+// and the counter only when its text changes; tick() keeps a check for the defaults before loadSettings runs
+var textStyleKey = "";
+var counterShown = null;
+function applyTextStyle(){
+var key = textColour + "|" + mainTextSize + "|" + strapTextSize + "|" + fontFace;
+if(key == textStyleKey) return;
+textStyleKey = key;
 document.getElementById('counterText').style.color = textColour;
 document.getElementById('strapText').style.color = textColour;
 document.getElementById('counterText').style.fontSize = mainTextSize;
 document.getElementById('strapText').style.fontSize  = strapTextSize;
 document.getElementById('counterText').style.fontFamily = fontFace;
 document.getElementById('strapText').style.fontFamily  = fontFace;
+}
+
+function tick(){
+applyTextStyle();
 ele = document.getElementById('counterText');
 thisDate = new Date;
 differenceUTC = Date.parse(countDate) - Date.parse(thisDate);
 secsleft = differenceUTC/1000;
-if(secsleft >= 0){
-ele.innerHTML = formatDate(secsleft,view);
-} else {
-ele.innerHTML = "Finished!";
+var text = secsleft >= 0 ? formatDate(secsleft,view) : "Finished!";
+if(text !== counterShown){
+counterShown = text;
+ele.innerHTML = text;
 }
 //alert("helo: " + secsleft);
 }

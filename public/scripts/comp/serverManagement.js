@@ -226,6 +226,8 @@ const serverManagement = {
         try {
             localStorage.setItem('staticforge_dev_mode', nextDev.toString());
         } catch (e) { /* ignore */ }
+        // the socket registry keeps the flag in memory (public/scripts/ws/wsInboundRegistry.js); a same-tab write has no storage event
+        if (typeof isWsInboundDevLogEnabled === 'function') isWsInboundDevLogEnabled(true);
         this.syncRuntimeDevModeCookie(nextDev);
         this._notifyRuntimeCompileListeners('devMode');
         return nextDev;

@@ -4363,10 +4363,18 @@ class ServiceWorkerManager {
         // Melaton Mobile (#890): nothing on the phone shows the worker's health (the desktop's tray icon
         // reads it), and each ping can start a worker that had gone idle: a phone pings only while an
         // update runs, and never with the screen off.
-        const phone = window.uiShell === 'mobile';
-        const due = () => !document.hidden && !(phone && (!this.isUpdating || document.documentElement.dataset.screenOff !== undefined));
+        // The desktop (#998): the answer only feeds Melaton Update's tray icon, which shows only while updates
+        // download, wait to install or are available (#945): it pings only then (_healthWanted), and the turn on
+        // starts the bookkeeping afresh with a ping at once (_healthNoteWanted), so no stale 'Not Responding' shows.
+        const due = () => {
+            if (document.hidden) return false;
+            const turningOn = !this._healthWasWanted;
+            // (a turn on has pinged already)
+            return this._healthNoteWanted() && !turningOn;
+        };
         this.healthCheckInterval = setInterval(() => {
-            // due(): never on a hidden page (document.hidden); a phone only while an update runs, screen on
+            // due(): never on a hidden page (document.hidden); only while the tray icon shows (a phone: while an
+            // update runs, screen on)
             if (document.hidden || !due()) return;
             this._runMeasuredHealthCheckPing();
         }, SW_HEALTH_PING_MS);
@@ -4381,8 +4389,33 @@ class ServiceWorkerManager {
             document.addEventListener('visibilitychange', this._healthVisibleHandler);
         }
         
-        // Send initial ping immediately
-        if (!phone || this.isUpdating) this._runMeasuredHealthCheckPing();
+        // Send initial ping immediately (when the answer is wanted now; otherwise the turn on sends it)
+        this._healthWasWanted = this._healthWanted();
+        if (this._healthWasWanted) this._runMeasuredHealthCheckPing();
+    }
+
+    /** Whether the worker's health is watched now: a phone while an update runs, screen on (#890); the desktop while
+     *  Melaton Update's tray icon shows (websocket.js _updateServiceWorkerTrayIcon's `wanted`, #945, #998). */
+    _healthWanted() {
+        if (window.uiShell === 'mobile') return !!this.isUpdating && document.documentElement.dataset.screenOff === undefined;
+        return !!(this.isUpdating || this.hasPendingUpdates() || this.updateAvailable || this.availableUpdateCount() > 0);
+    }
+
+    /**
+     * _healthWanted, noting its turn on: the answers from before (the last one maybe hours old) and the grace period
+     * start again, and a visible window pings at once, so the icon that now shows does not read 'Not Responding'.
+     */
+    _healthNoteWanted() {
+        const on = this._healthWanted();
+        if (on && !this._healthWasWanted && this.healthCheckInterval) {
+            this._healthWasWanted = true;
+            this.lastPingResponseTime = null;
+            this.healthCheckStartTime = Date.now();
+            if (!document.hidden) this._runMeasuredHealthCheckPing();
+        } else if (!on) {
+            this._healthWasWanted = false;
+        }
+        return on;
     }
 
     stopHealthCheck() {
@@ -4453,8 +4486,13 @@ class ServiceWorkerManager {
         // Check if service worker is responding to pings
         let isResponding = true;
         let timeSinceLastPingResponse = null;
-        
-        if (this.lastPingResponseTime) {
+        // the desktop asks only while Melaton Update's icon shows (_healthWanted, #998): unwatched is not 'Not
+        // Responding', and the turn on (read here as the icon updates) starts the answers afresh
+        const watched = !this.healthCheckInterval || this._healthNoteWanted();
+
+        if (!watched && window.uiShell !== 'mobile') {
+            // not asked: nothing to report
+        } else if (this.lastPingResponseTime) {
             timeSinceLastPingResponse = Date.now() - this.lastPingResponseTime;
             // If we haven't received a ping response in 15 seconds, service worker is likely stopped
             isResponding = timeSinceLastPingResponse < SW_HEALTH_SILENT_MS;

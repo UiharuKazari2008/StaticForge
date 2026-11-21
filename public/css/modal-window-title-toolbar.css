@@ -1064,8 +1064,8 @@ body:not(.windows-classic-theme) #directorWindow {
     cursor: var(--c-not-allowed);
 }
 
-.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment:disabled i,
-.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > [class^="btn-"].toolbar-input-segment:disabled .icon-fa {
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > :is(.btn-secondary, .btn-danger, .btn-standard, .btn-primary, .btn-small, .btn-toggle, .btn-warning, .btn-group-compact).toolbar-input-segment:disabled i,
+.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment) > :is(.btn-secondary, .btn-danger, .btn-standard, .btn-primary, .btn-small, .btn-toggle, .btn-warning, .btn-group-compact).toolbar-input-segment:disabled .icon-fa {
     opacity: 0.32;
     text-shadow: none;
 }
@@ -1108,8 +1108,8 @@ body:not(.windows-classic-theme) #directorWindow {
     box-sizing: border-box;
 }
 
-.modal.toolbar-visible .modal-window-title-toolbar > [class^="btn-"]:disabled:not(.toolbar-input-segment) i,
-.modal.toolbar-visible .modal-window-title-toolbar > [class^="btn-"]:disabled:not(.toolbar-input-segment) .icon-fa {
+.modal.toolbar-visible .modal-window-title-toolbar > :is(.btn-secondary, .btn-danger, .btn-standard, .btn-primary, .btn-small, .btn-toggle, .btn-warning, .btn-group-compact):disabled:not(.toolbar-input-segment) i,
+.modal.toolbar-visible .modal-window-title-toolbar > :is(.btn-secondary, .btn-danger, .btn-standard, .btn-primary, .btn-small, .btn-toggle, .btn-warning, .btn-group-compact):disabled:not(.toolbar-input-segment) .icon-fa {
     opacity: 0.32;
     text-shadow: none;
 }
@@ -1138,8 +1138,11 @@ body:not(.windows-classic-theme) #directorWindow {
     pointer-events: none;
 }
 
-.modal.toolbar-visible .modal-window-title-toolbar [class^="btn-"] i,
-.modal.toolbar-visible .modal-window-title-toolbar [class^="btn-"] .icon-fa {
+/* The button classes a class attribute starts with (scripts/test-css-class-attr-invalidation.js), not
+   [class^="btn-"]: an attribute selector on class with a descendant part makes Chrome restyle every <i> /
+   .icon-fa under ANY element whose class changes (each window focus click restyled all its icons, #998). */
+.modal.toolbar-visible .modal-window-title-toolbar :is(.btn-secondary, .btn-danger, .btn-standard, .btn-primary, .btn-small, .btn-toggle, .btn-warning, .btn-group-compact) i,
+.modal.toolbar-visible .modal-window-title-toolbar :is(.btn-secondary, .btn-danger, .btn-standard, .btn-primary, .btn-small, .btn-toggle, .btn-warning, .btn-group-compact) .icon-fa {
     text-shadow:
         -1px -1px 0 rgba(0, 0, 0, 0.45),
         1px -1px 0 rgba(0, 0, 0, 0.45),

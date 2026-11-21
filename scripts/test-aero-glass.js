@@ -216,6 +216,24 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     api.syncModal(m);
     assert.strictEqual(m.style.getPropertyValue('--aero-x'), '10.5px', 'rounded to device pixels');
     window.devicePixelRatio = 1;
+    // a known origin (the caller just placed the window, #998): no rect read, same rounding
+    const ownRect = m.getBoundingClientRect;
+    let rectReads = 0;
+    m.getBoundingClientRect = function () { rectReads += 1; return ownRect.call(this); };
+    assert.strictEqual(api.syncModal(m, { x: 50.2, y: 60 }), true);
+    assert.strictEqual(rectReads, 0, 'a known origin reads no layout');
+    assert.strictEqual(m.style.getPropertyValue('--aero-x'), '50px');
+    assert.strictEqual(m.style.getPropertyValue('--aero-y'), '60px');
+    m.getBoundingClientRect = ownRect;
+    api.syncModal(m);
+    assert.strictEqual(m.style.getPropertyValue('--aero-x'), '10px', 'without one the rect is read again');
+    // the contrast debounce keeps one timer while calls keep coming (drag / resize frames)
+    api.refreshContrast();
+    const contrastTimer = T.state.contrastTimer;
+    assert.ok(contrastTimer, 'contrast scheduled');
+    api.refreshContrast();
+    api.refreshContrast();
+    assert.strictEqual(T.state.contrastTimer, contrastTimer, 'later calls move the deadline, not the timer');
     m.classList.add('hidden');
     assert.strictEqual(api.syncModal(m), false, 'hidden windows are skipped');
     m.classList.remove('hidden');

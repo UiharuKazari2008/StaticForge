@@ -474,7 +474,7 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionList > .director-h
     font-weight: 600;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #directorSessionList :is(.director-sessions-list:not(:has(.scrollable-content)), .director-sessions-list .scrollable-content) {
+body.desktop-mode:not(.windows-classic-theme) #directorSessionList :is(.director-sessions-list:not(:has(> .scrollable-content)), .director-sessions-list .scrollable-content) {
     gap: 1px;
     padding: 3px;
 }
@@ -604,7 +604,7 @@ body:not(.windows-classic-theme) #directorWindow #directorWindowToolbar > #direc
 
 /* Header glyphs stay white on the dark glass. The workspace accent is the same
    family as the button fill, so the icon reads as a blank purple pill. */
-body:not(.windows-classic-theme) #directorCommonHeader [class^="btn-"]:not(.gallery-toggle-btn) > i {
+body:not(.windows-classic-theme) #directorCommonHeader :is(.btn-secondary, .btn-danger, .btn-standard, .btn-primary, .btn-small, .btn-toggle, .btn-warning, .btn-group-compact):not(.gallery-toggle-btn) > i {
     color: #fff;
 }
 
