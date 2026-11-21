@@ -566,39 +566,65 @@
 
     /**
      * Create Smart Tag / Edit Smart Tag: a name, the tags to look for (the autofill finds them in the tag database; each
-     * is in the positive or the negative prompt, a negative one tinted red) and whether a print needs all or any of them.
+     * is in the prompt or the negative prompt, a negative one tinted red) and whether a print needs all or any of them.
+     * A Vista dialog of kit controls (Segoe dialog units).
      */
     async function editSmartTag(tag) {
-        const rule = tag ? JSON.parse(JSON.stringify(tag.rule)) : { match: 'all', terms: [] };
-        const html = `<div class="wpg-smart">
-            <p class="wpg-smart-row"><label for="wpgSmartName">Name:</label><input id="wpgSmartName" class="wpg-smart-name" type="text" maxlength="200" value="${esc(tag ? tag.name : '')}" data-autofocus></p>
-            <p class="wpg-smart-hint">Find DreamScape prints whose prompts have these tags.</p>
-            <div class="wpg-smart-find">
-                <div class="wpg-smart-searchbox"><input class="wpg-smart-search" type="text" placeholder="Search the tags" autocomplete="off" spellcheck="false"><div class="wpg-smart-sugg" role="listbox" hidden></div></div>
-                <span class="wpg-smart-lanes" role="radiogroup">
-                    <label><input type="radio" name="wpgSmartLane" value="pos" checked> Positive prompt</label>
-                    <label class="is-negative"><input type="radio" name="wpgSmartLane" value="neg"> Negative prompt</label>
-                </span>
-                <button type="button" class="wpg-smart-add">Add</button>
-            </div>
-            <div class="wpg-smart-terms" role="list"></div>
-            <p class="wpg-smart-row wpg-smart-match"><span>Show prints with:</span>
-                <label><input type="radio" name="wpgSmartMatch" value="all"${rule.match !== 'any' ? ' checked' : ''}> all of these tags</label>
-                <label><input type="radio" name="wpgSmartMatch" value="any"${rule.match === 'any' ? ' checked' : ''}> any of these tags</label></p>
-        </div>`;
-        const out = await dialog(html, [{ text: 'OK', value: 'ok' }, { text: 'Cancel', value: null }], {
-            title: tag ? 'Edit Smart Tag' : 'Create Smart Tag',
-            icon: 'fas fa-tags',
-            onDialogReady: (dlg, signal) => wireSmartDialog(dlg, rule, signal),
-            resolveValue: (value, dlg) => {
-                if (value !== 'ok') return null;
-                const m = dlg.querySelector('input[name="wpgSmartMatch"]:checked');
-                return { name: dlg.querySelector('.wpg-smart-name').value.trim(), rule: { match: m ? m.value : 'all', terms: rule.terms } };
+        const rule = tag && tag.rule ? JSON.parse(JSON.stringify(tag.rule)) : { match: 'all', terms: [] };
+        const html = kitText(7, 9, 30, 8, 'Name:') + kitEdit('wpg-smart-name', 40, 7, 213, tag ? tag.name : '', ' maxlength="200" data-autofocus')
+            + kitText(7, 26, 246, 8, 'Find DreamScape prints whose prompts have these tags.')
+            + kitEdit('wpg-smart-search', 7, 39, 192, '', ' aria-label="Search the tags"') + kitButton(203, 38, 50, 'Add', 'smart-add')
+            + kitCheck('radio', 'wpgSmartPos', 'wpgSmartLane', 'pos', 7, 55, 100, 'In the prompt', true)
+            + kitCheck('radio', 'wpgSmartNeg', 'wpgSmartLane', 'neg', 110, 55, 140, 'In the negative prompt', false, 'is-negative')
+            + `<div class="tbp-ctl wpg-smart-terms" data-dlu="7,69,246,58" role="list"></div>`
+            + kitText(7, 135, 60, 8, 'Show prints with:')
+            + kitCheck('radio', 'wpgSmartAll', 'wpgSmartMatch', 'all', 68, 134, 88, 'all of these tags', rule.match !== 'any')
+            + kitCheck('radio', 'wpgSmartAny', 'wpgSmartMatch', 'any', 160, 134, 88, 'any of these tags', rule.match === 'any')
+            + kitButton(149, 155, 50, 'OK', 'ok') + kitButton(203, 155, 50, 'Cancel', 'cancel');
+        const out = await kitDialog({
+            id: 'glancewellSmartTag',
+            title: tag && tag.id ? 'Edit Smart Tag' : 'Create Smart Tag',
+            cls: 'wpg-smart',
+            html,
+            ready: (c, { signal }) => {
+                const search = c.querySelector('.wpg-smart-search');
+                const termsEl = c.querySelector('.wpg-smart-terms');
+                const neg = () => c.querySelector('#wpgSmartNeg').checked;
+                const drawTerms = () => {
+                    termsEl.innerHTML = rule.terms.length
+                        ? rule.terms.map((t, i) => `<span class="wpg-smart-term${t.neg ? ' is-negative' : ''}" role="listitem">${esc(t.tag)}<span class="wpg-smart-x" data-i="${i}" title="Remove" aria-label="Remove ${esc(t.tag)}"></span></span>`).join('')
+                        : '<span class="wpg-smart-none">No tags yet: search for one above and click Add.</span>';
+                };
+                const add = (text) => {
+                    const t = String(text || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+                    if (!t) return;
+                    if (!rule.terms.some((x) => x.tag === t && x.neg === neg())) rule.terms.push({ tag: t, neg: neg() });
+                    search.value = '';
+                    drawTerms();
+                    search.focus();
+                };
+                // the tag database's autofill, as Studio's prompt boxes rank it
+                attachSuggest(search, async (q) => (await autofillSuggestions(q)).map((x) => ({ text: x.tag, note: x.count ? x.count.toLocaleString() : '' })), (it) => add(it.text), signal);
+                search.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.defaultPrevented) { e.preventDefault(); add(search.value); } }, { signal });
+                c.querySelector('[data-action="smart-add"]').addEventListener('click', () => add(search.value), { signal });
+                termsEl.addEventListener('click', (e) => {
+                    const x = e.target.closest('.wpg-smart-x');
+                    if (!x) return;
+                    rule.terms.splice(Number(x.dataset.i), 1);
+                    drawTerms();
+                }, { signal });
+                drawTerms();
+                return {
+                    accept: () => {
+                        const name = c.querySelector('.wpg-smart-name').value.trim();
+                        if (!name) { void message('Type a name for the smart tag.', 'warning'); return false; }
+                        if (!rule.terms.length) { void message('Add at least one tag to look for.', 'warning'); return false; }
+                        return { name, rule: { match: c.querySelector('#wpgSmartAny').checked ? 'any' : 'all', terms: rule.terms } };
+                    }
+                };
             }
         });
         if (!out) return;
-        if (!out.name) { await message('Type a name for the smart tag.', 'warning'); return editSmartTag(Object.assign({}, tag || {}, { name: '', rule: out.rule, id: tag && tag.id })); }
-        if (!out.rule.terms.length) { await message('Add at least one tag to look for.', 'warning'); return editSmartTag(Object.assign({}, tag || {}, { name: out.name, rule: out.rule, id: tag && tag.id })); }
         try {
             const r = await send('glancewell_smart_tag_edit', tag && tag.id ? { op: 'update', id: tag.id, name: out.name, rule: out.rule } : { op: 'create', name: out.name, rule: out.rule });
             await loadSmartTags();
@@ -606,73 +632,6 @@
             renderTree();
             if (r && r.id) void showNode({ root: 'prints', kind: 'smarttag', value: r.id });
         } catch (err) { await message(errorText(err), 'error'); }
-    }
-
-    function wireSmartDialog(dlg, rule, signal) {
-        if (!dlg) return;
-        const on = (el, type, fn) => el.addEventListener(type, fn, signal ? { signal } : undefined);
-        const search = dlg.querySelector('.wpg-smart-search');
-        const sugg = dlg.querySelector('.wpg-smart-sugg');
-        const termsEl = dlg.querySelector('.wpg-smart-terms');
-        let items = [];
-        let at = -1;
-        let seq = 0;
-        let timer = 0;
-        const lane = () => (dlg.querySelector('input[name="wpgSmartLane"]:checked') || {}).value === 'neg';
-        const drawTerms = () => {
-            termsEl.innerHTML = rule.terms.length
-                ? rule.terms.map((t, i) => `<span class="wpg-smart-term${t.neg ? ' is-negative' : ''}" role="listitem" title="${t.neg ? 'In the negative prompt' : 'In the prompt'}">${esc(t.tag)}<button type="button" class="wpg-smart-x" data-i="${i}" aria-label="Remove ${esc(t.tag)}"></button></span>`).join('')
-                : '<span class="wpg-smart-none">No tags yet: search for one above and click Add.</span>';
-        };
-        const add = (tagText) => {
-            const tag = String(tagText || search.value).replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-            if (!tag) return;
-            const neg = lane();
-            if (!rule.terms.some((t) => t.tag === tag && t.neg === neg)) rule.terms.push({ tag, neg });
-            search.value = '';
-            closeSugg();
-            drawTerms();
-            search.focus();
-        };
-        const closeSugg = () => { sugg.hidden = true; items = []; at = -1; };
-        const drawSugg = () => {
-            sugg.innerHTML = items.map((x, i) => `<div class="wpg-smart-opt${i === at ? ' is-active' : ''}" role="option" data-i="${i}"><span>${esc(x.tag)}</span>${x.count ? `<span class="wpg-smart-count">${x.count.toLocaleString()}</span>` : ''}</div>`).join('');
-            sugg.hidden = !items.length;
-        };
-        on(search, 'input', () => {
-            clearTimeout(timer);
-            const q = search.value;
-            const mine = ++seq;
-            timer = setTimeout(async () => {
-                const list = await autofillSuggestions(q);
-                if (mine !== seq) return;
-                items = list;
-                at = list.length ? 0 : -1;
-                drawSugg();
-            }, 180);
-        });
-        on(search, 'keydown', (e) => {
-            e.stopPropagation();
-            if (e.key === 'ArrowDown' && items.length) { e.preventDefault(); at = (at + 1) % items.length; drawSugg(); }
-            else if (e.key === 'ArrowUp' && items.length) { e.preventDefault(); at = (at - 1 + items.length) % items.length; drawSugg(); }
-            else if (e.key === 'Enter') { e.preventDefault(); add(at >= 0 && items[at] ? items[at].tag : search.value); }
-            else if (e.key === 'Escape' && !sugg.hidden) { e.preventDefault(); closeSugg(); }
-        });
-        on(search, 'blur', () => setTimeout(closeSugg, 150));
-        on(sugg, 'mousedown', (e) => {
-            const o = e.target.closest('.wpg-smart-opt');
-            if (!o) return;
-            e.preventDefault();
-            add(items[Number(o.dataset.i)].tag);
-        });
-        on(dlg.querySelector('.wpg-smart-add'), 'click', () => add(at >= 0 && items[at] && !sugg.hidden ? items[at].tag : search.value));
-        on(termsEl, 'click', (e) => {
-            const x = e.target.closest('.wpg-smart-x');
-            if (!x) return;
-            rule.terms.splice(Number(x.dataset.i), 1);
-            drawTerms();
-        });
-        drawTerms();
     }
 
     // ------------------------------------------------------------------ tree
@@ -839,7 +798,7 @@
                 // the device as Explorer and Mobile Device Center show it: a modern phone or a Fold
                 ic.classList.add('is-device');
                 const file = root.activeSync && typeof root.activeSync.deviceIcon === 'function' ? root.activeSync.deviceIcon(r.node.root.slice(7), 16) : '';
-                if (file) ic.style.backgroundImage = `url("/static_images/vista-explorer/${file}")`;
+                if (/fold/.test(file)) ic.classList.add('is-fold'); else if (/phone/.test(file)) ic.classList.add('is-phone');
             }
             else if (r.smartId) ic.classList.add('is-smart');
             else ic.style.setProperty('--i', String(r.icon));
@@ -1651,11 +1610,14 @@
         const btn = pane && pane.querySelector('.wpg-lib-i-addtag');
         if (!btn) return;
         const input = h('input', 'wpg-lib-i-tagedit');
-        input.setAttribute('list', 'wpgLibTagNames');
-        let dl = doc.getElementById('wpgLibTagNames');
-        if (!dl) { dl = h('datalist'); dl.id = 'wpgLibTagNames'; doc.body.appendChild(dl); }
-        dl.innerHTML = S.tags.map((t) => `<option value="${esc(t.name)}">`).join('');
+        input.type = 'text';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
         btn.after(input);
+        // the gallery's tags as a Vista list under the box (never the browser's datalist)
+        const ac = new AbortController();
+        attachSuggest(input, tagSuggestions, (it) => { input.value = ''; void addTag(items, it.text); input.focus(); }, ac.signal);
+        new MutationObserver((_, mo) => { if (!input.isConnected) { ac.abort(); mo.disconnect(); } }).observe(input.parentNode, { childList: true });
         input.focus();
         input.addEventListener('keydown', async (e) => {
             e.stopPropagation();
@@ -2131,23 +2093,38 @@
         try { await send('glancewell_meta_set', { items: items.map(ref), change: { takenShiftHours: hours } }); } catch (err) { await message(errorText(err), 'error'); }
     }
 
+    /** Change Time Taken (WPG dialog 1472): "Change by" hours in Vista's up-down, the new and current time. */
     function promptHours(cur) {
-        const html = `<div class="wpg-lib-time"><p>Change the time stamp for selected pictures and videos.</p><p class="wpg-lib-time-row"><span>Change by:</span><span><input type="number" min="-24" max="24" step="1" value="0" class="wpg-lib-time-h" data-autofocus> hours</span></p><p class="wpg-lib-time-row"><span>New Time:</span><span class="wpg-lib-time-new">${esc(dateText(cur))}</span></p><p class="wpg-lib-time-row"><span>Current Time:</span><span>${esc(dateText(cur))}</span></p></div>`;
-        return dialog(html, [{ text: 'OK', value: 'ok' }, { text: 'Cancel', value: null }], {
+        const html = kitText(7, 7, 200, 8, 'Change the time stamp for selected pictures and videos.')
+            + kitText(7, 25, 50, 8, 'Change by:', 'wpg-time-label')
+            + `<div class="tbp-ctl tbp-spinedit wpg-time-spin" data-dlu="60,23,36,12"><input type="text" class="tbp-edit wpg-time-h" inputmode="numeric" maxlength="3" value="0" aria-label="Change by, in hours" data-autofocus><span class="tbp-spin tbp-spin-up" data-step="1" aria-hidden="true"></span><span class="tbp-spin tbp-spin-down" data-step="-1" aria-hidden="true"></span></div>`
+            + kitText(100, 25, 40, 8, 'hours')
+            + kitText(7, 42, 50, 8, 'New Time:', 'wpg-time-label') + kitText(60, 42, 147, 8, esc(dateText(cur)), 'wpg-time-new')
+            + kitText(7, 56, 50, 8, 'Current Time:', 'wpg-time-label') + kitText(60, 56, 147, 8, esc(dateText(cur)))
+            + kitButton(103, 76, 50, 'OK', 'ok') + kitButton(157, 76, 50, 'Cancel', 'cancel');
+        return kitDialog({
+            id: 'glancewellTimeTaken',
             title: 'Change Time Taken',
-            icon: 'fas fa-clock',
-            onDialogReady: (dlg) => {
-                const inp = dlg.querySelector('.wpg-lib-time-h');
-                if (!inp) return;
-                inp.addEventListener('input', () => { dlg.querySelector('.wpg-lib-time-new').textContent = dateText(cur + (Number(inp.value) || 0) * 3600000); });
-                inp.focus();
-                inp.select();
-            },
-            resolveValue: (value, dlg) => {
-                if (value !== 'ok') return null;
-                const n = Number(dlg.querySelector('.wpg-lib-time-h').value);
-                // WPG 974
-                return Number.isInteger(n) && n >= -24 && n <= 24 ? n : null;
+            cls: 'wpg-time',
+            html,
+            ready: (c, { signal }) => {
+                const inp = c.querySelector('.wpg-time-h');
+                const read = () => { const n = Number(String(inp.value).trim()); return Number.isInteger(n) ? n : NaN; };
+                const show = () => { const n = read(); c.querySelector('.wpg-time-new').textContent = dateText(cur + (Number.isFinite(n) ? n : 0) * 3600000); };
+                const step = (d) => { const n = read(); inp.value = String(Math.max(-24, Math.min(24, (Number.isFinite(n) ? n : 0) + d))); show(); };
+                inp.addEventListener('input', show, { signal });
+                inp.addEventListener('keydown', (e) => {
+                    if (e.key === 'ArrowUp') { e.preventDefault(); step(1); } else if (e.key === 'ArrowDown') { e.preventDefault(); step(-1); }
+                }, { signal });
+                c.querySelectorAll('.tbp-spin').forEach((b) => b.addEventListener('mousedown', (e) => { e.preventDefault(); step(Number(b.dataset.step)); inp.focus(); }, { signal }));
+                return {
+                    accept: () => {
+                        const n = read();
+                        // WPG 974
+                        if (!(Number.isInteger(n) && n >= -24 && n <= 24)) { void message('Please enter a value between -24 and +24.', 'warning'); return false; }
+                        return n;
+                    }
+                };
             }
         });
     }
@@ -2482,9 +2459,11 @@
     function chooseImportDevice() {
         const list = SRC().devices();
         // each device as Mobile Device Center draws it: a modern phone or a Fold (activeSyncAgent.js deviceIcon)
-        const icon = (d) => (root.activeSync && typeof root.activeSync.deviceIcon === 'function' && d.deviceId
-            ? ` style="background-image:url(&quot;/static_images/vista-explorer/${root.activeSync.deviceIcon(d.deviceId, 32)}&quot;)"` : '');
-        const rows = list.map((d, i) => `<div class="wpg-imp-dev${i === 0 ? ' is-selected' : ''}" data-dev="${esc(d.id)}" tabindex="0"><span class="wpg-imp-dev-icon"${icon(d)}></span><span>${esc(d.label)}</span></div>`).join('');
+        const icon = (d) => {
+            const f = root.activeSync && typeof root.activeSync.deviceIcon === 'function' && d.deviceId ? root.activeSync.deviceIcon(d.deviceId, 32) : '';
+            return /fold/.test(f) ? ' is-fold' : /phone/.test(f) ? ' is-phone' : '';
+        };
+        const rows = list.map((d, i) => `<div class="wpg-imp-dev${i === 0 ? ' is-selected' : ''}" data-dev="${esc(d.id)}" tabindex="0"><span class="wpg-imp-dev-icon${icon(d)}"></span><span>${esc(d.label)}</span></div>`).join('');
         const html = `<div class="wpg-imp"><p>If you do not see your device in the list, make sure it is connected to the computer and turned on.</p><div class="wpg-imp-list" role="listbox">${rows || '<p class="wpg-imp-none">No devices were found.</p>'}</div></div>`;
         return dialog(html, [{ text: 'Import', value: 'import' }, { text: 'Cancel', value: null }], {
             title: 'Import Pictures and Videos',
@@ -2541,13 +2520,23 @@
         // Found N ... Tag these pictures (optional) (PhotoAcq 1071 / 105 / 118)
         let tag = '';
         if (set.promptTag) {
-            const names = S.tags.map((t) => `<option value="${esc(t.name)}">`).join('');
-            const r = await dialog(`<div class="wpg-imp"><p>Found ${todo.length} pictures and videos</p><label class="wpg-imp-tag">Tag these pictures (optional):<input type="text" class="wpg-imp-tag-input" list="wpgImpTags" spellcheck="false" data-autofocus></label><datalist id="wpgImpTags">${names}</datalist><p class="wpg-imp-note">Tags help you find and organize pictures. You can add or change tags in Photo Gallery after importing.</p></div>`,
-                [{ text: 'Import', value: 'import' }, { text: 'Cancel', value: null }], {
-                    title: 'Importing Pictures and Videos', icon: 'fas fa-camera',
-                    onDialogReady: (dlg) => { const i = dlg.querySelector('.wpg-imp-tag-input'); if (i) { i.focus(); i.addEventListener('keydown', (e) => { if (e.key === '/' || e.key === ';') e.preventDefault(); }); } },
-                    resolveValue: (value, dlg) => (value === 'import' ? { tag: dlg.querySelector('.wpg-imp-tag-input').value.trim() } : null)
-                });
+            // Found N ... / Tag these pictures (optional): a kit dialog, the gallery's tags as a Vista list under the box
+            const r = await kitDialog({
+                id: 'glancewellImportTag',
+                title: 'Importing Pictures and Videos',
+                cls: 'wpg-imp-tagdlg',
+                html: kitText(7, 7, 236, 8, `Found ${todo.length} pictures and videos`)
+                    + kitText(7, 24, 236, 8, 'Tag these pictures (optional):')
+                    + kitEdit('wpg-imp-tag-input', 7, 35, 236, '', ' data-autofocus')
+                    + kitText(7, 54, 236, 24, 'Tags help you find and organize pictures. You can add or change tags in Photo Gallery after importing.', 'wpg-imp-note')
+                    + kitButton(139, 84, 50, 'Import', 'ok') + kitButton(193, 84, 50, 'Cancel', 'cancel'),
+                ready: (c, { signal }) => {
+                    const i2 = c.querySelector('.wpg-imp-tag-input');
+                    i2.addEventListener('keydown', (e) => { if (e.key === '/' || e.key === ';') e.preventDefault(); }, { signal });
+                    attachSuggest(i2, tagSuggestions, (it) => { i2.value = it.text; i2.focus(); }, signal);
+                    return { accept: () => ({ tag: i2.value.trim() }) };
+                }
+            });
             if (!r) return;
             tag = r.tag;
         }
@@ -2624,7 +2613,7 @@
         const kit = root.personalizationDialogs && root.personalizationDialogs.sheetKit;
         if (!kit || typeof kit.makeWindow !== 'function') return { step() {}, close() {} };
         const { modal, content, close } = kit.makeWindow('glancewellImportProgress', 'Importing Pictures and Videos', 'gwi-progress', '/static_images/app_icons/vista-photo-gallery.png', false);
-        content.innerHTML = `<div class="gwi-progress-body"><span class="gwi-progress-pic"></span><div class="gwi-progress-text"><p class="wpg-imp-line">Importing item 1 of ${total}</p><div class="wpg-imp-bar"><span></span></div><label class="wpg-imp-erase"><input type="checkbox" class="wpg-imp-erase-box"${erase ? ' checked' : ''}> Erase after importing</label></div></div><div class="gwi-progress-foot"><button type="button" class="tbp-button" data-act="cancel">Cancel</button></div>`;
+        content.innerHTML = `<div class="gwi-progress-body"><span class="gwi-progress-pic"></span><div class="gwi-progress-text"><p class="wpg-imp-line">Importing item 1 of ${total}</p><div class="wpg-imp-bar"><span></span></div><div class="tbp-check wpg-imp-erase"><input type="checkbox" id="wpgImpErase" class="wpg-imp-erase-box"${erase ? ' checked' : ''}><label for="wpgImpErase"><span>Erase after importing</span></label></div></div></div><div class="gwi-progress-foot"><button type="button" class="tbp-button" data-act="cancel">Cancel</button></div>`;
         const stop = () => onCancel();
         close.addEventListener('click', stop);
         content.querySelector('[data-act="cancel"]').addEventListener('click', stop);
@@ -2733,7 +2722,144 @@
         c.querySelector('#gwoRotate').checked = !!imp.rotate; c.querySelector('#gwoOpen').checked = !!imp.openAfter;
         const sync = () => { c.querySelector('.gwo-example').textContent = ex(c.querySelector('.gwo-foldername').value, c.querySelector('.gwo-filename').value); };
         c.addEventListener('change', () => { sync(); sheet.setDirty(true); });
+        // Photo Gallery's own Options: an owned dialog, no taskbar button
+        sheet.modal.dataset.windowOwned = 'true';
         kit.showWindow(sheet.modal, S.shell);
+    }
+
+    // ------------------------------------------------------------------ Vista dialogs and lists (never the browser's: no
+    // datalist, native radios, check boxes or number spinners; no-native-browser-ui.mdc, Yukimi Nov 21 2026)
+
+    const GALLERY_ICON = '/static_images/app_icons/vista-photo-gallery.png';
+
+    /** The shared Vista dialog kit (personalizationDialogs.js sheetKit), loaded with Control Panel. */
+    async function dialogKit() {
+        if (root.featureLoader) await root.featureLoader.loadFeature('control_panel').catch(() => {});
+        const kit = root.personalizationDialogs && root.personalizationDialogs.sheetKit;
+        if (kit) kit.useUnits(kit.SEGOE);
+        return kit || null;
+    }
+
+    /**
+     * A Vista dialog of kit controls placed in dialog units (data-dlu="x,y,w,h"). Buttons are kit buttons with
+     * data-action; "ok" resolves with ready()'s accept(), "cancel" / the X / Escape with null. Enter presses OK.
+     */
+    async function kitDialog({ id, title, cls, html, ready }) {
+        const kit = await dialogKit();
+        if (!kit) { await message(`${title} is not available right now.`, 'warning'); return null; }
+        const old = doc.getElementById(id);
+        if (old) kit.closeWindow(old);
+        const { modal, content, close } = kit.makeWindow(id, title, cls, GALLERY_ICON, false);
+        // an owned dialog: no taskbar button of its own, as in Windows (modalUtils.js shouldShowInTaskbar)
+        modal.dataset.windowOwned = 'true';
+        content.innerHTML = html;
+        content.querySelectorAll('[data-dlu]').forEach((n) => { const [x, y, w, h] = n.dataset.dlu.split(',').map(Number); n.style.cssText = kit.dlu(x, y, w, h); });
+        return new Promise((resolve) => {
+            let done = false;
+            const ac = new AbortController();
+            const finish = (v) => {
+                if (done) return;
+                done = true;
+                ac.abort();
+                kit.closeWindow(modal);
+                if (S.shell && !S.shell.classList.contains('hidden') && typeof root.bringModalToFront === 'function') root.bringModalToFront(S.shell);
+                resolve(v);
+            };
+            const api = (ready && ready(content, { finish, signal: ac.signal })) || {};
+            const accept = () => {
+                const v = typeof api.accept === 'function' ? api.accept() : true;
+                if (v !== undefined && v !== false) finish(v);
+            };
+            close.addEventListener('click', () => finish(null), { signal: ac.signal });
+            content.addEventListener('click', (e) => {
+                const b = e.target.closest('[data-action]');
+                if (!b) return;
+                if (b.dataset.action === 'ok') accept();
+                else if (b.dataset.action === 'cancel') finish(null);
+            }, { signal: ac.signal });
+            content.addEventListener('keydown', (e) => {
+                if (e.defaultPrevented) return;
+                if (e.key === 'Escape') { e.preventDefault(); finish(null); }
+                else if (e.key === 'Enter' && !e.target.closest('button')) { e.preventDefault(); accept(); }
+            }, { signal: ac.signal });
+            kit.showWindow(modal, S.shell);
+            const f = content.querySelector('[data-autofocus]');
+            if (f) setTimeout(() => { f.focus(); if (f.select) f.select(); }, 60);
+        });
+    }
+
+    /** A kit text box at x,y,w (12 DLU high). */
+    const kitEdit = (cls, x, y, w, value = '', extra = '') => `<input type="text" class="tbp-ctl tbp-edit ${cls}" data-dlu="${x},${y},${w},12" value="${esc(value)}" autocomplete="off" spellcheck="false"${extra}>`;
+    /** A kit check box or radio button (Vista's own art), the input before its label as the kit draws it. */
+    const kitCheck = (type, idv, name, value, x, y, w, label, checked, cls = '') => `<div class="tbp-ctl tbp-check ${cls}" data-dlu="${x},${y},${w},10"><input type="${type}" id="${idv}"${name ? ` name="${name}"` : ''}${value != null ? ` value="${esc(value)}"` : ''}${checked ? ' checked' : ''}><label for="${idv}"><span>${label}</span></label></div>`;
+    const kitButton = (x, y, w, label, action, extra = '') => `<button type="button" class="tbp-ctl tbp-button" data-dlu="${x},${y},${w},14" data-action="${action}"${extra}>${label}</button>`;
+    const kitText = (x, y, w, h, body, cls = '') => `<div class="tbp-ctl tbp-static ${cls}" data-dlu="${x},${y},${w},${h}">${body}</div>`;
+
+    /**
+     * Suggestions under a text box as a Vista list drop-down (instead of the browser's datalist): fetch(query) gives
+     * [{ text, note }]; pick(item) runs on a click or Enter. Arrow keys move, Escape closes. Returns { close }.
+     */
+    function attachSuggest(input, fetch, pick, signal) {
+        const list = h('div', 'wpg-suggest');
+        list.setAttribute('role', 'listbox');
+        list.hidden = true;
+        doc.body.appendChild(list);
+        let items = [];
+        let at = -1;
+        let seq = 0;
+        let timer = 0;
+        const close = () => { list.hidden = true; items = []; at = -1; };
+        const place = () => {
+            const r = input.getBoundingClientRect();
+            list.style.left = `${Math.round(r.left)}px`;
+            list.style.top = `${Math.round(r.bottom)}px`;
+            list.style.minWidth = `${Math.round(r.width)}px`;
+        };
+        const draw = () => {
+            list.innerHTML = items.map((x, i) => `<div class="wpg-suggest-opt${i === at ? ' is-active' : ''}" role="option" aria-selected="${i === at}" data-i="${i}"><span>${esc(x.text)}</span>${x.note ? `<span class="wpg-suggest-note">${esc(x.note)}</span>` : ''}</div>`).join('');
+            list.hidden = !items.length;
+            if (items.length) place();
+        };
+        const opts = signal ? { signal } : undefined;
+        input.addEventListener('input', () => {
+            clearTimeout(timer);
+            const mine = ++seq;
+            timer = setTimeout(async () => {
+                const got = await Promise.resolve(fetch(input.value)).catch(() => []);
+                if (mine !== seq) return;
+                items = got || [];
+                at = -1;
+                draw();
+            }, 150);
+        }, opts);
+        input.addEventListener('keydown', (e) => {
+            if (list.hidden || !items.length) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); at = (at + 1) % items.length; draw(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); at = (at - 1 + items.length) % items.length; draw(); }
+            else if (e.key === 'Enter' && at >= 0) { e.preventDefault(); e.stopPropagation(); const it = items[at]; close(); pick(it); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+        }, opts);
+        input.addEventListener('blur', () => setTimeout(close, 150), opts);
+        list.addEventListener('mousedown', (e) => {
+            const o = e.target.closest('.wpg-suggest-opt');
+            if (!o) return;
+            e.preventDefault();
+            const it = items[Number(o.dataset.i)];
+            close();
+            pick(it);
+        });
+        const remove = () => { clearTimeout(timer); list.remove(); };
+        if (signal) signal.addEventListener('abort', remove, { once: true });
+        return { close, remove };
+    }
+
+    /** The gallery's own tags that start with (or hold) what is typed. */
+    function tagSuggestions(q) {
+        const v = String(q || '').trim().toLowerCase();
+        if (!v) return [];
+        const starts = S.tags.filter((t) => t.name.toLowerCase().startsWith(v));
+        const holds = S.tags.filter((t) => !t.name.toLowerCase().startsWith(v) && t.name.toLowerCase().includes(v));
+        return starts.concat(holds).slice(0, 12).map((t) => ({ text: t.name }));
     }
 
     // ------------------------------------------------------------------ message boxes (Vista's, never the browser's)

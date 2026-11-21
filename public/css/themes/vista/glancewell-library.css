@@ -769,35 +769,6 @@ body.theme-vista #photoSwipeWindow .wpg-lib-i-capedit {
     resize: none;
 }
 
-/* Change Time Taken (dialog 1472) and Options in the shared message box */
-.wpg-lib-time p {
-    margin: 0 0 10px;
-}
-
-.wpg-lib-time .wpg-lib-time-row {
-    display: flex;
-    gap: 8px;
-}
-
-.wpg-lib-time .wpg-lib-time-row > span:first-child {
-    flex: 0 0 80px;
-    text-align: right;
-}
-
-/* Change by: the box, its spinner and "hours" on one line (dialog 1472) */
-.wpg-lib-time .wpg-lib-time-row > span:last-child {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-}
-
-#confirmationDialog .wpg-lib-time input.wpg-lib-time-h {
-    flex: none;
-    width: 52px;
-    min-width: 0;
-}
-
 .wpg-lib-options .wpg-lib-options-h {
     margin: 0 0 6px;
 }
@@ -837,8 +808,6 @@ body.theme-vista #photoSwipeWindow .wpg-lib-node.is-drop .wpg-lib-node-label {
     background: url("/static_images/vista-explorer/portable-device-16.png") center / 32px 32px no-repeat;
 }
 .wpg-imp-none { padding: 8px; color: #6d6d6d; }
-.wpg-imp-tag { display: flex; flex-direction: column; gap: 4px; }
-.wpg-imp-tag-input { width: 100%; box-sizing: border-box; }
 .wpg-imp-note { margin-top: 10px !important; color: #6d6d6d; }
 .wpg-imp-bar {
     height: 15px;
@@ -1012,115 +981,47 @@ body.theme-vista #photoSwipeWindow .wpg-lib-toc-lines { flex: 1 1 auto; min-widt
 body.theme-vista #photoSwipeWindow .wpg-lib-toc-card .wpg-lib-toc-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 body.theme-vista #photoSwipeWindow .wpg-lib-toc-count { color: #5a6c82; font-size: 11px; }
 
-/* Create Smart Tag / Edit Smart Tag (glancewellLibrary.js editSmartTag), in the shared message box */
-.wpg-smart {
-    width: 430px;
+/* Vista dialogs of kit controls (glancewellLibrary.js kitDialog; Segoe dialog units, 1.75 x 1.875 px) */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.wpg-smart {
+    width: 455px;   /* 260 DLU */
+    height: 328px;  /* 175 DLU */
 }
 
-.wpg-smart p {
-    margin: 0 0 8px;
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.wpg-time {
+    width: 375px;   /* 214 DLU */
+    height: 180px;  /* 96 DLU */
 }
 
-.wpg-smart .wpg-smart-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.wpg-imp-tagdlg {
+    width: 438px;   /* 250 DLU */
+    height: 195px;  /* 104 DLU */
 }
 
-.wpg-smart .wpg-smart-row > label:first-child {
-    flex: 0 0 auto;
+.tbp-client.wpg-time .wpg-time-label {
+    text-align: left;
 }
 
-#confirmationDialog .wpg-smart input.wpg-smart-name {
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
-.wpg-smart .wpg-smart-hint {
+.tbp-client .wpg-imp-note {
     color: #444;
 }
 
-.wpg-smart .wpg-smart-find {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
-}
-
-.wpg-smart .wpg-smart-searchbox {
-    position: relative;
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
-#confirmationDialog .wpg-smart input.wpg-smart-search {
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.wpg-smart .wpg-smart-lanes {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    white-space: nowrap;
-}
-
-.wpg-smart .wpg-smart-lanes label.is-negative {
+/* Smart Tags: a negative-prompt tag reads red (the lane's radio label and its token) */
+.tbp-window .tbp-client.wpg-smart .tbp-check.is-negative input + label {
     color: #b3261e;
 }
 
-/* the tag database's suggestions, as the autofill lists them: a Vista list drop-down under the box */
-.wpg-smart .wpg-smart-sugg {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 100%;
-    z-index: 5;
-    max-height: 190px;
-    overflow-y: auto;
-    background: #fff;
-    border: 1px solid #646464;
-    box-shadow: 2px 2px 3px rgba(0, 0, 0, .25);
-}
-
-.wpg-smart .wpg-smart-opt {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 1px 4px;
-    line-height: 17px;
-    cursor: default;
-}
-
-.wpg-smart .wpg-smart-opt.is-active {
-    background: #3399ff;
-    color: #fff;
-}
-
-.wpg-smart .wpg-smart-count {
-    color: #6d6d6d;
-}
-
-.wpg-smart .wpg-smart-opt.is-active .wpg-smart-count {
-    color: #e6f1ff;
-}
-
-/* the chosen tags, each as a token; a negative-prompt one tinted red */
-.wpg-smart .wpg-smart-terms {
+.tbp-client.wpg-smart .wpg-smart-terms {
     display: flex;
     flex-wrap: wrap;
     align-content: flex-start;
     gap: 4px;
-    min-height: 58px;
-    max-height: 120px;
-    overflow-y: auto;
     padding: 4px;
-    margin-bottom: 8px;
+    overflow-y: auto;
     background: #fff;
     border: 1px solid #abadb3;
 }
 
-.wpg-smart .wpg-smart-term {
+.tbp-client.wpg-smart .wpg-smart-term {
     display: inline-flex;
     align-items: center;
     gap: 3px;
@@ -1131,23 +1032,31 @@ body.theme-vista #photoSwipeWindow .wpg-lib-toc-count { color: #5a6c82; font-siz
     border-radius: 3px;
 }
 
-.wpg-smart .wpg-smart-term.is-negative {
+.tbp-client.wpg-smart .wpg-smart-term.is-negative {
     color: #8a1c15;
     background: linear-gradient(#fff4f3, #fbd9d6);
     border-color: #d2827b;
 }
 
-.wpg-smart .wpg-smart-x {
+.tbp-client.wpg-smart .wpg-smart-x {
+    /* a span without role=button: 7.css paints a button face (and a minimum size) on both */
+    display: inline-block;
+    flex: none;
+    min-width: 0;
+    min-height: 0;
+    position: relative;
     width: 14px;
     height: 14px;
     padding: 0;
     border: 0;
+    border-radius: 2px;
     background: transparent;
-    position: relative;
+    color: inherit;
+    box-shadow: none;
 }
 
-.wpg-smart .wpg-smart-x::before,
-.wpg-smart .wpg-smart-x::after {
+.tbp-client.wpg-smart .wpg-smart-x::before,
+.tbp-client.wpg-smart .wpg-smart-x::after {
     content: "";
     position: absolute;
     left: 3px;
@@ -1158,22 +1067,80 @@ body.theme-vista #photoSwipeWindow .wpg-lib-toc-count { color: #5a6c82; font-siz
     transform: rotate(45deg);
 }
 
-.wpg-smart .wpg-smart-x::after {
+.tbp-client.wpg-smart .wpg-smart-x::after {
     transform: rotate(-45deg);
 }
 
-.wpg-smart .wpg-smart-x:hover {
+.tbp-client.wpg-smart .wpg-smart-x:hover {
     background: rgba(0, 0, 0, .08);
-    border-radius: 2px;
 }
 
-.wpg-smart .wpg-smart-none {
+.tbp-client.wpg-smart .wpg-smart-none {
     color: #6d6d6d;
     font-style: italic;
 }
 
-.wpg-smart .wpg-smart-match label {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+/* suggestions under a text box (glancewellLibrary.js attachSuggest): Vista's list drop-down, never the browser's datalist */
+.wpg-suggest {
+    position: fixed;
+    z-index: 2147483000;
+    max-height: 190px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #646464;
+    box-shadow: 2px 2px 3px rgba(0, 0, 0, .25);
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+.wpg-suggest-opt {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 1px 4px;
+    line-height: 17px;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.wpg-suggest-opt:hover {
+    background: #e5f3fb;
+}
+
+.wpg-suggest-opt.is-active {
+    background: #3399ff;
+    color: #fff;
+}
+
+.wpg-suggest-note {
+    color: #6d6d6d;
+}
+
+.wpg-suggest-opt.is-active .wpg-suggest-note {
+    color: #e6f1ff;
+}
+
+/* a phone as Mobile Device Center draws it: a modern phone or a Galaxy Z Fold (activeSyncAgent.js deviceIcon) */
+body.theme-vista #photoSwipeWindow .wpg-lib-node-icon.is-device.is-phone {
+    background-image: url("/static_images/vista-explorer/portable-phone-16.png");
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node-icon.is-device.is-fold {
+    background-image: url("/static_images/vista-explorer/portable-fold-16.png");
+}
+
+.wpg-imp-dev-icon.is-phone {
+    background-image: url("/static_images/vista-explorer/portable-phone-32.png");
+    background-size: 32px 32px;
+}
+
+.wpg-imp-dev-icon.is-fold {
+    background-image: url("/static_images/vista-explorer/portable-fold-32.png");
+    background-size: 32px 32px;
+}
+
+/* Change Time Taken's up-down: the kit's arrows sit 2 px inside the right edge of a wider box */
+.tbp-client.wpg-time .wpg-time-spin .tbp-spin {
+    left: auto;
+    right: 2px;
 }
