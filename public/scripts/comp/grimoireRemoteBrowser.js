@@ -964,14 +964,18 @@ function grimoireRemoteMenuAction(found, action, data) {
         grimoireCopyText(grimoireShellWebUrl(shell));
         return;
     }
+    // Copy / Cut on a selection: Chromium's own copy and cut, as Ctrl+C / Ctrl+X (the viewer's path): a selection in a
+    // text box is not the page's selection, so copying data.selection copied nothing there and Cut deleted the words
+    if (action === 'copy-text' && (more.fieldSel || data.selection) && found.frame.contentWindow) {
+        found.frame.contentWindow.postMessage({ type: 'grimoire-browser-edit', op: 'copy' }, '*');
+        return;
+    }
     if (action === 'copy-text') {
         grimoireCopyText(data.selection || data.text);
         return;
     }
     if (action === 'cut') {
-        // the words go to the clipboard here, then the page deletes its selection
-        grimoireCopyText(data.selection);
-        grimoireMenuPost(found, data, { action: 'edit', command: 'delete' });
+        if (found.frame.contentWindow) found.frame.contentWindow.postMessage({ type: 'grimoire-browser-edit', op: 'cut' }, '*');
         return;
     }
     if (action === 'undo' || action === 'delete' || action === 'select-all') {
@@ -991,9 +995,13 @@ function grimoireRemoteMenuAction(found, action, data) {
         return;
     }
     if (action === 'paste') {
+        // this window's clipboard (the menu click lets it read); else the viewer's own Ctrl+V path
+        const viaViewer = () => { if (found.frame.contentWindow) found.frame.contentWindow.postMessage({ type: 'grimoire-browser-edit', op: 'paste' }, '*'); };
+        if (!navigator.clipboard || !navigator.clipboard.readText) { viaViewer(); return; }
         navigator.clipboard.readText().then((text) => {
-            if (text && found.frame.contentWindow) found.frame.contentWindow.postMessage({ type: 'grimoire-browser-paste', text }, '*');
-        }).catch(() => {});
+            if (text && found.frame.contentWindow) found.frame.contentWindow.postMessage({ type: 'grimoire-browser-edit', op: 'paste', text }, '*');
+            else viaViewer();
+        }).catch(viaViewer);
         return;
     }
     if (action === 'open-window') {
@@ -1135,7 +1143,7 @@ async function grimoireShowRemoteMenu(found, data) {
         items.push({ text: 'Undo', action: 'undo' });
         sep();
         items.push({ text: 'Cut', action: 'cut', disabled: !more.fieldSel && !selection });
-        items.push({ text: 'Copy', action: 'copy-text', disabled: !selection });
+        items.push({ text: 'Copy', action: 'copy-text', disabled: !more.fieldSel && !selection });
         items.push({ text: 'Paste', action: 'paste' });
         items.push({ text: 'Delete', action: 'delete', disabled: !more.fieldSel && !selection });
         sep();

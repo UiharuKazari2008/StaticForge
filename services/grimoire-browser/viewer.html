@@ -2157,6 +2157,16 @@
         // Grimoire's Automatic quality (server.js: automatic unless false)
         auto: typeof data.settings.auto === 'boolean' ? data.settings.auto : undefined
       });
+    } else if (data.type === 'grimoire-browser-edit' && /^(copy|cut|paste)$/.test(data.op || '')) {
+      // Grimoire's right-click Cut / Copy / Paste do what Ctrl+X / Ctrl+C / Ctrl+V do (Yukimi, Nov 21: "the Copy Cut
+      // Paste options in Alchemy dont work i have to use keyboard shortvut"): Chromium's own copy, so a selection in
+      // a text box counts too, and the clipboard comes back from Chromium
+      if (data.op === 'paste') {
+        if (typeof data.text === 'string' && data.text) send({ type: 'paste', text: data.text });
+        else readLocalClipboard();
+      } else {
+        requestClipboardCopy(data.op === 'cut');
+      }
     } else if (data.type === 'grimoire-browser-paste' && typeof data.text === 'string' && data.text) {
       send({ type: 'paste', text: data.text });
     } else if (data.type === 'grimoire-browser-key' && data.kind) {
