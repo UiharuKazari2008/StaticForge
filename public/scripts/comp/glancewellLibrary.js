@@ -120,6 +120,10 @@
 
     const S = {
         built: false,
+        smartTags: [],        // Smart Tags (glancewell_smart_tags): [{ id, name, rule: { match, terms: [{ tag, neg }] } }]
+        smartFiles: new Map(), // smart tag id -> Set of print filenames, matched when the tag is shown
+        smartLoading: new Map(),
+        smartError: '',
         open: false,          // the window shows the gallery
         owns: false,          // the gallery opened the window (the viewer comes back here)
         shell: null,
@@ -277,7 +281,8 @@
     function scopeKeyOf(node) {
         if (node.root === 'prints') {
             const view = node.kind === 'favorites' ? 'pinned' : node.kind === 'scraps' ? 'scraps' : 'images';
-            const wsId = node.kind === 'workspace' ? node.value : node.kind === 'workspaces' ? '*' : SRC().get('prints').activeWorkspaceId();
+            // Workspaces and a Smart Tag look across every workspace
+            const wsId = node.kind === 'workspace' ? node.value : (node.kind === 'workspaces' || node.kind === 'smarttag') ? '*' : SRC().get('prints').activeWorkspaceId();
             return { key: `prints:${view}:${wsId}`, scope: { view, workspaceId: wsId } };
         }
         if (node.root === 'folders' && node.kind === 'folder') return { key: `folders:${node.value}`, scope: { folders: [{ path: node.value, name: node.label }] } };
@@ -307,6 +312,11 @@
             }
             case 'day': return items.filter((it) => dayText(takenOf(it)) === node.value);
             case 'reftype': return items.filter((it) => it.refType === node.value);
+            case 'smarttag': {
+                const set = S.smartFiles.get(Number(node.value));
+                if (!set) { void smartFilesFor(node.value); return []; }
+                return items.filter((it) => set.has(it.key));
+            }
             case 'album': return items.filter((it) => it.raw && `${it.raw.root}:${it.folder}` === node.value);
             case 'recent': return items.filter((it) => S.recent.has(it.key));
             case 'pictures': return items.filter((it) => !it.video);
@@ -331,6 +341,7 @@
         S.anchor = null;
         renderTree();
         syncNav();
+        if (node.kind === 'smarttag') { S.smartFiles.delete(Number(node.value)); void smartFilesFor(node.value); }
         const { key, scope } = scopeKeyOf(node);
         const have = S.loaded.get(key);
         S.items = have ? have.items.slice() : [];
@@ -497,6 +508,14 @@
     async function onStoreChanged(d) {
         if (d.what === 'imports') { await loadRecent(); if (S.node.kind === 'recent') refresh(); return; }
         if (d.what === 'settings') { await loadSettings(); return; }
+        if (d.what === 'smarttags') {
+            await loadSmartTags();
+            S.smartFiles.clear();
+            if (S.node.kind === 'smarttag') void smartFilesFor(S.node.value);
+            renderTree();
+            refresh();
+            return;
+        }
         if (d.what === 'watched') { await loadWatched(); for (const k of S.loaded.keys()) if (k.startsWith('folders')) S.loaded.get(k).stale = true; renderTree(); return; }
         if (d.what === 'tags' || d.tags) await loadTags();
         if (d.what === 'meta') {
@@ -506,6 +525,154 @@
         renderTree();
         refresh();
         renderInfo();
+    }
+
+    // ------------------------------------------------------------------ Smart Tags (Yukimi, Nov 21 2026): prints found by
+    // the tags in their positive or negative prompts, matched on the server each time the smart tag is shown
+
+    async function loadSmartTags() {
+        try { S.smartTags = ((await send('glancewell_smart_tags', {})) || {}).smartTags || []; } catch (_) { S.smartTags = []; }
+        return S.smartTags;
+    }
+
+    function smartFilesFor(id) {
+        const n = Number(id);
+        if (S.smartFiles.has(n)) return Promise.resolve(S.smartFiles.get(n));
+        if (S.smartLoading.has(n)) return S.smartLoading.get(n);
+        S.smartError = '';
+        const p = send('glancewell_smart_tag_files', { id: n }).then((r) => {
+            const set = new Set((r && r.filenames) || []);
+            S.smartFiles.set(n, set);
+            return set;
+        }, (err) => { S.smartError = errorText(err); return null; }).finally(() => {
+            S.smartLoading.delete(n);
+            if (S.node && S.node.kind === 'smarttag' && Number(S.node.value) === n) refresh();
+        });
+        S.smartLoading.set(n, p);
+        return p;
+    }
+
+    /** The tag database's suggestions for what is typed (the autofill's own ranking, test_autofill_ranking). */
+    async function autofillSuggestions(query) {
+        const q = String(query || '').trim();
+        if (q.length < 2) return [];
+        let data = null;
+        try { data = await send('test_autofill_ranking', { query: q }); } catch (_) { return []; }
+        const d = data && (data.data || data);
+        const list = (d && (d.results || d.suggestions || d.items || d.tags)) || [];
+        return list.map((x) => (typeof x === 'string' ? { tag: x } : { tag: x.tag || x.name || x.text || '', count: Number(x.count || x.postCount || 0) || 0 }))
+            .filter((x) => x.tag).slice(0, 12);
+    }
+
+    /**
+     * Create Smart Tag / Edit Smart Tag: a name, the tags to look for (the autofill finds them in the tag database; each
+     * is in the positive or the negative prompt, a negative one tinted red) and whether a print needs all or any of them.
+     */
+    async function editSmartTag(tag) {
+        const rule = tag ? JSON.parse(JSON.stringify(tag.rule)) : { match: 'all', terms: [] };
+        const html = `<div class="wpg-smart">
+            <p class="wpg-smart-row"><label for="wpgSmartName">Name:</label><input id="wpgSmartName" class="wpg-smart-name" type="text" maxlength="200" value="${esc(tag ? tag.name : '')}" data-autofocus></p>
+            <p class="wpg-smart-hint">Find DreamScape prints whose prompts have these tags.</p>
+            <div class="wpg-smart-find">
+                <div class="wpg-smart-searchbox"><input class="wpg-smart-search" type="text" placeholder="Search the tags" autocomplete="off" spellcheck="false"><div class="wpg-smart-sugg" role="listbox" hidden></div></div>
+                <span class="wpg-smart-lanes" role="radiogroup">
+                    <label><input type="radio" name="wpgSmartLane" value="pos" checked> Positive prompt</label>
+                    <label class="is-negative"><input type="radio" name="wpgSmartLane" value="neg"> Negative prompt</label>
+                </span>
+                <button type="button" class="wpg-smart-add">Add</button>
+            </div>
+            <div class="wpg-smart-terms" role="list"></div>
+            <p class="wpg-smart-row wpg-smart-match"><span>Show prints with:</span>
+                <label><input type="radio" name="wpgSmartMatch" value="all"${rule.match !== 'any' ? ' checked' : ''}> all of these tags</label>
+                <label><input type="radio" name="wpgSmartMatch" value="any"${rule.match === 'any' ? ' checked' : ''}> any of these tags</label></p>
+        </div>`;
+        const out = await dialog(html, [{ text: 'OK', value: 'ok' }, { text: 'Cancel', value: null }], {
+            title: tag ? 'Edit Smart Tag' : 'Create Smart Tag',
+            icon: 'fas fa-tags',
+            onDialogReady: (dlg, signal) => wireSmartDialog(dlg, rule, signal),
+            resolveValue: (value, dlg) => {
+                if (value !== 'ok') return null;
+                const m = dlg.querySelector('input[name="wpgSmartMatch"]:checked');
+                return { name: dlg.querySelector('.wpg-smart-name').value.trim(), rule: { match: m ? m.value : 'all', terms: rule.terms } };
+            }
+        });
+        if (!out) return;
+        if (!out.name) { await message('Type a name for the smart tag.', 'warning'); return editSmartTag(Object.assign({}, tag || {}, { name: '', rule: out.rule, id: tag && tag.id })); }
+        if (!out.rule.terms.length) { await message('Add at least one tag to look for.', 'warning'); return editSmartTag(Object.assign({}, tag || {}, { name: out.name, rule: out.rule, id: tag && tag.id })); }
+        try {
+            const r = await send('glancewell_smart_tag_edit', tag && tag.id ? { op: 'update', id: tag.id, name: out.name, rule: out.rule } : { op: 'create', name: out.name, rule: out.rule });
+            await loadSmartTags();
+            S.treeExpanded.add('prints:tags');
+            renderTree();
+            if (r && r.id) void showNode({ root: 'prints', kind: 'smarttag', value: r.id });
+        } catch (err) { await message(errorText(err), 'error'); }
+    }
+
+    function wireSmartDialog(dlg, rule, signal) {
+        if (!dlg) return;
+        const on = (el, type, fn) => el.addEventListener(type, fn, signal ? { signal } : undefined);
+        const search = dlg.querySelector('.wpg-smart-search');
+        const sugg = dlg.querySelector('.wpg-smart-sugg');
+        const termsEl = dlg.querySelector('.wpg-smart-terms');
+        let items = [];
+        let at = -1;
+        let seq = 0;
+        let timer = 0;
+        const lane = () => (dlg.querySelector('input[name="wpgSmartLane"]:checked') || {}).value === 'neg';
+        const drawTerms = () => {
+            termsEl.innerHTML = rule.terms.length
+                ? rule.terms.map((t, i) => `<span class="wpg-smart-term${t.neg ? ' is-negative' : ''}" role="listitem" title="${t.neg ? 'In the negative prompt' : 'In the prompt'}">${esc(t.tag)}<button type="button" class="wpg-smart-x" data-i="${i}" aria-label="Remove ${esc(t.tag)}"></button></span>`).join('')
+                : '<span class="wpg-smart-none">No tags yet: search for one above and click Add.</span>';
+        };
+        const add = (tagText) => {
+            const tag = String(tagText || search.value).replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+            if (!tag) return;
+            const neg = lane();
+            if (!rule.terms.some((t) => t.tag === tag && t.neg === neg)) rule.terms.push({ tag, neg });
+            search.value = '';
+            closeSugg();
+            drawTerms();
+            search.focus();
+        };
+        const closeSugg = () => { sugg.hidden = true; items = []; at = -1; };
+        const drawSugg = () => {
+            sugg.innerHTML = items.map((x, i) => `<div class="wpg-smart-opt${i === at ? ' is-active' : ''}" role="option" data-i="${i}"><span>${esc(x.tag)}</span>${x.count ? `<span class="wpg-smart-count">${x.count.toLocaleString()}</span>` : ''}</div>`).join('');
+            sugg.hidden = !items.length;
+        };
+        on(search, 'input', () => {
+            clearTimeout(timer);
+            const q = search.value;
+            const mine = ++seq;
+            timer = setTimeout(async () => {
+                const list = await autofillSuggestions(q);
+                if (mine !== seq) return;
+                items = list;
+                at = list.length ? 0 : -1;
+                drawSugg();
+            }, 180);
+        });
+        on(search, 'keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'ArrowDown' && items.length) { e.preventDefault(); at = (at + 1) % items.length; drawSugg(); }
+            else if (e.key === 'ArrowUp' && items.length) { e.preventDefault(); at = (at - 1 + items.length) % items.length; drawSugg(); }
+            else if (e.key === 'Enter') { e.preventDefault(); add(at >= 0 && items[at] ? items[at].tag : search.value); }
+            else if (e.key === 'Escape' && !sugg.hidden) { e.preventDefault(); closeSugg(); }
+        });
+        on(search, 'blur', () => setTimeout(closeSugg, 150));
+        on(sugg, 'mousedown', (e) => {
+            const o = e.target.closest('.wpg-smart-opt');
+            if (!o) return;
+            e.preventDefault();
+            add(items[Number(o.dataset.i)].tag);
+        });
+        on(dlg.querySelector('.wpg-smart-add'), 'click', () => add(at >= 0 && items[at] && !sugg.hidden ? items[at].tag : search.value));
+        on(termsEl, 'click', (e) => {
+            const x = e.target.closest('.wpg-smart-x');
+            if (!x) return;
+            rule.terms.splice(Number(x.dataset.i), 1);
+            drawTerms();
+        });
+        drawTerms();
     }
 
     // ------------------------------------------------------------------ tree
@@ -524,7 +691,16 @@
             add({ root: rootId, kind: 'tags' }, depth, 'Tags', ICON.tags, { key: k, expandable: true, expanded: exp(k), noSelect: false });
             if (!exp(k)) return;
             if (rootId !== 'refs') add({ root: rootId, kind: 'newtag' }, depth + 1, 'Create a New Tag', ICON.newTag, { italic: true, action: 'newtag' });
+            // DreamScape: Smart Tags, prints found by the tags in their prompts (Yukimi, Nov 21 2026)
+            if (rootId === 'prints') add({ root: rootId, kind: 'newsmart' }, depth + 1, 'Create a Smart Tag', ICON.newTag, { italic: true, action: 'newsmart' });
             add({ root: rootId, kind: 'untagged' }, depth + 1, 'Not Tagged', ICON.untagged);
+            if (rootId === 'prints') {
+                S.smartTags.forEach((t) => add({ root: rootId, kind: 'smarttag', value: t.id }, depth + 1, t.name, ICON.tag, {
+                    smartId: t.id,
+                    // a smart tag that only looks in negative prompts reads red, as its tags do in the dialog
+                    negative: t.rule.terms.length > 0 && t.rule.terms.every((x) => x.neg)
+                }));
+            }
             if (rootId === 'refs') {
                 const names = new Set();
                 ((S.loaded.get('refs') || {}).items || []).forEach((it) => (it.refTags || []).forEach((t) => names.add(t)));
@@ -665,7 +841,9 @@
                 const file = root.activeSync && typeof root.activeSync.deviceIcon === 'function' ? root.activeSync.deviceIcon(r.node.root.slice(7), 16) : '';
                 if (file) ic.style.backgroundImage = `url("/static_images/vista-explorer/${file}")`;
             }
+            else if (r.smartId) ic.classList.add('is-smart');
             else ic.style.setProperty('--i', String(r.icon));
+            if (r.negative) row.classList.add('is-negative');
             const lb = h('span', 'wpg-lib-node-label', r.label);
             row.append(tw, ic, lb);
             frag.appendChild(row);
@@ -690,6 +868,7 @@
         if (!r || r.disabled) return;
         if (e.target.closest('.wpg-lib-twisty')) { toggleTree(r); return; }
         if (r.action === 'newtag') { void createTagInline(r.node.root); return; }
+        if (r.action === 'newsmart') { void editSmartTag(null); return; }
         if (r.action === 'addfolder') { addFolderToGallery(); return; }
         if (['tags', 'dates', 'albums'].includes(r.node.kind)) { toggleTree(r); return; }
         void showNode(r.node.kind === 'folder' ? Object.assign({}, r.node) : r.node);
@@ -840,8 +1019,11 @@
         if (r.expandable) items.push(r.expanded ? { text: 'Collapse', action: 'gwt-toggle' } : { text: 'Expand', action: 'gwt-toggle' });
         if (r.tagId) {
             items.push({ text: 'Create Tag', action: 'gwt-subtag' }, { separator: true }, { text: 'Rename', action: 'gwt-rename' }, { text: 'Delete', action: 'gwt-delete' });
+        } else if (r.smartId) {
+            items.push({ text: 'Edit Smart Tag...', action: 'gwt-smartedit' }, { separator: true }, { text: 'Delete', action: 'gwt-smartdelete' });
         } else if (r.node.kind === 'tags' && r.node.root !== 'refs') {
             items.push({ text: 'Create Tag', action: 'gwt-newtag' });
+            if (r.node.root === 'prints') items.push({ text: 'Create Smart Tag...', action: 'gwt-newsmart' });
         } else if (r.node.root === 'folders' && (r.node.kind === 'all' || r.node.kind === 'folder')) {
             items.push({ text: 'Add Folder to Gallery...', action: 'gwt-addfolder' });
             if (r.watched) items.push({ separator: true }, { text: 'Remove from Gallery', action: 'gwt-removefolder' });
@@ -856,6 +1038,15 @@
         else if (action === 'gwt-rename') void renameTagInline(r);
         else if (action === 'gwt-delete') void deleteTag(r);
         else if (action === 'gwt-newtag') void createTagInline(r.node.root);
+        else if (action === 'gwt-newsmart') void editSmartTag(null);
+        else if (action === 'gwt-smartedit') void editSmartTag(S.smartTags.find((t) => t.id === r.smartId) || null);
+        else if (action === 'gwt-smartdelete') {
+            const t = S.smartTags.find((x) => x.id === r.smartId);
+            if (t && await confirmBox(`Are you sure you want to delete the smart tag "${t.name}"? The pictures are not changed.`, 'Delete Smart Tag')) {
+                try { await send('glancewell_smart_tag_edit', { op: 'delete', id: t.id }); } catch (err) { await message(errorText(err), 'error'); }
+                if (S.node.kind === 'smarttag' && Number(S.node.value) === t.id) void showNode({ root: 'prints', kind: 'all' });
+            }
+        }
         else if (action === 'gwt-subtag') {
             try { await send('glancewell_tag_edit', { op: 'create', name: 'New Tag', parentId: r.tagId }); } catch (err) { await message(errorText(err), 'error'); }
             S.treeExpanded.add(r.key);
@@ -1046,6 +1237,7 @@
         const have = S.loaded.get(scopeKeyOf(S.node).key);
         if (have && have.promise && !have.items.length) return '';
         if (have && have.error) return have.error;
+        if (S.node.kind === 'smarttag' && !S.smartFiles.has(Number(S.node.value))) return S.smartError || 'Searching the prompts...';
         if (S.search) return 'No items match your search.';
         if (S.node.root === 'folders' && !S.watched.length) return 'There are no pictures or videos in Photo Gallery.\nTo get started, click the File menu, and then click Add Folder to Gallery.';
         return 'There are no pictures or videos in this view.';
@@ -1099,7 +1291,7 @@
     const cellCache = new Map(); // id|view|size -> element (reused while it stays in view)
     function cellFor(it, x, y, m) {
         // the workspace's glass square in the corner, where prints of every workspace show together (Workspaces)
-        const badge = it.source === 'prints' && S.node && S.node.root === 'prints' && S.node.kind === 'workspaces' ? (it.workspaceId || '') : '';
+        const badge = it.source === 'prints' && S.node && S.node.root === 'prints' && (S.node.kind === 'workspaces' || S.node.kind === 'smarttag') ? (it.workspaceId || '') : '';
         const k = `${it.id}|${prefs.view}|${m.box}|${it.rev || 0}|${badge}`;
         let cell = cellCache.get(k);
         if (!cell) {
@@ -2084,12 +2276,45 @@
     }
 
     /** The File menu in the gallery (WPG MENU 14018 &File). */
+    /** This phone's Pictures and every connected phone: the sources whose gallery favourites can come in. */
+    function phoneSources() {
+        const out = [];
+        const pics = SRC().get('pictures');
+        if (pics && pics.available() && typeof pics.galleryFavorites === 'function') out.push(pics);
+        SRC().devices().forEach((d) => { if (d && typeof d.galleryFavorites === 'function') out.push(d); });
+        return out;
+    }
+
+    /**
+     * Import Favorites from Samsung Gallery (Yukimi, Nov 21 2026): every picture and video the phone's gallery has a heart
+     * on becomes a Favorite here (Pictures > Favorites, or the phone's own Favorites). Nothing is removed.
+     */
+    async function importPhoneFavorites() {
+        const sources = phoneSources();
+        let total = 0;
+        const errors = [];
+        for (const src of sources) {
+            let list = [];
+            try { list = await src.galleryFavorites(); } catch (err) { errors.push(`${src.label || 'Phone'}: ${errorText(err)}`); continue; }
+            for (let i = 0; i < list.length; i += 4000) {
+                try { await send('glancewell_meta_set', { items: list.slice(i, i + 4000), change: { favorite: true } }); } catch (err) { errors.push(errorText(err)); break; }
+            }
+            total += list.length;
+            await loadIndex(src.id).catch(() => null);
+        }
+        renderTree();
+        refresh();
+        const done = total ? `${total.toLocaleString()} ${total === 1 ? 'favorite was' : 'favorites were'} imported from Samsung Gallery.` : 'Samsung Gallery has no favorites to import.';
+        await message(errors.length ? `${done}\n\n${errors.join('\n')}` : done, errors.length && !total ? 'error' : 'info');
+    }
+
     function fileMenuItems() {
         const items = selectedItems();
         const one = items.length === 1;
         return [
             { text: 'Add Folder to Gallery...', action: 'gwf-addfolder' },
             { text: 'Import from Camera or Scanner...', action: 'gwf-import', disabled: !SRC().devices().length },
+            { text: 'Import Favorites from Samsung Gallery', action: 'gwf-phonefavs', disabled: !phoneSources().length },
             { separator: true },
             { text: 'Delete', subtext: 'Del', action: 'gwf-delete', disabled: !items.length },
             { text: 'Rename', subtext: 'Ctrl+M', action: 'gwf-rename', disabled: !(one && canRename(items[0])) },
@@ -2113,6 +2338,7 @@
         const items = selectedItems();
         switch (action) {
             case 'gwf-addfolder': addFolderToGallery(); return true;
+            case 'gwf-phonefavs': await importPhoneFavorites(); return true;
             case 'gwf-delete': await deleteSelection(); return true;
             case 'gwf-rename': if (items.length === 1) await renameItem(items[0]); return true;
             case 'gwf-selectall': S.shown.forEach((it) => S.selected.add(it.id)); queueRender(); renderStatus(); renderInfo(); syncCommands(); return true;
@@ -2555,7 +2781,7 @@
         // blank behind one that did not answer, Nov 21 2026)
         if (S.open) rememberPlace();
         showLibrary();
-        void Promise.all([loadTags(), loadWatched(), loadRecent(), loadSettings()].map((p) => Promise.resolve(p).catch(() => null))).then(() => {
+        void Promise.all([loadTags(), loadSmartTags(), loadWatched(), loadRecent(), loadSettings()].map((p) => Promise.resolve(p).catch(() => null))).then(() => {
             // a newer view saved by another client: its zoom, sort and places (the open folder stays this one's)
             const adopted = adoptServerView(SETTINGS && SETTINGS.view);
             if (adopted) { cellCache.clear(); S.layout = null; }

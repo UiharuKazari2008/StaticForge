@@ -64,6 +64,22 @@ function registerPackets(handlersCtx) {
         if (!out.conflict) changed({ what: 'tags' });
         return out;
     }, { destructive: true });
+    // Smart Tags: saved searches of the prints by their prompts (glancewellStore.js); the prints are matched each time
+    // they are asked for (metadataDatabase.findFilesByPromptTags), so new prints join without any upkeep
+    reg('glancewell_smart_tags', () => ({ smartTags: store.listSmartTags() }));
+    reg('glancewell_smart_tag_edit', (m) => {
+        const out = store.editSmartTag(m);
+        changed({ what: 'smarttags' });
+        return out;
+    }, { destructive: true });
+    reg('glancewell_smart_tag_files', async (m) => {
+        const tag = m.id != null ? store.getSmartTag(m.id) : null;
+        const rule = tag ? tag.rule : store.cleanSmartRule(m.rule);
+        const meta = gr && typeof gr.getMetadataDatabase === 'function' ? gr.getMetadataDatabase() : null;
+        if (!meta || typeof meta.findFilesByPromptTags !== 'function') throw new Error('The prompt index is not available.');
+        const files = await meta.findFilesByPromptTags(rule.terms, rule.match);
+        return { filenames: [...files] };
+    });
     // pictures under a Tags node (sub-tags included)
     reg('glancewell_tag_items', (m) => ({ items: store.tagItems(m.tagIds || m.tagId, m.source) }));
     // what the gallery keeps about these pictures: [{ source, key, caption, tags, taken, favorite }]

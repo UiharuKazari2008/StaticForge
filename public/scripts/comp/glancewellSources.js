@@ -47,6 +47,10 @@
     };
     const extOf = (name) => (/\.([a-z0-9]+)$/i.exec(name || '') || [])[1] || '';
     const isMedia = (name, mime) => /^(image|video)\//.test(mime || '') || PICTURE.test(name || '') || VIDEO.test(name || '');
+    // pictures browsers cannot decode (HEIC / HEIF from the camera, DNG raw, TIFF)
+    const UNDECODABLE_MIME = /^image\/(heic|heif|heic-sequence|heif-sequence|x-adobe-dng|dng|tiff|x-tiff|x-[a-z]+-raw)$/i;
+    const UNDECODABLE_NAME = /\.(heic|heif|hif|dng|tiff?)$/i;
+    const undecodable = (e) => !!e && !e.video && (UNDECODABLE_MIME.test(String(e.mime || '')) || UNDECODABLE_NAME.test(String(e.name || e.path || '')));
     const isVideo = (name, mime) => /^video\//.test(mime || '') || VIDEO.test(name || '');
 
     // ------------------------------------------------------------------ DreamScape Prints
@@ -331,6 +335,7 @@
      */
     function phoneSource({ id, label, ps, deviceId }) {
         let albums = null;
+        let features = null; // the app's hello features (jpeg: it converts what the WebView cannot decode)
         const urlOf = (rootId, path, opts) => {
             const p = ps();
             if (!p) return '';
@@ -353,12 +358,14 @@
             if (!p) return [];
             let h = null;
             try { h = await p.hello(); } catch (_) { h = null; }
+            if (h && h.features) features = h.features;
             return ((h && h.roots) || []).filter((r) => r && r.id);
         }
         async function loadAlbums() {
             const p = await ready();
             if (!p) return [];
             const h = await p.hello().catch(() => null);
+            if (h && h.features) features = h.features;
             // MediaStore's albums: the page's bridge, or a device whose app answers them over ActiveSync (#984)
             if (h && h.features && h.features.media) {
                 try { return (await p.call('media.albums', {})) || []; } catch (_) { /* an older app: walk */ }
@@ -384,6 +391,16 @@
             }
             return out;
         }
+        /**
+         * The picture as the viewer can show it: the Fold's camera writes HEIC, which the WebView and Chrome do not decode
+         * (they showed blank, Nov 21 2026), so those come as the app's JPEG of them (?jpeg=1) on the phone itself, else as
+         * the largest picture the phone renders (a computer's link answers thumbnails up to 1024).
+         */
+        function viewUrl(rootId, e) {
+            if (!undecodable(e)) return urlOf(rootId, e.path, {});
+            if (!deviceId && features && features.jpeg) return `${urlOf(rootId, e.path, {})}?jpeg=1`;
+            return urlOf(rootId, e.path, { thumb: deviceId ? 1024 : 2048 });
+        }
         function entryItem(rootId, e, folderName) {
             const key = `${rootId}:${e.path}`;
             return {
@@ -401,7 +418,7 @@
                 modified: ms(e.mtime),
                 folder: folderName,
                 thumb: (px) => urlOf(rootId, e.path, { thumb: Math.max(128, px) }),
-                full: () => urlOf(rootId, e.path, {}),
+                full: () => viewUrl(rootId, e),
                 raw: Object.assign({ root: rootId }, e)
             };
         }
@@ -418,6 +435,19 @@
                 return p.call(op, args);
             },
             available: () => !!(ps() && (deviceId ? true : ps().available)),
+            /**
+             * The phone gallery's favourites (Samsung Gallery keeps them in MediaStore's IS_FAVORITE; DSApp media.favorites,
+             * hello features.favorites) as this source's items: [{ source, key }]. Throws when the app is too old.
+             */
+            async galleryFavorites() {
+                const p = await ready();
+                if (!p) throw new Error('The phone is not connected.');
+                const h = await p.hello().catch(() => null);
+                if (h && h.features) features = h.features;
+                if (!(h && h.features && h.features.favorites)) throw new Error('This phone\'s Dreamscape app is too old to read the gallery\'s favorites. Update the app and try again.');
+                const list = (await p.call('media.favorites', {})) || [];
+                return list.filter((f) => f && f.root && f.path).map((f) => ({ source: id, key: `${f.root}:${f.path}` }));
+            },
             async albums(force) {
                 if (!albums || force) albums = await loadAlbums();
                 return albums;
@@ -427,6 +457,7 @@
                 if (!p) return [];
                 const list = scope.album ? [scope.album] : await this.albums();
                 const h = await p.hello().catch(() => null);
+            if (h && h.features) features = h.features;
                 const media = !!(h && h.features && h.features.media);
                 const out = [];
                 for (const a of list) {

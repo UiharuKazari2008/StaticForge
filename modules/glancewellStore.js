@@ -43,6 +43,12 @@ function init(globalResources) {
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
     db.exec(`
+        CREATE TABLE IF NOT EXISTS smart_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            rule TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS tags (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -206,6 +212,65 @@ function editTag(op) {
         return { id: into };
     }
     throw new Error(`Unknown tag operation ${kind}`);
+}
+
+// ---------------------------------------------------------------- Smart Tags (Yukimi, Nov 21 2026)
+// A saved search of DreamScape prints by their prompts: { match: 'all' | 'any', terms: [{ tag, neg }] }, where neg
+// looks in the negative prompt (glancewellLibrary.js; matched by metadataDatabase.findFilesByPromptTags).
+const MAX_SMART_TERMS = 24;
+
+function cleanRule(rule) {
+    const r = rule && typeof rule === 'object' ? rule : {};
+    const seen = new Set();
+    const terms = (Array.isArray(r.terms) ? r.terms : []).map((t) => ({
+        tag: String((t && t.tag) || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 200),
+        neg: !!(t && t.neg)
+    })).filter((t) => {
+        const k = `${t.neg ? '-' : '+'}${t.tag}`;
+        if (!t.tag || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+    }).slice(0, MAX_SMART_TERMS);
+    return { match: r.match === 'any' ? 'any' : 'all', terms };
+}
+
+function listSmartTags() {
+    return need().prepare('SELECT id, name, rule FROM smart_tags ORDER BY name COLLATE NOCASE').all().map((r) => {
+        let rule = null;
+        try { rule = cleanRule(JSON.parse(r.rule)); } catch (_) { rule = cleanRule(null); }
+        return { id: r.id, name: r.name, rule };
+    });
+}
+
+function getSmartTag(id) {
+    return listSmartTags().find((t) => t.id === Number(id)) || null;
+}
+
+/** Smart Tags edits: create {name, rule}, update {id, name, rule}, delete {id}. */
+function editSmartTag(op) {
+    const d = need();
+    const kind = String(op && op.op || '');
+    if (kind === 'delete') {
+        d.prepare('DELETE FROM smart_tags WHERE id = ?').run(Number(op.id));
+        return { id: Number(op.id) };
+    }
+    const c = cleanTagName(op && op.name);
+    if (c.error) throw new Error(c.error);
+    const rule = cleanRule(op && op.rule);
+    if (!rule.terms.length) throw new Error('A smart tag needs at least one tag to look for.');
+    const clash = d.prepare('SELECT id FROM smart_tags WHERE name = ? COLLATE NOCASE').get(c.name);
+    if (kind === 'create') {
+        if (clash) throw new Error(`There is already a smart tag named "${c.name}".`);
+        return { id: Number(d.prepare('INSERT INTO smart_tags (name, rule, created_at) VALUES (?, ?, ?)').run(c.name, JSON.stringify(rule), now()).lastInsertRowid) };
+    }
+    if (kind === 'update') {
+        const id = Number(op.id);
+        if (!d.prepare('SELECT 1 FROM smart_tags WHERE id = ?').get(id)) throw new Error('No such smart tag');
+        if (clash && clash.id !== id) throw new Error(`There is already a smart tag named "${c.name}".`);
+        d.prepare('UPDATE smart_tags SET name = ?, rule = ? WHERE id = ?').run(c.name, JSON.stringify(rule), id);
+        return { id };
+    }
+    throw new Error(`Unknown smart tag operation ${kind}`);
 }
 
 /** Captions, tags, date taken and favourite for the pictures asked about (the Info pane, Tiles). */
@@ -418,6 +483,10 @@ module.exports = {
     listTags,
     editTag,
     ensureTag,
+    listSmartTags,
+    getSmartTag,
+    editSmartTag,
+    cleanSmartRule: cleanRule,
     getMeta,
     setMeta,
     tagItems,
