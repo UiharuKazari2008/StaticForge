@@ -2265,6 +2265,70 @@
         return `${now.playing ? 'Playing' : 'Paused'}: ${what}`;
     }
 
+    // ================================================================ phone (6.5's Phone panel)
+
+    /*
+     * 6.5's Phone item (CPhone, Yukimi Nov 21 2026, #1007: it was missing above Text): the missed calls, a page each, newest first,
+     * the caller over "Missed call" and the time; else "No Missed Calls". Its glyph is the ROM's missed-call notification
+     * image (CHome\CPhone\Images chNotifications_missedcall = 2005, as Text uses 2007). The calls come from the phone's own
+     * missed-call notifications (AndroidPhoneNotifications, category missed_call): the app has no call log access. A page
+     * opens its notification (the dialer at that call); the panel and its key open the Phone program.
+     */
+    function missedCalls() {
+        const N = window.AndroidPhoneNotifications;
+        if (!N || typeof N.list !== 'function') return [];
+        let list = [];
+        try { list = JSON.parse(N.list() || '[]'); } catch (_) { list = []; }
+        return list.filter((n) => n && n.key && (n.category === 'missed_call' || /missed[_ ]?call/i.test(String(n.channel || ''))))
+            .sort((a, b) => (Number(b.time) || 0) - (Number(a.time) || 0));
+    }
+    function openPhone() {
+        const A = window.wmAndroidApps;
+        const ph = A && typeof A.list === 'function' ? A.list().find((a) => a && a.role === 'phone') : null;
+        if (ph) open(`android:${ph.id}`);
+    }
+    function phoneWhen(t) {
+        const d = new Date(Number(t) || 0);
+        if (isNaN(d.getTime()) || !d.getTime()) return '';
+        const sameDay = d.toDateString() === new Date().toDateString();
+        return sameDay ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleDateString([], { month: 'numeric', day: 'numeric' });
+    }
+    function phoneText() {
+        const n = missedCalls().length;
+        return n ? `${n} missed ${n === 1 ? 'call' : 'calls'}` : 'No missed calls';
+    }
+    function phoneTitanium() {
+        const calls = missedCalls();
+        const N = window.AndroidPhoneNotifications;
+        return {
+            label: 'phone',
+            icon: 'ti-2005',
+            count: calls.length ? String(calls.length) : '',
+            pages: calls.length
+                ? calls.map((c) => ({
+                    title: String(c.title || 'Missed call'),
+                    line2: String(c.text || 'Missed call'),
+                    line3: phoneWhen(c.time),
+                    onTap: () => { let ok = false; try { ok = !!(N && typeof N.open === 'function' && N.open(c.key)); } catch (_) { ok = false; } if (!ok) openPhone(); }
+                }))
+                : [{ title: 'No Missed Calls' }],
+            softKey: { label: 'Phone', action: openPhone },
+            onTap: openPhone
+        };
+    }
+    // the missed calls' set changed (a call missed, one seen or cleared on the phone): only this item draws again, and
+    // only while Today is on screen (it draws in full when it shows)
+    let phoneKey = null;
+    function phoneWatch() {
+        window.addEventListener('androidnotifications', () => {
+            if (!sh || sh.version !== '6.5' || !todayOnScreen() || isOff('phone')) { phoneKey = null; return; }
+            const key = missedCalls().map((c) => c.key).join('|');
+            if (key === phoneKey) return;
+            phoneKey = key;
+            if (typeof sh.refreshTodayItem === 'function') sh.refreshTodayItem(['phone']);
+        }, { signal: appScopeSignal });
+    }
+
     // ================================================================ registration
 
     function register() {
@@ -2322,6 +2386,11 @@
         // switched on in Settings > Today > Items (when the shell honours it)
         // (the next appointment moves on with the clock)
         registerItem({ id: 'calendar', label: 'Calendar', icon: 'today-calendar', after: 'tasks', wantsMinute: true, text: calendarText, onTap: () => open('calendar'), titanium: calendarTitanium });
+        // 6.5's Phone panel, right above Text (after the clock: a saved item order places it there too)
+        if (sh.version === '6.5') {
+            registerItem({ id: 'phone', label: 'Phone', icon: 'today-phone', after: 'date', wantsMinute: false, text: phoneText, onTap: openPhone, titanium: phoneTitanium });
+            phoneWatch();
+        }
         const IDLE = { key: 'idle', label: 'While the Director is idle', value: 'show', choices: [['show', 'Show the last session'], ['hide', 'Hide the item']] };
         const v65 = sh.version === '6.5';
         registerItem({
