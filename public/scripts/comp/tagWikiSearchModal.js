@@ -1656,6 +1656,7 @@ class WikiDisplayBase {
   </div>
   <div class="gh-under" data-gh-under>
     <div class="gh-bubbles" aria-hidden="true"></div>
+    <div class="gh-flow" aria-hidden="true"></div>
     <div class="gh-brand">
         <img class="gh-brand-icon" src="${resolveAppIconPath('alchemy.png', 48)}" srcset="${resolveAppIconPath('alchemy.png', 48)} 1x, ${resolveAppIconPath('alchemy.png', 96)} 2x" alt="">
         <img class="gh-brand-word" src="${brand}/alchemy-wordmark-white.png" srcset="${brand}/alchemy-wordmark-white.png 1x, ${brand}/alchemy-wordmark-white@2x.png 2x, ${brand}/alchemy-wordmark-white@3x.png 3x" alt="Alchemy">
