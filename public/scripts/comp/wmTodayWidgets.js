@@ -2269,8 +2269,8 @@
 
     /*
      * 6.5's Phone item (CPhone, Yukimi Nov 21 2026, #1007: it was missing above Text): the missed calls, a page each, newest first,
-     * the caller over "Missed call" and the time; else "No Missed Calls". Its glyph is the ROM's missed-call notification
-     * image (CHome\CPhone\Images chNotifications_missedcall = 2005, as Text uses 2007). The calls come from the phone's own
+     * the caller over "Missed call" and the time; else "No Missed Calls". Its glyph is the Phone plugin's panel
+     * icon (CHome\CPhone ICONPATHS = 2701, the red handset; 2005 is a caller's contact picture). The calls come from the phone's own
      * missed-call notifications (AndroidPhoneNotifications, category missed_call): the app has no call log access. A page
      * opens its notification (the dialer at that call); the panel and its key open the Phone program.
      */
@@ -2302,7 +2302,8 @@
         const N = window.AndroidPhoneNotifications;
         return {
             label: 'phone',
-            icon: 'ti-2005',
+            // the Phone plugin's own panel icon (CHome\CPhone ICONPATHS 2701: the red handset), not 2005 (the caller's contact picture)
+            icon: 'ti-2701',
             count: calls.length ? String(calls.length) : '',
             pages: calls.length
                 ? calls.map((c) => ({
