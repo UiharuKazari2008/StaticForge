@@ -223,6 +223,14 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-pic {
     background: #000 center / cover no-repeat;
 }
 
+/* a barcode (Wallet's membership codes): the whole code on white, never cropped by cover (Sheetz's long Code 128 lost
+   its ends, Yukimi Nov 21 2026) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-fit="contain"] .wm-ti-pic {
+    background-color: #fff;
+    background-size: contain;
+    image-rendering: pixelated;
+}
+
 /* Music (MusicExpanded): album art and the Play All Songs tile (2402) sit in the same 86 x 86 box
    with no frame; art that is not square keeps its shape inside it (6.5 emulator, #796) */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-pic="bare"] .wm-ti-pic {
@@ -1262,7 +1270,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-wx-star {
 /* ---- the clock carrying the weather (wmTitanium.js clockPages, Yukimi Nov 15): the condition icon in
  * the clock icon's place, the temperature and condition on the AM / PM line above the date (after an
  * invisible copy of AM / PM), the next hours and the coming days as the panel's pages */
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-icon.wm-ti-wxicon {
+/* the condition as a panel icon (ti-wx-*: scripts/generate-wm65-weather-panel-icons.js) takes the panel icon's own box;
+ * this smaller box with a shadow is only for plain condition art (no panel icon for it) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-icon.wm-ti-wxart {
     right: calc(10 * var(--u));
     top: calc(-6 * var(--u));
     width: calc(40 * var(--u));
@@ -1339,4 +1349,22 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest .wm-ti-arrow {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest.arrows-idle .wm-ti-arrow {
     opacity: 0;
+}
+
+/* The home swipe's handover (#1013, wmTitanium maskedHome): the app's own mask file, full screen in the picture layer
+   and cropped the way the app draws it (centre, cover), so the frame its mask goes on is the frame Today shows; it
+   dissolves into Today's own picture as the entrance runs. Above the picture, under the band and the list. */
+html.ui-mobile[data-wm-version="6.5"] #wmShell > .wm-wall65 > .wm-ti-handoff {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] #wmShell > .wm-wall65 > .wm-ti-handoff[hidden] {
+    display: none;
 }
