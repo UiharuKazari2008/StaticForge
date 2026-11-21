@@ -405,6 +405,13 @@ body:not(.windows-classic-theme) #directorWindow {
     height: 26px;
     min-height: 26px;
     min-width: 0;
+    /* the caption's own width, never its text's (Yukimi, Nov 21: "for all windows there is no container or
+       constarains for there titles and they can overflow the window"): the caption row is a column flexbox
+       that sized this to its content, so a long title ran out of the window and the span's ellipsis never
+       came; stretched and capped, the title ends in "..." before the caption buttons, as Vista's does */
+    align-self: stretch;
+    max-width: 100%;
+    box-sizing: border-box;
     padding-right: 150px;
     /* glow lives in text-shadow; a drop-shadow filter forced a composited layer per caption (#400) */
     text-shadow: 0 0 5px rgba(0, 0, 0, 0.45),
