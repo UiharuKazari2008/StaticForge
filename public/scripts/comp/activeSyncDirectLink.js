@@ -73,7 +73,9 @@
     function eligible(dev) {
         if (!dev || !dev.online || !(dev.permissions || []).includes('files')) return false;
         const net = dev.status && dev.status.net;
-        if (!net || !net.link || !net.link.ready) return false;
+        // link.v 2: the first phone build (no v) crashed loading WebRTC on an offer (R8 stripped org.webrtc, Nov 21
+        // 2026): only a build that says v 2 or later is offered a link
+        if (!net || !net.link || !net.link.ready || !(Number(net.link.v) >= 2)) return false;
         return (net.interfaces || []).some((i) => i.up && LAN_TYPES.has(i.type)
             && ((i.v4 || []).some((a) => isPrivate4(a.addr)) || (i.v6 || []).length > 0));
     }
