@@ -1164,8 +1164,130 @@ function clampSize(value, fallback, min, max) {
 function broadcast(session, payload, binary) {
     const data = binary ? payload : JSON.stringify(payload);
     for (const ws of session.sockets) {
-        if (ws.readyState === 1) ws.send(data);
+        if (ws.readyState !== 1) continue;
+        ws.send(data);
+        // what each viewer was sent (binary: frames, tiles, audio), against what it says it got (automatic quality)
+        if (binary) ws.txBytes = (ws.txBytes || 0) + data.length;
     }
+}
+
+// ---- automatic quality (Yukimi, Nov 21: "auto quality control and info so we can tell what encoder were using and
+// what settings it has selected, and whats the best way to detect the ranges") ----
+// Each viewer reports every 2 s what it received (binary bytes and frames, its decode time; viewer.html probeRtt).
+// The link's range comes from three signals, as WebRTC's congestion control reads them:
+//   queue delay  the RTT over the best RTT of the last 30 s: a link at its limit queues, so its delay grows first
+//   in flight    bytes sent to the viewer and not received yet, in milliseconds of the rate it is receiving at
+//   decode time  how long the viewer takes to decode a frame: the device's own frame rate ceiling
+// A queue steps quality down at once (two steps when it is long); after 6 s calm it steps up one, and a step up
+// that brings a queue back holds the next one off for a minute. Steps trade JPEG quality, frame rate and the
+// tiles' WebP quality together; a slow decoder caps the frame rate.
+const AQ_LEVELS = [
+    { q: 85, fps: 60, rq: 85 },
+    { q: 80, fps: 60, rq: 80 },
+    { q: 75, fps: 45, rq: 78 },
+    { q: 70, fps: 30, rq: 74 },
+    { q: 62, fps: 30, rq: 68 },
+    { q: 55, fps: 24, rq: 62 },
+    { q: 48, fps: 20, rq: 56 },
+    { q: 40, fps: 15, rq: 48 },
+    { q: 34, fps: 10, rq: 42 }
+];
+const AQ_START = 3;
+const AQ_CALM_MS = 6000;
+const AQ_HOLD_MS = 60000;
+
+function aqState(session) {
+    if (!session.aq) session.aq = { auto: true, level: AQ_START, changedAt: 0, holdUntil: 0, upAt: 0, why: 'start', fpsCap: 60, link: {} };
+    return session.aq;
+}
+
+function applyAutoQuality(session) {
+    const aq = aqState(session);
+    if (!aq.auto) return;
+    const step = AQ_LEVELS[aq.level];
+    const s = session.settings;
+    const quality = step.q;
+    s.maxFps = Math.max(1, Math.min(step.fps, aq.fpsCap || 60));
+    s.minFps = Math.min(s.minFps, s.maxFps);
+    s.regionQuality = step.rq;
+    if (s.jpegQuality !== quality) {
+        s.jpegQuality = quality;
+        restartScreencast(session).catch(() => {});
+    }
+}
+
+function encoderInfo(session) {
+    const aq = aqState(session);
+    const s = session.settings;
+    return {
+        type: 'encoder',
+        auto: aq.auto ? 1 : 0,
+        level: aq.level,
+        levels: AQ_LEVELS.length,
+        why: aq.why,
+        source: 'Chromium screencast',
+        codec: 'JPEG',
+        q: s.jpegQuality,
+        minFps: s.minFps,
+        maxFps: s.maxFps,
+        tiles: 'WebP',
+        rq: s.regionQuality,
+        scroll: slowLink(session) ? 'packs' : 'frames',
+        jxl: JXL_ON && session.jxl ? 1 : 0,
+        ratio: Math.round((session.pxPerDip || 1) * 100) / 100,
+        width: Math.round((session.dipWidth || session.width || 0) * (session.pxPerDip || 1)),
+        height: Math.round((session.dipHeight || session.height || 0) * (session.pxPerDip || 1)),
+        link: aq.link
+    };
+}
+
+function noteViewerReport(session, ws, rep) {
+    if (!rep || typeof rep !== 'object' || !Number.isFinite(rep.rx)) return;
+    const aq = aqState(session);
+    const now = Date.now();
+    const st = ws.aqStat || (ws.aqStat = { at: now, rx: 0, rtts: [], good: 0 });
+    const dt = Math.max(1, now - st.at);
+    const rxDelta = Math.max(0, rep.rx - st.rx);
+    st.at = now;
+    st.rx = rep.rx;
+    // receiving rate (bytes/s), smoothed; only intervals that carried something say anything about the link
+    if (rxDelta > 4096) st.good = st.good ? st.good * 0.6 + (rxDelta * 1000 / dt) * 0.4 : rxDelta * 1000 / dt;
+    const rtt = session.rttMs || 0;
+    if (rtt > 0) {
+        st.rtts.push([now, rtt]);
+        while (st.rtts.length && now - st.rtts[0][0] > 30000) st.rtts.shift();
+    }
+    const base = st.rtts.length ? Math.min(...st.rtts.map((r) => r[1])) : rtt;
+    const queue = Math.max(0, rtt - base);
+    const inFlight = Math.max(0, (ws.txBytes || 0) - rep.rx);
+    const flightMs = st.good > 0 ? inFlight * 1000 / st.good : 0;
+    const dec = Number(rep.dec) || 0;
+    // the device's ceiling: a frame every decode time plus a margin
+    aq.fpsCap = dec > 4 ? Math.max(5, Math.min(60, Math.floor(1000 / (dec * 1.25)))) : 60;
+    aq.link = { rtt: Math.round(rtt), base: Math.round(base), queueMs: Math.round(queue), kbps: Math.round(st.good * 8 / 1000), inFlightMs: Math.round(flightMs), decMs: Math.round(dec * 10) / 10, fpsCap: aq.fpsCap, frames: Number(rep.n) || 0 };
+    if (!aq.auto) return;
+    const before = aq.level;
+    const congested = queue > Math.max(60, base * 0.5) || (inFlight > 65536 && flightMs > 400);
+    const severe = queue > Math.max(250, base * 2) || (inFlight > 131072 && flightMs > 1200);
+    // a step down needs time to show: the queue it was meant for drains first (else it falls to the bottom while the
+    // RTT still carries the old queue)
+    const settling = aq.downAt && now - aq.downAt < Math.max(2500, rtt * 2);
+    if (congested && !settling) {
+        aq.level = Math.min(AQ_LEVELS.length - 1, aq.level + (severe ? 2 : 1));
+        aq.downAt = now;
+        // a step up that brought the queue back: the next one waits
+        if (now - aq.upAt < 10000) aq.holdUntil = now + AQ_HOLD_MS;
+        aq.why = severe ? 'link queueing (' + Math.round(queue) + ' ms over its best, ' + Math.round(flightMs) + ' ms in flight)' : 'link queueing (' + Math.round(queue) + ' ms over its best)';
+        aq.changedAt = now;
+    } else if (!congested && queue < 30 && flightMs < 200 && now - aq.changedAt > AQ_CALM_MS && now > aq.holdUntil && aq.level > 0 && rxDelta > 0) {
+        aq.level -= 1;
+        aq.upAt = now;
+        aq.changedAt = now;
+        aq.why = 'link calm: one step up';
+    }
+    const capBefore = session.settings.maxFps;
+    applyAutoQuality(session);
+    if (aq.level !== before || session.settings.maxFps !== capBefore) broadcast(session, encoderInfo(session));
 }
 
 function livePageUrl(session) {
@@ -3644,7 +3766,7 @@ function sessionPublic(session) {
     };
 }
 
-async function onViewerMessage(session, raw) {
+async function onViewerMessage(session, raw, ws) {
     let msg;
     try { msg = JSON.parse(raw); } catch (_) { return; }
     if (!msg || typeof msg !== 'object') return;
@@ -3704,6 +3826,11 @@ async function onViewerMessage(session, raw) {
     }
     if (msg.type === 'ping') {
         broadcast(session, { type: 'pong', t: msg.t });
+        if (msg.rep && ws) noteViewerReport(session, ws, msg.rep);
+        return;
+    }
+    if (msg.type === 'encoder?') {
+        if (ws && ws.readyState === 1) ws.send(JSON.stringify(encoderInfo(session)));
         return;
     }
     // the tab went behind another, or came to the front (#756): only what shows is captured, and a page in a
@@ -3725,8 +3852,15 @@ async function onViewerMessage(session, raw) {
     }
     if (msg.type === 'settings') {
         const before = session.settings.jpegQuality;
-        session.settings = sessionSettings(msg, session.settings);
+        const aq = aqState(session);
+        // automatic unless the person turned it off (auto: false); its quality, frame rates and compression are
+        // then the ones they chose
+        if (msg.auto === false || msg.auto === true) aq.auto = msg.auto;
+        session.settings = sessionSettings(msg, aq.auto ? session.settings : (session.manualSettings || session.settings));
+        if (!aq.auto) session.manualSettings = Object.assign({}, session.settings);
+        else applyAutoQuality(session);
         if (session.settings.jpegQuality !== before) await restartScreencast(session);
+        broadcast(session, encoderInfo(session));
         return;
     }
     if (msg.type === 'inspect') {
@@ -4420,7 +4554,10 @@ async function handleRequest(req, res) {
 }
 
 function attachViewer(ws, session) {
+    // automatic quality starts at its middle step (a new link has said nothing yet); a later viewer joins at the current one
+    applyAutoQuality(session);
     session.sockets.add(ws);
+    ws.send(JSON.stringify(encoderInfo(session)));
     touch(session);
     session.viewHidden = false;
     syncCapture(session);
@@ -4479,8 +4616,8 @@ function attachViewer(ws, session) {
             session.stillGap = STILL_MIN_GAP_MS;
             session.stillInputAt = Date.now();
         }
-        if (preview && (preview.type === 'dialog-reply' || preview.type === 'file-chooser-reply' || preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'still-ack' || preview.type === 'inspect' || preview.type === 'copy')) {
-            onViewerMessage(session, raw).catch((err) => {
+        if (preview && (preview.type === 'dialog-reply' || preview.type === 'file-chooser-reply' || preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'still-ack' || preview.type === 'inspect' || preview.type === 'copy' || preview.type === 'encoder?')) {
+            onViewerMessage(session, raw, ws).catch((err) => {
                 console.error('[grimoire-browser] input', err && err.message);
             });
             return;
@@ -4545,7 +4682,7 @@ function attachViewer(ws, session) {
             });
             return;
         }
-        session.inputChain = session.inputChain.then(() => onViewerMessage(session, raw)).catch((err) => {
+        session.inputChain = session.inputChain.then(() => onViewerMessage(session, raw, ws)).catch((err) => {
             console.error('[grimoire-browser] input', err && err.message);
             if (ws.readyState === 1) {
                 ws.send(JSON.stringify({ type: 'error', message: err.message || 'input failed' }));

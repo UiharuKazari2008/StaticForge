@@ -226,7 +226,24 @@
   var tileChain = Promise.resolve();
   var textDecoder = new TextDecoder();
 
+  // automatic quality (server.js noteViewerReport): binary bytes received since this socket opened, and how long a
+  // whole frame takes to decode here (the device's frame rate ceiling)
+  var rxTotal = 0;
+  var decWin = { sum: 0, n: 0 };
+  var lastReportFrames = 0;
+  var encoder = null;
+
   function decodeImage(bytes, type) {
+    if (bytes.length < 20000) return decodeImageNow(bytes, type);
+    var t0 = performance.now();
+    return decodeImageNow(bytes, type).then(function (img) {
+      decWin.sum += performance.now() - t0;
+      decWin.n += 1;
+      return img;
+    });
+  }
+
+  function decodeImageNow(bytes, type) {
     var blob = new Blob([bytes], { type: type || 'image/jpeg' });
     if (typeof createImageBitmap === 'function') return createImageBitmap(blob);
     return new Promise(function (resolve, reject) {
@@ -408,6 +425,7 @@
     var bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
     if (!bytes.length) return;
     var kind = bytes[0];
+    rxTotal += bytes.length;
     var t = traffic[kind] || (traffic[kind] = { n: 0, bytes: 0 });
     t.n += 1;
     t.bytes += bytes.length;
@@ -929,6 +947,7 @@
       drawStill(msg);
     } else if (msg.type === 'frame' && msg.data) {
       var bytes = base64Bytes(msg.data);
+      rxTotal += bytes.length;
       drawBytes(bytes, null, bytes.length);
     } else if (msg.type === 'pong' && typeof msg.t === 'number') {
       var rtt = performance.now() - msg.t;
@@ -1066,6 +1085,10 @@
         backdropStore();
       }
       if (pred.active || pred.converging) requestComposite();
+    } else if (msg.type === 'encoder') {
+      // what Alchemy encodes this tab with now, and why (Grimoire's Alchemy information)
+      encoder = msg;
+      postParent({ type: 'grimoire-browser-encoder', info: msg });
     } else if (msg.type === 'history-end') {
       postParent({ type: 'grimoire-browser-history-end', dir: msg.dir === 1 ? 1 : -1 });
     } else if (msg.type === 'download-progress') {
@@ -1245,7 +1268,11 @@
   });
   function probeRtt() {
     if (document.hidden) return;
-    send({ type: 'ping', t: performance.now() });
+    var rep = { rx: rxTotal, n: frameCount - lastReportFrames, dec: decWin.n ? Math.round(decWin.sum / decWin.n * 10) / 10 : 0 };
+    lastReportFrames = frameCount;
+    decWin.sum = 0;
+    decWin.n = 0;
+    send({ type: 'ping', t: performance.now(), rep: rep });
   }
   function startRttProbe() {
     if (rttProbe) return;
@@ -1263,6 +1290,8 @@
 
   function announceReady() {
     connected = true;
+    // the server counts what it sends this socket from 0
+    rxTotal = 0;
     sendCaps();
     canvas.focus();
     startRttProbe();
@@ -1385,6 +1414,7 @@
   var packetCount = 0;
   window.__alchemyViewerStats = function () {
     return {
+      encoder: encoder,
       transport: fallback ? 'ndjson' : (socket && socket.readyState === 1 ? 'websocket' : 'none'),
       still: stillCanvas.hidden ? null : { width: stillCanvas.width, height: stillCanvas.height },
       stills: stillCount,
@@ -1881,6 +1911,10 @@
   window.addEventListener('message', function (ev) {
     var data = ev.data;
     if (!data || typeof data !== 'object') return;
+    if (data.type === 'grimoire-browser-encoder?') {
+      send({ type: 'encoder?' });
+      return;
+    }
     if (data.type === 'grimoire-browser-navigate' && typeof data.url === 'string') {
       send({ type: 'navigate', url: data.url });
     } else if (data.type === 'grimoire-browser-visibility') {
