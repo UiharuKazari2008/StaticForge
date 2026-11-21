@@ -49,3 +49,19 @@
 /* full screen is the browser's on the desktop: the player fills the display */
 .videos-window .yt-player:fullscreen .yt-stage { flex: 1 1 auto; aspect-ratio: auto; height: 100%; }
 .videos-window .yt-player:fullscreen .yt-side { display: none; }
+/* the player open: the bar lies over the picture (the picture runs under it) and comes and goes with the player's
+   keys (Yukimi, Nov 21 2026: "on desktop that top bar should hide with the onscreen controls and the video should be
+   under it") */
+.videos-window .vd-root.is-player .vd-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    border-bottom-color: transparent;
+    background: linear-gradient(color-mix(in srgb, black 78%, transparent), color-mix(in srgb, black 40%, transparent) 70%, transparent);
+    transition: opacity 0.2s linear;
+}
+.videos-window .vd-root.is-player.is-keys-off .vd-bar { opacity: 0; pointer-events: none; }
+/* (its own stacking layer, so the bar over it is above the player's picture) */
+.videos-window .vd-root.is-player .vd-host { z-index: 0; }

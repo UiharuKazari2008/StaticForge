@@ -1171,15 +1171,28 @@
         // actually be playing video")
         const v = els && els.video;
         const moving = !!(v && !v.paused && !v.ended && v.readyState > 2 && !plStalled);
-        const on = !!(p && !p.vod && p.state === 'live' && p.url && (p.handed || p.popped || p.popAsk || (shown && !p.suspended && moving)));
-        const said = on ? JSON.stringify({ url: new URL(p.url, location.origin).toString(), title: p.title, subtitle: modeLabel(p.mode), audioOnly: p.mode === 'audio' }) : '';
+        const on = !!(p && canHand(p) && p.url && (p.handed || p.popped || p.popAsk || (shown && !p.suspended && moving)));
+        const said = on ? JSON.stringify({ url: new URL(p.url, location.origin).toString(), title: p.title, subtitle: p.kind === 'ytr' ? p.channel || '' : modeLabel(p.mode), audioOnly: p.mode === 'audio', vod: p.kind === 'ytr' }) : '';
         if (said === plTold) return;
         plTold = said;
         try {
             nv.watching(said);
         } catch (_) { /* an older app build */ }
+        if (said) plAt();
     }
     let plTold = null;
+    /**
+     * The streams the app's native player can carry on: Kick live streams, and YouTube videos played through the server
+     * (from the place they were at; Yukimi, Nov 21 2026, the desktop's pop-out on minimise). Not YouTube's own embed.
+     */
+    const canHand = (p) => p.state === 'live' && (!p.vod || p.kind === 'ytr');
+    /** A video through the server: the app is told where in it the picture is (it goes on from there when handed over). */
+    function plAt() {
+        const p = player;
+        const nv = nativePlayer();
+        if (!p || p.kind !== 'ytr' || !els || !nv || typeof nv.at !== 'function') return;
+        try { nv.at(Math.round(els.video.currentTime * 1000), !els.video.paused); } catch (_) { /* an older app build */ }
+    }
     /** The page's video is held up ('waiting') until it plays again. */
     let plStalled = false;
     /** The native player gives the stream back to the page (Videos is in front again). */
@@ -1189,7 +1202,18 @@
         if (!p || !nv) return;
         let active = false;
         try { active = nv.isActive() === true; } catch (_) { active = false; }
-        if (p.handed || p.popped || active) { p.handed = false; p.popped = false; try { nv.stop(); } catch (_) { /* gone */ } }
+        if (!(p.handed || p.popped || active)) return;
+        // a video through the server goes on here from where the app's player got to
+        let ms = -1;
+        if (p.kind === 'ytr' && typeof nv.position === 'function') { try { ms = Number(nv.position()); } catch (_) { ms = -1; } }
+        p.handed = false;
+        p.popped = false;
+        try { nv.stop(); } catch (_) { /* gone */ }
+        if (p.kind === 'ytr' && els) {
+            const v = els.video;
+            if (ms >= 0) { try { v.currentTime = ms / 1000; } catch (_) { /* not ready */ } }
+            if (v.paused) v.play().catch(plNeedsTap);
+        }
     }
 
     /**
@@ -1202,7 +1226,7 @@
     function plPop() {
         const p = player;
         const nv = nativePlayer();
-        if (!p || p.vod || p.state !== 'live' || !canPop()) return;
+        if (!p || !canHand(p) || !canPop()) return;
         if (els.video.paused) { box('Start the stream first, then pop it out.', 'info'); return; }
         // (the key itself asks: a stream held up buffering for a moment still pops out)
         p.popAsk = true;
@@ -1325,6 +1349,7 @@
         if (els.tabs.hidden !== off) els.tabs.hidden = off;
         const head = els.root.querySelector('.yt-head');
         if (head.hidden !== off) head.hidden = off;
+        barTell();
     }
 
     function plNeedsTap() {
@@ -1489,9 +1514,18 @@
         const muted = player.kind === 'yt' ? !!player.muted : !!els.video.muted;
         if (m.dataset.g !== (muted ? 'mute' : 'sound')) { m.dataset.g = muted ? 'mute' : 'sound'; m.innerHTML = muted ? I.mute : I.sound; m.setAttribute('aria-label', muted ? 'Sound on' : 'Sound off'); }
         const pk = els.hud.querySelector('[data-pl="pop"]');
-        const popOk = !player.vod && canPop();
+        const popOk = canHand(player) && canPop();
         if (pk.hidden === popOk) pk.hidden = !popOk;
-        if (show) { plSide(); if (!paused) player.keyTimer = setTimeout(() => { if (els && player) { els.hud.hidden = true; els.plKey.hidden = true; } }, 4000); }
+        if (show) { plSide(); if (!paused) player.keyTimer = setTimeout(() => { if (els && player) { els.hud.hidden = true; els.plKey.hidden = true; barTell(); } }, 4000); }
+        barTell();
+    }
+    /**
+     * The desktop window's bar comes and goes with the player's keys, over the picture (Yukimi, Nov 21 2026: "on
+     * desktop that top bar should hide with the onscreen controls and the video should be under it").
+     */
+    function barTell() {
+        if (!ws || typeof ws.playerChrome !== 'function') return;
+        ws.playerChrome(!!(els && player && !els.player.hidden), !!(els && player && !els.hud.hidden));
     }
     const plKey = (show) => plHud(show);
 
@@ -1846,7 +1880,7 @@
         if (sec === p.sec) return;
         p.sec = sec;
         if (shown && (!els.hud.hidden || !p.full)) ytSide();
-        if (sec > 0 && sec % 30 === 0) ytProgress(p);
+        if (sec > 0 && sec % 30 === 0) { ytProgress(p); plAt(); }
         segSkip(p);
     }
 
@@ -2109,7 +2143,8 @@
         try { if (window.screen && screen.orientation) screen.orientation.addEventListener('change', plTurned, { signal: appScopeSignal }); } catch (_) { /* no orientation API */ }
         window.addEventListener('resize', plTurned, { signal: appScopeSignal });
         v.addEventListener('playing', () => { plStalled = false; if (player && player.state === 'live') { player.tries = 0; plStatus('', false); } plHud(!els.hud.hidden); plTell(); });
-        v.addEventListener('pause', () => { plHud(true); plTell(); });
+        v.addEventListener('pause', () => { plHud(true); plTell(); plAt(); });
+        v.addEventListener('seeked', plAt);
         v.addEventListener('timeupdate', ytrTime);
         v.addEventListener('ended', () => { const p = player; if (p && p.kind === 'ytr') { p.best = 100; stopPlayer(); } });
         v.addEventListener('waiting', () => { plStalled = true; if (player && player.state === 'live') plStatus('Buffering...', true); plTell(); });
@@ -2125,6 +2160,7 @@
             // (only an ending: the native player also tells its play state - buffering, playing, paused, retrying -
             // which once read here as "stopped" and closed a handed-over stream at once, Yukimi Nov 21: "if a video's
             // playing [it] just close[s]")
+            else if (p.handed && st === 'ended' && p.kind === 'ytr') { p.handed = false; p.popped = false; p.best = 100; stopPlayer(); }
             else if (p.handed && (st === 'stopped' || st === 'ended' || st === 'lost')) { p.handed = false; p.popped = false; if (st === 'ended') { plStatus('The stream has ended.', false); p.state = 'ended'; plTell(); refreshKeys(); } else stopPlayer(); }
         }, { signal: appScopeSignal });
         // back in the app with this program still in front (the app had handed the stream over when it was left)
@@ -2290,7 +2326,7 @@
             if (els) els.q.blur();
             // the program is left with a stream playing: the app's native player carries it on (a floating window, or sound)
             const nv = nativePlayer();
-            if (player && !player.vod && player.state === 'live' && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } }
+            if (player && canHand(player) && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } }
             if (!(player && player.popped)) plSuspend(true);
             chatSync();
             plTell();
