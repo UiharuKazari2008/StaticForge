@@ -1270,7 +1270,8 @@
             dur = radio.track ? radio.track.dur || 0 : 0;
             if (a && !radio.native) { el = a.currentTime || 0; if (Number.isFinite(a.duration)) dur = a.duration; }
             else if (radio.startedAt) el = (Date.now() - radio.startedAt) / 1000;
-        } else {
+        } else if (radio.state !== 'off') {
+            // switched off: no song runs on (the bar read as playing: Yukimi, Nov 21 2026)
             const id = curId();
             const t = posTime();
             const n = songAt(id, t == null ? Date.now() : t);
