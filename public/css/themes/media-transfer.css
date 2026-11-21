@@ -1,0 +1,57 @@
+/*
+ * The "playing on the other screen" bar (melatonMediaSessions.js offerTransfer; Yukimi, Nov 21 2026: "add a playing on X
+ * so that if we open it on the other display we have a Transfer"). At the top of Videos, XM Radio and the Media Player
+ * while the app's other window plays that program and this one does not; a click moves the session here.
+ */
+
+/* desktop: Vista's information bar (as Explorer's network discovery bar, vista-explorer.css .explorer-net-infobar) */
+.mms-transfer-vista {
+    display: block;
+    flex: none;
+    box-sizing: border-box;
+    width: 100%;
+    height: 28px;
+    margin: 0;
+    padding: 0 8px;
+    border: 0;
+    border-bottom: 1px solid #b3b3b3;
+    border-radius: 0;
+    background: #ffffe1;
+    color: #000;
+    box-shadow: none;
+    font: inherit;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+    position: relative;
+    z-index: 5;
+}
+.mms-transfer-vista:hover { background: #d6effc; }
+.mms-transfer-vista[hidden], .mms-transfer-wm[hidden] { display: none; }
+
+/* phone: a band in the theme's highlight, the action at its right as a soft-key label */
+.mms-transfer-wm {
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    box-sizing: border-box;
+    width: 100%;
+    min-height: calc(26 * var(--wm-px));
+    margin: 0;
+    padding: calc(3 * var(--wm-px)) calc(6 * var(--wm-px));
+    border: 0;
+    border-radius: 0;
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+    font: inherit;
+    text-align: left;
+    position: relative;
+    z-index: 5;
+}
+.mms-transfer-wm .mms-transfer-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mms-transfer-wm .mms-transfer-key { flex: none; font-weight: 700; }
+
+/* over a custom-shaped program's top edge (XM Radio's radio is the window): it does not push the faceplate down */
+.mms-transfer-overlay { position: absolute; top: 0; left: 0; right: 0; width: auto; z-index: 20; }

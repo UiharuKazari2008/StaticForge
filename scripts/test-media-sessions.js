@@ -32,12 +32,23 @@ function makeWindow(name) {
         if (msg.type === 'answer' && w.asking && w.asking.rid === msg.rid) { const r = w.asking.resolve; w.asking = null; r(msg.answer); return; }
         (listeners.get(msg.type) || []).forEach((fn) => fn(msg, 'other'));
     };
-    const ctx = { window: null, melatonContinuity: c, console, JSON, Date, Map, Set, Promise, Object, Array,
+    c.role = () => (name === 'phone' ? 'phone' : 'desktop');
+    const mkEl = (tag) => {
+        const el = { tagName: tag, hidden: false, title: '', className: '', children: [], listeners: {}, isConnected: true, parentNode: null, textContent: '',
+            set innerHTML(h) { el.children = []; if (/mms-transfer-text/.test(h)) el.children.push(Object.assign(mkEl('span'), { cls: 'mms-transfer-text' })); },
+            querySelector(sel) { if (sel === '.mms-transfer-text') return el.children.find((c2) => c2.cls === 'mms-transfer-text') || null; if (sel === ':scope > .mms-transfer') return el.children.find((c2) => /mms-transfer/.test(c2.className)) || null; return null; },
+            insertBefore(n) { el.children.unshift(n); n.parentNode = el; return n; },
+            addEventListener(t, fn) { el.listeners[t] = fn; },
+            classList: { add() {} } };
+        return el;
+    };
+    const ctx = { window: null, document: { createElement: mkEl }, mkEl, uiShell: name === 'phone' ? 'mobile' : 'desktop', melatonContinuity: c, console, JSON, Date, Map, Set, Promise, Object, Array,
         setTimeout: (fn) => { w.timers.push(fn); return w.timers.length; } };
     ctx.window = ctx;
     vm.createContext(ctx);
     vm.runInContext(src, ctx);
     w.media = ctx.melatonMedia;
+    w.ctxMkEl = ctx.mkEl;
     w.c = c;
     w.emitPeer = (state) => (listeners.get('peer') || []).forEach((fn) => fn({ state, role: 'other' }));
     return w;
@@ -100,6 +111,22 @@ function radio(w) {
     // a pull with nothing playing over there plays nothing
     phone.radio.channel = null;
     assert.strictEqual(desk.radio.channel, 'Octane');
+    // the transfer bar: the phone opens XM Radio while the desktop plays it
+    phone.radio.channel = null; phone.radio.playing = false; phone.media.changed('xmradio');
+    await settle(phone, desk);
+    const host = phone.ctxMkEl('div');
+    const bar = phone.media.offerTransfer('xmradio', host);
+    assert.ok(bar && bar.hidden === false, 'the bar shows while the other window plays it');
+    assert.strictEqual(bar.querySelector('.mms-transfer-text').textContent, 'Playing on the DeX desktop: Octane - XM', 'the phone names the desktop and what plays');
+    assert.strictEqual(phone.media.offerTransfer('xmradio', host), bar, 'one bar per host');
+    bar.listeners.click();
+    await settle(phone, desk); await settle(phone, desk);
+    assert.strictEqual(phone.radio.channel, 'Octane', 'Transfer moves the session here');
+    assert.strictEqual(desk.radio.channel, null, 'and it stops on the desktop');
+    assert.strictEqual(bar.hidden, true, 'the bar goes once it plays here');
+    const deskHost = desk.ctxMkEl('div');
+    const deskBar = desk.media.offerTransfer('xmradio', deskHost);
+    assert.strictEqual(deskBar.querySelector('.mms-transfer-text').textContent, 'Octane - XM is playing on your phone. Click to transfer it to this computer.', "the desktop's Vista information bar");
     // the window leaves: its sessions go
     phone.emitPeer('left');
     await settle(phone, desk);

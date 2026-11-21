@@ -19,6 +19,12 @@
  *   pull(app)             take the other window's session here (it stops there): true when it plays here now
  *   push(app)             send this window's session to the other window (it stops here)
  *   on('change', fn)      fn({ app, session, where: 'there' }) when the other window's sessions change
+ *   offerTransfer(app, host, { canTake(session) })
+ *                         the "playing on the other screen" bar at the top of `host` (Yukimi, Nov 21 2026: "add a
+ *                         playing on X so that if we open it on the other display we have a Transfer"): shown while the
+ *                         other window plays that program and this one does not; a click moves the session here. Vista's
+ *                         information bar on the desktop, a band in the theme's highlight on the phone. It keeps itself
+ *                         up to date and goes when its host leaves the page.
  *
  * A session is plain JSON: { app, title, subtitle, kind, source: { what the program needs to play it again },
  * position (ms, optional), playing (bool), at (when described, ms) }. The receiving program decides how to use it.
@@ -50,6 +56,37 @@
 
     function emit(evt) {
         listeners.forEach((fn) => { try { fn(evt); } catch (err) { console.warn('[media] listener', err); } });
+        syncBars(evt.app);
+    }
+
+    // ---- the transfer bars (offerTransfer)
+    const bars = new Map(); // app -> Set of { el, canTake }
+    const otherName = () => {
+        const c = C();
+        const role = c && typeof c.role === 'function' ? c.role() : null;
+        return role === 'phone' ? 'the DeX desktop' : 'your phone';
+    };
+    function barText(app, s) {
+        const what = [s.title, s.subtitle].filter(Boolean).join(' - ') || 'Media';
+        if (root.uiShell === 'mobile') return { text: `Playing on ${otherName()}: ${what}`, key: 'Transfer' };
+        return { text: `${what} is playing on ${otherName()}. Click to transfer it to this computer.`, key: '' };
+    }
+    function syncBar(app, b) {
+        const there = api.elsewhere(app);
+        const mine = describe(app);
+        let show = !!(there && there.playing && !(mine && mine.playing));
+        if (show && typeof b.canTake === 'function') { try { show = !!b.canTake(there); } catch (_) { show = false; } }
+        if (b.el.hidden !== !show) b.el.hidden = !show;
+        if (!show) return;
+        const t = barText(app, there);
+        const label = b.el.querySelector('.mms-transfer-text');
+        if (label && label.textContent !== t.text) label.textContent = t.text;
+        if (b.el.title !== t.text) b.el.title = t.text;
+    }
+    function syncBars(app) {
+        const set = bars.get(app);
+        if (!set) return;
+        set.forEach((b) => { if (!b.el.isConnected) set.delete(b); else syncBar(app, b); });
     }
 
     function sendNow(app) {
@@ -60,6 +97,7 @@
         if (here.get(app) === key) return;
         const wasPlaying = (() => { try { return JSON.parse(here.get(app) || 'null'); } catch (_) { return null; } })();
         here.set(app, key);
+        syncBars(app);
         if (!live()) return;
         C().post({ type: 'media-session', app, session: s, claim: !!(s && s.playing && !(wasPlaying && wasPlaying.playing)) });
     }
@@ -108,6 +146,28 @@
             if (!s) return false;
             api.changed(app);
             return C().post({ type: 'media-take', app, session: Object.assign({ app }, s) });
+        },
+        offerTransfer(app, host, opts) {
+            if (!app || !host || !host.isConnected && !host.parentNode) return null;
+            let el = host.querySelector(':scope > .mms-transfer');
+            if (!el) {
+                el = document.createElement('button');
+                el.type = 'button';
+                el.className = `mms-transfer ${root.uiShell === 'mobile' ? 'mms-transfer-wm' : 'mms-transfer-vista'}`;
+                el.hidden = true;
+                el.innerHTML = '<span class="mms-transfer-text"></span>' + (root.uiShell === 'mobile' ? '<span class="mms-transfer-key">Transfer</span>' : '');
+                el.addEventListener('click', () => {
+                    el.hidden = true;
+                    void api.pull(app).then(() => syncBars(app));
+                });
+                host.insertBefore(el, host.firstChild);
+            }
+            if (!bars.has(app)) bars.set(app, new Set());
+            const set = bars.get(app);
+            let b = Array.from(set).find((x) => x.el === el);
+            if (!b) { b = { el, canTake: opts && opts.canTake }; set.add(b); } else if (opts && opts.canTake) b.canTake = opts.canTake;
+            syncBar(app, b);
+            return el;
         },
         on(type, fn) {
             if (type !== 'change' || typeof fn !== 'function') return () => {};

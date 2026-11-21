@@ -2328,9 +2328,9 @@
             const t = data.subs;
             if (t.feedStale && signedIn() && t.videos && !t.loading) { t.feedStale = false; loadTab('subs', false, true); }
             if (pendingWatch) { const v = pendingWatch; pendingWatch = null; if (srcOf(v) === 'kick') watchLive(v); else watchVideo(v); }
-            // the app's other window plays Videos (in its page or handed to the native player): the session comes here
-            // (melatonMediaSessions.js; Yukimi, Nov 21 2026: "it does not transfer the video it will play 2")
-            if (!player && window.melatonMedia && window.melatonMedia.elsewhere('videos')) void window.melatonMedia.pull('videos');
+            // the app's other window plays Videos (in its page or handed to the native player): "Playing on <the other
+            // screen>" with its Transfer at the top of the program (melatonMediaSessions.js; Yukimi, Nov 21 2026)
+            if (window.melatonMedia && page) window.melatonMedia.offerTransfer('videos', page);
             if (player) { syncPlayer(); plTakeBack(); plSuspend(false); plClock(true); chatSync(); }
         },
         hide() {

@@ -2593,14 +2593,11 @@ const mediaPlayerSession = (() => {
         if (m && typeof m.changed === 'function') m.changed(APP);
     }
 
-    /** The player opened with nothing playing while the other window plays it: the session comes here. */
+    /** "... is playing on your phone. Click to transfer it to this computer." at the top of the player while the other window plays. */
     function pullHere(p) {
         const m = M();
-        const there = m && typeof m.elsewhere === 'function' ? m.elsewhere(APP) : null;
-        if (!there || !there.playing) return;
-        const media = p && p.el && p.el.media;
-        if (media && media.getAttribute('src') && !media.paused && !media.ended) return;
-        void m.pull(APP);
+        if (!m || typeof m.offerTransfer !== 'function' || !p || !p.content) return;
+        m.offerTransfer(APP, p.content);
     }
 
     function register() {

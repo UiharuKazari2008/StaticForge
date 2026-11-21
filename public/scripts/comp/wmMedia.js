@@ -2102,15 +2102,11 @@
         return s;
     }
 
-    /** Melaton Media opened with nothing playing while the app's other window plays it: the session comes here. */
+    /** "Playing on the DeX desktop" with its Transfer at the top of Melaton Media while the other window plays (it moves on a tap). */
     function pullElsewhere() {
         const M = window.melatonMedia;
-        const there = M && typeof M.elsewhere === 'function' ? M.elsewhere(MEDIA_APP) : null;
-        if (!there || !there.playing) return false;
-        const v = media.el;
-        if (v && v.getAttribute('src') && !v.paused && !v.ended) return false;
-        void M.pull(MEDIA_APP);
-        return true;
+        if (M && typeof M.offerTransfer === 'function' && page) M.offerTransfer(MEDIA_APP, page);
+        return false;
     }
 
     /** Play All Songs (the 6.5 Music panel): every song of the library from the first, in the background. */

@@ -13,7 +13,8 @@ const src = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/wmYouTu
 
 assert.ok(!/localStorage\.\w+\(\s*HANDED_KEY|wmVideosHanded/.test(src), 'no localStorage note any more: the bus carries it');
 assert.ok(/window\.melatonMedia\.register\('videos', mediaSpec, \{ signal: appScopeSignal \}\)/.test(src), 'Videos registers its session with an owner signal');
-assert.ok(/if \(!player && window\.melatonMedia && window\.melatonMedia\.elsewhere\('videos'\)\) void window\.melatonMedia\.pull\('videos'\);/.test(src), 'show() takes the other window\'s stream');
+assert.ok(/if \(window\.melatonMedia && page\) window\.melatonMedia\.offerTransfer\('videos', page\);/.test(src), 'show() offers "Playing on <the other screen>" with its Transfer');
+assert.ok(!/melatonMedia\.pull\('videos'\)/.test(src), 'nothing moves without the Transfer');
 assert.ok(/function plTell\(\) \{\s*\/\/[^\n]*\n\s*if \(window\.melatonMedia\) window\.melatonMedia\.changed\('videos'\);/.test(src), 'every play state change tells the other window');
 assert.ok(/if \(nv && \(p\.handed \|\| p\.popped\)\) \{ try \{ nv\.stop\(\); \}/.test(src), 'stopPlayer stops the native player only for its own hand-off');
 assert.ok(!/addEventListener\('playing'[\s\S]{0,600}nv\.stop\(\)/.test(src), 'starting a video here never stops the shared native player directly');

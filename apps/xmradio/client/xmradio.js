@@ -206,12 +206,12 @@
             return s;
         }
 
-        /** The radio opened with nothing playing here while the phone plays it: the session comes to the desktop. */
+        /** "... is playing on your phone. Click to transfer it to this computer." over the radio's top edge while the phone plays a channel it has. */
         mediaPullHere() {
             const media = root.melatonMedia;
-            if (!media || this.app.signal.aborted || !this.signedIn() || (this.on && (this.state === 'playing' || this.state === 'acquiring'))) return;
-            const e = media.elsewhere('xmradio');
-            if (e && e.playing && this.mediaChannel(e.source)) void media.pull('xmradio');
+            if (!media || this.app.signal.aborted || !this.signedIn() || !this.root) return;
+            const bar = media.offerTransfer('xmradio', this.root, { canTake: (s) => !!this.mediaChannel(s && s.source) });
+            if (bar) bar.classList.add('mms-transfer-overlay');
         }
 
         /** The display: the same on every radio (the menu is drawn on it). */

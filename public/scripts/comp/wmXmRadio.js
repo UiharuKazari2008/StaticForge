@@ -336,12 +336,11 @@
         else { radio.seq++; dropPage(); radio.state = 'off'; setSleep(0, true); changed(); }
         return s;
     }
-    /** The program opened with nothing playing here while the desktop plays it: the session comes to the phone. */
+    /** "Playing on the DeX desktop" with its Transfer at the top of the program while the desktop plays a channel this phone has. */
     function mediaPullHere() {
         const m = MEDIA();
-        if (!m || !canUse() || radio.state === 'playing' || radio.state === 'tuning') return;
-        const e = m.elsewhere('xmradio');
-        if (e && e.playing && chanOfSource(e.source)) void m.pull('xmradio');
+        if (!m || !canUse() || !page) return;
+        m.offerTransfer('xmradio', page, { canTake: (s) => !!chanOfSource(s && s.source) });
     }
 
     // ---------------------------------------------------------------- sound
