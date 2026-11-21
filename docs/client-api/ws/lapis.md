@@ -17,7 +17,7 @@ The server reads the car on its own clock and pushes what changed. Clients do no
 | `lapis_command` | `{ kind: 'lock'|'unlock'|'start'|'stop', options? }` -> `{ command }`. Admin, destructive. |
 | `lapis_history` | `{ range: 'week'|'month'|'quarter'|'year'|'all' }` -> series, days, trips, fill-ups |
 | `lapis_vehicles` | `{}` -> `{ vehicles }`. Admin. |
-| `lapis_settings_save` | `{ settings }`, merged into config `lapis` -> `{ settings }`. Admin, destructive. |
+| `lapis_settings_save` | `{ settings }`, merged into config `lapis` -> `{ settings }`. Admin, destructive. `settings.notify` switches: `unlocked`, `lowFuel`, `refuel`, `service`, `health` (all five health alerts), `battery12`, `tire`, `brake`, `washer`, `key`. |
 | `lapis_service_done` | `{ id }` marks a maintenance item done now -> `{ settings }`. Admin, destructive. |
 | `lapis_picture_get` | `{}` -> `{ picture, dataUrl? }` |
 | `lapis_picture_save` | `{ dataUrl }` (PNG, JPEG or WebP, 900 KB at most) or `{ dataUrl: null }` for the built-in picture. Admin, destructive. |
@@ -41,4 +41,4 @@ glass and mirrors. `seat`: 0 off, 6-8 heat low to high, 3-5 cool low to high.
 ## Broadcasts (admin clients)
 
 - `lapis_updated` `{ state }` after every read, command step and settings change
-- `lapis_notice` `{ id, kind, title, text, actions[] }`; `kind`: `unlocked` (action `lock`), `low-fuel`, `refuel`, `service`, `command`, `health` (with `key` and `stamp`; active ones are also in `state.alerts` until a report clears them), `run-left` (with `minutes` 5 / 3 / 2 / 1 and `until`: a remote start on its timer is nearly over)
+- `lapis_notice` `{ id, kind, title, text, actions[] }`; `kind`: `unlocked` (action `lock`), `low-fuel`, `refuel`, `service`, `command`, `health` (the vehicle alerts, Nov 21 2026: one notice for every alert a read raised plus those still holding, `key` `alerts`, `stamp` `<item>=<step>,...`, `count` when more than one; one alert keeps its own title and text, several are titled `<car> needs attention` with a short line each; low fuel is one of them. Alerts wait while the engine runs and for 30 minutes after the car was last seen running; the unlocked reminder does not. Every alert is in `state.alerts` until a report clears it, whatever is switched off), `service` notices carry `key` `maintenance` (the day's items in one), `run-left` (with `minutes` 5 / 3 / 2 / 1 and `until`: a remote start on its timer is nearly over)

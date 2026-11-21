@@ -110,7 +110,7 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     assert.strictEqual(statusCall.headers.blueLinkServicePin, '1234');
     assert.strictEqual(car.tokens, 1);
 
-    assert.strictEqual(notices().filter((n) => n.kind === 'health' && n.key === 'tire').length, 1, 'the tire lamp is said on the first read');
+    assert.strictEqual(notices().filter((n) => n.kind === 'health' && n.key === 'alerts' && /(^|,)tire=/.test(n.stamp)).length, 1, 'the tire lamp is said on the first read (a car standing since before the server started is not "just parked")');
     car.lampOff = true;
 
     // ---- remote start with the automatic climate
@@ -217,14 +217,25 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     car.locked = true;
     await svc.read({ reason: 'poll' });
 
-    // ---- low fuel, once per tank; a fill-up clears it
+    // ---- low fuel, once per tank; a fill-up clears it. Crossed on a drive: quiet until the car has stood 30 minutes (Nov 21)
     sent.length = 0;
+    const fuelNotes = () => notices().filter((n) => n.kind === 'health' && /(^|,)fuel=/.test(n.stamp));
     car.fuel = 18; car.odo += 270; car.at = '2026-11-15T15:00:00Z'; now = Date.parse('2026-11-15T15:02:00Z');
     await svc.read({ reason: 'poll' });
-    assert.strictEqual(notices().filter((n) => n.kind === 'low-fuel').length, 1);
+    assert.strictEqual(fuelNotes().length, 0, 'just driven: low fuel waits');
+    now = Date.parse('2026-11-15T15:29:00Z');
+    await svc.read({ reason: 'poll' });
+    assert.strictEqual(fuelNotes().length, 0, 'still within 30 minutes of the drive');
+    now = Date.parse('2026-11-15T15:31:00Z');
+    await svc.read({ reason: 'poll' });
+    assert.strictEqual(fuelNotes().length, 1, 'said once the car has stood 30 minutes');
+    assert.strictEqual(fuelNotes()[0].title, 'Fuel is low');
     car.fuel = 16; car.odo += 10; car.at = '2026-11-15T18:00:00Z'; now = Date.parse('2026-11-15T18:02:00Z');
     await svc.read({ reason: 'poll' });
-    assert.strictEqual(notices().filter((n) => n.kind === 'low-fuel').length, 1, 'only once');
+    now = Date.parse('2026-11-15T18:40:00Z');
+    await svc.read({ reason: 'poll' });
+    assert.strictEqual(fuelNotes().length, 1, 'only once per tank');
+    now = Date.parse('2026-11-15T18:02:00Z');
     // 16 %: Monday's drive to work does not fit. Nothing at 1 PM on Sunday; said that evening, once
     svc._test.dailyNotices();
     assert.strictEqual(notices().filter((n) => n.kind === 'refuel').length, 0, 'not in the middle of the day before');
@@ -256,7 +267,8 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     state = await svc.read({ reason: 'poll' });
     let health = notices().filter((n) => n.kind === 'health');
     assert.strictEqual(health.length, 1, 'the 12 V battery under the car\'s level');
-    assert.strictEqual(health[0].key, 'battery12');
+    assert.strictEqual(health[0].key, 'alerts');
+    assert.strictEqual(health[0].stamp, 'battery12=b4');
     assert.match(health[0].text, /41%.*warning level 65%/);
     assert.match(health[0].text, /It was 84% at/);
     assert.strictEqual(state.alerts.length, 1);
@@ -269,13 +281,47 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     state = await svc.read({ reason: 'poll' });
     health = notices().filter((n) => n.kind === 'health');
     assert.strictEqual(health.length, 3);
-    assert.match(health[2].text, /rear left 22 psi/);
+    // two alerts at once: one notification naming both, a short line each (Nov 21: several notifications before)
+    assert.strictEqual(health[2].title, 'Kuro needs attention');
+    assert.strictEqual(health[2].count, 2);
+    assert.match(health[2].text, /Tire low: rear left 22 psi/);
+    assert.match(health[2].text, /12 V battery 38%/);
+    assert.ok(!/Inflate|check for an inverter/.test(health[2].text), 'the advice stays in Lapis');
+    assert.strictEqual(sent.filter((m) => m.type === 'lapis_notice').length, 3, 'one push per read, never one per alert')
     assert.deepStrictEqual(state.alerts.map((a) => a.key).sort(), ['battery12', 'tire']);
     assert.deepStrictEqual(svc._test.lowTires({ tirePsi: { fl: 35, fr: 35, rl: 30, rr: 35 }, tireLow: {} }, { tireLowPsi: 26 }), ['rl'], 'one tire 4 psi under the others');
     car.health = { battery: 90, warnAt: 65, psi: { fl: 33, fr: 33, rl: 33, rr: 33 } }; car.at = '2026-11-15T23:00:00Z'; now = Date.parse('2026-11-15T23:02:00Z');
     state = await svc.read({ reason: 'poll' });
     assert.strictEqual(state.alerts.length, 0, 'cleared by a good report');
     assert.deepStrictEqual(svc._test.live.flags.health, {});
+
+    // ---- quiet while the car runs (Nov 21): a new alert waits; the left-unlocked reminder is not an alert
+    sent.length = 0;
+    car.engine = true; car.health = { battery: 90, warnAt: 65, psi: { fl: 33, fr: 33, rl: 20, rr: 33 } }; car.at = '2026-11-16T01:00:00Z'; now = Date.parse('2026-11-16T01:02:00Z');
+    state = await svc.read({ reason: 'poll' });
+    assert.strictEqual(notices().filter((n) => n.kind === 'health').length, 0, 'running: no alert');
+    assert.deepStrictEqual(state.alerts.map((a) => a.key), ['tire'], 'Lapis still shows it');
+    car.engine = false; car.at = '2026-11-16T01:10:00Z'; now = Date.parse('2026-11-16T01:12:00Z');
+    await svc.read({ reason: 'poll' });
+    assert.strictEqual(notices().filter((n) => n.kind === 'health').length, 0, 'just parked: still quiet');
+    // a tire switched off by itself (Settings > Notifications): never said, still shown
+    await svc.saveSettings({ notify: { tire: false } });
+    assert.strictEqual(svc.getSettings().notify.tire, false);
+    assert.strictEqual(svc.getSettings().notify.battery12, true, 'the other items stay on');
+    now = Date.parse('2026-11-16T02:00:00Z');
+    state = await svc.read({ reason: 'poll' });
+    assert.strictEqual(notices().filter((n) => n.kind === 'health').length, 0, 'the tire is switched off');
+    assert.deepStrictEqual(state.alerts.map((a) => a.key), ['tire'], 'still in Lapis');
+    // the battery joins: one notification for it alone (the switched-off tire is not in it)
+    car.health.battery = 40; now = Date.parse('2026-11-16T02:30:00Z');
+    await svc.read({ reason: 'poll' });
+    health = notices().filter((n) => n.kind === 'health');
+    assert.strictEqual(health.length, 1);
+    assert.strictEqual(health[0].title, '12 V battery is low');
+    assert.ok(!/tire/.test(health[0].stamp), 'the tire is left out');
+    await svc.saveSettings({ notify: { tire: true } });
+    car.health = { battery: 90, warnAt: 65, psi: { fl: 33, fr: 33, rl: 33, rr: 33 } }; now = Date.parse('2026-11-16T03:00:00Z');
+    await svc.read({ reason: 'poll' });
 
     // ---- the record
     const hist = svc.getHistory('month');
