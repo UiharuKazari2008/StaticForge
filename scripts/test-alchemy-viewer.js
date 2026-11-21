@@ -229,6 +229,13 @@ async function main() {
         const early = await viewer.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.__alchemyViewerStats())))));
         const earlyMs = Date.now() - t0;
         await shot(viewer, '2-scrolling-ahead');
+        if (patched) {
+            // the rows the picture scrolled into were drawn by Chromium below the viewport (over-render), not filled in
+            const k = early.frame.k;
+            const shownBottom = Math.round(early.scroll.target * k) + early.frame.vh;
+            check('over-render band covers the scroll', early.frame.vh > 0 && early.frame.height > early.frame.vh && shownBottom <= early.scroll.cache1,
+                'viewport ' + early.frame.vh + ' of ' + early.frame.height + ' rows; target bottom row ' + shownBottom + ', cached to ' + early.scroll.cache1);
+        }
         check('picture scrolls at once', early.scroll.active && early.scroll.display > 5 && early.frame.sy < 1,
             'after ' + earlyMs + ' ms shown at ' + early.scroll.display.toFixed(1) + ' of target ' + early.scroll.target + ', frame still at ' + early.frame.sy);
         // the wheel's distance in the viewer's CSS pixels (DevTools' ratio emulation divides synthetic deltas by it)

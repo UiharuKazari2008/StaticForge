@@ -121,6 +121,30 @@ EDITS = [
       'gfx::RectF WidgetBase::BlinkSpaceToDIPs(const gfx::RectF& rect) {\n  float reverse = 1 / GetOriginalDeviceScaleFactor();\n'),
      'GetOriginalDeviceScaleFactor()', 'AlchemyBlinkScale(*this)'),
 
+    # 2. over-render: the main document's content is not clipped at the viewport's bottom (painting only; the
+    #    hit-test clip stays). With a view taller than the emulated page (Emulation.setDeviceMetricsOverride
+    #    dontSetVisibleSize + Emulation.setVisibleSize) the band below the viewport shows the page's real content
+    #    while the page keeps its viewport (no resize, fixed footers stay at the viewport's bottom). Without one, the
+    #    extra content lies outside the surface and is never drawn.
+    ('third_party/blink/renderer/core/paint/paint_property_tree_builder.cc',
+     '#include "base/feature_list.h"\n',
+     '#include "base/feature_list.h"\n'
+     '#include "third_party/blink/public/common/features.h"\n'),
+    ('third_party/blink/renderer/core/paint/paint_property_tree_builder.cc',
+     '        PhysicalRect clip_rect =\n'
+     '            box_fragment.OverflowClipRect(FindPreviousBreakToken(box_fragment));\n'
+     '        clip_rect.Move(context_.current.paint_offset);\n',
+     '        PhysicalRect clip_rect =\n'
+     '            box_fragment.OverflowClipRect(FindPreviousBreakToken(box_fragment));\n'
+     '        clip_rect.Move(context_.current.paint_offset);\n'
+     '        // Alchemy (#993): the outermost document draws on below its viewport\n'
+     '        if (object_.IsLayoutView() &&\n'
+     '            object_.GetFrame()->IsOutermostMainFrame() &&\n'
+     '            base::FeatureList::IsEnabled(\n'
+     '                features::kAlchemyEmulatedScaleCompositor)) {\n'
+     '          clip_rect.size.height += LayoutUnit(8192);\n'
+     '        }\n'),
+
     # -- browser: the emulated scale lives on the page's widget, for every DevTools session --
     # (Puppeteer's input and Alchemy's screencast run on different sessions, each with its own EmulationHandler)
     ('content/browser/renderer_host/render_widget_host_impl.h',

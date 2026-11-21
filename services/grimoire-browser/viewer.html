@@ -210,7 +210,8 @@
   var stillCtx = stillCanvas.getContext('2d', { alpha: false });
   var base = document.createElement('canvas');
   var baseCtx = base.getContext('2d', { alpha: false });
-  var baseInfo = { sy: 0, sx: 0, k: 0, p: 0, t: 0 };
+  // vh: frame rows of the page's viewport; rows below it are the over-render band (Alchemy build, #993)
+  var baseInfo = { sy: 0, sx: 0, k: 0, p: 0, t: 0, vh: 0 };
   // Arrival order of frames and stills: a frame hides the still only if it came after it.
   var arrivals = 0;
   var stillArrival = 0;
@@ -432,9 +433,14 @@
     bgColor = '';
   }
 
+  // the frame rows that show: the viewport (a frame with an over-render band is taller)
+  function viewRows() {
+    return baseInfo.vh > 0 && baseInfo.vh < base.height ? baseInfo.vh : base.height;
+  }
+
   function bands() {
     var k = baseInfo.k || 1;
-    var height = base.height;
+    var height = viewRows();
     var top = Math.max(0, Math.min(height, Math.round((scrollInfo.bandTop || 0) * k)));
     var bottom = Math.max(0, Math.min(height - top, Math.round((scrollInfo.bandBottom || 0) * k)));
     return { m0: top, m1: height - bottom, top: top, bottom: bottom };
@@ -455,10 +461,15 @@
       cache.valid0 = cache.valid1 = 0;
     }
     var b = bands();
-    var band = b.m1 - b.m0;
-    if (band <= 0) return;
-    var d0 = Math.round(baseInfo.sy * baseInfo.k) + b.m0;
-    var d1 = d0 + band;
+    if (b.m1 - b.m0 <= 0) return;
+    var docTop = Math.round(baseInfo.sy * baseInfo.k);
+    var vh = viewRows();
+    // what scrolls in the viewport, and the over-render band below it (the fixed bottom bar between them hides
+    // its rows: they keep what an earlier frame showed, or the page's background)
+    var segs = [[b.m0, b.m1]];
+    if (vh < height) segs.push([vh, height]);
+    var d0 = docTop + b.m0;
+    var d1 = docTop + segs[segs.length - 1][1];
     if (d0 < cache.doc0 || d1 > cache.doc0 + rows) {
       // the cache window follows the page: centred on this band, keeping what still fits
       var doc0 = Math.max(0, Math.round((d0 + d1 - rows) / 2));
@@ -472,7 +483,18 @@
       }
       cache.doc0 = doc0;
     }
-    cache.ctx.drawImage(base, 0, b.m0, width, band, 0, d0 - cache.doc0, width, band);
+    if (segs.length > 1) {
+      var h0 = docTop + b.m1;
+      var h1 = docTop + vh;
+      if (h1 > h0 && (h0 < cache.valid0 || h1 > cache.valid1)) {
+        cache.ctx.fillStyle = pageBackground(b);
+        cache.ctx.fillRect(0, h0 - cache.doc0, width, h1 - h0);
+      }
+    }
+    for (var g = 0; g < segs.length; g++) {
+      var rowsIn = segs[g][1] - segs[g][0];
+      if (rowsIn > 0) cache.ctx.drawImage(base, 0, segs[g][0], width, rowsIn, 0, docTop + segs[g][0] - cache.doc0, width, rowsIn);
+    }
     if (cache.valid1 <= cache.valid0 || d1 < cache.valid0 || d0 > cache.valid1) {
       cache.valid0 = d0;
       cache.valid1 = d1;
@@ -518,13 +540,13 @@
 
   function drawComposite(off) {
     var width = base.width;
-    var height = base.height;
+    var height = viewRows();
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
       canvas.height = height;
     }
     if (!off) {
-      ctx.drawImage(base, 0, 0);
+      ctx.drawImage(base, 0, 0, width, height, 0, 0, width, height);
       return;
     }
     var b = bands();
@@ -642,10 +664,12 @@
       baseInfo.k = Number(header.k) || 0;
       baseInfo.p = header.p ? 1 : 0;
       baseInfo.t = Number(header.t) || 0;
+      baseInfo.vh = Number(header.vh) || 0;
       if (engine && engine.ready) noteVideoDelay(baseInfo.t);
     } else {
       baseInfo.k = 0;
       baseInfo.p = 0;
+      baseInfo.vh = 0;
     }
     bgColor = '';
     cacheStore();
@@ -1095,9 +1119,9 @@
       still: stillCanvas.hidden ? null : { width: stillCanvas.width, height: stillCanvas.height },
       stills: stillCount,
       frames: frameCount,
-      frame: { width: base.width, height: base.height, sy: baseInfo.sy, k: baseInfo.k, p: baseInfo.p },
+      frame: { width: base.width, height: base.height, sy: baseInfo.sy, k: baseInfo.k, p: baseInfo.p, vh: baseInfo.vh },
       canvas: { width: canvas.width, height: canvas.height, cssWidth: canvas.clientWidth, cssHeight: canvas.clientHeight, devicePx: devicePx, dpr: window.devicePixelRatio || 1 },
-      scroll: { display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, cacheRows: cache.valid1 - cache.valid0 },
+      scroll: { display: pred.display, target: pred.target, active: pred.active, bandTop: scrollInfo.bandTop, bandBottom: scrollInfo.bandBottom, root: scrollInfo.root, cacheRows: cache.valid1 - cache.valid0, cache0: cache.valid0, cache1: cache.valid1 },
       audio: engine ? { path: 'worklet', state: engine.ctx.state, ready: engine.ready, packets: packetCount, targetMs: Math.round(engine.targetMs), lagMs: Math.round(engine.lagAvg || 0), jitterMs: Math.round(engine.jitter), underruns: engine.underruns, videoDelayMs: Math.round(videoDelay) }
         : { path: audio ? 'element' : 'off', wanted: audioWanted, taken: audioTaken, packets: packetCount },
       rttMs: Math.round(rttMs)

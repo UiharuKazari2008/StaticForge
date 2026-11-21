@@ -1284,7 +1284,9 @@ function frameHeader(session, meta) {
         sx: Math.round((Number(m.scrollOffsetX) || 0) * (cssPerDip || 1) * 100) / 100,
         sy: Math.round((Number(m.scrollOffsetY) || 0) * (cssPerDip || 1) * 100) / 100,
         k: desktop ? k : 0,
-        p: desktop ? 1 : 0
+        p: desktop ? 1 : 0,
+        // frame rows of the page's viewport; any rows below are the over-render band
+        vh: session.bandDip ? Math.round((session.dipHeight || 0) * (session.pxPerDip || 1)) : 0
     };
 }
 
@@ -2580,7 +2582,7 @@ async function startScreencast(session) {
         format: 'jpeg',
         quality: session.settings.jpegQuality,
         maxWidth: Math.ceil((session.dipWidth || session.width) * (session.pxPerDip || 1)),
-        maxHeight: Math.ceil((session.dipHeight || session.height) * (session.pxPerDip || 1)),
+        maxHeight: Math.ceil(((session.dipHeight || session.height) + (session.bandDip || 0)) * (session.pxPerDip || 1)),
         everyNthFrame: 1
     });
 }
@@ -2655,6 +2657,8 @@ const ZOOM_MAX = 4;
 // a 4K screen at 100 %, or a 1920 x 1200 window at 200 %
 const DIP_MAX_WIDTH = 3840;
 const DIP_MAX_HEIGHT = 2400;
+// the band drawn below a desktop page's viewport on the Alchemy build, as a share of the viewport's height
+const OVERSCAN = 0.5;
 
 // On the Alchemy build a live page whose emulated scale changes keeps drawing at the old one until its surface is
 // allocated again (measured: 1.5 -> 2 left the page at 2/3 of the frame); a size change does that, so the viewport
@@ -2727,10 +2731,17 @@ async function applyViewport(session) {
     // On the session the screencast runs on (#993): each DevTools session keeps its own emulation, and the Alchemy
     // build sizes the capture from the emulation of the session that captures (Puppeteer's setViewport is its own).
     const deviceScaleFactor = Math.max(0.25, Math.min(8, (dpr * zoom) / z0));
+    // Over-render (#993 patch 2): on the Alchemy build the view is OVERSCAN taller than the page's viewport, and the
+    // page draws on into that band (its layout, viewport and fixed bars do not move); the viewer scrolls into it.
+    const band = emulatedScale ? Math.round(height * OVERSCAN) : 0;
+    session.bandDip = band;
+    const metrics = { width, height, deviceScaleFactor, mobile: false, dontSetVisibleSize: band > 0 };
     if (scaleChanged(session)) {
-        await session.cdp.send('Emulation.setDeviceMetricsOverride', { width: width + 1, height, deviceScaleFactor, mobile: false }).catch(() => {});
+        await session.cdp.send('Emulation.setDeviceMetricsOverride', Object.assign({}, metrics, { width: width + 1 })).catch(() => {});
+        if (band) await session.cdp.send('Emulation.setVisibleSize', { width: width + 1, height: height + band }).catch(() => {});
     }
-    await session.cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor, mobile: false });
+    await session.cdp.send('Emulation.setDeviceMetricsOverride', metrics);
+    if (band) await session.cdp.send('Emulation.setVisibleSize', { width, height: height + band }).catch(() => { session.bandDip = 0; });
 }
 
 // Feeds ▾: the RSS / Atom feeds the page advertises (<link rel="alternate">), sent when they change.
@@ -2937,7 +2948,12 @@ async function createSession(body, adoptedPage) {
     cdp.on('Page.screencastFrame', (event) => {
         const current = sessions.get(id);
         if (!current) return;
-        const metadata = event.metadata || {};
+        let metadata = event.metadata || {};
+        // the over-render band is not part of the page's viewport: the viewer maps pointers through the viewport
+        if (current.bandDip && metadata.deviceHeight > current.bandDip) {
+            metadata = Object.assign({}, metadata, { deviceHeight: metadata.deviceHeight - current.bandDip });
+            event = Object.assign({}, event, { metadata });
+        }
         const metaKey = [
             metadata.deviceWidth,
             metadata.deviceHeight,
