@@ -2163,6 +2163,38 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
     background-color: #eaf6fd;
 }
 
+/* The output's picture over the slider (#1005; Windows 7's flyout puts the device there): a click lists the
+   outputs to move the sound to. Flat until hovered, then the speaker button's face. */
+.volume-flyout-output {
+    display: block;
+    width: 38px;
+    height: 38px;
+    margin: 8px auto 0;
+    padding: 2px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: transparent;
+    cursor: var(--c-pointer);
+    outline: none;
+}
+.volume-flyout-output[hidden] {
+    display: none;
+}
+.volume-flyout-output img {
+    display: block;
+    width: 32px;
+    height: 32px;
+}
+.volume-flyout-output:hover,
+.volume-flyout-output[aria-expanded="true"] {
+    border-color: #3c7fb1;
+    background-color: #eaf6fd;
+}
+.volume-flyout-output:focus,
+.volume-flyout-output:focus-visible {
+    outline: none;
+}
+
 /* Apps with their own audio (Alchemy, #628) stand beside the device as Vista's Volume Mixer lists
    them: one 74 px column each after a divider, the app's 16 px icon over its slider. */
 .volume-flyout.has-apps {

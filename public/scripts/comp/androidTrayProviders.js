@@ -298,7 +298,13 @@
             onScan: (fn) => scanHub.subscribe(fn),
             networks: () => Promise.resolve(parse(call('AndroidWifi', 'networks')) || { networks: [] }),
             scan: () => Promise.resolve(parse(call('AndroidWifi', 'scan')) || { error: 'No Wi-Fi.' }),
-            connect: (ssid, pass) => wifiAsk('connect', String(ssid), pass ? String(pass) : null),
+            // Connect to a network > Manually connect with "Connect even if the network is not broadcasting" (#1005):
+            // the app's hidden-network path (DSApp connectHidden), which an older app does not have
+            connect: (ssid, pass, opts) => (opts && opts.hidden
+                ? (typeof root.AndroidWifi.connectHidden === 'function'
+                    ? wifiAsk('connectHidden', String(ssid), pass ? String(pass) : null)
+                    : Promise.resolve({ error: 'This version of the Dreamscape app cannot connect to a network that is not broadcasting.' }))
+                : wifiAsk('connect', String(ssid), pass ? String(pass) : null)),
             disconnect: () => wifiAsk('disconnect'),
             forget: (ssid) => wifiAsk('forget', String(ssid)),
             autoConnect: (ssid, on) => (typeof root.AndroidWifi.autoConnect === 'function' ? wifiAsk('autoConnect', String(ssid), !!on) : Promise.resolve({ error: 'This app version cannot change it.' })),
