@@ -1273,7 +1273,9 @@
         if (prefs.show === 'guide') {
             // by genre, as SiriusXM files its channels; those not read yet under the last heading
             const groups = new Map();
-            for (const x of ids) { const g = cache.genres[x] || (x in cache.genres ? 'Other' : 'Not read yet'); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(x); }
+            // (genres placed by their words before the server took SiriusXM's own spelling)
+            const SAME = { 'Dance/Electronic': 'Dance & Electronic', 'Jazz/Standards': 'Jazz & Standards', 'Hip-Hop/R&B': 'Hip-Hop & R&B' };
+            for (const x of ids) { const raw = cache.genres[x] || (x in cache.genres ? 'Other' : 'Not read yet'); const g = SAME[raw] || raw; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(x); }
             const names = [...groups.keys()].sort((a, b) => (a === 'Not read yet') - (b === 'Not read yet') || (a === 'Other') - (b === 'Other') || a.localeCompare(b));
             els.list.innerHTML = names.map((g) => `<div class="xrm-sec-h xrm-genre">${esc(g)} <span class="xrm-sec-note">${groups.get(g).length}</span></div>${groups.get(g).map((x) => row(x)).join('')}`).join('');
             return;

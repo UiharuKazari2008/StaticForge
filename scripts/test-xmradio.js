@@ -41,7 +41,7 @@ assert.strictEqual(t.maskHandle('yukimi@example.com'), 'y•••••@example
 assert.strictEqual(t.classify('80s on 8', 'Pop hits from the MTV era'), 'Pop');
 assert.strictEqual(t.classify('ESPN Radio', 'Sports talk around the clock'), 'Sports');
 assert.strictEqual(t.classify('Octane', 'Hard rock, new and loud'), 'Rock');
-assert.strictEqual(t.classify('BPM', 'Dance hits and remixes'), 'Dance/Electronic');
+assert.strictEqual(t.classify('BPM', 'Dance hits and remixes'), 'Dance & Electronic');
 assert.strictEqual(t.classify('The Highway', 'New country hits'), 'Country');
 assert.strictEqual(t.classify('CNN', 'News as it happens'), 'News');
 assert.strictEqual(t.classify('Zzz', ''), 'Other');
