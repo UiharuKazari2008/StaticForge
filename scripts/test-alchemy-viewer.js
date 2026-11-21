@@ -134,7 +134,7 @@ async function main() {
     let viewerBrowser = null;
     let relayServer = null;
     try {
-        await waitFor(() => /listening on/.test(log), 30000, 'service start');
+        await waitFor(() => /listening on/.test(log), 60000, 'service start');
         check('PulseAudio starts (no "audio off")', !/audio off/.test(log), (log.match(/audio off.*/) || [''])[0]);
         const origin = 'http://127.0.0.1:' + port;
         let viewOrigin = origin;

@@ -2661,6 +2661,8 @@ let browserLaunch = null;
  * sending the same command, cutting that save short; it is only the fallback when Chromium hangs.
  */
 async function closeBrowserGently(instance, timeoutMs) {
+    // a shutdown while Chromium is still starting: nothing to close yet (it threw on null and the exit hung)
+    if (!instance) return true;
     const proc = instance && typeof instance.process === 'function' ? instance.process() : null;
     if (!proc || proc.exitCode !== null || proc.signalCode) {
         await instance.close().catch(() => {});
@@ -2917,6 +2919,31 @@ async function adoptOrphan(target) {
         return;
     }
     adoptPopup(announce, page, '');
+}
+
+// Chromium's temporary files on disk beside the profile, not in /tmp: the component updater downloads each update
+// (one of them 194 MB) into a fresh /tmp/org.chromium.Chromium.* folder and a killed Chromium never removes it, so
+// /tmp (RAM) filled to 2.4 GB of copies (Nov 21 2026). Only this Chromium uses the folder, so what it left there
+// (anything not touched in the last 10 minutes) goes at each launch.
+function chromeTempDir() {
+    const dir = path.join(path.dirname(PROFILE_DIR), path.basename(PROFILE_DIR) + '-tmp');
+    // Chromium's single-instance socket lives there too (<dir>/org.chromium.Chromium.XXXXXX/SingletonSocket), and
+    // a socket path over 107 bytes is fatal at start: a deep profile keeps /tmp
+    if (Buffer.byteLength(dir) + '/org.chromium.Chromium.XXXXXX/SingletonSocket'.length > 107) return os.tmpdir();
+    try {
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+        const old = Date.now() - 10 * 60 * 1000;
+        for (const name of fs.readdirSync(dir)) {
+            const p = path.join(dir, name);
+            try {
+                if (fs.lstatSync(p).mtimeMs < old) fs.rmSync(p, { recursive: true, force: true });
+            } catch (_err) { /* gone already */ }
+        }
+    } catch (err) {
+        console.warn('[grimoire-browser] temp folder:', err.message);
+        return os.tmpdir();
+    }
+    return dir;
 }
 
 let xvfb = null;
@@ -3513,6 +3540,7 @@ async function launchBrowser() {
     // Loopback only: Dreamscape drives one Alchemy-owned tab here (identity-gated MCP); cookies never leave Chromium.
     if (ALCHEMY_CDP_PORT) args.push('--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + ALCHEMY_CDP_PORT);
     const env = Object.assign({}, process.env);
+    env.TMPDIR = chromeTempDir();
     let audio = false;
     if (AUDIO) {
         try {
