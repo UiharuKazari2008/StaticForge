@@ -3079,12 +3079,18 @@
         const ready = () => {
             if (started) return;
             prepareEntry();
-            requestAnimationFrame(() => requestAnimationFrame(() => { // perf: allow one call per home swipe: homeReady only posts to the app's main thread, nothing is answered or waited for
-                try { window.AndroidBars.homeReady(); } catch (_) { start(); }
+            requestAnimationFrame(() => requestAnimationFrame(() => { // perf: allow one call per home swipe: homeReady only posts to the app's overlay thread and answers at once, nothing is waited for
+                // true: the overlay goes with its next frame - the entrance starts now, not on 'melatonmaskgone' (that word
+                // comes through the app's main thread while Melaton wakes: ~200 ms of bare wallpaper on the Fold, Nov 22)
+                let now = false;
+                try { now = window.AndroidBars.homeReady() === true; } catch (_) { start(); return; }
+                if (now) start();
             }));
         };
-        if (layer && typeof layer.decode === 'function') {
-            Promise.race([layer.decode().catch(() => {}), new Promise((r) => setTimeout(r, 200))]).then(ready);
+        // the picture already loaded (the same file every swipe): no wait for a decode (it waited up to 200 ms on a page
+        // just woken)
+        if (layer && !(layer.complete && layer.naturalWidth) && typeof layer.decode === 'function') {
+            Promise.race([layer.decode().catch(() => {}), new Promise((r) => setTimeout(r, 120))]).then(ready);
         } else ready();
         return true;
     }
