@@ -414,6 +414,9 @@
     root.addEventListener('androidhotkey', (e) => {
         const k = e.detail;
         if (!k || (k.type !== 'keydown' && k.type !== 'keyup')) return;
+        // Alt+Tab drawn by the app (dexAltTab.js) learns the app's session before the replayed key opens the pane (#1054)
+        const at = root.melatonDexAltTab;
+        if (at && typeof at.hotkey === 'function') { try { at.hotkey(k); } catch (err) { console.warn('[androidTaskbar] alttab', err); } }
         const target = doc.activeElement && doc.activeElement !== doc.body ? doc.activeElement : doc.body;
         try {
             target.dispatchEvent(new KeyboardEvent(k.type, {
