@@ -363,8 +363,12 @@
         open: (overlay, opts) => {
             close();
             onThumbsNow = opts && typeof opts.onThumbs === 'function' ? opts.onThumbs : null;
-            if (!overlay || !available()) return false;
-            if (!overlay.querySelector('.window-switcher-item')) return false; // the classic icon row is not drawn by the app
+            if (!overlay || !overlay.querySelector('.window-switcher-item')) return false; // the classic icon row is not drawn by the app
+            // opened without the app's keys (the key reached this page itself): the app starts a session for it (#1054)
+            if (!available() && !failed && port()) {
+                try { const s = typeof A().begin === 'function' ? Number(A().begin()) : -1; if (s >= 0) { ats = s; atsAt = performance.now(); } } catch (_) { /* the page's pane */ }
+            }
+            if (!available()) return false;
             const live = new Set((root.melatonAndroidTaskbar && typeof root.melatonAndroidTaskbar.windows === 'function' ? root.melatonAndroidTaskbar.windows() : []).map((w) => String(w.id)));
             [...thumbs.keys()].forEach((id) => { if (!live.has(id)) thumbs.delete(id); });
             cur = { overlay, sid: ++sidSeq, ats, index: +opts.index || 0, steps: 0, titles: (opts.titles || []).map(String), onThumbs: opts.onThumbs, sent: new Set(), mo: null };
