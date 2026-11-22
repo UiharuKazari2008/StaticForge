@@ -797,6 +797,7 @@ const TOAST_NOISE_TITLE = /^(dataset tag search error|get tags for path|search t
 const TOAST_NOISE_MESSAGE = /^(custom size adjusted|dimensions snapped)/i;
 // the phone (#806, Yukimi Nov 13): balance changes and operation receipts are no news (the Anlas
 // row shows the balance); a deposit still is
+const TOAST_PHONE_ACCOUNT = /^(novelai subscription status|account fixed anlas expiring)$/i;
 const TOAST_PHONE_NOISE_TITLE = /^(balance updated|(generation|upscaling|vibe encoding|operation) receipt)$/i;
 // an info note that explains a blocked action is a message box; other info notes are chatter
 const TOAST_INFO_DIALOG = /\b(first|please|required)\b|^(select|choose) |nothing selected|no \w+ selected|^(alarm|timer|reminder)\b/i;
@@ -835,6 +836,9 @@ function _toastPolicyRoute(type, title, message, showProgress, buttons) {
         try { if (wsc.nightshadeState().problem) return { kind: 'drop' }; } catch (_) { /* as before */ }
     }
     if (phone && TOAST_PHONE_NOISE_TITLE.test(t)) return { kind: 'drop' };
+    // the phone's Accounts program raises these as its own notifications (wmAccounts.js: renewal, Fixed Anlas
+    // expiring): the account check's copy would be a second one, as a message box (Yukimi, Nov 21 2026)
+    if (phone && TOAST_PHONE_ACCOUNT.test(t)) return { kind: 'drop' };
     if (desktop && DESKTOP_POPUP_TOAST_TITLES.has(t)) return { kind: 'pass' };
     if (desktop) {
         for (const [re, anchorId] of TOAST_BALLOONS) {

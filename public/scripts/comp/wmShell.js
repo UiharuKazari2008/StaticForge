@@ -82,7 +82,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["status-nightshade", "set-nightshade", "set-location", "app-doubles", "app-doubles-lg", "app-bintoss", "app-bintoss-lg", "app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "app-lapis", "app-lapis-lg", "app-youtube", "app-youtube-lg", "app-xmradio", "app-xmradio-lg", "status-lapis", "status-carkey", "status-car-alert", "app-wallet", "app-wallet-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-battery-low", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-vpn-on", "wrls-vpn-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "volume-notify", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["status-nightshade", "set-nightshade", "set-location", "app-doubles", "app-doubles-lg", "app-bintoss", "app-bintoss-lg", "app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "app-lapis", "app-lapis-lg", "app-youtube", "app-youtube-lg", "app-xmradio", "app-xmradio-lg", "status-lapis", "status-carkey", "status-car-alert", "app-wallet", "app-wallet-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-battery-low", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-vpn-on", "wrls-vpn-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "volume-notify", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-tape", "status-tape-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => WM_SET.test(name) ? `${name}.png 1x, ${name}@2x.png 2x, ${name}@4x.png 4x` : String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -524,7 +524,7 @@
     // Dreamscape Messenger message (the chat personas) Windows Live Messenger's buddy (WLMMessengerResources 12000)
     // Weather (#792): an active alert at Home / Work, rain due or falling there with the rain alarm on
     // (Melaton glyphs: scripts/generate-wm-weather-status-icons.py)
-    const STATUS_APP_ICONS = { mail: 'status-mail', sms: 'status-sms', chat: 'status-messenger', prints: 'status-prints', director: 'status-director', update: 'status-update', wxalert: 'status-weather-alert', rain: 'status-rain-alarm', traffic: 'status-traffic', lapis: 'status-lapis', carkey: 'status-traffic', /* the Car: the car glyph (#902) */ continuity: 'status-continuity', received: 'status-activesync', nightshade: 'status-nightshade' };
+    const STATUS_APP_ICONS = { mail: 'status-mail', sms: 'status-sms', chat: 'status-messenger', prints: 'status-prints', xmrec: 'status-tape', director: 'status-director', update: 'status-update', wxalert: 'status-weather-alert', rain: 'status-rain-alarm', traffic: 'status-traffic', lapis: 'status-lapis', carkey: 'status-traffic', /* the Car: the car glyph (#902) */ continuity: 'status-continuity', received: 'status-activesync', nightshade: 'status-nightshade' };
     // no High Latency icon (Yukimi, Nov 13: a slow link is neither a status icon nor a notification)
     // Traffic (#795): the commute ahead is more than 15 min late (scripts/generate-wm-traffic-status-icon.py)
     // Continuity (#798): this phone carries its DeX window's connection (scripts/generate-wm-continuity-status-icon.py)
@@ -547,7 +547,7 @@
     // the page's task runtime may put a new window.CafeTasks in place later
     const STATUS_TABLE = (window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder) || null;
     const statusTable = () => STATUS_TABLE || (window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder) || null;
-    const STATUS_APP_ROLES = ['mail', 'sms', 'chat', 'prints', 'director', 'update', 'wxalert', 'rain', 'traffic', 'lapis', 'carkey', 'continuity', 'received', 'nightshade'];
+    const STATUS_APP_ROLES = ['mail', 'sms', 'chat', 'xmrec', 'prints', 'director', 'update', 'wxalert', 'rain', 'traffic', 'lapis', 'carkey', 'continuity', 'received', 'nightshade'];
     // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again);
     // status-director-clap-strip holds them in that order (scripts/build-wm-sprite-strips.sh)
     const DIRECTOR_CLAP_FRAMES = 6;
@@ -597,6 +597,7 @@
                     <button type="button" class="wm-status-icon wm-status-app" data-role="mail" hidden aria-label="Messages"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="sms" hidden aria-label="New text messages"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="chat" hidden aria-label="New Dreamscape Messenger messages"></button>
+                    <button type="button" class="wm-status-icon wm-status-app" data-role="xmrec" hidden aria-label="XM Radio recording"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="prints" hidden aria-label="Prints"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="director" hidden aria-label="Director"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="update" hidden aria-label="Updates ready"></button>
@@ -1168,6 +1169,20 @@
                     statusBubble(o.role, icon, true);
                     const b = shell.querySelector('.wm-bubble:not([hidden])');
                     const target = b && [...b.querySelectorAll('button')].find((x) => (x.textContent || '').trim() === o.label);
+                    // the tape's Monitor / Mute / Cancel with this page not yet told of the recording (it slept while
+                    // the desktop's deck started it): the server's list first, then the press (#1020)
+                    const xr = window.wmXmRadio;
+                    if (!target && o.role === 'xmrec' && xr && typeof xr.readRecordings === 'function') {
+                        void xr.readRecordings().then(() => {
+                            statusBubble('xmrec', icon, true);
+                            const b2 = shell.querySelector('.wm-bubble:not([hidden])');
+                            const want = o.label === 'Mute' || o.label === 'Monitor' ? ['Mute', 'Monitor'] : [o.label];
+                            const t2 = b2 && [...b2.querySelectorAll('button')].find((x) => want.includes((x.textContent || '').trim()));
+                            if (t2) t2.click();
+                            doneSoon();
+                        });
+                        return;
+                    }
                     if (target) target.click();
                     // the icon brought up its notification (the update's): the app's popup button is one of its soft keys
                     else if (noteShownNote()) {
@@ -3412,12 +3427,13 @@
     let vpnCfg = null;
     function vpnConfig() {
         if (vpnCfg) return vpnCfg;
-        vpnCfg = { name: '' };
+        vpnCfg = { name: '', count: 0 };
         const q = window.AndroidQuickAccess;
         if (q && typeof q.config === 'function') {
             try {
                 const c = JSON.parse(q.config());
                 const t = (c.wireguard || [])[0];
+                vpnCfg.count = (c.wireguard || []).length;
                 if (t) vpnCfg.name = (c.vpn && c.vpn[t] && c.vpn[t].name) || t;
             } catch (_) { /* older app */ }
         }
@@ -3452,6 +3468,47 @@
             spans.forEach((sp) => { const t = clockText(Number(sp.dataset.since)); if (sp.textContent !== t) sp.textContent = t; });
         }, 1000);
     }
+    /**
+     * XM Radio recording (#1020, Yukimi Nov 21 2026): the channel and what it records now, how long it has recorded (a
+     * running clock), how far it reached back when it started, the tape with its reels turning; Monitor / Mute to listen
+     * to the recording or stop, Cancel to stop recording (what it has is filed on the tape), XM Radio to open the deck.
+     * The app draws the same from this description (the clock is its own, wm-vpn-time); with the page never run, the
+     * status-bar task's popup (status-popups.js xmrec).
+     */
+    function xmrecBubble(anchor, update) {
+        const xr = window.wmXmRadio;
+        const pe = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        // the server's word on open (the radio's feed may not be joined): drawn again once it answers
+        if (!update && !bubbleCapture && xr && typeof xr.readRecordings === 'function') {
+            void xr.readRecordings().then(() => { const b = shell && shell.querySelector('.wm-bubble'); if (b && !b.hidden && b.dataset.role === 'xmrec') statusBubble('xmrec', anchor, true); });
+        }
+        const list = xr && typeof xr.recordings === 'function' ? xr.recordings() : [];
+        const foot = xr ? [{ label: 'XM Radio', action: () => xr.open() }] : null;
+        if (!list.length) { bubble({ title: 'XM Radio', role: 'xmrec', anchor, sections: ['Nothing is recording.'], footLinks: foot, buttons: [{ text: 'Hide' }] }); return; }
+        // the deck's own recording first, then timers, alerts, one-touch songs
+        const r = list.slice().sort((a, b) => (a.kind === 'manual' ? 0 : 1) - (b.kind === 'manual' ? 0 : 1))[0];
+        const ch = r.number ? `${r.number} ${r.name}` : r.name || 'XM Radio';
+        const what = r.ad ? 'Commercial' : r.t ? `${r.t}${r.a ? ` - ${r.a}` : ''}` : r.kind === 'song' ? 'This song' : 'The channel';
+        const mmss = (sec) => { const v = Math.max(0, Math.round(sec)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
+        const tape = `<div class="wm-xmrec"><span class="wm-xmrec-tape wm-strip" aria-hidden="true" style="--strip:${artImageSet('status-tape-strip').replace(/"/g, "'")};--n:4;--ms:250"></span><div class="wm-xmrec-lines"><b>${pe(ch)}</b><div>${pe(what)}</div></div></div>`;
+        const sections = [
+            { html: tape },
+            { html: `<div class="wm-bubble-pair"><span>Recording:</span><span class="wm-bubble-right"><span class="wm-vpn-time" data-since="${Number(r.since) || Date.now()}">${clockText(Number(r.since) || Date.now())}</span></span></div>`
+                + `<div class="wm-bubble-pair"><span>Reached back:</span><span class="wm-bubble-right"><b>${r.back >= 5 ? mmss(r.back) : 'None'}</b></span></div>` }
+        ];
+        if (list.length > 1) sections.push(`${list.length - 1} more ${list.length === 2 ? 'recording' : 'recordings'} running.`);
+        const on = !!(xr.monitoring && xr.monitoring(r.rid));
+        bubble({
+            title: 'XM Radio Recording', role: 'xmrec', anchor, sections, footLinks: foot,
+            buttons: [
+                { text: on ? 'Mute' : 'Monitor', action: () => { if (on) xr.mute(); else void xr.monitor(r.rid); } },
+                { text: 'Cancel', action: () => { void xr.cancel(r.rid); } },
+                { text: 'Hide' }
+            ]
+        });
+        if (!bubbleCapture) tickBubbleClock();
+    }
+
     const bubble0Hidden = () => { const b = shell && shell.querySelector('.wm-bubble'); return !b || b.hidden; };
     let dcWasUp = false;
     let dcDownSince = 0;
@@ -3654,6 +3711,10 @@
         const openBub = shell.querySelector('.wm-bubble');
         if (updDl && openBub && !openBub.hidden && openBub.dataset.role === 'update' && awake()) statusBubble('update', updEl, true);
         hide(shell.querySelector('[data-role="prints"]'), !printsInProgress());
+        // XM Radio recording on the server (#1020): what the radio's feed or the deck said (the app's status-bar task adds
+        // its word below)
+        const xmr = window.wmXmRadio;
+        hide(shell.querySelector('[data-role="xmrec"]'), !(xmr && typeof xmr.recordings === 'function' && xmr.recordings().length));
         const mailEl = shell.querySelector('[data-role="mail"]');
         // any unread mail, if the user asked for that (Messaging > Tools > Options); else only mail
         // that came in since this client started and is still unread (mailNewCheck)
@@ -3717,6 +3778,7 @@
                 if (el && el.hidden) hide(el, false);
             }
         }
+        paintTapeIcon(shell.querySelector('[data-role="xmrec"]'));
         paintBezelLed();
         syncStrips();
         if (noteTrayOpen) renderNotes(); else fitStatus();
@@ -4067,6 +4129,22 @@
         el.style.setProperty('--strip', artImageSet('status-update-dl-strip'));
         el.style.setProperty('--n', '4');
         el.style.setProperty('--ms', '220');
+        el.classList.add('wm-strip');
+    }
+
+    /** XM Radio recording (#1020): the tape's reels turn while it shows (status-tape-strip, 250 ms a frame). */
+    function paintTapeIcon(el) {
+        if (!el) return;
+        const on = !el.hidden;
+        if (!on) {
+            if (el.dataset.tape === '1') { el.dataset.tape = '0'; el.classList.remove('wm-strip'); el.style.removeProperty('--strip'); }
+            return;
+        }
+        if (el.dataset.tape === '1') return;
+        el.dataset.tape = '1';
+        el.style.setProperty('--strip', artImageSet('status-tape-strip'));
+        el.style.setProperty('--n', '4');
+        el.style.setProperty('--ms', '250');
         el.classList.add('wm-strip');
     }
 
@@ -6559,7 +6637,7 @@
         return artImageSet((n && NOTE_KIND_ICON[n.type]) || 'status-notify-many');
     }
 
-    const STATUS_APP_LABEL = { mail: 'Messages', sms: 'Text Messages', chat: 'Dreamscape Messenger', prints: 'Prints', director: 'Director', update: 'Updates', wxalert: 'Weather Alert', rain: 'Rain Alarm', traffic: 'Car', lapis: 'Car', carkey: 'Car', continuity: 'Continuity', received: 'ActiveSync', nightshade: 'Nightshade Network' };
+    const STATUS_APP_LABEL = { mail: 'Messages', sms: 'Text Messages', chat: 'Dreamscape Messenger', prints: 'Prints', xmrec: 'XM Radio', director: 'Director', update: 'Updates', wxalert: 'Weather Alert', rain: 'Rain Alarm', traffic: 'Car', lapis: 'Car', carkey: 'Car', continuity: 'Continuity', received: 'ActiveSync', nightshade: 'Nightshade Network' };
 
     /** The bubble icon: pending notifications plus any status icons folded into it by fitStatus. */
     function paintNotifyIcon() {
@@ -7618,10 +7696,15 @@
             // Connect / Disconnect is done by the app (data-android)
             const vpn = vpnState();
             const vcfg = vpnConfig();
+            // disconnected it is one row, "VPN: Disconnected" with Connect at the right (and the VPN's name after it only
+            // when more than one is set up; Yukimi, Nov 21)
             if (vpn || vcfg.name) {
                 const node = document.createElement('div');
-                node.innerHTML = `<div class="wm-bubble-pair"><span data-live="vpn-state">VPN: ${vpn ? 'Connected' : 'Disconnected'}</span>${vpn && vpn.since ? `<span class="wm-bubble-right"><span class="wm-vpn-time" data-live="vpn-time" data-since="${vpn.since}">${clockText(vpn.since)}</span></span>` : ''}</div>`
-                    + `<div class="wm-bubble-pair"><span data-live="vpn-addr">${escapeHtml(vpn ? vpn.ip : vcfg.name)}</span><span class="wm-bubble-right"><button type="button" class="wm-bubble-link" data-android="qa:wireguard:toggle" data-live="vpn-act">${vpn ? 'Disconnect' : 'Connect'}</button></span></div>`;
+                const act = `<button type="button" class="wm-bubble-link" data-android="qa:wireguard:toggle" data-live="vpn-act">${vpn ? 'Disconnect' : 'Connect'}</button>`;
+                node.innerHTML = vpn
+                    ? `<div class="wm-bubble-pair"><span data-live="vpn-state">VPN: Connected</span>${vpn.since ? `<span class="wm-bubble-right"><span class="wm-vpn-time" data-live="vpn-time" data-since="${vpn.since}">${clockText(vpn.since)}</span></span>` : ''}</div>`
+                        + `<div class="wm-bubble-pair"><span data-live="vpn-addr">${escapeHtml(vpn.ip)}</span><span class="wm-bubble-right">${act}</span></div>`
+                    : `<div class="wm-bubble-pair"><span data-live="vpn-state">VPN: Disconnected${vcfg.count > 1 ? ` (${escapeHtml(vcfg.name)})` : ''}</span><span class="wm-bubble-right">${act}</span></div>`;
                 node.querySelector('button').addEventListener('click', (e) => {
                     e.stopPropagation();
                     closeBubble();
@@ -8000,6 +8083,8 @@
             const up = noteShownNote();
             if (!update && up && isUpdateNote(up)) { hideNote(); return; }
             showUpdateNote();
+        } else if (role === 'xmrec') {
+            xmrecBubble(anchor, update);
         } else if (role === 'prints') {
             const n = printsInProgress();
             bubble({ title: 'Prints', role, anchor, sections: [n ? `${n} ${n === 1 ? 'print is' : 'prints are'} in progress.` : 'No prints in progress.', { links: [{ label: 'Pictures', action: () => open('gallery') }] }], buttons: [{ text: 'Hide' }] });
