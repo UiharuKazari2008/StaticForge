@@ -1101,7 +1101,11 @@
     // how short a swipe up from the bottom edge goes Home (DSApp config homeSense, #1013; Yukimi, Nov 22: "allow adjusting
     // the sensitivty of going home"). High is the app's own since Nov 18 (28 dp, or a 12 dp flick)
     const BARS_HOME_SENSE = [['highest', 'Highest'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']];
-    const SOFT_MENU_ITEMS = [['taskmanager', 'Task Manager'], ['notifications', 'All Notifications'], ['quicksettings', 'Quick Settings'], ['maximize', 'Maximize'], ['minimize', 'Minimize'], ['close', 'Close']];
+    const SOFT_MENU_ITEMS = [['taskmanager', 'Task Manager'], ['notifications', 'All Notifications'], ['quicksettings', 'Quick Settings'], ['maximize', 'Maximize'], ['minimize', 'Minimize'], ['close', 'Close'],
+        // (#1013, Yukimi Nov 22) Trackpad and Open in Desktop show only while the DeX desktop is up
+        ['trackpad', 'Trackpad (while the desktop is running)'], ['todesktop', 'Open in Desktop (while the desktop is running)'], ['split', 'Split View'], ['windowed', 'Windowed'], ['flashlight', 'Flashlight'], ['screenshot', 'Screenshot']];
+    // rows that may be there more than once: a separator, a program of her choice ({ id: 'app', app: <program id>, label })
+    const SOFT_MENU_MULTI = new Set(['sep', 'app']);
 
     function renderBarsTab(el, d) {
         const st = d.barsState || {};
@@ -1844,25 +1848,48 @@
                 const sb = startButton();
                 const st = barsState();
                 const saved = st && st.config && Array.isArray(st.config.softMenu) ? st.config.softMenu : null;
-                const softMenu = (saved || SOFT_MENU_ITEMS.map(([id]) => ({ id, on: true }))).filter((r) => SOFT_MENU_ITEMS.some(([id]) => id === r.id));
+                const softMenu = (saved || SOFT_MENU_ITEMS.slice(0, 6).map(([id]) => ({ id, on: true }))).filter((r) => r && (SOFT_MENU_MULTI.has(r.id) || SOFT_MENU_ITEMS.some(([id]) => id === r.id)));
                 SOFT_MENU_ITEMS.forEach(([id]) => { if (!softMenu.some((r) => r.id === id)) softMenu.push({ id, on: false }); });
                 return { ids: startMenuIds(), source: sb.source, text: sb.source === 'custom' ? sb.text : (lsGet(K.startText) || 'Start'), icon: sb.source === 'custom' ? sb.icon : MELATON_EMBLEM,
                     softMenu, softMenu0: JSON.stringify(softMenu), softSel: 0 };
             },
             render(el, tab, d, api) {
                 if (tab === 'softmenu') {
-                    const label = (id) => (SOFT_MENU_ITEMS.find(([k]) => k === id) || [id, id])[1];
+                    let programs = [];
+                    try { programs = window.wmShell.todaySoftKeys.programs(); } catch (_) { programs = []; }
+                    const label = (r) => (r.id === 'sep' ? '\u2014 Separator \u2014'
+                        : r.id === 'app' ? `Program: ${(programs.find((p) => p.id === r.app) || {}).label || r.label || r.app}`
+                            : (SOFT_MENU_ITEMS.find(([k]) => k === r.id) || [r.id, r.id])[1]);
+                    if (d.softPick == null && programs.length) d.softPick = programs[0].id;
+                    const pickLabel = (programs.find((p) => p.id === d.softPick) || {}).label || '';
+                    const sel = d.softMenu[d.softSel];
                     el.innerHTML = `<p>Checked items appear on the Menu soft key over Android programs (Settings > Screen > Android: Right soft key, Menu).</p>
                         <div class="wm-listbox-side">
-                            <div class="wm-listbox" style="max-height:calc(170 * var(--wm-px))">${d.softMenu.map((r, i) => `<div class="wm-listbox-row${i === d.softSel ? ' is-selected' : ''}" data-i="${i}">${check(`smn-${r.id}`, label(r.id), r.on)}</div>`).join('')}</div>
+                            <div class="wm-listbox" style="max-height:calc(170 * var(--wm-px))">${d.softMenu.map((r, i) => `<div class="wm-listbox-row${i === d.softSel ? ' is-selected' : ''}" data-i="${i}">${check(`smn-${i}`, label(r), r.on)}</div>`).join('')}</div>
                             <div class="wm-buttons"><button type="button" class="wm-button" data-act="up"${d.softSel > 0 ? '' : ' disabled'}>Move Up</button><button type="button" class="wm-button" data-act="down"${d.softSel < d.softMenu.length - 1 ? '' : ' disabled'}>Move Down</button></div>
-                        </div>`;
+                        </div>
+                        <div class="wm-buttons"><button type="button" class="wm-button" data-act="sep">Add Separator</button><button type="button" class="wm-button" data-act="remove"${sel && SOFT_MENU_MULTI.has(sel.id) ? '' : ' disabled'}>Remove</button></div>
+                        <div class="wm-form-row is-wide"><span class="wm-form-label">Program:</span>${ui.comboHtml('smnpick', pickLabel, !programs.length)}</div>
+                        <div class="wm-buttons"><button type="button" class="wm-button" data-act="addapp"${programs.length ? '' : ' disabled'}>Add Program</button></div>`;
+                    ui.bindCombo(el.querySelector('[data-act="smnpick"]'), programs.map((p) => [p.id, p.label]), d.softPick, (v) => { d.softPick = v; });
+                    const insertAt = (row) => { const at = Math.min(d.softMenu.length, d.softSel + 1); d.softMenu.splice(at, 0, row); d.softSel = at; api.rerender(); };
+                    el.querySelector('[data-act="sep"]').addEventListener('click', () => insertAt({ id: 'sep', on: true }));
+                    el.querySelector('[data-act="addapp"]').addEventListener('click', () => {
+                        const p = programs.find((x) => x.id === d.softPick);
+                        if (p) insertAt({ id: 'app', on: true, app: p.id, label: p.label });
+                    });
+                    el.querySelector('[data-act="remove"]').addEventListener('click', () => {
+                        if (!sel || !SOFT_MENU_MULTI.has(sel.id)) return;
+                        d.softMenu.splice(d.softSel, 1);
+                        d.softSel = Math.max(0, Math.min(d.softSel, d.softMenu.length - 1));
+                        api.rerender();
+                    });
                     el.querySelectorAll('.wm-listbox-row').forEach((row) => {
                         const i = Number(row.dataset.i);
                         row.addEventListener('click', () => { if (d.softSel !== i) { d.softSel = i; api.rerender(); } });
                         row.querySelector('input').addEventListener('change', (e) => { d.softMenu[i].on = e.target.checked; });
                     });
-                    el.querySelectorAll('.wm-button[data-act]').forEach((b) => b.addEventListener('click', () => {
+                    el.querySelectorAll('.wm-button[data-act="up"], .wm-button[data-act="down"]').forEach((b) => b.addEventListener('click', () => {
                         const j = d.softSel + (b.dataset.act === 'up' ? -1 : 1);
                         if (j < 0 || j >= d.softMenu.length) return;
                         [d.softMenu[d.softSel], d.softMenu[j]] = [d.softMenu[j], d.softMenu[d.softSel]];

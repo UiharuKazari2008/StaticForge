@@ -23,16 +23,39 @@
     const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
     const SOFT_LABELS = { back: 'Back', home: 'Home', recents: 'Recent', start: 'Start', notifications: 'Notification', keyboard: 'Keyboard', menu: 'Menu', none: '' };
     // the right soft key's Menu (Settings > Menus > Soft Key Menu): its rows, in the user's order
-    const MENU_ITEMS = { taskmanager: 'Task Manager', notifications: 'All Notifications', quicksettings: 'Quick Settings', maximize: 'Maximize', minimize: 'Minimize', close: 'Close' };
+    const MENU_ITEMS = { taskmanager: 'Task Manager', notifications: 'All Notifications', quicksettings: 'Quick Settings', maximize: 'Maximize', minimize: 'Minimize', close: 'Close',
+        // (#1013, Yukimi Nov 22) the program in front as a window / in split screen / on the DeX desktop, DeX's touchpad, the
+        // flashlight, a screenshot - the app does them (AndroidBars.menuAction)
+        trackpad: 'Trackpad', todesktop: 'Open in Desktop', split: 'Split View', windowed: 'Windowed', flashlight: 'Flashlight', screenshot: 'Screenshot' };
+    // only while the DeX desktop is up (AndroidBars state desktop)
+    const DESKTOP_ONLY = new Set(['trackpad', 'todesktop']);
     function softMenuRows() {
-        let cfg = null;
-        try { cfg = JSON.parse(window.AndroidBars.getState()).config; } catch (_) { cfg = null; }
-        const list = cfg && Array.isArray(cfg.softMenu) ? cfg.softMenu : Object.keys(MENU_ITEMS).map((id) => ({ id, on: true }));
-        return list.filter((r) => r && r.on && MENU_ITEMS[r.id]).map((r) => ({
-            label: MENU_ITEMS[r.id],
-            // Task Manager is Melaton's own program (the page comes up); the others are the app's to do
-            action: r.id === 'taskmanager' ? () => window.wmShell.open('taskmgr') : () => { try { window.AndroidBars.menuAction(r.id); } catch (_) { /* older app */ } }
-        }));
+        let st = null;
+        try { st = JSON.parse(window.AndroidBars.getState()); } catch (_) { st = null; }
+        const cfg = st && st.config;
+        const list = cfg && Array.isArray(cfg.softMenu) ? cfg.softMenu : Object.keys(MENU_ITEMS).slice(0, 6).map((id) => ({ id, on: true }));
+        let programs = [];
+        try { programs = window.wmShell.todaySoftKeys.programs(); } catch (_) { programs = []; }
+        const rows = [];
+        for (const r of list) {
+            if (!r || !r.on) continue;
+            // a separator (never two in a row, never first)
+            if (r.id === 'sep') { if (rows.length && rows[rows.length - 1] !== '-') rows.push('-'); continue; }
+            // a program of her choice, Android's or Melaton's (Start's list: wmShell opens either)
+            if (r.id === 'app') {
+                const p = programs.find((x) => x.id === r.app);
+                if (p || r.label) rows.push({ label: (p && p.label) || r.label, action: () => window.wmShell.open(r.app, { fromStart: true }) });
+                continue;
+            }
+            if (!MENU_ITEMS[r.id] || (DESKTOP_ONLY.has(r.id) && !(st && st.desktop))) continue;
+            rows.push({
+                label: MENU_ITEMS[r.id],
+                // Task Manager is Melaton's own program (the page comes up); the others are the app's to do
+                action: r.id === 'taskmanager' ? () => window.wmShell.open('taskmgr') : () => { try { window.AndroidBars.menuAction(r.id); } catch (_) { /* older app */ } }
+            });
+        }
+        while (rows.length && rows[rows.length - 1] === '-') rows.pop();
+        return rows;
     }
     let lastReq = 0;
     // the screen a kit is being made for ({ density, widthPx } from DSApp's renderKit ctx), while renderKit runs
