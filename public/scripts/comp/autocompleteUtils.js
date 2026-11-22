@@ -6278,19 +6278,32 @@ function resolveTabAutofillAcceptTarget(target) {
     return null;
 }
 
-function clearTabAutofillAcceptIndicators() {
+// keep: the row that stays marked. A class taken off and put back on the same row is still two
+// mutations, two style invalidations and a frame, and this runs several times per keystroke (#1036).
+function clearTabAutofillAcceptIndicators(keep = null) {
     if (!characterAutocompleteList) return;
     characterAutocompleteList.querySelectorAll('.tab-accept-target').forEach((el) => {
-        el.classList.remove('tab-accept-target');
+        if (el !== keep) el.classList.remove('tab-accept-target');
     });
 }
 
 function updateTabAutofillAcceptIndicators(target) {
-    clearTabAutofillAcceptIndicators();
     const acceptTarget = resolveTabAutofillAcceptTarget(target);
-    if (acceptTarget) {
+    clearTabAutofillAcceptIndicators(acceptTarget);
+    if (acceptTarget && !acceptTarget.classList.contains('tab-accept-target')) {
         acceptTarget.classList.add('tab-accept-target');
     }
+}
+
+// The key guide is rebuilt from ~16 call sites, several times per keystroke; most calls produce the same
+// hints. Writing innerHTML anyway removed and re-added every hint (style, layout and a frame each time:
+// ~450 hint rebuilds in 10 s of typing on the Fold's DeX, #1036). Write only when the hints change, or
+// when something else replaced the guide's content since the last write.
+function setAutofillKeyguideHtml(keyguide, html) {
+    if (keyguide._keyguideHtml === html && keyguide.firstChild === keyguide._keyguideFirst) return;
+    keyguide.innerHTML = html;
+    keyguide._keyguideHtml = html;
+    keyguide._keyguideFirst = keyguide.firstChild;
 }
 
 function getAutofillActionTargetItem() {
@@ -6309,7 +6322,7 @@ function autofillItemHasWikiPageAction(item) {
 function updateAutofillKeyguide() {
     const keyguide = characterAutocompleteKeyguide;
     if (!keyguide || !isCharacterAutocompleteOverlayOpen()) {
-        if (keyguide) keyguide.innerHTML = '';
+        if (keyguide) setAutofillKeyguideHtml(keyguide, '');
         clearTabAutofillAcceptIndicators();
         return;
     }
@@ -6320,7 +6333,7 @@ function updateAutofillKeyguide() {
         hints.push(renderAutofillKeyguideHint(['↑', '↓'], 'Navigate'));
         hints.push(renderAutofillKeyguideHint(['↵'], 'Choose'));
         hints.push(renderAutofillKeyguideHint(['Esc'], 'Back'));
-        keyguide.innerHTML = hints.join('');
+        setAutofillKeyguideHtml(keyguide, hints.join(''));
         clearTabAutofillAcceptIndicators();
         return;
     }
@@ -6334,7 +6347,7 @@ function updateAutofillKeyguide() {
             hints.push(renderAutofillKeyguideHint(['Alt+↵'], 'Insert'));
         }
         hints.push(renderAutofillKeyguideHint(['Esc'], isAutofillDetachedMode() ? 'Exit Nav' : 'Close'));
-        keyguide.innerHTML = hints.join('');
+        setAutofillKeyguideHtml(keyguide, hints.join(''));
         clearTabAutofillAcceptIndicators();
         return;
     }
@@ -6348,14 +6361,14 @@ function updateAutofillKeyguide() {
             hints.push(renderAutofillKeyguideHint(['Alt+↵'], 'Insert'));
         }
         hints.push(renderAutofillKeyguideHint(['Esc'], isAutofillDetachedMode() ? 'Exit Nav' : 'Close'));
-        keyguide.innerHTML = hints.join('');
+        setAutofillKeyguideHtml(keyguide, hints.join(''));
         clearTabAutofillAcceptIndicators();
         return;
     }
 
     // Detached window: footer shortcuts only after ↓ enters navigation (not while typing).
     if (isAutofillDetachedMode() && isAutofillTabAcceptCollapsedState()) {
-        keyguide.innerHTML = '';
+        setAutofillKeyguideHtml(keyguide, '');
         updateTabAutofillAcceptIndicators(currentCharacterAutocompleteTarget);
         return;
     }
@@ -6405,7 +6418,7 @@ function updateAutofillKeyguide() {
         ? 'Exit Nav'
         : 'Close';
     hints.push(renderAutofillKeyguideHint(['Esc'], escLabel));
-    keyguide.innerHTML = hints.join('');
+    setAutofillKeyguideHtml(keyguide, hints.join(''));
     if (isAutofillTabAcceptCollapsedState()) {
         updateTabAutofillAcceptIndicators(currentCharacterAutocompleteTarget);
     } else {
