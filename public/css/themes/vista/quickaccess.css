@@ -18,6 +18,21 @@
     pointer-events: none;
     box-sizing: border-box;
 }
+/* (Yukimi, Nov 22 2026: "why is there a WM background behind the panel") the layer is a page popup only to be written down
+   for the app: none of a popup's frame (6.1's white box, 6.5's menu border image) - the panel and the tab are all it draws */
+html.ui-mobile #wmShell > .wm-popup.wm-qa {
+    border: 0;
+    border-image: none;
+    border-radius: 0;
+    background: none;
+    padding: 0;
+    min-width: 0;
+    max-width: none;
+    max-height: none;
+    bottom: auto;
+    overflow: visible;
+    box-shadow: none;
+}
 #wmShell > .wm-qa.is-right { right: 0; }
 #wmShell > .wm-qa.is-left { left: 0; }
 

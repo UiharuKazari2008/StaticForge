@@ -1732,6 +1732,8 @@
     let renderQueued = null;
     let popupQueued = null;
     window.melatonBars = {
+        // (#1017) Quick Access over Melaton Mobile: its content moved aside by the panel's width, the wallpaper and bars staying
+        qaPush: (ctx) => { try { if (window.wmQuickAccess && window.wmQuickAccess.pushPage) window.wmQuickAccess.pushPage(JSON.parse(ctx || '{}')); } catch (_) { /* older page */ } },
         // the app's screen changed size (a Fold folded or opened) with layouts kept for the other one: again, at the new size
         // (#1027) also the app's ask after its own update or Android's (cursor rule melaton-bars-native-layouts 4): a page that
         // has pushed nothing yet since it loaded writes down every popup of its bar
