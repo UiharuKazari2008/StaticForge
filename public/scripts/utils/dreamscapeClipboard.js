@@ -12,7 +12,8 @@ let _copiedImageFiles = null;
 
 let _androidClipboardReadSeq = 0;
 const _androidClipboardPendingReads = {};
-let _androidClipboardOnReadInstalled = false;
+// the bridge object onRead was set on: a DeX desktop resumed on another display gets new bridge objects (#1015)
+let _androidClipboardOnReadInstalled = null;
 
 function isAndroidClipboardBridgeActive() {
     return typeof AndroidClipboard !== 'undefined'
@@ -43,8 +44,8 @@ function clipboardHasContent() {
 }
 
 function _installAndroidClipboardOnRead() {
-    if (_androidClipboardOnReadInstalled || !isAndroidClipboardBridgeActive()) return;
-    _androidClipboardOnReadInstalled = true;
+    if (!isAndroidClipboardBridgeActive() || _androidClipboardOnReadInstalled === AndroidClipboard) return;
+    _androidClipboardOnReadInstalled = AndroidClipboard;
     AndroidClipboard.onRead = function (requestId, jsonText) {
         const pending = _androidClipboardPendingReads[requestId];
         if (!pending) return;
@@ -154,20 +155,29 @@ function _normalizeAndroidReadResult(data) {
     };
 }
 
-function _readClipboardAndroid() {
+/**
+ * The Android clipboard through the app (AndroidClipboard). textOnly: its text alone (AndroidClipboard.readText, DSApp
+ * StaticForge #1023: no picture copied over the bridge for a Paste); an older app reads everything.
+ */
+function _readClipboardAndroid(textOnly) {
     _installAndroidClipboardOnRead();
+    const useText = !!textOnly && typeof AndroidClipboard.readText === 'function';
+    // text reads (Paste, navigator.clipboard.readText) wait 4 s at most: an app build that cannot answer this window
+    // must not hold a menu command
+    const waitMs = textOnly ? 4000 : DREAMSCAPE_CLIPBOARD_READ_TIMEOUT_MS;
     return new Promise((resolve, reject) => {
         const requestId = ++_androidClipboardReadSeq;
         const timeoutId = setTimeout(() => {
             if (!_androidClipboardPendingReads[requestId]) return;
             delete _androidClipboardPendingReads[requestId];
             reject(new Error('Clipboard read timed out'));
-        }, DREAMSCAPE_CLIPBOARD_READ_TIMEOUT_MS);
+        }, waitMs);
 
         _androidClipboardPendingReads[requestId] = { resolve, reject, timeoutId };
 
         try {
-            AndroidClipboard.read(requestId);
+            if (useText) AndroidClipboard.readText(requestId);
+            else AndroidClipboard.read(requestId);
         } catch (error) {
             clearTimeout(timeoutId);
             delete _androidClipboardPendingReads[requestId];
@@ -363,7 +373,8 @@ async function readClipboardText() {
 /** Text-only clipboard read — skips navigator.clipboard.read() image scan for faster paste. */
 async function readClipboardTextFast() {
     if (isAndroidClipboardBridgeActive()) {
-        return readClipboardText();
+        const result = await _readClipboardAndroid(true);
+        return result.empty ? '' : getPrimaryTextFromClipboardResult(result);
     }
     if (navigator.clipboard && navigator.clipboard.readText) {
         try {
@@ -588,3 +599,38 @@ function formatClipboardBlobSize(blob) {
 }
 
 _installAndroidClipboardOnRead();
+
+/**
+ * navigator.clipboard in the Android app's WebView (StaticForge #1023): Chromium there never grants clipboard-read, so
+ * readText() always rejected and every Paste that asked it (the Edit menus of text boxes, Notepad, Journal, the phone's
+ * Notes and Tasks ...) fell back to execCommand('paste'), which a WebView refuses too: Paste did nothing. In the app both
+ * go through the Android clipboard (AndroidClipboard), so text moves to and from Android programs; Ctrl+C / Ctrl+V in a
+ * text box are the WebView's own and need nothing here. Outside the app navigator.clipboard is left as it is.
+ */
+(function shimAndroidNavigatorClipboard() {
+    if (!isAndroidClipboardBridgeActive() || !navigator.clipboard) return;
+    const clip = navigator.clipboard;
+    const nativeWrite = typeof clip.writeText === 'function' ? clip.writeText.bind(clip) : null;
+    try {
+        Object.defineProperty(clip, 'readText', {
+            configurable: true,
+            writable: true,
+            value: () => (isAndroidClipboardBridgeActive()
+                ? _readClipboardAndroid(true).then((r) => (r.empty ? '' : getPrimaryTextFromClipboardResult(r)))
+                : Promise.reject(new DOMException('Read permission denied.', 'NotAllowedError')))
+        });
+        Object.defineProperty(clip, 'writeText', {
+            configurable: true,
+            writable: true,
+            value: (text) => {
+                if (!isAndroidClipboardBridgeActive()) return nativeWrite ? nativeWrite(text) : Promise.reject(new Error('Clipboard write unavailable'));
+                let res = null;
+                try { res = JSON.parse(AndroidClipboard.write(JSON.stringify({ items: [{ kind: 'text', text: text == null ? '' : String(text) }] })) || 'null'); } catch (_) { /* answered below */ }
+                if (res && res.ok) return Promise.resolve();
+                return nativeWrite ? nativeWrite(text) : Promise.reject(new Error((res && res.error) || 'Clipboard write failed'));
+            }
+        });
+    } catch (error) {
+        console.warn('📱 navigator.clipboard shim failed:', error);
+    }
+})();

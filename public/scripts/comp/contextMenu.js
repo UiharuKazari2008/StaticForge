@@ -537,6 +537,14 @@ class ContextMenuController {
     }
 
     _fieldEditPasteCheck(pasteItem) {
+        // the Android app: its clipboard says whether it holds anything (dreamscapeClipboard.js; no clip copied for it)
+        if (typeof clipboardHasContent === 'function' && typeof isAndroidClipboardBridgeActive === 'function' && isAndroidClipboardBridgeActive()) {
+            if (clipboardHasContent() || !pasteItem._element || !this.isOpen) return;
+            pasteItem.disabled = true;
+            pasteItem._element.classList.add('disabled');
+            pasteItem._element.setAttribute('aria-disabled', 'true');
+            return;
+        }
         if (!navigator.permissions || !navigator.clipboard || typeof navigator.clipboard.readText !== 'function') return;
         navigator.permissions.query({ name: 'clipboard-read', allowWithoutGesture: false }).then((p) => {
             if (!p || p.state !== 'granted') return null;
