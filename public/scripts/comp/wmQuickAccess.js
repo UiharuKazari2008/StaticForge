@@ -302,5 +302,26 @@
         return JSON.stringify([getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
     }
 
+    // Today and Start show the workspace's wallpaper already (Yukimi, Nov 22 2026): the app brings Quick Access in over them
+    // with its shadow instead of pushing the screen aside. It hears which of them shows, on each change only
+    const appScope = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined;
+    let homeSent = null;
+    function syncHome() {
+        const h = host();
+        if (!h || typeof h.homeShown !== 'function') return;
+        const app = document.documentElement.dataset.wmApp;
+        const on = (app === 'today' || app === 'start') && document.visibilityState === 'visible';
+        if (on === homeSent) return;
+        homeSent = on;
+        try { h.homeShown(on); } catch (_) { /* older app */ }
+    }
+    if (host()) {
+        const mo = new MutationObserver(syncHome);
+        mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-app'] });
+        document.addEventListener('visibilitychange', syncHome, { signal: appScope });
+        if (appScope) appScope.addEventListener('abort', () => mo.disconnect(), { once: true });
+        syncHome();
+    }
+
     root.wmQuickAccess = { open, close, roles, signature, ICONS };
 })(window);
