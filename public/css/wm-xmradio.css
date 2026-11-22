@@ -399,3 +399,6 @@
 .wm-xmradio.is-land .xrm-now-pane { display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .wm-xmradio.is-land .xrm-np { width: 100%; padding: calc(2 * var(--wm-px)); }
 .wm-xmradio.is-land .xrm-lcd .xr-radio { margin: 0 auto; }
+
+/* the transport's drawn glyphs (wmXmRadio GLYPH: no emoji-capable characters, Yukimi Nov 21 2026) */
+.xrm-g { display: inline-block; width: 1em; height: 1em; fill: currentColor; vertical-align: -0.125em; flex: none; }

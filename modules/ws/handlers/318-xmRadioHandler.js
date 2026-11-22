@@ -1,7 +1,8 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const statusHub = require('../statusHub');
 const xmRadio = require('../../xmRadio');
-const recorder = require('../../xmRadioRecorder');
+// the recorder runs in its own process (services/xmradio-recorder); this is the link to it
+const recorder = require('../../xmRadioRecorderClient');
 
 // XM Radio (Yozora #989): the skeuomorphic SiriusXM radio. The account is the administrator's (admin and dev_admin
 // test tabs listen; only admins sign in or out). Everything goes through modules/xmRadio.js.
@@ -119,7 +120,7 @@ function registerPackets(handlersCtx) {
         const ws = String(m.workspaceId || deck.workspaceId);
         return { deck, tapes: await recorder.tapes(ws), tapeInfo: m.info ? await recorder.tapesInfo(ws) : undefined };
     }));
-    reg('xmradio_deck_set', packet(true, 'The cassette deck could not be set', async (m) => ({ deck: recorder.setDeck(m) })));
+    reg('xmradio_deck_set', packet(true, 'The cassette deck could not be set', async (m) => ({ deck: await recorder.setDeck({ tape: m.tape, workspaceId: m.workspaceId, mode: m.mode }) })));
     reg('xmradio_tape_tracks', packet(false, 'The tape could not be read', async (m) => ({ tracks: await recorder.tracks(String(m.workspaceId || recorder.deck().workspaceId), String(m.tape || recorder.deck().tape)) })));
     reg('xmradio_rec_start', packet(true, 'The recording could not be started', async (m) => (m.song
         ? recorder.recordCut(m.channelId, { fromStart: !!m.fromStart })
@@ -140,10 +141,10 @@ function registerPackets(handlersCtx) {
     reg('xmradio_track_rename', packet(true, 'The recording could not be renamed', async (m) => recorder.trackRename(m.id, m.name)));
     reg('xmradio_track_delete', packet(true, 'The recording could not be deleted', async (m) => recorder.trackDelete(m.id)), { destructive: true });
     reg('xmradio_track_move', packet(true, 'The recording could not be moved', async (m) => recorder.trackMove(m.id, m.tape)));
-    reg('xmradio_timers_set', packet(true, 'The timers could not be saved', async (m) => ({ timers: recorder.setTimers(m.timers) })));
-    reg('xmradio_alert_add', packet(true, 'The alert could not be set', async (m) => ({ alerts: recorder.addAlert(m) })));
-    reg('xmradio_alert_remove', packet(true, 'The alert could not be removed', async (m) => ({ alerts: recorder.removeAlert(String(m.id || '')) })));
-    reg('xmradio_terms_set', packet(true, 'The search terms could not be saved', async (m) => ({ terms: recorder.setTerms(m.terms) })));
+    reg('xmradio_timers_set', packet(true, 'The timers could not be saved', async (m) => ({ timers: await recorder.setTimers(m.timers) })));
+    reg('xmradio_alert_add', packet(true, 'The alert could not be set', async (m) => ({ alerts: await recorder.addAlert({ kind: m.kind, artist: m.artist, title: m.title, channelId: m.channelId }) })));
+    reg('xmradio_alert_remove', packet(true, 'The alert could not be removed', async (m) => ({ alerts: await recorder.removeAlert(String(m.id || '')) })));
+    reg('xmradio_terms_set', packet(true, 'The search terms could not be saved', async (m) => ({ terms: await recorder.setTerms(m.terms) })));
     reg('xmradio_presets_set', packet(true, 'The presets could not be saved', async (m) => ({ presets: xmRadio.setPresets(m.presets) })));
 }
 

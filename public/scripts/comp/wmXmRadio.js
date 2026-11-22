@@ -1139,9 +1139,9 @@
                     <div class="xrm-np-bar"><i></i></div><div class="xrm-np-times"><span class="xrm-np-el"></span><span class="xrm-np-mid"></span><span class="xrm-np-rem"></span></div>
                     <div class="xrm-np-buf" title="The last hour: tap to play from there"><b></b><i></i><span>-1 h</span><span>LIVE</span></div>
                     <div class="xrm-np-keys">
-                        <button type="button" data-k="prev" aria-label="Previous song">&#x23EE;&#xFE0E;</button>
+                        <button type="button" data-k="prev" aria-label="Previous song">${GLYPH.prev}</button>
                         <button type="button" data-k="play" aria-label="Play or pause" class="is-big"></button>
-                        <button type="button" data-k="next" aria-label="Next song">&#x23ED;&#xFE0E;</button>
+                        <button type="button" data-k="next" aria-label="Next song">${GLYPH.next}</button>
                         <button type="button" data-k="live" aria-label="Back to live" class="xrm-np-live">LIVE</button>
                         <button type="button" data-k="rec" aria-label="Record" class="xrm-np-rec">REC</button>
                     </div>
@@ -1258,6 +1258,18 @@
 
     const setText = (el, t) => { if (el && el.textContent !== t) el.textContent = t; };
     const setHtml = (el, h) => { if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; } };
+    // the transport's glyphs drawn (Yukimi, Nov 21 2026: "do not use any emojis in the radio app"): U+23EE / 23ED /
+    // 23F8 / 23F9 / 25B6 / 25C0 come out as colour emoji on Android even with a text selector
+    const svg = (d) => `<svg class="xrm-g" viewBox="0 0 16 16" aria-hidden="true"><path d="${d}"/></svg>`;
+    const GLYPH = {
+        prev: svg('M2 2h2v12H2zM14 2v12L5 8z'),
+        next: svg('M12 2h2v12h-2zM2 2v12l9-6z'),
+        play: svg('M3 2v12l11-6z'),
+        pause: svg('M3 2h4v12H3zM9 2h4v12H9z'),
+        stop: svg('M3 3h10v10H3z'),
+        left: svg('M12 2v12L3 8z'),
+        right: svg('M4 2v12l9-6z')
+    };
     const setLcdImg = (img, src) => {
         if (!img) return;
         img.classList.toggle('is-empty', !src);
@@ -1305,7 +1317,7 @@
             const sk = (attr, html, cls) => `<button type="button" class="xr-stk${cls ? ` ${cls}` : ''}" ${attr}>${html}</button>`;
             const pair = (a, b) => `<span class="xr-st-pair">${numKey(a, 'xr-stn')}<i class="xr-st-screw"></i>${numKey(b, 'xr-stn')}</span>`;
             return `<div class="xr-st-left">${sk('data-b="power"', SVG.power, 'is-power')}${sk('data-b="menu"', '<i class="xr-st-tape"></i><span>menu</span>', 'is-blue')}${sk('data-b="jump"', '&#x21B7;', 'is-blue')}</div>
-                <div class="xr-st-mid">${brand}${disp}<div class="xr-st-under">${sk('data-b="disp"', '', 'xr-st-square')}<span class="xr-st-rocker">${sk('data-nav="left"', '&#x25C0;', 'is-blue')}${sk('data-nav="right"', '&#x25B6;', 'is-blue')}</span></div></div>
+                <div class="xr-st-mid">${brand}${disp}<div class="xr-st-under">${sk('data-b="disp"', '', 'xr-st-square')}<span class="xr-st-rocker">${sk('data-nav="left"', GLYPH.left, 'is-blue')}${sk('data-nav="right"', GLYPH.right, 'is-blue')}</span></div></div>
                 <div class="xr-st-right">${sk('data-nav="up"', '&#x25B2;', 'is-blue')}${sk('data-b="band"', '<i class="xr-st-dog"></i>', 'is-blue')}${sk('data-nav="down"', '&#x25BC;', 'is-blue')}</div>
                 <div class="xr-st-nums">${pair(1, 2)}${pair(3, 4)}${pair(5, 6)}${pair(7, 8)}${pair(9, 10)}</div>`;
         }
@@ -1554,7 +1566,7 @@
             const cur = now && now.at;
             setHtml(els.played, played.length ? `<div class="xrm-sec-h">Recently Played <span class="xrm-sec-note">tap to play it again</span></div>${played.map((x) => `<div class="xrm-sec-row is-tap${x.at === cur ? ' is-now' : ''}" data-jump="${x.at}">${x.i ? `<span class="xrm-sec-pic"><img src="${esc(x.i)}" alt="" loading="lazy" draggable="false"></span>` : '<span class="xrm-sec-pic is-none"></span>'}<span class="xrm-sec-lines"><span class="xrm-sec-t">${esc(x.t)}</span><span class="xrm-sec-s">${esc(x.a)}</span></span><span class="xrm-sec-time">${esc(clock(x.at))}</span></div>`).join('')}` : '');
         }
-        setText(els.play, playing ? (radio.native ? '⏹︎' : '⏸︎') : '▶︎');
+        setHtml(els.play, playing ? (radio.native ? GLYPH.stop : GLYPH.pause) : GLYPH.play);
         els.keys.hidden = faceView();
         // (mounted while its pane was hidden it had no width to scale to: checked on each draw)
         fitScreen();
@@ -1619,7 +1631,7 @@
                 const m = /^(\d{4}-\d{2}-\d{2}) (\d{2})(\d{2}) (.*)$/.exec(t.name.replace(/\.m4a$/i, ''));
                 const title = m ? m[4] : t.name.replace(/\.m4a$/i, '');
                 const when = m ? `${m[1]} ${m[2]}:${m[3]} · ` : '';
-                return `<div class="xrm-track${tapes.sel === t.id ? ' is-sel' : ''}${playing ? ' is-playing' : ''}" data-track="${esc(t.id)}"><span class="xrm-jc-n">${list.indexOf(t) + 1}.</span><span class="xrm-sec-lines"><span class="xrm-sec-t">${playing ? '&#x25B6;&#xFE0E; ' : ''}${esc(title)}</span><span class="xrm-sec-s">${esc(when + sizeText(t.size || 0))}${prefs.saved[t.id] ? ' · on the phone' : ''}</span></span><span class="xrm-sec-time">${t.dur ? esc(mmss(t.dur)) : ''}</span></div>`;
+                return `<div class="xrm-track${tapes.sel === t.id ? ' is-sel' : ''}${playing ? ' is-playing' : ''}" data-track="${esc(t.id)}"><span class="xrm-jc-n">${list.indexOf(t) + 1}.</span><span class="xrm-sec-lines"><span class="xrm-sec-t">${playing ? `${GLYPH.play} ` : ''}${esc(title)}</span><span class="xrm-sec-s">${esc(when + sizeText(t.size || 0))}${prefs.saved[t.id] ? ' · on the phone' : ''}</span></span><span class="xrm-sec-time">${t.dur ? esc(mmss(t.dur)) : ''}</span></div>`;
             }).join('') + '</div>';
         } else {
             h += '<div class="xrm-sec-h">Tapes</div>';
@@ -1975,7 +1987,7 @@
         }
         const many = ids.length > 1;
         const rec = !!(id && recOf(id));
-        const playBtn = c ? `<button type="button" class="xrm-td-play" aria-label="${playing ? 'Pause' : 'Play'}">${playing ? '&#x23F8;&#xFE0E;' : '&#x25B6;&#xFE0E;'}</button>` : '';
+        const playBtn = c ? `<button type="button" class="xrm-td-play" aria-label="${playing ? 'Pause' : 'Play'}">${playing ? GLYPH.pause : GLYPH.play}</button>` : '';
         const recBtn = c && isAdmin() ? `<button type="button" class="xrm-td-rec${rec ? ' is-rec' : ''}" aria-label="${rec ? 'Stop recording' : 'Record'}">${rec ? 'Stop' : 'Record'}</button>` : '';
         const html = `<button type="button" class="xrm-td-arrow" data-dir="prev" aria-label="Previous channel"${many ? '' : ' disabled'}>&#x2039;</button><div class="xrm-td-slide">${inner}</div>${playBtn}${recBtn}<button type="button" class="xrm-td-arrow" data-dir="next" aria-label="Next channel"${many ? '' : ' disabled'}>&#x203A;</button>`;
         if (html !== todayHtml || !el.firstChild) {

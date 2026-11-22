@@ -59,5 +59,22 @@ module.exports = {
             PORT: '9330',
             GRIMOIRE_BROWSER_TOKEN: grimoireBrowserToken()
         }
+    }, {
+        // XM Radio's recorder (services/xmradio-recorder/server.js): its own process, so a Dreamscape restart never
+        // stops a recording (Yukimi, Nov 21 2026); Dreamscape talks to it over .cache/xmradio-recorder.sock.
+        // ./restart and ./reload use --only Dreamscape, so it keeps recording through them.
+        name: 'xmradio-recorder',
+        script: './services/xmradio-recorder/server.js',
+        cwd: __dirname,
+        autorestart: true,
+        watch: false,
+        pmx: false,
+        time: true,
+        // the state file is written on SIGINT before it exits (its recordings carry on at the next start)
+        kill_timeout: 8000,
+        env: {
+            MALLOC_ARENA_MAX: '2',
+            NODE_ENV: 'production'
+        }
     }]
 };

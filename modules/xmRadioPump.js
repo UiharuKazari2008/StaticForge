@@ -6,7 +6,7 @@
  *
  *   const pump = createPump({ channelId, quality: 'hi' | 'std' | 'low', tune, keyBytes, log })
  *   pump.on('segment', ({ seq, pdt (ms), dur (s), adts (Buffer), plain (Buffer: decrypted, its ID3 kept) }) => ...)
- *   pump.on('error', (err) => ...)        a fatal stop (signed out, the channel left the plan)
+ *   pump.on('error', (err) => ...)        a fatal stop (signed out, the channel left the plan; persistent: the plan only)
  *   pump.start({ back: 0 })               back: start this many seconds behind live
  *   pump.stop()
  *
@@ -99,7 +99,7 @@ function decrypt(data, key, iv, seq) {
     return Buffer.concat([d.update(data), d.final()]);
 }
 
-function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {} }) {
+function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {}, persistent = false }) {
     const ev = new EventEmitter();
     let running = false;
     let timer = null;
@@ -155,7 +155,9 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {} 
         } catch (err) {
             failures += 1;
             log('warn', `[xmRadioPump] ${channelId}: ${err.message}`);
-            if (err && (err.code === 'XMRADIO_SIGNED_OUT' || err.code === 'XMRADIO_NOT_SUBSCRIBED')) { stop(); ev.emit('error', err); return; }
+            // a recording (persistent) never gives up on a sign-in: the recorder service waits for Dreamscape's token
+            // and reads the gap back from the stream's five hours once it has one; only a channel out of the plan ends it
+            if (err && (err.code === 'XMRADIO_NOT_SUBSCRIBED' || (err.code === 'XMRADIO_SIGNED_OUT' && !persistent))) { stop(); ev.emit('error', err); return; }
             wait = Math.min(60000, 2000 * 2 ** Math.min(failures, 5));
         }
         if (running) { timer = setTimeout(() => void tick(0), wait); if (timer.unref) timer.unref(); }

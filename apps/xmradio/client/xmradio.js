@@ -50,6 +50,9 @@
         back: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M8 0v10L1 5zM15 0v10L8 5z"/></svg>',
         play: '<svg viewBox="0 0 20 10" aria-hidden="true"><path d="M1 0v10l7-5zM11 0h3v10h-3zM16 0h3v10h-3z"/></svg>',
         fwd: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 0v10l7-5zM8 0v10l7-5z"/></svg>',
+        // the Stratus rocker's arrows drawn (no U+25C0 / 25B6: emoji on some systems, Yukimi Nov 21 2026)
+        left: '<svg class="xr-arw" viewBox="0 0 10 10" aria-hidden="true"><path d="M8 1v8L2 5z"/></svg>',
+        right: '<svg class="xr-arw" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 1v8l6-4z"/></svg>',
         // the IEC power symbols, drawn: the phone's fonts have no U+23FB / U+23FC (a tofu box on the faceplate)
         power: '<svg class="xr-pw" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.6 3.9a5.8 5.8 0 1 0 6.8 0M8 1.6v6"/></svg>',
         powerToggle: '<svg class="xr-pw" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 3.8v8.4"/></svg>'
@@ -264,7 +267,7 @@
                 const sk = (attr, html, title, cls) => `<button type="button" class="xr-stk${cls ? ` ${cls}` : ''}" ${attr} title="${esc(title)}">${html}</button>`;
                 const pair = (a, b) => `<span class="xr-st-pair">${this.numKey(a, 'xr-stn')}<i class="xr-st-screw"></i>${this.numKey(b, 'xr-stn')}</span>`;
                 return `<div class="xr-st-left">${sk('data-b="power"', SVG.power, 'Power', 'is-power')}${sk('data-b="menu"', '<i class="xr-st-tape"></i><span>menu</span>', 'Menu', 'is-blue')}${sk('data-b="jump"', '&#x21B7;', 'Jump to the last channel', 'is-blue')}</div>
-                    <div class="xr-st-mid">${brand}${disp}<div class="xr-st-under">${sk('data-b="disp"', '', 'Display information', 'xr-st-square')}<span class="xr-st-rocker">${sk('data-nav="left"', '&#x25C0;', 'Back 15 seconds', 'is-blue')}${sk('data-nav="right"', '&#x25B6;', 'Forward 15 seconds', 'is-blue')}</span></div></div>
+                    <div class="xr-st-mid">${brand}${disp}<div class="xr-st-under">${sk('data-b="disp"', '', 'Display information', 'xr-st-square')}<span class="xr-st-rocker">${sk('data-nav="left"', SVG.left, 'Back 15 seconds', 'is-blue')}${sk('data-nav="right"', SVG.right, 'Forward 15 seconds', 'is-blue')}</span></div></div>
                     <div class="xr-st-right">${sk('data-nav="up"', '&#x25B2;', 'Channel up', 'is-blue')}${sk('data-b="band"', '<i class="xr-st-dog"></i>', 'Preset bank', 'is-blue')}${sk('data-nav="down"', '&#x25BC;', 'Channel down', 'is-blue')}</div>
                     <div class="xr-st-nums">${pair(1, 2)}${pair(3, 4)}${pair(5, 6)}${pair(7, 8)}${pair(9, 10)}</div>`;
             }

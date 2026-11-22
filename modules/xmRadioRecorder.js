@@ -48,6 +48,15 @@ let timerHandle = null;
 const fired = new Set(); // `${channelId}|${cutAt}` already recorded by an alert or term
 let saveTimer = null;
 let onChange = () => {};
+/*
+ * Where this copy runs (Yukimi, Nov 21 2026: "we CAN NOT allow the recording to stop because the server stopped"):
+ *   capture  the recorder service (services/xmradio-recorder): pumps, segments, cuts, timers, alerts, terms, the
+ *            state file; finished files go to the spool, Dreamscape files them on the tape (it owns the file store)
+ *   library  Dreamscape (modules/xmRadioRecorderClient.js): the tapes and their files only; never the state file
+ */
+let role = 'capture';
+let onSpool = () => {};
+function spoolDir() { return path.join(path.dirname(xm.accountFilePath()), 'xmradio-spool'); }
 
 function file() { return path.join(path.dirname(xm.accountFilePath()), 'xmradio-recorder.json'); }
 function recRoot() { return path.join(path.dirname(xm.accountFilePath()), 'xmradio-rec'); }
@@ -65,7 +74,7 @@ function load() {
 
 /** Written off the event loop, at most once a second. */
 function save() {
-    if (saveTimer) return;
+    if (role === 'library' || saveTimer) return;
     saveTimer = setTimeout(() => {
         saveTimer = null;
         const s = load();
@@ -81,10 +90,23 @@ function save() {
 }
 
 function changed() {
+    if (role === 'library') return;
     save();
     try { onChange(); } catch (_) { /* the feed is optional */ }
-    // the phones' status bar (the tape icon and its popup: modules/phoneStatus.js field xmrec)
-    try { require('./phoneStatus').touch('xmrec'); } catch (_) { /* no phone status */ }
+}
+
+/** The state file now (the service going down: what records goes on after its restart). */
+function saveNow() {
+    if (role === 'library' || !st) return;
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    st.active = [...recs.values()].map((r) => r.meta);
+    const f = file();
+    try {
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        fs.writeFileSync(`${f}.${process.pid}.tmp`, JSON.stringify(st, null, 1), { mode: 0o600 });
+        fs.renameSync(`${f}.${process.pid}.tmp`, f);
+    } catch (err) { console.warn(`[xmRadio rec] state not saved: ${err.message}`); }
 }
 
 const norm = (t) => String(t || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -324,17 +346,52 @@ async function tapeDelete(workspaceId, name) {
 }
 
 async function fileInto(rec, tmpPath, name) {
-    const folder = await tapeFolder(rec.meta.workspaceId, rec.meta.tape, true);
+    if (role === 'capture') {
+        // the service: into the spool, Dreamscape files it on the tape (now, or when it is back)
+        const id = id8() + id8();
+        const dir = spoolDir();
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.rename(tmpPath, path.join(dir, `${id}.m4a`)).catch(async () => { await fs.promises.copyFile(tmpPath, path.join(dir, `${id}.m4a`)); });
+        // the description last: a spool entry counts once its .json is there
+        await fs.promises.writeFile(path.join(dir, `${id}.json`), JSON.stringify({ workspaceId: rec.meta.workspaceId, tape: rec.meta.tape, name, at: Date.now(), rid: rec.meta.rid }));
+        rec.meta.filed = (rec.meta.filed || 0) + 1;
+        try { onSpool(id); } catch (_) { /* told on the next connect */ }
+        return `${name}.m4a`;
+    }
+    rec.meta.filed = (rec.meta.filed || 0) + 1;
+    return saveToTape(rec.meta.workspaceId, rec.meta.tape, tmpPath, name);
+}
+
+/** A finished recording into its tape's folder (a free name), the folder's viewers told. Dreamscape only. */
+async function saveToTape(workspaceId, tape, tmpPath, name) {
+    const folder = await tapeFolder(workspaceId, tape, true);
     const v = await vfs();
     const db = require('./vfsDatabase');
-    const used = new Set(((await db.getUserFilesByLocation('workspace', rec.meta.workspaceId, folder.id)) || []).map((x) => String(x.original_name || '').toLowerCase()));
+    const used = new Set(((await db.getUserFilesByLocation('workspace', workspaceId, folder.id)) || []).map((x) => String(x.original_name || '').toLowerCase()));
     let n = `${name}.m4a`;
     for (let i = 2; used.has(n.toLowerCase()); i += 1) n = `${name} (${i}).m4a`;
-    await v.saveUserFileFromPath(tmpPath, { originalName: n, mimeType: 'audio/mp4', scope: 'workspace', workspaceId: rec.meta.workspaceId, folderId: folder.id });
+    await v.saveUserFileFromPath(tmpPath, { originalName: n, mimeType: 'audio/mp4', scope: 'workspace', workspaceId, folderId: folder.id });
     const ws = gr.getWebSocketServer && gr.getWebSocketServer();
-    if (ws && ws.broadcast) ws.broadcast({ type: 'vfs_updated', data: { path: `/Workspaces/${rec.meta.workspaceId}/${folder.id}` }, timestamp: new Date().toISOString() });
-    rec.meta.filed = (rec.meta.filed || 0) + 1;
+    if (ws && ws.broadcast) ws.broadcast({ type: 'vfs_updated', data: { path: `/Workspaces/${workspaceId}/${folder.id}` }, timestamp: new Date().toISOString() });
     return n;
+}
+
+/** Dreamscape: one spool entry (the service's finished file) onto its tape, then out of the spool. */
+async function importSpool(id) {
+    if (!/^[0-9a-f]{24}$/.test(id)) return false;
+    const dir = spoolDir();
+    let meta;
+    try { meta = JSON.parse(await fs.promises.readFile(path.join(dir, `${id}.json`), 'utf8')); } catch (_) { return false; }
+    const m4a = path.join(dir, `${id}.m4a`);
+    await saveToTape(meta.workspaceId || 'default', meta.tape || 'Tape 1', m4a, String(meta.name || 'Recording'));
+    await fs.promises.rm(m4a, { force: true });
+    await fs.promises.rm(path.join(dir, `${id}.json`), { force: true });
+    return true;
+}
+
+/** The spool entries waiting (oldest first). */
+async function spoolList() {
+    try { return (await fs.promises.readdir(spoolDir())).filter((f) => /^[0-9a-f]{24}\.json$/.test(f)).map((f) => f.slice(0, 24)); } catch (_) { return []; }
 }
 
 // ------------------------------------------------------------------ a recording
@@ -427,6 +484,8 @@ async function fileFinishedCuts(rec) {
     rec.filing = true;
     try {
         const recEnd = rec.lastEnd;
+        // every segment up to there on disk before a cut is sliced from them
+        await rec.write;
         for (;;) {
             const start = rec.meta.cursor || (rec.segs[0] && rec.segs[0].pdt) || 0;
             const { cur, next } = cutAt(rec, start + 1);
@@ -450,13 +509,18 @@ function appendSeg(rec, sg) {
         try { rec.pump && rec.pump.stop(); } catch (_) { /* stopped */ }
         return;
     }
+    // a segment it already has (a resumed pump reads from a little before where the recording left off)
+    if (rec.segs.length && (sg.pdt < rec.lastEnd - 500 || rec.segs.some((x) => x.seq === sg.seq && Math.abs(x.pdt - sg.pdt) < 1000))) return;
     const f = `s${sg.seq}.aac`;
-    const row = { seq: sg.seq, pdt: sg.pdt, dur: sg.dur, f };
+    const row = { seq: sg.seq, pdt: sg.pdt, dur: sg.dur, f, ok: false };
     rec.segs.push(row);
     rec.lastEnd = sg.pdt + sg.dur * 1000;
     rec.write = rec.write.then(async () => {
         await fs.promises.writeFile(path.join(rec.dir, f), sg.plain);
-        await fs.promises.appendFile(path.join(rec.dir, 'segs.ndjson'), `${JSON.stringify(row)}\n`);
+        await fs.promises.appendFile(path.join(rec.dir, 'segs.ndjson'), `${JSON.stringify({ seq: row.seq, pdt: row.pdt, dur: row.dur, f })}\n`);
+        // listed in the playlist only now that its file is there (a listener near the edge asked for a segment still
+        // being written and stalled)
+        row.ok = true;
     }).catch((err) => console.warn(`[xmRadio rec] ${rec.meta.rid}: ${err.message}`));
     if (rec.lastEnd - rec.meta.startPdt >= MAX_MS || (rec.meta.until && Date.now() >= rec.meta.until)) { void stop(rec.meta.rid); return; }
     void fileFinishedCuts(rec);
@@ -481,7 +545,9 @@ function makePump(rec, back) {
     const pump = require('./xmRadioPump').createPump({
         channelId: rec.meta.channelId, quality: 'hi', keyBytes: xm.keyBytes,
         tune: async (id) => xm.tuneUpstream(id),
-        log: (lvl, t) => console.warn(t)
+        log: (lvl, t) => console.warn(t),
+        // a recording keeps trying through a missing sign-in (the token comes from Dreamscape)
+        persistent: true
     });
     pump.on('segment', (sg) => appendSeg(rec, sg));
     pump.on('error', (err) => { rec.meta.error = err.message; void stop(rec.meta.rid); });
@@ -580,7 +646,7 @@ function describe(rec) {
     const m = rec.meta;
     const { cur } = cutAt(rec, rec.lastEnd || Date.now());
     return {
-        rid: m.rid, channelId: m.channelId, kind: m.kind, mode: m.mode, tape: m.tape, since: m.since, until: m.until,
+        rid: m.rid, channelId: m.channelId, kind: m.kind, mode: m.mode, workspaceId: m.workspaceId, tape: m.tape, since: m.since, until: m.until,
         // how far it reached back behind live when it started (s: "from the start" of the song on air)
         back: Math.max(0, Math.round((m.since - (m.startPdt || m.since)) / 1000)),
         filed: m.filed || 0, url: `/api/xmradio/rec/${m.rid}/index.m3u8`,
@@ -592,9 +658,12 @@ function describe(rec) {
 function playlist(rid) {
     const rec = recs.get(rid) || ended.get(rid);
     if (!rec) return null;
-    const segs = rec.segs;
-    const td = Math.ceil(Math.max(10, ...segs.map((s) => s.dur)));
-    const out = ['#EXTM3U', '#EXT-X-VERSION:3', `#EXT-X-TARGETDURATION:${td}`, `#EXT-X-MEDIA-SEQUENCE:${segs.length ? segs[0].seq : 0}`, '#EXT-X-PLAYLIST-TYPE:EVENT'];
+    const segs = rec.segs.filter((x) => x.ok !== false);
+    const td = Math.ceil(Math.max(10, ...segs.map((x) => x.dur)));
+    // players start three segments behind the recording's edge (Yukimi, Nov 21 2026: "at least 1-3 HLS segments
+    // behind so that the server is never falling behind and gives time a healthy buffer"); hls.js and ExoPlayer honour it
+    const out = ['#EXTM3U', '#EXT-X-VERSION:6', `#EXT-X-TARGETDURATION:${td}`, `#EXT-X-MEDIA-SEQUENCE:${segs.length ? segs[0].seq : 0}`, '#EXT-X-PLAYLIST-TYPE:EVENT'];
+    if (recs.has(rid)) out.push(`#EXT-X-START:TIME-OFFSET=-${3 * td},PRECISE=NO`);
     let lastSeq = null;
     for (const s of segs) {
         if (lastSeq != null && s.seq !== lastSeq + 1) out.push('#EXT-X-DISCONTINUITY');
@@ -788,21 +857,26 @@ async function resume() {
     const left = s.active || [];
     s.active = [];
     for (const meta of left) {
+        if (recs.has(meta.rid)) continue;
         const dir = path.join(recRoot(), meta.rid);
         const rec = { meta, dir, segs: [], cuts: [], lastEnd: 0, write: Promise.resolve(), pump: null, filing: false };
         try {
-            const segs = (await fs.promises.readFile(path.join(dir, 'segs.ndjson'), 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+            const segs = (await fs.promises.readFile(path.join(dir, 'segs.ndjson'), 'utf8')).split('\n').filter(Boolean).map((l) => Object.assign(JSON.parse(l), { ok: true }));
             rec.segs = segs;
             rec.lastEnd = segs.length ? segs[segs.length - 1].pdt + segs[segs.length - 1].dur * 1000 : 0;
         } catch (_) { /* nothing recorded */ }
         try { rec.cuts = (await fs.promises.readFile(path.join(dir, 'cuts.ndjson'), 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l)).sort((a, b) => a.at - b.at); } catch (_) { /* none */ }
         recs.set(meta.rid, rec);
-        await stop(meta.rid);
-        if (Date.now() < meta.until - 60000 && (meta.kind === 'manual' || meta.kind === 'timer')) {
-            start({ channelId: meta.channelId, kind: meta.kind, ref: meta.ref, until: meta.until, mode: meta.mode, tape: meta.tape, workspaceId: meta.workspaceId })
-                .catch((err) => console.warn(`[xmRadio rec] resume ${meta.rid}: ${err.message}`));
-        }
+        // it carries on as the same recording (Yukimi, Nov 21 2026: a recording must never stop because a server did):
+        // the pump reads from where it left off, the stream keeps five hours, so the time it was down is recorded too
+        const gap = rec.lastEnd ? Math.ceil((Date.now() - rec.lastEnd) / 1000) + 2 : Math.ceil((Date.now() - meta.startPdt) / 1000);
+        const due = (meta.until && Date.now() >= meta.until - 5000) || (rec.lastEnd && rec.lastEnd - meta.startPdt >= MAX_MS);
+        if (due || gap > 5 * 3600 - 300 || !xm.channelById(meta.channelId)) { await stop(meta.rid); continue; }
+        rec.pump = makePump(rec, Math.max(0, gap));
+        console.log(`[xmRadio rec] ${meta.rid}: resumed (${meta.kind}, ${gap} s to catch up)`);
     }
+    if (recs.size) xm.watch('rec', true);
+    changed();
     // folders no recording owns (a crash before its state was written)
     try {
         for (const d of await fs.promises.readdir(recRoot())) {
@@ -812,21 +886,40 @@ async function resume() {
 }
 
 let booted = false;
-function init(xmRadio, globalResources, { changed: cb } = {}) {
+function init(xmRadio, globalResources, opts = {}) {
     xm = xmRadio;
     gr = globalResources;
-    if (cb) onChange = cb;
+    role = 'capture';
+    if (opts.changed) onChange = opts.changed;
+    if (opts.spooled) onSpool = opts.spooled;
     if (booted) return module.exports;
     booted = true;
     load();
     armTimers();
     xm.watch('match', wantsWatch());
     xm.onLook(onLook);
-    setTimeout(() => { resume().catch((err) => console.warn(`[xmRadio rec] resume: ${err.message}`)); }, 15000).unref?.();
+    setTimeout(() => { resume().catch((err) => console.warn(`[xmRadio rec] resume: ${err.message}`)); }, role === 'capture' && opts.resumeMs != null ? opts.resumeMs : 15000).unref?.();
     return module.exports;
 }
 
+/** Dreamscape's copy: the tapes and their files only (the recording itself runs in the service). */
+function library(xmRadio, globalResources) {
+    xm = xmRadio;
+    gr = globalResources;
+    role = 'library';
+    return module.exports;
+}
+
+/** The service: a tape was renamed in Dreamscape (the deck and the recordings on it follow). */
+function tapeRenamed(workspaceId, from, to) {
+    const s = load();
+    if (s.deck.workspaceId === workspaceId && s.deck.tape === from) s.deck.tape = to;
+    for (const r of recs.values()) if (r.meta.workspaceId === workspaceId && r.meta.tape === from) r.meta.tape = to;
+    changed();
+    return deck();
+}
+
 module.exports = {
-    init, start, stop, recordCut, recordChannel, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
+    init, library, tapeRenamed, saveNow, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
     _test: { adtsFrames, nextStart, cutAt, norm, onLook, sliceAac, recs, load: () => load(), reset: () => { st = null; recs.clear(); ended.clear(); fired.clear(); } }
 };

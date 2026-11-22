@@ -381,6 +381,7 @@
 :is(#xmRadioModal, .xrm-lcd) .xr-fn .xr-key { padding: 0 4px; }
 
 /* transport glyphs: drawn, the key's own ink */
+:is(#xmRadioModal, .xrm-lcd) .xr-pw { width: 1em; height: 1em; vertical-align: -0.14em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; overflow: visible; pointer-events: none; }
 :is(#xmRadioModal, .xrm-lcd) .xr-key.xr-glyph svg { width: 18px; height: 10px; fill: currentColor; vertical-align: middle; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.45)); }
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-body="table"] .xr-key.xr-glyph svg { filter: drop-shadow(0 1px 0 rgba(255, 240, 220, 0.6)); }
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-body="car"] .xr-replay .xr-key.xr-glyph svg { width: 14px; }
@@ -1098,3 +1099,6 @@
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] :is(.xr-d-l1, .xr-d-l2) { min-width: 0; overflow: hidden; white-space: nowrap; }
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] .xr-d-name { flex: 1 1 auto; min-width: 0; overflow: hidden; }
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] .xr-d-num { flex: 0 0 auto; padding-left: 0.4em; }
+
+/* the Stratus rocker's drawn arrows (desktop SVG.left / right, phone GLYPH.left / right) */
+:is(#xmRadioModal, .xrm-lcd) .xr-st-rocker :is(.xr-arw, .xrm-g) { display: block; width: 0.8em; height: 0.8em; margin: auto; fill: currentColor; }

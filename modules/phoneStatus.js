@@ -208,7 +208,7 @@ async function build() {
 function xmRecordings() {
     return safe(() => {
         const xm = require('./xmRadio');
-        return require('./xmRadioRecorder').deck().recordings.map((r) => {
+        return require('./xmRadioRecorderClient').deck().recordings.map((r) => {
             const c = xm.channelById(r.channelId) || {};
             const cut = r.cut || {};
             return { rid: r.rid, channelId: r.channelId, number: c.number || 0, name: c.name || '', kind: r.kind, since: r.since, back: r.back || 0, a: cut.a || '', t: cut.t || '', ad: !!cut.ad };

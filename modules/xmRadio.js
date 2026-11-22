@@ -54,6 +54,30 @@ function accountFile() {
     return base;
 }
 
+/**
+ * The recorder service's copy (services/xmradio-recorder): SiriusXM refuses a session started from a second process
+ * (Nov 20 2026: it failed there and wrote signedOut into the account file), so there it never signs in and never writes
+ * the account or lineup files; Dreamscape hands it its own access token over the socket (setAuth), and it uses that
+ * for tune and key calls until it expires (hours: a Dreamscape restart is well inside it).
+ */
+let external = false;
+function useExternalAuth() { external = true; }
+function setAuth(a) {
+    if (a && a.token) auth = { token: String(a.token), exp: Number(a.exp) || Date.now() + 3600000, entitlementHash: a.entitlementHash || '' };
+    return !!(auth && auth.token);
+}
+/** Dreamscape: its access token now (signed in), for the recorder service. */
+async function accessToken() {
+    const t = await authToken();
+    return t && auth ? { token: auth.token, exp: auth.exp, entitlementHash: auth.entitlementHash } : null;
+}
+
+/** The account file again. */
+function reloadAccount() {
+    state = null;
+    if (!external) auth = null;
+}
+
 function load() {
     if (state) return state;
     try { state = JSON.parse(fs.readFileSync(accountFile(), 'utf8')) || {}; } catch (_) { state = {}; }
@@ -61,6 +85,7 @@ function load() {
 }
 
 function save() {
+    if (external) return;
     const f = accountFile();
     fs.mkdirSync(path.dirname(f), { recursive: true });
     const tmp = `${f}.${process.pid}.tmp`;
@@ -147,6 +172,7 @@ async function anonToken() {
 
 /** The account's access token; null when nobody is signed in (or SiriusXM ended the sign-in). */
 async function authToken() {
+    if (external) return auth && auth.exp > Date.now() + 30000 ? auth.token : null;
     if (auth && auth.exp > Date.now() + 60000) return auth.token;
     const s = await ensureDevice();
     if (!s.identityId || s.signedOut) {
@@ -488,7 +514,7 @@ function defineFeed(statusHub) {
             const items = { account: account(), lineup: lineupKept() && lineupCache.at ? { at: lineupCache.at, n: lineupCache.channels.length } : null };
             for (const [id, v] of nowPlaying) items[`ch:${id}`] = { a: v.a, t: v.t, s: v.s, ad: v.ad, i: v.i };
             // the cassette deck: its tape, its switch, what it is recording, the timers, alerts and terms
-            try { items.deck = require('./xmRadioRecorder').deck(); } catch (_) { /* not started */ }
+            try { items.deck = require('./xmRadioRecorderClient').deck(); } catch (_) { /* not started */ }
             return items;
         }
     });
@@ -536,7 +562,7 @@ function definePhoneFeed(statusHub) {
             const pr = presets();
             items.presets = { A: (pr.A || []).slice(0, 10), B: (pr.B || []).slice(0, 10), C: (pr.C || []).slice(0, 10) };
             // the deck as a phone shows it: what records now (no timers, alerts or terms lists)
-            try { const d = require('./xmRadioRecorder').deck(); items.rec = d.recordings.map((r) => ({ rid: r.rid, channelId: r.channelId, kind: r.kind, since: r.since, back: r.back || 0, a: (r.cut && r.cut.a) || '', t: (r.cut && r.cut.t) || '', ad: !!(r.cut && r.cut.ad) })); } catch (_) { items.rec = []; }
+            try { const d = require('./xmRadioRecorderClient').deck(); items.rec = d.recordings.map((r) => ({ rid: r.rid, channelId: r.channelId, kind: r.kind, since: r.since, back: r.back || 0, a: (r.cut && r.cut.a) || '', t: (r.cut && r.cut.t) || '', ad: !!(r.cut && r.cut.ad) })); } catch (_) { items.rec = []; }
             for (const id of phoneChannels()) {
                 const v = nowPlaying.get(id);
                 if (v) items[`ch:${id}`] = { a: v.a, t: v.t, s: v.s, ad: v.ad, i: v.i, at: v.at };
@@ -768,6 +794,7 @@ function withPlan(list) {
 }
 
 function saveLineup() {
+    if (external) return;
     try { fs.writeFileSync(lineupFile(), JSON.stringify(lineupCache), { mode: 0o600 }); } catch (_) { /* kept in memory */ }
 }
 
@@ -1307,7 +1334,7 @@ function mount(app, authMiddleware) {
     });
     // a recording on a tape (the phone's Recordings: the native player plays it from here, with Range)
     app.get('/api/xmradio/track/:fileId', authMiddleware, admin, (req, res) => {
-        require('./xmRadioRecorder').trackPath(String(req.params.fileId)).then((p) => {
+        require('./xmRadioRecorderClient').trackPath(String(req.params.fileId)).then((p) => {
             if (!p) { res.status(404).end(); return; }
             res.set('Cache-Control', 'private, max-age=3600');
             res.type('audio/mp4');
@@ -1315,12 +1342,14 @@ function mount(app, authMiddleware) {
         }, () => res.status(404).end());
     });
     // a recording in progress (the cassette deck): its growing playlist and its segments, already decrypted
-    app.get('/api/xmradio/rec/:rid/:file', authMiddleware, admin, (req, res) => {
-        const rec = require('./xmRadioRecorder');
+    app.get('/api/xmradio/rec/:rid/:file', authMiddleware, admin, async (req, res) => {
+        // the recording runs in the recorder service; its playlist comes over the socket, its segments from the disk
+        const rec = require('./xmRadioRecorderClient');
         const rid = String(req.params.rid);
         const f = String(req.params.file);
         if (f === 'index.m3u8') {
-            const text = rec.playlist(rid);
+            let text = null;
+            try { text = await rec.playlist(rid); } catch (_) { text = null; }
             if (!text) { res.status(404).end(); return; }
             res.set('Cache-Control', 'no-store');
             res.type('application/vnd.apple.mpegurl').send(text);
@@ -1360,6 +1389,10 @@ module.exports = {
     search,
     guide,
     channelById,
+    reloadAccount,
+    useExternalAuth,
+    setAuth,
+    accessToken,
     watch,
     onLook,
     touch,
