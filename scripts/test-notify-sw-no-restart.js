@@ -45,4 +45,18 @@ assert.ok(!deploy.includes('notify-service-worker-update.sh --restart'));
 const hostDoc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'local-host.md'), 'utf8');
 assert.ok(hostDoc.includes('ask Yukimi or Sala'));
 
+// A recompile broadcast applies: the handler tells the manager this is an install, and the manager
+// threads that through the full-manifest fallbacks too. Notify mode must not just count these files.
+const inbound = fs.readFileSync(path.join(__dirname, '..', 'public', 'scripts', 'ws', 'handlers', '10-systemInbound.js'), 'utf8');
+assert.ok(inbound.includes('const cacheOptions = { runtimeAssetsRecompiled: true, install: true };'));
+assert.ok(inbound.includes('checkStaticFileUpdates(silent, cacheOptions)'));
+
+const manager = fs.readFileSync(path.join(__dirname, '..', 'public', 'scripts', 'comp', 'serviceWorkerManager.js'), 'utf8');
+assert.ok(manager.includes('async checkStaticFileUpdates(noToast = false, cacheOptions = null)'));
+assert.ok(manager.includes('async _staticFilesUnchanged(noToast, swState, cacheOptions = null)'));
+assert.ok(manager.includes('await this.updateStaticCache(result.rows, noToast, cacheOptions)'));
+
+const server = fs.readFileSync(path.join(__dirname, '..', 'web_server.js'), 'utf8');
+assert.ok(server.includes('runtimeAssetsRecompiled: true'));
+
 console.log('test-notify-sw-no-restart: ok');

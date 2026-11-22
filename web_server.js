@@ -312,7 +312,9 @@ runtimeAssetService.init({
             files,
             silent,
             message: updateMessage,
-            runtimeAssetsRecompiled: options.runtimeAssetsRecompiled === true,
+            // This callback only runs after a recompile/cache refresh. Mark it so clients apply the
+            // new files (notify mode otherwise just counts them, and nothing changes on screen).
+            runtimeAssetsRecompiled: true,
             timestamp: Date.now()
         });
         // partnered phones with no Melaton window open fetch the update in the background (Yozora #815);

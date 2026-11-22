@@ -2467,7 +2467,7 @@ class ServiceWorkerManager {
         // the page runs from the network meanwhile; nothing to ask the person (#951: no update notices that are not theirs to act on)
     }
     
-    async checkStaticFileUpdates(noToast = false) {
+    async checkStaticFileUpdates(noToast = false, cacheOptions = null) {
         if (this.agentSession) {
             return;
         }
@@ -2534,11 +2534,11 @@ class ServiceWorkerManager {
             if (result.error) throw result.error;
             if (result.outcome === 'unchanged') {
                 this._recordUpdateCheck();
-                await this._staticFilesUnchanged(noToast, swState);
+                await this._staticFilesUnchanged(noToast, swState, cacheOptions);
             } else if (result.ok) {
                 this._recordUpdateCheck();
                 this._pruneAvailableToManifest(result.rows);
-                await this.updateStaticCache(result.rows, noToast);
+                await this.updateStaticCache(result.rows, noToast, cacheOptions);
             } else if (!noToast) {
                 // an answer that is not the list (the server still compiling, an error page): the page's red box, not
                 // a check that never ends
@@ -2569,7 +2569,7 @@ class ServiceWorkerManager {
      * the window was paused) and samples the cache like the boot check (a miss walks the stored list);
      * the daily pass walks all of it.
      */
-    async _staticFilesUnchanged(noToast, swState) {
+    async _staticFilesUnchanged(noToast, swState, cacheOptions = null) {
         let stored = null;
         try { stored = await this._readManifestSnapshot(); } catch (_) { stored = null; }
         if (!Array.isArray(stored) || !stored.length) {
@@ -2578,7 +2578,7 @@ class ServiceWorkerManager {
             if (full.error) throw full.error;
             if (full.ok) {
                 this._pruneAvailableToManifest(full.rows);
-                await this.updateStaticCache(full.rows, noToast);
+                await this.updateStaticCache(full.rows, noToast, cacheOptions);
             }
             return;
         }
@@ -2586,7 +2586,7 @@ class ServiceWorkerManager {
         // asked for, no worker, or a download running (its progress, stall and service pack checks)
         if (!noToast || !this.swRegistration || !this.swRegistration.active
             || this.isUpdating || (swState && swState.isDownloading)) {
-            await this.updateStaticCache(stored, noToast);
+            await this.updateStaticCache(stored, noToast, cacheOptions);
             return;
         }
         let files = stored;
@@ -2612,7 +2612,7 @@ class ServiceWorkerManager {
             missing = this._filesCountingTowardInstaller(await this.getFilesNeedingUpdate(sampleManifestFiles(files, BOOT_CACHE_SAMPLE)));
         } catch (_) { missing = []; }
         if (missing.length) {
-            await this.updateStaticCache(stored, noToast);
+            await this.updateStaticCache(stored, noToast, cacheOptions);
             return;
         }
         this.servicePack = null;
