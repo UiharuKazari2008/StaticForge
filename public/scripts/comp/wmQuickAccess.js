@@ -100,7 +100,8 @@
         return s.on ? 'on' : 'off';
     };
     const iconOf = (m, id, state) => {
-        if (id.startsWith('tile:')) return (m.tiles[id] && m.tiles[id].icon) || '';
+        // (a tile whose service declares no glyph: a generic tile, never its app icon painted white)
+        if (id.startsWith('tile:')) return (m.tiles[id] && m.tiles[id].icon) || '/static_images/quickaccess/tile.png';
         const own = TILE_GLYPH[id] && m.tiles[`tile:${TILE_GLYPH[id]}`];
         if (own && own.icon) return own.icon;
         const i = ICONS[id];

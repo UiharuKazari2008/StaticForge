@@ -33,7 +33,9 @@ const GLYPHS = {
     'pointer-flow': 'cursor-default-outline',
     'qr': 'qrcode-scan', 'record': 'record-rec', 'modes': 'tune-variant', 'power-saving': 'battery-heart-variant',
     'network': 'signal-5g', 'dolby': 'surround-sound', 'performance': 'speedometer', 'power-share': 'battery-arrow-up',
-    'vpn': 'vpn'
+    'vpn': 'vpn',
+    // a tile with no glyph of its own (its service declares none): a generic quick settings tile
+    'tile': 'view-grid-outline'
 };
 
 const css = fs.readFileSync(path.join(MDI, 'css', 'materialdesignicons.css'), 'utf8');
