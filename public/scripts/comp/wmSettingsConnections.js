@@ -669,7 +669,8 @@
             setHeader(el, 'Continuity');
             const mcx = root.melatonContinuity;
             const pc = mcx && typeof mcx.continuityPc === 'function' ? mcx.continuityPc() : null;
-            const state = !pc ? 'Not connected' : pc.displayGone ? (pc.parked ? 'Paused - display disconnected' : 'Disconnected (the desktop is still running)') : pc.state === 'ready' ? `Connected via ${pc.attach === 'wireless' ? 'Wi-Fi Direct' : 'USB-C'}` : 'Starting';
+            // short enough for the facts row (one line, cut with an ellipsis); the Continuity PC popup says it in full
+            const state = !pc ? 'Not connected' : pc.displayGone ? (pc.parked ? 'Paused - no display' : 'Running - no display') : pc.state === 'ready' ? `Connected via ${pc.attach === 'wireless' ? 'Wi-Fi Direct' : 'USB-C'}` : 'Starting';
             const cur = SHUTDOWN_CHOICES.find(([v]) => v === d.shutdown) || SHUTDOWN_CHOICES[1];
             el.innerHTML = `<p>A display, dock or computer screen connected to this phone runs the Melaton desktop from it: the Continuity PC.</p>
                 ${ui.facts([['Continuity PC:', state], ...(pc && pc.width ? [['Display:', `${pc.width} \u00d7 ${pc.height}`]] : [])])}
