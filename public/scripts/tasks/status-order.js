@@ -82,8 +82,14 @@
         question: 'wm61/msgbox-question', emotion: 'wm61/app-emotion-lg', 'emotion-error': 'wm65/holder-emotion-error',
         'api-key': 'wm65/holder-api-key', videos: 'wm65/start-youtube',
         'lapis-unlocked': 'wm65/holder-lapis-unlocked', 'lapis-health': 'wm65/holder-lapis-health', 'lapis-fuel': 'wm65/holder-lapis-fuel',
-        'lapis-service': 'wm65/holder-lapis-service', 'lapis-failed': 'wm65/holder-lapis-failed', 'lapis-run-left': 'wm65/holder-lapis-run-left'
+        'lapis-service': 'wm65/holder-lapis-service', 'lapis-failed': 'wm65/holder-lapis-failed', 'lapis-run-left': 'wm65/holder-lapis-run-left',
+        // the phone's own battery notices (wmShell batteryLowCheck / batteryFullCheck, #1061): 6.5.1's drawer battery
+        // pictures from the ROM (shellres.192), the full battery and the empty one with the warning badge
+        'battery-full': 'wm65/v651-drawer-battery', 'battery-low': 'wm65/v651-drawer-battery-low'
     };
+    // the page's own notices name their glyph (appNote icon), not a kind: the glyphs that stand for a holder kind (#1061)
+    const ICON_KIND = { 'status-battery-full': 'battery-full', 'status-battery-low': 'battery-low', 'status-camera': 'traffic',
+        'status-receive': 'received' };
     // Lapis' notice kinds (lapisService notice()) -> the holder's
     const LAPIS_KIND = { unlocked: 'lapis-unlocked', health: 'lapis-health', refuel: 'lapis-fuel', 'low-fuel': 'lapis-fuel',
         service: 'lapis-service', command: 'lapis-failed', 'run-left': 'lapis-run-left' };
@@ -102,6 +108,7 @@
         const d = (n && n.data) || {};
         const cls = String((n && n.cls) || '');
         const dk = String(d.kind || '');
+        if (n && n.icon && ICON_KIND[n.icon]) return ICON_KIND[n.icon];
         if (/^lapis:/.test(id) || d.app === 'lapis') {
             const k = dk || (/^lapis:([a-z-]+):/.exec(id) || [])[1] || (id === 'lapis:run-left' ? 'run-left' : '');
             return LAPIS_KIND[k] || 'caralert';
@@ -180,7 +187,7 @@
         holderKinds,
         holderKind,
         /** The holder's large colour picture for a role, notice kind, holder kind or glyph name (a path under /static_images/), or null. */
-        holderArt: (r) => holderKinds[r] || holder[r] || holder[glyphRole.get(r)] || null,
+        holderArt: (r) => holderKinds[r] || holderKinds[ICON_KIND[r]] || holder[ICON_KIND[r]] || holder[r] || holder[glyphRole.get(r)] || null,
         /** A notice's holder picture (#1056): its holder kind's, else its role's, else the plain notice's. */
         noteHolderArt(n) {
             const k = holderKind(n);

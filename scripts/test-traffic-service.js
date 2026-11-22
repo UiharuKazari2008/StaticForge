@@ -15,6 +15,9 @@ const fs = require('fs');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'traffic-test-'));
 process.env.TRAFFIC_USAGE_FILE = path.join(tmp, 'usage.json');
+// never the live notification inbox (.cache/notifications.db, #1061)
+process.env.NOTIFICATION_INBOX_DB = ':memory:';
+process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 process.env.TRAFFIC_LATEST_FILE = path.join(tmp, 'latest.json');
 process.env.TRAFFIC_CAMERA_FILE = path.join(tmp, 'cameras.json');
 process.env.TRAFFIC_PLACES_FILE = path.join(tmp, 'places.json');
