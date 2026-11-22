@@ -108,10 +108,23 @@
         const a = programs().get(pkg);
         return wm || (a && a.icon) || '';
     }
+    /**
+     * An app's icon as a picture's address, for places that take a plain <img src> (#1030): a Program Icons set
+     * (/static_images/wm-android/<name>, no extension - X has one) is no file of its own and showed an empty image; its
+     * `-lg` set is the panel's size, the small set a list row's. ROM art names go through the shell's art; data URLs and
+     * paths stay as they are.
+     */
+    function iconFile(pkg, large) {
+        const v = iconOf(pkg);
+        if (v && /^\/static_images\/wm-android\/[a-z0-9_-]+$/.test(v)) return `${v.replace(/-lg$/, '')}${large ? '-lg' : ''}@4x.png`;
+        if (!v || /^(\/|data:|blob:|https?:)/.test(v)) return v || '';
+        const ws = window.wmShell;
+        try { return ws && ws.art && typeof ws.art.url === 'function' ? ws.art.url(v) : ''; } catch (_) { return ''; }
+    }
     function appChoices() {
         const managed = messagingPackages();
         return [...programs().entries()]
-            .map(([pkg, a]) => (managed.has(pkg) ? [pkg, `${a.label} (in Messaging)`, iconOf(pkg), true] : [pkg, a.label, iconOf(pkg)]))
+            .map(([pkg, a]) => (managed.has(pkg) ? [pkg, `${a.label} (in Messaging)`, iconFile(pkg, false), true] : [pkg, a.label, iconFile(pkg, false)]))
             .sort((x, y) => String(x[1]).localeCompare(String(y[1]), undefined, { sensitivity: 'base' }));
     }
 
@@ -218,18 +231,17 @@
         return Array.isArray(n.lines) && n.lines.length ? String(n.lines[0]) : '';
     }
     /**
-     * An app's icon as a picture address for the Titanium panel: the WM icon's own file (its art key resolved by the
-     * shell), else the Android icon's data URL. Bare keys went to the panel as Titanium art names and showed as a
-     * broken picture (Yukimi, Nov 21 2026).
+     * An app's icon as a picture address for the Titanium panel (iconFile at the panel's size). Bare keys went to the
+     * panel as Titanium art names and showed as a broken picture (Yukimi, Nov 21 2026), a bare Program Icons set as an
+     * empty one (#1030).
      */
     function panelIconOf(pkg) {
-        const v = iconOf(pkg);
-        // a Program Icons set (/static_images/wm-android/<name>, no extension: <name>.png, -lg.png ... @4x): its large
-        // icon at 4x for the panel's slot; the bare set path is no picture and showed nothing
-        if (v && /^\/static_images\/wm-android\/[a-z0-9_-]+$/.test(v)) return `${v.replace(/-lg$/, '')}-lg@4x.png`;
-        if (!v || /^(\/|data:|blob:|https?:)/.test(v)) return v || '';
-        const ws = window.wmShell;
-        try { return ws && ws.art && typeof ws.art.url === 'function' ? ws.art.url(v) : ''; } catch (_) { return ''; }
+        return iconFile(pkg, true);
+    }
+    /** The panel page's icon fields: the app's own picture drawn as a panel icon, or the panel's icon when it has none. */
+    function panelIconFields(pkg) {
+        const icon = panelIconOf(pkg);
+        return icon ? { icon, iconRaw: true } : {};
     }
 
     function notePage(n, count) {
@@ -238,9 +250,8 @@
             title: n.conversation || n.title || a.label,
             line2: lastLine(n),
             line3: [a.label, count > 1 ? `${count} new` : '', when(n.time)].filter(Boolean).join(', '),
-            icon: panelIconOf(n.package) || undefined,
             // the app's own icon: the panel draws it as a panel icon with its reflection (wmTitanium tiIconFor)
-            iconRaw: true,
+            ...panelIconFields(n.package),
             image: n.large || n.picture || undefined,
             // a person's photo or the app's own picture, without the photo frame (Yukimi, Nov 21 2026)
             bare: !!(n.large || n.picture),
@@ -270,7 +281,7 @@
             pages = apps.map((pkg) => {
                 const mine = list.filter((n) => n.package === pkg);
                 if (mine.length) return notePage(mine[0], mine.length);
-                return { title: appInfo(pkg).label, line2: 'No new notifications', icon: panelIconOf(pkg) || undefined, iconRaw: true, inPlace: true, softKey: appKey(pkg), onTap: () => openBar(pkg, null), pkg };
+                return { title: appInfo(pkg).label, line2: 'No new notifications', ...panelIconFields(pkg), inPlace: true, softKey: appKey(pkg), onTap: () => openBar(pkg, null), pkg };
             });
         } else {
             pages = list.slice(0, MAX_PAGES).map((n) => notePage(n, 0));
@@ -461,7 +472,9 @@
             line2: mine.length ? `${mine.length} ${mine.length === 1 ? 'notification' : 'notifications'}` : 'No new notifications',
             line3: mine.length ? `Latest ${when(mine[0].time)}` : ''
         };
-        const html = `<div class="wm-ti-pg">${b.g.pageHtml({ icon: iconOf(pkg) || 's:contacts' }, pg)}</div>`;
+        // the app's icon by its address, drawn as a panel icon (#1030: X's Program Icons set went in bare, an empty image)
+        Object.assign(pg, panelIconFields(pkg));
+        const html = `<div class="wm-ti-pg">${b.g.pageHtml({ icon: 's:contacts' }, pg)}</div>`;
         if (html !== b.headKey) {
             b.headKey = html;
             b.head.innerHTML = html;
