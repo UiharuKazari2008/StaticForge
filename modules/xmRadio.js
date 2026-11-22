@@ -561,8 +561,12 @@ function definePhoneFeed(statusHub) {
             // the lineup, once a month, so presets stored elsewhere never reached its Today (Yukimi, Nov 21 2026)
             const pr = presets();
             items.presets = { A: (pr.A || []).slice(0, 10), B: (pr.B || []).slice(0, 10), C: (pr.C || []).slice(0, 10) };
-            // the deck as a phone shows it: what records now (no timers, alerts or terms lists)
-            try { const d = require('./xmRadioRecorderClient').deck(); items.rec = d.recordings.map((r) => ({ rid: r.rid, channelId: r.channelId, kind: r.kind, since: r.since, back: r.back || 0, a: (r.cut && r.cut.a) || '', t: (r.cut && r.cut.t) || '', ad: !!(r.cut && r.cut.ad) })); } catch (_) { items.rec = []; }
+            // the deck as a phone shows it: what records now and what is queued (no timers, alerts or terms lists)
+            try {
+                const d = require('./xmRadioRecorderClient').deck();
+                items.rec = d.recordings.map((r) => ({ rid: r.rid, channelId: r.channelId, kind: r.kind, since: r.since, back: r.back || 0, a: (r.cut && r.cut.a) || '', t: (r.cut && r.cut.t) || '', ad: !!(r.cut && r.cut.ad) }));
+                items.queue = (d.queue || []).map((q) => ({ id: q.id, channelId: q.channelId, from: q.from, to: q.to, a: q.a, t: q.t, expiresAt: q.expiresAt, addedAt: q.addedAt }));
+            } catch (_) { items.rec = []; items.queue = []; }
             for (const id of phoneChannels()) {
                 const v = nowPlaying.get(id);
                 if (v) items[`ch:${id}`] = { a: v.a, t: v.t, s: v.s, ad: v.ad, i: v.i, at: v.at };
@@ -589,8 +593,10 @@ function lineupFile() { return path.join(path.dirname(accountFile()), 'xmradio-l
 /**
  * A channel's programme around now (the phone's Now Playing, Yukimi Nov 20 2026: "up next"): liveUpdate over the
  * last 90 minutes and the next 8 hours. Songs are known only once they air; shows are scheduled ahead.
- *   -> { now: { a, t, at, dur (s), i } | null, played: [{ a, t, at, dur, i }] (newest first, up to 12),
- *        shows: [{ name, show, at, dur, i, now? }] (the one on now, then what comes up) }
+ *   -> { now: { a, t, at, dur (s), i, s, sa, sd, ik } | null, played: [{ a, t, at, dur, i, s, sa, sd, ik }] (newest first,
+ *        up to 12), shows: [{ name, show, at, dur, i, now? }] (the one on now, then what comes up) }
+ *   s / sa / sd name the programme that was on at the song's start (show, show start ms, show length s) so the phone can
+ *   put it beside a Recently Played song and record the song from the stream's five-hour buffer; ik is its art key.
  * Kept a minute per channel.
  */
 const scheduleCache = new Map();
@@ -605,6 +611,25 @@ const pickImage = (images) => {
         }
     }
     return '';
+};
+/** The raw art key of that same picture: a range recording needs it to put the cover on its file. */
+const pickArtKey = (images) => {
+    if (!images || typeof images !== 'object') return '';
+    for (const k of ['tile', 'cover', 'thumbnail', 'logo']) {
+        const v = images[k];
+        if (!v) continue;
+        for (const a of ['aspect_1x1', 'aspect_16x9', 'aspect_5x4']) {
+            const im = v[a] && (v[a].preferredImage || v[a].defaultImage);
+            if (im && im.url) return String(im.url);
+        }
+    }
+    return '';
+};
+/** The show that was on at a song's start: the last one that began at or before it. */
+const showForSong = (at, shows) => {
+    let found = null;
+    for (const x of shows) if (x.at <= at && (!found || x.at > found.at)) found = x;
+    return found;
 };
 async function schedule(channelId) {
     const id = String(channelId || '');
@@ -631,15 +656,22 @@ async function schedule(channelId) {
     j.items = j.items.filter((x) => { const k = `${x.timestamp}|${x.name}`; if (seen.has(k)) return false; seen.add(k); return true; });
     const seenEp = new Set();
     j.episodes = j.episodes.filter((x) => { const k = `${x.startTimestamp}|${x.name}`; if (seenEp.has(k)) return false; seenEp.add(k); return true; });
-    const songs = (Array.isArray(j.items) ? j.items : []).map((x) => ({
-        a: String(x.artistName || ''), t: String(x.name || ''), at: Date.parse(x.timestamp) || 0, dur: Math.round((Number(x.duration) || 0) / 1000), // liveUpdate gives milliseconds
-        ad: !!x.isInterstitial, i: pickImage(x.images) || pickImage(x.artistImages)
-    })).filter((x) => x.at && x.at <= now + 5000).sort((a, b) => b.at - a.at);
-    const shows = (Array.isArray(j.episodes) ? j.episodes : []).map((x) => ({
+    const allShows = (Array.isArray(j.episodes) ? j.episodes : []).map((x) => ({
         name: String(x.name || ''), show: String(x.showName || ''), at: Date.parse(x.startTimestamp) || 0, dur: Math.round((Number(x.duration) || 0) / 1000), // liveUpdate gives milliseconds
         i: pickImage(x.images) || pickImage(x.showImages)
-    })).filter((x) => x.at).sort((a, b) => a.at - b.at)
-        .filter((x) => x.at + x.dur * 1000 > now)
+    })).filter((x) => x.at).sort((a, b) => a.at - b.at);
+    const songs = (Array.isArray(j.items) ? j.items : []).map((x) => {
+        const at = Date.parse(x.timestamp) || 0;
+        const sh = showForSong(at, allShows);
+        return {
+            a: String(x.artistName || ''), t: String(x.name || ''), at, dur: Math.round((Number(x.duration) || 0) / 1000), // liveUpdate gives milliseconds
+            ad: !!x.isInterstitial, i: pickImage(x.images) || pickImage(x.artistImages),
+            ik: pickArtKey(x.images) || pickArtKey(x.artistImages),
+            // the phone's Recently Played names the show, and a hold records this song from the five-hour buffer
+            s: sh ? (sh.show || sh.name) : '', sa: sh ? sh.at : 0, sd: sh ? sh.dur : 0
+        };
+    }).filter((x) => x.at && x.at <= now + 5000).sort((a, b) => b.at - a.at);
+    const shows = allShows.filter((x) => x.at + x.dur * 1000 > now)
         .map((x) => (x.at <= now ? Object.assign(x, { now: true }) : x))
         .slice(0, 8);
     const cur = songs[0] && !songs[0].ad ? songs[0] : null;
@@ -1400,5 +1432,5 @@ module.exports = {
     setPhoneWatch,
     accountFilePath: () => accountFile(),
     imageUrlFor: (key, size) => imageUrl(key, size, 'jpeg', size),
-    _test: { classify, rewritePlaylist, findStreamUrl, jwtExp, maskHandle, upstream, streams, imageUrl, artPath, onlyVariant, state: () => load() }
+    _test: { classify, rewritePlaylist, findStreamUrl, jwtExp, maskHandle, upstream, streams, imageUrl, artPath, onlyVariant, showForSong, state: () => load() }
 };

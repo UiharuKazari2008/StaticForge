@@ -127,5 +127,16 @@ assert.ok(code.length === 48);
     assert.strictEqual(new Date(R.nextStart({ start: '08:00', date: '2026-11-21' }, fri)).getDate(), 21);
 
     assert.strictEqual(R.norm('Beyoncé & JAY-Z'), 'beyonce jay z');
+
+    // Recently Played names the show that was on at the song's start, not the one that came after it
+    const shows = [
+        { at: 100000, name: 'Episode 1', show: 'Morning Show', dur: 1800 },
+        { at: 140000, name: 'Episode 2', show: 'Noon Show', dur: 1800 }
+    ];
+    assert.strictEqual(t.showForSong(101000, shows).show, 'Morning Show');
+    assert.strictEqual(t.showForSong(139000, shows).show, 'Morning Show');
+    assert.strictEqual(t.showForSong(141000, shows).show, 'Noon Show');
+    assert.strictEqual(t.showForSong(50000, shows), null);
+    assert.strictEqual(t.showForSong(141000, shows.map((s) => ({ at: s.at, name: s.name, show: '' }))).name, 'Episode 2');
     console.log('xmradio: ok');
 })().catch((err) => { console.error(err); process.exit(1); });

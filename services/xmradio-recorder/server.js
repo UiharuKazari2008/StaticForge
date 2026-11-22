@@ -16,8 +16,10 @@
  *
  * Socket: a Unix socket beside the account file (.cache/xmradio-recorder.sock, mode 0600: this user only), one JSON
  * object a line.
- *   Dreamscape -> { id, op, args }      ops: auth { token, exp }, deck, start, stop, recordCut, recordChannel, setDeck,
- *                                       setTimers, addAlert, removeAlert, setTerms, tapeRenamed, playlist, ping
+ *   Dreamscape -> { id, op, args }      ops: auth { token, exp }, deck, start, stop, recordCut, recordChannel,
+ *                                       recordRange { channelId, from, to, a, t, s, ik }, queueRemove { id },
+ *                                       queueClear, setDeck, setTimers, addAlert, removeAlert, setTerms,
+ *                                       tapeRenamed, playlist, ping
  *   <- { id, ok: true, result } | { id, ok: false, error: { message, code } }
  *   <- { ev: 'deck', deck }             after every change (pushed; Dreamscape keeps the last one)
  *   <- { ev: 'spool', id }              a finished file is waiting in the spool
@@ -73,6 +75,9 @@ const OPS = {
     stop: (a) => recorder.stop(String((a && a.rid) || '')),
     recordCut: (a) => recorder.recordCut(a.channelId, { fromStart: !!a.fromStart }),
     recordChannel: (a) => recorder.recordChannel(a.channelId, { fromStart: !!a.fromStart }),
+    recordRange: (a) => recorder.recordRange(a.channelId, a || {}),
+    queueRemove: (a) => recorder.queueRemove(String((a && a.id) || '')),
+    queueClear: () => recorder.queueClear(),
     setDeck: (a) => recorder.setDeck(a || {}),
     setTimers: (a) => recorder.setTimers(a && a.timers),
     addAlert: (a) => recorder.addAlert(a || {}),

@@ -88,7 +88,7 @@
     if (!INFO.includes(prefs.info)) prefs.info = 'song';
     if (!prefs.saved || typeof prefs.saved !== 'object') prefs.saved = {};
     // what Today and the program draw from, kept on the phone: { lineup: { at, channels }, presets, now: { id: cut }, rec: [], genres }
-    const cache = Object.assign({ lineup: null, presets: { A: [], B: [], C: [] }, now: {}, rec: [], signedIn: false, genres: {} }, readJson(LS_CACHE, {}));
+    const cache = Object.assign({ lineup: null, presets: { A: [], B: [], C: [] }, now: {}, rec: [], queue: [], signedIn: false, genres: {} }, readJson(LS_CACHE, {}));
     let saveTimer = 0;
     function saveSoon() {
         clearTimeout(saveTimer);
@@ -260,6 +260,7 @@
             else if (k === 'lineup') { if (v && v.at && (!cache.lineup || v.at > (cache.lineup.at || 0))) lineupMoved = true; }
             else if (k === 'guide') { if (v && v.n !== guideN) { guideN = v.n; if (shown && tab === 'channels' && prefs.show === 'guide') void loadGuide(); } }
             else if (k === 'rec') { const was = (cache.rec || []).length; setRecordings(Array.isArray(v) ? v : []); if (cache.rec.length < was) tapes.stale = true; }
+            else if (k === 'queue') setQueue(Array.isArray(v) ? v : []);
             else if (k.startsWith('ch:')) { if (v) cache.now[k.slice(3)] = v; else delete cache.now[k.slice(3)]; }
             // the banks as the server keeps them (stored on any client): Today's pages follow at once
             else if (k === 'presets') { if (v && typeof v === 'object') { cache.presets = Object.assign({ A: [], B: [], C: [] }, v); tellWatch(); } }
@@ -711,6 +712,7 @@
     // ---------------------------------------------------------------- the programme (now, up next, recently played)
 
     const sched = new Map(); // channelId -> { at, data, cutAt }
+    let recentRows = [];    // the Recently Played rows on screen, for their Play / Record context menu
     async function loadSchedule(id, force) {
         if (!id) return;
         const have = sched.get(id);
@@ -815,6 +817,33 @@
         } catch (err) { void box((err && err.message) || 'The recording could not be started.'); }
     }
 
+    /** Recently Played > Record: one tap, no question — the song is queued from the five-hour buffer. */
+    async function recordRecent(id, s) {
+        if (!id || !s || !s.at) return;
+        if (!isAdmin()) { void box('Recording is for the administrator.', 'info'); return; }
+        const to = s.at + Math.max(1, Number(s.dur) || 0) * 1000;
+        try {
+            const r = await ws.busy(ask('xmradio_rec_range', {
+                channelId: id, from: s.at, to, a: s.a, t: s.t, s: s.s || '', ik: s.ik || ''
+            }, 30000), { delay: 200, timeout: 30000 });
+            if (r && Array.isArray(r.queue)) setQueue(r.queue);
+            if (r && r.rid) setRecordings((cache.rec || []).filter((x) => x.rid !== r.rid).concat({ rid: r.rid, channelId: id, kind: 'song', since: Date.now(), back: 0, a: s.a, t: s.t, ad: false }));
+            changed();
+            if (r && r.queued && r.position) void box(`Queued — ${ordinal(r.position)} in line, in expiry order.`, 'info');
+        } catch (err) { void box((err && err.message) || 'The song could not be queued.'); }
+    }
+
+    const ordinal = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th'}`;
+
+    /** Cancel one queued song, or all of them (Recordings > Queued). */
+    async function queueAction(kind, id) {
+        try {
+            const r = await ws.busy(ask(kind === 'clear' ? 'xmradio_queue_clear' : 'xmradio_queue_remove', kind === 'clear' ? {} : { id }, 30000), { delay: 200, timeout: 30000 });
+            if (r && Array.isArray(r.queue)) setQueue(r.queue);
+            changed();
+        } catch (err) { void box((err && err.message) || 'The queue could not be changed.'); }
+    }
+
     async function stopRec(rec) {
         const c = chan(rec.channelId);
         const stop = await ws.messageBox({ title: TITLE, icon: 'question', text: `${chanLabel(c) || 'A channel'} is recording${rec.kind === 'song' ? ' a song' : ''}.\n\nStop the recording? What is recorded so far is saved to the tape.`, buttons: [{ text: 'Stop', value: true }, { text: 'Keep', value: false }] });
@@ -841,6 +870,13 @@
         // monitoring a recording that has ended: the sound goes with it
         if (radio.mode === 'monitor' && radio.state !== 'off' && !cache.rec.some((r) => r.rid === radio.monitorRid)) stopRadio();
         if (JSON.stringify(cache.rec) !== was && ws && typeof ws.refreshStatus === 'function') ws.refreshStatus();
+    }
+
+    /** The recording queue pushed with the phone feed (or returned by a Record / Cancel packet). */
+    function setQueue(list) {
+        const was = JSON.stringify(cache.queue || []);
+        cache.queue = (Array.isArray(list) ? list : []).map((q) => ({ id: q.id, channelId: q.channelId, from: q.from, to: q.to, a: q.a || '', t: q.t || '', s: q.s || '', expiresAt: q.expiresAt, addedAt: q.addedAt }));
+        if (JSON.stringify(cache.queue) !== was) saveSoon();
     }
 
     /**
@@ -877,7 +913,7 @@
     /** Read what records now (the popup opening with no feed joined): the deck as the server has it. */
     async function readRecordings() {
         if (!isAdmin()) return cache.rec || [];
-        try { const d = await ask('xmradio_deck_get', {}, 15000); if (d && d.deck) { setRecordings(d.deck.recordings || []); saveSoon(); } } catch (_) { /* what we had */ }
+        try { const d = await ask('xmradio_deck_get', {}, 15000); if (d && d.deck) { setRecordings(d.deck.recordings || []); setQueue(d.deck.queue || []); saveSoon(); } } catch (_) { /* what we had */ }
         return cache.rec || [];
     }
 
@@ -1132,6 +1168,40 @@
     let tab = 'now'; // now | channels | recordings | deck
     const TABS = [['now', 'Now Playing'], ['channels', 'Channels'], ['recordings', 'Recordings'], ['deck', 'Deck']];
 
+    /** Tap-and-hold (or right click) on a Recently Played row: fn(row, x, y); the click that ends a hold is spent. */
+    function onHold(el, selector, fn) {
+        let timer = null;
+        let start = null;
+        let held = false;
+        const clear = () => { clearTimeout(timer); timer = null; };
+        el.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 && e.pointerType === 'mouse') return;
+            held = false;
+            const row = e.target.closest(selector);
+            if (!row) return;
+            start = { x: e.clientX, y: e.clientY };
+            clear();
+            timer = setTimeout(() => { held = true; fn(row, start.x, start.y); }, (window.wmShell && window.wmShell.holdMs) || 550);
+        });
+        el.addEventListener('pointermove', (e) => { if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) clear(); });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => el.addEventListener(t, clear));
+        el.addEventListener('contextmenu', (e) => {
+            const row = e.target.closest(selector);
+            if (!row) return;
+            e.preventDefault();
+            if (held) return;
+            held = true;
+            clear();
+            fn(row, e.clientX, e.clientY);
+        });
+        el.addEventListener('click', (e) => {
+            if (!held) return;
+            held = false;
+            e.stopPropagation();
+            e.preventDefault();
+        }, true);
+    }
+
     function build() {
         page.innerHTML = `<div class="xrm-pane xrm-now-pane wm-pg-scroll" data-pane="now">
                 <div class="xrm-np">
@@ -1169,6 +1239,17 @@
         };
         mountScreen();
         bindScreen();
+        // Recently Played: tap replays, hold gives Play / Record
+        onHold(els.played, '.xrm-sec-row[data-n]', (row, x, y) => {
+            const s = recentRows[Number(row.dataset.n)];
+            if (!s) return;
+            const id = curId();
+            if (!ws) return;
+            ws.menuAt(x, y, [
+                { label: 'Play', action: () => jumpTo(s.at) },
+                { label: 'Record', disabled: !isAdmin() || !id, action: () => { void recordRecent(id, s); } }
+            ]);
+        });
         // previous / next held: seek (the click that follows is spent)
         let heldKey = false;
         page.addEventListener('pointerdown', (e) => {
@@ -1198,6 +1279,9 @@
             if (row && row.closest('.xrm-list')) { void tune(row.dataset.id); return; }
             const rs = e.target.closest('[data-rstop]');
             if (rs) { const r = (cache.rec || []).find((x) => x.rid === rs.dataset.rstop); if (r) void stopRec(r); return; }
+            const qc = e.target.closest('[data-qcancel]');
+            if (qc) { void queueAction('remove', qc.dataset.qcancel); return; }
+            if (e.target.closest('[data-qclear]')) { void queueAction('clear'); return; }
             const tp = e.target.closest('[data-tape]');
             if (tp) { openTape(tp.dataset.tape); return; }
             const tr = e.target.closest('[data-track]');
@@ -1531,6 +1615,7 @@
             scr({ num: String(radio.track.i + 1), name: `TAPE ${radio.track.tape}`, l2: tst || (parts.length > 1 ? parts[0] : rest), l3: tst ? '' : (parts.length > 1 ? parts.slice(1).join(' - ') : '') });
             els.rec.hidden = true;
             setHtml(els.up, '');
+            recentRows = [];
             const list = radio.track.list.slice(radio.track.i + 1, radio.track.i + 6);
             setHtml(els.played, list.length ? `<div class="xrm-sec-h">Up Next on the Tape</div>${list.map((t) => `<div class="xrm-sec-row"><span class="xrm-sec-t">${esc(t.name.replace(/\.m4a$/i, '').replace(/^\d{4}-\d{2}-\d{2} \d{4} /, ''))}</span><span class="xrm-sec-time">${t.dur ? esc(mmss(t.dur)) : ''}</span></div>`).join('')}` : '');
         } else {
@@ -1561,10 +1646,12 @@
             const shows = (data.shows || []).filter((x) => !x.now).slice(0, 4);
             const onNow = (data.shows || []).find((x) => x.now);
             setHtml(els.up, (onNow || shows.length) ? `<div class="xrm-sec-h">${shows.length ? 'Up Next' : 'On Now'}</div>${onNow ? `<div class="xrm-sec-row is-now"><span class="xrm-sec-time">Now</span><span class="xrm-sec-t">${esc(onNow.show || onNow.name)}</span><span class="xrm-sec-s">until ${esc(clock(onNow.at + onNow.dur * 1000))}</span></div>` : ''}${shows.map((x) => `<div class="xrm-sec-row"><span class="xrm-sec-time">${esc(clock(x.at))}</span><span class="xrm-sec-t">${esc(x.show || x.name)}</span><span class="xrm-sec-s">${esc(x.show && x.name && x.name !== x.show ? x.name : '')}</span></div>`).join('')}` : '');
-            // Recently Played: a tap plays the song from its start (the stream keeps five hours)
+            // Recently Played: a tap plays the song from its start, a hold gives Play / Record; the show that was on is
+            // named beside it (the programme data comes with xmradio_schedule)
             const played = (data.played || []).slice(0, 10);
+            recentRows = played;
             const cur = now && now.at;
-            setHtml(els.played, played.length ? `<div class="xrm-sec-h">Recently Played <span class="xrm-sec-note">tap to play it again</span></div>${played.map((x) => `<div class="xrm-sec-row is-tap${x.at === cur ? ' is-now' : ''}" data-jump="${x.at}">${x.i ? `<span class="xrm-sec-pic"><img src="${esc(x.i)}" alt="" loading="lazy" draggable="false"></span>` : '<span class="xrm-sec-pic is-none"></span>'}<span class="xrm-sec-lines"><span class="xrm-sec-t">${esc(x.t)}</span><span class="xrm-sec-s">${esc(x.a)}</span></span><span class="xrm-sec-time">${esc(clock(x.at))}</span></div>`).join('')}` : '');
+            setHtml(els.played, played.length ? `<div class="xrm-sec-h">Recently Played <span class="xrm-sec-note">tap to play, hold for Play / Record</span></div>${played.map((x, i) => `<div class="xrm-sec-row is-tap${x.at === cur ? ' is-now' : ''}" data-jump="${x.at}" data-n="${i}">${x.i ? `<span class="xrm-sec-pic"><img src="${esc(x.i)}" alt="" loading="lazy" draggable="false"></span>` : '<span class="xrm-sec-pic is-none"></span>'}<span class="xrm-sec-lines"><span class="xrm-sec-t">${esc(x.t)}</span><span class="xrm-sec-s">${esc([x.s, x.a].filter(Boolean).join(' · '))}</span></span><span class="xrm-sec-time">${esc(clock(x.at))}</span></div>`).join('')}` : '');
         }
         setHtml(els.play, playing ? (radio.native ? GLYPH.stop : GLYPH.pause) : GLYPH.play);
         els.keys.hidden = faceView();
@@ -1618,6 +1705,15 @@
         let h = '';
         if (recs.length) {
             h += `<div class="xrm-sec-h">Recording Now</div>${recs.map((r) => { const c = chan(r.channelId); const n = nowOf(r.channelId); return `<div class="xrm-sec-row is-rec"><span class="xrm-recdot">REC</span><span class="xrm-sec-lines"><span class="xrm-sec-t">${esc(chanLabel(c) || 'A channel')}</span><span class="xrm-sec-s">${esc(r.kind === 'song' ? 'This song' : r.kind === 'manual' ? 'Until stopped' : r.kind === 'timer' ? 'Timer' : 'Alert')}${n && !n.ad && n.t ? ` · ${esc(n.t)}` : ''} · since ${esc(clock(r.since))}</span></span><button type="button" class="xrm-sec-btn" data-rstop="${esc(r.rid)}">Stop</button></div>`; }).join('')}`;
+        }
+        const queue = cache.queue || [];
+        if (queue.length) {
+            h += `<div class="xrm-sec-h">Queued <span class="xrm-sec-note">${queue.length} · expiry order</span><button type="button" class="xrm-sec-btn" data-qclear="1">Clear all</button></div>${queue.map((q, i) => {
+                const c = chan(q.channelId);
+                const left = Math.max(0, q.expiresAt - Date.now());
+                const name = [q.a, q.t].filter(Boolean).join(' - ') || chanLabel(c) || 'A song';
+                return `<div class="xrm-sec-row"><span class="xrm-jc-n">${i + 1}.</span><span class="xrm-sec-lines"><span class="xrm-sec-t">${esc(name)}</span><span class="xrm-sec-s">${esc(q.s || '')}${q.s ? ' · ' : ''}buffer expires in ${esc(mmss(Math.round(left / 1000)))}</span></span><button type="button" class="xrm-sec-btn" data-qcancel="${esc(q.id)}">Cancel</button></div>`;
+            }).join('')}`;
         }
         if (tapes.open) {
             const list = tapes.tracks[tapes.open];
