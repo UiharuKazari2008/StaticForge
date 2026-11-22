@@ -130,3 +130,25 @@ Auto-record:
   answers 404.
 
 Test: `node scripts/test-xmradio.js`.
+
+## The recorder service
+
+Recordings run in their own process, pm2 app `xmradio-recorder` (`services/xmradio-recorder/server.js`), so a
+Dreamscape restart never stops one (Yukimi, Nov 21 2026). `./restart` and `./reload` restart Dreamscape only.
+
+- It runs `modules/xmRadioRecorder.js` in its capture role: the pumps, segments, song splitting, scheduled
+  recordings, alerts and search terms, and the state file `.cache/xmradio-recorder.json`.
+- Dreamscape (`modules/xmRadioRecorderClient.js`) talks to it over the Unix socket `.cache/xmradio-recorder.sock`
+  (mode 0600, one JSON object per line). It sends commands and keeps the deck the service pushes after every change.
+  The WebSocket packets above are unchanged.
+- SiriusXM refuses a session started from a second process, so the service never signs in. Dreamscape sends it its
+  access token (op `auth`) when it connects, before each recording starts, and ten minutes before the token expires.
+  The service never writes the account or lineup files.
+- Finished files go to the spool `.cache/xmradio-spool/<id>.m4a` + `.json`. Dreamscape files them onto the tape, at
+  once or when it is back, because it owns the file store.
+- When the service itself restarts, it saves its recordings first. Each one then carries on as the same recording
+  from where it left off: the stream keeps five hours, so the gap is read back.
+- Playlists of a recording in progress list only segments already on disk, and start players three segments behind
+  the edge (`#EXT-X-START`).
+- Recordings are always made at High (256k). The quality a radio chooses only changes what that radio plays.
+

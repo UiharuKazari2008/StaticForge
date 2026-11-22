@@ -1099,3 +1099,6 @@
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] :is(.xr-d-l1, .xr-d-l2) { min-width: 0; overflow: hidden; white-space: nowrap; }
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] .xr-d-name { flex: 1 1 auto; min-width: 0; overflow: hidden; }
 :is(#xmRadioModal, .xrm-lcd) .xr-radio[data-display="dotlcd"] .xr-d-num { flex: 0 0 auto; padding-left: 0.4em; }
+
+/* the Stratus rocker's drawn arrows (desktop SVG.left / right, phone GLYPH.left / right) */
+:is(#xmRadioModal, .xrm-lcd) .xr-st-rocker :is(.xr-arw, .xrm-g) { display: block; width: 0.8em; height: 0.8em; margin: auto; fill: currentColor; }
