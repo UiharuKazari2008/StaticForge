@@ -93,6 +93,26 @@ function directorStatus(status) {
 
 const safe = (fn, fallback) => { try { return fn(); } catch (_e) { return fallback; } };
 
+// the status table the page and the app's task share (public/scripts/tasks/status-order.js), for each waiting notice's
+// holder kind (#1056: the app's "..." holder draws a missed call, a failed print, each car alert... by its own picture).
+// Loaded into a context of its own (the file sets CafeTasks on its global), again when the file changes.
+const STATUS_ORDER_JS = require('path').join(__dirname, '..', 'public', 'scripts', 'tasks', 'status-order.js');
+let statusOrderTbl = null;
+let statusOrderMtime = 0;
+function statusOrder() {
+    const m = safe(() => require('fs').statSync(STATUS_ORDER_JS).mtimeMs, 0);
+    if (statusOrderTbl && m === statusOrderMtime) return statusOrderTbl;
+    statusOrderMtime = m;
+    statusOrderTbl = safe(() => {
+        const vm = require('vm');
+        const ctx = vm.createContext({});
+        vm.runInContext(require('fs').readFileSync(STATUS_ORDER_JS, 'utf8'), ctx, { filename: STATUS_ORDER_JS });
+        return ctx.CafeTasks && ctx.CafeTasks.lib && ctx.CafeTasks.lib.statusOrder;
+    }, null) || statusOrderTbl;
+    return statusOrderTbl;
+}
+const holderKindOf = (n) => safe(() => { const t = statusOrder(); return t && typeof t.holderKind === 'function' ? t.holderKind(n) : ''; }, '') || '';
+
 function inboxCounts(user = 'admin') {
     // waiting: not seen yet, or seen (put away with Hide) within the last day - an old notice already looked at is
     // nothing to show, and the "..." never stands for nothing (Yukimi, Nov 18: Nov 15's fuel reminders kept it up)
@@ -113,7 +133,8 @@ function inboxCounts(user = 'admin') {
         // with the page asleep (rule cafeready-background; Nov 18: a tap on it showed nothing while the app waited for
         // the page to describe them)
         noticeList: rows.filter((n) => !mine(n)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 10)
-            .map((n) => ({ id: n.id, title: n.title || '', text: String(n.text || '').slice(0, 300), cls: n.cls || '', at: n.createdAt || 0 }))
+            // kind: its holder picture's (#1056; the app's tray draws icons[kind], else its class's)
+            .map((n) => ({ id: n.id, title: n.title || '', text: String(n.text || '').slice(0, 300), cls: n.cls || '', kind: holderKindOf(n), at: n.createdAt || 0 }))
     };
 }
 

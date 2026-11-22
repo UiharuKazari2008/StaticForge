@@ -68,6 +68,9 @@
         softkeyExtend: 'wmSoftkeyExtend',
         // ... and status icons never cross the camera in the title bar: they fold into the notification group
         statusNoCross: 'wmStatusNoCross',
+        // how many status icons may go past the camera, cover / main screen (#1057): 'any' or the count
+        statusCrossCover: 'wmStatusCrossCover',
+        statusCrossMain: 'wmStatusCrossMain',
         // ... the sound (volume) icon: 'possible' (only on Vibrate / Off and just after a volume change), '' (steps
         // aside when space is needed), 'never' (always shown); the power (battery) icon: 'home' (only on the home
         // screen), '' (charging steps aside when space is needed), 'never' (always shown) (Yukimi, Nov 17)
@@ -120,6 +123,14 @@
     const WM_FLAG_SRCSET = '/static_images/wm61/start-flag.png 1x, /static_images/wm61/start-flag@2x.png 2x, /static_images/wm61/start-flag@4x.png 4x';
 
     const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+    // Settings > Screen: the status icons that may go past the camera on a screen (#1057, wmShell statusCrossMax): the
+    // count, or null for no limit; unset, the older do-not-cross switch (wmStatusNoCross) is 0
+    const crossPref = (k) => {
+        const raw = lsGet(k);
+        if (raw === null || raw === '') return lsGet('wmStatusNoCross') === '1' ? 0 : null;
+        const n = raw === 'any' ? NaN : Number(raw);
+        return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+    };
     const lsSet = (k, v) => {
         try {
             if (v == null) localStorage.removeItem(k);
@@ -2122,7 +2133,10 @@
                 scale: currentScale(), segoe: lsGet(K.systemFont) === 'segoe', camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
                 extend: lsGet(K.cameraExtend) === '1',
                 softExtend: lsGet(K.softkeyExtend) === '1',
-                noCross: lsGet(K.statusNoCross) === '1',
+                // the icons that may go past the camera (#1057): a count or null (no limit); the older do-not-cross
+                // switch alone is 0 on both screens
+                crossCover: crossPref(K.statusCrossCover),
+                crossMain: crossPref(K.statusCrossMain),
                 soundIcon: lsGet(K.statusSoundIcon) || 'space',
                 powerIcon: lsGet(K.statusPowerIcon) || 'charging',
                 logoOpacity: Math.min(100, Math.max(10, Number(lsGet(K.bezelLogoOpacity)) || 55)),
@@ -2156,7 +2170,9 @@
                         ${d.bars ? check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation) : ''}
                         ${check('wmSoftkeyExtend', 'Extend softkey background under gesture bar', d.softExtend)}
                         ${check('wmCameraExtend', 'Extend Status Bar to edge of Camera', d.extend)}
-                        ${check('wmStatusNoCross', 'Do not allow status icons to cross over camera hole (collapse into notification group)', d.noCross)}
+                        <p>Status icons that may go past the camera hole (the rest collapse into the notification group; 0 = never cross):</p>
+                        <div class="wm-form-row is-wide"><span class="wm-form-label">Cover screen:</span><div data-f="crosscover"></div></div>
+                        <div class="wm-form-row is-wide"><span class="wm-form-label">Main screen:</span><div data-f="crossmain"></div></div>
                         ${check('wmCameraPortraitOnly', 'Only in portrait (a turned phone uses the whole screen)', d.portraitOnly)}
                         <div class="wm-form-gap"></div>
                         <div class="wm-form-sub">Status icons</div>
@@ -2193,6 +2209,10 @@
                         steps: BEZEL_LOGO_SIZES, value: d.logoSize, lo: 'Small', hi: 'Large', label: 'Logo size',
                         onChange: (v) => { d.logoSize = v; }
                     });
+                    // (#1057) the cover screen is a phone's only screen when it does not fold
+                    const crossOpts = (label, key) => ({ value: d[key], min: 0, max: 9, anyLabel: 'No limit', label, onChange: (v) => { d[key] = v; } });
+                    const xcv = ui.numberField(q('[data-f="crosscover"]'), crossOpts('Status icons past the camera, cover screen', 'crossCover'));
+                    const xmn = ui.numberField(q('[data-f="crossmain"]'), crossOpts('Status icons past the camera, main screen', 'crossMain'));
                     const msz = ui.trackbar(q('[data-f="modelsize"]'), {
                         steps: BEZEL_MODEL_SIZES, value: d.modelSize, lo: 'Small', hi: 'Large', label: 'Text size',
                         onChange: (v) => { d.modelSize = v; }
@@ -2202,7 +2222,8 @@
                     const sync = () => {
                         const off = !!(d.bars && !d.bars.hideStatus);
                         el.querySelectorAll('input[name="wmCameraPortraitOnly"]').forEach((i) => { i.disabled = off; });
-                        el.querySelectorAll('input[name="wmCameraExtend"], input[name="wmStatusNoCross"]').forEach((i) => { i.disabled = off || d.camera === 'bezel'; });
+                        el.querySelectorAll('input[name="wmCameraExtend"]').forEach((i) => { i.disabled = off || d.camera === 'bezel'; });
+                        [xcv, xmn].forEach((x) => x.setDisabled(off || d.camera === 'bezel'));
                         // only while the gesture bar shows (hidden, there is nothing under it to cover)
                         el.querySelectorAll('input[name="wmSoftkeyExtend"]').forEach((i) => { i.disabled = !!(d.bars && d.bars.hideNavigation); });
                         drawBezelPreview(q('.wm-setb-preview'), modeNow(), d);
@@ -2216,7 +2237,6 @@
                     if (d.bars) bind('wmHideNavigation', (v) => { d.bars.hideNavigation = v; });
                     bind('wmCameraExtend', (v) => { d.extend = v; });
                     bind('wmSoftkeyExtend', (v) => { d.softExtend = v; });
-                    bind('wmStatusNoCross', (v) => { d.noCross = v; });
                     ui.bindCombo(q('[data-act="soundicon"]'), STATUS_SOUND, d.soundIcon, (v) => { d.soundIcon = v; });
                     ui.bindCombo(q('[data-act="powericon"]'), STATUS_POWER, d.powerIcon, (v) => { d.powerIcon = v; });
                     ui.bindCombo(q('[data-act="topmode"]'), MODES, modeNow(), (v) => {
@@ -2319,10 +2339,13 @@
                     const want = v === def ? null : v;
                     if ((lsGet(k) || null) !== want) { lsSet(k, want); keys.push(k); }
                 }
-                if (d.noCross !== (lsGet(K.statusNoCross) === '1')) {
-                    lsSet(K.statusNoCross, d.noCross ? '1' : null);
-                    keys.push(K.statusNoCross);
+                // (#1057) the two counts replace the do-not-cross switch: written as they are now ('any' = no limit), the
+                // switch's key goes once they hold its meaning
+                for (const [k, v] of [[K.statusCrossCover, d.crossCover], [K.statusCrossMain, d.crossMain]]) {
+                    const want = v === null || v === undefined ? 'any' : String(v);
+                    if (lsGet(k) !== want) { lsSet(k, want); keys.push(k); }
                 }
+                if (lsGet(K.statusNoCross) !== null && lsGet(K.statusNoCross) !== undefined) { lsSet(K.statusNoCross, null); keys.push(K.statusNoCross); }
                 if (d.softExtend !== (lsGet(K.softkeyExtend) === '1')) {
                     lsSet(K.softkeyExtend, d.softExtend ? '1' : null);
                     applySoftkeyExtend();
@@ -3266,6 +3289,73 @@
                 queueMicrotask(() => { if (at && !pop.hidden) pop.scrollTop = at.offsetTop; });
             });
             return { get: () => cur, set: (v) => { cur = Math.max(0, Math.min(1439, Math.round(Number(v) || 0))); input.value = ui.timeText(cur); }, input };
+        },
+        /**
+         * A number with the up-down buttons (an edit box with its msctls_updown32 buddy, as WM's settings pages step a
+         * count; the time field's box and buttons), rendered into `host`: the up and down buttons and the arrow keys step
+         * it from min to max (no wrap, a held button repeats), a digit types it. anyLabel: one more step past max that
+         * stands for no limit (value null). opts: value, min, max, anyLabel, label, onChange(value), disabled. Returns
+         * { get, set, setDisabled }.
+         */
+        numberField(host, { value = 0, min = 0, max = 9, anyLabel = '', label = 'Number', onChange, disabled = false } = {}) {
+            host.insertAdjacentHTML('beforeend', `<div class="wm-timefield wm-numfield" role="spinbutton" aria-label="${escUi(label)}" aria-valuemin="${min}" aria-valuemax="${max}"${disabled ? ' aria-disabled="true"' : ' tabindex="0"'}>
+                    <span class="wm-timefield-text"><span class="wm-timefield-part is-active"></span></span>
+                    <span class="wm-spin"><button type="button" data-dir="1" aria-label="Up" tabindex="-1"></button><button type="button" data-dir="-1" aria-label="Down" tabindex="-1"></button></span>
+                </div>`);
+            const all = host.querySelectorAll('.wm-numfield');
+            const box = all[all.length - 1];
+            const part = box.querySelector('.wm-timefield-part');
+            // the steps: min..max, then (anyLabel) no limit as one past max
+            const top = anyLabel ? max + 1 : max;
+            const idx = (v) => (v === null || v === undefined ? (anyLabel ? top : max) : Math.max(min, Math.min(max, Math.round(Number(v) || 0))));
+            let cur = idx(value);
+            let off = !!disabled;
+            const val = () => (anyLabel && cur === top ? null : cur);
+            const show = () => {
+                part.textContent = anyLabel && cur === top ? anyLabel : String(cur);
+                box.setAttribute('aria-valuetext', part.textContent);
+                box.classList.toggle('is-disabled', off);
+                box.querySelectorAll('.wm-spin button').forEach((b) => { b.disabled = off || (Number(b.dataset.dir) > 0 ? cur >= top : cur <= min); });
+            };
+            const put = (i) => {
+                const was = cur;
+                cur = Math.max(min, Math.min(top, i));
+                show();
+                if (was !== cur && onChange) onChange(val());
+            };
+            show();
+            let rep = 0;
+            const stop = () => { clearTimeout(rep); rep = 0; };
+            box.querySelectorAll('.wm-spin button').forEach((b) => {
+                b.addEventListener('pointerdown', (e) => {
+                    if (e.button > 0 || off) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    box.focus({ preventScroll: true });
+                    const dir = Number(b.dataset.dir);
+                    put(cur + dir);
+                    stop();
+                    const again = () => { put(cur + dir); rep = setTimeout(again, 90); };
+                    rep = setTimeout(again, 600);
+                });
+                ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => b.addEventListener(t, stop));
+                b.addEventListener('click', (e) => e.stopPropagation());
+                b.addEventListener('focus', () => box.focus({ preventScroll: true }));
+            });
+            box.addEventListener('blur', stop);
+            box.addEventListener('keydown', (e) => {
+                if (off) return;
+                if (e.key === 'ArrowUp') put(cur + 1);
+                else if (e.key === 'ArrowDown') put(cur - 1);
+                else if (/^\d$/.test(e.key) && Number(e.key) >= min && Number(e.key) <= max) put(Number(e.key));
+                else return;
+                e.preventDefault();
+            });
+            return {
+                get: val,
+                set: (v) => { cur = idx(v); show(); },
+                setDisabled: (d) => { off = !!d; if (off) box.removeAttribute('tabindex'); else box.setAttribute('tabindex', '0'); box.toggleAttribute('aria-disabled', off); show(); }
+            };
         },
         /**
          * Time control with the spin buttons rendered into `host` (SysDateTimePick32 + msctls_updown32:

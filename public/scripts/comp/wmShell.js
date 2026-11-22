@@ -565,11 +565,15 @@
         const base = tbl && typeof tbl.holderArt === 'function' ? tbl.holderArt(name) : null;
         return base ? `image-set(url("/static_images/${base}.png") 1x, url("/static_images/${base}@2x.png") 2x, url("/static_images/${base}@4x.png") 4x)` : '';
     };
-    /** A notice's kind in the table (status-order.js noteKind): its holder picture. */
+    /**
+     * A notice's holder picture: its notification kind's (#1056, status-order.js holderKind: a server notice brings it as
+     * appNote's holder), else its glyph's role, else its kind in the table (noteKind).
+     */
     const noteHolderArt = (n) => {
-        if (isUpdateNote(n)) return holderArt('update');
+        if (isUpdateNote(n)) return holderArt(updateFailure(n) ? 'update-failed' : 'update');
         const own = n && appNotes.get(n.id);
         const tbl = statusTable();
+        if (own && own.holder && holderArt(own.holder)) return holderArt(own.holder);
         if (own && own.icon && holderArt(own.icon)) return holderArt(own.icon);
         const kind = tbl && tbl.noteKind ? tbl.noteKind(n) : 'notify';
         return holderArt(kind !== 'notify' ? kind : (n && NOTE_KIND_ICON[n.type] ? n.type : 'notify')) || holderArt('notify');
@@ -4467,7 +4471,12 @@
         if (typeof ab.statusPrefs === 'function') {
             // nativeOrder: the table's left-to-right order (status-order.js) for the roles the app draws itself (#907)
             const tbl = statusTable();
-            const pj = JSON.stringify({ sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon'), noCross: statusIconPref('wmStatusNoCross') === '1',
+            // cross: the icons that may go past the camera on the cover / main screen (#1057; -1 = no limit), for the app's
+            // task fit; noCross for an older app (its screen's count is 0)
+            const xc = statusCrossMax(false);
+            const xm = statusCrossMax(true);
+            const pj = JSON.stringify({ sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon'), noCross: statusCrossMax(unfoldedScreen()) === 0,
+                crossCover: xc === null ? -1 : xc, crossMain: xm === null ? -1 : xm,
                 nativeOrder: tbl ? tbl.display.filter((r) => BARS_NATIVE_ROLES.has(r) || r === 'volume' || r === 'bluetooth') : undefined });
             if (pj !== barsPrefsSent) { barsPrefsSent = pj; try { ab.statusPrefs(pj); } catch (_) { /* older app */ } }
         }
@@ -4650,7 +4659,7 @@
             (window.screen && screen.orientation && screen.orientation.angle) || 0]; // a half turn changes no size
         const st = root.style;
         ['--camera-hole-left', '--camera-hole-top', '--camera-hole-width', '--camera-hole-height', '--wm-safe-top'].forEach((n) => parts.push(st.getPropertyValue(n)));
-        try { parts.push(localStorage.getItem('wmStatusNoCross'), localStorage.getItem('wmStatusSlots'), localStorage.getItem('wmCameraExtendBar'), localStorage.getItem('wmStatusSoundIcon'), localStorage.getItem('wmStatusPowerIcon')); } catch (_) { /* storage off */ }
+        try { parts.push(localStorage.getItem('wmStatusNoCross'), localStorage.getItem('wmStatusCrossCover'), localStorage.getItem('wmStatusCrossMain'), localStorage.getItem('wmStatusSlots'), localStorage.getItem('wmCameraExtendBar'), localStorage.getItem('wmStatusSoundIcon'), localStorage.getItem('wmStatusPowerIcon')); } catch (_) { /* storage off */ }
         for (const c of bar.children) {
             // the icons' own wm-shed is the fit's output, not its input
             parts.push(c.className, c.hidden ? 1 : 0, c.classList.contains('wm-title') ? c.textContent : '');
@@ -4985,8 +4994,8 @@
         }
         // Settings > Screen > Bezel > Do not allow status icons to cross over camera hole: the icons
         // stay right of it; what does not fit folds into the notification group (fitStatusNow)
-        let noCross = false;
-        try { noCross = localStorage.getItem('wmStatusNoCross') === '1'; } catch (_) { /* storage off */ }
+        // (#1057: a count of 0 for this screen)
+        const noCross = statusCrossMax(unfoldedScreen()) === 0;
         if (!left) {
             left = document.createElement('div');
             left.className = 'wm-status-left';
@@ -5103,6 +5112,22 @@
     }
 
     /**
+     * Settings > Screen > Bezel: how many status icons may go past (left of) the camera on the cover screen (a phone that
+     * does not fold: its only screen) or the main (inner) screen (Yukimi, Nov 22 #1057): a count (0 = never cross), or
+     * null for no limit. wmStatusCrossCover / wmStatusCrossMain hold 'any' or the count; without them the older
+     * "Do not allow status icons to cross over camera hole" switch (wmStatusNoCross) is 0 on both.
+     */
+    function statusCrossMax(main) {
+        let v = null;
+        try {
+            const raw = localStorage.getItem(main ? 'wmStatusCrossMain' : 'wmStatusCrossCover');
+            if (raw != null && raw !== '') v = raw === 'any' ? null : Number(raw);
+            else if (localStorage.getItem('wmStatusNoCross') === '1') v = 0;
+        } catch (_) { v = null; }
+        return Number.isFinite(v) && v >= 0 ? Math.floor(v) : null;
+    }
+
+    /**
      * The status fit measured once (#907, Yukimi Nov 18 "go ahead"): the old fit stepped - each icon that stepped
      * aside or folded laid the page out again (up to ten forced layouts, 350-500 ms on the A53 while Today's
      * entrance ran after a return). Here every icon is measured once with all of them out, the shared rules
@@ -5171,8 +5196,8 @@
             xReserve = Math.max(0, padNow - (parseFloat(getComputedStyle(status).paddingRight) || 0));
             bar.classList.remove('wm-status-full');
         }
-        let noCross = false;
-        try { noCross = localStorage.getItem('wmStatusNoCross') === '1'; } catch (_) { /* storage off */ }
+        // Settings > Screen: how many icons may go past the camera on this screen (#1057; 0 = the old do-not-cross)
+        const crossMax = statusCrossMax(unfoldedScreen());
         const input = {
             icons,
             // the "..." shows by itself for the page's notices and for those waiting on the server (the status task's
@@ -5181,7 +5206,7 @@
             notify: { w: unitW || 16 * rootPx(), notes: notifyShowsAlone() },
             bar: { width: br.width, iconsRight, gap, titleX, titleMin, hole, xReserve },
             prefs: { sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon') },
-            screen: { unfolded: unfoldedScreen(), noCross }
+            screen: { unfolded: unfoldedScreen(), noCross: crossMax === 0, crossMax }
         };
         const r = fitLib.fit(input);
         statusFitLast = { at: Date.now(), input, result: r };
@@ -5223,7 +5248,7 @@
         const act = bar.querySelector('.wm-title-action');
         const rs = root.style;
         let ls = '';
-        try { ls = ['wmStatusSoundIcon', 'wmStatusPowerIcon', 'wmStatusNoCross', 'wmStatusSlots', 'wmCameraExtendBar'].map((k) => localStorage.getItem(k) || '').join(','); } catch (_) { /* storage off */ }
+        try { ls = ['wmStatusSoundIcon', 'wmStatusPowerIcon', 'wmStatusNoCross', 'wmStatusCrossCover', 'wmStatusCrossMain', 'wmStatusSlots', 'wmCameraExtendBar'].map((k) => localStorage.getItem(k) || '').join(','); } catch (_) { /* storage off */ }
         const angle = window.screen && screen.orientation ? screen.orientation.angle : 0;
         // (barsStage lays the bars out for the app's screen: the shell's own width and the staged density)
         return [parts.join(' '), act ? `${act.hidden ? 0 : 1}${act.dataset.kind || ''}` : '-', window.innerWidth, window.innerHeight, angle, shell.style.width, iconDensity,
@@ -7518,7 +7543,8 @@
     const appNotes = new Map(); // toast id -> { icon, softKeys }
     function appNote(opts = {}) {
         if (typeof window.showGlassToast !== 'function') return null;
-        const st = { icon: opts.icon || null, softKeys: opts.softKeys || null, actions: opts.actions || null, event: opts.event || null, silent: !!opts.silent };
+        // holder: the notification's kind for its picture in 6.5's holder / 6.5.1's drawer (#1056, status-order.js holderKinds)
+        const st = { icon: opts.icon || null, holder: opts.holder || null, softKeys: opts.softKeys || null, actions: opts.actions || null, event: opts.event || null, silent: !!opts.silent };
         const bar = opts.progress != null && opts.progress !== false;
         let id = null;
         try {

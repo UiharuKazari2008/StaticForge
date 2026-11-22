@@ -101,6 +101,11 @@
         return ICON_BY_CLASS[notice.cls] || 'status-notify-many';
     }
 
+    function holderFor(notice) {
+        const tbl = window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder;
+        return tbl && typeof tbl.holderKind === 'function' ? tbl.holderKind(notice) : null;
+    }
+
     // ---- reminders (#876) ----------------------------------------------------------------------
 
     const isReminder = (n) => !!n && n.cls === 'reminder' && /^rem:/.test(String(n.id || ''));
@@ -163,6 +168,8 @@
             // the hidden mark keeps two reminders of the same minute and subject two notifications ("1 of 2")
             html: `<span class="wm-alarm651-note"><b>${esc(subject)}</b>${more.map((l) => `<br>${esc(l)}`).join('')}<span hidden>${esc(notice.id)}</span></span>`,
             icon: 'status-reminder',
+            // a meeting, an appointment or a task: each by its own picture in the holder (#1056)
+            holder: holderFor(notice),
             event: 'reminder',
             silent: !!opts.quiet,
             softKeys: () => ({
@@ -222,6 +229,8 @@
             title: notice.title,
             html: esc(notice.text || '').replace(/\n/g, '<br>'),
             icon: iconFor(notice),
+            // its kind's own picture in the holder (#1056): a sync error, a missed call, a meeting... not its app's icon
+            holder: holderFor(notice),
             event: notice.cls || 'notification',
             // asked for (the notification icon's tap): shown without its sound - it is no news
             silent: !!opts.quiet,

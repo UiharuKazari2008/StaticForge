@@ -124,4 +124,43 @@ for (const n of [4, 9, 15]) {
 // unfolded: nothing steps aside or folds, overflow crosses
 r = fit({ icons: [ic('carkey'), ic('sms'), ic('mail'), ic('chat'), ic('wxalert'), ic('rain'), ic('received')].concat(sys), notify: null, bar: appBar, prefs: {}, screen: { unfolded: true } });
 assert.ok(!r.folded.length && !r.shed.length && r.left.length > 0, 'unfolded carries on left of the camera');
+// #1057 (Yukimi, Nov 22): how many icons may go past (left of) the camera, the cover and the main screen apart; 0 = the
+// old "do not cross" switch, a count lets that many cross (the "..." counts), past it the icons fold
+for (const notes of [false, true]) {
+    const base = { icons: coverIcons, notify: { w: 24, notes }, bar: cover, prefs: {} };
+    const any = fit(Object.assign({}, base, { screen: {} }));
+    const zero = fit(Object.assign({}, base, { screen: { crossMax: 0 } }));
+    const old = fit(Object.assign({}, base, { screen: { noCross: true } }));
+    assert.deepStrictEqual(zero, old, `cover notes=${notes}: a count of 0 is the old switch`);
+    assert.deepStrictEqual(fit(Object.assign({}, base, { screen: { crossMax: null } })), any, 'no count: no limit');
+    for (const n of [0, 1, 2, 3, 6]) {
+        const input = Object.assign({}, base, { screen: { crossMax: n } });
+        r = fit(input);
+        console.log(`Fold cover, ${n} past the camera, notices ${notes}:`, JSON.stringify(r.left), 'folded', JSON.stringify(r.folded));
+        assert.ok(r.left.length <= n, `cover: at most ${n} left of the camera (${r.left})`);
+        if (n >= any.left.length) assert.deepStrictEqual(r, any, `cover: a limit of ${n} above what crosses changes nothing`);
+        else assert.ok(r.folded.length + r.shed.length > any.folded.length + any.shed.length, `cover: under the limit of ${n} more folds`);
+        rowClear(`cover limit ${n} notes=${notes}`, input, r);
+    }
+}
+// the main (inner) screen: nothing folds without a limit; with one, what would go past it folds
+for (const n of [0, 2, 4]) {
+    for (const notes of [false, true]) {
+        const input = { icons: many.map((x) => c24(x)), notify: { w: 24, notes }, bar: inner, prefs: {}, screen: { unfolded: true, crossMax: n } };
+        r = fit(input);
+        console.log(`inner, ${n} past the camera, notices ${notes}:`, JSON.stringify(r.left), 'folded', JSON.stringify(r.folded));
+        assert.ok(r.left.length <= n, `inner: at most ${n} left of the camera (${r.left})`);
+        assert.ok(r.folded.length > 0, 'inner: past the limit the icons fold');
+        assert.ok(r.groupShown, 'inner: into the "..."');
+    }
+}
+// the kit's device px with a limit (the native copy's input): never on the camera
+for (const n of [0, 1, 2]) {
+    const input = { icons: ['carkey', 'rain', 'mail', 'sms', 'continuity', 'data', 'signal', 'volume', 'battery'].map(k54), notify: { w: 54, notes: true }, bar: kitCover, prefs: {}, screen: { crossMax: n } };
+    r = fit(input);
+    assert.ok(r.left.length <= n);
+    rowClear(`cover kit limit ${n}`, input, r);
+}
+assert.strictEqual(global.CafeTasks.lib.statusFit.crossLimit('3'), 3);
+assert.strictEqual(global.CafeTasks.lib.statusFit.crossLimit(-1), null, '-1 (the app\'s "any") is no limit');
 console.log('status fit: all checks passed');

@@ -162,6 +162,8 @@ function parseIcs(text) {
             case 'UID': cur.uid = value; break;
             case 'SUMMARY': cur.summary = icsUnescape(value); break;
             case 'LOCATION': cur.location = icsUnescape(value); break;
+            // invited people: a meeting (its reminder's picture in the phone's notification holder, #1056)
+            case 'ATTENDEE': case 'ORGANIZER': cur.meeting = true; break;
             case 'DTSTART': { const p = parseIcsDate(value, params); if (p) { cur.start = p.date; cur.allDay = p.allDay; } break; }
             case 'DTEND': { const p = parseIcsDate(value, params); if (p) cur.end = p.date; break; }
             case 'DURATION': cur.duration = durationMinutes(value) * -60000; break;
@@ -354,7 +356,7 @@ function computeReminders(files, from, to) {
                         title: `${clock(new Date(at))} | Reminder`,
                         text: lines.join('\n'),
                         actions: ['dismiss', 'snooze'],
-                        data: Object.assign({ app: 'calendar', kind: 'reminder', uid: ev.uid, start: o.start.getTime(), end: o.end.getTime(), allDay: !!ev.allDay, subject, when, location: ev.location || '' }, base),
+                        data: Object.assign({ app: 'calendar', kind: 'reminder', uid: ev.uid, start: o.start.getTime(), end: o.end.getTime(), allDay: !!ev.allDay, subject, when, location: ev.location || '', meeting: !!ev.meeting }, base),
                         expiresAt: Math.max(o.end.getTime(), at + HOUR),
                     },
                 });
