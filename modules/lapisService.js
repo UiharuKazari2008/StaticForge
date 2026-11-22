@@ -1266,7 +1266,9 @@ async function tick() {
 
 function startScheduler() {
     if (sched.timer) return;
-    dropRepeatNotices();
+    // once the sockets are up and the phones are back on their links, so they hear the clears (inbox.cleared)
+    const tidy = setTimeout(dropRepeatNotices, 60 * 1000);
+    if (tidy.unref) tidy.unref();
     sched.nextPollAt = nowFn() + 20 * 1000;
     sched.timer = setInterval(() => {
         tick().catch((e) => console.warn(`[lapis] tick: ${e.message}`));
