@@ -155,6 +155,57 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(answerHashedAsset(event, request, url, `${url.origin}${url.pathname}?sha=${sha}`));
 });
 
+// ActiveSync direct link (#1006, public/scripts/comp/activeSyncDirectLink.js, docs/activesync-direct-link.md): a page
+// with a live LAN link to a phone gets that phone's file bodies (/api/activesync/file/<device>/...) from the link. The
+// worker asks the page over a MessageChannel; the page acknowledges at once when it has the link, then hands over the
+// phone's head and a transferable stream. No acknowledgement within 250 ms, a "no" or a phone error: the network, as
+// before. Only pages that said they hold a link are asked, so no other request waits.
+const ASLINK_PREFIX = '/api/activesync/file/';
+const ASLINK_ACK_MS = 250;
+const ASLINK_HEAD_MS = 30000;
+const aslinkLive = new Map(); // window client id -> Set of device ids with a live link
+self.addEventListener('message', (event) => {
+  const d = event.data;
+  if (!d || d.type !== 'aslink-live' || !event.source || !event.source.id) return;
+  const set = new Set(Array.isArray(d.devices) ? d.devices.filter((x) => typeof x === 'string') : []);
+  if (set.size) aslinkLive.set(event.source.id, set); else aslinkLive.delete(event.source.id);
+});
+// a worker that started again knows no links: the pages say again
+self.clients.matchAll({ type: 'window' }).then((list) => list.forEach((c) => { try { c.postMessage({ type: 'aslink-query' }); } catch (_err) { /* gone */ } })).catch(() => {});
+
+async function aslinkFromPage(clientId, request) {
+  const client = await self.clients.get(clientId);
+  if (!client) return fetch(request);
+  const answer = await new Promise((resolve) => {
+    const ch = new MessageChannel();
+    let timer = setTimeout(() => resolve(null), ASLINK_ACK_MS);
+    ch.port1.onmessage = (e) => {
+      const m = e.data || {};
+      clearTimeout(timer);
+      if (m.ack) { timer = setTimeout(() => resolve(null), ASLINK_HEAD_MS); return; }
+      resolve(m);
+    };
+    client.postMessage({ type: 'aslink-get', url: request.url, range: request.headers.get('range') }, [ch.port2]);
+  });
+  if (!answer || !answer.ok || !answer.body) return fetch(request);
+  return new Response(answer.body, { status: answer.status || 200, headers: answer.headers || {} });
+}
+
+self.addEventListener('fetch', (event) => {
+  if (!aslinkLive.size) return;
+  const request = event.request;
+  if (request.method !== 'GET' || !event.clientId) return;
+  const set = aslinkLive.get(event.clientId);
+  if (!set) return;
+  let url;
+  try { url = new URL(request.url); } catch (_err) { return; }
+  if (url.origin !== self.location.origin || !url.pathname.startsWith(ASLINK_PREFIX)) return;
+  const deviceId = url.pathname.slice(ASLINK_PREFIX.length).split('/')[0];
+  if (!set.has(deviceId)) return;
+  event.stopImmediatePropagation();
+  event.respondWith(aslinkFromPage(event.clientId, request).catch(() => fetch(request)));
+});
+
 // Compile-time: auto-apply CSS-only / apply-safe static cache updates without restart prompt
 const CSS_ONLY_AUTO_APPLY = true;
 const SW_SCRIPT_EPOCH = 13; // bump on breaking SW changes
@@ -3233,6 +3284,17 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
 
         // Reset download state
         downloadState = freshDownloadState();
+
+        // The Dreamscape app on the phone (#1022): the kept /app follows the cache as soon as a download brought scripts
+        // or styles, whichever window asked for it (the phone page, the DeX window, the background updater). The phone's
+        // restart goes at once (#1014) and its own commit lost the race against the cold boot: the start ran the old
+        // /app against the newer cache, owed a restart for it, and every update took two restarts. Only a complete
+        // candidate is kept (promoteShell), so an unfinished set changes nothing. DreamOS commits at its shutdown install.
+        if (/Android/i.test((self.navigator && self.navigator.userAgent) || '')
+            && updatedFiles.some((f) => /\.(?:js|css)$/i.test(String((f && f.url) || f).split('?')[0]))) {
+          const kept = await commitShells(true, 8000).catch(() => null);
+          console.log('[update] the kept /app follows the download:', kept);
+        }
     } catch (error) {
         // Check if error is due to abort
         if (error.name === 'AbortError') {
