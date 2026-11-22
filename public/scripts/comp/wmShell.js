@@ -1109,7 +1109,8 @@
     }
 
     // ---- Melaton Bars (#871): popups over an Android program (the app draws copies of them)
-    const POPUP_SEL = '.wm-notify-scrim, .wm-bubble, .wm-volume, .wm-notify-tray, .wm-notify, .wm-popup, .wm-msgbox-layer';
+    // (.wm651-drawer: 6.5.1's status drawer, the notification holder, #1026)
+    const POPUP_SEL = '.wm-notify-scrim, .wm-bubble, .wm-volume, .wm-notify-tray, .wm651-drawer, .wm-notify, .wm-popup, .wm-msgbox-layer';
     /** Opens what a tap on the bar's `role` opens here (an icon's bubble, the notification group's tray). */
     function barsPopupOpen(role) {
         if (!shell) return false;
@@ -1142,6 +1143,7 @@
         // (a redraw: the volume box's Output list keeps its state for the next press on the copy)
         closeVolume(true);
         if (noteTrayOpen) { noteTrayOpen = false; renderNotes(); }
+        d651Close();
         syncScrim();
     }
     /** The wait cursor as it would show: its strip file, frames, frame time and box (CSS px). */
@@ -8810,7 +8812,8 @@
         add(z651 ? 'Zoom out' : 'Zoom in', d651Rom(z651 ? 'zoom-out' : 'zoom-in'), () => { if (z651) z651Stop(); else z651Start(); });
         const settingsPage = (id, tab) => { const st = window.wmSettings; return !!(st && typeof st.open === 'function' && st.open(id, tab)); };
         let phone = false;
-        shell.querySelectorAll('.wm-status > .wm-status-icon').forEach((b) => {
+        // (those carried on left of the camera too: they sit in .wm-status-left, before the others, #1025)
+        shell.querySelectorAll('.wm-titlebar :is(.wm-status-left, .wm-status) > .wm-status-icon').forEach((b) => {
             if (b.hidden) return;
             const role = b.dataset.role;
             // the group icon stands for its own notifications here: what is folded into it has an item of its own
@@ -13879,7 +13882,7 @@
 
     /**
      * Programs whose scripts load when first opened (#817 slice 2). Each entry carries only what the
-     * Start menu and Programs show (title, startLabel, icon, art65, inStart, programsFolder); the
+     * Start menu and Programs show (title, startLabel, icon, art65, icon65 (a Program Icons set's 6.5 Start icon), inStart, programsFolder); the
      * script's own registerApp replaces it. Only programs nothing else calls into at boot belong here
      * (no window.* used by other files, no Today items, applets or handoffs registered at load).
      * Their scripts are out of app.html; keep a new program's fields in step with its registerApp.
@@ -14175,7 +14178,7 @@
         openedApps: () => openedApps.slice(),
         /** An app's page, made (mounted) without bringing the app up. */
         pageOf: (id) => (apps.has(id) ? pageFor(apps.get(id)) : null),
-        listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart, sip: !!a.sip, programsFolder: a.programsFolder || null, art65: a.art65 || null, hold: typeof a.holdMenu === 'function' })),
+        listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart, sip: !!a.sip, programsFolder: a.programsFolder || null, art65: a.art65 || null, icon65: a.icon65 || null, hold: typeof a.holdMenu === 'function' })),
         /** Another program stands in for a system app (fn starts it), or null for our own (#776). */
         replaceApp: (id, fn) => { if (typeof fn === 'function') replacements.set(id, fn); else replacements.delete(id); },
         /** The rows an app gives its icon's tap-and-hold menu (registerApp holdMenu(); the Android programs, #773). */

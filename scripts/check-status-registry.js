@@ -22,6 +22,14 @@ roles.forEach((r) => {
     // a popup must build from empty inputs (a fresh install, nothing sent yet)
     else if (!global.CafeTasks.lib.statusPopups.build(r, {}, {}, new Date())) missing.push(`${r}: popup fails on empty inputs`);
 });
+// the notification holder (#1026): every role and notice kind has its large colour picture, all three sizes on disk
+const fs = require('fs');
+const img = path.join(__dirname, '..', 'public', 'static_images');
+new Set([...roles, ...Object.keys(tbl.glyphs)]).forEach((r) => {
+    const base = tbl.holderArt && tbl.holderArt(r);
+    if (!base) { missing.push(`${r}: no holder picture`); return; }
+    ['', '@2x', '@4x'].forEach((d) => { if (!fs.existsSync(path.join(img, `${base}${d}.png`))) missing.push(`${r}: ${base}${d}.png missing`); });
+});
 if (missing.length) {
     console.error(`status registry: incomplete (rule status-icons-registered-only):\n  ${missing.join('\n  ')}`);
     process.exit(1);

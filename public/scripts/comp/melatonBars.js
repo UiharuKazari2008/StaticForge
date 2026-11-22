@@ -493,7 +493,7 @@
                     const kinds = Object.keys(TRAY_KINDS);
                     tray.innerHTML = kinds.map((k) => `<button type="button" class="wm-notify-tray-icon" data-kind="${k}"></button>`).join('');
                     // 6.5: the "..." is 6.5.1's notification holder (#1026): the large colour pictures (status-order.js holder)
-                    const h65 = document.documentElement.dataset.wmVersion === '6.5' && typeof sh.holderArt === 'function';
+                    const h65 = sh.version === '6.5' && typeof sh.holderArt === 'function';
                     const artOf = (name) => (h65 && sh.holderArt(name)) || sh.statusArt(name);
                     tray.querySelectorAll('button').forEach((b) => { b.style.backgroundImage = artOf(TRAY_KINDS[b.dataset.kind]); });
                     settle([tray]);
