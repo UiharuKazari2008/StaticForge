@@ -1437,10 +1437,14 @@
     function pressSoftKey(side, btn) {
         // a box that came up since the keys were drawn (the poll below has not caught it yet)
         if (modalUp()) { if (!lastModal) renderSoftKeys(); return; }
+        // the key that opened a menu closes it (#1013): check this before reading the key. A bar copy
+        // staged for Melaton Bars only writes the key's *label* ("Menu"), so softKeys[side] still holds
+        // the app's old key (Today's Camera): a second tap then ran that action instead of closing the
+        // copy, and the menu stayed up over the program.
+        if (openPopup && openPopup.dataset.side === side) { closeMenus(); return; }
         const key = softKeys[side];
         if (!key || key.disabled) return;
         if (key.menu) {
-            if (openPopup && openPopup.dataset.side === side) { closeMenus(); return; }
             showPopup(side, typeof key.menu === 'function' ? key.menu() : key.menu, btn);
             return;
         }
@@ -2286,8 +2290,12 @@
         };
     }
 
-    function stagePlay(before, id, page, firstMount) {
+    function stagePlay(before, id, page, firstMount, opts) {
         if (!before || !before.app || before.app === id || root.dataset.wmBoot !== 'done' || viewerActive || document.hidden || switchCoverFor) return;
+        // a home swipe's mask covers the screen: Today must be painted now, not after ~200 ms of the staged hand-over
+        // (which holds the old app's page on screen - the few frames of the last Dreamscape app the recording showed).
+        // There is nothing to stage under the mask: the bars are away and the entrance starts when the mask goes.
+        if (opts && opts.mask) return;
         try { if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (_) { /* staged */ }
         const T = STAGE_TICK;
         const titleEl = shell.querySelector('.wm-title');
@@ -2358,7 +2366,7 @@
         }
     }
 
-    function activate(id) {
+    function activate(id, opts) {
         const app = apps.get(id);
         if (!app) return;
         // a lazy program reached without open() (the back history after a restart): load it, then show it
@@ -2401,7 +2409,7 @@
             if (before && before.app === 'start' && id !== 'today' && id !== 'start' && !firstMount) { root.dataset.wmBar = 'glass'; glassTitle = titleText; }
             else if (!(before && before.app === id)) delete root.dataset.wmBar; // the same program again (a Settings page opening) keeps it
         }
-        stagePlay(before, id, page, firstMount);
+        stagePlay(before, id, page, firstMount, opts);
     }
 
     // programs that cannot do anything without the server (offline check on #794: they hung, showed
@@ -2463,7 +2471,7 @@
         const at = stack.indexOf(id);
         if (at >= 0) stack.length = at;
         stack.push(id);
-        activate(id);
+        activate(id, opts);
         syncHistory();
     }
 
@@ -13318,7 +13326,9 @@
         // back with its entrance (wmTitanium.js, #800)
         // (the press itself blinks the page hidden for a moment: wmTitanium tells that from a return)
         const wasToday = current === 'today';
-        if (current !== 'today') open('today');
+        // under the home mask Today's page goes straight up: stagePlay would hold the app we are leaving on screen
+        // for ~200 ms (visible only here, while the page is awake), which showed through as the mask went
+        if (current !== 'today') open('today', { mask: masked });
         const t = apps.get('today');
         const page = t && t.page;
         if (page) {
