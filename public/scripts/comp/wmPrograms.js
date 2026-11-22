@@ -1098,6 +1098,9 @@
     const BARS_CORNERS = [['close', 'X goes Home'], ['ok', 'ok goes Back']];
     const BARS_SOFT_RIGHT = [['menu', 'Menu'], ['home', 'Home'], ['recents', 'Recent'], ['start', 'Start'], ['notifications', 'Notification'], ['none', '(none)']];
     // the Menu soft key's rows (Settings > Menus > Soft Key Menu)
+    // how short a swipe up from the bottom edge goes Home (DSApp config homeSense, #1013; Yukimi, Nov 22: "allow adjusting
+    // the sensitivty of going home"). High is the app's own since Nov 18 (28 dp, or a 12 dp flick)
+    const BARS_HOME_SENSE = [['highest', 'Highest'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']];
     const SOFT_MENU_ITEMS = [['taskmanager', 'Task Manager'], ['notifications', 'All Notifications'], ['quicksettings', 'Quick Settings'], ['maximize', 'Maximize'], ['minimize', 'Minimize'], ['close', 'Close']];
 
     function renderBarsTab(el, d) {
@@ -1112,6 +1115,7 @@
                 keyguardClear: !!c0.keyguardClear,
                 // the title bar solid black over every program, never see-through (#1013)
                 barBlack: !!c0.barBlack,
+                homeSense: BARS_HOME_SENSE.some(([k]) => k === c0.homeSense) ? c0.homeSense : 'high',
                 cutAnimations: !!c0.cutAnimations,
                 lockScreen: !!c0.lockScreen,
                 lockPhoneWall: !!c0.lockPhoneWall,
@@ -1139,6 +1143,7 @@
             ${check('wmBarsSoft', 'Use the soft key bar in Android programs', cfg.softkeys)}
             <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>
             ${check('wmBarsRoom', 'Make room for the soft key bar (gesture navigation: swipe up on the bar for Home, in from a side for Back)', cfg.room)}
+            <div class="wm-form-row is-wide"><span class="wm-form-label">Home swipe sensitivity:</span>${ui.comboHtml('barshomesense', label(BARS_HOME_SENSE, cfg.homeSense))}</div>
             ${check('wmBarsLandCover', 'Hide Softkey bar in landscape (Cover Screen only), swipe up to show', cfg.hideLandCover)}
             ${check('wmBarsKeyguardClear', 'Transparent Statusbar at keyguard', cfg.keyguardClear)}
             ${check('wmBarsBlack', 'Black Statusbar (always black behind the icons, never see-through)', cfg.barBlack)}
@@ -1156,6 +1161,8 @@
             if (r) r.disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsRoom"]').disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsLandCover"]').disabled = !cfg.enabled || !cfg.softkeys;
+            const hs = q('[data-act="barshomesense"]');
+            if (hs) hs.disabled = !cfg.enabled;
             q('input[name="wmBarsKeyguardClear"]').disabled = !cfg.enabled;
             q('input[name="wmBarsBlack"]').disabled = !cfg.enabled;
             q('input[name="wmBarsPullShade"]').disabled = !cfg.enabled;
@@ -1178,6 +1185,7 @@
         bind('wmBarsVolume', (v) => { cfg.volumePopup = v; });
         ui.bindCombo(q('[data-act="barscorner"]'), BARS_CORNERS, cfg.corner, (v) => { cfg.corner = v; });
         ui.bindCombo(q('[data-act="barsright"]'), BARS_SOFT_RIGHT, cfg.softRight, (v) => { cfg.softRight = v; });
+        ui.bindCombo(q('[data-act="barshomesense"]'), BARS_HOME_SENSE, cfg.homeSense, (v) => { cfg.homeSense = v; });
         sync();
     }
 
