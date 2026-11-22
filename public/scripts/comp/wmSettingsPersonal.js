@@ -585,7 +585,11 @@
     const QA = () => (window.AndroidQuickAccess && typeof window.AndroidQuickAccess.config === 'function' ? window.AndroidQuickAccess : null);
     const qaRead = (fn) => { try { return JSON.parse(QA()[fn]()); } catch (_) { return null; } };
     const QA_EDGES = [['right', 'Right'], ['left', 'Left']];
-    const QA_TOPS = [[0.12, 'Top'], [0.25, 'Upper'], [0.4, 'Middle'], [0.55, 'Lower'], [0.7, 'Bottom']];
+    // the zone's place (Yukimi, Nov 22 2026: "a position adjustment slider with radio button for top or bottom aligned. It
+    // shows it as you adjust it"): its top or its bottom edge, in twentieths of the screen; the app shows the tab there
+    const QA_POS = Array.from({ length: 21 }, (_, i) => i);
+    const qaPreview = (q) => { try { if (typeof QA().previewTab === 'function') QA().previewTab(q.zoneTop, q.zoneHeight, q.side); } catch (_) { /* older app */ } };
+    const qaClampTop = (q, t) => Math.max(0, Math.min(1 - q.zoneHeight, t));
     const QA_SIZES = [[0.15, 'Small'], [0.3, 'Medium'], [0.45, 'Large']];
     const QA_LAYOUTS = [['strip1', 'Sidebar strip, 1 column'], ['strip2', 'Sidebar strip, 2 columns'], ['wide', 'Wide panel']];
     const near = (list, v) => list.reduce((a, b) => (Math.abs(b[0] - v) < Math.abs(a[0] - v) ? b : a));
@@ -605,8 +609,10 @@
         const layout = q.layout === 'wide' ? 'wide' : Number(q.columns) === 2 ? 'strip2' : 'strip1';
         el.innerHTML = `${ui.check('qa-on', 'Swipe from the screen\'s edge for Quick Access', q.enabled, 'data-k="enabled"')}
             ${ui.row('Edge:', ui.comboHtml('qa-edge', (QA_EDGES.find(([v]) => v === q.side) || QA_EDGES[0])[1], !q.enabled), { wide: true })}
-            ${ui.row('Position:', ui.comboHtml('qa-top', near(QA_TOPS, q.zoneTop)[1], !q.enabled), { wide: true })}
             ${ui.row('Size:', ui.comboHtml('qa-size', near(QA_SIZES, q.zoneHeight)[1], !q.enabled), { wide: true })}
+            ${ui.sub('Position')}
+            <div class="wmsp-radios">${ui.radio('qa-anchor', 'top', 'Top aligned', q.anchor !== 'bottom', q.enabled ? '' : 'disabled')}${ui.radio('qa-anchor', 'bottom', 'Bottom aligned', q.anchor === 'bottom', q.enabled ? '' : 'disabled')}</div>
+            <div data-f="qa-pos"></div>
             ${ui.row('Show as:', ui.comboHtml('qa-layout', QA_LAYOUTS.find(([v]) => v === layout)[1], !q.enabled), { wide: true })}
             ${ui.sub('Controls')}
             ${ui.listbox(rows, { maxHeight: 150 })}
@@ -614,9 +620,20 @@
             ${ui.note('Tick a control to put it in Quick Access; select one to move it. Other programs\' quick settings tiles are listed too.')}`;
         const on = el.querySelector('input[data-k="enabled"]');
         if (on) on.addEventListener('change', () => { q.enabled = on.checked; api.rerender(); });
-        ui.bindCombo(el.querySelector('[data-act="qa-edge"]'), QA_EDGES, q.side, (v) => { q.side = v; });
-        ui.bindCombo(el.querySelector('[data-act="qa-top"]'), QA_TOPS, near(QA_TOPS, q.zoneTop)[0], (v) => { q.zoneTop = v; });
-        ui.bindCombo(el.querySelector('[data-act="qa-size"]'), QA_SIZES, near(QA_SIZES, q.zoneHeight)[0], (v) => { q.zoneHeight = v; });
+        ui.bindCombo(el.querySelector('[data-act="qa-edge"]'), QA_EDGES, q.side, (v) => { q.side = v; qaPreview(q); });
+        // a new size keeps the aligned edge where it is
+        ui.bindCombo(el.querySelector('[data-act="qa-size"]'), QA_SIZES, near(QA_SIZES, q.zoneHeight)[0], (v) => {
+            const bottom = q.zoneTop + q.zoneHeight;
+            q.zoneHeight = v;
+            q.zoneTop = qaClampTop(q, q.anchor === 'bottom' ? bottom - v : q.zoneTop);
+            qaPreview(q);
+        });
+        el.querySelectorAll('input[name="qa-anchor"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) { q.anchor = r.value; api.rerender(); } }));
+        const edgeNow = q.anchor === 'bottom' ? q.zoneTop + q.zoneHeight : q.zoneTop;
+        ui.trackbar(el.querySelector('[data-f="qa-pos"]'), {
+            steps: QA_POS, value: Math.round(edgeNow * 20), lo: 'Top', hi: 'Bottom', label: 'Quick Access position', disabled: !q.enabled,
+            onChange: (n) => { q.zoneTop = qaClampTop(q, q.anchor === 'bottom' ? n / 20 - q.zoneHeight : n / 20); qaPreview(q); }
+        });
         ui.bindCombo(el.querySelector('[data-act="qa-layout"]'), QA_LAYOUTS, layout, (v) => { q.layout = v === 'wide' ? 'wide' : 'strip'; q.columns = v === 'strip2' ? 2 : 1; });
         ui.bindListbox(el.querySelector('.wm-listbox'), (key) => { d.qaSel = key; api.rerender(); }, (key, checked) => {
             q.items = checked ? q.items.filter((x) => x !== key).concat([key]) : q.items.filter((x) => x !== key);
@@ -642,7 +659,7 @@
         init() {
             const v = KEYS().get();
             const c = QA() ? qaRead('config') : null;
-            const qa = c ? { enabled: !!c.enabled, side: c.side || 'right', zoneTop: Number(c.zoneTop) || 0.35, zoneHeight: Number(c.zoneHeight) || 0.3, layout: c.layout || 'strip', columns: Number(c.columns) || 1, items: (c.items || []).slice() } : null;
+            const qa = c ? { enabled: !!c.enabled, side: c.side || 'right', anchor: c.anchor === 'bottom' ? 'bottom' : 'top', zoneTop: Number(c.zoneTop) || 0.35, zoneHeight: Number(c.zoneHeight) || 0.3, layout: c.layout || 'strip', columns: Number(c.columns) || 1, items: (c.items || []).slice() } : null;
             // the soft key bar's centre button held (#1013, Yukimi Nov 22: "open the current app as freeform or split view
             // (config in buttons settins)"): the app's Bars config holdAction
             let hold = 'freeform';
