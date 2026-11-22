@@ -4483,6 +4483,21 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
     line-height: 1.25;
     letter-spacing: calc(0.5 * var(--wm-px));
 }
+/* the Connectivity bubble's data type (#1016): LTE / NR in the P2P tag's frame, its + / A / UWB / UW outside, beside it */
+.wm-net-type { display: inline-flex; align-items: baseline; gap: calc(1 * var(--wm-px)); white-space: nowrap; }
+.wm-net-type > b { font-weight: bold; }
+.wm-net-badge {
+    display: inline-block;
+    padding: 0 calc(2 * var(--wm-px));
+    border: var(--wm-px) solid currentColor;
+    border-radius: calc(2 * var(--wm-px));
+    font-weight: bold;
+    font-size: 0.82em;
+    line-height: 1.25;
+}
+/* a connected Bluetooth device's battery (#1016): a 1-bit cell filled to the level, the percent after it */
+.wm-bt-batt { display: inline-flex; align-items: center; gap: calc(3 * var(--wm-px)); white-space: nowrap; }
+.wm-bt-batt > .wm-bit-glyph { width: calc(16 * var(--wm-px)); height: calc(8 * var(--wm-px)); flex: none; }
 /* the VPN row's time connected, bold as the other rows' values (Yukimi, Nov 14) */
 .wm-vpn-time { font-weight: bold; white-space: nowrap; }
 /* XM Radio recording's popup (#1020): the tape with its reels turning (its strip, only while the popup is up) beside

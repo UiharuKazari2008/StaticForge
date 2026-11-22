@@ -5107,6 +5107,16 @@
      * "5G" or the 3GPP type, as the user set the status bar): 5G / 5G+ / 5G UW with the 5G indicator on, else the
      * 3GPP name (NR, NR-A, UWB, NR UW, 4G or LTE as chosen, HSPA+ ...).
      */
+    /**
+     * The data type for the Connectivity bubble (#1016, Yukimi): LTE and NR in a drawn badge, their + / A / UWB / UW
+     * outside it, next to it ([LTE]+, [NR]A, [NR]UWB); every other type in bold words as badgeName gives it.
+     */
+    function typeBadgeHtml(type) {
+        const k = typeIcon(type);
+        const parts = { lte: ['LTE', ''], 'lte-plus': ['LTE', '+'], nr: ['NR', ''], 'nr-a': ['NR', 'A'], uw: ['NR', 'UWB'], 'nr-uw': ['NR', 'UW'] }[k];
+        if (!parts) return `<b>${escapeHtml(badgeName(type))}</b>`;
+        return `<span class="wm-net-type" aria-label="${escapeHtml(badgeName(type))}"><span class="wm-net-badge">${parts[0]}</span>${parts[1] ? `<b>${parts[1]}</b>` : ''}</span>`;
+    }
     function badgeName(type) {
         const k = typeIcon(type);
         return { g: 'GPRS', e: 'EDGE', '3g': '3G', h: 'HSPA', 'h-plus': 'HSPA+', '4g': '4G', '4g-plus': '4G+', lte: 'LTE', 'lte-plus': 'LTE+',
@@ -5171,7 +5181,42 @@
         if (bubble && !bubble.hidden && bubble.dataset.role === 'battery') paintBrightness();
     }
 
+    // ---- the connected Bluetooth devices and their batteries (#1016) ----
+    //
+    // window.AndroidBluetooth (DSApp BluetoothControl, #772): getState().devices with connected and battery (0-100, Android's
+    // own reading from the headset); read once, then the app's 'dreamscape:bluetooth' pushes (a connect, a battery change).
+    // The Bluetooth bubble lists every connected device, the Connectivity bubble the first three.
+    let btNow = null;
+    let btRead = false;
+    function btConnected() {
+        if (!btRead) {
+            btRead = true;
+            const b = window.AndroidBluetooth;
+            if (b && typeof b.getState === 'function') { try { btNow = JSON.parse(b.getState()); } catch (_) { btNow = null; } }
+        }
+        if (!btNow || !btNow.on || !Array.isArray(btNow.devices)) return null;
+        // audio first (headphones, speakers, the car), then the rest, each in the app's (name) order
+        const list = btNow.devices.filter((d) => d && d.connected);
+        return list.filter((d) => d.kind === 'audio').concat(list.filter((d) => d.kind !== 'audio'));
+    }
+    function takeBluetooth(d) {
+        if (typeof d === 'string') { try { d = JSON.parse(d); } catch (_) { d = null; } }
+        if (!d || typeof d !== 'object') return;
+        btNow = d;
+        btRead = true;
+        const b = shell && shell.querySelector('.wm-bubble');
+        if (b && !b.hidden && (b.dataset.role === 'bluetooth' || b.dataset.role === 'data')) statusBubble(b.dataset.role, shell.querySelector(`.wm-status-icon[data-role="${b.dataset.role}"]`), true);
+    }
+    /** A device's row: its name, its battery at the right (a 1-bit cell filled to the level, and the percent). */
+    function btDeviceRow(d) {
+        const name = escapeHtml(d.name || d.address || 'Bluetooth device');
+        const lv = Number.isFinite(d.battery) ? Math.max(0, Math.min(100, Math.round(d.battery))) : null;
+        const cell = lv == null ? '' : `<span class="wm-bt-batt"><svg class="wm-bit-glyph" viewBox="0 0 24 12" shape-rendering="crispEdges" aria-hidden="true"><rect x="0.75" y="0.75" width="20" height="10.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path fill="currentColor" d="M21.5 3.5h2v5h-2z"/><rect x="2.5" y="2.5" width="${(16.5 * lv / 100).toFixed(2)}" height="7" fill="currentColor"/></svg>${lv}%</span>`;
+        return `<div class="wm-bubble-pair"><span>${name}</span>${cell ? `<span class="wm-bubble-right">${cell}</span>` : ''}</div>`;
+    }
+
     function watchDevice() {
+        window.addEventListener('dreamscape:bluetooth', (e) => takeBluetooth(e && e.detail), { signal: appScopeSignal });
         window.addEventListener('dreamscape:radios', (e) => takeRadios((e && e.detail) || readRadios()));
         takeRadios(readRadios());
         window.addEventListener('androiddevicestatus', (e) => takeDeviceStatus(e && e.detail));
@@ -7350,7 +7395,23 @@
     /** The outputs media can play on (audioDevices.js), as the desktop's tray menu lists them; not the earpiece (calls only). */
     function mediaOutputs() {
         const A = window.melatonAudioDevices;
-        try { return A.list('playback').filter((d) => d.state === 'working' && (d.isDefault || d.canSetDefault)); } catch (_) { return []; }
+        let list;
+        try { list = A.list('playback').filter((d) => d.state === 'working' && (d.isDefault || d.canSetDefault)); } catch (_) { return []; }
+        // one row per device, as One UI's panel (#1016, Yukimi: three rows for one headset): Android lists a Bluetooth
+        // headset once per profile (media, calls, LE Audio) and Media output adds its route. The calls-only link (SCO)
+        // is no place for media; of the rest the one playing now, else the one Android can route to, else A2DP stays.
+        const BT = /^(bluetooth_|ble_|hearing_aid)/;
+        const rank = (d) => (d.isDefault ? 0 : 4) + (d.routeId ? 0 : 2) + (/^(bluetooth_a2dp|ble_headset|ble_speaker|hearing_aid)$/.test(d.type || '') ? 0 : 1);
+        const best = new Map();
+        list.forEach((d) => {
+            if (d.platform !== 'android' || !BT.test(d.type || '')) { best.set(d.id, d); return; }
+            if (d.type === 'bluetooth_sco' && !d.isDefault) return;
+            const key = `bt|${String(d.description || d.name || '').toLowerCase()}`;
+            const cur = best.get(key);
+            if (!cur || rank(d) < rank(cur)) best.set(key, d);
+        });
+        const keep = new Set(best.values());
+        return list.filter((d) => keep.has(d));
     }
 
     /** An output's name as One UI's panel gives it: another device by its own name ("Galaxy Buds2 Pro", "NexDock", "Living
@@ -7665,6 +7726,9 @@
                 const bst = !rdo.bluetooth ? 'Power Off' : rdo.bluetoothConnected === true ? 'Connected' : 'On';
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Bluetooth: ${bst}</span></div>` });
             }
+            // the connected Bluetooth devices with their batteries, three at most (#1016)
+            const btDevs = rdo && rdo.bluetooth ? btConnected() : null;
+            if (btDevs && btDevs.length) sections.push({ html: btDevs.slice(0, 3).map(btDeviceRow).join('') });
             // Wi-Fi as Mobile Broadband (Yukimi, Nov 14): "Wi-Fi: <network / Connected / Disconnected /
             // Power Off>", its signal as bars (1-4) at the right
             const w = dev.wifi;
@@ -7687,7 +7751,7 @@
                 const lv = noService || lv5 == null ? null : Math.max(0, Math.min(5, Math.round(lv5)));
                 // the radio's own type, also while Wi-Fi carries the data (dev.type is the active link's)
                 const rt = dev.type || (typeof c.dataType === 'string' ? c.dataType : null);
-                const right = `${!noService && rt ? `<b>${pe(badgeName(rt))}</b>` : ''}${signalBars(lv, 5)}`;
+                const right = `${!noService && rt ? typeBadgeHtml(rt) : ''}${signalBars(lv, 5)}`;
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: ${state}</span>${right ? `<span class="wm-bubble-right">${right}</span>` : ''}</div>` });
             }
             if (dev.link && dev.active !== 'wifi' && dev.active !== 'cellular') sections.push(`${dev.link.text}`);
@@ -7800,8 +7864,11 @@
         } else if (role === 'bluetooth') {
             const rd = radiosNow || readRadios() || {};
             const lines = [rd.bluetooth ? 'Bluetooth: On' : 'Bluetooth: Off'];
-            if (rd.bluetooth && rd.bluetoothConnected === true) lines.push('A device is connected.');
-            else if (rd.bluetooth && rd.bluetoothConnected === false) lines.push('No device is connected.');
+            // the connected devices by name, each with its battery (#1016); without the app's device list, the old line
+            const devs = rd.bluetooth ? btConnected() : null;
+            if (devs && devs.length) lines.push({ html: devs.map(btDeviceRow).join('') });
+            else if (rd.bluetooth && rd.bluetoothConnected === true) lines.push('A device is connected.');
+            else if (rd.bluetooth && (rd.bluetoothConnected === false || (devs && !devs.length))) lines.push('No device is connected.');
             lines.push({ links: [{ label: 'Wireless Manager', action: openWirelessManager }] });
             bubble({ title: 'Bluetooth', role, anchor, sections: lines, footLinks: [{ label: 'Settings', action: openBluetoothSettings }], buttons: [{ text: 'Hide' }] });
         } else if (role === 'battery') {
