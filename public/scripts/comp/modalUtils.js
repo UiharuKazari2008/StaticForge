@@ -109,7 +109,13 @@ const FOCUS_GRACE_PERIOD = 200; // Don't change active window for 200ms after re
 let modalTrueInsetProbeEl = null;
 let cachedModalTrueInsetTop = null;
 let modalTrueInsetCacheValid = false;
-let modalTrueInsetInvalidateScheduled = false;
+/** The inline --titlebar-area-height the cached inset was read with */
+let modalTrueInsetCacheTitlebar = null;
+let modalTrueInsetCacheAt = 0;
+// the installed PWA's Window Controls Overlay moves env(titlebar-area-height) without a resize
+try {
+    navigator.windowControlsOverlay?.addEventListener('geometrychange', () => { modalTrueInsetCacheValid = false; });
+} catch (_) { /* no overlay API */ }
 
 /** Active drag/resize session — avoids per-mousemove querySelector + DOM attribute parsing */
 let activeModalInteraction = null;
@@ -1546,19 +1552,22 @@ function getModalTrueInsetTop() {
     if (activeModalInteraction && Number.isFinite(activeModalInteraction.trueInsetTop)) {
         return activeModalInteraction.trueInsetTop;
     }
-    if (modalTrueInsetCacheValid && cachedModalTrueInsetTop != null) {
+    // --true-inset-top is max(--titlebar-area-height, env(safe-area-inset-top)): the first is an inline property
+    // windowControlsOverlay.js writes (read here without a layout), the second changes only with the window (resize,
+    // which drops the cache). The probe's offsetTop is a full-page layout: it was read again every frame, 81 forced
+    // layouts in 86 keystrokes of Studio typing (#1048)
+    const titlebarHeight = document.documentElement.style.getPropertyValue('--titlebar-area-height');
+    // (a phone's safe area can also move without a resize: the reading is kept 2 s at most)
+    const now = performance.now();
+    if (modalTrueInsetCacheValid && cachedModalTrueInsetTop != null && modalTrueInsetCacheTitlebar === titlebarHeight
+        && now - modalTrueInsetCacheAt < 2000) {
         return cachedModalTrueInsetTop;
     }
     const trueInsetTop = getModalTrueInsetProbe().offsetTop || 0;
     cachedModalTrueInsetTop = trueInsetTop;
+    modalTrueInsetCacheTitlebar = titlebarHeight;
+    modalTrueInsetCacheAt = now;
     modalTrueInsetCacheValid = true;
-    if (!modalTrueInsetInvalidateScheduled) {
-        modalTrueInsetInvalidateScheduled = true;
-        requestAnimationFrame(() => {
-            modalTrueInsetInvalidateScheduled = false;
-            modalTrueInsetCacheValid = false;
-        });
-    }
     return trueInsetTop;
 }
 

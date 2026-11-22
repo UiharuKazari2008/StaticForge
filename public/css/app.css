@@ -4670,7 +4670,9 @@ button::-moz-focus-inner {
     transition: var(--transition-prompt-tab-layout);
 }
 
-/* Token Info Container and Progress Bars */
+/* Token Info Container and Progress Bars
+   The bars step to their new width without a transition: they change on every keystroke, and each
+   0.2 s width transition laid the page out again on every frame it ran (four bars, #1048) */
 .token-info-container {
     display: flex;
     flex-direction: column;
@@ -4707,7 +4709,6 @@ button::-moz-focus-inner {
     display: flex;
     flex-direction: row;
     flex-wrap: nowrap;
-    transition: width 0.2s ease;
     min-width: 2px;
 }
 
@@ -4715,7 +4716,6 @@ button::-moz-focus-inner {
     height: 100%;
     flex-shrink: 0;
     background: rgba(200, 160, 80, 0.55);
-    transition: width 0.2s ease;
     min-width: 0;
 }
 
@@ -4723,7 +4723,6 @@ button::-moz-focus-inner {
     height: 100%;
     flex-shrink: 0;
     background: var(--btn-hover-bg-secondary);
-    transition: width 0.2s ease;
     min-width: 0;
 }
 

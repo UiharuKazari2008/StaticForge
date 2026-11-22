@@ -1095,8 +1095,23 @@ function updateAutofillSearchHighlight(textarea, mode, scroll = null) {
     const before = text.substring(0, start);
     const match = text.substring(start, end);
     const after = text.substring(end);
-    // escapeHtml: public/scripts/comp/utilities.js
-    highlightOverlay.innerHTML = `${escapeHtml(before)}<span class="autofill-search-highlight ${modeClass}">${escapeHtml(match)}</span>${escapeHtml(after)}`;
+    // the text, the word and the rest as three text nodes, rewritten in place on each keystroke: a new set of
+    // nodes per keystroke made every scroller above the prompt re-measure (their MutationObservers, #1048)
+    const nodes = highlightOverlay.childNodes;
+    const span = nodes.length === 3 ? nodes[1] : null;
+    if (span && span.nodeType === 1 && span.classList.contains('autofill-search-highlight') && nodes[0].nodeType === 3
+        && nodes[2].nodeType === 3 && span.childNodes.length === 1 && span.firstChild.nodeType === 3) {
+        if (nodes[0].data !== before) nodes[0].data = before;
+        if (span.firstChild.data !== match) span.firstChild.data = match;
+        if (nodes[2].data !== after) nodes[2].data = after;
+        const cls = `autofill-search-highlight ${modeClass}`;
+        if (span.className !== cls) span.className = cls;
+    } else {
+        const mark = document.createElement('span');
+        mark.className = `autofill-search-highlight ${modeClass}`;
+        mark.textContent = match;
+        highlightOverlay.replaceChildren(document.createTextNode(before), mark, document.createTextNode(after));
+    }
     syncScroll();
     remember();
 }

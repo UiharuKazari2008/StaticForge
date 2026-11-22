@@ -307,7 +307,14 @@ function updateEmphasisHighlighting(textarea) {
     emphasisHighlightValueCache.set(textarea, paintSig);
 
     if (!promptNeedsFullSyntaxHighlight(paintValue)) {
-        overlay.textContent = paintValue;
+        // plain text: the one text node is rewritten in place (a new node per keystroke made every scroller above
+        // the prompt re-measure through its MutationObserver, #1048)
+        const only = overlay.childNodes.length === 1 ? overlay.firstChild : null;
+        if (only && only.nodeType === 3) {
+            if (only.data !== paintValue) only.data = paintValue;
+        } else {
+            overlay.textContent = paintValue;
+        }
     } else {
         // resolveEmphasisBagForTextarea: public/scripts/comp/emphasisGroupIdCodec.js
         const bag = typeof resolveEmphasisBagForTextarea === 'function'
