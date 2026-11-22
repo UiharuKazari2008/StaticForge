@@ -920,6 +920,13 @@
             const b = el.getBoundingClientRect();
             const r = radii(cs);
             const clip = [R(b.left), R(b.top), R(b.width), R(b.height), r];
+            // signal bars the app draws from its own reading (wmShell signalBars data-live="sig:<cell|wifi>:<n>"): their box,
+            // colour and the count lit now, nothing of their own parts
+            if (lv && lv.startsWith('sig:')) {
+                const on = el.querySelectorAll('.is-on').length;
+                out.push({ k: 'sig', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), color: rgba(cs.color, alpha), on, lv });
+                return;
+            }
             // a drawing (inline SVG): sent as a picture of itself
             if (typeof SVGSVGElement !== 'undefined' && el instanceof SVGSVGElement) {
                 const url = svgPicture(el, Math.round(b.width * dpr), Math.round(b.height * dpr), cs.color);

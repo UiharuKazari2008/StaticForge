@@ -8189,9 +8189,11 @@
 
     /** Four signal bars for a bubble row (level 0-4; null = none). */
     // n bars: 4 for Wi-Fi (Android's 0-4), 5 for the mobile network (the radio's dBm in 5 steps, Yukimi Nov 16)
-    function signalBars(lv, n = 4) {
+    // live (Yukimi, Nov 22: "inconsistencies in the reporting of the signal level"): 'cell' | 'wifi' - the app's copy of the
+    // bubble draws these bars from its own reading while the page sleeps behind a program (melatonBars layoutOf 'sig')
+    function signalBars(lv, n = 4, live = '') {
         if (lv == null) return '';
-        return `<span class="wm-bars" role="img" aria-label="Signal ${lv} of ${n}">${Array.from({ length: n }, (_, i) => `<i class="${i + 1 <= lv ? 'is-on' : ''}" style="height:${(100 * (i + 1)) / n}%"></i>`).join('')}</span>`;
+        return `<span class="wm-bars" role="img"${live ? ` data-live="sig:${live}:${n}"` : ''} aria-label="Signal ${lv} of ${n}">${Array.from({ length: n }, (_, i) => `<i class="${i + 1 <= lv ? 'is-on' : ''}" style="height:${(100 * (i + 1)) / n}%"></i>`).join('')}</span>`;
     }
 
     /**
@@ -8277,7 +8279,7 @@
                 const on = w.enabled !== false;
                 const state = !on ? 'Power Off' : w.connected ? (dev.wifiName || 'Connected') : 'Disconnected';
                 const lv = on && w.connected && Number.isFinite(w.level) ? Math.max(0, Math.min(4, Math.round(w.level))) : null;
-                const barsHtml = signalBars(lv);
+                const barsHtml = signalBars(lv, 4, 'wifi');
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Wi-Fi: ${pe(state)}</span>${barsHtml}</div>` });
             }
             // the mobile network as WM's Connection Manager names it (Yukimi, Nov 14): Connected while it
@@ -8287,12 +8289,14 @@
             if (c && c.present !== false) {
                 const noService = c.radioOn === false || dev.airplane || c.simState === 'absent' || c.simState === 'locked' || c.searching === true || (Number.isFinite(c.level5) ? c.level5 : c.level) === 0;
                 const state = noService ? 'Suspended' : c.dataEnabled === false ? 'Disconnected' : dev.active === 'cellular' || c.dataActive ? 'Connected' : 'Available';
-                // the bars Android draws (level5; Android's 0-4 when the carrier does not inflate it)
-                const lv5 = Number.isFinite(c.level5) ? c.level5 : Number.isFinite(c.level) ? c.level : null;
-                const lv = noService || lv5 == null ? null : Math.max(0, Math.min(5, Math.round(lv5)));
+                // the title bar's own count (Yukimi, Nov 22: the icon showed 2 of 4 where this showed 3 of 5): Android's bars
+                // (level5) on WM's 4 bars as the icon maps them, never 0 while in service
+                const lv5 = Number.isFinite(c.level5) ? c.level5 : null;
+                const lv4 = lv5 != null ? (lv5 <= 0 ? 0 : Math.max(1, Math.round((lv5 * 4) / 5))) : Number.isFinite(c.level) ? Math.max(0, Math.min(4, Math.round(c.level))) : null;
+                const lv = noService || lv4 == null ? null : lv4;
                 // the radio's own type, also while Wi-Fi carries the data (dev.type is the active link's)
                 const rt = dev.type || (typeof c.dataType === 'string' ? c.dataType : null);
-                const right = `${!noService && rt ? typeBadgeHtml(rt) : ''}${signalBars(lv, 5)}`;
+                const right = `${!noService && rt ? typeBadgeHtml(rt) : ''}${signalBars(lv, 4, 'cell')}`;
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: ${state}</span>${right ? `<span class="wm-bubble-right">${right}</span>` : ''}</div>` });
             }
             if (dev.link && dev.active !== 'wifi' && dev.active !== 'cellular') sections.push(`${dev.link.text}`);
