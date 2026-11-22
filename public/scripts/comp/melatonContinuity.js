@@ -1366,7 +1366,9 @@
     // attachment); the app says when its display goes ({type:"dex-display", state:"removed"}). The phone
     // window's glyph: none without a DeX window; half opacity while it boots (presence) and after its
     // display was unplugged while the window still runs; solid once its desktop is up.
-    const dex = { present: false, state: null, displayGone: false, attach: null, width: 0, height: 0, usbVersion: null };
+    // parked: its display went and the app keeps the desktop paused for its return (#1015); shutdownAt: when the app shuts
+    // it down (Continuity's time; 0 = never)
+    const dex = { present: false, state: null, displayGone: false, parked: false, shutdownAt: 0, attach: null, width: 0, height: 0, usbVersion: null };
     function dexScreen() {
         const D = root.AndroidDisplay;
         try { return D && typeof D.getScreenInfo === 'function' ? JSON.parse(D.getScreenInfo() || 'null') : null; } catch (_) { return null; }
@@ -1429,6 +1431,8 @@
             again = setTimeout(() => { if (root.document.visibilityState !== 'hidden') postDexState(false); }, 400);
         };
         announceDex = announce;
+        // the paused desktop shown again on a display (#1015): its bridges are the new window's now; the phone hears at once
+        root.addEventListener('melatondesktopresume', () => { if (isDw()) { dexStale = true; postDexState(true); } }, { signal: appScopeSignal });
         root.document.addEventListener('visibilitychange', announce, { signal: appScopeSignal });
         root.addEventListener('resize', announce, { signal: appScopeSignal });
         root.addEventListener('focus', announce, { signal: appScopeSignal });
@@ -1442,13 +1446,18 @@
         dex.usbVersion = Number(m.usbVersion) || dex.usbVersion || null;
         dex.width = Number(m.width) || dex.width;
         dex.height = Number(m.height) || dex.height;
-        if (m.state === 'ready') dex.displayGone = false;
+        if (m.state === 'ready') Object.assign(dex, { displayGone: false, parked: false, shutdownAt: 0 });
         // the title bar is drawn again only for a change it shows (#890)
         if ([dex.present, dex.state, dex.attach, dex.usbVersion, dex.width, dex.height, dex.displayGone].join(',') !== before) statusChanged();
     });
     api.on('dex-display', (m) => {
         if (!isPhone() || m.state !== 'removed') return;
         dex.displayGone = true;
+        // the desktop as the screen's home is paused until a display comes back (#1015), up to Continuity's time
+        if (m.parked) {
+            const min = Number(m.shutdownMinutes) || 0;
+            Object.assign(dex, { parked: true, shutdownAt: min > 0 ? Date.now() + min * 60000 : 0 });
+        }
         statusChanged();
         // the DeX window says "ready" again when it next shows on a display (its own state did not change)
         api.post({ type: 'dex-state-stale' });
@@ -1464,8 +1473,8 @@
     api.on('peer', (m) => {
         if (!isPhone() || m.role !== 'desktop') return;
         if (m.state === 'joined') deskClosed = false;
-        if (m.state === 'joined') { Object.assign(dex, { present: true, state: 'booting', displayGone: false }); api.post({ type: 'dex-state?' }); }
-        else Object.assign(dex, { present: false, state: null, displayGone: false });
+        if (m.state === 'joined') { Object.assign(dex, { present: true, state: 'booting', displayGone: false, parked: false, shutdownAt: 0 }); api.post({ type: 'dex-state?' }); }
+        else Object.assign(dex, { present: false, state: null, displayGone: false, parked: false, shutdownAt: 0 });
         statusChanged();
     });
     /** The phone window's Continuity glyph: null (hidden) | 'dim' (presence, booting, unplugged) | 'solid'. */
@@ -1495,6 +1504,17 @@
         }
         return out;
     };
+    /**
+     * Continuity's PC popup line for a desktop whose display went: paused (the app keeps it for the display's return, #1015)
+     * with when it shuts down, or still running (a plain DeX window).
+     */
+    api.displayGoneText = (pc) => {
+        if (!pc || !pc.displayGone) return '';
+        if (!pc.parked) return 'Disconnected. The desktop is still running.';
+        const left = pc.shutdownAt ? Math.max(1, Math.ceil((pc.shutdownAt - Date.now()) / 60000)) : 0;
+        return left ? `Paused - display disconnected. Shuts down in ${left} minute${left === 1 ? '' : 's'} unless a display is connected.`
+            : 'Paused - display disconnected. It resumes when a display is connected.';
+    };
     /** The phone: its DeX window is still running with its display disconnected. */
     api.dexDisplayGone = () => isPhone() && dex.present && dex.displayGone;
     /**
@@ -1505,7 +1525,7 @@
         if (!isPhone()) return false;
         if (!api.post({ type: 'dex-close' })) return false;
         deskClosed = true;
-        Object.assign(dex, { present: false, state: null, displayGone: false });
+        Object.assign(dex, { present: false, state: null, displayGone: false, parked: false, shutdownAt: 0 });
         statusChanged();
         return true;
     };

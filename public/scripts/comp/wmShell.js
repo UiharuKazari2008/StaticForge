@@ -7494,7 +7494,8 @@
             const via = pc && pc.attach === 'wireless' ? 'Wi-Fi Direct' : 'USB-C';
             const lines = [];
             if (!pc) lines.push('The desktop on the connected display runs from this phone.');
-            else if (pc.displayGone) lines.push('Disconnected. The desktop is still running.');
+            // paused with the display gone (#1015): when it shuts down, from Continuity's setting
+            else if (pc.displayGone) lines.push(typeof mc.displayGoneText === 'function' ? mc.displayGoneText(pc) : 'Disconnected. The desktop is still running.');
             else if (pc.state !== 'ready') lines.push(`Connecting via ${via}...`);
             else lines.push(`Connected via ${via}`);
             const res = pc && pc.width && pc.height ? `${pc.width} \u00d7 ${pc.height}` : '';

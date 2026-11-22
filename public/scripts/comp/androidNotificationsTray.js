@@ -36,8 +36,10 @@
     const isDesktop = (() => {
         try { return !!(root.AndroidDisplay && typeof root.AndroidDisplay.isDesktop === 'function' && root.AndroidDisplay.isDesktop()); } catch (_) { return false; }
     })();
-    const N = root.AndroidPhoneNotifications;
-    if (!isDesktop || root.uiShell === 'mobile' || !N || typeof N.list !== 'function') return;
+    const N0 = root.AndroidPhoneNotifications;
+    if (!isDesktop || root.uiShell === 'mobile' || !N0 || typeof N0.list !== 'function') return;
+    // read at each call: a desktop paused with its display unplugged gets the new window's bridge when it resumes (#1015)
+    const N = () => root.AndroidPhoneNotifications || N0;
 
     const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined;
 
@@ -72,7 +74,7 @@
     let clockTimer = 0;
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const call = (name, ...args) => { try { return typeof N[name] === 'function' ? N[name](...args) : undefined; } catch (_) { return undefined; } };
+    const call = (name, ...args) => { try { const b = N(); return typeof b[name] === 'function' ? b[name](...args) : undefined; } catch (_) { return undefined; } };
     const hasAccess = () => call('access') !== false;
     const isOpen = () => !!(flyout && !flyout.classList.contains('hidden'));
     const postedAt = (n) => Number(n.time) || 0;
@@ -131,7 +133,7 @@
     function read() {
         read0 = true;
         let next = [];
-        try { next = JSON.parse(N.list() || '[]'); } catch (_) { next = []; }
+        try { next = JSON.parse(N().list() || '[]'); } catch (_) { next = []; }
         all = (Array.isArray(next) ? next : []).filter((n) => n && n.key);
         remember(all);
         list = all.filter(shows);
@@ -352,7 +354,7 @@
      */
     let imageBaseUrl = null;
     function imageBase() {
-        if (imageBaseUrl === null) imageBaseUrl = typeof N.imageBase === 'function' ? String(call('imageBase') || '') : '';
+        if (imageBaseUrl === null) imageBaseUrl = typeof N().imageBase === 'function' ? String(call('imageBase') || '') : '';
         return imageBaseUrl;
     }
 
