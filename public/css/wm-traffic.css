@@ -761,7 +761,13 @@
 
 /* ---------------------------------------------------------------- Today row (shell Today block) */
 
-.wm-today-block.trf-today { display: flex; align-items: center; gap: calc(6 * var(--wm-px)); }
+/* the Traffic and Car item (#1041): the commute over the car (Lapis Remote's half, wm-lapis.css .lps-today), each half
+ * its own button with its own press colour, as two of the item's lines would be one WM Today item */
+.wm-today-block.trf-today { display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+.trf-today-part { display: flex; align-items: center; gap: calc(6 * var(--wm-px)); min-height: calc(34 * var(--wm-px)); min-width: 0; cursor: default; -webkit-tap-highlight-color: transparent; }
+.trf-today-part:active { background: var(--wm-highlight); }
+/* with the car under it the signal sits centred over the car's picture (44 wide), so both halves' lines start together */
+.trf-today.has-car .trf-today-sig { margin: 0 calc(14.5 * var(--wm-px) - 1px); }
 
 .trf-today-sig {
     flex: 0 0 auto;
