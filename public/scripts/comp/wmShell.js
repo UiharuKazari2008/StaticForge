@@ -12427,7 +12427,7 @@
     function goHome(e) {
         // the home swipe's mask over the screen (DSApp, #1013): Today readies under it and tells the app when to take it away
         const masked = !!(e && e.detail && e.detail.mask);
-        // a home swipe on Today itself: no entrance, Today just goes back to its home position (#1013, Yukimi Nov 21)
+        // a home swipe on Today itself: no mask and no entrance, the list scrolls back to the clock (#1013, Yukimi Nov 21)
         const jump = !!(e && e.detail && e.detail.jump);
         // the device lock screen stays over everything (unlocking lands on Today anyway)
         try { if (window.wmLock && window.wmLock.isLocked) { if (masked) homeMaskReady(); return; } } catch (_) { /* no lock screen */ }
@@ -12463,7 +12463,9 @@
         if (masked && T && typeof T.maskedHome === 'function' && T.enabled && T.enabled()) T.maskedHome();
         else {
             if (masked) homeMaskReady();
-            if (T && typeof T.home === 'function') T.home(jump && wasToday ? { jump: true } : { animate: wasToday });
+            // a swipe on Today: the list runs back to the clock as Home on Today always does (Yukimi, Nov 21: "it should not
+            // jump to its home position it should scroll like normal"), never the return's entrance
+            if (T && typeof T.home === 'function') T.home(jump && wasToday ? { jump: true, animate: true } : { animate: wasToday });
         }
         document.dispatchEvent(new CustomEvent('wmTodayHome'));
     }
