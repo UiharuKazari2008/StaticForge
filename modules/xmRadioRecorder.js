@@ -1013,13 +1013,14 @@ async function resume() {
         // it carries on as the same recording (Yukimi, Nov 21 2026: a recording must never stop because a server did):
         // a graceful handoff stored the exact next segment, a hard stop falls back to the last one on disk. The pump
         // reads from there, the stream keeps five hours, so the time the process was down is recorded too.
+        const stored = !!meta.resumeAt;
         const anchor = meta.resumeAt || rec.lastEnd;
         const gap = anchor ? Math.ceil((Date.now() - anchor) / 1000) + 2 : Math.ceil((Date.now() - meta.startPdt) / 1000);
         const due = (meta.until && Date.now() >= meta.until - 5000) || (rec.lastEnd && rec.lastEnd - meta.startPdt >= MAX_MS);
         if (due || gap > 5 * 3600 - 300 || !xm.channelById(meta.channelId)) { await stop(meta.rid); continue; }
         rec.pump = makePump(rec, Math.max(0, gap));
         delete meta.resumeAt; delete meta.resumeSeq;
-        console.log(`[xmRadio rec] ${meta.rid}: resumed (${meta.kind}, ${gap} s to catch up${anchor ? ', at the stored segment' : ''})`);
+        console.log(`[xmRadio rec] ${meta.rid}: resumed (${meta.kind}, ${gap} s to catch up${stored ? ', at the stored segment' : ''})`);
     }
     if (recs.size) xm.watch('rec', true);
     changed();
