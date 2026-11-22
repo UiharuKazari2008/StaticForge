@@ -918,7 +918,7 @@
                         u: /underline/.test(cs.textDecorationLine || cs.textDecoration || ''), ls: R(px(cs.letterSpacing)), w: R(rr.width) };
                     // leading / trailing white space collapses in the page: the drawn text starts at the first letter
                     one.s = text.replace(/^\s+|\s+$/g, '').replace(/\s+/g, ' ');
-                    if (el.classList.contains('wm-vpn-time')) { const ws = window.wsClient; one.live = (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null; }
+                    if (el.classList.contains('wm-vpn-time')) { const ws = window.wsClient; one.live = Number(el.dataset.since) || (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null; }
                     if (one.s) out.push(one);
                     return;
                 }
@@ -930,7 +930,7 @@
                         flush();
                         line = { k: 'text', x: R(rr.left), y: R(rr.top), h: R(rr.height), s: '', size: R(px(cs.fontSize)), bold: (+cs.fontWeight || 400) >= 600, color: rgba(cs.color, alpha) || '#000000ff',
                             u: /underline/.test(cs.textDecorationLine || cs.textDecoration || ''), ls: R(px(cs.letterSpacing)) };
-                        if (el.classList.contains('wm-vpn-time')) { const ws = window.wsClient; line.live = (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null; }
+                        if (el.classList.contains('wm-vpn-time')) { const ws = window.wsClient; line.live = Number(el.dataset.since) || (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null; }
                     }
                     line.s += text[i];
                     if (line.l === undefined) line.l = rr.left * dpr;

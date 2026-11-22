@@ -437,6 +437,14 @@
             case 'wifi-manage': if (root.dreamosWifi) root.dreamosWifi.openManage(); break;
             case 'wifi-status': if (root.dreamosWifi) root.dreamosWifi.openStatus(); break;
             case 'mobile-status': if (root.dreamosWifi && root.dreamosWifi.openMobileStatus) void root.dreamosWifi.openMobileStatus(); break;
+            // (#1019) a VPN tunnel's box: its status sheet, or the tunnel down / up through its app (arg: the interface)
+            case 'vpn-status': case 'vpn-disconnect': case 'vpn-connect': {
+                const t = root.dreamosWifi && root.dreamosWifi.vpnTunnels ? root.dreamosWifi.vpnTunnels().find((x) => x.iface === arg) : null;
+                if (!t) break;
+                if (action === 'vpn-status') void t.status();
+                else t.toggle(action === 'vpn-connect');
+                break;
+            }
             // Network Connections and Set up a connection or network (#932): dreamosWifi.js; without it the old status
             case 'ncpa': if (root.dreamosWifi && root.dreamosWifi.openConnections) root.dreamosWifi.openConnections(); else openStatusDialog(); break;
             case 'net-setup': if (root.dreamosWifi && root.dreamosWifi.openSetup) root.dreamosWifi.openSetup(); break;
@@ -1479,6 +1487,34 @@
             const state = linkState();
             const i = info();
             const reachable = !!lastStatus && !statusError;
+            // (#1019) each VPN tunnel of the phone as its own network, as Vista shows a VPN connection: the profile (the
+            // tunnel's name in its app), Access, the connection with View status, the interface with Disconnect / Connect
+            const vpnBoxes = () => (root.dreamosWifi && typeof root.dreamosWifi.vpnTunnels === 'function' ? root.dreamosWifi.vpnTunnels() : []).map((t) => `
+                <div class="cpl-box">
+                    <div class="cpl-box-head">
+                        <img src="/static_images/vista-net/pnidui-2-16.png" srcset="/static_images/vista-net/pnidui-2-32.png 2x" alt="" class="cpl-box-icon" draggable="false">
+                        <span class="cpl-box-title">${esc(t.profile)} <span class="cpl-box-kind">(Private network)</span></span>
+                    </div>
+                    <div class="cpl-row">
+                        <span class="cpl-row-label">Access</span>
+                        <span class="cpl-row-value">${t.connected ? 'Local and Internet' : 'Not connected'}</span>
+                    </div>
+                    <div class="cpl-row">
+                        <span class="cpl-row-label">Connection</span>
+                        <span class="cpl-row-value">${esc(t.conn)}</span>
+                        <button type="button" class="cpl-link cpl-row-action" data-cpl-action="vpn-status" data-cpl-arg="${esc(t.iface)}">View status</button>
+                    </div>
+                    <div class="cpl-row">
+                        <span class="cpl-row-label">Interface</span>
+                        <span class="cpl-row-value">${esc(`${t.device || 'VPN Tunnel'} (${t.iface})`)}</span>
+                        <button type="button" class="cpl-link cpl-row-action" data-cpl-action="${t.connected ? 'vpn-disconnect' : 'vpn-connect'}" data-cpl-arg="${esc(t.iface)}">${t.connected ? 'Disconnect' : 'Connect'}</button>
+                    </div>
+                    ${t.connected && t.ip.length ? `
+                    <div class="cpl-row">
+                        <span class="cpl-row-label">Address</span>
+                        <span class="cpl-row-value">${esc(t.ip.join(', '))}</span>
+                    </div>` : ''}
+                </div>`).join('');
             const clientLink = state === 'connected' ? 'ok' : (state === 'disconnected' || portal()) ? 'down' : 'busy';
             const serverLink = reachable ? 'ok' : 'unknown';
             // DreamOS (#932): the laptop's own network on the map, the domain in its box below
@@ -1565,6 +1601,7 @@
                         <button type="button" class="cpl-link cpl-row-action" data-cpl-action="portal">Open your browser</button>
                     </div>` : ''}
                 </div>
+                ${vpnBoxes()}
                 ${sharingSection()}
                 <h2 class="cpl-section-title">Server status</h2>
                 <div class="cpl-box cpl-box--rows">${dots}</div>

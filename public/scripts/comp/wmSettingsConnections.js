@@ -242,15 +242,107 @@
     });
 
     // ---------------------------------------------------------------- Network Cards
-    // the app's Melaton Café Miniport adapter (#815): listed whenever the app has it, on or off
-    const CAFE_ADAPTER = 'WAN Miniport (Melaton Caf\u00e9)';
+    // (#1019, Yukimi Nov 21 2026) rebuilt now that the Nightshade Network has its own applet: the phone's real
+    // adapters (Wi-Fi, the cellular data link), the Nightshade Virtual Network Interface (the app's Melaton Café
+    // Miniport, #815), the interfaces that share this phone's connection (Mobile Hotspot, USB / Bluetooth /
+    // Ethernet tethering) with their status and address, the VPN tunnels (WireGuard's added here by name, the one
+    // seen up learned), then ActiveSync's lines. The server link's own "WAN Miniport" is no longer an adapter here.
+    const CAFE_ADAPTER = 'Nightshade Virtual Network Interface';
+    const WIREGUARD = 'com.wireguard.android';
+    const wifiHost = () => (root.AndroidWifi && typeof root.AndroidWifi.interfaces === 'function' ? root.AndroidWifi : null);
+    const qaHost = () => (root.AndroidQuickAccess && typeof root.AndroidQuickAccess.config === 'function' ? root.AndroidQuickAccess : null);
+    // AndroidWifi.interfaces()'s last answer ({ interfaces, tethering }): read when a page opens and on the app's
+    // 'androidnetifaces' push, never per tick (the bridge call builds every adapter's figures)
+    let ifCache = null;
+    function readIfaces(fresh) {
+        if (ifCache && !fresh) return ifCache;
+        const h = wifiHost();
+        if (!h) return null;
+        try { ifCache = JSON.parse(h.interfaces()); } catch (_) { ifCache = null; }
+        return ifCache;
+    }
+    const rows = () => { const r = readIfaces(); return r && Array.isArray(r.interfaces) ? r.interfaces.filter((x) => x && x.name) : []; };
+    function qaConfig() {
+        const h = qaHost();
+        if (!h) return null;
+        try { return JSON.parse(h.config()); } catch (_) { return null; }
+    }
+    /** WireGuard's tunnels: the names added here, then any seen up (the app keeps the last one seen). */
+    function wgTunnels() {
+        const names = [];
+        const cfg = qaConfig();
+        ((cfg && cfg.wireguard) || []).forEach((n) => { if (n && !names.includes(n)) names.push(n); });
+        rows().forEach((x) => { if (x.kind === 'vpn' && x.vpnPackage === WIREGUARD && x.vpnSession && !names.includes(x.vpnSession)) names.push(x.vpnSession); });
+        return names;
+    }
+    const wgRow = (name) => rows().find((x) => x.kind === 'vpn' && x.vpnPackage === WIREGUARD && x.vpnSession === name && x.present !== false) || null;
+    // the sharing interfaces, always listed where the phone has them (Ethernet only once an adapter shared)
+    const SHARES = [['hotspot', 'Mobile Hotspot'], ['usb', 'USB tethering'], ['bluetooth', 'Bluetooth tethering'], ['ethernet', 'Ethernet tethering']];
+    const shareKind = (x) => (x.kind === 'lan' ? 'ethernet' : x.kind);
+    const shareRow = (k) => rows().find((x) => x.sharing && shareKind(x) === k) || rows().find((x) => k === 'hotspot' && x.kind === 'hotspot') || null;
     function adapters(i, mp) {
         const list = [];
+        const all = rows();
+        // the phone's own: Wi-Fi, then the cellular data link (its kernel names change, so keyed by alias)
+        all.filter((x) => x.kind === 'wifi' && x.nc).forEach((x) => list.push({ key: `if:${x.alias || x.name}`, label: x.label }));
+        all.filter((x) => x.kind === 'mobile' && x.alias === 'rmnet0').forEach((x) => list.push({ key: 'if:rmnet0', label: x.label }));
         if (mp && mp.present) list.push({ key: 'cafe', label: CAFE_ADAPTER, selected: !!i.viaMiniport });
-        if (!i.viaMiniport) list.push({ key: 'vpn', label: miniport(i), selected: true });
+        if (wifiHost()) SHARES.forEach(([k, label]) => { if (k !== 'ethernet' || shareRow(k)) list.push({ key: `share:${k}`, label }); });
+        wgTunnels().forEach((n) => list.push({ key: `wg:${n}`, label: `${n} (WireGuard)` }));
+        // another VPN app's tunnel: its own name, opened in its app
+        all.filter((x) => x.kind === 'vpn' && x.vpnPackage && x.vpnPackage !== WIREGUARD && x.nc)
+            .forEach((x) => list.push({ key: `vpn:${x.name}`, label: `${x.vpnSession || x.vpnApp || 'VPN'} (${x.vpnApp || 'VPN'})` }));
         // ActiveSync's lines (#815), as modems on serial ports: one per partnership, the DeX window on USB
         serialLines().forEach((l) => list.push({ key: `as:${l.key}`, label: l.label }));
         return list;
+    }
+    const since = (at) => (at ? formatDuration(Date.now() - Number(at)) : '\u2014');
+    const ipOf = (x) => (x && Array.isArray(x.ip) && x.ip.length ? x.ip.join(', ') : '\u2014');
+    /** An adapter's status rows (Wi-Fi, cellular, a sharing interface, a tunnel), from its interface row. */
+    function ifaceFacts(x, status) {
+        const rowsOut = [['Status:', status || (x && x.connected ? 'Connected' : x && x.present === false ? 'Not present' : 'Disconnected')]];
+        rowsOut.push(['Interface:', x && x.present !== false ? x.name : '\u2014']);
+        rowsOut.push(['IP address:', ipOf(x)]);
+        if (x && x.gateway) rowsOut.push(['Gateway:', x.gateway]);
+        if (x && Array.isArray(x.dns) && x.dns.length) rowsOut.push(['DNS:', x.dns.join(', ')]);
+        rowsOut.push(['Duration:', x && x.connected ? since(x.connectedAt) : '\u2014']);
+        return rowsOut;
+    }
+    function shareStatus(k, x) {
+        if (k === 'hotspot') {
+            const t = (readIfaces() || {}).tethering || {};
+            return { on: 'On', starting: 'Turning on...', stopping: 'Turning off...', failed: 'Failed' }[t.wifiAp] || (x && x.sharing ? 'On' : 'Off');
+        }
+        return x && x.sharing ? 'On' : 'Off';
+    }
+    /** A WireGuard tunnel up or down by name (the app's own remote control: AndroidWifi.vpnControl). */
+    function wgControl(name, up) {
+        const h = wifiHost();
+        if (!h || typeof h.vpnControl !== 'function') return false;
+        try { const r = JSON.parse(h.vpnControl(WIREGUARD, name, !!up)); return !!(r && (r.sent || r.opened)); } catch (_) { return false; }
+    }
+    function setWgList(list) {
+        const h = qaHost();
+        if (!h || typeof h.setConfig !== 'function') return;
+        try { h.setConfig(JSON.stringify({ wireguard: list })); } catch (_) { /* older app */ }
+    }
+    function addTunnel(rerender) {
+        const sh = root.wmShell;
+        if (!sh || typeof sh.messageBox !== 'function') return;
+        sh.messageBox({
+            title: 'Network Cards',
+            text: 'Name of the WireGuard tunnel, exactly as the WireGuard app shows it:',
+            input: { value: '' },
+            buttons: [{ text: 'Add', value: true }, { text: 'Cancel', value: false }]
+        }).then((name) => {
+            const n = typeof name === 'string' ? name.trim() : '';
+            if (!n) return;
+            const cfg = qaConfig() || {};
+            const list = (cfg.wireguard || []).filter((x) => x !== n);
+            list.push(n);
+            setWgList(list);
+            if (rerender) rerender();
+        });
     }
     function asState() {
         const as = root.activeSync;
@@ -396,26 +488,104 @@
                 liveTick(el, paint);
                 return;
             }
-            if (d.adapter) {
-                setHeader(el, miniport(i));
-                el.innerHTML = `${ui.radio('ip', 'server', 'Use server-assigned IP address', true, 'disabled')}
-                    ${ui.radio('ip', 'specific', 'Use specific IP address', false, 'disabled')}
-                    <div class="wm-form-row wm-setc-ip"><span class="wm-form-label">Server:</span>${ui.edit('', i.fqdn, 'readonly')}</div>
-                    ${ui.sub(`${i.connectionName} Status`)}<div data-f="facts"></div>
-                    ${ui.note('The domain controller assigns this connection. Tap ok to return to the adapter list.')}`;
-                const facts = el.querySelector('[data-f="facts"]');
-                const paint = () => { const h = ui.facts(connectionFacts()); if (facts.innerHTML !== h) facts.innerHTML = h; };
+            // the figures come from the app's last interfaces read; its push redraws them (never a read per tick)
+            const follow = (paint) => {
+                const onIfaces = () => { if (!el.isConnected) { root.removeEventListener('androidnetifaces', onIfaces); return; } readIfaces(true); paint(); };
+                root.addEventListener('androidnetifaces', onIfaces);
                 paint();
                 liveTick(el, paint);
+            };
+            const factsBox = (rowsFn) => {
+                const facts = el.querySelector('[data-f="facts"]');
+                follow(() => { const h = ui.facts(rowsFn()); if (facts.innerHTML !== h) facts.innerHTML = h; });
+            };
+            if (typeof d.adapter === 'string' && d.adapter.startsWith('if:')) {
+                // Wi-Fi or the cellular data link: what the phone's own adapter has now
+                const key = d.adapter.slice(3);
+                const find = () => rows().find((x) => (x.alias || x.name) === key) || null;
+                readIfaces(true);
+                const x0 = find();
+                setHeader(el, x0 ? x0.label : key);
+                el.innerHTML = `${ui.sub('Status')}<div data-f="facts"></div>
+                    ${ui.note('Android assigns this adapter its address. Tap ok to return to the adapter list.')}`;
+                factsBox(() => ifaceFacts(find()));
                 return;
             }
+            if (typeof d.adapter === 'string' && d.adapter.startsWith('share:')) {
+                // a sharing interface: on or off, its interface and the address it gives this phone on that link
+                const k = d.adapter.slice(6);
+                const label = (SHARES.find(([id]) => id === k) || [k, k])[1];
+                readIfaces(true);
+                setHeader(el, label);
+                el.innerHTML = `${ui.sub('Status')}<div data-f="facts"></div>
+                    ${ui.note(k === 'hotspot' ? 'Mobile Hotspot is turned on and off in Quick Access or in Android\'s settings.' : 'Shown while this phone shares its connection this way.')}`;
+                factsBox(() => { const x = shareRow(k); return ifaceFacts(x && x.sharing ? x : null, shareStatus(k, x)); });
+                return;
+            }
+            if (typeof d.adapter === 'string' && d.adapter.startsWith('wg:')) {
+                // a WireGuard tunnel: its status, address and time, Connect / Disconnect through the app
+                const name = d.adapter.slice(3);
+                readIfaces(true);
+                setHeader(el, `${name} (WireGuard)`);
+                el.innerHTML = `${ui.sub('Status')}<div data-f="facts"></div>
+                    ${ui.buttons([['wg-toggle', 'Connect']])}
+                    ${ui.note('The tunnel runs in the WireGuard app; Melaton switches it there.')}`;
+                const btn = el.querySelector('[data-act="wg-toggle"]');
+                factsBox(() => {
+                    const x = wgRow(name);
+                    const up = !!(x && x.connected);
+                    if (btn) { const t = up ? 'Disconnect' : 'Connect'; if (btn.textContent !== t) btn.textContent = t; }
+                    return ifaceFacts(x, up ? 'Connected' : 'Disconnected');
+                });
+                if (btn) btn.addEventListener('click', () => {
+                    const x = wgRow(name);
+                    btn.disabled = true;
+                    wgControl(name, !(x && x.connected));
+                    setTimeout(() => { btn.disabled = false; }, 2500);
+                });
+                return;
+            }
+            if (typeof d.adapter === 'string' && d.adapter.startsWith('vpn:')) {
+                // another VPN app's tunnel: read only, switched in its own app
+                const iface = d.adapter.slice(4);
+                readIfaces(true);
+                const x0 = rows().find((x) => x.name === iface) || {};
+                setHeader(el, x0.vpnSession || x0.vpnApp || 'VPN');
+                el.innerHTML = `${ui.sub('Status')}<div data-f="facts"></div>${ui.buttons([['vpn-open', `Open ${x0.vpnApp || 'VPN app'}`]])}`;
+                const ob = el.querySelector('[data-act="vpn-open"]');
+                if (ob) ob.addEventListener('click', () => { const h = wifiHost(); if (h && typeof h.openVpnApp === 'function') { try { h.openVpnApp(iface); } catch (_) { /* older app */ } } });
+                factsBox(() => ifaceFacts(rows().find((x) => x.name === iface) || null));
+                return;
+            }
+            d.adapter = false;
             setHeader(el, 'Configure Network Adapters');
+            readIfaces(true);
             el.innerHTML = `<p>My network card connects to:</p>
                 ${ui.comboHtml('to', i.domain, true)}
                 <p class="wm-setc-gap-top">Tap an adapter to modify settings:</p>
                 ${ui.listbox(adapters(i, mp), { maxHeight: 238 })}`;
             el.querySelector('.wm-listbox').classList.add('wm-setc-adapters');
-            ui.bindListbox(el.querySelector('.wm-listbox'), (key) => { d.adapter = key || 'vpn'; api.rerender(); });
+            ui.bindListbox(el.querySelector('.wm-listbox'), (key) => { if (!key) return; d.adapter = key; api.rerender(); if (root.wmShell && root.wmShell.refreshSoftKeys) root.wmShell.refreshSoftKeys(); });
+            // an adapter coming or going (a tunnel up, the hotspot on): the list again
+            let listKey = JSON.stringify(adapters(i, mp).map((a) => a.key));
+            const onList = () => {
+                if (!el.isConnected || d.adapter) { root.removeEventListener('androidnetifaces', onList); return; }
+                readIfaces(true);
+                const k = JSON.stringify(adapters(info(), mcx && typeof mcx.miniport === 'function' ? mcx.miniport() : null).map((a) => a.key));
+                if (k !== listKey) { listKey = k; api.rerender(); }
+            };
+            root.addEventListener('androidnetifaces', onList);
+        },
+        softKeys(d) {
+            // Menu: add a WireGuard tunnel by name, or on a tunnel's page remove it
+            const wgName = typeof d.adapter === 'string' && d.adapter.startsWith('wg:') ? d.adapter.slice(3) : null;
+            const cfg = qaConfig();
+            const added = !!(wgName && cfg && (cfg.wireguard || []).includes(wgName));
+            const items = [];
+            if (!d.adapter && qaHost()) items.push({ label: 'Add WireGuard Tunnel...', action: () => addTunnel(d.rerender) });
+            if (wgName) items.push({ label: 'Remove Tunnel', disabled: !added, action: () => { setWgList((cfg.wireguard || []).filter((x) => x !== wgName)); d.adapter = false; if (d.rerender) d.rerender(); if (root.wmShell && root.wmShell.refreshSoftKeys) root.wmShell.refreshSoftKeys(); } });
+            if (!d.adapter || wgName) items.push({ label: 'Open WireGuard', action: () => { const h = wifiHost(); const x = rows().find((r) => r.vpnPackage === WIREGUARD); if (h && typeof h.openVpnApp === 'function' && x) { try { h.openVpnApp(x.name); } catch (_) { /* older app */ } } } });
+            return { left: null, right: items.length ? { label: 'Menu', menu: () => items } : null };
         },
         commit(d) {
             // ok on the adapter's page goes back to the list, as on the device
@@ -433,6 +603,7 @@
                 d.ring = null;
                 d.adapter = false;
                 if (d.rerender) d.rerender();
+                if (root.wmShell && root.wmShell.refreshSoftKeys) root.wmShell.refreshSoftKeys();
                 return false;
             }
             return [];
@@ -794,6 +965,15 @@
         if (dv && typeof dv.openSettings === 'function') { try { dv.openSettings(name); } catch (_) { /* older app */ } }
     }
     const glyph = (id, on) => ui.art(`wrls-${id}-${on ? 'on' : 'off'}`);
+    /** WireGuard's Quick Access state ({ on, sub, why, available }), or null without the app's bridge or WireGuard. */
+    function wgState() {
+        const h = qaHost();
+        if (!h || typeof h.get !== 'function') return null;
+        try {
+            const w = (JSON.parse(h.get()).items || {}).wireguard;
+            return w && w.why !== 'app' ? w : null;
+        } catch (_) { return null; }
+    }
 
     /**
      * The connected Wi-Fi network's name for the Wi-Fi state: read once on demand while Wireless Manager
@@ -857,6 +1037,7 @@
                     ${r ? `<button type="button" class="wm-wl-bar is-all" data-radio="all"><span class="wm-wl-name">All</span><img class="wm-wl-glyph" alt="" draggable="false"></button>` : ''}
                     <div class="wm-wl-panel${r ? '' : ' is-alone'}">
                         ${rows.map(([id, name]) => item(`data-radio="${id}"`, name)).join('')}
+                        ${wgState() ? item('data-act="vpn"', 'WireGuard') : ''}
                         ${item('data-act="toggle"', 'Dreamscape')}
                     </div>
                     ${r ? '' : '<p class="wm-form-note">Phone, Wi-Fi and Bluetooth are switched here in the Dreamscape app for Android.</p>'}
@@ -920,6 +1101,40 @@
                 paintRadios(radios());
             };
             root.addEventListener('androiddevicestatus', onStatus);
+
+            // (#1019) WireGuard: on with the tunnel's name, Off, or No tunnel (none added in Network Cards or seen up
+            // yet); a tap switches it through the app, a hold opens its page in Network Cards
+            const vbar = el.querySelector('[data-act="vpn"]');
+            if (vbar) {
+                const vImg = vbar.querySelector('img');
+                const vState = vbar.parentElement.querySelector('.wm-wl-state');
+                const vPaint = () => {
+                    const w = wgState();
+                    if (!w) return;
+                    const g = glyph('vpn', !!w.on);
+                    if (vImg.getAttribute('src') !== g.src) { vImg.src = g.src; vImg.srcset = g.srcset; }
+                    const t = w.on ? (w.sub || 'On') : w.why === 'tunnel' ? 'No tunnel' : 'Off';
+                    if (vState.textContent !== t) vState.textContent = t;
+                    vbar.classList.toggle('is-off', !w.on);
+                    vbar.classList.toggle('is-busy', !!d.pending.vpn);
+                };
+                vPaint();
+                const onNet = () => { if (!el.isConnected) { root.removeEventListener('androidnetifaces', onNet); return; } d.pending.vpn = false; vPaint(); };
+                root.addEventListener('androidnetifaces', onNet);
+                const toCards = () => { const w = wgState(); d.pending.vpn = false; if (wmSettings.open) wmSettings.open('network-cards'); return w; };
+                holdOpens(vbar, toCards);
+                vbar.addEventListener('click', () => {
+                    if (vbar._held) { vbar._held = false; return; }
+                    const w = wgState();
+                    if (!w || d.pending.vpn) return;
+                    if (!w.on && w.why === 'tunnel') { toCards(); return; }
+                    d.pending.vpn = true;
+                    const h = qaHost();
+                    try { h.act('wireguard', w.on ? 'off' : 'on'); } catch (_) { d.pending.vpn = false; }
+                    vPaint();
+                    setTimeout(() => { d.pending.vpn = false; if (el.isConnected) vPaint(); }, 6000);
+                });
+            }
 
             // the Dreamscape connection: the shell's connectivity glyph, Connected / Connecting... / Off
             const bar = el.querySelector('[data-act="toggle"]');
