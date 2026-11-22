@@ -840,6 +840,15 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-combo:disabled::after {
     color: #8c8e8c;
 }
 
+/* a count with its up-down buddy (wmSettings.ui.numberField, #1057): the time field's box, as wide as "No limit" */
+.wm-numfield {
+    width: calc(72 * var(--wm-px));
+}
+
+.wm-spin > button:disabled {
+    color: #8c8e8c;
+}
+
 /* ---- the time box of Calendar and Tasks (wmSettings.ui.timeCombo): the editable combo, 87 units */
 .wm-timecombo {
     width: calc(87 * var(--wm-px));

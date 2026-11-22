@@ -498,12 +498,16 @@
                 const tk = { hidden: tray.hidden, html: tray.innerHTML };
                 try {
                     tray.hidden = false;
-                    const kinds = Object.keys(TRAY_KINDS);
-                    tray.innerHTML = kinds.map((k) => `<button type="button" class="wm-notify-tray-icon" data-kind="${k}"></button>`).join('');
                     // 6.5: the "..." is 6.5.1's notification holder (#1026): the large colour pictures (status-order.js holder)
                     const h65 = sh.version === '6.5' && typeof sh.holderArt === 'function';
+                    // and each notification KIND's own picture (#1056, status-order.js holderKinds): the server's waiting
+                    // notices carry their kind, the app draws icons[kind] (a missed call, a failed print, a car alert...)
+                    const tblK = window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder;
+                    const holderKinds = h65 && tblK && tblK.holderKinds ? Object.keys(tblK.holderKinds).filter((k) => !TRAY_KINDS[k]) : [];
+                    const kinds = Object.keys(TRAY_KINDS).concat(holderKinds);
+                    tray.innerHTML = kinds.map((k) => `<button type="button" class="wm-notify-tray-icon" data-kind="${k}"></button>`).join('');
                     const artOf = (name) => (h65 && sh.holderArt(name)) || sh.statusArt(name);
-                    tray.querySelectorAll('button').forEach((b) => { b.style.backgroundImage = artOf(TRAY_KINDS[b.dataset.kind]); });
+                    tray.querySelectorAll('button').forEach((b) => { b.style.backgroundImage = artOf(TRAY_KINDS[b.dataset.kind] || b.dataset.kind); });
                     settle([tray]);
                     const icons = {};
                     const first = tray.querySelector('button');

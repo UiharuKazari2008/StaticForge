@@ -64,6 +64,70 @@
         roaming: 'wm65/v651-drawer-roaming', signal: 'wm65/v651-drawer-phone', volume: 'wm65/v651-drawer-volume',
         battery: 'wm65/v651-drawer-battery'
     };
+    /*
+     * The holder's picture per notification KIND (Yukimi, Nov 22 2026, #1056): several notices of one app showed the same
+     * app icon in the holder, so one could not tell what each was for. A notice's kind (holderKind) is finer than its
+     * role: new mail vs a mail account that stopped, a text vs a missed call vs voicemail, a reminder vs a meeting vs a
+     * task, a print vs a failed print, an update vs a failed install, each car alert by its type, and an Android app's
+     * notification by the category Android gives it. ROM art first (the Titanium panel icons, the message box icons),
+     * else the ROM's pieces combined: the program's icon with a message box badge, or the kind's ROM picture with the
+     * program's Start icon as a small badge (scripts/build-wm65-holder-kind-icons.py). Same paths and sizes as holder.
+     */
+    const holderKinds = {
+        'mail-error': 'wm65/holder-mail-error', email: 'wm65/holder-email',
+        message: 'wm65/holder-message', 'sms-error': 'wm65/holder-sms-error',
+        call: 'wm65/holder-call', 'call-missed': 'wm65/holder-call-missed', voicemail: 'wm65/holder-voicemail',
+        meeting: 'wm65/holder-meeting', task: 'wm65/start-tasks', alarm: 'wm65/holder-alarm',
+        'print-error': 'wm65/holder-print-error', 'update-failed': 'wm65/holder-update-failed', progress: 'wm65/holder-progress',
+        question: 'wm61/msgbox-question', emotion: 'wm61/app-emotion-lg', 'emotion-error': 'wm65/holder-emotion-error',
+        'api-key': 'wm65/holder-api-key', videos: 'wm65/start-youtube',
+        'lapis-unlocked': 'wm65/holder-lapis-unlocked', 'lapis-health': 'wm65/holder-lapis-health', 'lapis-fuel': 'wm65/holder-lapis-fuel',
+        'lapis-service': 'wm65/holder-lapis-service', 'lapis-failed': 'wm65/holder-lapis-failed', 'lapis-run-left': 'wm65/holder-lapis-run-left'
+    };
+    // Lapis' notice kinds (lapisService notice()) -> the holder's
+    const LAPIS_KIND = { unlocked: 'lapis-unlocked', health: 'lapis-health', refuel: 'lapis-fuel', 'low-fuel': 'lapis-fuel',
+        service: 'lapis-service', command: 'lapis-failed', 'run-left': 'lapis-run-left' };
+    // Android's notification categories (Notification.CATEGORY_*, relayed with a phone app's notification) -> the holder's
+    const ANDROID_CATEGORY = { msg: 'message', social: 'message', email: 'email', call: 'call', missed_call: 'call-missed',
+        voicemail: 'voicemail', alarm: 'alarm', reminder: 'reminder', event: 'meeting', progress: 'progress', err: 'error',
+        stopwatch: 'alarm', navigation: 'traffic', transport: 'notify', status: 'notify', sys: 'notify', service: 'notify',
+        promo: 'notify', recommendation: 'notify', workout: 'notify', location_sharing: 'notify' };
+
+    /**
+     * A notice's holder kind (#1056): what it is about, for its picture in the holder (holderArt). The notice as the server's
+     * inbox holds it ({ id, cls, data }) or as the page holds it ({ id, type }); unknown ones fall back to noteKind.
+     */
+    function holderKind(n) {
+        const id = String((n && n.id) || '');
+        const d = (n && n.data) || {};
+        const cls = String((n && n.cls) || '');
+        const dk = String(d.kind || '');
+        if (/^lapis:/.test(id) || d.app === 'lapis') {
+            const k = dk || (/^lapis:([a-z-]+):/.exec(id) || [])[1] || (id === 'lapis:run-left' ? 'run-left' : '');
+            return LAPIS_KIND[k] || 'caralert';
+        }
+        if (/^rem:task:/.test(id) || (/^rem:/.test(id) && d.task)) return 'task';
+        if (/^rem:/.test(id)) return d.meeting ? 'meeting' : 'reminder';
+        if (/^print/.test(id)) return cls === 'print-error' || d.failed ? 'print-error' : 'prints';
+        if (/^update/.test(id)) return d.failed || (n && n.type === 'error') ? 'update-failed' : 'update';
+        if (/^tm-signin:/.test(id) || dk === 'tm-signin' || dk === 'sms-error') return 'sms-error';
+        if (/^mail-(error|signin):/.test(id) || dk === 'mail-error') return 'mail-error';
+        if (/^question:/.test(id)) return 'question';
+        if (/^emotion:/.test(id)) return d.ok === false ? 'emotion-error' : 'emotion';
+        if (/^api-key:/.test(id)) return 'api-key';
+        if (/^videos:/.test(id)) return 'videos';
+        if (/^system:/.test(id)) return d.level === 'error' ? 'error' : 'warning';
+        // a phone's call, missed call or voicemail (their source names the kind), else Android's category
+        if (dk === 'call' || dk === 'call-missed' || dk === 'voicemail') return dk;
+        const cat = String(d.category || (n && n.category) || '');
+        if (cat && ANDROID_CATEGORY[cat]) {
+            // a voicemail is a call app's notification on its voicemail channel (Android has no category for it)
+            if (/voice\s*mail/i.test(String(d.channel || ''))) return 'voicemail';
+            if (ANDROID_CATEGORY[cat] !== 'notify') return ANDROID_CATEGORY[cat];
+        }
+        return noteKind(n);
+    }
+
     // a glyph name (status-mail) back to its role, for callers that hold the glyph
     const glyphRole = new Map(Object.entries(glyphs).map(([r, g]) => [g, r]));
     // what a tap does: its popup (status-popups.js), drawn by the app or the page; "..." opens the tray of what waits
@@ -113,8 +177,15 @@
         noteKind,
         noteGlyph: (n) => glyphs[noteKind(n)],
         holder,
-        /** The holder's large colour picture for a role, notice kind or glyph name (a path under /static_images/), or null. */
-        holderArt: (r) => holder[r] || holder[glyphRole.get(r)] || null,
+        holderKinds,
+        holderKind,
+        /** The holder's large colour picture for a role, notice kind, holder kind or glyph name (a path under /static_images/), or null. */
+        holderArt: (r) => holderKinds[r] || holder[r] || holder[glyphRole.get(r)] || null,
+        /** A notice's holder picture (#1056): its holder kind's, else its role's, else the plain notice's. */
+        noteHolderArt(n) {
+            const k = holderKind(n);
+            return holderKinds[k] || holder[k] || holder.notify;
+        },
         systemGlyphs,
         /** What a tap on the role does: 'tray' (the "..." group) or 'popup'. */
         tap: (r) => taps[r] || 'popup',

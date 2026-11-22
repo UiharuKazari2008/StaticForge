@@ -15,9 +15,12 @@
  *                                   device px from the kit's geometry; iconsRight = the right end of the icons' row;
  *                                   xReserve = the X / ok's kept place when this bar has none (0 when it has one)
  *     prefs: { sound, power },      Settings > Screen > Status icons ('' = default, 'possible' / 'home', 'never')
- *     screen: { unfolded, noCross } a foldable's inner screen (nothing steps aside or folds there; what does not fit
- *                                   right of the camera carries on left of it); noCross = Settings > Screen > "Do
- *                                   not allow status icons to cross over camera hole"
+ *     screen: { unfolded, noCross, crossMax }
+ *                                   a foldable's inner screen (nothing steps aside or folds there; what does not fit
+ *                                   right of the camera carries on left of it); crossMax = Settings > Screen > the
+ *                                   icons that may go past (left of) the camera on this screen (cover / main, #1057):
+ *                                   0 never crosses, n at most n (the "..." counts), null / absent no limit;
+ *                                   noCross (the older "Do not allow status icons to cross over camera hole") = 0
  *   }) -> { shown: [role], left: [role], folded: [role], shed: [role], groupShown: bool, reserveUsed: bool }
  *
  * What gives way when the bar runs short (the table: status-order.js, Yukimi, Nov 17): the X / ok's kept place on a
@@ -35,21 +38,35 @@
     const C = root.CafeTasks;
     if (!C) return;
 
-    /** Right-aligned placement from iconsRight; an icon that would run into the camera carries on left of it. */
-    function place(items, bar, noCross) {
+    /** How many icons may go left of the camera: a count, or null for no limit (true = the old "do not cross" = 0). */
+    function crossLimit(v) {
+        if (v === true) return 0;
+        if (v === false || v == null || v === '') return null;
+        const n = Number(v);
+        return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+    }
+
+    /**
+     * Right-aligned placement from iconsRight; an icon that would run into the camera carries on left of it. cross: how
+     * many may go left of it (crossLimit; null = any): a row with more is null (it does not fit).
+     */
+    function place(items, bar, cross) {
         const out = [];
         let cursor = bar.iconsRight;
         let crossed = false;
+        let past = 0;
+        const lim = crossLimit(cross);
         const hole = bar.hole && bar.hole.w > 0 ? bar.hole : null;
         for (let i = items.length - 1; i >= 0; i--) {
             const it = items[i];
             let x = cursor - it.w;
             if (hole && !crossed && x < hole.x + hole.w) {
-                if (noCross) return null;
+                if (lim === 0) return null;
                 crossed = true;
                 cursor = hole.x;
                 x = cursor - it.w;
             }
+            if (crossed && lim !== null && ++past > lim) return null;
             out.unshift({ role: it.role, x, left: crossed });
             cursor = x - bar.gap;
         }
@@ -60,7 +77,9 @@
         const icons = (o && o.icons) || [];
         const bar = Object.assign({ width: 0, iconsRight: 0, gap: 0, titleX: 0, titleMin: 0, hole: null, xReserve: 0 }, (o && o.bar) || {});
         const prefs = Object.assign({ sound: '', power: '' }, (o && o.prefs) || {});
-        const screen = Object.assign({ unfolded: false, noCross: false }, (o && o.screen) || {});
+        const screen = Object.assign({ unfolded: false, noCross: false, crossMax: null }, (o && o.screen) || {});
+        // the icons allowed left of the camera on this screen (#1057); the older switch alone = 0
+        const lim = crossLimit(screen.crossMax) !== null ? crossLimit(screen.crossMax) : (screen.noCross ? 0 : null);
         const notify = o && o.notify;
         const shed = new Set();
         let folded = [];
@@ -77,9 +96,9 @@
             const groupShown = !!notify && (folded.length > 0 || !!notify.notes);
             if (groupShown) items.unshift({ role: 'notify', w: notify.w });
             const b = reserveUsed ? Object.assign({}, bar, { iconsRight: bar.iconsRight + (bar.xReserve || 0) }) : bar;
-            // "do not cross" with more than fits right of the camera even after every step: the row as it would cross,
+            // "do not cross" (or more past the camera than allowed) even after every step: the row as it would cross,
             // so the result still names what shows (null gave an empty bar)
-            return { placed: place(items, b, screen.noCross), groupShown, all: () => place(items, b, false) };
+            return { placed: place(items, b, lim), groupShown, all: () => place(items, b, null) };
         };
         const ok = (l) => {
             if (!l.placed) return false;
@@ -90,8 +109,9 @@
             // the mark kept every icon right of it and folded them into "..." with half the bar empty. They carry on
             // left of the camera up to the title's floor (Yukimi, Nov 22 #1025: "continue past the cutout and only
             // fall into ... when the bar is truly full"); Settings > Screen > "Do not allow status icons to cross over
-            // camera hole" (noCross) still keeps them right of it
-            if (bar.hole && bar.hole.w > 0 && !screen.noCross) return true;
+            // camera hole" (noCross, now a count of 0) still keeps them right of it; a count above 0 lets that many cross
+            // (place() refuses a row with more, #1057)
+            if (bar.hole && bar.hole.w > 0 && lim !== 0) return true;
             return screen.unfolded || leftmost >= bar.width / 2;
         };
         const result = (l) => {
@@ -111,7 +131,8 @@
         // the room right of the camera is filled first: a row that has to cross it takes the X / ok's kept place (a bar
         // with none) before it carries on left of the camera
         const crossed = (x) => !!(x.placed && x.placed.some((p) => p.left));
-        if (screen.unfolded || (ok(l) && !crossed(l))) return result(l);
+        // (on the inner screen too only as many as Settings allows go past the camera, #1057: past that, icons fold)
+        if ((screen.unfolded && l.placed) || (ok(l) && !crossed(l))) return result(l);
         const tryStep = (fn) => { fn(); l = layout(); return ok(l); };
         if (bar.xReserve > 0 && tryStep(() => { reserveUsed = true; })) return result(l);
         if (ok(l)) return result(l);
@@ -133,5 +154,5 @@
         return result(l);
     }
 
-    C.lib.statusFit = { fit, place };
+    C.lib.statusFit = { fit, place, crossLimit };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

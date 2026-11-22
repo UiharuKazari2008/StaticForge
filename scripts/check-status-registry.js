@@ -30,6 +30,61 @@ new Set([...roles, ...Object.keys(tbl.glyphs)]).forEach((r) => {
     if (!base) { missing.push(`${r}: no holder picture`); return; }
     ['', '@2x', '@4x'].forEach((d) => { if (!fs.existsSync(path.join(img, `${base}${d}.png`))) missing.push(`${r}: ${base}${d}.png missing`); });
 });
+// the holder's picture per notification kind (#1056): every kind in the table has its three sizes, and each kind of
+// notice the sources raise gets its own picture (a fixture per source; a kind that fell back to its app's icon or the
+// plain notice's fails here)
+const kindArt = (k) => (tbl.holderKinds && tbl.holderKinds[k]) || null;
+Object.keys(tbl.holderKinds || {}).forEach((k) => {
+    ['', '@2x', '@4x'].forEach((d) => { if (!fs.existsSync(path.join(img, `${kindArt(k)}${d}.png`))) missing.push(`holder kind ${k}: ${kindArt(k)}${d}.png missing`); });
+});
+const fixtures = [
+    [{ id: 'mail:a:INBOX:1', cls: 'mail', data: { kind: 'mail' } }, 'mail'],
+    [{ id: 'mail-error:a', cls: 'notification', data: { kind: 'mail-error' } }, 'mail-error'],
+    [{ id: 'sms:a:g', cls: 'sms', data: { kind: 'sms' } }, 'sms'],
+    [{ id: 'tm-signin:a', cls: 'notification', data: { kind: 'tm-signin' } }, 'sms-error'],
+    [{ id: 'p', data: { kind: 'call-missed' } }, 'call-missed'],
+    [{ id: 'p', data: { category: 'call' } }, 'call'],
+    [{ id: 'p', data: { category: 'missed_call' } }, 'call-missed'],
+    [{ id: 'p', data: { kind: 'voicemail' } }, 'voicemail'],
+    [{ id: 'p', data: { category: 'msg' } }, 'message'],
+    [{ id: 'p', data: { category: 'email' } }, 'email'],
+    [{ id: 'p', data: { category: 'alarm' } }, 'alarm'],
+    [{ id: 'p', data: { category: 'progress' } }, 'progress'],
+    [{ id: 'p', data: { category: 'err' } }, 'error'],
+    [{ id: 'rem:f:u:1', cls: 'reminder', data: { kind: 'reminder' } }, 'reminder'],
+    [{ id: 'rem:f:u:1', cls: 'reminder', data: { kind: 'reminder', meeting: true } }, 'meeting'],
+    [{ id: 'rem:task:u:1', cls: 'reminder', data: { kind: 'reminder', task: true } }, 'task'],
+    [{ id: 'print:1', cls: 'print' }, 'prints'],
+    [{ id: 'print:1', cls: 'print-error', data: { failed: true } }, 'print-error'],
+    [{ id: 'update', type: 'info' }, 'update'],
+    [{ id: 'update', data: { failed: true } }, 'update-failed'],
+    [{ id: 'director:s:turn', cls: 'director' }, 'director'],
+    [{ id: 'question:f', cls: 'question' }, 'question'],
+    [{ id: 'emotion:1', cls: 'emotion', data: { ok: true } }, 'emotion'],
+    [{ id: 'emotion:1', cls: 'emotion', data: { ok: false } }, 'emotion-error'],
+    [{ id: 'api-key:x', cls: 'api-key' }, 'api-key'],
+    [{ id: 'videos:live:x', cls: 'notification' }, 'videos'],
+    [{ id: 'system:x', data: { level: 'error' } }, 'error'],
+    [{ id: 'system:x', data: { level: 'warning' } }, 'warning'],
+    [{ id: 'traffic:a:b:c', cls: 'notification' }, 'traffic'],
+    [{ id: 'wx:p:a', cls: 'weather-alert' }, 'wxalert'],
+    [{ id: 'rain:p', cls: 'rain-alarm' }, 'rain'],
+    [{ id: 'lapis:unlocked:k', data: { app: 'lapis', kind: 'unlocked' } }, 'lapis-unlocked'],
+    [{ id: 'lapis:health:alerts', data: { app: 'lapis', kind: 'health' } }, 'lapis-health'],
+    [{ id: 'lapis:x-1', data: { app: 'lapis', kind: 'refuel' } }, 'lapis-fuel'],
+    [{ id: 'lapis:service:maintenance', data: { app: 'lapis', kind: 'service' } }, 'lapis-service'],
+    [{ id: 'lapis:x-2', data: { app: 'lapis', kind: 'command' } }, 'lapis-failed'],
+    [{ id: 'lapis:run-left', data: { app: 'lapis', kind: 'run-left' } }, 'lapis-run-left'],
+    [{ id: 'x', cls: 'notification' }, 'notify'],
+];
+if (typeof tbl.holderKind !== 'function') missing.push('holderKind: missing (#1056)');
+else {
+    fixtures.forEach(([n, want]) => {
+        const got = tbl.holderKind(n);
+        if (got !== want) missing.push(`holder kind of ${n.id}${n.data ? ` ${JSON.stringify(n.data)}` : ''}: ${got}, wanted ${want}`);
+        if (!tbl.holderArt(got)) missing.push(`holder kind ${got}: no picture`);
+    });
+}
 if (missing.length) {
     console.error(`status registry: incomplete (rule status-icons-registered-only):\n  ${missing.join('\n  ')}`);
     process.exit(1);

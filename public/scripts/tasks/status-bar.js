@@ -163,7 +163,10 @@
                     bar: { width: bw.width, iconsRight: g.iconsRight, gap: g.gap, titleX: g.titleX, titleMin: g.titleMin,
                         hole: g.holeX != null ? { x: g.holeX, w: g.holeR - g.holeX } : null, xReserve: 0 },
                     prefs: L.prefs || {},
-                    screen: { unfolded: bw.unfolded, noCross: !!L.noCross }
+                    // the icons that may go past the camera on this screen (Settings > Screen, #1057; the app sends
+                    // cross { cover, main }, -1 = no limit); an older app sends only the do-not-cross switch
+                    screen: { unfolded: bw.unfolded, noCross: !!L.noCross,
+                        crossMax: L.cross && typeof L.cross === 'object' ? (bw.unfolded ? L.cross.main : L.cross.cover) : null }
                 });
                 if (r && Array.isArray(r.shown)) {
                     const left = new Set(r.left || []);
