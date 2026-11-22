@@ -299,3 +299,54 @@ html.ui-mobile .wm-setc .wm-setc-ns-head {
     margin-bottom: calc(6 * var(--wm-px));
 }
 html.ui-mobile .wm-setc .wm-setc-ns-head img { width: calc(32 * var(--wm-px)); height: calc(32 * var(--wm-px)); flex: none; }
+
+/* Network Cards > Wireless (#1038, wmWifi.js): WM's Configure Wireless Networks list (tshres dialog 12290: list
+   130 px, then "Networks to access:"), each row the network's icon (tshres.192 bitmap 12302, 14 frames of 16 px),
+   its name and its state on the right */
+html.ui-mobile .wm-wifi .wm-wifi-list {
+    min-height: calc(130 * var(--wm-px));
+}
+html.ui-mobile .wm-wifi .wm-wifi-row {
+    min-height: calc(18 * var(--wm-px));
+}
+html.ui-mobile .wm-wifi .wm-wifi-ic {
+    flex: none;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    background: image-set(url("/static_images/wm61/wifi-nets-strip.png") 1x, url("/static_images/wm61/wifi-nets-strip@2x.png") 2x, url("/static_images/wm61/wifi-nets-strip@4x.png") 4x) no-repeat;
+    background-size: calc(224 * var(--wm-px)) calc(16 * var(--wm-px));
+    background-position: calc(var(--f, 0) * -16 * var(--wm-px)) 0;
+}
+html.ui-mobile .wm-wifi .wm-wifi-ic.is-none {
+    background: none;
+}
+html.ui-mobile .wm-wifi .wm-wifi-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+html.ui-mobile .wm-wifi .wm-wifi-state {
+    flex: none;
+    margin-left: calc(6 * var(--wm-px));
+}
+html.ui-mobile .wm-wifi .wm-wifi-off {
+    margin: calc(18 * var(--wm-px)) calc(4 * var(--wm-px));
+}
+/* the wizard pages (dialogs 12320 / 12330): label column 82 px, the key rows indented 8 px under the check box */
+html.ui-mobile .wm-wifi .wm-wifi-wiz .wm-form-row {
+    grid-template-columns: calc(80 * var(--wm-px)) minmax(0, 1fr);
+    column-gap: calc(2 * var(--wm-px));
+}
+html.ui-mobile .wm-wifi .wm-wifi-wiz .wm-form-row > .wm-form-label {
+    text-align: left;
+}
+html.ui-mobile .wm-wifi .wm-wifi-indent {
+    padding-left: calc(8 * var(--wm-px));
+}
+html.ui-mobile .wm-wifi .wm-wifi-wiz .wm-wifi-indent .wm-form-row {
+    grid-template-columns: calc(72 * var(--wm-px)) minmax(0, 1fr);
+}
+html.ui-mobile .wm-wifi .wm-wifi-for {
+    font-weight: bold;
+}

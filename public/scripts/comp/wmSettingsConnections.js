@@ -1,5 +1,5 @@
 /**
- * Melaton Mobile Settings: Connections pages (Connections, Network Cards, Nightshade, Domain Enroll, Wireless Manager, Remote Access, Grimoire, Cellular, Bluetooth) (Yozora #709, #771, #895).
+ * Melaton Mobile Settings: Connections pages (Connections, Network Cards (its Wireless tab: wmWifi.js, #1038), Nightshade, Domain Enroll, Wireless Manager, Remote Access, Grimoire, Cellular, Bluetooth) (Yozora #709, #771, #895).
  * Pages for the Settings app (wmPrograms.js), added through window.wmSettings.registerPage /
  * extendPage and drawn with window.wmSettings.ui so they look like WM 6.1's own pages. Every
  * value is read and saved through the desktop's own store (one source of truth).
@@ -461,11 +461,16 @@
         tab: 'connections',
         label: 'Network Cards',
         icon: 'set-netcards',
-        tabs: [],
-        init: () => ({ adapter: false }),
+        // (#1038) with the phone's Wi-Fi, WM's wireless card layout: Wireless (wmWifi.js) | Network Adapters
+        tabs: wifiHost() && root.AndroidWifi && typeof root.AndroidWifi.get === 'function' ? [['nc-wireless', 'Wireless'], ['nc-adapters', 'Network Adapters']] : [],
+        init: () => ({ adapter: false, wifi: root.wmWifi ? root.wmWifi.init() : null }),
         render(el, tab, d, api) {
             el.classList.add('wm-setc');
             d.rerender = api.rerender;
+            d.tab = tab;
+            const wf = root.wmWifi;
+            if (tab === 'nc-wireless' && wf) { wf.render(el, d.wifi || (d.wifi = wf.init()), api); return; }
+            if (wf) setTimeout(wf.idle, 0); // the Wireless tab left: its listening stops
             const i = info();
             const mcx = root.melatonContinuity;
             const mp = mcx && typeof mcx.miniport === 'function' ? mcx.miniport() : null;
@@ -534,6 +539,8 @@
                 const find = () => rows().find((x) => (x.alias || x.name) === key) || null;
                 readIfaces(true);
                 const x0 = find();
+                // (#1038) the Wi-Fi adapter: WM's IP Address / Name Servers pages (and the proxy) for the network in use
+                if (wf && x0 && x0.kind === 'wifi') { d.wifiAdapter = true; wf.renderAdapter(el, d, api, x0); return; }
                 setHeader(el, x0 ? x0.label : key);
                 el.innerHTML = `${ui.sub('Status')}<div data-f="facts"></div>
                     ${ui.note('Android assigns this adapter its address. Tap ok to return to the adapter list.')}`;
@@ -626,6 +633,7 @@
             root.addEventListener('androidnetifaces', onList);
         },
         softKeys(d) {
+            if (d.tab === 'nc-wireless' && root.wmWifi && d.wifi) return root.wmWifi.softKeys(d.wifi) || { left: null, right: null };
             // Menu: add a WireGuard tunnel by name, or on a tunnel's page remove it
             const wgName = typeof d.adapter === 'string' && d.adapter.startsWith('wg:') ? d.adapter.slice(3) : null;
             const cfg = qaConfig();
@@ -638,6 +646,21 @@
             return { left: null, right: items.length ? { label: 'Menu', menu: () => items } : null };
         },
         commit(d) {
+            const wf = root.wmWifi;
+            // (#1038) the Wireless tab: ok on its wizard / Advanced goes back to its list; on the list it closes
+            if (d.tab === 'nc-wireless' && wf && d.wifi && wf.commit(d.wifi) === false) return false;
+            // the Wi-Fi adapter's IP pages: saved through the app (false while a value is not valid)
+            if (d.wifiAdapter && wf) {
+                return Promise.resolve(wf.commitAdapter(d)).then((saved) => {
+                    if (!saved) return false;
+                    d.wifiAdapter = false;
+                    d.adapter = false;
+                    if (d.rerender) d.rerender();
+                    if (root.wmShell && root.wmShell.refreshSoftKeys) root.wmShell.refreshSoftKeys();
+                    return false;
+                });
+            }
+            if (wf) wf.stop();
             // ok on the adapter's page goes back to the list, as on the device
             if (d.adapter) {
                 const mcx = root.melatonContinuity;
@@ -1077,7 +1100,8 @@
                         { label: 'Phone Settings', disabled: !canOpen, action: () => openAndroidSettings('phone') },
                         // our own Settings > Bluetooth, not Android's (Yukimi, Nov 21 2026)
                         { label: 'Bluetooth Settings', action: () => { const ws = root.wmSettings; if (!(ws && typeof ws.open === 'function' && ws.open('bluetooth'))) openAndroidSettings('bluetooth'); } },
-                        { label: 'Wi-Fi Settings', disabled: !canOpen, action: () => openAndroidSettings('wifi') },
+                        // our own Settings > Network Cards > Wireless (#1038), Android's only on an app without it
+                        { label: 'Wi-Fi Settings', disabled: !canOpen && !root.wmWifi, action: () => { if (!(root.wmWifi && root.wmWifi.available() && root.wmWifi.open())) openAndroidSettings('wifi'); } },
                         ...(r && r.present && r.present.nfc ? [{ label: 'NFC Settings', disabled: !canOpen, action: () => openAndroidSettings('nfc') }] : []),
                         { label: 'Disconnect Cellular Data', disabled: !(r && r.data && !r.airplane), action: () => setRadio('data', false) }
                     ]
@@ -1134,7 +1158,11 @@
                 ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, cancel));
                 b.addEventListener('contextmenu', (e) => e.preventDefault());
             };
-            el.querySelectorAll('[data-radio]').forEach((b) => holdOpens(b, () => openAndroidSettings(b.dataset.radio)));
+            el.querySelectorAll('[data-radio]').forEach((b) => holdOpens(b, () => {
+                // Wi-Fi's hold: our own Wi-Fi page (#1038); the others Android's
+                if (b.dataset.radio === 'wifi' && root.wmWifi && root.wmWifi.available() && root.wmWifi.open()) return;
+                openAndroidSettings(b.dataset.radio);
+            }));
             el.querySelectorAll('[data-radio]').forEach((bar) => bar.addEventListener('click', () => {
                 if (bar._held) { bar._held = false; return; }
                 const id = bar.dataset.radio;
