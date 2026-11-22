@@ -390,12 +390,12 @@
         const root = document.documentElement;
         const cs = getComputedStyle(root);
         // (the first part: the lists' make - a new one makes every app ask for its kit again; m25: iconsRight measured
-        // without Today's kept corner place beside the staged X, Nov 20; m26: the soft key Menu's samples, Nov 22)
+        // without Today's kept corner place beside the staged X, Nov 20; m26: the soft key Menu's samples; m27: 9-slice frames (nine), Nov 22)
         // the icon unit, the bar's height and the camera extension too (Yukimi, Nov 17: "the icons are never
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m26', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m27', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), softMenuSig(), Math.round(window.innerWidth)].join('|');
     }
