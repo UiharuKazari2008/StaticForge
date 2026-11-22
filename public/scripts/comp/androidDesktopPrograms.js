@@ -15,9 +15,16 @@
  * /api/wm-program-icons/manifest once the desktop is idle), else Android's own icon; the name the user gave it
  * (wmAndroidNames); programs cleared in Remove Programs > Android (wmAndroidHidden) are left out here too.
  *
+ * The same programs in the same places as the phone's Programs (Yukimi, Nov 22 2026, #1031; wmAndroidApps.js sync is the
+ * source): Android Settings stays out (the phone shows it only as a Settings link); Phone, Camera and Marketplace (the
+ * dialer, the camera and the Play Store) carry those names and sit in All Programs itself, as they sit in Programs; a
+ * game (Android's game category, or the user's Move to Games: wmAndroidGames) goes to the Start menu's Games folder; a
+ * folder the user made in Android or Work (wmAndroidFolders) is a Start menu folder of its own there. Every choice comes
+ * from the phone's keys in this app's shared storage: no server, and a change on the phone redraws the menu ('storage').
+ *
  * Only in the DeX window (AndroidDisplay.isDesktop() with the desktop shell and the bridge present).
- * Exports window.melatonAndroidPrograms: items(), tree(), find(launchId), isAndroidId(id), launch(id), and
- * iconFor({ id?, package, icon? }, px) -> { src, srcset } (the taskbar and the Bell draw programs the same way).
+ * Exports window.melatonAndroidPrograms: items(), tree(), rootItems(), gameItems(), find(launchId), isAndroidId(id), launch(id), and
+ * iconFor({ id?, package, icon? }, px) -> { src, srcset } (the taskbar and the Bell draw programs the same way), iconOfId(launchId, px).
  */
 (function () {
     'use strict';
@@ -41,6 +48,11 @@
     const STORE_KEY = 'wmAndroidIconStore';
     const NAMES_KEY = 'wmAndroidNames';
     const HIDDEN_KEY = 'wmAndroidHidden';
+    const GAMES_KEY = 'wmAndroidGames';     // { program id: true | false } the user's Move to / Remove from Games
+    const FOLDERS_KEY = 'wmAndroidFolders'; // { v, folders: [{ id, parent: 'android' | 'work', name }], of: { id: folder } }
+    // the phone's role programs (wmAndroidApps.js ROLES): the device's names, in Programs itself
+    const ROLE_NAMES = { phone: 'Phone', camera: 'Camera', store: 'Marketplace' };
+    const CAMERA_PACKAGES = ['com.sec.android.app.camera', 'com.google.android.GoogleCamera', 'com.android.camera2', 'com.android.camera'];
     const WM_SET = /^\/static_images\/wm-android\/[a-z0-9_-]+$/;
 
     let apps = keptList();
@@ -63,8 +75,18 @@
                 label: a.label.trim(),
                 package: typeof a.package === 'string' ? a.package : '',
                 icon: typeof a.icon === 'string' ? a.icon : '',
-                profile: a.profile === 'work' ? 'work' : ''
+                profile: a.profile === 'work' ? 'work' : '',
+                role: typeof a.role === 'string' ? a.role : '',
+                game: a.game === true
             }));
+    }
+
+    /** The phone's camera program when Android names none (wmAndroidApps.js withCameraRole): Samsung's or Google's, else one called Camera. */
+    function cameraId(list) {
+        if (list.some((a) => a.role === 'camera')) return null;
+        const pick = list.find((a) => CAMERA_PACKAGES.includes(a.package) && a.profile !== 'work')
+            || list.find((a) => /^camera$/i.test(a.label) && a.profile !== 'work');
+        return pick && !pick.role ? pick.id : null;
     }
 
     const readJson = (key, fallback) => {
@@ -114,8 +136,8 @@
         return ok;
     }
 
-    function descriptor(a, names) {
-        const name = (names && typeof names[a.id] === 'string' && names[a.id].trim()) || a.label;
+    function descriptor(a, names, role) {
+        const name = ROLE_NAMES[role] || (names && typeof names[a.id] === 'string' && names[a.id].trim()) || a.label;
         const set = storeSet(a);
         return {
             launchId: PREFIX + a.id,
@@ -129,15 +151,38 @@
             desktopOnly: true,
             androidApp: true,
             androidProfile: a.profile || '',
+            androidRole: role || '',
             action: () => launch(a.id)
         };
     }
+
+    // where each shown program sits, as the phone's Programs files it: 'root' (a role program), 'games', or its folder
+    // ('android' / 'work' or a folder of the user's in them)
+    let places = null;
+    let userFolders = [];
 
     function build() {
         if (items) return;
         const names = readJson(NAMES_KEY, {}) || {};
         const hidden = new Set((readJson(HIDDEN_KEY, []) || []).map(String));
-        items = apps.filter((a) => !hidden.has(a.id)).map((a) => descriptor(a, names));
+        const games = readJson(GAMES_KEY, {}) || {};
+        const sub = readJson(FOLDERS_KEY, null);
+        userFolders = sub && Array.isArray(sub.folders) ? sub.folders.filter((f) => f && f.id && (f.parent === 'android' || f.parent === 'work') && typeof f.name === 'string') : [];
+        const filedIn = sub && sub.of && typeof sub.of === 'object' ? sub.of : {};
+        const cam = cameraId(apps);
+        items = [];
+        places = new Map();
+        for (const a of apps) {
+            // Android Settings is a Settings link on the phone, never one of its programs
+            if (hidden.has(a.id) || a.role === 'settings') continue;
+            const role = a.id === cam ? 'camera' : (ROLE_NAMES[a.role] ? a.role : '');
+            const it = descriptor(a, names, role);
+            const parent = a.profile === 'work' ? 'work' : 'android';
+            const folder = userFolders.find((f) => f.id === filedIn[a.id] && f.parent === parent);
+            const game = Object.prototype.hasOwnProperty.call(games, a.id) ? games[a.id] === true : a.game;
+            places.set(it.launchId, role ? 'root' : folder ? folder.id : (parent === 'work' ? 'work' : (game ? 'games' : 'android')));
+            items.push(it);
+        }
         byId = new Map(items.map((it) => [it.launchId, it]));
     }
 
@@ -149,13 +194,37 @@
         return items.slice();
     }
 
-    /** All Programs > Android Programs: the programs by name, then a Work folder (a work profile's). */
+    const placed = (where) => items.filter((it) => places.get(it.launchId) === where).sort(byLabel);
+
+    /** A folder's programs by name, then the user's folders in it (by name, empty ones left out), as the phone lists them. */
+    function folderList(parent) {
+        const list = placed(parent);
+        userFolders.filter((f) => f.parent === parent).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })).forEach((f) => {
+            const children = placed(f.id);
+            if (children.length) list.push({ folder: true, folderId: `android-folder-${f.id}`, text: f.name, children });
+        });
+        return list;
+    }
+
+    /** All Programs > Android Programs: the phone's Android folder (its programs, its folders), then a Work folder. */
     function tree() {
         build();
-        const main = items.filter((it) => it.androidProfile !== 'work').sort(byLabel);
-        const work = items.filter((it) => it.androidProfile === 'work').sort(byLabel);
+        const main = folderList('android');
+        const work = folderList('work');
         if (work.length) main.push({ folder: true, folderId: 'android-programs-work', text: 'Work', children: work });
         return main;
+    }
+
+    /** Phone, Camera, Marketplace: in All Programs itself, as in the phone's Programs. */
+    function rootItems() {
+        build();
+        return placed('root');
+    }
+
+    /** The phone's Android games, for the Start menu's Games folder and Games Explorer (#1044). */
+    function gameItems() {
+        build();
+        return placed('games');
     }
 
     function find(launchId) {
@@ -232,10 +301,16 @@
     root.addEventListener('androidapps', queueRead, { signal: appScopeSignal });
     // Melaton Mobile (the phone's window, same storage) changed an icon, a name or the programs shown
     root.addEventListener('storage', (e) => {
-        if (!e || (e.key !== STORE_KEY && e.key !== NAMES_KEY && e.key !== HIDDEN_KEY)) return;
+        if (!e || (e.key !== STORE_KEY && e.key !== NAMES_KEY && e.key !== HIDDEN_KEY && e.key !== GAMES_KEY && e.key !== FOLDERS_KEY)) return;
         if (e.key === STORE_KEY) store = null;
         changed();
     }, { signal: appScopeSignal });
 
-    root.melatonAndroidPrograms = { items: allItems, tree, find, isAndroidId, launch, iconFor };
+    /** A listed program's picture by its launch id (Games Explorer draws the Android games, #1044). */
+    function iconOfId(launchId, px) {
+        const a = isAndroidId(launchId) ? apps.find((x) => PREFIX + x.id === launchId) : null;
+        return a ? iconFor(a, px) : { src: '', srcset: '' };
+    }
+
+    root.melatonAndroidPrograms = { items: allItems, tree, rootItems, gameItems, find, isAndroidId, launch, iconFor, iconOfId };
 })();

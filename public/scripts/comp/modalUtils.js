@@ -8571,6 +8571,10 @@ function getStartMenuProgramsTree() {
             : item));
     const listed = new Set(entries.map((item) => item.launchId).filter(Boolean));
     getStartMenuPlacedItems('top').forEach((item) => { if (!listed.has(item.launchId)) entries.push(item); });
+    // the DeX desktop: Phone, Camera, Marketplace sit in All Programs itself, as in the phone's Programs (#1031)
+    if (window.melatonAndroidPrograms && typeof window.melatonAndroidPrograms.rootItems === 'function') {
+        window.melatonAndroidPrograms.rootItems().forEach((item) => { if (!listed.has(item.launchId)) entries.push(item); });
+    }
     if (!custom) entries.sort(byStartMenuLabel);
     // folders after the apps: Accessories, Administrative Tools, Dreamscape 2026 R7, other publishers'
     // (AmusementVISION 2024), Games, Melaton SideShow (the VM's Windows SideShow > Device Simulator 3.0)
@@ -8580,7 +8584,9 @@ function getStartMenuProgramsTree() {
     if (window.melatonAndroidPrograms) entries.push({ folder: true, folderId: 'android-programs', text: 'Android Programs', children: window.melatonAndroidPrograms.tree() });
     entries.push({ folder: true, folderId: 'dreamscape-r7', text: START_MENU_PACKAGE_FOLDER, children: getStartMenuPackageItems() });
     START_MENU_VENDOR_FOLDERS.forEach((f) => entries.push({ folder: true, folderId: f.folderId, text: f.text, children: getStartMenuPackageItems(f.apps) }));
-    entries.push({ folder: true, folderId: 'games', text: 'Games', children: startMenuGameLaunchables.filter(isStartMenuItemLaunchable).sort(byStartMenuLabel) });
+    // the phone's Android games join Vista's in Games on the DeX desktop (#1044; androidDesktopPrograms.js gameItems)
+    const androidGames = window.melatonAndroidPrograms && typeof window.melatonAndroidPrograms.gameItems === 'function' ? window.melatonAndroidPrograms.gameItems() : [];
+    entries.push({ folder: true, folderId: 'games', text: 'Games', children: startMenuGameLaunchables.filter(isStartMenuItemLaunchable).concat(androidGames).sort(byStartMenuLabel) });
     const simulators = getStartMenuPlacedItems('sideshow-simulator');
     entries.push({ folder: true, folderId: 'sideshow', text: 'Melaton SideShow', children: simulators.length ? [{ folder: true, folderId: 'sideshow-simulator', text: 'Device Simulator 3.0', children: simulators }] : [] });
     return entries.filter((entry) => !entry.folder || entry.children.length > 0);
