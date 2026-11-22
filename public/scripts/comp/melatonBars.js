@@ -968,7 +968,8 @@
                 return;
             }
             const ci = clickable.indexOf(el);
-            if (ci >= 0) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: isHide(el) ? 'hide' : `click:${ci}` });
+            // (#1019) a button the app does itself (data-android: Quick Access's VPN Connect / Disconnect), no page needed
+            if (ci >= 0) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: isHide(el) ? 'hide' : el.dataset && el.dataset.android ? `android:${el.dataset.android}` : `click:${ci}` });
         };
         roots.forEach((r) => walk(r));
         return out;
