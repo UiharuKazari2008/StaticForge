@@ -640,10 +640,11 @@ function forgetDirectorReopen() {
             // restart plans afresh (#951: a phone restart installed nothing of 27 counted files)
             if (waiting && typeof updater.forgetShutdownPlan === 'function') updater.forgetShutdownPlan();
             const plan = waiting ? await winlogonUpdatePlan(updater, updater.planShutdownInstall()) : null;
+            let result = null;
             if (plan) {
                 // Windows Mobile installs before the restart, under its own box: no Welcome screen, no
                 // servicing stages (those are the desktop's)
-                await updater.installUpdatesAtShutdown(plan, {
+                result = await updater.installUpdatesAtShutdown(plan, {
                     kind,
                     plain: true,
                     onStatus: (line) => { text = String(line).split('\n')[0]; if (box) box.update({ text, pct: null }); },
@@ -653,7 +654,8 @@ function forgetDirectorReopen() {
             }
             // nothing to install and no restart of both: the screen goes back as it was (wceload's success page is for
             // an install)
-            installed = !!plan || dexFirst;
+            // an install that failed is not wceload's success page (#1022): the updates stay waiting
+            installed = (!!plan && !(result && result.failed > 0)) || dexFirst;
             if (installed && box && box.screen) box.screen.progress(100);
         } catch (_) { /* restart anyway: the files are in the cache */ }
         clearTimeout(boxTimer);

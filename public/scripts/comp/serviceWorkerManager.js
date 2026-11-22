@@ -486,6 +486,10 @@ class ServiceWorkerManager {
      * hands straight back to /app, so those download updates here instead.
      */
     _launchInstallsHere() {
+        // an installed app client (the Dreamscape app, DreamOS, Melaton Mobile) boots its kept copy: its /launch hands
+        // straight back to /app (melatonBoot installedApp, launch.html phoneCanStartOffline - the zero-wait rule), so a
+        // large update sent to the installer was offered again after every restart and never installed (#1022)
+        if (this._appClientStartsAtOnce()) return false;
         return window.isDesktop === true || (window.uiShell === 'mobile' && (window.innerWidth || 0) < 1200);
     }
 
@@ -3215,7 +3219,8 @@ class ServiceWorkerManager {
         const used = this.filesUsedByPage(files);
         const { features } = this.splitHotFeatureFiles(used);
         this._noteStaticHashUpdate(files);
-        await this.applyStaticCacheUpdate(files, { silent: true, fromPhone: options.fromPhone });
+        // keepPending (#1022): a restart owed before this update stays owed (its fuse, files, saved record, prompt)
+        await this.applyStaticCacheUpdate(files, { silent: true, fromPhone: options.fromPhone, keepPending: !!options.keepPending });
         const results = {};
         // a feature swapped as another's dependent (featureLoader cascades) is not swapped twice
         const fl = window.featureLoader;
@@ -3435,7 +3440,7 @@ class ServiceWorkerManager {
         if (updateKind === 'segments') {
             updatedFiles.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this.pendingUpdateUrls.delete(u); });
             if (!restartPending) this.pendingUpdateKind = null;
-            void this.applySegmentUpdate(updatedFiles);
+            void this.applySegmentUpdate(updatedFiles, { keepPending: restartPending });
             return;
         }
         // pictures, sounds, pages with a restart already owed: on screen now, the restart still waits
@@ -5165,9 +5170,11 @@ class ServiceWorkerManager {
             // Check for updates but let me choose (#951, the default): the start installs nothing new - newer
             // versions are counted once the desktop is up (no installer, no download); a file the install lists but
             // the cache lost is repaired as before
+            let held = false;
             if (filesToUpdate.length && this._holdsUpdates(null)) {
                 const { repairs, updates } = await this._splitRepairs(filesToUpdate);
                 if (updates.length) {
+                    held = true;
                     const held = updates;
                     const note = () => this._noteAvailableUpdates(held, true);
                     if (window.wsClient && window.wsClient.initializationCompleted) note();
@@ -5188,9 +5195,9 @@ class ServiceWorkerManager {
 
             const fresh = this._filesCountingTowardInstaller(filesToUpdate);
             if (fresh.length === 0) {
-                console.log('✅ No updates available');
+                console.log(held ? '✅ Updates are counted for after the start' : '✅ No updates available');
                 this.initialCheckDone = true;
-                return { success: true, filesDownloaded: 0 };
+                return { success: true, filesDownloaded: 0, held };
             }
 
             console.log(`📦 Found ${fresh.length} updates to download`);
@@ -5202,7 +5209,7 @@ class ServiceWorkerManager {
             if (downloadResult && this._launchRedirectStarted) {
                 return { rebooted: true };
             }
-            return downloadResult;
+            return held && downloadResult && typeof downloadResult === 'object' ? Object.assign({}, downloadResult, { held }) : downloadResult;
 
         } catch (error) {
             console.error('❌ Error during update check:', error);
@@ -5867,7 +5874,8 @@ class ServiceWorkerManager {
         } catch (_) { return false; }
         let both = false;
         try {
-            const urls = Array.from(this.pendingUpdateUrls || []);
+            // the counted files too, as forceRestart judges it (_restartUpdateUrls, #951/#1022)
+            const urls = this._restartUpdateUrls();
             both = opts.plan ? !!opts.plan.other
                 : !!(mc && typeof mc.updateScope === 'function' && urls.length && mc.updateScope(urls) === 'both');
             const owed = Array.isArray(this.availableUpdates) ? this.availableUpdates.filter((f) => f && f.url && f.hash) : [];
@@ -5877,7 +5885,9 @@ class ServiceWorkerManager {
                 worker.postMessage({ type: 'SHELL_COMMIT', refresh: false });
             }
             // the downloaded updates install with this restart; owed ones stay counted until the worker has them
-            if (this.pendingUpdateFuse && !owed.length && !this.updatesWaitingCount()) {
+            // no shutdown install runs here to file them, so the restart's own row (#1022: the waiting batch every
+            // restart-kind download notes kept this from ever being written)
+            if (this.pendingUpdateFuse && !owed.length) {
                 const n = this.pendingUpdateFilesTotal || urls.length;
                 this.recordUpdateHistory({ name: n ? `Melaton update (${n} ${n === 1 ? 'file' : 'files'})` : 'Melaton update', status: 'Successful', importance: 'Important' });
             }
@@ -5977,23 +5987,31 @@ class ServiceWorkerManager {
             mc.restartScope(mc.updateScope(Array.from(this.pendingUpdateUrls || [])));
         }
         console.log('🔄 Force restarting application...');
+        // whether this restart owes its own history row: decided now, before the shutdown install files each update
+        const ownRow = this.pendingUpdateFuse && !this.updatesWaitingCount();
+        let done = false;
         const committed = () => {
-            // waiting updates install on the way down (installUpdatesAtShutdown), which files them one by one
-            if (this.pendingUpdateFuse && !this.updatesWaitingCount()) {
-                // the downloaded updates install with this restart (the update page's "Updates were installed")
+            if (done) return;
+            done = true;
+            // the downloaded updates install with this restart (the update page's "Updates were installed")
+            if (ownRow) {
                 const n = this.pendingUpdateFilesTotal || (this.pendingUpdateUrls ? this.pendingUpdateUrls.size : 0);
                 this.recordUpdateHistory({ name: n ? `Melaton update (${n} ${n === 1 ? 'file' : 'files'})` : 'Melaton update', status: 'Successful', importance: 'Important' });
             }
             this.resetPendingUpdateFuse();
         };
-        // a restart of both waits for the Continuity PC's answer before anything counts as installed (a Cancel there
-        // keeps the updates waiting)
-        if (!beforeInstall) committed();
+        // nothing counts as installed until the restart is going ahead (#1022): Cancel at "programs still running"
+        // (runWinlogonPower answers false) kept nothing - the fuse, its files, the saved record and the prompt were gone
+        // already. A restart of both waits for the Continuity PC's answer (beforeInstall); every other one commits
+        // just before the page goes (beforeNavigate)
+        const hooks = beforeInstall
+            ? { beforeInstall: async () => { const go = await beforeInstall(); if (go) committed(); return go; } }
+            : { beforeNavigate: () => committed() };
 
         // runWinlogonPower: public/scripts/comp/winlogonPower.js
-        runWinlogonPower('restart', beforeInstall ? {
-            beforeInstall: async () => { const go = await beforeInstall(); if (go) committed(); return go; }
-        } : undefined).catch((err) => {
+        runWinlogonPower('restart', hooks).then((went) => {
+            if (went === false) console.log('🔄 Restart for updates called off: the updates keep waiting');
+        }).catch((err) => {
             console.error('❌ Restart sequence failed:', err);
             // dreamscapeLastResortNotice: public/scripts/comp/fatalErrorBootstrap.js
             if (typeof dreamscapeLastResortNotice === 'function') {
@@ -6420,6 +6438,9 @@ class ServiceWorkerManager {
                 if (outcome && outcome.rebooted) return { rebooted: true };
                 if (outcome && outcome.userChoice === 'restart') return { rebooted: true };
                 if (outcome && outcome.ask) return outcome;
+                // updates held as a count (Check for updates but let me choose): the list will differ until they are
+                // installed - the start goes on (it asked the server and walked the cache six times, #1022)
+                if (outcome && outcome.held) break;
                 this.bootPhase = 'verify';
             }
 
