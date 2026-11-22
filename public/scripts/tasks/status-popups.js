@@ -25,6 +25,27 @@
     const hhmm = (ms) => { const d = new Date(ms); return `${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')} ${d.getHours() < 12 ? 'AM' : 'PM'}`; };
 
     /**
+     * The connected Bluetooth devices a popup can carry (n.sys.bluetoothDevices, Nov 22 2026): only named devices
+     * with a normal profile and a battery reading are rows or go in the count. An unnamed "Bluetooth Devices"
+     * entry, a sensor with no profile and a device whose battery Android cannot read are left out.
+     */
+    function btDevices(n) {
+        const s = (n && n.sys) || {};
+        const list = Array.isArray(s.bluetoothDevices) ? s.bluetoothDevices : [];
+        const profiles = new Set(['a2dp', 'headset', 'handsfree', 'hfp', 'le_audio', 'leaudio', 'hid', 'wireless stereo', 'hands free', 'input device']);
+        return list.filter((d) => {
+            if (!d || !d.connected) return false;
+            const name = String(d.name || '').trim();
+            const address = String(d.address || d.id || '').trim();
+            if (!name || /^bluetooth devices?$/i.test(name) || (address && name === address)) return false;
+            const svc = Array.isArray(d.services) ? d.services : Array.isArray(d.profiles) ? d.profiles : [];
+            if (!svc.some((p) => profiles.has(String(p).toLowerCase()))) return false;
+            const lv = Number(d.battery);
+            return d.battery != null && Number.isFinite(lv) && lv >= 0 && lv <= 100;
+        });
+    }
+
+    /**
      * Whether the phone itself is online, from its own readings (sys): false with Flight Mode or no Wi-Fi and no mobile
      * data, true with either, null when the app sent none (Yukimi, Nov 20 2026: say the real issue, not "no internet").
      */
@@ -137,7 +158,8 @@
         data(f, n) {
             const s = n.sys || {};
             const sec = [links(['Wireless Manager'], true), { t: 'rule', first: true }];
-            if (s.bluetooth != null) sec.push(text(`Bluetooth: ${!s.bluetooth ? 'Power Off' : s.bluetoothConnected ? 'Connected' : 'On'}`));
+            // Bluetooth and its devices are never in Connectivity here: with its icon in the bar they belong to the
+            // Bluetooth popup, and this fallback has no way to know the icon's fit state (Nov 22 2026).
             const w = s.wifi;
             if (w) sec.push({ t: 'pair', l: `Wi-Fi: ${w.on === false ? 'Power Off' : w.connected ? (w.ssid || 'Connected') : 'Disconnected'}`, lb: false, r: [], bars: w.connected && Number.isFinite(w.level) ? Math.max(0, Math.min(4, w.level)) : null, first: true });
             const c = s.cell;
@@ -153,9 +175,16 @@
         },
         bluetooth(f, n) {
             const s = n.sys || {};
-            const lines = [text(s.bluetooth ? 'Bluetooth: On' : 'Bluetooth: Off')];
-            if (s.bluetooth && s.bluetoothConnected != null) lines.push(text(s.bluetoothConnected ? 'A device is connected.' : 'No device is connected.'));
-            lines.push(links(['Wireless Manager']));
+            const devs = btDevices(n);
+            // a valid connected device is what this popup calls Connected (Nov 22)
+            const state = devs.length ? 'Connected' : s.bluetooth === false ? 'Off' : 'On';
+            const lines = [devs.length
+                ? { t: 'pair', l: `Bluetooth: ${state}`, r: [{ s: String(devs.length), b: true }], lb: false, first: true }
+                : text(`Bluetooth: ${state}`)];
+            if (devs.length) devs.slice(0, 3).forEach((d) => lines.push({ t: 'text', s: String(d.name).trim(), b: true }));
+            else if (s.bluetooth !== false && s.bluetoothConnected === true) lines.push(text('A device is connected.'));
+            else if (s.bluetooth === false || s.bluetoothConnected === false) lines.push(text('No device is connected.'));
+            // Wireless Manager belongs to Connectivity, not to the Bluetooth bubble
             return pop('bluetooth', 'Bluetooth', lines, ['Settings']);
         },
         battery(f, n) {

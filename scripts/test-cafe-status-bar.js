@@ -79,4 +79,26 @@ g.CafeTasks.lib.statusFit = realFit;
 a = send('layout', { geo: { iconsRight: 1000, titleX: 100, titleMin: 200, gap: 4, icon: 54, holeX: 900, holeR: 950 }, width: 1080, widths: {}, native: ['signal', 'battery'], order: ['mail', 'sms', 'director', 'carkey', 'received', 'notify'] });
 const f2 = out(a).fit;
 assert.ok(f2 && Array.isArray(f2.right), 'the real fit gives a placement');
+
+// Bluetooth devices in the Bluetooth popup (Nov 22 2026): only a named device with a normal profile and a battery
+// reading is listed or counted. Connectivity carries none of it (its icon has its own popup). The unnamed
+// "Bluetooth Devices" row, a profile-less sensor, a device with no battery value and a disconnected phone are out.
+a = send('sys', {
+    bluetooth: true, bluetoothConnected: true,
+    bluetoothDevices: [
+        { id: 'a', name: 'Headphones', connected: true, battery: 80, services: ['a2dp'] },
+        { id: 'b', name: '', connected: true, battery: 70, services: ['a2dp'] },
+        { id: 'c', name: 'Bluetooth Devices', connected: true, battery: 60, services: ['a2dp'] },
+        { id: 'd', name: 'Sensor', connected: true, battery: 50, services: [] },
+        { id: 'e', name: 'Mouse', connected: true, battery: null, services: ['hid'] },
+        { id: 'f', name: 'Phone', connected: false, battery: 40, services: ['headset'] }
+    ]
+});
+const dp = out(a).popups.data;
+assert.ok(!dp.sec.some((x) => /Bluetooth|Headphones/.test(x.l || x.s || '')), 'Connectivity never carries Bluetooth - its icon has its own popup');
+const bp = out(a).popups.bluetooth;
+assert.ok(bp.sec.some((x) => x.t === 'pair' && x.l === 'Bluetooth: Connected' && x.r[0] && x.r[0].s === '1'), 'the Bluetooth popup says Connected and counts one device');
+assert.ok(bp.sec.some((x) => x.t === 'text' && x.s === 'Headphones'), 'the real device is listed');
+assert.ok(!bp.sec.some((x) => x.t === 'text' && /Bluetooth Devices|Sensor|Mouse|Phone/.test(x.s)), 'unnamed, no-profile, no-battery and disconnected are out');
+assert.ok(!bp.sec.some((x) => x.t === 'links' && (x.links || []).includes('Wireless Manager')), 'no Wireless Manager in the Bluetooth popup');
 console.log('test-cafe-status-bar: ok');
