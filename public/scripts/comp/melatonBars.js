@@ -1802,12 +1802,12 @@
     };
 
     // The page's soft key bar as tall as the app's over Android programs (Yozora #1013, Yukimi Nov 22: "adjust the softkey
-    // bar in DS to match androids size so that there no sudden unexpected size change"): where Melaton handles the
-    // navigation, the app's bar is Android's button row (AndroidBars state navPx, device px), 88 px against the page's 26
-    // units on the Fold's cover screen. html[data-wm-soft-h] + --wm-soft-h (wm65.css centres the labels and glyphs in it).
-    // The phone's window only; read at start, on a resize (a fold, a turn) and when the Bars settings change.
+    // bar in DS to match androids size so that there no sudden unexpected size change"): wmShell.syncSoftHeight owns it
+    // (#1053: here, in a feature loaded only when the app first asks for a copy, Today kept 26 units after every app
+    // restart until an Android program was opened). This copy only for a page whose shell predates it.
     let softHSet = '';
     function syncSoftHeight() {
+        if (window.wmShell && typeof window.wmShell.syncSoftHeight === 'function') { window.wmShell.syncSoftHeight(); return; }
         let css = '';
         try {
             const A = window.AndroidBars;
@@ -1825,10 +1825,6 @@
     }
     if (window.AndroidBars) {
         syncSoftHeight();
-        window.addEventListener('resize', syncSoftHeight, { signal: appScopeSignal });
-        // read again when the page comes back on screen: at load (an app restart, an install) the app's bar service may
-        // not have taken Android's nav row yet (navPx 0), and nothing resized after, so the bar kept 26 units against the
-        // nav bar's 108 px (Fold cover, Nov 22 #1053). One getState on a return, no timer
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) syncSoftHeight(); }, { signal: appScopeSignal });
+        if (!(window.wmShell && typeof window.wmShell.syncSoftHeight === 'function')) window.addEventListener('resize', syncSoftHeight, { signal: appScopeSignal });
     }
 })();
