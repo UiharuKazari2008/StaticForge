@@ -32,7 +32,8 @@ const recorder = require('../../xmRadioRecorder');
 //   xmradio_tape_tracks     { workspaceId, tape } { tracks[{ id, name, size, at }] } (played through vfs_download_file)
 //   xmradio_rec_start       { channelId, song?, fromStart? }  admins -> { rid, channelId, kind, mode, tape, since, until, url, cut }
 //                                                 (song: the phone's one-touch Record, the cut on air, from its start
-//                                                 when fromStart; it stops when the cut ends)
+//                                                 when fromStart; it stops when the cut ends. Without song: the deck's
+//                                                 REC, the channel until STOP, from the cut's start when fromStart)
 //   xmradio_tune's back:    seconds behind live to start at (replay; the stream keeps five hours)
 //   xmradio_search          { q }                 { results[{ channelId, a, t, s }] }: what is on now, every word matched
 //   xmradio_guide           {}                    { genres { channelId: genre }, missing } (missing ones are read in the
@@ -122,7 +123,7 @@ function registerPackets(handlersCtx) {
     reg('xmradio_tape_tracks', packet(false, 'The tape could not be read', async (m) => ({ tracks: await recorder.tracks(String(m.workspaceId || recorder.deck().workspaceId), String(m.tape || recorder.deck().tape)) })));
     reg('xmradio_rec_start', packet(true, 'The recording could not be started', async (m) => (m.song
         ? recorder.recordCut(m.channelId, { fromStart: !!m.fromStart })
-        : recorder.start({ channelId: m.channelId, kind: 'manual' }))));
+        : recorder.recordChannel(m.channelId, { fromStart: !!m.fromStart }))));
     // a phone's channels for its feed (xmradio_phone): the one it plays and the pages Today shows; fire and forget
     wsPacketRegistry.registerWsPacket('xmradio_phone_watch', async (ctx) => {
         if (!canRead(ctx.clientInfo)) return;

@@ -457,8 +457,18 @@ async function watchTick() {
 }
 /** A channel's recent cuts, oldest first. */
 function nowPlayingCuts(id) { const v = nowPlaying.get(id); return v && v.cuts ? v.cuts.slice() : []; }
+/**
+ * The lineup kept on disk, read into memory once: the recorder and the phone feed need it even when no radio has asked
+ * for the lineup since the server started (a phone keeps its own copy a month, so it never asks; its Record answered
+ * "No such channel." after every restart, Yukimi Nov 21 2026).
+ */
+function lineupKept() {
+    if (!lineupCache) { try { lineupCache = JSON.parse(fs.readFileSync(lineupFile(), 'utf8')); } catch (_) { lineupCache = null; } }
+    return lineupCache;
+}
 /** A channel of the lineup with its plan mark, or null. */
 function channelById(id) {
+    lineupKept();
     const c = lineupCache && lineupCache.channels && lineupCache.channels.find((x) => x.id === id);
     if (!c) return null;
     const no = new Set(lineupCache.notInPlan || []);
@@ -475,7 +485,7 @@ function defineFeed(statusHub) {
         allow: (info) => !!(info && /^(admin|dev_admin)$/.test(String(info.userType || ''))),
         sample: async () => {
             await readLookAround();
-            const items = { account: account(), lineup: lineupCache && lineupCache.at ? { at: lineupCache.at, n: lineupCache.channels.length } : null };
+            const items = { account: account(), lineup: lineupKept() && lineupCache.at ? { at: lineupCache.at, n: lineupCache.channels.length } : null };
             for (const [id, v] of nowPlaying) items[`ch:${id}`] = { a: v.a, t: v.t, s: v.s, ad: v.ad, i: v.i };
             // the cassette deck: its tape, its switch, what it is recording, the timers, alerts and terms
             try { items.deck = require('./xmRadioRecorder').deck(); } catch (_) { /* not started */ }
@@ -520,7 +530,11 @@ function definePhoneFeed(statusHub) {
         sample: async () => {
             await readLookAround();
             const a = account();
-            const items = { account: { signedIn: !!(a && a.signedIn) }, lineup: lineupCache && lineupCache.at ? { at: lineupCache.at } : null, guide: { n: Object.keys((lineupCache && lineupCache.genres) || {}).length } };
+            const items = { account: { signedIn: !!(a && a.signedIn) }, lineup: lineupKept() && lineupCache.at ? { at: lineupCache.at } : null, guide: { n: Object.keys((lineupCache && lineupCache.genres) || {}).length } };
+            // the preset banks themselves (at most 30 ids; only a change is pushed): a phone kept the ones it read with
+            // the lineup, once a month, so presets stored elsewhere never reached its Today (Yukimi, Nov 21 2026)
+            const pr = presets();
+            items.presets = { A: (pr.A || []).slice(0, 10), B: (pr.B || []).slice(0, 10), C: (pr.C || []).slice(0, 10) };
             // the deck as a phone shows it: what records now (no timers, alerts or terms lists)
             try { const d = require('./xmRadioRecorder').deck(); items.rec = d.recordings.map((r) => ({ rid: r.rid, channelId: r.channelId, kind: r.kind, since: r.since })); } catch (_) { items.rec = []; }
             for (const id of phoneChannels()) {
@@ -710,7 +724,7 @@ async function channelInfo(id, tok) {
 
 /** The channels this account can tune, by number (kept a month; built again on demand). */
 async function lineup({ fresh } = {}) {
-    if (!lineupCache) { try { lineupCache = JSON.parse(fs.readFileSync(lineupFile(), 'utf8')); } catch (_) { lineupCache = null; } }
+    lineupKept();
     if (!fresh && lineupCache && lineupCache.channels && lineupCache.channels.length && Date.now() - lineupCache.at < LINEUP_TTL) return withPlan(lineupCache.channels);
     if (lineupBuilding) return lineupBuilding;
     lineupBuilding = (async () => {
@@ -909,6 +923,89 @@ const ART_KEY = /^(aem|live|if)\/[A-Za-z0-9_./-]{4,200}$/;
  * Our address for a SiriusXM art key at a width, in the picture's own proportions (aspect = width / height of the
  * original): the image service squashes a picture into whatever box it is asked for, it never letterboxes.
  */
+// ---- the Today panel icons made from the channels' logos (/api/xmradio/tiicon)
+const TI_VERSION = 3; // 3: cropped to its visible pixels, sized and centred as the Music icon (Nov 21 2026)
+const tiMem = new Map(); // `${key}|${scale}` -> Buffer (at most 300)
+const tiBusy = new Map();
+function tiDir() {
+    return path.join(__dirname, '..', '.cache', 'xmradio-ti');
+}
+
+async function tiIcon(key, scale, aspect = 1) {
+    const ck = `${key}|${scale}`;
+    const have = tiMem.get(ck);
+    if (have) return have;
+    if (tiBusy.has(ck)) return tiBusy.get(ck);
+    const job = (async () => {
+        const file = path.join(tiDir(), `${crypto.createHash('sha1').update(`${TI_VERSION}|${ck}`).digest('hex')}.png`);
+        let body = await fs.promises.readFile(file).catch(() => null);
+        if (!body) {
+            // the logo at its own shape (a stored aspect, 5:4 for most), so nothing is stretched
+            const r = await fetch(imageUrl(key, 480, 'png', Math.round(480 / aspect)), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+            if (!r.ok) throw new Error(`logo ${r.status}`);
+            body = await drawTiIcon(Buffer.from(await r.arrayBuffer()), scale);
+            await fs.promises.mkdir(tiDir(), { recursive: true }).catch(() => {});
+            await fs.promises.writeFile(file, body).catch(() => {});
+        }
+        tiMem.set(ck, body);
+        if (tiMem.size > 300) tiMem.delete(tiMem.keys().next().value);
+        return body;
+    })().finally(() => tiBusy.delete(ck));
+    tiBusy.set(ck, job);
+    return job;
+}
+
+/** The logo as a Today panel icon, sized and centred as the ROM's Music icon (modules/wm65PanelIcon.js); 43 x 57 per 1x. */
+async function drawTiIcon(logo, scale) {
+    return require('./wm65PanelIcon').logoPanelIcon(logo, scale / 2);
+}
+
+/** The address of a channel's Today panel icon (a 4x drawing; the panel shows it at 43 x 57). */
+function tiIconPath(key, aspect = 1) {
+    const a = Math.round(Math.max(0.2, Math.min(5, Number(aspect) || 1)) * 1000) / 1000;
+    return ART_KEY.test(String(key || '')) ? `/api/xmradio/tiicon?k=${encodeURIComponent(key)}&a=${a}&x=4&v=${TI_VERSION}` : '';
+}
+
+// ---- the channels' art as the radio shows it (/api/xmradio/art): made once from the image service's picture and kept
+// processed, never the original (Yukimi, Nov 21 2026: "make sure that in the xm radio cache you are not storing the
+// original and have them precropped for everyone and already optimised, same for album art"): logos (PNG) trimmed of
+// their empty edge and saved as a small palette PNG, pictures (JPEG) re-encoded as compact progressive JPEG at the size
+// asked for; on disk for every client and restart, in memory for the hot ones.
+const ART_VERSION = 1;
+const artBusy = new Map();
+function artDir() {
+    return path.join(__dirname, '..', '.cache', 'xmradio-art');
+}
+
+async function processedArt(key, size, height, fmt) {
+    const ck = `${ART_VERSION}|${key}|${size}|${height}|${fmt}`;
+    if (artBusy.has(ck)) return artBusy.get(ck);
+    const job = (async () => {
+        const file = path.join(artDir(), `${crypto.createHash('sha1').update(ck).digest('hex')}.${fmt === 'png' ? 'png' : 'jpg'}`);
+        const type = fmt === 'png' ? 'image/png' : 'image/jpeg';
+        const kept = await fs.promises.readFile(file).catch(() => null);
+        if (kept) return { type, body: kept };
+        const r = await fetch(imageUrl(key, size, fmt, height), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+        if (!r.ok) throw Object.assign(new Error(`art ${r.status}`), { notFound: r.status === 404 });
+        const src = Buffer.from(await r.arrayBuffer());
+        const sharp = require('sharp');
+        let body;
+        if (fmt === 'png') {
+            const trimmed = await sharp(src).ensureAlpha().trim({ threshold: 8 }).png().toBuffer().catch(() => src);
+            body = await sharp(trimmed).png({ palette: true, quality: 90, effort: 7, compressionLevel: 9 }).toBuffer();
+        } else {
+            body = await sharp(src).jpeg({ quality: 80, mozjpeg: true, progressive: true }).toBuffer();
+        }
+        // never larger than what the service sent
+        if (body.length > src.length) body = fmt === 'png' ? body : src;
+        await fs.promises.mkdir(artDir(), { recursive: true }).catch(() => {});
+        await fs.promises.writeFile(file, body).catch(() => {});
+        return { type, body };
+    })().finally(() => artBusy.delete(ck));
+    artBusy.set(ck, job);
+    return job;
+}
+
 function artPath(key, size = 240, format = 'jpeg', aspect = 1) {
     const k = String(key || '');
     if (!ART_KEY.test(k)) return '';
@@ -936,7 +1033,7 @@ function describeTune(j) {
     const logo = pickImg(im.logo && im.logo.aspect_5x4) || pickImg(im.tile && im.tile.aspect_1x1);
     const ref = imgRef(logo, 1.25);
     if (ref && lineupCache) { lineupCache.logos = lineupCache.logos || {}; const had = artRef(lineupCache.logos[j.id], 1.25); if (had.u !== ref.u) { lineupCache.logos[j.id] = ref; saveLineup(); } }
-    return { id: j.id, type: j.type, logo: ref ? artPath(ref.u, 240, 'png', ref.a) : '', skipLimits: j.skipLimits || null };
+    return { id: j.id, type: j.type, logo: ref ? artPath(ref.u, 240, 'png', ref.a) : '', tiIcon: ref ? tiIconPath(ref.u, ref.a) : '', skipLimits: j.skipLimits || null };
 }
 
 function sweepStreams() {
@@ -1155,17 +1252,32 @@ function mount(app, authMiddleware) {
         const ck = `${k}|${size}|${height}|${fmt}`;
         let hit = artCache.get(ck);
         if (!hit) {
-            try {
-                const r = await fetch(imageUrl(k, size, fmt, height), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
-                if (!r.ok) { res.status(404).end(); return; }
-                hit = { type: r.headers.get('content-type') || 'image/jpeg', body: Buffer.from(await r.arrayBuffer()) };
-            } catch (_) { res.status(502).end(); return; }
+            try { hit = await processedArt(k, size, height, fmt); } catch (err) { res.status(err && err.notFound ? 404 : 502).end(); return; }
+            if (!hit) { res.status(404).end(); return; }
             artCache.set(ck, hit);
             if (artCache.size > 400) artCache.delete(artCache.keys().next().value);
         }
         res.set('Content-Type', hit.type);
-        res.set('Cache-Control', 'private, max-age=86400');
+        // the same picture for everyone and for good (the address names the picture and its size)
+        res.set('Cache-Control', 'private, max-age=2592000');
         res.send(hit.body);
+    });
+    // a channel's logo as a Windows Mobile 6.5 Today panel icon (Yukimi, Nov 21 2026: "you need to crop them, optimise
+    // them and add their reflection like other apps have, cache them"): the logo trimmed of its empty edge, fitted to
+    // the panel icon's box and standing on its bottom, its fading mirror below (as scripts/generate-wm-xmradio-art.js
+    // draws the apps' own: 86 x 113 per 2x), a small palette PNG; made once per logo and scale, kept on disk and in
+    // memory, sent to be kept a year (the address carries the logo's key and the drawing's version)
+    app.get('/api/xmradio/tiicon', authMiddleware, admin, async (req, res) => {
+        const k = String(req.query.k || '');
+        const scale = [1, 2, 4].includes(Number(req.query.x)) ? Number(req.query.x) : 4;
+        const aspect = Math.max(0.2, Math.min(5, Number(req.query.a) || 1));
+        if (!ART_KEY.test(k)) { res.status(404).end(); return; }
+        try {
+            const body = await tiIcon(k, scale, aspect);
+            res.set('Content-Type', 'image/png');
+            res.set('Cache-Control', 'private, max-age=31536000, immutable');
+            res.send(body);
+        } catch (_) { res.status(502).end(); }
     });
     app.get('/api/xmradio/eco/:rid/:file', authMiddleware, admin, (req, res) => { void ecoFile(String(req.params.rid), String(req.params.file), res); });
     app.get('/api/xmradio/key/:sid/:keyId', authMiddleware, admin, (req, res) => { void streamKey(String(req.params.sid), String(req.params.keyId), res); });

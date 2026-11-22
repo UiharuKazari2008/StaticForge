@@ -49,11 +49,15 @@
     const SVG = {
         back: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M8 0v10L1 5zM15 0v10L8 5z"/></svg>',
         play: '<svg viewBox="0 0 20 10" aria-hidden="true"><path d="M1 0v10l7-5zM11 0h3v10h-3zM16 0h3v10h-3z"/></svg>',
-        fwd: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 0v10l7-5zM8 0v10l7-5z"/></svg>'
+        fwd: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 0v10l7-5zM8 0v10l7-5z"/></svg>',
+        // the IEC power symbols, drawn: the phone's fonts have no U+23FB / U+23FC (a tofu box on the faceplate)
+        power: '<svg class="xr-pw" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.6 3.9a5.8 5.8 0 1 0 6.8 0M8 1.6v6"/></svg>',
+        powerToggle: '<svg class="xr-pw" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 3.8v8.4"/></svg>'
     };
     const INFO_MODES = ['song', 'channel', 'show'];
     const HLS_SRC = '/dist/hlsjs/hls.light.min.js';
     const LONG_PRESS_MS = 900;
+    const SKIP_HOLD_MS = 500; // a held back / forward key seeks
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const pad = (n, w) => String(n).padStart(w, '0');
@@ -72,7 +76,12 @@
             zoom: Number(p.zoom) > 0 ? Number(p.zoom) : 1,
             // what the keyboard's media keys do (Yukimi, Nov 20 2026): skip through the stream, or change channel
             mediaKeys: p.mediaKeys === 'channel' ? 'channel' : 'transport',
-            channel: typeof p.channel === 'string' ? p.channel : ''
+            // what back / forward do (Yukimi, Nov 21 2026): song = the start of this song or show (the one before, the
+            // next) with a hold to seek; seek = always 15 seconds
+            skip: p.skip === 'seek' ? 'seek' : 'song',
+            channel: typeof p.channel === 'string' ? p.channel : '',
+            // the radio opens as it was left: on or off (Yukimi, Nov 21 2026: "when i open it should show the last state")
+            on: p.on === true
         };
     }
 
@@ -154,7 +163,61 @@
             call('openModal', m);
             m.classList.remove('hidden');
             this.place();
-            void this.load();
+            this.loaded = this.load();
+            // the desktop's half of XM Radio's session across the app's windows (the phone's wmXmRadio.js registers the
+            // same id): what plays here, taking the phone's channel, stopping when it moves (melatonMediaSessions.js)
+            const media = root.melatonMedia;
+            if (media) media.register('xmradio', { label: NAME, describe: () => this.mediaSession(), take: (s) => this.mediaTake(s), release: () => this.mediaRelease() }, { signal: this.app.signal });
+            void this.loaded.then(() => this.mediaPullHere());
+        }
+
+        /** The channel playing here, as the phone's XM Radio can tune it too (null: off, no signal, a recording). */
+        mediaSession() {
+            const ch = this.channel;
+            if (!this.on || !ch || this.recording || !(this.state === 'playing' || this.state === 'acquiring' || this.state === 'paused')) return null;
+            const now = this.now.get(ch.id);
+            return { title: `${ch.number} ${ch.name}`, subtitle: now && !now.ad ? [now.a, now.t].filter(Boolean).join(' - ') : 'SiriusXM', kind: 'radio', source: { channelId: ch.id, number: ch.number, name: ch.name }, playing: this.state !== 'paused' };
+        }
+
+        /** The other window hears of a play / stop / channel / song change (only when one happened). */
+        mediaChanged() {
+            const media = root.melatonMedia;
+            if (!media) return;
+            const key = JSON.stringify(this.mediaSession());
+            if (key === this.mediaKey) return;
+            this.mediaKey = key;
+            media.changed('xmradio');
+        }
+
+        mediaChannel(src) {
+            if (!src) return null;
+            return this.byId.get(src.channelId) || (src.number != null ? this.lineup.find((c) => String(c.number) === String(src.number)) : null) || null;
+        }
+
+        /** Play the phone's channel here (the radio switched on as its power key does). */
+        async mediaTake(s) {
+            await this.loaded;
+            if (!this.signedIn()) return false;
+            const ch = this.mediaChannel(s && s.source);
+            if (!ch || ch.sub === false) return false;
+            if (!(this.on && this.channel === ch && (this.state === 'playing' || this.state === 'acquiring'))) await this.tune(ch);
+            return this.on && this.channel === ch && (this.state === 'playing' || this.state === 'acquiring' || this.state === 'paused');
+        }
+
+        /** Stop here (the session moved, or XM Radio started on the phone): the radio is switched off; what it was. */
+        mediaRelease() {
+            const s = this.mediaSession();
+            if (!s) return null;
+            if (this.on) this.power();
+            return s;
+        }
+
+        /** "... is playing on your phone. Click to transfer it to this computer." over the radio's top edge while the phone plays a channel it has. */
+        mediaPullHere() {
+            const media = root.melatonMedia;
+            if (!media || this.app.signal.aborted || !this.signedIn() || !this.root) return;
+            const bar = media.offerTransfer('xmradio', this.root, { canTake: (s) => !!this.mediaChannel(s && s.source) });
+            if (bar) bar.classList.add('mms-transfer-overlay');
         }
 
         /** The display: the same on every radio (the menu is drawn on it). */
@@ -189,7 +252,7 @@
             const key = (b, label, sub, cls) => `<span class="xr-kw${cls ? ` ${cls}` : ''}"><button type="button" class="xr-sk" data-b="${b}" title="${esc(label)}">${label}</button>${sub ? `<i>${esc(sub)}</i>` : ''}</span>`;
             const transport = `<button type="button" class="xr-tk xr-glyph" data-b="back" title="Back 15 seconds">${SVG.back}</button><button type="button" class="xr-tk xr-glyph" data-b="play" title="Pause / Play">${SVG.play}</button><button type="button" class="xr-tk xr-glyph" data-b="fwd" title="Forward 15 seconds">${SVG.fwd}</button>`;
             if (model === 'gloss') {
-                return `<div class="xr-g-edge"><button type="button" class="xr-ek" data-b="power" title="Power">&#x23FB;</button>${brand}<span class="xr-g-edge-fill"></span><button type="button" class="xr-ek" data-b="menu" title="Menu">menu</button><button type="button" class="xr-ek" data-b="band" title="Preset bank">fav</button></div>
+                return `<div class="xr-g-edge"><button type="button" class="xr-ek" data-b="power" title="Power">${SVG.power}</button>${brand}<span class="xr-g-edge-fill"></span><button type="button" class="xr-ek" data-b="menu" title="Menu">menu</button><button type="button" class="xr-ek" data-b="band" title="Preset bank">fav</button></div>
                     ${disp}
                     <div class="xr-g-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => this.numKey(n, 'xr-rk')).join('')}<button type="button" class="xr-rk" data-b="direct" title="Direct tune">#</button></div>
                     <div class="xr-g-knob" data-k="tune" title="Tune (turn); press to select"><span class="xr-g-ring"></span><button type="button" class="xr-g-cap" data-nav="select" aria-label="Select"></button></div>
@@ -200,7 +263,7 @@
                 // the Stratus (Yukimi's photo, Nov 20 2026): glossy black, a blue LCD, the brand above it, paired number keys
                 const sk = (attr, html, title, cls) => `<button type="button" class="xr-stk${cls ? ` ${cls}` : ''}" ${attr} title="${esc(title)}">${html}</button>`;
                 const pair = (a, b) => `<span class="xr-st-pair">${this.numKey(a, 'xr-stn')}<i class="xr-st-screw"></i>${this.numKey(b, 'xr-stn')}</span>`;
-                return `<div class="xr-st-left">${sk('data-b="power"', '&#x23FB;', 'Power', 'is-power')}${sk('data-b="menu"', '<i class="xr-st-tape"></i><span>menu</span>', 'Menu', 'is-blue')}${sk('data-b="jump"', '&#x21B7;', 'Jump to the last channel', 'is-blue')}</div>
+                return `<div class="xr-st-left">${sk('data-b="power"', SVG.power, 'Power', 'is-power')}${sk('data-b="menu"', '<i class="xr-st-tape"></i><span>menu</span>', 'Menu', 'is-blue')}${sk('data-b="jump"', '&#x21B7;', 'Jump to the last channel', 'is-blue')}</div>
                     <div class="xr-st-mid">${brand}${disp}<div class="xr-st-under">${sk('data-b="disp"', '', 'Display information', 'xr-st-square')}<span class="xr-st-rocker">${sk('data-nav="left"', '&#x25C0;', 'Back 15 seconds', 'is-blue')}${sk('data-nav="right"', '&#x25B6;', 'Forward 15 seconds', 'is-blue')}</span></div></div>
                     <div class="xr-st-right">${sk('data-nav="up"', '&#x25B2;', 'Channel up', 'is-blue')}${sk('data-b="band"', '<i class="xr-st-dog"></i>', 'Preset bank', 'is-blue')}${sk('data-nav="down"', '&#x25BC;', 'Channel down', 'is-blue')}</div>
                     <div class="xr-st-nums">${pair(1, 2)}${pair(3, 4)}${pair(5, 6)}${pair(7, 8)}${pair(9, 10)}</div>`;
@@ -209,7 +272,7 @@
                 // the Roady XT (Yukimi's photo, Nov 20 2026): silver, a dot-matrix LCD, the maker's name rewritten
                 const rk = (b, label, nav) => `<button type="button" class="xr-rdk"${nav ? ` data-nav="${nav}"` : ` data-b="${b}"`} title="${esc(label)}"><span>${label}</span><i></i></button>`;
                 const pair = (a, b) => `<span class="xr-rd-pair">${this.numKey(a, 'xr-rdn')}${this.numKey(b, 'xr-rdn')}</span>`;
-                return `<div class="xr-rd-left">${rk('power', '&#x23FC;')}${rk('menu', 'menu')}${rk('disp', 'disp')}</div>
+                return `<div class="xr-rd-left">${rk('power', SVG.powerToggle)}${rk('menu', 'menu')}${rk('disp', 'disp')}</div>
                     <div class="xr-rd-win">${disp}<div class="xr-rd-print"><b class="xr-rd-maker">XYRIDIAN</b>${brand}<b class="xr-rd-model">roady<sup>xt</sup></b></div></div>
                     <div class="xr-rd-right">${rk('', '&#x25B2;', 'up')}${rk('', 'select', 'select')}${rk('', '&#x25BC;', 'down')}</div>
                     <div class="xr-rd-row"><i class="xr-rd-led"></i>${rk('direct', 'pre/dir')}${rk('band', 'memory')}${rk('jump', 'jump')}${rk('guide', 'search')}</div>
@@ -221,8 +284,8 @@
                     ? '<div class="xr-o-pad" data-k="tune" title="Up / down: channel"><button type="button" class="xr-o-dir is-up" data-nav="up" aria-label="Up"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-right" data-nav="right" aria-label="Right"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-down" data-nav="down" aria-label="Down"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-left" data-nav="left" aria-label="Left"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-center" data-nav="select" aria-label="Select"></button></div>'
                     : '<div class="xr-o-ring" data-k="tune" title="Up / down: channel"><button type="button" class="xr-o-zone is-up" data-nav="up" aria-label="Up"></button><button type="button" class="xr-o-zone is-right" data-nav="right" aria-label="Right"></button><button type="button" class="xr-o-zone is-down" data-nav="down" aria-label="Down"></button><button type="button" class="xr-o-zone is-left" data-nav="left" aria-label="Left"></button><button type="button" class="xr-o-center" data-nav="select" aria-label="Select"><i></i></button></div>';
                 const side = ez
-                    ? key('power', '&#x23FB;', '', 'is-power') + key('menu', 'menu', '', 'is-menu') + key('band', 'band', '') + key('jump', 'jump', '')
-                    : key('power', '&#x23FB;', 'power', 'is-power') + key('menu', 'menu', 'guide', 'is-menu') + key('disp', 'info', 'disp') + key('jump', '&#x21B6;', 'jump');
+                    ? key('power', SVG.power, '', 'is-power') + key('menu', 'menu', '', 'is-menu') + key('band', 'band', '') + key('jump', 'jump', '')
+                    : key('power', SVG.power, 'power', 'is-power') + key('menu', 'menu', 'guide', 'is-menu') + key('disp', 'info', 'disp') + key('jump', '&#x21B6;', 'jump');
                 const last = ez ? '<button type="button" class="xr-bk" data-b="direct" title="Direct tune">direct</button>' : '<button type="button" class="xr-bk" data-b="band" title="Preset bank">b/#</button>';
                 return `${brand}${disp}<div class="xr-o-nav">${pad}${ez ? '' : `<div class="xr-o-transport">${transport}</div>`}</div>
                     <div class="xr-o-side">${side}</div>
@@ -237,7 +300,7 @@
                 <button type="button" class="xr-knob xr-tune" data-k="tune" title="Tune (channel up / down)" aria-label="Tune"><i class="xr-knob-cap"></i><i class="xr-knob-mark"></i></button>
                 <div class="xr-presets">${[1, 2, 3, 4, 5, 6].map((n) => this.numKey(n, 'xr-key')).join('')}</div>
                 <div class="xr-fn">
-                    <button type="button" class="xr-key xr-power" data-b="power" title="Power">&#x23FB;</button>
+                    <button type="button" class="xr-key xr-power" data-b="power" title="Power">${SVG.power}</button>
                     <button type="button" class="xr-key" data-b="band" title="Preset band">BAND</button>
                     <button type="button" class="xr-key" data-b="disp" title="Display information">DISP</button>
                     <button type="button" class="xr-key" data-b="direct" title="Direct tune">DIRECT</button>
@@ -255,6 +318,7 @@
             shell.innerHTML = this.faceplateHtml(model);
             this.f = {};
             this.root.querySelectorAll('[data-f]').forEach((el) => { this.f[el.dataset.f] = el; });
+            this.skipTitles();
             this.artKey = null;
             this.logoKey = null;
             this.bgKey = null;
@@ -339,6 +403,7 @@
             }, sig);
             doc.addEventListener('visibilitychange', () => this.syncSeen(), sig);
             this.root.addEventListener('click', (e) => {
+                if (this.held) { this.held = false; if (e.target.closest('[data-b="back"], [data-b="fwd"], [data-nav="left"], [data-nav="right"]')) return; }
                 const n = e.target.closest('[data-nav]');
                 if (n) { this.nav(n.dataset.nav); return; }
                 const b = e.target.closest('[data-b]');
@@ -352,6 +417,7 @@
                 if (p && e.button === 0) this.presetDown(Number(p.dataset.pre), p);
                 const k = e.target.closest('[data-k]');
                 if (k && e.button === 0) this.knobDrag(k.dataset.k, e, k);
+                this.skipHold(e);
             }, sig);
             this.root.addEventListener('wheel', (e) => {
                 const k = e.target.closest('[data-k]');
@@ -412,7 +478,25 @@
                 this.account = r && r.account;
             } catch (_) { this.account = null; }
             await this.loadLineup();
+            await this.loadDeck();
             this.paint();
+            this.restore();
+        }
+
+        /** What the deck is doing (a recording holds the radio on its channel); the feed keeps it current while on. */
+        async loadDeck() {
+            if (!this.signedIn()) return;
+            try {
+                const r = await this.ask('xmradio_deck_get', {});
+                if (r && r.deck) { this.deckState = r.deck; this.syncRecording(r.deck); }
+            } catch (_) { /* the feed brings it once the radio is on */ }
+        }
+
+        /** Opening: as it was left (on, on the last channel), and on the recording's channel while the deck records. */
+        restore() {
+            if (this.on || this.app.signal.aborted || !this.signedIn()) return;
+            if (this.recording) this.followRecording(this.recording, { start: true, again: true });
+            else if (this.prefs.on) this.power();
         }
 
         async loadLineup() {
@@ -478,8 +562,8 @@
                 } else if (k === 'deck') {
                     // the cassette deck's state (its tape, its switch, recordings, timers, alerts, terms)
                     this.deckState = v;
+                    this.syncRecording(v);
                     if (this.deck) this.deck.applyState(v);
-                    else if (this.recording && !(v && (v.recordings || []).some((x) => x.rid === this.recording.rid))) this.endRecording();
                 } else if (k.startsWith('ch:')) {
                     const id = k.slice(3);
                     this.now.set(id, v);
@@ -493,21 +577,43 @@
 
         signedIn() { return !!(this.account && this.account.signedIn); }
 
+        /**
+         * Power. Off only disconnects this radio from the stream: a recording goes on on the server (Yukimi, Nov 21
+         * 2026: "the power off / stop only disconnects the client from the player"). On: the channel being recorded,
+         * else the last one.
+         */
         power() {
-            if (this.on) { this.stop(); this.on = false; this.state = 'off'; void this.syncHub(); this.paint(); return; }
+            if (this.on) {
+                this.stop(); this.on = false; this.state = 'off';
+                this.prefs.on = false; this.savePrefs();
+                void this.syncHub(); this.paint(); return;
+            }
             this.on = true;
+            this.prefs.on = true;
+            this.savePrefs();
             void this.syncHub();
             if (!this.signedIn()) { this.state = 'signin'; this.paint(); return; }
-            const last = this.byId.get(this.prefs.channel) || this.lineup.find((c) => c.sub !== false);
-            if (last) void this.tune(last); else { this.state = 'nosignal'; this.paint(); }
+            const rec = this.recording && this.byId.get(this.recording.channelId);
+            const last = rec || this.byId.get(this.prefs.channel) || this.lineup.find((c) => c.sub !== false);
+            if (last) void this.tune(last, { guarded: true }); else { this.state = 'nosignal'; this.paint(); }
         }
 
-        async tune(ch) {
+        /**
+         * The deck is recording (its REC, from here or from the phone): the radio is held on that channel, nothing seeks
+         * (Yukimi, Nov 21 2026: "guard the recorder and prevent changing the channel, seeking"). True when it refused.
+         */
+        recordGuard(what) {
+            if (!this.recording) return false;
+            const ch = this.byId.get(this.recording.channelId);
+            this.say(what === 'tune' && ch ? `RECORDING ${ch.number}` : 'RECORDING');
+            return true;
+        }
+
+        async tune(ch, { guarded } = {}) {
             if (!ch) return;
-            if (!this.on) { this.on = true; void this.syncHub(); }
+            if (!guarded && this.recording && ch.id !== this.recording.channelId && this.recordGuard('tune')) return;
+            if (!this.on) { this.on = true; this.prefs.on = true; void this.syncHub(); }
             if (this.channel && this.channel.id !== ch.id) this.prevChannel = this.channel.id;
-            // tuning leaves the recording (it goes on recording on the server)
-            this.recording = null;
             this.channel = ch;
             this.prefs.channel = ch.id;
             this.savePrefs();
@@ -558,21 +664,42 @@
             try { await a.play(); } catch (_) { /* the user's press started it; a refusal shows as paused */ }
         }
 
-        /** The deck's REC: the radio plays the recording (all of it can be paused and rewound) instead of live. */
-        playRecording(rec) {
+        /**
+         * The deck records a channel: the radio shows it and is held on it. It stays on the live stream it already plays
+         * (switching to the new recording's own playlist left several seconds of silence that read as muted, Yukimi Nov
+         * 21 2026), tuning only when it was on another channel; sound on. Off, it waits: power on goes to this channel.
+         */
+        followRecording(rec, opts) {
+            const start = !!(opts && opts.start);
+            if (!rec) return;
+            const was = this.recording;
             this.recording = rec;
-            if (!this.on) { this.on = true; void this.syncHub(); }
-            this.state = 'acquiring';
-            this.paint();
-            void this.play(rec.url, ++this.tuneSeq);
+            if (was && was.rid === rec.rid && !(opts && opts.again)) { this.paint(); return; }
+            this.audio.muted = false;
+            const ch = this.byId.get(rec.channelId);
+            if (!ch) { this.paint(); return; }
+            if (!this.on && !start) { this.paint(); return; }
+            if (this.on && this.channel === ch && this.state !== 'nosignal' && this.state !== 'nosub') {
+                if (this.audio.paused) void this.audio.play().catch(() => {});
+                this.paint();
+                return;
+            }
+            void this.tune(ch, { guarded: true });
         }
 
-        /** The recording was filed (STOP, or its 8 hours): back to the channel, live. */
+        /** The recording was filed (STOP, or its 8 hours): the radio is free again (it plays on, live); MUTE ends with it. */
         endRecording() {
             if (!this.recording) return;
-            const ch = this.byId.get(this.recording.channelId) || this.channel;
             this.recording = null;
-            if (this.on && ch) void this.tune(ch); else this.paint();
+            this.audio.muted = false;
+            this.paint();
+        }
+
+        /** The deck's state (the status feed, or read on opening): follow its REC, or let go when it has ended. */
+        syncRecording(deck, opts) {
+            const mine = ((deck && deck.recordings) || []).find((x) => x.kind === 'manual') || null;
+            if (mine) this.followRecording(mine, opts);
+            else if (this.recording) this.endRecording();
         }
 
         openDeck() {
@@ -624,6 +751,7 @@
         }
 
         seekBy(sec) {
+            if (this.recordGuard('seek')) return;
             const a = this.audio;
             if (!a.seekable.length) return;
             const lo = a.seekable.start(0);
@@ -633,11 +761,90 @@
         }
 
         goLive() {
+            if (this.recordGuard('seek')) return;
             const a = this.audio;
             const live = this.hls && Number.isFinite(this.hls.liveSyncPosition) ? this.hls.liveSyncPosition : (a.seekable.length ? a.seekable.end(a.seekable.length - 1) : null);
             if (live != null) a.currentTime = live;
             if (a.paused) void a.play().catch(() => {});
             this.paintReplay();
+        }
+
+        /** Where the stream plays (ms, the broadcast's clock), or null. */
+        posTime() {
+            const d = this.hls && this.hls.playingDate;
+            return d instanceof Date && !Number.isNaN(d.getTime()) ? d.getTime() : null;
+        }
+
+        /**
+         * Back / forward (the transport keys, the pad's left and right, the media keys), as MENU > Back / Forward says
+         * (Yukimi, Nov 21 2026): the start of this song or show (in its first five seconds, the one before) and the next
+         * one, a hold seeking; or 15 seconds each press.
+         */
+        skip(dir) {
+            if (this.recordGuard('seek')) return;
+            if (this.prefs.skip === 'seek') { this.seekBy(dir * 15); return; }
+            void this.skipSong(dir);
+        }
+
+        async skipSong(dir) {
+            const ch = this.channel;
+            if (!ch || this.posTime() == null) { this.seekBy(dir * 15); return; }
+            const list = await this.starts(ch.id);
+            const p = this.posTime();
+            if (this.channel !== ch || p == null || this.recording) return;
+            if (!list.length) { this.seekBy(dir * 15); return; }
+            if (dir < 0) {
+                let k = -1;
+                list.forEach((t, i) => { if (t <= p) k = i; });
+                const to = k < 0 ? list[0] : (p - list[k] > 5000 || k === 0 ? list[k] : list[k - 1]);
+                this.seekBy((to - p) / 1000);
+                if (this.audio.paused) void this.audio.play().catch(() => {});
+            } else {
+                const next = list.find((t) => t > p + 1000);
+                if (next) this.seekBy((next - p) / 1000); else this.goLive();
+            }
+        }
+
+        /** The starts of the channel's songs we know (its shows on a channel without songs), oldest first; read once a song. */
+        async starts(id) {
+            const n = this.now.get(id);
+            const key = `${id}|${n ? `${n.a}|${n.t}` : ''}`;
+            const c = this.sched;
+            if (!c || c.key !== key || Date.now() - c.at > 120000) {
+                try { this.sched = { key, at: Date.now(), d: await this.ask('xmradio_schedule', { channelId: id }) }; } catch (_) { return []; }
+            }
+            const d = (this.sched && this.sched.d) || {};
+            const songs = [...(d.played || []), ...(d.now ? [d.now] : [])].map((x) => Number(x.at)).filter(Number.isFinite);
+            const shows = (d.shows || []).map((x) => Number(x.at)).filter((t) => Number.isFinite(t) && t <= Date.now());
+            return [...new Set(songs.length ? songs : shows)].sort((a, b) => a - b);
+        }
+
+        /** The keys' tooltips say what back / forward do. */
+        skipTitles() {
+            const song = this.prefs.skip !== 'seek';
+            this.root.querySelectorAll('[data-b="back"], [data-b="fwd"], .xr-st-rocker [data-nav]').forEach((el) => {
+                const back = el.dataset.b === 'back' || el.dataset.nav === 'left';
+                el.title = song ? (back ? 'Previous song (hold: back 15 seconds)' : 'Next song (hold: forward 15 seconds)') : (back ? 'Back 15 seconds' : 'Forward 15 seconds');
+            });
+        }
+
+        /** A held back / forward key (song mode) seeks 15 seconds at a time until it is let go; the click that follows is spent. */
+        skipHold(e) {
+            if (e.button !== 0 || this.menu || this.prefs.skip === 'seek' || !this.on) return;
+            const el = e.target.closest('[data-b="back"], [data-b="fwd"], [data-nav="left"], [data-nav="right"]');
+            if (!el || !this.root.contains(el)) return;
+            const dir = el.dataset.b === 'back' || el.dataset.nav === 'left' ? -1 : 1;
+            const press = new AbortController();
+            const sig = { signal: AbortSignal.any ? AbortSignal.any([press.signal, this.app.signal]) : press.signal };
+            let iv = 0;
+            const t = setTimeout(() => {
+                this.held = true;
+                this.seekBy(dir * 15);
+                // only while the key is held and seen (a lost pointerup must not leave it seeking)
+                iv = setInterval(() => { if (doc.hidden || !el.isConnected || !this.on) { up(); return; } this.seekBy(dir * 15); }, 350);
+            }, SKIP_HOLD_MS);
+            const up = () => { clearTimeout(t); clearInterval(iv); press.abort(); };
+            for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, up, sig);
         }
 
         step(dir) {
@@ -676,8 +883,8 @@
                 this.root.focus();
             } else if (b === 'play') {
                 if (this.audio.paused) void this.audio.play().catch(() => {}); else this.audio.pause();
-            } else if (b === 'back') this.seekBy(-15);
-            else if (b === 'fwd') this.seekBy(15);
+            } else if (b === 'back') this.skip(-1);
+            else if (b === 'fwd') this.skip(1);
             else if (b === 'live') this.goLive();
         }
 
@@ -812,6 +1019,7 @@
                 { label: 'Audio Quality', sub: () => radio([['hi', 'High 256k'], ['std', 'Standard 128k'], ['low', 'Low 32k'], ['eco24', 'Economy 24k'], ['eco16', 'Economy 16k']], this.prefs.quality, (id) => this.setQuality(id)) },
                 { label: 'Display Info', sub: () => radio([['song', 'Artist and Song'], ['channel', 'Channel'], ['show', 'Show']], this.prefs.info, (id) => { this.prefs.info = id; this.savePrefs(); this.paint(); }) },
                 { label: `Volume  ${Math.round(this.prefs.volume * 100)}`, adjust: (d) => this.knobStep('vol', d) },
+                { label: 'Back / Forward', sub: () => radio([['song', 'Song or Show, Hold to Seek'], ['seek', 'Always Seek 15 Seconds']], this.prefs.skip, (id) => { this.prefs.skip = id; this.savePrefs(); this.skipTitles(); }) },
                 { label: 'Media Keys', sub: () => radio([['transport', 'Skip Back / Forward'], ['channel', 'Channel Down / Up']], this.prefs.mediaKeys, (id) => { this.prefs.mediaKeys = id; this.savePrefs(); }) },
                 { label: 'Brand', sub: () => radio(ERAS, this.prefs.era, (id) => { this.prefs.era = id; this.savePrefs(); this.applyLook(); }) },
                 { label: 'Radio', sub: () => radio(BODIES, this.prefs.body, (id) => { this.prefs.body = id; this.prefs.zoom = 1; this.savePrefs(); this.applyLook(); }) }
@@ -868,8 +1076,8 @@
             if (!this.on) { if (dir === 'select') this.power(); return; }
             if (dir === 'up') this.knobStep('tune', 1);
             else if (dir === 'down') this.knobStep('tune', -1);
-            else if (dir === 'left') this.seekBy(-15);
-            else if (dir === 'right') this.seekBy(15);
+            else if (dir === 'left') this.skip(-1);
+            else if (dir === 'right') this.skip(1);
             else if (dir === 'select') this.button('disp');
         }
 
@@ -1036,8 +1244,8 @@
             const h = (a, fn) => { try { ms.setActionHandler(a, fn); } catch (_) { /* not supported */ } };
             h('play', () => { if (this.on) void this.audio.play().catch(() => {}); });
             h('pause', () => this.audio.pause());
-            h('nexttrack', () => { if (this.prefs.mediaKeys === 'channel') this.step(1); else this.seekBy(15); });
-            h('previoustrack', () => { if (this.prefs.mediaKeys === 'channel') this.step(-1); else this.seekBy(-15); });
+            h('nexttrack', () => { if (this.prefs.mediaKeys === 'channel') this.step(1); else this.skip(1); });
+            h('previoustrack', () => { if (this.prefs.mediaKeys === 'channel') this.step(-1); else this.skip(-1); });
             h('seekbackward', () => this.seekBy(-15));
             h('seekforward', () => this.seekBy(15));
             this.app.signal.addEventListener('abort', () => { for (const a of ['play', 'pause', 'nexttrack', 'previoustrack', 'seekbackward', 'seekforward']) h(a, null); });
@@ -1211,6 +1419,7 @@
             this.paintReplay();
             this.paintClock();
             this.mediaMeta(ch, now);
+            this.mediaChanged();
             const led = r.querySelector('.xr-dock-led');
             if (led) led.classList.toggle('is-on', this.on);
         }
@@ -1451,9 +1660,9 @@
 
     /**
      * The cassette deck (Yukimi, Nov 20 2026): its own window next to the radio. The recording is the server's
-     * (modules/xmRadioRecorder.js): REC records the channel the radio is on, and the radio then plays the recording
-     * (pause and rewind over all of it) instead of the live stream; STOP files it on the tape and the radio goes back
-     * to live. The tape is a folder in Recordings: STOP / EJECT while stopped swaps it. PLAY, REW and FF play the tape's
+     * (modules/xmRadioRecorder.js): REC asks whether from the start of what is on air, then records the channel the
+     * radio is on; the radio plays on, held on that channel (no tuning away, no seeking) until STOP files it on the
+     * tape. Power off or closing only leaves the stream; opening the radio goes back to the channel recording. The tape is a folder in Recordings: STOP / EJECT while stopped swaps it. PLAY, REW and FF play the tape's
      * recordings here (the radio pauses meanwhile); MUTE silences the radio while it records. The SPLIT switch: a file
      * per song, or one continuous file. TIMER: scheduled recordings, the radio's alerts, search terms.
      */
@@ -1540,13 +1749,17 @@
             }, sig);
             call('openModal', m);
             m.classList.remove('hidden');
-            // beside the radio, under it when there is no room
-            const rb = r.modal.getBoundingClientRect();
-            const vw = root.innerWidth;
-            const x = rb.right + 12 + 540 < vw ? rb.right + 12 : Math.max(8, rb.left);
-            const y = rb.right + 12 + 540 < vw ? rb.top : Math.min(root.innerHeight - 280, rb.bottom + 12);
-            m.style.left = `${Math.round(x)}px`;
-            m.style.top = `${Math.round(Math.max(0, y))}px`;
+            // beside the radio, under it when there is no room; placed through the window manager's offsets (inline
+            // left / top pinned the deck where it opened: it could not be dragged, Yukimi Nov 21 2026)
+            requestAnimationFrame(() => {
+                if (this.closed || m.hasAttribute('data-window-position-restored')) return;
+                const rb = r.modal.getBoundingClientRect();
+                const vw = root.innerWidth;
+                const side = rb.right + 12 + 540 < vw;
+                const x = side ? rb.right + 12 : Math.max(8, rb.left);
+                const y = side ? rb.top : Math.min(root.innerHeight - 280, rb.bottom + 12);
+                call('setModalOffsetsFromViewportTopLeft', m, Math.round(x), Math.round(Math.max(0, y)));
+            });
             this.paint();
             this.el.focus();
         }
@@ -1580,25 +1793,38 @@
         /** The deck's own recording (REC): the manual one; timers' and alerts' run beside it. */
         mine() { const list = (this.state && this.state.recordings) || []; return list.find((x) => x.kind === 'manual') || null; }
 
+        /** The server's deck (the radio has followed its REC already: Radio.syncRecording). */
         applyState(deck) {
-            const was = this.mine();
             this.state = deck;
-            const now = this.mine();
-            // the recording ended on the server (8 hours, the account): the radio goes back to the live stream
-            if (was && !now && this.r.recording && this.r.recording.rid === was.rid) this.r.endRecording();
             this.paint();
+        }
+
+        /**
+         * REC asks first, as the phone's Record does (Yukimi, Nov 21 2026: "on desktop there [is] no dialog for do i want
+         * to record from the start"): Yes from the first frame of what is on air, No from now.
+         */
+        async askFromStart(ch) {
+            const n = this.r.now.get(ch.id);
+            const what = n && !n.ad && n.t ? `"${esc(n.t)}"${n.a ? ` by ${esc(n.a)}` : ''}` : `what is on ${esc(`${ch.number} ${ch.name}`)}`;
+            return root.showConfirmationDialog(`<p>Record ${what} from the start?</p><p>No records from now. ${esc(ch.name)} (channel ${esc(ch.number)}) records until you press STOP (up to 8 hours).</p>`,
+                [{ text: 'Yes', value: 'start' }, { text: 'No', value: 'now' }, { text: 'Cancel', value: false }], null, { title: `${NAME} Cassette Deck`, icon: 'question', owner: this.modal });
         }
 
         async press(k) {
             const r = this.r;
             if (k === 'rec') {
-                if (this.mine()) return;
-                if (!r.channel || !r.signedIn()) { this.say('TUNE A CHANNEL'); return; }
+                if (this.mine() || this.asking) return;
+                const ch = r.channel;
+                if (!ch || !r.on || !r.signedIn()) { this.say('TUNE A CHANNEL'); return; }
+                this.asking = true;
+                let choice;
+                try { choice = await this.askFromStart(ch); } finally { this.asking = false; }
+                if (!choice || this.closed) return;
                 this.stopTape();
                 try {
-                    const rec = await r.ask('xmradio_rec_start', { channelId: r.channel.id });
+                    const rec = await r.ask('xmradio_rec_start', { channelId: ch.id, fromStart: choice === 'start' });
                     this.state = Object.assign({}, this.state, { recordings: [...((this.state && this.state.recordings) || []).filter((x) => x.rid !== rec.rid), rec] });
-                    r.playRecording(rec);
+                    r.followRecording(rec, { start: true });
                 } catch (err) { this.say((err && err.message) || 'NOT RECORDING'); }
             } else if (k === 'stop') {
                 const rec = this.mine();
@@ -1614,7 +1840,7 @@
                     this.eject();
                 }
             } else if (k === 'play') {
-                if (this.mine()) { if (r.audio.paused) void r.audio.play().catch(() => {}); return; }
+                if (this.mine()) { if (!r.on) r.power(); else if (r.audio.paused) void r.audio.play().catch(() => {}); return; }
                 if (this.playing) return;
                 if (this.track >= 0 && this.audio.src) { void this.audio.play().catch(() => {}); return; }
                 await this.playTrack(0);
@@ -1624,7 +1850,8 @@
                 if (this.audio.paused) void this.audio.play().catch(() => {}); else this.audio.pause();
             } else if (k === 'rew' || k === 'ff') {
                 const dir = k === 'ff' ? 1 : -1;
-                if (this.mine()) { r.seekBy(dir * 15); return; }
+                // the recording is guarded: nothing seeks while it records
+                if (this.mine()) { r.recordGuard('seek'); this.say('RECORDING'); return; }
                 if (this.track < 0) return;
                 // back to the start of this recording first, then the one before (as a deck's music search)
                 if (dir < 0 && this.audio.currentTime > 4) { this.audio.currentTime = 0; return; }
@@ -1678,7 +1905,11 @@
             try { this.audio.load(); } catch (_) { /* nothing loaded */ }
             this.track = -1;
             this.playing = false;
-            if (this.radioWasPlaying) { this.radioWasPlaying = false; if (this.r.on) this.r.goLive(); }
+            if (this.radioWasPlaying) {
+                this.radioWasPlaying = false;
+                if (this.r.on && !this.r.recording) this.r.goLive();
+                else if (this.r.on) void this.r.audio.play().catch(() => {});
+            }
             this.paint();
         }
 
@@ -1936,7 +2167,7 @@
     let running = null;
     function start(app) {
         themeStyles();
-        if (running) { call('bringModalToFront', running.modal); app.exit(); return; }
+        if (running) { call('bringModalToFront', running.modal); app.exit(); running.mediaPullHere(); return; }
         if (typeof root.desktopAppCreateWindow !== 'function') { app.exit(); return; }
         const r = new Radio(app);
         running = r;

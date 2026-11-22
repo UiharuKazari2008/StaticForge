@@ -69,7 +69,9 @@
     function readJson(key, fallback) {
         try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v && typeof v === 'object' ? v : fallback; } catch (_) { return fallback; }
     }
-    const prefs = Object.assign({ channel: '', quality: 'auto', show: 'A', todayAt: 0, body: 'gloss', era: 'xm', info: 'song', view: 'screen', saved: {} }, readJson(LS_PREFS, {}));
+    // skip (Yukimi, Nov 21 2026): previous / next go to the song's or show's start with a hold to seek ('song'), or always
+    // seek 15 seconds ('seek')
+    const prefs = Object.assign({ channel: '', quality: 'auto', show: 'A', todayAt: 0, body: 'gloss', era: 'xm', info: 'song', view: 'screen', skip: 'song', saved: {} }, readJson(LS_PREFS, {}));
     // Now Playing is the receiver's own screen (Yukimi, Nov 20 2026: "It should share the same LCD design"): the desktop
     // radio's display markup and theme (public/css/themes/vista/xmradio.css, whose rules also match .xrm-lcd), one of
     // the docked receivers' screens at its own size, scaled to the phone's width; View > Faceplate (or the phone turned
@@ -138,14 +140,73 @@
 
     // ---------------------------------------------------------------- the feed
 
-    /** Today's pages: the channel this phone plays, then preset bank A (each once). */
+    /** The radio is tuned to this channel and playing it (Today's first page, its superscript). */
+    const onAir = (id) => !!id && id === radio.channelId && (radio.state === 'playing' || radio.state === 'tuning');
+
+    /**
+     * Today's pages (Yukimi, Nov 21 2026): the channel playing now first, then every preset in its order (banks A, B,
+     * C); a playing channel that is also a preset moves up from its place instead of showing twice.
+     */
     function todayChannels() {
         const out = [];
         const add = (id) => { if (id && chan(id) && !out.includes(id)) out.push(id); };
-        add(curId());
-        (cache.presets.A || []).forEach(add);
+        if (onAir(radio.channelId)) add(radio.channelId);
+        ['A', 'B', 'C'].forEach((b) => (cache.presets[b] || []).forEach(add));
+        if (!out.length) add(curId());
         if (!out.length) (cache.lineup && cache.lineup.channels || []).filter((c) => c.sub !== false).slice(0, 3).forEach((c) => add(c.id));
         return out;
+    }
+
+    // Settings > Today > Items > Options... (Yukimi, Nov 21 2026): check boxes; the stored value lists the unchecked
+    const TODAY_OPTS = [['direct', 'Direct Tune without Launch'], ['recsong', 'Record button records this single Song or Show from start']];
+    function todayOpt(key) {
+        const v = ws && typeof ws.todayOption === 'function' ? ws.todayOption('xmradio', 'today') : null;
+        const unchecked = String(v == null ? TODAY_OPTS.map((o) => o[0]).join(',') : v).split(',');
+        return !unchecked.includes(key);
+    }
+
+    /**
+     * A channel's Today panel icon (Yukimi, Nov 21 2026: cropped, optimised, with its reflection like other apps, cached):
+     * the server's drawing of the logo (/api/xmradio/tiicon, made once, kept a year), from the logo's own address.
+     */
+    function tiIconOf(c) {
+        if (!c) return '';
+        if (c.tiIcon) return c.tiIcon;
+        if (!c.logo) return '';
+        let u = null;
+        try { u = new URL(c.logo, location.href); } catch (_) { return ''; }
+        const k = u.searchParams.get('k');
+        if (!k) return '';
+        const w = Number(u.searchParams.get('s')) || 240;
+        const h = Number(u.searchParams.get('h')) || w;
+        return `/api/xmradio/tiicon?k=${encodeURIComponent(k)}&a=${Math.round((w / h) * 1000) / 1000}&x=4&v=3`;
+    }
+    // the next and previous pages' icons, read once ahead so a page turn shows its logo at once
+    const tiWarm = new Set();
+    function warmTiIcons(ids, at) {
+        if (!ids.length) return;
+        [at, at + 1, at - 1].map((i) => ids[(i + ids.length) % ids.length]).forEach((id) => {
+            const url = tiIconOf(chan(id));
+            if (!url || tiWarm.has(url)) return;
+            tiWarm.add(url);
+            const img = new Image();
+            img.decoding = 'async';
+            img.src = url;
+        });
+    }
+
+    /** A tap on a Today page: tune it here (Direct Tune without Launch) or open the radio on it. */
+    function todayTap(id) {
+        if (!id) return;
+        if (todayOpt('direct')) { if (!onAir(id)) void tune(id); return; }
+        openChannel(id);
+    }
+
+    /** Today's Record: the song or show from its start at once (the item's option), else the question; stops a recording. */
+    function todayRecord(id) {
+        if (!id) return;
+        if (!recOf(id) && todayOpt('recsong') && isAdmin()) { void recStart(id, { song: true, fromStart: true }); return; }
+        void recordAsk(id);
     }
 
     function wantHub() {
@@ -188,6 +249,8 @@
             else if (k === 'guide') { if (v && v.n !== guideN) { guideN = v.n; if (shown && tab === 'channels' && prefs.show === 'guide') void loadGuide(); } }
             else if (k === 'rec') { const was = (cache.rec || []).length; cache.rec = Array.isArray(v) ? v : []; if (cache.rec.length < was) tapes.stale = true; }
             else if (k.startsWith('ch:')) { if (v) cache.now[k.slice(3)] = v; else delete cache.now[k.slice(3)]; }
+            // the banks as the server keeps them (stored on any client): Today's pages follow at once
+            else if (k === 'presets') { if (v && typeof v === 'object') { cache.presets = Object.assign({ A: [], B: [], C: [] }, v); tellWatch(); } }
         }
         saveSoon();
         // the song changed on the channel shown: its programme (recently played, the song's length) is read again
@@ -233,6 +296,53 @@
             if (typeof ws.refreshTodayItem === 'function') ws.refreshTodayItem('xmradio');
             else if (typeof ws.refreshToday === 'function') ws.refreshToday();
         }
+        mediaChanged();
+    }
+
+    // ---------------------------------------------------------------- the session across the app's windows (melatonMediaSessions.js)
+
+    const MEDIA = () => window.melatonMedia || null;
+    /** The channel playing here, as the desktop's XM Radio can tune it too (null: off, an error, a recording). */
+    function mediaSession() {
+        const c = radio.mode === 'live' && (radio.state === 'playing' || radio.state === 'tuning' || radio.state === 'paused') ? chan(radio.channelId) : null;
+        if (!c) return null;
+        const now = nowOf(c.id);
+        return { title: chanLabel(c), subtitle: now && !now.ad ? [now.a, now.t].filter(Boolean).join(' - ') : 'SiriusXM', kind: 'radio', source: { channelId: c.id, number: c.number, name: c.name }, playing: radio.state !== 'paused' };
+    }
+    let mediaKey = '';
+    /** The other window hears of a play / stop / channel / song change (only when one happened). */
+    function mediaChanged() {
+        const m = MEDIA();
+        if (!m) return;
+        const key = JSON.stringify(mediaSession());
+        if (key === mediaKey) return;
+        mediaKey = key;
+        m.changed('xmradio');
+    }
+    const chanOfSource = (src) => (src && (chan(src.channelId) || (src.number != null && ((cache.lineup && cache.lineup.channels) || []).find((c) => String(c.number) === String(src.number))))) || null;
+    async function mediaTake(s) {
+        if (!canUse()) return false;
+        if (!byId.size) await loadLineup(true);
+        const c = chanOfSource(s && s.source);
+        if (!c || c.sub === false) return false;
+        if (!onAir(c.id)) await tune(c.id);
+        return onAir(c.id);
+    }
+    /** Stop here (the session moved, or the same program started in the other window): what it was. */
+    function mediaRelease() {
+        const s = mediaSession();
+        if (!s) return null;
+        radio.alarm = false;
+        // the app's native player is shared with Melaton Videos: only a stream XM handed it is stopped
+        if (radio.native) stopRadio();
+        else { radio.seq++; dropPage(); radio.state = 'off'; setSleep(0, true); changed(); }
+        return s;
+    }
+    /** "Playing on the DeX desktop" with its Transfer at the top of the program while the desktop plays a channel this phone has. */
+    function mediaPullHere() {
+        const m = MEDIA();
+        if (!m || !canUse() || !page) return;
+        m.offerTransfer('xmradio', page, { canTake: (s) => !!chanOfSource(s && s.source) });
     }
 
     // ---------------------------------------------------------------- sound
@@ -342,15 +452,25 @@
      */
     async function start(seq, { title, subtitle, live, native }) {
         dropPage();
-        dropNative();
         const nv = nativePlayer();
+        // an app that reports its player's state also switches its stream in place; an older one is stopped first and
+        // given the new stream only once the old one is gone (a start sent while its stop was on the way was dropped,
+        // and the radio fell silent while it said it played: Yukimi, Nov 21 2026)
+        const reports = nativeReports(nv);
+        if (!reports || !radio.native) {
+            const was = radio.native;
+            dropNative();
+            if (was && nv) await nativeGone(nv);
+            if (seq !== radio.seq) return;
+        }
         if (nv) {
             try {
                 nv.watching(JSON.stringify(Object.assign({ url: radio.url, title, subtitle, audioOnly: true }, native ? { radio: native } : {})));
                 radio.native = nv.handOff() === true;
             } catch (_) { radio.native = false; }
             if (radio.native) {
-                radio.state = 'playing';
+                // what the player really does: Acquiring Signal until its sound starts (an older app cannot say)
+                radio.state = reports ? (NATIVE_STATE[nv.state()] || 'tuning') : 'playing';
                 radio.startedAt = Date.now();
                 // the sleep timer moves to the player that now plays
                 if (sleep.at > Date.now()) { try { nv.sleep(Math.ceil((sleep.at - Date.now()) / 60000)); } catch (_) { /* older app */ } }
@@ -384,6 +504,31 @@
         }
         pageMediaSession();
         try { await a.play(); } catch (_) { radio.state = 'paused'; changed(); }
+    }
+
+    /** The app's player reports its state (state() and its buffering / playing / paused / retrying news). */
+    const nativeReports = (nv) => !!nv && typeof nv.state === 'function';
+    const NATIVE_STATE = { playing: 'playing', paused: 'paused', buffering: 'tuning', retrying: 'tuning' };
+
+    /** An older app: until its player has stopped (at most 3 s; its stop goes through the app's main thread). */
+    async function nativeGone(nv) {
+        for (let i = 0; i < 30; i++) {
+            let on = false;
+            try { on = nv.isActive() === true; } catch (_) { on = false; }
+            if (!on) return;
+            await new Promise((r) => setTimeout(r, 100));
+        }
+    }
+
+    /** The page missed the player's news while it was frozen (screen off, another app): read its state now. */
+    function syncNative() {
+        const nv = nativePlayer();
+        if (!radio.native || !nativeReports(nv)) return;
+        let st = 'off';
+        try { st = nv.state(); } catch (_) { st = 'off'; }
+        const next = st === 'off' ? 'off' : (NATIVE_STATE[st] || radio.state);
+        if (st === 'off') { radio.native = false; sleep.at = 0; }
+        if (next !== radio.state) { radio.state = next; changed(); }
     }
 
     function onAudio(t) {
@@ -505,6 +650,52 @@
         if (next && Date.now() - next.at > 45000) jumpTo(next.at); else goLive();
     }
 
+    /** Seek seconds through the stream (live: played from that far behind live; a tape's recording in the page's player). */
+    function seekSec(sec) {
+        if (!sec) return;
+        if (radio.mode === 'track') {
+            const a = radio.audio;
+            if (a && !radio.native && Number.isFinite(a.duration)) a.currentTime = Math.max(0, Math.min(a.duration - 1, a.currentTime + sec));
+            return;
+        }
+        const t = posTime();
+        const id = curId();
+        if (t == null || !id) return;
+        // that far behind live (jumpTo's half-minute floor would swallow a 15-second step back from live)
+        const back = Math.round((Date.now() - (t + sec * 1000)) / 1000 - NATIVE_RESERVE);
+        if (back < 5) goLive(); else void tune(id, { back });
+    }
+
+    /** Previous / next (the Now Playing keys and the faceplate's): as Menu > Back / Forward says. */
+    function skipKey(dir) {
+        if (prefs.skip === 'seek') { seekSec(dir * 15); return; }
+        if (dir < 0) prevSong(); else nextSong();
+    }
+
+    /**
+     * A held previous / next key (Back / Forward: Song) seeks: 15 seconds more every 0.4 s, shown on the progress line,
+     * played from there when it is let go (one tune, not one a step). True when the press was a hold.
+     */
+    let seekHold = null;
+    function seekHoldStart(dir) {
+        seekHoldEnd(false);
+        if (prefs.skip === 'seek' || radio.state === 'off') return;
+        const h = { dir, n: 0, fired: false, t: 0, iv: 0 };
+        const hint = () => { if (els) setText(els.mid, `SEEK ${dir < 0 ? '-' : '+'}${mmss(h.n * 15)}`); };
+        h.t = setTimeout(() => { h.fired = true; h.n = 1; hint(); h.iv = setInterval(() => { if (document.hidden || !screenOn()) { seekHoldEnd(false); return; } h.n += 1; hint(); }, 400); }, 500);
+        seekHold = h;
+    }
+    function seekHoldEnd(apply) {
+        const h = seekHold;
+        seekHold = null;
+        if (!h) return false;
+        clearTimeout(h.t);
+        clearInterval(h.iv);
+        if (h.fired && apply) seekSec(h.dir * h.n * 15);
+        if (h.fired) paintProgress();
+        return h.fired;
+    }
+
     // ---------------------------------------------------------------- the programme (now, up next, recently played)
 
     const sched = new Map(); // channelId -> { at, data, cutAt }
@@ -593,10 +784,14 @@
     /** Record Channel: everything on the channel until stopped (up to 8 hours), as the deck's REC. */
     async function recordChannel(id) {
         const c = chan(id);
-        if (!c || !isAdmin()) return;
+        if (!isAdmin()) return;
+        if (!c) { void box('Tune a channel first: the deck records the channel the radio plays.', 'info'); return; }
         if (recOf(id)) { void box(`${chanLabel(c)} is already recording.`, 'info'); return; }
-        const ok = await ws.messageBox({ title: TITLE, icon: 'question', text: `Record ${chanLabel(c)} until you stop it (up to 8 hours)?\n\nThe cassette deck's switch decides: a file per song, or one long file.`, buttons: [{ text: 'Record', value: true }, { text: 'Cancel', value: false }] });
-        if (ok) await recStart(id, {});
+        // from the start of what is on air, or from now (Yukimi, Nov 21 2026: the deck asks as Record does)
+        const now = nowOf(id);
+        const what = now && !now.ad && now.t ? `"${now.t}"${now.a ? ` by ${now.a}` : ''}` : `what is on ${chanLabel(c)}`;
+        const choice = await ws.messageBox({ title: TITLE, icon: 'question', text: `Record ${what} from the start?\n\nNo records from now. ${chanLabel(c)} records until you stop it (up to 8 hours); the cassette deck's switch decides a file per song or one long file.`, buttons: [{ text: 'Yes', value: 'start' }, { text: 'No', value: 'now' }, { text: 'Cancel', value: false }] });
+        if (choice) await recStart(id, { fromStart: choice === 'start' });
     }
 
     async function recStart(id, opts) {
@@ -620,7 +815,8 @@
 
     function recKey(id) {
         const rec = !!recOf(id);
-        return { label: rec ? 'REC' : 'Record', disabled: !id || !isAdmin(), action: () => { void recordAsk(id); } };
+        // "Stop" while it records (Yukimi, Nov 21 2026)
+        return { label: rec ? 'Stop' : 'Record', disabled: !id || !isAdmin(), action: () => todayRecord(id) };
     }
 
     async function setAlert(kind, from) {
@@ -894,15 +1090,25 @@
         };
         mountScreen();
         bindScreen();
+        // previous / next held: seek (the click that follows is spent)
+        let heldKey = false;
+        page.addEventListener('pointerdown', (e) => {
+            const k = e.target.closest('[data-k="prev"], [data-k="next"]');
+            if (k && !k.closest('.xrm-lcd')) { heldKey = false; seekHoldStart(k.dataset.k === 'prev' ? -1 : 1); }
+        });
+        const keyUp = (apply) => { if (seekHoldEnd(apply)) heldKey = true; };
+        page.addEventListener('pointerup', () => keyUp(true));
+        page.addEventListener('pointercancel', () => keyUp(false));
         page.addEventListener('click', (e) => {
             const tb = e.target.closest('[data-tab]');
             if (tb) { setTab(tb.dataset.tab); return; }
             const k = e.target.closest('[data-k]');
             if (k && !k.closest('.xrm-lcd')) {
                 const id = curId();
+                if ((k.dataset.k === 'prev' || k.dataset.k === 'next') && heldKey) { heldKey = false; return; }
                 if (k.dataset.k === 'play') playPause();
-                else if (k.dataset.k === 'prev') prevSong();
-                else if (k.dataset.k === 'next') nextSong();
+                else if (k.dataset.k === 'prev') skipKey(-1);
+                else if (k.dataset.k === 'next') skipKey(1);
                 else if (k.dataset.k === 'live') goLive();
                 else if (k.dataset.k === 'rec') { const r = recOf(id); if (r) void stopRec(r); else void recordAsk(id); }
                 return;
@@ -986,7 +1192,10 @@
     const SVG = {
         back: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M8 0v10L1 5zM15 0v10L8 5z"/></svg>',
         play: '<svg viewBox="0 0 20 10" aria-hidden="true"><path d="M1 0v10l7-5zM11 0h3v10h-3zM16 0h3v10h-3z"/></svg>',
-        fwd: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 0v10l7-5zM8 0v10l7-5z"/></svg>'
+        fwd: '<svg viewBox="0 0 16 10" aria-hidden="true"><path d="M1 0v10l7-5zM8 0v10l7-5z"/></svg>',
+        // the IEC power symbols, drawn: the phone's fonts have no U+23FB / U+23FC (a tofu box on the faceplate)
+        power: '<svg class="xr-pw" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.6 3.9a5.8 5.8 0 1 0 6.8 0M8 1.6v6"/></svg>',
+        powerToggle: '<svg class="xr-pw" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 3.8v8.4"/></svg>'
     };
     function displayHtml() {
         return `<div class="xr-bezel"><div class="xr-display" aria-live="polite">
@@ -1007,7 +1216,7 @@
         const key = (b, label, sub, cls) => `<span class="xr-kw${cls ? ` ${cls}` : ''}"><button type="button" class="xr-sk" data-b="${b}">${label}</button>${sub ? `<i>${esc(sub)}</i>` : ''}</span>`;
         const transport = `<button type="button" class="xr-tk xr-glyph" data-b="back">${SVG.back}</button><button type="button" class="xr-tk xr-glyph" data-b="play">${SVG.play}</button><button type="button" class="xr-tk xr-glyph" data-b="fwd">${SVG.fwd}</button>`;
         if (model === 'gloss') {
-            return `<div class="xr-g-edge"><button type="button" class="xr-ek" data-b="power">&#x23FB;</button>${brand}<span class="xr-g-edge-fill"></span><button type="button" class="xr-ek" data-b="menu">menu</button><button type="button" class="xr-ek" data-b="band">fav</button></div>
+            return `<div class="xr-g-edge"><button type="button" class="xr-ek" data-b="power">${SVG.power}</button>${brand}<span class="xr-g-edge-fill"></span><button type="button" class="xr-ek" data-b="menu">menu</button><button type="button" class="xr-ek" data-b="band">fav</button></div>
                 ${disp}
                 <div class="xr-g-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => numKey(n, 'xr-rk')).join('')}<button type="button" class="xr-rk" data-b="direct">#</button></div>
                 <div class="xr-g-knob" data-k="tune"><span class="xr-g-ring"></span><button type="button" class="xr-g-cap" data-nav="select" aria-label="Select"></button></div>
@@ -1016,7 +1225,7 @@
         if (model === 'stratus') {
             const sk = (attr, html, cls) => `<button type="button" class="xr-stk${cls ? ` ${cls}` : ''}" ${attr}>${html}</button>`;
             const pair = (a, b) => `<span class="xr-st-pair">${numKey(a, 'xr-stn')}<i class="xr-st-screw"></i>${numKey(b, 'xr-stn')}</span>`;
-            return `<div class="xr-st-left">${sk('data-b="power"', '&#x23FB;', 'is-power')}${sk('data-b="menu"', '<i class="xr-st-tape"></i><span>menu</span>', 'is-blue')}${sk('data-b="jump"', '&#x21B7;', 'is-blue')}</div>
+            return `<div class="xr-st-left">${sk('data-b="power"', SVG.power, 'is-power')}${sk('data-b="menu"', '<i class="xr-st-tape"></i><span>menu</span>', 'is-blue')}${sk('data-b="jump"', '&#x21B7;', 'is-blue')}</div>
                 <div class="xr-st-mid">${brand}${disp}<div class="xr-st-under">${sk('data-b="disp"', '', 'xr-st-square')}<span class="xr-st-rocker">${sk('data-nav="left"', '&#x25C0;', 'is-blue')}${sk('data-nav="right"', '&#x25B6;', 'is-blue')}</span></div></div>
                 <div class="xr-st-right">${sk('data-nav="up"', '&#x25B2;', 'is-blue')}${sk('data-b="band"', '<i class="xr-st-dog"></i>', 'is-blue')}${sk('data-nav="down"', '&#x25BC;', 'is-blue')}</div>
                 <div class="xr-st-nums">${pair(1, 2)}${pair(3, 4)}${pair(5, 6)}${pair(7, 8)}${pair(9, 10)}</div>`;
@@ -1024,7 +1233,7 @@
         if (model === 'roady') {
             const rk = (b, label, nav) => `<button type="button" class="xr-rdk"${nav ? ` data-nav="${nav}"` : ` data-b="${b}"`}><span>${label}</span><i></i></button>`;
             const pair = (a, b) => `<span class="xr-rd-pair">${numKey(a, 'xr-rdn')}${numKey(b, 'xr-rdn')}</span>`;
-            return `<div class="xr-rd-left">${rk('power', '&#x23FC;')}${rk('menu', 'menu')}${rk('disp', 'disp')}</div>
+            return `<div class="xr-rd-left">${rk('power', SVG.powerToggle)}${rk('menu', 'menu')}${rk('disp', 'disp')}</div>
                 <div class="xr-rd-win">${disp}<div class="xr-rd-print"><b class="xr-rd-maker">XYRIDIAN</b>${brand}<b class="xr-rd-model">roady<sup>xt</sup></b></div></div>
                 <div class="xr-rd-right">${rk('', '&#x25B2;', 'up')}${rk('', 'select', 'select')}${rk('', '&#x25BC;', 'down')}</div>
                 <div class="xr-rd-row"><i class="xr-rd-led"></i>${rk('direct', 'pre/dir')}${rk('band', 'memory')}${rk('jump', 'jump')}${rk('guide', 'search')}</div>
@@ -1035,8 +1244,8 @@
             ? '<div class="xr-o-pad" data-k="tune"><button type="button" class="xr-o-dir is-up" data-nav="up" aria-label="Up"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-right" data-nav="right" aria-label="Right"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-down" data-nav="down" aria-label="Down"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-dir is-left" data-nav="left" aria-label="Left"><i class="xr-o-arr"></i></button><button type="button" class="xr-o-center" data-nav="select" aria-label="Select"></button></div>'
             : '<div class="xr-o-ring" data-k="tune"><button type="button" class="xr-o-zone is-up" data-nav="up" aria-label="Up"></button><button type="button" class="xr-o-zone is-right" data-nav="right" aria-label="Right"></button><button type="button" class="xr-o-zone is-down" data-nav="down" aria-label="Down"></button><button type="button" class="xr-o-zone is-left" data-nav="left" aria-label="Left"></button><button type="button" class="xr-o-center" data-nav="select" aria-label="Select"><i></i></button></div>';
         const side = ez
-            ? key('power', '&#x23FB;', '', 'is-power') + key('menu', 'menu', '', 'is-menu') + key('band', 'band', '') + key('jump', 'jump', '')
-            : key('power', '&#x23FB;', 'power', 'is-power') + key('menu', 'menu', 'guide', 'is-menu') + key('disp', 'info', 'disp') + key('jump', '&#x21B6;', 'jump');
+            ? key('power', SVG.power, '', 'is-power') + key('menu', 'menu', '', 'is-menu') + key('band', 'band', '') + key('jump', 'jump', '')
+            : key('power', SVG.power, 'power', 'is-power') + key('menu', 'menu', 'guide', 'is-menu') + key('disp', 'info', 'disp') + key('jump', '&#x21B6;', 'jump');
         const last = ez ? '<button type="button" class="xr-bk" data-b="direct">direct</button>' : '<button type="button" class="xr-bk" data-b="band">b/#</button>';
         return `${brand}${disp}<div class="xr-o-nav">${pad}${ez ? '' : `<div class="xr-o-transport">${transport}</div>`}</div>
             <div class="xr-o-side">${side}</div>
@@ -1110,6 +1319,8 @@
         let held = 0;
         els.lcd.addEventListener('pointerdown', (e) => {
             down = { x: e.clientX, y: e.clientY, t: Date.now(), on: e.target.closest('button, [data-k], [data-pre]') };
+            const sk = e.target.closest('[data-b="back"], [data-b="fwd"]');
+            if (sk) seekHoldStart(sk.dataset.b === 'back' ? -1 : 1);
             const p = e.target.closest('[data-pre]');
             clearTimeout(held);
             if (p) held = setTimeout(() => { held = -1; const bank = prefs.show === 'B' || prefs.show === 'C' ? prefs.show : 'A'; void setPreset(bank, Number(p.dataset.pre) - 1); if (ws && ws.vibrate) { try { ws.vibrate('tap'); } catch (_) { /* no motor */ } } }, 900);
@@ -1117,6 +1328,7 @@
         els.lcd.addEventListener('pointerup', (e) => {
             const d = down;
             down = null;
+            if (seekHoldEnd(true)) { clearTimeout(held); held = 0; return; }
             const wasHeld = held === -1;
             clearTimeout(held);
             held = 0;
@@ -1138,13 +1350,13 @@
             saveSoon();
             render();
         });
-        els.lcd.addEventListener('pointercancel', () => { down = null; clearTimeout(held); held = 0; });
+        els.lcd.addEventListener('pointercancel', () => { down = null; clearTimeout(held); held = 0; seekHoldEnd(false); });
     }
     function faceKey(b) {
         if (b === 'power') { if (radio.state === 'off') playPause(); else stopRadio(); }
         else if (b === 'play') playPause();
-        else if (b === 'back') prevSong();
-        else if (b === 'fwd') nextSong();
+        else if (b === 'back') skipKey(-1);
+        else if (b === 'fwd') skipKey(1);
         else if (b === 'jump') { if (radio.prevId) void tune(radio.prevId); }
         else if (b === 'band') { const order = ['A', 'B', 'C']; prefs.show = order[(order.indexOf(prefs.show) + 1) % 3] || 'A'; saveSoon(); paintPresetKeys(); render(); }
         else if (b === 'disp') { prefs.info = INFO[(INFO.indexOf(prefs.info) + 1) % INFO.length]; saveSoon(); render(); }
@@ -1170,7 +1382,8 @@
             dur = radio.track ? radio.track.dur || 0 : 0;
             if (a && !radio.native) { el = a.currentTime || 0; if (Number.isFinite(a.duration)) dur = a.duration; }
             else if (radio.startedAt) el = (Date.now() - radio.startedAt) / 1000;
-        } else {
+        } else if (radio.state !== 'off') {
+            // switched off: no song runs on (the bar read as playing: Yukimi, Nov 21 2026)
             const id = curId();
             const t = posTime();
             const n = songAt(id, t == null ? Date.now() : t);
@@ -1203,6 +1416,8 @@
         if (radio.mode !== 'track' && id) void wantLogos([id]);
         const scr = (o) => {
             // the receiver's screen, filled as the desktop radio's paint() fills it
+            // the receiver is off until a channel plays (its display dark, the power key unlit), as the desktop radio
+            els.rad.classList.toggle('is-on', radio.state !== 'off');
             els.rad.dataset.state = { off: 'off', tuning: 'acquiring', playing: 'playing', paused: 'paused', error: 'nosignal' }[radio.state] || 'off';
             setText(els.num, o.num || '');
             setText(els.name, o.name || '');
@@ -1525,6 +1740,7 @@
             { label: 'Radio', submenu: BODIES.map(([v, t]) => ({ label: t, radio: prefs.body === v, action: () => { prefs.body = v; saveSoon(); render(); } })) },
             { label: 'Brand', submenu: ERAS.map(([v, t]) => ({ label: t, radio: prefs.era === v, action: () => { prefs.era = v; saveSoon(); render(); } })) },
             { label: 'Quality', submenu: QUALITIES.map(([v, t]) => ({ label: t, radio: prefs.quality === v, action: () => { prefs.quality = v; saveSoon(); if (radio.mode === 'live' && radio.channelId && radio.state !== 'off') void tune(radio.channelId, { back: radio.back }); } })) },
+            { label: 'Back / Forward', submenu: [['song', 'Song or Show, Hold to Seek'], ['seek', 'Always Seek 15 Seconds']].map(([v, t]) => ({ label: t, radio: prefs.skip === v, action: () => { prefs.skip = v; saveSoon(); } })) },
             { label: sl ? `Sleep Timer (${sl} min)` : 'Sleep Timer', submenu: SLEEP.map((m) => ({ label: m ? `${m} minutes` : 'Off', radio: m ? Math.abs(sl - m) < 1 : !sl, disabled: !m ? false : radio.state === 'off', action: () => setSleep(m) })) },
             '-',
             { label: 'Refresh Lineup', action: () => { lineupAsked = false; void loadLineup(true); } },
@@ -1552,6 +1768,7 @@
             if (tab === 'channels' && prefs.show === 'guide') void loadGuide();
             render();
             void syncHub();
+            mediaPullHere();
         },
         hide() {
             shown = false;
@@ -1649,10 +1866,10 @@
             const a = e.target.closest('.xrm-td-arrow');
             if (a) { e.stopPropagation(); todayStep(a.dataset.dir === 'next' ? 1 : -1); return; }
             const r = e.target.closest('.xrm-td-rec');
-            if (r) { e.stopPropagation(); void recordAsk(todayPageId()); return; }
+            if (r) { e.stopPropagation(); todayRecord(todayPageId()); return; }
             const p = e.target.closest('.xrm-td-play');
             if (p) { e.stopPropagation(); todayPlay(todayPageId()); return; }
-            openChannel(todayPageId());
+            todayTap(todayPageId());
         });
     }
 
@@ -1680,7 +1897,7 @@
         const many = ids.length > 1;
         const rec = !!(id && recOf(id));
         const playBtn = c ? `<button type="button" class="xrm-td-play" aria-label="${playing ? 'Pause' : 'Play'}">${playing ? '&#x23F8;&#xFE0E;' : '&#x25B6;&#xFE0E;'}</button>` : '';
-        const recBtn = c && isAdmin() ? `<button type="button" class="xrm-td-rec${rec ? ' is-rec' : ''}" aria-label="${rec ? 'Recording: stop' : 'Record'}">${rec ? 'REC' : 'Record'}</button>` : '';
+        const recBtn = c && isAdmin() ? `<button type="button" class="xrm-td-rec${rec ? ' is-rec' : ''}" aria-label="${rec ? 'Stop recording' : 'Record'}">${rec ? 'Stop' : 'Record'}</button>` : '';
         const html = `<button type="button" class="xrm-td-arrow" data-dir="prev" aria-label="Previous channel"${many ? '' : ' disabled'}>&#x2039;</button><div class="xrm-td-slide">${inner}</div>${playBtn}${recBtn}<button type="button" class="xrm-td-arrow" data-dir="next" aria-label="Next channel"${many ? '' : ' disabled'}>&#x203A;</button>`;
         if (html !== todayHtml || !el.firstChild) {
             todayHtml = html;
@@ -1701,9 +1918,10 @@
         if (!ids.length) {
             return { label: 'xm radio', icon: 'x:app-xmradio-lg', pages: [{ title: 'XM Radio', line2: cache.lineup ? 'Tap to choose a channel' : 'Reading the channels...', line3: '' }], softKey: { label: 'Radio', action: go }, onTap: go };
         }
-        // the superscript by the panel's name (Yukimi, Nov 20 2026): "rec" while a recording runs, else the current
-        // channel's number
-        const cur = chan(curId());
+        warmTiIcons(ids, Math.max(0, ids.indexOf(todayPageId())));
+        // the superscript by the panel's name: "rec" while a recording runs, else the channel's number only while the
+        // radio is tuned to it and playing (Yukimi, Nov 21 2026)
+        const cur = onAir(radio.channelId) ? chan(radio.channelId) : null;
         return {
             label: 'xm radio',
             count: (cache.rec || []).length ? 'rec' : cur ? String(cur.number) : '',
@@ -1711,23 +1929,26 @@
             pages: ids.map((id) => {
                 const c = chan(id);
                 const now = nowOf(id);
+                const playing = onAir(id);
                 const pic = now && !now.ad && now.i ? now.i : c.logo;
-                const playing = id === radio.channelId && (radio.state === 'playing' || radio.state === 'tuning');
                 return {
+                    // the song's picture at the left; the channel's logo is the panel icon at the top right
+                    // (Yukimi, Nov 21 2026), the radio's own icon only for a channel with no logo
+                    icon: tiIconOf(c) || undefined,
                     image: pic || undefined,
                     imageAspect: 1,
                     title: now ? (now.ad ? 'Commercial' : now.t || c.name) : c.name,
                     line2: now && !now.ad ? now.a || '' : '',
                     line3: `${chanLabel(c)}${playing ? ' · Playing' : ''}`,
                     softKey: recKey(id),
-                    onTap: () => openChannel(id),
+                    onTap: () => todayTap(id),
                     // tap-and-hold: the radio's own controls from Today (Yukimi, Nov 20 2026)
                     menu: () => [
                         { label: playing ? (radio.native ? 'Stop' : 'Pause') : 'Play', action: () => todayPlay(id) },
                         { label: 'Channel Up', action: () => { if (playing) step(1); else todayStep(1); } },
                         { label: 'Channel Down', action: () => { if (playing) step(-1); else todayStep(-1); } },
                         '-',
-                        { label: recOf(id) ? 'Stop Recording' : 'Record This Song...', disabled: !isAdmin(), action: () => { void recordAsk(id); } },
+                        { label: recOf(id) ? 'Stop Recording' : todayOpt('recsong') ? 'Record This Song' : 'Record This Song...', disabled: !isAdmin(), action: () => todayRecord(id) },
                         { label: 'Open XM Radio', action: () => openChannel(id) }
                     ]
                 };
@@ -1747,7 +1968,7 @@
         // the server forgets a dropped socket's subscriptions and watched channels: tell it again
         c.on('connected', () => { hubOn = false; watchSaid = ''; void syncHub(); }, { signal: appScopeSignal });
         document.addEventListener('wmAppChange', () => { void syncHub(); }, { signal: appScopeSignal });
-        document.addEventListener('visibilitychange', () => { void syncHub(); if (shown) render(); }, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', () => { syncNative(); void syncHub(); if (shown) render(); }, { signal: appScopeSignal });
         window.addEventListener('melatonscreen', () => { void syncHub(); }, { signal: appScopeSignal });
         // the native player's news (DSApp): stopped from its notification, the stream ended, or a channel changed there
         window.addEventListener('dreamscape:videos', (e) => {
@@ -1765,7 +1986,9 @@
                 changed();
                 return;
             }
-            if (d.state === 'stopped' || d.state === 'ended' || d.state === 'lost') { radio.native = false; radio.state = 'off'; sleep.at = 0; changed(); }
+            if (NATIVE_STATE[d.state]) { if (radio.state !== NATIVE_STATE[d.state]) { radio.state = NATIVE_STATE[d.state]; changed(); } return; }
+            // lost: the player gave up on the stream (No Signal), not switched off
+            if (d.state === 'stopped' || d.state === 'ended' || d.state === 'lost') { radio.native = false; radio.state = d.state === 'lost' ? 'error' : 'off'; sleep.at = 0; changed(); }
         }, { signal: appScopeSignal });
         // wake to the radio (Settings > Clock & Alarms: an alarm whose sound is a channel, wmLock65.js): the page rings
         // it here while it is in front (the app plays it itself while the page sleeps)
@@ -1783,10 +2006,16 @@
         if (!ws) return;
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
-            ws.registerTodayItem({ id: 'xmradio', label: 'XM Radio', icon: 'app-xmradio', after: 'youtube', render: todayRender, titanium: todayTitanium });
+            ws.registerTodayItem({
+                id: 'xmradio', label: 'XM Radio', icon: 'app-xmradio', after: 'youtube', render: todayRender, titanium: todayTitanium,
+                options: [{ key: 'today', label: 'XM Radio', type: 'checks', value: TODAY_OPTS.map((o) => o[0]).join(','), choices: TODAY_OPTS }]
+            });
         }
         if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });
     }
+
+    // the phone's half of XM Radio's session (the desktop's apps/xmradio registers the same id): once per page
+    if (MEDIA()) MEDIA().register('xmradio', { label: TITLE, describe: mediaSession, take: mediaTake, release: mediaRelease }, { signal: appScopeSignal });
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });
