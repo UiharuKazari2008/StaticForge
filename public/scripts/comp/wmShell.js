@@ -556,6 +556,24 @@
     const artImageSet = (name) => (WM65 && ART65.has(name)
         ? `image-set(url("/static_images/wm65/${name}.png") 1x, url("/static_images/wm65/${name}@2x.png") 2x, url("/static_images/wm65/${name}@4x.png") 4x)`
         : `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x${HD_ART.has(name) ? `, url("${ART}${name}@4x.png") 4x` : ''})`);
+    /**
+     * The notification holder's large colour picture (#1026, status-order.js holder) for a role, notice kind or glyph
+     * name, as an image-set, or '' when the table has none.
+     */
+    const holderArt = (name) => {
+        const tbl = statusTable();
+        const base = tbl && typeof tbl.holderArt === 'function' ? tbl.holderArt(name) : null;
+        return base ? `image-set(url("/static_images/${base}.png") 1x, url("/static_images/${base}@2x.png") 2x, url("/static_images/${base}@4x.png") 4x)` : '';
+    };
+    /** A notice's kind in the table (status-order.js noteKind): its holder picture. */
+    const noteHolderArt = (n) => {
+        if (isUpdateNote(n)) return holderArt('update');
+        const own = n && appNotes.get(n.id);
+        const tbl = statusTable();
+        if (own && own.icon && holderArt(own.icon)) return holderArt(own.icon);
+        const kind = tbl && tbl.noteKind ? tbl.noteKind(n) : 'notify';
+        return holderArt(kind !== 'notify' ? kind : (n && NOTE_KIND_ICON[n.type] ? n.type : 'notify')) || holderArt('notify');
+    };
 
     // ---------------------------------------------------------------- frame
 
@@ -1101,6 +1119,12 @@
         const icon = shell.querySelector(`.wm-status-icon[data-role="${role}"]`);
         // the volume box opens with its icon aside too (never the notification box in its place)
         if (role === 'volume') { closeVolume(true); toggleVolume(icon && !icon.hidden && icon.getClientRects().length ? icon : null, true); return true; }
+        // an icon this page folded into "..." (shed, #1027): its own popup, as its item in the tray opens it - the app may
+        // show that icon on its bar or in its own tray, and the tray written down as that icon's popup was wrong
+        if (icon && !icon.hidden && icon.classList.contains('wm-shed') && role !== 'notify') {
+            if (!messageIconTap(role)) statusBubble(role, shell.querySelector('.wm-status-icon[data-role="notify"]:not([hidden])'));
+            return true;
+        }
         if (!icon || icon.hidden || !icon.getClientRects().length) { noteIconTap(); return true; }
         icon.click();
         return true;
@@ -5257,6 +5281,8 @@
         if (!cameraInBar && !hasCamera) setReserve(free);
         // the 50 % mark: the leftmost icon starts in the bar's right half (the kept room aside)
         const half = () => {
+            // with the camera in the bar the icons carry on left of it up to the title's floor (status-fit.js, #1025)
+            if (cameraInBar) return true;
             const box = bar.getBoundingClientRect();
             const mid = box.left + box.width / 2;
             return !Array.from(bar.querySelectorAll('.wm-status-icon')).some((i) => !i.hidden && !i.classList.contains('wm-shed') && i.getClientRects().length && i.getBoundingClientRect().left < mid);
@@ -5275,12 +5301,15 @@
         // the volume icon stays while there is room (Yukimi, Nov 16: it shows when there is enough room);
         // it steps aside below only when the bar runs short
         relayout();
-        if (ok()) return;
+        // the room right of the camera is filled first: a row crossing it takes the X / ok's kept place before (#1025)
+        const crosses = () => cameraInBar && !!bar.querySelector('.wm-status-left > .wm-status-icon:not([hidden]):not(.wm-shed)');
+        if (ok() && !crosses()) return;
         if (!reserve.hidden && step(() => setReserve(0))) return;
         // no X / ok on this bar (Today, Start): its kept place is room for icons before any steps aside or folds
         // (Yukimi, Nov 17: the cover fitted 6 icons and the "..." but folded three behind 27 empty units)
         const act = bar.querySelector('.wm-title-action');
         if ((!act || act.hidden) && step(() => bar.classList.add('wm-status-full'))) return;
+        if (ok()) return;
         // the volume / battery stepping aside (Settings > Screen > Sound Icon / Power Icon: "Never hide" keeps them;
         // the battery only while it charges)
         const sysSteps = [];
@@ -7119,10 +7148,11 @@
                 b.addEventListener('click', (e) => { e.stopPropagation(); tap(); });
                 tray.appendChild(b);
             };
-            for (const n of notesForBubbleIcon()) add(noteIcon(n), noteTitle(n), () => showNote(n.id));
+            // 6.5: the "..." opens 6.5.1's notification holder (#1026, wm65.css): each entry by its large colour picture
+            for (const n of notesForBubbleIcon()) add(WM65 ? noteHolderArt(n) : noteIcon(n), noteTitle(n), () => showNote(n.id));
             for (const r of statusFolded) {
                 if (!statusGlyph(r)) continue;
-                add(artImageSet(statusGlyph(r)), STATUS_APP_LABEL[r], () => {
+                add(WM65 ? (holderArt(r) || artImageSet(statusGlyph(r))) : artImageSet(statusGlyph(r)), STATUS_APP_LABEL[r], () => {
                     noteTrayOpen = false;
                     renderNotes();
                     // as its own icon would: mail / text / Messenger open their waiting notification
@@ -8601,30 +8631,12 @@
     const D651_HOLD_MS = 900;   // a press longer than this is not a tap (device: between 0.8 and 1.0 s)
     const D651_PAN_START = 16;  // units the pen travels before the strip or the zoomed screen follows
     const D651_OVER = 8;        // units a flick runs past an end (device: up to 16 px)
-    const d651Rom = (n) => `image-set(url("/static_images/wm65/v651-drawer-${n}.png") 1x, url("/static_images/wm65/v651-drawer-${n}@2x.png") 2x)`;
-    const d651Start = (n) => `image-set(url("/static_images/wm65/start-${n}.png") 1x, url("/static_images/wm65/start-${n}@2x.png") 2x, url("/static_images/wm65/start-${n}@4x.png") 4x)`;
+    const d651Rom = (n) => `image-set(url("/static_images/wm65/v651-drawer-${n}.png") 1x, url("/static_images/wm65/v651-drawer-${n}@2x.png") 2x, url("/static_images/wm65/v651-drawer-${n}@4x.png") 4x)`;
     // the large picture of a status icon: the ROM's drawer icon, else its program's Start icon
-    // (ROM Start_Icon_*, or our own in that set), else the program's large WM icon (wm61 -lg art).
-    // notify and continuity have none: their title bar glyph is shown as it is.
-    const D651_ART = {
-        bluetooth: () => d651Rom('bluetooth'),
-        data: () => d651Rom('connectivity'),
-        roaming: () => d651Rom('roaming'),
-        signal: () => d651Rom('phone'),
-        volume: () => d651Rom('volume'),
-        battery: (b) => d651Rom(/low|empty/.test(b.dataset.icon || '') ? 'battery-low' : 'battery'),
-        mail: () => d651Start('msg'),
-        sms: () => d651Start('sms'),
-        chat: () => d651Start('messenger'),
-        prints: () => d651Start('photos'),
-        update: () => d651Start('update'),
-        traffic: () => d651Start('traffic'),
-        lapis: () => d651Start('lapis'),
-        received: () => d651Start('async'),
-        director: () => artImageSet('app-director-lg'),
-        wxalert: () => artImageSet('app-weather-lg'),
-        rain: () => artImageSet('app-weather-lg')
-    };
+    // (ROM Start_Icon_*, or our own in that set), else the program's large WM icon (wm61 -lg art);
+    // every role's picture is the notification holder's (status-order.js holder, #1026: one table for the page, the
+    // 6.5 "..." holder and the app's copy); the battery shows its low picture when low
+    const d651Art = (kind, b) => holderArt(kind === 'battery' && b && /low|empty/.test(b.dataset.icon || '') ? 'batterylow' : kind);
     let d651El = null;     // the strip, made on first use
     let d651Acts = [];     // what each item opens
     let d651X = 0;         // how far the row is slid, CSS px
@@ -8803,6 +8815,12 @@
             const role = b.dataset.role;
             // the group icon stands for its own notifications here: what is folded into it has an item of its own
             if (role === 'notify' && !notesForBubbleIcon().length && statusFolded.length) return;
+            // and each of those notifications is an item of its own with its large colour picture (the 6.5.1 notification
+            // holder, #1026): a tap shows that notification, no second strip
+            if (role === 'notify' && notesForBubbleIcon().length) {
+                notesForBubbleIcon().forEach((n) => add(noteTitle(n), noteHolderArt(n), () => showNote(n.id)));
+                return;
+            }
             // the network type and the signal are one phone item (both open the Phone bubble)
             const kind = role === 'cell' ? 'signal' : role;
             if (kind === 'signal') { if (phone) return; phone = true; }
@@ -8811,8 +8829,8 @@
             const act = role === 'notify' ? () => noteIconTap()
                 : kind === 'battery' ? () => { if (!settingsPage('power', 'battery')) statusBubble('battery', anchor()); }
                     : () => { if (!messageIconTap(role)) statusBubble(role, anchor()); };
-            const big = D651_ART[kind];
-            if (big) { add(b.getAttribute('aria-label') || kind, big(b), act); return; }
+            const big = d651Art(kind, b);
+            if (big) { add(b.getAttribute('aria-label') || kind, big, act); return; }
             add(b.getAttribute('aria-label') || kind, '', act, b);
         });
         add('Clock & Alarms', d651Rom('clock'), () => { settingsPage('clock'); });
@@ -14199,6 +14217,8 @@
         },
         /** A status glyph's CSS image (a status role's own, or an art name such as 'status-reminder'): melatonBars' tray kit. */
         statusArt: (name) => artImageSet(statusGlyph(name) || name),
+        /** The notification holder's large colour picture for a role / kind / glyph name (6.5 "...", #1026), or ''. */
+        holderArt: (name) => holderArt(name),
         /**
          * A soft key's menu laid out once for the app to copy (melatonBars notifyKit: the WM notification box's Menu,
          * drawn by the app with the page asleep): opened quietly over the given soft key; returns { el, close }.

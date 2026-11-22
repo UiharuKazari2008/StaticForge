@@ -1119,6 +1119,8 @@
                 keyguardClear: !!c0.keyguardClear,
                 // the title bar solid black over every program, never see-through (#1013)
                 barBlack: !!c0.barBlack,
+                // ... only while Android's theme is light (#1028; the app reads Android's dark theme itself)
+                barBlackLight: !!c0.barBlackLight,
                 homeSense: BARS_HOME_SENSE.some(([k]) => k === c0.homeSense) ? c0.homeSense : 'high',
                 cutAnimations: !!c0.cutAnimations,
                 lockScreen: !!c0.lockScreen,
@@ -1151,6 +1153,7 @@
             ${check('wmBarsLandCover', 'Hide Softkey bar in landscape (Cover Screen only), swipe up to show', cfg.hideLandCover)}
             ${check('wmBarsKeyguardClear', 'Transparent Statusbar at keyguard', cfg.keyguardClear)}
             ${check('wmBarsBlack', 'Black Statusbar (always black behind the icons, never see-through)', cfg.barBlack)}
+            ${check('wmBarsBlackLight', 'Only apply in light theme', cfg.barBlackLight)}
             ${check('wmBarsCutAnim', 'Cut window animations everywhere (programs open, close and switch without zooming)', cfg.cutAnimations)}
             <div class="wm-form-gap"></div>
             ${check('wmBarsLock', 'Use the Windows Mobile lock screen (the phone\'s PIN is typed on its keypad)', cfg.lockScreen)}
@@ -1169,6 +1172,7 @@
             if (hs) hs.disabled = !cfg.enabled;
             q('input[name="wmBarsKeyguardClear"]').disabled = !cfg.enabled;
             q('input[name="wmBarsBlack"]').disabled = !cfg.enabled;
+            q('input[name="wmBarsBlackLight"]').disabled = !cfg.enabled || !cfg.barBlack;
             q('input[name="wmBarsPullShade"]').disabled = !cfg.enabled;
             q('input[name="wmBarsCutAnim"]').disabled = st.elevated === false;
             q('input[name="wmBarsLock"]').disabled = !cfg.enabled;
@@ -1182,6 +1186,7 @@
         bind('wmBarsLandCover', (v) => { cfg.hideLandCover = v; });
         bind('wmBarsKeyguardClear', (v) => { cfg.keyguardClear = v; });
         bind('wmBarsBlack', (v) => { cfg.barBlack = v; });
+        bind('wmBarsBlackLight', (v) => { cfg.barBlackLight = v; });
         bind('wmBarsPullShade', (v) => { cfg.pullShade = v; });
         bind('wmBarsCutAnim', (v) => { cfg.cutAnimations = v; });
         bind('wmBarsLock', (v) => { cfg.lockScreen = v; });
