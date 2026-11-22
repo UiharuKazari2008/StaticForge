@@ -181,10 +181,11 @@
         // ensureModalApplicationIcon: public/scripts/comp/modalUtils.js
         if (typeof ensureModalApplicationIcon === 'function') ensureModalApplicationIcon(el);
         markParts(el);
+        syncChrome(el);
         if (!tagged.has(el)) {
             tagged.add(el);
             // re-read when it opens (hidden comes off) and when its variant class changes
-            const mo = new MutationObserver(() => { if (isVista() && !el.classList.contains('hidden')) { setKind(el); markParts(el); } });
+            const mo = new MutationObserver(() => { if (isVista() && !el.classList.contains('hidden')) { setKind(el); markParts(el); syncChrome(el); } });
             mo.observe(el, { attributes: true, attributeFilter: ['class'] });
             openObservers.set(el, mo);
         }
@@ -205,6 +206,17 @@
             for (const row of content.querySelectorAll('.vista-dialog-footer')) row.classList.remove('vista-dialog-footer');
         }
         unwrapText(el);
+        syncChrome(el);
+    }
+
+    /**
+     * The box's dialog-ness changed (data-vista-dialog, data-window-client, its client's .win7): rootStateFlags.js re-reads
+     * .dialog-active, which it otherwise does only when active-window flips - a box tagged while already active never got
+     * it, so the Vista default button's glow never ran (#1059). Written only when it changes (setClass).
+     */
+    function syncChrome(el) {
+        const sync = window.syncRootStateFlags;
+        if (sync && typeof sync.windowChrome === 'function') sync.windowChrome(el);
     }
 
     let lastVista = null; // isVista() at the last apply: a body class flip that leaves it re-reads nothing
