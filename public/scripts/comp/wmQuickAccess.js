@@ -99,12 +99,29 @@
         if (s.available === false) return 'dim';
         return s.on ? 'on' : 'off';
     };
+    // Samsung's own quick panel icons, by name from their apps (found in each app's resource table; the app draws them
+    // white: /pkg-icon/<package>/drawable/<name>). Yukimi, Nov 22 2026: "use the official icons when possible"
+    const PKG = 'https://appassets.androidplatform.net/pkg-icon/';
+    const OFFICIAL = {
+        dolby: `${PKG}com.sec.android.app.soundalive/drawable/quick_panel_icon_dolby_atmos`,
+        powersave: `${PKG}com.samsung.android.lool/drawable/ic_quick_panel_icon_battery_mode`,
+        performance: `${PKG}com.samsung.android.lool/drawable/ic_quick_panel_icon_performance_profile`,
+        powershare: `${PKG}com.samsung.android.lool/drawable/ic_quick_panel_icon_power_share`,
+        qr: `${PKG}com.sec.android.app.camera/drawable/quick_panel_icon_qr_scanner`,
+        modes: `${PKG}com.samsung.android.app.routines/drawable/quick_panel_icon_modes`,
+        record: `${PKG}com.samsung.android.app.smartcapture/drawable/quick_panel_icon_screen_recording`,
+        network: `${PKG}com.radioswitch.app/drawable/ic_traffic_cone`,
+        wifi: { on: `${PKG}com.android.systemui/drawable/quick_panel_icon_wifi_on`, off: `${PKG}com.android.systemui/drawable/quick_panel_icon_wifi_off` },
+        rotation: { on: `${PKG}com.android.systemui/drawable/qs_auto_rotate_icon_on`, off: `${PKG}com.android.systemui/drawable/qs_auto_rotate_icon_off` }
+    };
     const iconOf = (m, id, state) => {
         // (a tile whose service declares no glyph: a generic tile, never its app icon painted white)
         if (id.startsWith('tile:')) return (m.tiles[id] && m.tiles[id].icon) || '/static_images/quickaccess/tile.png';
         // Android's own icon for this state where the app has it (SystemUI's tiles: Bluetooth, Sound mode, Flashlight...)
         const official = m.st[id] && m.st[id].icons;
         if (official && (official[state === 'on' ? 'on' : 'off'])) return official[state === 'on' ? 'on' : 'off'];
+        const named = OFFICIAL[id];
+        if (named) return typeof named === 'string' ? named : named[state === 'on' ? 'on' : 'off'];
         const own = TILE_GLYPH[id] && m.tiles[`tile:${TILE_GLYPH[id]}`];
         if (own && own.icon) return own.icon;
         const i = ICONS[id];
