@@ -1141,7 +1141,7 @@
         if (typeof sh.registerTodayItem === 'function') {
             sh.registerTodayItem({
                 // no clock in it: it draws on its own changes (todayChanged), not on the shell's minute (#890)
-                id: 'cards', label: TITLE, icon: ICON, after: 'lapis', wantsMinute: false, render: todayRender, titanium: todayTitanium,
+                id: 'cards', label: TITLE, icon: ICON, after: 'traffic', wantsMinute: false, render: todayRender, titanium: todayTitanium,
                 options: [{ key: 'code', label: 'Barcode', value: 'show', choices: [['show', 'Show the code (tap brightens it)'], ['hide', 'Name only']] }]
             });
         }

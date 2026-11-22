@@ -2,7 +2,7 @@
  * Melaton Mobile: Lapis Remote (Yozora #835). Yukimi, Nov 14 2026: "a polished 2010-era luxury car
  * remote control and status viewer", a front end for Hyundai BlueLink: remote start with a climate
  * setting chosen from the weather, status, maintenance, forgot-to-lock and low-fuel notices, the day
- * to refuel by, the car on a map, and a Today item with controls (6.1 and 6.5).
+ * to refuel by, the car on a map, and controls on Today (6.1 and 6.5; half of Traffic's Traffic and Car item since #1041).
  *
  * Our own design, the theme she chose: "Platinum Console" hardware (brushed aluminium, chrome-trimmed
  * piano-black keys with amber LEDs, a knurled temperature knob, a round ENGINE START STOP button, a
@@ -57,7 +57,6 @@
     let historyRange = 'month';
     let map = null;
     let holdTimer = null;
-    let todayHtml = '';
     let runNote = null; // the remote start's "n minutes left" note (one at a time)
     let heroMap = null; // the map shown in place of the car picture
     const LS_VIEW = 'wmLapisHeroView'; // 'car' | 'map'
@@ -203,15 +202,17 @@
 
     const carSrc = (small) => picture.url || (small ? CAR_ART_SM : CAR_ART);
 
-    /** Only Lapis's Today item drawn again (#890: not the whole of Today); an older shell draws it all. */
+    /**
+     * Only the car's Today item drawn again (#890: not the whole of Today); an older shell draws it all. The car is
+     * half of Traffic's item 'traffic' (#1041: one Today item for the commute and the car, wmTraffic.js).
+     */
     function todayChanged() {
         if (!ws) return;
-        if (typeof ws.refreshTodayItem === 'function') ws.refreshTodayItem('lapis');
+        if (typeof ws.refreshTodayItem === 'function') ws.refreshTodayItem('traffic');
         else if (typeof ws.refreshToday === 'function') ws.refreshToday();
     }
 
     function changed() {
-        todayHtml = '';
         if (shown) render(); else stale = true;
         todayChanged();
         document.dispatchEvent(new CustomEvent('wmLapisChange'));
@@ -389,7 +390,7 @@
         document.querySelectorAll('[data-lps-cd]').forEach((el) => { el.textContent = leftText(Number(el.dataset.lpsCd) - Date.now()); });
         document.querySelectorAll('[data-lps-bar]').forEach((el) => { const total = Number(el.dataset.lpsTotal) || 1; el.style.setProperty('--wm-ds-blocks', String(Math.max(0, Math.min(18, Math.round(((Number(el.dataset.lpsBar) - Date.now()) / total) * 18))))); });
         // Today's superscript counts whole minutes
-        if (++tickN % 15 === 0) { todayHtml = ''; todayChanged(); }
+        if (++tickN % 15 === 0) todayChanged();
         if (left <= 0) changed();
     }
     document.addEventListener('visibilitychange', tick, { signal: appScopeSignal });
@@ -1555,30 +1556,28 @@
         return '';
     }
 
-    function todayRender(el) {
-        if (!canUse()) return false;
-        if (!loaded) { if (!wired) wire(); return false; }
-        if (!configured() && !isAdmin()) return false;
+    /**
+     * The car's half of Today's Traffic and Car item (#1041; wmTraffic.js owns the item and lays out both halves):
+     * { html (the car, its two lines, Lock / Start keys), t (todayLine) } or null when the car shows nothing here.
+     */
+    function todayPart() {
+        if (!canUse()) return null;
+        if (!loaded) { if (!wired) wire(); return null; }
+        if (!configured() && !isAdmin()) return null;
         const t = todayLine();
-        if (!el.dataset.lpsBound) {
-            el.dataset.lpsBound = '1';
-            el.classList.add('wtw', 'lps-today');
-            el.setAttribute('role', 'button');
-            el.tabIndex = 0;
-            el.addEventListener('click', (e) => {
-                const k = e.target.closest('[data-today]');
-                if (!k) { open(); return; }
-                e.stopPropagation();
-                if (k.dataset.today === 'lock') { const s = st(); if (s && s.locked === false) send('lock'); else if (s && s.locked) doUnlock(); else open(); }
-                else if (k.dataset.today === 'start') { const s = st(); if (runInfo()) doStop(); else if (s && s.engine) open(); else todayStart(); }
-            });
-        }
         const keys = configured() && isAdmin()
             ? `<button type="button" class="lps-today-key${t.unlocked ? ' is-warn' : ''}" data-today="lock" aria-label="${t.unlocked ? 'Lock' : 'Unlock'}">${t.unlocked ? I.unlock : I.lock}</button><button type="button" class="lps-today-key${t.running ? ' is-warn' : ''}" data-today="start" aria-label="Remote start">${I.power}</button>`
             : '';
-        const html = `<img class="lps-today-car" src="${esc(carSrc(true))}" alt="" draggable="false"><span class="wtw-lines"><span class="wtw-title">${esc(t.title)}</span><span class="wtw-sub">${esc(t.sub)}</span></span>${keys}`;
-        if (html !== todayHtml || !el.firstChild) { todayHtml = html; el.innerHTML = html; }
-        return true;
+        return { t, html: `<img class="lps-today-car" src="${esc(carSrc(true))}" alt="" draggable="false"><span class="wtw-lines"><span class="wtw-title">${esc(t.title)}</span><span class="wtw-sub">${esc(t.sub)}</span></span>${keys}` };
+    }
+
+    /** A tap on the car's half of the Today item: its Lock / Start keys, else Lapis Remote. */
+    function todayTap(e) {
+        const k = e && e.target && e.target.closest ? e.target.closest('[data-today]') : null;
+        if (!k) { open(); return; }
+        e.stopPropagation();
+        if (k.dataset.today === 'lock') { const s = st(); if (s && s.locked === false) send('lock'); else if (s && s.locked) doUnlock(); else open(); }
+        else if (k.dataset.today === 'start') { const s = st(); if (runInfo()) doStop(); else if (s && s.engine) open(); else todayStart(); }
     }
 
     function todayTitanium() {
@@ -1614,16 +1613,19 @@
         ws = window.wmShell;
         if (!ws) return;
         ws.registerApp(APP);
-        if (typeof ws.registerTodayItem === 'function') {
-            // no clock in it: a running start's minutes left come from its own tick (onTick), not the shell's minute
-            ws.registerTodayItem({ id: 'lapis', label: 'Lapis Remote', icon: 'app-lapis', after: 'traffic', wantsMinute: false, render: todayRender, titanium: todayTitanium });
-        }
+        // no Today item of its own: the car is half of Traffic's (#1041, wmTraffic.js reads window.wmLapis.today);
+        // a running start's minutes left come from its own tick (onTick), not the shell's minute
         // websocket.js (window.wsClient) loads with the page, before this file; should it not have, every script has run by 'load'
         if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });
     }
 
     window.wmLapis = {
         open,
+        /**
+         * The car's half of Today's Traffic and Car item (#1041): part() -> { html, t } | null for the 6.1 row,
+         * tap(event) for a tap on it, panel() -> the 6.5 panel (the car's own pages) | null, line() -> todayLine().
+         */
+        today: { part: todayPart, tap: todayTap, panel: todayTitanium, line: todayLine },
         state: () => state,
         /** A running remote start for the shell's title-bar glyph: { running, until, title, html, canStop }. */
         statusState,

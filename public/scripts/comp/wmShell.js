@@ -6186,6 +6186,9 @@
     // the title bar's update icon (it shows while one waits, a tap on it brings the notice up), never
     // the speech bubble
     const LATENCY_TOAST = /^high latency/i;
+    // a finished print is no notification on the phone (Yukimi, Nov 22 2026, #1040): Studio's
+    // "Generation Complete" toast goes without a bubble or sound
+    const PRINT_DONE_TOAST = /^generation complete/i;
     // 'Updates Complete' / 'Completed updating ...' belong to the update icon's one notification, not a
     // separate bubble (Yukimi, Nov 15: merge the completion into the existing update notification)
     const UPDATE_TOAST = /^(checking for updates|downloading updates|download stalled|up to date|updates? applied|updates? complete|completed updating|update check failed|updates? (are )?(ready|available)|update (waiting|failed)|retrying updates|retry failed|service worker|cache error)/i;
@@ -6253,6 +6256,10 @@
             const msgEl = t.querySelector('.toast-message');
             const title = titleEl ? titleEl.textContent.trim() : '';
             if (LATENCY_TOAST.test(title)) continue;
+            if (PRINT_DONE_TOAST.test(title) && !t.classList.contains('upload-progress')) {
+                if (typeof window.removeGlassToast === 'function') window.removeGlassToast(t.id);
+                continue;
+            }
             // checking / downloading: quiet while it says so. The same toast turns into the result
             // ("Updates Complete"): that is the notification (Yukimi, Nov 14: the sound played, no
             // bubble, because a busy mark set here hid the result for good)
@@ -6996,7 +7003,6 @@
         if (isUpdateNote(n) && n.type !== 'error' && !/stalled|failed/i.test(t)) return 'update';
         if (/^(you have mail|new mail|new e-?mail)/i.test(t)) return 'mail';
         if (/^(generation|print|upscal\w*) (failed|error)/i.test(t)) return 'print-error';
-        if (/^generation complete/i.test(t)) return 'print';
         if (n.type === 'error') return 'error';
         if (n.type === 'warning') return 'warning';
         if (/^(disconnected|connection lost|offline|reconnecting)/i.test(t)) return 'disconnect';
@@ -9364,7 +9370,7 @@
         // #848: the update icon's notification (updates downloaded and ready, applied, available)
         { id: 'update', label: 'Software update', kind: 'note', sound: 'SoftwareUpdate.wav', desktop: 'balloon' },
         { id: 'startup', label: 'Start up', kind: 'event', sound: 'Alarm2.wav', desktop: 'logon' },
-        { id: 'print', label: 'Studio: Print finished', kind: 'note', sound: 'Alarm2.wav', desktop: 'print-complete' },
+        // no 'print' (Print finished) class: a finished print is no notification on the phone (#1040)
         { id: 'print-error', label: 'Studio: Print failed', kind: 'note', sound: 'Alarm2.wav', desktop: 'print-error' },
         { id: 'sms', label: 'Text Messaging: New text message', kind: 'note', sound: 'Alarm3.mp3', desktop: 'balloon' },
         // #810: a speed or red light camera 1 mi ahead on the commute, with its own sound
@@ -10275,7 +10281,33 @@
     const TODAY_PREF_KEYS = new Set(TODAY_PREF.map(([, key]) => key));
     let todayPrefsFor = null;
 
+    /**
+     * Traffic and Lapis Remote are one Today item since #1041 (Yukimi, Nov 22 2026): 'traffic', the commute and the
+     * car. A list stored before (this device's or the workspace's copy) puts it at the earlier of the two places,
+     * on when either was on, and drops 'lapis'. Rewrites only a list that still names 'lapis'.
+     */
+    function mergeCarTodayItem() {
+        for (const key of ['wmTodayItems', 'wmTodayItems65']) {
+            let raw = null;
+            try { raw = localStorage.getItem(key); } catch (_) { return; }
+            if (!raw || raw.indexOf('"lapis"') < 0) continue;
+            let list = null;
+            try { list = JSON.parse(raw); } catch (_) { continue; }
+            if (!Array.isArray(list)) continue;
+            const li = list.findIndex((it) => it && it.id === 'lapis');
+            if (li < 0) continue;
+            const ti = list.findIndex((it) => it && it.id === 'traffic');
+            // Traffic not in the list showed by default (on)
+            const on = list[li].on !== false || ti < 0 || list[ti].on !== false;
+            const at = ti < 0 ? li : Math.min(li, ti);
+            const out = list.filter((it) => !(it && (it.id === 'lapis' || it.id === 'traffic')));
+            out.splice(at, 0, { id: 'traffic', on });
+            try { localStorage.setItem(key, JSON.stringify(out)); } catch (_) { /* storage off */ }
+        }
+    }
+
     function loadTodayPrefs(force) {
+        mergeCarTodayItem();
         const id = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
         const w = activeWorkspaceRecord();
         if (!id || !w) return false;
@@ -10297,6 +10329,7 @@
                 else localStorage.setItem(key, json ? JSON.stringify(v) : String(v));
             } catch (_) { /* storage off */ }
         }
+        mergeCarTodayItem();
         return true;
     }
 
@@ -13817,7 +13850,12 @@
         startBoot();
         refreshStatus();
         watchStatusSignals();
-        window.addEventListener('resize', () => { syncBezel(); if (noteTrayOpen) renderNotes(); else fitStatusSettled(); });
+        window.addEventListener('resize', () => {
+            syncBezel(); if (noteTrayOpen) renderNotes(); else fitStatusSettled();
+            // 6.1's open Start menu: its piece of the Today picture follows the new screen (Fold folded or opened, #1043)
+            const sm = shell && shell.querySelector('.wm-startmenu');
+            if (sm && !sm.hidden) startMenuPicture(sm);
+        });
         // the Android app moved or rotated the camera hole (--camera-hole-*)
         window.addEventListener('dreamscape:cutout', () => { syncBezel(); fitStatusSettled(); });
         // a turn (a half turn too, which resizes nothing): the camera's place in the bar is fitted again
