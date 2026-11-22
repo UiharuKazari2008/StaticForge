@@ -8,9 +8,9 @@
  * rendering (cursor rule melaton-bars-native-layouts: the page is the point of truth) and the app (DSApp DexAltTab.kt) draws
  * exactly that above every window, with the glass's blur; the page's own pane stays laid out but unseen (.is-native).
  *
- * Sent over window.AndroidAltTabPort (a WebMessageListener, in order):
+ * Sent over window.AndroidAltTabPort (a WebMessageListener, in order; the pane first, its pictures right after it):
  *   - each picture the list names that the app does not hold yet (AndroidAltTab.missing): binary
- *     [u16 key length][key utf-8][png / jpeg bytes] - never a data: string (no-base64-images). Keys: 'p:<url>' a picture
+ *     [u16 key length][key utf-8][png / jpeg / bmp bytes (a canvas: bmpOf)] - never a data: string (no-base64-images). Keys: 'p:<url>' a picture
  *     file (icons, kept by the app across sessions), 'c:<n>:<v>' one of the pane's canvases (window pictures, this session),
  *     'aw:<window id>' an Android window's picture the app took itself;
  *   - { op: 'show', ats, sid, index, steps, vw, pane, titles, slots, sel } - the pane without a selection, each entry's
@@ -54,12 +54,14 @@
     const canvasIds = new WeakMap();
     let canvasSeq = 0;
 
-    // the app's keys come in as 'androidhotkey' (androidTaskbar.js replays them as key events): the session first
-    root.addEventListener('androidhotkey', (e) => {
-        const k = e && e.detail;
+    // the app's keys come in as 'androidhotkey'; androidTaskbar.js hands each one here (hotkey()) right before it replays
+    // it as a key event, which opens the pane at once. Not a listener of our own: listeners on window run in the order
+    // they were added, capture or not, and androidTaskbar.js's comes first - the pane opened before the session was known
+    // and the app never drew it (#1054, seen on the A53 and Yukimi's Fold).
+    function hotkey(k) {
         // an Alt+Tab key: the app's session when it draws this one, none when it does not
         if (k && k.key === 'Tab' && k.type === 'keydown') { ats = k.ats != null ? Number(k.ats) : -1; atsAt = performance.now(); }
-    }, { capture: true, signal: appScopeSignal });
+    }
 
     root.addEventListener('androidalttabthumbs', (e) => {
         const d = e && e.detail;
@@ -242,8 +244,40 @@
 
     // ---------------------------------------------------------------- sending
 
+    /**
+     * A canvas's pixels as a 32-bit BMP (top-down, alpha kept), which the app decodes as it does a PNG. Not toBlob /
+     * convertToBlob: in a WebView a Blob is made on the app's main thread, which is busy - 2.7 to 4 s for a 125 x 78 canvas
+     * on the A53, so the window pictures came seconds after the pane (#1054). getImageData is under a millisecond here.
+     */
+    function bmpOf(el) {
+        const w = el.width; const h = el.height;
+        if (!w || !h) return null;
+        let px;
+        try {
+            const x = el.getContext('2d', { willReadFrequently: false });
+            px = x && x.getImageData(0, 0, w, h).data;
+        } catch (_) { px = null; }
+        if (!px) return null;
+        const head = 14 + 108;
+        const buf = new ArrayBuffer(head + w * h * 4);
+        const v = new DataView(buf);
+        v.setUint8(0, 0x42); v.setUint8(1, 0x4d); v.setUint32(2, buf.byteLength, true); v.setUint32(10, head, true);
+        // BITMAPV4HEADER: BI_BITFIELDS with an alpha mask, negative height = rows top first
+        v.setUint32(14, 108, true); v.setInt32(18, w, true); v.setInt32(22, -h, true); v.setUint16(26, 1, true); v.setUint16(28, 32, true);
+        v.setUint32(30, 3, true); v.setUint32(34, w * h * 4, true); v.setInt32(38, 2835, true); v.setInt32(42, 2835, true);
+        v.setUint32(54, 0x00ff0000, true); v.setUint32(58, 0x0000ff00, true); v.setUint32(62, 0x000000ff, true); v.setUint32(66, 0xff000000, true);
+        v.setUint32(70, 0x73524742, true); // 'sRGB'
+        const out = new Uint8Array(buf, head);
+        for (let i = 0; i < px.length; i += 4) { out[i] = px[i + 2]; out[i + 1] = px[i + 1]; out[i + 2] = px[i]; out[i + 3] = px[i + 3]; }
+        return buf;
+    }
+
     function bytesOf(el) {
-        if (el.tagName === 'CANVAS') return new Promise((res) => { try { el.toBlob((b) => res(b ? b.arrayBuffer() : null), 'image/png'); } catch (_) { res(null); } });
+        if (el.tagName === 'CANVAS') {
+            const bmp = bmpOf(el);
+            if (bmp) return Promise.resolve(bmp);
+            return new Promise((res) => { try { el.toBlob((b) => res(b ? b.arrayBuffer() : null), 'image/png'); } catch (_) { res(null); } });
+        }
         const url = el.currentSrc || el.src;
         return fetch(url).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
     }
@@ -293,18 +327,20 @@
             if (c.mo) c.mo.takeRecords();
         }
         const msg = { op: 'show', ats: c.ats, sid: c.sid, index: c.index, steps: c.steps, vw: root.innerWidth, pane, titles, slots: items, sel: { items: sel } };
-        // the pictures the app lacks, then the pane (one after another: a newer pane waits for the older one's pictures)
-        const fileKeys = [...pics.keys()].filter((k) => k.startsWith('p:'));
+        // the pane at once; the pictures it names that the app lacks follow, each as soon as it is read (the app draws a
+        // picture when it comes in). Waiting for them first held the pane back for 1-5 s on the A53 (#1054).
+        port().postMessage(JSON.stringify(msg));
+        const fileKeys = [...pics.keys()].filter((k) => k.startsWith('p:') && !c.sent.has(k));
         let lacking = [];
         try { lacking = JSON.parse(A().missing(JSON.stringify(fileKeys)) || '[]'); } catch (_) { lacking = fileKeys; }
         const want = [...lacking.filter((k) => pics.has(k)), ...[...pics.keys()].filter((k) => k.startsWith('c:') && !c.sent.has(k))];
-        chain = chain.then(() => Promise.all(want.map((k) => bytesOf(pics.get(k)).then((buf) => ({ k, buf })))))
-            .then((got) => {
-                if (cur !== c) return;
-                got.forEach(({ k, buf }) => { if (buf) { postPicture(k, buf); if (k.startsWith('c:')) c.sent.add(k); } });
-                msg.index = c.index; msg.steps = c.steps;
-                port().postMessage(JSON.stringify(msg));
-            })
+        if (!want.length) return;
+        // asked for once per pane (a later write-down while one is on its way does not read it again)
+        want.forEach((k) => c.sent.add(k));
+        chain = chain.then(() => Promise.all(want.map((k) => bytesOf(pics.get(k)).then((buf) => {
+            if (cur !== c) return;
+            if (buf) postPicture(k, buf); else c.sent.delete(k);
+        }))))
             .catch((err) => console.warn('[dexAltTab] send', err));
     }
 
@@ -313,6 +349,8 @@
     // ---------------------------------------------------------------- keyboardShortcuts.js
 
     root.melatonDexAltTab = {
+        /** One of the app's DeX keys ('androidhotkey' detail), before the page replays it (androidTaskbar.js). */
+        hotkey,
         /** An Android window's picture { url, w, h } taken when this Alt+Tab began (or its last), else null. */
         thumb: (id) => thumbs.get(String(id)) || null,
         /**
