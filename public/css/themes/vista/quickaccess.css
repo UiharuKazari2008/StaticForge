@@ -4,6 +4,15 @@
  * trackbar for the sliders. Sizes in WM units (--wm-px) so it scales with the phone's shell.
  */
 #wmShell > .wm-qa {
+    /* the lit tiles and the tab in the workspace's colour (wmQuickAccess.js tint sets these); Vista's blue until it is known */
+    --qa-on-1: rgba(127, 195, 255, 0.55);
+    --qa-on-2: rgba(58, 139, 224, 0.5);
+    --qa-on-3: rgba(21, 99, 192, 0.6);
+    --qa-on-4: rgba(63, 154, 240, 0.55);
+    --qa-on-glow: rgba(47, 140, 255, 0.45);
+    --qa-on-edge: rgba(168, 216, 255, 0.75);
+    --qa-tab-1: rgba(127, 195, 255, 0.62);
+    --qa-tab-2: rgba(58, 139, 224, 0.55);
     position: absolute;
     z-index: 60;
     pointer-events: none;
@@ -19,9 +28,8 @@
     bottom: 0;
     box-sizing: border-box;
     padding: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
-    background-color: rgba(8, 10, 14, 0.78);
-    background-image: url('/static_images/vista-sidebar/sidebar/bg-right.png');
-    background-size: 100% 100%;
+    /* P1 (Yukimi, Nov 22 2026): see-through glass over Today's wallpaper, which the app draws blurred under it */
+    background-color: rgba(8, 10, 14, 0.55);
     box-shadow: rgba(0, 0, 0, 0.6) 0 0 calc(8 * var(--wm-px));
     color: #fff;
     font-size: calc(10 * var(--wm-px));
@@ -88,8 +96,8 @@
     color: #fff;
     background:
         var(--qa-pic) no-repeat center calc(5 * var(--wm-px)) / calc(20 * var(--wm-px)) calc(20 * var(--wm-px)),
-        linear-gradient(rgba(127, 195, 255, 0.55), rgba(58, 139, 224, 0.5) 48%, rgba(21, 99, 192, 0.6) 52%, rgba(63, 154, 240, 0.55));
-    box-shadow: rgba(47, 140, 255, 0.45) 0 0 calc(5 * var(--wm-px)), inset 0 0 0 var(--wm-px) rgba(168, 216, 255, 0.75);
+        linear-gradient(var(--qa-on-1), var(--qa-on-2) 48%, var(--qa-on-3) 52%, var(--qa-on-4));
+    box-shadow: var(--qa-on-glow) 0 0 calc(5 * var(--wm-px)), inset 0 0 0 var(--wm-px) var(--qa-on-edge);
 }
 #wmShell > .wm-qa .qa-tile:not(.is-wide) .qa-face.is-on { background-position: center center, 0 0; }
 #wmShell > .wm-qa .qa-face.is-dim { opacity: 0.38; }
@@ -197,33 +205,27 @@
     background-size: calc(11 * var(--wm-px)) calc(95 * var(--wm-px));
 }
 
-/* ---- the grip tab (T1): thin black glass at the swipe zone ---- */
-#wmShell > .wm-qa.is-tab { width: calc(18 * var(--wm-px)); }
+/* ---- the tab (Yukimi, Nov 22 2026: "just a tab with a handle", B/D): frosted in the workspace colour, three dots ---- */
+#wmShell > .wm-qa.is-tab { width: calc(14 * var(--wm-px)); }
 #wmShell > .wm-qa .qa-tab {
     position: absolute;
     top: var(--qa-top, 0);
-    width: calc(16 * var(--wm-px));
+    width: calc(12 * var(--wm-px));
+    height: calc(46 * var(--wm-px));
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: calc(5 * var(--wm-px));
-    padding: calc(5 * var(--wm-px)) 0;
-    background: linear-gradient(90deg, rgba(25, 28, 34, 0.95), rgba(7, 8, 11, 0.96));
-    box-shadow: inset var(--wm-px) var(--wm-px) 0 rgba(255, 255, 255, 0.27), rgba(0, 0, 0, 0.6) 0 0 calc(6 * var(--wm-px));
+    justify-content: center;
+    gap: calc(4 * var(--wm-px));
+    box-sizing: border-box;
+    background: linear-gradient(90deg, var(--qa-tab-1), var(--qa-tab-2));
+    box-shadow: inset 0 0 0 var(--wm-px) rgba(255, 255, 255, 0.55), rgba(0, 0, 0, 0.35) 0 0 calc(4 * var(--wm-px));
 }
-#wmShell > .wm-qa.is-right .qa-tab { right: 0; border-radius: calc(5 * var(--wm-px)) 0 0 calc(5 * var(--wm-px)); }
-#wmShell > .wm-qa.is-left .qa-tab { left: 0; border-radius: 0 calc(5 * var(--wm-px)) calc(5 * var(--wm-px)) 0; }
-#wmShell > .wm-qa .qa-grip {
-    width: calc(7 * var(--wm-px));
-    height: calc(3 * var(--wm-px));
-    border-top: var(--wm-px) solid rgba(255, 255, 255, 0.5);
-    border-bottom: var(--wm-px) solid rgba(255, 255, 255, 0.5);
+#wmShell > .wm-qa.is-right .qa-tab { right: 0; border-radius: calc(6 * var(--wm-px)) 0 0 calc(6 * var(--wm-px)); }
+#wmShell > .wm-qa.is-left .qa-tab { left: 0; border-radius: 0 calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) 0; }
+#wmShell > .wm-qa .qa-dot {
+    width: calc(2.5 * var(--wm-px));
+    height: calc(2.5 * var(--wm-px));
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.95);
 }
-#wmShell > .wm-qa .qa-mini-slot { position: relative; width: calc(11 * var(--wm-px)); height: calc(11 * var(--wm-px)); }
-#wmShell > .wm-qa .qa-mini {
-    position: absolute;
-    inset: 0;
-    background: var(--qa-pic) no-repeat center / contain;
-}
-#wmShell > .wm-qa .qa-mini.is-off { opacity: 0.45; }
-#wmShell > .wm-qa .qa-mini.is-dim { opacity: 0.2; }

@@ -177,6 +177,34 @@
         return { top: tr.bottom, bottom: sr.top || root.innerHeight };
     }
 
+    /**
+     * The workspace's colour on the tab and the lit tiles (Yukimi, Nov 22 2026: "the theme color should be based on the
+     * active workspace"): --primary-color resolved to rgb once per layout, its lighter and darker steps as variables.
+     */
+    function tint(el, shell) {
+        // (no workspace colour yet: quickaccess.css's own blue stays)
+        const ws = getComputedStyle(document.body).getPropertyValue('--primary-color').trim();
+        if (!ws) return;
+        const probe = document.createElement('span');
+        probe.style.color = ws;
+        shell.appendChild(probe);
+        const m = /(\d+)\D+(\d+)\D+(\d+)/.exec(getComputedStyle(probe).color);
+        probe.remove();
+        if (!m) return;
+        const c = [1, 2, 3].map((i) => Number(m[i]));
+        const mix = (t, k) => c.map((v) => Math.round(v + (t - v) * k)).join(', ');
+        const base = c.join(', '), hi = mix(255, 0.35), lo = mix(0, 0.35), edge = mix(255, 0.6);
+        el.style.setProperty('--qa-ws', `rgb(${base})`);
+        el.style.setProperty('--qa-on-1', `rgba(${hi}, 0.6)`);
+        el.style.setProperty('--qa-on-2', `rgba(${base}, 0.55)`);
+        el.style.setProperty('--qa-on-3', `rgba(${lo}, 0.65)`);
+        el.style.setProperty('--qa-on-4', `rgba(${hi}, 0.55)`);
+        el.style.setProperty('--qa-on-glow', `rgba(${base}, 0.45)`);
+        el.style.setProperty('--qa-on-edge', `rgba(${edge}, 0.8)`);
+        el.style.setProperty('--qa-tab-1', `rgba(${hi}, 0.62)`);
+        el.style.setProperty('--qa-tab-2', `rgba(${base}, 0.55)`);
+    }
+
     /** Lays out role `qatab` / `quickaccess` / `quickaccess.N` for melatonBars to write down; true when it did. */
     function open(role) {
         close();
@@ -188,17 +216,16 @@
         const wmpx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
         layer = document.createElement('div');
         layer.className = `wm-popup wm-qa is-${side}`;
+        tint(layer, shell);
         layer.style.top = `${b.top}px`;
         layer.style.height = `${Math.max(0, b.bottom - b.top)}px`;
         if (role === 'qatab') {
             // the grip tab at the swipe zone (the app moves it with the finger): six state glyphs between grip dots
             const zoneTop = Math.max(0, Number(m.cfg.zoneTop) || 0.35);
-            const shown = m.items.filter((id) => !SLIDERS[id] && !BUTTONS.has(id) && !id.startsWith('tile:')).slice(0, 6);
             layer.classList.add('is-tab');
+            // (Yukimi, Nov 22 2026: "just a tab with a handle", B/D: frosted, the workspace colour, three dots)
             layer.innerHTML = `<div class="qa-tab" style="--qa-top:${Math.round(zoneTop * (root.innerHeight) - b.top)}px">`
-                + '<span class="qa-grip"></span>'
-                + shown.map((id) => `<span class="qa-mini-slot">${['on', 'off', 'dim'].map((s) => `<span class="qa-mini is-${s}" data-live="qa:${id}:${s}" style="--qa-pic:url('${esc(iconOf(m, id, s))}')"></span>`).join('')}</span>`).join('')
-                + '<span class="qa-grip"></span></div>';
+                + '<span class="qa-dot"></span><span class="qa-dot"></span><span class="qa-dot"></span></div>';
             shell.appendChild(layer);
             return true;
         }
@@ -252,7 +279,7 @@
         if (!m) return '';
         // (every tile's picture: a control drawn with an app tile's glyph changes with the catalog too - its kept layout
         // pointed at a glyph the app no longer draws, and the tile showed empty)
-        return JSON.stringify([m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => iconOf(m, id, 'on'))]);
+        return JSON.stringify([getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => iconOf(m, id, 'on'))]);
     }
 
     root.wmQuickAccess = { open, close, roles, signature, ICONS };
