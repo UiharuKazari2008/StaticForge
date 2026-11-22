@@ -9812,14 +9812,38 @@
     // its effect, and handed over (AndroidBars.homeMask: JPEG bytes as base64 - transport into the app's cache file, never a
     // picture this page shows); an unchanged one (AndroidBars.homeMaskKey) is not drawn again. Drawn when the page is idle.
     let homeMaskTimer = 0;
+    let homeMaskArgs = null;
+    // Today landed at rest (wmTitanium, after a home swipe's entrance): the mask is drawn again at that pose if it moved
+    document.addEventListener('wmTodayRest', () => { if (homeMaskArgs) queueHomeMask(...homeMaskArgs); }, { signal: appScopeSignal });
     function queueHomeMask(url, drawn, fx) {
         const B = window.AndroidBars;
         if (!B || typeof B.homeMask !== 'function') return;
+        homeMaskArgs = [url, drawn, fx];
         clearTimeout(homeMaskTimer);
         homeMaskTimer = setTimeout(() => {
             const idle = window.requestIdleCallback || ((f) => setTimeout(f, 0));
             idle(() => { makeHomeMask(B, url, drawn, fx).catch((err) => console.warn('[wmShell] home mask', err)); }, { timeout: 5000 });
         }, 1500);
+    }
+
+    /** A computed background-size (cover, contain, auto or two lengths) as the picture's drawn size in a W x H box. */
+    function cssBackgroundSize(size, W, H, iw, ih) {
+        const v = String(size || 'auto').trim();
+        if (v === 'cover') { const k = Math.max(W / iw, H / ih); return [iw * k, ih * k]; }
+        if (v === 'contain') { const k = Math.min(W / iw, H / ih); return [iw * k, ih * k]; }
+        const [a = 'auto', b = 'auto'] = v.split(/\s+/);
+        const len = (t, box) => (t === 'auto' ? null : t.endsWith('%') ? (parseFloat(t) / 100) * box : parseFloat(t));
+        let bw = len(a, W);
+        let bh = len(b, H);
+        if (bw == null && bh == null) { bw = iw; bh = ih; } else if (bw == null) bw = (bh * iw) / ih; else if (bh == null) bh = (bw * ih) / iw;
+        return [bw, bh];
+    }
+
+    /** A computed background-position (two lengths or percentages) as the picture's top-left in its box. */
+    function cssBackgroundPosition(pos, W, H, bw, bh) {
+        const [a = '50%', b = '50%'] = String(pos || '50% 50%').trim().split(/\s+/);
+        const at = (t, free) => (t.endsWith('%') ? (parseFloat(t) / 100) * free : parseFloat(t) || 0);
+        return [at(a, W - bw), at(b, H - bh)];
     }
 
     function loadMaskPicture(src) {
@@ -9840,7 +9864,12 @@
         const h = Math.max(1, Math.round((window.innerHeight * dpr) / 2));
         const cs = getComputedStyle(today.page);
         const colour = cs.backgroundColor || '';
-        const key = `${todayBgKey}|${w}x${h}|${colour}`;
+        // 6.5 with its picture effects: the picture where Today shows it at rest (zoom, the clock's parallax), so the mask
+        // lands exactly on it (Yukimi, Nov 21: "the overlay should be the parallax zoom level"); otherwise cover
+        const T = window.wmTitanium;
+        const pose = url && T && typeof T.restPose === 'function' ? T.restPose() : null;
+        const poseKey = pose ? [pose.left, pose.top, pose.width, pose.height, pose.zoom, pose.ty].map((v) => Math.round(Number(v) * 10) / 10).join(',') + `|${pose.size}|${pose.position}` : '';
+        const key = `${todayBgKey}|${w}x${h}|${colour}|${poseKey}`;
         try { if (typeof B.homeMaskKey === 'function' && B.homeMaskKey() === key) return; } catch (_) { /* older app */ }
         const canvas = document.createElement('canvas');
         canvas.width = w;
@@ -9853,13 +9882,34 @@
             if (!img || !img.naturalWidth) return;
             const iw = img.naturalWidth;
             const ih = img.naturalHeight;
-            const size = String(today.page.style.backgroundSize || 'cover');
-            // Stretch fills the screen, Fit shows all of it, the others as Fill (cover) - the mask is seen for a moment
-            const sc = /contain/.test(size) ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih);
-            if (/^100% 100%$/.test(size)) ctx.drawImage(img, 0, 0, w, h);
-            else ctx.drawImage(img, (w - iw * sc) / 2, (h - ih * sc) / 2, iw * sc, ih * sc);
             const tint = effectTint(fx || {});
-            if (tint) { ctx.fillStyle = tint; ctx.fillRect(0, 0, w, h); }
+            if (pose) {
+                // the picture layer's box, its background placed in it, scaled about its centre and moved by the parallax
+                const k = w / window.innerWidth;
+                const W = pose.width;
+                const H = pose.height;
+                const [bw, bh] = cssBackgroundSize(pose.size, W, H, iw, ih);
+                const [bx, by] = cssBackgroundPosition(pose.position, W, H, bw, bh);
+                const z = pose.zoom || 1;
+                const cx = pose.left + W / 2;
+                const cy = pose.top + H / 2;
+                const x0 = cx + (pose.left + bx - cx) * z;
+                const y0 = cy + (pose.top + by - cy) * z + pose.ty;
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(pose.left * k, pose.top * k, W * k, H * k);
+                ctx.clip();
+                ctx.drawImage(img, x0 * k, y0 * k, bw * z * k, bh * z * k);
+                if (tint) { ctx.fillStyle = tint; ctx.fillRect(0, 0, w, h); }
+                ctx.restore();
+            } else {
+                const size = String(today.page.style.backgroundSize || 'cover');
+                // Stretch fills the screen, Fit shows all of it, the others as Fill (cover) - the mask is seen for a moment
+                const sc = /contain/.test(size) ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih);
+                if (/^100% 100%$/.test(size)) ctx.drawImage(img, 0, 0, w, h);
+                else ctx.drawImage(img, (w - iw * sc) / 2, (h - ih * sc) / 2, iw * sc, ih * sc);
+                if (tint) { ctx.fillStyle = tint; ctx.fillRect(0, 0, w, h); }
+            }
         }
         const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
         if (!blob) return;
@@ -12377,6 +12427,8 @@
     function goHome(e) {
         // the home swipe's mask over the screen (DSApp, #1013): Today readies under it and tells the app when to take it away
         const masked = !!(e && e.detail && e.detail.mask);
+        // a home swipe on Today itself: no entrance, Today just goes back to its home position (#1013, Yukimi Nov 21)
+        const jump = !!(e && e.detail && e.detail.jump);
         // the device lock screen stays over everything (unlocking lands on Today anyway)
         try { if (window.wmLock && window.wmLock.isLocked) { if (masked) homeMaskReady(); return; } } catch (_) { /* no lock screen */ }
         closeMenus(true);
@@ -12411,7 +12463,7 @@
         if (masked && T && typeof T.maskedHome === 'function' && T.enabled && T.enabled()) T.maskedHome();
         else {
             if (masked) homeMaskReady();
-            if (T && typeof T.home === 'function') T.home({ animate: wasToday });
+            if (T && typeof T.home === 'function') T.home(jump && wasToday ? { jump: true } : { animate: wasToday });
         }
         document.dispatchEvent(new CustomEvent('wmTodayHome'));
     }

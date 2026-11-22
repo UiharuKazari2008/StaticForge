@@ -1352,9 +1352,50 @@
         if (blurInner) blurInner.style.setProperty(name, v);
     }
 
+    // ---- the picture at rest through a home swipe (#1013, Yukimi Nov 21): the app's mask shows Today's picture at its
+    // resting pose (the clock row's parallax, the zoom, no lean, no settle zoom), the entrance keeps it there - no
+    // parallax travel, no tilt, no breathe while the list runs - and once it has landed the effects come back, the lean
+    // easing in from rest. restPose() is that pose's geometry for the mask (wmShell makeHomeMask).
+    // (var: read by parallax / breathe / tiltFrame, which may run before this line is reached at load)
+    var wallFrozen = false; // eslint-disable-line no-var
+    var tiltEaseUntil = 0; // eslint-disable-line no-var
+    function restPar() {
+        const n = panels.length;
+        const at = Math.max(0, panels.findIndex((p) => p.clock));
+        return parallaxOn && n > 1 ? Math.max(-0.55, Math.min(0.55, at / (n - 1) - 0.5)) : 0;
+    }
+    function wallFreeze() {
+        if (!ensureWall()) return;
+        wallFrozen = true;
+        if (tiltRaf) { cancelAnimationFrame(tiltRaf); tiltRaf = 0; }
+        tiltNow.x = 0;
+        tiltNow.y = 0;
+        wallVar('--wm-ti-tx', '0%');
+        wallVar('--wm-ti-ty', '0%');
+        if (parallaxOn) wallVar('--wm-ti-par', restPar().toFixed(4));
+    }
+    function wallThaw() {
+        if (!wallFrozen) return;
+        wallFrozen = false;
+        tiltEaseUntil = performance.now() + 900;
+        if (tiltOn && tiltRaw && !tiltRaf) tiltRaf = requestAnimationFrame(tiltFrame);
+    }
+    /** Today's picture at rest, in CSS px of the viewport: { left, top, width, height, zoom, ty, size, position } or null. */
+    function restPose() {
+        if (!enabled() || !ensureWall() || !wallEl) return null;
+        const r = wallEl.getBoundingClientRect();
+        if (!r.width || !r.height) return null;
+        const cs = getComputedStyle(fxLayer || wallEl);
+        // the picture's own layer is the last one (a Lighten / Darken wash comes first)
+        const last = (v) => String(v || '').split(',').pop().trim();
+        const shift = parallaxOn ? -(wallZoom - 1) * 0.875 : 0;
+        return { left: r.left, top: r.top, width: r.width, height: r.height, zoom: wallZoom, ty: restPar() * shift * r.height,
+            size: last(cs.backgroundSize), position: last(cs.backgroundPosition) };
+    }
+
     /** The list stands at row `at` (fractions while it moves): -0.5 at the first item, 0.5 at the last. */
     function parallax(at) {
-        if (!parallaxOn || !ensureWall()) return;
+        if (wallFrozen || !parallaxOn || !ensureWall()) return;
         const n = panels.length;
         const f = n > 1 ? Math.max(-0.55, Math.min(0.55, at / (n - 1) - 0.5)) : 0;
         wallVar('--wm-ti-par', f.toFixed(4));
@@ -1471,11 +1512,13 @@
     }
     function tiltFrame() {
         tiltRaf = 0;
-        if (!tiltOn || !tiltRaw || !ensureWall()) return;
+        if (wallFrozen || !tiltOn || !tiltRaw || !ensureWall()) return;
         if (!tiltPx) tiltMeasure();
         const k = tiltK();
-        tiltNow.x += (tiltRaw.x - tiltNow.x) * 0.2;
-        tiltNow.y += (tiltRaw.y - tiltNow.y) * 0.2;
+        // just after a home swipe's entrance the lean comes in slowly from the resting pose (#1013)
+        const ease = performance.now() < tiltEaseUntil ? 0.05 : 0.2;
+        tiltNow.x += (tiltRaw.x - tiltNow.x) * ease;
+        tiltNow.y += (tiltRaw.y - tiltNow.y) * ease;
         // the rest of the way under a device pixel: there now, and no more frames until a reading moves it
         const done = Math.abs(tiltRaw.x - tiltNow.x) * k < tiltPx.x && Math.abs(tiltRaw.y - tiltNow.y) * k < tiltPx.y;
         if (done) { tiltNow.x = tiltRaw.x; tiltNow.y = tiltRaw.y; }
@@ -1652,7 +1695,7 @@
 
     /** The picture settles from a slight zoom (the entrance). */
     function breathe() {
-        if (!fx.breathe || !ensureWall()) return;
+        if (wallFrozen || !fx.breathe || !ensureWall()) return;
         // a Web Animation, not a class restarted through a forced layout: the entrance's first frame
         // after a return paid for three whole-page layouts that way (A53 trace, Nov 15: 170 ms)
         for (const el of [fxLayer, blurInner]) {
@@ -2817,7 +2860,7 @@
         // the return, timed from hiddenAt; read as Today staying, it put the whole list up before the entrance, A53)
         const hiddenNow = document.visibilityState !== 'visible' || hiddenAt > shownAt;
         const span = hiddenNow ? Date.now() - hiddenAt : (Date.now() - shownAt < ENTER_RECENT_MS ? hiddenSpan : 0);
-        if (span > AWAY_MS && !stayedBehind()) {
+        if (!(opts && opts.jump) && span > AWAY_MS && !stayedBehind()) {
             // the entrance waits for the window's focus as the return's own does (whenFocused)
             if (!hiddenNow && !host.classList.contains('is-entering') && !focusWait) whenFocused(() => requestAnimationFrame(entrance));
             return;
@@ -2947,20 +2990,35 @@
     }
 
     /** Today under the app's home mask (wmShell goHome with the mask, or the page shown while it is up). */
+    let maskedWait = null;
     function maskedHome() {
         if (maskedRun) return true;
         if (!host || host.hidden || !panels.length || root.dataset.wmApp !== 'today') {
-            // no Today to animate: the mask may go at once
-            try { if (window.AndroidBars && window.AndroidBars.homeReady) window.AndroidBars.homeReady(); } catch (_) { /* older app */ }
+            // Today on its way (a home swipe from another Melaton program: the switch lands a moment later - the recording
+            // showed Videos again for 0.4 s when the mask went at once): waited for, 600 ms at most; no Today: the mask goes
+            if (!maskedWait && host && panels.length) {
+                const done = () => { if (!maskedWait) return; maskedWait.disconnect(); clearTimeout(maskedWait.t); maskedWait = null; maskedHome(); };
+                maskedWait = new MutationObserver(() => { if (root.dataset.wmApp === 'today' && !host.hidden) done(); });
+                maskedWait.observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
+                maskedWait.t = setTimeout(() => {
+                    if (!maskedWait) return;
+                    maskedWait.disconnect(); maskedWait = null;
+                    if (root.dataset.wmApp === 'today' && !host.hidden) maskedHome();
+                    else { try { window.AndroidBars.homeReady(); } catch (_) { /* older app */ } }
+                }, 600);
+                return true;
+            }
+            if (!maskedWait) { try { if (window.AndroidBars && window.AndroidBars.homeReady) window.AndroidBars.homeReady(); } catch (_) { /* older app */ } }
             return false;
         }
         if (focusWait) focusWait.cancel();
         if (slide && slide.active) { cancelAnimationFrame(slide.raf); slide.active = false; slide.x = 0; host.classList.remove('is-sliding'); }
         if (overlay) { try { overlay.close(true); } catch (_) { overlay = null; } }
-        // the frame the mask goes on: the mask's own picture, no band, no bars, no list
+        // the frame the mask goes on: the mask's own picture, no band, no bars, no list; the picture held at rest
         barsAway();
         if (blurClip) blurClip.style.opacity = '0';
         if (!host.classList.contains('is-primed')) prime();
+        wallFreeze();
         const layer = handoffLayer();
         let started = false;
         let cap = 0;
@@ -2972,8 +3030,10 @@
             clearTimeout(cap);
             entrance();
             barsIn(ENTER_MS + ENTER_ZOOM_MS);
-            // the mask's picture dissolves into Today's own as the list runs up; the band comes in with it
-            const fade = { duration: 380, easing: 'cubic-bezier(0.3, 0, 0.2, 1)' };
+            // landed: the picture's effects come back (the lean easing in from rest), and the mask is drawn again at rest
+            setTimeout(() => { wallThaw(); document.dispatchEvent(new CustomEvent('wmTodayRest')); }, ENTER_MS + ENTER_ZOOM_MS);
+            // the mask's picture dissolves into Today's own (the same pose now) as the list runs up; the band comes in with it
+            const fade = { duration: 480, easing: 'cubic-bezier(0.3, 0, 0.2, 1)' };
             if (layer && !layer.hidden) {
                 try { const a = layer.animate([{ opacity: 1 }, { opacity: 0 }], fade); a.onfinish = () => { layer.hidden = true; }; } catch (_) { layer.hidden = true; }
             }
@@ -3068,8 +3128,19 @@
         }
         else if (host) { unprime(); host.classList.remove('is-exiting'); }
     });
+    // the app hears whether Today is what shows (a home swipe on Today jumps, with no mask; #1013): on each change only
+    let todayShownSent = null;
+    function syncTodayShown() {
+        const on = root.dataset.wmApp === 'today' && document.visibilityState === 'visible';
+        if (on === todayShownSent) return;
+        todayShownSent = on;
+        try { if (window.AndroidBars && typeof window.AndroidBars.todayShown === 'function') window.AndroidBars.todayShown(on); } catch (_) { /* older app */ }
+    }
+    document.addEventListener('visibilitychange', syncTodayShown, { signal: appScopeSignal });
+    syncTodayShown();
     let lastApp = root.dataset.wmApp || '';
     new MutationObserver(() => {
+        syncTodayShown();
         const now = root.dataset.wmApp || '';
         // (not for a Today readied for the way back: prime() closing Start under a program; it plays on the return)
         if (now === 'today' && lastApp && lastApp !== 'today') requestAnimationFrame(() => { if (!maskedRun && (!host || !host.classList.contains('is-primed'))) entrance(); });
@@ -3101,6 +3172,8 @@
         enabled, home, select: (i) => select(i, true),
         // Home by the swipe, under the app's mask (#1013)
         maskedHome: () => maskedHome(),
+        // Today's picture at rest, for the home swipe's mask (#1013)
+        restPose: () => restPose(),
         // the coming-back entrance on demand (tests, #800)
         enter: () => entrance(),
         // the Android app readies the return before Melaton goes behind another program (#800)
