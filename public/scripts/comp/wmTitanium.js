@@ -1358,6 +1358,7 @@
     // easing in from rest. restPose() is that pose's geometry for the mask (wmShell makeHomeMask).
     // (var: read by parallax / breathe / tiltFrame, which may run before this line is reached at load)
     var wallFrozen = false; // eslint-disable-line no-var
+    var entrySlow = false; // eslint-disable-line no-var
     var tiltEaseUntil = 0; // eslint-disable-line no-var
     function restPar() {
         const n = panels.length;
@@ -2264,7 +2265,7 @@
     // the entrance plays them if they were built for the same rows, screen and start, else builds them then.
     let entryPrepared = null;
     function entryKeyOf(at, e0, top, u) {
-        return `${rowsGen}|${panels.map((p) => p.id).join(',')}|${at}|${e0}|${top}|${u}|${hostHeight()}|${fx.stagger ? 1 : 0}${fx.overshoot ? 1 : 0}`;
+        return `${rowsGen}|${panels.map((p) => p.id).join(',')}|${at}|${e0}|${top}|${u}|${hostHeight()}|${fx.stagger ? 1 : 0}${fx.overshoot ? 1 : 0}|${curEnterMs()}`;
     }
     function dropPrepared() {
         if (!entryPrepared) return;
@@ -2315,7 +2316,7 @@
         const e0 = (at - below / ROW - at) * ROW;
         if (entryPrepared && entryPrepared.key === entryKeyOf(at, e0, ft, u)) return;
         dropPrepared();
-        entryPrepared = buildEntryAnims({ a: at, b: at, n: 0, e0, D: 0, x: 0, ease: enterEase, back: ENTER_MS,
+        entryPrepared = buildEntryAnims({ a: at, b: at, n: 0, e0, D: 0, x: 0, ease: curEnterEase(), back: curEnterMs(),
             entry: { spread: fx.stagger ? 14 : 0, bump: fx.overshoot ? 10 : 0 } });
     }
     function startEntryAnims() {
@@ -2888,6 +2889,13 @@
     // the way at a quarter, half and three quarters of the run
     const ENTER_K = 6;
     const enterEase = (x) => (1 - Math.exp(-ENTER_K * x)) / (1 - Math.exp(-ENTER_K));
+    // Home by the swipe (#1013, Yukimi Nov 21: "slow down the animation in ... slower at the end"): a longer run with a
+    // longer settle into the clock
+    const ENTER_SLOW_MS = 850;
+    const ENTER_K_SLOW = 7.5;
+    const enterEaseSlow = (x) => (1 - Math.exp(-ENTER_K_SLOW * x)) / (1 - Math.exp(-ENTER_K_SLOW));
+    function curEnterMs() { return entrySlow ? ENTER_SLOW_MS : ENTER_MS; }
+    function curEnterEase() { return entrySlow ? enterEaseSlow : enterEase; }
 
     /** Today comes back (#800): the empty band, the list running up from below into the clock as it fades and grows in. */
     function entrance() {
@@ -2921,8 +2929,8 @@
         pos = at - below / ROW;
         host.classList.remove('is-exiting');
         unprime();
-        enterLockUntil = performance.now() + ENTER_MS + ENTER_ZOOM_MS + KEY_MS;
-        startTween(at, at, { backMs: ENTER_MS, ease: enterEase, entry: { stagger: fx.stagger, overshoot: fx.overshoot } });
+        enterLockUntil = performance.now() + curEnterMs() + ENTER_ZOOM_MS + KEY_MS;
+        startTween(at, at, { backMs: curEnterMs(), ease: curEnterEase(), entry: { stagger: fx.stagger, overshoot: fx.overshoot } });
         breathe();
         syncTilt();
         if (blurClip && !blurClip.hidden) requestAnimationFrame(blurPlace);
@@ -2953,6 +2961,11 @@
     /** The bars out of sight (off the top and the bottom) from the handover on, before Today is seen (the recording: they showed for 4 frames). */
     function barsAway() {
         for (const [el, off] of shellBars()) el.style.transform = `translateY(${off})`;
+    }
+
+    /** No entrance after all: the bars where they belong at once. */
+    function barsBack() {
+        for (const [el] of shellBars()) el.style.transform = '';
     }
 
     /** The title bar from the top and the soft key bar from the bottom, in over the entrance's last 250 ms. */
@@ -2993,6 +3006,9 @@
     let maskedWait = null;
     function maskedHome() {
         if (maskedRun) return true;
+        // the bars go before anything is drawn (Yukimi, Nov 21: they still flashed - shown in the first frame while Today
+        // was still on its way, then taken away for the slide-in)
+        barsAway();
         if (!host || host.hidden || !panels.length || root.dataset.wmApp !== 'today') {
             // Today on its way (a home swipe from another Melaton program: the switch lands a moment later - the recording
             // showed Videos again for 0.4 s when the mask went at once): waited for, 600 ms at most; no Today: the mask goes
@@ -3004,21 +3020,24 @@
                     if (!maskedWait) return;
                     maskedWait.disconnect(); maskedWait = null;
                     if (root.dataset.wmApp === 'today' && !host.hidden) maskedHome();
-                    else { try { window.AndroidBars.homeReady(); } catch (_) { /* older app */ } }
+                    else { barsBack(); try { window.AndroidBars.homeReady(); } catch (_) { /* older app */ } }
                 }, 600);
                 return true;
             }
-            if (!maskedWait) { try { if (window.AndroidBars && window.AndroidBars.homeReady) window.AndroidBars.homeReady(); } catch (_) { /* older app */ } }
+            if (!maskedWait) { barsBack(); try { if (window.AndroidBars && window.AndroidBars.homeReady) window.AndroidBars.homeReady(); } catch (_) { /* older app */ } }
             return false;
         }
         if (focusWait) focusWait.cancel();
         if (slide && slide.active) { cancelAnimationFrame(slide.raf); slide.active = false; slide.x = 0; host.classList.remove('is-sliding'); }
         if (overlay) { try { overlay.close(true); } catch (_) { overlay = null; } }
-        // the frame the mask goes on: the mask's own picture, no band, no bars, no list; the picture held at rest
-        barsAway();
+        // the frame the mask goes on: the mask's own picture, no band, no bars, no list; the picture held at rest; the
+        // entrance its slower kind
+        const bandEl = host.querySelector('.wm-ti-band');
         if (blurClip) blurClip.style.opacity = '0';
+        if (bandEl) bandEl.style.opacity = '0';
         if (!host.classList.contains('is-primed')) prime();
         wallFreeze();
+        entrySlow = true;
         const layer = handoffLayer();
         let started = false;
         let cap = 0;
@@ -3028,17 +3047,22 @@
             maskedRun = null;
             window.removeEventListener('melatonmaskgone', start);
             clearTimeout(cap);
+            const total = curEnterMs() + ENTER_ZOOM_MS;
             entrance();
-            barsIn(ENTER_MS + ENTER_ZOOM_MS);
-            // landed: the picture's effects come back (the lean easing in from rest), and the mask is drawn again at rest
-            setTimeout(() => { wallThaw(); document.dispatchEvent(new CustomEvent('wmTodayRest')); }, ENTER_MS + ENTER_ZOOM_MS);
-            // the mask's picture dissolves into Today's own (the same pose now) as the list runs up; the band comes in with it
-            const fade = { duration: 480, easing: 'cubic-bezier(0.3, 0, 0.2, 1)' };
+            barsIn(total);
+            // landed: the picture's effects come back (the lean easing in from rest), the entrance its usual kind again,
+            // and the mask is drawn again at rest
+            setTimeout(() => { entrySlow = false; wallThaw(); document.dispatchEvent(new CustomEvent('wmTodayRest')); }, total);
+            // the mask's picture dissolves into Today's own (the same pose now) as the list runs up
+            const fade = { duration: 560, easing: 'cubic-bezier(0.3, 0, 0.2, 1)' };
             if (layer && !layer.hidden) {
                 try { const a = layer.animate([{ opacity: 1 }, { opacity: 0 }], fade); a.onfinish = () => { layer.hidden = true; }; } catch (_) { layer.hidden = true; }
             }
-            if (blurClip) {
-                try { const b = blurClip.animate([{ opacity: 0 }, { opacity: 1 }], fade); b.onfinish = () => { blurClip.style.opacity = ''; }; } catch (_) { blurClip.style.opacity = ''; }
+            // the centre band (its art and its frosted copy) fades in as the list arrives (Yukimi, Nov 21)
+            const bandFade = { duration: 700, delay: 150, easing: 'cubic-bezier(0.2, 0, 0.2, 1)', fill: 'backwards' };
+            for (const el of [blurClip, bandEl]) {
+                if (!el) continue;
+                try { const b = el.animate([{ opacity: 0 }, { opacity: 1 }], bandFade); b.onfinish = () => { el.style.opacity = ''; }; } catch (_) { el.style.opacity = ''; }
             }
         };
         maskedRun = { start };
