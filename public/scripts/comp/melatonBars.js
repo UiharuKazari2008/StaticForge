@@ -26,7 +26,9 @@
     const MENU_ITEMS = { taskmanager: 'Task Manager', notifications: 'All Notifications', quicksettings: 'Quick Settings', maximize: 'Maximize', minimize: 'Minimize', close: 'Close',
         // (#1013, Yukimi Nov 22) the program in front as a window / in split screen / on the DeX desktop, DeX's touchpad, the
         // flashlight, a screenshot - the app does them (AndroidBars.menuAction)
-        trackpad: 'Trackpad', todesktop: 'Open in Desktop', split: 'Split View', windowed: 'Windowed', flashlight: 'Flashlight', screenshot: 'Screenshot' };
+        trackpad: 'Trackpad', todesktop: 'Open in Desktop', split: 'Split View', flashlight: 'Flashlight', screenshot: 'Screenshot' };
+    // (Yukimi Nov 22: "Combine Maximum and Windows into a single Maximise item") Maximize is a window's maximise button
+    // (a pop-up fills the screen, a full screen program goes back to a pop-up); an old Windowed row is left out
     // only while the DeX desktop is up (AndroidBars state desktop)
     const DESKTOP_ONLY = new Set(['trackpad', 'todesktop']);
     function barsState() {
@@ -956,6 +958,13 @@
             const b = el.getBoundingClientRect();
             const r = radii(cs);
             const clip = [R(b.left), R(b.top), R(b.width), R(b.height), r];
+            // signal bars the app draws from its own reading (wmShell signalBars data-live="sig:<cell|wifi>:<n>"): their box,
+            // colour and the count lit now, nothing of their own parts
+            if (lv && lv.startsWith('sig:')) {
+                const on = el.querySelectorAll('.is-on').length;
+                out.push({ k: 'sig', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), color: rgba(cs.color, alpha), on, lv });
+                return;
+            }
             // a drawing (inline SVG): sent as a picture of itself
             if (typeof SVGSVGElement !== 'undefined' && el instanceof SVGSVGElement) {
                 const url = svgPicture(el, Math.round(b.width * dpr), Math.round(b.height * dpr), cs.color);
@@ -1774,6 +1783,8 @@
     let renderQueued = null;
     let popupQueued = null;
     window.melatonBars = {
+        // (#1017) Quick Access over Melaton Mobile: its content moved aside by the panel's width, the wallpaper and bars staying
+        qaPush: (ctx) => { try { if (window.wmQuickAccess && window.wmQuickAccess.pushPage) window.wmQuickAccess.pushPage(JSON.parse(ctx || '{}')); } catch (_) { /* older page */ } },
         // the app's screen changed size (a Fold folded or opened) with layouts kept for the other one: again, at the new size
         // (#1027) also the app's ask after its own update or Android's (cursor rule melaton-bars-native-layouts 4): a page that
         // has pushed nothing yet since it loaded writes down every popup of its bar
@@ -1884,6 +1895,12 @@
         else { root.style.removeProperty('--wm-soft-h'); root.removeAttribute('data-wm-soft-h'); }
     }
     if (window.AndroidBars) {
+        // (#1013) a soft key the app drew over the keyboard (wmShell syncDsSoft) pressed: the page's own key
+        window.addEventListener('melatonsoftkey', (e) => {
+            const side = e.detail && e.detail.side === 'right' ? 'right' : 'left';
+            const btn = document.querySelector(`#wmShell .wm-softkeys > .wm-softkey[data-side="${side}"]`);
+            if (btn && !btn.disabled) btn.click();
+        }, { signal: appScopeSignal });
         syncSoftHeight();
         if (!(window.wmShell && typeof window.wmShell.syncSoftHeight === 'function')) window.addEventListener('resize', syncSoftHeight, { signal: appScopeSignal });
     }

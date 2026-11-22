@@ -331,5 +331,20 @@
         syncHome();
     }
 
-    root.wmQuickAccess = { open, close, roles, signature, ICONS };
+    /**
+     * The panel open over Melaton Mobile itself (Yukimi, Nov 22 2026: "in WM push the content but not the background or
+     * status bar or softkey bar"): the app asks the page to move its content aside by the panel's width (device px; 0 puts
+     * it back), live and in step with the panel. The wallpaper and both bars stay where they are.
+     */
+    function pushPage(o) {
+        const shell = document.getElementById('wmShell');
+        const content = shell && shell.querySelector(':scope > .wm-content');
+        if (!content) return;
+        const dx = Math.round((Number(o && o.dx) || 0) / (root.devicePixelRatio || 1));
+        content.style.transition = `transform ${Number(o && o.ms) || 180}ms cubic-bezier(0.2, 0.8, 0.3, 1)`;
+        content.style.transform = dx ? `translateX(${dx}px)` : '';
+        if (!dx) content.addEventListener('transitionend', () => { if (!content.style.transform) content.style.transition = ''; }, { once: true });
+    }
+
+    root.wmQuickAccess = { open, close, roles, signature, pushPage, ICONS };
 })(window);
