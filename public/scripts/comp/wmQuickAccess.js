@@ -54,7 +54,7 @@
     const SHORT = { wifi: 'Wi-Fi', bluetooth: 'Bluetooth', rotation: 'Rotate', sound: 'Sound', hotspot: 'Hotspot', qr: 'QR code', dnd: 'Do not disturb',
         modes: 'Modes', flashlight: 'Flashlight', powersave: 'Power saving', network: 'Network', dolby: 'Dolby', eyecomfort: 'Eye comfort',
         record: 'Record', performance: 'Performance', powershare: 'Power share', wireguard: 'VPN', pointerflow: 'Pointer Flow', output: 'Output',
-        autobrightness: 'Auto bright.', adaptivetone: 'Color tone' };
+        autobrightness: 'Adaptive brightness', adaptivetone: 'Adaptive color tone' };
     const SLIDERS = { brightness: 'qa-brightness', volume: 'qa-volume' };
     const STEPS = 10;
 
@@ -92,7 +92,9 @@
     };
     const labelOf = (m, id, wide) => {
         if (id.startsWith('tile:')) return (m.tiles[id] && m.tiles[id].label) || 'Tile';
-        return wide ? (m.names[id] || SHORT[id] || id) : (SHORT[id] || m.names[id] || id);
+        // the wide panel's two radios and Audio output have room for the full name; its square tiles take the short one
+        const full = wide && (id === 'wifi' || id === 'bluetooth' || id === 'output');
+        return full ? (m.names[id] || SHORT[id] || id) : (SHORT[id] || m.names[id] || id);
     };
 
     /** One tile: a button (the app's press) over its stacked faces (the app shows the one of the state it reads). */

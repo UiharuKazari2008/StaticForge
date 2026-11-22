@@ -130,8 +130,9 @@
 #wmShell > .wm-qa .qa-checks { display: grid; grid-template-columns: 1fr 1fr; gap: calc(4 * var(--wm-px)); margin-top: calc(4 * var(--wm-px)); }
 #wmShell > .wm-qa .qa-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(4 * var(--wm-px)); }
 /* the wide panel's grid: square tiles, the picture over a name of up to two lines (the mock-up's P1) */
-#wmShell > .wm-qa .qa-grid .qa-tile.is-wide { height: calc(40 * var(--wm-px)); }
-#wmShell > .wm-qa .qa-grid .qa-tile.is-wide .qa-face {
+#wmShell > .wm-qa .qa-grid .qa-tile.is-wide, #wmShell > .wm-qa .qa-checks .qa-tile.is-wide { height: calc(40 * var(--wm-px)); }
+#wmShell > .wm-qa .qa-checks .qa-sub { display: none; }
+#wmShell > .wm-qa :is(.qa-grid, .qa-checks) .qa-tile.is-wide .qa-face {
     align-items: flex-end;
     justify-content: center;
     padding: 0 calc(1 * var(--wm-px)) calc(2 * var(--wm-px));
