@@ -402,3 +402,7 @@
 
 /* the transport's drawn glyphs (wmXmRadio GLYPH: no emoji-capable characters, Yukimi Nov 21 2026) */
 .xrm-g { display: inline-block; width: 1em; height: 1em; fill: currentColor; vertical-align: -0.125em; flex: none; }
+/* MON: listen to the recording / back to live (lit while the recording plays) */
+.wm-xmradio .xrm-np-keys .xrm-np-mon { color: #ffb347; }
+.wm-xmradio .xrm-np-keys .xrm-np-mon.is-on { background: #b86a00; border-color: #ffc477; color: #fff; }
+.wm-xmradio .xrm-np-keys .xrm-np-mon[hidden] { display: none; }

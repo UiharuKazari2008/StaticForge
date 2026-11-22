@@ -386,6 +386,42 @@
         try { nv.watching(''); } catch (_) { /* older app */ }
         if (radio.native) { try { nv.stop(); } catch (_) { /* gone */ } }
         radio.native = false;
+        forgetNative();
+    }
+
+    /*
+     * The app's player plays on with the page closed, reloaded or asleep, and it cannot say what it plays (Yukimi, Nov
+     * 22 2026: "opening the client does not ever show the state of the radio player"): the page writes down what it
+     * handed over, and a page that opens while that player is still active takes it over - the right state, Stop works.
+     */
+    const LS_NATIVE = 'wmXmRadioNative';
+    function keepNative() {
+        const t = radio.mode === 'track' && radio.track ? { name: radio.track.name, tape: radio.track.tape, dur: radio.track.dur || 0 } : null;
+        try { localStorage.setItem(LS_NATIVE, JSON.stringify({ channelId: radio.channelId, mode: radio.mode, url: radio.url, monitorRid: radio.monitorRid || '', back: radio.back, track: t, at: Date.now() })); } catch (_) { /* this load only */ }
+    }
+    function forgetNative() { try { localStorage.removeItem(LS_NATIVE); } catch (_) { /* none */ } }
+    function adoptNative() {
+        if (radio.native || radio.state !== 'off') return false;
+        const nv = nativePlayer();
+        if (!nativeReports(nv)) return false;
+        let st = 'off';
+        let active = false;
+        try { st = nv.state(); active = nv.isActive() === true; } catch (_) { st = 'off'; }
+        const saved = readJson(LS_NATIVE, null);
+        if (st === 'off' || !active) { if (saved) forgetNative(); return false; }
+        if (!saved || !saved.url) return false;
+        radio.native = true;
+        radio.mode = saved.mode === 'monitor' || saved.mode === 'track' ? saved.mode : 'live';
+        radio.channelId = saved.channelId || radio.channelId;
+        radio.url = saved.url;
+        radio.monitorRid = saved.monitorRid || '';
+        radio.back = Number(saved.back) || 0;
+        radio.startedAt = Number(saved.at) || Date.now();
+        radio.track = radio.mode === 'track' && saved.track ? { list: [{ id: '', name: `${saved.track.name}.m4a`, tape: saved.track.tape, dur: saved.track.dur }], i: 0, id: '', name: saved.track.name, tape: saved.track.tape, dur: saved.track.dur } : null;
+        if (radio.mode === 'track' && !radio.track) radio.mode = 'live';
+        radio.state = NATIVE_STATE[st] || 'playing';
+        changed();
+        return true;
     }
 
     /** The quality to tune at: the chosen one, or Automatic's by the phone's network now. */
@@ -482,6 +518,7 @@
                 radio.native = nv.handOff() === true;
             } catch (_) { radio.native = false; }
             if (radio.native) {
+                keepNative();
                 // what the player really does: Acquiring Signal until its sound starts (an older app cannot say)
                 radio.state = reports ? (NATIVE_STATE[nv.state()] || 'tuning') : 'playing';
                 radio.startedAt = Date.now();
@@ -536,11 +573,12 @@
     /** The page missed the player's news while it was frozen (screen off, another app): read its state now. */
     function syncNative() {
         const nv = nativePlayer();
-        if (!radio.native || !nativeReports(nv)) return;
+        if (!radio.native) { adoptNative(); return; }
+        if (!nativeReports(nv)) return;
         let st = 'off';
         try { st = nv.state(); } catch (_) { st = 'off'; }
         const next = st === 'off' ? 'off' : (NATIVE_STATE[st] || radio.state);
-        if (st === 'off') { radio.native = false; sleep.at = 0; }
+        if (st === 'off') { radio.native = false; sleep.at = 0; forgetNative(); }
         if (next !== radio.state) { radio.state = next; changed(); }
     }
 
@@ -811,7 +849,10 @@
     async function recStart(id, opts) {
         try {
             const r = await ws.busy(ask('xmradio_rec_start', Object.assign({ channelId: id }, opts), 30000), { delay: 300, timeout: 30000 });
-            if (r && r.rid) setRecordings((cache.rec || []).filter((x) => x.rid !== r.rid).concat(recRow(r)));
+            if (r && r.rid) {
+                setRecordings((cache.rec || []).filter((x) => x.rid !== r.rid).concat(recRow(r)));
+                if (radio.mode === 'live' && radio.channelId === id && radio.state !== 'off') monitorWhenReady(r.rid, id);
+            }
             saveSoon();
             changed();
         } catch (err) { void box((err && err.message) || 'The recording could not be started.'); }
@@ -868,7 +909,9 @@
         const was = JSON.stringify(cache.rec || []);
         cache.rec = list.map(recRow);
         // monitoring a recording that has ended: the sound goes with it
-        if (radio.mode === 'monitor' && radio.state !== 'off' && !cache.rec.some((r) => r.rid === radio.monitorRid)) stopRadio();
+        if (radio.mode === 'monitor' && radio.state !== 'off' && !cache.rec.some((r) => r.rid === radio.monitorRid)) {
+            if (radio.channelId) void tune(radio.channelId, { back: 0 }); else stopRadio();
+        }
         if (JSON.stringify(cache.rec) !== was && ws && typeof ws.refreshStatus === 'function') ws.refreshStatus();
     }
 
@@ -897,6 +940,31 @@
         changed();
         await start(seq, { title: `Recording ${chanLabel(c) || ''}`.trim(), subtitle: TITLE, live: true });
     }
+    /** MON: the recording of this channel, or back to the channel live. */
+    function toggleMonitor(id) {
+        if (radio.mode === 'monitor' && radio.state !== 'off') { const ch = radio.channelId || id; if (ch) void tune(ch, { back: 0 }); return; }
+        const r = recOf(id) || (cache.rec || [])[0];
+        if (r) void monitorRec(r.rid);
+    }
+
+    /**
+     * Started recording what the radio plays: it goes over to the recording (Yukimi: "its supposed to auto switch when
+     * you start recording") once the recording holds three segments, so the sound never stops while it fills (the first
+     * switch went silent for about 10 s). Checked every 4 s for at most a minute, only after a start.
+     */
+    function monitorWhenReady(rid, channelId) {
+        let tries = 0;
+        const check = async () => {
+            tries += 1;
+            if (radio.mode !== 'live' || radio.channelId !== channelId || radio.state === 'off' || !(cache.rec || []).some((r) => r.rid === rid)) return;
+            let n = 0;
+            try { n = ((await (await fetch(`/api/xmradio/rec/${encodeURIComponent(rid)}/index.m3u8`, { cache: 'no-store' })).text()).match(/#EXTINF/g) || []).length; } catch (_) { n = 0; }
+            if (n >= 3) { if (radio.mode === 'live' && radio.channelId === channelId && radio.state !== 'off') void monitorRec(rid); return; }
+            if (tries < 15) setTimeout(() => { void check(); }, 4000);
+        };
+        setTimeout(() => { void check(); }, 1500);
+    }
+
     const monitoring = (rid) => radio.mode === 'monitor' && radio.state !== 'off' && radio.state !== 'error' && (!rid || radio.monitorRid === rid);
 
     /** Cancel (the tape popup): the recording stops; what it has so far is filed on the tape. */
@@ -1213,6 +1281,7 @@
                         <button type="button" data-k="play" aria-label="Play or pause" class="is-big"></button>
                         <button type="button" data-k="next" aria-label="Next song">${GLYPH.next}</button>
                         <button type="button" data-k="live" aria-label="Back to live" class="xrm-np-live">LIVE</button>
+                        <button type="button" data-k="mon" aria-label="Listen to the recording" class="xrm-np-rec xrm-np-mon" hidden>MON</button>
                         <button type="button" data-k="rec" aria-label="Record" class="xrm-np-rec">REC</button>
                     </div>
                 </div>
@@ -1234,7 +1303,7 @@
         els = {
             lcd: q('.xrm-lcd'), bar: q('.xrm-np-bar > i'), el: q('.xrm-np-el'), mid: q('.xrm-np-mid'), rem: q('.xrm-np-rem'),
             buf: q('.xrm-np-buf'), bufAt: q('.xrm-np-buf > i'), bufFill: q('.xrm-np-buf > b'), keys: q('.xrm-np-keys'),
-            play: q('[data-k="play"]'), rec: q('[data-k="rec"]'), live: q('[data-k="live"]'), up: q('.xrm-up'), played: q('.xrm-played'),
+            play: q('[data-k="play"]'), rec: q('[data-k="rec"]'), mon: q('[data-k="mon"]'), live: q('[data-k="live"]'), up: q('.xrm-up'), played: q('.xrm-played'),
             show: q('.xrm-show'), count: q('.xrm-count'), list: q('.xrm-list'), recPane: q('.xrm-rec-pane'), deck: q('.xrm-deckwrap'), auto: q('.xrm-auto')
         };
         mountScreen();
@@ -1271,6 +1340,7 @@
                 else if (k.dataset.k === 'next') skipKey(1);
                 else if (k.dataset.k === 'live') goLive();
                 else if (k.dataset.k === 'rec') { const r = recOf(id); if (r) void stopRec(r); else void recordAsk(id); }
+                else if (k.dataset.k === 'mon') toggleMonitor(id);
                 return;
             }
             const jump = e.target.closest('[data-jump]');
@@ -1614,6 +1684,7 @@
             const tst = { tuning: 'LOADING', paused: 'PAUSED', error: 'CANNOT PLAY', off: 'STOPPED' }[radio.state];
             scr({ num: String(radio.track.i + 1), name: `TAPE ${radio.track.tape}`, l2: tst || (parts.length > 1 ? parts[0] : rest), l3: tst ? '' : (parts.length > 1 ? parts.slice(1).join(' - ') : '') });
             els.rec.hidden = true;
+            els.mon.hidden = true;
             setHtml(els.up, '');
             recentRows = [];
             const list = radio.track.list.slice(radio.track.i + 1, radio.track.i + 6);
@@ -1642,6 +1713,11 @@
             els.rec.hidden = !isAdmin() || !c;
             els.rec.classList.toggle('is-on', !!rec);
             setText(els.rec, rec ? 'STOP' : 'REC');
+            // while this channel records: MON plays the recording, LIVE (MON lit) goes back to the channel (Yukimi, Nov 22)
+            const mon = radio.mode === 'monitor' && radio.state !== 'off';
+            els.mon.hidden = !rec && !mon;
+            els.mon.classList.toggle('is-on', mon);
+            els.mon.setAttribute('aria-label', mon ? 'Back to the live channel' : 'Listen to the recording');
             // Up Next: the channel's shows to come (songs are known only once they air)
             const shows = (data.shows || []).filter((x) => !x.now).slice(0, 4);
             const onNow = (data.shows || []).find((x) => x.now);
@@ -2202,6 +2278,8 @@
             });
         }
         if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });
+        // what the app's player is still playing from before this page opened
+        adoptNative();
     }
 
     // the phone's half of XM Radio's session (the desktop's apps/xmradio registers the same id): once per page

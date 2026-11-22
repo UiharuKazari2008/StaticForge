@@ -498,8 +498,11 @@
         /** Opening: as it was left (on, on the last channel), and on the recording's channel while the deck records. */
         restore() {
             if (this.on || this.app.signal.aborted || !this.signedIn()) return;
+            // left switched off: it stays off (power on goes to the channel recording); left on: the recording's channel
+            // (Yukimi, Nov 22 2026: there was no easy way to stop listening while it records)
+            if (!this.prefs.on) { this.paint(); return; }
             if (this.recording) this.followRecording(this.recording, { start: true, again: true });
-            else if (this.prefs.on) this.power();
+            else this.power();
         }
 
         async loadLineup() {
@@ -616,6 +619,7 @@
             if (!ch) return;
             if (!guarded && this.recording && ch.id !== this.recording.channelId && this.recordGuard('tune')) return;
             if (!this.on) { this.on = true; this.prefs.on = true; void this.syncHub(); }
+            this.monitoring = false;
             if (this.channel && this.channel.id !== ch.id) this.prevChannel = this.channel.id;
             this.channel = ch;
             this.prefs.channel = ch.id;
@@ -690,12 +694,43 @@
             void this.tune(ch, { guarded: true });
         }
 
-        /** The recording was filed (STOP, or its 8 hours): the radio is free again (it plays on, live); MUTE ends with it. */
+        /** The recording was filed (STOP, or its 8 hours): the radio is free again (live again if it played the recording). */
         endRecording() {
             if (!this.recording) return;
+            const ch = this.byId.get(this.recording.channelId) || this.channel;
             this.recording = null;
             this.audio.muted = false;
+            if (this.monitoring) { this.monitoring = false; if (this.on && ch) { void this.tune(ch, { guarded: true }); return; } }
             this.paint();
+        }
+
+        /**
+         * Listen to the recording itself (the deck's PLAY, and on its own once a REC has three segments: Yukimi, Nov 22
+         * 2026: "its supposed to auto switch when you start recording"); LIVE goes back to the channel.
+         */
+        monitorRecording() {
+            const rec = this.recording;
+            if (!rec) return;
+            if (!this.on) { this.on = true; this.prefs.on = true; this.savePrefs(); void this.syncHub(); }
+            this.monitoring = true;
+            this.audio.muted = false;
+            this.state = 'acquiring';
+            this.paint();
+            void this.play(rec.url || `/api/xmradio/rec/${encodeURIComponent(rec.rid)}/index.m3u8`, ++this.tuneSeq);
+        }
+
+        /** After REC: over to the recording once it holds three segments (the sound never stops while it fills). */
+        monitorWhenReady(rid) {
+            let tries = 0;
+            const check = async () => {
+                tries += 1;
+                if (this.app.signal.aborted || this.monitoring || !this.on || !this.recording || this.recording.rid !== rid) return;
+                let n = 0;
+                try { n = ((await (await fetch(`/api/xmradio/rec/${encodeURIComponent(rid)}/index.m3u8`, { cache: 'no-store' })).text()).match(/#EXTINF/g) || []).length; } catch (_) { n = 0; }
+                if (n >= 3) { if (this.on && this.recording && this.recording.rid === rid && !this.monitoring) this.monitorRecording(); return; }
+                if (tries < 15) setTimeout(() => { void check(); }, 4000);
+            };
+            setTimeout(() => { void check(); }, 1500);
         }
 
         /** The deck's state (the status feed, or read on opening): follow its REC, or let go when it has ended. */
@@ -764,6 +799,8 @@
         }
 
         goLive() {
+            // playing the recording: LIVE goes back to the channel being recorded
+            if (this.monitoring && this.recording) { const ch = this.byId.get(this.recording.channelId); if (ch) void this.tune(ch, { guarded: true }); return; }
             if (this.recordGuard('seek')) return;
             const a = this.audio;
             const live = this.hls && Number.isFinite(this.hls.liveSyncPosition) ? this.hls.liveSyncPosition : (a.seekable.length ? a.seekable.end(a.seekable.length - 1) : null);
@@ -1599,7 +1636,7 @@
             const f = this.f;
             if (!this.on || !this.channel || (this.state !== 'playing' && this.state !== 'paused')) { f.replay.textContent = ''; return; }
             const b = Math.round(this.behind());
-            const rec = this.recording ? 'REC ' : '';
+            const rec = this.recording ? (this.monitoring ? 'MON ' : 'REC ') : '';
             const txt = this.audio.paused ? `${rec}PAUSED` : b > 5 ? `${rec || 'REPLAY '}-${Math.floor(b / 60)}:${pad(b % 60, 2)}` : rec.trim();
             if (f.replay.textContent !== txt) f.replay.textContent = txt;
         }
@@ -1828,6 +1865,7 @@
                     const rec = await r.ask('xmradio_rec_start', { channelId: ch.id, fromStart: choice === 'start' });
                     this.state = Object.assign({}, this.state, { recordings: [...((this.state && this.state.recordings) || []).filter((x) => x.rid !== rec.rid), rec] });
                     r.followRecording(rec, { start: true });
+                    r.monitorWhenReady(rec.rid);
                 } catch (err) { this.say((err && err.message) || 'NOT RECORDING'); }
             } else if (k === 'stop') {
                 const rec = this.mine();
@@ -1843,7 +1881,14 @@
                     this.eject();
                 }
             } else if (k === 'play') {
-                if (this.mine()) { if (!r.on) r.power(); else if (r.audio.paused) void r.audio.play().catch(() => {}); return; }
+                // recording: PLAY listens to the recording; pressed again (or the radio's LIVE) back to the channel live
+                if (this.mine()) {
+                    if (!r.monitoring) r.monitorRecording();
+                    else if (r.audio.paused) void r.audio.play().catch(() => {});
+                    else r.goLive();
+                    this.paint();
+                    return;
+                }
                 if (this.playing) return;
                 if (this.track >= 0 && this.audio.src) { void this.audio.play().catch(() => {}); return; }
                 await this.playTrack(0);
@@ -1965,14 +2010,14 @@
             e.classList.toggle('is-running', running);
             e.classList.toggle('is-recording', !!rec);
             for (const k of ['rec', 'play', 'pause']) {
-                const down = k === 'rec' ? !!rec : k === 'play' ? (rec ? !this.r.audio.paused : this.playing) : (rec ? this.r.audio.paused : this.track >= 0 && !this.playing);
+                const down = k === 'rec' ? !!rec : k === 'play' ? (rec ? !!this.r.monitoring && !this.r.audio.paused : this.playing) : (rec ? this.r.audio.paused : this.track >= 0 && !this.playing);
                 e.querySelector(`[data-dk="${k}"]`).classList.toggle('is-down', down);
             }
             let v1 = '';
             let v2 = '';
             if (this.flash && this.flash.until > Date.now()) { v1 = this.flash.text; }
             else if (rec) {
-                v1 = `REC  ${ch ? `${ch.number} ${ch.name}` : ''}`;
+                v1 = `${this.r.monitoring ? 'REC MON' : 'REC'}  ${ch ? `${ch.number} ${ch.name}` : ''}`;
                 v2 = rec.cut ? (rec.cut.ad ? (rec.cut.s || 'Commercial') : [rec.cut.a, rec.cut.t].filter(Boolean).join(' - ')) : (rec.mode === 'long' ? 'CONTINUOUS' : 'SONG BY SONG');
             } else if (this.track >= 0) {
                 const t = this.tracks[this.track];
