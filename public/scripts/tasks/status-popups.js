@@ -66,6 +66,21 @@
             const n = (f.chat && f.chat.fresh) || 0;
             return pop('chat', 'Dreamscape Messenger', [text(n ? plural(n, 'new reply', 'new replies') : 'No new replies.'), links(['Open'])]);
         },
+        // XM Radio recording (#1020): the channel, what it records now, its running time (the app's own clock from
+        // since), how far it reached back; Monitor / Cancel / Hide, the deck in the footer
+        xmrec(f) {
+            const list = ((f.xmrec && f.xmrec.list) || []).slice().sort((a, b) => (a.kind === 'manual' ? 0 : 1) - (b.kind === 'manual' ? 0 : 1));
+            if (!list.length) return pop('xmrec', 'XM Radio', [text('Nothing is recording.')], ['XM Radio']);
+            const r = list[0];
+            const ch = r.number ? `${r.number} ${r.name}` : r.name || 'XM Radio';
+            const what = r.ad ? 'Commercial' : r.t ? `${r.t}${r.a ? ` - ${r.a}` : ''}` : r.kind === 'song' ? 'This song' : 'The channel';
+            const back = Math.max(0, Math.round(r.back || 0));
+            const sec = [text(ch, true), { t: 'text', s: what },
+                { t: 'pair', l: 'Recording:', r: [{ s: '', b: true }], clock: Number(r.since) || null, first: true },
+                { t: 'pair', l: 'Reached back:', r: [{ s: back >= 5 ? `${Math.floor(back / 60)}:${String(back % 60).padStart(2, '0')}` : 'None', b: true }] }];
+            if (list.length > 1) sec.push(text(`${list.length - 1} more ${list.length === 2 ? 'recording' : 'recordings'} running.`));
+            return { title: 'XM Radio Recording', role: 'xmrec', sec, foot: ['XM Radio'], buttons: [{ text: 'Monitor' }, { text: 'Cancel' }, { text: 'Hide' }] };
+        },
         director(f) {
             const d = f.director || {};
             return pop('director', 'Director', [text(d.running ? 'The Director is working.' : 'The Director is idle.'), links(['Open'])]);

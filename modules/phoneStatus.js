@@ -28,6 +28,9 @@
  *   prefs     { mailAll, smsAll, popupApps } Messaging's "icon for any unread" choices (the page's, kept on the server);
  *                                 popupApps: the registered Android apps whose notifications pop up as WM boxes
  *   received  { unseen }          ActiveSync received items not seen yet (per phone)
+ *   xmrec     { list }            XM Radio recordings running on the server (the tape icon and its popup, #1020):
+ *                                 [{ rid, channelId, number, name, kind (manual | song | timer | alert | term), since
+ *                                 (epoch ms), back (s it reached behind live), a, t, ad (what it records now) }]
  *
  * Nothing runs on a timer: producers call touch() at their change points (one rebuild per second at most); a phone's
  * hello gets the whole snapshot. A field is sent when its JSON changed for that phone (no clock fields in it).
@@ -196,8 +199,21 @@ async function build() {
         lapis: lapis(),
         traffic: traffic(),
         notices: { waiting: ib.notices, list: ib.noticeList },
-        prefs: prefs()
+        prefs: prefs(),
+        xmrec: { list: xmRecordings() }
     };
+}
+
+/** XM Radio's recordings running now, as the tape popup shows them (no clock fields: the task counts from since). */
+function xmRecordings() {
+    return safe(() => {
+        const xm = require('./xmRadio');
+        return require('./xmRadioRecorder').deck().recordings.map((r) => {
+            const c = xm.channelById(r.channelId) || {};
+            const cut = r.cut || {};
+            return { rid: r.rid, channelId: r.channelId, number: c.number || 0, name: c.name || '', kind: r.kind, since: r.since, back: r.back || 0, a: cut.a || '', t: cut.t || '', ad: !!cut.ad };
+        });
+    }, []);
 }
 
 /**
@@ -218,7 +234,8 @@ function buildTest(deviceId) {
         traffic: null,
         notices: { waiting: ib.notices, list: ib.noticeList },
         prefs: prefs('test'),
-        received: { unseen: 0 }
+        received: { unseen: 0 },
+        xmrec: { list: [] }
     };
     const over = safe(() => require('./testDevices').statusOverrides(deviceId), {});
     for (const [k, v] of Object.entries(over)) {

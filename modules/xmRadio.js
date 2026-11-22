@@ -536,7 +536,7 @@ function definePhoneFeed(statusHub) {
             const pr = presets();
             items.presets = { A: (pr.A || []).slice(0, 10), B: (pr.B || []).slice(0, 10), C: (pr.C || []).slice(0, 10) };
             // the deck as a phone shows it: what records now (no timers, alerts or terms lists)
-            try { const d = require('./xmRadioRecorder').deck(); items.rec = d.recordings.map((r) => ({ rid: r.rid, channelId: r.channelId, kind: r.kind, since: r.since })); } catch (_) { items.rec = []; }
+            try { const d = require('./xmRadioRecorder').deck(); items.rec = d.recordings.map((r) => ({ rid: r.rid, channelId: r.channelId, kind: r.kind, since: r.since, back: r.back || 0, a: (r.cut && r.cut.a) || '', t: (r.cut && r.cut.t) || '', ad: !!(r.cut && r.cut.ad) })); } catch (_) { items.rec = []; }
             for (const id of phoneChannels()) {
                 const v = nowPlaying.get(id);
                 if (v) items[`ch:${id}`] = { a: v.a, t: v.t, s: v.s, ad: v.ad, i: v.i, at: v.at };

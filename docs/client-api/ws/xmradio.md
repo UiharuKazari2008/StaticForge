@@ -75,7 +75,12 @@ Auto-record:
 
 - The phone subscribes to statusHub feed `xmradio_phone` instead of `xmradio`. It carries only:
   - `account { signedIn }` and `lineup { at }`;
-  - `rec[{ rid, channelId, kind, since }]`;
+  - `rec[{ rid, channelId, kind, since, back, a, t, ad }]` (back: seconds it reached behind live when it started; a / t /
+    ad: what it records now). The phone's status bar tape (`xmrec`) and its popup read the same list; the app's
+    status-bar task gets it as the `xmrec` field of `status.snapshot` (modules/phoneStatus.js).
+  - The phone radio's `window.wmXmRadio` (recordings, readRecordings, monitoring, monitor, mute, cancel, open) is what
+    wmShell's tape popup calls: Monitor plays `/api/xmradio/rec/<rid>/index.m3u8` through the radio's player, Cancel
+    sends `xmradio_rec_stop`.
   - `ch:<id> { a, t, s, ad, i, at }` for the presets of every bank and the channels the phone names.
 - `xmradio_phone_watch { channels[] }` (up to 12; fire and forget, kept per socket) names those channels: the one it
   plays and Today's pages.

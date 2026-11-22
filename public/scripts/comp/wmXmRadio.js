@@ -198,8 +198,20 @@
     /** A tap on a Today page: tune it here (Direct Tune without Launch) or open the radio on it. */
     function todayTap(id) {
         if (!id) return;
-        if (todayOpt('direct')) { if (!onAir(id)) void tune(id); return; }
+        if (todayOpt('direct')) { if (!onAir(id)) { void tune(id); toPlayingCard(); } return; }
         openChannel(id);
+    }
+
+    /**
+     * A channel started from Today: its page is first now (the playing channel leads, todayChannels), so the panel slides
+     * back to that card (Yukimi, Nov 21 2026: "should animate sliding the pages to the now playing card"); the 6.1 block
+     * the same way with its own slide.
+     */
+    function toPlayingCard() {
+        if (!onAir(radio.channelId)) return;
+        if (prefs.todayAt !== 0) { prefs.todayAt = 0; todayDir = 'l'; saveSoon(); }
+        const ti = window.wmTitanium;
+        if (ti && typeof ti.slideToPage === 'function' && ws && ws.currentApp && ws.currentApp() === 'today') ti.slideToPage('xmradio', 0, -1);
     }
 
     /** Today's Record: the song or show from its start at once (the item's option), else the question; stops a recording. */
@@ -247,7 +259,7 @@
             if (k === 'account') cache.signedIn = !!(v && v.signedIn);
             else if (k === 'lineup') { if (v && v.at && (!cache.lineup || v.at > (cache.lineup.at || 0))) lineupMoved = true; }
             else if (k === 'guide') { if (v && v.n !== guideN) { guideN = v.n; if (shown && tab === 'channels' && prefs.show === 'guide') void loadGuide(); } }
-            else if (k === 'rec') { const was = (cache.rec || []).length; cache.rec = Array.isArray(v) ? v : []; if (cache.rec.length < was) tapes.stale = true; }
+            else if (k === 'rec') { const was = (cache.rec || []).length; setRecordings(Array.isArray(v) ? v : []); if (cache.rec.length < was) tapes.stale = true; }
             else if (k.startsWith('ch:')) { if (v) cache.now[k.slice(3)] = v; else delete cache.now[k.slice(3)]; }
             // the banks as the server keeps them (stored on any client): Today's pages follow at once
             else if (k === 'presets') { if (v && typeof v === 'object') { cache.presets = Object.assign({ A: [], B: [], C: [] }, v); tellWatch(); } }
@@ -797,7 +809,7 @@
     async function recStart(id, opts) {
         try {
             const r = await ws.busy(ask('xmradio_rec_start', Object.assign({ channelId: id }, opts), 30000), { delay: 300, timeout: 30000 });
-            if (r && r.rid) cache.rec = (cache.rec || []).filter((x) => x.rid !== r.rid).concat({ rid: r.rid, channelId: id, kind: r.kind, since: r.since });
+            if (r && r.rid) setRecordings((cache.rec || []).filter((x) => x.rid !== r.rid).concat(recRow(r)));
             saveSoon();
             changed();
         } catch (err) { void box((err && err.message) || 'The recording could not be started.'); }
@@ -808,10 +820,77 @@
         const stop = await ws.messageBox({ title: TITLE, icon: 'question', text: `${chanLabel(c) || 'A channel'} is recording${rec.kind === 'song' ? ' a song' : ''}.\n\nStop the recording? What is recorded so far is saved to the tape.`, buttons: [{ text: 'Stop', value: true }, { text: 'Keep', value: false }] });
         if (!stop) return;
         try { await ws.busy(ask('xmradio_rec_stop', { rid: rec.rid }, 120000), { delay: 300, timeout: 120000 }); } catch (err) { void box((err && err.message) || 'The recording could not be stopped.'); return; }
-        cache.rec = cache.rec.filter((r) => r.rid !== rec.rid);
+        setRecordings(cache.rec.filter((r) => r.rid !== rec.rid));
+        if (radio.mode === 'monitor' && radio.monitorRid === rec.rid) stopRadio();
         tapes.stale = true;
         changed();
     }
+
+    // ---------------------------------------------------------------- the status bar's tape (wmShell role xmrec, #1020)
+
+    /** A recording as the tape popup shows it: the deck's describe() or the feed's rec item. */
+    function recRow(r) {
+        const cut = r.cut || {};
+        return { rid: r.rid, channelId: r.channelId, kind: r.kind, since: r.since, back: r.back || 0, a: r.a != null ? r.a : cut.a || '', t: r.t != null ? r.t : cut.t || '', ad: r.ad != null ? !!r.ad : !!cut.ad };
+    }
+
+    /** The recordings running changed: the list, and the status bar's tape icon (shown while any runs). */
+    function setRecordings(list) {
+        const was = JSON.stringify(cache.rec || []);
+        cache.rec = list.map(recRow);
+        // monitoring a recording that has ended: the sound goes with it
+        if (radio.mode === 'monitor' && radio.state !== 'off' && !cache.rec.some((r) => r.rid === radio.monitorRid)) stopRadio();
+        if (JSON.stringify(cache.rec) !== was && ws && typeof ws.refreshStatus === 'function') ws.refreshStatus();
+    }
+
+    /**
+     * Monitor: listen to a recording as it is made (its own growing playlist, the server's copy of what goes on tape),
+     * through the radio's player (the app's native one with the screen off). Mute stops listening; the recording goes on.
+     */
+    async function monitorRec(rid) {
+        const rec = (cache.rec || []).find((r) => r.rid === rid);
+        if (!rec) return;
+        const c = chan(rec.channelId);
+        radio.mode = 'monitor';
+        radio.monitorRid = rid;
+        radio.track = null;
+        radio.channelId = rec.channelId;
+        radio.url = new URL(`/api/xmradio/rec/${encodeURIComponent(rid)}/index.m3u8`, location.origin).toString();
+        radio.state = 'tuning';
+        const seq = ++radio.seq;
+        changed();
+        await start(seq, { title: `Recording ${chanLabel(c) || ''}`.trim(), subtitle: TITLE, live: true });
+    }
+    const monitoring = (rid) => radio.mode === 'monitor' && radio.state !== 'off' && radio.state !== 'error' && (!rid || radio.monitorRid === rid);
+
+    /** Cancel (the tape popup): the recording stops; what it has so far is filed on the tape. */
+    async function cancelRec(rid) {
+        if (!isAdmin()) return false;
+        if (monitoring(rid)) stopRadio();
+        try { await ask('xmradio_rec_stop', { rid }, 120000); } catch (err) { void box((err && err.message) || 'The recording could not be stopped.'); return false; }
+        setRecordings((cache.rec || []).filter((r) => r.rid !== rid));
+        tapes.stale = true;
+        changed();
+        return true;
+    }
+
+    /** Read what records now (the popup opening with no feed joined): the deck as the server has it. */
+    async function readRecordings() {
+        if (!isAdmin()) return cache.rec || [];
+        try { const d = await ask('xmradio_deck_get', {}, 15000); if (d && d.deck) { setRecordings(d.deck.recordings || []); saveSoon(); } } catch (_) { /* what we had */ }
+        return cache.rec || [];
+    }
+
+    window.wmXmRadio = {
+        recordings: () => (cache.rec || []).map((r) => { const c = chan(r.channelId); return Object.assign({}, r, { number: c ? c.number : '', name: c ? c.name : '' }); }),
+        readRecordings,
+        monitoring,
+        monitor: (rid) => monitorRec(rid),
+        mute: () => { if (radio.mode === 'monitor') stopRadio(); },
+        cancel: (rid) => cancelRec(rid),
+        /** The footer: the radio's deck. */
+        open: () => { if (ws) ws.open(APP_ID); setTab('deck'); }
+    };
 
     function recKey(id) {
         const rec = !!recOf(id);
@@ -1824,7 +1903,7 @@
         if (!id) return;
         const on = id === radio.channelId && (radio.state === 'playing' || radio.state === 'tuning');
         if (on) playPause();
-        else void tune(id);
+        else { void tune(id); toPlayingCard(); }
     }
 
     function bindToday(el) {
@@ -1942,6 +2021,9 @@
                     line3: `${chanLabel(c)}${playing ? ' · Playing' : ''}`,
                     softKey: recKey(id),
                     onTap: () => todayTap(id),
+                    // Direct Tune plays it here: Today stays, so its list does not drop away first (the exit effect is
+                    // for a program that opens)
+                    inPlace: todayOpt('direct'),
                     // tap-and-hold: the radio's own controls from Today (Yukimi, Nov 20 2026)
                     menu: () => [
                         { label: playing ? (radio.native ? 'Stop' : 'Pause') : 'Play', action: () => todayPlay(id) },

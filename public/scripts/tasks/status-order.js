@@ -18,9 +18,11 @@
     const C = root.CafeTasks || (root.CafeTasks = { lib: {} });
     if (!C.lib) C.lib = {};
 
-    const display = ['notify', 'carkey', 'rain', 'wxalert', 'chat', 'mail', 'sms', 'prints', 'director', 'received', 'update',
+    // xmrec: XM Radio recording on the server (the tape; Yukimi, Nov 21 2026: before prints, folds before rain, does not
+    // displace volume / battery)
+    const display = ['notify', 'carkey', 'rain', 'wxalert', 'chat', 'mail', 'sms', 'xmrec', 'prints', 'director', 'received', 'update',
         'continuity', 'nightshade', 'bluetooth', 'data', 'cell', 'roaming', 'signal', 'volume', 'battery'];
-    const fold = ['wxalert', 'update', 'prints', 'director', 'rain', 'sms', 'chat', 'mail', 'carkey', 'received'];
+    const fold = ['wxalert', 'update', 'prints', 'director', 'xmrec', 'rain', 'sms', 'chat', 'mail', 'carkey', 'received'];
     const displace = ['wxalert', 'update', 'prints', 'director', 'sms', 'chat'];
     const system = ['volume', 'battery'];
 
@@ -35,7 +37,7 @@
         rain: 'status-rain-alarm', wxalert: 'status-weather-alert', chat: 'status-messenger', mail: 'status-mail',
         sms: 'status-sms', prints: 'status-prints', director: 'status-director', received: 'status-activesync',
         update: 'status-update', continuity: 'status-continuity', nightshade: 'status-nightshade',
-        batterylow: 'status-battery-low'
+        batterylow: 'status-battery-low', xmrec: 'status-tape'
     };
     const glyphNames = new Set(Object.values(glyphs));
     // the phone's own icons: WM's ROM glyph families in the status atlas (each state its own glyph)
