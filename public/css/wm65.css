@@ -1715,12 +1715,12 @@ html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-clock651 {
 html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys,
 html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-app="today"] .wm-softkeys,
 html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-app="start"] .wm-softkeys {
-    height: calc(34 * var(--wm-px));
+    height: var(--wm-soft-h, calc(34 * var(--wm-px)));
     box-sizing: border-box;
     padding: 0 calc(5 * var(--wm-px));
     background: none;
     grid-template-columns: repeat(5, calc(34 * var(--wm-px)));
-    grid-template-rows: calc(34 * var(--wm-px));
+    grid-template-rows: var(--wm-soft-h, calc(34 * var(--wm-px)));
     justify-content: space-between;
     align-items: start;
 }
@@ -1757,13 +1757,13 @@ html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-boot="reveal"
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-softkey-extend]:not([data-wm-sip]) #wmShell > .wm-softkeys {
-    height: calc(34 * var(--wm-px) + env(safe-area-inset-bottom));
+    height: var(--wm-soft-h, calc(34 * var(--wm-px) + env(safe-area-inset-bottom)));
 }
 
 /* the slots, whatever is in them */
 html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > * {
     grid-row: 1;
-    height: calc(34 * var(--wm-px));
+    height: var(--wm-soft-h, calc(34 * var(--wm-px)));
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-start { grid-column: 1; }

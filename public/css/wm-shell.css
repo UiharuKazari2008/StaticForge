@@ -515,7 +515,9 @@ html.ui-mobile[data-wm-softkey-extend]:not([data-wm-sip]) #wmShell {
 
 html.ui-mobile[data-wm-softkey-extend]:not([data-wm-sip]) #wmShell > .wm-softkeys,
 html.ui-mobile[data-wm-version="6.5"][data-wm-softkey-extend]:not([data-wm-sip]) #wmShell > .wm-softkeys {
-    height: calc(26 * var(--wm-px) + env(safe-area-inset-bottom));
+    /* #1013: the app's nav row (--wm-soft-h, melatonBars.syncSoftHeight) wins over this bezel rule's
+     * ID selector; without it the page stayed at 26 units and jumped going into an Android program. */
+    height: var(--wm-soft-h, calc(26 * var(--wm-px) + env(safe-area-inset-bottom)));
     margin-bottom: calc(-1 * env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
 }
