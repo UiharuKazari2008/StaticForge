@@ -5148,7 +5148,10 @@
         try { noCross = localStorage.getItem('wmStatusNoCross') === '1'; } catch (_) { /* storage off */ }
         const input = {
             icons,
-            notify: { w: unitW || 16 * rootPx(), notes: notesForBubbleIcon().length > 0 },
+            // the "..." shows by itself for the page's notices and for those waiting on the server (the status task's
+            // notify, paintNotifyIcon): the fit has to count it either way, or it placed a row one icon short and the
+            // "..." that came up pushed the camera's gap right - an icon on the lens (Fold cover, Nov 22 #1053)
+            notify: { w: unitW || 16 * rootPx(), notes: notifyShowsAlone() },
             bar: { width: br.width, iconsRight, gap, titleX, titleMin, hole, xReserve },
             prefs: { sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon') },
             screen: { unfolded: unfoldedScreen(), noCross }
@@ -5200,7 +5203,7 @@
             root.style.getPropertyValue('--wm-icon-unit'), root.dataset.wmIconArt || '', bar.classList.contains('is-start-open') ? 1 : 0,
             rs.getPropertyValue('--camera-hole-left'), rs.getPropertyValue('--camera-hole-width'), rs.getPropertyValue('--camera-hole-top'), rs.getPropertyValue('--wm-px'),
             root.dataset.wmCamera || '', root.dataset.wmBezelEdge || '', root.dataset.wmVersion || '', root.dataset.wmBars || '', root.dataset.wmFont || '',
-            ls, notesForBubbleIcon().length ? 1 : 0, cameraIgnoredNow() ? 1 : 0, unfoldedScreen() ? 1 : 0, bar.querySelector('.wm-title') && bar.querySelector('.wm-title').hidden ? 1 : 0].join('|');
+            ls, notifyShowsAlone() ? 1 : 0, cameraIgnoredNow() ? 1 : 0, unfoldedScreen() ? 1 : 0, bar.querySelector('.wm-title') && bar.querySelector('.wm-title').hidden ? 1 : 0].join('|');
     }
     // the last measured fit's inputs and answer (wmShell.statusFitLast(): checking the bar from a debugger)
     let statusFitLast = null;
@@ -5322,7 +5325,7 @@
         const sys = () => { while (sysSteps.length) if (step(sysSteps.shift())) return true; return false; };
         // a group holds two or more (one app icon alone in it takes the same room as the icon itself), or one with
         // notices of its own
-        const minK = notesForBubbleIcon().length ? 1 : 2;
+        const minK = notifyShowsAlone() ? 1 : 2;
         // first what does not outrank the volume and battery folds; then, for a short-lived icon still out, those two
         // step aside; then the short-lived ones fold, least wanted first; last the volume / battery after all
         for (let k = minK; k <= nonDisplacing; k++) if (step(() => foldTo(k))) return;
@@ -7087,6 +7090,11 @@
     const STATUS_APP_LABEL = { mail: 'Messages', sms: 'Text Messages', chat: 'Dreamscape Messenger', prints: 'Prints', xmrec: 'XM Radio', director: 'Director', update: 'Updates', wxalert: 'Weather Alert', rain: 'Rain Alarm', traffic: 'Car', lapis: 'Car', carkey: 'Car', continuity: 'Continuity', received: 'ActiveSync', nightshade: 'Nightshade Network' };
 
     /** The bubble icon: pending notifications plus any status icons folded into it by fitStatus. */
+    /** The "..." shows with nothing folded into it: the page's own notices, or notices waiting on the server (#1053). */
+    function notifyShowsAlone() {
+        if (notesForBubbleIcon().length) return true;
+        try { return !!(taskRoles && taskRoles.notify) && !notifyQuietUntilTask; } catch (_) { return false; }
+    }
     function paintNotifyIcon() {
         const icon = shell.querySelector('[data-role="notify"]');
         // update notices stand on the update icon, not here

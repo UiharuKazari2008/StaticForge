@@ -314,6 +314,9 @@
      */
     async function renderKit(ctx) {
         ctx = ctx || {};
+        // the soft key bar at the app's nav height before it is measured for the kit: the app asks for a kit once its bar
+        // service is up, which after an app restart is after this page read navPx 0 at load (#1053)
+        try { syncSoftHeight(); } catch (_) { /* before the soft key sync below is set up */ }
         const reqId = Number(ctx.reqId) || 0;
         const out = (o) => { try { if (window.AndroidBars && window.AndroidBars.publishKit) window.AndroidBars.publishKit(JSON.stringify(Object.assign({ reqId, v: 1 }, o))); } catch (err) { console.warn('[melatonBars] publishKit', err); } };
         const shell = document.getElementById('wmShell');
@@ -657,7 +660,18 @@
                 iconsRight: last ? Math.round(Math.min(last.getBoundingClientRect().right - br.left, br.width - (parseFloat(getComputedStyle(top).paddingRight) || 0),
                     ...(() => { const a = top.querySelector('.wm-title-action'); return a && !a.hidden && a.getClientRects().length ? [a.getBoundingClientRect().left - br.left - gap] : []; })()) * dpr) : 0,
                 corner: box(top.querySelector('.wm-title-action')),
-                hole: gapEl ? box(gapEl) : null,
+                // the camera's own box (Android's cutout, --camera-hole-*) and wmShell's 3-unit pad each side, not where the
+                // gap element ended up: a row one icon too long left of the camera (the title at its floor) pushed the
+                // element right of the lens, and the app copied that place - an icon drawn on the camera (Fold cover, #1053)
+                hole: gapEl ? (() => {
+                    const g = box(gapEl);
+                    const rs = document.documentElement.style;
+                    const hl = parseFloat(rs.getPropertyValue('--camera-hole-left')) || 0;
+                    const hw = parseFloat(rs.getPropertyValue('--camera-hole-width')) || 0;
+                    if (!g || !(hw > 0)) return g;
+                    const pad = 3 * px;
+                    return { x: Math.round((hl - pad - br.left) * dpr), y: g.y, w: Math.round((hw + 2 * pad) * dpr), h: g.h };
+                })() : null,
                 soft: soft ? { h: Math.round(soft.getBoundingClientRect().height * dpr), left: box(keyL), right: box(keyR), sip: box(sip) } : null,
                 art: {
                     close: abs('/static_images/wm65/title-close@4x.png'), ok: abs('/static_images/wm65/title-ok@4x.png'),
@@ -1812,5 +1826,9 @@
     if (window.AndroidBars) {
         syncSoftHeight();
         window.addEventListener('resize', syncSoftHeight, { signal: appScopeSignal });
+        // read again when the page comes back on screen: at load (an app restart, an install) the app's bar service may
+        // not have taken Android's nav row yet (navPx 0), and nothing resized after, so the bar kept 26 units against the
+        // nav bar's 108 px (Fold cover, Nov 22 #1053). One getState on a return, no timer
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) syncSoftHeight(); }, { signal: appScopeSignal });
     }
 })();
