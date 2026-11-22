@@ -17,9 +17,9 @@
  * Besides Vista's settings the dialog carries ours, as Vista-style controls in the fitting place:
  *   Taskbar tab          "Start button": its style, Windows logo and text (Logo and Text grey
  *                        out for the Orb); program pictures on taskbar buttons
- *   Start Menu tab       Customize Start Menu: the Start menu and All Programs icon sizes, which
- *                        places the menu shows, "Open the workspace at startup", how many recent
- *                        programs, and what the power and lock buttons do
+ *   Start Menu tab       Customize Start Menu: Vista's own (#1060), and in its tree the All
+ *                        Programs icon size, "Open the workspace at startup" and what the power
+ *                        and lock buttons do
  *   Notification Area    "Notifications": the shortest time a notification stays, and Customize
  *                        Notifications (which notifications to hide; the Notification Bridge
  *                        where an Android host is attached)
@@ -86,7 +86,7 @@
        startMenuButtonLogoUrl, getStartMenuPlacesAll, trayMinPopupMs, traySetMinPopupMs, trayPopupTimeChoices,
        trayPopupCatalog, trayPopupHidden, traySetPopupHidden, trayIconCatalog, trayIconBehavior, traySetIconBehaviors,
        trayIconTucked, taskbarSettings, applyNotificationBridgePreferences, desktopSettingsPersistedStartMenuButton,
-       desktopSettingsPersistedUseApplicationImageIcon */
+       desktopSettingsPersistedUseApplicationImageIcon, startMenuKit, resolveAppIconPath */
     // ---- state ---------------------------------------------------------------------------------
 
     function bridgeDetected() {
@@ -147,7 +147,7 @@
     }
 
     function button(x, y, w, h, label, action, opts = {}) {
-        return `<button type="button" class="tbp-ctl tbp-button" style="${dlu(x, y, w, h, 1)}" data-action="${action}"${opts.disabled ? ' disabled' : ''}>${label}</button>`;
+        return `<button type="button" class="tbp-ctl tbp-button" style="${dlu(x, y, w, h, 1)}" data-action="${action}"${opts.disabled ? ' disabled' : ''}${opts.primary ? ' data-dialog-primary="1"' : ''}>${label}</button>`;
     }
 
     function link(x, y, w, label, action) {
@@ -423,9 +423,10 @@
         });
         const ids = new Set([...Object.keys(pending.places || {}), ...Object.keys(saved.places || {})]);
         const places = {};
+        // false (Don't display) / 'menu' / true; an id that went back to its default goes as null (#1060)
         ids.forEach((id) => {
-            const now = (pending.places || {})[id] === false;
-            if (now !== ((saved.places || {})[id] === false)) places[id] = now ? false : true;
+            const now = (pending.places || {})[id];
+            if (now !== (saved.places || {})[id]) places[id] = now === undefined ? null : now;
         });
         if (Object.keys(places).length) patch.places = places;
         return patch;
@@ -792,16 +793,23 @@
 
     function openSub(id, title, cls, html, onOk) {
         if (!dlg || dlg.sub) return null;
+        // the control that opened it gets the keys back when it closes (Vista's Customize... button)
+        const opener = doc.activeElement && dlg.modal.contains(doc.activeElement) ? doc.activeElement : null;
         const { modal, content, close } = makeWindow(id, title, null, cls);
         content.innerHTML = html;
         dlg.modal.setAttribute('inert', '');
-        dlg.sub = { modal, content, onOk };
+        dlg.sub = { modal, content, onOk, opener };
         close.addEventListener('click', () => closeSub(false));
         modal.addEventListener('keydown', (ev) => {
             if (ev.key === 'Escape') {
                 ev.preventDefault();
                 ev.stopPropagation();
                 closeSub(false);
+            } else if (ev.key === 'Enter' && !ev.target.matches('button, select, textarea')) {
+                // Enter is the default button's (OK), as in the sheet (#1060)
+                ev.preventDefault();
+                ev.stopPropagation();
+                closeSub(true);
             }
         });
         content.addEventListener('click', (ev) => {
@@ -830,12 +838,15 @@
         closeWindow(sub.modal).then(() => {
             if (owner.isConnected && !owner.classList.contains('hidden') && !owner.classList.contains('closing')) {
                 callGlobal('bringModalToFront', owner);
+                const back = sub.opener && sub.opener.isConnected ? sub.opener : owner.querySelector('.tbp-page:not([hidden]) button, [data-action="ok"]');
+                if (back) back.focus({ preventScroll: true });
             }
         });
     }
 
     function okCancel(okX, cancelX, y) {
-        return `${button(okX, y, 50, 14, 'OK', 'sub-ok')}${button(cancelX, y, 50, 14, 'Cancel', 'sub-cancel')}`;
+        // OK is the default button (BS_DEFPUSHBUTTON in the templates), framed in blue as on the VM
+        return `${button(okX, y, 50, 14, 'OK', 'sub-ok', { primary: true })}${button(cancelX, y, 50, 14, 'Cancel', 'sub-cancel')}`;
     }
 
     // Customize Notification Icons (dialog 7): Icon | Behavior, Current Items and Past Items
@@ -963,40 +974,93 @@
         });
     }
 
-    // Customize Start Menu (dialog 1036): a settings tree, Start menu size, and (in place of
-    // "Show on Start menu") the Start button's text
+    // Customize Start Menu (explorer.exe.mui dialog 1036, 1:1 with the VM, #1060): the settings tree in
+    // Vista's alphabetical order (the places from modalUtils.js getStartMenuPlacesAll: Display as a link /
+    // as a menu / Don't display, or a check box; Vista's behaviour boxes; Search files and System
+    // administrative tools), Start menu size, Use Default Settings, and Show on Start menu with the
+    // Internet and E-mail programs. Melaton's own settings that Vista keeps elsewhere join the tree in
+    // their alphabetical place: All Programs icon size, Lock button, Power button, Open the workspace at startup.
+    const CS_CHECKS = [
+        ['dragDrop', 'Enable context menus and dragging and dropping'],
+        ['highlightNew', 'Highlight newly installed programs'],
+        ['autoCascade', 'Open submenus when I pause on them with the mouse pointer'],
+        ['searchComm', 'Search communications'],
+        ['searchFavorites', 'Search favorites and history'],
+        ['searchPrograms', 'Search programs'],
+        ['sortByName', 'Sort All Programs menu by name']
+    ];
+    // the nodes' pictures (Vista's shell icons in the list)
+    const CS_ICONS = {
+        searchFiles: '/static_images/vista-cpl/items/indexing-options-16.png',
+        adminTools: '/static_images/vista-cpl/items/administrative-tools-16.png'
+    };
+
     function openCustomizeStart() {
         const p = dlg.pending;
         const places = (typeof getStartMenuPlacesAll === 'function' ? getStartMenuPlacesAll() : [])
-            .filter((pl) => !pl.separator && pl.id !== 'user' && pl.id !== 'recent');
+            .filter((pl) => !pl.separator && (pl.kind === 'folder' || pl.kind === 'check'));
+        // startMenuKit: public/scripts/comp/modalUtils.js (the Start menu's helpers)
+        const kit = typeof startMenuKit !== 'undefined' ? startMenuKit : null;
+        const placeValue = (pl) => (kit ? kit.startMenuPlaceSetting(pl, p.core) : true);
+        const iconOf = (pl) => {
+            if (pl.image) return pl.image.replace(/-48\.png$/, '-16.png');
+            return pl.imageIcon && typeof resolveAppIconPath === 'function' ? resolveAppIconPath(pl.imageIcon, 16) : '';
+        };
         let n = 0;
         const radioRow = (name, value, label, on) => {
             const id = `tbp-cs-${++n}`;
-            return `<div class="tbp-tree-row is-child"><input type="radio" id="${id}" name="tbp-cs-${name}" value="${esc(value)}"${on ? ' checked' : ''}><label for="${id}">${esc(label)}</label></div>`;
+            return `<div class="tbp-tree-row is-child" role="treeitem"><input type="radio" id="${id}" name="tbp-cs-${name}" value="${esc(value)}"${on ? ' checked' : ''} tabindex="-1"><label for="${id}"><span>${esc(label)}</span></label></div>`;
         };
-        const checkRow = (cls, value, label, on) => {
+        const checkRow = (attr, label, on) => {
             const id = `tbp-cs-${++n}`;
-            return `<div class="tbp-tree-row"><input type="checkbox" id="${id}" class="${cls}" value="${esc(value)}"${on ? ' checked' : ''}><label for="${id}">${esc(label)}</label></div>`;
+            return `<div class="tbp-tree-row is-check" role="treeitem"><input type="checkbox" id="${id}" ${attr}${on ? ' checked' : ''} tabindex="-1"><label for="${id}"><span>${esc(label)}</span></label></div>`;
         };
-        const node = (label, children) => `<div class="tbp-tree-node"><div class="tbp-tree-row is-node">${esc(label)}</div>${children}</div>`;
-        const shownPlaces = places.map((pl) => node(pl.text,
-            radioRow(`place-${pl.id}`, 'link', 'Display as a link', p.core.places[pl.id] !== false)
-            + radioRow(`place-${pl.id}`, 'none', "Don't display this item", p.core.places[pl.id] === false))).join('');
-        // the sizes first: they are what people look for (Yukimi 2026-10-21)
-        const tree = node('Start menu icon size',
-            radioRow('startsize', 'small', 'Small icons', p.core.startIconSize === 'small')
-            + radioRow('startsize', 'medium', 'Medium icons', p.core.startIconSize === 'medium')
-            + radioRow('startsize', 'large', 'Large icons', p.core.startIconSize === 'large'))
-            + node('All Programs icon size',
-                radioRow('progsize', 'small', 'Small icons', p.core.programsIconSize === 'small')
-                + radioRow('progsize', 'medium', 'Medium icons', p.core.programsIconSize === 'medium')
-                + radioRow('progsize', 'large', 'Large icons', p.core.programsIconSize === 'large'))
-            + shownPlaces
-            + checkRow('tbp-cs-autolaunch', '1', 'Open the workspace at startup', p.autoLaunch);
-        const choice = (options, value) => options.map(([v, label]) => `<option value="${v}"${v === value ? ' selected' : ''}>${label}</option>`).join('');
+        const node = (label, icon, children) => `<div class="tbp-tree-node" role="group"><div class="tbp-tree-row is-node" role="treeitem">${icon ? `<img class="tbp-tree-icon" src="${esc(icon)}" alt="">` : '<span class="tbp-tree-icon"></span>'}<span class="tbp-tree-label">${esc(label)}</span></div>${children}</div>`;
+        const entries = [];
+        places.forEach((pl) => {
+            const label = pl.tree || pl.text;
+            const v = placeValue(pl);
+            if (pl.kind === 'folder') {
+                entries.push([label, node(label, iconOf(pl),
+                    radioRow(`place-${pl.id}`, 'link', 'Display as a link', v === 'link')
+                    + (typeof pl.menu === 'function' ? radioRow(`place-${pl.id}`, 'menu', 'Display as a menu', v === 'menu') : '')
+                    + radioRow(`place-${pl.id}`, 'none', "Don't display this item", v === 'none'))]);
+            } else {
+                entries.push([label, checkRow(`data-place="${esc(pl.id)}"`, label, v !== false)]);
+            }
+        });
+        CS_CHECKS.forEach(([key, label]) => entries.push([label, checkRow(`data-cs="${key}"`, label, p.core[key] !== false)]));
+        entries.push(['Use large icons', checkRow('data-cs="largeIcons"', 'Use large icons', p.core.startIconSize !== 'small')]);
+        entries.push(['Search files', node('Search files', CS_ICONS.searchFiles,
+            radioRow('searchFiles', 'none', "Don't search for files", p.core.searchFiles === 'none')
+            + radioRow('searchFiles', 'index', 'Search entire index', p.core.searchFiles === 'index')
+            + radioRow('searchFiles', 'user', "Search this user's files", p.core.searchFiles !== 'none' && p.core.searchFiles !== 'index'))]);
+        entries.push(['System administrative tools', node('System administrative tools', CS_ICONS.adminTools,
+            radioRow('adminTools', 'programs', 'Display on the All Programs menu', p.core.adminTools === 'programs')
+            + radioRow('adminTools', 'both', 'Display on the All Programs menu and the Start menu', p.core.adminTools === 'both')
+            + radioRow('adminTools', 'none', "Don't display this item", p.core.adminTools === 'none'))]);
+        // Melaton's own (not in Vista's list)
+        entries.push(['All Programs icon size', node('All Programs icon size', '',
+            radioRow('progsize', 'small', 'Small icons', p.core.programsIconSize === 'small')
+            + radioRow('progsize', 'medium', 'Medium icons', p.core.programsIconSize === 'medium')
+            + radioRow('progsize', 'large', 'Large icons', p.core.programsIconSize === 'large'))]);
+        entries.push(['Lock button', node('Lock button', '',
+            radioRow('lock', 'lock', 'Lock', p.core.lockButton !== 'logoff')
+            + radioRow('lock', 'logoff', 'Log off', p.core.lockButton === 'logoff'))]);
+        entries.push(['Power button', node('Power button', '',
+            radioRow('power', 'shutdown', 'Shut down', p.core.powerButton !== 'restart' && p.core.powerButton !== 'logoff')
+            + radioRow('power', 'restart', 'Restart', p.core.powerButton === 'restart')
+            + radioRow('power', 'logoff', 'Log off', p.core.powerButton === 'logoff'))]);
+        entries.push(['Open the workspace at startup', checkRow('data-cs="autoLaunch"', 'Open the workspace at startup', p.autoLaunch)]);
+        entries.sort((a, b) => a[0].localeCompare(b[0], 'en', { sensitivity: 'base' }));
+        const tree = entries.map((e) => e[1]).join('');
+        const choices = (kind, current) => {
+            const list = kit ? kit.getStartMenuPinProgramChoices(kind) : [];
+            return list.map((c) => `<option value="${esc(c.launchId)}"${c.launchId === current ? ' selected' : ''}>${esc(c.text)}</option>`).join('');
+        };
         const html = `
             ${text(7, 7, 238, 16, 'You can customize how links, icons, and menus look and behave on the Start menu.')}
-            <div class="tbp-ctl tbp-tree" style="${dlu(7, 26, 238, 124)}" role="tree">${tree}</div>
+            <div class="tbp-ctl tbp-tree tbp-cs-tree" style="${dlu(7, 26, 238, 124)}" role="tree" tabindex="0" aria-label="Start menu settings">${tree}</div>
             ${group(7, 153, 238, 26, 'Start menu size')}
             ${text(14, 165, 132, 8, '<u>N</u>umber of recent programs to display:')}
             <span class="tbp-ctl tbp-spinedit" style="${dlu(153, 163)}">
@@ -1005,32 +1069,63 @@
                 <span class="tbp-spin tbp-spin-down" data-action="cs-down" aria-hidden="true"></span>
             </span>
             ${button(7, 183, 80, 14, 'Use <u>D</u>efault Settings', 'cs-default')}
-            ${group(7, 199, 238, 56, 'Power buttons')}
-            ${text(14, 213, 82, 10, '<u>P</u>ower button:')}
-            <select class="vdt-select tbp-ctl tbp-select tbp-cs-power" style="${dlu(98, 211, 140, 12)}" aria-label="Power button">${choice([['shutdown', 'Shut down'], ['restart', 'Restart'], ['logoff', 'Log off']], p.core.powerButton)}</select>
-            ${text(14, 230, 82, 10, '<u>L</u>ock button:')}
-            <select class="vdt-select tbp-ctl tbp-select tbp-cs-lock" style="${dlu(98, 228, 140, 12)}" aria-label="Lock button">${choice([['lock', 'Lock'], ['logoff', 'Log off']], p.core.lockButton)}</select>
+            ${group(7, 199, 238, 56, 'Show on Start menu')}
+            ${check('cs-inet', 14, 213, 82, '<u>I</u>nternet link:', 'pinInternet')}
+            <select class="vdt-select tbp-ctl tbp-select tbp-cs-internet" style="${dlu(98, 211, 140, 12)}" aria-label="Internet link"${p.core.pinInternet === false ? ' disabled' : ''}>${choices('internet', p.core.internetProgram)}</select>
+            ${check('cs-mail', 14, 230, 82, '<u>E</u>-mail link:', 'pinEmail')}
+            <select class="vdt-select tbp-ctl tbp-select tbp-cs-email" style="${dlu(98, 228, 140, 12)}" aria-label="E-mail link"${p.core.pinEmail === false ? ' disabled' : ''}>${choices('email', p.core.emailProgram)}</select>
             ${okCancel(131, 195, 257)}`;
         const sub = openSub('taskbarPropertiesStart', 'Customize Start Menu', 'tbp-start', html, (content) => {
             const val = (name) => {
                 const r = content.querySelector(`input[name="tbp-cs-${name}"]:checked`);
                 return r ? r.value : null;
             };
+            const nextPlaces = { ...p.core.places };
             places.forEach((pl) => {
-                p.core.places[pl.id] = val(`place-${pl.id}`) === 'none' ? false : true;
+                let v;
+                if (pl.kind === 'folder') {
+                    const pick = val(`place-${pl.id}`);
+                    v = pick === 'none' ? false : pick === 'menu' ? 'menu' : undefined;
+                } else {
+                    const box = content.querySelector(`input[data-place="${CSS.escape(pl.id)}"]`);
+                    const on = !!(box && box.checked);
+                    // only a choice away from Vista's default is kept
+                    v = on === (pl.on !== false) ? undefined : on;
+                }
+                if (v === undefined) delete nextPlaces[pl.id];
+                else nextPlaces[pl.id] = v;
             });
+            p.core.places = nextPlaces;
+            const box = (key) => content.querySelector(`input[data-cs="${key}"]`);
+            CS_CHECKS.forEach(([key]) => { const b = box(key); if (b) p.core[key] = b.checked; });
+            p.core.startIconSize = box('largeIcons').checked ? 'large' : 'small';
+            const auto = box('autoLaunch');
+            if (auto) p.autoLaunch = auto.checked;
+            p.core.searchFiles = val('searchFiles') || p.core.searchFiles;
+            p.core.adminTools = val('adminTools') || p.core.adminTools;
+            p.core.programsIconSize = val('progsize') || p.core.programsIconSize;
+            p.core.powerButton = val('power') || p.core.powerButton;
+            p.core.lockButton = val('lock') || p.core.lockButton;
             const cnt = Number(content.querySelector('.tbp-cs-count').value);
             if (Number.isFinite(cnt)) p.core.recentProgramCount = Math.max(0, Math.min(30, Math.round(cnt)));
-            const auto = content.querySelector('.tbp-cs-autolaunch');
-            if (auto) p.autoLaunch = auto.checked;
-            p.core.startIconSize = val('startsize') || p.core.startIconSize;
-            p.core.programsIconSize = val('progsize') || p.core.programsIconSize;
-            p.core.powerButton = content.querySelector('.tbp-cs-power').value;
-            p.core.lockButton = content.querySelector('.tbp-cs-lock').value;
+            p.core.pinInternet = content.querySelector('#tbp-cs-inet').checked;
+            p.core.pinEmail = content.querySelector('#tbp-cs-mail').checked;
+            const inet = content.querySelector('.tbp-cs-internet').value;
+            const mail = content.querySelector('.tbp-cs-email').value;
+            if (inet) p.core.internetProgram = inet;
+            if (mail) p.core.emailProgram = mail;
             return true;
         });
         if (!sub) return;
         const c = sub.content;
+        c.querySelector('#tbp-cs-inet').checked = p.core.pinInternet !== false;
+        c.querySelector('#tbp-cs-mail').checked = p.core.pinEmail !== false;
+        wireCustomizeTree(c.querySelector('.tbp-cs-tree'));
+        // the pinned rows' programs are greyed while their box is off (Vista)
+        [['#tbp-cs-inet', '.tbp-cs-internet'], ['#tbp-cs-mail', '.tbp-cs-email']].forEach(([boxSel, comboSel]) => {
+            const b = c.querySelector(boxSel);
+            b.addEventListener('change', () => { c.querySelector(comboSel).disabled = !b.checked; });
+        });
         const count = c.querySelector('.tbp-cs-count');
         const step = (d) => {
             const v = Number(count.value) || 0;
@@ -1071,21 +1166,102 @@
                 step(ev.key === 'ArrowUp' ? 1 : -1);
             }
         });
+        // the dialog's access keys (Alt+letter, or the letter alone off a text box, as Windows dialogs take them)
+        c.addEventListener('keydown', (ev) => {
+            if (ev.ctrlKey || ev.metaKey || ev.key.length !== 1) return;
+            if (!ev.altKey && ev.target.matches('input[type="text"]')) return;
+            const k = ev.key.toLowerCase();
+            const go = { n: () => { count.focus(); count.select(); }, d: () => c.querySelector('[data-action="cs-default"]').click(),
+                i: () => c.querySelector('#tbp-cs-inet').click(), e: () => c.querySelector('#tbp-cs-mail').click(),
+                t: () => c.querySelector('.tbp-cs-tree').focus() }[k];
+            if (!go || (!ev.altKey && ev.target.closest('.tbp-cs-tree'))) return;
+            ev.preventDefault();
+            go();
+        });
         c.addEventListener('click', (ev) => {
             const b = ev.target.closest('[data-action]');
-            if (!b) return;
-            if (b.dataset.action === 'cs-default') {
-                count.value = String(root.taskbarSettings ? root.taskbarSettings.DEFAULTS.recentProgramCount : 8);
-                c.querySelectorAll('input[type="radio"][value="link"]').forEach((r) => { r.checked = true; });
-                // Vista's defaults for the rest of the tree
-                const d = root.taskbarSettings ? root.taskbarSettings.DEFAULTS : {};
-                const pick = (name, value) => { const r = c.querySelector(`input[name="tbp-cs-${name}"][value="${value}"]`); if (r) r.checked = true; };
-                pick('startsize', d.startIconSize || 'large');
-                pick('progsize', d.programsIconSize || 'small');
-                c.querySelector('.tbp-cs-power').value = d.powerButton || 'shutdown';
-                c.querySelector('.tbp-cs-lock').value = d.lockButton || 'lock';
+            if (!b || b.dataset.action !== 'cs-default') return;
+            // Vista's defaults (the VM's after Use Default Settings)
+            const d = root.taskbarSettings ? root.taskbarSettings.DEFAULTS : {};
+            count.value = String(d.recentProgramCount || 9);
+            places.forEach((pl) => {
+                if (pl.kind === 'folder') {
+                    const r = c.querySelector(`input[name="tbp-cs-place-${CSS.escape(pl.id)}"][value="link"]`);
+                    if (r) r.checked = true;
+                } else {
+                    const box = c.querySelector(`input[data-place="${CSS.escape(pl.id)}"]`);
+                    if (box) box.checked = pl.on !== false;
+                }
+            });
+            const pick = (name, value) => { const r = c.querySelector(`input[name="tbp-cs-${name}"][value="${value}"]`); if (r) r.checked = true; };
+            CS_CHECKS.forEach(([key]) => { const bx = c.querySelector(`input[data-cs="${key}"]`); if (bx) bx.checked = d[key] !== false; });
+            c.querySelector('input[data-cs="largeIcons"]').checked = (d.startIconSize || 'large') !== 'small';
+            pick('searchFiles', d.searchFiles || 'user');
+            pick('adminTools', d.adminTools || 'programs');
+            pick('progsize', d.programsIconSize || 'small');
+            pick('power', d.powerButton || 'shutdown');
+            pick('lock', d.lockButton || 'lock');
+            [['#tbp-cs-inet', '.tbp-cs-internet', d.internetProgram], ['#tbp-cs-mail', '.tbp-cs-email', d.emailProgram]].forEach(([boxSel, comboSel, prog]) => {
+                c.querySelector(boxSel).checked = true;
+                const combo = c.querySelector(comboSel);
+                combo.disabled = false;
+                if (prog && [...combo.options].some((o) => o.value === prog)) combo.value = prog;
+            });
+        });
+        // Vista opens the dialog with the list focused on its first item
+        const treeEl = c.querySelector('.tbp-cs-tree');
+        requestAnimationFrame(() => { if (treeEl.isConnected) treeEl.focus({ preventScroll: true }); });
+    }
 
+    /** Vista's tree view keys and clicks: one selected row (blue while the list has focus), Up / Down / Home / End /
+     *  Page keys move it, Space checks its box or picks its radio button, a click selects the row it hits. */
+    function wireCustomizeTree(tree) {
+        if (!tree) return;
+        const rows = () => [...tree.querySelectorAll('.tbp-tree-row')];
+        let sel = rows()[0] || null;
+        const select = (row) => {
+            if (!row) return;
+            if (sel) sel.classList.remove('is-selected');
+            sel = row;
+            row.classList.add('is-selected');
+            const t = tree.getBoundingClientRect();
+            const r = row.getBoundingClientRect();
+            if (r.top < t.top + 1) tree.scrollTop -= (t.top + 1 - r.top);
+            else if (r.bottom > t.bottom - 1) tree.scrollTop += (r.bottom - (t.bottom - 1));
+        };
+        select(sel);
+        tree.scrollTop = 0;
+        tree.addEventListener('pointerdown', (ev) => {
+            const row = ev.target.closest('.tbp-tree-row');
+            if (row) select(row);
+            tree.focus({ preventScroll: true });
+        });
+        tree.addEventListener('keydown', (ev) => {
+            const all = rows();
+            const i = all.indexOf(sel);
+            const page = Math.max(1, Math.floor(tree.clientHeight / 16) - 1);
+            let j = null;
+            switch (ev.key) {
+                case 'ArrowDown': j = Math.min(all.length - 1, i + 1); break;
+                case 'ArrowUp': j = Math.max(0, i - 1); break;
+                case 'Home': j = 0; break;
+                case 'End': j = all.length - 1; break;
+                case 'PageDown': j = Math.min(all.length - 1, i + page); break;
+                case 'PageUp': j = Math.max(0, i - page); break;
+                case ' ': {
+                    const input = sel && sel.querySelector('input');
+                    if (input && !input.disabled) {
+                        if (input.type === 'checkbox') input.checked = !input.checked;
+                        else input.checked = true;
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    ev.preventDefault();
+                    return;
+                }
+                default: return;
             }
+            ev.preventDefault();
+            select(all[j]);
         });
     }
 

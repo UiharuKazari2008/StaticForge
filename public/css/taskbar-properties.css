@@ -405,6 +405,49 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-star
     line-height: 13px;
 }
 
+/* Customize Start Menu's list (#1060), measured on the VM: 16 px rows from 1 px under the frame; a node's
+   16 px picture 1 px in, a check box 4 px in, their text 22 px in; a radio button under its node 22 px in, its
+   text 16 px further; the selected row's text on a 2 px-padded highlight (blue while the list has focus) */
+.tbp-client .tbp-cs-tree {
+    outline: none;
+}
+
+.tbp-client .tbp-cs-tree .tbp-tree-row {
+    padding-left: 4px;
+}
+
+.tbp-client .tbp-cs-tree .tbp-tree-row.is-node {
+    padding-left: 1px;
+}
+
+.tbp-client .tbp-cs-tree .tbp-tree-row.is-child {
+    padding-left: 22px;
+}
+
+.tbp-client .tbp-cs-tree .tbp-tree-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-right: 3px;
+}
+
+.tbp-client .tbp-cs-tree .tbp-tree-row > .tbp-tree-label,
+.tbp-client .tbp-cs-tree .tbp-tree-row label span {
+    padding: 1px 2px 2px;
+    line-height: 13px;
+}
+
+.tbp-client .tbp-cs-tree .tbp-tree-row.is-selected > .tbp-tree-label,
+.tbp-client .tbp-cs-tree .tbp-tree-row.is-selected label span {
+    background: var(--vista-select-inactive-bg);
+}
+
+.tbp-client .tbp-cs-tree:focus .tbp-tree-row.is-selected > .tbp-tree-label,
+.tbp-client .tbp-cs-tree:focus .tbp-tree-row.is-selected label span {
+    background: var(--vista-select-bg);
+    color: var(--vista-select-text);
+}
+
 /* ---- list views (Customize Notification Icons, Customize Notifications) ---- */
 
 .tbp-client .tbp-list {

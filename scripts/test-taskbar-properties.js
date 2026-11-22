@@ -25,8 +25,10 @@ assert.strictEqual(ts.normalize({ recentProgramCount: 99 }).recentProgramCount, 
 ts.set({ autoHide: true, places: { games: false } });
 assert.strictEqual(JSON.parse(store['desktop-taskbar-settings']).autoHide, true, 'saved on this computer');
 assert.strictEqual(ts.get().places.games, false);
-ts.set({ places: { games: true } });
-assert.ok(!('games' in ts.get().places), 'a place turned back on leaves the map');
+ts.set({ places: { games: 'menu' } });
+assert.strictEqual(ts.get().places.games, 'menu', 'Display as a menu is kept (#1060)');
+ts.set({ places: { games: null } });
+assert.ok(!('games' in ts.get().places), 'a place set back to its default (null) leaves the map');
 
 // Quick Launch: drag-and-drop reorder (gaps counted before the move) and Restore Default Items
 const reorder = ts._test.reorderList;
