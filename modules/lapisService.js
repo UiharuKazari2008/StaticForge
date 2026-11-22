@@ -106,7 +106,7 @@ const live = {
     lastError: null,
     command: null,
     parkedSince: 0, // when the car was first seen parked with the engine off
-    flags: { unlockedFor: 0, lowFuel: false, refuelDay: '', service: {}, health: {} },
+    flags: { unlockedFor: 0, lowFuel: false, refuelDay: '', refuelSaid: null, service: {}, health: {} },
 };
 const sched = { timer: null, nextPollAt: 0, lockCheckAt: 0, runEndCheckAt: 0, backoff: 0, busy: false, weatherAt: 0 };
 
@@ -606,6 +606,8 @@ function afterRead(before, status, reason) {
         logEvent('fillup', { from: before.fuel, to: status.fuel, odo: status.odometer });
         live.flags.lowFuel = false;
         live.flags.refuelDay = '';
+        live.flags.refuelSaid = null;
+        inboxClear('lapis:refuel');
     }
 
     // unlocked and parked: look again after lockRemindMin (waking the car once), then say so
@@ -615,7 +617,7 @@ function afterRead(before, status, reason) {
                 live.flags.unlockedFor = live.parkedSince;
                 const mins = Math.max(1, Math.round((now - live.parkedSince) / MIN));
                 const where = placeName(live.location, s);
-                notice('unlocked', `${carName()} is unlocked`, `Parked${where ? ` at ${where}` : ''} for ${mins} minute${mins === 1 ? '' : 's'} with the doors unlocked. Lock it now?`, ['lock']);
+                notice('unlocked', `${carName()} is unlocked`, `Parked${where ? ` at ${where}` : ''} for ${mins} minute${mins === 1 ? '' : 's'} with the doors unlocked. Lock it now?`, ['lock'], { stamp: `parked-${live.parkedSince}` });
             }
             sched.lockCheckAt = 0;
         } else if (!sched.lockCheckAt && live.flags.unlockedFor !== live.parkedSince) {
@@ -623,7 +625,11 @@ function afterRead(before, status, reason) {
         }
     } else {
         sched.lockCheckAt = 0;
-        if (status.locked) live.flags.unlockedFor = 0;
+        if (status.locked && live.flags.unlockedFor) {
+            // locked (or driven off): the reminder is done with, here and on the phones (#1061)
+            live.flags.unlockedFor = 0;
+            inboxClear('lapis:unlocked');
+        }
     }
 
     // the alerts this read raises, said together in one notification (alertsNotice)
@@ -657,7 +663,23 @@ function alertsQuiet(status = live.status) {
 
 function fuelAlert(status) {
     const range = Number.isFinite(status.range) ? `, about ${Math.round(status.range)} miles` : '';
-    return { key: 'fuel', stamp: 'low', title: 'Fuel is low', text: `${carName()} has ${fmtPct(status.fuel)} of a tank${range}.`, short: `Fuel ${fmtPct(status.fuel)}${range}` };
+    const a = { key: 'fuel', stamp: 'low', title: 'Fuel is low', text: `${carName()} has ${fmtPct(status.fuel)} of a tank${range}.`, short: `Fuel ${fmtPct(status.fuel)}${range}` };
+    // today's refuel reminder said with it (#1061): one notification says the fuel and when to get gas, not two
+    const r = refuelAdvice();
+    if (r) Object.assign(a, { stamp: `low+${r.stamp}`, title: r.title, text: r.text, short: `${a.short}: ${r.title.charAt(0).toLowerCase()}${r.title.slice(1)}`, refuel: r.stamp });
+    return a;
+}
+
+/** The refuel reminder said today (dailyNotices), while it is still today's: its stamp, title and words. */
+function refuelAdvice() {
+    const r = live.flags.refuelSaid;
+    if (!r || !r.day || r.stamp !== live.flags.refuelDay) return null;
+    try { return usageModel(getSettings()).today === r.day ? r : null; } catch (_e) { return null; }
+}
+
+/** The low-fuel alert holds (said once per tank, still low, switched on): the combined alert names the fuel. */
+function fuelHeld(s, status = live.status) {
+    return !!(live.flags.lowFuel && s.notify.lowFuel && status && (status.fuelLow === true || (Number.isFinite(status.fuel) && status.fuel <= s.lowFuelPct)));
 }
 
 /**
@@ -666,17 +688,22 @@ function fuelAlert(status) {
  * parked once, not in every line; the advice stays in Lapis). One alert keeps its own title and words. Its inbox id is
  * stable (lapis:health:alerts): a later one replaces it on the phones instead of piling up.
  */
-function alertsNotice(fresh, s, status = live.status) {
-    if (!fresh.length) return null;
+function alertsNotice(fresh, s, status = live.status, { refuel = false } = {}) {
+    if (!fresh.length && !refuel) return null;
     const have = new Set(fresh.map((a) => a.key));
     const still = healthAlerts(s).filter((a) => !have.has(a.key) && healthItemOn(s, a.key) && live.flags.health[a.key]);
-    if (!have.has('fuel') && live.flags.lowFuel && s.notify.lowFuel && status && (status.fuelLow === true || (Number.isFinite(status.fuel) && status.fuel <= s.lowFuelPct))) still.push(fuelAlert(status));
+    if (!have.has('fuel') && fuelHeld(s, status)) still.push(fuelAlert(status));
     const all = fresh.concat(still);
+    if (!all.length) return null;
     const stamp = all.map((a) => `${a.key}=${a.stamp}`).join(',');
-    if (all.length === 1) return notice('health', all[0].title, all[0].text, ['view'], { key: 'alerts', stamp });
+    const fuel = all.find((a) => a.key === 'fuel' && a.refuel);
+    // the refuel reminder is in this one: its own notice goes (the same words twice is alert fatigue, #1061)
+    if (fuel) inboxClear('lapis:refuel');
+    const extra = { key: 'alerts', stamp, alert: true, refuel: fuel ? fuel.refuel : undefined };
+    if (all.length === 1) return notice('health', all[0].title, all[0].text, ['view'], extra);
     const where = status && status.engine === false ? placeName(live.location, s) : '';
     const lines = [...new Set(all.map((a) => a.short || a.title))];
-    return notice('health', `${carName()} needs attention`, `${where ? `Parked at ${where}.\n` : ''}${lines.join('\n')}`, ['view'], { key: 'alerts', stamp, count: all.length });
+    return notice('health', `${carName()} needs attention`, `${where ? `Parked at ${where}.\n` : ''}${lines.join('\n')}`, ['view'], Object.assign(extra, { count: all.length }));
 }
 
 // ------------------------------------------------------------------------------------------ vehicle health
@@ -878,7 +905,11 @@ function dailyNotices() {
         const say = (stamp, title, text) => {
             if (live.flags.refuelDay === stamp) return;
             live.flags.refuelDay = stamp;
-            notice('refuel', title, text, ['view']);
+            live.flags.refuelSaid = { stamp, title, text, day: u.today };
+            // the low-fuel alert is out: the reminder goes into it (one notification for the fuel, #1061 / #1008);
+            // otherwise its own, one per car and period (lapis:refuel, stamp = day:part)
+            if (fuelHeld(s)) alertsNotice([], s, live.status, { refuel: true });
+            else notice('refuel', title, text, ['view'], { stamp, refuel: stamp, alert: true });
         };
         if (stop.day === u.today) {
             if (stop.part === 'before-work' && mins >= hhmm(s.leaveHome, 7 * 60) - 60) say(`${u.today}:am`, 'Get gas before work', `${fuel} The drive to work would take it under the ${s.reservePct}% reserve.`);
@@ -896,9 +927,9 @@ function dailyNotices() {
             if (!stamp || live.flags.service[m.id] === stamp) return;
             live.flags.service[m.id] = stamp;
             const left = m.milesLeft !== null ? (m.milesLeft <= 0 ? `${Math.abs(m.milesLeft).toLocaleString('en-US')} miles over` : `in ${m.milesLeft.toLocaleString('en-US')} miles`) : m.daysLeft <= 0 ? 'now' : `in ${m.daysLeft} days`;
-            say.push({ due: !!m.due, line: `${m.label}: ${left}` });
+            say.push({ due: !!m.due, line: `${m.label}: ${left}`, stamp: `${m.id}=${stamp}` });
         });
-        if (say.length) notice('service', say.some((x) => x.due) ? 'Maintenance is due' : 'Maintenance is coming up', say.length === 1 ? `${say[0].line}.` : say.map((x) => x.line).join('\n'), ['view'], { key: 'maintenance' });
+        if (say.length) notice('service', say.some((x) => x.due) ? 'Maintenance is due' : 'Maintenance is coming up', say.length === 1 ? `${say[0].line}.` : say.map((x) => x.line).join('\n'), ['view'], { key: 'maintenance', stamp: say.map((x) => x.stamp).join(','), alert: true });
     }
 }
 
@@ -988,7 +1019,7 @@ async function followCommand(cmd, v) {
         }
     }
     pushState();
-    if (cmd.state === 'failed') notice('command', `${LABEL[cmd.kind]} did not work`, `${carName()} did not carry out the command. Check the car, then try again.`, ['view']);
+    if (cmd.state === 'failed') notice('command', `${LABEL[cmd.kind]} did not work`, `${carName()} did not carry out the command. Check the car, then try again.`, ['view'], { stamp: `cmd-${cmd.id}`, alert: true });
     if (cmd.state !== 'failed') {
         await sleep(cmd.state === 'success' ? 4000 : 15000);
         await read({ fresh: true, reason: 'command' }).catch((e) => console.warn(`[lapis] read after ${cmd.kind}: ${e.message}`));
@@ -1044,7 +1075,7 @@ function runWarnings(cmd, s) {
     if (!due.length) return;
     said.push(...due);
     const m = Math.min(...due);
-    notice('run-left', `${m} minute${m === 1 ? '' : 's'} left`, `${carName()}'s remote start ends at ${clockAt(cmd.runsUntil, s)}. Stop it now, or start the car with the key to keep driving.`, ['stop'], { minutes: m, until: cmd.runsUntil });
+    notice('run-left', `${m} minute${m === 1 ? '' : 's'} left`, `${carName()}'s remote start ends at ${clockAt(cmd.runsUntil, s)}. Stop it now, or start the car with the key to keep driving.`, ['stop'], { minutes: m, until: cmd.runsUntil, stamp: `${cmd.runsUntil}:${m}` });
 }
 let sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -1235,6 +1266,7 @@ async function tick() {
 
 function startScheduler() {
     if (sched.timer) return;
+    dropRepeatNotices();
     sched.nextPollAt = nowFn() + 20 * 1000;
     sched.timer = setInterval(() => {
         tick().catch((e) => console.warn(`[lapis] tick: ${e.message}`));
@@ -1330,21 +1362,78 @@ function pushState() {
 
 let noticeSeq = 0;
 
+/**
+ * A notice: the pages' live lapis_notice and the durable inbox (#845). Every kind has one stable inbox id per car and kind
+ * (lapis:<kind>[:<key>]; one car per account), so saying it again replaces it instead of adding a copy, and a stamp naming
+ * the condition and period it is about (the refuel day and side of work, the parking, the alerts and their steps, the
+ * command). The stamp is kept with the inbox notice, so the same thing is never said twice, even after a restart lost
+ * what this process remembered, or once she has dismissed it (Yukimi, Nov 22 2026, #1061: "Get gas today" three times,
+ * once per server start). The flags that decided it are on disk before it goes out (saveLatest).
+ */
 function notice(kind, title, text, actions, extra) {
     const n = Object.assign({ id: `${nowFn().toString(36)}-${++noticeSeq}`, kind, title, text, actions: actions || [] }, extra || {});
+    const inboxId = extra && extra.key ? `lapis:${kind}:${extra.key}` : `lapis:${kind}`;
+    const stamp = extra && extra.stamp ? String(extra.stamp) : '';
+    if (stamp) {
+        const cur = inboxGet(inboxId);
+        if (cur && cur.data && cur.data.stamp === stamp) {
+            saveLatest();
+            return null;
+        }
+    }
+    saveLatest();
     logEvent('notice', { kind, title, text });
     broadcast({ type: 'lapis_notice', data: n });
-    // the durable inbox (#845): shown on resume and posted by the native app when the page is not running.
-    // a run countdown is only useful until it ends (its 'until'); stable ids so a later step supersedes one.
+    // shown on resume and posted by the native app when the page is not running; a run countdown is only useful until it
+    // ends (its 'until'). A new stamp under the same id is news (alert: the phones sound again); the same one never comes here.
     try {
-        const inboxId = extra && extra.key ? `lapis:${kind}:${extra.key}` : kind === 'run-left' ? 'lapis:run-left' : `lapis:${n.id}`;
         require('./notificationInbox').bind(gr).publish({
             app: 'lapis', id: inboxId, cls: kind === 'unlocked' ? 'lapis-unlocked' : kind === 'health' ? 'lapis-issue' : kind === 'run-left' ? 'lapis-run-left' : 'notification',
-            title, text, actions: n.actions, data: { app: 'lapis', kind, open: kind === 'service' ? 'service' : kind === 'refuel' || kind === 'low-fuel' ? 'history' : kind === 'run-left' ? 'start' : kind === 'health' ? 'status' : null },
+            title, text, actions: n.actions, alert: extra && extra.alert === true ? true : undefined,
+            data: { app: 'lapis', kind, stamp: stamp || undefined, refuel: (extra && extra.refuel) || undefined, open: kind === 'service' ? 'service' : kind === 'refuel' || kind === 'low-fuel' ? 'history' : kind === 'run-left' ? 'start' : kind === 'health' ? 'status' : null },
             expiresAt: kind === 'run-left' && Number.isFinite(n.until) ? n.until : undefined,
         });
     } catch (e) { console.warn(`[lapis] inbox publish: ${e.message}`); }
     return n;
+}
+
+/** The inbox's copy of a Lapis notice (any state), or null. */
+function inboxGet(id) {
+    try { return require('./notificationInbox').bind(gr).get('admin', id); } catch (_e) { return null; }
+}
+
+/** A Lapis notice is done with: cleared in the inbox and on the phones (no-op when it is not there or already cleared). */
+function inboxClear(id) {
+    try {
+        const cur = inboxGet(id);
+        if (cur && cur.state !== 'cleared' && cur.state !== 'acted') require('./notificationInbox').bind(gr).clear('admin', id, 'server');
+    } catch (_e) { /* best effort */ }
+}
+
+/**
+ * Once at start (#1061): the notices from before stable ids (lapis:<time>-<n>, one per publish) said the same thing again
+ * after each server start. Of each title the newest stays; the extra copies leave the inbox and the phones. A refuel
+ * reminder from an earlier day (its stamp day:part; the evening's lasts into the next morning) is old news and goes too.
+ */
+function dropRepeatNotices() {
+    try {
+        const inbox = require('./notificationInbox').bind(gr);
+        const today = usage.dayKey(nowFn(), getSettings().timeZone);
+        const stale = (r) => {
+            const m = /^(\d{4}-\d\d-\d\d):([a-z]+)$/.exec(String(r || ''));
+            return !!m && (m[2] === 'eve' ? usage.addDays(m[1], 1) < today : m[1] < today);
+        };
+        const keep = new Set();
+        inbox.list('admin')
+            .filter((x) => x.app === 'lapis' && x.state !== 'cleared' && x.state !== 'acted')
+            .forEach((x) => {
+                if (stale(x.data && x.data.refuel)) { inbox.clear('admin', x.id, 'server'); return; }
+                if (!/^lapis:[a-z0-9]+-\d+$/.test(String(x.id || ''))) return;
+                // newest first: the first of a title stays
+                if (keep.has(x.title)) inbox.clear('admin', x.id, 'server');
+                else keep.add(x.title);
+            });
+    } catch (e) { console.warn(`[lapis] old notices: ${e.message}`); }
 }
 
 module.exports = {
@@ -1369,6 +1458,7 @@ module.exports = {
         sched,
         tick,
         dailyNotices,
+        dropRepeatNotices,
         afterRead,
         weatherAt,
         usageModel,

@@ -1538,6 +1538,8 @@ function tick() {
     const now = localNow(s);
     dueNow(s, now, sched.fired).forEach((d) => {
         sched.fired.add(d.key);
+        // a restart inside the due minute: the day's report is in the inbox already, not said twice (#1061)
+        try { if (require('./notificationInbox').get('admin', `traffic:${d.kind}:${d.direction}:${now.date}`)) return; } catch (_e) { /* no inbox: run */ }
         runScheduled(d.direction, d.kind).catch((e) => console.warn(`[traffic] scheduled check failed: ${e.message}`));
     });
     sched.go.forEach((at, direction) => {

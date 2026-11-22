@@ -17,6 +17,9 @@ const fs = require('fs');
 
 // the alert monitor's memory of broadcast alerts: a scratch file, never the live one
 process.env.WEATHER_ALERTS_SEEN_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wx-seen-')), 'seen.json');
+// never the live notification inbox (.cache/notifications.db, #1061)
+process.env.NOTIFICATION_INBOX_DB = ':memory:';
+process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 const ws = require('../modules/weatherService');
 const T = ws._test;
 

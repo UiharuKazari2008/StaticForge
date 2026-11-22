@@ -1416,6 +1416,16 @@ function rainWord(mmh) {
     return mmh >= 4 ? 'Heavy rain' : mmh >= 1 ? 'Rain' : 'Light rain';
 }
 
+/** The place's rain alarm notice is still in the inbox, not expired (any state: dismissed is still said). */
+function rainAlarmLive(id) {
+    try {
+        const n = require('./notificationInbox').get('admin', `rain:${id}`);
+        return !!(n && n.expiresAt && n.expiresAt > Date.now());
+    } catch (_e) {
+        return false;
+    }
+}
+
 /** One look at a monitored place: its alerts (new ones broadcast once) and its rain alarm. */
 async function pollPlace(id, p, changes) {
     let forecast;
@@ -1441,7 +1451,8 @@ async function pollPlace(id, p, changes) {
     if (alerts.map((a) => a.id).join('|') !== before) changes.alerts = true;
     // rain alarm: once per spell, when rain is due within the lead time and it is dry now
     const r = rainOutlook(forecast);
-    const st = monitor.rain[id] || { alarmed: false, dryFor: 0, outlook: null };
+    // after a restart: a rain alarm this spell already raised (its inbox notice lives until the rain is over) is not raised again (#1061)
+    const st = monitor.rain[id] || { alarmed: rainAlarmLive(id), dryFor: 0, outlook: null };
     if (r) {
         if (r.wet || r.startsInMin != null) st.dryFor = 0;
         else st.dryFor += ALERT_POLL_MS / MIN;

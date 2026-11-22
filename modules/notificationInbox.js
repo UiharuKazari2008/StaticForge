@@ -256,6 +256,12 @@ function count(user) {
     }
 }
 
+/** One notice as stored (any state, expired too until pruned), or null: a producer's own check of what it already said. */
+function get(user, id) {
+    const r = noticeRow(qu(user), String(id || ''));
+    return r ? rowOut(r) : null;
+}
+
 /** Move a notice on: 'seen' (shown somewhere), 'acted' (a button used) or 'cleared' (dismissed/swiped). */
 function ack(user, id, state, device) {
     const u = qu(user);
@@ -568,6 +574,7 @@ function broadcast(user, message) {
 module.exports = {
     bind,
     publish,
+    get,
     list,
     count,
     ack,

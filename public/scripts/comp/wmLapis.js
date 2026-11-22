@@ -1373,6 +1373,12 @@
 
     // ---------------------------------------------------------------- notices (the server raises them)
 
+    /** A live notice's holder kind (status-order.js holderKind), as the inbox copy of it has (lapis:<kind>). */
+    function holderKindOf(n) {
+        const tbl = window.CafeTasks && window.CafeTasks.lib && window.CafeTasks.lib.statusOrder;
+        return tbl && typeof tbl.holderKind === 'function' ? tbl.holderKind({ id: `lapis:${n.kind}`, data: { app: 'lapis', kind: n.kind } }) : null;
+    }
+
     function onNotice(pk) {
         const n = (pk && (pk.data || pk)) || {};
         if (!n.title || !canUse()) return;
@@ -1385,6 +1391,7 @@
                     title: n.title,
                     html: esc(n.text || ''),
                     icon: 'status-car-alert',
+                    holder: holderKindOf(n),
                     event: 'lapis-run-left',
                     softKeys: () => ({ left: isAdmin() ? { label: 'Stop', action: () => { note.close(); runNote = null; doStop(); } } : { label: 'View', action: () => { note.close(); runNote = null; open('start'); } }, right: { label: 'Dismiss', action: () => { note.close(); runNote = null; } } })
                 });
@@ -1410,6 +1417,8 @@
                 // several alerts in one notification: a line each (lapisService alertsNotice)
                 html: esc(n.text || '').replace(/\n/g, '<br>'),
                 icon: 'status-car-alert',
+                // the holder's picture for the notice's kind (#1056 / #1061): fuel, alerts, unlocked..., not the app's icon
+                holder: holderKindOf(n),
                 // left unlocked and an issue found sound in classes of their own (#848)
                 event: n.kind === 'unlocked' ? 'lapis-unlocked' : n.kind === 'health' ? 'lapis-issue' : 'notification',
                 softKeys: () => ({ left: wantsLock ? { label: 'Lock', action: lock } : { label: 'View', action: view }, right: { label: 'Dismiss', action: () => { if (note) note.close(); } } })

@@ -142,6 +142,14 @@ const byId = (id, user = 'admin') => inbox.list(user, { includeCleared: true }).
     assert.strictEqual(n.title, 'Rain at Work in 20 min');
     assert.strictEqual(n.text, 'Rain from about 20 minutes from now, stopping after about 30 minutes.');
     assert.strictEqual(n.cls, 'rain-alarm');
+    // dismissed, it is still the spell's alarm: inbox.get keeps it (any state) until it expires, so the weather monitor
+    // that restarted mid-spell does not raise it again (weatherService rainAlarmLive, #1061)
+    src.onRainAlarm({ place: { id: 'home', label: 'Home' }, startsInMin: 10, endsInMin: 40, kind: 'Rain' });
+    inbox.clear('admin', 'rain:home');
+    const kept = inbox.get('admin', 'rain:home');
+    assert.strictEqual(kept.state, 'cleared');
+    assert.ok(kept.expiresAt > now, 'still the spell');
+    assert.strictEqual(inbox.get('admin', 'rain:nowhere'), null);
 
     // ---- expiry: an expired notice leaves the phones too
     clearedOnPhones.length = 0;

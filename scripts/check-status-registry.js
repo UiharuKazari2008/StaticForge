@@ -76,6 +76,9 @@ const fixtures = [
     [{ id: 'lapis:x-2', data: { app: 'lapis', kind: 'command' } }, 'lapis-failed'],
     [{ id: 'lapis:run-left', data: { app: 'lapis', kind: 'run-left' } }, 'lapis-run-left'],
     [{ id: 'x', cls: 'notification' }, 'notify'],
+    // the page's own notices by their glyph (#1061): battery full / low
+    [{ id: 'toast-1', icon: 'status-battery-full' }, 'battery-full'],
+    [{ id: 'toast-2', icon: 'status-battery-low' }, 'battery-low'],
 ];
 if (typeof tbl.holderKind !== 'function') missing.push('holderKind: missing (#1056)');
 else {

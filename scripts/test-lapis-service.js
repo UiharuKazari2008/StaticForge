@@ -13,6 +13,10 @@ const path = require('path');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lapis-test-'));
 process.env.LAPIS_DB = ':memory:';
+// the notification inbox in memory too: never the live .cache/notifications.db (a run here once wrote test notices for "Kuro"
+// into the household's inbox, Nov 21 + 22 2026, #1061), and no prune timer or phone hellos
+process.env.NOTIFICATION_INBOX_DB = ':memory:';
+process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 process.env.LAPIS_LATEST_FILE = path.join(dir, 'latest.json');
 process.env.LAPIS_PICTURE_DIR = path.join(dir, 'pic');
 process.env.TRAFFIC_USAGE_FILE = path.join(dir, 'tu.json');
@@ -241,11 +245,50 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     assert.strictEqual(notices().filter((n) => n.kind === 'refuel').length, 0, 'not in the middle of the day before');
     now = Date.parse('2026-11-16T00:10:00Z'); // 7:10 PM Sunday in New York
     svc._test.dailyNotices();
-    const refuelNote = notices().filter((n) => n.kind === 'refuel');
+    // the low-fuel alert is out: the reminder goes into it, one notification for the fuel (#1061, #1008)
+    assert.strictEqual(notices().filter((n) => n.kind === 'refuel').length, 0, 'no second notice beside the fuel alert');
+    const refuelNote = fuelNotes().slice(1);
     assert.strictEqual(refuelNote.length, 1, 'the evening before a before-work stop');
     assert.strictEqual(refuelNote[0].title, 'Get gas tomorrow morning');
+    assert.match(refuelNote[0].text, /Kuro has 16%.*fill up tonight/);
     svc._test.dailyNotices();
-    assert.strictEqual(notices().filter((n) => n.kind === 'refuel').length, 1);
+    assert.strictEqual(fuelNotes().length, 2, 'said once');
+    const inbox = require('../modules/notificationInbox');
+    const lapisInbox = () => inbox.list('admin', { includeCleared: true }).filter((x) => x.app === 'lapis');
+    const alertsRow = () => lapisInbox().find((x) => x.id === 'lapis:health:alerts');
+    assert.strictEqual(alertsRow().title, 'Get gas tomorrow morning', 'one inbox notice: the alerts one');
+    assert.strictEqual(alertsRow().data.refuel, '2026-11-15:eve');
+    // a server restart forgets what this process said (before #1061 the flags were saved only by the next read): the
+    // inbox's stamp still knows, so nothing is said again, even after she dismissed it
+    inbox.clear('admin', 'lapis:health:alerts');
+    Object.assign(svc._test.live.flags, { refuelDay: '', refuelSaid: null });
+    svc._test.dailyNotices();
+    assert.strictEqual(fuelNotes().length, 2, 'not again after a restart');
+    assert.strictEqual(alertsRow().state, 'cleared', 'stays dismissed');
+    // and the flags reached the disk when it was said, not at the next read
+    const onDisk = JSON.parse(fs.readFileSync(process.env.LAPIS_LATEST_FILE, 'utf8')).flags;
+    assert.strictEqual(onDisk.refuelDay, '2026-11-15:eve', 'refuel flag saved with the notice');
+    assert.ok(lapisInbox().every((x) => /^lapis:[a-z-]+(:[a-z]+)?$/.test(x.id)), `stable ids only: ${lapisInbox().map((x) => x.id)}`);
+    // low-fuel alerts switched off: the reminder is its own notice, one per car and period (lapis:refuel); the morning's
+    // replaces the evening's, and a restart in between says neither again
+    await svc.saveSettings({ notify: { lowFuel: false } });
+    const before = notices().length;
+    Object.assign(svc._test.live.flags, { refuelDay: '', refuelSaid: null });
+    svc._test.dailyNotices();
+    assert.strictEqual(notices().length, before + 1, 'the evening reminder on its own');
+    assert.strictEqual(notices()[notices().length - 1].kind, 'refuel');
+    for (let i = 0; i < 3; i++) {
+        Object.assign(svc._test.live.flags, { refuelDay: '', refuelSaid: null });
+        svc._test.dailyNotices();
+    }
+    assert.strictEqual(notices().length, before + 1, 'three restarts: still one');
+    now = Date.parse('2026-11-16T11:05:00Z'); // 6:05 AM Monday: before work
+    svc._test.dailyNotices();
+    assert.strictEqual(notices()[notices().length - 1].title, 'Get gas before work');
+    const refuelRows = lapisInbox().filter((x) => x.id.startsWith('lapis:refuel'));
+    assert.strictEqual(refuelRows.length, 1, 'one refuel notice in the inbox');
+    assert.strictEqual(refuelRows[0].data.stamp, '2026-11-16:am');
+    await svc.saveSettings({ notify: { lowFuel: true } });
 
     // when to refuel: a work day is two drives, so the answer is a day and a side of work
     const wk = { miles: [5, 100, 100, 100, 100, 100, 5], basis: Array(7).fill('history') };
