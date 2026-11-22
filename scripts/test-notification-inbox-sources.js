@@ -111,19 +111,20 @@ const byId = (id, user = 'admin') => inbox.list(user, { includeCleared: true }).
     src.onDirectorStatus({ running: true, xi: null, sessionId: 'x2' });
     assert.strictEqual(byId('director:x2:turn').state, 'cleared', 'a new turn clears the last finished notice');
 
-    // ---- prints: the FIFO's phone jobs only; failures too; once per job
+    // ---- prints: the FIFO's phone jobs only; failures only (#1040); once per job
     const listeners = [];
+    inbox.publish({ user: 'admin', app: 'studio', id: 'print:old', cls: 'print', title: 'DreamStudio', text: 'Your print is ready.' });
     src.bindPrintQueue({ onChange: (fn) => listeners.push(fn) });
+    assert.strictEqual(byId('print:old').state, 'cleared', 'a ready notice from before #1040 is cleared on bind');
     const fire = (job) => listeners.forEach((fn) => fn(job));
     fire({ id: 'j1', owner: 'Studio', status: 'completed', result: { success: true, filename: 'a.png' } });
     assert.ok(!byId('print:j1'), 'a desktop print: no phone notice');
     fire({ id: 'j2', owner: 'Melaton Mobile', status: 'running' });
     assert.ok(!byId('print:j2'), 'running: nothing');
     fire({ id: 'j2', owner: 'Melaton Mobile', userType: 'admin', status: 'completed', result: { success: true, flat: { filenames: ['a.png', 'b.png'] } } });
-    n = byId('print:j2');
-    assert.deepStrictEqual([n.title, n.text, n.cls], ['DreamStudio', '2 prints are ready.', 'print']);
+    assert.ok(!byId('print:j2'), 'a finished print: no notice (#1040)');
     fire({ id: 'j3', owner: 'Melaton Mobile', status: 'completed', result: { success: true, filename: 'c.png' } });
-    assert.strictEqual(byId('print:j3').text, 'Your print is ready.');
+    assert.ok(!byId('print:j3'), 'a finished print: no notice (#1040)');
     fire({ id: 'j4', owner: 'Melaton Mobile', status: 'failed', error: new Error('NovelAI is busy') });
     n = byId('print:j4');
     assert.deepStrictEqual([n.text, n.cls], ['NovelAI is busy', 'print-error']);
@@ -151,11 +152,11 @@ const byId = (id, user = 'admin') => inbox.list(user, { includeCleared: true }).
 
     // ---- page acks: dismissed / acted -> phones cleared once; seen does not clear
     clearedOnPhones.length = 0;
-    inbox.ack('admin', 'print:j3', 'seen');
+    inbox.ack('admin', 'print:j4', 'seen');
     assert.strictEqual(clearedOnPhones.length, 0, 'seen leaves the Android copy');
-    inbox.ack('admin', 'print:j3', 'acted');
-    inbox.ack('admin', 'print:j3', 'cleared');
-    assert.deepStrictEqual(clearedOnPhones.map((x) => x.id), ['print:j3'], 'acted then cleared: one inbox.cleared');
+    inbox.ack('admin', 'print:j4', 'acted');
+    inbox.ack('admin', 'print:j4', 'cleared');
+    assert.deepStrictEqual(clearedOnPhones.map((x) => x.id), ['print:j4'], 'acted then cleared: one inbox.cleared');
     assert.strictEqual(inbox.clearWhere('admin', 'mail:gmail:'), 0, 'nothing left to clear for the account');
 
     // ---- activeSync.sendInboxCleared: every partnered phone's service link, { id } only

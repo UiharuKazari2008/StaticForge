@@ -2477,10 +2477,11 @@
             if (paneShown($('.wds-print'))) drawPrint();
             if (paneShown($('.wds-strip'))) drawStrip();
         });
-        M.on('end', (r) => {
+        // a finished print raises no notification (Yukimi, Nov 22 2026, #1040): the print is there when
+        // DreamStudio opens; a failed one still notifies (the server's print-error notice)
+        M.on('end', () => {
             if (seen()) { paint(); return; }
             stale = true;
-            if (r && r.files.length && !r.stopped) sh.notify({ title: 'DreamStudio', text: r.files.length > 1 ? `${r.files.length} prints are ready.` : 'Your print is ready.' });
         });
     }
 

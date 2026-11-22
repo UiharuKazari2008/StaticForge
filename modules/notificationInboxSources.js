@@ -17,7 +17,8 @@
  *   tm-signin:<account>               Text messages stopped (RCS pairing ended / signed out)
  *   chat:<chatId>                     Dreamscape Messenger: a persona's reply to the phone
  *   director:<sessionId>:turn         Director: the turn is finished
- *   print:<jobId>                     DreamStudio: a print the phone asked for is ready / failed
+ *   print:<jobId>                     DreamStudio: a print the phone asked for failed (a finished print
+ *                                     raises nothing: Yukimi, Nov 22 2026, #1040)
  *   wx:<placeId>:<alertId>            a weather alert for Home / Work
  *   rain:<placeId>                    the rain alarm for Home / Work
  *
@@ -433,7 +434,12 @@ function onDirectorStatus(status) {
 const PHONE_OWNER = 'Melaton Mobile';
 const printsTold = new Set();
 
-/** A FIFO job changed (generationJobQueue.onChange): a phone's print that finished notifies. */
+/**
+ * A FIFO job changed (generationJobQueue.onChange): a phone's print that failed notifies. A print that
+ * finished is no notice (Yukimi, Nov 22 2026, #1040: no "Your print is ready" on the phone - no inbox
+ * entry, so no Android notification, status icon or sound either); the prints icon still shows while
+ * the phone's prints are queued or running (status-bar task).
+ */
 function onPrintJob(job) {
     if (!job || job.owner !== PHONE_OWNER) return null;
     if (job.status !== 'completed' && job.status !== 'failed') return null;
@@ -459,19 +465,16 @@ function onPrintJob(job) {
             ttlMs: DAY,
         });
     }
-    if (result.cancelled || flat.cancelled || job.cancelRequested) return null;
-    const files = [].concat(flat.filenames || result.filenames || flat.filename || result.filename || []).filter(Boolean);
-    const n = files.length || 1;
-    return publish({
-        user,
-        app: 'studio',
-        id: `print:${id}`,
-        cls: 'print',
-        title: 'DreamStudio',
-        text: n > 1 ? `${n} prints are ready.` : 'Your print is ready.',
-        data: { app: 'studio', kind: 'print', jobId: id, files: files.slice(0, 8) },
-        ttlMs: DAY,
-    });
+    return null;
+}
+
+/** "Your print is ready" notices published before #1040 leave the inbox and the phones (once per start). */
+function dropReadyNotices() {
+    for (const user of ['admin', 'dev_admin']) {
+        try {
+            for (const n of inbox.list(user)) if (n && n.cls === 'print' && /^print:/.test(String(n.id || ''))) clear(user, n.id);
+        } catch (_e) { /* the inbox not open yet: they expire within a day anyway */ }
+    }
 }
 
 let queueBound = null;
@@ -479,6 +482,7 @@ let queueBound = null;
 function bindPrintQueue(queue) {
     if (!queue || typeof queue.onChange !== 'function' || queueBound === queue) return;
     queueBound = queue;
+    dropReadyNotices();
     queue.onChange((job) => { try { onPrintJob(job); } catch (_e) { /* never break the FIFO */ } });
 }
 
