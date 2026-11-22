@@ -1191,6 +1191,8 @@
             // perf: allow one call, two frames after the tap (once its answer is painted), not repeated: tells the app the bar tap is done
             const doneSoon = () => requestAnimationFrame(() => requestAnimationFrame(() => { try { if (window.AndroidBars && window.AndroidBars.tapDone) window.AndroidBars.tapDone(); } catch (_) { /* older app */ } }));
             if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); doneSoon(); return; }
+            // a program by its id (the soft key Menu's Task Manager or a Melaton program, drawn by the app with this page asleep)
+            if (role.startsWith('open:')) { const id = role.slice(5); if (id && apps.has(id)) open(id, { fromStart: true }); doneSoon(); return; }
             if (role === 'shown') { doneSoon(); return; }
             // the bars' recents (the home strip or soft key bar swiped up and held, a Recent soft key) with Android's
             // Recents gone with One UI Home: the strip of running programs, the phone's Android ones with them (#1013)

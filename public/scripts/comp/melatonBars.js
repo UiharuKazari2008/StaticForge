@@ -29,33 +29,47 @@
         trackpad: 'Trackpad', todesktop: 'Open in Desktop', split: 'Split View', windowed: 'Windowed', flashlight: 'Flashlight', screenshot: 'Screenshot' };
     // only while the DeX desktop is up (AndroidBars state desktop)
     const DESKTOP_ONLY = new Set(['trackpad', 'todesktop']);
-    function softMenuRows() {
-        let st = null;
-        try { st = JSON.parse(window.AndroidBars.getState()); } catch (_) { st = null; }
+    function barsState() {
+        try { return JSON.parse(window.AndroidBars.getState()); } catch (_) { return null; }
+    }
+    /** The Soft Key Menu as the user set it (Settings > Menus > Soft Key Menu), or the first six rows. */
+    function softMenuList(st) {
         const cfg = st && st.config;
-        const list = cfg && Array.isArray(cfg.softMenu) ? cfg.softMenu : Object.keys(MENU_ITEMS).slice(0, 6).map((id) => ({ id, on: true }));
+        return cfg && Array.isArray(cfg.softMenu) ? cfg.softMenu : Object.keys(MENU_ITEMS).slice(0, 6).map((id) => ({ id, on: true }));
+    }
+    /**
+     * The menu's rows: { label, act: { id, app? } } or '-'. desktop: with the rows that only make sense while the DeX
+     * desktop is up. act is what the row does: the app's menuAction(id), Task Manager, or a program (app = its Start id).
+     */
+    function softMenuSpecs(st, desktop) {
         let programs = [];
         try { programs = window.wmShell.todaySoftKeys.programs(); } catch (_) { programs = []; }
         const rows = [];
-        for (const r of list) {
+        for (const r of softMenuList(st)) {
             if (!r || !r.on) continue;
             // a separator (never two in a row, never first)
             if (r.id === 'sep') { if (rows.length && rows[rows.length - 1] !== '-') rows.push('-'); continue; }
             // a program of her choice, Android's or Melaton's (Start's list: wmShell opens either)
             if (r.id === 'app') {
                 const p = programs.find((x) => x.id === r.app);
-                if (p || r.label) rows.push({ label: (p && p.label) || r.label, action: () => window.wmShell.open(r.app, { fromStart: true }) });
+                if (p || r.label) rows.push({ label: (p && p.label) || r.label, act: { id: 'app', app: String(r.app || '') } });
                 continue;
             }
-            if (!MENU_ITEMS[r.id] || (DESKTOP_ONLY.has(r.id) && !(st && st.desktop))) continue;
-            rows.push({
-                label: MENU_ITEMS[r.id],
-                // Task Manager is Melaton's own program (the page comes up); the others are the app's to do
-                action: r.id === 'taskmanager' ? () => window.wmShell.open('taskmgr') : () => { try { window.AndroidBars.menuAction(r.id); } catch (_) { /* older app */ } }
-            });
+            if (!MENU_ITEMS[r.id] || (DESKTOP_ONLY.has(r.id) && !desktop)) continue;
+            rows.push({ label: MENU_ITEMS[r.id], act: { id: r.id } });
         }
         while (rows.length && rows[rows.length - 1] === '-') rows.pop();
         return rows;
+    }
+    function softMenuRows() {
+        const st = barsState();
+        return softMenuSpecs(st, !!(st && st.desktop)).map((r) => (r === '-' ? r : {
+            label: r.label,
+            // Task Manager is Melaton's own program (the page comes up); a program opens through Start's list; the others are the app's to do
+            action: r.act.id === 'taskmanager' ? () => window.wmShell.open('taskmgr')
+                : r.act.id === 'app' ? () => window.wmShell.open(r.act.app, { fromStart: true })
+                    : () => { try { window.AndroidBars.menuAction(r.act.id); } catch (_) { /* older app */ } }
+        }));
     }
     let lastReq = 0;
     // the screen a kit is being made for ({ density, widthPx } from DSApp's renderKit ctx), while renderKit runs
@@ -349,7 +363,7 @@
             // the page asleep): its empty frame per body line count, its soft key band, and the boxes it writes into
             let nk = null;
             try { nk = notifyKit(dpr); } catch (err) { console.warn('[melatonBars] notify kit', err); }
-            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? Object.assign({ notifyFrame: nk.frames, notifySoft: nk.soft }, nk.menu ? { notifyMenu: nk.menu } : {}, nk.replyMenu ? { notifyReplyMenu: nk.replyMenu } : {}, nk.reply ? { notifyReply: nk.reply } : {}, nk.tray ? { notifyTray: nk.tray } : {}) : {}) });
+            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? Object.assign({ notifyFrame: nk.frames, notifySoft: nk.soft }, nk.menu ? { notifyMenu: nk.menu } : {}, nk.replyMenu ? { notifyReplyMenu: nk.replyMenu } : {}, nk.reply ? { notifyReply: nk.reply } : {}, nk.tray ? { notifyTray: nk.tray } : {}, nk.softMenu ? { softMenu: nk.softMenu } : {}, nk.softMenuDesk ? { softMenuDesk: nk.softMenuDesk } : {}) : {}) });
         } finally { kitTarget = null; }
     }
 
@@ -363,18 +377,27 @@
      * What the bars' look depends on (the WM version, the theme's art and colours, the scale, the width): the
      * app asks for a new kit when it changes (cursor rule melaton-bars-native-layouts: definitions synced).
      */
+    /** The Soft Key Menu's rows, short (in the kit's signature: Settings > Menus > Soft Key Menu changes the kit). */
+    function softMenuSig() {
+        if (!window.AndroidBars) return '';
+        const txt = JSON.stringify(softMenuList(barsState()));
+        let h = 0;
+        for (let i = 0; i < txt.length; i++) h = (h * 31 + txt.charCodeAt(i)) | 0;
+        return `sm${(h >>> 0).toString(36)}`;
+    }
+
     function kitSignature() {
         const root = document.documentElement;
         const cs = getComputedStyle(root);
         // (the first part: the lists' make - a new one makes every app ask for its kit again; m25: iconsRight measured
-        // without Today's kept corner place beside the staged X, Nov 20)
+        // without Today's kept corner place beside the staged X, Nov 20; m26: the soft key Menu's samples, Nov 22)
         // the icon unit, the bar's height and the camera extension too (Yukimi, Nov 17: "the icons are never
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m25', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m26', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
-            cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), Math.round(window.innerWidth)].join('|');
+            cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), softMenuSig(), Math.round(window.innerWidth)].join('|');
     }
 
     /**
@@ -543,17 +566,32 @@
             // the box's Menu (6.5.1's reminder: Dismiss | Menu, Yukimi Nov 18 "so that you have a reminder option"), laid
             // out over the right soft key with its fixed rows; each row's tap box is 'notemenu:<n>' for the app to act on
             if (typeof sh.menuSample === 'function') {
-                const menuOf = (rows) => {
+                const menuOf = (rows, prefix = 'notemenu') => {
                     const smp = sh.menuSample('right', rows.map((l) => (l === '-' ? '-' : { label: l, action() {} })));
                     try {
                         settle([smp.el]);
                         const items = layoutOf([smp.el], dpr).filter((o) => o.k !== 'hit');
-                        [...smp.el.querySelectorAll(':scope > .wm-popup-item')].forEach((b, i) => { const r = R(b.getBoundingClientRect()); items.push({ k: 'hit', x: r.x, y: r.y, w: r.w, h: r.h, act: `notemenu:${i}` }); });
+                        [...smp.el.querySelectorAll(':scope > .wm-popup-item')].forEach((b, i) => { const r = R(b.getBoundingClientRect()); items.push({ k: 'hit', x: r.x, y: r.y, w: r.w, h: r.h, act: `${prefix}:${i}` }); });
                         return { m: { items, box: R(smp.el.getBoundingClientRect()), rows: rows.filter((l) => l !== '-') } };
                     } finally { smp.close(); }
                 };
                 out.menu = menuOf(NOTE_MENU);
                 out.replyMenu = menuOf(NOTE_MENU_REPLY);
+                // the right soft key's Menu over programs (Settings > Menus > Soft Key Menu), drawn by the app with the page
+                // asleep (Nov 22: the page behind a program is frozen and never answered, so Menu did nothing): its rows'
+                // tap boxes 'softmenu:<n>' and what each does (acts, in order); one without the DeX-only rows, one with
+                if (window.AndroidBars) {
+                    const st = barsState();
+                    const softOf = (desktop) => {
+                        const specs = softMenuSpecs(st, desktop);
+                        if (!specs.some((r) => r !== '-')) return null;
+                        const k = menuOf(specs.map((r) => (r === '-' ? r : r.label)), 'softmenu');
+                        k.m.acts = specs.filter((r) => r !== '-').map((r) => r.act);
+                        return k;
+                    };
+                    out.softMenu = softOf(false);
+                    out.softMenuDesk = softOf(true);
+                }
             }
             // a text's Quick Reply (Yukimi, Nov 18: Reply on the left key opens a dialog to answer without the app; Cancel |
             // View, ok in the corner and Enter send): the message box wmChat's quickReply opens (wmShell messageBox with an
