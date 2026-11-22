@@ -115,7 +115,7 @@ Add labels on the Yozora PR before merging:
 | Label | Effect |
 |-------|--------|
 | `deploy:restart-server` | PM2 restart Dreamscape. Merge alone never restarts. |
-| `deploy:push-clients` | Recompile runtime assets + SW `service_worker_cache_update` |
+| `deploy:push-clients` | Force an SW cache refresh/broadcast (client asset changes also do this automatically) |
 | `deploy:restart-clients` | Loopback `POST /agent/broadcast` with `restart: true` |
 
 Labels are only found for PRs merged through Yozora (the merge commit must be the PR's `merge_commit_sha`). Direct pushes, GitHub-side merges and manual merges deploy with no restarts. Use `workflow_dispatch` with explicit flags for those.
