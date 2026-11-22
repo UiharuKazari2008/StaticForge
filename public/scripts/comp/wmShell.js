@@ -82,7 +82,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["status-nightshade", "set-nightshade", "set-location", "app-doubles", "app-doubles-lg", "app-bintoss", "app-bintoss-lg", "app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "app-lapis", "app-lapis-lg", "app-youtube", "app-youtube-lg", "app-xmradio", "app-xmradio-lg", "status-lapis", "status-carkey", "status-car-alert", "app-wallet", "app-wallet-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-battery-low", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-vpn-on", "wrls-vpn-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "volume-notify", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-tape", "status-tape-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["status-nightshade", "set-nightshade", "set-location", "app-doubles", "app-doubles-lg", "app-bintoss", "app-bintoss-lg", "app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "app-lapis", "app-lapis-lg", "app-youtube", "app-youtube-lg", "app-xmradio", "app-xmradio-lg", "status-lapis", "status-carkey", "status-car-alert", "app-wallet", "app-wallet-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "soft-tasks", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-battery-low", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-vpn-on", "wrls-vpn-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "volume-notify", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-tape", "status-tape-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => WM_SET.test(name) ? `${name}.png 1x, ${name}@2x.png 2x, ${name}@4x.png 4x` : String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -556,6 +556,24 @@
     const artImageSet = (name) => (WM65 && ART65.has(name)
         ? `image-set(url("/static_images/wm65/${name}.png") 1x, url("/static_images/wm65/${name}@2x.png") 2x, url("/static_images/wm65/${name}@4x.png") 4x)`
         : `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x${HD_ART.has(name) ? `, url("${ART}${name}@4x.png") 4x` : ''})`);
+    /**
+     * The notification holder's large colour picture (#1026, status-order.js holder) for a role, notice kind or glyph
+     * name, as an image-set, or '' when the table has none.
+     */
+    const holderArt = (name) => {
+        const tbl = statusTable();
+        const base = tbl && typeof tbl.holderArt === 'function' ? tbl.holderArt(name) : null;
+        return base ? `image-set(url("/static_images/${base}.png") 1x, url("/static_images/${base}@2x.png") 2x, url("/static_images/${base}@4x.png") 4x)` : '';
+    };
+    /** A notice's kind in the table (status-order.js noteKind): its holder picture. */
+    const noteHolderArt = (n) => {
+        if (isUpdateNote(n)) return holderArt('update');
+        const own = n && appNotes.get(n.id);
+        const tbl = statusTable();
+        if (own && own.icon && holderArt(own.icon)) return holderArt(own.icon);
+        const kind = tbl && tbl.noteKind ? tbl.noteKind(n) : 'notify';
+        return holderArt(kind !== 'notify' ? kind : (n && NOTE_KIND_ICON[n.type] ? n.type : 'notify')) || holderArt('notify');
+    };
 
     // ---------------------------------------------------------------- frame
 
@@ -623,6 +641,7 @@
             <footer class="wm-softkeys">
                 <button type="button" class="wm-softkey" data-side="left"></button>
                 <button type="button" class="wm-sip" aria-label="Input panel" aria-pressed="false">${imgTag('sip-keyboard')}</button>
+                <button type="button" class="wm-taskbtn" aria-label="Running programs" aria-pressed="false" hidden>${imgTag('soft-tasks')}</button>
                 <button type="button" class="wm-softkey" data-side="right"></button>
             </footer>
             <div class="wm-viewbar" role="toolbar" aria-label="Picture" hidden></div>
@@ -757,7 +776,10 @@
         });
         document.addEventListener('wmSipChange', (e) => {
             sipBtn.setAttribute('aria-pressed', e.detail && e.detail.height > 0 ? 'true' : 'false');
+            // the centre cell: the input panel button while the keyboard is up, the task button otherwise (#1013)
+            if (!(stage && stage.mask.keys)) syncCentreKey(current && apps.get(current));
         });
+        bindTaskButton();
         const scrim = shell.querySelector('.wm-notify-scrim');
         // the touch surface is on top, so nothing behind it gets the tap; it only keeps its presses from
         // the shell's own gestures (hold ring, swipes). No preventDefault: that would cancel the click
@@ -1097,6 +1119,12 @@
         const icon = shell.querySelector(`.wm-status-icon[data-role="${role}"]`);
         // the volume box opens with its icon aside too (never the notification box in its place)
         if (role === 'volume') { closeVolume(true); toggleVolume(icon && !icon.hidden && icon.getClientRects().length ? icon : null, true); return true; }
+        // an icon this page folded into "..." (shed, #1027): its own popup, as its item in the tray opens it - the app may
+        // show that icon on its bar or in its own tray, and the tray written down as that icon's popup was wrong
+        if (icon && !icon.hidden && icon.classList.contains('wm-shed') && role !== 'notify') {
+            if (!messageIconTap(role)) statusBubble(role, shell.querySelector('.wm-status-icon[data-role="notify"]:not([hidden])'));
+            return true;
+        }
         if (!icon || icon.hidden || !icon.getClientRects().length) { noteIconTap(); return true; }
         icon.click();
         return true;
@@ -1238,6 +1266,8 @@
         const boot = root.dataset.wmBoot;
         if (boot === 'oem' || boot === 'splash' || boot === 'install') return boot === 'install' ? bootTitleKind : null;
         if (modalUp()) return null;
+        // the task switcher's panel: ok puts it away
+        if (taskSwitch.open) return 'ok';
         if (viewerActive && !viewerClosing) return 'ok';
         if (!current || current === 'today') return null;
         const app = apps.get(current);
@@ -1259,6 +1289,7 @@
 
     /** The corner button: ok confirms the layer and goes back one screen, X ends the app (endApp). */
     function pressTitleAction(kind) {
+        if (taskSwitch.open) { closeTaskSwitcher(); return; }
         if (viewerActive) { closeViewer(); return; }
         const app = current && apps.get(current);
         if (kind === 'ok' && app) {
@@ -1323,7 +1354,15 @@
         // buttons answer it, the soft keys go blank (WM 6.1's MessageBox) and the app's keys under it
         // cannot be pressed through it
         lastModal = modalUp();
-        softKeys = lastModal ? { left: null, right: null }
+        // While wceload copies, Today's own refresh used to put Notification / Camera back on the bar.
+        // A stalled install then had no key that left the screen (#1022): this one always closes it,
+        // leaves the files waiting for the next check and returns to Today. The done page keeps its
+        // blank bar and corner ok.
+        softKeys = root.dataset.wmBoot === 'install'
+            ? (installDoneUp ? { left: null, right: null }
+                : { left: null, right: { label: 'Cancel', action: () => cancelInstall() } })
+            : lastModal ? { left: null, right: null }
+            : taskSwitch.open ? taskSwitcherSoftKeys()
             : noteShownNote() ? noteSoftKeys()
             : viewerActive ? viewerSoftKeys()
             : ((app && typeof app.softKeys === 'function' ? app.softKeys() : null) || { left: null, right: null });
@@ -1351,9 +1390,66 @@
         // 6.5.1 (#850) bars: a key that names a picture (key.icon) is a round button, the others text bubbles
         if (BARS651 && !(stage && stage.mask.keys)) bars651Keys(softKeys);
         // app.sip: true, or a function for the layer on screen (Windows Media: the playback screen and Properties have none)
-        if (!(stage && stage.mask.keys)) shell.querySelector('.wm-sip').hidden = !(app && (typeof app.sip === 'function' ? app.sip() : app.sip));
+        // (#1013) only while the keyboard is up; the task button has the centre otherwise
+        if (!(stage && stage.mask.keys)) syncCentreKey(app);
         // the corner follows the same layer as the soft keys
         refreshTitleAction();
+    }
+
+    /**
+     * The soft key bar's centre cell (Yozora #1013, Yukimi: "task button, SIP when typing"): the input panel button
+     * while the phone's keyboard is up (and the program takes text), else the task button (.wm-taskbtn: a "restore
+     * down" glyph; a tap opens the task switcher, a hold asks the Android app for its current program). None under a
+     * message box. Written only when it changes; the button is lit while the switcher is up.
+     */
+    function syncCentreKey(app) {
+        const sip = shell.querySelector('.wm-sip');
+        const btn = shell.querySelector('.wm-taskbtn');
+        // app.sip 'keep': a program whose own typing has no field to tap (Remote Desktop, Director's composer, a web
+        // page in Internet Explorer) keeps the input panel button there all the time, as before
+        const want = app && (typeof app.sip === 'function' ? app.sip() : app.sip);
+        const sipOff = !(want && (want === 'keep' || root.hasAttribute('data-wm-sip')));
+        if (sip.hidden !== sipOff) sip.hidden = sipOff;
+        if (!btn) return;
+        const btnOff = !sipOff || lastModal;
+        if (btn.hidden !== btnOff) btn.hidden = btnOff;
+        const on = taskSwitch.open ? 'true' : 'false';
+        if (btn.getAttribute('aria-pressed') !== on) btn.setAttribute('aria-pressed', on);
+    }
+
+    /** The task button: a tap opens (or puts away) the task switcher; a hold of TS_BTN_HOLD_MS goes to the Android app. */
+    function bindTaskButton() {
+        const btn = shell.querySelector('.wm-taskbtn');
+        if (!btn) return;
+        let timer = 0;
+        let held = false;
+        let at = null;
+        const stop = () => { clearTimeout(timer); timer = 0; at = null; };
+        // the button never takes the focus (a field keeps it)
+        btn.addEventListener('mousedown', (e) => e.preventDefault());
+        btn.addEventListener('pointerdown', (e) => {
+            held = false;
+            stop();
+            if (!e.isPrimary || e.button > 0) return;
+            at = { id: e.pointerId, x: e.clientX, y: e.clientY };
+            timer = setTimeout(() => {
+                timer = 0;
+                held = true;
+                try { if (window.AndroidBars && typeof window.AndroidBars.holdCurrent === 'function') window.AndroidBars.holdCurrent(); } catch (_) { /* older app */ }
+            }, TS_BTN_HOLD_MS);
+        });
+        btn.addEventListener('pointermove', (e) => {
+            if (at && e.pointerId === at.id && (Math.abs(e.clientX - at.x) > HOLD_SLOP || Math.abs(e.clientY - at.y) > HOLD_SLOP)) stop();
+        });
+        btn.addEventListener('pointerup', stop);
+        btn.addEventListener('pointercancel', stop);
+        btn.addEventListener('contextmenu', (e) => e.preventDefault());
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (held) { held = false; return; }
+            if (taskSwitch.open) closeTaskSwitcher();
+            else openTaskSwitcher('mini');
+        });
     }
 
     /**
@@ -1364,18 +1460,22 @@
         const t = n > 9 ? '*' : String(n);
         const id = `wm-skb-${t === '*' ? 'x' : t}`;
         const glyph = t === '*'
-            ? '<text x="10" y="20" text-anchor="middle" font-family="Tahoma, Segoe UI, sans-serif" font-weight="bold" font-size="20" fill="#000">*</text>'
-            : `<text x="10" y="14" text-anchor="middle" font-family="Tahoma, Segoe UI, sans-serif" font-weight="bold" font-size="14" fill="#000">${t}</text>`;
-        return `<svg class="wm-softkey-badge" viewBox="0 0 20 18" aria-label="${t === '*' ? 'more than 9' : t}" role="img"><defs><mask id="${id}"><rect width="20" height="18" rx="5" fill="#fff"/>${glyph}</mask></defs><rect width="20" height="18" rx="5" fill="#fff" mask="url(#${id})"/></svg>`;
+            ? '<text x="10" y="20" text-anchor="middle" font-family="Tahoma, Segoe UI, sans-serif" font-weight="bold" font-size="20" fill="black">*</text>'
+            : `<text x="10" y="14" text-anchor="middle" font-family="Tahoma, Segoe UI, sans-serif" font-weight="bold" font-size="14" fill="black">${t}</text>`;
+        return `<svg class="wm-softkey-badge" viewBox="0 0 20 18" aria-label="${t === '*' ? 'more than 9' : t}" role="img"><defs><mask id="${id}"><rect width="20" height="18" rx="5" fill="white"/>${glyph}</mask></defs><rect width="20" height="18" rx="5" fill="white" mask="url(#${id})"/></svg>`;
     }
 
     function pressSoftKey(side, btn) {
         // a box that came up since the keys were drawn (the poll below has not caught it yet)
         if (modalUp()) { if (!lastModal) renderSoftKeys(); return; }
+        // the key that opened a menu closes it (#1013): check this before reading the key. A bar copy
+        // staged for Melaton Bars only writes the key's *label* ("Menu"), so softKeys[side] still holds
+        // the app's old key (Today's Camera): a second tap then ran that action instead of closing the
+        // copy, and the menu stayed up over the program.
+        if (openPopup && openPopup.dataset.side === side) { closeMenus(); return; }
         const key = softKeys[side];
         if (!key || key.disabled) return;
         if (key.menu) {
-            if (openPopup && openPopup.dataset.side === side) { closeMenus(); return; }
             showPopup(side, typeof key.menu === 'function' ? key.menu() : key.menu, btn);
             return;
         }
@@ -2221,8 +2321,12 @@
         };
     }
 
-    function stagePlay(before, id, page, firstMount) {
+    function stagePlay(before, id, page, firstMount, opts) {
         if (!before || !before.app || before.app === id || root.dataset.wmBoot !== 'done' || viewerActive || document.hidden || switchCoverFor) return;
+        // a home swipe's mask covers the screen: Today must be painted now, not after ~200 ms of the staged hand-over
+        // (which holds the old app's page on screen - the few frames of the last Dreamscape app the recording showed).
+        // There is nothing to stage under the mask: the bars are away and the entrance starts when the mask goes.
+        if (opts && opts.mask) return;
         try { if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (_) { /* staged */ }
         const T = STAGE_TICK;
         const titleEl = shell.querySelector('.wm-title');
@@ -2293,7 +2397,7 @@
         }
     }
 
-    function activate(id) {
+    function activate(id, opts) {
         const app = apps.get(id);
         if (!app) return;
         // a lazy program reached without open() (the back history after a restart): load it, then show it
@@ -2336,7 +2440,7 @@
             if (before && before.app === 'start' && id !== 'today' && id !== 'start' && !firstMount) { root.dataset.wmBar = 'glass'; glassTitle = titleText; }
             else if (!(before && before.app === id)) delete root.dataset.wmBar; // the same program again (a Settings page opening) keeps it
         }
-        stagePlay(before, id, page, firstMount);
+        stagePlay(before, id, page, firstMount, opts);
     }
 
     // programs that cannot do anything without the server (offline check on #794: they hung, showed
@@ -2398,7 +2502,7 @@
         const at = stack.indexOf(id);
         if (at >= 0) stack.length = at;
         stack.push(id);
-        activate(id);
+        activate(id, opts);
         syncHistory();
     }
 
@@ -2521,17 +2625,32 @@
     //
     // Melaton's own add-on (Yozora #748, Yukimi): Windows Mobile 6.5 has no list of the running
     // programs on its Start screen, and phone makers put quick task switchers of their own on top.
-    // Ours: tap-and-hold on the Start button (the hold timing and ring of dots of bindHoldRing; a
-    // mouse press of the same length) brings a strip over the soft key bar with the running
-    // programs, most recently used first, and the title bar's X at its right end as "close all".
-    // No device has this layout, so every piece is one the version already has: the bar's own
-    // look, 32-unit program icons with one label line, the list selection on the program on
-    // screen, the corner button. What runs, its names and how a program ends are Task Manager's
-    // (window.wmTaskManager.running / end: every program that was on screen and has not been ended;
-    // the shell's own screens are not tasks). Close all asks as the device's End All Tasks does.
-    // A tap switches, tap-and-hold on a program gives Task Manager's menu (Switch To, End Task).
-    // It comes and goes in one paint; it is a layer (closeTopLayer, desiredDepth): back closes it.
-    const taskSwitch = { el: null, open: false, mru: [], held: false, timer: null, asking: false, from: '' };
+    // Ours (redesigned for #1013, Yukimi: "more like a vendor add on during the age of WM 6.5"): a compact
+    // Task Manager panel in the manner of the OEM task managers of 2009-2010 (an original design, no device's
+    // art). It rises from just above the soft key bar over a dimmed screen: a dark glossy graphite body, a glossy
+    // title band with "Task Manager", the running count and End All, and a row of program cards scrolled
+    // sideways by the finger, each a glossy rounded tile with the program's 32-unit art, its name under it and a
+    // round red close badge (End Task); the program on screen is ringed in the highlight. A tap switches, a
+    // card flicked up (or its badge) ends that program and the rest close up, tap-and-hold gives Task Manager's
+    // menu (Switch To, End Task). End All asks as the device's End All Tasks does. Back, the corner ok, the
+    // Close soft key or a tap outside puts it away. It comes from tap-and-hold on the Start button (the hold
+    // timing and ring of dots of bindHoldRing; a mouse press of the same length), the bars' recents gesture
+    // ('android') and the soft key bar's centre task button ('mini'). What runs, its names and how a program
+    // ends are Task Manager's (window.wmTaskManager.running / end: every program that was on screen and has
+    // not been ended; the shell's own screens are not tasks). Open and close are transform / opacity only (a
+    // 180 ms rise and fade, the reverse to close); it is a layer (closeTopLayer, desiredDepth). Nothing runs
+    // while it is closed: it is drawn on open and on changes only, and emptied when it goes.
+    const taskSwitch = {
+        el: null, open: false, mru: [], held: false, timer: null, asking: false, from: '',
+        // running count, the open / close motion, a card being flicked, the click after a flick, programs whose
+        // card flew away until they are gone
+        count: 0, anims: [], drag: null, dragged: false, ending: new Set()
+    };
+    const TS_OPEN_MS = 180;
+    const TS_CLOSE_MS = 180;
+    const TS_FLY_MS = 170;
+    const TS_CLOSE_UP_MS = 200;
+    const TS_BTN_HOLD_MS = 500;   // the centre task button's hold (to the Android app)
 
     // The phone's Android programs in the strip (Yozora #1013): with One UI Home off, Android's Recents went with it and
     // Melaton Mobile is the launcher, so the strip lists them too (DSApp AndroidRecentTasks: the shell's task list, read only
@@ -2605,13 +2724,17 @@
         return [...items.slice(0, at), ...own, ...items.slice(at)];
     }
 
-    /** The hold on Start may bring the switcher: not under the lock screen, a message box or a wait. */
-    function taskSwitcherCanOpen() {
+    /**
+     * The switcher may come up: not under the lock screen, a message box or a wait. The hold on Start (from '')
+     * needs the Start button on screen; the bars' recents ('android') and the task button ('mini') do not.
+     */
+    function taskSwitcherCanOpen(from = '') {
         if (!shell || (root.dataset.wmBoot && root.dataset.wmBoot !== 'done') || root.dataset.wmTakeover || root.hasAttribute('data-wm-dialog')) return false;
         if (busyCount > 0 || switchCoverFor) return false;
         const box = shell.querySelector('.wm-msgbox-layer');
         if (box && !box.hidden) return false;
         try { if (window.wmLock && window.wmLock.isLocked) return false; } catch (_) { /* no lock screen */ }
+        if (from) return true;
         const start = shell.querySelector('.wm-start');
         return !!(start && !start.disabled && start.getClientRects().length);
     }
@@ -2622,80 +2745,192 @@
         return !!t.closest('.wm-start') && !taskSwitch.open && taskSwitcherCanOpen();
     }
 
+    /** Motion only where it can be seen: a hidden page or a dark screen goes straight to the end. */
+    function taskSwitcherMotion() {
+        return !document.hidden && !root.hasAttribute('data-screen-off') && typeof Element.prototype.animate === 'function';
+    }
+
+    /** The dimmed band is the content pane's (between the title bar and the soft key bar, whichever bars are on); the panel sits at its foot. */
+    function taskSwitcherPlace() {
+        const el = taskSwitch.el;
+        const content = shell && shell.querySelector(':scope > .wm-content');
+        if (!el || !content) return;
+        const top = `${content.offsetTop}px`;
+        const bottom = `${Math.max(0, shell.clientHeight - content.offsetTop - content.offsetHeight)}px`;
+        if (el.style.getPropertyValue('--wm-tm-top') !== top) el.style.setProperty('--wm-tm-top', top);
+        if (el.style.getPropertyValue('--wm-tm-bottom') !== bottom) el.style.setProperty('--wm-tm-bottom', bottom);
+    }
+
+    /** The cards in the row, without one flying away. */
+    function taskSwitcherCards() {
+        return taskSwitch.el ? [...taskSwitch.el.querySelectorAll('.wm-tm-list > .wm-tm-card:not([data-gone])')] : [];
+    }
+
+    function taskSwitcherCard(t) {
+        const card = document.createElement('div');
+        card.className = 'wm-tm-card';
+        card.dataset.app = t.id;
+        card.innerHTML = `<button type="button" class="wm-ts-item" role="option" aria-selected="false" data-app="${escapeHtml(t.id)}"><span class="wm-tm-tile"><span class="wm-ts-icon"></span></span><span class="wm-ts-label"></span></button><button type="button" class="wm-tm-end" tabindex="-1" data-app="${escapeHtml(t.id)}"><span class="wm-tm-x"></span></button>`;
+        return card;
+    }
+
     function taskSwitcherRender() {
         const el = taskSwitch.el;
         if (!el) return;
-        const tasks = taskSwitcherTasks();
-        const old = el.querySelector('.wm-ts-list');
-        const x = old ? old.scrollLeft : 0;
-        const focused = document.activeElement && el.contains(document.activeElement) ? document.activeElement.dataset.app : null;
-        // the 32-unit art of a shell icon (its -lg pair), as the Programs grid shows it
+        taskSwitcherPlace();
+        const tasks = taskSwitcherTasks().filter((t) => !taskSwitch.ending.has(t.id));
+        const list = el.querySelector('.wm-tm-list');
+        // the 32-unit art of a shell icon (its -lg pair, @4x on dense screens), as the Programs grid shows it
         const large = (name) => (!String(name).startsWith('/') && HD_ART.has(`${name}-lg`) ? `${name}-lg` : name);
-        el.innerHTML = `<div class="wm-ts-list" role="listbox" aria-label="Running programs">${tasks.map((t) => {
+        const byId = new Map(taskSwitcherCards().map((c) => [c.dataset.app, c]));
+        // the cards kept, made or moved in Task Manager's order (written only where they changed)
+        let prev = null;
+        for (const t of tasks) {
+            let card = byId.get(t.id);
+            if (card) byId.delete(t.id);
+            else card = taskSwitcherCard(t);
             const n = large(t.icon);
-            return `<button type="button" class="wm-ts-item${t.id === current ? ' is-selected' : ''}" role="option" aria-selected="${t.id === current}" data-app="${escapeHtml(t.id)}"><span class="wm-ts-icon" style="--wm-icon-mask:url('${escapeHtml(art(n))}')">${imgTag(n)}</span><span class="wm-ts-label">${escapeHtml(t.title)}</span></button>`;
-        }).join('')}</div><div class="wm-ts-side"><button type="button" class="wm-title-action wm-ts-all" data-kind="close" aria-label="End All Tasks"${tasks.length ? '' : ' disabled'}></button></div>`;
-        const list = el.querySelector('.wm-ts-list');
-        list.scrollLeft = x;
-        if (focused) {
-            const again = [...list.children].find((b) => b.dataset.app === focused) || list.firstElementChild || el.querySelector('.wm-ts-all');
-            try { if (again) again.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
+            if (card.dataset.icon !== n) {
+                card.dataset.icon = n;
+                card.querySelector('.wm-ts-icon').innerHTML = imgTag(n);
+            }
+            if (card.dataset.title !== t.title) {
+                card.dataset.title = t.title;
+                card.querySelector('.wm-ts-label').textContent = t.title;
+                card.querySelector('.wm-tm-end').setAttribute('aria-label', `End ${t.title}`);
+            }
+            const on = t.id === current;
+            if (card.classList.contains('is-current') !== on) {
+                card.classList.toggle('is-current', on);
+                card.querySelector('.wm-ts-item').setAttribute('aria-selected', String(on));
+            }
+            const at = prev ? prev.nextElementSibling : list.firstElementChild;
+            if (at !== card) list.insertBefore(card, at);
+            prev = card;
         }
+        for (const card of byId.values()) card.remove();
+        const n = tasks.length;
+        const count = el.querySelector('.wm-tm-count');
+        if (count.textContent !== String(n)) {
+            count.textContent = String(n);
+            count.setAttribute('aria-label', n === 1 ? '1 program running' : `${n} programs running`);
+        }
+        const empty = el.querySelector('.wm-tm-empty');
+        if (empty.hidden !== n > 0) empty.hidden = n > 0;
+        const all = el.querySelector('.wm-tm-all');
+        if (all.disabled !== !n) all.disabled = !n;
+        taskSwitch.count = n;
+    }
+
+    /** A card scrolled into the row's view (the least move; instant on open, smooth for the arrow keys). */
+    function taskSwitcherReveal(card, smooth) {
+        const list = card && card.parentNode;
+        if (!list) return;
+        const l = card.offsetLeft;
+        const r = l + card.offsetWidth;
+        let x = list.scrollLeft;
+        if (l < x) x = l;
+        else if (r > x + list.clientWidth) x = r - list.clientWidth;
+        if (x !== list.scrollLeft) list.scrollTo({ left: x, behavior: smooth ? 'smooth' : 'instant' });
+    }
+
+    /** Open (the dim fades in, the panel rises from 40 % of its height down) or close (the reverse); done() at the end. */
+    function taskSwitcherPlay(show, done) {
+        taskSwitch.anims.forEach((a) => a.cancel());
+        taskSwitch.anims = [];
+        if (!taskSwitcherMotion()) { if (done) done(); return; }
+        const el = taskSwitch.el;
+        const panel = el.querySelector('.wm-tm-panel');
+        const ms = show ? TS_OPEN_MS : TS_CLOSE_MS;
+        const easing = show ? 'cubic-bezier(0.2, 0.8, 0.3, 1)' : 'cubic-bezier(0.5, 0, 0.8, 0.4)';
+        const fade = [{ opacity: 0 }, { opacity: 1 }];
+        const rise = [{ transform: `translateY(${Math.round(panel.offsetHeight * 0.4)}px)` }, { transform: 'none' }];
+        if (!show) { fade.reverse(); rise.reverse(); }
+        const opts = { duration: ms, easing, fill: show ? 'none' : 'forwards' };
+        const a = el.animate(fade, opts);
+        const b = panel.animate(rise, opts);
+        taskSwitch.anims = [a, b];
+        a.onfinish = () => {
+            if (taskSwitch.anims[0] !== a) return;
+            taskSwitch.anims = [];
+            if (done) done();
+            a.cancel();
+            b.cancel();
+        };
+    }
+
+    function taskSwitcherBuild() {
+        const el = document.createElement('div');
+        el.className = 'wm-taskstrip';
+        el.hidden = true;
+        el.setAttribute('role', 'dialog');
+        el.setAttribute('aria-label', 'Task Manager');
+        // the ring of dots only on a program (taskSwitcherHoldTarget)
+        el.setAttribute('data-wm-no-hold', '');
+        el.innerHTML = '<div class="wm-tm-panel"><div class="wm-tm-head"><span class="wm-tm-title">Task Manager</span><span class="wm-tm-count" role="status"></span><button type="button" class="wm-tm-all">End All</button></div>'
+            + '<div class="wm-tm-stage"><div class="wm-tm-list" role="listbox" aria-orientation="horizontal" aria-label="Running programs"></div><div class="wm-tm-empty" hidden>No programs are running.</div></div></div>';
+        shell.appendChild(el);
+        taskSwitch.el = el;
+        const list = el.querySelector('.wm-tm-list');
+        el.addEventListener('click', (e) => {
+            if (!taskSwitch.open) return;
+            e.stopPropagation();
+            if (taskSwitch.held) { taskSwitch.held = false; return; }
+            if (taskSwitch.dragged) { taskSwitch.dragged = false; return; }
+            // the dimmed screen around the panel: a tap there puts it away (and goes no further)
+            if (!e.target.closest('.wm-tm-panel')) { e.preventDefault(); closeTaskSwitcher(); return; }
+            if (e.target.closest('.wm-tm-all')) { void taskSwitcherEndAll(); return; }
+            const end = e.target.closest('.wm-tm-end');
+            if (end) { taskSwitcherFlyAway(end.dataset.app); return; }
+            const item = e.target.closest('.wm-ts-item');
+            if (item) taskSwitcherChoose(item.dataset.app);
+        });
+        el.addEventListener('pointerdown', (e) => {
+            taskSwitch.dragged = false;
+            const item = e.target.closest('.wm-ts-item');
+            if (item) taskSwitcherMouseHold(e, (x, y) => taskSwitcherMenu(item.dataset.app, x, y));
+            taskSwitcherDragStart(e);
+        });
+        el.addEventListener('pointermove', taskSwitcherDragMove);
+        el.addEventListener('pointerup', (e) => taskSwitcherDragEnd(e, false));
+        el.addEventListener('pointercancel', (e) => taskSwitcherDragEnd(e, true));
+        el.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const item = e.target.closest('.wm-ts-item');
+            if (!item || !taskSwitch.open || (taskSwitch.drag && taskSwitch.drag.on)) return;
+            taskSwitch.held = !e.isTrusted;
+            taskSwitcherMenu(item.dataset.app, e.clientX, e.clientY);
+        });
+        // a wheel moves the row sideways
+        el.addEventListener('wheel', (e) => {
+            if (list.scrollWidth <= list.clientWidth) return;
+            e.preventDefault();
+            list.scrollLeft += (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * (e.deltaMode === 1 ? 16 : 1);
+        }, { passive: false });
     }
 
     function openTaskSwitcher(from = '') {
         if (taskSwitch.open) { if (from) { taskSwitch.from = from; androidTasksRead(); taskSwitcherRender(); } return true; }
-        if (!taskSwitcherCanOpen()) return false;
+        if (!taskSwitcherCanOpen(from)) return false;
         closeMenus(true);
         taskSwitch.from = from;
         androidTasksRead();
-        // the bars' gesture asked the app for the list already; the Start hold asks here
+        // the bars' gesture asked the app for the list already; the Start hold and the task button ask here
         if (from !== 'android') androidTasksRefresh();
-        if (!taskSwitch.el) {
-            const el = document.createElement('div');
-            el.className = 'wm-taskstrip';
-            el.hidden = true;
-            el.setAttribute('role', 'dialog');
-            el.setAttribute('aria-label', 'Running programs');
-            // the ring of dots only on a program (taskSwitcherHoldTarget)
-            el.setAttribute('data-wm-no-hold', '');
-            shell.appendChild(el);
-            taskSwitch.el = el;
-            el.addEventListener('click', (e) => {
-                if (!taskSwitch.open) return;
-                e.stopPropagation();
-                if (taskSwitch.held) { taskSwitch.held = false; return; }
-                if (e.target.closest('.wm-ts-all')) { void taskSwitcherEndAll(); return; }
-                const item = e.target.closest('.wm-ts-item');
-                if (item) taskSwitcherChoose(item.dataset.app);
-            });
-            el.addEventListener('pointerdown', (e) => {
-                const item = e.target.closest('.wm-ts-item');
-                if (item) taskSwitcherMouseHold(e, (x, y) => taskSwitcherMenu(item.dataset.app, x, y));
-            });
-            el.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-                const item = e.target.closest('.wm-ts-item');
-                if (!item || !taskSwitch.open) return;
-                taskSwitch.held = !e.isTrusted;
-                taskSwitcherMenu(item.dataset.app, e.clientX, e.clientY);
-            });
-            // a wheel moves the strip sideways
-            el.addEventListener('wheel', (e) => {
-                const list = el.querySelector('.wm-ts-list');
-                if (!list || list.scrollWidth <= list.clientWidth) return;
-                e.preventDefault();
-                list.scrollLeft += (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * (e.deltaMode === 1 ? 16 : 1);
-            }, { passive: false });
-        }
+        if (!taskSwitch.el) taskSwitcherBuild();
+        const el = taskSwitch.el;
         taskSwitch.open = true;
+        taskSwitch.dragged = false;
+        el.classList.remove('is-closing');
+        el.hidden = false;
         taskSwitcherRender();
-        taskSwitch.el.hidden = false;
-        const first = taskSwitch.el.querySelector('.wm-ts-item.is-selected, .wm-ts-item');
-        if (first) {
-            try { first.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
-            if (first.scrollIntoView) first.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-        }
+        // the program on screen in view; from Android's gesture, the program just left (the first). The focus is the
+        // arrow keys' (the first key lands on the program on screen): a card focused here would wear the keys' ring
+        const cards = taskSwitcherCards();
+        const pick = (from !== 'android' && cards.find((c) => c.dataset.app === current)) || cards[0];
+        if (pick) taskSwitcherReveal(pick, false);
+        taskSwitcherPlay(true);
+        renderSoftKeys();
         syncHistory();
         return true;
     }
@@ -2704,26 +2939,143 @@
         if (!taskSwitch.open) return false;
         taskSwitch.open = false;
         clearTimeout(taskSwitch.timer);
-        taskSwitch.el.hidden = true;
-        taskSwitch.el.innerHTML = '';
+        taskSwitch.drag = null;
+        const el = taskSwitch.el;
+        el.classList.add('is-closing');
+        try { if (el.contains(document.activeElement)) document.activeElement.blur(); } catch (_) { /* no focus */ }
+        // gone: emptied (its pictures freed, no card animation left running), drawn again on the next open
+        taskSwitcherPlay(false, () => {
+            if (taskSwitch.open) return;
+            el.hidden = true;
+            el.classList.remove('is-closing');
+            el.querySelector('.wm-tm-list').replaceChildren();
+        });
+        renderSoftKeys();
         if (!silent) syncHistory();
         return true;
+    }
+
+    /** The soft keys while the panel is up: Close (End All is the panel's own). */
+    function taskSwitcherSoftKeys() {
+        return { left: { label: 'Close', action: () => closeTaskSwitcher() }, right: null };
     }
 
     function taskSwitcherChoose(id) {
         closeTaskSwitcher(true);
         const at = id && androidTs.byId.get(id);
-        if (at) { androidTaskFront(at); syncHistory(); return; }
-        if (id && id !== current && apps.has(id)) open(id, { fromStart: true });
-        else syncHistory();
+        if (at) { androidTaskFront(at); return; }
+        if (id && id !== current) open(id);
     }
 
     function taskSwitcherMenu(id, x, y) {
         if (!taskSwitch.open || !id) return;
         window.wmShell.menuAt(x, y, [
             { label: 'Switch To', action: () => taskSwitcherChoose(id) },
-            { label: 'End Task', action: () => { void taskSwitcherEnd([id]); } }
+            { label: 'End Task', action: () => taskSwitcherFlyAway(id) }
         ]);
+    }
+
+    // ---- a card flicked up: it follows the finger, and past a third of the row (or flung) flies off and its program ends
+    function taskSwitcherDragStart(e) {
+        taskSwitch.drag = null;
+        if (!taskSwitch.open || !e.isPrimary || e.button > 0 || e.target.closest('.wm-tm-end')) return;
+        const card = e.target.closest('.wm-tm-card');
+        if (!card || card.dataset.gone) return;
+        taskSwitch.drag = { card, pid: e.pointerId, x: e.clientX, y: e.clientY, dy: 0, on: false, h: 0, trail: [[e.timeStamp, 0]] };
+    }
+
+    function taskSwitcherDragMove(e) {
+        const d = taskSwitch.drag;
+        if (!d || e.pointerId !== d.pid) return;
+        const dx = e.clientX - d.x;
+        const dy = e.clientY - d.y;
+        if (!d.on) {
+            // sideways first: the row's own scroll
+            if (Math.abs(dx) > HOLD_SLOP && Math.abs(dx) >= Math.abs(dy)) { taskSwitch.drag = null; return; }
+            if (dy > -HOLD_SLOP || Math.abs(dy) < Math.abs(dx) * 1.2) return;
+            d.on = true;
+            d.h = d.card.offsetHeight || 1;
+            clearTimeout(taskSwitch.timer);
+            try { d.card.setPointerCapture(d.pid); } catch (_) { /* the moves come to the panel anyway */ }
+        }
+        // up follows the finger, down only gives a little
+        d.dy = dy < 0 ? dy : dy * 0.25;
+        d.trail.push([e.timeStamp, d.dy]);
+        if (d.trail.length > 6) d.trail.shift();
+        d.card.style.transform = `translateY(${d.dy}px)`;
+        d.card.style.opacity = String(Math.max(0.2, 1 + d.dy / d.h));
+    }
+
+    function taskSwitcherDragEnd(e, cancelled) {
+        const d = taskSwitch.drag;
+        if (!d || e.pointerId !== d.pid) return;
+        taskSwitch.drag = null;
+        if (!d.on) return;
+        taskSwitch.dragged = true;
+        const card = d.card;
+        const from = { y: d.dy, o: Math.max(0.2, 1 + d.dy / d.h) };
+        card.style.transform = '';
+        card.style.opacity = '';
+        // the speed over the last moves (px / ms; up is negative)
+        const [t0, y0] = d.trail[0];
+        const v = (d.dy - y0) / Math.max(1, e.timeStamp - t0);
+        if (!cancelled && taskSwitch.open && (d.dy < -d.h / 3 || (v < -0.5 && d.dy < -2 * HOLD_SLOP))) {
+            taskSwitcherFlyAway(card.dataset.app, from);
+            return;
+        }
+        if (taskSwitcherMotion()) {
+            card.animate([{ transform: `translateY(${from.y}px)`, opacity: from.o }, { transform: 'none', opacity: 1 }], { duration: 160, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)' });
+        }
+    }
+
+    /** A card flies off the top (from: where a flick left it) and its program ends; the cards after it close up. */
+    function taskSwitcherFlyAway(id, from) {
+        if (!taskSwitch.open || !id) return;
+        const card = taskSwitcherCards().find((c) => c.dataset.app === id);
+        if (!card) return;
+        card.dataset.gone = '1';
+        taskSwitch.ending.add(id);
+        let once = false;
+        const go = () => {
+            if (once) return;
+            once = true;
+            taskSwitcherCloseUp(card);
+            void taskSwitcherEnd([id]);
+        };
+        if (!taskSwitcherMotion()) { go(); return; }
+        const h = card.offsetHeight || 1;
+        const a = card.animate([
+            { transform: `translateY(${from ? from.y : 0}px)`, opacity: from ? from.o : 1 },
+            { transform: `translateY(${-h}px)`, opacity: 0 }
+        ], { duration: TS_FLY_MS, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' });
+        a.finished.then(go, go);
+    }
+
+    /** The flown card leaves the row and the others slide into its place (FLIP: measured once before, once after). */
+    function taskSwitcherCloseUp(card) {
+        const list = card.parentNode;
+        if (!list) return;
+        const rest = [...list.children].filter((c) => c !== card && !c.dataset.gone);
+        const slide = taskSwitch.open && taskSwitcherMotion();
+        const was = slide ? rest.map((c) => c.getBoundingClientRect().left) : null;
+        card.remove();
+        if (slide) {
+            rest.forEach((c, i) => {
+                const dx = was[i] - c.getBoundingClientRect().left;
+                if (Math.abs(dx) > 0.5) c.animate([{ transform: `translateX(${dx}px)` }, { transform: 'none' }], { duration: TS_CLOSE_UP_MS, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)' });
+            });
+        }
+        if (taskSwitch.open) taskSwitcherRender();
+    }
+
+    /** End All: the cards fly off one after another (a short stagger), then the panel goes. */
+    function taskSwitcherSweep() {
+        if (!taskSwitch.open || !taskSwitcherMotion()) return Promise.resolve();
+        const list = taskSwitch.el.querySelector('.wm-tm-list');
+        const anims = taskSwitcherCards().map((c, i) => c.animate([{ transform: 'none', opacity: 1 }, { transform: `translateY(${-(c.offsetHeight || 1)}px)`, opacity: 0 }],
+            { duration: TS_FLY_MS, delay: Math.min(i, 6) * 35, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' }));
+        if (!list) return Promise.resolve();
+        return Promise.all(anims.map((a) => a.finished.catch(() => null)));
     }
 
     /** An Android program brought forward; when Android will not, Windows Mobile's own words for it. */
@@ -2785,8 +3137,12 @@
             });
         }, { paint: true });
         if (taskSwitch.open) taskSwitcherRender();
-        // hosted windows close on their own timers: list again once they had the chance
-        setTimeout(() => { if (taskSwitch.open) taskSwitcherRender(); }, 1100);
+        // hosted windows close on their own timers: list again once they had the chance (a program that is still
+        // running then shows again: its card flew away for nothing)
+        setTimeout(() => {
+            ids.concat(android.map((t) => `${ANDROID_TASK}${t.taskId}`)).forEach((id) => taskSwitch.ending.delete(id));
+            if (taskSwitch.open) taskSwitcherRender();
+        }, 1100);
     }
 
     /**
@@ -2806,6 +3162,7 @@
         } finally { taskSwitch.asking = false; }
         if (!yes) return;
         ids = taskSwitcherTasks().map((t) => t.id);
+        await taskSwitcherSweep();
         closeTaskSwitcher(true);
         await taskSwitcherEnd(ids);
         open('today');
@@ -2859,31 +3216,35 @@
             if (e.isTrusted) return;
             if (!taskSwitch.open && openTaskSwitcher()) taskSwitch.held = true;
         });
-        // the arrow keys walk the strip while it is up, wherever the focus was left (the lift
-        // after the hold gives it to the Start button); Enter is the focused program's own click
+        // the arrow keys walk the row while it is up, wherever the focus was left (the lift after the hold gives it
+        // to the Start button): the next card scrolls into view and takes the focus, past the last one End All;
+        // Enter is the focused one's own click, Delete ends the focused program (its card flies off)
         window.addEventListener('keydown', (e) => {
             if (!taskSwitch.open || openPopup || e.altKey || e.ctrlKey || e.metaKey) return;
             const keys = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1, Home: -1e6, End: 1e6 };
-            if (!(e.key in keys)) return;
-            const el = taskSwitch.el;
-            const stops = [...el.querySelectorAll('.wm-ts-item, .wm-ts-all:not(:disabled)')];
+            const del = e.key === 'Delete';
+            if (!(e.key in keys) && !del) return;
+            const all = taskSwitch.el.querySelector('.wm-tm-all');
+            const stops = taskSwitcherCards().map((c) => c.querySelector('.wm-ts-item'));
+            if (!all.disabled) stops.push(all);
             if (!stops.length) return;
             e.preventDefault();
             e.stopImmediatePropagation();
             const at = stops.indexOf(document.activeElement);
-            // the first arrow lands on the selected program
-            const from = at >= 0 || Math.abs(keys[e.key]) > 1 ? Math.max(0, at) + keys[e.key] : Math.max(0, stops.findIndex((b) => b.classList.contains('is-selected')));
+            // the first key lands on the program on screen
+            const mine = Math.max(0, stops.findIndex((b) => b.dataset.app && b.dataset.app === current));
+            if (del) { const b = stops[at >= 0 ? at : mine]; if (b && b.dataset.app) taskSwitcherFlyAway(b.dataset.app); return; }
+            const from = at >= 0 || Math.abs(keys[e.key]) > 1 ? Math.max(0, at) + keys[e.key] : mine;
             const to = stops[Math.max(0, Math.min(stops.length - 1, from))];
-            // the selection goes with the keys, as in a list view
-            if (to.classList.contains('wm-ts-item')) stops.forEach((b) => { if (b.classList.contains('wm-ts-item')) { b.classList.toggle('is-selected', b === to); b.setAttribute('aria-selected', String(b === to)); } });
             to.focus({ preventScroll: true });
-            if (to.scrollIntoView) to.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            if (to !== all) taskSwitcherReveal(to.parentNode, true);
         }, true);
-        // a tap elsewhere puts the strip away (Start closes it itself; its menu stays with it)
+        // a tap elsewhere (the title bar's icons) puts the panel away; Start closes it itself, the soft keys and the
+        // corner ok are its own, its menu stays with it
         document.addEventListener('click', (e) => {
             if (!taskSwitch.open) return;
             const t = e.target;
-            if (t && t.closest && t.closest('.wm-taskstrip, #wmShell .wm-popup, #wmShell .wm-msgbox-layer, #wmShell .wm-start, #wmShell .wm-title')) return;
+            if (t && t.closest && t.closest('.wm-taskstrip, #wmShell .wm-popup, #wmShell .wm-msgbox-layer, #wmShell .wm-start, #wmShell .wm-title, #wmShell .wm-softkeys, #wmShell .wm-title-action')) return;
             closeTaskSwitcher();
         }, true);
         // the lock screen, a message box or another program coming up on its own: the strip goes
@@ -4920,6 +5281,8 @@
         if (!cameraInBar && !hasCamera) setReserve(free);
         // the 50 % mark: the leftmost icon starts in the bar's right half (the kept room aside)
         const half = () => {
+            // with the camera in the bar the icons carry on left of it up to the title's floor (status-fit.js, #1025)
+            if (cameraInBar) return true;
             const box = bar.getBoundingClientRect();
             const mid = box.left + box.width / 2;
             return !Array.from(bar.querySelectorAll('.wm-status-icon')).some((i) => !i.hidden && !i.classList.contains('wm-shed') && i.getClientRects().length && i.getBoundingClientRect().left < mid);
@@ -4938,12 +5301,15 @@
         // the volume icon stays while there is room (Yukimi, Nov 16: it shows when there is enough room);
         // it steps aside below only when the bar runs short
         relayout();
-        if (ok()) return;
+        // the room right of the camera is filled first: a row crossing it takes the X / ok's kept place before (#1025)
+        const crosses = () => cameraInBar && !!bar.querySelector('.wm-status-left > .wm-status-icon:not([hidden]):not(.wm-shed)');
+        if (ok() && !crosses()) return;
         if (!reserve.hidden && step(() => setReserve(0))) return;
         // no X / ok on this bar (Today, Start): its kept place is room for icons before any steps aside or folds
         // (Yukimi, Nov 17: the cover fitted 6 icons and the "..." but folded three behind 27 empty units)
         const act = bar.querySelector('.wm-title-action');
         if ((!act || act.hidden) && step(() => bar.classList.add('wm-status-full'))) return;
+        if (ok()) return;
         // the volume / battery stepping aside (Settings > Screen > Sound Icon / Power Icon: "Never hide" keeps them;
         // the battery only while it charges)
         const sysSteps = [];
@@ -6782,10 +7148,11 @@
                 b.addEventListener('click', (e) => { e.stopPropagation(); tap(); });
                 tray.appendChild(b);
             };
-            for (const n of notesForBubbleIcon()) add(noteIcon(n), noteTitle(n), () => showNote(n.id));
+            // 6.5: the "..." opens 6.5.1's notification holder (#1026, wm65.css): each entry by its large colour picture
+            for (const n of notesForBubbleIcon()) add(WM65 ? noteHolderArt(n) : noteIcon(n), noteTitle(n), () => showNote(n.id));
             for (const r of statusFolded) {
                 if (!statusGlyph(r)) continue;
-                add(artImageSet(statusGlyph(r)), STATUS_APP_LABEL[r], () => {
+                add(WM65 ? (holderArt(r) || artImageSet(statusGlyph(r))) : artImageSet(statusGlyph(r)), STATUS_APP_LABEL[r], () => {
                     noteTrayOpen = false;
                     renderNotes();
                     // as its own icon would: mail / text / Messenger open their waiting notification
@@ -8264,30 +8631,12 @@
     const D651_HOLD_MS = 900;   // a press longer than this is not a tap (device: between 0.8 and 1.0 s)
     const D651_PAN_START = 16;  // units the pen travels before the strip or the zoomed screen follows
     const D651_OVER = 8;        // units a flick runs past an end (device: up to 16 px)
-    const d651Rom = (n) => `image-set(url("/static_images/wm65/v651-drawer-${n}.png") 1x, url("/static_images/wm65/v651-drawer-${n}@2x.png") 2x)`;
-    const d651Start = (n) => `image-set(url("/static_images/wm65/start-${n}.png") 1x, url("/static_images/wm65/start-${n}@2x.png") 2x, url("/static_images/wm65/start-${n}@4x.png") 4x)`;
+    const d651Rom = (n) => `image-set(url("/static_images/wm65/v651-drawer-${n}.png") 1x, url("/static_images/wm65/v651-drawer-${n}@2x.png") 2x, url("/static_images/wm65/v651-drawer-${n}@4x.png") 4x)`;
     // the large picture of a status icon: the ROM's drawer icon, else its program's Start icon
-    // (ROM Start_Icon_*, or our own in that set), else the program's large WM icon (wm61 -lg art).
-    // notify and continuity have none: their title bar glyph is shown as it is.
-    const D651_ART = {
-        bluetooth: () => d651Rom('bluetooth'),
-        data: () => d651Rom('connectivity'),
-        roaming: () => d651Rom('roaming'),
-        signal: () => d651Rom('phone'),
-        volume: () => d651Rom('volume'),
-        battery: (b) => d651Rom(/low|empty/.test(b.dataset.icon || '') ? 'battery-low' : 'battery'),
-        mail: () => d651Start('msg'),
-        sms: () => d651Start('sms'),
-        chat: () => d651Start('messenger'),
-        prints: () => d651Start('photos'),
-        update: () => d651Start('update'),
-        traffic: () => d651Start('traffic'),
-        lapis: () => d651Start('lapis'),
-        received: () => d651Start('async'),
-        director: () => artImageSet('app-director-lg'),
-        wxalert: () => artImageSet('app-weather-lg'),
-        rain: () => artImageSet('app-weather-lg')
-    };
+    // (ROM Start_Icon_*, or our own in that set), else the program's large WM icon (wm61 -lg art);
+    // every role's picture is the notification holder's (status-order.js holder, #1026: one table for the page, the
+    // 6.5 "..." holder and the app's copy); the battery shows its low picture when low
+    const d651Art = (kind, b) => holderArt(kind === 'battery' && b && /low|empty/.test(b.dataset.icon || '') ? 'batterylow' : kind);
     let d651El = null;     // the strip, made on first use
     let d651Acts = [];     // what each item opens
     let d651X = 0;         // how far the row is slid, CSS px
@@ -8466,6 +8815,12 @@
             const role = b.dataset.role;
             // the group icon stands for its own notifications here: what is folded into it has an item of its own
             if (role === 'notify' && !notesForBubbleIcon().length && statusFolded.length) return;
+            // and each of those notifications is an item of its own with its large colour picture (the 6.5.1 notification
+            // holder, #1026): a tap shows that notification, no second strip
+            if (role === 'notify' && notesForBubbleIcon().length) {
+                notesForBubbleIcon().forEach((n) => add(noteTitle(n), noteHolderArt(n), () => showNote(n.id)));
+                return;
+            }
             // the network type and the signal are one phone item (both open the Phone bubble)
             const kind = role === 'cell' ? 'signal' : role;
             if (kind === 'signal') { if (phone) return; phone = true; }
@@ -8474,8 +8829,8 @@
             const act = role === 'notify' ? () => noteIconTap()
                 : kind === 'battery' ? () => { if (!settingsPage('power', 'battery')) statusBubble('battery', anchor()); }
                     : () => { if (!messageIconTap(role)) statusBubble(role, anchor()); };
-            const big = D651_ART[kind];
-            if (big) { add(b.getAttribute('aria-label') || kind, big(b), act); return; }
+            const big = d651Art(kind, b);
+            if (big) { add(b.getAttribute('aria-label') || kind, big, act); return; }
             add(b.getAttribute('aria-label') || kind, '', act, b);
         });
         add('Clock & Alarms', d651Rom('clock'), () => { settingsPage('clock'); });
@@ -12837,6 +13192,8 @@
     let bootWaitDelay = null;
     const BOOT_WAIT_DELAY_MS = 2500;
     let installKind = null;
+    let activeInstall = null; // wceload's job while it is up, so its Cancel key can stop a stuck install
+    let installDoneUp = false; // the success page: no Cancel key, the corner's ok finishes the boot
 
     function installNoun() {
         return installKind === 'update' ? 'Melaton Mobile update' : 'Melaton Mobile';
@@ -12996,7 +13353,9 @@
         // back with its entrance (wmTitanium.js, #800)
         // (the press itself blinks the page hidden for a moment: wmTitanium tells that from a return)
         const wasToday = current === 'today';
-        if (current !== 'today') open('today');
+        // under the home mask Today's page goes straight up: stagePlay would hold the app we are leaving on screen
+        // for ~200 ms (visible only here, while the page is awake), which showed through as the mask went
+        if (current !== 'today') open('today', { mask: masked });
         const t = apps.get('today');
         const page = t && t.page;
         if (page) {
@@ -13070,9 +13429,9 @@
             setTitle('Start');
             bootTitleKind = null;
             refreshTitleAction();
-            // wceload shows no soft keys while it copies (only the SIP button)
-            softKeys = { left: null, right: null };
-            shell.querySelectorAll('.wm-softkey').forEach((b) => { b.textContent = ''; b.disabled = true; });
+            // wceload's copy screen has one way out: Cancel (#1022). Today's later key refresh must
+            // not replace it with the app's own keys while the install is still up.
+            renderSoftKeys();
             waitStrip(shell.querySelector('.wm-installer-wait'));
         }
     }
@@ -13098,7 +13457,10 @@
     function showInstallDone(kind) {
         installKind = kind;
         installMax = 0;
+        activeInstall = null;
+        installDoneUp = true;
         setBoot('install');
+        renderSoftKeys();
         const inst = shell.querySelector('.wm-installer');
         inst.querySelector('.wm-installer-progress').hidden = true;
         inst.querySelector('.wm-installer-wait').hidden = true;
@@ -13136,24 +13498,51 @@
     function packageInstall() {
         installKind = 'update';
         installMax = 0;
+        installDoneUp = false;
         setBoot('install');
         setInstallProgress(0);
         let open = true;
-        return {
+        const job = {
             progress(pct) { if (open) setInstallProgress(Number(pct) || 0); },
             /** the restart that installs it comes next: its start says it is done */
             restartNext() { try { sessionStorage.setItem(INSTALL_DONE_KEY, 'update'); } catch (_) { /* storage off */ } },
             /** installed in place (styles, pictures, a package): wceload's last page, then back to the shell */
-            done() { if (!open) return; open = false; showInstallDone('update'); },
+            done() { if (!open) return; open = false; activeInstall = null; showInstallDone('update'); },
             /** stopped (offline, cancelled): back to what was on screen */
             cancel() {
                 if (!open) return;
                 open = false;
+                activeInstall = null;
+                installDoneUp = false;
                 installMax = 0;
+                releaseStalledInstall();
                 setBoot('done');
                 activate(current || 'today');
             }
         };
+        activeInstall = job;
+        return job;
+    }
+
+    /** The updater's in-flight flags, if a check or an install stopped without finishing. */
+    function releaseStalledInstall() {
+        try {
+            const swm = window.serviceWorkerManager;
+            if (!swm) return;
+            swm._activeDownloadAttach = null;
+            swm._phoneInstalling = false;
+            if (typeof swm.forgetShutdownPlan === 'function') swm.forgetShutdownPlan();
+        } catch (_) { /* an older updater */ }
+    }
+
+    /** Cancel on wceload's soft key: a job when there is one, a boot-time download screen otherwise. */
+    function cancelInstall() {
+        if (activeInstall) { activeInstall.cancel(); return; }
+        installDoneUp = false;
+        installMax = 0;
+        releaseStalledInstall();
+        setBoot('done');
+        activate(current || 'today');
     }
 
     function swDownloading() {
@@ -13703,6 +14092,8 @@
         back,
         messageBox,
         packageInstall,
+        /** Leave wceload's screen (its Cancel key) when an update check stalled. */
+        cancelInstall,
         /** Dreamscape Mainframe Server box while the server boots: mainframeBox(percent, stage); null hides. */
         mainframeBox: (percent, stage) => mainframeBox(percent, stage),
         /** Work the user started, as a WM box with bar / preview / Hide / Cancel (#806): progressBox({ title, text, pct, preview, onCancel }). */
@@ -13812,12 +14203,13 @@
         /** Tap-and-hold: ms from pen down to the menu, when the ring of dots is whole (bindHoldRing). */
         holdMs: HOLD_FIRST_MS + 8 * HOLD_STEP_MS + HOLD_MENU_MS,
         /**
-         * The task switcher (hold on Start): a strip of the running programs over the soft key bar.
-         * open() -> false when it may not come up (lock screen, message box, busy); close();
+         * The task switcher (hold on Start, the soft key bar's task button): the compact Task Manager panel of the
+         * running programs (#1013). open(from) -> false when it may not come up (lock screen, message box, busy;
+         * from '' needs the Start button, 'mini' is the task button's, 'android' the bars' recents); close();
          * isOpen; tasks() -> [{ id, title, icon }] most recent first; endAll().
          */
         taskSwitcher: {
-            open: () => openTaskSwitcher(),
+            open: (from) => openTaskSwitcher(typeof from === 'string' ? from : ''),
             close: () => closeTaskSwitcher(),
             get isOpen() { return taskSwitch.open; },
             tasks: () => taskSwitcherTasks(),
@@ -13825,6 +14217,8 @@
         },
         /** A status glyph's CSS image (a status role's own, or an art name such as 'status-reminder'): melatonBars' tray kit. */
         statusArt: (name) => artImageSet(statusGlyph(name) || name),
+        /** The notification holder's large colour picture for a role / kind / glyph name (6.5 "...", #1026), or ''. */
+        holderArt: (name) => holderArt(name),
         /**
          * A soft key's menu laid out once for the app to copy (melatonBars notifyKit: the WM notification box's Menu,
          * drawn by the app with the page asleep): opened quietly over the given soft key; returns { el, close }.

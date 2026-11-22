@@ -20,18 +20,42 @@
     'use strict';
 
     const root = document.documentElement;
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
     const SOFT_LABELS = { back: 'Back', home: 'Home', recents: 'Recent', start: 'Start', notifications: 'Notification', keyboard: 'Keyboard', menu: 'Menu', none: '' };
     // the right soft key's Menu (Settings > Menus > Soft Key Menu): its rows, in the user's order
-    const MENU_ITEMS = { taskmanager: 'Task Manager', notifications: 'All Notifications', quicksettings: 'Quick Settings', maximize: 'Maximize', minimize: 'Minimize', close: 'Close' };
+    const MENU_ITEMS = { taskmanager: 'Task Manager', notifications: 'All Notifications', quicksettings: 'Quick Settings', maximize: 'Maximize', minimize: 'Minimize', close: 'Close',
+        // (#1013, Yukimi Nov 22) the program in front as a window / in split screen / on the DeX desktop, DeX's touchpad, the
+        // flashlight, a screenshot - the app does them (AndroidBars.menuAction)
+        trackpad: 'Trackpad', todesktop: 'Open in Desktop', split: 'Split View', windowed: 'Windowed', flashlight: 'Flashlight', screenshot: 'Screenshot' };
+    // only while the DeX desktop is up (AndroidBars state desktop)
+    const DESKTOP_ONLY = new Set(['trackpad', 'todesktop']);
     function softMenuRows() {
-        let cfg = null;
-        try { cfg = JSON.parse(window.AndroidBars.getState()).config; } catch (_) { cfg = null; }
-        const list = cfg && Array.isArray(cfg.softMenu) ? cfg.softMenu : Object.keys(MENU_ITEMS).map((id) => ({ id, on: true }));
-        return list.filter((r) => r && r.on && MENU_ITEMS[r.id]).map((r) => ({
-            label: MENU_ITEMS[r.id],
-            // Task Manager is Melaton's own program (the page comes up); the others are the app's to do
-            action: r.id === 'taskmanager' ? () => window.wmShell.open('taskmgr') : () => { try { window.AndroidBars.menuAction(r.id); } catch (_) { /* older app */ } }
-        }));
+        let st = null;
+        try { st = JSON.parse(window.AndroidBars.getState()); } catch (_) { st = null; }
+        const cfg = st && st.config;
+        const list = cfg && Array.isArray(cfg.softMenu) ? cfg.softMenu : Object.keys(MENU_ITEMS).slice(0, 6).map((id) => ({ id, on: true }));
+        let programs = [];
+        try { programs = window.wmShell.todaySoftKeys.programs(); } catch (_) { programs = []; }
+        const rows = [];
+        for (const r of list) {
+            if (!r || !r.on) continue;
+            // a separator (never two in a row, never first)
+            if (r.id === 'sep') { if (rows.length && rows[rows.length - 1] !== '-') rows.push('-'); continue; }
+            // a program of her choice, Android's or Melaton's (Start's list: wmShell opens either)
+            if (r.id === 'app') {
+                const p = programs.find((x) => x.id === r.app);
+                if (p || r.label) rows.push({ label: (p && p.label) || r.label, action: () => window.wmShell.open(r.app, { fromStart: true }) });
+                continue;
+            }
+            if (!MENU_ITEMS[r.id] || (DESKTOP_ONLY.has(r.id) && !(st && st.desktop))) continue;
+            rows.push({
+                label: MENU_ITEMS[r.id],
+                // Task Manager is Melaton's own program (the page comes up); the others are the app's to do
+                action: r.id === 'taskmanager' ? () => window.wmShell.open('taskmgr') : () => { try { window.AndroidBars.menuAction(r.id); } catch (_) { /* older app */ } }
+            });
+        }
+        while (rows.length && rows[rows.length - 1] === '-') rows.pop();
+        return rows;
     }
     let lastReq = 0;
     // the screen a kit is being made for ({ density, widthPx } from DSApp's renderKit ctx), while renderKit runs
@@ -385,7 +409,7 @@
                         } finally { top.classList.toggle('is-start-open', wasOpen); }
                     }
                     const soft = shell.querySelector('.wm-softkeys');
-                    if (soft) { const un2 = hideIn(soft, '.wm-softkey, .wm-sip'); try { out.soft = layoutOf([soft], dpr); } finally { un2(); } }
+                    if (soft) { const un2 = hideIn(soft, '.wm-softkey, .wm-sip, .wm-taskbtn'); try { out.soft = layoutOf([soft], dpr); } finally { un2(); } }
                 }
             } finally { back(); }
         }
@@ -406,7 +430,9 @@
     const NOTE_MENU_REPLY = ['View', 'Hide', 'Dismiss', '-', 'Snooze 5 minutes', 'Snooze 15 minutes', 'Snooze 1 hour', 'Snooze 1 day'];
     // the tray's glyph for each kind of notice (the app picks the kind from the notice's id)
     const TRAY_KINDS = { notification: 'status-notify-many', reminder: 'status-reminder', warning: 'status-warning', error: 'status-error',
-        lapis: 'caralert', traffic: 'traffic', wxalert: 'wxalert', rain: 'rain', prints: 'prints', update: 'update' };
+        lapis: 'caralert', traffic: 'traffic', wxalert: 'wxalert', rain: 'rain', prints: 'prints', update: 'update',
+        // the kinds status-order.js noteKind gives beyond the app's trayKind (#1026; the app falls back to notification)
+        mail: 'mail', sms: 'sms', chat: 'chat', director: 'director', caralert: 'caralert' };
     function notifyKit(dpr) {
         const sh = window.wmShell;
         const shell = document.getElementById('wmShell');
@@ -451,7 +477,8 @@
                 out.frames[n] = { items: layoutOf([el], dpr), box: R(el.getBoundingClientRect()) };
             }
             if (soft) {
-                const labels = [...soft.querySelectorAll('.wm-softkey')];
+                // (the centre task button too: the app draws its own glyph there, #1013)
+                const labels = [...soft.querySelectorAll('.wm-softkey, .wm-taskbtn')];
                 const was = labels.map((b) => b.style.visibility);
                 labels.forEach((b) => { b.style.visibility = 'hidden'; });
                 try { out.soft = layoutOf([soft], dpr); } finally { labels.forEach((b, i) => { b.style.visibility = was[i]; }); }
@@ -465,7 +492,10 @@
                     tray.hidden = false;
                     const kinds = Object.keys(TRAY_KINDS);
                     tray.innerHTML = kinds.map((k) => `<button type="button" class="wm-notify-tray-icon" data-kind="${k}"></button>`).join('');
-                    tray.querySelectorAll('button').forEach((b) => { b.style.backgroundImage = sh.statusArt(TRAY_KINDS[b.dataset.kind]); });
+                    // 6.5: the "..." is 6.5.1's notification holder (#1026): the large colour pictures (status-order.js holder)
+                    const h65 = document.documentElement.dataset.wmVersion === '6.5' && typeof sh.holderArt === 'function';
+                    const artOf = (name) => (h65 && sh.holderArt(name)) || sh.statusArt(name);
+                    tray.querySelectorAll('button').forEach((b) => { b.style.backgroundImage = artOf(TRAY_KINDS[b.dataset.kind]); });
                     settle([tray]);
                     const icons = {};
                     const first = tray.querySelector('button');
@@ -480,7 +510,22 @@
                     });
                     const gap = Math.round((parseFloat(getComputedStyle(tray).columnGap) || 0) * dpr);
                     tray.querySelectorAll('button').forEach((b) => { b.style.visibility = 'hidden'; });
-                    out.tray = { s: { items: layoutOf([tray], dpr).filter((o) => o.k !== 'hit'), box: R(tray.getBoundingClientRect()), slot, gap, glyph, icons } };
+                    // the holder (6.5): its icons start at the left (the first slot's x, a slide past the screen's end) and the icons
+                    // folded into "..." are shown by their large pictures too (roleIcons), not the bar's glyph (#1026, #1027)
+                    const tbox = R(tray.getBoundingClientRect());
+                    const extra = {};
+                    if (h65) {
+                        extra.align = 'start';
+                        extra.x0 = slot.x - tbox.x;
+                        extra.scroll = true;
+                        const roleIcons = {};
+                        ['mail', 'sms', 'chat', 'prints', 'xmrec', 'director', 'update', 'wxalert', 'rain', 'carkey', 'traffic', 'lapis', 'received', 'continuity', 'nightshade'].forEach((r) => {
+                            const u = /url\("?([^")]+)"?\)\s*4x/.exec(sh.holderArt(r) || '');
+                            if (u) roleIcons[r] = new URL(u[1], location.href).href;
+                        });
+                        extra.roleIcons = roleIcons;
+                    }
+                    out.tray = { s: Object.assign({ items: layoutOf([tray], dpr).filter((o) => o.k !== 'hit'), box: tbox, slot, gap, glyph, icons }, extra) };
                 } finally { tray.innerHTML = tk.html; tray.hidden = tk.hidden; }
             }
             // the box's Menu (6.5.1's reminder: Dismiss | Menu, Yukimi Nov 18 "so that you have a reminder option"), laid
@@ -918,6 +963,12 @@
                         u: /underline/.test(cs.textDecorationLine || cs.textDecoration || ''), ls: R(px(cs.letterSpacing)), w: R(rr.width) };
                     // leading / trailing white space collapses in the page: the drawn text starts at the first letter
                     one.s = text.replace(/^\s+|\s+$/g, '').replace(/\s+/g, ' ');
+                    // a run longer than its box (overflow hidden): cw the room it has, ell when the page ends it with "..."
+                    // (#1027: the app drew the whole run past the box - a text notice's line ran off the popup)
+                    if (cs.overflowX !== 'visible') {
+                        const inner = b.right - (parseFloat(cs.borderRightWidth) || 0) - (parseFloat(cs.paddingRight) || 0);
+                        if (rr.right > inner + 0.5) { one.cw = R(Math.max(0, inner - rr.left)); if (cs.textOverflow === 'ellipsis') one.ell = true; }
+                    }
                     if (el.classList.contains('wm-vpn-time')) { const ws = window.wsClient; one.live = Number(el.dataset.since) || (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null; }
                     if (one.s) out.push(one);
                     return;
@@ -1051,8 +1102,49 @@
         atBarScreen(dpr, (vw, vh) => pushLayoutsAt(sh, roles, partial, dpr, vw, vh));
     }
 
+    /**
+     * Where this page's bars end, device px (#1027): bh the title bar's bottom, sk the soft key bar's height (0 without
+     * one). The app's bars are Android's status bar / button row high, not this page's: a popup under the title bar (the
+     * "..." tray, a menu) is moved by the difference, or its top edge sat under the app's taller bar (Fold cover: 102 px
+     * status bar against the page's 88).
+     */
+    function barEdges(dpr, vh) {
+        const bar = document.querySelector('#wmShell > .wm-titlebar');
+        const soft = document.querySelector('#wmShell > .wm-softkeys');
+        const bh = bar && bar.getClientRects().length ? Math.round(bar.getBoundingClientRect().bottom * dpr) : 0;
+        const sk = soft && !soft.hidden && soft.getClientRects().length ? Math.max(0, Math.round((vh - soft.getBoundingClientRect().top) * dpr)) : 0;
+        return { bh, sk };
+    }
+
+    /**
+     * The popup layers a press on `role` brought up (#1027): a layer that was up before the press (a message box left
+     * open in this page, a notification) belongs to no icon, and was written into every icon's popup.
+     */
+    function openedLayers(sh, role) {
+        const keep = (l) => !l.classList.contains('wm-notify-scrim');
+        const before = new Set(sh.barsPopupLayers());
+        // a notification already up is not opened again (that toggles it away mid-capture)
+        if (!(role === 'notify' && noteUp())) sh.barsPopupOpen(role);
+        // (a waiting notification is the notification icon's own popup, not part of another's)
+        const out = sh.barsPopupLayers().filter((l) => keep(l) && (role === 'notify' ? (!before.has(l) || l.classList.contains('wm-notify')) : (!before.has(l) && !l.classList.contains('wm-notify'))));
+        // (what was up before: a press's answer leaves those out too)
+        out.pre = before;
+        return out;
+    }
+
+    /** Every popup role of the bar now (as wmShell barsBubbleSpecs collects them): its shown icons and the app's own five. */
+    function barRoles() {
+        const roles = new Set();
+        document.querySelectorAll('#wmShell .wm-titlebar .wm-status-icon').forEach((i) => { const r = i.dataset.role; if (r && !i.hidden) roles.add(r === 'roaming' || r === 'cell' ? 'signal' : r); });
+        ['data', 'signal', 'battery', 'bluetooth', 'volume'].forEach((r) => roles.add(r));
+        roles.delete('androidtray');
+        if (window.wmQuickAccess) { try { window.wmQuickAccess.roles().forEach((r) => roles.add(r)); } catch (_) { /* none */ } }
+        return [...roles];
+    }
+
     function pushLayoutsAt(sh, roles, partial, dpr, vw, vh) {
         const all = {};
+        const edges = barEdges(dpr, vh);
         for (const role of roles) {
             try {
                 // the notification icon with nothing waiting opens nothing: no layout (and no box popped in the page)
@@ -1061,15 +1153,13 @@
                     if (!ni || ni.hidden) continue;
                 }
                 sh.barsPopupClose();
-                // a notification already up is not opened again (that toggles it away mid-capture)
-                if (!(role === 'notify' && noteUp())) sh.barsPopupOpen(role);
-                // (a waiting notification is the notification icon's own popup, not part of another's)
-                const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim') && (role === 'notify' || !l.classList.contains('wm-notify')));
+                const layers = openedLayers(sh, role);
                 // written down as it ends up, not mid-way through its fade (WM 6.1's notification fades in)
                 settle(layers);
                 // pw: the width it was laid out at (the app moves it on a turned screen)
                 // pw / ph: the size it was laid out at (the app fits it to another one, and asks again)
-                if (layers.length) { all[role] = { role, items: layoutOf(layers, dpr), pw: Math.round(vw * dpr), ph: Math.round(vh * dpr) }; const sk = softLabels(); if (sk) all[role].soft = sk; }
+                // bh / sk: where this page's bars end (the app moves it to its own bars' edges, #1027)
+                if (layers.length) { all[role] = { role, items: layoutOf(layers, dpr), pw: Math.round(vw * dpr), ph: Math.round(vh * dpr), bh: edges.bh, sk: edges.sk }; const sk = softLabels(); if (sk) all[role].soft = sk; }
             } catch (err) { console.warn('[melatonBars] layout', role, err); }
         }
         try { sh.barsPopupClose(); } catch (_) { /* none open */ }
@@ -1569,7 +1659,9 @@
     let popupQueued = null;
     window.melatonBars = {
         // the app's screen changed size (a Fold folded or opened) with layouts kept for the other one: again, at the new size
-        relayout: () => { try { const roles = Object.keys(layoutsAll || {}); if (roles.length) pushLayouts(roles, false); } catch (err) { console.warn('[melatonBars] relayout', err); } },
+        // (#1027) also the app's ask after its own update or Android's (cursor rule melaton-bars-native-layouts 4): a page that
+        // has pushed nothing yet since it loaded writes down every popup of its bar
+        relayout: () => { try { let roles = Object.keys(layoutsAll || {}); if (!roles.length) roles = barRoles(); if (roles.length) pushLayouts(roles, false); } catch (err) { console.warn('[melatonBars] relayout', err); } },
         // bar copies that wait in the queue are one: the newest ask is the one made (a popup asked for
         // meanwhile then waits behind one copy at most, not a pile of them)
         render: (ctx) => {
@@ -1602,8 +1694,7 @@
             capturing = true;
             try {
                 sh.barsPopupClose();
-                if (!(role === 'notify' && noteUp())) sh.barsPopupOpen(role);
-                const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim'));
+                const layers = openedLayers(sh, role);
                 const list = [];
                 layers.forEach((r) => r.querySelectorAll(CLICKABLE).forEach((el) => { if (!list.includes(el)) list.push(el); }));
                 // a soft key the app showed for this popup: that key of the page's bar
@@ -1611,12 +1702,14 @@
                 if (el) el.click();
                 if (sh.currentApp() !== before) result = 'app';
                 else {
-                    const now = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim'));
+                    const now = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim') && (!layers.pre.has(l) || layers.includes(l)));
                     settle(now);
                     if (now.length) {
-                        const items = layoutOf(now, window.devicePixelRatio || 1);
+                        const dpr = window.devicePixelRatio || 1;
+                        const items = layoutOf(now, dpr);
                         result = 'popup';
-                        const layout = { role, items, pw: Math.round(window.innerWidth * (window.devicePixelRatio || 1)) };
+                        const edges = barEdges(dpr, window.innerHeight);
+                        const layout = { role, items, pw: Math.round(window.innerWidth * dpr), bh: edges.bh, sk: edges.sk };
                         const sk = softLabels();
                         if (sk) layout.soft = sk;
                         sh.barsPopupClose();
@@ -1648,6 +1741,34 @@
         },
         renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },
         tap: (role) => { if (window.wmShell && window.wmShell.barsTap) window.wmShell.barsTap(role); },
-        unsupported: () => unsupported(document.querySelector('#wmShell .wm-titlebar'))
+        unsupported: () => unsupported(document.querySelector('#wmShell .wm-titlebar')),
+        syncSoftHeight: () => syncSoftHeight()
     };
+
+    // The page's soft key bar as tall as the app's over Android programs (Yozora #1013, Yukimi Nov 22: "adjust the softkey
+    // bar in DS to match androids size so that there no sudden unexpected size change"): where Melaton handles the
+    // navigation, the app's bar is Android's button row (AndroidBars state navPx, device px), 88 px against the page's 26
+    // units on the Fold's cover screen. html[data-wm-soft-h] + --wm-soft-h (wm65.css centres the labels and glyphs in it).
+    // The phone's window only; read at start, on a resize (a fold, a turn) and when the Bars settings change.
+    let softHSet = '';
+    function syncSoftHeight() {
+        let css = '';
+        try {
+            const A = window.AndroidBars;
+            const dex = !!(window.AndroidHome && typeof window.AndroidHome.isExternalDisplay === 'function' && window.AndroidHome.isExternalDisplay());
+            if (A && typeof A.getState === 'function' && !dex) {
+                const st = JSON.parse(A.getState() || 'null');
+                const c = st && st.config;
+                if (c && c.enabled && c.softkeys && c.room !== false && st.navPx > 0) css = `${(st.navPx / (window.devicePixelRatio || 1)).toFixed(2)}px`;
+            }
+        } catch (_) { css = ''; }
+        if (css === softHSet) return;
+        softHSet = css;
+        if (css) { root.style.setProperty('--wm-soft-h', css); root.setAttribute('data-wm-soft-h', ''); }
+        else { root.style.removeProperty('--wm-soft-h'); root.removeAttribute('data-wm-soft-h'); }
+    }
+    if (window.AndroidBars) {
+        syncSoftHeight();
+        window.addEventListener('resize', syncSoftHeight, { signal: appScopeSignal });
+    }
 })();
